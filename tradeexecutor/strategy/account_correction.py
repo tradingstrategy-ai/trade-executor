@@ -25,6 +25,7 @@ from eth_typing import HexAddress
 
 from eth_defi.tx import AssetDelta
 from tradeexecutor.ethereum.tx import TransactionBuilder
+from tradeexecutor.state.repair import close_position_with_empty_trade
 from tradeexecutor.strategy.dust import DEFAULT_DUST_EPSILON, get_dust_epsilon_for_pair, get_dust_epsilon_for_asset
 from tradingstrategy.pair import PandasPairUniverse
 
@@ -192,6 +193,10 @@ def is_relative_mismatch(
     if abs(actual_amount) < dust_epsilon and abs(expected_amount) < dust_epsilon:
         return False
 
+    # Avoid division by zero
+    if actual_amount == 0 or expected_amount == 0:
+        return actual_amount != expected_amount
+
     return abs((expected_amount - actual_amount) / actual_amount) > relative_epsilon
 
 
@@ -235,10 +240,10 @@ def calculate_account_corrections(
     assert isinstance(state, State)
     assert len(state.portfolio.reserves) > 0, "No reserve positions. Did you run init for the strategy?"
 
-    logger.info("Scanning for account corrections")
+    logger.info("Scanning for account corrections, we have %d open positions", len(state.portfolio.open_positions))
 
     assets = get_relevant_assets(pair_universe, reserve_assets, state)
-    asset_balances = list(sync_model.fetch_onchain_balances(assets))
+    asset_balances = list(sync_model.fetch_onchain_balances(assets, filter_zero=False))
 
     logger.info("Found %d on-chain tokens", len(asset_balances))
 
@@ -338,25 +343,31 @@ def apply_accounting_correction(
         event_id = portfolio.next_balance_update_id
         portfolio.next_balance_update_id += 1
 
-        if isinstance(position, TradingPosition):
-            position_type = BalanceUpdatePositionType.open_position
-            position_id = correction.position.position_id
-        elif isinstance(position, ReservePosition):
-            position_type = BalanceUpdatePositionType.reserve
-            position_id = None
-        elif position is None:
-            # Tokens were for a trading position, but no position was open.
-            # Open a new position
-            portfolio.create_trade(
-                strategy_cycle_at=strategy_cycle_included_at,
-            )
-        else:
-            raise NotImplementedError()
+        logger.info("Corrected %s", position)
 
-        notes = f"Accounting correction based on the actual on-chain balances.\n" \
-            f"The internal ledger balance was  {correction.expected_amount} {asset.token_symbol}\n" \
-            f"On-chain balance was {correction.actual_amount} {asset.token_symbol} at block {block_number or 0:,}\n" \
-            f"Balance was updated {correction.quantity} {asset.token_symbol}\n"
+    if isinstance(position, TradingPosition):
+        position_type = BalanceUpdatePositionType.open_position
+        position_id = correction.position.position_id
+
+        assert position.is_spot_market(), f"Correction not yet implemented for leveraged positions"
+
+    elif isinstance(position, ReservePosition):
+        position_type = BalanceUpdatePositionType.reserve
+        position_id = None
+    elif position is None:
+        # Tokens were for a trading position, but no position was open.
+        # Open a new position
+        portfolio.create_trade(
+            strategy_cycle_at=strategy_cycle_included_at,
+        )
+    else:
+        raise NotImplementedError()
+
+
+    notes = f"Accounting correction based on the actual on-chain balances.\n" \
+        f"The internal ledger balance was  {correction.expected_amount} {asset.token_symbol}\n" \
+        f"On-chain balance was {correction.actual_amount} {asset.token_symbol} at block {block_number or 0:,}\n" \
+        f"Balance was updated {correction.quantity} {asset.token_symbol}\n"
 
         evt = BalanceUpdate(
             balance_update_id=event_id,
@@ -393,8 +404,15 @@ def apply_accounting_correction(
             # Balance_updates toggle is enough
             position.balance_updates[evt.balance_update_id] = evt
 
-            # TODO: Close position if the new balance is zero
-            assert position.get_quantity() > 0, "Position closing logic missing"
+            # The position has gone to zero
+            if position.can_be_closed():
+                # In a lot of places we assume that a position with 1 trade cannot be closed
+                # Make a 0-sized trade so that we know the position is closed
+                t = close_position_with_empty_trade(portfolio, position)
+                logger.info("Position %s closed with a trade %s", position, t)
+                assert position.is_closed()
+            else:
+                assert position.get_quantity() > 0, "Position should have quantity"
 
         elif isinstance(position, ReservePosition):
             # No fancy method to correct reserves
@@ -512,6 +530,7 @@ def transfer_away_assets_without_position(
         args_bound_func,
         gas_limit=250_000,
         asset_deltas=[asset_delta],
+        notes="Accounting correction transaction, removing assets",
     )
 
     tx_hash = web3.eth.send_raw_transaction(blockchain_data.get_prepared_raw_transaction())

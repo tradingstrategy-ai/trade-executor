@@ -275,11 +275,13 @@ def visualise_returns_distribution(
         Matplotlit figure
 
     """
-    import quantstats as qs  # Optional dependency
-    fig = qs.plots.distribution(
-        returns,
-        show=False)
-    return fig
+    with warnings.catch_warnings():
+        warnings.filterwarnings("ignore")
+        import quantstats as qs  # Optional dependency
+        fig = qs.plots.distribution(
+            returns,
+            show=False)
+        return fig
 
 
 def calculate_investment_flow(

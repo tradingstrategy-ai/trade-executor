@@ -66,7 +66,7 @@ def test_load_parquet(ohlcv_sample_path):
         liquidity=None
     )
 
-    candle_range = universe.get_candle_availability()
+    candle_range = universe.candles.get_timestamp_range()
 
     assert candle_range[0] == pd.Timestamp('2021-12-25 00:00:00')
     assert candle_range[1] == pd.Timestamp('2022-04-28 12:00:00')

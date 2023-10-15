@@ -4,7 +4,9 @@ import os
 import logging
 import time
 from importlib.metadata import version
+from pathlib import Path
 from typing import cast
+from urllib.parse import urljoin
 
 from pyramid.request import Request
 from pyramid.response import Response, FileResponse
@@ -60,7 +62,7 @@ def web_metadata(request: Request):
         name=metadata.name,
         short_description=metadata.short_description,
         long_description=metadata.long_description,
-        icon_url=metadata.icon_url,
+        icon_url=urljoin(request.application_url, "icon"),
         started_at=time.mktime(metadata.started_at.timetuple()),
         executor_running=run_state.executor_running,
         summary_statistics=run_state.summary_statistics,
@@ -263,4 +265,13 @@ def web_chart(request: Request):
     data = render_web_chart(state, type, source)
     r = Response(content_type="application/json")
     r.text = data.to_json()
+    return r
+
+
+@view_config(route_name='web_icon', permission='view')
+def web_icon(request: Request):
+    """Render the icon of the executor."""
+    path = Path(os.path.join(os.path.dirname(__file__), "default_logo.png"))
+    assert path.exists(), f"Does not exist {path}"
+    r = FileResponse(path.as_posix(), content_type="image/png")
     return r

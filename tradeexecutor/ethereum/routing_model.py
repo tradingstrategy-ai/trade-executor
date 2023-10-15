@@ -85,6 +85,7 @@ class EthereumRoutingModel(RoutingModel):
                           address_map: Dict,
                           check_balances=False,
                           asset_deltas: Optional[List[AssetDelta]] = None,
+                          notes="",
                           ) -> List[BlockchainTransaction]:
         """Prepare a trade where target pair has out reserve asset as a quote token.
 
@@ -117,6 +118,7 @@ class EthereumRoutingModel(RoutingModel):
             max_slippage,
             check_balances,
             asset_deltas=asset_deltas,
+            notes=notes,
             )
 
         # Leave note of adjustment.
@@ -130,18 +132,17 @@ class EthereumRoutingModel(RoutingModel):
         return txs
 
     def make_multihop_trade(self,
-                          routing_state: EthereumRoutingState, # doesn't get full typing
-                              # EthereumRoutingState throws error
-                              # due to circular import
-                          target_pair: TradingPairIdentifier,
-                          intermediary_pair: TradingPairIdentifier,
-                          reserve_asset: AssetIdentifier,
-                          reserve_amount: int,
-                          max_slippage: float,
-                          address_map: Dict,
-                          check_balances=False,
-                          asset_deltas: Optional[List[AssetDelta]] = None,
-                          ) -> List[BlockchainTransaction]:
+          routing_state: EthereumRoutingState,
+          target_pair: TradingPairIdentifier,
+          intermediary_pair: TradingPairIdentifier,
+          reserve_asset: AssetIdentifier,
+          reserve_amount: int,
+          max_slippage: float,
+          address_map: Dict,
+          check_balances=False,
+          asset_deltas: Optional[List[AssetDelta]] = None,
+          notes="",
+          ) -> List[BlockchainTransaction]:
         """Prepare a trade where target pair has out reserve asset as a quote token.
 
         :return:
@@ -172,6 +173,7 @@ class EthereumRoutingModel(RoutingModel):
             max_slippage,
             check_balances,
             asset_deltas=asset_deltas,
+            notes=notes,
             )
 
         txs += trade_txs
@@ -193,6 +195,7 @@ class EthereumRoutingModel(RoutingModel):
               check_balances=False,
               intermediary_pair: Optional[TradingPairIdentifier] = None,
               asset_deltas: Optional[List[AssetDelta]] = None,
+              notes="",
               ) -> List[BlockchainTransaction]:
         """
 
@@ -200,8 +203,14 @@ class EthereumRoutingModel(RoutingModel):
         :param target_pair:
         :param reserve_asset:
         :param reserve_asset_amount:
+
         :param max_slippage:
-            Max slippage per trade. 0.01 is 1%.
+            Max slippage per trade.
+
+            Set the slippage tolerance for this trade.
+
+            0.01 is 100 BPS is 1%.
+
         :param check_balances:
             Check on-chain balances that the account has enough tokens
             and raise exception if not.
@@ -214,7 +223,7 @@ class EthereumRoutingModel(RoutingModel):
             transactions in the `routing_state`.
         """
 
-        logger.info("trade() %s %s %s %s",
+        logger.info("trade() pair: %s reserve: %s reserve allocated: %s max slippage: %s %%",
                     target_pair,
                     reserve_asset,
                     reserve_asset_amount,
@@ -235,6 +244,7 @@ class EthereumRoutingModel(RoutingModel):
                     max_slippage=max_slippage,
                     check_balances=check_balances,
                     asset_deltas=asset_deltas,
+                    notes=notes,
                 )
             raise RuntimeError(f"Do not how to trade reserve {reserve_asset} with {target_pair}")
         else:
@@ -250,6 +260,7 @@ class EthereumRoutingModel(RoutingModel):
                 max_slippage=max_slippage,
                 check_balances=check_balances,
                 asset_deltas=asset_deltas,
+                notes=notes,
             )
     
     def execute_trades_internal(self,
@@ -287,9 +298,12 @@ class EthereumRoutingModel(RoutingModel):
 
             max_slippage = t.slippage_tolerance or DEFAULT_SLIPPAGE_TOLERANCE
 
-            logger.info("Slippage tolerance is: %f, expected asset deltas: %s", max_slippage, asset_deltas)
+            logger.info("Slippage tolerance is: %f %%, expected asset deltas: %s", max_slippage * 100, asset_deltas)
 
             target_pair, intermediary_pair = self.route_trade(pair_universe, t)
+
+            notes = f"For trade: {t}\n" \
+                    f"Asset deltas: {asset_deltas}"
 
             if intermediary_pair is None:
                 # Two way trade
@@ -303,6 +317,7 @@ class EthereumRoutingModel(RoutingModel):
                         check_balances=check_balances,
                         asset_deltas=asset_deltas,
                         max_slippage=max_slippage,
+                        notes=notes,
                     )
                     if t.is_buy()
                     else self.trade(
@@ -313,6 +328,7 @@ class EthereumRoutingModel(RoutingModel):
                         check_balances=check_balances,
                         asset_deltas=asset_deltas,
                         max_slippage=max_slippage,
+                        notes=notes,
                     )
                 )
             elif t.is_buy():
@@ -324,6 +340,7 @@ class EthereumRoutingModel(RoutingModel):
                     check_balances=check_balances,
                     intermediary_pair=intermediary_pair,
                     max_slippage=max_slippage,
+                    notes=notes,
                 )
             else:
                 trade_txs = self.trade(
@@ -335,6 +352,7 @@ class EthereumRoutingModel(RoutingModel):
                     intermediary_pair=intermediary_pair,
                     asset_deltas=asset_deltas,
                     max_slippage=max_slippage,
+                    notes=notes,
                 )
 
             t.set_blockchain_transactions(trade_txs)
@@ -386,13 +404,13 @@ class EthereumRoutingModel(RoutingModel):
 
         assert isinstance(universe, TradingStrategyUniverse)
         assert universe is not None, "Universe is required"
-        assert universe.universe.pairs is not None, "Pairs are required"
+        assert universe.data_universe.pairs is not None, "Pairs are required"
 
 
         tx_builder = execution_details.get("tx_builder")
         if tx_builder is not None:
             # Modern code path
-            routing_state = Routing_State(universe.universe.pairs, tx_builder=tx_builder)
+            routing_state = Routing_State(universe.data_universe.pairs, tx_builder=tx_builder)
         else:
             # Legacy code path - do not use
 
@@ -408,9 +426,9 @@ class EthereumRoutingModel(RoutingModel):
             logger.info("Estimated gas fees for chain %d: %s", web3.eth.chain_id, fees)
             if hot_wallet is not None:
                 tx_builder = HotWalletTransactionBuilder(web3, hot_wallet)
-                routing_state = Routing_State(universe.universe.pairs, tx_builder)
+                routing_state = Routing_State(universe.data_universe.pairs, tx_builder)
             else:
-                routing_state = Routing_State(universe.universe.pairs,
+                routing_state = Routing_State(universe.data_universe.pairs,
                                               tx_builder=None,
                                               web3=web3)
 
@@ -436,7 +454,7 @@ class EthereumRoutingModel(RoutingModel):
     
     @staticmethod
     def route_pair_assertions(trading_pair, pair_universe):
-        assert isinstance(trading_pair, TradingPairIdentifier)
+        assert isinstance(trading_pair, TradingPairIdentifier), f"Not a trading pair: {trading_pair}: {trading_pair.__class__}"
 
         # Only issue for legacy code
         assert pair_universe, "PairUniverse must be given so that we know how to route three way trades"

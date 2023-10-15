@@ -17,6 +17,7 @@ class Format(enum.Enum):
     duration_days_hours = "duration_days_hours"
     duration_hours_minutes = "duration_hours_minutes"
     num_bars = "num_bars"
+    decimal = "decimal"
 
     #: Value cannot be calculated, e.g division by zero
     missing = "missing"
@@ -31,6 +32,7 @@ FORMATTERS = {
     Format.duration_hours_minutes: "{hours} hours {minutes} minutes",
     Format.num_bars: "{v:.0f} bars",
     Format.missing: "-",
+    Format.decimal: "{v:.2f}"
 }
 
 
@@ -71,6 +73,10 @@ def as_bars(v: float) -> Value:
 def as_missing() -> Value:
     """Format a missing value e.g. because of division by zero"""
     return Value(None, Format.missing)
+
+def as_decimal(v: float) -> Value:
+    """Format a decimal value"""
+    return Value(v, Format.decimal)
 
 def format_value(v_instance: Value) -> str:
     """Format a single value

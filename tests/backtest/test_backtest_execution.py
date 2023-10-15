@@ -87,14 +87,14 @@ def universe(request, persistent_test_client, execution_context) -> TradingStrat
 @pytest.fixture(scope="module")
 def wbnb(request, universe) -> AssetIdentifier:
     """WBNB asset."""
-    pair = translate_trading_pair(universe.universe.pairs.get_single())
+    pair = translate_trading_pair(universe.data_universe.pairs.get_single())
     return pair.base
 
 
 @pytest.fixture(scope="module")
 def busd(request, universe) -> AssetIdentifier:
     """BUSD asset."""
-    pair = translate_trading_pair(universe.universe.pairs.get_single())
+    pair = translate_trading_pair(universe.data_universe.pairs.get_single())
     return pair.quote
 
 
@@ -156,14 +156,14 @@ def test_get_historical_price(
     ts = datetime.datetime(2021, 6, 1)
     execution_model = BacktestExecutionModel(wallet, max_slippage=0.01)
     trader = BacktestTrader(ts, state, universe, execution_model, routing_model, pricing_model)
-    wbnb_busd = translate_trading_pair(universe.universe.pairs.get_single())
+    wbnb_busd = translate_trading_pair(universe.data_universe.pairs.get_single())
 
     # Check the candle price range that we have data to get the price
-    price_range = universe.universe.candles.get_candles_by_pair(wbnb_busd.internal_id)
+    price_range = universe.data_universe.candles.get_candles_by_pair(wbnb_busd.internal_id)
     assert price_range.iloc[0]["timestamp"] < ts
 
     # Check the candle price range that we have data to get the price
-    liquidity_range = universe.universe.liquidity.get_samples_by_pair(wbnb_busd.internal_id)
+    liquidity_range = universe.data_universe.liquidity.get_samples_by_pair(wbnb_busd.internal_id)
     assert liquidity_range.iloc[0]["timestamp"] < ts
 
     # Get the price for buying WBNB for 1000 USD at 2021-1-1
@@ -192,7 +192,7 @@ def test_create_and_execute_backtest_trade(
     ts = datetime.datetime(2021, 6, 1)
     execution_model = BacktestExecutionModel(wallet, max_slippage=0.01)
     trader = BacktestTrader(ts, state, universe, execution_model, routing_model, pricing_model)
-    wbnb_busd = translate_trading_pair(universe.universe.pairs.get_single())
+    wbnb_busd = translate_trading_pair(universe.data_universe.pairs.get_single())
 
     # Create trade for buying WBNB for 1000 USD
     position, trade = trader.buy(wbnb_busd, reserve=Decimal(1000))
@@ -225,7 +225,7 @@ def test_buy_sell_backtest(
     ts = datetime.datetime(2021, 6, 1)
     execution_model = BacktestExecutionModel(wallet, max_slippage=0.01)
     trader = BacktestTrader(ts, state, universe, execution_model, routing_model, pricing_model)
-    wbnb_busd = translate_trading_pair(universe.universe.pairs.get_single())
+    wbnb_busd = translate_trading_pair(universe.data_universe.pairs.get_single())
     wbnb_busd.fee = 0.0025
 
     # Create trade for buying WBNB for 1000 USD
@@ -269,7 +269,7 @@ def test_buy_with_fee(
     ts = datetime.datetime(2021, 6, 1)
     execution_model = BacktestExecutionModel(wallet, max_slippage=0.01)
     trader = BacktestTrader(ts, state, universe, execution_model, routing_model, pricing_model)
-    wbnb_busd = translate_trading_pair(universe.universe.pairs.get_single())
+    wbnb_busd = translate_trading_pair(universe.data_universe.pairs.get_single())
 
     # Set 0.5% trading fee
     wbnb_busd.fee = 0.0050
@@ -305,7 +305,7 @@ def test_buy_sell_backtest_with_fee(
     ts = datetime.datetime(2021, 6, 1)
     execution_model = BacktestExecutionModel(wallet, max_slippage=0.01)
     trader = BacktestTrader(ts, state, universe, execution_model, routing_model, pricing_model)
-    wbnb_busd = translate_trading_pair(universe.universe.pairs.get_single())
+    wbnb_busd = translate_trading_pair(universe.data_universe.pairs.get_single())
     wbnb_busd.fee = 0.0025
 
     # Set 0.5% trading fee

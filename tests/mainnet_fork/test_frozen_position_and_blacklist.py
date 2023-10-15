@@ -282,7 +282,7 @@ def universe(web3, exchange_universe: ExchangeUniverse, pair_universe: PandasPai
 def universe_model(universe, supported_reserves) -> StaticUniverseModel:
     """Model the trading universe for the trade executor."""
     return StaticUniverseModel(TradingStrategyUniverse(
-        universe=universe,
+        data_universe=universe,
         reserve_assets=supported_reserves
     ))
 
@@ -362,12 +362,12 @@ def test_buy_and_sell_blacklisted_asset(
     assert len(state.asset_blacklist) == 0
 
     executor_universe: TradingStrategyUniverse = universe_model.universe
-    universe = executor_universe.universe
+    universe = executor_universe.data_universe
 
     assert universe.pairs
 
     # Check assets
-    exchange = universe.exchanges[0]
+    exchange = universe.exchange_universe.get_single()
     wbnb_busd = universe.pairs.get_one_pair_from_pandas_universe(exchange.exchange_id, "WBNB", "BUSD")
     bit_busd = universe.pairs. get_one_pair_from_pandas_universe(exchange.exchange_id, "BIT", "BUSD")
 

@@ -4,14 +4,16 @@
 import datetime
 import os
 import shutil
+import sys
 from pathlib import Path
 from typing import Optional
 
+from tabulate import tabulate
 from typer import Option
 
 from eth_defi.hotwallet import HotWallet
 
-from tradeexecutor.strategy.account_correction import correct_accounts as _correct_accounts
+from tradeexecutor.strategy.account_correction import correct_accounts as _correct_accounts, check_accounts
 from .app import app
 from ..bootstrap import prepare_executor_id, create_web3_config, create_sync_model, create_state_store, create_client
 from ..log import setup_logging
@@ -96,6 +98,7 @@ def correct_accounts(
         json_rpc_ethereum=json_rpc_ethereum,
         json_rpc_arbitrum=json_rpc_arbitrum,
         json_rpc_anvil=json_rpc_anvil,
+        unit_testing=unit_testing,
     )
 
     assert web3config, "No RPC endpoints given. A working JSON-RPC connection is needed for check-wallet"
@@ -197,7 +200,7 @@ def correct_accounts(
         UniverseOptions()
     )
 
-    logger.info("Universe contains %d pairs", universe.universe.pairs.get_count())
+    logger.info("Universe contains %d pairs", universe.data_universe.pairs.get_count())
     logger.info("Reserve assets are: %s", universe.reserve_assets)
 
     assert len(universe.reserve_assets) == 1, "Need exactly one reserve asset"
@@ -211,7 +214,7 @@ def correct_accounts(
             state.portfolio.initialise_reserves(universe.reserve_assets[0])
 
     corrections = calculate_account_corrections(
-        universe.universe.pairs,
+        universe.data_universe.pairs,
         universe.reserve_assets,
         state,
         sync_model,
@@ -256,4 +259,19 @@ def correct_accounts(
     store.sync(state)
     web3config.close()
 
-    logger.info("All ok")
+    clean, df = check_accounts(
+        universe.data_universe.pairs,
+        universe.reserve_assets,
+        state,
+        sync_model,
+    )
+
+    output = tabulate(df, headers='keys', tablefmt='rounded_outline')
+
+    if clean:
+        logger.info("Accounts after the correction match:\n%s", output)
+        sys.exit(0)
+    else:
+        logger.error("Accounts still broken after the correction")
+        logger.info(output)
+        sys.exit(1)

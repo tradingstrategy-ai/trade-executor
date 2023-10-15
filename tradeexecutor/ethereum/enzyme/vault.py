@@ -7,6 +7,7 @@ from _decimal import Decimal
 from functools import partial
 from typing import cast, List, Optional, Tuple, Iterable
 
+from eth_defi.provider.broken_provider import get_block_tip_latency
 from web3 import Web3, HTTPProvider
 
 from eth_defi.chain import fetch_block_timestamp, has_graphql_support
@@ -338,7 +339,7 @@ class EnzymeVaultSyncModel(SyncModel):
             case _:
                 raise RuntimeError(f"Unsupported event: {event}")
 
-    def sync_initial(self, state: State, **kwargs):
+    def sync_initial(self, state: State, allow_override=False, **kwargs):
         """Get the deployment event by scanning the whole chain from the start.
 
         Updates `state.sync.deployment` structure.
@@ -356,7 +357,10 @@ class EnzymeVaultSyncModel(SyncModel):
 
         """
         sync = state.sync
-        assert not sync.is_initialised(), "Initialisation twice is not allowed"
+
+
+        if not allow_override:
+            assert not sync.is_initialised(), "Initialisation twice is not allowed"
 
         web3 = self.web3
         deployment = state.sync.deployment
@@ -396,18 +400,21 @@ class EnzymeVaultSyncModel(SyncModel):
         deployment.chain_id = ChainId(web3.eth.chain_id)
         deployment.initialised_at = datetime.datetime.utcnow()
 
-    def fetch_onchain_balances(self, assets: List[AssetIdentifier], filter_zero=True) -> Iterable[OnChainBalance]:
-        """Read the on-chain asset details.
+    def fetch_onchain_balances(
+            self,
+            assets: List[AssetIdentifier],
+            filter_zero=True) -> Iterable[OnChainBalance]:
 
-        - Mark the block we are reading at the start
+        sorted_assets = sorted(assets, key=lambda a: a.address)
 
-        :param filter_zero:
-            Do not return zero balances
-        """
+        # Latest block fails on LlamaNodes.com
+        block_number = max(1, self.web3.eth.block_number - get_block_tip_latency(self.web3))
+
         return fetch_address_balances(
             self.web3,
             self.get_vault_address(),
-            assets,
+            sorted_assets,
+            block_number=block_number,
             filter_zero=filter_zero,
         )
 
@@ -496,9 +503,11 @@ class EnzymeVaultSyncModel(SyncModel):
         else:
             start_block = sync.deployment.block_number
 
-        end_block = web3.eth.block_number
+        web3 = self.web3
+        latency = get_block_tip_latency(web3)
+        end_block = max(1, web3.eth.block_number - latency)
 
-        logger.info(f"Starting sync for vault %s, comptroller %s, looking block range {start_block:,} - {end_block:,}", self.vault.address, self.vault.comptroller.address)
+        logger.info(f"Starting sync for vault %s, comptroller %s, looking block range {start_block:,} - {end_block:,}, block tip latency is %d", self.vault.address, self.vault.comptroller.address, latency)
 
         reader, broken_quicknode = self.create_event_reader()
 
@@ -559,7 +568,7 @@ class EnzymeVaultSyncModel(SyncModel):
 
         return events
 
-    def sync_reinit(self, state: State, **kwargs):
+    def sync_reinit(self, state: State, allow_override=False, **kwargs):
         """Reinitiliase the vault.
 
         Fixes broken accounting. Only needs to be used if internal state and blockchain
@@ -582,6 +591,9 @@ class EnzymeVaultSyncModel(SyncModel):
         :param state:
             Empty state
 
+        :param allow_override:
+            Allow init twice.
+
         :param kwargs:
             Initial sync hints.
 
@@ -589,7 +601,7 @@ class EnzymeVaultSyncModel(SyncModel):
         """
 
         # First set the vault creation date etc.
-        self.sync_initial(state, **kwargs)
+        self.sync_initial(state, allow_override=allow_override, **kwargs)
 
         # Then proceed to construct the balacnes from the EVM state
         web3 = self.web3
@@ -693,6 +705,17 @@ class EnzymeVaultSyncModel(SyncModel):
         if owner != hot_wallet.address:
             assert vault.vault.functions.isAssetManager(hot_wallet.address).call(), f"Address is not set up as Enzyme asset manager: {hot_wallet.address}"
 
+    def reset_deposits(self, state: State):
+        """Clear out pending withdrawals/deposits events."""
+        web3 = self.web3
+        current_block = web3.eth.block_number
+
+        # Skip all deposit/redemption events between the last scanned block and now
+        sync = state.sync
+        treasury_sync = sync.treasury
+        treasury_sync.last_block_scanned = current_block
+        treasury_sync.last_updated_at = datetime.datetime.utcnow()
+        treasury_sync.last_cycle_at = None
 
 def _dump_enzyme_event(e: EnzymeBalanceEvent) -> str:
     """Format enzyme events in the error / log output."""

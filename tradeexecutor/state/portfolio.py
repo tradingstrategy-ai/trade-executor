@@ -1,5 +1,6 @@
 """Portfolio state management."""
 
+import logging
 import datetime
 import copy
 from dataclasses import dataclass, field
@@ -20,6 +21,8 @@ from tradeexecutor.state.types import USDollarAmount, BPS, USDollarPrice
 from tradeexecutor.strategy.dust import get_dust_epsilon_for_pair
 from tradeexecutor.strategy.trade_pricing import TradePricing
 
+
+logger = logging.getLogger(__name__)
 
 
 class NotEnoughMoney(Exception):
@@ -92,7 +95,7 @@ class Portfolio:
     def __repr__(self):
         reserve_asset, _ = self.get_default_reserve_asset()
         reserve_position = self.get_reserve_position(reserve_asset)
-        return f"<Portfolio with positions open:{len(self.open_positions)} frozen:{len(self.frozen_positions)} closed:{len(self.frozen_positions)} and reserve {reserve_position.quantity} {reserve_position.asset.token_symbol}>"
+        return f"<Portfolio with positions open:{len(self.open_positions)} frozen:{len(self.frozen_positions)} closed:{len(self.closed_positions)} and reserve {reserve_position.quantity} {reserve_position.asset.token_symbol}>"
 
     def is_empty(self):
         """This portfolio has no open or past trades or any reserves."""
@@ -688,6 +691,33 @@ class Portfolio:
             return Decimal(0)
         return position.get_quantity_old()
 
+    def close_position(
+        self,
+        position: TradingPosition,
+        executed_at: datetime.datetime,
+    ):
+        """Move a position from open positions to closed ones.
+
+        See also :py:meth:`TradingPosition.can_be_closed`.
+
+        :param position:
+            Trading position where the trades and balance updates quantity equals to zero
+
+        :param executed_at:
+            Wall clock time
+
+        """
+
+        assert position.position_id in self.open_positions, f"Not in open positions: {position}"
+
+        # Move position to closed
+        logger.info("Marking position to closed: %s at %s", position, executed_at)
+        position.closed_at = executed_at
+        del self.open_positions[position.position_id]
+        self.closed_positions[position.position_id] = position
+
+        assert position.is_closed()
+
     def adjust_reserves(self, asset: AssetIdentifier, amount: Decimal):
         """Remove currency from reserved.
 
@@ -714,7 +744,10 @@ class Portfolio:
 
         reserve.quantity += amount
 
-    def move_capital_from_reserves_to_spot_trade(self, trade: TradeExecution, underflow_check=True):
+    def move_capital_from_reserves_to_spot_trade(
+            self,
+            trade: TradeExecution,
+            underflow_check=True):
         """Allocate capital from reserves to trade instance.
 
         Total equity of the porfolio stays the same.
@@ -738,14 +771,23 @@ class Portfolio:
                 raise NotEnoughMoney(f"Not enough reserves. We have {available}, trade wants {reserve}")
 
         trade.reserve_currency_allocated = reserve
+
+        logger.info("Moving %s USD from reserves to the trade %s", reserve, trade)
         self.adjust_reserves(trade.reserve_currency, -reserve)
 
-    def return_capital_to_reserves(self, trade: TradeExecution, underflow_check=True):
+    def return_capital_to_reserves(
+            self,
+            trade: TradeExecution,
+            underflow_check=True):
         """Return capital to reserves after a spot sell or collateral returned.
 
         """
         if trade.is_spot():
             assert trade.is_sell()
+
+        logger.info("Returning %s USD to reserves from trade %s", trade.executed_reserve, trade)
+
+        assert trade.executed_reserve > 0
 
         self.adjust_reserves(trade.reserve_currency, trade.executed_reserve)
 
@@ -984,5 +1026,16 @@ class Portfolio:
         """What is our Net Asset Value (NAV) across all open loan positions."""
         return sum(l.get_net_asset_value() for l in self.get_open_loans())
 
-    def get_total_collateral(self) -> USDollarAmount:
-        raise NotImplementedError()
+    def has_trading_capital(self, threshold_usd=0.15) -> bool:
+        """Does this strategy have non-zero deposits and total equity?
+
+        Check the reserves.
+
+        - If we have zero deposits, do not attempt to trade
+
+        - The actual amount is a bit above zero to account for rounding errors
+
+        :return:
+            If we have any capital to trade
+        """
+        return self.get_total_equity() >= threshold_usd

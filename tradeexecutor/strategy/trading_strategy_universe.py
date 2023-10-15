@@ -19,7 +19,6 @@ from typing import List, Optional, Callable, Tuple, Set, Dict, Iterable, Collect
 
 import pandas as pd
 
-from eth_defi.uniswap_v2.utils import ZERO_ADDRESS
 from tradingstrategy.lending import LendingReserveUniverse, LendingReserveDescription, LendingCandleType, LendingCandleUniverse
 from tradingstrategy.token import Token
 from tradingstrategy.candle import GroupedCandleUniverse
@@ -29,14 +28,16 @@ from tradingstrategy.exchange import ExchangeUniverse, Exchange, ExchangeType
 from tradingstrategy.liquidity import GroupedLiquidityUniverse, ResampledLiquidityUniverse
 from tradingstrategy.pair import DEXPair, PandasPairUniverse, resolve_pairs_based_on_ticker, \
     filter_for_exchanges, filter_for_quote_tokens, StablecoinFilteringMode, filter_for_stablecoins, \
-    HumanReadableTradingPairDescription
+    HumanReadableTradingPairDescription, filter_for_chain, filter_for_base_tokens, filter_for_exchange
 from tradingstrategy.timebucket import TimeBucket
+from tradingstrategy.types import TokenSymbol
 from tradingstrategy.universe import Universe
 from tradingstrategy.utils.groupeduniverse import filter_for_pairs
 
 from tradeexecutor.strategy.execution_context import ExecutionMode, ExecutionContext
 from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier, TradingPairKind, AssetType
-from tradeexecutor.strategy.universe_model import StrategyExecutionUniverse, UniverseModel, DataTooOld, UniverseOptions
+from tradeexecutor.strategy.universe_model import StrategyExecutionUniverse, UniverseModel, DataTooOld, UniverseOptions, default_universe_options
+
 
 logger = logging.getLogger(__name__)
 
@@ -85,6 +86,13 @@ class Dataset:
     #: Data clipping period
     end_at: Optional[datetime.datetime] = None
 
+    #: How much back we looked from today
+    history_period: Optional[datetime.timedelta] = None
+
+    def get_chain_ids(self) -> Set[ChainId]:
+        """Get all chain ids on this dataset."""
+        return {e.chain_id for e in self.exchanges.exchanges}
+
     def __post_init__(self):
         """Check we got good data."""
         candles = self.candles
@@ -99,21 +107,24 @@ class Dataset:
         if lending_candles is not None:
             assert isinstance(lending_candles, LendingCandleUniverse), f"Expected LendingCandleUniverse, got {lending_candles.__class__}"
 
+        if self.history_period:
+            assert self.start_at is None and self.end_at is None, f"You can only give history_period or backtesting range"
+
 
 @dataclass
 class TradingStrategyUniverse(StrategyExecutionUniverse):
-    """A trading executor trading universe that using data from TradingStrategy.ai data feeds.
+    """A trading strategy universe using our own data feeds.
 
-    - Supports generic trading universe definitions
+    - Captures both the market data feeds
+      and factors needed to make trading decisions,
+      like the strategy reserve currency and backtesting tweaks
 
-    - Adds special support for reserve currency handling and
-      take profit/stop loss backtesting
     """
 
     #: Trading universe datasets.
     #:
     #: This encapsulates more generic `Universe` class from `tradingstrategy` package.
-    universe: Optional[Universe] = None
+    data_universe: Optional[Universe] = None
 
     #: Are we using special take profit/stop loss trigger data.
     #:
@@ -138,12 +149,20 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
     required_history_period: Optional[datetime.timedelta] = None
 
     def __repr__(self):
-        pair_count = self.universe.pairs.get_count()
+        pair_count = self.data_universe.pairs.get_count()
         if pair_count <= 3:
-            pair_tickers = [f"{p.base_token_symbol}-{p.quote_token_symbol}" for p in self.universe.pairs.iterate_pairs()]
+            pair_tickers = [f"{p.base_token_symbol}-{p.quote_token_symbol}" for p in self.data_universe.pairs.iterate_pairs()]
             return f"<TradingStrategyUniverse for {', '.join(pair_tickers)}>"
         else:
-            return f"<TradingStrategyUniverse for {self.universe.pairs.get_count()} pairs>"
+            return f"<TradingStrategyUniverse for {self.data_universe.pairs.get_count()} pairs>"
+
+    @property
+    def universe(self):
+        """Backwards compatibility method.
+
+        Deprecate in some point.
+        """
+        return self.data_universe
 
     def is_open_ended_universe(self) -> bool:
         """Can new trading pairs to be added to this universe over time.
@@ -152,7 +171,7 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
             True if the trading universe may contain hundreds or thousands of trading pairs.
         """
         # TODO: In the future strategy modules, make a real flag for this and now we just use this hack
-        return self.universe.pairs.get_count() > 20
+        return self.data_universe.pairs.get_count() > 20
 
     def has_lending_data(self) -> bool:
         """Is any lending data available.
@@ -162,7 +181,7 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
             For live trading, lending candles are not available,
             but any lending rates are directly updated from on-chain sources.
         """
-        return self.universe.lending_reserves is not None
+        return self.data_universe.lending_reserves is not None
 
     def clone(self) -> "TradingStrategyUniverse":
         """Create a copy of this universe.
@@ -170,7 +189,7 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
         Any dataframes are now copied,
         but set by reference.
         """
-        u = self.universe
+        u = self.data_universe
         new_universe = Universe(
             time_bucket=u.time_bucket,
             chains=u.chains,
@@ -180,7 +199,7 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
             liquidity=u.liquidity,
         )
         return TradingStrategyUniverse(
-            universe=new_universe,
+            data_universe=new_universe,
             backtest_stop_loss_time_bucket=self.backtest_stop_loss_time_bucket,
             backtest_stop_loss_candles=self.backtest_stop_loss_candles,
             reserve_assets=self.reserve_assets,
@@ -209,7 +228,7 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
             return item
 
     def get_pair_count(self) -> int:
-        return self.universe.pairs.get_count()
+        return self.data_universe.pairs.get_count()
 
     def is_empty(self) -> bool:
         """This is an empty universe
@@ -218,8 +237,8 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
 
         - ...or without candles
         """
-        candles = self.universe.candles.df if self.universe.candles else []
-        return self.universe.pairs.get_count() == 0 or len(candles) == 0
+        candles = self.data_universe.candles.df if self.data_universe.candles else []
+        return self.data_universe.pairs.get_count() == 0 or len(candles) == 0
 
     def is_single_pair_universe(self) -> bool:
         """Is this trading universe made for a single pair trading.
@@ -231,7 +250,7 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
         # TODO: Make a stupid assumption here
         # as our strategies currently have 1 or 2 pairs for single pair trading.
         # Convert this to a proper flag later.
-        return self.universe.pairs.get_count() <= 2
+        return self.data_universe.pairs.get_count() == 1
 
     def has_stop_loss_data(self) -> bool:
         """Do we have data available to determine trade stop losses.
@@ -273,8 +292,8 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
             In the case input data cannot be resolved.
 
         """
-        assert self.universe.exchange_universe, "You must set universe.exchange_universe to be able to use this method"
-        pair = self.universe.pairs.get_pair_by_human_description(self.universe.exchange_universe, desc)
+        assert self.data_universe.exchange_universe, "You must set universe.exchange_universe to be able to use this method"
+        pair = self.data_universe.pairs.get_pair_by_human_description(self.data_universe.exchange_universe, desc)
         return translate_trading_pair(pair)
 
     def create_single_pair_universe(
@@ -390,7 +409,7 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
         # TODO: Not sure if we need to be smarter about stop loss candle
         # data handling here
         return TradingStrategyUniverse(
-            universe=universe,
+            data_universe=universe,
             reserve_assets=reserve_assets,
             backtest_stop_loss_time_bucket=dataset.backtest_stop_loss_time_bucket,
             backtest_stop_loss_candles=stop_loss_candle_universe,
@@ -492,7 +511,7 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
         # TODO: Not sure if we need to be smarter about stop loss candle
         # data handling here
         return TradingStrategyUniverse(
-            universe=universe,
+            data_universe=universe,
             reserve_assets=reserve_assets,
             backtest_stop_loss_time_bucket=dataset.backtest_stop_loss_time_bucket,
             backtest_stop_loss_candles=stop_loss_candle_universe,
@@ -500,14 +519,14 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
 
     def get_pair_by_address(self, address: str) -> Optional[TradingPairIdentifier]:
         """Get a trading pair data by a smart contract address."""
-        pair = self.universe.pairs.get_pair_by_smart_contract(address)
+        pair = self.data_universe.pairs.get_pair_by_smart_contract(address)
         if not pair:
             return None
         return translate_trading_pair(pair)
 
     def get_single_pair(self) -> TradingPairIdentifier:
         """Get the single trading pair in this universe."""
-        pair = self.universe.pairs.get_single()
+        pair = self.data_universe.pairs.get_single()
         return translate_trading_pair(pair)
 
     @staticmethod
@@ -648,10 +667,54 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
         )
 
         return TradingStrategyUniverse(
-            universe=universe,
+            data_universe=universe,
             reserve_assets=reserve_assets,
             backtest_stop_loss_time_bucket=backtest_stop_loss_time_bucket,
             backtest_stop_loss_candles=backtest_stop_loss_candles,
+        )
+
+    @staticmethod
+    def create_from_dataset(dataset: Dataset):
+        """Create a universe from loaded dataset.
+
+        - Assume all trading pairs have the same quote token
+          and that is our reserve asset
+
+        - If dataset has trading pairs with different quote tokens,
+          aborts
+
+        For code example see :py:func:`load_trading_and_lending_data`.
+        """
+
+        chain_ids = dataset.pairs["chain_id"].unique()
+
+        assert len(chain_ids) == 1, f"Currently only single chain datasets supported, got chains {chain_ids}"
+        chain_id = chain_ids[0]
+
+        pairs = PandasPairUniverse(dataset.pairs, exchange_universe=dataset.exchanges)
+
+        quote_token = pairs.get_single_quote_token()
+        reserve_asset = translate_token(quote_token)
+
+        candle_universe = GroupedCandleUniverse(dataset.candles)
+
+        universe = Universe(
+            time_bucket=dataset.time_bucket,
+            chains=chain_id,
+            pairs=pairs,
+            candles=candle_universe,
+            liquidity=dataset.liquidity,
+            resampled_liquidity=dataset,
+            exchange_universe=dataset.exchanges,
+            exchanges={e for e in dataset.exchanges.exchanges},
+            lending_candles=dataset.lending_candles,
+        )
+
+        return TradingStrategyUniverse(
+            data_universe=universe,
+            reserve_assets=[reserve_asset],
+            backtest_stop_loss_time_bucket=dataset.backtest_stop_loss_time_bucket,
+            backtest_stop_loss_candles=dataset.backtest_stop_loss_candles,
         )
 
     @staticmethod
@@ -734,7 +797,7 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
             stop_loss_candle_universe = None
 
         return TradingStrategyUniverse(
-            universe=universe,
+            data_universe=universe,
             reserve_assets=reserve_assets,
             backtest_stop_loss_time_bucket=dataset.backtest_stop_loss_time_bucket,
             backtest_stop_loss_candles=stop_loss_candle_universe,
@@ -754,7 +817,7 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
         reserve_asset = self.get_reserve_asset()
 
         # Will raise exception if not available
-        reserve = self.universe.lending_reserves.get_by_chain_and_address(
+        reserve = self.data_universe.lending_reserves.get_by_chain_and_address(
             ChainId(reserve_asset.chain_id),
             reserve_asset.address,
         )
@@ -794,12 +857,12 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
         assert collateral_token == self.get_reserve_asset()
 
         # Will raise exception if not available
-        borrow_reserve = self.universe.lending_reserves.get_by_chain_and_address(
+        borrow_reserve = self.data_universe.lending_reserves.get_by_chain_and_address(
             ChainId(borrow_token.chain_id),
             borrow_token.address,
         )
 
-        collateral_reserve = self.universe.lending_reserves.get_by_chain_and_address(
+        collateral_reserve = self.data_universe.lending_reserves.get_by_chain_and_address(
             ChainId(collateral_token.chain_id),
             collateral_token.address,
         )
@@ -930,7 +993,7 @@ class TradingStrategyUniverseModel(UniverseModel):
             The data timestamp
         """
         max_age = ts - best_before_duration
-        universe = universe.universe
+        universe = universe.data_universe
         candle_end = None
 
         if universe.candles is not None:
@@ -957,7 +1020,11 @@ class TradingStrategyUniverseModel(UniverseModel):
             return candle_end
 
     @staticmethod
-    def create_from_dataset(dataset: Dataset, chains: List[ChainId], reserve_assets: List[AssetIdentifier], pairs_index=True):
+    def create_from_dataset(
+            dataset: Dataset,
+            chains: List[ChainId],
+            reserve_assets: List[AssetIdentifier],
+            pairs_index=True):
         """Create an trading universe from dataset with zero filtering for the data."""
 
         exchanges = list(dataset.exchanges.exchanges.values())
@@ -985,7 +1052,7 @@ class TradingStrategyUniverseModel(UniverseModel):
 
         logger.debug("Universe created")
         return TradingStrategyUniverse(
-            universe=universe,
+            data_universe=universe,
             reserve_assets=reserve_assets,
             backtest_stop_loss_candles=backtest_stop_loss_candles,
             backtest_stop_loss_time_bucket=dataset.backtest_stop_loss_time_bucket)
@@ -1188,11 +1255,15 @@ def create_pair_universe_from_code(chain_id: ChainId, pairs: List[TradingPairIde
     Used in unit testing.
     """
     data = []
+    used_ids = set()
     for idx, p in enumerate(pairs):
         assert p.base.decimals
         assert p.quote.decimals
         assert p.internal_exchange_id, f"All trading pairs must have internal_exchange_id set, did not have it set {p}"
         assert p.internal_id
+
+        assert p.internal_id not in used_ids, f"Duplicate internal id {p}: {p.internal_id}"
+
         dex_pair = DEXPair(
             pair_id=p.internal_id,
             chain_id=chain_id,
@@ -1210,6 +1281,7 @@ def create_pair_universe_from_code(chain_id: ChainId, pairs: List[TradingPairIde
             token1_decimals=p.quote.decimals,
             fee=int(p.fee * 10_000) if p.fee else None,  # Convert to bps according to the documentation
         )
+        used_ids.add(p.internal_id)
         data.append(dex_pair.to_dict())
     df = pd.DataFrame(data)
     return PandasPairUniverse(df)
@@ -1313,19 +1385,21 @@ def load_all_data(
 
 
 def load_partial_data(
-        client: BaseClient,
-        execution_context: ExecutionContext,
-        time_bucket: TimeBucket,
-        pairs: Collection[HumanReadableTradingPairDescription],
-        universe_options: UniverseOptions,
-        liquidity=False,
-        stop_loss_time_bucket: Optional[TimeBucket] = None,
-        required_history_period: datetime.timedelta | None = None,
-        lending_reserves: Collection[LendingReserveDescription] | None = None,
-        lending_candle_types: Collection[LendingCandleType] = (LendingCandleType.supply_apr, LendingCandleType.variable_borrow_apr),
-        start_at: datetime.datetime | None = None,
-        end_at: datetime.datetime | None = None,
-        name: str | None = None,
+    client: BaseClient,
+    execution_context: ExecutionContext,
+    time_bucket: TimeBucket,
+    pairs: Collection[HumanReadableTradingPairDescription] | pd.DataFrame,
+    universe_options: UniverseOptions,
+    liquidity=False,
+    stop_loss_time_bucket: Optional[TimeBucket] = None,
+    required_history_period: datetime.timedelta | None = None,
+    lending_reserves: LendingReserveUniverse | Collection[LendingReserveDescription] | None = None,
+    lending_candle_types: Collection[LendingCandleType] = (LendingCandleType.supply_apr, LendingCandleType.variable_borrow_apr),
+    start_at: datetime.datetime | None = None,
+    end_at: datetime.datetime | None = None,
+    name: str | None = None,
+    candle_progress_bar_desc: str | None = None,
+    lending_candle_progress_bar_desc: str | None = None,
 ) -> Dataset:
     """Load pair data for given trading pairs.
 
@@ -1392,12 +1466,19 @@ def load_partial_data(
     :param exchange_slug:
         Which exchange hosts our trading pairs
 
-    :param pair_tickers:
-        List of trading pair tickers as base token quote token tuples.
-        E.g. `[('WBNB', 'BUSD'), ('Cake', 'BUSD')]`.
+    :param pairs:
+
+        List of trading pair tickers.
+
+        Can be
+
+        - Human-readable descriptions, see :py:attr:`tradingstrategy.pair.HumanReadableTradingPairDescription`.
+        - Direct :py:class:`pandas.DataFrame` of pairs.
 
     :param lending_reserves:
-        Lending reserves for which you want to download the data
+        Lending reserves for which you want to download the data.
+
+        Either list of lending pool descriptions or preloaded lending universe.
 
     :param liquidity:
         Set true to load liquidity data as well
@@ -1424,11 +1505,21 @@ def load_partial_data(
     :param start_at:
         Load data for a specific backtesting data range.
 
+        TODO: Going to be deprecatd. Please use ``universe_options.start_at`` instead.
+
     :param end_at:
         Load data for a specific backtesting data range.
 
+        TODO: Going to be deprecatd. Please use ``universe_options.end_at`` instead.
+
     :param name:
         The loading operation name used in progress bars
+
+    :param candle_progress_bar_desc:
+        Override the default progress bar message
+
+    :param lending_candle_progress_bar_desc:
+        Override the default progress bar message
 
     :return:
         Datataset containing the requested data
@@ -1444,23 +1535,49 @@ def load_partial_data(
     stop_loss_time_bucket = universe_options.stop_loss_time_bucket_override or stop_loss_time_bucket
     time_bucket = universe_options.candle_time_bucket_override or time_bucket
 
-    assert start_at and end_at, "Current implementatation is designed for backtest use only and needs both start_at and end_at timestamps"
-
+    # Some sanity and safety check
     if len(pairs) >= 25:
         logger.warning("This method is designed to load data for low number or trading pairs, got %d", len(pairs))
+
+    # Legacy compat
+    if not start_at:
+        start_at = universe_options.start_at
+
+    # Legacy compat
+    if not end_at:
+        end_at = universe_options.end_at
+
+    if not required_history_period:
+        required_history_period = universe_options.history_period
+
+    assert (start_at and end_at) or required_history_period, \
+        f"You need to give either history period or backtesting start_at - end_at range. We got {start_at}, {end_at}, {required_history_period}"
+
+    # Where the data loading start can come from the hard backtesting range (start - end)
+    # or how many days of historical data we ask for
+    data_load_start_at = start_at or (datetime.datetime.utcnow() - required_history_period)
 
     with execution_context.timed_task_context_manager("load_partial_pair_data", time_bucket=time_bucket.value):
 
         exchange_universe = client.fetch_exchange_universe()
 
-        pairs_df = client.fetch_pair_universe().to_pandas()
+        if isinstance(pairs, pd.DataFrame):
+            # Prefiltered pairs
+            filtered_pairs_df = pairs
+            our_pair_ids = pairs["pair_id"]
+            exchange_ids = pairs["exchange_id"]
+            our_exchanges = {exchange_universe.get_by_id(id) for id in exchange_ids}
+            our_exchange_universe = ExchangeUniverse.from_collection(our_exchanges)
+        else:
+            # Load and filter pairs
+            pairs_df = client.fetch_pair_universe().to_pandas()
 
-        # We do not build the pair index here,
-        # as we assume we filter out the pairs down a bit,
-        # and then recontruct a new pair universe with only few selected pairs with full indexes
-        # later. The whole purpose of this here is to
-        # go around lack of good look up functions of raw DataFrame pairs data.
-        pair_universe = PandasPairUniverse(pairs_df, build_index=False)
+            # We do not build the pair index here,
+            # as we assume we filter out the pairs down a bit,
+            # and then recontruct a new pair universe with only few selected pairs with full indexes
+            # later. The whole purpose of this here is to
+            # go around lack of good look up functions of raw DataFrame pairs data.
+            pair_universe = PandasPairUniverse(pairs_df, build_index=False, exchange_universe=exchange_universe)
 
         # Filter pairs first and then rest by the resolved pairs
         our_pairs = {pair_universe.get_pair_by_human_description(exchange_universe, d) for d in pairs}
@@ -1469,29 +1586,31 @@ def load_partial_data(
         our_exchanges = [exchange_universe.get_by_id(id) for id in exchange_ids]
         our_exchange_universe = ExchangeUniverse.from_collection(our_exchanges)
 
-        # Eliminate the pairs we are not interested in from the database
-        filtered_pairs_df = pairs_df.loc[pairs_df["pair_id"].isin(our_pair_ids)]
+            # Eliminate the pairs we are not interested in from the database
+            filtered_pairs_df = pairs_df.loc[pairs_df["pair_id"].isin(our_pair_ids)]
 
         # Autogenerate names by the pair count
         if not name:
             name = f"{len(filtered_pairs_df)} pairs"
 
-        progress_bar_desc = f"Loading OHLCV data for {name}"
+        if not candle_progress_bar_desc:
+            candle_progress_bar_desc = f"Loading OHLCV data for {name}"
+
         candles = client.fetch_candles_by_pair_ids(
             our_pair_ids,
             time_bucket,
-            progress_bar_description=progress_bar_desc,
-            start_time=start_at,
+            progress_bar_description=candle_progress_bar_desc,
+            start_time=data_load_start_at,
             end_time=end_at,
         )
 
         if stop_loss_time_bucket:
-            stop_loss_desc = f"Loading stop loss/take granular data for {name}"
+            stop_loss_desc = f"Loading stop loss/take profit granular trigge data for {name}"
             stop_loss_candles = client.fetch_candles_by_pair_ids(
                 our_pair_ids,
                 stop_loss_time_bucket,
                 progress_bar_description=stop_loss_desc,
-                start_time=start_at,
+                start_time=data_load_start_at,
                 end_time=end_at,
             )
         else:
@@ -1501,14 +1620,22 @@ def load_partial_data(
             raise NotImplemented("Partial liquidity data loading is not yet supported")
 
         if lending_reserves:
-            lending_reserve_universe = client.fetch_lending_reserve_universe()
-            lending_reserve_universe = lending_reserve_universe.limit(lending_reserves)
+            if isinstance(lending_reserves, LendingReserveUniverse):
+                lending_reserve_universe = lending_reserves
+            else:
+                lending_reserve_universe = client.fetch_lending_reserve_universe()
+                lending_reserve_universe = lending_reserve_universe.limit(lending_reserves)
+
+            if not lending_candle_progress_bar_desc:
+                lending_candle_progress_bar_desc = f"Downloading lending rate data for {lending_reserve_universe.get_count()} assets"
+
             lending_candles_map = client.fetch_lending_candles_for_universe(
                 lending_reserve_universe,
                 bucket=time_bucket,
                 candle_types=lending_candle_types,
-                start_time=start_at,
+                start_time=data_load_start_at,
                 end_time=end_at,
+                progress_bar_description=lending_candle_progress_bar_desc,
             )
             lending_candles = LendingCandleUniverse(lending_candles_map, lending_reserve_universe)
         else:
@@ -1525,6 +1652,9 @@ def load_partial_data(
             backtest_stop_loss_candles=stop_loss_candles,
             lending_reserves=lending_reserve_universe,
             lending_candles=lending_candles,
+            start_at=start_at,
+            end_at=end_at,
+            history_period=required_history_period,
         )
 
 
@@ -1739,3 +1869,184 @@ def load_pair_data_for_single_exchange(
             start_at=start_time,
             end_at=end_time,
         )
+
+
+def load_trading_and_lending_data(
+    client: BaseClient,
+    execution_context: ExecutionContext,
+    chain_id: ChainId,
+    time_bucket: TimeBucket = TimeBucket.d1,
+    universe_options: UniverseOptions = default_universe_options,
+    exchange_slugs: Set[str] | str | None = None,
+    liquidity=False,
+    stop_loss_time_bucket: Optional[TimeBucket] = None,
+    reserve_asset_symbols: Set[TokenSymbol]={"USDC",},
+    name: str | None = None,
+    volatile_only=False,
+):
+    """Load trading and lending market for a single chain for all long/short pairs.
+
+    - A shortcut method for constructing trading universe for multipair long/short strategy
+
+    - Gets all supported lending pairs on a chain
+
+    - Discards trading pairs that do not have a matching lending reserve
+      with a quote token ``reserve_assset_symbol``
+
+    - Will log output regarding the universe construction for diagnostics
+
+    More information
+
+    - For parameter documentation see :py:func:`load_partial_data`.
+
+    - See also :py:meth:`TradingStrategyUniverse.create_from_dataset`
+
+    Example for historical data:
+
+    .. code-block:: python
+
+        start_at = datetime.datetime(2023, 9, 1)
+        end_at = datetime.datetime(2023, 10, 1)
+
+        # Load all trading and lending data on Polygon
+        # for all lending markets on a relevant time period
+        dataset = load_trading_and_lending_data(
+            client,
+            execution_context=unit_test_execution_context,
+            universe_options=UniverseOptions(start_at=start_at, end_at=end_at),
+            chain_id=ChainId.polygon,
+            exchange_slug="uniswap-v3",
+        )
+
+        strategy_universe = TradingStrategyUniverse.create_from_dataset(dataset)
+        data_universe = strategy_universe.data_universe
+
+        # Check one loaded reserve metadata
+        usdc_reserve = data_universe.lending_reserves.get_by_chain_and_symbol(ChainId.polygon, "USDC")
+
+        # Check the historical rates
+        lending_candles = data_universe.lending_candles.variable_borrow_apr
+        rates = lending_candles.get_rates_by_reserve(usdc_reserve)
+
+        assert rates["open"][pd.Timestamp("2023-09-01")] == pytest.approx(3.222019)
+        assert rates["open"][pd.Timestamp("2023-10-01")] == pytest.approx(3.446714)
+
+    Example for current data:
+
+    .. code-block: python
+
+        # Load all trading and lending data on Polygon
+        # for all lending markets on a relevant time period
+        dataset = load_trading_and_lending_data(
+            client,
+            execution_context=unit_test_execution_context,
+            universe_options=UniverseOptions(history_period=datetime.timedelta(days=7)),
+            chain_id=ChainId.polygon,
+            exchange_slug="uniswap-v3",
+        )
+
+        assert dataset.history_period == datetime.timedelta(days=7)
+
+        strategy_universe = TradingStrategyUniverse.create_from_dataset(dataset)
+        data_universe = strategy_universe.data_universe
+
+        # Check one loaded reserve metadata
+        usdc_reserve = data_universe.lending_reserves.get_by_chain_and_symbol(ChainId.polygon, "USDC")
+
+        # Check the historical rates
+        lending_candles = data_universe.lending_candles.variable_borrow_apr
+        rates = lending_candles.get_rates_by_reserve(usdc_reserve)
+
+        trading_pair = (ChainId.polygon, "uniswap-v3", "WETH", "USDC", 0.0005)
+        pair = data_universe.pairs.get_pair_by_human_description(trading_pair)
+        price_feed = data_universe.candles.get_candles_by_pair(pair.pair_id)
+
+        two_days_ago = pd.Timestamp(datetime.datetime.utcnow() - datetime.timedelta(days=2)).floor("D")
+        assert rates["open"][two_days_ago] > 0
+        assert rates["open"][two_days_ago] < 10  # Erdogan warnings
+        assert price_feed["open"][two_days_ago] > 0
+        assert price_feed["open"][two_days_ago] < 10_000  # To the moon warning
+
+    :param reserve_asset_symbols:
+        In which currency, the trading pairs must be quoted for the lending pool.
+
+        The reserve asset data is read from the lending reserve universe.
+
+        This will affect the shape of the trading universe.
+
+        For trading, we need to have at least one trading pair with this quote token.
+        The best fee is always picked.
+
+    :param volatile_only:
+        If set to False, ignore stablecoin-stablecoin trading pairs.
+    """
+
+    assert isinstance(client, Client)
+    assert isinstance(time_bucket, TimeBucket)
+    assert isinstance(execution_context, ExecutionContext)
+    assert isinstance(chain_id, ChainId)
+
+    assert len(reserve_asset_symbols) == 1, f"Currently only one reserve asset is supported, got {reserve_asset_symbols}"
+    (reserve_asset_symbol,) = reserve_asset_symbols
+
+    if exchange_slugs is not None:
+        if type(exchange_slugs) == str:
+            exchange_slugs = {exchange_slugs}
+
+        assert isinstance(exchange_slugs, set)
+
+    lending_reserves = client.fetch_lending_reserve_universe()
+    lending_reserves = lending_reserves.limit_to_chain(chain_id)
+
+    reserve_asset = lending_reserves.get_by_chain_and_symbol(
+        chain_id,
+        reserve_asset_symbol
+    )
+
+    assert reserve_asset, f"Reserve asset not in the lending reserve universe: {reserve_asset_symbol}"
+
+    pairs_df = client.fetch_pair_universe().to_pandas()
+
+    # Find out all volatile pairs traded against USDC and USDT on Polygon
+    pairs_df = filter_for_chain(pairs_df, ChainId.polygon)
+    pairs_df = filter_for_stablecoins(pairs_df, StablecoinFilteringMode.only_volatile_pairs)
+    pairs_df = filter_for_quote_tokens(pairs_df, {reserve_asset.asset_address})
+    pairs_df = filter_for_base_tokens(pairs_df, lending_reserves.get_asset_addresses())
+
+    if exchange_slugs:
+        pairs_df = filter_for_exchange(pairs_df, exchange_slugs)
+
+    if not name:
+        symbols = pairs_df["base_token_symbol"].unique()
+        name = "Trading and lending universe for " + ", ".join(symbols)
+
+    logger.info(
+        "Setting up trading and lending universe on %s using %s as reserve asset, total %d pairs, range is %s",
+        chain_id.get_name(),
+        reserve_asset_symbol,
+        len(pairs_df),
+        universe_options.get_range_description(),
+        )
+
+    # We do not build the pair index here,
+    # as we assume we filter out the pairs down a bit,
+    # and then recontruct a new pair universe with only few selected pairs with full indexes
+    # later. The whole purpose of this here is to
+    # go around lack of good look up functions of raw DataFrame pairs data.
+    dataset = load_partial_data(
+        client=client,
+        execution_context=execution_context,
+        time_bucket=time_bucket,
+        pairs=pairs_df,
+        universe_options=universe_options,
+        liquidity=liquidity,
+        stop_loss_time_bucket=stop_loss_time_bucket,
+        lending_candle_types=(LendingCandleType.supply_apr, LendingCandleType.variable_borrow_apr,),
+        lending_reserves=lending_reserves,
+        name=name,
+        candle_progress_bar_desc=f"Downloading OHLCV data for {len(pairs_df)} trading pairs",
+        lending_candle_progress_bar_desc=f"Downloading interest rate data for {lending_reserves.get_count()} assets",
+        )
+
+    return dataset
+

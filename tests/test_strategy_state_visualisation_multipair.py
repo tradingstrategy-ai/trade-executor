@@ -327,7 +327,7 @@ def universe() -> TradingStrategyUniverse:
     )
 
     return TradingStrategyUniverse(
-        universe=universe, 
+        data_universe=universe,
         backtest_stop_loss_candles=candle_universe,
         backtest_stop_loss_time_bucket=time_bucket,
         reserve_assets=[usdc]

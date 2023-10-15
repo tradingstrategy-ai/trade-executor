@@ -255,6 +255,7 @@ def start(
                 json_rpc_anvil=json_rpc_anvil,
                 json_rpc_arbitrum=json_rpc_arbitrum,
                 gas_price_method=gas_price_method,
+                unit_testing=unit_testing,
             )
 
             if not web3config.has_any_connection():
@@ -452,6 +453,32 @@ def start(
             strategy_factory = import_strategy_file(strategy_file)
 
         logger.trade("%s (%s): trade execution starting", name, id)
+
+        if backtest_start:
+
+            assert asset_management_mode == AssetManagementMode.backtest, f"Expected backtest mode, got {asset_management_mode}"
+
+            # We cannot have real-time triggered trades when doing backtestin
+            strategy_cycle_trigger = StrategyCycleTrigger.cycle_offset
+
+            # Running as a backtest
+            execution_context = ExecutionContext(
+                mode=ExecutionMode.backtesting,
+                timed_task_context_manager=timed_task,
+            )
+        else:
+            if unit_testing:
+                execution_context = ExecutionContext(
+                    mode=ExecutionMode.unit_testing_trading,
+                    timed_task_context_manager=timed_task,
+                )
+            else:
+                execution_context = ExecutionContext(
+                    mode=ExecutionMode.real_trading,
+                    timed_task_context_manager=timed_task,
+                )
+
+        logger.info("Starting with execution mode: %s, unit testing is %s", execution_context.mode.name, unit_testing)
 
     except Exception as e:
         # Logging is set up is in this point, so we can log this exception that

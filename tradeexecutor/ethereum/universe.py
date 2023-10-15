@@ -79,7 +79,7 @@ def create_exchange_universe(web3: Web3, uniswaps: List[UniswapV2Deployment]) ->
             chain_slug="tester",
             exchange_id=int(u.factory.address, 16),
             exchange_slug="uniswap_tester",
-            address=u.factory,
+            address=u.factory.address,
             exchange_type=ExchangeType.uniswap_v2,
             pair_count=99999,
         )

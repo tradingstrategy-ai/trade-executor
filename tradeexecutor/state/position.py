@@ -68,9 +68,6 @@ class TriggerPriceUpdate:
 
         if self.mid_price:
             assert type(self.mid_price) == float
-        
-        if self.stop_loss_before:
-            assert self.stop_loss_before < self.stop_loss_after
 
 
 @dataclass_json
@@ -132,6 +129,9 @@ class TradingPosition(GenericPosition):
     trades: Dict[int, TradeExecution] = field(default_factory=dict)
 
     #: When this position was closed
+    #:
+    #: Execution time of the trade or wall-clock time if not available.
+    #:
     closed_at: Optional[datetime.datetime] = None
 
     #: Timestamp when this position was moved to a frozen state.
@@ -223,6 +223,11 @@ class TradingPosition(GenericPosition):
     #:
     #: - credit supply (collateral without borrow)
     #:
+    #: This reflects the latest :py:attr:`tradeexecutor.state.trade.TradeExecution.executed_loan`
+    #: of a successful trade. This object is updated with accrued interest information from on-chain
+    #: data outside trades. If the position does not have successfully executed trades yet,
+    #: this is ``None``.
+    #:
     loan: Optional[Loan] = None
 
     #: What is the liquidation price for this position.
@@ -231,6 +236,8 @@ class TradingPosition(GenericPosition):
     #: Applicable for
     #:
     #: - short/long positions using lending protocols
+    #:
+    #: TODO: When this is set and when this is updated.
     #: 
     liquidation_price: USDollarAmount | None = None
 
@@ -442,7 +449,8 @@ class TradingPosition(GenericPosition):
     def get_quantity(self) -> Decimal:
         """Get the tied up token quantity in all successfully executed trades.
 
-        - Does not account for trades that are currently being executed.
+        - Does not account for trades that are currently being executed (in started,
+          or planned state).
 
         - Does some fixing for rounding errors in the form of epsilon checks
 
@@ -492,8 +500,10 @@ class TradingPosition(GenericPosition):
         This gives you remaining token balance, even if there are some earlier
         sell orders that have not been executed yet.
         """
-        planned = sum([t.get_position_quantity() for t in self.trades.values() if t.is_planned()])
-        live = self.get_quantity()
+        planned = sum([t.get_position_quantity() for t in self.trades.values() if t.is_planned()])  # Sell values sum to negative
+        live = self.get_quantity()  # What was the position quantity before executing any of planned trades
+        # Temporary logging to track down SAND token errors
+        logger.info("get_available_trading_quantity(): Figuring out available position size to trade. Planned quantity: %s, live quantity: %s", planned, live)
         return planned + live
 
     def get_current_price(self) -> USDollarAmount:
@@ -615,18 +625,33 @@ class TradingPosition(GenericPosition):
 
             case TradingPairKind.lending_protocol_short | TradingPairKind.credit_supply:
                 # Value for leveraged positions is net asset value from its two loans
-                return self.loan.get_net_asset_value(include_interest)
+                return self.get_loan_based_nav(include_interest=include_interest)
             case _:
                 raise NotImplementedError(f"Does not know how to value position for {self.pair}")
 
         return value
 
-    def get_loan_based_nav(self, include_interest=True, include_fees=True):
-        """Calculate NAV for a lona based position."""
-        nav = self.loan.get_net_asset_value(include_interest)
-        # TODO: Do we need to include fees
-        return nav
+    def get_loan_based_nav(self, include_interest=True, include_fees=True) -> USDollarAmount:
+        """Calculate net asset value (NAV) for a loan based position.
 
+        :param include_interest:
+            Should interest should be included in the NAV
+
+        :param include_fees:
+            TODO
+
+        :return:
+            Zero if this position is not yet opened.
+
+            When the first trade of position is executed,
+            :py:attr:`loan` attribute becomes available.
+        """
+        assert self.is_loan_based(), f"Not loan based position: {self}"
+        if not self.loan:
+            return 0.0
+
+        nav = self.loan.get_net_asset_value(include_interest)
+        return nav
 
     def get_trades_by_strategy_cycle(self, timestamp: datetime.datetime) -> Iterable[TradeExecution]:
         """Get all trades made for this position at a specific time.
@@ -791,7 +816,7 @@ class TradingPosition(GenericPosition):
                             start_borrowed=self.loan.borrowed.quantity,
                             close_size=quantity,
                             borrowed_asset_price=assumed_price,
-                            fee=self.pair.fee,
+                            fee=self.pair.get_pricing_pair().fee,
                         )
 
                         # Release collateral is the current collateral
@@ -802,6 +827,8 @@ class TradingPosition(GenericPosition):
 
                         # Any leftover USD from the collateral is released to the reserves
                         planned_collateral_allocation = -leverage_estimate.total_collateral_quantity
+
+                        lp_fees_estimated = leverage_estimate.lp_fees
 
                     else:
                         assert quantity is not None, "For increasing/reducing short position quantity must be given"
@@ -939,7 +966,12 @@ class TradingPosition(GenericPosition):
         return sum_decimal([abs(t.get_position_quantity()) for t in self.trades.values() if t.is_success() if t.is_sell()])
 
     def get_net_quantity(self) -> Decimal:
-        """The difference in the quantity of assets bought and sold to date."""
+        """The difference in the quantity of assets bought and sold to date.
+
+        .. note::
+
+            To be deprecated. Please use :py:method:`get_quantity` instead.
+        """
         return self.get_quantity()
 
     def get_average_buy(self) -> Optional[USDollarAmount]:
@@ -1210,10 +1242,10 @@ class TradingPosition(GenericPosition):
         :return:
             Dollar value of the risked capital
         """
-        assert self.is_long(), "Only long positions supported"
+        # assert self.is_long(), "Only long positions supported"
         assert self.stop_loss, f"Stop loss price must be set to calculate the maximum risk"
         # Calculate how much value we can lose
-        price_diff = ( self.get_price_at_open() - self.stop_loss)
+        price_diff = abs(self.get_price_at_open() - self.stop_loss)
         risked_value = price_diff * float(self.get_quantity_at_open())
         return risked_value
 
@@ -1246,6 +1278,7 @@ class TradingPosition(GenericPosition):
         """
         
         assert not self.is_open(), "Cannot calculate realised profit for open positions"
+
         buy_value = self.get_buy_value()
         sell_value = self.get_sell_value()
 
@@ -1313,26 +1346,12 @@ class TradingPosition(GenericPosition):
         return False
     
     def get_max_size(self) -> USDollarAmount:
-        """Get the largest size of this position over the time"""
-        cur_size = 0
-        max_size = 0
-
-        for t in self.trades.values():
-            executed_value = t.get_executed_value()
-            
-            # skip trade if we don't have the executed value
-            if not executed_value:
-                continue
-            
-            if t.is_buy():
-                cur_size += executed_value
-            else:
-                cur_size -= executed_value
-            
-            if cur_size > max_size:
-                max_size = cur_size
+        """Get the largest size of this position over time
         
-        return max_size
+        NOTE: This metric doesn't work for positions with more than 2 trades
+        i.e: positions which have been increased and reduced in size
+        """
+        return self.get_first_trade().get_executed_value()
 
     def get_trade_count(self) -> int:
         """Get the number of trades in this position."""

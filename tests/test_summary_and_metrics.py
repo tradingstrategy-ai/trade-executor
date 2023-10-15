@@ -121,7 +121,7 @@ def synthetic_universe(mock_chain_id, mock_exchange, weth_usdc) -> TradingStrate
         liquidity=None
     )
 
-    return TradingStrategyUniverse(universe=universe, reserve_assets=[weth_usdc.quote])
+    return TradingStrategyUniverse(data_universe=universe, reserve_assets=[weth_usdc.quote])
 
 
 @pytest.fixture(scope="module")

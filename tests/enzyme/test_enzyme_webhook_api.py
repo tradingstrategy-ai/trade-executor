@@ -63,7 +63,6 @@ def test_enzyme_metadata(logger, server_url, vault: Vault):
     data = resp.json()
     assert data["name"] == "Foobar"
     assert data["short_description"] == "Short desc"
-    assert data["icon_url"] == "https://place-puppy.com/300x300"
     assert data["executor_running"] == True
     assert data["on_chain_data"]["asset_management_mode"] == "enzyme"
     assert data["on_chain_data"]["chain_id"] == 137

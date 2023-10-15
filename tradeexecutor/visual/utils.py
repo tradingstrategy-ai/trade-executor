@@ -43,10 +43,10 @@ def export_trade_for_dataframe(p: Portfolio, t: TradeExecution) -> dict:
     """
 
     position = p.get_position_by_id(t.position_id)
+    base_token_symbol = position.pair.get_pricing_pair().base.token_symbol
+    price_prefix = f"{base_token_symbol} / USD"
 
-    price_prefix = f"{t.pair.base.token_symbol} / USD"
-
-    label = []
+    label = ["-" * 60]
 
     if t.is_failed():
         label += ["Failed trade"]
@@ -55,48 +55,53 @@ def export_trade_for_dataframe(p: Portfolio, t: TradeExecution) -> dict:
         label += ["Repaired trade"]
         type = "failed"
     else:
-        if t.is_sell():
-            if t.is_stop_loss():
-                label += [
-                    f"Stop loss {t.pair.base.token_symbol}",
-                    "",
-                    f"Trigger was at {position.stop_loss:.4f} {price_prefix}",
-                ]
-                type = "stop-loss"
-            else:
-                label += [f"Sell {t.pair.base.token_symbol}"]
-                type = "sell"
-        else:
-            if t.is_take_profit():
-                type = "take-profit"
-                label += [
-                    f"Take profit {t.pair.base.token_symbol}",
-                    "",
-                    "Trigger was at {position.take_profit:.4f} {price_prefix}",
-                ]
-            else:
-                type = "buy"
-                label += [f"Buy {t.pair.base.token_symbol}"]
+        
+        if t.is_stop_loss():
+            type = "stop-loss"
+            label += [
+                f"Stop loss {base_token_symbol}",
+                "",
+                f"Triggered at: {position.stop_loss:.4f} {price_prefix}",
+            ]
+        elif t.is_take_profit():
+            type = "take-profit"
+            label += [
+                f"Take profit {base_token_symbol}",
+                "",
+                f"Triggered at: {position.take_profit:.4f} {price_prefix}",
+            ]
+        elif t.is_sell():
+            type = "sell"
+            label += [
+                f"Sell {base_token_symbol}",
+                "",
+            ]
+        elif t.is_buy():
+            type = "buy"
+            label += [
+                f"Buy {base_token_symbol}",
+                "",
+            ]
 
         label += [
-            "",
+            # "",
             f"Executed at: {t.executed_at}",
             f"Value: {t.get_value():.4f} USD",
-            f"Quantity: {abs(t.get_position_quantity()):.6f} {t.pair.base.token_symbol}",
-            "",
+            f"Quantity: {abs(t.get_position_quantity()):.6f} {base_token_symbol}",
+            # "",
         ]
 
         label += [
-            f"Mid-price: {t.planned_mid_price:.4f} {price_prefix}"
-            if t.planned_mid_price
-            else "",
+            # f"Mid-price: {t.planned_mid_price:.4f} {price_prefix}"
+            # if t.planned_mid_price
+            # else "",
             f"Executed at price: {t.executed_price:.4f} {price_prefix}"
             if t.executed_price
             else "",
-            f"Estimated execution price: {t.planned_price:.4f} {price_prefix}"
-            if t.planned_price
-            else "",
-            "",
+            # f"Estimated execution price: {t.planned_price:.4f} {price_prefix}"
+            # if t.planned_price
+            # else "",
+            # "",
         ]
 
         if t.lp_fees_estimated is not None:
@@ -104,14 +109,17 @@ def export_trade_for_dataframe(p: Portfolio, t: TradeExecution) -> dict:
                 realised_fees = abs(1 - t.planned_mid_price / t.executed_price)
                 label += [
                     f"Fees paid: {format_fees_dollars(t.get_fees_paid())}",
-                    f"Fees planned: {format_fees_dollars(t.lp_fees_estimated)}",
-                    f"Fees: {realised_fees:.4f} %",
+                    # f"Fees planned: {format_fees_dollars(t.lp_fees_estimated)}",
+                    # f"Fees: {realised_fees:.4f} %",
                 ]
             else:
                 label += [
                     f"Fees paid: {format_fees_dollars(t.get_fees_paid())}",
-                    f"Fees planned: {format_fees_dollars(t.lp_fees_estimated)}",
+                    # f"Fees planned: {format_fees_dollars(t.lp_fees_estimated)}",
                 ]
+        
+        if t.cost_of_gas:
+            label += [f"Gas fee: {t.cost_of_gas:.4f}"]
 
     # See Plotly Scatter usage https://stackoverflow.com/a/61349739/315168
     return {
@@ -146,7 +154,7 @@ def export_trades_as_dataframe(
     data = []
 
     for t in portfolio.get_all_trades():
-        if pair_id is not None and t.pair.internal_id != pair_id:
+        if pair_id is not None and t.pair.get_pricing_pair().internal_id != pair_id:
             continue
 
         # Crop
@@ -242,9 +250,10 @@ def visualise_trades(
                 y=stop_loss_df["price"],
                 text=stop_loss_df["label"],
                 marker={
-                    "symbol": "triangle-left",
+                    "symbol": "arrow-down",
                     "size": 12,
                     "line": {"width": 1, "color": "black"},
+                    "color": "orangered",
                 },
                 hoverinfo="text",
             ),
@@ -262,9 +271,10 @@ def visualise_trades(
                 y=take_profit_df["price"],
                 text=take_profit_df["label"],
                 marker={
-                    "symbol": "triangle-left",
+                    "symbol": "arrow-up",
                     "size": 12,
                     "line": {"width": 1, "color": "black"},
+                    "color": "lightgreen",
                 },
                 hoverinfo="text",
             ),
@@ -279,9 +289,13 @@ def visualise_trades(
 def get_all_positions(state: State, pair_id):
     """Get all positions for a given pair"""
     assert type(pair_id) == int
+
     positions = [
-        p for p in state.portfolio.get_all_positions() if p.pair.internal_id == pair_id
+        p 
+        for p in state.portfolio.get_all_positions() 
+        if p.pair.get_pricing_pair().internal_id == pair_id
     ]
+
     return positions
 
 

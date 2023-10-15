@@ -64,6 +64,7 @@ def perform_test_trade(
     test_evm_uniswap_v2_factory: Optional[str] = shared_options.test_evm_uniswap_v2_factory,
     test_evm_uniswap_v2_init_code_hash: Optional[str] = shared_options.test_evm_uniswap_v2_init_code_hash,
     test_evm_uniswap_data: Optional[str] = shared_options.test_evm_uniswap_data,
+    unit_testing: bool = shared_options.unit_testing,
 
     # for multipair strategies
     pair: Optional[str] = shared_options.pair,
@@ -106,6 +107,7 @@ def perform_test_trade(
         json_rpc_ethereum=json_rpc_ethereum,
         json_rpc_anvil=json_rpc_anvil,
         json_rpc_arbitrum=json_rpc_arbitrum,
+        unit_testing=unit_testing,
     )
 
     if not web3config.has_any_connection():

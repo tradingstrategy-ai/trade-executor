@@ -52,7 +52,7 @@ def make_test_trade(
     # Sync nonce for the hot wallet
     execution_model.initialize()
 
-    data_universe: Universe = universe.universe
+    data_universe: Universe = universe.data_universe
 
     reserve_asset = universe.get_reserve_asset()
 
@@ -131,7 +131,7 @@ def make_test_trade(
     # that helps open and close positions
     position_manager = PositionManager(
         ts,
-        universe.universe,
+        universe.data_universe,
         state,
         pricing_model,
     )
@@ -200,7 +200,7 @@ def make_test_trade(
         ts = datetime.datetime.utcnow()
         position_manager = PositionManager(
             ts,
-            universe.universe,
+            universe.data_universe,
             state,
             pricing_model,
         )

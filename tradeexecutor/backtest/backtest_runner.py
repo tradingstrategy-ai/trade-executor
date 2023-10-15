@@ -189,7 +189,7 @@ def setup_backtest_for_universe(
     assert state.portfolio.get_cash() == initial_deposit
 
     # Set up execution and pricing
-    pricing_model = BacktestSimplePricingModel(universe.universe.candles, routing_model, allow_missing_fees=allow_missing_fees)
+    pricing_model = BacktestSimplePricingModel(universe.data_universe.candles, routing_model, allow_missing_fees=allow_missing_fees)
     execution_model = BacktestExecutionModel(wallet, max_slippage)
 
     # Load strategy Python file
@@ -567,7 +567,7 @@ def run_backtest_inline(
             data_delay_tolerance = guess_data_delay_tolerance(universe)
 
         pricing_model = BacktestSimplePricingModel(
-            universe.universe.candles,
+            universe.data_universe.candles,
             routing_model,
             data_delay_tolerance=data_delay_tolerance,
             allow_missing_fees=allow_missing_fees,
@@ -617,7 +617,7 @@ def guess_data_delay_tolerance(universe: TradingStrategyUniverse) -> pd.Timedelt
 
     This could work around some data quality issues or early historical data.
     """
-    if universe.universe.time_bucket == TimeBucket.d7:
+    if universe.data_universe.time_bucket == TimeBucket.d7:
         data_delay_tolerance = pd.Timedelta("9d")
     else:
         data_delay_tolerance = pd.Timedelta("2d")

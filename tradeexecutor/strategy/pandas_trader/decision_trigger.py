@@ -112,7 +112,7 @@ def update_universe(
         Unsorted DataFrame containing data for all trading pairs we are interested in.
     """
     updated_universe = universe.clone()
-    updated_universe.universe.candles = GroupedCandleUniverse(df)
+    updated_universe.data_universe.candles = GroupedCandleUniverse(df)
     return updated_universe
 
 
@@ -205,9 +205,9 @@ def wait_for_universe_data_availability_jsonl(
     assert client is not None
     assert timestamp.second == 0
     # List of monitored pairs by this strategy
-    pairs = current_universe.universe.pairs
+    pairs = current_universe.data_universe.pairs
     assert len(pairs.pair_map) > 0, "No pairs in the pair_map"
-    bucket = current_universe.universe.time_bucket
+    bucket = current_universe.data_universe.time_bucket
     completed_pairs: Set[DEXPair] = set()
     incompleted_pairs: Set[DEXPair] = {pairs.get_pair_by_id(id) for id in pairs.pair_map.keys()}
     started_at = datetime.datetime.utcnow()
@@ -245,6 +245,7 @@ def wait_for_universe_data_availability_jsonl(
 
         # Move any pairs with new complete data to the completed set
         pairs_to_move = set()
+        diff = None
         for p in incompleted_pairs:    
             latest_timestamp = avail_map[p.pair_id]["last_candle_at"]
             last_supposed_candle_at = avail_map[p.pair_id]["last_supposed_candle_at"]

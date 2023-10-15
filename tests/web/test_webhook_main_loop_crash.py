@@ -11,6 +11,7 @@ from unittest.mock import patch
 import flaky
 import pytest
 import requests
+from eth_defi.utils import find_free_port
 from hexbytes import HexBytes
 from typer.main import get_command
 
@@ -23,7 +24,7 @@ logger = logging.getLogger(__name__)
 @pytest.fixture()
 def strategy_path() -> Path:
     """Where do we load our strategy file."""
-    return Path(os.path.join(os.path.dirname(__file__), "../strategies/test_only", "crash.py"))
+    return Path(os.path.join(os.path.dirname(__file__), "..", "..", "strategies", "test_only", "crash.py"))
 
 
 @pytest.fixture()
@@ -60,6 +61,7 @@ def test_main_loop_crash_with_catch(
         "HTTP_WAIT_GOOD_STARTUP_SECONDS": "0",
         "MAX_DATA_DELAY_MINUTES": str(10*60*24*365),  # 10 years or "disabled""
         "LOG_LEVEL": "disabled",
+        "UNIT_TESTING": "true",
     }
 
     cli = get_command(app)
@@ -82,7 +84,7 @@ def test_main_loop_crash(
     - Webhook server tells the  main loop has crashed
     """
 
-    port = 5001 + random.randint(1, 1000)  # Randomly picked
+    port = find_free_port(20_000, 40_000, 20)
     server = f"http://localhost:{port}"
 
     # Set up the configuration for the live trader

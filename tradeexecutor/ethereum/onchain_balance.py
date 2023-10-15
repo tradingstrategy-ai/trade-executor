@@ -3,6 +3,7 @@
 from typing import List, Iterable
 
 from eth_defi.chain import fetch_block_timestamp
+from eth_defi.provider.broken_provider import get_block_tip_latency
 from eth_defi.token import fetch_erc20_details
 from eth_typing import HexAddress
 from web3 import Web3
@@ -42,7 +43,7 @@ def fetch_address_balances(
     """
 
     if not block_number:
-        block_number = web3.eth.block_number
+        block_number = web3.eth.block_number - get_block_tip_latency(web3)
 
     timestamp = fetch_block_timestamp(web3, block_number)
 

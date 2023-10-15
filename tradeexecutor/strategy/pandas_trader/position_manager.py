@@ -2,7 +2,7 @@
 
 import datetime
 from decimal import Decimal
-from typing import List, Optional, Union
+from typing import List, Optional, Union, Literal
 import logging
 
 import pandas as pd
@@ -183,7 +183,7 @@ class PositionManager:
             # Engine version 0.3
             # See tradeexecutor.strategy.engine_version
             self.strategy_universe = universe
-            self.data_universe = universe.universe
+            self.data_universe = universe.data_universe
         else:
             raise RuntimeError(f"Does not know the universe: {universe}")
 
@@ -197,8 +197,59 @@ class PositionManager:
         self.reserve_price = reserve_price
 
     def is_any_open(self) -> bool:
-        """Do we have any positions open."""
+        """Do we have any positions open.
+        
+        See also
+
+        - :py:meth:`is_any_long_position_open`
+
+        - :py:meth:`is_any_short_position_open`
+        
+        - :py:meth:`is_any_credit_supply_position_open`
+        """
         return len(self.state.portfolio.open_positions) > 0
+        
+    def is_any_long_position_open(self) -> bool:
+        """Do we have any long positions open.
+        
+        See also
+
+        - :py:meth:`is_any_short_position_open`
+        
+        - :py:meth:`is_any_credit_supply_position_open`
+        """
+        return len([
+            p for p in self.state.portfolio.open_positions.values()
+            if p.is_long()
+        ]) > 0
+    
+    def is_any_short_position_open(self) -> bool:
+        """Do we have any short positions open.
+        
+        See also
+
+        - :py:meth:`is_any_long_position_open`
+        
+        - :py:meth:`is_any_credit_supply_position_open`
+        """
+        return len([
+            p for p in self.state.portfolio.open_positions.values()
+            if p.is_short()
+        ]) > 0
+    
+    def is_any_credit_supply_position_open(self) -> bool:
+        """Do we have any credit supply positions open.
+        
+        See also
+
+        - :py:meth:`is_any_long_position_open`
+
+        - :py:meth:`is_any_short_position_open`
+        """
+        return len([
+            p for p in self.state.portfolio.open_positions.values()
+            if p.is_credit_supply()
+        ]) > 0
 
     def get_current_position(self) -> TradingPosition:
         """Get the current single position.
@@ -206,13 +257,20 @@ class PositionManager:
         This is a shortcut function for trading strategies
         that operate only a single trading pair and a single position.
 
+        See also
+
+        - :py:meth:`get_current_long_position`
+
+        - :py:meth:`get_current_short_position`
+        
+        - :py:meth:`get_current_credit_supply_position`
+
         :return:
             Currently open trading position
 
         :raise NoSingleOpenPositionError:
             If you do not have a position open or there are multiple positions open.
         """
-
         open_positions = self.state.portfolio.open_positions
 
         if len(open_positions) == 0:
@@ -222,6 +280,94 @@ class PositionManager:
             raise NoSingleOpenPositionException(f"Multiple positions ({len(open_positions)}) open at {self.timestamp}")
 
         return next(iter(open_positions.values()))
+    
+    def _get_single_open_position_for_kind(self, kind: str) -> TradingPosition:
+        """Get the current single position for the given kind.
+        
+        This is underlying method, do not use directly
+        """
+        assert kind in ["long", "short", "credit_supply"], f"Unknown kind received: {kind}"
+
+        open_positions = [
+            position
+            for position in self.state.portfolio.open_positions.values()
+            if any([
+                kind == "long" and position.is_long(),
+                kind == "short" and position.is_short(),
+                kind == "credit_supply" and position.is_credit_supply(),
+            ])
+        ]
+
+        if len(open_positions) == 0:
+            raise NoSingleOpenPositionException(f"No {kind} position open at {self.timestamp}")
+
+        if len(open_positions) > 1:
+            raise NoSingleOpenPositionException(f"Multiple {kind} positions ({len(open_positions)}) open at {self.timestamp}")
+
+        return open_positions[0]
+    
+    def get_current_long_position(self):
+        """Get the current single long position.
+
+        This is a shortcut function for trading strategies
+        that operate only a single trading pair and a single long position.
+
+        See also
+
+        - :py:meth:`get_current_short_position`
+        
+        - :py:meth:`get_current_credit_supply_position`
+
+
+        :return:
+            Currently open long trading position
+
+        :raise NoSingleOpenPositionError:
+            If you do not have a position open or there are multiple positions open.
+        """
+        return self._get_single_open_position_for_kind("long")
+    
+    def get_current_short_position(self):
+        """Get the current single short position.
+
+        This is a shortcut function for trading strategies
+        that operate only a single trading pair and a single short position.
+
+        See also
+
+        - :py:meth:`get_current_long_position`
+        
+        - :py:meth:`get_current_credit_supply_position`
+
+
+        :return:
+            Currently open short trading position
+
+        :raise NoSingleOpenPositionError:
+            If you do not have a position open or there are multiple positions open.
+        """
+        return self._get_single_open_position_for_kind("short")
+
+    def get_current_credit_supply_position(self):
+        """Get the current single credit supply position.
+
+        This is a shortcut function for trading strategies
+        that operate only a single trading pair and a single credit supply position.
+
+        See also
+
+        - :py:meth:`get_current_long_position`
+
+        - :py:meth:`get_current_short_position`
+
+
+        :return:
+            Currently open credit supply trading position
+
+        :raise NoSingleOpenPositionError:
+            If you do not have a position open or there are multiple positions open.
+        """
+        return self._get_single_open_position_for_kind("credit_supply")
 
     def get_current_position_for_pair(self, pair: TradingPairIdentifier) -> Optional[TradingPosition]:
         """Get the current open position for a specific trading pair.
@@ -307,7 +453,7 @@ class PositionManager:
 
     def open_1x_long(self,
                      pair: Union[DEXPair, TradingPairIdentifier],
-                     value: USDollarAmount,
+                     value: USDollarAmount | Decimal,
                      take_profit_pct: Optional[float] = None,
                      stop_loss_pct: Optional[float] = None,
                      trailing_stop_loss_pct: Optional[float] = None,
@@ -322,6 +468,12 @@ class PositionManager:
         - Open a spot market buy.
 
         - Checks that there is not existing position - cannot increase position
+
+        See also
+
+        - :py:meth:`adjust_position` if you want increase/decrease an existing position size
+
+        - :py:meth:`close_position` if you want exit an position
 
         :param pair:
             Trading pair where we take the position
@@ -372,7 +524,7 @@ class PositionManager:
         else:
             executor_pair = pair
 
-        assert value > 0, f"Negative value: {value} on {pair}"
+        assert value > 0, f"For opening long, the value must be positive. Got: {value} on {pair}"
 
         # Convert amount of reserve currency to the decimal
         # so we can have exact numbers from this point forward
@@ -450,14 +602,16 @@ class PositionManager:
 
         Used to rebalance positions.
 
+        This method rarely needs to be called directly,
+        but is usually part of portfolio construction strategy
+        that is using :py:class:`tradeexecutor.strategy.alpha_model.AlphaModel`.
+
         A new position is opened if no existing position is open.
         If everything is sold, the old position is closed
 
         If the rebalance is sell (`dollar_amount_delta` is negative),
         then calculate the quantity of the asset to sell based
         on the latest available market price on the position.
-
-        This method is called by :py:func:`~tradeexecutor.strategy.pandas_trades.rebalance.rebalance_portfolio`.
 
         .. warning ::
 
@@ -470,15 +624,21 @@ class PositionManager:
         :param dollar_delta:
             How much we want to increase/decrease the position in US dollar terms.
 
+            TODO: If you are selling the assets, you need to calculate the expected
+            dollar estimate yourself at the moment.
+
         :param quantity_delta:
             How much we want to increase/decrease the position in the asset unit terms.
 
             Used only when decreasing existing positions (selling).
+            Set to ``None`` if not selling.
 
         :param weight:
             What is the weight of the asset in the new target portfolio 0....1.
             Currently only used to detect condition "sell all" instead of
             trying to match quantity/price conversion.
+
+            If unsure and buying, set to ``1``.
 
         :param stop_loss:
             Set the stop loss for the position.
@@ -633,7 +793,7 @@ class PositionManager:
 
         slippage_tolerance = slippage_tolerance or self.default_slippage_tolerance
 
-        logger.info("Preparing to close position %s, quantity %s, pricing %s, slippage tolerance %f", position, quantity, price_structure, slippage_tolerance)
+        logger.info("Preparing to close position %s, quantity %s, pricing %s, slippage tolerance: %f %%", position, quantity, price_structure, slippage_tolerance * 100)
 
         position2, trade, created = self.state.create_trade(
             self.timestamp,
@@ -848,19 +1008,16 @@ class PositionManager:
             Mid price of the pair (https://tradingstrategy.ai/glossary/mid-price). Provide when possible for most complete statistical analysis. In certain cases, it may not be easily available, so it's optional.
         """
 
-        spot_pair = position.pair
-        if position.pair.kind in [TradingPairKind.lending_protocol_long, TradingPairKind.lending_protocol_short]:
-            spot_pair = spot_pair.underlying_spot_pair
-
-        mid_price =  self.pricing_model.get_mid_price(self.timestamp, spot_pair)
+        pair = position.pair.get_pricing_pair()
+        mid_price =  self.pricing_model.get_mid_price(self.timestamp, pair)
 
         position.trigger_updates.append(TriggerPriceUpdate(
             timestamp=self.timestamp,
-            stop_loss_before = position.stop_loss,
-            stop_loss_after = stop_loss,
-            mid_price = mid_price,
-            take_profit_before = position.take_profit,
-            take_profit_after = position.take_profit,  # No changes to take profit
+            stop_loss_before=position.stop_loss,
+            stop_loss_after=stop_loss,
+            mid_price=mid_price,
+            take_profit_before=position.take_profit,
+            take_profit_after=position.take_profit,  # No changes to take profit
         ))
 
         position.stop_loss = stop_loss
@@ -896,6 +1053,7 @@ class PositionManager:
         leverage: LeverageMultiplier = 1.0,
         take_profit_pct: float | None = None,
         stop_loss_pct: float | None = None,
+        trailing_stop_loss_pct: float | None = None,
     ) -> list[TradeExecution]:
         """Open a short position.
 
@@ -927,6 +1085,10 @@ class PositionManager:
             1.0 is the current market price.
             If asset opening price is $1000, stop_loss_pct=0.98
             will buy back the asset when price reaches $1020.
+
+        :param trailing_stop_loss_pct:
+            If set, set the position to trigger trailing stop loss relative to
+            the current market price. Cannot be used with stop_loss_pct.
 
         :return:
             List of trades that will open this credit position
@@ -986,8 +1148,10 @@ class PositionManager:
             borrowed_asset_price=price_structure.price,
             trade_type=TradeType.rebalance,
             reserve_currency=self.reserve_currency,
+            planned_mid_price=price_structure.mid_price,
             collateral_asset_price=collateral_price,
             planned_collateral_consumption=estimation.additional_collateral_quantity,  # This is amount how much aToken is leverated besides our starting collateral
+            lp_fees_estimated=estimation.lp_fees,
         )
 
         # record liquidation price into the position
@@ -1006,6 +1170,18 @@ class PositionManager:
             assert 1 - stop_loss_pct < liquidation_distance, f"stop_loss_pct must be bigger than liquidation distance {1 - liquidation_distance:.4f}, got {stop_loss_pct}"
 
             self.update_stop_loss(position, price_structure.mid_price * (2 - stop_loss_pct))
+
+        if trailing_stop_loss_pct:
+            assert stop_loss_pct is None, "You cannot give both stop_loss_pct and trailing_stop_loss_pct"
+            assert 0 < trailing_stop_loss_pct < 1, f"trailing_stop_loss_pct must be 0..1, got {trailing_stop_loss_pct}"
+
+            # calculate distance to liquidation price and make sure stoploss is far from that
+            mid_price = Decimal(price_structure.mid_price)
+            liquidation_distance = (estimation.liquidation_price - mid_price) / mid_price
+            assert 1 - trailing_stop_loss_pct < liquidation_distance, f"trailing_stop_loss_pct must be bigger than liquidation distance {1 - liquidation_distance:.4f}, got {trailing_stop_loss_pct}"
+
+            self.update_stop_loss(position, price_structure.mid_price * (2 - trailing_stop_loss_pct))
+            position.trailing_stop_loss_pct = trailing_stop_loss_pct
 
         return [trade]
     
@@ -1058,6 +1234,7 @@ class PositionManager:
             borrowed_asset_price=price_structure.price,
             trade_type=trade_type,
             reserve_currency=self.reserve_currency,
+            planned_mid_price=price_structure.mid_price,
             collateral_asset_price=1.0,
             notes=notes,
             position=position,

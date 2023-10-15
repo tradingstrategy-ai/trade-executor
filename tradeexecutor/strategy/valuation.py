@@ -59,9 +59,14 @@ class ValuationModel(ABC):
         raise NotImplementedError("no longer used. Use revalue_portfolio instead")
         
         if not position.is_credit_supply():
-            logger.info("Re-valuing position %s", position)
-            ts, price = self(ts, position)
-            position.revalue_base_asset(ts, price)
+            old_price = position.last_token_price
+            ts, new_price = self(ts, position)
+            position.revalue_base_asset(ts, new_price)
+            logger.info("Re-valued positio base asset %s. Price movement: %f USD -> %d USD",
+                        position,
+                        old_price,
+                        new_price,
+                        )
             # TODO: Query price for the collateral asset and set it
         else:
             logger.info("No updates to credit supply position pricing: %s", position)

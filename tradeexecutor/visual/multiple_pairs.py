@@ -168,7 +168,7 @@ def visualise_multiple_pairs(
         Plotly colour scheme to use
 
     :param volume_bar_mode:
-        How to draw the volume bars
+        How to draw the volume bars. By default, volume is hidden.
 
     :param vertical_spacing:
         Vertical spacing between the subplots. Default is 0.05.
@@ -191,7 +191,12 @@ def visualise_multiple_pairs(
 
     :param detached_indicators:
         If set, draw detached indicators. Has no effect if `technical_indicators` is False.
-
+        
+    :param show_trades:
+        If set, show trades on the chart.
+        
+    :return:
+        Plotly figure object
     """
 
     logger.info("Visualising %s", state)
@@ -224,14 +229,13 @@ def visualise_multiple_pairs(
 
     logger.info(f"Visualising multipair strategy for range {start_at} - {end_at}")
 
-    # volume disabled for multipair visualisation
-    volume_bar_modes = [VolumeBarMode.hidden] * len(pair_ids)
-    # if not volume_bar_modes:
-    #     volume_bar_modes = [VolumeBarMode.overlay] * len(pair_ids)
-    # else:
-    #     assert len(volume_bar_modes) == len(
-    #         pair_ids
-    #     ), "volume_bar_modes must be the same length as pair_ids"
+    # volume disabled by default for multipair visualisation
+    if not volume_bar_modes:
+        volume_bar_modes = [VolumeBarMode.hidden] * len(pair_ids)
+    else:
+        assert len(volume_bar_modes) == len(
+            pair_ids
+        ), f"volume_bar_modes must be the same length as pair_ids ({len(pair_ids)})"
 
     pair_subplot_infos: list[PairSubplotInfo] = []
     current_candlestick_row = 1
@@ -387,6 +391,7 @@ def visualise_multiple_pairs(
                 volume_bars,
                 row=pair_subplot_info.get_volume_row(),
                 col=1,
+                secondary_y=True,
             )
         else:
             volume_bars = None
@@ -426,5 +431,8 @@ def visualise_multiple_pairs(
             template=theme,
         )
     )
+    
+    if volume_bars:
+        subplot.update_annotations(xshift=40)
 
     return subplot

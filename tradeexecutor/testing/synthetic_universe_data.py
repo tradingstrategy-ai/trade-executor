@@ -19,7 +19,7 @@ def create_synthetic_single_pair_universe(
     exchange: Exchange,
     time_bucket: TimeBucket,
     pair: TradingPairIdentifier,
-    lending_candles: LendingCandleUniverse,
+    lending_candles: LendingCandleUniverse = None,
 ) -> TradingStrategyUniverse:
     """Creates a synthetic universe with a single pair and a single chain.
     
@@ -72,7 +72,7 @@ def create_synthetic_single_pair_universe(
     )
 
     return TradingStrategyUniverse(
-        universe=universe,
+        data_universe=universe,
         reserve_assets=[pair.quote],
         backtest_stop_loss_time_bucket=time_bucket,
         backtest_stop_loss_candles=candle_universe,

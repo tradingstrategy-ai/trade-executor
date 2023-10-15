@@ -127,7 +127,7 @@ class QSTraderRunner(StrategyRunner):
 
         assert isinstance(executor_universe, TradingStrategyUniverse)
 
-        universe = executor_universe.universe
+        universe = executor_universe.data_universe
         reserve_assets = executor_universe.reserve_assets
         logger.info("QSTrader on_clock %s", clock)
         optimiser = FixedWeightPortfolioOptimiser()
@@ -150,7 +150,7 @@ class QSTraderRunner(StrategyRunner):
         """Check the data looks more or less sane."""
 
         assert isinstance(universe, TradingStrategyUniverse)
-        universe = universe.universe
+        universe = universe.data_universe
 
         now_ = ts
 

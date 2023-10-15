@@ -82,6 +82,7 @@ def create_web3_config(
         json_rpc_arbitrum,
         json_rpc_anvil,
         gas_price_method: Optional[GasPriceMethod] = None,
+        unit_testing: bool=False,
 ) -> Web3Config:
     """Create Web3 connection to the live node we are executing against.
 
@@ -97,6 +98,7 @@ def create_web3_config(
         json_rpc_avalanche=json_rpc_avalanche,
         json_rpc_arbitrum=json_rpc_arbitrum,
         json_rpc_anvil=json_rpc_anvil,
+        unit_testing=unit_testing,
     )
     return web3config
 
@@ -516,8 +518,8 @@ def monkey_patch():
 def create_sync_model(
         asset_management_mode: AssetManagementMode,
         web3: Web3,
-        hot_wallet: Optional[HotWallet],
-        vault_address: Optional[str],
+        hot_wallet: HotWallet,
+        vault_address: Optional[str] = None,
         vault_adapter_address: Optional[str] = None,
         vault_payment_forwarder_address: Optional[str] = None,
 ) -> SyncModel:

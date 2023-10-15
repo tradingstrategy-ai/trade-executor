@@ -160,7 +160,7 @@ def universe(
         liquidity=None
     )
 
-    return TradingStrategyUniverse(universe=universe, reserve_assets=[usdc])
+    return TradingStrategyUniverse(data_universe=universe, reserve_assets=[usdc])
 
 
 @pytest.fixture()
@@ -170,7 +170,7 @@ def routing_model(universe) -> BacktestRoutingModel:
 
 @pytest.fixture()
 def pricing_model(routing_model, universe) -> BacktestSimplePricingModel:
-    return BacktestSimplePricingModel(universe.universe.candles, routing_model, allow_missing_fees=True)
+    return BacktestSimplePricingModel(universe.data_universe.candles, routing_model, allow_missing_fees=True)
 
 
 @pytest.fixture
@@ -329,7 +329,7 @@ def test_rebalance_trades_flip_position(
     # trading universe and mock price feeds
     position_manager = PositionManager(
         start_ts + datetime.timedelta(days=1),  # Trade on t plus 1 day
-        universe.universe,
+        universe.data_universe,
         state,
         pricing_model,
     )
@@ -390,7 +390,7 @@ def test_rebalance_trades_flip_position_partial(
     # trading universe and mock price feeds
     position_manager = PositionManager(
         start_ts + datetime.timedelta(days=1),  # Trade on t plus 1 day
-        universe.universe,
+        universe.data_universe,
         state,
         pricing_model,
     )
@@ -449,7 +449,7 @@ def test_rebalance_bad_weights(
     # trading universe and mock price feeds
     position_manager = PositionManager(
         start_ts + datetime.timedelta(days=1),  # Trade on t plus 1 day
-        universe.universe,
+        universe.data_universe,
         state,
         pricing_model,
     )
@@ -495,7 +495,7 @@ def test_alpha_model_trades_flip_position(
     # trading universe and mock price feeds
     position_manager = PositionManager(
         start_ts + datetime.timedelta(days=1),  # Trade on t plus 1 day
-        universe.universe,
+        universe.data_universe,
         state,
         pricing_model,
     )
@@ -572,7 +572,7 @@ def test_alpha_model_flip_position_partially(
     # trading universe and mock price feeds
     position_manager = PositionManager(
         start_ts + datetime.timedelta(days=1),  # Trade on t plus 1 day
-        universe.universe,
+        universe.data_universe,
         state,
         pricing_model,
     )

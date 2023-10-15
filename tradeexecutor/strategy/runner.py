@@ -5,9 +5,11 @@ Define the runner model for different strategy types.
 
 import abc
 import datetime
+import time
 from contextlib import AbstractContextManager
 import logging
 from io import StringIO
+from pprint import pformat
 
 from typing import List, Optional, Tuple
 
@@ -67,6 +69,8 @@ class StrategyRunner(abc.ABC):
                  accounting_checks: bool=False,
                  generic_routing_data: list[dict]=None,
                  routing_models: list[RoutingModel]=None, # TODO: delete
+                 unit_testing=False,
+                 trade_settle_wait=None,
                  ):
         """
         :param engine_version:
@@ -74,9 +78,7 @@ class StrategyRunner(abc.ABC):
 
             Changes function arguments based on this.
             See `StrategyModuleInformation.trading_strategy_engine_version`.
-
         """
-
         assert isinstance(execution_context, ExecutionContext)
 
         if sync_model is not None:
@@ -94,8 +96,29 @@ class StrategyRunner(abc.ABC):
         self.accounting_checks = accounting_checks
         self.generic_routing_data = generic_routing_data
         self.routing_models = routing_models
+        self.unit_testing = unit_testing
 
-        logger.info("Created strategy runner %s, engine version %s", self, self.execution_context.engine_version)
+        # We need 60 seconds wait to read balances
+        # after trades only on a real trading,
+        # Anvil and test nodes are immune for this AFAIK
+        if unit_testing or not execution_context.mode.is_live_trading():
+            self.trade_settle_wait = datetime.timedelta(0)
+        else:
+            self.trade_settle_wait = datetime.timedelta(seconds=60)
+
+        logger.info(
+            "Created strategy runner %s, engine version %s, running mode %s",
+            self,
+            self.execution_context.engine_version,
+            self.execution_context.mode.name,
+        )
+
+    def __repr__(self):
+        """Get a long presentation of internal runner state."""
+        dump = pformat(self.__dict__)
+        return f"<{self.__class__.__name__}\n" \
+               f"{dump}\n" \
+               f">"
 
     @abc.abstractmethod
     def pretick_check(self, ts: datetime.datetime, universe: StrategyExecutionUniverse):
@@ -160,7 +183,7 @@ class StrategyRunner(abc.ABC):
     def revalue_state(self, ts: datetime.datetime, state: State, valuation_method: ValuationModel):
         """Revalue portfolio based on the latest prices."""
         revalue_state(state, ts, valuation_method)
-        logger.info("After revaluation at %s our equity is %f", ts, state.portfolio.get_total_equity())
+        logger.info("After revaluation at %s our portfolio value is %f USD", ts, state.portfolio.get_total_equity())
 
     def collect_post_execution_data(
             self,
@@ -196,6 +219,15 @@ class StrategyRunner(abc.ABC):
                     t.post_execution_price_structure = get_pricing_model_for_pair(t.pair, pricing_models).get_buy_price(ts, spot_pair, t.planned_collateral_consumption)
                 else:
                     t.post_execution_price_structure = get_pricing_model_for_pair(t.pair, pricing_models).get_sell_price(ts, spot_pair, t.planned_quantity)
+
+            logger.info(
+                "Trade %s, estimated reserve %s, executed reserve %s, estimated quantity %s, executed quantity %s",
+                t,
+                t.planned_reserve,
+                t.executed_reserve,
+                t.planned_quantity,
+                t.executed_quantity,
+            )
 
     def on_clock(self,
                  clock: datetime.datetime,
@@ -290,7 +322,6 @@ class StrategyRunner(abc.ABC):
         else:
             logger.info("No positions opened")
 
-
         closed_positions = list(portfolio.get_positions_closed_at(clock))
         if len(closed_positions) > 0:
             print(f"Closed positions:", file=buf)
@@ -298,7 +329,7 @@ class StrategyRunner(abc.ABC):
 
             print(DISCORD_BREAK_CHAR, file=buf)
         else:
-            logger.info("No closed positions")
+            logger.info("The clock tick %s did not close any positions", clock)
 
         print("Reserves:", file=buf)
         print("", file=buf)
@@ -499,7 +530,8 @@ class StrategyRunner(abc.ABC):
                 self.sync_portfolio(strategy_cycle_timestamp, universe, state, debug_details)
 
             # Double check we handled deposits correctly
-            with self.timed_task_context_manager("check_accounts"):
+            with self.timed_task_context_manager("check_accounts_pre_trade"):
+                logger.info("Pre-trade accounts balance check")
                 self.check_accounts(universe, state)
 
             # Assing a new value for every existing position
@@ -516,65 +548,70 @@ class StrategyRunner(abc.ABC):
             if self.is_progress_report_needed():
                 self.report_after_sync_and_revaluation(strategy_cycle_timestamp, universe, state, debug_details)
 
-            # Run the strategy cycle
-            with self.timed_task_context_manager("decide_trades"):
-                # TODO: use tradeexecutor version to decide
-                if self.generic_routing_data:
-                    assert not pricing_model, "pricing_model should not be set"
-                    pricing_models = [item["pricing_model"] for item in generic_execution_data]
-                    pricing_model = GenericPricingModel(pricing_models)
-                    
-                rebalance_trades = self.on_clock(strategy_cycle_timestamp, universe, pricing_model, state, debug_details)
+            # Check if we do have any money yo trade or not.
+            # Otherwise we are going to crash with "not enough USDC to open a trade" errors
+            execution_context = self.execution_context
 
-                assert type(rebalance_trades) == list
-                debug_details["rebalance_trades"] = rebalance_trades
+            # TODO: Due to the legacy some tests assume they run with zero capital,
+            # and we have a flag to check it for here
+            if state.portfolio.has_trading_capital() or execution_context.mode.is_unit_testing():
 
-                # Make some useful diagnostics output for log files to troubleshoot if something
-                # when wrong internally
-                _, last_point_at = state.visualisation.get_timestamp_range()
-                logger.info("We have %d new trades, %d total visualisation points, last visualisation point at %s",
-                            len(rebalance_trades),
-                            state.visualisation.get_total_points(),
-                            last_point_at
-                            )
+                # Run the strategy cycle main trading decision cycle
+                with self.timed_task_context_manager("decide_trades"):
+                    # TODO: use tradeexecutor version to decide
+                    if self.generic_routing_data:
+                        assert not pricing_model, "pricing_model should not be set"
+                        pricing_models = [item["pricing_model"] for item in generic_execution_data]
+                        pricing_model = GenericPricingModel(pricing_models)
+                        
+                    rebalance_trades = self.on_clock(strategy_cycle_timestamp, universe, pricing_model, state, debug_details)
+        
+                    assert type(rebalance_trades) == list
+                    debug_details["rebalance_trades"] = rebalance_trades
 
-            # Log what our strategy decided
-            if self.is_progress_report_needed():
-                self.report_strategy_thinking(
-                    strategy_cycle_timestamp=strategy_cycle_timestamp,
-                    cycle=cycle,
-                    universe=universe,
-                    state=state,
-                    trades=rebalance_trades,
-                    debug_details=debug_details)
+                    # Make some useful diagnostics output for log files to troubleshoot if something
+                    # when wrong internally
+                    _, last_point_at = state.visualisation.get_timestamp_range()
+                    logger.info("We have %d new trades, %d total visualisation points, last visualisation point at %s",
+                                len(rebalance_trades),
+                                state.visualisation.get_total_points(),
+                                last_point_at
+                                )
 
-            # Shortcut quit here if no trades are needed
-            if len(rebalance_trades) == 0:
-                logger.trade("No action taken: strategy decided not to open or close any positions")
-                return debug_details
+                # Log what our strategy decided
+                if self.is_progress_report_needed():
+                    self.report_strategy_thinking(
+                        strategy_cycle_timestamp=strategy_cycle_timestamp,
+                        cycle=cycle,
+                        universe=universe,
+                        state=state,
+                        trades=rebalance_trades,
+                        debug_details=debug_details)
 
-            # Ask user confirmation for any trades
-            with self.timed_task_context_manager("confirm_trades"):
-                approved_trades = self.approval_model.confirm_trades(state, rebalance_trades)
-                assert type(approved_trades) == list
-                logger.info("After approval we have %d trades left", len(approved_trades))
-                debug_details["approved_trades"] = approved_trades
+                # Shortcut quit here if no trades are needed
+                if len(rebalance_trades) == 0:
+                    logger.trade("No action taken: strategy decided not to open or close any positions")
+                    return debug_details
 
-            # Log output
-            if self.is_progress_report_needed():
-                self.report_before_execution(strategy_cycle_timestamp, universe, state, approved_trades, debug_details)
+                # Ask user confirmation for any trades
+                with self.timed_task_context_manager("confirm_trades"):
+                    approved_trades = self.approval_model.confirm_trades(state, rebalance_trades)
+                    assert type(approved_trades) == list
+                    logger.info("After approval we have %d trades left", len(approved_trades))
+                    debug_details["approved_trades"] = approved_trades
 
-            # Physically execute the trades
-            with self.timed_task_context_manager("execute_trades", trade_count=len(approved_trades)):
+                # Log output
+                if self.is_progress_report_needed():
+                    self.report_before_execution(strategy_cycle_timestamp, universe, state, approved_trades, debug_details)
 
-                # Unit tests can turn this flag to make it easier to see why trades fail
-                check_balances = debug_details.get("check_balances", False)
+                # Physically execute the trades
+                with self.timed_task_context_manager("execute_trades", trade_count=len(approved_trades)):
 
-                # Make sure our hot wallet nonce is up to date
-                self.sync_model.resync_nonce()
-                
-                if self.execution_model:
-                    assert not self.generic_routing_data, "generic_routing_data should be empty"
+                    # Unit tests can turn this flag to make it easier to see why trades fail
+                    check_balances = debug_details.get("check_balances", False)
+
+                    # Make sure our hot wallet nonce is up to date
+                    self.sync_model.resync_nonce()
 
                     self.execution_model.execute_trades(
                         strategy_cycle_timestamp,
@@ -632,6 +669,24 @@ class StrategyRunner(abc.ABC):
                     approved_trades,
                 )
 
+                # Run any logic we need to run after the trades have been executed
+                if approved_trades:
+
+                    # We cannot call account check right after the trades,
+                    # as meny low quality nodes might still report old token balances
+                    # from eth_call
+                    logger.info("Waiting on-chain balances to settle for %f before performing accounting checks", self.trade_settle_wait)
+                    time.sleep(self.trade_settle_wait.total_seconds())
+
+                    # Double check we handled incoming trade balances correctly
+                    with self.timed_task_context_manager("check_accounts_post_trade"):
+                        logger.info("Post-trade accounts balance check")
+                        self.check_accounts(universe, state)
+
+            else:
+                equity = state.portfolio.get_total_equity()
+                logger.trade("Strategy has no trading capital and trade decision step was skipped. The total equity is %f USD, execution mode is %s", equity, execution_context.mode.name)
+
             # Log output
             if self.is_progress_report_needed():
                 self.report_after_execution(strategy_cycle_timestamp, universe, state, debug_details)
@@ -672,6 +727,11 @@ class StrategyRunner(abc.ABC):
         with self.timed_task_context_manager("check_position_triggers"):
 
             # TODO: Sync the treasury here
+
+            # Check that our on-chain balances are good
+            with self.timed_task_context_manager("check_accounts_position_triggers"):
+                logger.info("Position trigger pre-trade accounts balance check")
+                self.check_accounts(universe, state)
 
             # We use PositionManager.close_position()
             # to generate trades to close stop loss positions
@@ -832,7 +892,7 @@ class StrategyRunner(abc.ABC):
 
         if self.accounting_checks:
             clean, df = check_accounts(
-                universe.universe.pairs,
+                universe.data_universe.pairs,
                 [universe.get_reserve_asset()],
                 state,
                 self.sync_model,

@@ -108,7 +108,7 @@ def universe(mock_chain_id, mock_exchange, weth_usdc) -> TradingStrategyUniverse
     )
 
     return TradingStrategyUniverse(
-        universe=universe,
+        data_universe=universe,
         backtest_stop_loss_candles=candle_universe,
         backtest_stop_loss_time_bucket=time_bucket,
         reserve_assets=[weth_usdc.quote])

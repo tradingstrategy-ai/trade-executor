@@ -474,9 +474,13 @@ def update_confirmation_status(
         # as we now have receipt for them
         for tx_hash, receipt in receipts.items():
             trade, tx = tx_map[tx_hash.hex()]
-            logger.info("Resolved tx %s for trade %s", tx_hash.hex(), trade)
             # Update the transaction confirmation status
             status = receipt["status"] == 1
+            logger.info(
+                "Resolved tx %s as %s for trade %s",
+                tx_hash.hex(),
+                "success" if status else "reverted",
+                trade)
             reason = None
             stack_trace = None
 
@@ -763,7 +767,12 @@ def broadcast(
         confirmation_block_count: int=0,
         ganache_sleep=0.5,
 ) -> Dict[HexBytes, Tuple[TradeExecution, BlockchainTransaction]]:
-    """Broadcast multiple transations and manage the trade executor state for them.
+    """Broadcast multiple transactions and manage the trade executor state for them.
+
+    .. note ::
+
+        The node provider may or may not support broadcasting multiple transactions without confirming existing ones.
+        For example, LlamaNode will give nonce too low error. We will try to deal with this in the middleware.
 
     :return: Map of transaction hashes to watch
     """
@@ -787,7 +796,7 @@ def broadcast(
             # Only SignedTransaction.rawTransaction attribute is intresting in this point
             signed_tx = SignedTransaction(rawTransaction=tx.signed_bytes, hash=None, r=0, s=0, v=0)
             broadcast_batch.append(signed_tx)
-            logger.info("Broadcasting:\n %s", tx)
+            logger.info("Broadcasting transaction for trade %s:\n %s", t, tx)
         t.mark_broadcasted(datetime.datetime.utcnow())
 
     try:

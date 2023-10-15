@@ -2,7 +2,7 @@ import logging
 import datetime
 from dataclasses import dataclass
 from decimal import Decimal
-from typing import List, Optional, Literal
+from typing import List, Optional, Literal, Collection, Iterable
 
 from eth_defi.aave_v3.rates import SECONDS_PER_YEAR
 
@@ -15,7 +15,7 @@ from tradeexecutor.state.state import State
 from tradeexecutor.state.types import JSONHexAddress
 from tradeexecutor.strategy.interest import update_interest, update_leveraged_position_interest
 from tradeexecutor.strategy.pricing_model import PricingModel
-from tradeexecutor.strategy.sync_model import SyncModel
+from tradeexecutor.strategy.sync_model import SyncModel, OnChainBalance
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
 from tradeexecutor.testing.dummy_wallet import apply_sync_events
 
@@ -148,7 +148,7 @@ class BacktestSyncModel(SyncModel):
 
         previous_update_at = interest.last_event_at
 
-        df = universe.universe.lending_candles.supply_apr.df.copy()
+        df = universe.data_universe.lending_candles.supply_apr.df.copy()
         supply_df = df[
             (df["timestamp"] >= previous_update_at)
             & (df["timestamp"] <= timestamp)
@@ -262,3 +262,10 @@ class BacktestSyncModel(SyncModel):
                 self.wallet.rebase(p.pair.quote.address, new_atoken_amount)
 
         return events
+
+    def fetch_onchain_balances(
+            self,
+            assets: Collection[AssetIdentifier],
+            filter_zero=True
+    ) -> Iterable[OnChainBalance]:
+        raise NotImplementedError("Backtesting does not know about on-chain balances")

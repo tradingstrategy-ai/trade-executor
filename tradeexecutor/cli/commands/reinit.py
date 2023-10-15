@@ -9,6 +9,7 @@ from typing import Optional
 from eth_defi.hotwallet import HotWallet
 
 from .app import app
+from ..backup import backup_state
 from ..bootstrap import prepare_executor_id, create_web3_config, create_sync_model, create_state_store
 from ..log import setup_logging
 from ...ethereum.enzyme.vault import EnzymeVaultSyncModel
@@ -102,29 +103,16 @@ def reinit(
     if not state_file:
         state_file = f"state/{id}.json"
 
-    state_file = Path(state_file)
-    store = create_state_store(state_file)
-    assert not store.is_pristine(), f"State does not exists yet: {state_file}"
+    store = backup_state(id, state_file)
 
-    # Make a backup
-    # https://stackoverflow.com/a/47528275/315168
-    backup_file = None
-    for i in range(1, 20):  # Try 20 different iterateive backup filenames
-        backup_file = state_file.with_suffix(f".reinit-backup-{i}.json")
-        if os.path.exists(backup_file):
-            continue
+    old_state = store.load()
+    name = old_state.name
 
-        state_file.rename(backup_file)
-        break
-
-    else:
-        raise RuntimeError(f"Could not create backup {backup_file}")
-
-    logger.info("Old state backed up as %s", backup_file)
+    os.remove(store.path)
 
     state = store.create(name)
 
-    logger.info("Syncing initial strategy chain state: %s", name)
+    logger.info("Resetting initial strategy chain state: %s", name)
     logger.info(f"Vault deployment block number hint is {start_block or 0:,}.")
 
     assert isinstance(sync_model, EnzymeVaultSyncModel), f"reinit currently only supports EnzymeVaultSyncModel, got {sync_model}"

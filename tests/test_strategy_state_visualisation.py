@@ -167,7 +167,7 @@ def universe() -> TradingStrategyUniverse:
         liquidity=None
     )
 
-    return TradingStrategyUniverse(universe=universe, reserve_assets=[usdc])
+    return TradingStrategyUniverse(data_universe=universe, reserve_assets=[usdc])
 
 
 def test_visualise_strategy_state(
@@ -176,7 +176,7 @@ def test_visualise_strategy_state(
     ):
     """Visualise strategy state as an inline image."""
 
-    start_at, end_at = universe.universe.candles.get_timestamp_range()
+    start_at, end_at = universe.data_universe.candles.get_timestamp_range()
 
     routing_model = generate_simple_routing_model(universe)
 

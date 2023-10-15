@@ -40,8 +40,8 @@ class DummyAlphaModel(AlphaModel):
     def __call__(self, ts: pd.Timestamp, universe: Universe, state: State, debug_details: Dict) -> Dict[int, float]:
 
         # Because this is a test strategy, we assume we have fixed 3 assets
-        assert len(universe.exchanges) == 1
-        uniswap = universe.get_single_exchange()
+        assert universe.exchange_universe.get_exchange_count() == 1
+        uniswap = universe.exchange_universe.get_single()
         assert universe.pairs.get_count() == 1
 
         weth_usdc = universe.pairs.get_one_pair_from_pandas_universe(uniswap.exchange_id, "WETH", "USDC")
@@ -83,6 +83,7 @@ def strategy_factory(
         routing_model=routing_model,
         cash_buffer=0.5,
         execution_context=execution_context,
+        unit_testing=True,
     )
 
     return StrategyExecutionDescription(
