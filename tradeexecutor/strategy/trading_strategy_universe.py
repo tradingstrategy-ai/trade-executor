@@ -1579,15 +1579,15 @@ def load_partial_data(
             # go around lack of good look up functions of raw DataFrame pairs data.
             pair_universe = PandasPairUniverse(pairs_df, build_index=False, exchange_universe=exchange_universe)
 
-        # Filter pairs first and then rest by the resolved pairs
-        our_pairs = {pair_universe.get_pair_by_human_description(exchange_universe, d) for d in pairs}
-        our_pair_ids = {p.pair_id for p in our_pairs}
-        exchange_ids = {p.exchange_id for p in our_pairs}
-        our_exchanges = [exchange_universe.get_by_id(id) for id in exchange_ids]
-        our_exchange_universe = ExchangeUniverse.from_collection(our_exchanges)
+            # Filter pairs first and then rest by the resolved pairs
+            our_pairs = {pair_universe.get_pair_by_human_description(exchange_universe, d) for d in pairs}
+            our_pair_ids = {p.pair_id for p in our_pairs}
+            exchange_ids = {p.exchange_id for p in our_pairs}
+            our_exchanges = [exchange_universe.get_by_id(id) for id in exchange_ids]
+            our_exchange_universe = ExchangeUniverse.from_collection(our_exchanges)
 
-        # Eliminate the pairs we are not interested in from the database
-        filtered_pairs_df = pairs_df.loc[pairs_df["pair_id"].isin(our_pair_ids)]
+            # Eliminate the pairs we are not interested in from the database
+            filtered_pairs_df = pairs_df.loc[pairs_df["pair_id"].isin(our_pair_ids)]
 
         # Autogenerate names by the pair count
         if not name:
