@@ -144,12 +144,10 @@ def make_factory_from_strategy_mod(mod: StrategyModuleInformation) -> StrategyFa
         # or it is dynamically generated for any local dev chain.
         # If it is not dynamically generated, here set up one of the default routing models from
         # strategy module's trade_routing var.
-        assert len(mod_info.trade_routing) == 1, "this should not happen"
-        trade_routing = mod_info.trade_routing[0]
-        if routing_model is None and trade_routing not in TradeRouting.get_user_supplied():
+        if routing_model is None and mod_info.trade_routing not in TradeRouting.get_user_supplied():
             routing_model = get_routing_model(
                 execution_context,
-                mod_info.trade_routing[0],
+                mod_info.trade_routing,
                 mod_info.reserve_currency)
 
         runner = PandasTraderRunner(

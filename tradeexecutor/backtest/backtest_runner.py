@@ -111,7 +111,7 @@ class BacktestSetup:
             trade_routing = self.trade_routing
             assert trade_routing, "Strategy module did not provide trade_routing"
             # which trade_routing option we use doesn't matter for backtesting
-            routing_model = get_backtest_routing_model(trade_routing[0], self.reserve_currency)
+            routing_model = get_backtest_routing_model(trade_routing, self.reserve_currency)
 
         runner = PandasTraderRunner(
             timed_task_context_manager=timed_task_context_manager,

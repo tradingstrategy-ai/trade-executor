@@ -575,7 +575,7 @@ def create_client(
         # Running against a local dev chain
         
         assert type(test_evm_uniswap_v2_factory) != list, "Use create_generic_client()"
-        assert len(mod.trade_routing) == 1, "Use create_generic_client()"
+        assert mod.trade_routing not in {TradeRouting.generic_routing, TradeRouting.generic_routing_testing}, "Use create_generic_client()"
 
         client = UniswapV2MockClient(
             web3config.get_default(),
@@ -585,17 +585,13 @@ def create_client(
         )
         client.initialise_mock_data()
 
-        client.initialise_mock_data()
-        
-        assert len(mod.trade_routing) == 1, "Use create_generic_client()"
-
-        if mod.trade_routing[0] == TradeRouting.user_supplied_routing_model:
+        if mod.trade_routing == TradeRouting.user_supplied_routing_model:
             routing_model = UniswapV2SimpleRoutingModel(
                 factory_router_map={
                     test_evm_uniswap_v2_factory: (test_evm_uniswap_v2_router, test_evm_uniswap_v2_init_code_hash)},
                 allowed_intermediary_pairs={},
                 reserve_token_address=client.get_default_quote_token_address(),
-                routing_hint = mod.trade_routing[0],
+                routing_hint = mod.trade_routing,
             )
     elif trading_strategy_api_key:
         # Backtest / real trading
