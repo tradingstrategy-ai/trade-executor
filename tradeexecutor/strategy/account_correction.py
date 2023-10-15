@@ -345,29 +345,29 @@ def apply_accounting_correction(
 
         logger.info("Corrected %s", position)
 
-    if isinstance(position, TradingPosition):
-        position_type = BalanceUpdatePositionType.open_position
-        position_id = correction.position.position_id
+        if isinstance(position, TradingPosition):
+            position_type = BalanceUpdatePositionType.open_position
+            position_id = correction.position.position_id
 
-        assert position.is_spot_market(), f"Correction not yet implemented for leveraged positions"
+            assert position.is_spot_market(), f"Correction not yet implemented for leveraged positions"
 
-    elif isinstance(position, ReservePosition):
-        position_type = BalanceUpdatePositionType.reserve
-        position_id = None
-    elif position is None:
-        # Tokens were for a trading position, but no position was open.
-        # Open a new position
-        portfolio.create_trade(
-            strategy_cycle_at=strategy_cycle_included_at,
-        )
-    else:
-        raise NotImplementedError()
+        elif isinstance(position, ReservePosition):
+            position_type = BalanceUpdatePositionType.reserve
+            position_id = None
+        elif position is None:
+            # Tokens were for a trading position, but no position was open.
+            # Open a new position
+            portfolio.create_trade(
+                strategy_cycle_at=strategy_cycle_included_at,
+            )
+        else:
+            raise NotImplementedError()
 
 
-    notes = f"Accounting correction based on the actual on-chain balances.\n" \
-        f"The internal ledger balance was  {correction.expected_amount} {asset.token_symbol}\n" \
-        f"On-chain balance was {correction.actual_amount} {asset.token_symbol} at block {block_number or 0:,}\n" \
-        f"Balance was updated {correction.quantity} {asset.token_symbol}\n"
+        notes = f"Accounting correction based on the actual on-chain balances.\n" \
+            f"The internal ledger balance was  {correction.expected_amount} {asset.token_symbol}\n" \
+            f"On-chain balance was {correction.actual_amount} {asset.token_symbol} at block {block_number or 0:,}\n" \
+            f"Balance was updated {correction.quantity} {asset.token_symbol}\n"
 
         evt = BalanceUpdate(
             balance_update_id=event_id,
