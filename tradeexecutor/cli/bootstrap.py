@@ -315,6 +315,7 @@ def create_generic_backtest_execution_and_sync_model(
                 execution_context,
                 routing_hint,
                 reserve_currency,
+                is_generic=True
             )
         else:
             # routing model will be set later when client is created

@@ -89,7 +89,7 @@ trading_strategy_type = StrategyType.managed_positions
 # How our trades are routed.
 # PancakeSwap basic routing supports two way trades with BUSD
 # and three way trades with BUSD-BNB hop.
-trade_routing = [TradeRouting.quickswap_usdc, TradeRouting.uniswap_v3_usdc_poly]
+trade_routing = TradeRouting.generic_routing
 
 # Set cycle to 7 days and look back the momentum of the previous candle
 trading_strategy_cycle = CycleDuration.cycle_1h

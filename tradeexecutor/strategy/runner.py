@@ -435,6 +435,9 @@ class StrategyRunner(abc.ABC):
             # routing model should be set in tradeexecutor.strategy.bootstrap.make_generic_factory_from_strategy_mod
             routing_model = item["routing_model"]
 
+            if not routing_model:
+                continue
+
             # Get web3 connection, hot wallet
             routing_state_details = execution_model.get_routing_state_details()
 

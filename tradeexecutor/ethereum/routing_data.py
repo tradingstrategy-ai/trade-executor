@@ -603,7 +603,8 @@ def validate_reserve_currency(
 
 def get_backtest_routing_model(
     routing_type: TradeRouting,
-    reserve_currency: ReserveCurrency
+    reserve_currency: ReserveCurrency,
+    is_generic: bool = False,
 ) -> BacktestRoutingModel | BacktestRoutingIgnoredModel:
     """Get routing options for backtests.
 
@@ -616,7 +617,7 @@ def get_backtest_routing_model(
         params = get_uniswap_v2_default_routing_parameters(reserve_currency)
         return BacktestRoutingIgnoredModel(params["reserve_token_address"], routing_hint = routing_type)
 
-    real_routing_model = create_compatible_routing(routing_type, reserve_currency)
+    real_routing_model = create_compatible_routing(routing_type, reserve_currency, is_generic)
     
     if isinstance(real_routing_model, UniswapV2SimpleRoutingModel):
         return BacktestRoutingModel(
@@ -774,6 +775,6 @@ def get_routing_model(
     """
 
     if execution_context.mode == ExecutionMode.backtesting:
-        return get_backtest_routing_model(routing_type, reserve_currency)
+        return get_backtest_routing_model(routing_type, reserve_currency, is_generic)
     else:
         return create_compatible_routing(routing_type, reserve_currency, is_generic)

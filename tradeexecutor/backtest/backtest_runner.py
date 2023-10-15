@@ -111,9 +111,8 @@ class BacktestSetup:
         else:
             # Use routing model from the strategy.
             # The strategy file chooses one of predefined routing models.
-            trade_routing = self.trade_routing
+            trade_routing = self.trade_routing if self.trade_routing != TradeRouting.generic_routing else TradeRouting.ignore
             assert trade_routing, "Strategy module did not provide trade_routing"
-            # which trade_routing option we use doesn't matter for backtesting
             routing_model = get_backtest_routing_model(trade_routing, self.reserve_currency)
 
         runner = PandasTraderRunner(
