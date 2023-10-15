@@ -465,17 +465,20 @@ def start(
             execution_context = ExecutionContext(
                 mode=ExecutionMode.backtesting,
                 timed_task_context_manager=timed_task,
+                engine_version=mod.trading_strategy_engine_version
             )
         else:
             if unit_testing:
                 execution_context = ExecutionContext(
                     mode=ExecutionMode.unit_testing_trading,
                     timed_task_context_manager=timed_task,
+                    engine_version=mod.trading_strategy_engine_version
                 )
             else:
                 execution_context = ExecutionContext(
                     mode=ExecutionMode.real_trading,
                     timed_task_context_manager=timed_task,
+                    engine_version=mod.trading_strategy_engine_version
                 )
 
         logger.info("Starting with execution mode: %s, unit testing is %s", execution_context.mode.name, unit_testing)
