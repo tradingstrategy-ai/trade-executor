@@ -1586,8 +1586,8 @@ def load_partial_data(
         our_exchanges = [exchange_universe.get_by_id(id) for id in exchange_ids]
         our_exchange_universe = ExchangeUniverse.from_collection(our_exchanges)
 
-            # Eliminate the pairs we are not interested in from the database
-            filtered_pairs_df = pairs_df.loc[pairs_df["pair_id"].isin(our_pair_ids)]
+        # Eliminate the pairs we are not interested in from the database
+        filtered_pairs_df = pairs_df.loc[pairs_df["pair_id"].isin(our_pair_ids)]
 
         # Autogenerate names by the pair count
         if not name:
