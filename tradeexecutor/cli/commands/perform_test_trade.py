@@ -23,6 +23,7 @@ from ...strategy.strategy_module import read_strategy_module, StrategyModuleInfo
 from ...strategy.trading_strategy_universe import TradingStrategyUniverseModel
 from ...strategy.universe_model import UniverseOptions
 from ...strategy.generic_pricing_model import get_pricing_model_for_pair
+from ...strategy.default_routing_options import TradeRouting
 from ...utils.timer import timed_task
 from tradeexecutor.cli.commands import shared_options
 from tradeexecutor.testing.evm_uniswap_testing_data import deserialize_uniswap_test_data_list
@@ -117,7 +118,7 @@ def perform_test_trade(
     confirmation_timeout = datetime.timedelta(seconds=60)
 
     generic_routing_data = None
-    if len(mod.trade_routing) > 1:
+    if mod.trade_routing in {TradeRouting.generic_routing, TradeRouting.generic_routing_testing}:
         generic_routing_data, sync_model = create_generic_execution_and_sync_model(
                 asset_management_mode=asset_management_mode,
                 private_key=private_key,
@@ -129,9 +130,9 @@ def perform_test_trade(
                 vault_address=vault_address,
                 vault_adapter_address=vault_adapter_address,
                 vault_payment_forwarder_address=vault_payment_forwarder_address,
-                routing_hints=mod.trade_routing,
                 execution_context=execution_context,
                 reserve_currency=mod.reserve_currency,
+                routing_hint=mod.trade_routing,
             )
     else:
         execution_model, sync_model, valuation_model_factory, pricing_model_factory = \
@@ -146,7 +147,7 @@ def perform_test_trade(
                 vault_address=vault_address,
                 vault_adapter_address=vault_adapter_address,
                 vault_payment_forwarder_address=vault_payment_forwarder_address,
-                routing_hint=mod.trade_routing[0],
+                routing_hint=mod.trade_routing,
             )
 
     clear_caches = False

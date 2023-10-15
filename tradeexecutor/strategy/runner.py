@@ -573,7 +573,6 @@ class StrategyRunner(abc.ABC):
                 # Make sure our hot wallet nonce is up to date
                 self.sync_model.resync_nonce()
                 
-
                 if self.execution_model:
                     assert not self.generic_routing_data, "generic_routing_data should be empty"
 
@@ -588,37 +587,41 @@ class StrategyRunner(abc.ABC):
                 else:
                     assert generic_execution_data, "generic_execution_data should be set"
                     
+                    # collect all trades for each routing model and execute 
                     executed_trades = 0
                     for item in self.generic_routing_data:
                         routing_model = item["routing_model"]
                         execution_model = item["execution_model"]
                         routing_hint = item["routing_hint"]
-                        
-                        trades_to_execute = []
+                        assert routing_hint is not None, "routing_hint is None"
                         
                         # get trades corresponding to routing model
+                        trades_to_execute = []
                         for trade in approved_trades:
                             assert trade.pair.routing_hint is not None, "Trade pair routing_hint is None"
-                            assert routing_hint is not None, "routing_hint is None"
                             if trade.pair.routing_hint == routing_hint:
                                 trades_to_execute.append(trade)
                                 executed_trades += 1
 
-                        # get execution details corresponding to routing model
-                        for item in generic_execution_data:
-                            if item["routing_model"] == routing_model:
-                                routing_state = item["routing_state"]
-                                pricing_model = item["pricing_model"]
-                                valuation_model = item["valuation_model"]
-                        
-                        execution_model.execute_trades(
-                            strategy_cycle_timestamp,
-                            state,
-                            trades_to_execute,
-                            routing_model,
-                            routing_state,
-                            check_balances=check_balances,
-                        )
+                        # get execution details corresponding to routing model and execute trades
+                        if trades_to_execute:
+                            for item in generic_execution_data:
+                                if item["routing_model"] == routing_model:
+                                    routing_state = item["routing_state"]
+                                    break
+                            
+                            execution_model.execute_trades(
+                                strategy_cycle_timestamp,
+                                state,
+                                trades_to_execute,
+                                routing_model,
+                                routing_state,
+                                check_balances=check_balances,
+                            )
+
+                        if executed_trades == len(approved_trades):
+                            break
+
                     assert executed_trades == len(approved_trades), "Not all trades were executed"
 
             # Run any logic we need to run after the trades have been executd

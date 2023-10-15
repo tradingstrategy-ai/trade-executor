@@ -730,7 +730,7 @@ def create_uniswap_v3_compatible_routing(
 
 
 def create_compatible_routing(
-    routing_type: TradeRouting, reserve_currency: ReserveCurrency
+    routing_type: TradeRouting, reserve_currency: ReserveCurrency, is_generic: bool = False
 ):
     """Create compatible routing.
 
@@ -743,7 +743,9 @@ def create_compatible_routing(
     - The routing model consists of smart contract addresses needed to trade, the chainid, and trading fee
     """
 
-    validate_reserve_currency(routing_type, reserve_currency)
+    # TODO find way to validate for generic routing
+    if not is_generic:
+        validate_reserve_currency(routing_type, reserve_currency)
 
     if routing_type in get_uniswap_v2_compatible_routing_types():
         return create_uniswap_v2_compatible_routing(routing_type, reserve_currency)
@@ -757,6 +759,7 @@ def get_routing_model(
     execution_context: ExecutionContext,
     routing_type: TradeRouting,
     reserve_currency: ReserveCurrency,
+    is_generic: bool = False,
 ) -> RoutingModel:
     """Create trade routing model for the strategy.
 
@@ -773,4 +776,4 @@ def get_routing_model(
     if execution_context.mode == ExecutionMode.backtesting:
         return get_backtest_routing_model(routing_type, reserve_currency)
     else:
-        return create_compatible_routing(routing_type, reserve_currency)
+        return create_compatible_routing(routing_type, reserve_currency, is_generic)

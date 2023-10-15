@@ -217,15 +217,41 @@ class TradeRouting(enum.Enum):
     #: fees and assume all pairs are tradeable.
     ignore = "ignore"
 
+    #: Use generic routing model for backtesting/live trading purposes
+    #:
+    #: In practice, this loads all the routing options
+    generic_routing = "generic_routing"
+
+    #: Use generic routing model for testing purposes
+    #:
+    #: In practice, this loads user_supplied_routing_model_uniswap_v2 and user_supplied_routing_model_uniswap_v3
+    generic_routing_testing = "generic_routing_testing"
+
     def is_uniswap_v2(self) -> bool:
         """Do we neeed Uniswap v2 routing model"""
 
-        return self not in self.get_uniswap_v3_elements() | {TradeRouting.ignore, TradeRouting.user_supplied_routing_model, TradeRouting.user_supplied_routing_model_uniswap_v3}
+        return self in self.get_uniswap_v2_elements()
 
     def is_uniswap_v3(self) -> bool:
         """Do we neeed Uniswap v3 routing model"""
 
         return self in self.get_uniswap_v3_elements()
+    
+    @staticmethod
+    def get_uniswap_v2_elements() -> set:
+        return {
+            TradeRouting.pancakeswap_busd,
+            TradeRouting.pancakeswap_usdc,
+            TradeRouting.pancakeswap_usdt,
+            TradeRouting.quickswap_usdc,
+            TradeRouting.quickswap_usdt,
+            TradeRouting.quickswap_dai,
+            TradeRouting.trader_joe_usdc,
+            TradeRouting.trader_joe_usdt,
+            TradeRouting.uniswap_v2_usdc,
+            TradeRouting.uniswap_v2_usdt,
+            TradeRouting.uniswap_v2_dai,
+        }
     
     @staticmethod
     def get_uniswap_v3_elements() -> set:
@@ -251,21 +277,15 @@ class TradeRouting(enum.Enum):
             TradeRouting.user_supplied_routing_model_uniswap_v3
         }
     
+    @staticmethod
+    def get_all_generic_routing_options() -> set:
+        """Get the set of all routing models that can be used for generic routing."""
+
+        return TradeRouting.get_uniswap_v2_elements() | TradeRouting.get_uniswap_v3_elements() | {TradeRouting.user_supplied_routing_model_uniswap_v2, TradeRouting.user_supplied_routing_model_uniswap_v3}
     
-def validate_trade_routing_with_user_supplied(trade_routing: list[TradeRouting]):
-    """Validate that the user supplied routing options are valid. Also, validate that trade_routing is a list.
+    @staticmethod
+    def get_generic_routing_testing_options() -> set:
+        """Get the set of all routing models that can be used for generic routing testing"""
 
-    :param trade_routing:
-        list of TradeRouting options
-
-    :return:
-        None
-    """
-
-    assert type(trade_routing) == list, "Expected trade_routing to be a list"
-
-    user_supplied_routing_options = TradeRouting.get_user_supplied()
-    trade_routing_set = set(trade_routing)
-
-    if trade_routing_set & user_supplied_routing_options:
-        assert trade_routing_set <= user_supplied_routing_options, "Expected all routing hints to be user supplied, if one is user supplied"
+        return {TradeRouting.user_supplied_routing_model_uniswap_v2, TradeRouting.user_supplied_routing_model_uniswap_v3}
+    

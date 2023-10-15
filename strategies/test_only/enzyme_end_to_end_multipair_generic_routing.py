@@ -37,7 +37,7 @@ trading_strategy_type = StrategyType.managed_positions
 trading_strategy_cycle = CycleDuration.cycle_1s
 reserve_currency = ReserveCurrency.usdc
 
-trade_routing = [TradeRouting.user_supplied_routing_model_uniswap_v2, TradeRouting.user_supplied_routing_model_uniswap_v3]
+trade_routing = TradeRouting.generic_routing_testing
 
 def decide_trades(
         timestamp: pd.Timestamp,

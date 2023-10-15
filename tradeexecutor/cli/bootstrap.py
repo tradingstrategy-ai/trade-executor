@@ -147,7 +147,6 @@ def create_execution_model(
 
 
 def create_generic_execution_model(
-        routing_hints: Optional[list[TradeRouting]],
         tx_builder: Optional[TransactionBuilder],
         confirmation_timeout: datetime.timedelta,
         confirmation_block_count: int,
@@ -155,7 +154,7 @@ def create_generic_execution_model(
         min_gas_balance: Optional[Decimal],
         execution_context: ExecutionContext,
         reserve_currency: ReserveCurrency,
-        mainnet_fork=False,
+        mainnet_fork: bool=False,
 ):
     """Set up the code transaction building logic.
 
@@ -164,10 +163,9 @@ def create_generic_execution_model(
 
     generic_routing_data = []
 
-    for routing_hint in routing_hints:
+    for routing_hint in TradeRouting.get_all_generic_routing_options():
         # TODO: user_supplied_routing_model can be uni v3 as well
-        if routing_hint is None or routing_hint.is_uniswap_v2() or routing_hint in {TradeRouting.user_supplied_routing_model, TradeRouting.user_supplied_routing_model_uniswap_v2}:
-            logger.info("Uniswap v2 like exchange. Routing hint is %s", routing_hint)
+        if routing_hint is None or routing_hint in TradeRouting.get_uniswap_v2_elements() | {TradeRouting.user_supplied_routing_model, TradeRouting.user_supplied_routing_model_uniswap_v2}:
             execution_model = UniswapV2ExecutionModel(
                 tx_builder,
                 confirmation_timeout=confirmation_timeout,
@@ -178,9 +176,7 @@ def create_generic_execution_model(
             )
             valuation_model_factory = uniswap_v2_sell_valuation_factory
             pricing_model_factory = uniswap_v2_live_pricing_factory
-
-        elif routing_hint.is_uniswap_v3() or routing_hint in {TradeRouting.user_supplied_routing_model_uniswap_v3}:
-            logger.info("Uniswap v3 like exchange. Routing hint is %s", routing_hint)
+        elif routing_hint in TradeRouting.get_uniswap_v3_elements() | {TradeRouting.user_supplied_routing_model_uniswap_v3}:
             execution_model = UniswapV3ExecutionModel(
                 tx_builder,
                 confirmation_timeout=confirmation_timeout,
@@ -200,13 +196,14 @@ def create_generic_execution_model(
         # strategy module's trade_routing var.
         
         if routing_hint not in TradeRouting.get_user_supplied():
-            # routing model will be set later when client is created
             routing_model = get_routing_model(
                 execution_context,
                 routing_hint,
                 reserve_currency,
+                is_generic=True,
             )
         else:
+            # routing model will be set later when client is created
             routing_model = None
             
         generic_routing_data.append(dict(execution_model=execution_model, valuation_model_factory=valuation_model_factory, pricing_model_factory=pricing_model_factory, routing_hint=routing_hint, routing_model=routing_model))
@@ -284,7 +281,6 @@ def create_backtest_execution_model(wallet: SimulatedWallet):
 
 def create_generic_backtest_execution_and_sync_model(
     asset_management_mode: AssetManagementMode,
-    routing_hints: list[TradeRouting],
     execution_context: ExecutionContext,
     reserve_currency: ReserveCurrency,
 ) -> Tuple[list[dict], BacktestSyncModel]:
@@ -309,17 +305,17 @@ def create_generic_backtest_execution_and_sync_model(
     sync_model = BacktestSyncModel(wallet, Decimal(10_000))
     generic_routing_data = []
 
-    for routing_hint in routing_hints:
+    for routing_hint in TradeRouting.get_all_generic_routing_options():
         execution_model, valuation_model_factory, pricing_model_factory = create_backtest_execution_model(wallet)
         
         if routing_hint not in TradeRouting.get_user_supplied():
-            # routing model will be set later when client is created
             routing_model = get_routing_model(
                 execution_context,
                 routing_hint,
                 reserve_currency,
             )
         else:
+            # routing model will be set later when client is created
             routing_model = None
         
         generic_routing_data.append(dict(execution_model=execution_model, valuation_model_factory=valuation_model_factory, pricing_model_factory=pricing_model_factory, routing_hint=routing_hint, routing_model=routing_model))
@@ -338,16 +334,16 @@ def create_generic_execution_and_sync_model(
     vault_address: Optional[str],
     vault_adapter_address: Optional[str],
     vault_payment_forwarder_address: Optional[str],
-    routing_hints: Optional[list[TradeRouting]],
+    routing_hint: TradeRouting,
     execution_context: ExecutionContext,
     reserve_currency: ReserveCurrency,
 ):
     """Set up the wallet sync and execution mode for the command line client for a trading universe with multiple dexes."""
     
-    assert len(routing_hints) > 1, "At least two dexes are needed for generic routing"
+    assert routing_hint in {TradeRouting.generic_routing, TradeRouting.generic_routing_testing}
     
     if asset_management_mode == AssetManagementMode.backtest:
-        generic_routing_data, sync_model = create_generic_backtest_execution_and_sync_model(asset_management_mode, routing_hints, execution_context, reserve_currency)
+        generic_routing_data, sync_model = create_generic_backtest_execution_and_sync_model(asset_management_mode, execution_context, reserve_currency)
     else:
         assert asset_management_mode in (AssetManagementMode.hot_wallet, AssetManagementMode.enzyme)
         assert private_key, "Private key is needed for live trading"
@@ -362,10 +358,9 @@ def create_generic_execution_and_sync_model(
             vault_payment_forwarder_address,
         )
 
-        logger.info("Creating execution model. Asset management mode is %s, routing hint(s) are", asset_management_mode.value, routing_hints)
+        logger.info("Creating execution model. Asset management mode is %s, routing hint(s) are", asset_management_mode.value, routing_hint)
 
         generic_routing_data = create_generic_execution_model(
-            routing_hints=routing_hints,
             tx_builder=sync_model.create_transaction_builder(),
             confirmation_timeout=confirmation_timeout,
             confirmation_block_count=confirmation_block_count,
@@ -664,15 +659,14 @@ def create_generic_client(
     )
     client.initialise_mock_data()
 
-    for i, trade_routing in enumerate(mod.trade_routing):
-            
-        data = test_evm_uniswap_data[i]
+    assert mod.trade_routing == TradeRouting.generic_routing_testing, "safety check, should not fail"
 
-        routing_data = generic_routing_data[i]
+    for i, data in enumerate(test_evm_uniswap_data):
+        
+        routing_data = get_routing_data_from_test_data(generic_routing_data, data)
 
-        if trade_routing == TradeRouting.user_supplied_routing_model_uniswap_v2:
+        if isinstance(data, UniswapV2TestData):
 
-            assert isinstance(data, UniswapV2TestData)
             _validate_routing_data(
                 routing_data,
                 UniswapV2ExecutionModel,
@@ -689,9 +683,9 @@ def create_generic_client(
                 allowed_intermediary_pairs={},
                 reserve_token_address=client.get_default_quote_token_address(factory_address),
                 chain_id=data.chain_id,
-                routing_hint = trade_routing,
+                routing_hint = TradeRouting.user_supplied_routing_model_uniswap_v2,
             )
-        elif trade_routing == TradeRouting.user_supplied_routing_model_uniswap_v3:
+        elif isinstance(data, UniswapV3TestData):
             assert isinstance(test_evm_uniswap_data[i], UniswapV3TestData)
             _validate_routing_data(
                 routing_data,
@@ -713,16 +707,47 @@ def create_generic_client(
                 allowed_intermediary_pairs={},
                 reserve_token_address=reserve_token_address,
                 chain_id=data.chain_id,
-                routing_hint = trade_routing,
+                routing_hint = TradeRouting.user_supplied_routing_model_uniswap_v3,
             )
+        else:
+            raise NotImplementedError(f"GenericMockClient should used with testing data of format UniswapV2TestData or UniswapV3TestData. Got {data}")
 
-        assert generic_routing_data[i]["routing_model"] is None, "Routing model already set up"
-        generic_routing_data[i]["routing_model"] = routing_model
+        # this will change routing model in the original generic routing data
+        # since dicts are mutable and copied by reference
+        assert routing_data["routing_model"] is None, "Routing model already set up"
+        routing_data["routing_model"] = routing_model
 
     return client
 
 
-def _validate_routing_data(routing_data, arg1, arg2, arg3):
-    assert isinstance(routing_data["execution_model"], arg1)
-    assert routing_data["pricing_model_factory"] == arg2
-    assert routing_data["valuation_model_factory"] == arg3
+def _validate_routing_data(routing_data, execution_model, pricing_model_factory, valuation_model_factory):
+    assert isinstance(routing_data["execution_model"], execution_model)
+    assert routing_data["pricing_model_factory"] == pricing_model_factory
+    assert routing_data["valuation_model_factory"] == valuation_model_factory
+
+
+def get_routing_data_from_test_data(generic_routing_data, test_data):
+    """Get routing data from test data.
+    
+    :param generic_routing_data:
+        The generic routing data.
+
+    :param test_data:
+        The test data of type UniswapV2TestData or UniswapV3TestData.
+    """
+
+    assert isinstance(test_data, UniswapV2TestData | UniswapV3TestData), "Test data must be of type UniswapV2TestData or UniswapV3TestData"
+    assert type(generic_routing_data) == list, "Generic routing data must be of type list"
+
+    if isinstance(test_data, UniswapV2TestData):
+        routing_hint = TradeRouting.user_supplied_routing_model_uniswap_v2
+    elif isinstance(test_data, UniswapV3TestData):
+        routing_hint = TradeRouting.user_supplied_routing_model_uniswap_v3
+    else:
+        raise NotImplementedError(f"GenericMockClient should used with testing data of format UniswapV2TestData or UniswapV3TestData. Got {test_data}")
+
+    for routing_data in generic_routing_data:
+        if routing_data["routing_hint"] == routing_hint:
+            return routing_data
+
+    raise RuntimeError(f"Could not find routing data for test data {test_data}")

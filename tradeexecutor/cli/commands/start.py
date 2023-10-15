@@ -37,7 +37,7 @@ from ...state.store import NoneStore, JSONFileStore
 from ...strategy.approval import ApprovalType
 from ...strategy.bootstrap import import_strategy_file, import_generic_strategy_file
 from ...strategy.cycle import CycleDuration
-from ...strategy.default_routing_options import TradeRouting, validate_trade_routing_with_user_supplied
+from ...strategy.default_routing_options import TradeRouting
 from ...strategy.execution_context import ExecutionContext, ExecutionMode
 from ...strategy.execution_model import AssetManagementMode
 from ...strategy.routing import RoutingModel
@@ -151,8 +151,6 @@ def start(
     # because there is an inversion of control issue for passing web3 connection around.
     # Clean this up in the future versions, by changing the order of initialzation.
     mod = read_strategy_module(strategy_file)
-
-    validate_trade_routing_with_user_supplied(mod.trade_routing)
 
     if test_evm_uniswap_data is not None:
         test_evm_uniswap_data = deserialize_uniswap_test_data_list(test_evm_uniswap_data)
@@ -292,7 +290,7 @@ def start(
 
         execution_model, sync_model, valuation_model_factory, pricing_model_factory, generic_routing_data = None, None, None, None, None
 
-        if len(mod.trade_routing) > 1:
+        if mod.trade_routing in {TradeRouting.generic_routing, TradeRouting.generic_routing_testing}:
 
             generic_routing_data, sync_model = create_generic_execution_and_sync_model(
                 asset_management_mode=asset_management_mode,
@@ -305,15 +303,13 @@ def start(
                 vault_address=vault_address,
                 vault_adapter_address=vault_adapter_address,
                 vault_payment_forwarder_address=vault_payment_forwarder_address,
-                routing_hints=mod.trade_routing,
+                routing_hint=mod.trade_routing,
                 execution_context=execution_context,
                 reserve_currency=mod.reserve_currency,
             )
         else:
 
             assert not test_evm_uniswap_data, "test_evm_uniswap_data is not supported with single routing model"
-
-            trade_routing = mod.trade_routing[0]
 
             execution_model, sync_model, valuation_model_factory, pricing_model_factory = create_execution_and_sync_model(
                 asset_management_mode=asset_management_mode,
@@ -326,7 +322,7 @@ def start(
                 vault_address=vault_address,
                 vault_adapter_address=vault_adapter_address,
                 vault_payment_forwarder_address=vault_payment_forwarder_address,
-                routing_hint=trade_routing,
+                routing_hint=mod.trade_routing,
             )
 
         approval_model = create_approval_model(approval_type)
