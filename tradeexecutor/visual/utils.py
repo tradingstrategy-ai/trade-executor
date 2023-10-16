@@ -104,19 +104,10 @@ def export_trade_for_dataframe(p: Portfolio, t: TradeExecution) -> dict:
             # "",
         ]
 
-        if t.lp_fees_estimated is not None:
-            if t.executed_price and t.planned_mid_price:
-                realised_fees = abs(1 - t.planned_mid_price / t.executed_price)
-                label += [
-                    f"Fees paid: {format_fees_dollars(t.get_fees_paid())}",
-                    # f"Fees planned: {format_fees_dollars(t.lp_fees_estimated)}",
-                    # f"Fees: {realised_fees:.4f} %",
-                ]
-            else:
-                label += [
-                    f"Fees paid: {format_fees_dollars(t.get_fees_paid())}",
-                    # f"Fees planned: {format_fees_dollars(t.lp_fees_estimated)}",
-                ]
+        if t.is_success() and t.lp_fees_paid is not None:
+            label += [
+                f"Fees paid: {format_fees_dollars(t.get_fees_paid())}",
+            ]
         
         if t.cost_of_gas:
             label += [f"Gas fee: {t.cost_of_gas:.4f}"]

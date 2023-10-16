@@ -1269,7 +1269,7 @@ class TradingPosition(GenericPosition):
         assert self.stop_loss, f"Stop loss price must be set to calculate the maximum risk"
         # Calculate how much value we can lose
 
-        opening_price = self.get_price_at_open()
+        opening_price = self.get_opening_price()
         if opening_price is None:
             # Legacy data
             return 0.0
