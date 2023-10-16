@@ -8,6 +8,7 @@ import pandas as pd
 
 from qstrader.portcon.optimiser.fixed_weight import FixedWeightPortfolioOptimiser
 
+from tradeexecutor.strategy.execution_context import unit_test_execution_context
 from tradeexecutor.strategy.pricing_model import PricingModel
 from tradeexecutor.strategy.qstrader.alpha_model import AlphaModel
 from tradeexecutor.strategy.qstrader.order_sizer import CashBufferedOrderSizer
@@ -38,6 +39,11 @@ class QSTraderRunner(StrategyRunner):
         :param timed_task_context_manager:
         :param max_data_age: Allow to unit test on old datasets
         """
+
+
+        # Legacy code, used in tests only
+        kwargs["unit_testing"] = True
+
         super().__init__(*args, **kwargs)
         assert isinstance(alpha_model, AlphaModel), f"We got {alpha_model}"
         self.alpha_model = alpha_model
