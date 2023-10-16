@@ -70,6 +70,7 @@ def pytest_sessionstart(session):
 @pytest.fixture(autouse=True)
 def cleanup(request):
     """Try to release pyarrow memory and avoid leaking."""
+    import gc
     import psutil
     p = psutil.Process()
     rss = p.memory_info().rss
