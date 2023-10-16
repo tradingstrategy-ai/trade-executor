@@ -147,7 +147,12 @@ class StrategyRunner(abc.ABC):
         """
         return self.execution_context.mode.is_live_trading() or self.execution_context.mode.is_unit_testing()
 
-    def sync_portfolio(self, strategy_cycle_ts: datetime.datetime, universe: StrategyExecutionUniverse, state: State, debug_details: dict):
+    def sync_portfolio(
+            self,
+            strategy_cycle_or_trigger_check_ts: datetime.datetime,
+            universe: StrategyExecutionUniverse,
+            state: State,
+            debug_details: dict):
         """Adjust portfolio balances based on the external events.
 
         External events include
@@ -159,6 +164,19 @@ class StrategyRunner(abc.ABC):
         - Interest accrued
 
         - Token rebases
+
+        :param strategy_cycle_or_trigger_check_ts:
+            Timestamp for the event trigger
+
+        :param universe:
+            Loaded universe
+
+        :param state:
+            Currnet strategy state
+
+        :param debug_details:
+            Dictionary of debug data that will be passed down to the callers
+
         """
         assert isinstance(universe, StrategyExecutionUniverse), f"Universe was {universe}"
         reserve_assets = list(universe.reserve_assets)
@@ -168,7 +186,7 @@ class StrategyRunner(abc.ABC):
         assert token.decimals and token.decimals > 0, f"Reserve asset lacked decimals"
 
         balance_update_events = self.sync_model.sync_treasury(
-            strategy_cycle_ts,
+            strategy_cycle_or_trigger_check_ts,
             state,
             supported_reserves=reserve_assets,
         )
@@ -628,9 +646,13 @@ class StrategyRunner(abc.ABC):
         assert isinstance(routing_state, RoutingState)
         assert isinstance(stop_loss_pricing_model, PricingModel)
 
+        debug_details = {}
+
         with self.timed_task_context_manager("check_position_triggers"):
 
-            # TODO: Sync the treasury here
+            # Sync treasure before the trigger checks
+            with self.timed_task_context_manager("sync_portfolio_before_triggers"):
+                self.sync_portfolio(clock, universe, state, debug_details)
 
             # Check that our on-chain balances are good
             with self.timed_task_context_manager("check_accounts_position_triggers"):
