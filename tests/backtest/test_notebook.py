@@ -1,4 +1,4 @@
-from tradeexecutor.backtest.notebook import setup_charting_and_output
+from tradeexecutor.utils.notebook import setup_charting_and_output
 
 
 def test_setup_charting():

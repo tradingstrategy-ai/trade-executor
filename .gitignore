@@ -38,3 +38,7 @@ notebooks/*.json
 
 # Work-in-progress strategy modules
 /strategy/
+
+# pytest-monitir
+monitor.db
+.pymon
