@@ -66,7 +66,6 @@ jobs:
         env:
           TRADING_STRATEGY_API_KEY: ${{ secrets.TRADING_STRATEGY_API_KEY }}
           BNB_CHAIN_JSON_RPC: ${{ secrets.BNB_CHAIN_JSON_RPC }}
-          PYARROW_THREADED_READ: false
 
       # Save our current datasets for the next test run
       - name: Save unit test datasets
