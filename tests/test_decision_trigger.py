@@ -16,7 +16,6 @@ from tradingstrategy.timebucket import TimeBucket
 pytestmark = pytest.mark.skipif(os.environ.get("TRADING_STRATEGY_API_KEY") is None, reason="Set TRADING_STRATEGY_API_KEY environment variable to run this test")
 
 
-
 @pytest.fixture()
 def execution_context(request) -> ExecutionContext:
     """Setup backtest execution context."""
@@ -27,66 +26,74 @@ def execution_context(request) -> ExecutionContext:
 def universe(execution_context, persistent_test_client) -> TradingStrategyUniverse:
     """Construct WETH-USDC """
 
-    client = persistent_test_client
+    def _inner():
 
-    # Time bucket for our candles
-    candle_time_bucket = TimeBucket.d1
+        client = persistent_test_client
 
-    # Which chain we are trading
-    chain_id = ChainId.bsc
+        # Time bucket for our candles
+        candle_time_bucket = TimeBucket.d1
 
-    # Which exchange we are trading on.
-    exchange_slug = "pancakeswap-v2"
+        # Which chain we are trading
+        chain_id = ChainId.bsc
 
-    # Which trading pair we are trading
-    trading_pair = ("WBNB", "BUSD")
+        # Which exchange we are trading on.
+        exchange_slug = "pancakeswap-v2"
 
-    # Load all datas we can get for our candle time bucket
-    dataset = load_all_data(client, candle_time_bucket, execution_context, UniverseOptions())
+        # Which trading pair we are trading
+        trading_pair = ("WBNB", "BUSD")
 
-    # Filter down to the single pair we are interested in
-    universe = TradingStrategyUniverse.create_single_pair_universe(
-        dataset,
-        chain_id,
-        exchange_slug,
-        trading_pair[0],
-        trading_pair[1],
-    )
+        # Load all datas we can get for our candle time bucket
+        dataset = load_all_data(client, candle_time_bucket, execution_context, UniverseOptions())
 
-    return universe
+        # Filter down to the single pair we are interested in
+        universe = TradingStrategyUniverse.create_single_pair_universe(
+            dataset,
+            chain_id,
+            exchange_slug,
+            trading_pair[0],
+            trading_pair[1],
+        )
+
+        return universe
+
+    return _inner
 
 
 @pytest.fixture()
 def multipair_universe(execution_context, persistent_test_client) -> TradingStrategyUniverse:
     """Construct WETH-USDC """
 
-    client = persistent_test_client
+    def _inner():
 
-    trading_pairs = [
-        (ChainId.polygon, "uniswap-v3", "WETH", "USDC", 0.0005), # Ether-USD Coin (PoS) https://tradingstrategy.ai/trading-view/polygon/uniswap-v3/eth-usdc-fee-5
-        (ChainId.polygon, "uniswap-v3", "WMATIC", "USDC", 0.0005), # Wrapped Matic-USD Coin (PoS) https://tradingstrategy.ai/trading-view/polygon/uniswap-v3/matic-usdc-fee-5
-        (ChainId.polygon, "uniswap-v3", "XSGD", "USDC", 0.0005), # XSGD-USD Coin (PoS) https://tradingstrategy.ai/trading-view/polygon/uniswap-v3/xsgd-usdc-fee-5
-    ]
+        client = persistent_test_client
 
-    # Load data for our trading pair whitelist
-    dataset = load_partial_data(
-        client=client,
-        pairs=trading_pairs,
-        time_bucket=TimeBucket.d1,
-        execution_context=execution_context,
-        universe_options=UniverseOptions(),
-        start_at=datetime.datetime(2023, 1, 1),
-        end_at=datetime.datetime(2023, 2, 1),
-    )
+        trading_pairs = [
+            (ChainId.polygon, "uniswap-v3", "WETH", "USDC", 0.0005), # Ether-USD Coin (PoS) https://tradingstrategy.ai/trading-view/polygon/uniswap-v3/eth-usdc-fee-5
+            (ChainId.polygon, "uniswap-v3", "WMATIC", "USDC", 0.0005), # Wrapped Matic-USD Coin (PoS) https://tradingstrategy.ai/trading-view/polygon/uniswap-v3/matic-usdc-fee-5
+            (ChainId.polygon, "uniswap-v3", "XSGD", "USDC", 0.0005), # XSGD-USD Coin (PoS) https://tradingstrategy.ai/trading-view/polygon/uniswap-v3/xsgd-usdc-fee-5
+        ]
 
-    # Filter down the dataset to the pairs we specified
-    universe = TradingStrategyUniverse.create_multichain_universe_by_pair_descriptions(
-        dataset,
-        trading_pairs,
-        reserve_token_symbol="USDC"
-    )
+        # Load data for our trading pair whitelist
+        dataset = load_partial_data(
+            client=client,
+            pairs=trading_pairs,
+            time_bucket=TimeBucket.d1,
+            execution_context=execution_context,
+            universe_options=UniverseOptions(),
+            start_at=datetime.datetime(2023, 1, 1),
+            end_at=datetime.datetime(2023, 2, 1),
+        )
 
-    return universe
+        # Filter down the dataset to the pairs we specified
+        universe = TradingStrategyUniverse.create_multichain_universe_by_pair_descriptions(
+            dataset,
+            trading_pairs,
+            reserve_token_symbol="USDC"
+        )
+
+        return universe
+
+    return _inner
 
 
 @pytest.mark.slow_test_group
@@ -95,6 +102,10 @@ def test_decision_trigger_ready_data(persistent_test_client, universe):
 
     We do not need to wait.
     """
+
+    # Memory leak hack
+    universe = universe()
+
     client = persistent_test_client
     timestamp = datetime.datetime(2023, 1, 1)
     updated_universe_result = wait_for_universe_data_availability_jsonl(
@@ -122,7 +133,7 @@ def test_decision_trigger_ready_data(persistent_test_client, universe):
 def test_decision_trigger_multipair(persistent_test_client, multipair_universe: TradingStrategyUniverse):
     """Wait for the multipair decision trigger to be ready."""
 
-    universe = multipair_universe
+    universe = multipair_universe()
 
     client = persistent_test_client
     timestamp = datetime.datetime(2023, 1, 1)

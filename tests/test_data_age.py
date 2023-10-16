@@ -22,21 +22,17 @@ class DataAgeTestUniverseModel(TradingStrategyUniverseModel):
     def construct_universe(self, ts: datetime.datetime, mode: ExecutionMode) -> StrategyExecutionUniverse:
         assert isinstance(mode, ExecutionMode)
         # d1 data is used by other tests and cached
-        dataset = self.load_data(TimeBucket.d1, mode)
+        dataset = self.load_data(TimeBucket.d30, mode)
         # Pair index takes long time to construct and is not needed for the test
         universe = TradingStrategyUniverseModel.create_from_dataset(dataset, [], [], pairs_index=False)
         return universe
 
 
-@pytest.fixture()
-def universe_model(persistent_test_client: Client) -> DataAgeTestUniverseModel:
-    return DataAgeTestUniverseModel(persistent_test_client, timed_task)
-
-
 @pytest.mark.slow_test_group
-def test_data_fresh(universe_model: DataAgeTestUniverseModel):
+def test_data_fresh(persistent_test_client):
     """Fresh data passes our data check."""
     # d1 data is used by other tests and cached
+    universe_model = DataAgeTestUniverseModel(persistent_test_client, timed_task)
     best_before_duration = datetime.timedelta(weeks=1000)  # Our unit test is good for next 1000 years
     ts = datetime.datetime.utcnow()
     universe = universe_model.construct_universe(ts, ExecutionMode.unit_testing_trading)
@@ -44,8 +40,9 @@ def test_data_fresh(universe_model: DataAgeTestUniverseModel):
 
 
 @pytest.mark.slow_test_group
-def test_data_aged(universe_model: DataAgeTestUniverseModel):
+def test_data_aged(persistent_test_client):
     """Aged data raises an exception."""
+    universe_model = DataAgeTestUniverseModel(persistent_test_client, timed_task)
     ts = datetime.datetime.utcnow()
     best_before_duration = datetime.timedelta(seconds=1)  # We can never have one second old data
     universe = universe_model.construct_universe(ts, ExecutionMode.backtesting)
