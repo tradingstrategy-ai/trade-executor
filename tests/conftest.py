@@ -67,17 +67,20 @@ def pytest_sessionstart(session):
     patch_dataclasses_json()
 
 
-@pytest.fixture(autouse=True)
-def cleanup(request):
-    """Try to release pyarrow memory and avoid leaking."""
-    import gc
-    import psutil
-    p = psutil.Process()
-    rss = p.memory_info().rss
-    print(f"RSS is {rss:,}")
-    #gc.collect()
-    #import pyarrow
-    #pool = pyarrow.default_memory_pool()
-    #pool.release_unused()
-
+# Use this to track RAM usage (RSS) over the execution
+# to debug PyArrow memory leaks
+#
+# @pytest.fixture(autouse=True)
+# def cleanup(request):
+#     """Try to release pyarrow memory and avoid leaking."""
+#     import gc
+#     import psutil
+#     p = psutil.Process()
+#     rss = p.memory_info().rss
+#     print(f"RSS is {rss:,}")
+#     #gc.collect()
+#     #import pyarrow
+#     #pool = pyarrow.default_memory_pool()
+#     #pool.release_unused()
+#
 
