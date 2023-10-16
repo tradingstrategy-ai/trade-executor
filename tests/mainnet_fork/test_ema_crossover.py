@@ -122,6 +122,9 @@ def strategy_path() -> Path:
     return Path(os.path.join(os.path.dirname(__file__), "../..", "strategies", "ema-crossover-long-only-no-stop-loss.py"))
 
 
+# web3.exceptions.BlockNotFound: Block with id: 'latest' not found. with third party JSON-RPC
+# caused by gas pricing middleware
+@flaky.flaky()
 def test_ema_crossover(
         logger: logging.Logger,
         strategy_path: Path,
