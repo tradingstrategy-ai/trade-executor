@@ -19,7 +19,7 @@ from typing import List, Optional, Callable, Tuple, Set, Dict, Iterable, Collect
 
 import pandas as pd
 
-from tradeexecutor.state.types import JSONHexAddress
+from tradeexecutor.state.types import JSONHexAddress, Percent
 from tradingstrategy.lending import LendingReserveUniverse, LendingReserveDescription, LendingCandleType, LendingCandleUniverse, UnknownLendingReserve
 from tradingstrategy.token import Token
 from tradingstrategy.candle import GroupedCandleUniverse
@@ -29,7 +29,7 @@ from tradingstrategy.exchange import ExchangeUniverse, Exchange, ExchangeType
 from tradingstrategy.liquidity import GroupedLiquidityUniverse, ResampledLiquidityUniverse
 from tradingstrategy.pair import DEXPair, PandasPairUniverse, resolve_pairs_based_on_ticker, \
     filter_for_exchanges, filter_for_quote_tokens, StablecoinFilteringMode, filter_for_stablecoins, \
-    HumanReadableTradingPairDescription, filter_for_chain, filter_for_base_tokens, filter_for_exchange
+    HumanReadableTradingPairDescription, filter_for_chain, filter_for_base_tokens, filter_for_exchange, filter_for_trading_fee
 from tradingstrategy.timebucket import TimeBucket
 from tradingstrategy.types import TokenSymbol
 from tradingstrategy.universe import Universe
@@ -803,7 +803,7 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
         chain_ids = dataset.pairs["chain_id"].unique()
 
         assert len(chain_ids) == 1, f"Currently only single chain datasets supported, got chains {chain_ids}"
-        chain_id = chain_ids[0]
+        chain_id = ChainId(chain_ids[0])
 
         pairs = PandasPairUniverse(dataset.pairs, exchange_universe=dataset.exchanges)
 
@@ -819,7 +819,7 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
 
         universe = Universe(
             time_bucket=dataset.time_bucket,
-            chains=chain_id,
+            chains={chain_id},
             pairs=pairs,
             candles=candle_universe,
             liquidity=dataset.liquidity,
@@ -1995,10 +1995,12 @@ def load_trading_and_lending_data(
     universe_options: UniverseOptions = default_universe_options,
     exchange_slugs: Set[str] | str | None = None,
     liquidity=False,
-    stop_loss_time_bucket: Optional[TimeBucket] = None,
-    reserve_asset_symbols: Set[TokenSymbol]={"USDC",},
+    stop_loss_time_bucket: TimeBucket | None = None,
+    asset_symbols: Set[TokenSymbol] | None = None,
+    reserve_asset_symbols: Set[TokenSymbol] = frozenset({"USDC",}),
     name: str | None = None,
     volatile_only=False,
+    trading_fee: Percent | None = None,
     any_quote=False,
 ):
     """Load trading and lending market for a single chain for all long/short pairs.
@@ -2084,6 +2086,16 @@ def load_trading_and_lending_data(
         assert price_feed["open"][two_days_ago] > 0
         assert price_feed["open"][two_days_ago] < 10_000  # To the moon warning
 
+    :param asset_symbols:
+        Load only these lending reserves.
+
+        If not given load all lending reserves available on a chain.
+
+    :param trading_fee:
+        Loan only trading pairs on a specific fee tier.
+
+        For example set to ``0.0005`` to load only 5 BPS Uniswap pairs.
+
     :param reserve_asset_symbols:
         In which currency, the trading pairs must be quoted for the lending pool.
 
@@ -2121,6 +2133,9 @@ def load_trading_and_lending_data(
     lending_reserves = client.fetch_lending_reserve_universe()
     lending_reserves = lending_reserves.limit_to_chain(chain_id)
 
+    if asset_symbols:
+        lending_reserves = lending_reserves.limit_to_assets(asset_symbols | {reserve_asset_symbol})
+
     reserve_asset = lending_reserves.get_by_chain_and_symbol(
         chain_id,
         reserve_asset_symbol
@@ -2133,9 +2148,13 @@ def load_trading_and_lending_data(
     # Find out all volatile pairs traded against USDC and USDT on Polygon
     pairs_df = filter_for_chain(pairs_df, ChainId.polygon)
     pairs_df = filter_for_stablecoins(pairs_df, StablecoinFilteringMode.only_volatile_pairs)
+    pairs_df = filter_for_base_tokens(pairs_df, lending_reserves.get_asset_addresses())
+
     if not any_quote:
         pairs_df = filter_for_quote_tokens(pairs_df, {reserve_asset.asset_address})
-    pairs_df = filter_for_base_tokens(pairs_df, lending_reserves.get_asset_addresses())
+
+    if trading_fee:
+        pairs_df = filter_for_trading_fee(pairs_df, trading_fee)
 
     if exchange_slugs:
         pairs_df = filter_for_exchange(pairs_df, exchange_slugs)
