@@ -69,8 +69,10 @@ def pytest_sessionstart(session):
 
 @pytest.fixture(autouse=True)
 def cleanup(request):
-    """Cleanup a testing directory once we are finished."""
+    """Try to release pyarrow memory and avoid leaking."""
+    import gc
+    gc.collect()
     import pyarrow
     pool = pyarrow.default_memory_pool()
     pool.release_unused()
-    print("Cleaning up")
+

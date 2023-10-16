@@ -58,13 +58,14 @@ jobs:
       # I suspect out of memory situation that is not reported to the user.
       # Print 20 slowest tests when done.
       - name: Run test scripts
-        # run: |
-        #  poetry run pytest --tb=native --dist loadscope -n 2 --durations=20 -m "not slow_test_group"
         run: |
-          poetry run pytest --durations=20 -m "not slow_test_group"
+            poetry run pytest --tb=native --dist loadscope -n 4 --durations=20 -m "not slow_test_group"
+        #run: |
+        #  poetry run pytest --durations=20 -m "not slow_test_group"
         env:
           TRADING_STRATEGY_API_KEY: ${{ secrets.TRADING_STRATEGY_API_KEY }}
-          BNB_CHAIN_JSON_RPC: ${{ secrets.BNB_CHAIN_JSON_RPC }}      
+          BNB_CHAIN_JSON_RPC: ${{ secrets.BNB_CHAIN_JSON_RPC }}
+          PYARROW_THREADED_READ: false
 
       # Save our current datasets for the next test run
       - name: Save unit test datasets
