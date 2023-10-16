@@ -39,6 +39,10 @@ def persistent_test_client(persistent_test_cache_path) -> Client:
 
     Read API key from TRADING_STRATEGY_API_KEY env variable.
     """
+
+    import pyarrow as pa
+    pa.jemalloc_set_decay_ms(0)
+
     c = Client.create_test_client(persistent_test_cache_path)
     yield c
     c.close()
