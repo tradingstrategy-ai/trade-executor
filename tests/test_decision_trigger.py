@@ -22,13 +22,6 @@ def execution_context(request) -> ExecutionContext:
     return ExecutionContext(mode=ExecutionMode.backtesting, timed_task_context_manager=timed_task)
 
 
-@pytest.fixture()
-def multipair_universe(execution_context, persistent_test_client) -> TradingStrategyUniverse:
-    """Construct WETH-USDC """
-
-
-
-
 @pytest.mark.slow_test_group
 def test_decision_trigger_ready_data(persistent_test_client):
     """Test that we can immedidately trigger trades for old data.
@@ -36,6 +29,7 @@ def test_decision_trigger_ready_data(persistent_test_client):
     We do not need to wait.
     """
 
+    # Moved here to avoid pytest memory leaks
     def _inner():
 
         client = persistent_test_client
@@ -98,6 +92,7 @@ def test_decision_trigger_ready_data(persistent_test_client):
 def test_decision_trigger_multipair(persistent_test_client):
     """Wait for the multipair decision trigger to be ready."""
 
+    # Moved here to avoid pytest memory leaks
     def _inner():
 
         client = persistent_test_client
