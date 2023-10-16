@@ -74,7 +74,7 @@ def cleanup(request):
     import psutil
     p = psutil.Process()
     rss = p.memory_info().rss
-    print("RSS is ", rss)
+    print(f"RSS is {rss:,}")
     gc.collect()
     import pyarrow
     pool = pyarrow.default_memory_pool()
