@@ -36,7 +36,7 @@ jobs:
         # We don't install -E qstrader and run legacy tests on CI as they
         # download too much data
         run: |          
-          poetry install --no-interaction -E web-server -E execution -E quantstats
+          poetry install --all-extras
       # Run tests parallel by module
       - name: Run test scripts
         run: |
