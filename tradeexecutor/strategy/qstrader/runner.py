@@ -28,8 +28,8 @@ class QSTraderRunner(StrategyRunner):
 
     .. warning::
 
-        This is legacy alpha code and will be deprecated.
-
+        This is legacy alpha version code and will be deprecated.
+        It is only used in unit testing.
 
     """
 
