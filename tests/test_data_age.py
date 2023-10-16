@@ -4,11 +4,12 @@ import datetime
 
 import pytest
 
-from tradeexecutor.strategy.execution_context import ExecutionMode
-from tradeexecutor.strategy.universe_model import StrategyExecutionUniverse, DataTooOld
+from tradeexecutor.strategy.execution_context import ExecutionMode, unit_test_execution_context
+from tradeexecutor.strategy.universe_model import StrategyExecutionUniverse, DataTooOld, UniverseOptions
+from tradingstrategy.chain import ChainId
 from tradingstrategy.client import Client
 
-from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverseModel
+from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverseModel, load_partial_data, TradingStrategyUniverse
 from tradeexecutor.utils.timer import timed_task
 from tradingstrategy.timebucket import TimeBucket
 
@@ -18,13 +19,23 @@ pytestmark = pytest.mark.skipif(os.environ.get("TRADING_STRATEGY_API_KEY") is No
 
 
 class DataAgeTestUniverseModel(TradingStrategyUniverseModel):
+    """Load 6 months data."""
 
     def construct_universe(self, ts: datetime.datetime, mode: ExecutionMode) -> StrategyExecutionUniverse:
         assert isinstance(mode, ExecutionMode)
-        # d1 data is used by other tests and cached
-        dataset = self.load_data(TimeBucket.d30, mode)
+
+        client = self.client
+
+        dataset = load_partial_data(
+            client,
+            unit_test_execution_context,
+            TimeBucket.d30,
+            pairs=((ChainId.ethereum, "uniswap-v3", "WETH", "USDC", 0.0005),),
+            universe_options=UniverseOptions(history_period=datetime.timedelta(days=6*30)),
+        )
+
         # Pair index takes long time to construct and is not needed for the test
-        universe = TradingStrategyUniverseModel.create_from_dataset(dataset, [], [], pairs_index=False)
+        universe = TradingStrategyUniverse.create_from_dataset(dataset)
         return universe
 
 
