@@ -9,7 +9,8 @@ on:
 jobs:
   automated-test-suite:
     timeout-minutes: 40
-    runs-on: ubuntu-latest
+    runs-on:
+      group: Beefy runners
     steps:
       - uses: actions/checkout@v3
         with:
