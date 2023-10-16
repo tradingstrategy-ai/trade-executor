@@ -4,7 +4,7 @@ import os
 
 import pytest
 
-from tradeexecutor.strategy.execution_context import ExecutionContext, ExecutionMode
+from tradeexecutor.strategy.execution_context import ExecutionContext, ExecutionMode, unit_test_execution_context
 from tradeexecutor.strategy.pandas_trader.decision_trigger import wait_for_universe_data_availability_jsonl, \
     validate_latest_candles
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse, load_all_data, load_partial_data
@@ -23,8 +23,18 @@ def execution_context(request) -> ExecutionContext:
 
 
 @pytest.fixture()
-def universe(execution_context, persistent_test_client) -> TradingStrategyUniverse:
+def multipair_universe(execution_context, persistent_test_client) -> TradingStrategyUniverse:
     """Construct WETH-USDC """
+
+
+
+
+@pytest.mark.slow_test_group
+def test_decision_trigger_ready_data(persistent_test_client):
+    """Test that we can immedidately trigger trades for old data.
+
+    We do not need to wait.
+    """
 
     def _inner():
 
@@ -58,53 +68,8 @@ def universe(execution_context, persistent_test_client) -> TradingStrategyUniver
 
     return _inner
 
-
-@pytest.fixture()
-def multipair_universe(execution_context, persistent_test_client) -> TradingStrategyUniverse:
-    """Construct WETH-USDC """
-
-    def _inner():
-
-        client = persistent_test_client
-
-        trading_pairs = [
-            (ChainId.polygon, "uniswap-v3", "WETH", "USDC", 0.0005), # Ether-USD Coin (PoS) https://tradingstrategy.ai/trading-view/polygon/uniswap-v3/eth-usdc-fee-5
-            (ChainId.polygon, "uniswap-v3", "WMATIC", "USDC", 0.0005), # Wrapped Matic-USD Coin (PoS) https://tradingstrategy.ai/trading-view/polygon/uniswap-v3/matic-usdc-fee-5
-            (ChainId.polygon, "uniswap-v3", "XSGD", "USDC", 0.0005), # XSGD-USD Coin (PoS) https://tradingstrategy.ai/trading-view/polygon/uniswap-v3/xsgd-usdc-fee-5
-        ]
-
-        # Load data for our trading pair whitelist
-        dataset = load_partial_data(
-            client=client,
-            pairs=trading_pairs,
-            time_bucket=TimeBucket.d1,
-            execution_context=execution_context,
-            universe_options=UniverseOptions(),
-            start_at=datetime.datetime(2023, 1, 1),
-            end_at=datetime.datetime(2023, 2, 1),
-        )
-
-        # Filter down the dataset to the pairs we specified
-        universe = TradingStrategyUniverse.create_multichain_universe_by_pair_descriptions(
-            dataset,
-            trading_pairs,
-            reserve_token_symbol="USDC"
-        )
-
-        return universe
-
-    return _inner
-
-
-@pytest.mark.slow_test_group
-def test_decision_trigger_ready_data(persistent_test_client, universe):
-    """Test that we can immedidately trigger trades for old data.
-
-    We do not need to wait.
-    """
-
     # Memory leak hack
-    universe = universe()
+    universe = _inner()
 
     client = persistent_test_client
     timestamp = datetime.datetime(2023, 1, 1)
@@ -130,10 +95,40 @@ def test_decision_trigger_ready_data(persistent_test_client, universe):
 
 
 @pytest.mark.slow_test_group
-def test_decision_trigger_multipair(persistent_test_client, multipair_universe: TradingStrategyUniverse):
+def test_decision_trigger_multipair(persistent_test_client):
     """Wait for the multipair decision trigger to be ready."""
 
-    universe = multipair_universe()
+    def _inner():
+
+        client = persistent_test_client
+
+        trading_pairs = [
+            (ChainId.polygon, "uniswap-v3", "WETH", "USDC", 0.0005), # Ether-USD Coin (PoS) https://tradingstrategy.ai/trading-view/polygon/uniswap-v3/eth-usdc-fee-5
+            (ChainId.polygon, "uniswap-v3", "WMATIC", "USDC", 0.0005), # Wrapped Matic-USD Coin (PoS) https://tradingstrategy.ai/trading-view/polygon/uniswap-v3/matic-usdc-fee-5
+            (ChainId.polygon, "uniswap-v3", "XSGD", "USDC", 0.0005), # XSGD-USD Coin (PoS) https://tradingstrategy.ai/trading-view/polygon/uniswap-v3/xsgd-usdc-fee-5
+        ]
+
+        # Load data for our trading pair whitelist
+        dataset = load_partial_data(
+            client=client,
+            pairs=trading_pairs,
+            time_bucket=TimeBucket.d1,
+            execution_context=unit_test_execution_context,
+            universe_options=UniverseOptions(),
+            start_at=datetime.datetime(2023, 1, 1),
+            end_at=datetime.datetime(2023, 2, 1),
+        )
+
+        # Filter down the dataset to the pairs we specified
+        universe = TradingStrategyUniverse.create_multichain_universe_by_pair_descriptions(
+            dataset,
+            trading_pairs,
+            reserve_token_symbol="USDC"
+        )
+
+        return universe
+
+    universe = _inner()
 
     client = persistent_test_client
     timestamp = datetime.datetime(2023, 1, 1)
