@@ -579,7 +579,7 @@ class StrategyRunner(abc.ABC):
                     # We cannot call account check right after the trades,
                     # as meny low quality nodes might still report old token balances
                     # from eth_call
-                    logger.info("Waiting on-chain balances to settle for %f before performing accounting checks", self.trade_settle_wait)
+                    logger.info("Waiting on-chain balances to settle for %s before performing accounting checks", self.trade_settle_wait)
                     time.sleep(self.trade_settle_wait.total_seconds())
 
                     # Double check we handled incoming trade balances correctly
