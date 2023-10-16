@@ -407,14 +407,14 @@ class TradeAnalysis:
     def get_first_opened_at(self) -> Optional[pd.Timestamp]:
         """Get the opened_at timestamp of the first position in the portfolio."""
         return min(
-            position.opened_at for position in self.filtered_sorted_positions
+            position.opened_at for id, position in self.get_all_positions()
         )
 
     def get_last_closed_at(self) -> Optional[pd.Timestamp]:
         """Get the closed_at timestamp of the last position in the portfolio."""
         
         return max(
-            position.closed_at for position in self.filtered_sorted_positions
+            position.closed_at for id, position in self.get_all_positions()
         )
 
     def get_all_positions(self) -> Iterable[Tuple[PrimaryKey, TradingPosition]]:
@@ -431,7 +431,7 @@ class TradeAnalysis:
         
         Positions are sorted by position_id."""
         
-        for position in self.filtered_sorted_positions:
+        for id, position in self.get_all_positions():
             if position.is_open():
                 # pair_id, position
                 yield position.pair.internal_id, position
@@ -441,7 +441,7 @@ class TradeAnalysis:
         
         Positions are sorted by position_id."""
         
-        for position in self.filtered_sorted_positions:
+        for id, position in self.get_all_positions():
             if position.is_short():
                 # pair_id, position
                 yield position.pair.internal_id, position
@@ -451,7 +451,7 @@ class TradeAnalysis:
         
         Positions are sorted by position_id."""
         
-        for position in self.filtered_sorted_positions:
+        for id, position in self.get_all_positions():
             if position.is_long():
                 # pair_id, position
                 yield position.pair.internal_id, position
