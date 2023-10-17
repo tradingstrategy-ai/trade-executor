@@ -507,7 +507,7 @@ class EnzymeVaultSyncModel(SyncModel):
         latency = get_block_tip_latency(web3)
         end_block = max(1, web3.eth.block_number - latency)
 
-        logger.info(f"Starting sync for vault %s, comptroller %s, looking block range {start_block:,} - {end_block:,}, block tip latency is %d", self.vault.address, self.vault.comptroller.address, latency)
+        logger.info(f"Starting treasury sync for vault %s, comptroller %s, looking block range {start_block:,} - {end_block:,}, block tip latency is %d", self.vault.address, self.vault.comptroller.address, latency)
 
         reader, broken_quicknode = self.create_event_reader()
 
@@ -565,6 +565,8 @@ class EnzymeVaultSyncModel(SyncModel):
         # Update the reserve position value
         # TODO: Add USDC/USD price feed
         # state.portfolio.get_default_reserve_position().update_value(exchange_rate=1.0)
+
+        logger.info(f"Enzyme treasury sync done, the last block is now {treasury_sync.last_block_scanned:,}")
 
         return events
 

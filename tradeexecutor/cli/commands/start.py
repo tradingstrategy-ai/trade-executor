@@ -130,6 +130,7 @@ def start(
     strategy_cycle_trigger: StrategyCycleTrigger = typer.Option("cycle_offset", envvar="STRATEGY_CYCLE_TRIGGER", help="How do decide when to start executing the next live trading strategy cycle"),
     key_metrics_backtest_cut_off_days: float = typer.Option(90, envvar="KEY_METRIC_BACKTEST_CUT_OFF_DAYS", help="How many days live data is collected until key metrics are switched from backtest to live trading based"),
     check_accounts: bool = typer.Option(True, "--check-accounts", envvar="CHECK_ACCOUNTS", help="Do extra accounting checks to track mismatch balances"),
+    sync_treasury_on_startup: bool = typer.Option(True, "--sync-treasury-on-startup", envvar="SYNC_TREASURY_ON_STARTUP", help="Sync treasury events before starting any trading"),
 
     # Logging
     log_level: str = shared_options.log_level,
@@ -379,6 +380,7 @@ def start(
         strategy_factory = import_strategy_file(strategy_file)
 
         logger.trade("%s (%s): trade execution starting", name, id)
+
 
         if backtest_start:
 

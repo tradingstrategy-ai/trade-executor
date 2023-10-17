@@ -143,6 +143,7 @@ class ExecutionLoop:
             check_accounts: Optional[bool] = None,
             minimum_data_lookback_range: Optional[datetime.timedelta] = None,
             universe_options: Optional[UniverseOptions] = None,
+            sync_treasury_on_startup=False,
     ):
         """See main.py for details."""
 
@@ -167,6 +168,7 @@ class ExecutionLoop:
         self.metadata = metadata
         self.check_accounts = check_accounts
         self.execution_context = execution_context
+        self.sync_treasury_on_startup = sync_treasury_on_startup
 
         self.backtest_start = backtest_start
         self.backtest_end = backtest_end
@@ -897,6 +899,16 @@ class ExecutionLoop:
         assert execution_context, "ExecutionContext missing"
 
         universe = self.warm_up_live_trading()
+
+        if self.sync_treasury_on_startup:
+            reserve_assets = list(universe.reserve_assets)
+            logger.info("Syncing treasury events for startup")
+            self.sync_model.sync_treasury(
+                datetime.datetime.utcnow(),
+                state,
+                reserve_assets,
+            )
+            self.store.sync(state)
 
         logger.info("Performing startup accounting check")
         self.runner.check_accounts(
