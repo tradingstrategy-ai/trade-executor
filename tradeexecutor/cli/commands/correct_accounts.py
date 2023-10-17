@@ -32,6 +32,7 @@ from ...strategy.run_state import RunState
 from ...strategy.strategy_module import StrategyModuleInformation, read_strategy_module
 from ...strategy.trading_strategy_universe import TradingStrategyUniverseModel
 from ...strategy.universe_model import UniverseOptions
+from ...utils.blockchain import get_block_timestamp
 
 
 @app.command()
@@ -214,11 +215,17 @@ def correct_accounts(
             logger.info("Initialising reserves for the unit test: %s", universe.reserve_assets[0])
             state.portfolio.initialise_reserves(universe.reserve_assets[0])
 
+    block_number = get_almost_latest_block_number(web3)
+    logger.info(f"Correcting accounts at block {block_number:,}")
+
+    block_timestamp = get_block_timestamp(web3, block_number)
+
     corrections = calculate_account_corrections(
         universe.data_universe.pairs,
         universe.reserve_assets,
         state,
         sync_model,
+        block_identifier=block_number,
     )
     corrections = list(corrections)
 
@@ -246,13 +253,6 @@ def correct_accounts(
     hot_wallet.sync_nonce(web3)
     logger.info("Hot wallet nonce is %d", hot_wallet.current_nonce)
 
-    # We need to fix balacnes to a certain block.
-    # This is only few blocks behind, so even non-archive
-    # nodes should be able to read this historical state
-    block_number = get_almost_latest_block_number(web3)
-
-    logger.info(f"Correcting accounts at block {block_number:,}")
-
     balance_updates = _correct_accounts(
         state,
         corrections,
@@ -261,6 +261,7 @@ def correct_accounts(
         tx_builder=tx_builder,
         unknown_token_receiver=unknown_token_receiver,  # Send any unknown tokens to the hot wallet of the trade-executor
         block_identifier=block_number,
+        block_timestamp=block_timestamp,
     )
     balance_updates = list(balance_updates)
     logger.info("Applied %d balance updates", len(balance_updates))

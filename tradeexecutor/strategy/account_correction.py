@@ -395,13 +395,14 @@ def apply_accounting_correction(
 
 
 def correct_accounts(
-        state: State,
-        corrections: List[AccountingBalanceCheck],
-        strategy_cycle_included_at: datetime.datetime | None,
-        tx_builder: TransactionBuilder,
-        interactive=True,
-        unknown_token_receiver: HexAddress | str | None = None,
-        block_identifier: BlockIdentifier = None,
+    state: State,
+    corrections: List[AccountingBalanceCheck],
+    strategy_cycle_included_at: datetime.datetime | None,
+    tx_builder: TransactionBuilder,
+    interactive=True,
+    unknown_token_receiver: HexAddress | str | None = None,
+    block_identifier: BlockIdentifier = None,
+    block_timestamp: datetime.datetime = None,
 ) -> Iterable[BalanceUpdate]:
     """Apply the accounting corrections on the state (internal ledger).
 
@@ -447,6 +448,9 @@ def correct_accounts(
     # Update last scanned block, so we do not rescan events we might have skipped
     if block_identifier is not None:
         state.sync.treasury.last_block_scanned = block_identifier
+        if block_timestamp:
+            state.sync.treasury.last_updated_at = block_timestamp
+
     else:
         logger.warning("Treasury sync block identifier missing")
 

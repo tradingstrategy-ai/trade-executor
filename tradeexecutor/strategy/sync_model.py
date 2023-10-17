@@ -243,6 +243,7 @@ class DummySyncModel(SyncModel):
     def fetch_onchain_balances(
             self,
             assets: Collection[AssetIdentifier],
-            filter_zero=True
+            filter_zero=True,
+            block_identifier: BlockIdentifier = None,
     ) -> Iterable[OnChainBalance]:
         raise NotImplementedError("Backtesting does not know about on-chain balances")
