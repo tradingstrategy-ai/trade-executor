@@ -361,6 +361,7 @@ class EthereumExecutionModel(ExecutionModel):
             txs,
             max_timeout=confirmation_timeout,
             confirmation_block_count=confirmation_block_count,
+            node_switch_timeout=confirmation_timeout / 4,  # Try switch nodes 4 times if issues
         )
 
         self.resolve_trades(
