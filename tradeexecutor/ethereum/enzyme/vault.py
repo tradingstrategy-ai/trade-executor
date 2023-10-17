@@ -320,11 +320,12 @@ class EnzymeVaultSyncModel(SyncModel):
             case Deposit():
                 # Deposit generated only one event
                 event = cast(Deposit, event)
+                logger.info("Procsesing Enzyme deposit %s", event.event_data)
                 return [self.process_deposit(portfolio, event, strategy_cycle_ts)]
             case Redemption():
                 # Enzyme in-kind redemption can generate updates for multiple assets
                 event = cast(Redemption, event)
-
+                logger.info("Procsesing Enzyme redemption %s", event.event_data)
                 # Sanity check: Make sure there has not been redemptions from the vault before the strategy was initialised.
                 # Make sure we do not get events that are from the time before
                 # the state was initialised
