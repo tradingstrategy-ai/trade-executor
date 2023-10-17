@@ -566,7 +566,7 @@ class EnzymeVaultSyncModel(SyncModel):
         # TODO: Add USDC/USD price feed
         # state.portfolio.get_default_reserve_position().update_value(exchange_rate=1.0)
 
-        logger.info(f"Enzyme treasury sync done, the last block is now {treasury_sync.last_block_scanned:,}")
+        logger.info(f"Enzyme treasury sync done, the last block is now {treasury_sync.last_block_scanned:,}, found {len(events)} events")
 
         return events
 
