@@ -320,11 +320,12 @@ class EnzymeVaultSyncModel(SyncModel):
             case Deposit():
                 # Deposit generated only one event
                 event = cast(Deposit, event)
+                logger.info("Procsesing Enzyme deposit %s", event.event_data)
                 return [self.process_deposit(portfolio, event, strategy_cycle_ts)]
             case Redemption():
                 # Enzyme in-kind redemption can generate updates for multiple assets
                 event = cast(Redemption, event)
-
+                logger.info("Procsesing Enzyme redemption %s", event.event_data)
                 # Sanity check: Make sure there has not been redemptions from the vault before the strategy was initialised.
                 # Make sure we do not get events that are from the time before
                 # the state was initialised
@@ -507,7 +508,7 @@ class EnzymeVaultSyncModel(SyncModel):
         latency = get_block_tip_latency(web3)
         end_block = max(1, web3.eth.block_number - latency)
 
-        logger.info(f"Starting sync for vault %s, comptroller %s, looking block range {start_block:,} - {end_block:,}, block tip latency is %d", self.vault.address, self.vault.comptroller.address, latency)
+        logger.info(f"Starting treasury sync for vault %s, comptroller %s, looking block range {start_block:,} - {end_block:,}, block tip latency is %d", self.vault.address, self.vault.comptroller.address, latency)
 
         reader, broken_quicknode = self.create_event_reader()
 
@@ -544,6 +545,8 @@ class EnzymeVaultSyncModel(SyncModel):
         events = []
         for chain_event in events_iter:
             events += self.translate_and_apply_event(state, chain_event, strategy_cycle_ts)
+            for e in events:
+                logger.info(f"Processed Enzyme balance update event %s", e)
 
         # Check that we do not have conflicting events
         new_event: BalanceUpdate
@@ -565,6 +568,8 @@ class EnzymeVaultSyncModel(SyncModel):
         # Update the reserve position value
         # TODO: Add USDC/USD price feed
         # state.portfolio.get_default_reserve_position().update_value(exchange_rate=1.0)
+
+        logger.info(f"Enzyme treasury sync done, the last block is now {treasury_sync.last_block_scanned:,}, found {len(events)} events")
 
         return events
 
