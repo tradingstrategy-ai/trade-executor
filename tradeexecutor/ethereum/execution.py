@@ -304,17 +304,23 @@ class EthereumExecutionModel(ExecutionModel):
         state: State,
         trades: List[TradeExecution],
         confirmation_timeout: datetime.timedelta = datetime.timedelta(minutes=1),
-        confirmation_block_count: int=0,
+        confirmation_block_count: int = 0,
         stop_on_execution_failure=False,
     ):
         """Do the live trade execution using multiple nodes.
 
         See :py:func:`eth_defi.confirmation.wait_and_broadcast_multiple_nodes`
 
+        :param state:
+            The current state of the strategy
+
+        :param trades:
+            List of trades we need to execute on-chain
+
         :param confirmation_block_count:
             How many blocks to wait until marking transaction as confirmed
 
-        :confirmation_timeout:
+        :param confirmation_timeout:
             Max time to wait for a confirmation.
 
             We can use zero or negative values to simulate unconfirmed trades.
@@ -433,7 +439,7 @@ class EthereumExecutionModel(ExecutionModel):
         self,
         ts: datetime.datetime,
         state: State,
-        tx_map: Dict[HexBytes, Tuple[TradeExecution, BlockchainTransaction]],
+        tx_map: Dict[HexStr, Tuple[TradeExecution, BlockchainTransaction]],
         receipts: Dict[HexBytes, dict],
         stop_on_execution_failure=True):
         """Resolve trade outcome.
