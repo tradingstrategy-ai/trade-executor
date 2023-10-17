@@ -207,7 +207,7 @@ class UniswapV2TestTrader(EthereumTrader):
         state = self.state
 
         execution_model = UniswapV2ExecutionModel(self.tx_builder)
-        execution_model.broadcast_and_resolve(state, trades, stop_on_execution_failure=stop_on_execution_failure)
+        execution_model.broadcast_and_resolve_old(state, trades, stop_on_execution_failure=stop_on_execution_failure)
 
         # Clean up failed trades
         freeze_position_on_failed_trade(datetime.datetime.utcnow(), state, trades)
