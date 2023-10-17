@@ -9,7 +9,7 @@ from typing import List, Dict, Set, Tuple
 from abc import abstractmethod
 
 from eth_account.datastructures import SignedTransaction
-from eth_typing import HexAddress
+from eth_typing import HexAddress, HexStr
 from hexbytes import HexBytes
 from web3 import Web3
 
@@ -335,7 +335,7 @@ class EthereumExecutionModel(ExecutionModel):
             return
 
         txs: Set[SignedTransactionWithNonce] = set()
-        tx_map: Dict[HexBytes, tuple] = {}
+        tx_map: Dict[HexStr, tuple] = {}
 
         for t in trades:
             assert len(t.blockchain_transactions) > 0, f"Trade {t} does not have any blockchain transactions prepared"
@@ -353,8 +353,8 @@ class EthereumExecutionModel(ExecutionModel):
                 )
                 txs.add(signed_tx)
                 logger.info("Broadcasting transaction %s for trade %s:\n %s", signed_tx.hash, t)
-                t.mark_broadcasted(datetime.datetime.utcnow())
-                tx_map[signed_tx.hash] = (t, tx)
+                tx_map[signed_tx.hash.hex()] = (t, tx)
+            t.mark_broadcasted(datetime.datetime.utcnow())
 
         receipts = wait_and_broadcast_multiple_nodes(
             web3,
