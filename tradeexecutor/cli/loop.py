@@ -754,6 +754,7 @@ class ExecutionLoop:
         stop_losses = take_profits = 0
 
         def set_progress_bar_postfix(state, progress_bar, trade_count, cycle, take_profits, stop_losses):
+            """Set the values for the progress bar."""
             rolling_profit = state.stats.get_naive_rolling_pnl_pct()
             progress_bar.set_postfix({
                 "trades": trade_count,
