@@ -16,10 +16,12 @@ from web3 import Web3
 from eth_defi.abi import get_deployed_contract
 from eth_defi.deploy import get_or_create_contract_registry
 from eth_defi.gas import GasPriceSuggestion, apply_gas, estimate_gas_fees
-from eth_defi.hotwallet import HotWallet
+from eth_defi.hotwallet import HotWallet, SignedTransactionWithNonce
+from eth_defi.provider.fallback import FallbackProvider
+from eth_defi.provider.mev_blocker import MEVBlockerProvider
 from eth_defi.token import fetch_erc20_details, TokenDetails
 from eth_defi.confirmation import wait_transactions_to_complete, \
-    broadcast_and_wait_transactions_to_complete, broadcast_transactions
+    broadcast_and_wait_transactions_to_complete, broadcast_transactions, wait_and_broadcast_multiple_nodes
 from eth_defi.trace import trace_evm_transaction, print_symbolic_trace
 from eth_defi.uniswap_v2.deployment import UniswapV2Deployment, FOREVER_DEADLINE 
 from eth_defi.trade import TradeSuccess, TradeFail
@@ -243,7 +245,7 @@ class EthereumExecutionModel(ExecutionModel):
         self.tx_builder.init()
         logger.info("Hot wallet %s has balance %s", self.tx_builder.get_gas_wallet_address(), self.tx_builder.get_gas_wallet_balance())
 
-    def broadcast_and_resolve(
+    def broadcast_and_resolve_old(
         self,
         state: State,
         trades: List[TradeExecution],
@@ -274,6 +276,8 @@ class EthereumExecutionModel(ExecutionModel):
         """
 
         web3 = self.web3
+
+        logger.info("Using legacy broadcast")
         
         assert isinstance(confirmation_timeout, datetime.timedelta)
 
@@ -294,6 +298,78 @@ class EthereumExecutionModel(ExecutionModel):
                 broadcasted,
                 receipts,
                 stop_on_execution_failure=stop_on_execution_failure)
+
+    def broadcast_and_resolve_multiple_nodes(
+        self,
+        state: State,
+        trades: List[TradeExecution],
+        confirmation_timeout: datetime.timedelta = datetime.timedelta(minutes=1),
+        confirmation_block_count: int=0,
+        stop_on_execution_failure=False,
+    ):
+        """Do the live trade execution using multiple nodes.
+
+        See :py:func:`eth_defi.confirmation.wait_and_broadcast_multiple_nodes`
+
+        :param confirmation_block_count:
+            How many blocks to wait until marking transaction as confirmed
+
+        :confirmation_timeout:
+            Max time to wait for a confirmation.
+
+            We can use zero or negative values to simulate unconfirmed trades.
+            See `test_broadcast_failed_and_repair_state`.
+
+        :param stop_on_execution_failure:
+            If any of the transactions fail, then raise an exception.
+            Set for unit test.
+        """
+        assert isinstance(confirmation_timeout, datetime.timedelta)
+
+        web3 = self.web3
+        logger.info("Using multi-node broadcast for %s", web3.provider)
+
+        # Uncofirmed trade test, never confirm anything
+        if confirmation_timeout == datetime.timedelta(0):
+            logger.info("Unit test path of no confirmation")
+            return
+
+        txs: Set[SignedTransactionWithNonce] = set()
+        tx_map: Dict[HexBytes, tuple] = {}
+
+        for t in trades:
+            assert len(t.blockchain_transactions) > 0, f"Trade {t} does not have any blockchain transactions prepared"
+            for tx in t.blockchain_transactions:
+                assert tx.signed_bytes, f"Unsigned transaction: {tx}"
+                assert tx.tx_hash is not None
+                signed_tx = SignedTransactionWithNonce(
+                    rawTransaction=HexBytes(tx.signed_bytes),
+                    hash=HexBytes(tx.tx_hash),
+                    r=0,  # Not needed in this stage
+                    s=0,  # Not needed in this stage
+                    v=0,  # Not needed in this stage
+                    address=tx.from_address,
+                    nonce=tx.nonce,
+                )
+                txs.add(signed_tx)
+                logger.info("Broadcasting transaction %s for trade %s:\n %s", signed_tx.hash, t)
+                t.mark_broadcasted(datetime.datetime.utcnow())
+                tx_map[signed_tx.hash] = (t, tx)
+
+        receipts = wait_and_broadcast_multiple_nodes(
+            web3,
+            txs,
+            max_timeout=confirmation_timeout,
+            confirmation_block_count=confirmation_block_count,
+        )
+
+        self.resolve_trades(
+            datetime.datetime.now(),
+            state,
+            tx_map,
+            receipts,
+            stop_on_execution_failure=stop_on_execution_failure
+        )
 
     def execute_trades(self,
                        ts: datetime.datetime,
@@ -318,12 +394,22 @@ class EthereumExecutionModel(ExecutionModel):
             trades,
             check_balances=check_balances)
 
-        self.broadcast_and_resolve(
-            state,
-            trades,
-            confirmation_timeout=self.confirmation_timeout,
-            confirmation_block_count=self.confirmation_block_count,
-        )
+        if isinstance(self.web3, (FallbackProvider, MEVBlockerProvider)):
+            # Multi node broadcast
+            self.broadcast_and_resolve_multiple_nodes(
+                state,
+                trades,
+                confirmation_timeout=self.confirmation_timeout,
+                confirmation_block_count=self.confirmation_block_count,
+            )
+
+        else:
+            self.broadcast_and_resolve_old(
+                state,
+                trades,
+                confirmation_timeout=self.confirmation_timeout,
+                confirmation_block_count=self.confirmation_block_count,
+            )
 
         # Clean up failed trades
         freeze_position_on_failed_trade(ts, state, trades)
