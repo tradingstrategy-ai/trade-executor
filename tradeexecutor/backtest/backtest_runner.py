@@ -86,9 +86,6 @@ class BacktestSetup:
 
     # strategy_module: StrategyModuleInformation
 
-    def __post_init__(self):
-        pass
-
     def backtest_static_universe_strategy_factory(
             self,
             *ignore,
