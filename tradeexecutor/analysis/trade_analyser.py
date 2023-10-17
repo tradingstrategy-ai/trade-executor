@@ -404,22 +404,17 @@ class TradeAnalysis:
     #: If not given assume daily for the legacy compatibilty
     decision_cycle_frequency: pd.DateOffset = field(default_factory=pd.offsets.Day)
 
-    def __post_init__(self):
-        _filtered_positions = self.portfolio.get_all_positions_filtered()
-        self.filtered_sorted_positions = sorted(_filtered_positions, key=lambda x: x.position_id)
-        #assert self.filtered_sorted_positions, "No positions found"
-    
     def get_first_opened_at(self) -> Optional[pd.Timestamp]:
         """Get the opened_at timestamp of the first position in the portfolio."""
         return min(
-            position.opened_at for position in self.filtered_sorted_positions
+            position.opened_at for id, position in self.get_all_positions()
         )
 
     def get_last_closed_at(self) -> Optional[pd.Timestamp]:
         """Get the closed_at timestamp of the last position in the portfolio."""
         
         return max(
-            position.closed_at for position in self.filtered_sorted_positions
+            position.closed_at for id, position in self.get_all_positions()
         )
 
     def get_all_positions(self) -> Iterable[Tuple[PrimaryKey, TradingPosition]]:
@@ -427,7 +422,7 @@ class TradeAnalysis:
         
         Positions are sorted by position_id."""
         
-        for position in self.filtered_sorted_positions:
+        for position in self.portfolio.get_all_positions():
             # pair_id, position
             yield position.pair.internal_id, position
 
@@ -436,7 +431,7 @@ class TradeAnalysis:
         
         Positions are sorted by position_id."""
         
-        for position in self.filtered_sorted_positions:
+        for id, position in self.get_all_positions():
             if position.is_open():
                 # pair_id, position
                 yield position.pair.internal_id, position
@@ -446,7 +441,7 @@ class TradeAnalysis:
         
         Positions are sorted by position_id."""
         
-        for position in self.filtered_sorted_positions:
+        for id, position in self.get_all_positions():
             if position.is_short():
                 # pair_id, position
                 yield position.pair.internal_id, position
@@ -456,7 +451,7 @@ class TradeAnalysis:
         
         Positions are sorted by position_id."""
         
-        for position in self.filtered_sorted_positions:
+        for id, position in self.get_all_positions():
             if position.is_long():
                 # pair_id, position
                 yield position.pair.internal_id, position
@@ -634,7 +629,7 @@ class TradeAnalysis:
             lp_fees_paid += position.get_total_lp_fees_paid() or 0
             
             for t in position.trades.values():
-                trade_volume += abs(float(t.executed_quantity) * t.executed_price)
+                trade_volume += t.get_value()
 
             if position.is_open():
                 open_value += position.get_value()
@@ -650,8 +645,10 @@ class TradeAnalysis:
             if is_take_profit:
                 take_profits += 1
 
-            realised_profit_percent = position.get_realised_profit_percent()
             realised_profit_usd = position.get_realised_profit_usd()
+            assert realised_profit_usd is not None, f"Realised profit calculation failed for: {position}"
+            realised_profit_percent = position.get_realised_profit_percent()
+
             duration = position.get_duration()
             
             if position.is_profitable():

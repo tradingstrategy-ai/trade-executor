@@ -113,6 +113,10 @@ class StrategyRunner(abc.ABC):
             self.execution_context.mode.name,
         )
 
+        # If planned and executed price is % off then
+        # make a warning in the post execution output
+        self.execution_warning_tolerance = 0.01
+
     def __repr__(self):
         """Get a long presentation of internal runner state."""
         dump = pformat(self.__dict__)
@@ -148,7 +152,12 @@ class StrategyRunner(abc.ABC):
         """
         return self.execution_context.mode.is_live_trading() or self.execution_context.mode.is_unit_testing()
 
-    def sync_portfolio(self, strategy_cycle_ts: datetime.datetime, universe: StrategyExecutionUniverse, state: State, debug_details: dict):
+    def sync_portfolio(
+            self,
+            strategy_cycle_or_trigger_check_ts: datetime.datetime,
+            universe: StrategyExecutionUniverse,
+            state: State,
+            debug_details: dict):
         """Adjust portfolio balances based on the external events.
 
         External events include
@@ -160,6 +169,19 @@ class StrategyRunner(abc.ABC):
         - Interest accrued
 
         - Token rebases
+
+        :param strategy_cycle_or_trigger_check_ts:
+            Timestamp for the event trigger
+
+        :param universe:
+            Loaded universe
+
+        :param state:
+            Currnet strategy state
+
+        :param debug_details:
+            Dictionary of debug data that will be passed down to the callers
+
         """
         assert isinstance(universe, StrategyExecutionUniverse), f"Universe was {universe}"
         reserve_assets = list(universe.reserve_assets)
@@ -169,7 +191,7 @@ class StrategyRunner(abc.ABC):
         assert token.decimals and token.decimals > 0, f"Reserve asset lacked decimals"
 
         balance_update_events = self.sync_model.sync_treasury(
-            strategy_cycle_ts,
+            strategy_cycle_or_trigger_check_ts,
             state,
             supported_reserves=reserve_assets,
         )
@@ -220,13 +242,35 @@ class StrategyRunner(abc.ABC):
                 else:
                     t.post_execution_price_structure = get_pricing_model_for_pair(t.pair, pricing_models).get_sell_price(ts, spot_pair, t.planned_quantity)
 
-            logger.info(
-                "Trade %s, estimated reserve %s, executed reserve %s, estimated quantity %s, executed quantity %s",
+            #
+            # Check if we got so bad trade execution we should worry about it
+            #
+
+            if t.planned_reserve and t.executed_reserve:
+                reserve_drift = abs((t.executed_reserve - t.planned_reserve) / t.planned_reserve)
+            else:
+                reserve_drift = 0
+
+            if t.planned_quantity and t.executed_quantity:
+                quantity_drift = abs((t.executed_quantity - t.planned_quantity) / t.planned_quantity)
+            else:
+                quantity_drift = 0
+
+            if reserve_drift >= self.execution_warning_tolerance or quantity_drift >= self.execution_warning_tolerance:
+                log_level = logging.WARNING
+            else:
+                log_level = logging.INFO
+
+            logger.log(
+                log_level,
+                "Trade %s, estimated reserve %s, executed reserve %s, estimated quantity %s, executed quantity %s, reserve drift %f %%, quantity drift %f %%",
                 t,
                 t.planned_reserve,
                 t.executed_reserve,
                 t.planned_quantity,
                 t.executed_quantity,
+                reserve_drift * 100,
+                quantity_drift * 100,
             )
 
     def on_clock(self,
@@ -680,7 +724,7 @@ class StrategyRunner(abc.ABC):
                     # We cannot call account check right after the trades,
                     # as meny low quality nodes might still report old token balances
                     # from eth_call
-                    logger.info("Waiting on-chain balances to settle for %f before performing accounting checks", self.trade_settle_wait)
+                    logger.info("Waiting on-chain balances to settle for %s before performing accounting checks", self.trade_settle_wait)
                     time.sleep(self.trade_settle_wait.total_seconds())
 
                     # Double check we handled incoming trade balances correctly
@@ -729,9 +773,13 @@ class StrategyRunner(abc.ABC):
         assert isinstance(routing_state, RoutingState)
         assert isinstance(stop_loss_pricing_model, PricingModel)
 
+        debug_details = {}
+
         with self.timed_task_context_manager("check_position_triggers"):
 
-            # TODO: Sync the treasury here
+            # Sync treasure before the trigger checks
+            with self.timed_task_context_manager("sync_portfolio_before_triggers"):
+                self.sync_portfolio(clock, universe, state, debug_details)
 
             # Check that our on-chain balances are good
             with self.timed_task_context_manager("check_accounts_position_triggers"):

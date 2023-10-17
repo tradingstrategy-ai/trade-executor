@@ -16,9 +16,8 @@ packages = [
 python = ">=3.10,<3.11"
 
 # Use these during development
-# web3-ethereum-defi = {path = "deps/web3-ethereum-defi", develop = true}
 # trading-strategy = {path = "deps/trading-strategy", develop = true}
-trading-strategy = "^0.20.10"
+trading-strategy = "^0.20.12"
 requests = "^2.27.1"
 matplotlib = "^3.6.0"
 jupyterlab = "^3.5.0"
@@ -26,8 +25,8 @@ pandas-ta = "^0.3.14b"
 tqdm-loggable = "0.1.4"
 
 
-# data pulls in gql needed with some nodes
-web3-ethereum-defi = {version="0.22.19", extras=["data", "test"]}
+# web3-ethereum-defi = {path = "deps/web3-ethereum-defi", develop = true, extras=["data", "test"]}
+web3-ethereum-defi = {version="0.22.21", extras=["data", "test"]}
 
 # tqdm progress bar doesn't show up in VScode Jupyter with ipywidgets>=8
 # https://github.com/microsoft/vscode-jupyter/issues/11014
@@ -65,7 +64,6 @@ waitress = {version="^2.0.0", optional = true}
 WebTest = {version="^3.0.0", optional = true}
 # python-openapi3 incompatible with newer versions
 openapi-core = {version = "<0.17", optional = true}
-
 
 #
 # Legacy strategy deps

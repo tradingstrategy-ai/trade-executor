@@ -302,7 +302,8 @@ class EthereumRoutingModel(RoutingModel):
 
             target_pair, intermediary_pair = self.route_trade(pair_universe, t)
 
-            notes = f"For trade: {t}\n" \
+            notes = f"Trade: {t}\n" \
+                    f"Position {t.position_id}\n" \
                     f"Asset deltas: {asset_deltas}"
 
             if intermediary_pair is None:

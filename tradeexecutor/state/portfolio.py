@@ -167,53 +167,6 @@ class Portfolio:
         """
         return chain(self.open_positions.values(), self.frozen_positions.values())
 
-    def get_all_positions_filtered(self) -> Iterable[TradingPosition]:
-        """Get open, closed and frozen, positions filtered to remove
-        repaired or failed trades.
-        
-        """
-        
-        all_positions = self.get_all_positions()
-        filtered_positions = []
-
-        for position in all_positions:
-            
-            # to avoid copying with same reference
-            filtered_position = copy.deepcopy(position)
-            filtered_position.trades = {}
-            
-            for key, trade in position.trades.items():
-                if trade.is_repaired() or trade.is_repair_trade():
-                    # These trades have quantity set to zero
-                    continue
-
-                # filter out failed trade
-                if trade.executed_at is None:
-                    continue
-                
-                # Internally negative quantities are for sells
-                quantity = trade.executed_quantity
-
-                if trade.planned_mid_price not in (0, None):
-                    price = trade.planned_mid_price
-                else:
-                    # TODO: Legacy trades.
-                    # mid_price is filled to all latest trades
-                    price = trade.executed_price
-                    
-                assert quantity != 0, f"Got bad quantity for {trade}"
-                assert (price is not None) and price > 0, f"Got invalid trade {trade.get_debug_dump()} - price is {price}"
-
-                filtered_position.trades[key] = trade
-
-            # if there are no trades, skip this position
-            if not filtered_position.trades:
-                continue
-
-            filtered_positions.append(filtered_position)
-
-        return filtered_positions
-
     def get_open_positions(self) -> Iterable[TradingPosition]:
         """Get currently open positions."""
         return self.open_positions.values()

@@ -28,6 +28,7 @@ from hexbytes import HexBytes
 
 from tradeexecutor.ethereum.uniswap_v2.uniswap_v2_valuation_v0 import UniswapV2PoolValuationMethodV0
 from tradeexecutor.ethereum.universe import create_exchange_universe, create_pair_universe
+from tradeexecutor.strategy.execution_context import unit_test_execution_context
 from tradeexecutor.strategy.qstrader import HAS_QSTRADER
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
 from tradeexecutor.strategy.universe_model import StaticUniverseModel
@@ -319,6 +320,7 @@ def runner(
         client=None,
         universe_model=universe_model,
         cash_buffer=0.50,
+        execution_context=unit_test_execution_context,
     )
 
     # Deconstruct strategy description

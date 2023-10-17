@@ -37,4 +37,8 @@ env/local-test.env
 notebooks/*.json
 
 # Work-in-progress strategy modules
-strategy/
+/strategy/
+
+# pytest-monitir
+monitor.db
+.pymon

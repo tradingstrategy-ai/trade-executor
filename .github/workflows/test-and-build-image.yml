@@ -9,44 +9,72 @@ on:
 jobs:
   automated-test-suite:
     timeout-minutes: 40
-    runs-on: ubuntu-latest
+    runs-on:
+      group: Beefy runners
     steps:
       - uses: actions/checkout@v3
         with:
           submodules: 'recursive'
+
       - name: Set up Python 3.10
         uses: actions/setup-python@v4
         with:
           python-version: "3.10"
+
       - name: Install Poetry
         uses: snok/install-poetry@v1
         with:
           virtualenvs-create: true
           virtualenvs-in-project: true
           installer-parallel: true
+
+      # Do not let Poetry to install again if we do not detect a lock file change
       - name: Load cached venv
         uses: actions/cache@v2
         with:
           path: .venv
           key: venv-${{ runner.os }}-${{ steps.setup-python.outputs.python-version }}-${{ hashFiles('**/poetry.lock') }}
+
+      # Speed up tests by caching our datasets
+      # test code downloads
+      - name: Restore downloaded unit test datasets
+        id: unit-test-dataset-restore
+        uses: actions/cache/restore@v3
+        with:
+          path: |
+            /tmp/trading-strategy-tests
+          key: ${{ runner.os }}-unit-test-dataset
+
+      # Needed for Anvil
       - name: Install Foundry
         uses: foundry-rs/foundry-toolchain@v1
+
       - name: Install dependencies
         if: steps.cached-poetry-dependencies.outputs.cache-hit != 'true'
-        # We don't install -E qstrader and run legacy tests on CI as they
-        # download too much data
         run: |          
-          poetry install --no-interaction -E web-server -E execution -E quantstats
+          poetry install --no-interaction --all-extras
+
       # Run testa parallel, do not run slow tests before Docker image build.
       # Note that we limit concurrency to 2 workers as 4 workers crashed without an error message on Github CI.
       # I suspect out of memory situation that is not reported to the user.
       # Print 20 slowest tests when done.
       - name: Run test scripts
         run: |
-          poetry run pytest --tb=native --dist loadscope -n 2 --durations=20 -m "not slow_test_group"
+            poetry run pytest --tb=native --dist loadscope -n 6 --durations=20 -m "not slow_test_group"
+        #run: |
+        #  poetry run pytest --durations=20 -m "not slow_test_group"
         env:
           TRADING_STRATEGY_API_KEY: ${{ secrets.TRADING_STRATEGY_API_KEY }}
-          BNB_CHAIN_JSON_RPC: ${{ secrets.BNB_CHAIN_JSON_RPC }}      
+          BNB_CHAIN_JSON_RPC: ${{ secrets.BNB_CHAIN_JSON_RPC }}
+
+      # Save our current datasets for the next test run
+      - name: Save unit test datasets
+        id: unit-test-dataset-save
+        uses: actions/cache/save@v3
+        with:
+          path: |
+            /tmp/trading-strategy-tests
+          key: ${{ steps.unit-test-dataset.outputs.cache-primary-key }}
 
   build:
     runs-on: ubuntu-latest

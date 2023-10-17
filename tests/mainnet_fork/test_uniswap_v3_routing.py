@@ -63,9 +63,6 @@ pytestmark = pytest.mark.skipif(
 )
 
 
-
-
-
 @pytest.fixture()
 def uniswap_v3(web3) -> UniswapV3Deployment:
     """Fetch live uniswap_v3 v3 deployment.
