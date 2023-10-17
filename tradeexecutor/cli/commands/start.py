@@ -446,6 +446,7 @@ def start(
         routing_model=routing_model,
         metadata=metadata,
         check_accounts=check_accounts,
+        sync_treasury_on_startup=sync_treasury_on_startup,
     )
 
     # Crash gracefully at the start up if our main loop cannot set itself up
