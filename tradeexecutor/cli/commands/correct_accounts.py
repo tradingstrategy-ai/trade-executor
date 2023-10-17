@@ -12,6 +12,7 @@ from tabulate import tabulate
 from typer import Option
 
 from eth_defi.hotwallet import HotWallet
+from eth_defi.provider.broken_provider import get_almost_latest_block_number
 
 from tradeexecutor.strategy.account_correction import correct_accounts as _correct_accounts, check_accounts
 from .app import app
@@ -245,6 +246,13 @@ def correct_accounts(
     hot_wallet.sync_nonce(web3)
     logger.info("Hot wallet nonce is %d", hot_wallet.current_nonce)
 
+    # We need to fix balacnes to a certain block.
+    # This is only few blocks behind, so even non-archive
+    # nodes should be able to read this historical state
+    block_number = get_almost_latest_block_number(web3)
+
+    logger.info(f"Correcting accounts at block {block_number:,}")
+
     balance_updates = _correct_accounts(
         state,
         corrections,
@@ -252,6 +260,7 @@ def correct_accounts(
         interactive=not unit_testing,
         tx_builder=tx_builder,
         unknown_token_receiver=unknown_token_receiver,  # Send any unknown tokens to the hot wallet of the trade-executor
+        block_identifier=block_number,
     )
     balance_updates = list(balance_updates)
     logger.info("Applied %d balance updates", len(balance_updates))
@@ -264,6 +273,7 @@ def correct_accounts(
         universe.reserve_assets,
         state,
         sync_model,
+        block_identifier=block_number,
     )
 
     output = tabulate(df, headers='keys', tablefmt='rounded_outline')
