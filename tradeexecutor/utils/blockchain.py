@@ -4,6 +4,8 @@ import datetime
 from web3 import Web3
 from web3.types import BlockIdentifier
 
+from eth_defi.event_reader.conversion import convert_jsonrpc_value_to_int
+
 
 def get_latest_block_timestamp(web3: Web3) -> datetime.datetime:
     """Get the latest block timestamp.
@@ -15,7 +17,7 @@ def get_latest_block_timestamp(web3: Web3) -> datetime.datetime:
         See :py:func:`eth_defi.provider.broken_provider.get_almost_latest_block_number`
 
     :return:
-        Timezone naive datetime
+        Timezone naive UTC datetime
     """
     last_block = web3.eth.get_block("latest")
     ts_str = last_block["timestamp"]
@@ -35,14 +37,14 @@ def get_block_timestamp(web3: Web3, block_identifier: BlockIdentifier) -> dateti
     Slow method. Use only for individual queries.
 
     :return:
-        Timezone naive datetime
+        Timezone naive UTC datetime
     """
     last_block = web3.eth.get_block(block_identifier)
     ts_str = last_block["timestamp"]
 
     # Depending on middleware, response might be converted or not
     if type(ts_str) == str:
-        ts = int(ts_str, 16)
+        ts = convert_jsonrpc_value_to_int(ts_str)
     else:
         ts = ts_str
 
