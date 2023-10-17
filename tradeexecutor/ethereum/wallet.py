@@ -9,9 +9,11 @@ from typing import Dict, List
 from dataclasses_json import dataclass_json
 from eth_typing import HexAddress
 from web3 import Web3
+from web3.types import BlockIdentifier
 
 from eth_defi.balances import DecimalisedHolding, \
     fetch_erc20_balances_by_token_list, convert_balances_to_decimal
+from eth_defi.provider.broken_provider import get_almost_latest_block_number
 from tradeexecutor.state.reserve import ReservePosition
 from tradeexecutor.state.identifier import AssetIdentifier
 
@@ -39,15 +41,25 @@ class ReserveUpdateEvent:
     past_balance: Decimal
     new_balance: Decimal
 
+    block_number: int | None = None
 
     @property
     def change(self) -> Decimal:
         return self.new_balance - self.past_balance
 
 
-def update_wallet_balances(web3: Web3, address: HexAddress, tokens: List[HexAddress]) -> Dict[HexAddress, DecimalisedHolding]:
+def update_wallet_balances(
+        web3: Web3,
+        address: HexAddress,
+        tokens: List[HexAddress],
+        block_identifier: BlockIdentifier = None,
+) -> Dict[HexAddress, DecimalisedHolding]:
     """Get raw balances of ERC-20 tokens."""
-    balances = fetch_erc20_balances_by_token_list(web3, address, tokens)
+
+    if block_identifier is None:
+        block_identifier = get_almost_latest_block_number(web3)
+
+    balances = fetch_erc20_balances_by_token_list(web3, address, tokens, block_identifier=block_identifier)
     return convert_balances_to_decimal(web3, balances)
 
 
@@ -56,17 +68,27 @@ def sync_reserves(
         clock: datetime.datetime,
         wallet_address: HexAddress,
         current_reserves: List[ReservePosition],
-        supported_reserve_currencies: List[AssetIdentifier]) -> List[ReserveUpdateEvent]:
+        supported_reserve_currencies: List[AssetIdentifier],
+        block_identifier: BlockIdentifier = None,
+) -> List[ReserveUpdateEvent]:
     """Check the address for any incoming stablecoin transfers to see how much cash we have."""
 
     our_chain_id = web3.eth.chain_id
 
+    if block_identifier is None:
+        block_identifier = get_almost_latest_block_number(web3)
+
     # Get raw ERC-20 holdings of the address
-    balances = update_wallet_balances(web3, wallet_address, [web3.to_checksum_address(a.address) for a in supported_reserve_currencies])
+    balances = update_wallet_balances(
+        web3,
+        wallet_address,
+        [web3.to_checksum_address(a.address) for a in supported_reserve_currencies],
+        block_identifier=block_identifier,
+    )
 
     reserves_per_token = {r.asset.address: r for r in current_reserves}
 
-    events: ReserveUpdateEvent = []
+    events: List[ReserveUpdateEvent] = []
 
     for currency in supported_reserve_currencies:
 
@@ -94,6 +116,7 @@ def sync_reserves(
                 new_balance=decimal_holding.value,
                 updated_at=clock,
                 mined_at=clock,  # TODO: We do not have logic to get actual block_mined_at of Transfer() here
+                block_number=block_identifier,
             )
             events.append(evt)
             logger.info("Reserve currency update detected. Asset: %s, past: %s, new: %s", evt.asset, evt.past_balance, evt.new_balance)

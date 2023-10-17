@@ -3,7 +3,10 @@ import datetime
 import logging
 from typing import List, Optional, Iterable
 
+from web3.types import BlockIdentifier
+
 from eth_defi.hotwallet import HotWallet
+from eth_defi.provider.broken_provider import get_almost_latest_block_number
 from tradeexecutor.ethereum.onchain_balance import fetch_address_balances
 from tradeexecutor.state.balance_update import BalanceUpdate
 from tradingstrategy.chain import ChainId
@@ -91,19 +94,23 @@ class HotWalletSyncModel(SyncModel):
         self.sync_initial(state)
         self.sync_treasury(datetime.datetime.utcnow(), state, supported_reserves)
 
-    def fetch_onchain_balances(self, assets: List[AssetIdentifier], filter_zero=True) -> Iterable[OnChainBalance]:
-        """Read the on-chain asset details.
+    def fetch_onchain_balances(
+        self,
+        assets: List[AssetIdentifier],
+        filter_zero=True,
+        block_identifier: BlockIdentifier = None,
+    ) -> Iterable[OnChainBalance]:
 
-        - Mark the block we are reading at the start
+        # Latest block fails on LlamaNodes.com
+        if block_identifier is None:
+            block_identifier = get_almost_latest_block_number(self.web3)
 
-        :param filter_zero:
-            Do not return zero balances
-        """
         return fetch_address_balances(
             self.web3,
             self.get_hot_wallet().address,
             assets,
             filter_zero=filter_zero,
+            block_number=block_identifier,
         )
 
 

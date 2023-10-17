@@ -18,7 +18,9 @@ from typing import List, Iterable, Collection, Tuple
 
 import pandas as pd
 from web3 import Web3
+from web3.types import BlockIdentifier
 
+from eth_defi.provider.broken_provider import get_almost_latest_block_number
 from eth_defi.token import fetch_erc20_details
 from eth_defi.trace import assert_transaction_success_with_explanation
 from eth_typing import HexAddress
@@ -195,6 +197,7 @@ def calculate_account_corrections(
     sync_model: SyncModel,
     relative_epsilon=RELATIVE_EPSILON,
     all_balances=False,
+    block_identifier: BlockIdentifier = None,
 ) -> Iterable[AccountingBalanceCheck]:
     """Figure out differences between our internal ledger (state) and on-chain balances.
 
@@ -217,6 +220,9 @@ def calculate_account_corrections(
     :param all_balances:
         If `True` iterate all balances even if there are no mismatch.
 
+    :param block_identifier:
+        Check at certain account height
+
     :raise UnexpectedAccountingCorrectionIssue:
         If we find on-chain tokens we do not know how to map any of our strategy positions
 
@@ -231,7 +237,7 @@ def calculate_account_corrections(
     logger.info("Scanning for account corrections, we have %d open positions", len(state.portfolio.open_positions))
 
     assets = get_relevant_assets(pair_universe, reserve_assets, state)
-    asset_balances = list(sync_model.fetch_onchain_balances(assets, filter_zero=False))
+    asset_balances = list(sync_model.fetch_onchain_balances(assets, filter_zero=False, block_identifier=block_identifier))
 
     logger.info("Found %d on-chain tokens", len(asset_balances))
 
@@ -389,12 +395,14 @@ def apply_accounting_correction(
 
 
 def correct_accounts(
-        state: State,
-        corrections: List[AccountingBalanceCheck],
-        strategy_cycle_included_at: datetime.datetime | None,
-        tx_builder: TransactionBuilder,
-        interactive=True,
-        unknown_token_receiver: HexAddress | str | None = None,
+    state: State,
+    corrections: List[AccountingBalanceCheck],
+    strategy_cycle_included_at: datetime.datetime | None,
+    tx_builder: TransactionBuilder,
+    interactive=True,
+    unknown_token_receiver: HexAddress | str | None = None,
+    block_identifier: BlockIdentifier = None,
+    block_timestamp: datetime.datetime = None,
 ) -> Iterable[BalanceUpdate]:
     """Apply the accounting corrections on the state (internal ledger).
 
@@ -436,6 +444,15 @@ def correct_accounts(
         else:
             # Change open position balance to match the on-chain balance
             yield apply_accounting_correction(state, correction, strategy_cycle_included_at)
+
+    # Update last scanned block, so we do not rescan events we might have skipped
+    if block_identifier is not None:
+        state.sync.treasury.last_block_scanned = block_identifier
+        if block_timestamp:
+            state.sync.treasury.last_updated_at = block_timestamp
+
+    else:
+        logger.warning("Treasury sync block identifier missing")
 
 
 def transfer_away_assets_without_position(
@@ -500,13 +517,35 @@ def check_accounts(
     reserve_assets: Collection[AssetIdentifier],
     state: State,
     sync_model: SyncModel,
+    block_identifier: BlockIdentifier = None,
 ) -> Tuple[bool, pd.DataFrame]:
-    """Get a table output of accounting corrections needed.
+    """Create a summary accounting corrections needed.
+
+    Create a human-readable DataFrame of accounting inconsistencies.
+
+    :param pair_universe:
+        Trading pairs we have.
+
+        Needed to get token addresses we read on-chain.
+
+    :param reserve_assets:
+        Cannot be deducted from pair universe.
+
+    :param state:
+        Current strategy state we check
+
+    :param block_identifier:
+        Check at certain block height
 
     :return:
-
         Tuple (accounts clean, accounting clean Dataframe that can be printed to the console)
     """
+
+    if block_identifier is None:
+        web3 = sync_model.web3
+        block_identifier = get_almost_latest_block_number(web3)
+
+    logger.info(f"Checking accounts at block {block_identifier:,}")
 
     clean = True
     corrections = calculate_account_corrections(
@@ -516,6 +555,7 @@ def check_accounts(
         sync_model,
         relative_epsilon=RELATIVE_EPSILON,
         all_balances=True,
+        block_identifier=block_identifier,
     )
 
     idx = []

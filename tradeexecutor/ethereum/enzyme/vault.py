@@ -7,7 +7,9 @@ from _decimal import Decimal
 from functools import partial
 from typing import cast, List, Optional, Tuple, Iterable
 
-from eth_defi.provider.broken_provider import get_block_tip_latency
+from web3.types import BlockIdentifier
+
+from eth_defi.provider.broken_provider import get_block_tip_latency, get_almost_latest_block_number
 from web3 import Web3, HTTPProvider
 
 from eth_defi.chain import fetch_block_timestamp, has_graphql_support
@@ -405,18 +407,21 @@ class EnzymeVaultSyncModel(SyncModel):
     def fetch_onchain_balances(
             self,
             assets: List[AssetIdentifier],
-            filter_zero=True) -> Iterable[OnChainBalance]:
+            filter_zero=True,
+            block_identifier: BlockIdentifier = None,
+    ) -> Iterable[OnChainBalance]:
 
         sorted_assets = sorted(assets, key=lambda a: a.address)
 
         # Latest block fails on LlamaNodes.com
-        block_number = max(1, self.web3.eth.block_number - get_block_tip_latency(self.web3))
+        if block_identifier is None:
+            block_identifier = get_almost_latest_block_number(self.web3)
 
         return fetch_address_balances(
             self.web3,
             self.get_vault_address(),
             sorted_assets,
-            block_number=block_number,
+            block_number=block_identifier,
             filter_zero=filter_zero,
         )
 

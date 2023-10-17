@@ -12,6 +12,7 @@ from tabulate import tabulate
 from typer import Option
 
 from eth_defi.hotwallet import HotWallet
+from eth_defi.provider.broken_provider import get_almost_latest_block_number
 
 from tradeexecutor.strategy.account_correction import correct_accounts as _correct_accounts, check_accounts
 from .app import app
@@ -31,6 +32,7 @@ from ...strategy.run_state import RunState
 from ...strategy.strategy_module import StrategyModuleInformation, read_strategy_module
 from ...strategy.trading_strategy_universe import TradingStrategyUniverseModel
 from ...strategy.universe_model import UniverseOptions
+from ...utils.blockchain import get_block_timestamp
 
 
 @app.command()
@@ -213,11 +215,17 @@ def correct_accounts(
             logger.info("Initialising reserves for the unit test: %s", universe.reserve_assets[0])
             state.portfolio.initialise_reserves(universe.reserve_assets[0])
 
+    block_number = get_almost_latest_block_number(web3)
+    logger.info(f"Correcting accounts at block {block_number:,}")
+
+    block_timestamp = get_block_timestamp(web3, block_number)
+
     corrections = calculate_account_corrections(
         universe.data_universe.pairs,
         universe.reserve_assets,
         state,
         sync_model,
+        block_identifier=block_number,
     )
     corrections = list(corrections)
 
@@ -252,9 +260,11 @@ def correct_accounts(
         interactive=not unit_testing,
         tx_builder=tx_builder,
         unknown_token_receiver=unknown_token_receiver,  # Send any unknown tokens to the hot wallet of the trade-executor
+        block_identifier=block_number,
+        block_timestamp=block_timestamp,
     )
     balance_updates = list(balance_updates)
-    logger.info("Applied %d balance updates", len(balance_updates))
+    logger.info(f"Applied {len(balance_updates)} balance updates, new block height is {block_number:,} at {block_timestamp}")
 
     store.sync(state)
     web3config.close()
@@ -264,6 +274,7 @@ def correct_accounts(
         universe.reserve_assets,
         state,
         sync_model,
+        block_identifier=block_number,
     )
 
     output = tabulate(df, headers='keys', tablefmt='rounded_outline')

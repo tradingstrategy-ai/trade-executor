@@ -4,6 +4,8 @@ from dataclasses import dataclass
 from decimal import Decimal
 from typing import List, Optional, Literal, Collection, Iterable
 
+from web3.types import BlockIdentifier
+
 from eth_defi.aave_v3.rates import SECONDS_PER_YEAR
 
 from tradeexecutor.backtest.simulated_wallet import SimulatedWallet
@@ -266,6 +268,7 @@ class BacktestSyncModel(SyncModel):
     def fetch_onchain_balances(
             self,
             assets: Collection[AssetIdentifier],
-            filter_zero=True
+            filter_zero=True,
+            block_identifier: BlockIdentifier = None,
     ) -> Iterable[OnChainBalance]:
         raise NotImplementedError("Backtesting does not know about on-chain balances")
