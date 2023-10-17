@@ -546,7 +546,7 @@ class EnzymeVaultSyncModel(SyncModel):
         for chain_event in events_iter:
             events += self.translate_and_apply_event(state, chain_event, strategy_cycle_ts)
             for e in events:
-                logger.info(f"Processing Enzyme event %s", e)
+                logger.info(f"Processed Enzyme balance update event %s", e)
 
         # Check that we do not have conflicting events
         new_event: BalanceUpdate
