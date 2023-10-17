@@ -9,6 +9,7 @@ import os
 import time
 from decimal import Decimal
 
+import flaky
 import pytest
 from eth_account import Account
 from eth_defi.confirmation import wait_transactions_to_complete
@@ -309,6 +310,8 @@ def sync_model(web3, hot_wallet) -> SyncModel:
     )
 
 
+# Flaky because of shitty nodes
+@flaky.flaky()
 def test_simple_routing_three_leg_live(
     web3,
     strategy_universe: TradingStrategyUniverse,
