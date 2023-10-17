@@ -652,6 +652,7 @@ class StrategyRunner(abc.ABC):
 
             # Sync treasure before the trigger checks
             with self.timed_task_context_manager("sync_portfolio_before_triggers"):
+                self.check_accounts(universe, state,report_only=True)
                 self.sync_portfolio(clock, universe, state, debug_details)
 
             # Check that our on-chain balances are good
@@ -718,10 +719,18 @@ class StrategyRunner(abc.ABC):
         The function is overridden by the child class for actual strategy runner specific implementation.
         """
 
-    def check_accounts(self, universe: TradingStrategyUniverse, state: State):
+    def check_accounts(
+            self,
+            universe: TradingStrategyUniverse,
+            state: State,
+            report_only=False,
+    ):
         """Perform extra accounting checks on live trading startup.
 
         Must be enabled in the settings. Enabled by default for live trading.
+
+        :param report_only:
+            Don't crash if we get problems in accounts
 
         :raise UnexpectedAccountingCorrectionIssue:
             Aborting execution.
@@ -748,6 +757,7 @@ class StrategyRunner(abc.ABC):
                              "Aborting execution as we cannot reliable trade with incorrect balances.\n"
                              "Accounting errors are:\n"
                              "%s", df.to_string())
-                raise UnexpectedAccountingCorrectionIssue("Accounting errors detected")
+                if not report_only:
+                    raise UnexpectedAccountingCorrectionIssue("Accounting errors detected")
         else:
             logger.info("Accounting checks disabled - skipping")

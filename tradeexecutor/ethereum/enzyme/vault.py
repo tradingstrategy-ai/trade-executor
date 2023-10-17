@@ -29,6 +29,7 @@ from tradeexecutor.state.reserve import ReservePosition
 from tradeexecutor.state.state import State
 from tradeexecutor.state.balance_update import BalanceUpdate, BalanceUpdateCause, BalanceUpdatePositionType
 from tradeexecutor.state.sync import BalanceEventRef
+from tradeexecutor.strategy.account_correction import check_accounts
 from tradeexecutor.strategy.sync_model import SyncModel, OnChainBalance
 from tradingstrategy.chain import ChainId
 
