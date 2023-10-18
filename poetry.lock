@@ -5526,13 +5526,13 @@ dev = ["flake8", "flake8-annotations", "flake8-bandit", "flake8-bugbear", "flake
 
 [[package]]
 name = "urllib3"
-version = "1.26.17"
+version = "1.26.18"
 description = "HTTP library with thread-safe connection pooling, file post, and more."
 optional = false
 python-versions = ">=2.7, !=3.0.*, !=3.1.*, !=3.2.*, !=3.3.*, !=3.4.*, !=3.5.*"
 files = [
-    {file = "urllib3-1.26.17-py2.py3-none-any.whl", hash = "sha256:94a757d178c9be92ef5539b8840d48dc9cf1b2709c9d6b588232a055c524458b"},
-    {file = "urllib3-1.26.17.tar.gz", hash = "sha256:24d6a242c28d29af46c3fae832c36db3bbebcc533dd1bb549172cd739c82df21"},
+    {file = "urllib3-1.26.18-py2.py3-none-any.whl", hash = "sha256:34b97092d7e0a3a8cf7cd10e386f401b3737364026c45e622aa02903dffe0f07"},
+    {file = "urllib3-1.26.18.tar.gz", hash = "sha256:f8ecc1bba5667413457c529ab955bf8c67b45db799d159066261719e328580a0"},
 ]
 
 [package.extras]
@@ -5629,13 +5629,13 @@ tester = ["eth-tester[py-evm] (==v0.8.0-b.3)", "py-geth (>=3.11.0)"]
 
 [[package]]
 name = "web3-ethereum-defi"
-version = "0.22.23"
+version = "0.22.24"
 description = "Python library for Uniswap, Aave, ChainLink, Enzyme and other protocols on BNB Chain, Polygon, Ethereum and other blockchains"
 optional = false
 python-versions = ">=3.10,<3.11"
 files = [
-    {file = "web3_ethereum_defi-0.22.23-py3-none-any.whl", hash = "sha256:8ff1cc9843fcb984c3e5d288982a60feecdba0fdf45ba22f33fb63ef18448a91"},
-    {file = "web3_ethereum_defi-0.22.23.tar.gz", hash = "sha256:f7273854ffbbd518945033927dc89b49c80131060266a73115a1d5d826d3953e"},
+    {file = "web3_ethereum_defi-0.22.24-py3-none-any.whl", hash = "sha256:28ff4f38af35a1856af3dc40b37ade0640c8f3e1d4db3e8caafd45beec1f4e0a"},
+    {file = "web3_ethereum_defi-0.22.24.tar.gz", hash = "sha256:477061471194b585207d194bdec86d45361dbdaeef71c147a86d8cd54c8d320d"},
 ]
 
 [package.dependencies]
@@ -6143,4 +6143,4 @@ web-server = ["WebTest", "openapi-core", "pyramid", "pyramid-openapi3", "waitres
 [metadata]
 lock-version = "2.0"
 python-versions = ">=3.10,<3.11"
-content-hash = "6e9170473739ccccadb03d3d52b6f27700021d1568023443d6e60782cca4b3a2"
+content-hash = "4494a18e71877d8addc680c4b4d298a79b75b92438d5bef7524e158206003514"

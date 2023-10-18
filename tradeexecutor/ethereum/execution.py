@@ -401,7 +401,7 @@ class EthereumExecutionModel(ExecutionModel):
             trades,
             check_balances=check_balances)
 
-        if isinstance(self.web3, (FallbackProvider, MEVBlockerProvider)):
+        if isinstance(self.web3.provider, (FallbackProvider, MEVBlockerProvider)):
             # Multi node broadcast
             self.broadcast_and_resolve_multiple_nodes(
                 state,
