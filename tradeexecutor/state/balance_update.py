@@ -167,7 +167,7 @@ class   BalanceUpdate:
         else:
             position_name = "strategy reserves"
 
-        return f"<BalanceUpdate #{self.balance_update_id} {self.cause.name} {self.quantity} for {position_name} at block {self.block_mined_at and self.block_mined_at:,}>"
+        return f"Funding event #{self.balance_update_id} {self.cause.name} {self.quantity} for {position_name} at block {self.block_mined_at and self.block_mined_at:,}"
 
     def __eq__(self, other: "BalanceUpdate"):
         assert isinstance(other, BalanceUpdate), f"Got {other}"

@@ -503,7 +503,7 @@ class ExecutionLoop:
                 state.stats,
                 state.portfolio,
                 ExecutionMode.real_trading,
-                strategy_cycle_at=strategy_cycle_timestamp,
+                strategy_cycle_or_wall_clock=strategy_cycle_timestamp,
             )
 
         state.uptime.record_cycle_complete(cycle)
