@@ -17,7 +17,6 @@ def calculate_equity_curve(
     state: State,
     attribute_name="total_equity",
     fill_time_gaps=False,
-    resample="D",
 ) -> pd.Series:
     """Calculate equity curve for the portfolio.
 
@@ -43,6 +42,9 @@ def calculate_equity_curve(
         Index is DatetimeIndex.
 
         Empty series is returned if there is no data.
+
+        We ensure only one entry per timestamp through
+        filtering out duplicate indices.
 
     """
 

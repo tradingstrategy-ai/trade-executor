@@ -208,7 +208,7 @@ class StrategyRunner(abc.ABC):
             with self.timed_task_context_manager("sync_portfolio_stats_refresh"):
                 routing_state, pricing_model, valuation_model = self.setup_routing(universe)
 
-                timestamp = datetime.datetime.utcnow()
+                timestamp = strategy_cycle_or_trigger_check_ts
 
                 # Re-value the portfolio with new deposits
                 self.revalue_state(
