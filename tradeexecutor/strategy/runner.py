@@ -13,6 +13,7 @@ from pprint import pformat
 
 from typing import List, Optional, Tuple
 
+from tradeexecutor.statistics.core import update_statistics
 from tradeexecutor.strategy.account_correction import check_accounts, UnexpectedAccountingCorrectionIssue
 from tradeexecutor.strategy.approval import ApprovalModel
 from tradeexecutor.strategy.cycle import CycleDuration
@@ -192,14 +193,41 @@ class StrategyRunner(abc.ABC):
         )
         assert type(balance_update_events) == list
 
+        for e in balance_update_events:
+            logger.trade("Funding flow event: %s", e)
+
         # Update the debug data for tests with our events
         debug_details["reserve_update_events"] = balance_update_events
         debug_details["total_equity_at_start"] = state.portfolio.get_total_equity()
         debug_details["total_cash_at_start"] = state.portfolio.get_cash()
 
-    def revalue_state(self, ts: datetime.datetime, state: State, valuation_method: ValuationModel):
+        # If we have any new deposits, let's refresh our stats right away
+        # to reflect the new balances
+        if len(balance_update_events) > 0:
+
+            with self.timed_task_context_manager("sync_portfolio_stats_refresh"):
+                routing_state, pricing_model, valuation_model = self.setup_routing(universe)
+
+                timestamp = strategy_cycle_or_trigger_check_ts
+
+                # Re-value the portfolio with new deposits
+                self.revalue_state(
+                    timestamp,
+                    state,
+                    valuation_model,
+                )
+
+                update_statistics(
+                    timestamp,
+                    state.stats,
+                    state.portfolio,
+                    self.execution_context.mode,
+                    strategy_cycle_or_wall_clock=timestamp,
+                )
+
+    def revalue_state(self, ts: datetime.datetime, state: State, valuation_model: ValuationModel):
         """Revalue portfolio based on the latest prices."""
-        revalue_state(state, ts, valuation_method)
+        revalue_state(state, ts, valuation_model)
         logger.info("After revaluation at %s our portfolio value is %f USD", ts, state.portfolio.get_total_equity())
 
     def collect_post_execution_data(
@@ -652,7 +680,7 @@ class StrategyRunner(abc.ABC):
 
             # Sync treasure before the trigger checks
             with self.timed_task_context_manager("sync_portfolio_before_triggers"):
-                self.check_accounts(universe, state,report_only=True)
+                self.check_accounts(universe, state, report_only=True)
                 self.sync_portfolio(clock, universe, state, debug_details)
 
             # Check that our on-chain balances are good
@@ -752,12 +780,20 @@ class StrategyRunner(abc.ABC):
                 self.sync_model,
             )
 
+            log_level = logging.INFO if report_only else logging.ERROR
+
             if not clean:
-                logger.error("Accounting errors detected\n"
-                             "Aborting execution as we cannot reliable trade with incorrect balances.\n"
-                             "Accounting errors are:\n"
-                             "%s", df.to_string())
+                logger.log(
+                    log_level,
+                    "Accounting differences detected\n"                    
+                    "Differences are:\n"
+                    "%s",
+                    df.to_string()
+                )
+
                 if not report_only:
-                    raise UnexpectedAccountingCorrectionIssue("Accounting errors detected")
+                    logger.error("Aborting execution as we cannot reliable trade with incorrect balances.")
+                    raise UnexpectedAccountingCorrectionIssue("Aborting execution as we cannot reliable trade with incorrect balances.")
         else:
+            # Path taken by some legacy tests
             logger.info("Accounting checks disabled - skipping")
