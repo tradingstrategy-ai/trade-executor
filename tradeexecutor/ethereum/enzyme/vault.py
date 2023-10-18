@@ -205,6 +205,8 @@ class EnzymeVaultSyncModel(SyncModel):
         event_id = portfolio.next_balance_update_id
         portfolio.next_balance_update_id += 1
 
+        assert event.timestamp is not None, f"Timestamp cannot be none: {event}"
+
         evt = BalanceUpdate(
             balance_update_id=event_id,
             position_type=BalanceUpdatePositionType.reserve,
@@ -291,6 +293,8 @@ class EnzymeVaultSyncModel(SyncModel):
 
             assert old_balance - quantity >= 0, f"Position went to negative: {position} with token {token_details} and amount {raw_amount}\n" \
                                                 f"Quantity: {quantity}, old balance: {old_balance}"
+
+            assert event.timestamp is not None, f"Timestamp cannot be none: {event}"
 
             evt = BalanceUpdate(
                 balance_update_id=event_id,
