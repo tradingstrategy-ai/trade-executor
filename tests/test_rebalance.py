@@ -717,8 +717,13 @@ def test_alpha_model_short(
     alpha_model.calculate_target_positions(position_manager, portfolio_target_value)
 
     # Check we have 50% / 50%
-    assert alpha_model.get_signal_by_pair(weth_usdc).position_adjust_usd < 0
-    assert alpha_model.get_signal_by_pair(aave_usdc).position_adjust_usd > 0
+    weth_signal = alpha_model.get_signal_by_pair(weth_usdc)
+    assert weth_signal.position_adjust_usd < 0  # We reduce the position
+    assert weth_signal.is_short()  # The position flips from spot to short
+
+    aave_signal = alpha_model.get_signal_by_pair(aave_usdc)
+    assert aave_signal.position_adjust_usd > 0  # increase position
+    assert aave_signal.is_spot()
 
     # Shift portfolio from current positions to target positions
     # determined by the alpha signals (momentum)

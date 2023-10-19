@@ -424,6 +424,14 @@ class TradingPairIdentifier:
     def is_leverage(self) -> bool:
         return self.kind.is_leverage()
 
+    def is_short(self) -> bool:
+        """Leveraged short."""
+        return self.kind.is_shorting()
+
+    def is_long(self) -> bool:
+        """Leveraged long, not spot."""
+        return self.kind.is_longing()
+
     def is_spot(self) -> bool:
         return self.kind.is_spot()
 

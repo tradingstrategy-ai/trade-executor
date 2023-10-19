@@ -12,6 +12,7 @@ from typing import Optional, Dict, Iterable, List
 import pandas as pd
 import numpy as np
 from dataclasses_json import dataclass_json
+from tradingstrategy.types import PrimaryKey
 
 from tradeexecutor.state.identifier import TradingPairIdentifier
 from tradeexecutor.state.portfolio import Portfolio
@@ -19,8 +20,7 @@ from tradeexecutor.state.trade import TradeExecution, TradeType
 from tradeexecutor.state.types import PairInternalId, USDollarAmount, Percent
 
 from tradeexecutor.strategy.pandas_trader.position_manager import PositionManager
-from tradeexecutor.strategy.weighting import weight_by_1_slash_n, check_normalised_weights, normalise_weights
-
+from tradeexecutor.strategy.weighting import weight_by_1_slash_n, check_normalised_weights, normalise_weights, Signal
 
 logger = logging.getLogger(__name__)
 
@@ -50,28 +50,29 @@ class TradingPairSignal:
     - Data here is serialisable for visualisation a a part of the strategy state visualisation
       and also for console logging diagnostics
 
-    .. note ::
-
-        Currently only longs are supported.
-
     """
 
-    #: For which pair is this alpha weight
+    #: For which pair is this alpha weight.
     #:
+    #: For lending protocol leveraged trading this is the underlying trading pair.
+    #:
+    #: See also :py:attr`leveraged_pair`.
     #:
     pair: TradingPairIdentifier
 
-    #: Raw signal
+    #: Raw signal.
     #:
     #: E.g. raw value of the momentum.
+    #:
+    #: Negative signal indicates short.
     #:
     #: Can be any number between ]-inf, inf[
     #:
     #: Set zero for pairs that are discarded, e.g. due to risk assessment.
     #:
-    signal: float
+    signal: Signal
 
-    #: Stop loss for this position
+    #: Stop loss for this position.
     #:
     #: Used for the risk management.
     #:
@@ -97,11 +98,21 @@ class TradingPairSignal:
 
     #: Raw portfolio weight
     #:
+    #: Represents USD allocated to this position.
+    #:
     #: Each raw signal is assigned to a weight based on some methodology,
     #: e.g. 1/N where the highest signal gets 50% of portfolio weight.
+    #:
+    #: Negative signals have positive weight.
+    #:
     raw_weight: Percent = 0.0
 
     #: Weight 0...1 so that all portfolio weights sum to 1
+    #:
+    #: Represents USD allocated to this position.
+    #:
+    #: Negative signals have positive weight.
+    #:
     normalised_weight: Percent = 0.0
 
     #: Old weight of this pair from the previous cycle.
@@ -153,7 +164,7 @@ class TradingPairSignal:
     #:
     #: After open, any position will live until it is fully closed.
     #: After that a new position will be opened.
-    position_id: Optional[int] = None
+    position_id: Optional[PrimaryKey] = None
 
     #: No rebalancing trades was executed for this position adjust.
     #:
@@ -178,6 +189,15 @@ class TradingPairSignal:
     #: Calculate the position profit before any trades were executed.
     profit_before_trades_pct: Percent = 0
 
+    #: For leveraged positions, the leveraged pair we use in the trading.
+    #:
+    #: This is the leveraged pair derived from :py:attr:`pair`.
+    #: Can be a leveraged long or a leveraged shor pair.
+    #:
+    #: For spot market this is set to ``None``.
+    #:
+    leveraged_pair: TradingPairIdentifier | None = None
+
     def __post_init__(self):
         assert isinstance(self.pair, TradingPairIdentifier)
         if type(self.signal) != float:
@@ -198,6 +218,28 @@ class TradingPairSignal:
           and have :py:attr:position_adjust_ignored` flag set
         """
         return (self.normalised_weight or self.old_weight) and not self.position_adjust_ignored
+
+    def is_short(self) -> bool:
+        """Is the underlying trading activity for this signal to short the asset.
+
+        See also py:attr:`leveraged_pair`.
+        """
+
+        if not self.leveraged_pair:
+            return False
+
+        return self.leveraged_pair.is_short()
+
+    def is_spot(self) -> bool:
+        """Is the underlying trading activity for this signal buy spot asset.
+
+        See also py:attr:`is_short`.
+        """
+
+        if self.leveraged_pair:
+            return False
+
+        return self.pair.is_spot()
 
 
 @dataclass_json
