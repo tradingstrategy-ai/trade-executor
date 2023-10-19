@@ -687,14 +687,14 @@ def test_alpha_model_short(
     # trading universe and mock price feeds
     position_manager = PositionManager(
         start_ts + datetime.timedelta(days=1),  # Trade on t plus 1 day
-        universe.data_universe,
+        universe,
         state,
         pricing_model,
     )
 
     alpha_model = AlphaModel()
     alpha_model.set_signal(aave_usdc, 0.5)  # 50% long AAVE
-    alpha_model.set_signal(weth_usdc, -0.5)  # 505 short ETH
+    alpha_model.set_signal(weth_usdc, -0.5, leverage=1.0)  # 505 short ETH
     alpha_model.select_top_signals(count=5)
     alpha_model.assign_weights(method=weight_passthrouh)
     alpha_model.normalise_weights()
@@ -707,7 +707,9 @@ def test_alpha_model_short(
     # Load in old weight for each trading pair signal,
     # so we can calculate the adjustment trade size
     alpha_model.update_old_weights(state.portfolio)
-    assert alpha_model.get_signal_by_pair(weth_usdc).old_value == pytest.approx(157.7)
+    weth_signal = alpha_model.get_signal_by_pair(weth_usdc)
+    assert weth_signal.old_value == pytest.approx(157.7)
+    assert weth_signal.old_synthetic_pair == weth_usdc
 
     # Calculate how much dollar value we want each individual position to be on this strategy cycle,
     # based on our total available equity
@@ -715,20 +717,24 @@ def test_alpha_model_short(
     portfolio_target_value = portfolio.get_position_equity_and_loan_nav()
     alpha_model.calculate_target_positions(position_manager, portfolio_target_value)
 
-    # Check we have 50% / 50%
-    weth_signal = alpha_model.get_signal_by_pair(weth_usdc)
     assert weth_signal.position_adjust_usd < 0  # We reduce the position
-    assert weth_signal.is_short()  # The position flips from spot to short
+    assert weth_signal.is_flipping()
 
     aave_signal = alpha_model.get_signal_by_pair(aave_usdc)
     assert aave_signal.position_adjust_usd > 0  # increase position
-    assert aave_signal.is_spot()
+    assert not aave_signal.is_flipping()
 
     # Shift portfolio from current positions to target positions
     # determined by the alpha signals (momentum)
     trades = alpha_model.generate_rebalance_trades_and_triggers(position_manager)
 
-    assert len(trades) == 2, f"Got trades: {trades}"
+    assert weth_signal.is_short()  # The position flips from spot to short
+    assert aave_signal.is_spot()
+
+    # Close spot ETH
+    # Open ETH short
+    # Open Aave spot
+    assert len(trades) == 3, f"Got trades: {trades}"
 
     # Sells go first,
     # sell 50% of ETH

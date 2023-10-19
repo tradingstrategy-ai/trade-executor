@@ -328,7 +328,11 @@ class TradingPairIdentifier:
         assert self.internal_id, "Internal id needed to be hashable"
         return self.internal_id
 
-    def __eq__(self, other):
+    def __eq__(self, other: "TradingPairIdentifier | None"):
+
+        if other is None:
+            return False
+
         assert isinstance(other, TradingPairIdentifier), f"Got {other}"
         return self.base == other.base and self.quote == other.quote
 

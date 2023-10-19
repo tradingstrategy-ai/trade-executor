@@ -1060,6 +1060,7 @@ class PositionManager:
         take_profit_pct: float | None = None,
         stop_loss_pct: float | None = None,
         trailing_stop_loss_pct: float | None = None,
+        notes: str | None = None,
     ) -> list[TradeExecution]:
         """Open a short position.
 
@@ -1158,6 +1159,7 @@ class PositionManager:
             collateral_asset_price=collateral_price,
             planned_collateral_consumption=estimation.additional_collateral_quantity,  # This is amount how much aToken is leverated besides our starting collateral
             lp_fees_estimated=estimation.lp_fees,
+            notes=notes,
         )
 
         # record liquidation price into the position
