@@ -46,7 +46,7 @@ def export_trade_for_dataframe(p: Portfolio, t: TradeExecution) -> dict:
     base_token_symbol = position.pair.get_pricing_pair().base.token_symbol
     price_prefix = f"{base_token_symbol} / USD"
 
-    label = ["", "-" * 60, ""]
+    label = ["-" * 60]
 
     if t.is_failed():
         label += ["Failed trade"]
@@ -61,45 +61,47 @@ def export_trade_for_dataframe(p: Portfolio, t: TradeExecution) -> dict:
             label += [
                 f"Stop loss {base_token_symbol}",
                 "",
-                f"Trigger was at {position.stop_loss:.4f} {price_prefix}",
+                f"Triggered at: {position.stop_loss:.4f} {price_prefix}",
             ]
         elif t.is_take_profit():
             type = "take-profit"
             label += [
                 f"Take profit {base_token_symbol}",
                 "",
-                f"Trigger was at {position.take_profit:.4f} {price_prefix}",
+                f"Triggered at: {position.take_profit:.4f} {price_prefix}",
             ]
         elif t.is_sell():
             type = "sell"
             label += [
                 f"Sell {base_token_symbol}",
+                "",
             ]
         elif t.is_buy():
             type = "buy"
             label += [
-                f"Buy {base_token_symbol}"
+                f"Buy {base_token_symbol}",
+                "",
             ]
 
         label += [
-            "",
+            # "",
             f"Executed at: {t.executed_at}",
             f"Value: {t.get_value():.4f} USD",
             f"Quantity: {abs(t.get_position_quantity()):.6f} {base_token_symbol}",
-            "",
+            # "",
         ]
 
         label += [
-            f"Mid-price: {t.planned_mid_price:.4f} {price_prefix}"
-            if t.planned_mid_price
-            else "",
+            # f"Mid-price: {t.planned_mid_price:.4f} {price_prefix}"
+            # if t.planned_mid_price
+            # else "",
             f"Executed at price: {t.executed_price:.4f} {price_prefix}"
             if t.executed_price
             else "",
-            f"Estimated execution price: {t.planned_price:.4f} {price_prefix}"
-            if t.planned_price
-            else "",
-            "",
+            # f"Estimated execution price: {t.planned_price:.4f} {price_prefix}"
+            # if t.planned_price
+            # else "",
+            # "",
         ]
 
         if t.lp_fees_estimated is not None:
@@ -107,13 +109,13 @@ def export_trade_for_dataframe(p: Portfolio, t: TradeExecution) -> dict:
                 realised_fees = abs(1 - t.planned_mid_price / t.executed_price)
                 label += [
                     f"Fees paid: {format_fees_dollars(t.get_fees_paid())}",
-                    f"Fees planned: {format_fees_dollars(t.lp_fees_estimated)}",
-                    f"Fees: {realised_fees:.4f} %",
+                    # f"Fees planned: {format_fees_dollars(t.lp_fees_estimated)}",
+                    # f"Fees: {realised_fees:.4f} %",
                 ]
             else:
                 label += [
                     f"Fees paid: {format_fees_dollars(t.get_fees_paid())}",
-                    f"Fees planned: {format_fees_dollars(t.lp_fees_estimated)}",
+                    # f"Fees planned: {format_fees_dollars(t.lp_fees_estimated)}",
                 ]
         
         if t.cost_of_gas:

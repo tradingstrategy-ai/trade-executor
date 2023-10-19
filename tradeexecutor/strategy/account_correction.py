@@ -25,6 +25,7 @@ from eth_typing import HexAddress
 
 from eth_defi.tx import AssetDelta
 from tradeexecutor.ethereum.tx import TransactionBuilder
+from tradeexecutor.state.repair import close_position_with_empty_trade
 from tradeexecutor.strategy.dust import DEFAULT_DUST_EPSILON, get_dust_epsilon_for_pair, get_dust_epsilon_for_asset
 from tradingstrategy.pair import PandasPairUniverse
 
@@ -180,6 +181,10 @@ def is_relative_mismatch(
     if abs(actual_amount) < dust_epsilon and abs(expected_amount) < dust_epsilon:
         return False
 
+    # Avoid division by zero
+    if actual_amount == 0 or expected_amount == 0:
+        return actual_amount != expected_amount
+
     return abs((expected_amount - actual_amount) / actual_amount) > relative_epsilon
 
 
@@ -223,10 +228,10 @@ def calculate_account_corrections(
     assert isinstance(state, State)
     assert len(state.portfolio.reserves) > 0, "No reserve positions. Did you run init for the strategy?"
 
-    logger.info("Scanning for account corrections")
+    logger.info("Scanning for account corrections, we have %d open positions", len(state.portfolio.open_positions))
 
     assets = get_relevant_assets(pair_universe, reserve_assets, state)
-    asset_balances = list(sync_model.fetch_onchain_balances(assets))
+    asset_balances = list(sync_model.fetch_onchain_balances(assets, filter_zero=False))
 
     logger.info("Found %d on-chain tokens", len(asset_balances))
 
@@ -358,8 +363,15 @@ def apply_accounting_correction(
         # Balance_updates toggle is enough
         position.balance_updates[evt.balance_update_id] = evt
 
-        # TODO: Close position if the new balance is zero
-        assert position.get_quantity() > 0, "Position closing logic missing"
+        # The position has gone to zero
+        if position.can_be_closed():
+            # In a lot of places we assume that a position with 1 trade cannot be closed
+            # Make a 0-sized trade so that we know the position is closed
+            t = close_position_with_empty_trade(portfolio, position)
+            logger.info("Position %s closed with a trade %s", position, t)
+            assert position.is_closed()
+        else:
+            assert position.get_quantity() > 0, "Position should have quantity"
 
     elif isinstance(position, ReservePosition):
         # No fancy method to correct reserves

@@ -1,12 +1,13 @@
 """show-positions command.
 
 """
-
+import enum
 from pathlib import Path
 from typing import Optional
 
 from IPython.core.display_functions import display
 from tabulate import tabulate
+from typer import Option
 
 from .app import app
 from ..bootstrap import prepare_executor_id, create_state_store
@@ -15,11 +16,21 @@ from ...state.state import State
 from . import shared_options
 
 
+class PositionType(enum.Enum):
+
+    #: Show only open positions
+    open = "open"
+
+    #: Show all positions
+    all = "all"
+
+
 @app.command()
 def show_positions(
     id: str = shared_options.id,
     state_file: Optional[Path] = shared_options.state_file,
     strategy_file: Optional[Path] = shared_options.optional_strategy_file,
+    position_type: PositionType = Option(PositionType.open.value, envvar="POSITION_TYPE", help="Which position types to display")
 ):
     """Display trading positions from a state file.
 
@@ -44,18 +55,20 @@ def show_positions(
     print(f"Displaying positions and trades for state {state.name}")
     print(f"State last updated: {state.last_updated_at}")
 
-    print("Open positions")
-    df = display_positions(state.portfolio.open_positions.values())
-    # https://pypi.org/project/tabulate/
-    # https://stackoverflow.com/a/31885295/315168
-    print(tabulate(df, headers='keys', tablefmt='rounded_outline'))
+    if position_type == PositionType.open:
+        print("Open positions")
+        df = display_positions(state.portfolio.open_positions.values())
+        # https://pypi.org/project/tabulate/
+        # https://stackoverflow.com/a/31885295/315168
+        print(tabulate(df, headers='keys', tablefmt='rounded_outline'))
+        print()
 
-    print()
-    print("Frozen positions")
-    df = display_positions(state.portfolio.frozen_positions.values())
-    print(tabulate(df, headers='keys', tablefmt='rounded_outline'))
+    if position_type == PositionType.all:
+        print("Frozen positions")
+        df = display_positions(state.portfolio.frozen_positions.values())
+        print(tabulate(df, headers='keys', tablefmt='rounded_outline'))
 
-    print()
-    print("Closed positions")
-    df = display_positions(state.portfolio.closed_positions.values())
-    print(tabulate(df, headers='keys', tablefmt='rounded_outline'))
+        print()
+        print("Closed positions")
+        df = display_positions(state.portfolio.closed_positions.values())
+        print(tabulate(df, headers='keys', tablefmt='rounded_outline'))

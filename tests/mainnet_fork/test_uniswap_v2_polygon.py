@@ -6,6 +6,7 @@
 
 import datetime
 import os
+import time
 from decimal import Decimal
 
 import pytest
@@ -308,7 +309,6 @@ def sync_model(web3, hot_wallet) -> SyncModel:
     )
 
 
-
 def test_simple_routing_three_leg_live(
     web3,
     strategy_universe: TradingStrategyUniverse,
@@ -349,7 +349,7 @@ def test_simple_routing_three_leg_live(
         execution_model.tx_builder,
     )
 
-    # Buy 100 USD worth of ETH, going thru ETH->MATIC
+    # Buy 100,000 USD worth of ETH, going thru ETH->MATIC
     trades = position_manager.open_1x_long(
         matic_usdc_trading_pair,
         Decimal(100),
@@ -357,7 +357,7 @@ def test_simple_routing_three_leg_live(
 
     trades += position_manager.open_1x_long(
         sand_matic_trading_pair,
-        Decimal(100),
+        Decimal(100_000),
     )
 
     execution_model.execute_trades(
@@ -416,6 +416,10 @@ def test_simple_routing_three_leg_live(
     )
 
     assert all(t.is_success() for t in trades)
+
+    # Check SAND sell planned vs. expected is good
+    t = trades[0]
+    assert t.planned_reserve == pytest.approx(t.executed_reserve, Decimal(0.01))
 
     # Check that expected amounts match after closing the position
     clean, df = check_accounts(strategy_universe.data_universe.pairs, [usdc_asset], state, sync_model)

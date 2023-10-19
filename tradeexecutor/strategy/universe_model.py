@@ -4,9 +4,10 @@ import datetime
 from dataclasses import dataclass
 from typing import List, Optional, Collection
 
+from tradingstrategy.pair import DEXPair
 from tradingstrategy.timebucket import TimeBucket
 
-from tradeexecutor.state.identifier import AssetIdentifier
+from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier
 from tradeexecutor.strategy.execution_context import ExecutionMode, ExecutionContext
 
 

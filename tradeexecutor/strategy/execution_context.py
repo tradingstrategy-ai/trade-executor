@@ -14,12 +14,25 @@ from tradeexecutor.utils.timer import timed_task
 
 
 class ExecutionMode(enum.Enum):
-    """Different execution modes the strategy engine can hvae."""
+    """Different execution modes the strategy engine can handle.
+
+    Depending on how we are using the engine, we might enable and disable
+    additional checks and features.
+
+    - In unit testing execution mode we can skip
+      all kind of delays when we need to wait a blockchain chain tip to stabilise
+
+    - In backtesting execution mode we skip calculation of statistics
+      between strategy decision cycles, as these statistics are discarted
+      and calculations slows us down
+
+    """
 
     #: We are live trading with real assets
     real_trading = "real_trading"
 
     #: We are live trading with mock assets
+    #:
     #: TODO: This mode is not yet supported
     paper_trading = "paper_trading"
 
