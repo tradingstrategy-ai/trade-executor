@@ -46,6 +46,6 @@ def test_long_short_momentum(
     state, universe, debug_dump = run_backtest(setup, client)
 
     analysis = build_trade_analysis(state.portfolio)
-    summary = analysis.calculate_summary_statistics()
+    summary = analysis.calculate_summary_statistics(universe.data_universe.time_bucket, state)
     df = summary.to_dataframe()
     print(df)

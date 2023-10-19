@@ -407,11 +407,17 @@ class AlphaModel:
         :param threshold:
             If the raw signal value is lower than this threshold then don't pick the signal.
 
+            .. note ::
+
+                It's better to filter signals in your `decide_trades()` functinos
+                before calling this, as this allows you have to different
+                thresholds for long and short signals.
+
             Inclusive.
 
             `0.01 = 1%` signal strenght.
         """
-        filtered_signals = [s for s in self.raw_signals.values() if s.signal >= threshold]
+        filtered_signals = [s for s in self.raw_signals.values() if abs(s.signal) >= threshold]
         top_signals = heapq.nlargest(count, filtered_signals, key=lambda s: s.raw_weight)
         self.signals = {s.pair.internal_id: s for s in top_signals}
 
