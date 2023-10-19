@@ -131,6 +131,14 @@ class TradingPairSignal:
     #:
     old_value: USDollarAmount = 0.0
 
+    #: Which trading pair this signal was using before.
+    #:
+    #: Allows us to switch between spot, leveraged long, leveraged short.
+    #:
+    #: If there was no trading on the underlying pair on the previous cycle, is ``None``.
+    #:
+    old_synthetic_pair: TradingPairIdentifier | None = None
+
     #: How many dollars we plan to invest on trading pair.
     #:
     #: Calculated by portfolio total investment equity * normalised weight * price.
@@ -189,20 +197,24 @@ class TradingPairSignal:
     #: Calculate the position profit before any trades were executed.
     profit_before_trades_pct: Percent = 0
 
-    #: For leveraged positions, the leveraged pair we use in the trading.
+    #: For leveraged and spot positions, the pair we use to construct the position.
     #:
     #: This is the leveraged pair derived from :py:attr:`pair`.
-    #: Can be a leveraged long or a leveraged shor pair.
+    #: Can be leveraged long, leveraged shor or directly the underlying
+    #: spot pair.
     #:
-    #: For spot market this is set to ``None``.
+    #: This information is not available until the trades have been calculated
+    #: in :py:meth:`AlphaModel.generate_rebalance_trades_and_triggers`.
     #:
-    leveraged_pair: TradingPairIdentifier | None = None
+    synthetic_pair: TradingPairIdentifier | None = None
 
     def __post_init__(self):
         assert isinstance(self.pair, TradingPairIdentifier)
         if type(self.signal) != float:
             # Convert from numpy.float64
             self.signal = float(self.signal)
+
+        assert self.pair.is_spot(), "Signals must be identified by their spot pairs"
 
     def __repr__(self):
         return f"Pair: {self.pair.get_ticker()} old weight: {self.old_weight:.4f} old value: {self.old_value:,} raw signal:{self.signal:.4f} normalised weight: {self.normalised_weight:.4f} new value: {self.position_target:,} adjust: {self.position_adjust_usd:,}"
@@ -225,10 +237,12 @@ class TradingPairSignal:
         See also py:attr:`leveraged_pair`.
         """
 
-        if not self.leveraged_pair:
+        assert self.synthetic_pair, "Trades have not been generated yet"
+
+        if not self.synthetic_pair:
             return False
 
-        return self.leveraged_pair.is_short()
+        return self.synthetic_pair.is_short()
 
     def is_spot(self) -> bool:
         """Is the underlying trading activity for this signal buy spot asset.
@@ -236,7 +250,9 @@ class TradingPairSignal:
         See also py:attr:`is_short`.
         """
 
-        if self.leveraged_pair:
+        assert self.synthetic_pair, "Trades have not been generated yet"
+
+        if self.synthetic_pair:
             return False
 
         return self.pair.is_spot()
@@ -413,24 +429,36 @@ class AlphaModel:
             pair: TradingPairIdentifier,
             old_weight: float,
             old_value: USDollarAmount,
+            old_synthetic_pair: TradingPairIdentifier,
             ):
-        """Set the weights for the8 current portfolio trading positions before rebalance."""
+        """Set the weights for the8 current portfolio trading positions before rebalance.
+
+        :param pair:
+            The spot pair we are trading.
+        """
+
+        assert pair.is_spot()
+
         if pair.internal_id in self.signals:
             self.signals[pair.internal_id].old_weight = old_weight
             self.signals[pair.internal_id].old_value = old_value
+            self.signals[pair.internal_id].old_synthetic_pair = old_synthetic_pair
         else:
-            self.signals[pair.internal_id] = TradingPairSignal(
+            self.signals[[air].internal_id] = TradingPairSignal(
                 pair=pair,
                 signal=0,
                 old_weight=old_weight,
                 old_value=old_value,
+                old_synthetic_pair=None,
             )
 
     def select_top_signals(self,
                            count: int,
                            threshold=0.0,
                            ):
-        """Chooses top long signals.
+        """Chooses top signals.
+
+        Choose trading pairs to the next rebalance by their signal strength.
 
         Sets :py:attr:`signals` attribute of the model
 
@@ -444,7 +472,7 @@ class AlphaModel:
             )
 
         :param count:
-            How many signals to pick
+            How many signals to pick.
 
         :param threshold:
             If the raw signal value is lower than this threshold then don't pick the signal.
@@ -495,9 +523,10 @@ class AlphaModel:
             value = position.get_value()
             weight = value  / total
             self.set_old_weight(
-                position.pair,
+                position.pair.underlying_spot_pair,
                 weight,
                 value,
+                position.pair,
             )
 
     def calculate_weight_diffs(self) -> Dict[PairInternalId, float]:
@@ -545,6 +574,24 @@ class AlphaModel:
                 s.position_adjust_quantity = position_manager.estimate_asset_quantity(s.pair, s.position_adjust_usd)
                 assert type(s.position_adjust_quantity) == float
 
+    def map_pair_for_signal(
+        self,
+        position_manager: PositionManager,
+        signal: TradingPairSignal,
+    ) -> TradingPairIdentifier:
+        """Figure out if we are going to trade spot, leveraged long, leveraged short."""
+
+        underlying = signal.pair
+
+        strategy_universe = position_manager.strategy_universe
+        # Spot
+        if signal.signal > 0:
+            return underlying
+        elif signal.signal < 0:
+            return strategy_universe.get_shorting_pair(underlying)
+        else:
+            raise AssertionError("Cannot determine the trade with 0 signal")
+
     def generate_rebalance_trades_and_triggers(
             self,
             position_manager: PositionManager,
@@ -581,22 +628,25 @@ class AlphaModel:
         trades: List[TradeExecution] = []
 
         for signal in self.iterate_signals():
-            pair = signal.pair
 
             dollar_diff = signal.position_adjust_usd
             quantity_diff = signal.position_adjust_quantity
             value = signal.position_target
 
+            underlying = signal.pair
+            synthetic = self.map_pair_for_signal(position_manager, signal)
+
             # Do backtesting record keeping
-            position = position_manager.get_current_position_for_pair(pair)
+            position = position_manager.get_current_position_for_pair(synthetic)
             if position:
                 signal.profit_before_trades = position.get_total_profit_usd()
                 signal.profit_before_trades_pct = position.get_total_profit_percent()
             else:
                 signal.profit_before_trades = 0
 
-            logger.info("Rebalancing %s, old weight: %f, new weight: %f, diff: %f USD",
-                        pair,
+            logger.info("Rebalancing %s, trading as %s, old weight: %f, new weight: %f, diff: %f USD",
+                        underlying,
+                        synthetic,
                         signal.old_weight,
                         signal.normalised_weight,
                         dollar_diff)
@@ -606,36 +656,52 @@ class AlphaModel:
                 signal.position_adjust_ignored = True
             else:
 
+                position_rebalance_trades = []
+                current_position = position_manager.get_current_position_for_pair(synthetic)
+
                 if signal.normalised_weight < self.close_position_weight_epsilon:
                     # Explicit close to avoid rounding issues
-                    position = position_manager.get_current_position_for_pair(signal.pair)
-                    if position:
-                        position_rebalance_trades = position_manager.close_position(
-                            position,
+                    if current_position:
+                        position_rebalance_trades += position_manager.close_position(
+                            current_position,
                             TradeType.rebalance,
+                            notes=f"Closing position, because the signal weight is below close position weight threshold: {signal}"
                         )
                 else:
-                    # Increase or decrease the position.
-                    # Open new position if needed.
-                    position_rebalance_trades = position_manager.adjust_position(
-                        pair,
-                        dollar_diff,
-                        quantity_diff,
-                        signal.normalised_weight,
-                        stop_loss=signal.stop_loss,
-                        take_profit=signal.take_profit,
-                        trailing_stop_loss=signal.trailing_stop_loss,
-                        override_stop_loss=self.override_stop_loss,
-                    )
 
-                assert len(position_rebalance_trades) == 1, "Assuming always on trade for rebalance"
+                if signal.old_synthetic_pair != signal.synthetic_pair and signal.old_synthetic_pair != None:
+                    # Switching from long/short or vice versa
+                    logger.info("Switching between long/short/spot for %s", signal)
+                    old_position = position_manager.get_current_position_for_pair(signal.old_synthetic_pair)
+                    if old_position:
+                        position_rebalance_trades += position_manager.close_position(
+                            old_position,
+                            TradeType.rebalance,
+                            notes=f"Closing because switching between long/short for {signal}"
+                        )
+
+                # Increase or decrease the position for the target pair
+                # Open new position if needed.
+                position_rebalance_trades += position_manager.adjust_position(
+                    synthetic,
+                    dollar_diff,
+                    quantity_diff,
+                    signal.normalised_weight,
+                    stop_loss=signal.stop_loss,
+                    take_profit=signal.take_profit,
+                    trailing_stop_loss=signal.trailing_stop_loss,
+                    override_stop_loss=self.override_stop_loss,
+                    notes="Rebalance for signal {signal}"
+                )
+
+                assert len(position_rebalance_trades) >= 1, "Assuming always on trade for rebalance"
 
                 # Connect trading signal to its position
-                first_trade = position_rebalance_trades[0]
-                assert first_trade.position_id
-                signal.position_id = first_trade.position_id
+                last_trade = position_rebalance_trades[0]
+                assert last_trade.position_id
+                signal.position_id = last_trade.position_id
 
-                logger.info("Adjusting holdings for %s: %s", pair, position_rebalance_trades[0])
+                logger.info("Adjusting holdings for %s: %s", underlying, position_rebalance_trades[0])
                 trades += position_rebalance_trades
 
         trades.sort(key=lambda t: t.get_execution_sort_position())

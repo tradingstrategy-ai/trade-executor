@@ -596,6 +596,7 @@ class PositionManager:
                         trailing_stop_loss: Optional[Percent] = None,
                         slippage_tolerance: Optional[float] = None,
                         override_stop_loss=False,
+                        notes: Optional[str] = None,
                         ) -> List[TradeExecution]:
         """Adjust holdings for a certain position.
 
@@ -662,6 +663,11 @@ class PositionManager:
         :param override_stop_loss:
             If not set and a position has already stop loss set, do not modify it.
 
+        :param notes:
+            Human-readable plain text notes on the trade.
+
+            Used for diagnostics.
+
         :return:
             List of trades to be executed to get to the desired
             position level.
@@ -713,6 +719,7 @@ class PositionManager:
                 lp_fees_estimated=price_structure.get_total_lp_fees(),
                 pair_fee=price_structure.get_fee_percentage(),
                 slippage_tolerance=slippage_tolerance,
+                notes=notes,
             )
         else:
             # Sell
