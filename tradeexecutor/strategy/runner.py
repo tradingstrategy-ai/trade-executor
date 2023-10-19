@@ -556,7 +556,13 @@ class StrategyRunner(abc.ABC):
 
                 # Run the strategy cycle main trading decision cycle
                 with self.timed_task_context_manager("decide_trades"):
-                    rebalance_trades = self.on_clock(strategy_cycle_timestamp, universe, pricing_model, state, debug_details)
+                    rebalance_trades = self.on_clock(
+                        strategy_cycle_timestamp,
+                        universe,
+                        pricing_model,
+                        state,
+                        debug_details
+                    )
                     assert type(rebalance_trades) == list
                     debug_details["rebalance_trades"] = rebalance_trades
 
