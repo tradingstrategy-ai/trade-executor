@@ -304,9 +304,8 @@ class TradingPairIdentifier:
 
     #: Underlying spot trading pair
     #: 
-    #: This can be used to track price of assets in shorting pair
-    #:
-    #: TODO: Currently "mostly" unused.
+    #: This is used e.g. by alpha models to track the underlying pairs
+    #: when doing leveraged positions.
     #:
     underlying_spot_pair: Optional["TradingPairIdentifier"] = None
 
