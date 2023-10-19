@@ -5,7 +5,7 @@ Various helper functions to calculate weights for assets, normalise them.
 
 from typing import Dict, TypeAlias
 
-from tradingstrategy.types import PrimaryKey
+from tradeexecutor.state.types import PairInternalId
 
 #: Raw trading signal strength.
 #:
@@ -35,7 +35,7 @@ class BadWeightsException(Exception):
     """Sum of weights not 1."""
 
 
-def check_normalised_weights(weights: Dict[PrimaryKey, Weight], epsilon=0.0001):
+def check_normalised_weights(weights: Dict[PairInternalId, Weight], epsilon=0.0001):
     """Check that the sum of weights is good.
 
     - If there are any entries in weights the sum must be one
@@ -54,7 +54,7 @@ def check_normalised_weights(weights: Dict[PrimaryKey, Weight], epsilon=0.0001):
 
 
 def clip_to_normalised(
-        weights: Dict[PrimaryKey, Weight],
+        weights: Dict[PairInternalId, Weight],
         epsilon=0.00003,
         very_small_subtract=0.00001,
 ) -> Dict[int, float]:
@@ -105,7 +105,7 @@ def clip_to_normalised(
     raise AssertionError("Should never happen")
 
 
-def normalise_weights(weights: Dict[PrimaryKey, Weight]) -> Dict[PrimaryKey, Weight]:
+def normalise_weights(weights: Dict[PairInternalId, Weight]) -> Dict[PairInternalId, Weight]:
     """Normalise weight distribution so that the sum of weights is 1."""
 
     total = sum(weights.values())
@@ -116,7 +116,7 @@ def normalise_weights(weights: Dict[PrimaryKey, Weight]) -> Dict[PrimaryKey, Wei
     return clip_to_normalised(normalised_weights)
 
 
-def weight_by_1_slash_n(alpha_signals: Dict[PrimaryKey, Signal]) -> Dict[PrimaryKey, Weight]:
+def weight_by_1_slash_n(alpha_signals: Dict[PairInternalId, Signal]) -> Dict[PairInternalId, Weight]:
     """Use 1/N weighting system to generate portfolio weightings from the raw alpha signals.
 
     - The highest alpha gets portfolio allocation 1/1
@@ -140,7 +140,7 @@ def weight_by_1_slash_n(alpha_signals: Dict[PrimaryKey, Signal]) -> Dict[Primary
     return weighed_signals
 
 
-def weight_equal(alpha_signals: Dict[PrimaryKey, Signal]) -> Dict[PrimaryKey, Weight]:
+def weight_equal(alpha_signals: Dict[PairInternalId, Signal]) -> Dict[PairInternalId, Weight]:
     """Give equal weight to every asset, regardless of the signal strength.
 
     :return:
@@ -153,6 +153,6 @@ def weight_equal(alpha_signals: Dict[PrimaryKey, Signal]) -> Dict[PrimaryKey, We
     return weighed_signals
 
 
-def weight_passthrouh(alpha_signals: Dict[PrimaryKey, Signal]) -> Dict[PrimaryKey, Weight]:
+def weight_passthrouh(alpha_signals: Dict[PairInternalId, Signal]) -> Dict[PairInternalId, Weight]:
     """Use the given raw weight value as is as the portfolio weight."""
     return {pair_id: abs(signal) for pair_id, signal in alpha_signals.items()}

@@ -692,11 +692,10 @@ def test_alpha_model_short(
         pricing_model,
     )
 
-    # Go 50% in to AAVE
     alpha_model = AlphaModel()
-    alpha_model.set_signal(aave_usdc, 0.5)
-    alpha_model.set_signal(weth_usdc, -0.5)
-    alpha_model.select_top_signals(9999)
+    alpha_model.set_signal(aave_usdc, 0.5)  # 50% long AAVE
+    alpha_model.set_signal(weth_usdc, -0.5)  # 505 short ETH
+    alpha_model.select_top_signals(count=5)
     alpha_model.assign_weights(method=weight_passthrouh)
     alpha_model.normalise_weights()
 
