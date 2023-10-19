@@ -241,7 +241,7 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
 
     def has_lending_market_available(
         self,
-        timestamp: pd.Timestamp,
+        timestamp: pd.Timestamp | datetime.datetime,
         asset: AssetIdentifier,
         liquidity_threshold=None,
         market_metric: LendingCandleType=LendingCandleType.variable_borrow_apr,
@@ -264,6 +264,9 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
         :return:
             True if we can open a spot position.
         """
+
+        if isinstance(timestamp, datetime.datetime):
+            timestamp = pd.Timestamp(timestamp)
 
         assert isinstance(timestamp, pd.Timestamp), f"Expected pd.Timestamp, got {timestamp.__class__}: {timestamp}"
 
@@ -292,7 +295,7 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
 
     def can_open_short(
             self,
-            timestamp: pd.Timestamp,
+            timestamp: pd.Timestamp | datetime.datetime,
             pair: TradingPairIdentifier,
             liquidity_threshold=None,
     ) -> bool:
