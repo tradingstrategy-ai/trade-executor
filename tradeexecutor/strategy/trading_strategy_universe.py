@@ -157,6 +157,16 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
         else:
             return f"<TradingStrategyUniverse for {self.data_universe.pairs.get_count()} pairs>"
 
+    def __post_init__(self):
+        """Check that we correctly constructed the instance."""
+
+        if self.data_universe is not None:
+            assert isinstance(self.data_universe, Universe)
+
+        if self.backtest_stop_loss_candles is not None:
+            assert isinstance(self.backtest_stop_loss_candles, GroupedCandleUniverse), f"Expected GroupedCandleUniverse, got {self.backtest_stop_loss_candles.__class__}"
+            assert isinstance(self.backtest_stop_loss_time_bucket, TimeBucket)
+
     @property
     def universe(self):
         """Backwards compatibility method.
@@ -837,6 +847,11 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
 
         candle_universe = GroupedCandleUniverse(dataset.candles)
 
+        if dataset.backtest_stop_loss_candles is not None:
+            stop_loss_candle_universe = GroupedCandleUniverse(dataset.backtest_stop_loss_candles)
+        else:
+            stop_loss_candle_universe = None
+
         universe = Universe(
             time_bucket=dataset.time_bucket,
             chains={chain_id},
@@ -853,7 +868,7 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
             data_universe=universe,
             reserve_assets=[reserve_asset],
             backtest_stop_loss_time_bucket=dataset.backtest_stop_loss_time_bucket,
-            backtest_stop_loss_candles=dataset.backtest_stop_loss_candles,
+            backtest_stop_loss_candles=stop_loss_candle_universe,
         )
 
     @staticmethod

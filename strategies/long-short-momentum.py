@@ -63,9 +63,6 @@ negative_mometum_threshold = -0.025
 # less than 300 USD
 minimum_rebalance_trade_threshold = 300
 
-# Use hourly candles to trigger the stop loss
-stop_loss_data_granularity = TimeBucket.h1
-
 # Strategy keeps its cash in USDC
 reserve_currency = ReserveCurrency.usdc
 
@@ -79,14 +76,15 @@ initial_cash = 10_000
 
 def decide_trades(
         timestamp: pd.Timestamp,
-        universe: TradingStrategyUniverse,
+        strategy_universe: TradingStrategyUniverse,
         state: State,
         pricing_model: PricingModel,
-        cycle_debug_data: Dict) -> List[TradeExecution]:
+        cycle_debug_data: Dict
+) -> List[TradeExecution]:
 
     # Create a position manager helper class that allows us easily to create
     # opening/closing trades for different positions
-    position_manager = PositionManager(timestamp, universe, state, pricing_model)
+    position_manager = PositionManager(timestamp, strategy_universe, state, pricing_model)
 
     alpha_model = AlphaModel(timestamp)
 
@@ -95,7 +93,7 @@ def decide_trades(
     start = adjusted_timestamp - momentum_lookback_period - datetime.timedelta(seconds=1)
     end = adjusted_timestamp
 
-    data_universe = universe.data_universe
+    data_universe = strategy_universe.data_universe
 
     # Get candle data for all candles, inclusive time range
     candle_data = data_universe.candles.iterate_samples_by_pair_range(start, end)
@@ -110,7 +108,7 @@ def decide_trades(
 
         # DEXPair instance contains more data than internal TradingPairIdentifier
         # we use to store this pair across the strategy
-        pair = universe.get_trading_pair(pair_id)
+        pair = strategy_universe.get_trading_pair(pair_id)
 
         # We define momentum as how many % the trading pair price gained during
         # the momentum window
@@ -126,7 +124,7 @@ def decide_trades(
                 take_profit=take_profit,
             )
         elif momentum <= negative_mometum_threshold:
-            if universe.can_open_short(
+            if strategy_universe.can_open_short(
                     timestamp,
                     pair
             ):
@@ -186,10 +184,12 @@ def create_trading_universe(
         universe_options=universe_options,
         # Ask for all Polygon data
         chain_id=ChainId.polygon,
-        exchange_slugs={"uniswap-v3", "quickswap"},
+        exchange_slugs={"uniswap-v3"},
         reserve_asset_symbols={"USDC"},
         asset_symbols={"LINK", "WMATIC", "WETH", "BAL"},
         trading_fee=0.0005,
+        time_bucket=TimeBucket.d7,
+        stop_loss_time_bucket=TimeBucket.d1,
     )
 
     # Filter down the dataset to the pairs we specified
