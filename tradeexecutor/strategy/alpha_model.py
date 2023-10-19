@@ -261,11 +261,7 @@ class TradingPairSignal:
         """
 
         assert self.synthetic_pair, "Trades have not been generated yet"
-
-        if self.synthetic_pair:
-            return False
-
-        return self.pair.is_spot()
+        return self.synthetic_pair.is_spot()
 
     def is_new(self) -> bool:
         """The asset did not have any trades (long/short) open on the previous cycle."""
@@ -743,17 +739,19 @@ class AlphaModel:
                             )
 
                     if signal.signal < 0:
+                        # Down down down
 
-                        assert signal.leverage, f"Signal is short, but does not have levarage multiplier set {signal}"
+                        leverage = signal.leverage
+                        assert type(leverage) == float, f"Signal is short, but does not have levarage multiplier set {signal}"
 
                         if signal.is_flipping() or signal.is_new():
-                            # Open new short
-                            assert dollar_diff > 0, f"For new positions, value must increase, got {dollar_diff} for {signal}"
+                            # Open new short,
+                            # we ignore dollar_diff and use value directly
                             assert not signal.take_profit, "Unsupported"
                             position_rebalance_trades += position_manager.open_short(
-                                synthetic,
-                                value=dollar_diff,
-                                leverage=signal.leverage,
+                                underlying,
+                                value=value,
+                                leverage=leverage,
                                 stop_loss_pct=signal.stop_loss,
                                 trailing_stop_loss_pct=signal.trailing_stop_loss,
                                 notes="Rebalance opening a new short for signal {signal}",
