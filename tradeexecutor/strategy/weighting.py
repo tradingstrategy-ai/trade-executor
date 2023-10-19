@@ -3,14 +3,39 @@
 Various helper functions to calculate weights for assets, normalise them.
 """
 
-from typing import Dict
+from typing import Dict, TypeAlias
+
+from tradingstrategy.types import PrimaryKey
+
+#: Raw trading signal strength.
+#:
+#: E.g. raw value of the momentum.
+#:
+#: Negative signal indicates short.
+#:
+#: Can be any number between ]-inf, inf[
+#:
+#: Set zero for pairs that are discarded, e.g. due to risk assessment.
+#:
+Signal: TypeAlias = float
+
+
+#: Weight of an asset.
+#:
+#: Represents USD allocated to this position.
+#:
+#: For raw weights ``0...inf``, for normalised weights ``0...1``.
+#:
+#: Negative signals have positive weight.
+#:
+Weight: TypeAlias = float
 
 
 class BadWeightsException(Exception):
     """Sum of weights not 1."""
 
 
-def check_normalised_weights(weights: Dict[int, float], epsilon=0.0001):
+def check_normalised_weights(weights: Dict[PrimaryKey, Weight], epsilon=0.0001):
     """Check that the sum of weights is good.
 
     - If there are any entries in weights the sum must be one
@@ -29,7 +54,7 @@ def check_normalised_weights(weights: Dict[int, float], epsilon=0.0001):
 
 
 def clip_to_normalised(
-        weights: Dict[int, float],
+        weights: Dict[PrimaryKey, Weight],
         epsilon=0.00003,
         very_small_subtract=0.00001,
 ) -> Dict[int, float]:
@@ -80,7 +105,7 @@ def clip_to_normalised(
     raise AssertionError("Should never happen")
 
 
-def normalise_weights(weights: Dict[int, float]) -> Dict[int, float]:
+def normalise_weights(weights: Dict[PrimaryKey, Weight]) -> Dict[PrimaryKey, Weight]:
     """Normalise weight distribution so that the sum of weights is 1."""
 
     total = sum(weights.values())
@@ -91,7 +116,7 @@ def normalise_weights(weights: Dict[int, float]) -> Dict[int, float]:
     return clip_to_normalised(normalised_weights)
 
 
-def weight_by_1_slash_n(alpha_signals: Dict[int, float]) -> Dict[int, float]:
+def weight_by_1_slash_n(alpha_signals: Dict[PrimaryKey, Signal]) -> Dict[PrimaryKey, Weight]:
     """Use 1/N weighting system to generate portfolio weightings from the raw alpha signals.
 
     - The highest alpha gets portfolio allocation 1/1
@@ -105,20 +130,29 @@ def weight_by_1_slash_n(alpha_signals: Dict[int, float]) -> Dict[int, float]:
     `The Fallacy of 1/N and Static Weight Allocation <https://www.r-bloggers.com/2013/06/the-fallacy-of-1n-and-static-weight-allocation/>`__.
     """
     weighed_signals = {}
-    for idx, tuple in enumerate(alpha_signals.items(), 1):
+
+    presorted_alpha = [(pair_id, abs(signal)) for pair_id, signal in alpha_signals.items()]
+    sorted_alpha = sorted(presorted_alpha, key=lambda t: t[1])
+
+    for idx, tuple in enumerate(sorted_alpha, 1):
         pair_id, alpha = tuple
         weighed_signals[pair_id] = 1 / idx
     return weighed_signals
 
-def weight_equal(alpha_signals: Dict[int, float]) -> Dict[int, float]:
-    """Give equal weight to every asset, regardless of the signal strength"""
+
+def weight_equal(alpha_signals: Dict[PrimaryKey, Signal]) -> Dict[PrimaryKey, Weight]:
+    """Give equal weight to every asset, regardless of the signal strength.
+
+    :return:
+        Weight map where each pair has weight 1.
+    """
     weighed_signals = {}
     for idx, tuple in enumerate(alpha_signals.items(), 1):
         pair_id, alpha = tuple
         weighed_signals[pair_id] = 1
     return weighed_signals
 
-def weight_passthrouh(alpha_signals: Dict[int, float]) -> Dict[int, float]:
-    """Use the given raw weight value as is as the portfolio weight."""
-    return alpha_signals
 
+def weight_passthrouh(alpha_signals: Dict[PrimaryKey, Signal]) -> Dict[PrimaryKey, Weight]:
+    """Use the given raw weight value as is as the portfolio weight."""
+    return {pair_id: abs(signal) for pair_id, signal in alpha_signals.items()}
