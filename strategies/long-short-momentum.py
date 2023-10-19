@@ -67,8 +67,8 @@ minimum_rebalance_trade_threshold = 300
 reserve_currency = ReserveCurrency.usdc
 
 # The duration of the backtesting period
-backtest_start = datetime.datetime(2020, 11, 1)
-backtest_end = datetime.datetime(2023, 1, 31)
+backtest_start = datetime.datetime(2022, 1, 1)
+backtest_end = datetime.datetime(2023, 10, 1)
 
 # Start with 10,000 USD
 initial_cash = 10_000
