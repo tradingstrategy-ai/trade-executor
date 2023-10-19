@@ -184,6 +184,26 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
         """
         return self.data_universe.lending_reserves is not None
 
+    def get_trading_pair(self, pair: int | DEXPair) -> TradingPairIdentifier:
+        """Get a pair by id or by its data description.
+
+        :param pair:
+            Trading pair internal id or DEXPair object
+
+        :return:
+            Tradind strategy pair definition.
+
+        :raise PairNotFoundError:
+            If we have not loaded data for the given pair id.
+
+        """
+        if type(pair) == int:
+            dex_pair = self.data_universe.pairs.get_pair_by_id(pair)
+        else:
+            dex_pair = pair
+
+        return translate_trading_pair(dex_pair)
+
     def can_open_spot(
             self,
             timestamp: pd.Timestamp,
