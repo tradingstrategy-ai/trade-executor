@@ -31,6 +31,7 @@ from tradeexecutor.strategy.weighting import BadWeightsException, clip_to_normal
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse, create_pair_universe_from_code
 from tradeexecutor.testing.synthetic_ethereum_data import generate_random_ethereum_address
 from tradeexecutor.testing.synthetic_exchange_data import generate_exchange, generate_simple_routing_model
+from tradeexecutor.testing.synthetic_lending_data import generate_lending_reserve, generate_lending_universe
 from tradeexecutor.testing.synthetic_price_data import generate_fixed_price_candles
 from tradingstrategy.candle import GroupedCandleUniverse
 from tradingstrategy.chain import ChainId
@@ -151,13 +152,32 @@ def universe(
     assert len(candle_universe.get_samples_by_pair(1)) > 0
     assert len(candle_universe.get_samples_by_pair(2)) > 0
 
+    # Generate lending data for shorting
+    #
+    # We can only short WETH, not AAVE
+    #
+    usdc_reserve = generate_lending_reserve(usdc, mock_chain_id, 1)
+    weth_reserve = generate_lending_reserve(weth, mock_chain_id, 2)
+
+    _, lending_candle_universe = generate_lending_universe(
+        time_bucket,
+        start_at,
+        end_at,
+        reserves=[usdc_reserve, weth_reserve],
+        aprs={
+            "supply": 2,
+            "variable": 5,
+        }
+    )
+
     universe = Universe(
         time_bucket=time_bucket,
         chains={mock_chain_id},
         exchanges={mock_exchange},
         pairs=pair_universe,
         candles=candle_universe,
-        liquidity=None
+        liquidity=None,
+        lending_candles=lending_candle_universe,
     )
 
     return TradingStrategyUniverse(
@@ -650,7 +670,7 @@ def test_alpha_model_short(
 
     # Check that shorting is enabled
     assert universe.can_open_short(start_ts, weth_usdc)
-    assert universe.can_open_short(start_ts, aave_usdc)
+    assert not universe.can_open_short(start_ts, aave_usdc)
 
     portfolio = single_asset_portfolio
 
