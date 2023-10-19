@@ -232,11 +232,18 @@ def setup_backtest(
         strategy_module: Optional[StrategyModuleInformation]=None,
         name: Optional[str] = None,
         minimum_data_lookback_range: Optional[datetime.timedelta] = None,
+        universe_options: Optional[UniverseOptions] = None,
     ) -> BacktestSetup:
     """High-level entry point for setting up a backtest from a strategy module.
 
     This function is useful for running backtests for strategies in
     notebooks and tests.
+
+    :param start_at:
+        Legacy. Use universe_options.
+
+    :param end_at:
+        Legacy. Use universe_options.
 
     :param max_slippage:
         Legacy
@@ -245,17 +252,33 @@ def setup_backtest(
         Override the default strategy cycle duration
 
     :param candle_time_frame:
+        Legacy. Use universe_options.
+
         Override the default strategy candle time bucket
 
     :param strategy_module:
         If strategy module was previously loaded
+
+    :param initial_deposit:
+        Legacy.
+
+        Override INITIAL_CASH from the strategy module.
     """
 
-    assert initial_deposit, "You must give initial_cash"
     assert max_slippage >= 0, f"You must give max slippage. Got max slippage {max_slippage}"
 
     assert isinstance(strategy_path, Path), f"Got {strategy_path}"
-    assert initial_deposit > 0, "Remember to set the backtest variables in your strategy module. See https://tradingstrategy.ai/docs/deployment/vault-deployment.html#run-a-backtest-on-the-strategy-module"
+
+    # Load strategy Python file
+    if strategy_module is None:
+        strategy_mod_exports: dict = runpy.run_path(strategy_path)
+        strategy_module = parse_strategy_module(strategy_path, strategy_mod_exports)
+
+    if not initial_deposit:
+        initial_deposit = strategy_module.initial_cash
+
+    assert initial_deposit, "Initial cash not given as argument or strategy module"
+    assert initial_deposit > 0, "Must have money"
 
     wallet = SimulatedWallet()
     # deposit_syncer = BacktestSyncer(wallet, Decimal(initial_deposit))
@@ -263,25 +286,25 @@ def setup_backtest(
 
     execution_model = BacktestExecutionModel(wallet, max_slippage)
 
-    # Load strategy Python file
-    if strategy_module is None:
-        strategy_mod_exports: dict = runpy.run_path(strategy_path)
-        strategy_module = parse_strategy_module(strategy_path, strategy_mod_exports)
-
     if strategy_module.is_version_greater_or_equal_than(0, 2, 0):
         # Backtest variables were injected later in the development
         strategy_module.validate_backtest()
     else:
         strategy_module.validate()
 
-    universe_options = UniverseOptions(candle_time_bucket_override=candle_time_frame)
+    if universe_options is None:
+        universe_options = UniverseOptions(
+            candle_time_bucket_override=candle_time_frame,
+            start_at=strategy_module.backtest_start,
+            end_at=strategy_module.backtest_end,
+        )
 
     if not name:
         name = f"Backtest for {strategy_module.path.stem}"
 
     return BacktestSetup(
-        start_at,
-        end_at,
+        universe_options.start_at,
+        universe_options.end_at,
         cycle_duration=cycle_duration or strategy_module.trading_strategy_cycle,  # Pick overridden cycle duration if provided
         universe_options=universe_options,
         wallet=wallet,
