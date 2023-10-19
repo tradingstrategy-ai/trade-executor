@@ -29,6 +29,7 @@ from tradeexecutor.strategy.pandas_trader.decision_trigger import wait_for_unive
 from tradeexecutor.strategy.routing import RoutingModel
 from tradeexecutor.strategy.run_state import RunState
 from tradeexecutor.strategy.strategy_cycle_trigger import StrategyCycleTrigger
+from tradingstrategy.candle import GroupedCandleUniverse
 
 try:
     from apscheduler.executors.pool import ThreadPoolExecutor
@@ -751,6 +752,8 @@ class ExecutionLoop:
         assert not isinstance(self.backtest_end, pd.Timestamp)
         assert isinstance(self.backtest_end, datetime.datetime)
         assert self.backtest_start < self.backtest_end
+        if universe.backtest_stop_loss_candles is not None:
+            assert isinstance(universe.backtest_stop_loss_candles, GroupedCandleUniverse), f"Got {universe.backtest_stop_loss_candles.__class__}"
 
         state.backtest_data = BacktestData(
             start_at=self.backtest_start,

@@ -47,9 +47,15 @@ class BacktestSetup:
     """Describe backtest setup, ready to run."""
 
     #: Test start
+    #:
+    #: Legacy. Use `UniverseOptions`.
+    #:
     start_at: datetime.datetime | None
 
     #: Test end
+    #:
+    #: Legacy. Use `UniverseOptions`.
+    #:
     end_at: datetime.datetime | None
 
     #: Override trading_strategy_cycle from strategy module
@@ -236,8 +242,23 @@ def setup_backtest(
     ) -> BacktestSetup:
     """High-level entry point for setting up a backtest from a strategy module.
 
-    This function is useful for running backtests for strategies in
-    notebooks and tests.
+    - This function is useful for running backtests for strategies in
+      notebooks and unit tests
+
+    - Instead of giving strategy and trading universe as direct function arguments,
+      this entry point loads a strategy given as a Python file
+
+    .. note ::
+
+        A lot of arguments for this function are optional/
+        unit test only/legacy. Only `strategy_path` is needed.
+
+    See also
+
+    - :py:func:`run_backtest_inline`
+
+    :param strategy_path:
+        Path to the strategy Python module
 
     :param start_at:
         Legacy. Use universe_options.
@@ -295,8 +316,8 @@ def setup_backtest(
     if universe_options is None:
         universe_options = UniverseOptions(
             candle_time_bucket_override=candle_time_frame,
-            start_at=strategy_module.backtest_start,
-            end_at=strategy_module.backtest_end,
+            start_at=strategy_module.backtest_start or start_at,
+            end_at=strategy_module.backtest_end or end_at,
         )
 
     if not name:
@@ -321,6 +342,7 @@ def setup_backtest(
         trading_strategy_engine_version=strategy_module.trading_strategy_engine_version,
         name=name,
         minimum_data_lookback_range=minimum_data_lookback_range,
+        engine_version=strategy_module.trading_strategy_engine_version,
     )
 
 
