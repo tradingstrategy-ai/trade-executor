@@ -14,9 +14,9 @@ from tradeexecutor.state.statistics import Statistics, PortfolioStatistics
 
 
 def calculate_equity_curve(
-        state: State,
-        attribute_name="total_equity",
-        fill_time_gaps=False,
+    state: State,
+    attribute_name="total_equity",
+    fill_time_gaps=False,
 ) -> pd.Series:
     """Calculate equity curve for the portfolio.
 
@@ -43,6 +43,9 @@ def calculate_equity_curve(
 
         Empty series is returned if there is no data.
 
+        We ensure only one entry per timestamp through
+        filtering out duplicate indices.
+
     """
 
     stats: Statistics = state.stats
@@ -65,7 +68,22 @@ def calculate_equity_curve(
             data.append((end, end_val))
 
     # https://stackoverflow.com/a/66772284/315168
-    return pd.DataFrame(data).set_index(0)[1]
+    df = pd.DataFrame(data).set_index(0)[1]
+
+    # Remove duplicates
+    #
+    # Happens in unit tests as we get a calculate event from deposit
+    # and recalculatin at the same timestam
+
+    # ipdb> curve
+    # 0
+    # 2021-06-01 00:00:00.000000        0.000000
+    # 2023-10-18 10:04:05.834542    10000.000000
+    # 2021-06-01 00:00:00.000000    10000.000000
+
+    # https://stackoverflow.com/a/34297689/315168
+    df = df[~df.index.duplicated(keep='last')]
+    return df
 
 
 def calculate_returns(equity_curve: pd.Series) -> pd.Series:

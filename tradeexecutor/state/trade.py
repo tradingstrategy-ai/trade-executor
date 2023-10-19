@@ -280,6 +280,8 @@ class TradeExecution:
     #: This is because invalid trades (execution failed) may be marked
     #: close.
     #:
+    #: Set in :py:meth:`tradeexecutor.state.State.mark_trade_success`.
+    #:
     executed_price: Optional[USDollarPrice] = None
 
     #: How much underlying token we traded, the actual realised amount.
@@ -389,6 +391,11 @@ class TradeExecution:
     #: For the repair trade
     #:
     #: - Strategy cycle is set to the original broken trade
+    #:
+    #: - Trade at ``repaired_trade_id`` may or may not have ``repaired_at`` set
+    #:
+    #: - This is used to mark position closed in accounting correction,
+    #:   although the trade itself does not carry any value
     #:
     repaired_trade_id: Optional[datetime.datetime] = None
 
@@ -629,12 +636,18 @@ class TradeExecution:
         return sign
 
     def is_sell(self) -> bool:
-        assert self.planned_quantity != 0, "Buy/sell concept does not exist for zero quantity"
-        return self.planned_quantity < 0
+        """Trade is considered sell or short if planned quantity is set negative.
+
+        For some of the repaired trades the quantity is set to zero,
+        just to create accounting reference when correcting the total balances.
+        These trades are considered sell trades.
+        """
+        return self.planned_quantity <= 0
 
     def is_buy(self) -> bool:
-        assert self.planned_quantity != 0, "Buy/sell concept does not exist for zero quantity"
-        return self.planned_quantity >= 0
+        """Trade is considered spot buy or long if the planned quantity is positive.
+        """
+        return self.planned_quantity > 0
 
     def is_success(self) -> bool:
         """This trade was succcessfully completed."""
@@ -804,10 +817,18 @@ class TradeExecution:
         - Exact quantity and exact crypto price we got executed at
 
         - USD exchange rate known at the time of the execution
+
+        :return:
+            0.0 if the trade is not executed, or repaired without proper quantity
+
         """
         # self.executed_price can be zero for frozen positions,
         # but the position may still be closed (self.closed_at set)
-        return abs(float(self.executed_quantity) * (self.executed_price or 0))
+
+        executed_quantity = self.executed_quantity or 0
+        executed_price = self.executed_price or 0
+
+        return abs(float(executed_quantity) * float(executed_price))
 
     def get_planned_value(self) -> USDollarAmount:
         """How much we plan to swap in this trade."""

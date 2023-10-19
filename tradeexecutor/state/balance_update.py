@@ -161,13 +161,19 @@ class   BalanceUpdate:
         if self.previous_update_at:
             assert self.previous_update_at <= self.block_mined_at, f"Travelling back in time: {self.previous_update_at} - {self.block_mined_at}"
 
+        if self.block_number is not None:
+            assert type(self.block_number) == int, f"Got wrong type: {type(self.block_number)}"
+
+        if self.block_mined_at is not None:
+            assert isinstance(self.block_mined_at, datetime.datetime), f"Got wrong type: {self.block_mined_at.__class__}"
+
     def __repr__(self):
         if self.position_id:
             position_name = f"position #{self.position_id}"
         else:
             position_name = "strategy reserves"
 
-        return f"<BalanceUpdate #{self.balance_update_id} {self.cause.name} {self.quantity} for {position_name} at block {self.block_mined_at and self.block_mined_at:,}>"
+        return f"Funding event #{self.balance_update_id} {self.cause.name} {self.quantity} tokens for {position_name} at block {self.block_number and self.block_number:,} from {self.owner_address}"
 
     def __eq__(self, other: "BalanceUpdate"):
         assert isinstance(other, BalanceUpdate), f"Got {other}"

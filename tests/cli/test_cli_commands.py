@@ -359,3 +359,33 @@ def test_cli_show_positions(
             with redirect_stdout(f):
                 cli.main(args=["show-positions"])
         assert e.value.code == 0
+
+
+def test_cli_export(
+        logger,
+        strategy_path: str,
+        unit_test_cache_path: str,
+        capsys,
+    ):
+    """export command does not crash"""
+
+    environment = {
+        "TRADING_STRATEGY_API_KEY": os.environ["TRADING_STRATEGY_API_KEY"],
+        "STRATEGY_FILE": strategy_path,
+        "CACHE_PATH": unit_test_cache_path,
+        "JSON_RPC_BINANCE": os.environ.get("BNB_CHAIN_JSON_RPC"),
+        "PRIVATE_KEY": "0x111e53aed5e777996f26b4bdb89300bbc05b84743f32028c41be7193c0fe0b83",
+        "UNIT_TESTING": "true",
+        "LOG_LEVEL": "disabled",
+        "ASSET_MANAGEMENT_MODE": "hot_wallet",
+    }
+
+    cli = get_command(app)
+    with patch.dict(os.environ, environment, clear=True):
+        with pytest.raises(SystemExit) as e:
+            cli.main(args=["export"])
+        assert e.value.code == 0
+
+    captured = capsys.readouterr()
+    assert "export LOG_LEVEL" in captured.out
+    assert "STRATEGY_FILE" in captured.out

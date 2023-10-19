@@ -155,7 +155,7 @@ def update_statistics(
         stats: Statistics,
         portfolio: Portfolio,
         execution_mode: ExecutionMode,
-        strategy_cycle_at: datetime.datetime | None = None,
+        strategy_cycle_or_wall_clock: datetime.datetime | None = None,
 ):
     """Update statistics in a portfolio.
 
@@ -179,8 +179,10 @@ def update_statistics(
 
         Always available.
 
-    :param strategy_cycle_at:
+    :param strategy_cycle_or_wall_clock:
         The strategy cycle timestamp.
+
+        Wall clock time if called outside the strategy cycle.
 
         Only available when `update_statistics()` is run
         at the end of live trading cycle.
@@ -188,7 +190,7 @@ def update_statistics(
 
     logger.info("update_statistics(), real-time clock at %s, strategy cycle at %s",
                 clock,
-                strategy_cycle_at
+                strategy_cycle_or_wall_clock
                 )
 
     new_stats = calculate_statistics(clock, portfolio, execution_mode)

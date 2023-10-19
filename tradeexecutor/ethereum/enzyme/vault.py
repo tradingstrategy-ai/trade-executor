@@ -7,7 +7,9 @@ from _decimal import Decimal
 from functools import partial
 from typing import cast, List, Optional, Tuple, Iterable
 
-from eth_defi.provider.broken_provider import get_block_tip_latency
+from web3.types import BlockIdentifier
+
+from eth_defi.provider.broken_provider import get_block_tip_latency, get_almost_latest_block_number
 from web3 import Web3, HTTPProvider
 
 from eth_defi.chain import fetch_block_timestamp, has_graphql_support
@@ -29,6 +31,7 @@ from tradeexecutor.state.reserve import ReservePosition
 from tradeexecutor.state.state import State
 from tradeexecutor.state.balance_update import BalanceUpdate, BalanceUpdateCause, BalanceUpdatePositionType
 from tradeexecutor.state.sync import BalanceEventRef
+from tradeexecutor.strategy.account_correction import check_accounts
 from tradeexecutor.strategy.sync_model import SyncModel, OnChainBalance
 from tradingstrategy.chain import ChainId
 
@@ -202,6 +205,8 @@ class EnzymeVaultSyncModel(SyncModel):
         event_id = portfolio.next_balance_update_id
         portfolio.next_balance_update_id += 1
 
+        assert event.timestamp is not None, f"Timestamp cannot be none: {event}"
+
         evt = BalanceUpdate(
             balance_update_id=event_id,
             position_type=BalanceUpdatePositionType.reserve,
@@ -289,6 +294,8 @@ class EnzymeVaultSyncModel(SyncModel):
             assert old_balance - quantity >= 0, f"Position went to negative: {position} with token {token_details} and amount {raw_amount}\n" \
                                                 f"Quantity: {quantity}, old balance: {old_balance}"
 
+            assert event.timestamp is not None, f"Timestamp cannot be none: {event}"
+
             evt = BalanceUpdate(
                 balance_update_id=event_id,
                 cause=BalanceUpdateCause.redemption,
@@ -320,11 +327,12 @@ class EnzymeVaultSyncModel(SyncModel):
             case Deposit():
                 # Deposit generated only one event
                 event = cast(Deposit, event)
+                logger.info("Procsesing Enzyme deposit %s", event.event_data)
                 return [self.process_deposit(portfolio, event, strategy_cycle_ts)]
             case Redemption():
                 # Enzyme in-kind redemption can generate updates for multiple assets
                 event = cast(Redemption, event)
-
+                logger.info("Procsesing Enzyme redemption %s", event.event_data)
                 # Sanity check: Make sure there has not been redemptions from the vault before the strategy was initialised.
                 # Make sure we do not get events that are from the time before
                 # the state was initialised
@@ -403,31 +411,21 @@ class EnzymeVaultSyncModel(SyncModel):
     def fetch_onchain_balances(
             self,
             assets: List[AssetIdentifier],
-            filter_zero=True) -> Iterable[OnChainBalance]:
-        """Read the on-chain asset details.
-
-        - Mark the block we are reading at the start
-
-        - Asset list is sorted to be by address to make sure
-          the return order is deterministic
-
-        :param filter_zero:
-            Do not return zero balances
-
-        :return:
-            Iterator for assets by the sort order.
-        """
+            filter_zero=True,
+            block_identifier: BlockIdentifier = None,
+    ) -> Iterable[OnChainBalance]:
 
         sorted_assets = sorted(assets, key=lambda a: a.address)
 
         # Latest block fails on LlamaNodes.com
-        block_number = max(1, self.web3.eth.block_number - get_block_tip_latency(self.web3))
+        if block_identifier is None:
+            block_identifier = get_almost_latest_block_number(self.web3)
 
         return fetch_address_balances(
             self.web3,
             self.get_vault_address(),
             sorted_assets,
-            block_number=block_number,
+            block_number=block_identifier,
             filter_zero=filter_zero,
         )
 
@@ -520,7 +518,7 @@ class EnzymeVaultSyncModel(SyncModel):
         latency = get_block_tip_latency(web3)
         end_block = max(1, web3.eth.block_number - latency)
 
-        logger.info(f"Starting sync for vault %s, comptroller %s, looking block range {start_block:,} - {end_block:,}, block tip latency is %d", self.vault.address, self.vault.comptroller.address, latency)
+        logger.info(f"Starting treasury sync for vault %s, comptroller %s, looking block range {start_block:,} - {end_block:,}, block tip latency is %d", self.vault.address, self.vault.comptroller.address, latency)
 
         reader, broken_quicknode = self.create_event_reader()
 
@@ -557,6 +555,8 @@ class EnzymeVaultSyncModel(SyncModel):
         events = []
         for chain_event in events_iter:
             events += self.translate_and_apply_event(state, chain_event, strategy_cycle_ts)
+            for e in events:
+                logger.info(f"Processed Enzyme balance update event %s", e)
 
         # Check that we do not have conflicting events
         new_event: BalanceUpdate
@@ -578,6 +578,8 @@ class EnzymeVaultSyncModel(SyncModel):
         # Update the reserve position value
         # TODO: Add USDC/USD price feed
         # state.portfolio.get_default_reserve_position().update_value(exchange_rate=1.0)
+
+        logger.info(f"Enzyme treasury sync done, the last block is now {treasury_sync.last_block_scanned:,}, found {len(events)} events")
 
         return events
 

@@ -29,6 +29,7 @@ def strategy_folder():
 
 @pytest.fixture(scope="session")
 def persistent_test_cache_path() -> str:
+    """The path where tests store and cache the downloaded datsets"""
     return "/tmp/trading-strategy-tests"
 
 
@@ -39,7 +40,8 @@ def persistent_test_client(persistent_test_cache_path) -> Client:
     Read API key from TRADING_STRATEGY_API_KEY env variable.
     """
     c = Client.create_test_client(persistent_test_cache_path)
-    return c
+    yield c
+    c.close()
 
 
 @pytest.fixture()
@@ -63,3 +65,22 @@ def pytest_sessionstart(session):
     # Make sure dataclasses-json is monkey patched
     from tradeexecutor.monkeypatch.dataclasses_json import patch_dataclasses_json
     patch_dataclasses_json()
+
+
+# Use this to track RAM usage (RSS) over the execution
+# to debug PyArrow memory leaks
+#
+# @pytest.fixture(autouse=True)
+# def cleanup(request):
+#     """Try to release pyarrow memory and avoid leaking."""
+#     import gc
+#     import psutil
+#     p = psutil.Process()
+#     rss = p.memory_info().rss
+#     print(f"RSS is {rss:,}")
+#     #gc.collect()
+#     #import pyarrow
+#     #pool = pyarrow.default_memory_pool()
+#     #pool.release_unused()
+#
+

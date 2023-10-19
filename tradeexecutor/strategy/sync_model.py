@@ -4,7 +4,9 @@ import datetime
 from _decimal import Decimal
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import Callable, List, Optional
+from typing import Callable, List, Optional, Iterable, Collection
+
+from web3.types import BlockIdentifier
 
 from eth_defi.hotwallet import HotWallet
 from tradeexecutor.ethereum.tx import TransactionBuilder
@@ -124,6 +126,30 @@ class SyncModel(ABC):
         """
 
     @abstractmethod
+    def fetch_onchain_balances(
+            self,
+            assets: Collection[AssetIdentifier],
+            filter_zero=True,
+            block_identifier: BlockIdentifier = None,
+    ) -> Iterable[OnChainBalance]:
+        """Read the on-chain asset details.
+
+        - Mark the block we are reading at the start
+
+        - Asset list is sorted to be by address to make sure
+          the return order is deterministic
+
+        :param filter_zero:
+            Do not return zero balances
+
+        :param block_identifier:
+            Cbeck at certain block height.
+
+        :return:
+            Iterator for assets by the sort order.
+        """
+
+    @abstractmethod
     def create_transaction_builder(self) -> Optional[TransactionBuilder]:
         """Creates a transaction builder instance to make trades against this asset management model.
 
@@ -213,3 +239,11 @@ class DummySyncModel(SyncModel):
 
     def create_transaction_builder(self) -> Optional[TransactionBuilder]:
         return None
+
+    def fetch_onchain_balances(
+            self,
+            assets: Collection[AssetIdentifier],
+            filter_zero=True,
+            block_identifier: BlockIdentifier = None,
+    ) -> Iterable[OnChainBalance]:
+        raise NotImplementedError("Backtesting does not know about on-chain balances")

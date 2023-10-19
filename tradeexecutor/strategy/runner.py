@@ -13,6 +13,7 @@ from pprint import pformat
 
 from typing import List, Optional, Tuple
 
+from tradeexecutor.statistics.core import update_statistics
 from tradeexecutor.strategy.account_correction import check_accounts, UnexpectedAccountingCorrectionIssue
 from tradeexecutor.strategy.approval import ApprovalModel
 from tradeexecutor.strategy.cycle import CycleDuration
@@ -108,6 +109,10 @@ class StrategyRunner(abc.ABC):
             self.execution_context.mode.name,
         )
 
+        # If planned and executed price is % off then
+        # make a warning in the post execution output
+        self.execution_warning_tolerance = 0.01
+
     def __repr__(self):
         """Get a long presentation of internal runner state."""
         dump = pformat(self.__dict__)
@@ -143,7 +148,12 @@ class StrategyRunner(abc.ABC):
         """
         return self.execution_context.mode.is_live_trading() or self.execution_context.mode.is_unit_testing()
 
-    def sync_portfolio(self, strategy_cycle_ts: datetime.datetime, universe: StrategyExecutionUniverse, state: State, debug_details: dict):
+    def sync_portfolio(
+            self,
+            strategy_cycle_or_trigger_check_ts: datetime.datetime,
+            universe: StrategyExecutionUniverse,
+            state: State,
+            debug_details: dict):
         """Adjust portfolio balances based on the external events.
 
         External events include
@@ -155,6 +165,19 @@ class StrategyRunner(abc.ABC):
         - Interest accrued
 
         - Token rebases
+
+        :param strategy_cycle_or_trigger_check_ts:
+            Timestamp for the event trigger
+
+        :param universe:
+            Loaded universe
+
+        :param state:
+            Currnet strategy state
+
+        :param debug_details:
+            Dictionary of debug data that will be passed down to the callers
+
         """
         assert isinstance(universe, StrategyExecutionUniverse), f"Universe was {universe}"
         reserve_assets = list(universe.reserve_assets)
@@ -164,20 +187,47 @@ class StrategyRunner(abc.ABC):
         assert token.decimals and token.decimals > 0, f"Reserve asset lacked decimals"
 
         balance_update_events = self.sync_model.sync_treasury(
-            strategy_cycle_ts,
+            strategy_cycle_or_trigger_check_ts,
             state,
             supported_reserves=reserve_assets,
         )
         assert type(balance_update_events) == list
+
+        for e in balance_update_events:
+            logger.trade("Funding flow event: %s", e)
 
         # Update the debug data for tests with our events
         debug_details["reserve_update_events"] = balance_update_events
         debug_details["total_equity_at_start"] = state.portfolio.get_total_equity()
         debug_details["total_cash_at_start"] = state.portfolio.get_cash()
 
-    def revalue_state(self, ts: datetime.datetime, state: State, valuation_method: ValuationModel):
+        # If we have any new deposits, let's refresh our stats right away
+        # to reflect the new balances
+        if len(balance_update_events) > 0:
+
+            with self.timed_task_context_manager("sync_portfolio_stats_refresh"):
+                routing_state, pricing_model, valuation_model = self.setup_routing(universe)
+
+                timestamp = strategy_cycle_or_trigger_check_ts
+
+                # Re-value the portfolio with new deposits
+                self.revalue_state(
+                    timestamp,
+                    state,
+                    valuation_model,
+                )
+
+                update_statistics(
+                    timestamp,
+                    state.stats,
+                    state.portfolio,
+                    self.execution_context.mode,
+                    strategy_cycle_or_wall_clock=timestamp,
+                )
+
+    def revalue_state(self, ts: datetime.datetime, state: State, valuation_model: ValuationModel):
         """Revalue portfolio based on the latest prices."""
-        revalue_state(state, ts, valuation_method)
+        revalue_state(state, ts, valuation_model)
         logger.info("After revaluation at %s our portfolio value is %f USD", ts, state.portfolio.get_total_equity())
 
     def collect_post_execution_data(
@@ -215,13 +265,35 @@ class StrategyRunner(abc.ABC):
                 else:
                     t.post_execution_price_structure = pricing_model.get_sell_price(ts, spot_pair, t.planned_quantity)
 
-            logger.info(
-                "Trade %s, estimated reserve %s, executed reserve %s, estimated quantity %s, executed quantity %s",
+            #
+            # Check if we got so bad trade execution we should worry about it
+            #
+
+            if t.planned_reserve and t.executed_reserve:
+                reserve_drift = abs((t.executed_reserve - t.planned_reserve) / t.planned_reserve)
+            else:
+                reserve_drift = 0
+
+            if t.planned_quantity and t.executed_quantity:
+                quantity_drift = abs((t.executed_quantity - t.planned_quantity) / t.planned_quantity)
+            else:
+                quantity_drift = 0
+
+            if reserve_drift >= self.execution_warning_tolerance or quantity_drift >= self.execution_warning_tolerance:
+                log_level = logging.WARNING
+            else:
+                log_level = logging.INFO
+
+            logger.log(
+                log_level,
+                "Trade %s, estimated reserve %s, executed reserve %s, estimated quantity %s, executed quantity %s, reserve drift %f %%, quantity drift %f %%",
                 t,
                 t.planned_reserve,
                 t.executed_reserve,
                 t.planned_quantity,
                 t.executed_quantity,
+                reserve_drift * 100,
+                quantity_drift * 100,
             )
 
     def on_clock(self,
@@ -553,7 +625,7 @@ class StrategyRunner(abc.ABC):
                     # We cannot call account check right after the trades,
                     # as meny low quality nodes might still report old token balances
                     # from eth_call
-                    logger.info("Waiting on-chain balances to settle for %f before performing accounting checks", self.trade_settle_wait)
+                    logger.info("Waiting on-chain balances to settle for %s before performing accounting checks", self.trade_settle_wait)
                     time.sleep(self.trade_settle_wait.total_seconds())
 
                     # Double check we handled incoming trade balances correctly
@@ -602,9 +674,14 @@ class StrategyRunner(abc.ABC):
         assert isinstance(routing_state, RoutingState)
         assert isinstance(stop_loss_pricing_model, PricingModel)
 
+        debug_details = {}
+
         with self.timed_task_context_manager("check_position_triggers"):
 
-            # TODO: Sync the treasury here
+            # Sync treasure before the trigger checks
+            with self.timed_task_context_manager("sync_portfolio_before_triggers"):
+                self.check_accounts(universe, state, report_only=True)
+                self.sync_portfolio(clock, universe, state, debug_details)
 
             # Check that our on-chain balances are good
             with self.timed_task_context_manager("check_accounts_position_triggers"):
@@ -670,10 +747,18 @@ class StrategyRunner(abc.ABC):
         The function is overridden by the child class for actual strategy runner specific implementation.
         """
 
-    def check_accounts(self, universe: TradingStrategyUniverse, state: State):
+    def check_accounts(
+            self,
+            universe: TradingStrategyUniverse,
+            state: State,
+            report_only=False,
+    ):
         """Perform extra accounting checks on live trading startup.
 
         Must be enabled in the settings. Enabled by default for live trading.
+
+        :param report_only:
+            Don't crash if we get problems in accounts
 
         :raise UnexpectedAccountingCorrectionIssue:
             Aborting execution.
@@ -695,11 +780,20 @@ class StrategyRunner(abc.ABC):
                 self.sync_model,
             )
 
+            log_level = logging.INFO if report_only else logging.ERROR
+
             if not clean:
-                logger.error("Accounting errors detected\n"
-                             "Aborting execution as we cannot reliable trade with incorrect balances.\n"
-                             "Accounting errors are:\n"
-                             "%s", df.to_string())
-                raise UnexpectedAccountingCorrectionIssue("Accounting errors detected")
+                logger.log(
+                    log_level,
+                    "Accounting differences detected\n"                    
+                    "Differences are:\n"
+                    "%s",
+                    df.to_string()
+                )
+
+                if not report_only:
+                    logger.error("Aborting execution as we cannot reliable trade with incorrect balances.")
+                    raise UnexpectedAccountingCorrectionIssue("Aborting execution as we cannot reliable trade with incorrect balances.")
         else:
+            # Path taken by some legacy tests
             logger.info("Accounting checks disabled - skipping")

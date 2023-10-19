@@ -37,6 +37,7 @@ def strategy_path() -> Path:
     return Path(os.path.join(os.path.dirname(__file__), "..", "strategies", "test_only", "quickswap_dummy.py"))
 
 
+@pytest.mark.slow_test_group
 def test_run_one_live_cycle(
         logger,
         strategy_path: Path,

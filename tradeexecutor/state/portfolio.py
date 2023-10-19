@@ -167,53 +167,6 @@ class Portfolio:
         """
         return chain(self.open_positions.values(), self.frozen_positions.values())
 
-    def get_all_positions_filtered(self) -> Iterable[TradingPosition]:
-        """Get open, closed and frozen, positions filtered to remove
-        repaired or failed trades.
-        
-        """
-        
-        all_positions = self.get_all_positions()
-        filtered_positions = []
-
-        for position in all_positions:
-            
-            # to avoid copying with same reference
-            filtered_position = copy.deepcopy(position)
-            filtered_position.trades = {}
-            
-            for key, trade in position.trades.items():
-                if trade.is_repaired() or trade.is_repair_trade():
-                    # These trades have quantity set to zero
-                    continue
-
-                # filter out failed trade
-                if trade.executed_at is None:
-                    continue
-                
-                # Internally negative quantities are for sells
-                quantity = trade.executed_quantity
-
-                if trade.planned_mid_price not in (0, None):
-                    price = trade.planned_mid_price
-                else:
-                    # TODO: Legacy trades.
-                    # mid_price is filled to all latest trades
-                    price = trade.executed_price
-                    
-                assert quantity != 0, f"Got bad quantity for {trade}"
-                assert (price is not None) and price > 0, f"Got invalid trade {trade.get_debug_dump()} - price is {price}"
-
-                filtered_position.trades[key] = trade
-
-            # if there are no trades, skip this position
-            if not filtered_position.trades:
-                continue
-
-            filtered_positions.append(filtered_position)
-
-        return filtered_positions
-
     def get_open_positions(self) -> Iterable[TradingPosition]:
         """Get currently open positions."""
         return self.open_positions.values()
@@ -690,6 +643,33 @@ class Portfolio:
         if position is None:
             return Decimal(0)
         return position.get_quantity_old()
+
+    def close_position(
+        self,
+        position: TradingPosition,
+        executed_at: datetime.datetime,
+    ):
+        """Move a position from open positions to closed ones.
+
+        See also :py:meth:`TradingPosition.can_be_closed`.
+
+        :param position:
+            Trading position where the trades and balance updates quantity equals to zero
+
+        :param executed_at:
+            Wall clock time
+
+        """
+
+        assert position.position_id in self.open_positions, f"Not in open positions: {position}"
+
+        # Move position to closed
+        logger.info("Marking position to closed: %s at %s", position, executed_at)
+        position.closed_at = executed_at
+        del self.open_positions[position.position_id]
+        self.closed_positions[position.position_id] = position
+
+        assert position.is_closed()
 
     def adjust_reserves(self, asset: AssetIdentifier, amount: Decimal):
         """Remove currency from reserved.

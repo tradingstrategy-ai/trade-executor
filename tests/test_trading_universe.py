@@ -14,7 +14,9 @@ from tradingstrategy.timebucket import TimeBucket
 
 
 # https://docs.pytest.org/en/latest/how-to/skipping.html#skip-all-test-functions-of-a-class-or-module
-pytestmark = pytest.mark.skipif(os.environ.get("TRADING_STRATEGY_API_KEY") is None, reason="Set TRADING_STRATEGY_API_KEY environment variable to run this test")
+# pytestmark = pytest.mark.skipif(os.environ.get("TRADING_STRATEGY_API_KEY") is None, reason="Set TRADING_STRATEGY_API_KEY environment variable to run this test")
+
+pytestmark = pytest.mark.skip("Disabled as too RAM hungry for parallel testing")
 
 
 def test_create_multipair_universe(persistent_test_client):

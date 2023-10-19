@@ -1,8 +1,12 @@
 """Sync model for strategies using a single hot wallet."""
 import datetime
+import logging
 from typing import List, Optional, Iterable
 
+from web3.types import BlockIdentifier
+
 from eth_defi.hotwallet import HotWallet
+from eth_defi.provider.broken_provider import get_almost_latest_block_number
 from tradeexecutor.ethereum.onchain_balance import fetch_address_balances
 from tradeexecutor.state.balance_update import BalanceUpdate
 from tradingstrategy.chain import ChainId
@@ -15,6 +19,9 @@ from tradeexecutor.state.identifier import AssetIdentifier
 from tradeexecutor.state.state import State
 from tradeexecutor.strategy.sync_model import SyncModel, OnChainBalance
 from tradeexecutor.testing.dummy_wallet import apply_sync_events
+
+
+logger = logging.getLogger(__name__)
 
 
 class HotWalletSyncModel(SyncModel):
@@ -64,12 +71,15 @@ class HotWalletSyncModel(SyncModel):
 
         # TODO: This code is not production ready - use with care
         # Needs legacy cleanup
+        logger.info("Hot wallet treasury sync starting for %s", self.hot_wallet.address)
         events = sync_reserves(self.web3, strategy_cycle_ts, self.hot_wallet.address, [], supported_reserves)
         apply_sync_events(state, events)
-        state.sync.treasury.last_updated_at = datetime.datetime.utcnow()
-        state.sync.treasury.last_cycle_at = strategy_cycle_ts
-        state.sync.treasury.last_block_scanned = self.web3.eth.block_number
-        state.sync.treasury.balance_update_refs = []  # Broken - wrong event type
+        treasury = state.sync.treasury
+        treasury.last_updated_at = datetime.datetime.utcnow()
+        treasury.last_cycle_at = strategy_cycle_ts
+        treasury.last_block_scanned = self.web3.eth.block_number
+        treasury.balance_update_refs = []  # Broken - wrong event type
+        logger.info(f"Hot wallet sync done, the last block is now {treasury.last_block_scanned:,}")
         return []
 
     def create_transaction_builder(self) -> HotWalletTransactionBuilder:
@@ -84,19 +94,23 @@ class HotWalletSyncModel(SyncModel):
         self.sync_initial(state)
         self.sync_treasury(datetime.datetime.utcnow(), state, supported_reserves)
 
-    def fetch_onchain_balances(self, assets: List[AssetIdentifier], filter_zero=True) -> Iterable[OnChainBalance]:
-        """Read the on-chain asset details.
+    def fetch_onchain_balances(
+        self,
+        assets: List[AssetIdentifier],
+        filter_zero=True,
+        block_identifier: BlockIdentifier = None,
+    ) -> Iterable[OnChainBalance]:
 
-        - Mark the block we are reading at the start
+        # Latest block fails on LlamaNodes.com
+        if block_identifier is None:
+            block_identifier = get_almost_latest_block_number(self.web3)
 
-        :param filter_zero:
-            Do not return zero balances
-        """
         return fetch_address_balances(
             self.web3,
             self.get_hot_wallet().address,
             assets,
             filter_zero=filter_zero,
+            block_number=block_identifier,
         )
 
 

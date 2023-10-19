@@ -3,6 +3,7 @@ import datetime
 import enum
 import logging
 import pprint
+import warnings
 from dataclasses import dataclass, field, asdict
 from decimal import Decimal
 
@@ -129,6 +130,9 @@ class TradingPosition(GenericPosition):
     trades: Dict[int, TradeExecution] = field(default_factory=dict)
 
     #: When this position was closed
+    #:
+    #: Execution time of the trade or wall-clock time if not available.
+    #:
     closed_at: Optional[datetime.datetime] = None
 
     #: Timestamp when this position was moved to a frozen state.
@@ -233,6 +237,8 @@ class TradingPosition(GenericPosition):
     #: Applicable for
     #:
     #: - short/long positions using lending protocols
+    #:
+    #: TODO: When this is set and when this is updated.
     #: 
     liquidation_price: USDollarAmount | None = None
 
@@ -506,10 +512,16 @@ class TradingPosition(GenericPosition):
         return self.last_token_price
 
     def get_opening_price(self) -> USDollarAmount:
-        """Get the price when the position was opened."""
+        """Get the price when the position was opened.
+
+        :return:
+            Get the executed opening price of the position.
+
+            If the first trade was not success, return 0.0.
+        """
         assert self.has_executed_trades()
         first_trade = self.get_first_trade()
-        return first_trade.executed_price
+        return first_trade.executed_price or 0.0
 
     def get_closing_price(self) -> USDollarAmount:
         """Get the price when the position was closed."""
@@ -681,6 +693,18 @@ class TradingPosition(GenericPosition):
         """Did this position close with trake profit."""
         last_trade = self.get_last_trade()
         return last_trade.is_take_profit()
+
+    def is_properly_opened(self) -> bool:
+        """Did we manage to open this position correctly.
+
+        :return:
+            True if the opening trade was correctly executed.
+
+            Might also return False for legacy data
+        """
+
+        open_trade = self.get_first_trade()
+        return open_trade.is_success()
 
     def open_trade(self,
                    strategy_cycle_at: datetime.datetime | None,
@@ -991,13 +1015,10 @@ class TradingPosition(GenericPosition):
         return self.get_total_sold_usd() / q
 
     def get_price_at_open(self) -> USDollarAmount:
-        """Get the price of the position at open.
-
-        Include only the first trade that opened the position.
-        Calculate based on the executed price.
+        """Legacy.
         """
-        first_trade =self.get_first_trade()
-        return first_trade.executed_price
+        warnings.warn('This fuction is deprecated. Use TradingPosition.get_opening_price() instead', DeprecationWarning, stacklevel=2)
+        return self.get_opening_price()
 
     def get_quantity_at_open(self) -> Decimal:
         """Get the quanaity of the asset the position at open.
@@ -1038,6 +1059,8 @@ class TradingPosition(GenericPosition):
 
         - Any avg buy and sell contains all fees we have paid in included in the price,
           so we do not need to add them to profit here
+
+        TODO: Handle account corrections
 
         :param include_interest:
             Include any accrued interest in PnL.
@@ -1237,10 +1260,21 @@ class TradingPosition(GenericPosition):
         :return:
             Dollar value of the risked capital
         """
+
+        # Failed trade, or legacy data
+        if not self.is_properly_opened():
+            return 0.0
+
         # assert self.is_long(), "Only long positions supported"
         assert self.stop_loss, f"Stop loss price must be set to calculate the maximum risk"
         # Calculate how much value we can lose
-        price_diff = abs(self.get_price_at_open() - self.stop_loss)
+
+        opening_price = self.get_opening_price()
+        if opening_price is None:
+            # Legacy data
+            return 0.0
+
+        price_diff = abs(opening_price - self.stop_loss)
         risked_value = price_diff * float(self.get_quantity_at_open())
         return risked_value
 
@@ -1273,6 +1307,7 @@ class TradingPosition(GenericPosition):
         """
         
         assert not self.is_open(), "Cannot calculate realised profit for open positions"
+
         buy_value = self.get_buy_value()
         sell_value = self.get_sell_value()
 

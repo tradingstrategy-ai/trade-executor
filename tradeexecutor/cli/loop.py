@@ -143,6 +143,7 @@ class ExecutionLoop:
             check_accounts: Optional[bool] = None,
             minimum_data_lookback_range: Optional[datetime.timedelta] = None,
             universe_options: Optional[UniverseOptions] = None,
+            sync_treasury_on_startup=False,
     ):
         """See main.py for details."""
 
@@ -167,6 +168,7 @@ class ExecutionLoop:
         self.metadata = metadata
         self.check_accounts = check_accounts
         self.execution_context = execution_context
+        self.sync_treasury_on_startup = sync_treasury_on_startup
 
         self.backtest_start = backtest_start
         self.backtest_end = backtest_end
@@ -501,7 +503,7 @@ class ExecutionLoop:
                 state.stats,
                 state.portfolio,
                 ExecutionMode.real_trading,
-                strategy_cycle_at=strategy_cycle_timestamp,
+                strategy_cycle_or_wall_clock=strategy_cycle_timestamp,
             )
 
         state.uptime.record_cycle_complete(cycle)
@@ -753,6 +755,17 @@ class ExecutionLoop:
         trigger_checks = 0
         stop_losses = take_profits = 0
 
+        def set_progress_bar_postfix(state, progress_bar, trade_count, cycle, take_profits, stop_losses):
+            """Set the values for the progress bar."""
+            rolling_profit = state.stats.get_naive_rolling_pnl_pct()
+            progress_bar.set_postfix({
+                "trades": trade_count,
+                "cycles": cycle,
+                "TPs": take_profits,
+                "SLs": stop_losses,
+                "PnL": f"{rolling_profit*100:.2f}%",
+            })
+
         with tqdm(total=seconds) as progress_bar:
 
             while True:
@@ -762,15 +775,8 @@ class ExecutionLoop:
                 if datetime.datetime.utcnow() - last_progress_update > progress_update_threshold:
                     friedly_ts = ts.strftime(ts_format)
                     trade_count = len(list(state.portfolio.get_all_trades()))
-                    rolling_profit = state.stats.get_naive_rolling_pnl_pct()
                     progress_bar.set_description(f"Backtesting {self.name}, {friendly_start} - {friendly_end} at {friedly_ts} ({cycle_name})")
-                    progress_bar.set_postfix({
-                        "trades": trade_count,
-                        "cycles": cycle,
-                        "TPs": take_profits,
-                        "SLs": stop_losses,
-                        "PnL": f"{rolling_profit*100:.2f}%",
-                    })
+                    set_progress_bar_postfix(state, progress_bar, trade_count, cycle, take_profits, stop_losses)
                     last_progress_update = datetime.datetime.utcnow()
                     if last_update_ts:
                         # Push update for the period
@@ -812,6 +818,7 @@ class ExecutionLoop:
                     # Backteting has ended
                     logger.info("Terminating backtesting. Backtest end %s, current timestamp %s", self.backtest_end, next_tick)
                     passed_seconds = (ts - last_update_ts).total_seconds()
+                    set_progress_bar_postfix(state, progress_bar, trade_count, cycle, take_profits, stop_losses)
                     progress_bar.update(int(passed_seconds))
                     break
 
@@ -897,6 +904,16 @@ class ExecutionLoop:
         assert execution_context, "ExecutionContext missing"
 
         universe = self.warm_up_live_trading()
+
+        if self.sync_treasury_on_startup:
+            reserve_assets = list(universe.reserve_assets)
+            logger.info("Syncing treasury events for startup")
+            self.sync_model.sync_treasury(
+                datetime.datetime.utcnow(),
+                state,
+                reserve_assets,
+            )
+            self.store.sync(state)
 
         logger.info("Performing startup accounting check")
         self.runner.check_accounts(
