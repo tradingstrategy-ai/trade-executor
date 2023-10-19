@@ -17,7 +17,7 @@ def generate_lending_reserve(
     token: AssetIdentifier,
     chain_id: ChainId = ChainId.ethereum,
     internal_id = random.randint(1, 1000),
-) -> TradingPairIdentifier:
+) -> LendingReserve:
     """Generate a random lending reserve.
 
     :param token:
@@ -28,6 +28,9 @@ def generate_lending_reserve(
     
     :param internal_id:
         Internal ID of the reserve
+
+    :return:
+        Lending reserve id
     """
 
     atoken = AssetIdentifier(
