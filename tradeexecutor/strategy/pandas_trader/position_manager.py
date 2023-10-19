@@ -1101,6 +1101,8 @@ class PositionManager:
             List of trades that will open this credit position
         """
 
+        assert pair.is_spot(), "Give a spot pair as input and we will figure out shorting pair for you"
+
         if isinstance(pair, DEXPair):
             executor_pair = translate_trading_pair(pair)
         else:
