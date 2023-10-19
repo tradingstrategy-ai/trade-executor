@@ -278,7 +278,7 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
                 asset.address,
             )
         except UnknownLendingReserve as e:
-            raise RuntimeError(f"We do not have lending reserves for asset: {asset}") from e
+            return False
 
         assert market_metric == LendingCandleType.variable_borrow_apr, f"Not supported yet: {market_metric}"
         candles = self.data_universe.lending_candles.variable_borrow_apr
