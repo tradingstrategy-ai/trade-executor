@@ -461,7 +461,7 @@ class TradeAnalysis:
         time_bucket: Optional[TimeBucket] = None,
         state = None,
     ) -> TradeSummary:
-        """Calculate some statistics how our trades went.
+        """Calculate some statistics how our trades went. This is just for overall statistics. For an analysis by overall, long, and short trades, use :py:meth:`calculate_all_summary_stats_by_side`
 
         :param time_bucket:
             Optional, used to display average duration as 'number of bars' instead of 'number of days'.
@@ -793,7 +793,19 @@ class TradeAnalysis:
         time_bucket: Optional[TimeBucket] = None,
         state = None,
     ) -> pd.DataFrame:
-        """Calculate some statistics how our trades went."""
+        """Calculate some statistics how our trades went. This returns a table with 3 separate columns for overall, long and short.
+        
+        For just a single column table for overall statistics, use :py:meth:calculate_summary_statistics() instead.
+
+        :param time_bucket:
+            Optional, used to display average duration as 'number of bars' in addition to 'number of days'.
+
+        :param state:
+            Optional, should be specified if user would like to see advanced statistics such as sharpe ratio, sortino ratio, etc.
+
+        :return:
+            DataFrame with all the stats for overall, long and short.
+        """
 
         all_stats_trade_summary = self.calculate_summary_statistics(time_bucket, state)
         long_stats_trade_summary = self.calculate_long_summary_statistics(time_bucket, state)
