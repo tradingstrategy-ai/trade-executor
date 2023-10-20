@@ -901,6 +901,7 @@ class TradingPosition(GenericPosition):
             reserve_currency_exchange_rate=reserve_currency_price,
             planned_collateral_allocation=planned_collateral_allocation,
             planned_collateral_consumption=planned_collateral_consumption,
+            closing=closing,
         )
 
         self.trades[trade.trade_id] = trade
