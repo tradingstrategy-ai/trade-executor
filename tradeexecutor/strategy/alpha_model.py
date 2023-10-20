@@ -150,6 +150,7 @@ class TradingPairSignal:
     #: If this is a positive, then we need to make a buy trade for this amount to
     #: reach out target position for this cycle. If negative then we need
     #: to decrease our position.
+    #:
     position_adjust_usd: USDollarAmount = 0.0
 
     #: How much we are going to increase/decrease the position on this strategy cycle.
@@ -611,7 +612,10 @@ class AlphaModel:
         self.investable_equity = investable_equity
 
         for s in self.iterate_signals():
+
             s.position_target = s.normalised_weight * investable_equity
+
+            #
             s.position_adjust_usd = s.position_target - s.old_value
 
             if s.position_adjust_usd < 0:
@@ -709,7 +713,7 @@ class AlphaModel:
                         signal.normalised_weight,
                         dollar_diff)
 
-            if abs(dollar_diff) < min_trade_threshold:
+            if abs(dollar_diff) < min_trade_threshold and not signal.is_flipping():
                 logger.info("Not doing anything, diff %f (value %f) below trade threshold %f", dollar_diff, value, min_trade_threshold)
                 signal.position_adjust_ignored = True
             else:
@@ -727,8 +731,9 @@ class AlphaModel:
                             notes=f"Closing position, because the signal weight is below close position weight threshold: {signal}"
                         )
                 else:
-                    # Signal is switching between short/long
-                    if signal.old_synthetic_pair != signal.synthetic_pair and signal.old_synthetic_pair != None:
+                    # Signal is switching between short/long,
+                    # so close any old position
+                    if signal.is_flipping():
                         logger.info("Switching between long/short/spot for %s", signal)
                         old_position = position_manager.get_current_position_for_pair(signal.old_synthetic_pair)
                         if old_position:
@@ -739,7 +744,7 @@ class AlphaModel:
                             )
 
                     if signal.signal < 0:
-                        # Down down down
+                        # A shorting signal
 
                         leverage = signal.leverage
                         assert type(leverage) == float, f"Signal is short, but does not have levarage multiplier set {signal}"

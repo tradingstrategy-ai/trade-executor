@@ -155,4 +155,9 @@ def weight_equal(alpha_signals: Dict[PairInternalId, Signal]) -> Dict[PairIntern
 
 def weight_passthrouh(alpha_signals: Dict[PairInternalId, Signal]) -> Dict[PairInternalId, Weight]:
     """Use the given raw weight value as is as the portfolio weight."""
-    return {pair_id: abs(signal) for pair_id, signal in alpha_signals.items()}
+
+    # Sort by pair id so we are deterministic
+    items = alpha_signals.items()
+    items = sorted(items, key=lambda i: i[0])
+
+    return {pair_id: abs(signal) for pair_id, signal in items}

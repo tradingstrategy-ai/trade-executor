@@ -736,22 +736,33 @@ def test_alpha_model_short(
     # Open Aave spot
     assert len(trades) == 3, f"Got trades: {trades}"
 
-    # Sells go first,
-    # sell 50% of ETH
+    # Closing spot ETH comes first,
+    # sell 100% of ETH spot
     t = trades[0]
     assert t.is_sell()
+    assert t.is_spot()
     assert t.is_planned()
     assert t.pair == weth_usdc
     assert t.planned_price == pytest.approx(1664.99)
-    # assert t.planned_quantity == pytest.approx(-weth_quantity / 2)
-    # assert t.get_planned_value() == 78.85
-    assert t.planned_quantity == pytest.approx(Decimal("-0.04721556886227544491685392813451471738517284393310546875"))
-    assert t.get_planned_value() == pytest.approx(78.61345)
+    assert t.planned_quantity == pytest.approx(Decimal("-0.09500000000000000111022302463"))  # Close all existing
+    assert t.get_planned_value() == pytest.approx(158.17405)
 
-    # Buy comes next,
-    # buy 50% of AAVE
+    # Opening ETH short comes next
+    # Use 50% of portfolio value to go short on ETH
+    weth_usdc_short_pair = universe.get_shorting_pair(weth_usdc)
     t = trades[1]
+    assert t.is_sell()
+    assert t.is_short()
+    assert t.is_planned()
+    assert t.pair == weth_usdc_short_pair
+    assert t.planned_price == pytest.approx(1664.99)
+    assert t.planned_quantity == pytest.approx(Decimal("-0.04735764178763836052165050297"))
+
+    # Spot buy comes next,
+    # buy 50% of AAVE
+    t = trades[2]
     assert t.is_buy()
+    assert t.is_spot()
     assert t.is_planned()
     assert t.planned_price == pytest.approx(100.29999999999998)
     assert t.get_planned_value() == 78.85
