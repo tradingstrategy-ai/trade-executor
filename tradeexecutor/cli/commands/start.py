@@ -4,6 +4,7 @@ TODO: Restructure and move backtesting related functionality to a separate comma
 """
 
 import datetime
+import faulthandler
 import logging
 import os
 import time
@@ -485,6 +486,9 @@ def start(
         logger.exception(e)
 
         stop_watchdog()
+
+        # Dump all threads to stderr in order to see the stuck threads
+        faulthandler.dump_traceback()
 
         # Spend the rest of the time idling
         time.sleep(3600*24*365)

@@ -358,7 +358,7 @@ class EthereumExecutionModel(ExecutionModel):
                     nonce=tx.nonce,
                 )
                 txs.add(signed_tx)
-                logger.info("Broadcasting transaction %s for trade %s:\n %s", signed_tx.hash, t)
+                logger.info("Broadcasting transaction %s for trade\n:%s", signed_tx.hash, t)
                 tx_map[signed_tx.hash.hex()] = (t, tx)
             t.mark_broadcasted(datetime.datetime.utcnow())
 
@@ -367,7 +367,7 @@ class EthereumExecutionModel(ExecutionModel):
             txs,
             max_timeout=confirmation_timeout,
             confirmation_block_count=confirmation_block_count,
-            node_switch_timeout=confirmation_timeout / 4,  # Try switch nodes 4 times if issues
+            node_switch_timeout=datetime.timedelta(minutes=1),  # Rebroadcast every 1 minute
         )
 
         self.resolve_trades(
@@ -849,7 +849,8 @@ def confirm_approvals(
         web3,
         txs,
         confirmation_block_count=confirmation_block_count,
-        max_timeout=max_timeout)
+        max_timeout=max_timeout,
+    )
     return receipts
 
 

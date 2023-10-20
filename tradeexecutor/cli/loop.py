@@ -869,7 +869,8 @@ class ExecutionLoop:
         # Create a watchdog thread that checks that the live trading cycle
         # has completed for every candle + some tolerance minutes.
         # This will terminate the live trading process if it has hung for a reason or another.
-        live_cycle_max_delay = (self.cycle_duration.to_timedelta() + datetime.timedelta(minutes=15)).total_seconds()
+        #T TODO: Added duration * 2 instead of duration * 1 to debug some issues.
+        live_cycle_max_delay = (self.cycle_duration.to_timedelta() * 2 + datetime.timedelta(minutes=15)).total_seconds()
         register_worker(
             watchdog_registry,
             "live_cycle",

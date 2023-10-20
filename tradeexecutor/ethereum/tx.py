@@ -273,8 +273,6 @@ class HotWalletTransactionBuilder(TransactionBuilder):
         if gas_limit is None:
             gas_limit = 500_000
 
-        logger.info("Signing transactions using gas fee method %s for %s", gas_price_suggestion, args_bound_func)
-
         tx = args_bound_func.build_transaction({
             "chainId": self.chain_id,
             "from": Web3.to_checksum_address(self.hot_wallet.address),
@@ -284,6 +282,14 @@ class HotWalletTransactionBuilder(TransactionBuilder):
         apply_gas(tx, gas_price_suggestion)
 
         signed_tx = self.hot_wallet.sign_transaction_with_new_nonce(tx)
+
+        logger.info(
+            "Signed transactions using gas fee method %s for %s, nonce is %d",
+            gas_price_suggestion,
+            args_bound_func,
+            signed_tx.nonce,
+        )
+
         signed_bytes = signed_tx.rawTransaction.hex()
 
         if asset_deltas is None:
