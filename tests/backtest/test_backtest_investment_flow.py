@@ -112,7 +112,7 @@ def synthetic_universe(mock_chain_id, mock_exchange, weth_usdc) -> TradingStrate
 
 
 @pytest.fixture()
-def routing_model(synthetic_universe) -> BacktestRoutingModel:
+def revalue_state(state,(synthetic_universe) -> BacktestRoutingModel:
     return generate_simple_routing_model(synthetic_universe)
 
 
