@@ -14,8 +14,10 @@ from decimal import Decimal
 import pytest
 from hexbytes import HexBytes
 
+from tradeexecutor.backtest.backtest_execution import BacktestExecutionModel
 from tradeexecutor.backtest.backtest_pricing import BacktestSimplePricingModel
 from tradeexecutor.backtest.backtest_routing import BacktestRoutingModel
+from tradeexecutor.backtest.simulated_wallet import SimulatedWallet
 from tradeexecutor.state.state import State, TradeType
 from tradeexecutor.state.portfolio import Portfolio
 from tradeexecutor.state.position import TradingPosition
@@ -251,6 +253,19 @@ def single_asset_portfolio(start_ts, weth_usdc, weth, usdc) -> Portfolio:
     p.next_trade_id = 2
     p.next_position_id = 2
     return p
+
+
+@pytest.fixture()
+def execution_mode() -> BacktestExecutionModel:
+    """Simulate trades using backtest execution model."""
+    wallet = SimulatedWallet()
+    execution_model = BacktestExecutionModel(wallet, max_slippage=0.01)
+    return execution_model
+
+
+@pytest.fixture()
+def routing_model(universe) -> BacktestRoutingModel:
+    return generate_simple_routing_model(universe)
 
 
 def test_get_portfolio_weights(
@@ -655,7 +670,7 @@ def test_alpha_model_flip_position_partially(
     assert t.get_planned_value() == 78.85
 
 
-def test_alpha_model_short(
+def test_alpha_model_open_short(
     single_asset_portfolio: Portfolio,
     universe: TradingStrategyUniverse,
     pricing_model,
@@ -766,5 +781,108 @@ def test_alpha_model_short(
     assert t.is_planned()
     assert t.planned_price == pytest.approx(100.29999999999998)
     assert t.get_planned_value() == 78.85
+
+
+
+def test_alpha_model_increase_short(
+    single_asset_portfolio: Portfolio,
+    universe: TradingStrategyUniverse,
+    pricing_model,
+    weth_usdc: TradingPairIdentifier,
+    aave_usdc: TradingPairIdentifier,
+    start_ts,
+    execution_model: BacktestExecutionModel,
+    routing_model: BacktestRoutingModel,
+):
+    """"Increase short position by going from 50% to 75% on the short signal.
+
+    """
+
+    # Check that shorting is enabled
+    assert universe.can_open_short(start_ts, weth_usdc)
+    assert not universe.can_open_short(start_ts, aave_usdc)
+
+    portfolio = single_asset_portfolio
+
+    state = State(portfolio=portfolio)
+
+    # Check we have WETH-USDC open
+    position = state.portfolio.get_position_by_trading_pair(weth_usdc)
+    assert position.get_quantity() > 0
+    weth_quantity = position.get_quantity()
+    assert position.get_value() == pytest.approx(157.7)
+
+    # Create the PositionManager that
+    # will create buy/sell trades based on our
+    # trading universe and mock price feeds
+    position_manager = PositionManager(
+        start_ts + datetime.timedelta(days=1),  # Trade on t plus 1 day
+        universe,
+        state,
+        pricing_model,
+    )
+
+    alpha_model = AlphaModel()
+    alpha_model.set_signal(aave_usdc, 0.5)  # 50% long AAVE
+    alpha_model.set_signal(weth_usdc, -0.5, leverage=1.0)  # 505 short ETH
+    alpha_model.select_top_signals(count=5)
+    alpha_model.assign_weights(method=weight_passthrouh)
+    alpha_model.normalise_weights()
+
+    # Check we have 50% / 50%
+    for signal in alpha_model.iterate_signals():
+        assert signal.raw_weight == 0.5, f"Bad signal: {signal}"
+        assert signal.normalised_weight == 0.5, f"Bad signal: {signal}"
+
+    # Load in old weight for each trading pair signal,
+    # so we can calculate the adjustment trade size
+    alpha_model.update_old_weights(state.portfolio)
+    weth_signal = alpha_model.get_signal_by_pair(weth_usdc)
+    assert weth_signal.old_value == pytest.approx(157.7)
+    assert weth_signal.old_synthetic_pair == weth_usdc
+
+    # Calculate how much dollar value we want each individual position to be on this strategy cycle,
+    # based on our total available equity
+    portfolio = position_manager.get_current_portfolio()
+    portfolio_target_value = portfolio.get_position_equity_and_loan_nav()
+    alpha_model.calculate_target_positions(position_manager, portfolio_target_value)
+
+    # Shift portfolio from current positions to target positions
+    # determined by the alpha signals (momentum)
+    trades = alpha_model.generate_rebalance_trades_and_triggers(position_manager)
+
+    # Close spot ETH
+    # Open ETH short
+    # Open Aave spot
+    assert len(trades) == 3, f"Got trades: {trades}"
+
+    # Closing spot ETH comes first,
+    # sell 100% of ETH spot
+    t = trades[0]
+    assert t.is_sell()
+    assert t.is_spot()
+
+    # Opening ETH short comes next
+    # Use 50% of portfolio value to go short on ETH
+    t = trades[1]
+    assert t.is_sell()
+    assert t.is_short()
+
+    # Spot buy comes next,
+    # buy 50% of AAVE
+    t = trades[2]
+    assert t.is_buy()
+    assert t.is_spot()
+
+    #
+    # Now do another cycle where we go even more short
+    #
+    balance_1_ts = start_ts + datetime.timedelta(days=1)
+
+    execution_model.execute_trades(
+        balance_1_ts,
+        state,
+        trades,
+    )
 
 
