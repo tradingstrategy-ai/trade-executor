@@ -816,6 +816,7 @@ class PositionManager:
             position=position,
             slippage_tolerance=slippage_tolerance,
             price_structure=price_structure,
+            closing=True,
         )
         assert position == position2, f"Somehow messed up the close_position() trade.\n" \
                                       f"Original position: {position}.\n" \
@@ -825,6 +826,7 @@ class PositionManager:
                                       f"Price structure: {price_structure}\n" \
                                       f"Reserve asset: {reserve_asset}\n"
 
+        assert trade.closing
         return [trade]
 
     def close_credit_supply_position(self,
@@ -874,6 +876,7 @@ class PositionManager:
             reserve_currency=reserve_asset,
             notes=notes,
             position=position,
+            closing=True,
         )
         return [trade]
 
@@ -1130,13 +1133,31 @@ class PositionManager:
             fee=executor_pair.fee,
         )
 
-        logger.info("Opening a short position at timetamp %s\n"
+        # logger.info("Opening a short position at timestamp %s\n"
+        #             "Shorting pair is %s\n"
+        #             "Execution pair is %s\n"
+        #             "Collateral amount: %s USD\n"
+        #             "Borrow amount: %s USD (%s %s)\n"
+        #             "Collateral asset price: %s %s/USD\n"
+        #             "Borrowed asset price: %s %s/USD (assumed execution)\n",
+        #             "Liquidation price: %s %s/USD\n",
+        #             self.timestamp,
+        #             shorting_pair,
+        #             executor_pair,
+        #             estimation.total_collateral_quantity,
+        #             estimation.borrowed_value, estimation.total_borrowed_quantity, executor_pair.base.token_symbol,
+        #             collateral_price, executor_pair.quote.token_symbol,
+        #             borrowed_asset_price, executor_pair.base.token_symbol,
+        #             estimation.liquidation_price, executor_pair.base.token_symbol,
+        #             )
+
+        logger.info("Opening a short position at timestamp %s\n"
                     "Shorting pair is %s\n"
                     "Execution pair is %s\n"
                     "Collateral amount: %s USD\n"
                     "Borrow amount: %s USD (%s %s)\n"
                     "Collateral asset price: %s %s/USD\n"
-                    "Borrowed asset price: %s %s/USD (assumed execution)\n",
+                    "Borrowed asset price: %s %s/USD (assumed execution)\n"
                     "Liquidation price: %s %s/USD\n",
                     self.timestamp,
                     shorting_pair,

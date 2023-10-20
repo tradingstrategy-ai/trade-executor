@@ -985,14 +985,20 @@ class TradeExecution:
     def get_execution_sort_position(self) -> int:
         """When this trade should be executed.
 
-        Lower, negative, trades should be executed first.
+        - Closing trades should go first
+
+        - Selling trades should go first
 
         We need to execute sells first because we need to have cash in hand to execute buys.
 
         :return:
             Sortable int
         """
-        if self.is_sell():
+
+        if self.closing:
+            # Magic number
+            return -self.trade_id - 100_000_000
+        elif self.is_sell():
             return -self.trade_id
         else:
             return self.trade_id

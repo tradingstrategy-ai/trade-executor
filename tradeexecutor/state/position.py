@@ -903,6 +903,7 @@ class TradingPosition(GenericPosition):
             planned_collateral_allocation=planned_collateral_allocation,
             planned_collateral_consumption=planned_collateral_consumption,
             exchange_name=exchange_name,
+            closing=closing,
         )
 
         self.trades[trade.trade_id] = trade

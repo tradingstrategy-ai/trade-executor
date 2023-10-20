@@ -273,6 +273,9 @@ class TradingPairIdentifier:
     #: Internal ids are not also stable across different oracles.
     #: Always use `(chain_id, pool_address)` pair for persistent lookups.
     #:
+    #: For synthetic pairs, like leveraged pairs on lending protocols,
+    #: the internal id is the same as the underlying spot pair id.
+    #:
     internal_id: Optional[int] = None
 
     #: What is the internal exchange id of this trading pair.
