@@ -2,6 +2,7 @@
 
 import logging
 import datetime
+import warnings
 from collections import Counter
 from decimal import Decimal
 from itertools import chain
@@ -358,7 +359,7 @@ class EthereumExecutionModel(ExecutionModel):
                     nonce=tx.nonce,
                 )
                 txs.add(signed_tx)
-                logger.info("Broadcasting transaction %s for trade\n:%s", signed_tx.hash, t)
+                logger.info("Broadcasting transaction %s for trade\n:%s", signed_tx.hash.hex(), t)
                 tx_map[signed_tx.hash.hex()] = (t, tx)
             t.mark_broadcasted(datetime.datetime.utcnow())
 
@@ -871,13 +872,15 @@ def broadcast(
     :return: Map of transaction hashes to watch
     """
 
+    warnings.warn('This function is deprecated. Use multi-node broadcasting instead', DeprecationWarning, stacklevel=2)
+
     logger.info("Broadcasting %d trades", len(instructions))
 
     res = {}
     # Another nonce guard
     nonces: Set[int] = set()
 
-    broadcast_batch: List[SignedTransaction] = []
+    broadcast_batch: List[SignedTransactionWithNonce] = []
 
     for t in instructions:
         assert len(t.blockchain_transactions) > 0, f"Trade {t} does not have any blockchain transactions prepared"
@@ -888,7 +891,7 @@ def broadcast(
             tx.broadcasted_at = ts
             res[tx.tx_hash] = (t, tx)
             # Only SignedTransaction.rawTransaction attribute is intresting in this point
-            signed_tx = SignedTransaction(rawTransaction=tx.signed_bytes, hash=None, r=0, s=0, v=0)
+            signed_tx = tx.get_tx_object()
             broadcast_batch.append(signed_tx)
             logger.info("Broadcasting transaction for trade %s:\n %s", t, tx)
         t.mark_broadcasted(datetime.datetime.utcnow())

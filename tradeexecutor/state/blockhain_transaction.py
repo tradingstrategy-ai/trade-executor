@@ -15,6 +15,7 @@ from typing import Optional, Any, Dict, Tuple, List
 
 from dataclasses_json import dataclass_json, config
 
+from eth_defi.hotwallet import SignedTransactionWithNonce
 from eth_defi.tx import decode_signed_transaction, AssetDelta
 from tradeexecutor.state.pickle_over_json import encode_pickle_over_json, decode_pickle_over_json
 from tradeexecutor.state.types import JSONHexAddress, JSONHexBytes
@@ -134,6 +135,9 @@ class BlockchainTransaction:
     3. Broadcast
 
     4. Confirmation
+
+    A lot information is data structure is redundant and can be
+    streamlined in the future.
     """
 
     #: What kidn of internal type of this transaction is
@@ -211,6 +215,12 @@ class BlockchainTransaction:
 
     #: Raw bytes of the signed transaction
     signed_bytes: Optional[JSONHexBytes] = None
+
+    #: Pickled SignedTransactionWithNonce.
+    #:
+    #: See :py:class:`eth_defi.hotwallet.SignedTransactionWithNonce`
+    #:
+    signed_tx_object: Optional[JSONHexBytes] = None
 
     #: When this transaction was broadcasted
     broadcasted_at: Optional[datetime.datetime] = None
@@ -337,7 +347,14 @@ class BlockchainTransaction:
         """Transaction reverted."""
         return not self.status
 
-    def set_target_information(self, chain_id: int, contract_address: str, function_selector: str, args: list, details: dict):
+    def set_target_information(
+            self,
+            chain_id: int,
+            contract_address: str,
+            function_selector: str,
+            args: list,
+            details: dict
+    ):
         """Update the information on which transaction we are going to perform."""
         assert type(contract_address) == str
         assert type(function_selector) == str
@@ -416,6 +433,17 @@ class BlockchainTransaction:
         if self.wrapped_args is not None:
             return self.wrapped_args
         return self.transaction_args
+
+    def get_tx_object(self) -> SignedTransactionWithNonce | None:
+        """Get the raw transaction object.
+
+        :return:
+        """
+        if not self.signed_tx_object:
+            # Legacy
+            return None
+
+        return decode_pickle_over_json(self.signed_tx_object)
 
     def get_prepared_raw_transaction(self) -> bytes:
         """Get the bytes we can pass to web_ethSendRawTransction"""

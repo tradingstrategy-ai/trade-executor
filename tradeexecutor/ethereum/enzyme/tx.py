@@ -3,6 +3,7 @@
 import logging
 from typing import List, Optional
 from decimal import Decimal
+import pickle
 
 from web3.contract.contract import Contract, ContractFunction
 
@@ -14,6 +15,7 @@ from eth_defi.hotwallet import HotWallet
 from eth_defi.tx import AssetDelta
 from tradeexecutor.ethereum.tx import TransactionBuilder
 from tradeexecutor.state.blockhain_transaction import BlockchainTransaction, BlockchainTransactionType, JSONAssetDelta
+from tradeexecutor.state.pickle_over_json import encode_pickle_over_json
 
 logger = logging.getLogger(__name__)
 
@@ -163,6 +165,7 @@ class EnzymeTransactionBuilder(TransactionBuilder):
             wrapped_args=args_bound_func.arguments,
             wrapped_function_selector=args_bound_func.fn_name,
             signed_bytes=signed_bytes,
+            signed_tx_object=encode_pickle_over_json(signed_tx),
             tx_hash=signed_tx.hash.hex(),
             nonce=signed_tx.nonce,
             details=enzyme_tx.as_json_friendly_dict(),
