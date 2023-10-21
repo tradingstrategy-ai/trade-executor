@@ -136,8 +136,17 @@ class BlockchainTransaction:
 
     4. Confirmation
 
-    A lot information is data structure is redundant and can be
-    streamlined in the future.
+    .. note ::
+
+        In the future, during the broadcasting phase, transactions can be re-signed.
+        If the gas parameters are too low, a new transaction is generated
+        with gas parameters changed and signed again.
+
+    .. note ::
+
+        A lot information is data structure is redundant and can be
+        streamlined in the future.
+
     """
 
     #: What kidn of internal type of this transaction is
@@ -211,9 +220,13 @@ class BlockchainTransaction:
     #:
     #: `{'value': 0, 'maxFeePerGas': 1844540158, 'maxPriorityFeePerGas': 1000000000, 'chainId': 61, 'from': '0x6B49598B34B9c7FbF7C57306d0b0578676D55ffA', 'gas': 100000, 'to': '0xF2E246BB76DF876Cef8b38ae84130F4F55De395b', 'data': '0x095ea7b30000000000000000000000006d411e0a54382ed43f02410ce1c7a7c122afa6e1ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff', 'nonce': 0}`
     #:
+
     details: Optional[Dict] = None
 
     #: Raw bytes of the signed transaction
+    #:
+    #: Legacy. Use :py:attr:`signed_tx_object` instead.
+    #:
     signed_bytes: Optional[JSONHexBytes] = None
 
     #: Pickled SignedTransactionWithNonce.
@@ -327,7 +340,7 @@ class BlockchainTransaction:
                    f"    notes:{notes}\n" \
                    f"    >"
 
-    def get_transaction(self) -> dict:
+    def get_transaction(self) -> SignedTransactionWithNonce | dict:
         """Return the transaction object as it would be in web3.py.
 
         Needed for :py:func:`analyse_trade_by_receipt`.
@@ -336,6 +349,11 @@ class BlockchainTransaction:
         The object will have a dict containing "data" field which we can then
         use for the trade analysis.
         """
+
+        if self.signed_tx_object:
+            return self.signed_tx_object
+
+        # Legacy code path
         assert self.signed_bytes, "Not a signed transaction"
         return decode_signed_transaction(self.signed_bytes)
 
@@ -438,6 +456,7 @@ class BlockchainTransaction:
         """Get the raw transaction object.
 
         :return:
+            Something that web3.py send_raw_transaction can accept
         """
         if not self.signed_tx_object:
             # Legacy
