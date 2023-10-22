@@ -5247,13 +5247,13 @@ tqdm = ">=4.64.1,<5.0.0"
 
 [[package]]
 name = "trading-strategy"
-version = "0.20.12"
+version = "0.20.13"
 description = "Algorithmic trading, token and cryptocurrency DEX trading data, for Uniswap, Aave, PancakeSwap, Sushi, Trader Joe, others"
 optional = false
 python-versions = ">=3.10,<3.11"
 files = [
-    {file = "trading_strategy-0.20.12-py3-none-any.whl", hash = "sha256:785eccf506cfd0a9407cbf2e2887576cfe3d648f8ceaf0ffe70f9c3c9cc1086d"},
-    {file = "trading_strategy-0.20.12.tar.gz", hash = "sha256:2f7d140beb400b9cb8f81722de541e4dae745876946166bcb245b774960b26f6"},
+    {file = "trading_strategy-0.20.13-py3-none-any.whl", hash = "sha256:4a3ca8dfe65fae193ed28f7cabb37684b33aa26d77b8975e24ea72106dad9a79"},
+    {file = "trading_strategy-0.20.13.tar.gz", hash = "sha256:99992c66b2c881c09441f008ee2cbfd95222767ca2513f779d276f611a4f920b"},
 ]
 
 [package.dependencies]
@@ -5623,13 +5623,13 @@ tester = ["eth-tester[py-evm] (==v0.8.0-b.3)", "py-geth (>=3.11.0)"]
 
 [[package]]
 name = "web3-ethereum-defi"
-version = "0.22.25"
+version = "0.22.26"
 description = "Python library for Uniswap, Aave, ChainLink, Enzyme and other protocols on BNB Chain, Polygon, Ethereum and other blockchains"
 optional = false
 python-versions = ">=3.10,<3.11"
 files = [
-    {file = "web3_ethereum_defi-0.22.25-py3-none-any.whl", hash = "sha256:28f6999541a634defc571699d4f87ac26c6782f72667bf9bdd5ad63e904108da"},
-    {file = "web3_ethereum_defi-0.22.25.tar.gz", hash = "sha256:8f555e0d3b561014a37a36f7aea81b700dd3a55f97b81bdd4460d7a50d8d9073"},
+    {file = "web3_ethereum_defi-0.22.26-py3-none-any.whl", hash = "sha256:851fd2080c5df0946e82995c6778fd3fa8e48183ab4794a8dd6eae717f2c6aba"},
+    {file = "web3_ethereum_defi-0.22.26.tar.gz", hash = "sha256:50d2d818faa6e01264ed719afd3b0954a451a249ab9b60fefce69ef59d604e7e"},
 ]
 
 [package.dependencies]
@@ -6139,4 +6139,4 @@ web-server = ["WebTest", "openapi-core", "pyramid", "pyramid-openapi3", "waitres
 [metadata]
 lock-version = "2.0"
 python-versions = ">=3.10,<3.11"
-content-hash = "4846e59324a5ccfcd76a9178c76b3e5be3c746a2e3610a1f2709d46ad9d3db10"
+content-hash = "58be773b8d7a5dae5b7309bb1b0030d69eecab7ae3512daee855a74a48befbe1"
