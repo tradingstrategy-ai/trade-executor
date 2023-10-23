@@ -76,7 +76,11 @@ def check_wallet(
 
     cache_path = prepare_cache(id, cache_path)
 
-    client = Client.create_live_client(trading_strategy_api_key, cache_path=cache_path)
+    client = Client.create_live_client(
+        trading_strategy_api_key,
+        cache_path=cache_path,
+        settings_path=None,
+    )
 
     execution_context = ExecutionContext(
         mode=ExecutionMode.preflight_check,
