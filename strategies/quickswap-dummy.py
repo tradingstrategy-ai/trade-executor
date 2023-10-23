@@ -17,7 +17,9 @@ How to run
   as we do not do any trades and set ``MIN_GAS_BALANCE``,
   this example is just a demostration how to get the strategy started up.
 
-- Create a folder ``strategy`` and copy-paste this file as `strategy/quickswap-dummy.py`
+- Create an empty working folder where we are going to run
+
+- Create a file ``quickswap-dummy.py`` and paste the contents of this file
 
 - Create empty folders ``state``, ``cache``, ``logs`` in the current working directory.
   ``trade-executor`` will write into these folders.
@@ -31,7 +33,7 @@ Run using ``docker`` command:
 
     export TRADING_STRATEGY_API_KEY="..."
     export PRIVATE_KEY=0xa8cc6222cbd6b0b31c2f8216ff905fde71f0575e302d8410796c620f06254b5d
-    export STRATEGY_FILE=strategies/quickswap-dummy.py
+    export STRATEGY_FILE=quickswap-dummy.py
     export ASSET_MANAGEMENT_MODE=hot_wallet
     export JSON_RPC_POLYGON="https://polygon-rpc.com"
     export MIN_GAS_BALANCE=0
@@ -69,7 +71,7 @@ in its Poetry environment:
         start \
         --trading-strategy-api-key="..." \
         --private-key=0xa8cc6222cbd6b0b31c2f8216ff905fde71f0575e302d8410796c620f06254b5d \
-        --strategy-file=strategies/quickswap-dummy.py \
+        --strategy-file=quickswap-dummy.py \
         --asset-management-mode=hot_wallet \
         --json-rpc-polygon="https://polygon-rpc.com" \
         --min-gas-balance=0
@@ -80,7 +82,7 @@ Or:
 
     export TRADING_STRATEGY_API_KEY="..."
     export PRIVATE_KEY=0xa8cc6222cbd6b0b31c2f8216ff905fde71f0575e302d8410796c620f06254b5d
-    export STRATEGY_FILE=strategies/quickswap-dummy.py
+    export STRATEGY_FILE=quickswap-dummy.py
     export ASSET_MANAGEMENT_MODE=hot_wallet
     export JSON_RPC_POLYGON="https://polygon-rpc.com"
     export MIN_GAS_BALANCE=0
@@ -92,29 +94,22 @@ Or:
     The private key in the example is a valid private key example and does not hold any tokens.
 
 """
-from tradingstrategy.timebucket import TimeBucket
 
-"""Unit test version of Aave long/short strategy.
-
-- Long is spot buy
-
-- Short is Aave 1x leveraged short
-
-"""
 
 import datetime
 from typing import List, Dict
 
 import pandas as pd
 
+from tradingstrategy.chain import ChainId
+from tradingstrategy.client import Client
+from tradingstrategy.timebucket import TimeBucket
 from tradeexecutor.state.state import State
 from tradeexecutor.state.trade import TradeExecution
 from tradeexecutor.strategy.execution_context import ExecutionContext
 from tradeexecutor.strategy.pricing_model import PricingModel
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse, load_partial_data
 from tradeexecutor.strategy.universe_model import UniverseOptions
-from tradingstrategy.chain import ChainId
-from tradingstrategy.client import Client
 from tradeexecutor.strategy.cycle import CycleDuration
 from tradeexecutor.strategy.strategy_module import StrategyType, TradeRouting, ReserveCurrency
 

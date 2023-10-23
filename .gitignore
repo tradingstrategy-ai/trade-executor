@@ -42,3 +42,6 @@ notebooks/*.json
 # pytest-monitir
 monitor.db
 .pymon
+
+# trade-executor start test instructions
+/quickswap-dummy.py
