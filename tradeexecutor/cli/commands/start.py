@@ -365,7 +365,7 @@ def start(
         # Currently, all actions require us to have a valid API key
         # might change in the future
         if not client:
-            raise RuntimeError("Trading Strategy client instance is not available - needed to run backtests. Make sure trading_strategy_api_key is set.")
+            raise RuntimeError("Trading Strategy API key needed. Make sure to give --trading-strategy-api-key or set TRADING_STRATEGY_API_KEY env.")
 
         tick_offset = datetime.timedelta(minutes=cycle_offset_minutes)
 

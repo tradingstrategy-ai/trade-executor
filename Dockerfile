@@ -39,7 +39,7 @@ COPY . .
 # RUN poetry config experimental.new-installer false
 
 RUN poetry config virtualenvs.create false
-RUN poetry install --no-dev --no-interaction --no-ansi -E web-server -E execution -E quantstats
+RUN poetry install --no-dev --no-interaction --no-ansi --all-extras
 
 # Pyramid HTTP server for webhooks at port 3456
 EXPOSE 3456
