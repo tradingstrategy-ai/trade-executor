@@ -260,12 +260,12 @@ class TradeSummary:
         df = create_summary_table(human_data)
 
         if format_headings:
-            return self.format_summary_dataframe(df, self.time_bucket)
+            return self.format_summary_dataframe(df)
         
         return df
     
     @staticmethod
-    def format_summary_dataframe(df: pd.DataFrame, time_bucket: Optional[TimeBucket]) -> pd.DataFrame:
+    def format_summary_dataframe(df: pd.DataFrame) -> pd.DataFrame:
         """Format the summary dataframe for display in Jupyter notebook with clickable links.
         
         :param df:
@@ -314,7 +314,8 @@ class TradeSummary:
             ("Average duration of losing positions", None),
         ]
         
-        if time_bucket:
+        if "Average bars of winning positions" in df.index:
+            assert "Average bars of losing positions" in df.index, "Average bars of losing positions not found in dataframe"
             headings.extend([
                 ("Average bars of winning positions", None),
                 ("Average bars of losing positions", None),
@@ -332,6 +333,9 @@ class TradeSummary:
             ("Max pullback of total capital", "https://tradingstrategy.ai/glossary/maximum-pullback"),
             ("Max loss risk at opening of position", None),
         ])
+
+        if "Max drawdown" in df.index:
+            headings.append(("Max drawdown", "https://tradingstrategy.ai/glossary/maximum-drawdown"))
 
         df.index = [make_clickable(h, url) if url else h for h, url in headings]
 
@@ -928,7 +932,7 @@ class TradeAnalysis:
         all_stats.loc['Annualised return %', 'Short'] = format_value_for_summary_table(as_percent(calculate_annualised_return(profit_short_pct, duration)))
 
         if format_headings:
-            return TradeSummary.format_summary_dataframe(all_stats, time_bucket)
+            return TradeSummary.format_summary_dataframe(all_stats)
 
         return all_stats
 
