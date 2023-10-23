@@ -231,6 +231,14 @@ class BlockchainTransaction:
 
     #: Pickled SignedTransactionWithNonce.
     #:
+    #: This is a pickled binary of `SignedTransactionWithNonce`
+    #: object, as hex. It is the latest signed tx object
+    #: we broadcasted over the wire.
+    #:
+    #: This object may change if we have a broadcast failure (timeout)
+    #: due to gas spike and we need to sign the tx again
+    #: with different paramenters.
+    #:
     #: See :py:class:`eth_defi.hotwallet.SignedTransactionWithNonce`
     #:
     signed_tx_object: Optional[JSONHexBytes] = None
