@@ -89,9 +89,14 @@ Or:
 
     trade-executor start
 
-.. note ::
+The trade-executor should start, load some market data and eventually print at the end:
 
-    The private key in the example is a valid private key example and does not hold any tokens.
+.. code-block:: text
+
+    2023-10-23 15:53:15 apscheduler.scheduler                              INFO     Added job "ExecutionLoop.run_live.<locals>.live_cycle" to job store "default"
+    2023-10-23 15:53:15 apscheduler.scheduler                              INFO     Added job "ExecutionLoop.run_live.<locals>.live_positions" to job store "default"
+    2023-10-23 15:53:15 apscheduler.scheduler                              INFO     Added job "ExecutionLoop.run_live.<locals>.live_trigger_checks" to job store "default"
+    2023-10-23 15:53:15 apscheduler.scheduler                              INFO     Scheduler started
 
 """
 
