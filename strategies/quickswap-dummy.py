@@ -1,12 +1,14 @@
 """This is a test strategy that does nothing.
 
-- It is designed to test `trade-executor start` command
+- It is designed to show how to use `trade-executor start` command
+  to launch a live strategy
 
-- It connects to RPC node and checks the wallet balance
+- It connects to RPC node, but does not do any trades,
+  but idles and loads the data every 1h
 
-How to run with a hot wallet deployment mode:
+How to run
 
-- See documentation how to prepare a private key
+- We have prepared a random private key with zero balance
 
 - Get a Polygon JSON-RPC access. You can use free endpoint
   ``https://polygon-rpc.com``.
@@ -20,7 +22,8 @@ How to run with a hot wallet deployment mode:
 - Create empty folders ``state``, ``cache``, ``logs`` in the current working directory.
   ``trade-executor`` will write into these folders.
 
-- Make sure you have an API key for ``TRADING_STRATEGY_API_KEY`` environment variable.
+- Make sure you have an API key for ``TRADING_STRATEGY_API_KEY`` environment variable
+  or command line argument.
 
 Run using ``docker`` command:
 
