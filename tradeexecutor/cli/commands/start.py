@@ -382,7 +382,6 @@ def start(
 
         logger.trade("%s (%s): trade execution starting", name, id)
 
-
         if backtest_start:
 
             assert asset_management_mode == AssetManagementMode.backtest, f"Expected backtest mode, got {asset_management_mode}"
