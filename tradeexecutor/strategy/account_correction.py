@@ -541,6 +541,9 @@ def check_accounts(
         Tuple (accounts clean, accounting clean Dataframe that can be printed to the console)
     """
 
+    # Any unbroadcasted trades need to be cleaned up first
+    state.check_if_clean()
+
     if block_identifier is None:
         web3 = sync_model.web3
         block_identifier = get_almost_latest_block_number(web3)

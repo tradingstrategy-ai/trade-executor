@@ -49,7 +49,7 @@ class BacktestData:
     #: The end of backtest period
     end_at: datetime.datetime
 
-    #: What has the decision cycle duratino
+    #: What has the decision cycle duration
     #:
     decision_cycle_duration: CycleDuration
 
