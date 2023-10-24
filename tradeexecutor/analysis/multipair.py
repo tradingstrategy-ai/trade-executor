@@ -9,21 +9,13 @@ from IPython.display import HTML
 from tradeexecutor.state.identifier import TradingPairIdentifier
 from tradeexecutor.state.portfolio import Portfolio
 from tradeexecutor.state.state import State
-from tradingstrategy.utils.format import (
-    format_percent,
-    format_value,
-    format_percent_2_decimals,
-)
+from tradingstrategy.utils.format import format_percent_2_decimals
+from tradingstrategy.utils.jupyter import make_clickable
 
 
 def _format_value(v: float) -> str:
     """Format US dollar value, no dollar sign."""
     return f"{v:,.2f}"
-
-
-def make_clickable(text, url):
-    """Format a value as a clickable link."""
-    return '<a href="{}">{}</a>'.format(url, text)
 
 
 def analyse_pair_trades(pair: TradingPairIdentifier, portfolio: Portfolio) -> dict:

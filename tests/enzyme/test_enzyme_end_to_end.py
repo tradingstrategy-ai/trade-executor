@@ -379,7 +379,7 @@ def test_enzyme_live_trading_reinit(
 
     with patch.dict(os.environ, environment, clear=True):
         with pytest.raises(SystemExit) as e:
-            cli.main(args=["reinit"])
+            cli.main(args=["reset"])
         assert e.value.code == 0
 
     assert os.path.exists("/tmp/test_enzyme_end_to_end.reinit-backup-1.json")

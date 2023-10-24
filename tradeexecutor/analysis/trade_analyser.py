@@ -46,6 +46,7 @@ from tradingstrategy.pair import PandasPairUniverse
 from tradingstrategy.types import PrimaryKey, USDollarAmount
 from tradingstrategy.utils.format import format_value, format_price, format_duration_days_hours_mins, \
     format_percent_2_decimals
+from tradingstrategy.utils.jupyter import make_clickable
 from tradeexecutor.utils.summarydataframe import as_dollar, as_integer, create_summary_table, as_percent, as_duration, as_bars, as_decimal
 
 
@@ -188,7 +189,7 @@ class TradeSummary:
         self.winning_take_profits_percent = calculate_percentage(self.winning_take_profits, self.take_profits)
         self.losing_take_profits_percent = calculate_percentage(self.losing_take_profits, self.take_profits)
 
-    def to_dataframe(self) -> pd.DataFrame:
+    def to_dataframe(self, format_headings = True) -> pd.DataFrame:
         """Creates a human-readable Pandas dataframe summary table from the object."""
 
         human_data = {
@@ -257,7 +258,88 @@ class TradeSummary:
             add_prop(self.max_drawdown, "Max drawdown", as_percent)
 
         df = create_summary_table(human_data)
+
+        if format_headings:
+            return self.format_summary_dataframe(df)
+        
         return df
+    
+    @staticmethod
+    def format_summary_dataframe(df: pd.DataFrame) -> pd.DataFrame:
+        """Format the summary dataframe for display in Jupyter notebook with clickable links.
+        
+        :param df:
+            The dataframe to format.
+
+        :return:
+            Formatted dataframe with clickable links.
+        """
+        headings = [
+            ("Trading period length", None),
+            ("Return %", "https://tradingstrategy.ai/glossary/aggregate-return"),
+            ("Annualised return %", None),
+            ("Cash at start", None),
+            ("Value at end", None),
+            ("Trade volume", "https://tradingstrategy.ai/glossary/volume"),
+
+            ("Position win percent", "https://tradingstrategy.ai/glossary/position"),
+            ("Total positions", "https://tradingstrategy.ai/glossary/position"),
+            ("Won positions", "https://tradingstrategy.ai/glossary/position"),
+            ("Lost positions", "https://tradingstrategy.ai/glossary/position"),
+
+            ("Stop losses triggered", "https://tradingstrategy.ai/glossary/stop-loss"),
+            ("Stop loss % of all", "https://tradingstrategy.ai/glossary/stop-loss"),
+            ("Stop loss % of lost", "https://tradingstrategy.ai/glossary/stop-loss"),
+            ("Winning stop losses", "https://tradingstrategy.ai/glossary/stop-loss"),
+            ("Winning stop losses percent", "https://tradingstrategy.ai/glossary/stop-loss"),
+            ("Losing stop losses", "https://tradingstrategy.ai/glossary/stop-loss"),
+            ("Losing stop losses percent", "https://tradingstrategy.ai/glossary/stop-loss"),
+
+            ("Take profits triggered", "https://tradingstrategy.ai/glossary/take-profit"),
+            ("Take profit % of all", "https://tradingstrategy.ai/glossary/take-profit"),
+            ("Take profit % of won", "https://tradingstrategy.ai/glossary/take-profit"),
+
+            ("Zero profit positions", "https://tradingstrategy.ai/glossary/position"),
+            ("Positions open at the end", "https://tradingstrategy.ai/glossary/open-position"),
+            ("Realised profit and loss", "https://tradingstrategy.ai/glossary/realised-profit-and-loss"),
+            ("Portfolio unrealised value", "https://tradingstrategy.ai/glossary/unrealised-profit-and-loss"),
+            ("Extra returns on lending pool interest", "https://tradingstrategy.ai/glossary/lending-pool"),
+            ("Cash left at the end", None),
+
+            ("Average winning position profit %", None),
+            ("Average losing position loss %", None),
+            ("Biggest winning position %", None),
+            ("Biggest losing position %", None),
+            ("Average duration of winning positions", None),
+            ("Average duration of losing positions", None),
+        ]
+        
+        if "Average bars of winning positions" in df.index:
+            assert "Average bars of losing positions" in df.index, "Average bars of losing positions not found in dataframe"
+            headings.extend([
+                ("Average bars of winning positions", None),
+                ("Average bars of losing positions", None),
+            ])
+
+        headings.extend([
+            ("LP fees paid", "https://tradingstrategy.ai/glossary/liquidity-provider"),
+            ("LP fees paid % of volume", "https://tradingstrategy.ai/glossary/liquidity-provider"),
+            ("Average position", "https://tradingstrategy.ai/glossary/mean"),
+            ("Median position", "https://tradingstrategy.ai/glossary/median"),
+            ("Most consecutive wins", None),
+            ("Most consecutive losses", None),
+            ("Biggest realised risk", "https://tradingstrategy.ai/glossary/realised-risk"),
+            ("Avg realised risk", "https://tradingstrategy.ai/glossary/realised-risk"),
+            ("Max pullback of total capital", "https://tradingstrategy.ai/glossary/maximum-pullback"),
+            ("Max loss risk at opening of position", None),
+        ])
+
+        if "Max drawdown" in df.index:
+            headings.append(("Max drawdown", "https://tradingstrategy.ai/glossary/maximum-drawdown"))
+
+        df.index = [make_clickable(h, url) if url else h for h, url in headings]
+
+        return HTML(df.to_html(escape=False))
 
     def display(self):
         """Create human readable summary tables and display them in IPython notebook."""
@@ -461,7 +543,7 @@ class TradeAnalysis:
         time_bucket: Optional[TimeBucket] = None,
         state = None,
     ) -> TradeSummary:
-        """Calculate some statistics how our trades went.
+        """Calculate some statistics how our trades went. This is just for overall statistics. For an analysis by overall, long, and short trades, use :py:meth:`calculate_all_summary_stats_by_side`
 
         :param time_bucket:
             Optional, used to display average duration as 'number of bars' instead of 'number of days'.
@@ -792,16 +874,32 @@ class TradeAnalysis:
         self,
         time_bucket: Optional[TimeBucket] = None,
         state = None,
+        format_headings = True,
     ) -> pd.DataFrame:
-        """Calculate some statistics how our trades went."""
+        """Calculate some statistics how our trades went. This returns a table with 3 separate columns for overall, long and short.
+        
+        For just a single column table for overall statistics, use :py:meth:calculate_summary_statistics() instead.
+
+        :param time_bucket:
+            Optional, used to display average duration as 'number of bars' in addition to 'number of days'.
+
+        :param state:
+            Optional, should be specified if user would like to see advanced statistics such as sharpe ratio, sortino ratio, etc.
+
+        :param format_columns:
+            Optional, if True, make headings clickable, directing user to relevant glossary link.
+
+        :return:
+            DataFrame with all the stats for overall, long and short.
+        """
 
         all_stats_trade_summary = self.calculate_summary_statistics(time_bucket, state)
         long_stats_trade_summary = self.calculate_long_summary_statistics(time_bucket, state)
         short_stats_trade_summary = self.calculate_short_summary_statistics(time_bucket, state)
         
-        all_stats = all_stats_trade_summary.to_dataframe()
-        long_stats = long_stats_trade_summary.to_dataframe()
-        short_stats = short_stats_trade_summary.to_dataframe()
+        all_stats = all_stats_trade_summary.to_dataframe(format_headings=False)
+        long_stats = long_stats_trade_summary.to_dataframe(format_headings=False)
+        short_stats = short_stats_trade_summary.to_dataframe(format_headings=False)
 
         all_stats['Long'] = long_stats[0]
         all_stats['Short'] = short_stats[0]
@@ -832,6 +930,9 @@ class TradeAnalysis:
         all_stats.loc['Return %', 'Short'] = format_value_for_summary_table(as_percent(profit_short_pct))
         all_stats.loc['Annualised return %', 'Long'] = format_value_for_summary_table(as_percent(calculate_annualised_return(profit_long_pct, duration)))
         all_stats.loc['Annualised return %', 'Short'] = format_value_for_summary_table(as_percent(calculate_annualised_return(profit_short_pct, duration)))
+
+        if format_headings:
+            return TradeSummary.format_summary_dataframe(all_stats)
 
         return all_stats
 

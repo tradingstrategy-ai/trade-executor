@@ -22,6 +22,7 @@ from typer import Option
 
 from . import shared_options
 from .app import app, TRADE_EXECUTOR_VERSION
+from .shared_options import required_option
 from ..bootstrap import prepare_executor_id, prepare_cache, create_web3_config, create_state_store, \
     create_execution_and_sync_model, create_metadata, create_approval_model, create_client
 from ..log import setup_logging, setup_discord_logging, setup_logstash_logging, setup_file_logging, \
@@ -60,7 +61,8 @@ def backtest(
     name: Optional[str] = shared_options.name,
     strategy_file: Path = shared_options.strategy_file,
 
-    trading_strategy_api_key: str = shared_options.trading_strategy_api_key,
+    # Backtest already requires an API key
+    trading_strategy_api_key: str = required_option(shared_options.trading_strategy_api_key),
 
     log_level: str = shared_options.log_level,
 
@@ -129,7 +131,11 @@ def backtest(
 
     assert mod.is_version_greater_or_equal_than(0, 2, 0), f"trading_strategy_engine_version must be 0.2.0 or newer for {strategy_file}"
 
-    client = Client.create_live_client(trading_strategy_api_key, cache_path=cache_path)
+    client = Client.create_live_client(
+        trading_strategy_api_key,
+        cache_path=cache_path,
+        settings_path=None,  # Disable settings file on backtest
+    )
 
     backtest_setup = setup_backtest(
         strategy_file,

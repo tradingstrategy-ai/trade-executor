@@ -2,9 +2,11 @@
 
 Import from there and use in
 """
+import copy
 from typing import Optional
 
 from typer import Option
+from typer.models import OptionInfo
 
 
 def _gen_rpc_help(network_name: str):
@@ -12,6 +14,13 @@ def _gen_rpc_help(network_name: str):
 
     """
     return f"This configures JSON-RPC endpoints for {network_name}. For the configuration format see https://web3-ethereum-defi.readthedocs.io/tutorials/multi-rpc-configuration.html"
+
+
+def required_option(option: OptionInfo) -> OptionInfo:
+    """Generate a copy of Typer option, but set it required."""
+    new_option = copy.copy(option)
+    new_option.default = None
+    return new_option
 
 
 id = Option(None, envvar="EXECUTOR_ID", help="Executor id used when programmatically referring to this instance.\n"

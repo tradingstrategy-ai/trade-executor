@@ -134,7 +134,7 @@ def test_trade_analysis(
     """See trade analysis calculations do not crash."""
     analysis = build_trade_analysis(state.portfolio)
     summary = analysis.calculate_summary_statistics()
-    df = summary.to_dataframe()
+    df = summary.to_dataframe(format_headings=False)
     assert isinstance(df, pd.DataFrame)
 
     crv_usd = universe.get_pair_by_human_description((ChainId.ethereum, "uniswap-v2", "CRV", "WETH"))

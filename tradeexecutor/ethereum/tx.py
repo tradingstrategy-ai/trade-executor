@@ -16,13 +16,14 @@ from web3 import Web3
 from web3.contract.contract import ContractFunction, Contract
 
 from eth_defi.gas import GasPriceSuggestion, apply_gas, estimate_gas_fees
-from eth_defi.hotwallet import HotWallet
+from eth_defi.hotwallet import HotWallet, SignedTransactionWithNonce
 from eth_defi.tx import AssetDelta
 from eth_defi.revert_reason import fetch_transaction_revert_reason
 from eth_defi.confirmation import broadcast_transactions, \
     broadcast_and_wait_transactions_to_complete
 from eth_defi.tx import decode_signed_transaction
 from tradeexecutor.state.blockhain_transaction import BlockchainTransaction, JSONAssetDelta
+from tradeexecutor.state.pickle_over_json import encode_pickle_over_json
 
 logger = logging.getLogger(__name__)
 
@@ -69,10 +70,15 @@ class TransactionBuilder(ABC):
         return broadcast_transactions(self.web3, [signed_tx])[0]
 
     @staticmethod
-    def serialise_to_broadcast_format(tx: "BlockchainTransaction") -> SignedTransaction:
-        """Prepare a transaction as a format ready to broadcast."""
-        # TODO: Make hash, r, s, v filled up as well
-        return SignedTransaction(rawTransaction=tx.signed_bytes, hash=None, r=0, s=0, v=0)
+    def serialise_to_broadcast_format(tx: "BlockchainTransaction") -> SignedTransactionWithNonce:
+        """Prepare a transaction as a format ready to broadcast.
+
+        - We pass this as :py:class:`SignedTransactionWithNonce`
+          as the logging output will have more information to
+          diagnose broadcasting issues
+        """
+        signed_tx = tx.get_tx_object()
+        return signed_tx
 
     @staticmethod
     def decode_signed_bytes(tx: "BlockchainTransaction") -> dict:
@@ -273,8 +279,6 @@ class HotWalletTransactionBuilder(TransactionBuilder):
         if gas_limit is None:
             gas_limit = 500_000
 
-        logger.info("Signing transactions using gas fee method %s for %s", gas_price_suggestion, args_bound_func)
-
         tx = args_bound_func.build_transaction({
             "chainId": self.chain_id,
             "from": Web3.to_checksum_address(self.hot_wallet.address),
@@ -284,6 +288,14 @@ class HotWalletTransactionBuilder(TransactionBuilder):
         apply_gas(tx, gas_price_suggestion)
 
         signed_tx = self.hot_wallet.sign_transaction_with_new_nonce(tx)
+
+        logger.info(
+            "Signed transactions using gas fee method %s for %s, tx's nonce is %d",
+            gas_price_suggestion,
+            args_bound_func,
+            signed_tx.nonce,
+        )
+
         signed_bytes = signed_tx.rawTransaction.hex()
 
         if asset_deltas is None:
@@ -298,6 +310,7 @@ class HotWalletTransactionBuilder(TransactionBuilder):
             args=args_bound_func.args,
             wrapped_args=None,
             signed_bytes=signed_bytes,
+            signed_tx_object=encode_pickle_over_json(signed_tx),
             tx_hash=signed_tx.hash.hex(),
             nonce=signed_tx.nonce,
             details=tx,

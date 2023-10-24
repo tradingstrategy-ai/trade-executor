@@ -18,7 +18,7 @@ from . import shared_options
 
 
 @app.command()
-def reinit(
+def reset(
     id: str = shared_options.id,
     name: str = shared_options.name,
 
@@ -39,7 +39,7 @@ def reinit(
     json_rpc_anvil: Optional[str] = shared_options.json_rpc_anvil,
 
 ):
-    """Reinitialise a strategy state.
+    """Reset the strategy state.
 
     Deletes all the state history of a state and starts tracking the strategy again.
 

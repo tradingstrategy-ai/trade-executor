@@ -45,7 +45,11 @@ def check_universe(
 
     assert trading_strategy_api_key, "TRADING_STRATEGY_API_KEY missing"
 
-    client = Client.create_live_client(trading_strategy_api_key, cache_path=cache_path)
+    client = Client.create_live_client(
+        trading_strategy_api_key,
+        cache_path=cache_path,
+        settings_path=None,
+    )
     client.clear_caches()
 
     execution_context = ExecutionContext(

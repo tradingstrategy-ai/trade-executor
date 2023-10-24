@@ -352,7 +352,7 @@ def test_bars_display(backtest_result: tuple[State, TradingStrategyUniverse, dic
     summary2.to_dataframe()
     summary3.display()
 
-    df = summary3.to_dataframe()
+    df = summary3.to_dataframe(format_headings=False)
     assert df.loc["Average duration of winning positions"][0] == '19 days 0 hours'
     assert df.loc["Average duration of losing positions"][0] == '8 days 13 hours'
 

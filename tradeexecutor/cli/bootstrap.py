@@ -420,7 +420,11 @@ def create_client(
 
     elif trading_strategy_api_key:
         # Backtest / real trading
-        client = Client.create_live_client(trading_strategy_api_key, cache_path=cache_path)
+        client = Client.create_live_client(
+            trading_strategy_api_key,
+            cache_path=cache_path,
+            settings_path=None,  # No interactive settings file with live execution
+        )
         if clear_caches:
             client.clear_caches()
     else:

@@ -4,6 +4,7 @@ TODO: Restructure and move backtesting related functionality to a separate comma
 """
 
 import datetime
+import faulthandler
 import logging
 import os
 import time
@@ -364,7 +365,7 @@ def start(
         # Currently, all actions require us to have a valid API key
         # might change in the future
         if not client:
-            raise RuntimeError("Trading Strategy client instance is not available - needed to run backtests. Make sure trading_strategy_api_key is set.")
+            raise RuntimeError("Trading Strategy API key needed. Make sure to give --trading-strategy-api-key or set TRADING_STRATEGY_API_KEY env.")
 
         tick_offset = datetime.timedelta(minutes=cycle_offset_minutes)
 
@@ -380,7 +381,6 @@ def start(
         strategy_factory = import_strategy_file(strategy_file)
 
         logger.trade("%s (%s): trade execution starting", name, id)
-
 
         if backtest_start:
 
@@ -485,6 +485,9 @@ def start(
         logger.exception(e)
 
         stop_watchdog()
+
+        # Dump all threads to stderr in order to see the stuck threads
+        faulthandler.dump_traceback()
 
         # Spend the rest of the time idling
         time.sleep(3600*24*365)
