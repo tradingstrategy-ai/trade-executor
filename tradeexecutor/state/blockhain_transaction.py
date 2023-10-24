@@ -208,6 +208,9 @@ class BlockchainTransaction:
     )
 
     #: Blockchain bookkeeping
+    #:
+    #: Hex string, starts with 0x.
+    #:
     tx_hash: Optional[JSONHexBytes] = None
 
     #: Blockchain bookkeeping

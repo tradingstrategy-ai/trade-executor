@@ -781,7 +781,7 @@ class State:
             t: TradeExecution
             for t in p.trades.values():
                 if t.is_unfinished():
-                    tx_hashes = ", ".join([tx.hash for tx in t.blockchain_transactions])
+                    tx_hashes = ", ".join([tx.tx_hash for tx in t.blockchain_transactions])
                     raise UncleanState(f"Position {p}, trade {t} is unfinished\nTransactions are: {tx_hashes}")
 
     def to_json_safe(self) -> str:
