@@ -49,7 +49,7 @@ class BacktestData:
     #: The end of backtest period
     end_at: datetime.datetime
 
-    #: What has the decision cycle duratino
+    #: What has the decision cycle duration
     #:
     decision_cycle_duration: CycleDuration
 
@@ -781,7 +781,8 @@ class State:
             t: TradeExecution
             for t in p.trades.values():
                 if t.is_unfinished():
-                    raise UncleanState(f"Position {p}, trade {t} is unfinished")
+                    tx_hashes = ", ".join([tx.hash for tx in t.blockchain_transactions])
+                    raise UncleanState(f"Position {p}, trade {t} is unfinished\nTransactions are: {tx_hashes}")
 
     def to_json_safe(self) -> str:
         """Serialise to JSON format with helpful validation and error messages.
