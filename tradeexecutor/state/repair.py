@@ -112,8 +112,8 @@ def repair_trade(portfolio: Portfolio, t: TradeExecution) -> TradeExecution:
     t.executed_reserve = 0
     assert c.trade_id
     c.repaired_trade_id = t.trade_id
-    t.notes = f"Repaired at {now.strftime('%Y-%m-%d %H:%M')}, by #{c.trade_id}"
-    c.notes = f"Repairing trade #{c.repaired_trade_id}"
+    t.add_note(f"Repaired at {now.strftime('%Y-%m-%d %H:%M')}, by #{c.trade_id}")
+    c.add_note(f"Repairing trade #{c.repaired_trade_id}")
     assert t.get_status() == TradeStatus.repaired
     assert t.get_value() == 0
     assert t.get_position_quantity() == 0
@@ -188,8 +188,8 @@ def close_position_with_empty_trade(portfolio: Portfolio, p: TradingPosition) ->
 
     assert c.trade_id
     c.repaired_trade_id = opening_trade.trade_id
-    opening_trade.notes = f"Repaired at {now.strftime('%Y-%m-%d %H:%M')}, by #{c.trade_id}"
-    c.notes = f"Repairing to close the position, full position size gone missing"
+    opening_trade.add_note(f"Repaired at {now.strftime('%Y-%m-%d %H:%M')}, by #{c.trade_id}")
+    c.add_note(f"Repairing to close the position, full position size gone missing")
 
     portfolio.close_position(position, datetime.datetime.utcnow())
 
@@ -235,10 +235,7 @@ def reconfirm_trade(reconfirming_needed_trades: List[TradeExecution]):
             stop_on_execution_failure=True)
 
         t.repaired_at = datetime.datetime.utcnow()
-        if not t.notes:
-            # Add human readable note,
-            # but don't override any other notes
-            t.notes = "Failed broadcast repaired"
+        t.add_note(f"Failed broadcast repaired at {t.repaired_at}")
 
         repaired.append(t)
 

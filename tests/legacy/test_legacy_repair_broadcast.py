@@ -1,35 +1,70 @@
 """Repair a trade that was not broadcasted.
 
-- Uses a live state dump
+- Uses a live state dump with one failed broadcasted tx
+  (tx hash has not been confirmed to be on-chain yet).
 
 - Runs a simulation using a historical archive block on Polygon
 """
 import datetime
 import os
-from decimal import Decimal
+from _decimal import Decimal
+from logging import Logger
+from pathlib import Path
 
 import pytest
+from tradingstrategy.chain import ChainId
+from web3 import HTTPProvider, Web3
 from eth_defi.provider.anvil import AnvilLaunch, launch_anvil
 
-from tradeexecutor.cli.log import setup_pytest_logging
-from tradeexecutor.monkeypatch.dataclasses_json import patch_dataclasses_json
-from tradeexecutor.state.repair import repair_trades
-from tradeexecutor.state.state import State, UncleanState
-from tradeexecutor.state.trade import TradeStatus, TradeType
-from tradeexecutor.statistics.core import calculate_statistics
-from tradeexecutor.strategy.execution_context import ExecutionMode
 from tradingstrategy.client import Client
+
+from tradeexecutor.cli.bootstrap import create_execution_and_sync_model
+from tradeexecutor.cli.log import setup_pytest_logging
+from tradeexecutor.ethereum.rebroadcast import rebroadcast_all
+from tradeexecutor.ethereum.web3config import Web3Config
+from tradeexecutor.state.state import State, UncleanState
+from tradeexecutor.strategy.approval import UncheckedApprovalModel
+from tradeexecutor.strategy.bootstrap import make_factory_from_strategy_mod
+from tradeexecutor.strategy.description import StrategyExecutionDescription
+from tradeexecutor.strategy.execution_context import unit_test_execution_context
+from tradeexecutor.strategy.execution_model import AssetManagementMode
+from tradeexecutor.strategy.run_state import RunState
+from tradeexecutor.strategy.strategy_module import read_strategy_module
+from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverseModel
+from tradeexecutor.strategy.universe_model import UniverseOptions
+
+
+@pytest.fixture(scope="module")
+def logger(request):
+    """Setup test logger."""
+    return setup_pytest_logging(request, mute_requests=False)
 
 
 @pytest.fixture()
 def anvil() -> AnvilLaunch:
     """Launch Anvil for the test backend."""
 
-    anvil = launch_anvil(fork_url=os.environ["JSON_RPC_POLYGON_ARCHIVE"])
+    anvil = launch_anvil(
+        fork_url=os.environ["JSON_RPC_POLYGON_ARCHIVE"],
+        fork_block_number=49_132_512,
+    )
     try:
         yield anvil
     finally:
         anvil.close()
+
+
+@pytest.fixture
+def web3config(anvil: AnvilLaunch) -> Web3Config:
+    """Set up a local unit testing blockchain."""
+    web3config = Web3Config.setup_from_environment(
+        gas_price_method=None,
+        json_rpc_polygon=anvil.json_rpc_url,
+        unit_testing=True,
+    )
+
+    web3config.set_default_chain(ChainId.polygon)
+    return web3config
 
 
 @pytest.fixture(scope="module")
@@ -44,8 +79,18 @@ def state() -> State:
 
     Taken as a snapshot from alpha version trade execution run.
     """
-    f = os.path.join(os.path.dirname(__file__), "damaged-broadcast.json.json")
+    f = os.path.join(os.path.dirname(__file__), "damaged-broadcast.json")
     return State.from_json(open(f, "rt").read())
+
+
+@pytest.fixture(scope="module")
+def strategy_file() -> Path:
+    """A state dump with some failed trades we need to unwind.
+
+    Taken as a snapshot from alpha version trade execution run.
+    """
+    f = os.path.join(os.path.dirname(__file__), "enzyme-polygon-eth-usdc.py")
+    return Path(f)
 
 
 def test_assess_broadcast_failed(
@@ -57,99 +102,74 @@ def test_assess_broadcast_failed(
 
 
 @pytest.mark.skipif(not os.environ.get("JSON_RPC_POLYGON_ARCHIVE"), reason="Set JSON_RPC_POLYGON_ARCHIVE environment variable to run this test")
+@pytest.mark.skipif(not os.environ.get("PRIVATE_KEY"), reason="This special needs related private key, because we do not support Anvil unlocked accounts yet")
 def test_broadcast_and_repair_after(
-        state: State,
-        persistent_test_client: Client,
+    logger: Logger,
+    state: State,
+    persistent_test_client: Client,
+    web3config: Web3Config,
+    strategy_file,
 ):
     """Broadcast the unbroadcasted txs and repair after.
+
+    - Currently only runnable as local, w/associated private key needed
     """
 
-    # Check how our positions look like
-    # before repair
-    portfolio = state.portfolio
-    pos1 = portfolio.get_position_by_id(1)
-    pos2 = portfolio.get_position_by_id(26)
-    pos3 = portfolio.get_position_by_id(36)
+    client = persistent_test_client
 
-    # We have $6.8 in reserves - after fixing positions this amount should be
-    # restored from the reserve allocated for failed buys
-    assert portfolio.get_cash() == 6.815099
+    mod = read_strategy_module(strategy_file)
 
-    # Failed buy, allocated capital needs to be released
-    assert pos1.get_quantity_old() == 0
-    assert pos1.get_unexeuted_reserve() == pytest.approx(Decimal('69.505733499999990954165696166455745697021484375'))
-    assert pos1.is_frozen()
-    t = t1 = pos1.get_last_trade()
-    assert t.is_buy()
-    assert t.is_failed()
-    assert t.get_value() == pytest.approx(69.50573349999999)
-    assert t.get_reserve_quantity() == pytest.approx(Decimal('69.505733499999990954165696166455745697021484375'))
+    execution_model, sync_model, valuation_model_factory, pricing_model_factory = create_execution_and_sync_model(
+        asset_management_mode=AssetManagementMode.enzyme,
+        private_key=os.environ["PRIVATE_KEY"],
+        web3config=web3config,
+        confirmation_timeout=datetime.timedelta(seconds=0),
+        confirmation_block_count=0,
+        min_gas_balance=Decimal(0),
+        max_slippage=0.005,
+        # Taken from the on-chain deployment info
+        vault_address="0x6E321256BE0ABd2726A234E8dBFc4d3caf255AE0",
+        vault_adapter_address="0x07f7eB451DfeeA0367965646660E85680800E352",
+        vault_payment_forwarder_address="0x057bfE6A467e37636462AA92733C04a8D05c3f74",
+        routing_hint=mod.trade_routing,
+    )
 
-    assert pos2.is_frozen()
-    assert pos2.get_quantity_old() == 0
-    assert pos2.get_unexeuted_reserve() == pytest.approx(Decimal('60.87260269999999451329131261'))
-    t = t2 = pos1.get_last_trade()
-    assert t.is_buy()
+    # Tell the trade execution we are running Anvil
+    execution_model.mainnet_fork = True
 
-    # Failed sell, the trade must be marked as never happened
-    assert pos3.is_frozen()
-    assert pos3.get_quantity_old() == pytest.approx(Decimal('3.180200722896299527'))
-    assert pos3.get_unexeuted_reserve() == pytest.approx(Decimal('0'))
-    t = t3 = pos3.get_last_trade()
-    assert t.is_sell()
-    assert t.is_failed()
-    assert t.get_value() == pytest.approx(55.501273)
-    assert t.get_reserve_quantity() == Decimal('0')
+    execution_context = unit_test_execution_context
 
-    repair_report = repair_trades(state, attempt_repair=True, interactive=False)
-    assert len(repair_report.unfrozen_positions) == 3
-    assert len(repair_report.new_trades) == 3
+    # Set up the strategy engine
+    factory = make_factory_from_strategy_mod(mod)
+    run_description: StrategyExecutionDescription = factory(
+        execution_model=execution_model,
+        execution_context=execution_context,
+        timed_task_context_manager=execution_context.timed_task_context_manager,
+        sync_model=sync_model,
+        valuation_model_factory=valuation_model_factory,
+        pricing_model_factory=pricing_model_factory,
+        approval_model=UncheckedApprovalModel(),
+        client=client,
+        routing_model=None,
+        run_state=RunState(),
+    )
 
-    # Check how our positions look like
-    pos1 = state.portfolio.get_position_by_id(1)
-    assert pos1.is_closed()
-    assert pos1.get_quantity_old() == 0
-    assert pos1.get_unexeuted_reserve() == 0
-    assert pos1.get_value() == 0
-    assert t1.get_reserve_quantity() == 0
-    assert t1.is_repaired()
-    assert not t1.is_repair_needed()
+    # We construct the trading universe to know what's our reserve asset
+    universe_model: TradingStrategyUniverseModel = run_description.universe_model
+    universe = universe_model.construct_universe(
+        datetime.datetime.utcnow(),
+        execution_context.mode,
+        UniverseOptions()
+    )
 
-    pos2 = state.portfolio.get_position_by_id(26)
-    assert pos2.is_closed()
-    assert pos2.get_quantity_old() == 0
-    assert pos2.get_unexeuted_reserve() == 0
-    assert pos2.get_value() == 0
-    assert t2.is_repaired()
+    runner = run_description.runner
+    routing_model = runner.routing_model
+    routing_state, pricing_model, valuation_method = runner.setup_routing(universe)
 
-    # When closing failed (sell) position repair is done,
-    # the tokens are left on the position
-    pos3 = state.portfolio.get_position_by_id(36)
-    assert pos3.is_open()
-    assert pos3.get_quantity_old() == Decimal('3.180200722896299527')
-    assert pos3.get_unexeuted_reserve() == 0
-    assert pos3.get_value() == pytest.approx(48.802913)  # Unsold tokens hold some value
-    assert t3.is_repaired()
-
-    # Check the counter trades
-    t4 = pos1.get_last_trade()
-    assert t4.repaired_trade_id == t1.trade_id
-    assert t4.is_repair_trade()
-    assert t4.get_status() == TradeStatus.success
-    assert t4.trade_type == TradeType.repair
-    assert t4.get_value() == 0
-    assert t4.get_position_quantity() == 0
-
-    assert portfolio.get_cash() == pytest.approx(137.19343519999998)
-    assert len(list(portfolio.get_unfrozen_positions())) == 3
-
-    # After repair run some summary statistics to see they don't crash
-    execution_mode = ExecutionMode.real_trading
-    clock = datetime.datetime(2023, 4, 1)
-    calculate_statistics(clock, portfolio, execution_mode)
-
-    # We can serialise the repaired state
-    dump = state.to_json()
-    state2 = State.from_json(dump)
-    state2.perform_integrity_check()
+    trades, txs = rebroadcast_all(
+        state,
+        execution_model,
+        routing_model,
+        routing_state,
+    )
 

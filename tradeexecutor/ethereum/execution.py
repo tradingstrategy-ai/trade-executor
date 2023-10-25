@@ -212,10 +212,7 @@ class EthereumExecutionModel(ExecutionModel):
                 stop_on_execution_failure=True)
 
             t.repaired_at = datetime.datetime.utcnow()
-            if not t.notes:
-                # Add human readable note,
-                # but don't override any other notes
-                t.notes = "Failed broadcast repaired"
+            t.add_note(f"Failed broadcast repaired at {t.repaired_at}")
 
             repaired.append(t)
 
@@ -379,19 +376,19 @@ class EthereumExecutionModel(ExecutionModel):
             stop_on_execution_failure=stop_on_execution_failure
         )
 
-    def execute_trades(self,
-                       ts: datetime.datetime,
-                       state: State,
-                       trades: List[TradeExecution],
-                       routing_model: UniswapV2SimpleRoutingModel | UniswapV3SimpleRoutingModel,
-                       routing_state: UniswapV2RoutingState | UniswapV3RoutingState,
-                       check_balances=False):
-        """Execute the trades determined by the algo on a designed Uniswap v2 instance.
+    def execute_trades(
+        self,
+        ts: datetime.datetime,
+        state: State,
+        trades: List[TradeExecution],
+        routing_model: UniswapV2SimpleRoutingModel | UniswapV3SimpleRoutingModel,
+        routing_state: UniswapV2RoutingState | UniswapV3RoutingState,
+        check_balances=False,
+        rebroadcast=False,
+    ):
 
-        :return: Tuple List of succeeded trades, List of failed trades
-        """
-
-        state.start_execution_all(datetime.datetime.utcnow(), trades, max_slippage=self.max_slippage)
+        if not rebroadcast:
+            state.start_execution_all(datetime.datetime.utcnow(), trades, max_slippage=self.max_slippage)
 
         if self.web3.eth.chain_id not in (ChainId.ethereum_tester.value, ChainId.anvil.value):
             if not self.mainnet_fork:

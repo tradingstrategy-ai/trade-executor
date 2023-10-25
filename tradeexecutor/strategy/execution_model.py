@@ -100,6 +100,7 @@ class ExecutionModel(abc.ABC):
                        routing_state: RoutingState,
                        max_slippage=0.005,
                        check_balances=False,
+                       rebroadcast=False,
                        ):
         """Execute the trades determined by the algo on a designed Uniswap v2 instance.
 
@@ -128,6 +129,14 @@ class ExecutionModel(abc.ABC):
         :param check_balances:
             Check that on-chain accounts have enough balance before creating transaction objects.
             Useful during unit tests to spot issues in trade routing.
+
+        :param rebroadcast:
+            This is a rebroadcast and reconfirmation of existing transactions.
+
+            Transactions had been marked for a broadcast before,
+            but their status is unknown.
+
+            See :py:mod:`tradeexecutor.ethereum.rebroadcast`.
         """
 
     @abc.abstractmethod

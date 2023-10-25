@@ -508,13 +508,14 @@ class State:
         )
         return position, trade, created
 
-    def start_execution(self,
-                        ts: datetime.datetime,
-                        trade: TradeExecution,
-                        txid: str | None = None,
-                        nonce: int | None = None,
-                        underflow_check=False,
-                        ):
+    def start_execution(
+            self,
+            ts: datetime.datetime,
+            trade: TradeExecution,
+            txid: str | None = None,
+            nonce: int | None = None,
+            underflow_check=False,
+        ):
         """Update our balances and mark the trade execution as started.
 
         - Called before a transaction is broadcasted.
