@@ -375,6 +375,9 @@ class TradeExecution:
     #:
     #: Used to mark test trades from command line.
     #: Special case; not worth to display unless the field is filled in.
+    #:
+    #: See :py:meth:`add_note`.
+    #:
     notes: Optional[str] = None
 
     #: Trade was manually repaired
@@ -446,7 +449,7 @@ class TradeExecution:
     #: After this trade is executed, any position
     #: collateral should return to the cash reserves.
     #:
-    closing: bool = None
+    closing: Optional[bool] = None
 
     #: How much interest we have claimed from collateral for this position.
     #:
@@ -1033,8 +1036,27 @@ class TradeExecution:
             return self.get_executed_value()
         return 0
 
-    def mark_broadcasted(self, broadcasted_at: datetime.datetime):
-        assert self.get_status() == TradeStatus.started, f"Trade in bad state: {self.get_status()}"
+    def mark_broadcasted(
+            self,
+            broadcasted_at: datetime.datetime,
+            rebroadcast=False,
+    ):
+        """Mark this trade to enter a brodcast phase.
+
+        - Move the trade to the broadcasting phase
+
+        - Aftr this, the execution model will attempt to perform blockchain txs
+          and read the results back
+
+        :param broadcasted_at:
+            Wall-clock time
+
+        :param rebroadcast:
+            Is this a second attempt to try to get the tx to the chain
+
+        """
+        if not rebroadcast:
+            assert self.get_status() == TradeStatus.started, f"Trade in bad state: {self.get_status()}"
         self.broadcasted_at = broadcasted_at
 
     def mark_success(self,
@@ -1177,3 +1199,14 @@ class TradeExecution:
             return None
 
         return self.executed_reserve
+
+    def add_note(self, line: str):
+        """Add a new-line separated note to the trade.
+
+        Do not remove any old notes.
+        """
+
+        if not self.notes:
+            self.notes = ""
+
+        self.notes += line + "\n"

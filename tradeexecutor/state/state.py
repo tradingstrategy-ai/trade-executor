@@ -508,13 +508,14 @@ class State:
         )
         return position, trade, created
 
-    def start_execution(self,
-                        ts: datetime.datetime,
-                        trade: TradeExecution,
-                        txid: str | None = None,
-                        nonce: int | None = None,
-                        underflow_check=False,
-                        ):
+    def start_execution(
+            self,
+            ts: datetime.datetime,
+            trade: TradeExecution,
+            txid: str | None = None,
+            nonce: int | None = None,
+            underflow_check=False,
+        ):
         """Update our balances and mark the trade execution as started.
 
         - Called before a transaction is broadcasted.
@@ -718,7 +719,9 @@ class State:
                             ts: datetime.datetime,
                             trades: List[TradeExecution],
                             max_slippage: float=None,
-                            underflow_check=False):
+                            underflow_check=False,
+                            rebroadcast=False,
+                            ):
         """Mark a bunch of trades ready to go.
 
         Update any internal accounting of capital allocation from reseves to trades.
@@ -781,7 +784,7 @@ class State:
             t: TradeExecution
             for t in p.trades.values():
                 if t.is_unfinished():
-                    tx_hashes = ", ".join([tx.tx_hash for tx in t.blockchain_transactions])
+                    tx_hashes = ", ".join([str(tx.tx_hash) for tx in t.blockchain_transactions])
                     raise UncleanState(f"Position {p}, trade {t} is unfinished\nTransactions are: {tx_hashes}")
 
     def to_json_safe(self) -> str:
