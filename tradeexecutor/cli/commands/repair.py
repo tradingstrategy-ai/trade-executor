@@ -7,9 +7,6 @@ import datetime
 from pathlib import Path
 from typing import Optional
 
-import typer
-from tradingstrategy.client import Client
-
 from . import shared_options
 from .app import app
 from ..bootstrap import prepare_executor_id, create_state_store, create_execution_and_sync_model, prepare_cache, create_web3_config, create_client
@@ -209,4 +206,4 @@ def repair(
 
     store.sync(state)
 
-    print(f"Repair report: {report}")
+    logger.info(f"Repair report:\n{report}")

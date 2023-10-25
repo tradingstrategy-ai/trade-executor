@@ -24,7 +24,18 @@ def rebroadcast_all(
     routing_model: RoutingModel,
     routing_state: RoutingState,
 ) -> Tuple[List[TradeExecution], List[BlockchainTransaction]]:
+    """Check the state for unconfirmed transactions and attempt to fix them.
 
+    - Check if tx was correctly broadcasted, but we never received a receipt
+      from a node
+
+    - Re-sign txs and rebroadcast if needed
+
+    :return:
+        Trades we fixed, old broken txs.
+
+        Old broken txs might have been replaced with new txs.
+    """
     txs = []
     trades = []
 

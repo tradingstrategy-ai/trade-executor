@@ -1,16 +1,4 @@
-"""Trade WETH-USDC on Uniswap v3 on Polygon using 1h candles.
-
-To locally backtest this file:
-
-.. code-block:: shell
-
-    trade-executor \
-        start \
-        --strategy-file=strategy/enzyme-polygon-eth-usdc.py \
-        --asset-management-mode=backtest \
-        --backtest-start=2021-01-01 \
-        --backtest-end=2022-01-01 \
-        --trading-strategy-api-key=$TRADING_STRATEGY_API_KEY
+"""Used with test_legacy_repair_broadcast.py
 """
 
 from typing import List, Dict
