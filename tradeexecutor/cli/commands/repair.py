@@ -124,7 +124,7 @@ def repair(
         routing_hint=mod.trade_routing,
     )
 
-    client, routing_model = create_client(
+    client, _ = create_client(
         mod=mod,
         web3config=web3config,
         trading_strategy_api_key=trading_strategy_api_key,
@@ -155,7 +155,7 @@ def repair(
         pricing_model_factory=pricing_model_factory,
         approval_model=UncheckedApprovalModel(),
         client=client,
-        routing_model=routing_model,
+        routing_model=None,
         run_state=RunState(),
     )
 
@@ -169,6 +169,7 @@ def repair(
     )
 
     runner = run_description.runner
+    routing_model = runner.routing_model
     routing_state, pricing_model, valuation_method = runner.setup_routing(universe)
 
     #
