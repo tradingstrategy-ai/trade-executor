@@ -725,6 +725,7 @@ class TradingPosition(GenericPosition):
                    closing: Optional[bool] = False,
                    planned_collateral_consumption: Optional[Decimal] = None,
                    planned_collateral_allocation: Optional[Decimal] = None,
+                   exchange_name: Optional[str] = None,
                    ) -> TradeExecution:
         """Open a new trade on position.
 
@@ -901,6 +902,7 @@ class TradingPosition(GenericPosition):
             reserve_currency_exchange_rate=reserve_currency_price,
             planned_collateral_allocation=planned_collateral_allocation,
             planned_collateral_consumption=planned_collateral_consumption,
+            exchange_name=exchange_name,
         )
 
         self.trades[trade.trade_id] = trade

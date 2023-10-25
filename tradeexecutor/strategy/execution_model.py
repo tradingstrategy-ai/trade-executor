@@ -61,6 +61,14 @@ class ExecutionModel(abc.ABC):
     """
 
     @abc.abstractmethod
+    def get_balance_address(self) -> str | None:
+        """Get the address where the strat holds tokens.
+
+        :return:
+            None if this executor does not use on-chain addresses.
+        """
+
+    @abc.abstractmethod
     def preflight_check(self):
         """Check that we can start the trade executor
 

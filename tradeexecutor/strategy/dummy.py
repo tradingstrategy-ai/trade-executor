@@ -19,6 +19,9 @@ class DummyExecutionModel(ExecutionModel):
     def __init__(self, web3: Web3):
         self.web3 = web3
 
+    def get_balance_address(self):
+        return None
+
     def preflight_check(self):
         """Check that we can start the trade executor
 

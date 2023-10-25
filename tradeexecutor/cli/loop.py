@@ -24,7 +24,7 @@ from tradeexecutor.cli.watchdog import create_watchdog_registry, register_worker
 from tradeexecutor.ethereum.enzyme.vault import EnzymeVaultSyncModel
 from tradeexecutor.state.metadata import Metadata
 from tradeexecutor.statistics.summary import calculate_summary_statistics
-from tradeexecutor.strategy.account_correction import check_accounts
+from tradeexecutor.strategy.account_correction import check_accounts, UnexpectedAccountingCorrectionIssue
 from tradeexecutor.strategy.pandas_trader.decision_trigger import wait_for_universe_data_availability_jsonl
 from tradeexecutor.strategy.routing import RoutingModel
 from tradeexecutor.strategy.run_state import RunState
@@ -497,6 +497,19 @@ class ExecutionLoop:
             # in statistics calculations, so we have a trace
             # of broadcasted transactions
             self.store.sync(state)
+
+            # Perform post-execution accounting check
+            # only if we had any trades
+            trades = debug_details.get("approved_trades")
+            if trades:
+                # This will raise an exception if there are issues
+                try:
+                    self.runner.check_balances_post_execution(
+                        universe,
+                        state
+                    )
+                except UnexpectedAccountingCorrectionIssue as e:
+                    raise RuntimeError(f"Execution aborted at cycle {ts} #{cycle} because on-chain balances were different what exepcted after executing the trades") from e
 
             update_statistics(
                 datetime.datetime.utcnow(),

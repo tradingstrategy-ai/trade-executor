@@ -106,6 +106,9 @@ class EthereumExecutionModel(ExecutionModel):
     def chain_id(self) -> int:
         """Which chain the live execution is connected to."""
         return self.web3.eth.chain_id
+
+    def get_balance_address(self) -> str:
+        return self.tx_builder.get_erc_20_balance_address()
     
     @staticmethod
     def pre_execute_assertions(
@@ -519,7 +522,7 @@ class EthereumExecutionModel(ExecutionModel):
                     else:
                         price = 1 / result.price
 
-                    executed_reserve = result.amount_in / Decimal(10**quote_token_details.decimals)
+                    executed_reserve = result.amount_in / Decimal(10**reserve.decimals)
                     executed_amount = result.amount_out / Decimal(10**base_token_details.decimals)
 
                     # lp fee is already in terms of quote token
