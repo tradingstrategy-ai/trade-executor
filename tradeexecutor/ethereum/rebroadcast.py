@@ -48,6 +48,8 @@ def rebroadcast_all(
                 now = datetime.datetime.utcnow()
                 t.add_note(f"Rebroadcasting transaction at {now}")
 
+                # TODO: we should call make_trade_success() / failed here directly,
+                # but we do not have examples of such txs
                 try:
                     web3.eth.get_transaction_receipt(HexStr(tx.tx_hash))
                     raise NotImplementedError(f"The tx is on a chain already: {tx.tx_hash}, we do not have a code path to handle this yet")
