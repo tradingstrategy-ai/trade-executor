@@ -73,6 +73,9 @@ class BacktestExecutionModel(ExecutionModel):
         self.lp_fees = lp_fees
         self.stop_loss_data_available = stop_loss_data_available
 
+    def get_balance_address(self):
+        return None
+
     def is_live_trading(self):
         return False
 
