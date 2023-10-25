@@ -79,8 +79,8 @@ jobs:
   build:
     runs-on: ubuntu-latest
     # needs: automated-test-suite
-    # Only build on tag push
-    if: github.event_name == 'push' && contains(github.ref, 'refs/tags/v')
+    # Only build on tag push or branch push with rc-* prefix
+    if: github.event_name == 'push' && (contains(github.ref, 'refs/tags/v') || contains(github.ref, 'refs/heads/rc-*'))
     env:
       REGISTRY: ghcr.io
     steps:
