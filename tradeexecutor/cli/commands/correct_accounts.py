@@ -5,6 +5,7 @@ import datetime
 import os
 import shutil
 import sys
+import time
 from pathlib import Path
 from typing import Optional
 
@@ -67,6 +68,9 @@ def correct_accounts(
     test_evm_uniswap_v2_factory: Optional[str] = shared_options.test_evm_uniswap_v2_factory,
     test_evm_uniswap_v2_init_code_hash: Optional[str] = shared_options.test_evm_uniswap_v2_init_code_hash,
     unit_testing: bool = shared_options.unit_testing,
+
+
+    chain_settle_wait_seconds: float = Option(60.0, "--chain-settle-wait-seconds", envvar="CHAIN_SETTLE_WAIT_SECONDS", help="How long we wait after the account correction to see if our broadcasted transactions fixed the issue."),
 
 ):
     """Correct accounting errors in the internal ledger of the trade executor.
@@ -268,6 +272,10 @@ def correct_accounts(
 
     store.sync(state)
     web3config.close()
+
+    if balance_updates and chain_settle_wait_seconds and (not unit_testing):
+        logger.info("Waiting %f seconds to see before reading back new results from on-chain", chain_settle_wait_seconds)
+        time.sleep(chain_settle_wait_seconds)
 
     clean, df = check_accounts(
         universe.data_universe.pairs,
