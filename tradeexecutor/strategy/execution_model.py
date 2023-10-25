@@ -61,6 +61,10 @@ class ExecutionModel(abc.ABC):
     """
 
     @abc.abstractmethod
+    def get_balance_address(self) -> str:
+        """Get the address where the strat holds tokens."""
+
+    @abc.abstractmethod
     def preflight_check(self):
         """Check that we can start the trade executor
 

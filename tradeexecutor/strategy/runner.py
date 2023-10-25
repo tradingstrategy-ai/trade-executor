@@ -286,7 +286,7 @@ class StrategyRunner(abc.ABC):
 
             logger.log(
                 log_level,
-                "Trade %s, estimated reserve %s, executed reserve %s, estimated quantity %s, executed quantity %s, reserve drift %f %%, quantity drift %f %%",
+                "Trade quantity and reserve match for pre an post-execution for: %s\n  Estimated reserve %s, executed reserve %s\n  Estimated quantity %s, executed quantity %s\n  Reserve drift %f %%, quantity drift %f %%",
                 t,
                 t.planned_reserve,
                 t.executed_reserve,
@@ -479,6 +479,29 @@ class StrategyRunner(abc.ABC):
 
         return routing_state, pricing_model, valuation_model
 
+    def check_balances_post_execution(
+        self,
+        universe: StrategyExecutionUniverse,
+        state: State,
+    ):
+        """Check that on-chain balances matches our internal accounting after executing trades.
+
+        - Crash the execution if the on-chain balance is not what we expect
+
+        - Call after we have stored the execution state in the database
+        """
+
+        # We cannot call account check right after the trades,
+        # as meny low quality nodes might still report old token balances
+        # from eth_call
+        logger.info("Waiting on-chain balances to settle for %s before performing accounting checks", self.trade_settle_wait)
+        time.sleep(self.trade_settle_wait.total_seconds())
+
+        # Double check we handled incoming trade balances correctly
+        with self.timed_task_context_manager("check_accounts_post_trade"):
+            logger.info("Post-trade accounts balance check")
+            self.check_accounts(universe, state)
+
     def tick(self,
              strategy_cycle_timestamp: datetime.datetime,
              universe: StrategyExecutionUniverse,
@@ -618,20 +641,6 @@ class StrategyRunner(abc.ABC):
                         pricing_model,
                         approved_trades,
                     )
-
-                # Run any logic we need to run after the trades have been executed
-                if approved_trades:
-
-                    # We cannot call account check right after the trades,
-                    # as meny low quality nodes might still report old token balances
-                    # from eth_call
-                    logger.info("Waiting on-chain balances to settle for %s before performing accounting checks", self.trade_settle_wait)
-                    time.sleep(self.trade_settle_wait.total_seconds())
-
-                    # Double check we handled incoming trade balances correctly
-                    with self.timed_task_context_manager("check_accounts_post_trade"):
-                        logger.info("Post-trade accounts balance check")
-                        self.check_accounts(universe, state)
 
             else:
                 equity = state.portfolio.get_total_equity()
@@ -782,12 +791,15 @@ class StrategyRunner(abc.ABC):
 
             log_level = logging.INFO if report_only else logging.ERROR
 
+            address = self.execution_model.get_balance_address()
+
             if not clean:
                 logger.log(
                     log_level,
-                    "Accounting differences detected\n"                    
+                    "Accounting differences detected for: %s\n"                    
                     "Differences are:\n"
                     "%s",
+                    address,
                     df.to_string()
                 )
 

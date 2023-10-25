@@ -488,6 +488,15 @@ class TradeExecution:
     #:
     paid_interest: Optional[Decimal] = None
 
+    #: The DEX name where this trade was executed.
+    #:
+    #: A human-readable debugging hint.
+    #: :py:attr:`pair` will contain the exchange address itself.
+    #:
+    #: Optional, to be more used in the future versions.
+    #:
+    exchange_name: Optional[str] = None
+
     def __repr__(self) -> str:
         if self.is_spot():
             if self.is_buy():
@@ -558,8 +567,13 @@ class TradeExecution:
         assert self.opened_at.tzinfo is None, f"We got a datetime {self.opened_at} with tzinfo {self.opened_at.tzinfo}"
         
     @property
-    def strategy_cycle_at(self):
-        """Alias for oepned_at"""
+    def strategy_cycle_at(self) -> datetime.datetime:
+        """Alias for :py:attr:`opened_at`.
+
+        - Get the timestamp of the strategy cycle this trade is related to
+
+        - If this trade is outside the strategy cycle, then it is wall clock time
+        """
         return self.opened_at
     
     @property
