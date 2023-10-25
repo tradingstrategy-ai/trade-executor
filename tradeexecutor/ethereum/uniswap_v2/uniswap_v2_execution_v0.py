@@ -49,7 +49,7 @@ class UniswapV2RoutingInstructions:
 class UniswapV2ExecutionModelVersion0(ExecutionModel):
     """Run order execution on a single Uniswap v2 style exchanges.
 
-    TODO: This model was used in the first prototype and later discarded.
+    TODO: This model was used in the first prototype and will be later discarded.
     """
 
     def __init__(self,
@@ -77,6 +77,9 @@ class UniswapV2ExecutionModelVersion0(ExecutionModel):
         self.confirmation_block_count = confirmation_block_count
         self.confirmation_timeout = confirmation_timeout
         self.max_slippage = max_slippage
+
+    def get_balance_address(self):
+        return None
 
     @property
     def chain_id(self) -> int:
