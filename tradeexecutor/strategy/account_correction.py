@@ -314,6 +314,10 @@ def apply_accounting_correction(
     assert correction.type == AccountingCorrectionCause.unknown_cause, f"Not supported: {correction}"
     assert correction.timestamp
 
+    frozen_count = len(state.portfolio.frozen_positions)
+    if frozen_count > 0:
+        raise AssertionError(f"We have {frozen_count} frozen positions. Run repair for these first before attempting an accounting correction.")
+
     portfolio = state.portfolio
     asset = correction.asset
     position = correction.position
