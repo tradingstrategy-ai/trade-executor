@@ -3,6 +3,10 @@ import datetime
 from typing import Tuple, List
 import logging
 
+from eth_typing import HexStr
+from web3 import Web3
+from web3.exceptions import TransactionNotFound
+
 from tradeexecutor.state.blockhain_transaction import BlockchainTransaction
 from tradeexecutor.state.state import State
 from tradeexecutor.state.trade import TradeExecution
@@ -14,6 +18,7 @@ logger = logging.getLogger(__name__)
 
 
 def rebroadcast_all(
+    web3: Web3,
     state: State,
     execution_model: ExecutionModel,
     routing_model: RoutingModel,
@@ -31,6 +36,12 @@ def rebroadcast_all(
 
                 now = datetime.datetime.utcnow()
                 t.add_note(f"Rebroadcasting transaction at {now}")
+
+                try:
+                    web3.eth.get_transaction_receipt(HexStr(tx.tx_hash))
+                    raise NotImplementedError(f"The tx is on a chain already: {tx.tx_hash}, we do not have a code path to handle this yet")
+                except TransactionNotFound:
+                    pass
 
                 txs.append(tx)
                 trades.append(t)

@@ -123,7 +123,7 @@ def test_broadcast_and_repair_after(
         asset_management_mode=AssetManagementMode.enzyme,
         private_key=os.environ["PRIVATE_KEY"],
         web3config=web3config,
-        confirmation_timeout=datetime.timedelta(seconds=0),
+        confirmation_timeout=datetime.timedelta(seconds=30),
         confirmation_block_count=0,
         min_gas_balance=Decimal(0),
         max_slippage=0.005,
@@ -166,10 +166,35 @@ def test_broadcast_and_repair_after(
     routing_model = runner.routing_model
     routing_state, pricing_model, valuation_method = runner.setup_routing(universe)
 
+    # Get the latest nonce from the chain
+    sync_model.resync_nonce()
+
     trades, txs = rebroadcast_all(
+        web3config.get_default(),
         state,
         execution_model,
         routing_model,
         routing_state,
     )
 
+    assert len(trades) == 1
+    assert len(txs) == 1
+
+    t = trades[0]
+    assert t.is_success()
+
+    #
+    # Run second time to ensure there are no further changes
+    #
+
+    trades, txs = rebroadcast_all(
+        web3config.get_default(),
+        state,
+        execution_model,
+        routing_model,
+        routing_state
+    )
+    assert len(trades) == 0
+    assert len(txs) == 0
+
+    state.check_if_clean()

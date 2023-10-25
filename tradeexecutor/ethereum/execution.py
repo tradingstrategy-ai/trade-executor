@@ -304,6 +304,7 @@ class EthereumExecutionModel(ExecutionModel):
         confirmation_timeout: datetime.timedelta = datetime.timedelta(minutes=1),
         confirmation_block_count: int = 0,
         stop_on_execution_failure=False,
+        rebroadcast=False,
     ):
         """Do the live trade execution using multiple nodes.
 
@@ -358,7 +359,8 @@ class EthereumExecutionModel(ExecutionModel):
                 txs.add(signed_tx)
                 logger.info("Broadcasting transaction %s for trade\n:%s", signed_tx.hash.hex(), t)
                 tx_map[signed_tx.hash.hex()] = (t, tx)
-            t.mark_broadcasted(datetime.datetime.utcnow())
+
+            t.mark_broadcasted(datetime.datetime.utcnow(), rebroadcast=rebroadcast)
 
         receipts = wait_and_broadcast_multiple_nodes(
             web3,
@@ -366,6 +368,7 @@ class EthereumExecutionModel(ExecutionModel):
             max_timeout=confirmation_timeout,
             confirmation_block_count=confirmation_block_count,
             node_switch_timeout=datetime.timedelta(minutes=1),  # Rebroadcast every 1 minute
+            check_nonce_validity=not rebroadcast,
         )
 
         self.resolve_trades(
@@ -387,17 +390,24 @@ class EthereumExecutionModel(ExecutionModel):
         rebroadcast=False,
     ):
 
-        if not rebroadcast:
-            state.start_execution_all(datetime.datetime.utcnow(), trades, max_slippage=self.max_slippage)
-
         if self.web3.eth.chain_id not in (ChainId.ethereum_tester.value, ChainId.anvil.value):
             if not self.mainnet_fork:
                 assert self.confirmation_block_count > 0, f"confirmation_block_count set to {self.confirmation_block_count} "
 
+        if not rebroadcast:
+            state.start_execution_all(
+                datetime.datetime.utcnow(),
+                trades,
+                max_slippage=self.max_slippage,
+                rebroadcast=rebroadcast,
+            )
+
         routing_model.setup_trades(
             routing_state,
             trades,
-            check_balances=check_balances)
+            check_balances=check_balances,
+            rebroadcast=rebroadcast,
+        )
 
         if isinstance(self.web3.provider, (FallbackProvider, MEVBlockerProvider)):
             # Multi node broadcast
@@ -406,9 +416,11 @@ class EthereumExecutionModel(ExecutionModel):
                 trades,
                 confirmation_timeout=self.confirmation_timeout,
                 confirmation_block_count=self.confirmation_block_count,
+                rebroadcast=rebroadcast,
             )
 
         else:
+            # Rebroadcast not supported for the old code path
             self.broadcast_and_resolve_old(
                 state,
                 trades,

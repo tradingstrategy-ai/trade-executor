@@ -263,11 +263,14 @@ class EthereumRoutingModel(RoutingModel):
                 notes=notes,
             )
     
-    def execute_trades_internal(self,
-                       pair_universe: PandasPairUniverse,
-                       routing_state: EthereumRoutingState,
-                       trades: List[TradeExecution],
-                       check_balances=False):
+    def execute_trades_internal(
+        self,
+        pair_universe: PandasPairUniverse,
+        routing_state: EthereumRoutingState,
+        trades: List[TradeExecution],
+        check_balances=False,
+        rebroadcast=False,
+    ):
         """Split for testability.
 
         :param check_balances:
@@ -287,7 +290,11 @@ class EthereumRoutingModel(RoutingModel):
         reserve_asset = self.get_reserve_asset(pair_universe)
 
         for t in trades:
-            assert len(t.blockchain_transactions) == 0, f"Trade {t} had already blockchain transactions associated with it"
+
+            if not rebroadcast:
+                assert len(t.blockchain_transactions) == 0, f"Trade {t} had already blockchain transactions associated with it"
+            else:
+                t.blockchain_transactions = []
 
             # TODO: Add support for accurate multihop asset deltas
             if t.slippage_tolerance is not None:
@@ -362,10 +369,13 @@ class EthereumRoutingModel(RoutingModel):
         # Now all trades have transactions associated with them.
         # We can start to execute transactions.
 
-    def setup_trades(self,
-                     routing_state: EthereumRoutingState,
-                     trades: List[TradeExecution],
-                     check_balances=False):
+    def setup_trades(
+            self,
+            routing_state: EthereumRoutingState,
+            trades: List[TradeExecution],
+            check_balances=False,
+            rebroadcast=False,
+    ):
         """Strategy and live execution connection.
 
         Turns abstract strategy trades to real blockchain transactions.
@@ -384,7 +394,13 @@ class EthereumRoutingModel(RoutingModel):
             Max slippaeg tolerated per trade. 0.01 is 1%.
 
         """
-        return self.execute_trades_internal(routing_state.pair_universe, routing_state, trades, check_balances)
+        return self.execute_trades_internal(
+            routing_state.pair_universe,
+            routing_state,
+            trades,
+            check_balances,
+            rebroadcast=rebroadcast,
+        )
     
     def create_routing_state(self,
                              universe: StrategyExecutionUniverse,

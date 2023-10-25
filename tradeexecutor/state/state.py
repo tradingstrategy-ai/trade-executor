@@ -719,7 +719,9 @@ class State:
                             ts: datetime.datetime,
                             trades: List[TradeExecution],
                             max_slippage: float=None,
-                            underflow_check=False):
+                            underflow_check=False,
+                            rebroadcast=False,
+                            ):
         """Mark a bunch of trades ready to go.
 
         Update any internal accounting of capital allocation from reseves to trades.
