@@ -234,7 +234,14 @@ def calculate_account_corrections(
     assert isinstance(state, State)
     assert len(state.portfolio.reserves) > 0, "No reserve positions. Did you run init for the strategy?"
 
-    logger.info("Scanning for account corrections, we have %d open positions", len(state.portfolio.open_positions))
+    logger.info(
+        "Scanning for account corrections, we have %d open positions, %d frozen positions",
+        len(state.portfolio.open_positions),
+        len(state.portfolio.frozen_positions),
+    )
+
+    if len(state.portfolio.frozen_positions) > 0:
+        logger.warning("Be careful when doing check-accounts for frozen positions, as you should run repair first.")
 
     assets = get_relevant_assets(pair_universe, reserve_assets, state)
     asset_balances = list(sync_model.fetch_onchain_balances(assets, filter_zero=False, block_identifier=block_identifier))
@@ -255,6 +262,13 @@ def calculate_account_corrections(
 
         actual_amount = ab.amount
         expected_amount = position.get_quantity() if position else 0
+
+        if isinstance(position, TradingPosition):
+            # We might have balances tied up in frozen positions for the same pair
+            for frozen_position in state.portfolio.frozen_positions.values():
+                if frozen_position.pair == position.pair:
+                    expected_amount += frozen_position.get_quantity()
+
         diff = actual_amount - expected_amount
 
         if isinstance(position, TradingPosition):
