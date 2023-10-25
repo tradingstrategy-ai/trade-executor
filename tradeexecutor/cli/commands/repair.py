@@ -12,7 +12,7 @@ from tradingstrategy.client import Client
 
 from . import shared_options
 from .app import app
-from ..bootstrap import prepare_executor_id, create_state_store, create_execution_and_sync_model, prepare_cache, create_web3_config
+from ..bootstrap import prepare_executor_id, create_state_store, create_execution_and_sync_model, prepare_cache, create_web3_config, create_client
 from ..log import setup_logging
 from ...ethereum.rebroadcast import rebroadcast_all
 from ...state.repair import repair_trades
@@ -88,8 +88,6 @@ def repair(
 
     cache_path = prepare_cache(id, cache_path)
 
-    client = Client.create_live_client(trading_strategy_api_key, cache_path=cache_path)
-
     execution_context = ExecutionContext(
         mode=ExecutionMode.one_off,
         timed_task_context_manager=timed_task
@@ -109,23 +107,6 @@ def repair(
 
     # Check that we are connected to the chain strategy assumes
     web3config.set_default_chain(mod.chain_id)
-    # web3config.check_default_chain_id()
-
-    execution_model, sync_method, valuation_model_factory, pricing_model_factory = create_trade_execution_model(
-        execution_type=TradeExecutionType.uniswap_v2_hot_wallet,
-        private_key=private_key,
-        web3config=web3config,
-        confirmation_timeout=datetime.timedelta(seconds=60),
-        confirmation_block_count=6,
-        max_slippage=2.50,
-        min_balance_threshold=0,
-    )
-
-    if not state_file:
-        state_file = f"state/{id}.json"
-    store = create_state_store(Path(state_file))
-    assert not store.is_pristine(), f"State file not found {state_file}"
-    state = store.load()
 
     if not web3config.has_any_connection():
         raise RuntimeError("Vault deploy requires that you pass JSON-RPC connection to one of the networks")
@@ -163,11 +144,8 @@ def repair(
 
     store = create_state_store(Path(state_file))
 
-    if store.is_pristine():
-        assert name, "Strategy state file has not been createad. You must pass strategy name to create."
-        state = store.create(name)
-    else:
-        state = store.load()
+    assert not store.is_pristine(), f"Cannot repair prisnite strategy: {state_file}"
+    state = store.load()
 
     # Set up the strategy engine
     factory = make_factory_from_strategy_mod(mod)
@@ -196,6 +174,13 @@ def repair(
     runner = run_description.runner
     routing_state, pricing_model, valuation_method = runner.setup_routing(universe)
 
+    #
+    # First fix txs that have unresolved state
+    #
+
+    # Get the latest nonce from the chain
+    sync_model.resync_nonce()
+
     trades, txs = rebroadcast_all(
         web3config.get_default(),
         state,
@@ -208,6 +193,13 @@ def repair(
         logger.info("Trade %s", t)
         for tx in t.blockchain_transactions:
             logger.info("Transaction %s", tx)
+
+    store.sync(state)
+
+    #
+    # Then resolve trade status based whether
+    # its txs have succeeded or not
+    #
 
     report = repair_trades(
         state,

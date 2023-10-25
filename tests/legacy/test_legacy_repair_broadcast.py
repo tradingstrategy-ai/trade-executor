@@ -13,7 +13,6 @@ from pathlib import Path
 
 import pytest
 from tradingstrategy.chain import ChainId
-from web3 import HTTPProvider, Web3
 from eth_defi.provider.anvil import AnvilLaunch, launch_anvil
 
 from tradingstrategy.client import Client
@@ -182,6 +181,9 @@ def test_broadcast_and_repair_after(
 
     t = trades[0]
     assert t.is_success()
+
+    for tx in t.blockchain_transactions:
+        assert tx.is_success()
 
     #
     # Run second time to ensure there are no further changes
