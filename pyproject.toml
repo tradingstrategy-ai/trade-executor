@@ -26,7 +26,7 @@ tqdm-loggable = "0.1.4"
 
 
 # web3-ethereum-defi = {path = "deps/web3-ethereum-defi", develop = true, extras=["data", "test"]}
-web3-ethereum-defi = {version="0.22.29", extras=["data", "test"]}
+web3-ethereum-defi = {version="0.22.30", extras=["data", "test"]}
 
 # tqdm progress bar doesn't show up in VScode Jupyter with ipywidgets>=8
 # https://github.com/microsoft/vscode-jupyter/issues/11014
