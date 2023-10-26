@@ -618,11 +618,28 @@ def report_failure(
     ts: datetime.datetime,
     state: State,
     trade: TradeExecution,
-    stop_on_execution_failure
+    stop_on_execution_failure: bool,
 ) -> None:
-    """What to do if trade fails"""
+    """What to do if trade fails.
+
+    :param ts:
+        Wall clock time
+
+    :param state:
+        The strategy state
+
+    :param trade:
+        Which trade had reverted transactions
+
+    :param stop_on_execution_failure:
+        If set, abort with exceptionm instead of trying to keep going.
+    """
     
-    logger.error("Trade failed %s: %s", ts, trade)
+    logger.error(
+        "Trade %s failed and freezing the position: %s",
+        trade,
+        trade.get_revert_reason(),
+    )
     
     state.mark_trade_failed(
         ts,
