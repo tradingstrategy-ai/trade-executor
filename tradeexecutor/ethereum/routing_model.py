@@ -2,6 +2,7 @@ import logging
 from typing import Type
 
 from eth_defi.tx import AssetDelta
+from tradeexecutor.state.types import Percent
 from tradeexecutor.strategy.routing import RoutingModel
 from typing import Dict, List, Optional, Tuple
 
@@ -81,13 +82,18 @@ class EthereumRoutingModel(RoutingModel):
                           target_pair: TradingPairIdentifier,
                           reserve_asset: AssetIdentifier,
                           reserve_amount: int,
-                          max_slippage: float,
+                          max_slippage: Percent,
                           address_map: Dict,
                           check_balances=False,
                           asset_deltas: Optional[List[AssetDelta]] = None,
                           notes="",
                           ) -> List[BlockchainTransaction]:
         """Prepare a trade where target pair has out reserve asset as a quote token.
+
+        :param max_slippage:
+            Max slippage tolerance as percent.
+
+            E.g. 0.01 for 100 BPS slippage tolerance.
 
         :return:
             List of approval transactions (if any needed)
@@ -108,7 +114,17 @@ class EthereumRoutingModel(RoutingModel):
             reserve_amount,
         )
 
-        logger.info("Doing two wa trade %s %s %s %s", target_pair, reserve_asset, adjusted_reserve_amount, max_slippage)
+        logger.info(
+            "Doing two way trade. Pair:%s\n Reserve:%s Adjusted reserve amount: %s Max slippage: %s BPS",
+            target_pair,
+            reserve_asset,
+            adjusted_reserve_amount,
+            max_slippage * 10_000 if max_slippage else "-")
+
+        if max_slippage:
+            # Validate slippage tolerance a bit
+            # Assume 5% is the max sane slippage tolerance
+            assert 0 < max_slippage <= 0.05, f"Received max_slippage: {max_slippage}"
 
         trade_txs = routing_state.trade_on_router_two_way(
             uniswap,

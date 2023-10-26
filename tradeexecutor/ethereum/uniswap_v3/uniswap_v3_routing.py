@@ -34,6 +34,7 @@ logger = logging.getLogger(__name__)
 
 
 class UniswapV3RoutingState(EthereumRoutingState):
+
     def __init__(self,
                  pair_universe: PandasPairUniverse,
                  tx_builder: Optional[HotWalletTransactionBuilder]=None,
@@ -85,7 +86,7 @@ class UniswapV3RoutingState(EthereumRoutingState):
             base_token=base_token,
             quote_token=quote_token,
             amount_in=reserve_amount,
-            max_slippage=max_slippage * 100,  # In BPS
+            max_slippage=max_slippage * 10_000,  # In BPS
             pool_fees=[raw_fee]
         )
 
@@ -95,7 +96,7 @@ class UniswapV3RoutingState(EthereumRoutingState):
             # TODO: TxBuilder configures slippage tolerance as opposite of the trades
             receiver_slippage_tolerance = 1 - receiver_slippage_tolerance
             trade_slippage_tolerance = max_slippage
-            assert receiver_slippage_tolerance > trade_slippage_tolerance, f"Receiver (vault) slippage tolerance tighther than the trade slippage tolerance.\nReceiver: {receiver_slippage_tolerance * 10_000} BPS, trade: {trade_slippage_tolerance * 10_000} BPS"
+            assert receiver_slippage_tolerance > trade_slippage_tolerance, f"Receiver (vault) slippage tolerance tighter than the trade slippage tolerance.\nReceiver: {receiver_slippage_tolerance * 10_000} BPS, trade: {trade_slippage_tolerance * 10_000} BPS"
 
         return self.create_signed_transaction(
             uniswap.swap_router,

@@ -309,7 +309,7 @@ class TradeExecution:
     #:
     #: - `0.01`: 1% slippage tolerance
     #:
-    #: - `1`: MEV bots can steal all your money
+    #: - `1`: no slippage tolerance. MEV bots can steal all your money
     #:
     #: We estimate `executed_quantity = planned_quantity * slippage_tolerance`.
     #: If any trade outcome exceeds the slippage tolerance the trade fails.
