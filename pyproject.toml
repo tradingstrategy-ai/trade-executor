@@ -20,7 +20,7 @@ python = ">=3.10,<3.11"
 trading-strategy = "^0.20.14"
 requests = "^2.27.1"
 matplotlib = "^3.6.0"
-jupyterlab = "^3.5.0"
+jupyterlab = "^4.0.7"
 pandas-ta = "^0.3.14b"
 tqdm-loggable = "0.1.4"
 
@@ -30,7 +30,7 @@ web3-ethereum-defi = {version="0.22.30", extras=["data", "test"]}
 
 # tqdm progress bar doesn't show up in VScode Jupyter with ipywidgets>=8
 # https://github.com/microsoft/vscode-jupyter/issues/11014
-ipywidgets = ">=7.0,<8.0"
+# ipywidgets = ">=7.0,<8.0"
 
 # https://github.com/apache/arrow/pull/35412
 # Last checked 2023-07, still broken

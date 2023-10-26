@@ -1306,6 +1306,9 @@ class TradingPosition(GenericPosition):
 
         :return:
             If the position made 1% profit returns 1.01.
+
+            Return ``0`` if the position profitability cannot be calculated,
+            e.g. due to broken trades.
         """
         
         assert not self.is_open(), "Cannot calculate realised profit for open positions"
@@ -1315,6 +1318,10 @@ class TradingPosition(GenericPosition):
 
         if buy_value == 0:
             # Repaired trade
+            return 0
+        
+        if sell_value == 0:
+            # Another way of damaged/repaired trade
             return 0
 
         return sell_value / buy_value - 1

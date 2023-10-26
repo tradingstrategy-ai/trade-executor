@@ -23,7 +23,7 @@ from ...ethereum.enzyme.tx import EnzymeTransactionBuilder
 from ...ethereum.enzyme.vault import EnzymeVaultSyncModel
 from ...ethereum.hot_wallet_sync_model import HotWalletSyncModel
 from ...ethereum.tx import HotWalletTransactionBuilder
-from ...strategy.bootstrap import import_strategy_file, make_factory_from_strategy_mod
+from ...strategy.bootstrap import make_factory_from_strategy_mod
 from ...strategy.account_correction import calculate_account_corrections
 from ...strategy.description import StrategyExecutionDescription
 from ...strategy.execution_context import ExecutionContext, ExecutionMode
@@ -292,5 +292,5 @@ def correct_accounts(
         sys.exit(0)
     else:
         logger.error("Accounts still broken after the correction")
-        logger.info(output)
+        logger.info("\n" + output)
         sys.exit(1)
