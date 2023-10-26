@@ -24,6 +24,7 @@ from eth_defi.confirmation import broadcast_transactions, \
 from eth_defi.tx import decode_signed_transaction
 from tradeexecutor.state.blockhain_transaction import BlockchainTransaction, JSONAssetDelta
 from tradeexecutor.state.pickle_over_json import encode_pickle_over_json
+from tradeexecutor.state.types import Percent
 
 logger = logging.getLogger(__name__)
 
@@ -49,6 +50,18 @@ class TransactionBuilder(ABC):
         self.web3 = web3
         # Read once at the start, then cache
         self.chain_id: int = web3.eth.chain_id
+
+    def get_internal_slippage_tolerance(self) -> Percent | None:
+        """Get the slippage tolerance configured for the asset receiver.
+
+        - Vaults have their own security rules against slippage tolerance
+
+        - Any vault slippage tolerance must be higher than trade slippage tolerance
+
+        :return:
+            E.g. 0.9995 for 5 BPS slippage tolerance
+        """
+        return None
 
     def fetch_gas_price_suggestion(self) -> GasPriceSuggestion:
         """Calculate the suggested gas price based on a policy."""

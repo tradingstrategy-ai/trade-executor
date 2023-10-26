@@ -138,7 +138,7 @@ class PositionManager:
                  universe: Universe | TradingStrategyUniverse,
                  state: State,
                  pricing_model: PricingModel,
-                 default_slippage_tolerance=0.05,  # Slippage tole
+                 default_slippage_tolerance=0.017,
                  ):
 
         """Create a new PositionManager instance.
@@ -158,12 +158,11 @@ class PositionManager:
             The model to estimate prices for any trades
          
         :param default_slippage_tolerance: 
-            Slippage tolerance parameter set for any trades if not overriden trade-by-trade basis.
 
-            Default to 5% slippage.
+            The max slippage tolerance parameter set for any trades if not overriden trade-by-trade basis.
 
-            TODO: Tighten this parameter when execution tracking works better.
-            
+            Default to 1.7% max slippage or 170 BPS.
+
         """
 
         assert pricing_model, "pricing_model is needed in order to know buy/sell price of new positions"

@@ -160,7 +160,7 @@ def test_enzyme_no_accounting_errors(
         weth_usdc_trading_pair,
         Decimal(500),
         execute=False,
-        slippage_tolerance=0.999,
+        slippage_tolerance=0.01,
     )
 
     trader.execute_trades_simple([trade], broadcast=True)
@@ -263,7 +263,7 @@ def test_enzyme_correct_accounting_errors(
         weth_usdc_trading_pair,
         Decimal(500),
         execute=False,
-        slippage_tolerance=0.999,
+        slippage_tolerance=0.01,
     )
 
     trader.execute_trades_simple([trade], broadcast=True)
@@ -573,7 +573,7 @@ def test_correct_accounting_errors_for_zero_position(
         weth_usdc_trading_pair,
         Decimal(500),
         execute=False,
-        slippage_tolerance=0.999,
+        slippage_tolerance=0.01,
     )
 
     trader.execute_trades_simple([trade], broadcast=True)
