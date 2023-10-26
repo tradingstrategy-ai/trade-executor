@@ -147,7 +147,7 @@ def test_enzyme_execute_open_position(
         weth_usdc_trading_pair,
         Decimal(500),
         execute=False,
-        slippage_tolerance=0.999,
+        slippage_tolerance=0.01,
     )
 
     # How much ETH we expect in the trade
@@ -359,7 +359,7 @@ def test_enzyme_lp_fees(
         weth_usdc_trading_pair,
         Decimal(500),
         execute=False,
-        slippage_tolerance=0.999,
+        slippage_tolerance=0.01,
     )
 
     # How much ETH we expect in the trade

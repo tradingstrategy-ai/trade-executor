@@ -565,6 +565,10 @@ class TradeExecution:
 
         assert type(self.planned_price) in {float, int}, f"Price was given as {self.planned_price.__class__}: {self.planned_price}"
         assert self.opened_at.tzinfo is None, f"We got a datetime {self.opened_at} with tzinfo {self.opened_at.tzinfo}"
+
+        if self.slippage_tolerance:
+            # Sanity check
+            assert self.slippage_tolerance < 0.15, f"Cannot set slippage tolerance more than 15%, got {self.slippage_tolerance * 100}"
         
     @property
     def strategy_cycle_at(self) -> datetime.datetime:
