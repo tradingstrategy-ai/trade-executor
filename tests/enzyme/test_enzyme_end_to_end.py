@@ -487,11 +487,11 @@ def test_enzyme_live_trading_reset_deposits(
     if os.path.exists("/tmp/test_enzyme_end_to_end.reinit-backup-1.json"):
         os.remove("/tmp/test_enzyme_end_to_end.reinit-backup-1.json")
 
-
     # Buy and redeem some tokens in order to mess up the sync queue
     web3 = vault.web3
     usdc.functions.approve(vault.comptroller.address, 500 * 10**6).transact({"from": deployer})
-    vault.comptroller.functions.buyShares(500 * 10**6, 1).transact({"from": deployer})
+    tx_hash = vault.comptroller.functions.buyShares(500 * 10**6, 1).transact({"from": deployer})
+    assert_transaction_success_with_explanation(web3, tx_hash)
 
     result = run_init(environment)
     assert result.exit_code == 0
