@@ -16,6 +16,7 @@ from eth_defi.tx import AssetDelta
 from tradeexecutor.ethereum.tx import TransactionBuilder
 from tradeexecutor.state.blockhain_transaction import BlockchainTransaction, BlockchainTransactionType, JSONAssetDelta
 from tradeexecutor.state.pickle_over_json import encode_pickle_over_json
+from tradeexecutor.state.types import Percent
 
 logger = logging.getLogger(__name__)
 
@@ -33,7 +34,7 @@ class EnzymeTransactionBuilder(TransactionBuilder):
     def __init__(self,
                  hot_wallet: HotWallet,
                  vault: Vault,
-                 vault_slippage_tolerance: float = 0.9999,
+                 vault_slippage_tolerance: Percent = 0.9999,
                  ):
         """
 
@@ -68,6 +69,9 @@ class EnzymeTransactionBuilder(TransactionBuilder):
     def hot_wallet(self) -> HotWallet:
         """Get the underlying web3 connection."""
         return self.vault_controlled_wallet.hot_wallet
+
+    def get_internal_slippage_tolerance(self) -> Percent | None:
+        return self.vault_slippage_tolerance
 
     def init(self):
         self.hot_wallet.sync_nonce(self.web3)

@@ -3,7 +3,7 @@ import logging
 from typing import Dict, Set, List, Optional, Tuple
 
 from eth_defi.tx import AssetDelta
-from tradeexecutor.state.types import BPS
+from tradeexecutor.state.types import BPS, Percent
 from tradingstrategy.chain import ChainId
 from web3 import Web3
 from web3.exceptions import ContractLogicError
@@ -108,12 +108,15 @@ class UniswapV2RoutingState(EthereumRoutingState):
             intermediary_pair: TradingPairIdentifier,
             reserve_asset: AssetIdentifier,
             reserve_amount: int,
-            max_slippage: float,
+            max_slippage: Percent,
             check_balances: False,
             asset_deltas: Optional[List[AssetDelta]] = None,
             notes: str = "",
         ):
         """Prepare the actual swap for three way trade.
+
+        :param max_slippage:
+            Slippage tolerance
 
         :param check_balances:
             Check on-chain balances that the account has enough tokens
@@ -131,7 +134,7 @@ class UniswapV2RoutingState(EthereumRoutingState):
             self.check_has_enough_tokens(quote_token, reserve_amount)
 
         assert target_pair.fee == intermediary_pair.fee, "Uniswap V2 pairs should all have the same fee"
-        
+
         if target_pair.fee:
             bps_fee = target_pair.fee * 10_000
             bound_swap_func = swap_with_slippage_protection(
