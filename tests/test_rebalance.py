@@ -886,5 +886,6 @@ def test_alpha_model_increase_short(
     )
     assert any(t.is_success() for t in trades)
 
-
+    # Check out position status
+    import ipdb ; ipdb.set_trace()
 
