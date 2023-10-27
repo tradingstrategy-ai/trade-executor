@@ -887,5 +887,15 @@ def test_alpha_model_increase_short(
     assert any(t.is_success() for t in trades)
 
     # Check out position status
-    import ipdb ; ipdb.set_trace()
+    p1 = portfolio.closed_positions[1]
+    assert p1.is_closed()
+
+    p2 = portfolio.open_positions[2]
+    assert p2.pair == aave_usdc
+    assert p2.pair.is_spot()
+
+    vweth_ausdc = strategy_universe.get_shorting_pair(aave_usdc)
+    p3 = portfolio.open_positions[3]
+    assert p3.pair == vweth_ausdc
+    assert p3.pair.is_short()
 
