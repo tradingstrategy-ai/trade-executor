@@ -894,7 +894,11 @@ def test_alpha_model_increase_short(
     assert p2.pair == aave_usdc
     assert p2.pair.is_spot()
 
-    vweth_ausdc = strategy_universe.get_shorting_pair(aave_usdc)
+    lending_reserves = strategy_universe.data_universe.lending_reserves
+    for r in lending_reserves.reserves.items():
+        print(r)
+
+    vweth_ausdc = strategy_universe.get_shorting_pair(weth_usdc)
     p3 = portfolio.open_positions[3]
     assert p3.pair == vweth_ausdc
     assert p3.pair.is_short()

@@ -1009,16 +1009,22 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
         collateral_token = pair.quote
         assert collateral_token == self.get_reserve_asset()
 
-        # Will raise exception if not available
-        borrow_reserve = self.data_universe.lending_reserves.get_by_chain_and_address(
-            ChainId(borrow_token.chain_id),
-            borrow_token.address,
-        )
+        try:
+            # Will raise exception if not available
+            borrow_reserve = self.data_universe.lending_reserves.get_by_chain_and_address(
+                ChainId(borrow_token.chain_id),
+                borrow_token.address,
+            )
+        except UnknownLendingReserve as e:
+            raise UnknownLendingReserve(f"Could not resolve {borrow_token}") from e
 
-        collateral_reserve = self.data_universe.lending_reserves.get_by_chain_and_address(
-            ChainId(collateral_token.chain_id),
-            collateral_token.address,
-        )
+        try:
+            collateral_reserve = self.data_universe.lending_reserves.get_by_chain_and_address(
+                ChainId(collateral_token.chain_id),
+                collateral_token.address,
+            )
+        except UnknownLendingReserve as e:
+            raise UnknownLendingReserve(f"Could not resolve {collateral_token}") from e
 
         vtoken = translate_token(
             borrow_reserve.get_vtoken(),
