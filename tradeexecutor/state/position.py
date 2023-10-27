@@ -1020,7 +1020,7 @@ class TradingPosition(GenericPosition):
     def get_price_at_open(self) -> USDollarAmount:
         """Legacy.
         """
-        warnings.warn('This fuction is deprecated. Use TradingPosition.get_opening_price() instead', DeprecationWarning, stacklevel=2)
+        warnings.warn('This function is deprecated. Use TradingPosition.get_opening_price() instead', DeprecationWarning, stacklevel=2)
         return self.get_opening_price()
 
     def get_quantity_at_open(self) -> Decimal:
