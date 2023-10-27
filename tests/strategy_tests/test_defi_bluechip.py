@@ -118,10 +118,10 @@ def test_summary_statistics(
 
 def test_alpha_model_timeline(
     state,
-    universe,
+        strategy_universe,
     ):
     """Create a table where we have per asset column of taken positions, see that these functions do not crash"""
-    df = create_alpha_model_timeline_all_assets(state, universe)
+    df = create_alpha_model_timeline_all_assets(state, strategy_universe)
     figure, table = render_alpha_model_plotly_table(df)
     assert figure is not None
     assert table is not None
@@ -129,7 +129,7 @@ def test_alpha_model_timeline(
 
 def test_trade_analysis(
     state,
-    universe,
+        strategy_universe,
     ):
     """See trade analysis calculations do not crash."""
     analysis = build_trade_analysis(state.portfolio)
@@ -137,16 +137,16 @@ def test_trade_analysis(
     df = summary.to_dataframe(format_headings=False)
     assert isinstance(df, pd.DataFrame)
 
-    crv_usd = universe.get_pair_by_human_description((ChainId.ethereum, "uniswap-v2", "CRV", "WETH"))
+    crv_usd = strategy_universe.get_pair_by_human_description((ChainId.ethereum, "uniswap-v2", "CRV", "WETH"))
 
     fig = visualise_single_pair(
         state,
-        universe.data_universe.candles,
+        strategy_universe.data_universe.candles,
         pair_id=crv_usd.internal_id,
     )
     assert isinstance(fig, go.Figure)
 
-    candles = universe.data_universe.candles.get_candles_by_pair(crv_usd.internal_id)
+    candles = strategy_universe.data_universe.candles.get_candles_by_pair(crv_usd.internal_id)
     fig = visualise_single_pair_positions_with_duration_and_slippage(
         state,
         candles=candles,
@@ -157,11 +157,11 @@ def test_trade_analysis(
 
 def test_alpha_model_weight_analysis(
     state,
-    universe,
+        strategy_universe,
     ):
     """See alpha model weight analysis does not crash."""
 
-    weight_analysis = analyse_alpha_model_weights(state, universe)
+    weight_analysis = analyse_alpha_model_weights(state, strategy_universe)
     assert len(weight_analysis) == 189
 
     pair_weight_summary = create_pair_weight_analysis_summary_table(weight_analysis)
