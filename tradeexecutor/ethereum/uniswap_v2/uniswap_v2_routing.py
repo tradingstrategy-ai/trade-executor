@@ -79,7 +79,7 @@ class UniswapV2RoutingState(EthereumRoutingState):
                 base_token=base_token,
                 quote_token=quote_token,
                 amount_in=reserve_amount,
-                max_slippage=max_slippage * 100,  # In BPS
+                max_slippage=max_slippage * 10_000,  # In BPS
                 fee=bps_fee
             )
         else:
@@ -91,7 +91,7 @@ class UniswapV2RoutingState(EthereumRoutingState):
                 base_token=base_token,
                 quote_token=quote_token,
                 amount_in=reserve_amount,
-                max_slippage=max_slippage * 100,  # In BPS
+                max_slippage=max_slippage * 10_000,  # In BPS
             )
         
         return self.create_signed_transaction(
@@ -143,7 +143,7 @@ class UniswapV2RoutingState(EthereumRoutingState):
                 base_token=base_token,
                 quote_token=quote_token,
                 amount_in=reserve_amount,
-                max_slippage=max_slippage * 100,  # In BPS,
+                max_slippage=max_slippage * 10_000,  # In BPS,
                 intermediate_token=intermediary_token,
                 fee = bps_fee
             )
@@ -156,7 +156,7 @@ class UniswapV2RoutingState(EthereumRoutingState):
                 base_token=base_token,
                 quote_token=quote_token,
                 amount_in=reserve_amount,
-                max_slippage=max_slippage * 100,  # In BPS,
+                max_slippage=max_slippage * 10_000,  # In BPS,
                 intermediate_token=intermediary_token,
             )
 
