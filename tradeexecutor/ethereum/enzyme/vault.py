@@ -513,7 +513,7 @@ class EnzymeVaultSyncModel(SyncModel):
             # Legacy
             end_block = get_almost_latest_block_number(web3)
 
-        logger.info(f"Starting treasury sync for vault %s, comptroller %s, looking block range {start_block:,} - {end_block:,}, block tip latency is %d", self.vault.address, self.vault.comptroller.address, latency)
+        logger.info(f"Starting treasury sync for vault %s, comptroller %s, looking block range {start_block:,} - {end_block:,}, block tip latency is %d", self.vault.address, self.vault.comptroller.address)
 
         reader, broken_quicknode = self.create_event_reader()
 
