@@ -7,6 +7,7 @@ from _decimal import Decimal
 from functools import partial
 from typing import cast, List, Optional, Tuple, Iterable
 
+from eth_defi.event_reader.conversion import convert_jsonrpc_value_to_int
 from web3.types import BlockIdentifier
 
 from eth_defi.provider.broken_provider import get_block_tip_latency, get_almost_latest_block_number
@@ -222,6 +223,7 @@ class EnzymeVaultSyncModel(SyncModel):
             tx_hash=event.event_data["transactionHash"],
             log_index=event.event_data["logIndex"],
             position_id=None,
+            block_number=convert_jsonrpc_value_to_int(event.event_data["blockNumber"]),
         )
 
         reserve_position.add_balance_update_event(evt)
@@ -311,6 +313,7 @@ class EnzymeVaultSyncModel(SyncModel):
                 log_index=event.event_data["logIndex"],
                 position_id=position_id,
                 usd_value=usd_value,
+                block_number=convert_jsonrpc_value_to_int(event.event_data["blockNumber"]),
             )
 
             position.add_balance_update_event(evt)
