@@ -1,6 +1,7 @@
 """Positions open and closing management."""
 
 import datetime
+import warnings
 from decimal import Decimal
 from typing import List, Optional, Union, Literal
 import logging
@@ -1215,8 +1216,23 @@ class PositionManager:
             position.trailing_stop_loss_pct = trailing_stop_loss_pct
 
         return [trade]
-    
+
     def close_short_position(
+        self,
+        position: TradingPosition,
+        quantity: float | Decimal | None = None,
+        notes: Optional[str] = None,
+        trade_type: TradeType = TradeType.rebalance,
+    ) -> List[TradeExecution]:
+        """Legacy.
+
+        Use :py:meth:`close_short`.
+
+        """
+        warnings.warn('This function is deprecated. Use PositionManager.close_shor() instead', DeprecationWarning, stacklevel=2)
+        return self.close_short(position, quantity, notes, trade_type)
+    
+    def close_short(
         self,
         position: TradingPosition,
         quantity: float | Decimal | None = None,
@@ -1272,3 +1288,36 @@ class PositionManager:
         )
 
         return [trade]
+
+    def adjust_short(
+        self,
+        position: TradingPosition,
+        quantity: float | Decimal | None = None,
+        notes: Optional[str] = None,
+        trade_type: TradeType = TradeType.rebalance,
+    ) -> List[TradeExecution]:
+        """Increase/decrease short.
+
+        :param position:
+            Position to close.
+
+            Must be a short position.
+
+        :param quantity:
+            How much of the quantity we reduce.
+
+            If not given close the full position.
+
+        :return:
+            New trades to be executed
+        """
+
+        assert self.strategy_universe, "Make sure trading_strategy_engine_version = 0.3. Short does not work with old decide_trades()."
+
+        # Check that pair data looks good
+        pair = position.pair
+        assert pair.kind.is_shorting()
+        assert pair.base.underlying is not None, f"Lacks underlying asset: {pair.base}"
+        assert pair.quote.underlying is not None, f"Lacks underlying asset: {pair.quote}"
+
+        raise NotImplementedError()
