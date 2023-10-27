@@ -1,6 +1,7 @@
 """Sync model for strategies using a single hot wallet."""
 import datetime
 import logging
+from types import NoneType
 from typing import List, Optional, Iterable
 
 from web3.types import BlockIdentifier
@@ -17,6 +18,7 @@ from tradeexecutor.ethereum.wallet import sync_reserves
 from tradeexecutor.state.identifier import AssetIdentifier
 
 from tradeexecutor.state.state import State
+from tradeexecutor.state.types import BlockNumber
 from tradeexecutor.strategy.sync_model import SyncModel, OnChainBalance
 from tradeexecutor.testing.dummy_wallet import apply_sync_events
 
@@ -62,12 +64,17 @@ class HotWalletSyncModel(SyncModel):
         deployment.vault_token_symbol = None
         deployment.initialised_at = datetime.datetime.utcnow()
 
-    def sync_treasury(self,
-                 strategy_cycle_ts: datetime.datetime,
-                 state: State,
-                 supported_reserves: Optional[List[AssetIdentifier]] = None
-                 ) -> List[BalanceUpdate]:
-        """Apply the balance sync before each strategy cycle."""
+    def sync_treasury(
+        self,
+        strategy_cycle_ts: datetime.datetime,
+        state: State,
+        supported_reserves: Optional[List[AssetIdentifier]] = None,
+        end_block: BlockNumber | NoneType = None,
+    ) -> List[BalanceUpdate]:
+        """Apply the balance sync before each strategy cycle.
+
+        TODO: end_block is being ignored
+        """
 
         # TODO: This code is not production ready - use with care
         # Needs legacy cleanup

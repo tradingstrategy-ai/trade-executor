@@ -5,6 +5,7 @@ import datetime
 import pprint
 from _decimal import Decimal
 from functools import partial
+from types import NoneType
 from typing import cast, List, Optional, Tuple, Iterable
 
 from eth_defi.event_reader.conversion import convert_jsonrpc_value_to_int
@@ -32,6 +33,7 @@ from tradeexecutor.state.reserve import ReservePosition
 from tradeexecutor.state.state import State
 from tradeexecutor.state.balance_update import BalanceUpdate, BalanceUpdateCause, BalanceUpdatePositionType
 from tradeexecutor.state.sync import BalanceEventRef
+from tradeexecutor.state.types import BlockNumber
 from tradeexecutor.strategy.account_correction import check_accounts
 from tradeexecutor.strategy.sync_model import SyncModel, OnChainBalance
 from tradingstrategy.chain import ChainId
@@ -489,20 +491,8 @@ class EnzymeVaultSyncModel(SyncModel):
                       strategy_cycle_ts: datetime.datetime,
                       state: State,
                       supported_reserves: Optional[List[AssetIdentifier]] = None,
+                      end_block: BlockNumber | NoneType = None,
                       ) -> List[BalanceUpdate]:
-        """Apply the balance sync before each strategy cycle.
-
-        - Deposits by shareholders
-
-        - Redemptions
-
-        :return:
-            List of new treasury balance events
-
-        :raise ChainReorganisationDetected:
-            When any if the block data in our internal buffer
-            does not match those provided by events.
-        """
 
         web3 = self.web3
         sync = state.sync
@@ -518,10 +508,12 @@ class EnzymeVaultSyncModel(SyncModel):
             start_block = sync.deployment.block_number
 
         web3 = self.web3
-        latency = get_block_tip_latency(web3)
-        end_block = max(1, web3.eth.block_number - latency)
 
-        logger.info(f"Starting treasury sync for vault %s, comptroller %s, looking block range {start_block:,} - {end_block:,}, block tip latency is %d", self.vault.address, self.vault.comptroller.address, latency)
+        if not end_block:
+            # Legacy
+            end_block = get_almost_latest_block_number(web3)
+
+        logger.info(f"Starting treasury sync for vault %s, comptroller %s, looking block range {start_block:,} - {end_block:,}, block tip latency is %d", self.vault.address, self.vault.comptroller.address)
 
         reader, broken_quicknode = self.create_event_reader()
 

@@ -9,16 +9,16 @@ Currently supported models
 import abc
 import datetime
 import enum
-from typing import List, Dict, Tuple, TypedDict, Optional
+from types import NoneType
+from typing import List,TypedDict
 from web3 import Web3
-from hexbytes import HexBytes
 
 from eth_defi.hotwallet import HotWallet
+from tradeexecutor.state.types import BlockNumber
 from tradeexecutor.ethereum.tx import TransactionBuilder
 from tradeexecutor.state.state import State
 from tradeexecutor.state.trade import TradeExecution
 from tradeexecutor.strategy.routing import RoutingModel, RoutingState
-from tradeexecutor.state.blockhain_transaction import BlockchainTransaction
 
 
 class AutoClosingOrderUnsupported(Exception):
@@ -82,6 +82,26 @@ class ExecutionModel(abc.ABC):
         Read any on-chain, etc., data to get synced.
 
         - Read EVM nonce for the hot wallet from the chain
+        """
+
+    @abc.abstractmethod
+    def get_safe_latest_block(self) -> BlockNumber | NoneType:
+        """Fix the block number for all checks and actions.
+
+        - At the start of each action cycle (strategy decision, position triggers)
+          we fix ourselves to a certain block number we know is "safe"
+          and the data in at this block number is unlike to change
+
+        - We then perform all deposit and redemptions and accounting
+          checks using this block number as end block,
+          to get a
+
+        :return:
+            A good safe latest block number.
+
+            Return `None` if the
+            block number is irrelevant for the execution,
+            like backtesting and such.
         """
 
     @abc.abstractmethod

@@ -503,6 +503,7 @@ class ExecutionLoop:
             trades = debug_details.get("approved_trades")
             if trades:
                 # This will raise an exception if there are issues
+                # TODO: Handle deposits during trade executoin
                 try:
                     self.runner.check_balances_post_execution(
                         universe,
