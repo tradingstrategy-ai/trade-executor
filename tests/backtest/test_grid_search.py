@@ -181,7 +181,7 @@ def test_prepare_grid_search_parameters(tmp_path):
 
 
 def test_perform_grid_search_single_thread(
-        universe: TradingStrategyUniverse,
+        strategy_universe,
         tmp_path,
 ):
     """Run a grid search.
@@ -199,7 +199,7 @@ def test_perform_grid_search_single_thread(
 
     results = perform_grid_search(
         grid_search_worker,
-        universe,
+        strategy_universe,
         combinations,
         max_workers=1,
     )
@@ -244,7 +244,7 @@ def test_perform_grid_search_single_thread(
 
 
 def test_perform_grid_search_cached(
-        universe: TradingStrategyUniverse,
+        strategy_universe,
         tmp_path,
 ):
     """Run a grid search twice and see we get cached results."""
@@ -259,7 +259,7 @@ def test_perform_grid_search_cached(
 
     results = perform_grid_search(
         grid_search_worker,
-        universe,
+        strategy_universe,
         combinations,
         max_workers=1,
     )
@@ -269,7 +269,7 @@ def test_perform_grid_search_cached(
 
     results_2 = perform_grid_search(
         grid_search_worker,
-        universe,
+        strategy_universe,
         combinations,
         max_workers=1,
     )
@@ -279,7 +279,7 @@ def test_perform_grid_search_cached(
 
 
 def test_perform_grid_search_threaded(
-        universe: TradingStrategyUniverse,
+        strategy_universe,
         tmp_path,
 ):
     """Run a grid search using multiple threads."""
@@ -294,7 +294,7 @@ def test_perform_grid_search_threaded(
 
     results = perform_grid_search(
         grid_search_worker,
-        universe,
+        strategy_universe,
         combinations,
         max_workers=4,
     )
@@ -305,7 +305,7 @@ def test_perform_grid_search_threaded(
 
 
 def test_perform_grid_search_multiprocess(
-        universe: TradingStrategyUniverse,
+        strategy_universe,
         tmp_path,
 ):
     """Run a grid search using multiple threads."""
@@ -320,7 +320,7 @@ def test_perform_grid_search_multiprocess(
 
     results = perform_grid_search(
         grid_search_worker,
-        universe,
+        strategy_universe,
         combinations,
         max_workers=4,
         multiprocess=True,

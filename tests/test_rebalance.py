@@ -16,7 +16,7 @@ from hexbytes import HexBytes
 
 from tradeexecutor.backtest.backtest_execution import BacktestExecutionModel
 from tradeexecutor.backtest.backtest_pricing import BacktestSimplePricingModel
-from tradeexecutor.backtest.backtest_routing import BacktestRoutingModel
+from tradeexecutor.backtest.backtest_routing import BacktestRoutingModel, BacktestRoutingState
 from tradeexecutor.backtest.simulated_wallet import SimulatedWallet
 from tradeexecutor.state.state import State, TradeType
 from tradeexecutor.state.portfolio import Portfolio
@@ -195,7 +195,7 @@ def routing_model(universe) -> BacktestRoutingModel:
 
 @pytest.fixture()
 def pricing_model(routing_model, universe) -> BacktestSimplePricingModel:
-    return BacktestSimplePricingModel(universe.data_universe.candles, routing_model, allow_missing_fees=True)
+    return BacktestSimplePricingModel(universe.data_universe.candles, routing_model)
 
 
 @pytest.fixture
@@ -256,16 +256,19 @@ def single_asset_portfolio(start_ts, weth_usdc, weth, usdc) -> Portfolio:
 
 
 @pytest.fixture()
-def execution_mode() -> BacktestExecutionModel:
-    """Simulate trades using backtest execution model."""
+def wallet(usdc, weth) -> SimulatedWallet:
+    """Dummy blockchain accounting to see we do not try to use tokens we do not have."""
     wallet = SimulatedWallet()
-    execution_model = BacktestExecutionModel(wallet, max_slippage=0.01)
-    return execution_model
+    wallet.set_balance(usdc.address, Decimal(10_000))
+    wallet.set_balance(weth.address, Decimal(10))
+    return wallet
 
 
 @pytest.fixture()
-def routing_model(universe) -> BacktestRoutingModel:
-    return generate_simple_routing_model(universe)
+def execution_model(wallet) -> BacktestExecutionModel:
+    """Simulate trades using backtest execution model."""
+    execution_model = BacktestExecutionModel(wallet)
+    return execution_model
 
 
 def test_get_portfolio_weights(
@@ -345,7 +348,7 @@ def test_clip():
 
 def test_rebalance_trades_flip_position(
     single_asset_portfolio: Portfolio,
-    universe,
+        strategy_universe,
     pricing_model,
     weth_usdc: TradingPairIdentifier,
     aave_usdc: TradingPairIdentifier,
@@ -367,7 +370,7 @@ def test_rebalance_trades_flip_position(
     # trading universe and mock price feeds
     position_manager = PositionManager(
         start_ts + datetime.timedelta(days=1),  # Trade on t plus 1 day
-        universe.data_universe,
+        strategy_universe.data_universe,
         state,
         pricing_model,
     )
@@ -406,7 +409,7 @@ def test_rebalance_trades_flip_position(
 
 def test_rebalance_trades_flip_position_partial(
     single_asset_portfolio: Portfolio,
-    universe,
+        strategy_universe,
     pricing_model,
     weth_usdc: TradingPairIdentifier,
     aave_usdc: TradingPairIdentifier,
@@ -428,7 +431,7 @@ def test_rebalance_trades_flip_position_partial(
     # trading universe and mock price feeds
     position_manager = PositionManager(
         start_ts + datetime.timedelta(days=1),  # Trade on t plus 1 day
-        universe.data_universe,
+        strategy_universe.data_universe,
         state,
         pricing_model,
     )
@@ -470,7 +473,7 @@ def test_rebalance_trades_flip_position_partial(
 
 def test_rebalance_bad_weights(
     single_asset_portfolio: Portfolio,
-    universe,
+        strategy_universe,
     pricing_model,
     weth_usdc: TradingPairIdentifier,
     aave_usdc: TradingPairIdentifier,
@@ -487,7 +490,7 @@ def test_rebalance_bad_weights(
     # trading universe and mock price feeds
     position_manager = PositionManager(
         start_ts + datetime.timedelta(days=1),  # Trade on t plus 1 day
-        universe.data_universe,
+        strategy_universe.data_universe,
         state,
         pricing_model,
     )
@@ -508,7 +511,7 @@ def test_rebalance_bad_weights(
 
 def test_alpha_model_trades_flip_position(
     single_asset_portfolio: Portfolio,
-    universe,
+        strategy_universe,
     pricing_model,
     weth_usdc: TradingPairIdentifier,
     aave_usdc: TradingPairIdentifier,
@@ -533,7 +536,7 @@ def test_alpha_model_trades_flip_position(
     # trading universe and mock price feeds
     position_manager = PositionManager(
         start_ts + datetime.timedelta(days=1),  # Trade on t plus 1 day
-        universe.data_universe,
+        strategy_universe.data_universe,
         state,
         pricing_model,
     )
@@ -584,7 +587,7 @@ def test_alpha_model_trades_flip_position(
 
 def test_alpha_model_flip_position_partially(
     single_asset_portfolio: Portfolio,
-    universe,
+        strategy_universe,
     pricing_model,
     weth_usdc: TradingPairIdentifier,
     aave_usdc: TradingPairIdentifier,
@@ -610,7 +613,7 @@ def test_alpha_model_flip_position_partially(
     # trading universe and mock price feeds
     position_manager = PositionManager(
         start_ts + datetime.timedelta(days=1),  # Trade on t plus 1 day
-        universe.data_universe,
+        strategy_universe.data_universe,
         state,
         pricing_model,
     )
@@ -672,7 +675,7 @@ def test_alpha_model_flip_position_partially(
 
 def test_alpha_model_open_short(
     single_asset_portfolio: Portfolio,
-    universe: TradingStrategyUniverse,
+        strategy_universe,
     pricing_model,
     weth_usdc: TradingPairIdentifier,
     aave_usdc: TradingPairIdentifier,
@@ -684,8 +687,8 @@ def test_alpha_model_open_short(
     """
 
     # Check that shorting is enabled
-    assert universe.can_open_short(start_ts, weth_usdc)
-    assert not universe.can_open_short(start_ts, aave_usdc)
+    assert strategy_universe.can_open_short(start_ts, weth_usdc)
+    assert not strategy_universe.can_open_short(start_ts, aave_usdc)
 
     portfolio = single_asset_portfolio
 
@@ -702,7 +705,7 @@ def test_alpha_model_open_short(
     # trading universe and mock price feeds
     position_manager = PositionManager(
         start_ts + datetime.timedelta(days=1),  # Trade on t plus 1 day
-        universe,
+        strategy_universe,
         state,
         pricing_model,
     )
@@ -764,7 +767,7 @@ def test_alpha_model_open_short(
 
     # Opening ETH short comes next
     # Use 50% of portfolio value to go short on ETH
-    weth_usdc_short_pair = universe.get_shorting_pair(weth_usdc)
+    weth_usdc_short_pair = strategy_universe.get_shorting_pair(weth_usdc)
     t = trades[1]
     assert t.is_sell()
     assert t.is_short()
@@ -783,7 +786,6 @@ def test_alpha_model_open_short(
     assert t.get_planned_value() == 78.85
 
 
-
 def test_alpha_model_increase_short(
     single_asset_portfolio: Portfolio,
     universe: TradingStrategyUniverse,
@@ -793,31 +795,27 @@ def test_alpha_model_increase_short(
     start_ts,
     execution_model: BacktestExecutionModel,
     routing_model: BacktestRoutingModel,
+    wallet: SimulatedWallet,
 ):
     """"Increase short position by going from 50% to 75% on the short signal.
 
+    - Follow the steps from the ``test_alpha_model_open_short``,
+      and do another cycle where short is increased
+
     """
 
-    # Check that shorting is enabled
-    assert universe.can_open_short(start_ts, weth_usdc)
-    assert not universe.can_open_short(start_ts, aave_usdc)
+    strategy_universe = universe
 
     portfolio = single_asset_portfolio
 
     state = State(portfolio=portfolio)
-
-    # Check we have WETH-USDC open
-    position = state.portfolio.get_position_by_trading_pair(weth_usdc)
-    assert position.get_quantity() > 0
-    weth_quantity = position.get_quantity()
-    assert position.get_value() == pytest.approx(157.7)
 
     # Create the PositionManager that
     # will create buy/sell trades based on our
     # trading universe and mock price feeds
     position_manager = PositionManager(
         start_ts + datetime.timedelta(days=1),  # Trade on t plus 1 day
-        universe,
+        strategy_universe,
         state,
         pricing_model,
     )
@@ -883,6 +881,10 @@ def test_alpha_model_increase_short(
         balance_1_ts,
         state,
         trades,
+        routing_model,
+        BacktestRoutingState(strategy_universe.data_universe.pairs, wallet),  # Create new routing state at the start of the cycle
     )
+    assert any(t.is_success() for t in trades)
+
 
 

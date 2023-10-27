@@ -170,26 +170,26 @@ def logger(request):
 @pytest.fixture(scope="module")
 def state(
         logger: logging.Logger,
-        universe: TradingStrategyUniverse,
+        strategy_universe,
     ):
     """Prepare a run backtest.
 
     Then one can calculate different statistics over this.
     """
 
-    start_at, end_at = universe.data_universe.candles.get_timestamp_range()
+    start_at, end_at = strategy_universe.data_universe.candles.get_timestamp_range()
 
-    routing_model = generate_simple_routing_model(universe)
+    routing_model = generate_simple_routing_model(strategy_universe)
 
     # Run the test
-    state, universe, debug_dump = run_backtest_inline(
+    state, strategy_universe, debug_dump = run_backtest_inline(
         start_at=start_at.to_pydatetime(),
         end_at=end_at.to_pydatetime(),
         client=None,  # None of downloads needed, because we are using synthetic data
         cycle_duration=CycleDuration.cycle_1d,  # Override to use 24h cycles despite what strategy file says
         decide_trades=decide_trades,
         create_trading_universe=None,
-        universe=universe,
+        universe=strategy_universe,
         initial_deposit=10_000,
         reserve_currency=ReserveCurrency.busd,
         trade_routing=TradeRouting.user_supplied_routing_model,
@@ -200,9 +200,9 @@ def state(
     return state
 
 
-def test_precheck_universe(universe: TradingStrategyUniverse):
+def test_precheck_universe(strategy_universe):
     """Check our generated data looks correct."""
-    universe = universe.data_universe
+    strategy_universe = strategy_universe.data_universe
     assert universe.pairs.get_count() == 2
     assert universe.candles.get_pair_count() == 2
     assert len(universe.pairs.pair_map) == 2

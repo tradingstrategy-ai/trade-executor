@@ -9,6 +9,7 @@ from tradeexecutor.backtest.backtest_routing import BacktestRoutingModel, Backte
 from tradeexecutor.backtest.simulated_wallet import SimulatedWallet, OutOfSimulatedBalance
 from tradeexecutor.state.state import State
 from tradeexecutor.state.trade import TradeExecution, TradeStatus
+from tradeexecutor.state.types import Percent
 from tradeexecutor.strategy.execution_model import ExecutionModel, AutoClosingOrderUnsupported
 
 logger = logging.getLogger(__name__)
@@ -64,8 +65,8 @@ class BacktestExecutionModel(ExecutionModel):
 
     def __init__(self,
                  wallet: SimulatedWallet,
-                 max_slippage: float,
-                 lp_fees: float=0.0030,
+                 max_slippage: Percent=0.01,
+                 lp_fees: Percent=0.0030,
                  stop_loss_data_available=False,
                  ):
         self.wallet = wallet

@@ -107,7 +107,7 @@ def universe() -> TradingStrategyUniverse:
 
 def test_backtest_open_both_long_short(
     persistent_test_client: Client,
-    universe,
+        strategy_universe,
 ):
     """Run the strategy backtest using inline decide_trades function.
 
@@ -142,13 +142,13 @@ def test_backtest_open_both_long_short(
 
         return trades
 
-    state, universe, debug_dump = run_backtest_inline(
+    state, strategy_universe, debug_dump = run_backtest_inline(
         start_at=start_at,
         end_at=end_at,
         client=persistent_test_client,
         cycle_duration=CycleDuration.cycle_1d,
         decide_trades=decide_trades,
-        universe=universe,
+        universe=strategy_universe,
         initial_deposit=capital,
         reserve_currency=ReserveCurrency.usdc,
         trade_routing=TradeRouting.uniswap_v3_usdc_poly,
