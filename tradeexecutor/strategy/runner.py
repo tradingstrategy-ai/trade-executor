@@ -10,9 +10,11 @@ from contextlib import AbstractContextManager
 import logging
 from io import StringIO
 from pprint import pformat
+from types import NoneType
 
 from typing import List, Optional, Tuple
 
+from tradeexecutor.state.types import BlockNumber
 from tradeexecutor.statistics.core import update_statistics
 from tradeexecutor.strategy.account_correction import check_accounts, UnexpectedAccountingCorrectionIssue
 from tradeexecutor.strategy.approval import ApprovalModel
@@ -153,7 +155,9 @@ class StrategyRunner(abc.ABC):
             strategy_cycle_or_trigger_check_ts: datetime.datetime,
             universe: StrategyExecutionUniverse,
             state: State,
-            debug_details: dict):
+            debug_details: dict,
+            end_block: BlockNumber | NoneType = None,
+    ):
         """Adjust portfolio balances based on the external events.
 
         External events include
@@ -175,6 +179,11 @@ class StrategyRunner(abc.ABC):
         :param state:
             Currnet strategy state
 
+        :param end_block:
+            Sync until this block.
+
+            If not given sync to the lateshish.
+
         :param debug_details:
             Dictionary of debug data that will be passed down to the callers
 
@@ -186,12 +195,13 @@ class StrategyRunner(abc.ABC):
         token = reserve_assets[0]
         assert token.decimals and token.decimals > 0, f"Reserve asset lacked decimals"
 
-        logger.info("sync_portfolio() starting")
+        logger.info("sync_portfolio() starting at block %s", end_block)
 
         balance_update_events = self.sync_model.sync_treasury(
             strategy_cycle_or_trigger_check_ts,
             state,
             supported_reserves=reserve_assets,
+            end_block=end_block,
         )
         assert type(balance_update_events) == list
         logger.info("Received %d balance update events from the sync", len(balance_update_events))
@@ -501,8 +511,9 @@ class StrategyRunner(abc.ABC):
 
         # Double check we handled incoming trade balances correctly
         with self.timed_task_context_manager("check_accounts_post_trade"):
-            logger.info("Post-trade accounts balance check")
-            self.check_accounts(universe, state)
+            end_block = self.execution_model.get_safe_latest_block()
+            logger.info("Post-trade accounts balance check for block %s", end_block)
+            self.check_accounts(universe, state, end_block=end_block)
 
     def tick(self,
              strategy_cycle_timestamp: datetime.datetime,
@@ -513,6 +524,9 @@ class StrategyRunner(abc.ABC):
              cycle: Optional[int] = None,
              ) -> dict:
         """Execute the core functions of a strategy.
+
+        TODO: This function is vulnerable to balance changes in the middle of execution.
+        It's not possible to fix this until we have atomic rebalances.
 
         :param strategy_cycle_timestamp:
             Current timestamp of the execution cycle.
@@ -548,6 +562,10 @@ class StrategyRunner(abc.ABC):
         if cycle_duration not in (CycleDuration.cycle_unknown, CycleDuration.cycle_1s, None):
             assert strategy_cycle_timestamp.second == 0, f"Cycle duration {cycle_duration}: Does not look like a cycle timestamp: {strategy_cycle_timestamp}, should be even minutes"
 
+        end_block = self.execution_model.get_safe_latest_block()
+
+        logger.info("tick() at block %s", end_block)
+
         friendly_cycle_duration = cycle_duration.value if cycle_duration else "-"
         with self.timed_task_context_manager("strategy_tick", clock=strategy_cycle_timestamp, cycle_duration=friendly_cycle_duration):
 
@@ -556,12 +574,12 @@ class StrategyRunner(abc.ABC):
 
             # Watch incoming deposits
             with self.timed_task_context_manager("sync_portfolio"):
-                self.sync_portfolio(strategy_cycle_timestamp, universe, state, debug_details)
+                self.sync_portfolio(strategy_cycle_timestamp, universe, state, debug_details, end_block)
 
             # Double check we handled deposits correctly
             with self.timed_task_context_manager("check_accounts_pre_trade"):
                 logger.info("Pre-trade accounts balance check")
-                self.check_accounts(universe, state)
+                self.check_accounts(universe, state, end_block)
 
             # Assing a new value for every existing position
             with self.timed_task_context_manager("revalue_portfolio"):
@@ -687,17 +705,20 @@ class StrategyRunner(abc.ABC):
 
         debug_details = {}
 
+        end_block = self.execution_model.get_safe_latest_block()
+        logger.info(f"check_position_triggers() using block %d", end_block)
+
         with self.timed_task_context_manager("check_position_triggers"):
 
             # Sync treasure before the trigger checks
             with self.timed_task_context_manager("sync_portfolio_before_triggers"):
-                self.check_accounts(universe, state, report_only=True)
-                self.sync_portfolio(clock, universe, state, debug_details)
+                self.check_accounts(universe, state, report_only=True, end_block=end_block)
+                self.sync_portfolio(clock, universe, state, debug_details, end_block=end_block)
 
             # Check that our on-chain balances are good
             with self.timed_task_context_manager("check_accounts_position_triggers"):
                 logger.info("Position trigger pre-trade accounts balance check")
-                self.check_accounts(universe, state)
+                self.check_accounts(universe, state, end_block=end_block)
 
             # We use PositionManager.close_position()
             # to generate trades to close stop loss positions
@@ -763,6 +784,7 @@ class StrategyRunner(abc.ABC):
             universe: TradingStrategyUniverse,
             state: State,
             report_only=False,
+            end_block: BlockNumber | NoneType = None
     ):
         """Perform extra accounting checks on live trading startup.
 
@@ -770,6 +792,11 @@ class StrategyRunner(abc.ABC):
 
         :param report_only:
             Don't crash if we get problems in accounts
+
+        :param end_block:
+            Check specifically at this block.
+
+            If not given use the lateshish block.
 
         :raise UnexpectedAccountingCorrectionIssue:
             Aborting execution.
@@ -789,6 +816,7 @@ class StrategyRunner(abc.ABC):
                 [universe.get_reserve_asset()],
                 state,
                 self.sync_model,
+                block_identifier=end_block,
             )
 
             log_level = logging.INFO if report_only else logging.ERROR
@@ -796,9 +824,10 @@ class StrategyRunner(abc.ABC):
             address = self.execution_model.get_balance_address()
 
             if not clean:
+                block_message = f"{end_block:,}" if end_block else "<latest>"
                 logger.log(
                     log_level,
-                    "Accounting differences detected for: %s\n"                    
+                    f"Accounting differences detected for: %s at block {block_message}\n"                    
                     "Differences are:\n"
                     "%s",
                     address,

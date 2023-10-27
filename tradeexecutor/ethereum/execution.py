@@ -10,6 +10,7 @@ from typing import List, Dict, Set, Tuple
 from abc import abstractmethod
 
 from eth_account.datastructures import SignedTransaction
+from eth_defi.provider.broken_provider import get_almost_latest_block_number
 from eth_typing import HexAddress, HexStr
 from hexbytes import HexBytes
 from web3 import Web3
@@ -36,6 +37,7 @@ from tradeexecutor.state.freeze import freeze_position_on_failed_trade
 from tradeexecutor.state.identifier import AssetIdentifier
 from tradeexecutor.ethereum.uniswap_v2.uniswap_v2_routing import UniswapV2SimpleRoutingModel, UniswapV2RoutingState
 from tradeexecutor.ethereum.uniswap_v3.uniswap_v3_routing import UniswapV3SimpleRoutingModel, UniswapV3RoutingState
+from tradeexecutor.state.types import BlockNumber
 from tradeexecutor.strategy.execution_model import ExecutionModel, RoutingStateDetails
 from tradingstrategy.chain import ChainId
 
@@ -109,7 +111,11 @@ class EthereumExecutionModel(ExecutionModel):
 
     def get_balance_address(self) -> str:
         return self.tx_builder.get_erc_20_balance_address()
-    
+
+    def get_safe_latest_block(self) -> BlockNumber:
+        web3 = self.web3
+        return get_almost_latest_block_number(web3)
+
     @staticmethod
     def pre_execute_assertions(
         ts: datetime.datetime, 

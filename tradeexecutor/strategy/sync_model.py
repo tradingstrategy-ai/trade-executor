@@ -99,7 +99,8 @@ class SyncModel(ABC):
     def sync_treasury(self,
                       strategy_cycle_ts: datetime.datetime,
                       state: State,
-                      supported_reserves: Optional[List[AssetIdentifier]] = None
+                      supported_reserves: Optional[List[AssetIdentifier]] = None,
+                      end_block: BlockNumber | NoneType = None,
                       ) -> List[BalanceUpdate]:
         """Apply the balance sync before each strategy cycle.
 
@@ -115,6 +116,9 @@ class SyncModel(ABC):
             List of assets the strategy module wants to use as its reserves.
 
             May be None in testing.
+
+        :param end_block:
+            Sync until this block.
 
         :return:
             List of balance updates detected.
@@ -215,6 +219,9 @@ class DummySyncModel(SyncModel):
         pass
 
     def get_token_storage_address(self) -> Optional[JSONHexAddress]:
+        return None
+
+    def get_safe_latest_block(self):
         return None
 
     def sync_treasury(self,
