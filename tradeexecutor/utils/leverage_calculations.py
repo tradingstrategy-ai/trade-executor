@@ -218,8 +218,15 @@ class LeverageEstimate:
         :param token_price:
             What is the price of a token we short
 
+        :param shorting_pair:
+            The synthetic trading pair for the lending pool short.
+
+            With aToken and vToken.
+
         :param fee:
-            What is the trading fee for swapping the borrowed asset to collateral
+            What is the trading fee for swapping the borrowed asset to collateral.
+
+            TODO: Use the fee from the trading pair.
 
         :return:
             borrow quantity, collateral quantity for the constructed loan

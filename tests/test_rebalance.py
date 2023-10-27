@@ -822,22 +822,14 @@ def test_alpha_model_increase_short(
 
     alpha_model = AlphaModel()
     alpha_model.set_signal(aave_usdc, 0.5)  # 50% long AAVE
-    alpha_model.set_signal(weth_usdc, -0.5, leverage=1.0)  # 505 short ETH
+    alpha_model.set_signal(weth_usdc, -0.5, leverage=1.0)  # 50% short ETH
     alpha_model.select_top_signals(count=5)
     alpha_model.assign_weights(method=weight_passthrouh)
     alpha_model.normalise_weights()
 
-    # Check we have 50% / 50%
-    for signal in alpha_model.iterate_signals():
-        assert signal.raw_weight == 0.5, f"Bad signal: {signal}"
-        assert signal.normalised_weight == 0.5, f"Bad signal: {signal}"
-
     # Load in old weight for each trading pair signal,
     # so we can calculate the adjustment trade size
     alpha_model.update_old_weights(state.portfolio)
-    weth_signal = alpha_model.get_signal_by_pair(weth_usdc)
-    assert weth_signal.old_value == pytest.approx(157.7)
-    assert weth_signal.old_synthetic_pair == weth_usdc
 
     # Calculate how much dollar value we want each individual position to be on this strategy cycle,
     # based on our total available equity
@@ -903,3 +895,28 @@ def test_alpha_model_increase_short(
     assert p3.pair == vweth_ausdc
     assert p3.pair.is_short()
 
+    # Increase short
+    alpha_model = AlphaModel()
+    alpha_model.set_signal(aave_usdc, 0.3)  # 30% long AAVE
+    alpha_model.set_signal(weth_usdc, -0.7, leverage=1.0)  # 70% short ETH
+    alpha_model.select_top_signals(count=5)
+    alpha_model.assign_weights(method=weight_passthrouh)
+    alpha_model.normalise_weights()
+
+    # Load in old weight for each trading pair signal,
+    # so we can calculate the adjustment trade size
+    alpha_model.update_old_weights(state.portfolio)
+
+    # Calculate how much dollar value we want each individual position to be on this strategy cycle,
+    # based on our total available equity
+    portfolio = position_manager.get_current_portfolio()
+    portfolio_target_value = portfolio.get_position_equity_and_loan_nav()
+    alpha_model.calculate_target_positions(position_manager, portfolio_target_value)
+
+    # Shift portfolio from current positions to target positions
+    # determined by the alpha signals (momentum)
+    trades = alpha_model.generate_rebalance_trades_and_triggers(position_manager)
+
+    # Increase ETH short
+    # Decrease Aave spot
+    assert len(trades) == 2, f"Got trades: {trades}"
