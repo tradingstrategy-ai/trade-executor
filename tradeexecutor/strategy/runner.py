@@ -186,13 +186,15 @@ class StrategyRunner(abc.ABC):
         token = reserve_assets[0]
         assert token.decimals and token.decimals > 0, f"Reserve asset lacked decimals"
 
+        logger.info("sync_portfolio() starting")
+
         balance_update_events = self.sync_model.sync_treasury(
             strategy_cycle_or_trigger_check_ts,
             state,
             supported_reserves=reserve_assets,
         )
         assert type(balance_update_events) == list
-
+        logger.info("Received %d balance update events from the sync", len(balance_update_events))
         for e in balance_update_events:
             logger.trade("Funding flow event: %s", e)
 
