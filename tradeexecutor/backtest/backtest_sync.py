@@ -2,6 +2,7 @@ import logging
 import datetime
 from dataclasses import dataclass
 from decimal import Decimal
+from types import NoneType
 from typing import List, Optional, Literal, Collection, Iterable
 
 from web3.types import BlockIdentifier
@@ -14,7 +15,7 @@ from tradeexecutor.state.balance_update import BalanceUpdate
 from tradeexecutor.state.identifier import AssetIdentifier
 from tradeexecutor.state.position import TradingPosition
 from tradeexecutor.state.state import State
-from tradeexecutor.state.types import JSONHexAddress
+from tradeexecutor.state.types import JSONHexAddress, BlockNumber
 from tradeexecutor.strategy.interest import update_interest, update_leveraged_position_interest
 from tradeexecutor.strategy.pricing_model import PricingModel
 from tradeexecutor.strategy.sync_model import SyncModel, OnChainBalance
@@ -72,11 +73,13 @@ class BacktestSyncModel(SyncModel):
         deployment.vault_token_name = None
         deployment.vault_token_symbol = None
 
-    def sync_treasury(self,
-                 strategy_cycle_ts: datetime.datetime,
-                 state: State,
-                 supported_reserves: Optional[List[AssetIdentifier]] = None
-                 ) -> List[BalanceUpdate]:
+    def sync_treasury(
+        self,
+        strategy_cycle_ts: datetime.datetime,
+        state: State,
+        supported_reserves: Optional[List[AssetIdentifier]] = None,
+        end_block: BlockNumber | NoneType = None,
+    ) -> List[BalanceUpdate]:
         """Apply the balance sync before each strategy cycle.
 
         .. warning::
@@ -86,6 +89,8 @@ class BacktestSyncModel(SyncModel):
 
         assert len(supported_reserves) == 1
         reserve_token = supported_reserves[0]
+
+        assert end_block is None, "Cannot use block ranges with backtesting"
 
         reserve_update_events = []  # TODO: Legacy
 

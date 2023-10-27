@@ -4,6 +4,7 @@ import datetime
 from _decimal import Decimal
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
+from types import NoneType
 from typing import Callable, List, Optional, Iterable, Collection
 
 from web3.types import BlockIdentifier
@@ -18,7 +19,7 @@ from tradeexecutor.state.position import TradingPosition
 from tradeexecutor.state.reserve import ReservePosition
 from tradeexecutor.state.state import State
 from tradeexecutor.state.sync import BalanceEventRef
-from tradeexecutor.state.types import JSONHexAddress
+from tradeexecutor.state.types import JSONHexAddress, BlockNumber
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
 from tradeexecutor.strategy.pricing_model import PricingModel
 
@@ -224,11 +225,14 @@ class DummySyncModel(SyncModel):
     def get_safe_latest_block(self):
         return None
 
-    def sync_treasury(self,
-                      strategy_cycle_ts: datetime.datetime,
-                      state: State,
-                      supported_reserves: Optional[List[AssetIdentifier]] = None
-                      ) -> List[BalanceUpdate]:
+    def sync_treasury(
+        self,
+        strategy_cycle_ts: datetime.datetime,
+        state: State,
+        supported_reserves: Optional[List[AssetIdentifier]] = None,
+        end_block: BlockNumber | NoneType = None,
+    ) -> List[BalanceUpdate]:
+        assert end_block is None, "Dummy does not understand end_block"
         if not self.fake_sync_done:
             state.sync.treasury.last_updated_at = datetime.datetime.utcnow()
             state.sync.treasury.last_cycle_at = strategy_cycle_ts

@@ -10,17 +10,15 @@ import abc
 import datetime
 import enum
 from types import NoneType
-from typing import List, Dict, Tuple, TypedDict, Optional
+from typing import List,TypedDict
 from web3 import Web3
-from hexbytes import HexBytes
 
 from eth_defi.hotwallet import HotWallet
+from tradeexecutor.state.types import BlockNumber
 from tradeexecutor.ethereum.tx import TransactionBuilder
 from tradeexecutor.state.state import State
 from tradeexecutor.state.trade import TradeExecution
-from tradeexecutor.state.types import BlockNumber
 from tradeexecutor.strategy.routing import RoutingModel, RoutingState
-from tradeexecutor.state.blockhain_transaction import BlockchainTransaction
 
 
 class AutoClosingOrderUnsupported(Exception):
