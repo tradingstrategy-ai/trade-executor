@@ -110,7 +110,7 @@ def universe() -> TradingStrategyUniverse:
 
 def test_backtest_open_only_short_synthetic_data(
     persistent_test_client: Client,
-    universe,
+        strategy_universe,
 ):
     """Run the strategy backtest using inline decide_trades function.
 
@@ -148,13 +148,13 @@ def test_backtest_open_only_short_synthetic_data(
         return trades
 
     # Run the test
-    state, universe, debug_dump = run_backtest_inline(
+    state, strategy_universe, debug_dump = run_backtest_inline(
         start_at=start_at,
         end_at=end_at,
         client=persistent_test_client,
         cycle_duration=CycleDuration.cycle_1d,
         decide_trades=decide_trades,
-        universe=universe,
+        universe=strategy_universe,
         initial_deposit=capital,
         reserve_currency=ReserveCurrency.usdc,
         trade_routing=TradeRouting.uniswap_v3_usdc_poly,
@@ -222,7 +222,7 @@ def test_backtest_open_only_short_synthetic_data(
 
 def test_backtest_open_and_close_short_synthetic_data(
     persistent_test_client: Client,
-    universe,
+        strategy_universe,
 ):
     """Run the strategy backtest using inline decide_trades function.
 
@@ -273,13 +273,13 @@ def test_backtest_open_and_close_short_synthetic_data(
         return trades
 
     # Run the test
-    state, universe, debug_dump = run_backtest_inline(
+    state, strategy_universe, debug_dump = run_backtest_inline(
         start_at=start_at,
         end_at=end_at,
         client=persistent_test_client,
         cycle_duration=CycleDuration.cycle_1d,
         decide_trades=decide_trades,
-        universe=universe,
+        universe=strategy_universe,
         initial_deposit=capital,
         reserve_currency=ReserveCurrency.usdc,
         trade_routing=TradeRouting.uniswap_v3_usdc_poly,
@@ -341,7 +341,7 @@ def test_backtest_open_and_close_short_synthetic_data(
 
 def test_backtest_short_underlying_price_feed(
     persistent_test_client: Client,
-    universe: TradingStrategyUniverse,
+        strategy_universe,
 ):
     """Query the price for a short pair.
 
@@ -354,12 +354,12 @@ def test_backtest_short_underlying_price_feed(
     )
 
     pricing_model = BacktestSimplePricingModel(
-        universe.data_universe.candles,
+        strategy_universe.data_universe.candles,
         routing_model,
     )
 
-    spot_pair = universe.get_single_pair()
-    shorting_pair = universe.get_shorting_pair(spot_pair)
+    spot_pair = strategy_universe.get_single_pair()
+    shorting_pair = strategy_universe.get_shorting_pair(spot_pair)
 
     spot_pair_two = shorting_pair.get_pricing_pair()
     assert spot_pair == spot_pair_two
@@ -373,7 +373,7 @@ def test_backtest_short_underlying_price_feed(
     assert price_structure.mid_price == pytest.approx(1800.0)
 
 
-def test_backtest_open_short_failure_too_high_leverage(persistent_test_client: Client, universe):
+def test_backtest_open_short_failure_too_high_leverage(persistent_test_client: Client, strategy_universe):
     """Backtest should raise exception if leverage is too high."""
 
     def decide_trades(
@@ -399,13 +399,13 @@ def test_backtest_open_short_failure_too_high_leverage(persistent_test_client: C
 
     # backtest should raise exception when trying to open short position
     with pytest.raises(AssertionError) as e:
-        _, universe, _ = run_backtest_inline(
+        _, strategy_universe, _ = run_backtest_inline(
             start_at=start_at,
             end_at=end_at,
             client=persistent_test_client,
             cycle_duration=CycleDuration.cycle_1d,
             decide_trades=decide_trades,
-            universe=universe,
+            universe=strategy_universe,
             initial_deposit=10000,
             reserve_currency=ReserveCurrency.usdc,
             trade_routing=TradeRouting.uniswap_v3_usdc_poly,
@@ -415,7 +415,7 @@ def test_backtest_open_short_failure_too_high_leverage(persistent_test_client: C
     assert str(e.value) == "Max short leverage for USDC is 5.666666666666666, got 10"
 
 
-def test_backtest_open_short_failure_too_far_stoploss(persistent_test_client: Client, universe):
+def test_backtest_open_short_failure_too_far_stoploss(persistent_test_client: Client, strategy_universe):
     """Backtest should raise exception if stoploss is higher than liquidation price."""
 
     def decide_trades(
@@ -441,13 +441,13 @@ def test_backtest_open_short_failure_too_far_stoploss(persistent_test_client: Cl
 
     # backtest should raise exception when trying to open short position
     with pytest.raises(AssertionError) as e:
-        _, universe, _ = run_backtest_inline(
+        _, strategy_universe, _ = run_backtest_inline(
             start_at=start_at,
             end_at=end_at,
             client=persistent_test_client,
             cycle_duration=CycleDuration.cycle_1d,
             decide_trades=decide_trades,
-            universe=universe,
+            universe=strategy_universe,
             initial_deposit=10000,
             reserve_currency=ReserveCurrency.usdc,
             trade_routing=TradeRouting.uniswap_v3_usdc_poly,
@@ -457,7 +457,7 @@ def test_backtest_open_short_failure_too_far_stoploss(persistent_test_client: Cl
     assert str(e.value) == "stop_loss_pct must be bigger than liquidation distance 0.9407, got 0.6"
 
 
-def test_backtest_short_stop_loss_triggered(persistent_test_client: Client, universe):
+def test_backtest_short_stop_loss_triggered(persistent_test_client: Client, strategy_universe):
     """Run the strategy backtest using inline decide_trades function.
 
     - Open short position, set a 1% stoploss
@@ -487,13 +487,13 @@ def test_backtest_short_stop_loss_triggered(persistent_test_client: Client, univ
 
         return trades
 
-    state, universe, debug_dump = run_backtest_inline(
+    state, strategy_universe, debug_dump = run_backtest_inline(
         start_at=start_at,
         end_at=end_at,
         client=persistent_test_client,
         cycle_duration=CycleDuration.cycle_1d,
         decide_trades=decide_trades,
-        universe=universe,
+        universe=strategy_universe,
         initial_deposit=10000,
         reserve_currency=ReserveCurrency.usdc,
         trade_routing=TradeRouting.uniswap_v3_usdc_poly,
@@ -559,7 +559,7 @@ def test_backtest_short_stop_loss_triggered(persistent_test_client: Client, univ
     assert balances[usdc.address] == pytest.approx(Decimal(9321.153949134565))
 
 
-def test_backtest_short_take_profit_triggered(persistent_test_client: Client, universe):
+def test_backtest_short_take_profit_triggered(persistent_test_client: Client, strategy_universe):
     """Run the strategy backtest using inline decide_trades function.
 
     - Open short position, set a 2% take profit
@@ -589,13 +589,13 @@ def test_backtest_short_take_profit_triggered(persistent_test_client: Client, un
 
         return trades
 
-    state, universe, debug_dump = run_backtest_inline(
+    state, strategy_universe, debug_dump = run_backtest_inline(
         start_at=start_at,
         end_at=end_at,
         client=persistent_test_client,
         cycle_duration=CycleDuration.cycle_1d,
         decide_trades=decide_trades,
-        universe=universe,
+        universe=strategy_universe,
         initial_deposit=10000,
         reserve_currency=ReserveCurrency.usdc,
         trade_routing=TradeRouting.uniswap_v3_usdc_poly,
@@ -660,7 +660,7 @@ def test_backtest_short_take_profit_triggered(persistent_test_client: Client, un
     assert balances[usdc.address] == pytest.approx(Decimal(10981.266217492794))
 
 
-def test_backtest_short_trailing_stop_loss_triggered(persistent_test_client: Client, universe):
+def test_backtest_short_trailing_stop_loss_triggered(persistent_test_client: Client, strategy_universe):
     """Run the strategy backtest using inline decide_trades function.
 
     - Open short position, set a 2% trailing stoploss
@@ -699,13 +699,13 @@ def test_backtest_short_trailing_stop_loss_triggered(persistent_test_client: Cli
 
         return trades
 
-    state, universe, debug_dump = run_backtest_inline(
+    state, strategy_universe, debug_dump = run_backtest_inline(
         start_at=start_at,
         end_at=datetime.datetime(2023, 1, 10),
         client=persistent_test_client,
         cycle_duration=CycleDuration.cycle_1d,
         decide_trades=decide_trades,
-        universe=universe,
+        universe=strategy_universe,
         initial_deposit=10000,
         reserve_currency=ReserveCurrency.usdc,
         trade_routing=TradeRouting.uniswap_v3_usdc_poly,
