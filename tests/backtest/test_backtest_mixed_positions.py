@@ -105,6 +105,12 @@ def universe() -> TradingStrategyUniverse:
     )
 
 
+@pytest.fixture(scope="module")
+def strategy_universe(universe):
+    """Legacy alias. Use strategy_universe."""
+    return universe
+
+
 def test_backtest_open_both_long_short(
     persistent_test_client: Client,
         strategy_universe,

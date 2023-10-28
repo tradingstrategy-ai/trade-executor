@@ -1104,12 +1104,12 @@ class PositionManager:
             List of trades that will open this credit position
         """
 
-        assert pair.is_spot(), "Give a spot pair as input and we will figure out shorting pair for you"
-
         if isinstance(pair, DEXPair):
             executor_pair = translate_trading_pair(pair)
         else:
             executor_pair = pair
+
+        assert executor_pair.is_spot(), f"Give a spot pair as input and we will figure out shorting pair for you. Got {executor_pair}"
 
         shorting_pair = self.strategy_universe.get_shorting_pair(executor_pair)
 
