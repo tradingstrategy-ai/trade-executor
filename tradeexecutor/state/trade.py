@@ -500,25 +500,23 @@ class TradeExecution:
     def __repr__(self) -> str:
         if self.is_spot():
             if self.is_buy():
-                return f"<Buy #{self.trade_id} {self.planned_quantity} {self.pair.base.token_symbol} at {self.planned_price}, {self.get_status().name}>"
+                return f"<Buy #{self.trade_id} {self.planned_quantity} {self.pair.base.token_symbol} at {self.planned_price}, {self.get_status().name} phase>"
             else:
-                return f"<Sell #{self.trade_id} {abs(self.planned_quantity)} {self.pair.base.token_symbol} at {self.planned_price}, {self.get_status().name}>"
+                return f"<Sell #{self.trade_id} {abs(self.planned_quantity)} {self.pair.base.token_symbol} at {self.planned_price}, {self.get_status().name} phase>"
         elif self.is_short():
-                return f"<Short \n" \
-                       f"   #{self.trade_id} \n" \
-                       f"   {self.planned_quantity} {self.pair.base.token_symbol} at {self.planned_price}, {self.get_status().name} \n" \
+                return f"<Short #{self.trade_id} \n" \
+                       f"   {self.planned_quantity} {self.pair.base.token_symbol} at {self.planned_price}, {self.get_status().name} phase\n" \
                        f"   collateral consumption: {self.planned_collateral_consumption} collateral allocation: {self.planned_collateral_allocation} \n" \
+                       f"   reserve: {self.planned_reserve} quantity: {self.planned_quantity} \n" \
                        f">"
         else:
             if self.is_buy():
-                return f"<Supply credit \n" \
-                       f"   #{self.trade_id} \n" \
-                       f"   {self.planned_quantity} {self.pair.base.token_symbol} at {self.planned_price}, {self.get_status().name} \n" \
+                return f"<Supply credit #{self.trade_id} \n" \
+                       f"   {self.planned_quantity} {self.pair.base.token_symbol} at {self.planned_price}, {self.get_status().name} phase\n" \
                        f">"
             else:
-                return f"<Recall credit collateral \n" \
-                       f"   #{self.trade_id} \n" \
-                       f"   {self.planned_quantity} {self.pair.base.token_symbol} at {self.planned_price}, {self.get_status().name} \n" \
+                return f"<Recall credit collateral #{self.trade_id} \n" \
+                       f"   {self.planned_quantity} {self.pair.base.token_symbol} at {self.planned_price}, {self.get_status().name} phase\n" \
                        f">"
 
     def pretty_print(self) -> str:
