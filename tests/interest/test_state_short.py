@@ -2028,11 +2028,11 @@ def test_short_decrease_size(
     assert target_params.total_collateral_quantity == pytest.approx(Decimal(928.5714278571428164405737896))
     assert target_params.leverage == pytest.approx(1.1428571428571423)
 
-    reserves_released = Decimal(500)
-    decrease_borrow_quantity = loan.calculate_size_adjust(433)
-    assert decrease_borrow_quantity == pytest.approx(Decimal('0.3092857142857142084546584471'))
+    # How much we will pay back our vToken debt
+    decrease_borrow_quantity = loan.borrowed.quantity - target_params.borrowed_quantity
+    assert decrease_borrow_quantity == pytest.approx(Decimal('0.3571428573809523935946228552'))
 
-    assert decrease_borrow_quantity + loan.borrowed.quantity == pytest.approx(Decimal(0.9759523809523808381138909596))
+    reserves_released = Decimal(500)
 
     _, trade_2, _ = state.trade_short(
         strategy_cycle_at=datetime.datetime.utcnow(),
@@ -2043,16 +2043,22 @@ def test_short_decrease_size(
         trade_type=TradeType.rebalance,
         reserve_currency=usdc,
         collateral_asset_price=1.0,
-        planned_collateral_consumption=target_params.total_collateral_quantity - loan.collateral.quantity,
+        planned_collateral_allocation=-reserves_released,
+        # See comments in plan_loan_update_for_short()
+        planned_collateral_consumption=target_params.total_collateral_quantity - loan.collateral.quantity + reserves_released,
     )
 
     # Check that we have trade and loan parameters correct
     assert trade_2.planned_reserve == -500
     assert trade_2.planned_quantity == pytest.approx(decrease_borrow_quantity)
-    assert trade_2.planned_loan_update.borrowed.quantity == pytest.approx(Decimal(0.3573809523809524212045740654))
+
+    assert trade_2.planned_loan_update.borrowed.quantity == pytest.approx(Decimal(0.3095238092857142360646096573))
     assert trade_2.planned_loan_update.collateral.quantity == pytest.approx(Decimal(928.571427857142816440573790))
-    assert trade_2.planned_collateral_consumption == pytest.approx(Decimal(-1071.428572142857128048274979))
     assert trade_2.planned_loan_update.get_leverage() == pytest.approx(1.1428571428571423)
+
+    # See comments in plan_loan_update_for_short()
+    assert trade_2.planned_collateral_consumption == pytest.approx(Decimal('-571.428572142857128048274979'))
+    assert trade_2.planned_collateral_allocation == pytest.approx(Decimal('-500'))
 
     trader.set_perfectly_executed(trade_2)
 
@@ -2062,6 +2068,7 @@ def test_short_decrease_size(
     # Loan leverage has changed, but our portfolio net asset value stays same
     loan = short_position.loan
     assert loan.get_leverage() == pytest.approx(1.142857142857143)
-    assert loan.collateral.quantity == pytest.approx(Decimal(3071.42857071428538809751031))
-    assert portfolio.get_cash() == pytest.approx(8500)  # We used $500 more of our cash reserves
-    assert portfolio.get_net_asset_value() == pytest.approx(9933.333333333334)
+    assert loan.collateral.quantity == pytest.approx(Decimal(928.571427857142816440573790))
+    assert loan.get_net_asset_value() == pytest.approx(433.33333300000004)
+    assert portfolio.get_cash() == pytest.approx(9433.3333333)  # We get $500 back
+    assert portfolio.get_net_asset_value() == pytest.approx(9933.333333333334)  # NAV does not change in zero fee trade
