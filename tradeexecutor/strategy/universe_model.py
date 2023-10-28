@@ -179,3 +179,5 @@ class StaticUniverseModel(UniverseModel):
         """Always return the same universe copy - there is no refresh."""
         return self.universe
 
+    def preload_universe(self, universe_options: UniverseOptions, execution_context: ExecutionContext | None=None) -> StrategyExecutionUniverse:
+        return self.universe

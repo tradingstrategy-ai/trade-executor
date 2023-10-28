@@ -7,6 +7,7 @@ from decimal import Decimal
 from pathlib import Path
 from queue import Queue
 from typing import Optional, Callable, Tuple
+import logging
 
 import pandas as pd
 
@@ -40,6 +41,9 @@ from tradeexecutor.utils.accuracy import setup_decimal_accuracy
 from tradeexecutor.utils.timer import timed_task
 from tradingstrategy.client import Client
 from tradingstrategy.timebucket import TimeBucket
+
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -105,6 +109,8 @@ class BacktestSetup:
             approval_model: ApprovalModel,
             **kwargs) -> StrategyExecutionDescription:
         """Create a strategy description and runner based on backtest parameters in this setup."""
+
+        logger.info("backtest_static_universe_strategy_factory()")
 
         assert not execution_context.live_trading, f"This can be only used for backtesting strategies. execution context is {execution_context}"
 
@@ -575,8 +581,11 @@ def run_backtest_inline(
     if end_at:
         assert isinstance(end_at, datetime.datetime)
         assert start_at, "You must give start_at if you give end_at"
-    
+
     assert initial_deposit > 0
+
+    if universe:
+        assert isinstance(universe, TradingStrategyUniverse)
 
     # Setup our special logging level if not done yet.
     # (Not done when called from notebook)
