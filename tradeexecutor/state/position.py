@@ -858,11 +858,12 @@ class TradingPosition(GenericPosition):
                     else:
 
                         # Increase/decrease the position size
-
                         assert quantity is not None, "For increasing/reducing short position quantity must be given"
 
                         if planned_collateral_consumption is None:
+                            # TODO: Explain / check if this default makes sense
                             planned_collateral_consumption = -quantity * Decimal(self.loan.borrowed.last_usd_price)
+
                         planned_collateral_allocation = planned_collateral_allocation
 
                 assert reserve_currency_price, f"Collateral price missing"
