@@ -812,6 +812,9 @@ class TradingPosition(GenericPosition):
             case TradingPairKind.lending_protocol_short:
 
                 if len(self.trades) == 0:
+
+                    # Open a new short
+
                     assert reserve is not None, "Both reserve and quantity needs to be given for lending protocol short open"
                     assert quantity is not None, "Both reserve and quantity needs to be given for lending protocol short open"
                     assert not closing, "Cannot close position not yet open"
@@ -823,6 +826,9 @@ class TradingPosition(GenericPosition):
                 else:
 
                     if closing:
+
+                        # Close the short
+
                         assert reserve is None, "reserve calculated automatically when closing a short position"
                         # assert quantity is None, "quantity calculated automatically when closing a short position"
                         assert not planned_collateral_consumption, "planned_collateral_consumption set automatically when closing a short position"
@@ -851,8 +857,13 @@ class TradingPosition(GenericPosition):
                         lp_fees_estimated = leverage_estimate.lp_fees
 
                     else:
+
+                        # Increase/decrease the position size
+
                         assert quantity is not None, "For increasing/reducing short position quantity must be given"
-                        planned_collateral_consumption = -quantity * Decimal(self.loan.borrowed.last_usd_price)
+
+                        if planned_collateral_consumption is None:
+                            planned_collateral_consumption = -quantity * Decimal(self.loan.borrowed.last_usd_price)
                         planned_collateral_allocation = planned_collateral_allocation
 
                 assert reserve_currency_price, f"Collateral price missing"
