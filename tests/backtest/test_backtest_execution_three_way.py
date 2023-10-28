@@ -99,6 +99,12 @@ def universe(request, persistent_test_client, execution_context) -> TradingStrat
 
 
 @pytest.fixture(scope="module")
+def strategy_universe(universe):
+    """Legacy alias. Use strategy_universe."""
+    return universe
+
+
+@pytest.fixture(scope="module")
 def stop_loss_universe(request, persistent_test_client, execution_context) -> TradingStrategyUniverse:
     """Backtesting data universe w/stop loss data.
 
