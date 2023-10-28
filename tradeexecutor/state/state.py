@@ -396,6 +396,13 @@ class State:
             If set, norrowed quantity and collateral quantity
             are automatically calculated.
 
+        :param planned_collateral_consumption:
+            See :py:attr:`tradeexecutor.state.trade.TradeExecution.planned_collateral_consumption`.
+
+
+        :param planned_collateral_allocation:
+            See :py:attr:`tradeexecutor.state.trade.TradeExecution.planned_collateral_allocation`.
+
         :return:
             Trading position, trade execution and created flag.
 
@@ -416,7 +423,6 @@ class State:
         if not closing:
             assert borrowed_quantity is not None, "borrowed_quantity must be always set"
             assert collateral_quantity is not None, "collateral_quantity must be always set. Set to zero if you do not want to have change to the amount of collateral"
-
 
         return self.create_trade(
             strategy_cycle_at=strategy_cycle_at,

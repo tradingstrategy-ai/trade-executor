@@ -1813,18 +1813,21 @@ def test_short_increase_size(
 
     - Start with 1000 USDC collateral
 
-    - Take 1000 USDC worth of ETH loan
-
-    - Sell ETH at 1500 USDC/ETH
+    - Take 1000 USDC worth of ETH loan, ETH at 1500 USDC/ETH
 
     - Now you end up with 2000 USDC collateral, 0.66 ETH debt
 
-    - ETH price goes up 1500 -> 1600 so we have unrealised PnL
+    - ETH price goes up 1500 -> 1600 so we have unrealised PnL,
+      our leverage goes up a bit
 
     - Increase short size, by allocating more collateral and maintaining the current
       leverage
 
-    - Increaese collateral $1000 -> $2000
+    - Increaese collateral with $500, while maintaining the current leverage.
+
+
+    - Make sure the short maintains the existing leverage,
+      and buy the additional token amount for the increase collateral
 
     Based on ``test_short_increase_leverage_and_close``.
     """
@@ -1865,34 +1868,58 @@ def test_short_increase_size(
     )
 
     assert loan.get_leverage() == pytest.approx(1.1428571428571423)
+    assert loan.get_collateral_quantity() == pytest.approx(Decimal(2000))
+    assert loan.get_net_asset_value() == pytest.approx(933.333333)
     assert portfolio.get_net_asset_value() == pytest.approx(9933.333333333334)
 
-    # Trade to increase position size
+    # Trade to increase short position size (sell more)
     #
     # We want to maintain the same leverage and add
     # in another $1000
     #
+    # The target should b e
+    # $933 + $500 net asset value
+    # 1.143x leverage
+    # 1600 ETH/USD
+    #
+    #
+
+    target_params = LeverageEstimate.open_short(
+        933.333333 + 500,
+        loan.get_leverage(),
+        1600.0,
+        weth_short_identifier
+    )
+
+    assert target_params.borrowed_quantity == pytest.approx(Decimal(1.023809523571428343350194986))
+    assert target_params.total_collateral_quantity == pytest.approx(Decimal(3071.42857071428538809751031))
+    assert target_params.leverage == pytest.approx(1.1428571428571423)
 
     collateral_adjustment = Decimal(500)
-    borrowed_quantity = loan.calculate_size_adjust(collateral_adjustment)
+    increase_borrowed_quantity = loan.calculate_size_adjust(collateral_adjustment)
+    assert increase_borrowed_quantity == pytest.approx(Decimal('0.3571428571428570536427926638'))
+
+    assert increase_borrowed_quantity + loan.borrowed.quantity == pytest.approx(Decimal(1.023809523571428343350194986))
 
     _, trade_2, _ = state.trade_short(
         strategy_cycle_at=datetime.datetime.utcnow(),
         pair=weth_short_identifier,
-        borrowed_quantity=borrowed_quantity,
+        borrowed_quantity=-increase_borrowed_quantity,
         collateral_quantity=collateral_adjustment,
         borrowed_asset_price=loan.borrowed.last_usd_price,
         trade_type=TradeType.rebalance,
         reserve_currency=usdc,
         collateral_asset_price=1.0,
-        planned_collateral_allocation=collateral_adjustment,
+        planned_collateral_consumption=target_params.total_collateral_quantity - loan.collateral.quantity,
     )
 
-    # Amount of USDC we can return from the collateral to the cash reserves
-    assert trade_2.planned_collateral_allocation == pytest.approx(Decimal(500))
-    assert trade_2.planned_collateral_consumption== pytest.approx(Decimal(500))
-    assert trade_2.planned_loan_update.collateral.quantity == pytest.approx(Decimal(500))
-    assert trade_2.planned_loan_update.borrowed.quantity == pytest.approx(Decimal(0.6666666666))
+    # Check that we have trade and loan parameters correct
+    assert trade_2.planned_reserve == 500
+    assert trade_2.planned_quantity == pytest.approx(-increase_borrowed_quantity)
+    assert trade_2.planned_loan_update.borrowed.quantity == pytest.approx(Decimal(1.023809523809523683302025176))
+    assert trade_2.planned_loan_update.collateral.quantity == pytest.approx(Decimal(3071.42857071428538809751031))
+    assert trade_2.planned_collateral_consumption == pytest.approx(Decimal(1071.428570714285443608661546))
+    assert trade_2.planned_loan_update.get_leverage() == pytest.approx(1.1428571428571423)
 
     trader.set_perfectly_executed(trade_2)
 
@@ -1901,33 +1928,8 @@ def test_short_increase_size(
 
     # Loan leverage has changed, but our portfolio net asset value stays same
     loan = short_position.loan
-    assert loan.get_leverage() == pytest.approx(3.0)
-    assert loan.get_health_factor() == pytest.approx(1.1333333)
+    assert loan.get_leverage() == pytest.approx(1.142857142857143)
+    assert loan.collateral.quantity == pytest.approx(Decimal(3071.42857071428538809751031))
+    assert portfolio.get_cash() == pytest.approx(8500)  # We used $500 more of our cash reserves
     assert portfolio.get_net_asset_value() == pytest.approx(9933.333333333334)
 
-    # Even more losses
-    # ETH price 1600 -> 1700
-    short_position.revalue_base_asset(
-        datetime.datetime.utcnow(),
-        1700.0,
-    )
-
-    loan = short_position.loan
-    assert loan.get_leverage() == pytest.approx(3.9230769230769256)
-    assert loan.get_health_factor() == pytest.approx(1.0666666666666667)  # Risky
-    assert portfolio.get_net_asset_value() == pytest.approx(9866.66666)
-
-    # Close all
-    _, trade_3, _ = state.trade_short(
-        closing=True,
-        strategy_cycle_at=datetime.datetime.utcnow(),
-        pair=weth_short_identifier,
-        borrowed_asset_price=loan.borrowed.last_usd_price,
-        trade_type=TradeType.rebalance,
-        reserve_currency=usdc,
-        collateral_asset_price=1.0,
-    )
-    trader.set_perfectly_executed(trade_3)
-
-    assert short_position.is_closed()
-    assert portfolio.get_net_asset_value() == pytest.approx(9866.66666)
