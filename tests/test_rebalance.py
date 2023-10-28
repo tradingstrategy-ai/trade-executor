@@ -189,6 +189,12 @@ def universe(
 
 
 @pytest.fixture()
+def strategy_universe(universe):
+    """Legacy alias. Use strategy_universe."""
+    return universe
+
+
+@pytest.fixture()
 def routing_model(universe) -> BacktestRoutingModel:
     return generate_simple_routing_model(universe)
 
