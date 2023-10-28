@@ -186,8 +186,6 @@ def plan_loan_update_for_short(
     planned_collateral_consumption = trade.planned_collateral_consumption or Decimal(0)
     planned_collateral_allocation = trade.planned_collateral_allocation or Decimal(0)
 
-    import ipdb ; ipdb.set_trace()
-
     # TODO: How planned_collateral_consumption + planned_collateral_allocation
     # might not be the best way to do this, see test_short_decrease_size
     loan.collateral.change_quantity_and_value(

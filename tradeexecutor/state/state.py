@@ -639,11 +639,19 @@ class State:
             # Release any collateral and move it back to the wallet
             if executed_collateral_allocation:
                 assert trade.pair.quote.underlying
-                self.portfolio.adjust_reserves(trade.pair.quote.underlying, -executed_collateral_allocation)
+                self.portfolio.adjust_reserves(
+                    trade.pair.quote.underlying,
+                    -executed_collateral_allocation,
+                    reason=f"Collateral allocation for position #{position.position_id}"
+                )
 
         elif trade.is_credit_supply():
             if trade.is_sell():
-                self.portfolio.adjust_reserves(trade.pair.quote, executed_reserve)
+                self.portfolio.adjust_reserves(
+                    trade.pair.quote,
+                    executed_reserve,
+                    reason=f"Returned cash from the credit position #{position.position_id}"
+                )
 
         if trade.is_long():
             raise NotImplementedError()
@@ -662,7 +670,11 @@ class State:
                     # TODO: Currently there is minor difference between credit supply and leveraged positions.
                     # Credit supply positions put any claimed interest in executed_reserve,
                     # whereas leveraged closing trade assumes interest will be automatically claimed.
-                    self.portfolio.adjust_reserves(trade.pair.quote.get_pricing_asset(), trade.claimed_interest)
+                    self.portfolio.adjust_reserves(
+                        trade.pair.quote.get_pricing_asset(),
+                        trade.claimed_interest,
+                        reason=f"Claimed interest on position #{position.position_id}"
+                    )
 
                 # Mark that the trade paid any remaining interest
                 # on the debt
@@ -678,7 +690,11 @@ class State:
         trade.mark_failed(failed_at)
         # Return unused reserves back to accounting
         if trade.is_buy():
-            self.portfolio.adjust_reserves(trade.reserve_currency, trade.reserve_currency_allocated)
+            self.portfolio.adjust_reserves(
+                trade.reserve_currency,
+                trade.reserve_currency_allocated,
+                f"Trade failed, allocated reserve was not used:\n{t}"
+            )
 
     def update_reserves(self, new_reserves: List[ReservePosition]):
         self.portfolio.update_reserves(new_reserves)
