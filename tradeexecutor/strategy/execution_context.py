@@ -143,7 +143,8 @@ class ExecutionContext:
     engine_version: TradingStrategyEngineVersion = None
 
     def __repr__(self):
-        return f"<ExecutionContext {self.mode.name} v{self.engine_version}>"
+        version_str = f"v{self.engine_version}" if self.engine_version else "unspecified engine version"
+        return f"<ExecutionContext {self.mode.name}, {version_str}>"
 
     def is_version_greater_or_equal_than(self, major: int, minor: int, patch: int) -> bool:
         """Check that we are runing engine as the minimum required version."""
