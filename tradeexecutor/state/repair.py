@@ -121,7 +121,11 @@ def repair_trade(portfolio: Portfolio, t: TradeExecution) -> TradeExecution:
 
     # Unwind capital allocation
     if t.is_buy():
-        portfolio.adjust_reserves(t.reserve_currency, +t.planned_reserve)
+        portfolio.adjust_reserves(
+            t.reserve_currency,
+            +t.planned_reserve,
+            f"Repairing position {p}",
+        )
         t.planned_reserve = 0
 
     return c
