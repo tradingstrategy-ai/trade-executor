@@ -85,6 +85,12 @@ def universe(request, persistent_test_client, execution_context) -> TradingStrat
 
 
 @pytest.fixture(scope="module")
+def strategy_universe(universe):
+    """Legacy alias. Use strategy_universe."""
+    return universe
+
+
+@pytest.fixture(scope="module")
 def wbnb(request, strategy_universe) -> AssetIdentifier:
     """WBNB asset."""
     pair = translate_trading_pair(strategy_universe.data_universe.pairs.get_single())
