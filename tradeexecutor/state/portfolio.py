@@ -761,7 +761,7 @@ class Portfolio:
         self.adjust_reserves(
             trade.reserve_currency,
             trade.executed_reserve,
-            f"Returning USD to reserves from trade {trade}"
+            f"Returning USD to reserves from trade::\n{trade}"
         )
 
     def has_unexecuted_trades(self) -> bool:

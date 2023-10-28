@@ -695,7 +695,7 @@ class State:
             self.portfolio.adjust_reserves(
                 trade.reserve_currency,
                 trade.reserve_currency_allocated,
-                f"Trade failed, allocated reserve was not used:\n{t}"
+                f"Trade failed, allocated reserve was not used:\n{trade}"
             )
 
     def update_reserves(self, new_reserves: List[ReservePosition]):
