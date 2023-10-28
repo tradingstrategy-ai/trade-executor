@@ -371,6 +371,8 @@ class State:
 
             - Positive for reducing the short position size
 
+            See ``test_short_increase_size`` and ``test_short_decrease_size`` for an example.
+
         :param collateral_quantity:
             How much reserve currency we are going to use as a collateral for loans.
 
@@ -382,8 +384,8 @@ class State:
               the shorted token is bought or sold and this
               will affect the underlying loan health factor
 
-            - If negative then release collateral after
-              any changes to borrowed token via buy and sell
+            For releasing collateral see ``planned_collateral_allocation`` argument.
+            See ``test_short_decrease_size`` for an example.
 
         :param borrowed_asset_price:
             What is the assumed price of the token we are going to borrow.

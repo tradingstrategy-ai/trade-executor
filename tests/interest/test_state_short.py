@@ -2038,7 +2038,7 @@ def test_short_decrease_size(
         strategy_cycle_at=datetime.datetime.utcnow(),
         pair=weth_short_identifier,
         borrowed_quantity=decrease_borrow_quantity, # Buy back shorted tokens to decrease exposute
-        collateral_quantity=0,
+        collateral_quantity=0,  # Not used when releasing reserves
         borrowed_asset_price=loan.borrowed.last_usd_price,
         trade_type=TradeType.rebalance,
         reserve_currency=usdc,
