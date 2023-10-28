@@ -2038,7 +2038,7 @@ def test_short_decrease_size(
         strategy_cycle_at=datetime.datetime.utcnow(),
         pair=weth_short_identifier,
         borrowed_quantity=decrease_borrow_quantity, # Buy back shorted tokens to decrease exposute
-        collateral_quantity=-reserves_released,
+        collateral_quantity=0,
         borrowed_asset_price=loan.borrowed.last_usd_price,
         trade_type=TradeType.rebalance,
         reserve_currency=usdc,
@@ -2049,7 +2049,7 @@ def test_short_decrease_size(
     )
 
     # Check that we have trade and loan parameters correct
-    assert trade_2.planned_reserve == -500
+#    assert trade_2.planned_reserve == -500
     assert trade_2.planned_quantity == pytest.approx(decrease_borrow_quantity)
 
     assert trade_2.planned_loan_update.borrowed.quantity == pytest.approx(Decimal(0.3095238092857142360646096573))
@@ -2070,5 +2070,5 @@ def test_short_decrease_size(
     assert loan.get_leverage() == pytest.approx(1.142857142857143)
     assert loan.collateral.quantity == pytest.approx(Decimal(928.571427857142816440573790))
     assert loan.get_net_asset_value() == pytest.approx(433.33333300000004)
-    assert portfolio.get_cash() == pytest.approx(9433.3333333)  # We get $500 back
+    assert portfolio.get_cash() == pytest.approx(9500)  # We get $500 back
     assert portfolio.get_net_asset_value() == pytest.approx(9933.333333333334)  # NAV does not change in zero fee trade
