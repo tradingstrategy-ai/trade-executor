@@ -114,6 +114,11 @@ def universe(mock_chain_id, mock_exchange, weth_usdc) -> TradingStrategyUniverse
         reserve_assets=[weth_usdc.quote])
 
 
+@pytest.fixture()
+def strategy_universe(universe) -> TradingStrategyUniverse:
+    return universe
+
+
 def grid_search_worker(
         universe: TradingStrategyUniverse,
         combination: GridCombination,

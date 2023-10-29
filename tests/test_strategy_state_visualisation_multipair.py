@@ -359,6 +359,7 @@ def test_visualise_strategy_state(
         allow_missing_fees=True,
     )
 
+    universe = strategy_universe
     image = draw_multi_pair_strategy_state(state, universe)
 
     assert len(image.data) == 27

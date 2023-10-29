@@ -185,6 +185,11 @@ def universe() -> TradingStrategyUniverse:
     return TradingStrategyUniverse(data_universe=universe, reserve_assets=[usdc])
 
 
+@pytest.fixture(scope="module")
+def strategy_universe(universe) -> TradingStrategyUniverse:
+    return universe
+
+
 def test_ema_on_universe(strategy_universe):
     """Calculate exponential moving average on single pair candle universe."""
     start_timestamp = pd.Timestamp("2021-6-1")
@@ -565,9 +570,10 @@ def test_timeline_raw(
     assert last_row['close_price_usd'] == pytest.approx(1903.319891, rel=1e-4)
     assert last_row['trade_count'] == 2
 
+
 def test_benchmark_synthetic_trading_portfolio(
     logger: logging.Logger,
-        strategy_universe,
+    strategy_universe,
 ):
     """Build benchmark figures.
 

@@ -498,7 +498,6 @@ class AlphaModel:
                 old_weight=old_weight,
                 old_value=old_value,
                 old_synthetic_pair=None,
-                old_signal=0,
             )
 
     def select_top_signals(self,
