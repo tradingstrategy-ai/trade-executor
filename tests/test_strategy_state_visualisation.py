@@ -170,6 +170,11 @@ def universe() -> TradingStrategyUniverse:
     return TradingStrategyUniverse(data_universe=universe, reserve_assets=[usdc])
 
 
+@pytest.fixture(scope="module")
+def strategy_universe(universe) -> TradingStrategyUniverse:
+    return universe
+
+
 def test_visualise_strategy_state(
         logger: logging.Logger,
         strategy_universe,
@@ -197,7 +202,7 @@ def test_visualise_strategy_state(
         allow_missing_fees=True,
     )
 
-    image = draw_single_pair_strategy_state(state, universe)
+    image = draw_single_pair_strategy_state(state, strategy_universe)
 
     assert len(image.data) == 5
     assert len(image._grid_ref) == 1
