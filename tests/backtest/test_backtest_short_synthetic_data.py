@@ -50,6 +50,7 @@ start_at = datetime.datetime(2023, 1, 1)
 end_at = datetime.datetime(2023, 1, 5)
 candle_end_at = datetime.datetime(2023, 1, 30)
 
+
 @pytest.fixture(scope="module")
 def universe() -> TradingStrategyUniverse:
     """Set up a mock universe."""
@@ -108,9 +109,14 @@ def universe() -> TradingStrategyUniverse:
     )
 
 
+@pytest.fixture(scope="module")
+def strategy_universe(universe) -> TradingStrategyUniverse:
+    return universe
+
+
 def test_backtest_open_only_short_synthetic_data(
     persistent_test_client: Client,
-        strategy_universe,
+    strategy_universe,
 ):
     """Run the strategy backtest using inline decide_trades function.
 

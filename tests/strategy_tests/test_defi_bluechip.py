@@ -91,6 +91,11 @@ def universe(backtest_result) -> TradingStrategyUniverse:
 
 
 @pytest.fixture()
+def strategy_universe(universe) -> TradingStrategyUniverse:
+    return universe
+
+
+@pytest.fixture()
 def debug_dump(backtest_result):
     return backtest_result[2]
 

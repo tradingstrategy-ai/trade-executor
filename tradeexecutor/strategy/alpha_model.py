@@ -641,7 +641,7 @@ class AlphaModel:
         elif signal.signal < 0:
             return strategy_universe.get_shorting_pair(underlying)
         else:
-            raise AssertionError("Cannot determine the trade with 0 signal")
+            return underlying
 
     def generate_rebalance_trades_and_triggers(
         self,
