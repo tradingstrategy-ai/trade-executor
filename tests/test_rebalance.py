@@ -1065,7 +1065,7 @@ def test_alpha_model_decrease_short(
     assert p3.pair == vweth_ausdc
     assert p3.pair.is_short()
     assert p3.get_value() == pytest.approx(78.61345)
-    assert p3.loan.get_leverage() == pytest.approx(1)
+    assert p3.loan.get_leverage() == pytest.approx(1.0030090270812437)
 
     assert portfolio.get_net_asset_value() == pytest.approx(657.9375)
     assert portfolio.get_cash() == pytest.approx(500.47405000000003)
@@ -1107,7 +1107,7 @@ def test_alpha_model_decrease_short(
     assert any(t.is_success() for t in trades)
 
     assert len(portfolio.open_positions) == 2
-    assert portfolio.get_cash() == pytest.approx(421.978875)
+    assert portfolio.get_cash() == pytest.approx(500.47405000000003)
 
     assert p2.pair == aave_usdc
     assert p2.is_spot()
@@ -1115,6 +1115,7 @@ def test_alpha_model_decrease_short(
 
     assert p3.pair == vweth_ausdc
     assert p3.is_short()
-    assert p3.get_value() == pytest.approx(110.22441500000001)  # Down in value
+    assert p3.loan.get_leverage() == pytest.approx(0.997)
+    assert p3.get_value() == pytest.approx(39.48431544633902)  # Down in value
 
-    assert portfolio.get_net_asset_value() == pytest.approx(657.747834210000)
+    assert portfolio.get_net_asset_value() == pytest.approx(658.0559529463391)

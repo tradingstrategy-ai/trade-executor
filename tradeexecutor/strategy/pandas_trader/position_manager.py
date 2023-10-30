@@ -1424,7 +1424,7 @@ class PositionManager:
                 # How much we will pay back our vToken debt
                 borrowed_quantity_delta = loan.borrowed.quantity - target_params.borrowed_quantity
 
-                reserves_released = Decimal(-delta)
+                reserves_released = Decimal(delta)
 
                 _, adjust_trade, _ = state.trade_short(
                     strategy_cycle_at=datetime.datetime.utcnow(),
@@ -1437,7 +1437,7 @@ class PositionManager:
                     collateral_asset_price=1.0,
                     planned_collateral_allocation=reserves_released,
                     # See comments in plan_loan_update_for_short()
-                    planned_collateral_consumption=target_params.total_collateral_quantity - loan.collateral.quantity + reserves_released,
+                    planned_collateral_consumption=target_params.total_collateral_quantity - loan.collateral.quantity - reserves_released,
                     notes=notes,
                 )
         except LiquidationRisked as e:
