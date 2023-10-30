@@ -330,6 +330,11 @@ class TradingPosition(GenericPosition):
         """
         return next(reversed(self.trades.values()))
 
+    def is_spot(self) -> bool:
+        """Is this a spot market position."""
+        assert len(self.trades) > 0, "Cannot determine if position is long or short because there are no trades"
+        return self.get_first_trade().is_spot()
+
     def is_long(self) -> bool:
         """Is this position long on the underlying base asset.
 

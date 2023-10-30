@@ -761,7 +761,13 @@ class AlphaModel:
                                 notes="Rebalance opening a new short for signal {signal}",
                             )
                         else:
-                            raise NotImplementedError("Adjusting short positions not implemented")
+                            # Increase/decrease short
+                            position_rebalance_trades += position_manager.adjust_short(
+                                current_position,
+                                new_value=value,
+                                notes=f"Rebalance existing short for signal: {signal} value: {value}",
+                            )
+
                     elif signal.leverage is None:
                         # Increase or decrease the position for the target pair
                         # Open new position if needed.

@@ -357,7 +357,7 @@ class Loan:
             )
             return estimate.borrowed_quantity
         else:
-            raise NotImplementedError()
+            raise NotImplementedError(f"Not implemented for negative collateral adjust, received {collater_adjust}")
 
     def check_health(self, desired_health_factor=1):
         """Check if this loan is healthy.

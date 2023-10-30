@@ -891,6 +891,7 @@ def test_alpha_model_increase_short(
     p2 = portfolio.open_positions[2]
     assert p2.pair == aave_usdc
     assert p2.pair.is_spot()
+    assert p2.get_value() == pytest.approx(78.85)
 
     lending_reserves = strategy_universe.data_universe.lending_reserves
     for r in lending_reserves.reserves.items():
@@ -900,8 +901,12 @@ def test_alpha_model_increase_short(
     p3 = portfolio.open_positions[3]
     assert p3.pair == vweth_ausdc
     assert p3.pair.is_short()
+    assert p3.get_value() == pytest.approx(78.61345)
+
+    assert portfolio.get_net_asset_value() == pytest.approx(657.9375)
 
     # Increase short
+    balance_1_ts = start_ts + datetime.timedelta(days=1)
     alpha_model = AlphaModel()
     alpha_model.set_signal(aave_usdc, 0.3)  # 30% long AAVE
     alpha_model.set_signal(weth_usdc, -0.7, leverage=1.0)  # 70% short ETH
@@ -926,3 +931,189 @@ def test_alpha_model_increase_short(
     # Increase ETH short
     # Decrease Aave spot
     assert len(trades) == 2, f"Got trades: {trades}"
+
+    balance_2_ts = balance_1_ts + datetime.timedelta(days=1)
+
+    execution_model.execute_trades(
+        balance_2_ts,
+        state,
+        trades,
+        routing_model,
+        BacktestRoutingState(strategy_universe.data_universe.pairs, wallet),  # Create new routing state at the start of the cycle
+    )
+    assert any(t.is_success() for t in trades)
+
+    assert len(portfolio.open_positions) == 2
+
+    assert p2.pair == aave_usdc
+    assert p2.is_spot()
+    assert p2.get_value() == pytest.approx(47.144202105)  # Down in value
+
+    assert p3.pair == vweth_ausdc
+    assert p3.is_short()
+    assert p3.get_value() == pytest.approx(110.22441500000001)  # Up in value
+
+    assert portfolio.get_net_asset_value() == pytest.approx(657.747834210000)
+
+
+def test_alpha_model_decrease_short(
+    single_asset_portfolio: Portfolio,
+    universe: TradingStrategyUniverse,
+    pricing_model,
+    weth_usdc: TradingPairIdentifier,
+    aave_usdc: TradingPairIdentifier,
+    start_ts,
+    execution_model: BacktestExecutionModel,
+    routing_model: BacktestRoutingModel,
+    wallet: SimulatedWallet,
+):
+    """"Decrease short position by going from 50% to 25% on the short signal.
+
+    - Follow the steps from the ``test_alpha_model_open_short``,
+      and do another cycle where short is increased
+    """
+
+    strategy_universe = universe
+
+    portfolio = single_asset_portfolio
+
+    state = State(portfolio=portfolio)
+
+    # Create the PositionManager that
+    # will create buy/sell trades based on our
+    # trading universe and mock price feeds
+    position_manager = PositionManager(
+        start_ts + datetime.timedelta(days=1),  # Trade on t plus 1 day
+        strategy_universe,
+        state,
+        pricing_model,
+    )
+
+    alpha_model = AlphaModel()
+    alpha_model.set_signal(aave_usdc, 0.5)  # 50% long AAVE
+    alpha_model.set_signal(weth_usdc, -0.5, leverage=1.0)  # 50% short ETH
+    alpha_model.select_top_signals(count=5)
+    alpha_model.assign_weights(method=weight_passthrouh)
+    alpha_model.normalise_weights()
+
+    # Load in old weight for each trading pair signal,
+    # so we can calculate the adjustment trade size
+    alpha_model.update_old_weights(state.portfolio)
+
+    # Calculate how much dollar value we want each individual position to be on this strategy cycle,
+    # based on our total available equity
+    portfolio = position_manager.get_current_portfolio()
+    portfolio_target_value = portfolio.get_position_equity_and_loan_nav()
+    alpha_model.calculate_target_positions(position_manager, portfolio_target_value)
+
+    # Shift portfolio from current positions to target positions
+    # determined by the alpha signals (momentum)
+    trades = alpha_model.generate_rebalance_trades_and_triggers(position_manager)
+
+    # Close spot ETH
+    # Open ETH short
+    # Open Aave spot
+    assert len(trades) == 3, f"Got trades: {trades}"
+
+    # Closing spot ETH comes first,
+    # sell 100% of ETH spot
+    t = trades[0]
+    assert t.is_sell()
+    assert t.is_spot()
+
+    # Opening ETH short comes next
+    # Use 50% of portfolio value to go short on ETH
+    t = trades[1]
+    assert t.is_sell()
+    assert t.is_short()
+
+    # Spot buy comes next,
+    # buy 50% of AAVE
+    t = trades[2]
+    assert t.is_buy()
+    assert t.is_spot()
+
+    #
+    # Now do another cycle where we go even more short
+    #
+    balance_1_ts = start_ts + datetime.timedelta(days=1)
+
+    execution_model.execute_trades(
+        balance_1_ts,
+        state,
+        trades,
+        routing_model,
+        BacktestRoutingState(strategy_universe.data_universe.pairs, wallet),  # Create new routing state at the start of the cycle
+    )
+    assert any(t.is_success() for t in trades)
+
+    # Check out position status
+    p1 = portfolio.closed_positions[1]
+    assert p1.is_closed()
+
+    p2 = portfolio.open_positions[2]
+    assert p2.pair == aave_usdc
+    assert p2.pair.is_spot()
+    assert p2.get_value() == pytest.approx(78.85)
+
+    lending_reserves = strategy_universe.data_universe.lending_reserves
+    for r in lending_reserves.reserves.items():
+        print(r)
+
+    vweth_ausdc = strategy_universe.get_shorting_pair(weth_usdc)
+    p3 = portfolio.open_positions[3]
+    assert p3.pair == vweth_ausdc
+    assert p3.pair.is_short()
+    assert p3.get_value() == pytest.approx(78.61345)
+
+    assert portfolio.get_net_asset_value() == pytest.approx(657.9375)
+    assert portfolio.get_cash() == pytest.approx(500.47405000000003)
+
+    # Increase short
+    alpha_model = AlphaModel()
+    alpha_model.set_signal(aave_usdc, 0.75)  # 30% long AAVE
+    alpha_model.set_signal(weth_usdc, -0.25, leverage=1.0)  # 70% short ETH
+    alpha_model.select_top_signals(count=5)
+    alpha_model.assign_weights(method=weight_passthrouh)
+    alpha_model.normalise_weights()
+
+    # Load in old weight for each trading pair signal,
+    # so we can calculate the adjustment trade size
+    alpha_model.update_old_weights(state.portfolio)
+
+    # Calculate how much dollar value we want each individual position to be on this strategy cycle,
+    # based on our total available equity
+    portfolio = position_manager.get_current_portfolio()
+    portfolio_target_value = portfolio.get_position_equity_and_loan_nav()
+    alpha_model.calculate_target_positions(position_manager, portfolio_target_value)
+
+    # Shift portfolio from current positions to target positions
+    # determined by the alpha signals (momentum)
+    trades = alpha_model.generate_rebalance_trades_and_triggers(position_manager)
+
+    # Increase ETH short
+    # Decrease Aave spot
+    assert len(trades) == 2, f"Got trades: {trades}"
+
+    balance_2_ts = balance_1_ts + datetime.timedelta(days=1)
+    execution_model.execute_trades(
+        balance_2_ts,
+        state,
+        trades,
+        routing_model,
+        BacktestRoutingState(strategy_universe.data_universe.pairs, wallet),  # Create new routing state at the start of the cycle
+    )
+    assert any(t.is_success() for t in trades)
+
+    assert len(portfolio.open_positions) == 2
+    assert portfolio.get_cash() == pytest.approx(421.978875)
+
+    assert p2.pair == aave_usdc
+    assert p2.is_spot()
+    assert p2.get_value() == pytest.approx(118.0975875)  # Up in value
+
+    assert p3.pair == vweth_ausdc
+    assert p3.is_short()
+    assert p3.get_value() == pytest.approx(110.22441500000001)  # Down in value
+
+    assert portfolio.get_net_asset_value() == pytest.approx(657.747834210000)

@@ -693,7 +693,7 @@ class Portfolio:
 
         assert asset is not None, "Asset missing"
 
-        assert isinstance(amount, Decimal), f"Got amount {amount}"
+        assert isinstance(amount, Decimal), f"Expected Decimal. Got amount {amount.__class__}: {amount}"
         reserve = self.get_reserve_position(asset)
         assert reserve, f"No reserves available for {asset}"
         assert reserve.quantity is not None, f"Reserve quantity not set for {asset} in portfolio {self}"
