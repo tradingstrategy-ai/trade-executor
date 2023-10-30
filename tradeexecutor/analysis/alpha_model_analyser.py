@@ -66,7 +66,7 @@ def render_alpha_model_plotly_table(df: pd.DataFrame) -> Tuple[go.Figure, go.Tab
 
 def create_alpha_model_timeline_all_assets(
         state: State,
-        universe: TradingStrategyUniverse,
+        strategy_universe: TradingStrategyUniverse,
         new_line="\n",
 ) -> pd.DataFrame:
     """Render a timeline for an alpha model for different positions it took over the time.
@@ -86,6 +86,8 @@ def create_alpha_model_timeline_all_assets(
         and contains textual information about asset rebalances during the cycle.
 
     """
+
+    universe = strategy_universe
 
     timeline = construct_event_timeline(state)
 

@@ -138,7 +138,7 @@ def test_synthetic_data_backtest_run(
         logger: logging.Logger,
         strategy_path: Path,
         synthetic_universe: TradingStrategyUniverse,
-        routing_model: BacktestRoutingModel,
+        routing_model: BacktestRoutingModel
     ):
     """Run the strategy backtest.
 

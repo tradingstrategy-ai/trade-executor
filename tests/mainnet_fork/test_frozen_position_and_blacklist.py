@@ -279,6 +279,7 @@ def universe(web3, exchange_universe: ExchangeUniverse, pair_universe: PandasPai
     )
 
 
+
 @pytest.fixture()
 def universe_model(universe, supported_reserves) -> StaticUniverseModel:
     """Model the trading universe for the trade executor."""

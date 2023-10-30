@@ -12,7 +12,7 @@ from tradeexecutor.state.identifier import (
     TradingPairKind, AssetType,
 )
 from tradeexecutor.state.interest import Interest
-from tradeexecutor.state.loan import Loan
+from tradeexecutor.state.loan import Loan, LiquidationRisked
 from tradeexecutor.state.trade import TradeExecution
 from tradeexecutor.state.types import USDollarAmount, LeverageMultiplier
 
@@ -186,6 +186,8 @@ def plan_loan_update_for_short(
     planned_collateral_consumption = trade.planned_collateral_consumption or Decimal(0)
     planned_collateral_allocation = trade.planned_collateral_allocation or Decimal(0)
 
+    # TODO: How planned_collateral_consumption + planned_collateral_allocation
+    # might not be the best way to do this, see test_short_decrease_size
     loan.collateral.change_quantity_and_value(
         planned_collateral_consumption + planned_collateral_allocation,
         trade.reserve_currency_exchange_rate,
@@ -206,6 +208,9 @@ def plan_loan_update_for_short(
 
     # Sanity check
     if loan.borrowed.quantity > 0:
-        loan.check_health()
+        try:
+            loan.check_health()
+        except LiquidationRisked as e:
+            raise LiquidationRisked(f"If the planned loan leveraged trade for {position} would go through, the position would be immediately liquidated") from e
 
     return loan

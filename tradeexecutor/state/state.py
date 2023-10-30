@@ -371,6 +371,8 @@ class State:
 
             - Positive for reducing the short position size
 
+            See ``test_short_increase_size`` and ``test_short_decrease_size`` for an example.
+
         :param collateral_quantity:
             How much reserve currency we are going to use as a collateral for loans.
 
@@ -382,8 +384,8 @@ class State:
               the shorted token is bought or sold and this
               will affect the underlying loan health factor
 
-            - If negative then release collateral after
-              any changes to borrowed token via buy and sell
+            For releasing collateral see ``planned_collateral_allocation`` argument.
+            See ``test_short_decrease_size`` for an example.
 
         :param borrowed_asset_price:
             What is the assumed price of the token we are going to borrow.
@@ -395,6 +397,13 @@ class State:
 
             If set, norrowed quantity and collateral quantity
             are automatically calculated.
+
+        :param planned_collateral_consumption:
+            See :py:attr:`tradeexecutor.state.trade.TradeExecution.planned_collateral_consumption`.
+
+
+        :param planned_collateral_allocation:
+            See :py:attr:`tradeexecutor.state.trade.TradeExecution.planned_collateral_allocation`.
 
         :return:
             Trading position, trade execution and created flag.
@@ -416,7 +425,6 @@ class State:
         if not closing:
             assert borrowed_quantity is not None, "borrowed_quantity must be always set"
             assert collateral_quantity is not None, "collateral_quantity must be always set. Set to zero if you do not want to have change to the amount of collateral"
-
 
         return self.create_trade(
             strategy_cycle_at=strategy_cycle_at,
@@ -540,7 +548,7 @@ class State:
 
         """
 
-        assert trade.get_status() == TradeStatus.planned
+        assert trade.get_status() == TradeStatus.planned, f"start_execution(): received a trade with status {trade.get_status()}: {trade}"
 
         position = self.portfolio.find_position_for_trade(trade)
         assert position, f"Trade does not belong to an open position {trade}"
@@ -565,6 +573,8 @@ class State:
             raise NotImplementedError()
 
         trade.started_at = ts
+
+        logger.info("Trade #%d started at %s", trade.trade_id, ts)
 
         # TODO: Legacy attributes that need to go away
         if txid is not None:
@@ -633,11 +643,19 @@ class State:
             # Release any collateral and move it back to the wallet
             if executed_collateral_allocation:
                 assert trade.pair.quote.underlying
-                self.portfolio.adjust_reserves(trade.pair.quote.underlying, -executed_collateral_allocation)
+                self.portfolio.adjust_reserves(
+                    trade.pair.quote.underlying,
+                    -executed_collateral_allocation,
+                    reason=f"Collateral allocation for position #{position.position_id}"
+                )
 
         elif trade.is_credit_supply():
             if trade.is_sell():
-                self.portfolio.adjust_reserves(trade.pair.quote, executed_reserve)
+                self.portfolio.adjust_reserves(
+                    trade.pair.quote,
+                    executed_reserve,
+                    reason=f"Returned cash from the credit position #{position.position_id}"
+                )
 
         if trade.is_long():
             raise NotImplementedError()
@@ -656,7 +674,11 @@ class State:
                     # TODO: Currently there is minor difference between credit supply and leveraged positions.
                     # Credit supply positions put any claimed interest in executed_reserve,
                     # whereas leveraged closing trade assumes interest will be automatically claimed.
-                    self.portfolio.adjust_reserves(trade.pair.quote.get_pricing_asset(), trade.claimed_interest)
+                    self.portfolio.adjust_reserves(
+                        trade.pair.quote.get_pricing_asset(),
+                        trade.claimed_interest,
+                        reason=f"Claimed interest on position #{position.position_id}"
+                    )
 
                 # Mark that the trade paid any remaining interest
                 # on the debt
@@ -672,7 +694,11 @@ class State:
         trade.mark_failed(failed_at)
         # Return unused reserves back to accounting
         if trade.is_buy():
-            self.portfolio.adjust_reserves(trade.reserve_currency, trade.reserve_currency_allocated)
+            self.portfolio.adjust_reserves(
+                trade.reserve_currency,
+                trade.reserve_currency_allocated,
+                f"Trade failed, allocated reserve was not used:\n{trade}"
+            )
 
     def update_reserves(self, new_reserves: List[ReservePosition]):
         self.portfolio.update_reserves(new_reserves)

@@ -157,6 +157,16 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
         else:
             return f"<TradingStrategyUniverse for {self.data_universe.pairs.get_count()} pairs>"
 
+    def __post_init__(self):
+        """Check that we correctly constructed the instance."""
+
+        if self.data_universe is not None:
+            assert isinstance(self.data_universe, Universe)
+
+        if self.backtest_stop_loss_candles is not None:
+            assert isinstance(self.backtest_stop_loss_candles, GroupedCandleUniverse), f"Expected GroupedCandleUniverse, got {self.backtest_stop_loss_candles.__class__}"
+            assert isinstance(self.backtest_stop_loss_time_bucket, TimeBucket)
+
     @property
     def universe(self):
         """Backwards compatibility method.
@@ -183,6 +193,26 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
             but any lending rates are directly updated from on-chain sources.
         """
         return self.data_universe.lending_reserves is not None
+
+    def get_trading_pair(self, pair: int | DEXPair) -> TradingPairIdentifier:
+        """Get a pair by id or by its data description.
+
+        :param pair:
+            Trading pair internal id or DEXPair object
+
+        :return:
+            Tradind strategy pair definition.
+
+        :raise PairNotFoundError:
+            If we have not loaded data for the given pair id.
+
+        """
+        if type(pair) == int:
+            dex_pair = self.data_universe.pairs.get_pair_by_id(pair)
+        else:
+            dex_pair = pair
+
+        return translate_trading_pair(dex_pair)
 
     def can_open_spot(
             self,
@@ -211,7 +241,7 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
 
     def has_lending_market_available(
         self,
-        timestamp: pd.Timestamp,
+        timestamp: pd.Timestamp | datetime.datetime,
         asset: AssetIdentifier,
         liquidity_threshold=None,
         market_metric: LendingCandleType=LendingCandleType.variable_borrow_apr,
@@ -235,6 +265,9 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
             True if we can open a spot position.
         """
 
+        if isinstance(timestamp, datetime.datetime):
+            timestamp = pd.Timestamp(timestamp)
+
         assert isinstance(timestamp, pd.Timestamp), f"Expected pd.Timestamp, got {timestamp.__class__}: {timestamp}"
 
         assert self.data_universe.lending_candles, "Lending market data is not loaded - cannot determine if we can short or not"
@@ -245,7 +278,7 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
                 asset.address,
             )
         except UnknownLendingReserve as e:
-            raise RuntimeError(f"We do not have lending reserves for asset: {asset}") from e
+            return False
 
         assert market_metric == LendingCandleType.variable_borrow_apr, f"Not supported yet: {market_metric}"
         candles = self.data_universe.lending_candles.variable_borrow_apr
@@ -262,7 +295,7 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
 
     def can_open_short(
             self,
-            timestamp: pd.Timestamp,
+            timestamp: pd.Timestamp | datetime.datetime,
             pair: TradingPairIdentifier,
             liquidity_threshold=None,
     ) -> bool:
@@ -817,6 +850,11 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
 
         candle_universe = GroupedCandleUniverse(dataset.candles)
 
+        if dataset.backtest_stop_loss_candles is not None:
+            stop_loss_candle_universe = GroupedCandleUniverse(dataset.backtest_stop_loss_candles)
+        else:
+            stop_loss_candle_universe = None
+
         universe = Universe(
             time_bucket=dataset.time_bucket,
             chains={chain_id},
@@ -833,7 +871,7 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
             data_universe=universe,
             reserve_assets=[reserve_asset],
             backtest_stop_loss_time_bucket=dataset.backtest_stop_loss_time_bucket,
-            backtest_stop_loss_candles=dataset.backtest_stop_loss_candles,
+            backtest_stop_loss_candles=stop_loss_candle_universe,
         )
 
     @staticmethod
@@ -971,16 +1009,22 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
         collateral_token = pair.quote
         assert collateral_token == self.get_reserve_asset()
 
-        # Will raise exception if not available
-        borrow_reserve = self.data_universe.lending_reserves.get_by_chain_and_address(
-            ChainId(borrow_token.chain_id),
-            borrow_token.address,
-        )
+        try:
+            # Will raise exception if not available
+            borrow_reserve = self.data_universe.lending_reserves.get_by_chain_and_address(
+                ChainId(borrow_token.chain_id),
+                borrow_token.address,
+            )
+        except UnknownLendingReserve as e:
+            raise UnknownLendingReserve(f"Could not resolve {borrow_token}") from e
 
-        collateral_reserve = self.data_universe.lending_reserves.get_by_chain_and_address(
-            ChainId(collateral_token.chain_id),
-            collateral_token.address,
-        )
+        try:
+            collateral_reserve = self.data_universe.lending_reserves.get_by_chain_and_address(
+                ChainId(collateral_token.chain_id),
+                collateral_token.address,
+            )
+        except UnknownLendingReserve as e:
+            raise UnknownLendingReserve(f"Could not resolve {collateral_token}") from e
 
         vtoken = translate_token(
             borrow_reserve.get_vtoken(),
@@ -1213,7 +1257,11 @@ class DefaultTradingStrategyUniverseModel(TradingStrategyUniverseModel):
         self.execution_context = execution_context
         self.create_trading_universe = create_trading_universe
 
-    def preload_universe(self, universe_options: UniverseOptions, execution_context: ExecutionContext | None = None):
+    def preload_universe(
+            self,
+            universe_options: UniverseOptions,
+            execution_context: ExecutionContext | None = None
+    ):
         """Triggered before backtesting execution.
 
         - Load all datasets with progress bar display.

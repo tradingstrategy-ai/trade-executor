@@ -500,25 +500,23 @@ class TradeExecution:
     def __repr__(self) -> str:
         if self.is_spot():
             if self.is_buy():
-                return f"<Buy #{self.trade_id} {self.planned_quantity} {self.pair.base.token_symbol} at {self.planned_price}, {self.get_status().name}>"
+                return f"<Buy #{self.trade_id} {self.planned_quantity} {self.pair.base.token_symbol} at {self.planned_price}, {self.get_status().name} phase>"
             else:
-                return f"<Sell #{self.trade_id} {abs(self.planned_quantity)} {self.pair.base.token_symbol} at {self.planned_price}, {self.get_status().name}>"
+                return f"<Sell #{self.trade_id} {abs(self.planned_quantity)} {self.pair.base.token_symbol} at {self.planned_price}, {self.get_status().name} phase>"
         elif self.is_short():
-                return f"<Short \n" \
-                       f"   #{self.trade_id} \n" \
-                       f"   {self.planned_quantity} {self.pair.base.token_symbol} at {self.planned_price}, {self.get_status().name} \n" \
+                return f"<Short #{self.trade_id} \n" \
+                       f"   {self.planned_quantity} {self.pair.base.token_symbol} at {self.planned_price}, {self.get_status().name} phase\n" \
                        f"   collateral consumption: {self.planned_collateral_consumption} collateral allocation: {self.planned_collateral_allocation} \n" \
+                       f"   reserve: {self.planned_reserve} quantity: {self.planned_quantity} \n" \
                        f">"
         else:
             if self.is_buy():
-                return f"<Supply credit \n" \
-                       f"   #{self.trade_id} \n" \
-                       f"   {self.planned_quantity} {self.pair.base.token_symbol} at {self.planned_price}, {self.get_status().name} \n" \
+                return f"<Supply credit #{self.trade_id} \n" \
+                       f"   {self.planned_quantity} {self.pair.base.token_symbol} at {self.planned_price}, {self.get_status().name} phase\n" \
                        f">"
             else:
-                return f"<Recall credit collateral \n" \
-                       f"   #{self.trade_id} \n" \
-                       f"   {self.planned_quantity} {self.pair.base.token_symbol} at {self.planned_price}, {self.get_status().name} \n" \
+                return f"<Recall credit collateral #{self.trade_id} \n" \
+                       f"   {self.planned_quantity} {self.pair.base.token_symbol} at {self.planned_price}, {self.get_status().name} phase\n" \
                        f">"
 
     def pretty_print(self) -> str:
@@ -985,14 +983,20 @@ class TradeExecution:
     def get_execution_sort_position(self) -> int:
         """When this trade should be executed.
 
-        Lower, negative, trades should be executed first.
+        - Closing trades should go first
+
+        - Selling trades should go first
 
         We need to execute sells first because we need to have cash in hand to execute buys.
 
         :return:
             Sortable int
         """
-        if self.is_sell():
+
+        if self.closing:
+            # Magic number
+            return -self.trade_id - 100_000_000
+        elif self.is_sell():
             return -self.trade_id
         else:
             return self.trade_id

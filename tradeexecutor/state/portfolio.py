@@ -671,8 +671,13 @@ class Portfolio:
 
         assert position.is_closed()
 
-    def adjust_reserves(self, asset: AssetIdentifier, amount: Decimal):
-        """Remove currency from reserved.
+    def adjust_reserves(
+        self,
+        asset: AssetIdentifier,
+        amount: Decimal,
+        reason: str = None,
+    ):
+        """Add or remove assets from the cash reserves.
 
         For internal accounting of the portfolio state.
 
@@ -681,11 +686,14 @@ class Portfolio:
 
         :param amount:
             Negative to reduce portfolio reserves, positive to increase
+
+        :param reason
+            Human-readable loggable reason why this happened
         """
 
         assert asset is not None, "Asset missing"
 
-        assert isinstance(amount, Decimal), f"Got amount {amount}"
+        assert isinstance(amount, Decimal), f"Expected Decimal. Got amount {amount.__class__}: {amount}"
         reserve = self.get_reserve_position(asset)
         assert reserve, f"No reserves available for {asset}"
         assert reserve.quantity is not None, f"Reserve quantity not set for {asset} in portfolio {self}"
@@ -694,6 +702,13 @@ class Portfolio:
         # because we might execute sell trade that increase our capital
         # before executing buy trades
         # assert reserve.quantity + amount >= 0, f"Reserves went to negative with new amount {amount}, current reserves {reserve.quantity}"
+
+        logger.info(
+            "Adjusting reserves for %s: %+f, reason: %s",
+            asset.token_symbol,
+            amount,
+            reason or "<not given>",
+        )
 
         reserve.quantity += amount
 
@@ -725,8 +740,11 @@ class Portfolio:
 
         trade.reserve_currency_allocated = reserve
 
-        logger.info("Moving %s USD from reserves to the trade %s", reserve, trade)
-        self.adjust_reserves(trade.reserve_currency, -reserve)
+        self.adjust_reserves(
+            trade.reserve_currency,
+            -reserve,
+            f"Moving USD from reserves to the trade {trade}"
+        )
 
     def return_capital_to_reserves(
             self,
@@ -738,11 +756,13 @@ class Portfolio:
         if trade.is_spot():
             assert trade.is_sell()
 
-        logger.info("Returning %s USD to reserves from trade %s", trade.executed_reserve, trade)
-
         assert trade.executed_reserve > 0
 
-        self.adjust_reserves(trade.reserve_currency, trade.executed_reserve)
+        self.adjust_reserves(
+            trade.reserve_currency,
+            trade.executed_reserve,
+            f"Returning USD to reserves from trade::\n{trade}"
+        )
 
     def has_unexecuted_trades(self) -> bool:
         """Do we have any trades that have capital allocated, but not executed yet."""

@@ -265,7 +265,7 @@ def decide_trades(
 
 
 @pytest.fixture(scope="module")
-def universe() -> TradingStrategyUniverse:
+def strategy_universe() -> TradingStrategyUniverse:
 
     # Set up fake assets
     mock_chain_id = ChainId.ethereum
@@ -336,21 +336,21 @@ def universe() -> TradingStrategyUniverse:
 
 def test_visualise_strategy_state(
         logger: logging.Logger,
-        universe: TradingStrategyUniverse,
+        strategy_universe,
     ):
     """Visualise strategy state as a bunch inline images."""
 
-    routing_model = generate_simple_routing_model(universe)
+    routing_model = generate_simple_routing_model(strategy_universe)
 
     # Run the test
-    state, universe, debug_dump = run_backtest_inline(
+    state, strategy_universe, debug_dump = run_backtest_inline(
         start_at=START_AT,
         end_at=END_AT,
         client=None,  # None of downloads needed, because we are using synthetic data
         cycle_duration=TRADING_STRATEGY_CYCLE,
         decide_trades=decide_trades,
         create_trading_universe=None,
-        universe=universe,
+        universe=strategy_universe,
         initial_deposit=INITIAL_DEPOSIT,
         reserve_currency=ReserveCurrency.busd,
         trade_routing=TradeRouting.user_supplied_routing_model,
@@ -359,6 +359,7 @@ def test_visualise_strategy_state(
         allow_missing_fees=True,
     )
 
+    universe = strategy_universe
     image = draw_multi_pair_strategy_state(state, universe)
 
     assert len(image.data) == 27
