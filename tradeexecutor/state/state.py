@@ -646,7 +646,7 @@ class State:
                 self.portfolio.adjust_reserves(
                     trade.pair.quote.underlying,
                     -executed_collateral_allocation,
-                    reason=f"Collateral allocation for position #{position.position_id}"
+                    reason=f"Collateral allocation for leveraged position #{position.position_id}, trade #{trade.trade_id}"
                 )
 
         elif trade.is_credit_supply():

@@ -132,12 +132,15 @@ class BacktestExecutionModel(ExecutionModel):
             executed_quantity, sell_amount_epsilon_fix = fix_sell_token_amount(base_balance, trade.planned_quantity)
             executed_reserve = abs(Decimal(trade.planned_quantity) * Decimal(trade.planned_price))
 
+        self.wallet.update_token_info(base)
+        self.wallet.update_token_info(reserve)
+
         if trade.is_buy():
-            self.wallet.update_balance(base.address, executed_quantity)
-            self.wallet.update_balance(reserve.address, -executed_reserve)
+            self.wallet.update_balance(base.address, executed_quantity, f"spot buy trade #{trade.trade_id}")
+            self.wallet.update_balance(reserve.address, -executed_reserve, f"spot buy trade #{trade.trade_id}")
         else:
-            self.wallet.update_balance(base.address, executed_quantity)
-            self.wallet.update_balance(reserve.address, executed_reserve)
+            self.wallet.update_balance(base.address, executed_quantity, f"spot sell #{trade.trade_id}")
+            self.wallet.update_balance(reserve.address, executed_reserve, f"spot sell #{trade.trade_id}")
 
         assert abs(executed_quantity) > 0, f"Expected executed_quantity for the trade to be above zero, got executed_quantity:{executed_quantity}, planned_quantity:{trade.planned_quantity}, trade is {trade}"
 
@@ -178,27 +181,31 @@ class BacktestExecutionModel(ExecutionModel):
         # base.underlying token, or executed_quantity, never appears in the wallet
         # as we do loan based trading
 
-        self.wallet.update_balance(reserve_address, -executed_reserve)
+        self.wallet.update_token_info(trade.pair.base)
+        self.wallet.update_token_info(trade.pair.quote)
+        self.wallet.update_token_info(trade.reserve_currency)
+
+        self.wallet.update_balance(reserve_address, -executed_reserve, "trade #{trade.trade_id} reserves")
 
         # The leveraged tokens appear in the wallet
 
         # aToken amount is original deposit + any leverage we do
 
-        self.wallet.update_balance(collateral_address, executed_collateral_consumption)
-        self.wallet.update_balance(collateral_address, executed_reserve)
+        self.wallet.update_balance(collateral_address, executed_collateral_consumption, f"collateral consumption trade #{trade.trade_id}")
+        self.wallet.update_balance(collateral_address, executed_reserve, f"reserves trade #{trade.trade_id}")
 
         # vToken amount us whatever quantity we execute
         if trade.is_short():
-            self.wallet.update_balance(borrowed_address, -executed_quantity)
+            self.wallet.update_balance(borrowed_address, -executed_quantity, f"executed quantity trade #{trade.trade_id}")
         else:
-            self.wallet.update_balance(borrowed_address, executed_quantity)
+            self.wallet.update_balance(borrowed_address, executed_quantity, f"executed quantity trade #{trade.trade_id}")
 
         # move all leftover atoken to reserve when the position is closing
         # TODO: check if this is correct place to do this
         if self.wallet.get_balance(borrowed_address) == 0:
             remaining_collateral = self.wallet.get_balance(collateral_address)
-            self.wallet.update_balance(reserve_address, remaining_collateral)
-            self.wallet.update_balance(collateral_address, -remaining_collateral)
+            self.wallet.update_balance(reserve_address, remaining_collateral, f"cleaning up leftover atoken #{trade.trade_id}")
+            self.wallet.update_balance(collateral_address, -remaining_collateral, f"cleaning up leftover atoken #{trade.trade_id}")
 
         assert abs(executed_quantity) > 0, f"Expected executed_quantity for the trade to be above zero, got executed_quantity:{executed_quantity}, planned_quantity:{trade.planned_quantity}, trade is {trade}"
 

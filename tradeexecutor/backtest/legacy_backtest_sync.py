@@ -54,6 +54,7 @@ class BacktestSyncer:
             )
 
             # Update wallet
+            self.wallet.update_token_info(reserve_token)
             self.wallet.update_balance(reserve_token.address, self.initial_deposit_amount)
 
             # Update state

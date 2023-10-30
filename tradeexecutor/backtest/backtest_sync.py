@@ -99,6 +99,7 @@ class BacktestSyncModel(SyncModel):
             past_balance = self.wallet.get_balance(reserve_token.address)
 
             # Update wallet
+            self.wallet.update_token_info(reserve_token)
             self.wallet.update_balance(reserve_token.address, funding_event.amount)
 
             # Generate a deposit event
@@ -221,6 +222,7 @@ class BacktestSyncModel(SyncModel):
                 # Make atokens magically appear in the simulated
                 # backtest wallet. The amount must be updated, or
                 # otherwise we get errors when closing the position.
+                self.wallet.update_token_info(p.pair.base)
                 self.wallet.update_balance(p.pair.base.address, accrued)
             elif p.is_leverage() and p.is_short():
                 assert len(p.trades) <= 2, "This interest calculation does not support increase/reduce position"
