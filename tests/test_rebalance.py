@@ -1065,6 +1065,7 @@ def test_alpha_model_decrease_short(
     assert p3.pair == vweth_ausdc
     assert p3.pair.is_short()
     assert p3.get_value() == pytest.approx(78.61345)
+    assert p3.loan.get_leverage() == pytest.approx(1)
 
     assert portfolio.get_net_asset_value() == pytest.approx(657.9375)
     assert portfolio.get_cash() == pytest.approx(500.47405000000003)
