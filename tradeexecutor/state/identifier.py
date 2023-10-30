@@ -45,6 +45,11 @@ class AssetType:
 class AssetIdentifier:
     """Identify a blockchain asset for trade execution.
 
+    This is pass-by-copy (as opposite to pass-by-reference) asset identifier
+    we use across the persistent state. Because we copy a lot of information
+    about asset, not just its id, this makes data reads and diagnosing problems
+    simpler.
+
     As internal token_ids and pair_ids may be unstable, trading pairs and tokens are explicitly
     referred by their smart contract addresses when a strategy decision moves to the execution.
     We duplicate data here to make sure we have a persistent record that helps to diagnose the sisues.
@@ -213,6 +218,11 @@ class TradingPairKind(enum.Enum):
 @dataclass(slots=True)
 class TradingPairIdentifier:
     """Uniquely identify one trading pair across all tradeable blockchain assets.
+
+    This is pass-by-copy (as opposite to pass-by-reference) trading pair identifier
+    we use across the persistent state. Because we copy a lot of information
+    about asset, not just its id, this makes data reads and diagnosing problems
+    simpler.
 
     - Tokens are converted from machine readable token0 - token1 pair
       to more human-friendly base and quote token pair.

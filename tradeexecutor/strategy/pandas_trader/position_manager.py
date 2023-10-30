@@ -187,6 +187,8 @@ class PositionManager:
         else:
             raise RuntimeError(f"Does not know the universe: {universe}")
 
+        assert self.data_universe is not None, "Data universe was None"
+
         self.state = state
         self.pricing_model = pricing_model
         self.default_slippage_tolerance = default_slippage_tolerance
@@ -333,12 +335,20 @@ class PositionManager:
         This is a shortcut function for trading strategies
         that operate only a single trading pair and a single short position.
 
+        If you have multiple short positions open use :py:meth:`get_current_position_for_pair`
+        to distinguish between them.
+
+        .. code-block:: python
+
+            # aave_usdc is an instance of TradingPairIdentifier
+            aave_shorting_pair = strategy_universe.get_shorting_pair(aave_usdc)
+            aave_short_position = position_manager.get_current_position_for_pair(aave_shorting_pair)
+
         See also
 
         - :py:meth:`get_current_long_position`
         
         - :py:meth:`get_current_credit_supply_position`
-
 
         :return:
             Currently open short trading position
