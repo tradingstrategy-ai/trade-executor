@@ -404,6 +404,10 @@ class StrategyModuleInformation:
         assert self.backtest_end is not None, f"BACKTEST_END variable is not set in the strategy module {self.path}"
         assert self.initial_cash is not None, f"INITIAL_CASH variable is not set in the strategy module {self.path}"
 
+    def get_universe_options(self) -> UniverseOptions:
+        """What backtest range this strategy defaults to"""
+        return UniverseOptions(start_at=self.backtest_start, end_at=self.backtest_end)
+
 
 def parse_strategy_module(
         path,
