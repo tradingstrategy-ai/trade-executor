@@ -689,6 +689,12 @@ class AlphaModel:
 
         for signal in self.iterate_signals():
 
+            # Trades that we will execute for the position for this signal
+            # A signal may cause multiple trades, as e.g.
+            # closing a short position and opening a long when the signal goes from -1 to 1
+            # will cause 2 trades (close short, open long)
+            position_rebalance_trades = []
+
             dollar_diff = signal.position_adjust_usd
             quantity_diff = signal.position_adjust_quantity
             value = signal.position_target
@@ -717,7 +723,6 @@ class AlphaModel:
                 signal.position_adjust_ignored = True
             else:
 
-                position_rebalance_trades = []
                 current_position = position_manager.get_current_position_for_pair(synthetic)
 
                 if signal.normalised_weight < self.close_position_weight_epsilon:
@@ -792,7 +797,11 @@ class AlphaModel:
                     assert last_trade.position_id
                     signal.position_id = last_trade.position_id
 
-            logger.info("Adjusting holdings for %s: %s", underlying, position_rebalance_trades[0])
+            if position_rebalance_trades:
+                logger.info("Adjusting holdings for %s: %s", underlying, position_rebalance_trades[0])
+            else:
+                logger.info("No trades for: %s", underlying)
+
             trades += position_rebalance_trades
 
         trades.sort(key=lambda t: t.get_execution_sort_position())

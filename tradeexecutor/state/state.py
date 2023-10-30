@@ -548,7 +548,7 @@ class State:
 
         """
 
-        assert trade.get_status() == TradeStatus.planned
+        assert trade.get_status() == TradeStatus.planned, f"start_execution(): received a trade with status {trade.get_status()}: {trade}"
 
         position = self.portfolio.find_position_for_trade(trade)
         assert position, f"Trade does not belong to an open position {trade}"
@@ -573,6 +573,8 @@ class State:
             raise NotImplementedError()
 
         trade.started_at = ts
+
+        logger.info("Trade #%d started at %s", trade.trade_id, ts)
 
         # TODO: Legacy attributes that need to go away
         if txid is not None:

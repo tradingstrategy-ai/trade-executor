@@ -160,7 +160,7 @@ def decide_trades(
     # determined by the alpha signals (momentum)
     trades = alpha_model.generate_rebalance_trades_and_triggers(
         position_manager,
-        min_trade_threshold=minimum_rebalance_trade_threshold,  # Don't bother with trades under 300 USD
+        min_trade_threshold=minimum_rebalance_trade_threshold,  # Don't bother with trades under XXX USD
     )
 
     # Record alpha model state so we can later visualise our alpha model thinking better

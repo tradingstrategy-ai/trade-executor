@@ -618,6 +618,13 @@ class StrategyRunner(abc.ABC):
                                 last_point_at
                                 )
 
+                    # Check that we did not get duplicate trades for some reason,
+                    # like API bugs
+                    trade_set = set()
+                    for t in rebalance_trades:
+                        assert t not in trade_set, f"decide_trades() returned a duplicate trade: {t}"
+                        trade_set.add(t)
+
                 # Log what our strategy decided
                 if self.is_progress_report_needed():
                     self.report_strategy_thinking(
@@ -712,7 +719,7 @@ class StrategyRunner(abc.ABC):
         debug_details = {}
 
         end_block = self.execution_model.get_safe_latest_block()
-        logger.info(f"check_position_triggers() using block %d", end_block)
+        logger.info(f"check_position_triggers() using block %s", end_block)
 
         with self.timed_task_context_manager("check_position_triggers"):
 
