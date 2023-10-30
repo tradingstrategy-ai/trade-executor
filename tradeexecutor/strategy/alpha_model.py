@@ -687,6 +687,7 @@ class AlphaModel:
         # Generate trades
         trades: List[TradeExecution] = []
 
+        #  TODO: Break this massive for if spagetti to sub-functions
         for signal in self.iterate_signals():
 
             # Trades that we will execute for the position for this signal
@@ -702,7 +703,8 @@ class AlphaModel:
             underlying = signal.pair
             signal.synthetic_pair = synthetic = self.map_pair_for_signal(position_manager, signal)
 
-            # Do backtesting record keeping
+            # Do backtesting record keeping, so that
+            # it is later easier to display alpha model thinking
             if signal.old_synthetic_pair:
                 position = position_manager.get_current_position_for_pair(signal.old_synthetic_pair)
                 if position:
@@ -719,6 +721,7 @@ class AlphaModel:
                         dollar_diff)
 
             if abs(dollar_diff) < min_trade_threshold and not signal.is_flipping():
+                # The value diff in the rebalance is so small that we do not care about it
                 logger.info("Not doing anything, diff %f (value %f) below trade threshold %f", dollar_diff, value, min_trade_threshold)
                 signal.position_adjust_ignored = True
             else:
