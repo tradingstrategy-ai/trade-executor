@@ -281,7 +281,7 @@ class BacktestExecutionModel(ExecutionModel):
 
             raise BacktestExecutionFailed(f"\n"
                 f"  Trade #{idx} failed on strategy cycle {ts}\n"
-                f"  Execution of trade {trade} failed.\n"
+                f"  Execution of trade failed:\n  {trade}\n"
                 f"  Pair: {trade.pair}.\n"
                 f"  Trade type: {trade.trade_type.name}.\n"
                 f"  Trade quantity: {trade.planned_quantity}, reserve: {trade.planned_reserve} {trade.reserve_currency}.\n"

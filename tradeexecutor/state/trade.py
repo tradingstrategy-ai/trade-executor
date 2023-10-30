@@ -510,20 +510,22 @@ class TradeExecution:
                 else:
                     kind = "Reduce"
 
+                underlying = self.pair.get_pricing_pair()
+
                 return f"<{kind} short #{self.trade_id} \n" \
-                       f"   {self.planned_quantity} {self.pair.base.token_symbol} at {self.planned_price}, {self.get_status().name} phase\n" \
-                       f"   collateral consumption: {self.planned_collateral_consumption} collateral allocation: {self.planned_collateral_allocation} \n" \
-                       f"   reserve: {self.planned_reserve} quantity: {self.planned_quantity} \n" \
-                       f">"
+                       f"   {self.planned_quantity} {underlying.base.token_symbol} at {self.planned_price} USD, {self.get_status().name} phase\n" \
+                       f"   collateral consumption: {self.planned_collateral_consumption} {underlying.quote.token_symbol}, collateral allocation: {self.planned_collateral_allocation} {underlying.quote.token_symbol}\n" \
+                       f"   reserve: {self.planned_reserve}\n" \
+                       f"   >"
         else:
             if self.is_buy():
                 return f"<Supply credit #{self.trade_id} \n" \
                        f"   {self.planned_quantity} {self.pair.base.token_symbol} at {self.planned_price}, {self.get_status().name} phase\n" \
-                       f">"
+                       f"   >"
             else:
                 return f"<Recall credit collateral #{self.trade_id} \n" \
                        f"   {self.planned_quantity} {self.pair.base.token_symbol} at {self.planned_price}, {self.get_status().name} phase\n" \
-                       f">"
+                       f"   >"
 
     def pretty_print(self) -> str:
         """Get diagnostics output for the trade.
