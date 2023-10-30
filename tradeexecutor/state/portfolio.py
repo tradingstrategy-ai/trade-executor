@@ -740,7 +740,7 @@ class Portfolio:
 
         if underflow_check:
             if available < reserve:
-                raise NotEnoughMoney(f"Not enough reserves. We have {available}, trade wants {reserve}")
+                raise NotEnoughMoney(f"Not enough reserves. We have {available}, trade {trade} wants {reserve}")
 
         trade.reserve_currency_allocated = reserve
 

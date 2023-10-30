@@ -651,11 +651,11 @@ class StrategyRunner(abc.ABC):
                 if self.is_progress_report_needed():
                     self.report_before_execution(strategy_cycle_timestamp, universe, state, approved_trades, debug_details)
 
-                # Physically execute the trades
-                with self.timed_task_context_manager("execute_trades", trade_count=len(approved_trades)):
+                # Unit tests can turn this flag to make it easier to see why trades fail
+                check_balances = debug_details.get("check_balances", False)
 
-                    # Unit tests can turn this flag to make it easier to see why trades fail
-                    check_balances = debug_details.get("check_balances", False)
+                # Physically execute the trades
+                with self.timed_task_context_manager("execute_trades", trade_count=len(approved_trades), check_balances=check_balances):
 
                     # Make sure our hot wallet nonce is up to date
                     self.sync_model.resync_nonce()

@@ -759,11 +759,11 @@ class AlphaModel:
                         if signal.is_flipping() or signal.is_new():
                             # Open new short,
                             # we ignore dollar_diff and use value directly
-                            assert not signal.take_profit, "Unsupported"
                             position_rebalance_trades += position_manager.open_short(
                                 underlying,
                                 value=value,
                                 leverage=leverage,
+                                take_profit_pct=signal.take_profit,
                                 stop_loss_pct=signal.stop_loss,
                                 trailing_stop_loss_pct=signal.trailing_stop_loss,
                                 notes="Rebalance opening a new short for signal {signal}",

@@ -565,10 +565,10 @@ class State:
                 # because reservs will be there after we have executed some sell trades first
                 self.portfolio.move_capital_from_reserves_to_spot_trade(trade, underflow_check=underflow_check)
         elif trade.is_leverage():
-            self.portfolio.move_capital_from_reserves_to_spot_trade(trade)
+            self.portfolio.move_capital_from_reserves_to_spot_trade(trade, underflow_check=underflow_check)
         elif trade.is_credit_supply():
             if trade.is_buy():
-                self.portfolio.move_capital_from_reserves_to_spot_trade(trade)
+                self.portfolio.move_capital_from_reserves_to_spot_trade(trade, underflow_check=underflow_check)
         else:
             raise NotImplementedError()
 

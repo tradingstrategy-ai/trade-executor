@@ -8,7 +8,7 @@
 
 import datetime
 from typing import List, Dict
-
+import logging
 import pandas as pd
 
 from tradeexecutor.state.state import State
@@ -25,6 +25,8 @@ from tradingstrategy.client import Client
 from tradingstrategy.timebucket import TimeBucket
 from tradeexecutor.strategy.cycle import CycleDuration
 from tradeexecutor.strategy.strategy_module import StrategyType, TradeRouting, ReserveCurrency
+
+logger = logging.getLogger(__name__)
 
 # Tell what trade execution engine version this strategy needs to use
 trading_strategy_engine_version = "0.3"
@@ -124,16 +126,14 @@ def decide_trades(
                 take_profit=take_profit,
             )
         elif momentum <= negative_mometum_threshold:
-            if strategy_universe.can_open_short(
-                    timestamp,
-                    pair
-            ):
+            if strategy_universe.can_open_short(timestamp, pair):
                 # Only open a short if we have lending markets available at this point
                 alpha_model.set_signal(
                     pair,
-                    -momentum,
+                    momentum,
                     stop_loss=stop_loss,
                     take_profit=take_profit,
+                    leverage=1.0,
                 )
         else:
             # Momentum is ~0,
@@ -145,6 +145,8 @@ def decide_trades(
     alpha_model.select_top_signals(max_assets_in_portfolio)
     alpha_model.assign_weights(method=weight_by_1_slash_n)
     alpha_model.normalise_weights()
+
+    dump_signals(timestamp, alpha_model)
 
     # Load in old weight for each trading pair signal,
     # so we can calculate the adjustment trade size
@@ -197,4 +199,18 @@ def create_trading_universe(
 
     return universe
 
+
+def dump_signals(
+    timestamp: pd.Timestamp,
+    alpha_model: AlphaModel,
+):
+    """Debug helper used to develop the strategy.
+
+    Print the signal state to the logging output.
+    """
+    sorted_signals = sorted([s for s in alpha_model.signals.values()], key=lambda s: s.pair.base.token_symbol)
+    print(f"{timestamp} cycle signals")
+    for s in sorted_signals:
+        pair = s.pair
+        print(f"Pair: {pair.get_ticker()}, signal: {s.signal}")
 
