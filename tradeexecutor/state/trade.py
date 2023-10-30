@@ -504,7 +504,13 @@ class TradeExecution:
             else:
                 return f"<Sell #{self.trade_id} {abs(self.planned_quantity)} {self.pair.base.token_symbol} at {self.planned_price}, {self.get_status().name} phase>"
         elif self.is_short():
-                return f"<Short #{self.trade_id} \n" \
+
+                if self.planned_quantity < 0:
+                    kind = "Increase"
+                else:
+                    kind = "Reduce"
+
+                return f"<{kind} short #{self.trade_id} \n" \
                        f"   {self.planned_quantity} {self.pair.base.token_symbol} at {self.planned_price}, {self.get_status().name} phase\n" \
                        f"   collateral consumption: {self.planned_collateral_consumption} collateral allocation: {self.planned_collateral_allocation} \n" \
                        f"   reserve: {self.planned_reserve} quantity: {self.planned_quantity} \n" \
