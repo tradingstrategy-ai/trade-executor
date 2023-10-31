@@ -508,7 +508,10 @@ class TradeExecution:
                 if self.planned_quantity < 0:
                     kind = "Increase"
                 else:
-                    kind = "Reduce"
+                    if self.closing:
+                        kind = "Close"
+                    else:
+                        kind = "Reduce"
 
                 underlying = self.pair.get_pricing_pair()
 

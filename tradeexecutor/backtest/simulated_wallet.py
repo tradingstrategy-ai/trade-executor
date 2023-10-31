@@ -43,13 +43,17 @@ class SimulatedWallet:
         #: Start with zero nonce like Ethereum acconts
         self.nonce = 0
 
-    def update_balance(self, token_address: JSONHexAddress, delta: Decimal, reason: str = None):
+    def update_balance(self, token: JSONHexAddress | AssetIdentifier, delta: Decimal, reason: str = None):
         """Change the token balance of some delta.
 
         Check that balance does not go zero.
 
-        :param token_address:
-            Token we receive or send
+        :param token:
+            Token we receive or send.
+
+            Give either raw address or asset definition.
+
+            Any asset definion is automatically added to our internal tracking list for diagnostics.
 
         :param delta:
             The amount of token, human units
@@ -59,10 +63,15 @@ class SimulatedWallet:
 
             Only used for backtesting diagnostics.
         """
-        assert token_address.lower() == token_address, "No checksummed addresses"
-        token_symbol = self.get_token_symbol(token_address)
+
+        if isinstance(token, AssetIdentifier):
+            self.update_token_info(token)
+            token = token.address
+
+        assert token.lower() == token, "No checksummed addresses"
+        token_symbol = self.get_token_symbol(token)
         assert isinstance(delta, Decimal), f"Expected decimal got: {delta.__class__}: {delta}"
-        old_balance = self.balances.get(token_address, Decimal(0))
+        old_balance = self.balances.get(token, Decimal(0))
         new_balance = old_balance + delta
 
         reason = reason or "unhinted reason"
@@ -71,7 +80,7 @@ class SimulatedWallet:
         if new_balance < 0:
             raise OutOfSimulatedBalance(f"Simulated wallet balance went negative {new_balance} for token {token_symbol}, because of {reason}")
 
-        self.balances[token_address] = new_balance
+        self.balances[token] = new_balance
 
     def set_balance(self, token_address: JSONHexAddress, amount: Decimal):
         """Directly set balance."""
@@ -83,9 +92,16 @@ class SimulatedWallet:
         """Set rebase token amount."""
         self.set_balance(token_address, new_amount)
 
-    def get_balance(self, token_address: JSONHexAddress) -> Decimal:
-        assert token_address.lower() == token_address, "No checksummed addresses"
-        return self.balances.get(token_address, Decimal(0))
+    def get_balance(self, token: JSONHexAddress | AssetIdentifier) -> Decimal:
+        """Get on-chain balance of one token.
+
+        :return:
+            Human-readable token balance
+        """
+        if isinstance(token, AssetIdentifier):
+            token = token.address
+        assert token.lower() == token, "No checksummed addresses"
+        return self.balances.get(token, Decimal(0))
 
     def fetch_nonce_and_tx_hash(self) -> Tuple[int, str]:
         """Allocates a dummy nonce for a transaction.

@@ -218,7 +218,7 @@ def state(
     return state
 
 
-def test_open_and_close_two_shorts(
+def test_open_and_close_one_short(
     state: State,
     strategy_universe: TradingStrategyUniverse,
     pricing_model,
@@ -229,9 +229,80 @@ def test_open_and_close_two_shorts(
     routing_model: BacktestRoutingModel,
     wallet: SimulatedWallet,
 ):
+    """Open and close one short position."""
+
+    # Open WETH/USDC and AAVE/USDC shorts
+    trades = []
+    simulated_time = start_timestamp + datetime.timedelta(days=1)
+
+    position_manager = PositionManager(
+        simulated_time,
+        strategy_universe,
+        state,
+        pricing_model,
+    )
+
+    trades += position_manager.open_short(
+        weth_usdc,
+        500.0,
+    )
+
+    execution_model.execute_trades(
+        simulated_time,
+        state,
+        trades,
+        routing_model,
+        BacktestRoutingState(strategy_universe.data_universe.pairs, wallet),
+    )
+
+    assert any(t.is_success() for t in trades)
+    assert len(state.portfolio.open_positions) == 1
+
+    # Next day, close shots
+    trades = []
+    simulated_time += datetime.timedelta(days=1)
+    position_manager = PositionManager(
+        simulated_time,
+        strategy_universe,
+        state,
+        pricing_model,
+    )
+
+    eth_shorting_pair = strategy_universe.get_shorting_pair(weth_usdc)
+    eth_short_position = position_manager.get_current_position_for_pair(eth_shorting_pair)
+
+    trades += position_manager.close_short(eth_short_position)
+
+    execution_model.execute_trades(
+        simulated_time,
+        state,
+        trades,
+        routing_model,
+        BacktestRoutingState(strategy_universe.data_universe.pairs, wallet),
+    )
+
+    assert any(t.is_success() for t in trades)
+    assert len(state.portfolio.closed_positions) == 1
+
+
+def test_open_and_close_two_shorts(
+    state: State,
+    strategy_universe: TradingStrategyUniverse,
+    pricing_model,
+    usdc: AssetIdentifier,
+    weth_usdc: TradingPairIdentifier,
+    aave_usdc: TradingPairIdentifier,
+    weth: AssetIdentifier,
+    aave: AssetIdentifier,
+    start_timestamp,
+    execution_model: BacktestExecutionModel,
+    routing_model: BacktestRoutingModel,
+    wallet: SimulatedWallet,
+):
     """See that we can open and close two shorts sharing the same collateral simultaneously."""
 
     # Open WETH/USDC and AAVE/USDC shorts
+    portfolio = state.portfolio
     trades = []
     simulated_time = start_timestamp + datetime.timedelta(days=1)
 
@@ -261,7 +332,7 @@ def test_open_and_close_two_shorts(
     )
 
     assert any(t.is_success() for t in trades)
-    assert len(state.portfolio.open_positions) == 2
+    assert len(portfolio.open_positions) == 2
 
     # Next day, close shots
     trades = []
@@ -292,4 +363,18 @@ def test_open_and_close_two_shorts(
     )
 
     assert any(t.is_success() for t in trades)
-    assert len(state.portfolio.open_positions) == 2
+    assert len(portfolio.closed_positions) == 2
+
+    assert portfolio.get_cash() == pytest.approx(9995.192778335006)  # Lost on fees
+    assert portfolio.get_net_asset_value() == pytest.approx(9995.192778335006)  # All in cash
+
+    wallet = execution_model.wallet
+
+    # Check that we have cleared the wallet, including dust
+    assert wallet.get_balance(usdc) == pytest.approx(Decimal(9995.192778335006))
+    assert wallet.get_balance(weth) == 0
+    assert wallet.get_balance(aave) == 0
+    assert wallet.get_balance(aave_shorting_pair.base) == 0
+    assert wallet.get_balance(aave_shorting_pair.quote) == 0
+    assert wallet.get_balance(eth_shorting_pair.base) == 0
+    assert wallet.get_balance(eth_shorting_pair.quote) == 0
