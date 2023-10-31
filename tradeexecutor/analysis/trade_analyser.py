@@ -1120,14 +1120,16 @@ def expand_timeline(
             "Exchange": exchange.name,
             "Base asset": pair_info.base_token_symbol,
             "Quote asset": pair_info.quote_token_symbol,
-            "Position max value": format_value(position.get_max_size()),
-            "PnL USD": format_value(position.get_realised_profit_usd()) if position.is_closed() else np.nan,
+            "Position open value": format_value(position.get_value_at_open()),
+            "Position close value": format_value(position.get_value_at_close()) if position.is_closed() else np.nan,
+            "PnL USD": position.get_realised_profit_usd() if position.is_closed() else np.nan,
             "PnL %": format_percent_2_decimals(position.get_realised_profit_percent()) if position.is_closed() else np.nan,
             "PnL % raw": position.get_realised_profit_percent() if position.is_closed() else 0,
             "Open mid price USD": format_price(position.get_opening_price()),
             "Close mid price USD": format_price(position.get_closing_price()) if position.is_closed() else np.nan,
             "Trade count": position.get_trade_count(),
-            "LP fees": f"${position.get_total_lp_fees_paid():,.2f}"
+            "LP fees": f"${position.get_total_lp_fees_paid():,.2f}",
+            "Port. value at open": position.portfolio_value_at_open,
         }
         return r
 
