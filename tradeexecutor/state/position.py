@@ -858,7 +858,15 @@ class TradingPosition(GenericPosition):
                         planned_collateral_consumption = leverage_estimate.additional_collateral_quantity
 
                         # TODO: stablecoin 1:1 USD assumption here
-                        accured_interest = Decimal(self.get_accrued_interest())
+
+                        #
+                        # We cash out accrued interest when closing the position.
+                        # - You can have positive and negative interest on both vToken and aToken
+                        # - We assume vToken expenses (interest) is paid from the collateral
+                        # -
+                        #
+
+                        accured_interest = self.loan.collateral_interest.last_accrued_interest
 
                         # Any leftover USD from the collateral is released to the reserves
                         planned_collateral_allocation = -leverage_estimate.total_collateral_quantity - accured_interest

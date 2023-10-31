@@ -84,6 +84,10 @@ class SimulatedWallet:
         if isinstance(token, AssetIdentifier):
             self.update_token_info(token)
 
+        if abs(delta) <= epsilon:
+            # No changes, don't make noise for logging
+            return
+
         token_symbol = self.get_token_symbol(token)
         assert isinstance(delta, Decimal), f"Expected decimal got: {delta.__class__}: {delta}"
         old_balance = self.get_balance(token)

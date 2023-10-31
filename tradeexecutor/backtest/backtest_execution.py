@@ -195,11 +195,9 @@ class BacktestExecutionModel(ExecutionModel):
         self.wallet.update_balance(collateral_token, executed_collateral_consumption, f"collateral consumption trade #{trade.trade_id}")
         self.wallet.update_balance(collateral_token, executed_reserve, f"reserves trade #{trade.trade_id}")
 
-        # vToken amount us whatever quantity we execute
-        if trade.is_short():
-            self.wallet.update_balance(borrowed_token, -executed_quantity, f"executed quantity trade #{trade.trade_id}")
-        else:
-            self.wallet.update_balance(borrowed_token, executed_quantity, f"executed quantity trade #{trade.trade_id}")
+        # vToken amount us whatever quantity we execute.
+        # When we short we gain more vToken (executed quantity), but executed quantity is negative for sell
+        self.wallet.update_balance(borrowed_token, -executed_quantity, f"executed quantity trade #{trade.trade_id}")
 
         # <Close short #2
         #    0.3003021039165400376391259260 WETH at 1664.99 USD, broadcasted phase
@@ -218,6 +216,8 @@ class BacktestExecutionModel(ExecutionModel):
             self.wallet.update_balance(collateral_token, collateral_token_change, f"Depositing/redeeming aToken for  #{trade.trade_id}")
 
         assert abs(executed_quantity) > 0, f"Expected executed_quantity for the trade to be above zero, got executed_quantity:{executed_quantity}, planned_quantity:{trade.planned_quantity}, trade is {trade}"
+
+        logger.info("simulate_leverage(): wallet balances after update:\n%s", self.wallet.get_all_balances())
 
         # for leverage short, we use collateral token as the reserve currency
         # so return executed_collateral_quantity here to correctly calculate the price

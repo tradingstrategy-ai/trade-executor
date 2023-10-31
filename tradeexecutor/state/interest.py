@@ -27,6 +27,8 @@ class Interest:
 
     #: How many atokens/votkens we had on the previous read.
     #:
+    #: Absolute number of on-chain balance.
+    #:
     #: This is principal + interest.
     #:
     last_token_amount: Decimal
