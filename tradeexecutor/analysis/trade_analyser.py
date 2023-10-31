@@ -168,6 +168,9 @@ class TradeSummary:
     average_duration_of_zero_loss_trades: Optional[datetime.timedelta] = None
     average_duration_of_all_trades: Optional[datetime.timedelta] = None
 
+    unrealised_profit: Optional[USDollarAmount] = None
+
+
     def __post_init__(self):
 
         self.total_positions = self.won + self.lost + self.zero_loss
@@ -216,6 +219,7 @@ class TradeSummary:
             "Zero profit positions": as_integer(self.zero_loss),
             "Positions open at the end": as_integer(self.undecided),
             "Realised profit and loss": as_dollar(self.realised_profit),
+            "Unrealised profit and loss": as_dollar(self.unrealised_profit),
             "Portfolio unrealised value": as_dollar(self.open_value),
             "Extra returns on lending pool interest": as_dollar(self.extra_return),
             "Cash left at the end": as_dollar(self.uninvested_cash),
@@ -302,6 +306,7 @@ class TradeSummary:
             ("Zero profit positions", "https://tradingstrategy.ai/glossary/position"),
             ("Positions open at the end", "https://tradingstrategy.ai/glossary/open-position"),
             ("Realised profit and loss", "https://tradingstrategy.ai/glossary/realised-profit-and-loss"),
+            ("Unrealised profit and loss", "https://tradingstrategy.ai/glossary/unrealised-profit-and-loss"),
             ("Portfolio unrealised value", "https://tradingstrategy.ai/glossary/unrealised-profit-and-loss"),
             ("Extra returns on lending pool interest", "https://tradingstrategy.ai/glossary/lending-pool"),
             ("Cash left at the end", None),
@@ -352,6 +357,7 @@ class TradeSummary:
             "Annualised return %": as_percent(self.annualised_return_percent),
             "Lifetime return %": as_percent(self.return_percent),
             "Realised PnL": as_dollar(self.realised_profit),
+            "Unrealised PnL": as_dollar(self.unrealised_profit) if self.unrealised_profit else as_dollar(0),
             'Trade period': as_duration(self.duration),
         }
         
@@ -679,6 +685,7 @@ class TradeAnalysis:
         won = lost = zero_loss = stop_losses = take_profits = undecided = 0
         open_value: USDollarAmount = 0
         profit: USDollarAmount = 0
+        unrealised_profit_usd: USDollarAmount = 0
         trade_volume = 0
         lp_fees_paid = 0
         
@@ -715,6 +722,7 @@ class TradeAnalysis:
 
             if position.is_open():
                 open_value += position.get_value()
+                unrealised_profit_usd += position.get_unrealised_profit_usd()
                 undecided += 1
                 continue
             
@@ -831,6 +839,7 @@ class TradeAnalysis:
             take_profits=take_profits,
             undecided=undecided,
             realised_profit=profit + extra_return,
+            unrealised_profit=unrealised_profit_usd,
             open_value=open_value,
             uninvested_cash=uninvested_cash,
             initial_cash=initial_cash or 0,  # Do not pass None for serialisation for live strategies
@@ -870,6 +879,25 @@ class TradeAnalysis:
             profit_factor=profit_factor,
         )
     
+    @staticmethod
+    def calculate_weighted_average_realised_profit(positions: Iterable[Tuple[PrimaryKey, TradingPosition]]):
+        """Calculate profit % of all positions, weighted by position size.
+        
+        :param positions:
+            Iterable of position ids
+
+        :return:
+            Profit % weighted by position size
+        """
+        total_profit = 0
+        total_value = 0
+
+        for pair_id, position in positions:
+            total_profit += position.get_realised_profit_usd() * position.get_value_at_open()
+            total_value += position.get_price_at_open() * position.get_value_at_open()
+
+        return total_profit / total_value if total_value else 0
+    
     def calculate_all_summary_stats_by_side(
         self,
         time_bucket: Optional[TimeBucket] = None,
@@ -905,7 +933,7 @@ class TradeAnalysis:
         all_stats['Short'] = short_stats[0]
 
         # left blank in long and short
-        blank_rows = ['Trading period length', 'Cash at start', 'Value at end', 'Cash left at the end', 'Max drawdown']
+        blank_rows = ['Trading period length', 'Cash at start', 'Value at end', 'Cash left at the end', 'Max drawdown', 'Max pullback of total capital']
 
         for row in blank_rows:
             if row in all_stats.index:
@@ -918,14 +946,10 @@ class TradeAnalysis:
 
         # get return % stats for long and short
         duration = all_stats_trade_summary.duration
-        cash_at_start = all_stats_trade_summary.initial_cash
         
-        realised_profit_long = long_stats_trade_summary.realised_profit
-        realised_profit_short = short_stats_trade_summary.realised_profit
-        
-        profit_long_pct = ((cash_at_start + realised_profit_long) - cash_at_start)/cash_at_start
-        profit_short_pct = ((cash_at_start + realised_profit_short) - cash_at_start)/cash_at_start
-        
+        profit_long_pct = self.calculate_weighted_average_realised_profit(self.get_long_positions())
+        profit_short_pct = self.calculate_weighted_average_realised_profit(self.get_short_positions())
+
         all_stats.loc['Return %', 'Long'] = format_value_for_summary_table(as_percent(profit_long_pct))
         all_stats.loc['Return %', 'Short'] = format_value_for_summary_table(as_percent(profit_short_pct))
         all_stats.loc['Annualised return %', 'Long'] = format_value_for_summary_table(as_percent(calculate_annualised_return(profit_long_pct, duration)))
