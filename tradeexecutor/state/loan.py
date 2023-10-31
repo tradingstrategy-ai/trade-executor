@@ -79,7 +79,7 @@ class Loan:
 
     def __repr__(self):
         asset_symbol = self.borrowed.asset.token_symbol if self.borrowed else ""
-        return f"<Loan, borrowed ${self.get_borrow_value()} {asset_symbol} for collateral ${self.get_collateral_value()}, at leverage {self.get_leverage()}>"
+        return f"<Loan, borrowed ${self.get_borrow_value()} {asset_symbol} for collateral ${self.get_collateral_value()}, at leverage {self.get_leverage()}, borrow price: {self.borrowed.last_usd_price}, collateral price: {self.collateral.last_usd_price}>"
 
     def clone(self) -> "Loan":
         """Clone this data structure for mutating."""

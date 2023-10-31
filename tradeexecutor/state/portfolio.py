@@ -990,6 +990,10 @@ class Portfolio:
         """Return currently open credit positions."""
         return [p for p in self.get_open_and_frozen_positions() if p.is_leverage()]
 
+    def get_current_interest_positions(self) -> List[TradingPosition]:
+        """Get lis of all positions for which we need to sync the on-chain interest"""
+        return self.get_current_credit_positions() + self.get_leverage_positions()
+
     def get_borrowed(self) -> USDollarAmount:
         return sum([p.get_borrowed() for p in self.get_open_and_frozen_positions()])
 

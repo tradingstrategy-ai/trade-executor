@@ -1251,6 +1251,12 @@ class PositionManager:
     ) -> List[TradeExecution]:
         """Close a short position
 
+        - Buy back the shorted token
+
+        - Release collateral and return it as cash to the reserves
+
+        - Move any gained interest back to the reserves as well
+
         :param position:
             Position to close.
 
@@ -1281,7 +1287,6 @@ class PositionManager:
             quantity = Decimal(quantity)
 
         # TODO: Hardcoded USD exchange rate
-        reserve_asset = self.strategy_universe.get_reserve_asset()
         price_structure = self.pricing_model.get_sell_price(self.timestamp, pair.underlying_spot_pair, 1)
 
         position, trade, _ = self.state.trade_short(

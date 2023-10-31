@@ -113,12 +113,12 @@ class BacktestExecutionModel(ExecutionModel):
 
         #
         base = trade.pair.base
-        quote = trade.pair.quote
+        # quote = trade.pair.quote
         reserve = trade.reserve_currency
 
         base_balance = self.wallet.get_balance(base.address)
-        quote_balance = self.wallet.get_balance(quote.address)
-        reserve_balance = self.wallet.get_balance(reserve.address)
+        # quote_balance = self.wallet.get_balance(quote.address)
+        # reserve_balance = self.wallet.get_balance(reserve.address)
 
         position = state.portfolio.get_existing_open_position_by_trading_pair(trade.pair)
 
@@ -132,15 +132,12 @@ class BacktestExecutionModel(ExecutionModel):
             executed_quantity, sell_amount_epsilon_fix = fix_sell_token_amount(base_balance, trade.planned_quantity)
             executed_reserve = abs(Decimal(trade.planned_quantity) * Decimal(trade.planned_price))
 
-        self.wallet.update_token_info(base)
-        self.wallet.update_token_info(reserve)
-
         if trade.is_buy():
-            self.wallet.update_balance(base.address, executed_quantity, f"spot buy trade #{trade.trade_id}")
-            self.wallet.update_balance(reserve.address, -executed_reserve, f"spot buy trade #{trade.trade_id}")
+            self.wallet.update_balance(base, executed_quantity, f"spot buy trade #{trade.trade_id}")
+            self.wallet.update_balance(reserve, -executed_reserve, f"spot buy trade #{trade.trade_id}")
         else:
-            self.wallet.update_balance(base.address, executed_quantity, f"spot sell #{trade.trade_id}")
-            self.wallet.update_balance(reserve.address, executed_reserve, f"spot sell #{trade.trade_id}")
+            self.wallet.update_balance(base, executed_quantity, f"spot sell #{trade.trade_id}")
+            self.wallet.update_balance(reserve, executed_reserve, f"spot sell #{trade.trade_id}")
 
         assert abs(executed_quantity) > 0, f"Expected executed_quantity for the trade to be above zero, got executed_quantity:{executed_quantity}, planned_quantity:{trade.planned_quantity}, trade is {trade}"
 
@@ -167,6 +164,8 @@ class BacktestExecutionModel(ExecutionModel):
         """
         assert trade.is_short(), "Leverage long is not supported yet"
 
+        # TODO: Correctly use fix_sell_token_amount() here to work around dust issues
+
         borrowed_token = trade.pair.base
         collateral_token = trade.pair.quote
         reserve_token = trade.reserve_currency
@@ -177,11 +176,18 @@ class BacktestExecutionModel(ExecutionModel):
         executed_collateral_consumption = trade.planned_collateral_consumption
         executed_collateral_allocation = trade.planned_collateral_allocation
 
+        assert isinstance(executed_reserve, Decimal)
+        assert isinstance(executed_quantity, Decimal)
+        assert isinstance(executed_collateral_consumption, Decimal)
+        assert isinstance(executed_collateral_allocation, Decimal)
+
+        logger.info("simulate_leverage(): wallet balances before update:\n%s", self.wallet.get_all_balances())
+
         # Here is a mismatch between spot and leverage:
         # base.underlying token, or executed_quantity, never appears in the wallet
         # as we do loan based trading
 
-        self.wallet.update_balance(reserve_token, -executed_reserve, "trade #{trade.trade_id} reserves")
+        self.wallet.update_balance(reserve_token, -executed_reserve, f"trade #{trade.trade_id} reserve updates")
 
         # The leveraged tokens appear in the wallet
         # aToken amount is original deposit + any leverage we do
@@ -291,7 +297,7 @@ class BacktestExecutionModel(ExecutionModel):
                 extra_help_message = ""
 
             raise BacktestExecutionFailed(f"\n"
-                f"  Trade #{idx} failed on strategy cycle {ts}\n"
+                f"  Trade {idx+1}. failed on strategy cycle {ts}\n"
                 f"  Execution of trade failed:\n  {trade}\n"
                 f"  Pair: {trade.pair}.\n"
                 f"  Trade type: {trade.trade_type.name}.\n"

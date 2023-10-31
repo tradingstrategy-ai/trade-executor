@@ -179,6 +179,18 @@ def plan_loan_update_for_short(
 
     - Check that the information looks correct for a short position.
 
+    :param loan:
+        Loan which is about to change.
+
+        Clone the existing loan, will be mutated in place.
+
+    :param position:
+        Associated trading position
+
+    :param trade:
+        The trade that is changing this loan
+
+
     """
     assert trade.is_short()
     assert len(position.trades) > 1, "Can be only called when closing/reducing/increasing/position"
@@ -188,10 +200,14 @@ def plan_loan_update_for_short(
 
     # TODO: How planned_collateral_consumption + planned_collateral_allocation
     # might not be the best way to do this, see test_short_decrease_size
+
+    available_collateral_interest = loan.collateral_interest.get_remaining_interest()
+
     loan.collateral.change_quantity_and_value(
         planned_collateral_consumption + planned_collateral_allocation,
         trade.reserve_currency_exchange_rate,
         trade.opened_at,
+        available_accrued_interest=available_collateral_interest,
     )
 
     # In short position, positive value reduces the borrowed amount

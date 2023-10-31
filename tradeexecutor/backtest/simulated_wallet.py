@@ -83,35 +83,67 @@ class SimulatedWallet:
 
         if isinstance(token, AssetIdentifier):
             self.update_token_info(token)
-            token = token.address
 
-        assert token.lower() == token, "No checksummed addresses"
         token_symbol = self.get_token_symbol(token)
         assert isinstance(delta, Decimal), f"Expected decimal got: {delta.__class__}: {delta}"
-        old_balance = self.balances.get(token, Decimal(0))
+        old_balance = self.get_balance(token)
         new_balance = old_balance + delta
 
         reason = reason or "unhinted reason"
         logger.info("Wallet balance for %s: %f -> %f (%+f), %s", token_symbol, old_balance, new_balance, delta, reason)
 
         if new_balance < 0:
-            raise OutOfSimulatedBalance(f"Simulated wallet balance went negative {new_balance} for token {token_symbol}, because of {reason}")
+            raise OutOfSimulatedBalance(f"Simulated wallet balance went negative {new_balance} for token {token_symbol}, because of {reason}.\nOld balance was {old_balance}")
 
         if new_balance <= epsilon:
             logger.info("Fixing dust balance to zero, calculated balance %f, epsilon %s", new_balance, epsilon)
-            new_balance = 0
+            new_balance = Decimal(0)
 
-        self.balances[token] = new_balance
+        self.set_balance(token, new_balance)
 
-    def set_balance(self, token_address: JSONHexAddress, amount: Decimal):
-        """Directly set balance."""
-        assert token_address.lower() == token_address, "No checksummed addresses"
+    def set_balance(self, token: JSONHexAddress | AssetIdentifier, amount: Decimal):
+        """Directly set balance.
+
+        :param token:
+            Token we receive or send.
+
+            Give either raw address or asset definition.
+
+            Any asset definion is automatically added to our internal tracking list for diagnostics.
+
+        :param amount:
+            New absolute balance.
+        """
+
+        if isinstance(token, AssetIdentifier):
+            self.update_token_info(token)
+            token_address = token.address
+        else:
+            token_address = token
+
+        assert token_address.lower() == token_address, f"No checksummed addresses: {token_address}"
+        assert token_address.startswith("0x")
         assert isinstance(amount, Decimal), f"Expected decimal got: {amount.__class__}: {amount}"
         self.balances[token_address] = amount
 
-    def rebase(self, token_address: JSONHexAddress, new_amount: Decimal):
-        """Set rebase token amount."""
-        self.set_balance(token_address, new_amount)
+    def rebase(self, token: JSONHexAddress | AssetIdentifier, new_amount: Decimal):
+        """Set rebase token amount.
+
+        aToken / vToken accrues interest or debt.
+
+        :param new_amount:
+            Abs token amount on the chain
+        """
+        if isinstance(token, AssetIdentifier):
+            token_address = token.address
+        elif isinstance(token, str):
+            token_address = token
+        else:
+            raise AssertionError(f"Does not understand: {token.__class__}: {token}")
+
+        assert token_address in self.balances, f"Cannot rebase token we do not have: {token}"
+
+        self.set_balance(token, new_amount)
 
     def get_balance(self, token: JSONHexAddress | AssetIdentifier) -> Decimal:
         """Get on-chain balance of one token.
@@ -120,9 +152,13 @@ class SimulatedWallet:
             Human-readable token balance
         """
         if isinstance(token, AssetIdentifier):
-            token = token.address
-        assert token.lower() == token, "No checksummed addresses"
-        return self.balances.get(token, Decimal(0))
+            token_address = token.address
+        elif isinstance(token, str):
+            token_address = token
+        else:
+            raise AssertionError(f"Does not understand: {token.__class__}: {token}")
+        assert token_address.lower() == token_address, f"Non-checksummed address required: {token}"
+        return self.balances.get(token_address, Decimal(0))
 
     def fetch_nonce_and_tx_hash(self) -> Tuple[int, str]:
         """Allocates a dummy nonce for a transaction.

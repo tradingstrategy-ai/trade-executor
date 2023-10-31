@@ -446,12 +446,10 @@ class ExecutionLoop:
 
         # Sync credit supply information before each tick.
         # This will update the latest accrued interest.
-        credit_positions = state.portfolio.get_current_credit_positions()
-        leverage_positions = state.portfolio.get_leverage_positions()
-        
-        to_be_synced = credit_positions + leverage_positions
+        to_be_synced = state.portfolio.get_current_interest_positions()
+
         if to_be_synced:
-            logger.info("We have %d credit positions and %d leverage positions open", len(credit_positions), len(leverage_positions))
+            logger.info("We have %d positions open that need interest syncing", len(to_be_synced))
 
             # TODO: This setup repeated in tick().
             # Modify tick() to take these as argument

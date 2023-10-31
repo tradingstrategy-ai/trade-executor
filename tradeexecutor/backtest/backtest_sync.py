@@ -45,16 +45,23 @@ class FundFlowEvent:
 class BacktestSyncModel(SyncModel):
     """Backtest sync model.
 
-    Simulate deposit events to the backtest wallet."""
+    Simulate deposit events to the backtest wallet.
 
-    def __init__(self, wallet: SimulatedWallet, initial_deposit_amount: Decimal):
-        assert isinstance(initial_deposit_amount, Decimal)
+    - Read on-chain simulated wallet and reflect its balances back to the state
+    """
+
+    def __init__(self, wallet: SimulatedWallet, initial_deposit_amount: Decimal | None = None):
         self.wallet = wallet
 
         #: Simulated deposit/redemption events pending to be processed
+        #:
+        #: Legacy code path.
+        #:
         self.fund_flow_queue: List[FundFlowEvent] = []
-        if initial_deposit_amount > 0:
-            self.fund_flow_queue.append(FundFlowEvent(datetime.datetime.utcnow(), initial_deposit_amount))
+        if initial_deposit_amount is not None:
+            assert isinstance(initial_deposit_amount, Decimal)
+            if initial_deposit_amount > 0:
+                self.fund_flow_queue.append(FundFlowEvent(datetime.datetime.utcnow(), initial_deposit_amount))
 
     def get_token_storage_address(self) -> Optional[JSONHexAddress]:
         return None
@@ -138,7 +145,7 @@ class BacktestSyncModel(SyncModel):
     def create_transaction_builder(self) -> None:
         """Backtesting does not need to care about how to build blockchain transactions."""
 
-    def calculate_accrued_interest(
+    def     calculate_accrued_interest(
         self,
         universe: TradingStrategyUniverse,
         position: TradingPosition,

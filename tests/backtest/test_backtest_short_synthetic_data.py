@@ -331,14 +331,21 @@ def test_backtest_open_and_close_short_synthetic_data(
     assert portfolio.get_cash() == pytest.approx(10802.63457378304)
     assert portfolio.get_net_asset_value(include_interest=True) == pytest.approx(10802.63457378304)
 
-    # Check token balances in the wallet
-    wallet = debug_dump["wallet"]
+    #
+    # Check token balances in the wallet.
+    # Here we have around 4.92191351965636473413804 USD interest on aUSD which we
+    # also need to get back to the wallet when we close the position.
+    #
+
+    wallet: SimulatedWallet = debug_dump["wallet"]
     balances = wallet.balances
     pair = position.pair
     usdc = pair.quote.underlying
     ausdc = pair.quote
     vweth = pair.base
     weth = pair.base.underlying
+    # print(wallet.get_all_balances())
+    # import ipdb ; ipdb.set_trace()
     assert balances[ausdc.address] == pytest.approx(Decimal(0))
     assert balances[vweth.address] == pytest.approx(Decimal(0))
     assert balances.get(weth.address, Decimal(0)) == pytest.approx(Decimal(0))

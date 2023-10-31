@@ -562,13 +562,26 @@ class AssetWithTrackedValue:
         price: USDollarPrice,
         when: datetime.datetime,
         allow_negative=False,
+        available_accrued_interest: Decimal = Decimal(0),
     ):
-        """The tracked asset amount is changing due to position increase/reduce."""
+        """The tracked asset amount is changing due to position increase/reduce.
+
+        :param allow_negative:
+            Backtesting helper parameter.
+
+            Bail out with an exception if delta is too high and balance would go negative.
+
+        :param available_accrued_interest:
+            How much interest we have gained.
+
+            To be used with ``allow_negative``.
+        """
         assert delta is not None, "Asset delta must be given"
         self.revalue(price, when)
 
         if not allow_negative:
-            assert sum_decimal((self.quantity, delta,)) >= 0, f"Tracked asset cannot go negative: {self}. Quantity: {self.quantity}, delta: {delta}"
+            total_available = self.quantity + available_accrued_interest
+            assert sum_decimal((total_available, delta,)) >= 0, f"Tracked asset cannot go negative: {self}. delta: {delta}, total available: {total_available}, quantity: {self.quantity}, interest: {available_accrued_interest}"
 
         self.quantity += delta
 

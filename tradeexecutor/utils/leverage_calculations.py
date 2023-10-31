@@ -281,7 +281,11 @@ class LeverageEstimate:
     ) -> "LeverageEstimate":
         """Reduce or close short position.
 
-        Assumes collateral is 1:1 USD.
+        Calculate the trade mounts needed to close a short position.
+
+        - Buy back shorted tokens
+
+        - Release any collateral
 
         See :py:class:`LeverageEstimate` for fee calculation example.
 
@@ -303,6 +307,8 @@ class LeverageEstimate:
             assert estimate.total_collateral_quantity == pytest.approx(Decimal(9979.99499749874937427080171))  # Collateral left after closing the position
             assert estimate.total_borrowed_quantity == 0  # open vWETH debt left after close
             assert estimate.lp_fees == pytest.approx(10.005002501250626)
+
+        We assume collateral is 1:1 USD.
 
         :param start_collateral:
             How much collateral we have at start.

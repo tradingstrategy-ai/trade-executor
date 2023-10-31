@@ -833,6 +833,7 @@ class TradingPosition(GenericPosition):
                     if closing:
 
                         # Close the short
+                        assert self.is_open()
 
                         assert reserve is None, "reserve calculated automatically when closing a short position"
                         # assert quantity is None, "quantity calculated automatically when closing a short position"
@@ -856,8 +857,11 @@ class TradingPosition(GenericPosition):
                         # We need to use USD from the collateral to pay back the loan
                         planned_collateral_consumption = leverage_estimate.additional_collateral_quantity
 
+                        # TODO: stablecoin 1:1 USD assumption here
+                        accured_interest = Decimal(self.get_accrued_interest())
+
                         # Any leftover USD from the collateral is released to the reserves
-                        planned_collateral_allocation = -leverage_estimate.total_collateral_quantity
+                        planned_collateral_allocation = -leverage_estimate.total_collateral_quantity - accured_interest
 
                         lp_fees_estimated = leverage_estimate.lp_fees
 
