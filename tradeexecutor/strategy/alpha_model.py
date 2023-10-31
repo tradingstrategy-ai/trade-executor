@@ -713,6 +713,7 @@ class AlphaModel:
         for signal in self.iterate_signals():
 
             # Trades that we will execute for the position for this signal
+            # Trades that we will execute for the position for this signal
             # A signal may cause multiple trades, as e.g.
             # closing a short position and opening a long when the signal goes from -1 to 1
             # will cause 2 trades (close short, open long)
@@ -736,8 +737,8 @@ class AlphaModel:
                     signal.profit_before_trades = 0
 
             logger.info("Rebalancing %s,\n trading as %s,\nold weight: %f, new weight: %f, diff: %f USD",
-                        underlying,
-                        synthetic,
+                        underlying.base.token_symbol,
+                        synthetic.base.token_symbol,
                         signal.old_weight,
                         signal.normalised_weight,
                         dollar_diff)
@@ -764,7 +765,7 @@ class AlphaModel:
                     # so close any old position
                     if signal.is_flipping():
 
-                        logger.info("Alpha model signal flipping for %s: %s, new strenght %f", signal.pair.get_pricing_pair().base.token_symbol, signal.get_flip_label(), signal.signal)
+                        logger.info("Alpha model signal flipping for %s: %s, new strength %f", signal.pair.get_pricing_pair().base.token_symbol, signal.get_flip_label(), signal.signal)
 
                         old_position = position_manager.get_current_position_for_pair(signal.old_synthetic_pair)
                         if old_position:
