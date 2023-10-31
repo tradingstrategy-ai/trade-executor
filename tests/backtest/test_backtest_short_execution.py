@@ -224,6 +224,8 @@ def test_open_and_close_one_short(
     pricing_model,
     weth_usdc: TradingPairIdentifier,
     aave_usdc: TradingPairIdentifier,
+    weth: AssetIdentifier,
+    usdc: AssetIdentifier,
     start_timestamp,
     execution_model: BacktestExecutionModel,
     routing_model: BacktestRoutingModel,
@@ -231,7 +233,8 @@ def test_open_and_close_one_short(
 ):
     """Open and close one short position."""
 
-    # Open WETH/USDC and AAVE/USDC shorts
+
+    portfolio = state.portfolio
     trades = []
     simulated_time = start_timestamp + datetime.timedelta(days=1)
 
@@ -242,6 +245,7 @@ def test_open_and_close_one_short(
         pricing_model,
     )
 
+    # Open WETH/USDC short
     trades += position_manager.open_short(
         weth_usdc,
         500.0,
@@ -283,6 +287,15 @@ def test_open_and_close_one_short(
 
     assert any(t.is_success() for t in trades)
     assert len(state.portfolio.closed_positions) == 1
+
+    assert portfolio.get_cash() == pytest.approx(9996.995486459378)  # Lost on fees
+    assert portfolio.get_net_asset_value() == pytest.approx(9996.995486459378)  # All in cash
+
+    # Check that we have cleared the wallet, including dust
+    assert wallet.get_balance(weth) == 0
+    assert wallet.get_balance(eth_shorting_pair.base) == 0
+    assert wallet.get_balance(eth_shorting_pair.quote) == 0
+    assert wallet.get_balance(usdc) == pytest.approx(Decimal(9996.995486459378))
 
 
 def test_open_and_close_two_shorts(
@@ -344,14 +357,14 @@ def test_open_and_close_two_shorts(
         pricing_model,
     )
 
+    # Close AAVE short
     aave_shorting_pair = strategy_universe.get_shorting_pair(aave_usdc)
     aave_short_position = position_manager.get_current_position_for_pair(aave_shorting_pair)
-
     trades += position_manager.close_short(aave_short_position)
 
+    # Close ETH short
     eth_shorting_pair = strategy_universe.get_shorting_pair(weth_usdc)
     eth_short_position = position_manager.get_current_position_for_pair(eth_shorting_pair)
-
     trades += position_manager.close_short(eth_short_position)
 
     execution_model.execute_trades(
@@ -371,10 +384,10 @@ def test_open_and_close_two_shorts(
     wallet = execution_model.wallet
 
     # Check that we have cleared the wallet, including dust
-    assert wallet.get_balance(usdc) == pytest.approx(Decimal(9995.192778335006))
     assert wallet.get_balance(weth) == 0
     assert wallet.get_balance(aave) == 0
     assert wallet.get_balance(aave_shorting_pair.base) == 0
     assert wallet.get_balance(aave_shorting_pair.quote) == 0
     assert wallet.get_balance(eth_shorting_pair.base) == 0
     assert wallet.get_balance(eth_shorting_pair.quote) == 0
+    assert wallet.get_balance(usdc) == pytest.approx(Decimal(9995.192778335006))
