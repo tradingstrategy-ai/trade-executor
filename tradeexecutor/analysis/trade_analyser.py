@@ -357,6 +357,7 @@ class TradeSummary:
             "Annualised return %": as_percent(self.annualised_return_percent),
             "Lifetime return %": as_percent(self.return_percent),
             "Realised PnL": as_dollar(self.realised_profit),
+            "Unrealised PnL": as_dollar(self.unrealised_profit) if self.unrealised_profit else as_dollar(0),
             'Trade period': as_duration(self.duration),
         }
         
