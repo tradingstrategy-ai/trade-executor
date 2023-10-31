@@ -75,7 +75,6 @@ class TradeSummary:
     stop_losses: int
     undecided: int
     realised_profit: USDollarAmount
-    unrealised_profit: USDollarAmount
     open_value: USDollarAmount
     uninvested_cash: USDollarAmount
 
@@ -168,6 +167,9 @@ class TradeSummary:
 
     average_duration_of_zero_loss_trades: Optional[datetime.timedelta] = None
     average_duration_of_all_trades: Optional[datetime.timedelta] = None
+
+    unrealised_profit: Optional[USDollarAmount] = None
+
 
     def __post_init__(self):
 
