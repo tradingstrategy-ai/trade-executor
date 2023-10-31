@@ -292,6 +292,28 @@ class TradingPairSignal:
         else:
             return False
 
+    def get_flip_label(self) -> str:
+        """Get flip label"""
+
+        if self.old_synthetic_pair.is_spot():
+            if self.signal < 0:
+                return "spot -> short"
+            elif self.signal == 0:
+                return "spot -> close"
+            else:
+                return "no flip"
+
+        elif self.old_synthetic_pair.is_short():
+            if self.signal > 0:
+                return "short -> spot"
+            elif self.signal == 0:
+                return "short -> close"
+            else:
+                return "no flip"
+
+        else:
+            raise AssertionError(f"Unsupported")
+
 
 @dataclass_json
 @dataclass(slots=True)
@@ -741,7 +763,9 @@ class AlphaModel:
                     # Signal is switching between short/long,
                     # so close any old position
                     if signal.is_flipping():
-                        logger.info("Switching between long/short/spot for %s", signal)
+
+                        logger.info("Alpha model signal flipping for %s: %s, new strenght %f", signal.pair.get_pricing_pair().base.token_symbol, signal.get_flip_label(), signal.signal)
+
                         old_position = position_manager.get_current_position_for_pair(signal.old_synthetic_pair)
                         if old_position:
                             position_rebalance_trades += position_manager.close_position(
@@ -801,7 +825,8 @@ class AlphaModel:
                     signal.position_id = last_trade.position_id
 
             if position_rebalance_trades:
-                logger.info("Adjusting holdings for %s: %s", underlying, position_rebalance_trades[0])
+                trade_str = ", ".join(t.get_short_label() for t in position_rebalance_trades)
+                logger.info("Adjusting holdings for %s: %s", underlying.get_ticker(), trade_str)
             else:
                 logger.info("No trades for: %s", underlying)
 

@@ -299,7 +299,7 @@ class StrategyRunner(abc.ABC):
             logger.log(
                 log_level,
                 "Trade quantity and reserve match for pre an post-execution for: %s\n  Estimated reserve %s, executed reserve %s\n  Estimated quantity %s, executed quantity %s\n  Reserve drift %f %%, quantity drift %f %%",
-                t,
+                t.get_short_label(),
                 t.planned_reserve,
                 t.executed_reserve,
                 t.planned_quantity,

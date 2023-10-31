@@ -739,8 +739,8 @@ class PositionManager:
             assert quantity_delta is not None
             assert quantity_delta < 0, f"Received non-negative sell quantity {quantity_delta} for {pair}"
 
-            position = self.state.portfolio.get_position_by_trading_pair(pair)
-            assert position is not None, f"Assumed {pair} has open position because of attempt sell at {dollar_delta} USD adjust"
+            # position = self.state.portfolio.get_position_by_trading_pair(pair)
+            # assert position is not None, f"Assumed {pair} has open short position because of attempt sell at {dollar_delta} USD adjust, but did not get open position"
 
             position, trade, created = self.state.create_trade(
                 self.timestamp,
@@ -961,7 +961,7 @@ class PositionManager:
             if trade_type is None:
                 trade_type = TradeType.rebalance
 
-            return self.close_short_position(
+            return self.close_short(
                 position,
                 trade_type=trade_type,
                 notes=notes,

@@ -574,7 +574,7 @@ class State:
 
         trade.started_at = ts
 
-        logger.info("Trade #%d started at %s", trade.trade_id, ts)
+        logger.info("Trade %s started at %s", trade.get_short_label(), ts)
 
         # TODO: Legacy attributes that need to go away
         if txid is not None:
@@ -687,7 +687,7 @@ class State:
                     trade.paid_interest = position.loan.repay_interest()
 
         else:
-            logger.info("Position still open after a trade: %s", position)
+            logger.info("Position #%d still open after a trade: %s", position.position_id, trade.get_short_label())
 
     def mark_trade_failed(self, failed_at: datetime.datetime, trade: TradeExecution):
         """Unroll the allocated capital."""

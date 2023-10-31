@@ -99,7 +99,7 @@ class SimulatedWallet:
         if new_balance < 0:
             raise OutOfSimulatedBalance(f"Simulated wallet balance went negative {new_balance} for token {token_symbol}, because of {reason}.\nOld balance was {old_balance}")
 
-        if new_balance <= epsilon:
+        if new_balance != 0 and new_balance <= epsilon:
             logger.info("Fixing dust balance to zero, calculated balance %f, epsilon %s", new_balance, epsilon)
             new_balance = Decimal(0)
 
@@ -175,12 +175,17 @@ class SimulatedWallet:
         self.nonce += 1
         return nonce, tx_hash
 
-    def get_token_symbol(self, address: JSONHexAddress) -> str:
+    def get_token_symbol(self, token: JSONHexAddress | AssetIdentifier) -> str:
         """Get the human readable name of token for diagnostics output."""
-        asset = self.tokens.get(address, {})
+
+        if isinstance(token, AssetIdentifier):
+            return token.token_symbol
+
+        # Cached symbol
+        asset = self.tokens.get(token, {})
         if asset:
             return asset.token_symbol
-        return f"<token {address}>"
+        return f"<token {token}>"
 
     def update_token_info(self, asset: AssetIdentifier):
         """Set the token info for a particular ERC-20.

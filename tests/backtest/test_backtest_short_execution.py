@@ -503,8 +503,7 @@ def test_open_and_close_one_short_with_interest(
     assert len(state.portfolio.closed_positions) == 1
 
     #
-    # TODO: %0.30 fee should be paid in both ways. Looks like we have
-    # wee only one one side: $10,000 * 0.30 = $3
+    # TODO: %0.30 fee to close the position is covered from interest?
     #
 
     # Check that we have cleared the wallet, including dust

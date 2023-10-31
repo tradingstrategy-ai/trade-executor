@@ -181,7 +181,7 @@ class BacktestExecutionModel(ExecutionModel):
         assert isinstance(executed_collateral_consumption, Decimal)
         assert isinstance(executed_collateral_allocation, Decimal)
 
-        logger.info("simulate_leverage(): wallet balances before update:\n%s", self.wallet.get_all_balances())
+        logger.info("simulate_leverage(): wallet balances before updating for %s:\n%s", trade.get_short_label(), self.wallet.get_all_balances())
 
         # Here is a mismatch between spot and leverage:
         # base.underlying token, or executed_quantity, never appears in the wallet
@@ -217,7 +217,7 @@ class BacktestExecutionModel(ExecutionModel):
 
         assert abs(executed_quantity) > 0, f"Expected executed_quantity for the trade to be above zero, got executed_quantity:{executed_quantity}, planned_quantity:{trade.planned_quantity}, trade is {trade}"
 
-        logger.info("simulate_leverage(): wallet balances after update:\n%s", self.wallet.get_all_balances())
+        logger.info("simulate_leverage(): wallet balances after updating for %s:\n%s", trade.get_short_label(), self.wallet.get_all_balances())
 
         # for leverage short, we use collateral token as the reserve currency
         # so return executed_collateral_quantity here to correctly calculate the price
