@@ -202,7 +202,7 @@ class BacktestExecutionModel(ExecutionModel):
         #    >
         # remaining_collateral = self.wallet.get_balance(collateral_address)
         # import ipdb ; ipdb.set_trace()
-        collateral_token_change = trade.executed_collateral_allocation
+        collateral_token_change = executed_collateral_allocation
 
         if collateral_token_change is not None:
             # Convert reserve to aToken

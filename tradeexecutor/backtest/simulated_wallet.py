@@ -12,7 +12,10 @@ import logging
 from decimal import Decimal
 from typing import Dict, Tuple
 
+import pandas as pd
+
 from tradeexecutor.state.identifier import AssetIdentifier
+from tradeexecutor.state.trade import QUANTITY_EPSILON
 from tradeexecutor.state.types import JSONHexAddress
 
 
@@ -30,7 +33,12 @@ class OutOfSimulatedBalance(Exception):
 class SimulatedWallet:
     """A wallet that keeps token balances by ERC-20 address.
 
-    - We also simulate incoming and outgoing aToken and vToken amounts with :py:meth:`rebalance`.
+    - Simulates different incoming and outgoing tokens from a wallet includive, aToken and vToken interest amounts with :py:meth:`rebalance`.
+
+    - If a backtest tries to transfer a token it does not have, or does not have enough of it,
+      raise an error
+
+    - Will catch bugs in internal accounting
     """
 
     def __init__(self):
@@ -43,7 +51,13 @@ class SimulatedWallet:
         #: Start with zero nonce like Ethereum acconts
         self.nonce = 0
 
-    def update_balance(self, token: JSONHexAddress | AssetIdentifier, delta: Decimal, reason: str = None):
+    def update_balance(
+        self,
+        token: JSONHexAddress | AssetIdentifier,
+        delta: Decimal,
+        reason: str = None,
+        epsilon=QUANTITY_EPSILON,
+    ):
         """Change the token balance of some delta.
 
         Check that balance does not go zero.
@@ -62,6 +76,9 @@ class SimulatedWallet:
             Reason for this change.
 
             Only used for backtesting diagnostics.
+
+        :param epsilon:
+            If the balance goes below this dust threshold, go all the way to zero
         """
 
         if isinstance(token, AssetIdentifier):
@@ -79,6 +96,10 @@ class SimulatedWallet:
 
         if new_balance < 0:
             raise OutOfSimulatedBalance(f"Simulated wallet balance went negative {new_balance} for token {token_symbol}, because of {reason}")
+
+        if new_balance <= epsilon:
+            logger.info("Fixing dust balance to zero, calculated balance %f, epsilon %s", new_balance, epsilon)
+            new_balance = 0
 
         self.balances[token] = new_balance
 
@@ -126,8 +147,34 @@ class SimulatedWallet:
 
         This way the wallet has metadata on what token it has and
         can produce better diagnostics output.
+
+        Automatically called by :py:meth:`update_balance`.
         """
         assert isinstance(asset, AssetIdentifier)
         self.tokens[asset.address] = asset
 
+    def get_all_balances(self) -> pd.DataFrame:
+        """Show the status of the wallet as a printable DataFrame.
 
+        Example:
+
+        .. code-block:: python
+
+            print(wallet.get_all_balances())
+
+        Output:
+
+        .. code-block:: text
+
+                                          Balance
+            Token
+            USDC                             9500
+            aUSDC   998.4999999999999999687749774
+            vWETH  0.3003021039165400376391259260
+
+        """
+        tokens = sorted([a for a in self.balances.keys()])
+        data = [(self.get_token_symbol(a), self.get_balance(a)) for a in tokens]
+        df = pd.DataFrame(data, columns=["Token", "Balance"])
+        df = df.set_index("Token")
+        return df
