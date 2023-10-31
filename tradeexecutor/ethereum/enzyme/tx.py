@@ -16,6 +16,7 @@ from eth_defi.tx import AssetDelta
 from tradeexecutor.ethereum.tx import TransactionBuilder
 from tradeexecutor.state.blockhain_transaction import BlockchainTransaction, BlockchainTransactionType, JSONAssetDelta
 from tradeexecutor.state.pickle_over_json import encode_pickle_over_json
+from tradeexecutor.state.types import Percent
 
 logger = logging.getLogger(__name__)
 
@@ -33,7 +34,7 @@ class EnzymeTransactionBuilder(TransactionBuilder):
     def __init__(self,
                  hot_wallet: HotWallet,
                  vault: Vault,
-                 vault_slippage_tolerance: float = 0.9999,
+                 vault_slippage_tolerance: Percent = 0.98,
                  ):
         """
 
@@ -48,14 +49,18 @@ class EnzymeTransactionBuilder(TransactionBuilder):
             slippage tolerance checks (vs. DEX checks) to avoid slippage
             tolerance failures because of rounding errors.
 
-            Default to 1 BPS.
+            Default to 200 BPS.
 
-            Set `1` to disable.
+            Must always be more than trade slippage tolerance,
+            or trades may fail when vault receives the assets.
+
+            Cannot be disabled.
 
             Applies to :py:class:`eth_defi.tx.AssetDelta`.
         """
         super().__init__(vault.web3)
         self.vault_controlled_wallet = VaultControlledWallet(vault, hot_wallet)
+        assert vault_slippage_tolerance > 0
         assert vault_slippage_tolerance <= 1, f"{vault_slippage_tolerance =}. Cannot expect more incoming assets than we trade."
         self.vault_slippage_tolerance = vault_slippage_tolerance
 
@@ -68,6 +73,9 @@ class EnzymeTransactionBuilder(TransactionBuilder):
     def hot_wallet(self) -> HotWallet:
         """Get the underlying web3 connection."""
         return self.vault_controlled_wallet.hot_wallet
+
+    def get_internal_slippage_tolerance(self) -> Percent | None:
+        return self.vault_slippage_tolerance
 
     def init(self):
         self.hot_wallet.sync_nonce(self.web3)
@@ -126,10 +134,15 @@ class EnzymeTransactionBuilder(TransactionBuilder):
         if gas_limit is None:
             gas_limit = 2_500_000
 
+        def present(a):
+            if type(a) == bytes:
+                return "0x" + a.hex()
+            return str(a)
+
         logger.info("Enzyme tx for %s.%s(%s), gas limit %d, deltas %s",
                     contract.address,
                     args_bound_func.fn_name,
-                    ", ".join([str(a) for a in args_bound_func.args]),
+                    ", ".join([present(a) for a in args_bound_func.args]),
                     gas_limit,
                     asset_deltas)
 

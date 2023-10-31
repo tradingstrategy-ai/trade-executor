@@ -5,8 +5,10 @@ import datetime
 import pprint
 from _decimal import Decimal
 from functools import partial
+from types import NoneType
 from typing import cast, List, Optional, Tuple, Iterable
 
+from eth_defi.event_reader.conversion import convert_jsonrpc_value_to_int
 from web3.types import BlockIdentifier
 
 from eth_defi.provider.broken_provider import get_block_tip_latency, get_almost_latest_block_number
@@ -31,6 +33,7 @@ from tradeexecutor.state.reserve import ReservePosition
 from tradeexecutor.state.state import State
 from tradeexecutor.state.balance_update import BalanceUpdate, BalanceUpdateCause, BalanceUpdatePositionType
 from tradeexecutor.state.sync import BalanceEventRef
+from tradeexecutor.state.types import BlockNumber
 from tradeexecutor.strategy.account_correction import check_accounts
 from tradeexecutor.strategy.sync_model import SyncModel, OnChainBalance
 from tradingstrategy.chain import ChainId
@@ -222,6 +225,7 @@ class EnzymeVaultSyncModel(SyncModel):
             tx_hash=event.event_data["transactionHash"],
             log_index=event.event_data["logIndex"],
             position_id=None,
+            block_number=convert_jsonrpc_value_to_int(event.event_data["blockNumber"]),
         )
 
         reserve_position.add_balance_update_event(evt)
@@ -311,6 +315,7 @@ class EnzymeVaultSyncModel(SyncModel):
                 log_index=event.event_data["logIndex"],
                 position_id=position_id,
                 usd_value=usd_value,
+                block_number=convert_jsonrpc_value_to_int(event.event_data["blockNumber"]),
             )
 
             position.add_balance_update_event(evt)
@@ -327,12 +332,12 @@ class EnzymeVaultSyncModel(SyncModel):
             case Deposit():
                 # Deposit generated only one event
                 event = cast(Deposit, event)
-                logger.info("Procsesing Enzyme deposit %s", event.event_data)
+                logger.info("Processing Enzyme deposit %s", event.event_data)
                 return [self.process_deposit(portfolio, event, strategy_cycle_ts)]
             case Redemption():
                 # Enzyme in-kind redemption can generate updates for multiple assets
                 event = cast(Redemption, event)
-                logger.info("Procsesing Enzyme redemption %s", event.event_data)
+                logger.info("Processing Enzyme redemption %s", event.event_data)
                 # Sanity check: Make sure there has not been redemptions from the vault before the strategy was initialised.
                 # Make sure we do not get events that are from the time before
                 # the state was initialised
@@ -486,20 +491,8 @@ class EnzymeVaultSyncModel(SyncModel):
                       strategy_cycle_ts: datetime.datetime,
                       state: State,
                       supported_reserves: Optional[List[AssetIdentifier]] = None,
+                      end_block: BlockNumber | NoneType = None,
                       ) -> List[BalanceUpdate]:
-        """Apply the balance sync before each strategy cycle.
-
-        - Deposits by shareholders
-
-        - Redemptions
-
-        :return:
-            List of new treasury balance events
-
-        :raise ChainReorganisationDetected:
-            When any if the block data in our internal buffer
-            does not match those provided by events.
-        """
 
         web3 = self.web3
         sync = state.sync
@@ -515,10 +508,12 @@ class EnzymeVaultSyncModel(SyncModel):
             start_block = sync.deployment.block_number
 
         web3 = self.web3
-        latency = get_block_tip_latency(web3)
-        end_block = max(1, web3.eth.block_number - latency)
 
-        logger.info(f"Starting treasury sync for vault %s, comptroller %s, looking block range {start_block:,} - {end_block:,}, block tip latency is %d", self.vault.address, self.vault.comptroller.address, latency)
+        if not end_block:
+            # Legacy
+            end_block = get_almost_latest_block_number(web3)
+
+        logger.info(f"Starting treasury sync for vault %s, comptroller %s, looking block range {start_block:,} - {end_block:,}, block tip latency is %d", self.vault.address, self.vault.comptroller.address)
 
         reader, broken_quicknode = self.create_event_reader()
 

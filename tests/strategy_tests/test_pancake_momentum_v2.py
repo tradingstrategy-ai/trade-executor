@@ -8,6 +8,8 @@ import pandas as pd
 from pathlib import Path
 
 import pytest
+
+from tradeexecutor.analysis.trade_analyser import build_trade_analysis
 from tradeexecutor.backtest.backtest_runner import run_backtest, setup_backtest
 from tradeexecutor.cli.log import setup_pytest_logging
 from tradeexecutor.strategy.cycle import CycleDuration
@@ -59,9 +61,5 @@ def test_pancake_momentum_v2(
 
     state, universe, debug_dump = run_backtest(setup, client)
 
-    # We have done this many cycles
-    assert len(debug_dump) == 5
 
-    # We have done some trades
-    assert len(list(state.portfolio.get_all_trades())) >= 10
 

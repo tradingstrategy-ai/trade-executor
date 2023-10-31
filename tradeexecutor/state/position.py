@@ -330,6 +330,11 @@ class TradingPosition(GenericPosition):
         """
         return next(reversed(self.trades.values()))
 
+    def is_spot(self) -> bool:
+        """Is this a spot market position."""
+        assert len(self.trades) > 0, "Cannot determine if position is long or short because there are no trades"
+        return self.get_first_trade().is_spot()
+
     def is_long(self) -> bool:
         """Is this position long on the underlying base asset.
 
@@ -725,6 +730,7 @@ class TradingPosition(GenericPosition):
                    closing: Optional[bool] = False,
                    planned_collateral_consumption: Optional[Decimal] = None,
                    planned_collateral_allocation: Optional[Decimal] = None,
+                   exchange_name: Optional[str] = None,
                    ) -> TradeExecution:
         """Open a new trade on position.
 
@@ -811,6 +817,9 @@ class TradingPosition(GenericPosition):
             case TradingPairKind.lending_protocol_short:
 
                 if len(self.trades) == 0:
+
+                    # Open a new short
+
                     assert reserve is not None, "Both reserve and quantity needs to be given for lending protocol short open"
                     assert quantity is not None, "Both reserve and quantity needs to be given for lending protocol short open"
                     assert not closing, "Cannot close position not yet open"
@@ -822,6 +831,9 @@ class TradingPosition(GenericPosition):
                 else:
 
                     if closing:
+
+                        # Close the short
+
                         assert reserve is None, "reserve calculated automatically when closing a short position"
                         # assert quantity is None, "quantity calculated automatically when closing a short position"
                         assert not planned_collateral_consumption, "planned_collateral_consumption set automatically when closing a short position"
@@ -850,8 +862,14 @@ class TradingPosition(GenericPosition):
                         lp_fees_estimated = leverage_estimate.lp_fees
 
                     else:
+
+                        # Increase/decrease the position size
                         assert quantity is not None, "For increasing/reducing short position quantity must be given"
-                        planned_collateral_consumption = -quantity * Decimal(self.loan.borrowed.last_usd_price)
+
+                        if planned_collateral_consumption is None:
+                            # TODO: Explain / check if this default makes sense
+                            planned_collateral_consumption = -quantity * Decimal(self.loan.borrowed.last_usd_price)
+
                         planned_collateral_allocation = planned_collateral_allocation
 
                 assert reserve_currency_price, f"Collateral price missing"
@@ -901,6 +919,8 @@ class TradingPosition(GenericPosition):
             reserve_currency_exchange_rate=reserve_currency_price,
             planned_collateral_allocation=planned_collateral_allocation,
             planned_collateral_consumption=planned_collateral_consumption,
+            exchange_name=exchange_name,
+            closing=closing,
         )
 
         self.trades[trade.trade_id] = trade
@@ -1017,7 +1037,7 @@ class TradingPosition(GenericPosition):
     def get_price_at_open(self) -> USDollarAmount:
         """Legacy.
         """
-        warnings.warn('This fuction is deprecated. Use TradingPosition.get_opening_price() instead', DeprecationWarning, stacklevel=2)
+        warnings.warn('This function is deprecated. Use TradingPosition.get_opening_price() instead', DeprecationWarning, stacklevel=2)
         return self.get_opening_price()
 
     def get_quantity_at_open(self) -> Decimal:
@@ -1304,6 +1324,9 @@ class TradingPosition(GenericPosition):
 
         :return:
             If the position made 1% profit returns 1.01.
+
+            Return ``0`` if the position profitability cannot be calculated,
+            e.g. due to broken trades.
         """
         
         assert not self.is_open(), "Cannot calculate realised profit for open positions"
@@ -1313,6 +1336,10 @@ class TradingPosition(GenericPosition):
 
         if buy_value == 0:
             # Repaired trade
+            return 0
+        
+        if sell_value == 0:
+            # Another way of damaged/repaired trade
             return 0
 
         return sell_value / buy_value - 1

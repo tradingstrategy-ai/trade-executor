@@ -16,8 +16,9 @@ from tradeexecutor.state.identifier import (
     TradingPairKind,
 )
 from tradeexecutor.state.interest import Interest
-from tradeexecutor.state.types import LeverageMultiplier, USDollarAmount
+from tradeexecutor.state.types import LeverageMultiplier, USDollarAmount, USDollarPrice
 from tradeexecutor.utils.accuracy import ZERO_DECIMAL, ensure_exact_zero
+from tradeexecutor.utils.leverage_calculations import LeverageEstimate
 
 #: Health Factor: hF=dC/d, if lower than 1, the account can be liquidated
 #:
@@ -313,6 +314,51 @@ class Loan:
         usd_value = borrowed_usd * (1 + 1 / leverage)
         return Decimal(usd_value / self.collateral.last_usd_price)
 
+    def calculate_size_adjust(
+        self,
+        collater_adjust: Decimal,
+        borrowed_asset_price: USDollarPrice = None,
+        leverage: LeverageMultiplier = None,
+    ) -> Decimal:
+        """Calculate the collateral amount we need to hit a target leverage.
+
+        Assume ``collateral_adjust`` amount of collateral
+        is deposited/withdrawn. Calculate the amount of borrowed
+        token we need to trade to
+
+        :param collateral_adjust:
+            Are we adding or removing collateral.
+
+        :param borrowed_asset_price:
+            The currentprice of the borrowed asset.
+
+            If not given use the cached value.
+
+        :param leverage:
+            The target leverage level.
+
+            If not given use the existing leverage.
+
+        :return:
+            Positive to buy more borrowed token, negative to sell more.
+        """
+        if not leverage:
+            leverage = self.get_leverage()
+
+        if not borrowed_asset_price:
+            borrowed_asset_price = self.borrowed.last_usd_price
+
+        if collater_adjust > 0:
+            estimate = LeverageEstimate.open_short(
+                collater_adjust,
+                leverage,
+                borrowed_asset_price,
+                self.pair,
+            )
+            return estimate.borrowed_quantity
+        else:
+            raise NotImplementedError(f"Not implemented for negative collateral adjust, received {collater_adjust}")
+
     def check_health(self, desired_health_factor=1):
         """Check if this loan is healthy.
 
@@ -331,3 +377,4 @@ class Loan:
                 f"Collateral {self.collateral.get_usd_value()} USD.\n"
                 f"Borrowed {self.borrowed.quantity} {self.borrowed.asset.token_symbol} {self.borrowed.get_usd_value()} USD.\n"
             )
+

@@ -99,6 +99,12 @@ def universe(request, persistent_test_client, execution_context) -> TradingStrat
 
 
 @pytest.fixture(scope="module")
+def strategy_universe(universe):
+    """Legacy alias. Use strategy_universe."""
+    return universe
+
+
+@pytest.fixture(scope="module")
 def stop_loss_universe(request, persistent_test_client, execution_context) -> TradingStrategyUniverse:
     """Backtesting data universe w/stop loss data.
 
@@ -150,23 +156,23 @@ def stop_loss_universe(request, persistent_test_client, execution_context) -> Tr
 
 
 @pytest.fixture(scope="module")
-def wbnb(request, universe) -> AssetIdentifier:
+def wbnb(request, strategy_universe) -> AssetIdentifier:
     """WBNB asset."""
-    token = translate_token(universe.data_universe.pairs.get_token("0xbb4CdB9CBd36B01bD1cBaEBF2De08d9173bc095c"))
+    token = translate_token(strategy_universe.data_universe.pairs.get_token("0xbb4CdB9CBd36B01bD1cBaEBF2De08d9173bc095c"))
     return token
 
 
 @pytest.fixture(scope="module")
-def busd(request, universe) -> AssetIdentifier:
+def busd(request, strategy_universe) -> AssetIdentifier:
     """bUSD asset."""
-    token = translate_token(universe.data_universe.pairs.get_token("0xe9e7CEA3DedcA5984780Bafc599bD69ADd087D56"))
+    token = translate_token(strategy_universe.data_universe.pairs.get_token("0xe9e7CEA3DedcA5984780Bafc599bD69ADd087D56"))
     return token
 
 
 @pytest.fixture(scope="module")
-def cake(request, universe) -> AssetIdentifier:
+def cake(request, strategy_universe) -> AssetIdentifier:
     """Cake asset."""
-    token = translate_token(universe.data_universe.pairs.get_token("0x0E09FaBB73Bd3Ade0a17ECC321fD13a19e81cE82"))
+    token = translate_token(strategy_universe.data_universe.pairs.get_token("0x0E09FaBB73Bd3Ade0a17ECC321fD13a19e81cE82"))
     return token
 
 
@@ -182,8 +188,8 @@ def routing_model() -> BacktestRoutingModel:
 
 
 @pytest.fixture(scope="module")
-def pricing_model(routing_model, universe) -> BacktestSimplePricingModel:
-    return BacktestSimplePricingModel(universe, routing_model)
+def pricing_model(routing_model, strategy_universe) -> BacktestSimplePricingModel:
+    return BacktestSimplePricingModel(strategy_universe, routing_model)
 
 
 @pytest.fixture(scope="module")
@@ -192,7 +198,7 @@ def valuation_model(pricing_model) -> BacktestValuationModel:
 
 
 @pytest.fixture()
-def wallet(universe) -> SimulatedWallet:
+def wallet(strategy_universe) -> SimulatedWallet:
     return SimulatedWallet()
 
 
@@ -203,12 +209,12 @@ def deposit_syncer(wallet) -> BacktestSyncer:
 
 
 @pytest.fixture()
-def state(universe: TradingStrategyUniverse, deposit_syncer: BacktestSyncer) -> State:
+def state(strategy_universe, deposit_syncer: BacktestSyncer) -> State:
     """Start with 10,000 USD cash in the portfolio."""
     state = State()
-    assert len(universe.reserve_assets) == 1
-    assert universe.reserve_assets[0].token_symbol == "BUSD"
-    events = deposit_syncer(state, datetime.datetime(1970, 1, 1), universe.reserve_assets)
+    assert len(strategy_universe.reserve_assets) == 1
+    assert strategy_universe.reserve_assets[0].token_symbol == "BUSD"
+    events = deposit_syncer(state, datetime.datetime(1970, 1, 1), strategy_universe.reserve_assets)
     assert len(events) == 1
     token, usd_exchange_rate = state.portfolio.get_default_reserve_asset()
     assert token.token_symbol == "BUSD"
@@ -221,7 +227,7 @@ def test_create_and_execute_backtest_three_way_trade(
         logger: logging.Logger,
         state: State,
         wallet: SimulatedWallet,
-        universe: TradingStrategyUniverse,
+        strategy_universe,
         routing_model: BacktestRoutingModel,
         pricing_model: BacktestSimplePricingModel,
         wbnb: AssetIdentifier,
@@ -234,8 +240,8 @@ def test_create_and_execute_backtest_three_way_trade(
 
     ts = datetime.datetime(2021, 6, 1)
     execution_model = BacktestExecutionModel(wallet, max_slippage=0.01)
-    trader = BacktestTrader(ts, state, universe, execution_model, routing_model, pricing_model)
-    cake_wbnb = translate_trading_pair(universe.data_universe.pairs.get_by_symbols("Cake", "WBNB"))
+    trader = BacktestTrader(ts, state, strategy_universe, execution_model, routing_model, pricing_model)
+    cake_wbnb = translate_trading_pair(strategy_universe.data_universe.pairs.get_by_symbols("Cake", "WBNB"))
 
     cake_wbnb.fee = 0.0025
 
@@ -262,7 +268,7 @@ def test_buy_sell_three_way_backtest(
         logger: logging.Logger,
         state: State,
         wallet: SimulatedWallet,
-        universe: TradingStrategyUniverse,
+        strategy_universe,
         routing_model: BacktestRoutingModel,
         pricing_model: BacktestSimplePricingModel,
         wbnb: AssetIdentifier,
@@ -273,8 +279,8 @@ def test_buy_sell_three_way_backtest(
 
     ts = datetime.datetime(2021, 6, 1)
     execution_model = BacktestExecutionModel(wallet, max_slippage=0.01)
-    trader = BacktestTrader(ts, state, universe, execution_model, routing_model, pricing_model)
-    cake_wbnb = translate_trading_pair(universe.data_universe.pairs.get_by_symbols("Cake", "WBNB"))
+    trader = BacktestTrader(ts, state, strategy_universe, execution_model, routing_model, pricing_model)
+    cake_wbnb = translate_trading_pair(strategy_universe.data_universe.pairs.get_by_symbols("Cake", "WBNB"))
     cake_wbnb.fee = 0.0025
 
     # Create trade for buying Cake for 1000 USD thru WBNB

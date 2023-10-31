@@ -273,6 +273,9 @@ class TradingPairIdentifier:
     #: Internal ids are not also stable across different oracles.
     #: Always use `(chain_id, pool_address)` pair for persistent lookups.
     #:
+    #: For synthetic pairs, like leveraged pairs on lending protocols,
+    #: the internal id is the same as the underlying spot pair id.
+    #:
     internal_id: Optional[int] = None
 
     #: What is the internal exchange id of this trading pair.
@@ -304,9 +307,8 @@ class TradingPairIdentifier:
 
     #: Underlying spot trading pair
     #: 
-    #: This can be used to track price of assets in shorting pair
-    #:
-    #: TODO: Currently "mostly" unused.
+    #: This is used e.g. by alpha models to track the underlying pairs
+    #: when doing leveraged positions.
     #:
     underlying_spot_pair: Optional["TradingPairIdentifier"] = None
 
@@ -329,7 +331,11 @@ class TradingPairIdentifier:
         assert self.internal_id, "Internal id needed to be hashable"
         return self.internal_id
 
-    def __eq__(self, other):
+    def __eq__(self, other: "TradingPairIdentifier | None"):
+
+        if other is None:
+            return False
+
         assert isinstance(other, TradingPairIdentifier), f"Got {other}"
         return self.base == other.base and self.quote == other.quote
 
@@ -423,6 +429,14 @@ class TradingPairIdentifier:
 
     def is_leverage(self) -> bool:
         return self.kind.is_leverage()
+
+    def is_short(self) -> bool:
+        """Leveraged short."""
+        return self.kind.is_shorting()
+
+    def is_long(self) -> bool:
+        """Leveraged long, not spot."""
+        return self.kind.is_longing()
 
     def is_spot(self) -> bool:
         return self.kind.is_spot()

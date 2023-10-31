@@ -2,6 +2,7 @@ import logging
 from typing import Type
 
 from eth_defi.tx import AssetDelta
+from tradeexecutor.state.types import Percent
 from tradeexecutor.strategy.routing import RoutingModel
 from typing import Dict, List, Optional, Tuple
 
@@ -81,13 +82,18 @@ class EthereumRoutingModel(RoutingModel):
                           target_pair: TradingPairIdentifier,
                           reserve_asset: AssetIdentifier,
                           reserve_amount: int,
-                          max_slippage: float,
+                          max_slippage: Percent,
                           address_map: Dict,
                           check_balances=False,
                           asset_deltas: Optional[List[AssetDelta]] = None,
                           notes="",
                           ) -> List[BlockchainTransaction]:
         """Prepare a trade where target pair has out reserve asset as a quote token.
+
+        :param max_slippage:
+            Max slippage tolerance as percent.
+
+            E.g. 0.01 for 100 BPS slippage tolerance.
 
         :return:
             List of approval transactions (if any needed)
@@ -108,7 +114,17 @@ class EthereumRoutingModel(RoutingModel):
             reserve_amount,
         )
 
-        logger.info("Doing two wa trade %s %s %s %s", target_pair, reserve_asset, adjusted_reserve_amount, max_slippage)
+        logger.info(
+            "Doing two way trade. Pair:%s\n Reserve:%s Adjusted reserve amount: %s Max slippage: %s BPS",
+            target_pair,
+            reserve_asset,
+            adjusted_reserve_amount,
+            max_slippage * 10_000 if max_slippage else "-")
+
+        if max_slippage:
+            # Validate slippage tolerance a bit
+            # Assume 5% is the max sane slippage tolerance
+            assert 0 < max_slippage <= 0.05, f"Received max_slippage: {max_slippage}"
 
         trade_txs = routing_state.trade_on_router_two_way(
             uniswap,
@@ -263,11 +279,14 @@ class EthereumRoutingModel(RoutingModel):
                 notes=notes,
             )
     
-    def execute_trades_internal(self,
-                       pair_universe: PandasPairUniverse,
-                       routing_state: EthereumRoutingState,
-                       trades: List[TradeExecution],
-                       check_balances=False):
+    def execute_trades_internal(
+        self,
+        pair_universe: PandasPairUniverse,
+        routing_state: EthereumRoutingState,
+        trades: List[TradeExecution],
+        check_balances=False,
+        rebroadcast=False,
+    ):
         """Split for testability.
 
         :param check_balances:
@@ -287,7 +306,11 @@ class EthereumRoutingModel(RoutingModel):
         reserve_asset = self.get_reserve_asset(pair_universe)
 
         for t in trades:
-            assert len(t.blockchain_transactions) == 0, f"Trade {t} had already blockchain transactions associated with it"
+
+            if not rebroadcast:
+                assert len(t.blockchain_transactions) == 0, f"Trade {t} had already blockchain transactions associated with it"
+            else:
+                t.blockchain_transactions = []
 
             # TODO: Add support for accurate multihop asset deltas
             if t.slippage_tolerance is not None:
@@ -362,10 +385,13 @@ class EthereumRoutingModel(RoutingModel):
         # Now all trades have transactions associated with them.
         # We can start to execute transactions.
 
-    def setup_trades(self,
-                     routing_state: EthereumRoutingState,
-                     trades: List[TradeExecution],
-                     check_balances=False):
+    def setup_trades(
+            self,
+            routing_state: EthereumRoutingState,
+            trades: List[TradeExecution],
+            check_balances=False,
+            rebroadcast=False,
+    ):
         """Strategy and live execution connection.
 
         Turns abstract strategy trades to real blockchain transactions.
@@ -384,7 +410,13 @@ class EthereumRoutingModel(RoutingModel):
             Max slippaeg tolerated per trade. 0.01 is 1%.
 
         """
-        return self.execute_trades_internal(routing_state.pair_universe, routing_state, trades, check_balances)
+        return self.execute_trades_internal(
+            routing_state.pair_universe,
+            routing_state,
+            trades,
+            check_balances,
+            rebroadcast=rebroadcast,
+        )
     
     def create_routing_state(self,
                              universe: StrategyExecutionUniverse,

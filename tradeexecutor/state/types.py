@@ -64,7 +64,7 @@ Percent: TypeAlias = float
 #: - Cannot be negative
 #:
 #: - Cannot be zero
-BlockNumber: int
+BlockNumber: TypeAlias = int
 
 #: Unix timestamp as seconds
 UnixTimestamp: TypeAlias = float
@@ -77,3 +77,4 @@ UnixTimestamp: TypeAlias = float
 #: For over collateralised position. E.g. 8 USDC and then 6 USD worth of ETH this is ``0.8``.
 #:
 LeverageMultiplier: TypeAlias = float
+

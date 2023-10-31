@@ -1,6 +1,7 @@
 """Positions open and closing management."""
 
 import datetime
+import warnings
 from decimal import Decimal
 from typing import List, Optional, Union, Literal
 import logging
@@ -12,6 +13,7 @@ from tradingstrategy.pair import DEXPair
 from tradingstrategy.universe import Universe
 
 from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier, TradingPairKind
+from tradeexecutor.state.loan import LiquidationRisked
 from tradeexecutor.state.portfolio import Portfolio
 from tradeexecutor.state.position import TradingPosition, TriggerPriceUpdate
 from tradeexecutor.state.state import State
@@ -138,7 +140,7 @@ class PositionManager:
                  universe: Universe | TradingStrategyUniverse,
                  state: State,
                  pricing_model: PricingModel,
-                 default_slippage_tolerance=0.05,  # Slippage tole
+                 default_slippage_tolerance=0.017,
                  ):
 
         """Create a new PositionManager instance.
@@ -158,12 +160,11 @@ class PositionManager:
             The model to estimate prices for any trades
          
         :param default_slippage_tolerance: 
-            Slippage tolerance parameter set for any trades if not overriden trade-by-trade basis.
 
-            Default to 5% slippage.
+            The max slippage tolerance parameter set for any trades if not overriden trade-by-trade basis.
 
-            TODO: Tighten this parameter when execution tracking works better.
-            
+            Default to 1.7% max slippage or 170 BPS.
+
         """
 
         assert pricing_model, "pricing_model is needed in order to know buy/sell price of new positions"
@@ -596,6 +597,7 @@ class PositionManager:
                         trailing_stop_loss: Optional[Percent] = None,
                         slippage_tolerance: Optional[float] = None,
                         override_stop_loss=False,
+                        notes: Optional[str] = None,
                         ) -> List[TradeExecution]:
         """Adjust holdings for a certain position.
 
@@ -662,6 +664,11 @@ class PositionManager:
         :param override_stop_loss:
             If not set and a position has already stop loss set, do not modify it.
 
+        :param notes:
+            Human-readable plain text notes on the trade.
+
+            Used for diagnostics.
+
         :return:
             List of trades to be executed to get to the desired
             position level.
@@ -713,6 +720,7 @@ class PositionManager:
                 lp_fees_estimated=price_structure.get_total_lp_fees(),
                 pair_fee=price_structure.get_fee_percentage(),
                 slippage_tolerance=slippage_tolerance,
+                notes=notes,
             )
         else:
             # Sell
@@ -810,6 +818,7 @@ class PositionManager:
             position=position,
             slippage_tolerance=slippage_tolerance,
             price_structure=price_structure,
+            closing=True,
         )
         assert position == position2, f"Somehow messed up the close_position() trade.\n" \
                                       f"Original position: {position}.\n" \
@@ -819,6 +828,7 @@ class PositionManager:
                                       f"Price structure: {price_structure}\n" \
                                       f"Reserve asset: {reserve_asset}\n"
 
+        assert trade.closing
         return [trade]
 
     def close_credit_supply_position(self,
@@ -868,6 +878,7 @@ class PositionManager:
             reserve_currency=reserve_asset,
             notes=notes,
             position=position,
+            closing=True,
         )
         return [trade]
 
@@ -1053,6 +1064,7 @@ class PositionManager:
         take_profit_pct: float | None = None,
         stop_loss_pct: float | None = None,
         trailing_stop_loss_pct: float | None = None,
+        notes: str | None = None,
     ) -> list[TradeExecution]:
         """Open a short position.
 
@@ -1098,6 +1110,8 @@ class PositionManager:
         else:
             executor_pair = pair
 
+        assert executor_pair.is_spot(), f"Give a spot pair as input and we will figure out shorting pair for you. Got {executor_pair}"
+
         shorting_pair = self.strategy_universe.get_shorting_pair(executor_pair)
 
         # Check that pair data looks good
@@ -1121,13 +1135,31 @@ class PositionManager:
             fee=executor_pair.fee,
         )
 
-        logger.info("Opening a short position at timetamp %s\n"
+        # logger.info("Opening a short position at timestamp %s\n"
+        #             "Shorting pair is %s\n"
+        #             "Execution pair is %s\n"
+        #             "Collateral amount: %s USD\n"
+        #             "Borrow amount: %s USD (%s %s)\n"
+        #             "Collateral asset price: %s %s/USD\n"
+        #             "Borrowed asset price: %s %s/USD (assumed execution)\n",
+        #             "Liquidation price: %s %s/USD\n",
+        #             self.timestamp,
+        #             shorting_pair,
+        #             executor_pair,
+        #             estimation.total_collateral_quantity,
+        #             estimation.borrowed_value, estimation.total_borrowed_quantity, executor_pair.base.token_symbol,
+        #             collateral_price, executor_pair.quote.token_symbol,
+        #             borrowed_asset_price, executor_pair.base.token_symbol,
+        #             estimation.liquidation_price, executor_pair.base.token_symbol,
+        #             )
+
+        logger.info("Opening a short position at timestamp %s\n"
                     "Shorting pair is %s\n"
                     "Execution pair is %s\n"
                     "Collateral amount: %s USD\n"
                     "Borrow amount: %s USD (%s %s)\n"
                     "Collateral asset price: %s %s/USD\n"
-                    "Borrowed asset price: %s %s/USD (assumed execution)\n",
+                    "Borrowed asset price: %s %s/USD (assumed execution)\n"
                     "Liquidation price: %s %s/USD\n",
                     self.timestamp,
                     shorting_pair,
@@ -1151,6 +1183,7 @@ class PositionManager:
             collateral_asset_price=collateral_price,
             planned_collateral_consumption=estimation.additional_collateral_quantity,  # This is amount how much aToken is leverated besides our starting collateral
             lp_fees_estimated=estimation.lp_fees,
+            notes=notes,
         )
 
         # record liquidation price into the position
@@ -1183,8 +1216,23 @@ class PositionManager:
             position.trailing_stop_loss_pct = trailing_stop_loss_pct
 
         return [trade]
-    
+
     def close_short_position(
+        self,
+        position: TradingPosition,
+        quantity: float | Decimal | None = None,
+        notes: Optional[str] = None,
+        trade_type: TradeType = TradeType.rebalance,
+    ) -> List[TradeExecution]:
+        """Legacy.
+
+        Use :py:meth:`close_short`.
+
+        """
+        warnings.warn('This function is deprecated. Use PositionManager.close_shor() instead', DeprecationWarning, stacklevel=2)
+        return self.close_short(position, quantity, notes, trade_type)
+    
+    def close_short(
         self,
         position: TradingPosition,
         quantity: float | Decimal | None = None,
@@ -1240,3 +1288,161 @@ class PositionManager:
         )
 
         return [trade]
+
+    def adjust_short(
+        self,
+        position: TradingPosition,
+        new_value: USDollarAmount,
+        notes: Optional[str] = None,
+        trade_type: TradeType = TradeType.rebalance,
+        minimum_rebalance_trade_threshold: USDollarAmount = 0.0,
+    ) -> List[TradeExecution]:
+        """Increase/decrease short based on the amount of collateral.
+
+        Short adjust used in alpha model.
+
+        - Short is already open
+
+        - The amount of short is changing
+
+        - We want to maintain the existing leverage
+
+        - Any excess collateral is returned to cash reserves,
+          any new collateral is moved for the cash reserves to the short
+
+        - Cannot be used to open/close position
+
+        See also
+
+        - :py:meth:`open_short`
+
+        - :py:meth:`close_short`
+
+        :param position:
+            Position to close.
+
+            Must be a short position.
+
+        :param new_value:
+            The allocated collateral for this position after the trade in US Dollar reserves.
+
+            The absolute amunt of reserve currency we will use for this short.
+
+        :param quantity:
+            How much of the quantity we reduce.
+
+            If not given close the full position.
+
+        :param price:
+            The spot price of the underlying pair.
+
+        :return:
+            New trades to be executed
+        """
+        assert isinstance(position, TradingPosition), f"Got: {position.__class__}: {position}"
+
+        # Check that pair data looks good
+        pair = position.pair
+        assert pair.kind.is_shorting()
+        assert pair.base.underlying is not None, f"Lacks underlying asset: {pair.base}"
+        assert pair.quote.underlying is not None, f"Lacks underlying asset: {pair.quote}"
+
+        # TODO: Assume USD stablecoin 1:1
+        assert pair.underlying_spot_pair.quote.is_stablecoin(), f"Assuming stablecoin backed pair"
+
+        assert new_value > 0, "Cannot use adjust_short() to close short position"
+
+        underlying = pair.underlying_spot_pair
+
+        value = position.get_value()
+        delta = new_value - value
+
+        if abs(delta) == 0:
+            logger.info("Change is abs zero for %s", pair)
+            return []
+
+        if abs(delta) < minimum_rebalance_trade_threshold:
+            logger.info(
+                "Does not rebalance pair %s. Threshold: %f, value delta %f",
+                minimum_rebalance_trade_threshold,
+                delta,
+             )
+            return []
+
+        state = self.state
+
+        loan = position.loan
+        assert loan is not None, f"Position did not have existing loan structure: {position}"
+
+        reserve_currency, reserve_price = state.portfolio.get_default_reserve_asset()
+
+        # TODO: Price impact ignored
+        mid_price = self.pricing_model.get_mid_price(self.timestamp, underlying)
+
+        logger.info(
+            "Adjusting short position %s, mid price %f, delta %f USD, existing leverage %fx",
+            position,
+            mid_price,
+            delta,
+            loan.get_leverage(),
+        )
+
+        # See test_short_increase_size and test_short_decrease_size
+        borrowed_quantity_delta = 0
+
+        # See test_short_increase_size
+        collateral_adjustment = Decimal(new_value - loan.get_net_asset_value())
+
+        target_params = LeverageEstimate.open_short(
+            new_value,
+            loan.get_leverage(),
+            mid_price,
+            pair
+        )
+
+        try:
+            if delta > 0:
+
+                borrowed_quantity_delta = loan.calculate_size_adjust(collateral_adjustment)
+
+                _, adjust_trade, _ = state.trade_short(
+                    strategy_cycle_at=datetime.datetime.utcnow(),
+                    pair=pair,
+                    borrowed_quantity=-borrowed_quantity_delta,
+                    collateral_quantity=collateral_adjustment,
+                    borrowed_asset_price=loan.borrowed.last_usd_price,
+                    trade_type=TradeType.rebalance,
+                    reserve_currency=reserve_currency,
+                    collateral_asset_price=1.0,
+                    planned_collateral_consumption=target_params.total_collateral_quantity - loan.collateral.quantity,
+                    notes=notes,
+                )
+
+            else:
+                # See test_short_decrease_size
+
+                # How much we will pay back our vToken debt
+                borrowed_quantity_delta = loan.borrowed.quantity - target_params.borrowed_quantity
+
+                reserves_released = Decimal(delta)
+
+                _, adjust_trade, _ = state.trade_short(
+                    strategy_cycle_at=datetime.datetime.utcnow(),
+                    pair=pair,
+                    borrowed_quantity=borrowed_quantity_delta, # Buy back shorted tokens to decrease exposute
+                    collateral_quantity=0,  # Not used when releasing reserves
+                    borrowed_asset_price=loan.borrowed.last_usd_price,
+                    trade_type=TradeType.rebalance,
+                    reserve_currency=reserve_currency,
+                    collateral_asset_price=1.0,
+                    planned_collateral_allocation=reserves_released,
+                    # See comments in plan_loan_update_for_short()
+                    planned_collateral_consumption=target_params.total_collateral_quantity - loan.collateral.quantity - reserves_released,
+                    notes=notes,
+                )
+        except LiquidationRisked as e:
+            # Better error messag
+            base_token = underlying.base.token_symbol
+            raise LiquidationRisked(f"The position value adjust to new value {new_value}, delta {delta:+f} USD, delta {borrowed_quantity_delta:+f} {base_token}, would liquidate the position,") from e
+
+        return [adjust_trade]

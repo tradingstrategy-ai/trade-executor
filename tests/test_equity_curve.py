@@ -31,7 +31,7 @@ from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniv
 from tradeexecutor.testing.synthetic_ethereum_data import generate_random_ethereum_address
 from tradeexecutor.testing.synthetic_exchange_data import generate_exchange, generate_simple_routing_model
 from tradeexecutor.testing.synthetic_price_data import generate_ohlcv_candles
-from tradeexecutor.visual.equity_curve import calculate_equity_curve, calculate_returns, calculate_cumulative_return, \
+from tradeexecutor.visual.equity_curve import calculate_equity_curve, calculate_returns, \
     calculate_aggregate_returns, visualise_equity_curve, visualise_returns_over_time, visualise_returns_distribution
 from tradingstrategy.candle import GroupedCandleUniverse
 from tradeexecutor.state.trade import TradeExecution
@@ -170,7 +170,7 @@ def logger(request):
 @pytest.fixture(scope="module")
 def state(
         logger: logging.Logger,
-        universe: TradingStrategyUniverse,
+        universe,
     ):
     """Prepare a run backtest.
 
@@ -180,6 +180,8 @@ def state(
     start_at, end_at = universe.data_universe.candles.get_timestamp_range()
 
     routing_model = generate_simple_routing_model(universe)
+
+    assert universe is not None
 
     # Run the test
     state, universe, debug_dump = run_backtest_inline(
@@ -200,7 +202,7 @@ def state(
     return state
 
 
-def test_precheck_universe(universe: TradingStrategyUniverse):
+def test_precheck_universe(universe):
     """Check our generated data looks correct."""
     universe = universe.data_universe
     assert universe.pairs.get_count() == 2

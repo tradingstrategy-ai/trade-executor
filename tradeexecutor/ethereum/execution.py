@@ -10,6 +10,7 @@ from typing import List, Dict, Set, Tuple
 from abc import abstractmethod
 
 from eth_account.datastructures import SignedTransaction
+from eth_defi.provider.broken_provider import get_almost_latest_block_number
 from eth_typing import HexAddress, HexStr
 from hexbytes import HexBytes
 from web3 import Web3
@@ -36,6 +37,7 @@ from tradeexecutor.state.freeze import freeze_position_on_failed_trade
 from tradeexecutor.state.identifier import AssetIdentifier
 from tradeexecutor.ethereum.uniswap_v2.uniswap_v2_routing import UniswapV2SimpleRoutingModel, UniswapV2RoutingState
 from tradeexecutor.ethereum.uniswap_v3.uniswap_v3_routing import UniswapV3SimpleRoutingModel, UniswapV3RoutingState
+from tradeexecutor.state.types import BlockNumber
 from tradeexecutor.strategy.execution_model import ExecutionModel, RoutingStateDetails
 from tradingstrategy.chain import ChainId
 
@@ -106,7 +108,14 @@ class EthereumExecutionModel(ExecutionModel):
     def chain_id(self) -> int:
         """Which chain the live execution is connected to."""
         return self.web3.eth.chain_id
-    
+
+    def get_balance_address(self) -> str:
+        return self.tx_builder.get_erc_20_balance_address()
+
+    def get_safe_latest_block(self) -> BlockNumber:
+        web3 = self.web3
+        return get_almost_latest_block_number(web3)
+
     @staticmethod
     def pre_execute_assertions(
         ts: datetime.datetime, 
@@ -212,10 +221,7 @@ class EthereumExecutionModel(ExecutionModel):
                 stop_on_execution_failure=True)
 
             t.repaired_at = datetime.datetime.utcnow()
-            if not t.notes:
-                # Add human readable note,
-                # but don't override any other notes
-                t.notes = "Failed broadcast repaired"
+            t.add_note(f"Failed broadcast repaired at {t.repaired_at}")
 
             repaired.append(t)
 
@@ -307,6 +313,7 @@ class EthereumExecutionModel(ExecutionModel):
         confirmation_timeout: datetime.timedelta = datetime.timedelta(minutes=1),
         confirmation_block_count: int = 0,
         stop_on_execution_failure=False,
+        rebroadcast=False,
     ):
         """Do the live trade execution using multiple nodes.
 
@@ -361,7 +368,8 @@ class EthereumExecutionModel(ExecutionModel):
                 txs.add(signed_tx)
                 logger.info("Broadcasting transaction %s for trade\n:%s", signed_tx.hash.hex(), t)
                 tx_map[signed_tx.hash.hex()] = (t, tx)
-            t.mark_broadcasted(datetime.datetime.utcnow())
+
+            t.mark_broadcasted(datetime.datetime.utcnow(), rebroadcast=rebroadcast)
 
         receipts = wait_and_broadcast_multiple_nodes(
             web3,
@@ -369,6 +377,7 @@ class EthereumExecutionModel(ExecutionModel):
             max_timeout=confirmation_timeout,
             confirmation_block_count=confirmation_block_count,
             node_switch_timeout=datetime.timedelta(minutes=1),  # Rebroadcast every 1 minute
+            check_nonce_validity=not rebroadcast,
         )
 
         self.resolve_trades(
@@ -379,28 +388,35 @@ class EthereumExecutionModel(ExecutionModel):
             stop_on_execution_failure=stop_on_execution_failure
         )
 
-    def execute_trades(self,
-                       ts: datetime.datetime,
-                       state: State,
-                       trades: List[TradeExecution],
-                       routing_model: UniswapV2SimpleRoutingModel | UniswapV3SimpleRoutingModel,
-                       routing_state: UniswapV2RoutingState | UniswapV3RoutingState,
-                       check_balances=False):
-        """Execute the trades determined by the algo on a designed Uniswap v2 instance.
-
-        :return: Tuple List of succeeded trades, List of failed trades
-        """
-
-        state.start_execution_all(datetime.datetime.utcnow(), trades, max_slippage=self.max_slippage)
+    def execute_trades(
+        self,
+        ts: datetime.datetime,
+        state: State,
+        trades: List[TradeExecution],
+        routing_model: UniswapV2SimpleRoutingModel | UniswapV3SimpleRoutingModel,
+        routing_state: UniswapV2RoutingState | UniswapV3RoutingState,
+        check_balances=False,
+        rebroadcast=False,
+    ):
 
         if self.web3.eth.chain_id not in (ChainId.ethereum_tester.value, ChainId.anvil.value):
             if not self.mainnet_fork:
                 assert self.confirmation_block_count > 0, f"confirmation_block_count set to {self.confirmation_block_count} "
 
+        if not rebroadcast:
+            state.start_execution_all(
+                datetime.datetime.utcnow(),
+                trades,
+                max_slippage=self.max_slippage,
+                rebroadcast=rebroadcast,
+            )
+
         routing_model.setup_trades(
             routing_state,
             trades,
-            check_balances=check_balances)
+            check_balances=check_balances,
+            rebroadcast=rebroadcast,
+        )
 
         if isinstance(self.web3.provider, (FallbackProvider, MEVBlockerProvider)):
             # Multi node broadcast
@@ -409,9 +425,11 @@ class EthereumExecutionModel(ExecutionModel):
                 trades,
                 confirmation_timeout=self.confirmation_timeout,
                 confirmation_block_count=self.confirmation_block_count,
+                rebroadcast=rebroadcast,
             )
 
         else:
+            # Rebroadcast not supported for the old code path
             self.broadcast_and_resolve_old(
                 state,
                 trades,
@@ -510,7 +528,7 @@ class EthereumExecutionModel(ExecutionModel):
                     else:
                         price = 1 / result.price
 
-                    executed_reserve = result.amount_in / Decimal(10**quote_token_details.decimals)
+                    executed_reserve = result.amount_in / Decimal(10**reserve.decimals)
                     executed_amount = result.amount_out / Decimal(10**base_token_details.decimals)
 
                     # lp fee is already in terms of quote token
@@ -606,11 +624,28 @@ def report_failure(
     ts: datetime.datetime,
     state: State,
     trade: TradeExecution,
-    stop_on_execution_failure
+    stop_on_execution_failure: bool,
 ) -> None:
-    """What to do if trade fails"""
+    """What to do if trade fails.
+
+    :param ts:
+        Wall clock time
+
+    :param state:
+        The strategy state
+
+    :param trade:
+        Which trade had reverted transactions
+
+    :param stop_on_execution_failure:
+        If set, abort with exceptionm instead of trying to keep going.
+    """
     
-    logger.error("Trade failed %s: %s", ts, trade)
+    logger.error(
+        "Trade %s failed and freezing the position: %s",
+        trade,
+        trade.get_revert_reason(),
+    )
     
     state.mark_trade_failed(
         ts,

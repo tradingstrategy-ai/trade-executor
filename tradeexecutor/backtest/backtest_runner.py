@@ -7,6 +7,7 @@ from decimal import Decimal
 from pathlib import Path
 from queue import Queue
 from typing import Optional, Callable, Tuple
+import logging
 
 import pandas as pd
 
@@ -42,14 +43,23 @@ from tradingstrategy.client import Client
 from tradingstrategy.timebucket import TimeBucket
 
 
+logger = logging.getLogger(__name__)
+
+
 @dataclass
 class BacktestSetup:
     """Describe backtest setup, ready to run."""
 
     #: Test start
+    #:
+    #: Legacy. Use `UniverseOptions`.
+    #:
     start_at: datetime.datetime | None
 
     #: Test end
+    #:
+    #: Legacy. Use `UniverseOptions`.
+    #:
     end_at: datetime.datetime | None
 
     #: Override trading_strategy_cycle from strategy module
@@ -99,6 +109,8 @@ class BacktestSetup:
             approval_model: ApprovalModel,
             **kwargs) -> StrategyExecutionDescription:
         """Create a strategy description and runner based on backtest parameters in this setup."""
+
+        logger.info("backtest_static_universe_strategy_factory()")
 
         assert not execution_context.live_trading, f"This can be only used for backtesting strategies. execution context is {execution_context}"
 
@@ -232,11 +244,33 @@ def setup_backtest(
         strategy_module: Optional[StrategyModuleInformation]=None,
         name: Optional[str] = None,
         minimum_data_lookback_range: Optional[datetime.timedelta] = None,
+        universe_options: Optional[UniverseOptions] = None,
     ) -> BacktestSetup:
     """High-level entry point for setting up a backtest from a strategy module.
 
-    This function is useful for running backtests for strategies in
-    notebooks and tests.
+    - This function is useful for running backtests for strategies in
+      notebooks and unit tests
+
+    - Instead of giving strategy and trading universe as direct function arguments,
+      this entry point loads a strategy given as a Python file
+
+    .. note ::
+
+        A lot of arguments for this function are optional/
+        unit test only/legacy. Only `strategy_path` is needed.
+
+    See also
+
+    - :py:func:`run_backtest_inline`
+
+    :param strategy_path:
+        Path to the strategy Python module
+
+    :param start_at:
+        Legacy. Use universe_options.
+
+    :param end_at:
+        Legacy. Use universe_options.
 
     :param max_slippage:
         Legacy
@@ -245,17 +279,33 @@ def setup_backtest(
         Override the default strategy cycle duration
 
     :param candle_time_frame:
+        Legacy. Use universe_options.
+
         Override the default strategy candle time bucket
 
     :param strategy_module:
         If strategy module was previously loaded
+
+    :param initial_deposit:
+        Legacy.
+
+        Override INITIAL_CASH from the strategy module.
     """
 
-    assert initial_deposit, "You must give initial_cash"
     assert max_slippage >= 0, f"You must give max slippage. Got max slippage {max_slippage}"
 
     assert isinstance(strategy_path, Path), f"Got {strategy_path}"
-    assert initial_deposit > 0, "Remember to set the backtest variables in your strategy module. See https://tradingstrategy.ai/docs/deployment/vault-deployment.html#run-a-backtest-on-the-strategy-module"
+
+    # Load strategy Python file
+    if strategy_module is None:
+        strategy_mod_exports: dict = runpy.run_path(strategy_path)
+        strategy_module = parse_strategy_module(strategy_path, strategy_mod_exports)
+
+    if not initial_deposit:
+        initial_deposit = strategy_module.initial_cash
+
+    assert initial_deposit, "Initial cash not given as argument or strategy module"
+    assert initial_deposit > 0, "Must have money"
 
     wallet = SimulatedWallet()
     # deposit_syncer = BacktestSyncer(wallet, Decimal(initial_deposit))
@@ -263,25 +313,25 @@ def setup_backtest(
 
     execution_model = BacktestExecutionModel(wallet, max_slippage)
 
-    # Load strategy Python file
-    if strategy_module is None:
-        strategy_mod_exports: dict = runpy.run_path(strategy_path)
-        strategy_module = parse_strategy_module(strategy_path, strategy_mod_exports)
-
     if strategy_module.is_version_greater_or_equal_than(0, 2, 0):
         # Backtest variables were injected later in the development
         strategy_module.validate_backtest()
     else:
         strategy_module.validate()
 
-    universe_options = UniverseOptions(candle_time_bucket_override=candle_time_frame)
+    if universe_options is None:
+        universe_options = UniverseOptions(
+            candle_time_bucket_override=candle_time_frame,
+            start_at=strategy_module.backtest_start or start_at,
+            end_at=strategy_module.backtest_end or end_at,
+        )
 
     if not name:
         name = f"Backtest for {strategy_module.path.stem}"
 
     return BacktestSetup(
-        start_at,
-        end_at,
+        universe_options.start_at,
+        universe_options.end_at,
         cycle_duration=cycle_duration or strategy_module.trading_strategy_cycle,  # Pick overridden cycle duration if provided
         universe_options=universe_options,
         wallet=wallet,
@@ -298,6 +348,7 @@ def setup_backtest(
         trading_strategy_engine_version=strategy_module.trading_strategy_engine_version,
         name=name,
         minimum_data_lookback_range=minimum_data_lookback_range,
+        engine_version=strategy_module.trading_strategy_engine_version,
     )
 
 
@@ -530,8 +581,11 @@ def run_backtest_inline(
     if end_at:
         assert isinstance(end_at, datetime.datetime)
         assert start_at, "You must give start_at if you give end_at"
-    
+
     assert initial_deposit > 0
+
+    if universe:
+        assert isinstance(universe, TradingStrategyUniverse)
 
     # Setup our special logging level if not done yet.
     # (Not done when called from notebook)

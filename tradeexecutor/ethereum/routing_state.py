@@ -24,8 +24,7 @@ from tradeexecutor.state.identifier import TradingPairIdentifier, AssetIdentifie
 from tradeexecutor.strategy.routing import RoutingState
 from tradingstrategy.chain import ChainId
 from tradingstrategy.pair import PandasPairUniverse
-
-
+from tradingstrategy.types import Percent
 
 logger = logging.getLogger(__name__)
 
@@ -122,7 +121,7 @@ class EthereumRoutingState(RoutingState):
             target_pair: TradingPairIdentifier,
             reserve_asset: AssetIdentifier,
             reserve_amount: int,
-            max_slippage: float,
+            max_slippage: Percent,
             check_balances: False,
             asset_deltas: Optional[List[AssetDelta]] = None,
             notes="",

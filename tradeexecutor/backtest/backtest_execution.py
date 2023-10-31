@@ -9,6 +9,7 @@ from tradeexecutor.backtest.backtest_routing import BacktestRoutingModel, Backte
 from tradeexecutor.backtest.simulated_wallet import SimulatedWallet, OutOfSimulatedBalance
 from tradeexecutor.state.state import State
 from tradeexecutor.state.trade import TradeExecution, TradeStatus
+from tradeexecutor.state.types import Percent
 from tradeexecutor.strategy.execution_model import ExecutionModel, AutoClosingOrderUnsupported
 
 logger = logging.getLogger(__name__)
@@ -64,14 +65,20 @@ class BacktestExecutionModel(ExecutionModel):
 
     def __init__(self,
                  wallet: SimulatedWallet,
-                 max_slippage: float,
-                 lp_fees: float=0.0030,
+                 max_slippage: Percent=0.01,
+                 lp_fees: Percent=0.0030,
                  stop_loss_data_available=False,
                  ):
         self.wallet = wallet
         self.max_slippage = max_slippage
         self.lp_fees = lp_fees
         self.stop_loss_data_available = stop_loss_data_available
+
+    def get_safe_latest_block(self):
+        return None
+
+    def get_balance_address(self):
+        return None
 
     def is_live_trading(self):
         return False
@@ -327,7 +334,10 @@ class BacktestExecutionModel(ExecutionModel):
                 # Check that we have stop loss data available
                 # for backtesting
                 if not self.is_stop_loss_supported():
-                    raise AutoClosingOrderUnsupported("Trade was marked with stop loss/take profit even though backtesting trading universe does not have price feed for stop loss checks available. Remember to use the stop_loss_time_bucket parameter or equivalent when you create your trading universe to avoid this error.")
+                    raise AutoClosingOrderUnsupported(
+                        "Trade was marked with stop loss/take profit even though backtesting trading universe does not have price feed for stop loss checks available.\n"
+                        "Remember to use the stop_loss_time_bucket parameter or equivalent when you create your trading universe to avoid this error."
+                    )
 
         for idx, trade in enumerate(trades):
 

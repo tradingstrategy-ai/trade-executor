@@ -309,7 +309,7 @@ class TradeExecution:
     #:
     #: - `0.01`: 1% slippage tolerance
     #:
-    #: - `1`: MEV bots can steal all your money
+    #: - `1`: no slippage tolerance. MEV bots can steal all your money
     #:
     #: We estimate `executed_quantity = planned_quantity * slippage_tolerance`.
     #: If any trade outcome exceeds the slippage tolerance the trade fails.
@@ -375,6 +375,9 @@ class TradeExecution:
     #:
     #: Used to mark test trades from command line.
     #: Special case; not worth to display unless the field is filled in.
+    #:
+    #: See :py:meth:`add_note`.
+    #:
     notes: Optional[str] = None
 
     #: Trade was manually repaired
@@ -446,7 +449,7 @@ class TradeExecution:
     #: After this trade is executed, any position
     #: collateral should return to the cash reserves.
     #:
-    closing: bool = None
+    closing: Optional[bool] = None
 
     #: How much interest we have claimed from collateral for this position.
     #:
@@ -485,28 +488,35 @@ class TradeExecution:
     #:
     paid_interest: Optional[Decimal] = None
 
+    #: The DEX name where this trade was executed.
+    #:
+    #: A human-readable debugging hint.
+    #: :py:attr:`pair` will contain the exchange address itself.
+    #:
+    #: Optional, to be more used in the future versions.
+    #:
+    exchange_name: Optional[str] = None
+
     def __repr__(self) -> str:
         if self.is_spot():
             if self.is_buy():
-                return f"<Buy #{self.trade_id} {self.planned_quantity} {self.pair.base.token_symbol} at {self.planned_price}, {self.get_status().name}>"
+                return f"<Buy #{self.trade_id} {self.planned_quantity} {self.pair.base.token_symbol} at {self.planned_price}, {self.get_status().name} phase>"
             else:
-                return f"<Sell #{self.trade_id} {abs(self.planned_quantity)} {self.pair.base.token_symbol} at {self.planned_price}, {self.get_status().name}>"
+                return f"<Sell #{self.trade_id} {abs(self.planned_quantity)} {self.pair.base.token_symbol} at {self.planned_price}, {self.get_status().name} phase>"
         elif self.is_short():
-                return f"<Short \n" \
-                       f"   #{self.trade_id} \n" \
-                       f"   {self.planned_quantity} {self.pair.base.token_symbol} at {self.planned_price}, {self.get_status().name} \n" \
+                return f"<Short #{self.trade_id} \n" \
+                       f"   {self.planned_quantity} {self.pair.base.token_symbol} at {self.planned_price}, {self.get_status().name} phase\n" \
                        f"   collateral consumption: {self.planned_collateral_consumption} collateral allocation: {self.planned_collateral_allocation} \n" \
+                       f"   reserve: {self.planned_reserve} quantity: {self.planned_quantity} \n" \
                        f">"
         else:
             if self.is_buy():
-                return f"<Supply credit \n" \
-                       f"   #{self.trade_id} \n" \
-                       f"   {self.planned_quantity} {self.pair.base.token_symbol} at {self.planned_price}, {self.get_status().name} \n" \
+                return f"<Supply credit #{self.trade_id} \n" \
+                       f"   {self.planned_quantity} {self.pair.base.token_symbol} at {self.planned_price}, {self.get_status().name} phase\n" \
                        f">"
             else:
-                return f"<Recall credit collateral \n" \
-                       f"   #{self.trade_id} \n" \
-                       f"   {self.planned_quantity} {self.pair.base.token_symbol} at {self.planned_price}, {self.get_status().name} \n" \
+                return f"<Recall credit collateral #{self.trade_id} \n" \
+                       f"   {self.planned_quantity} {self.pair.base.token_symbol} at {self.planned_price}, {self.get_status().name} phase\n" \
                        f">"
 
     def pretty_print(self) -> str:
@@ -553,10 +563,19 @@ class TradeExecution:
 
         assert type(self.planned_price) in {float, int}, f"Price was given as {self.planned_price.__class__}: {self.planned_price}"
         assert self.opened_at.tzinfo is None, f"We got a datetime {self.opened_at} with tzinfo {self.opened_at.tzinfo}"
+
+        if self.slippage_tolerance:
+            # Sanity check
+            assert self.slippage_tolerance < 0.15, f"Cannot set slippage tolerance more than 15%, got {self.slippage_tolerance * 100}"
         
     @property
-    def strategy_cycle_at(self):
-        """Alias for oepned_at"""
+    def strategy_cycle_at(self) -> datetime.datetime:
+        """Alias for :py:attr:`opened_at`.
+
+        - Get the timestamp of the strategy cycle this trade is related to
+
+        - If this trade is outside the strategy cycle, then it is wall clock time
+        """
         return self.opened_at
     
     @property
@@ -964,14 +983,20 @@ class TradeExecution:
     def get_execution_sort_position(self) -> int:
         """When this trade should be executed.
 
-        Lower, negative, trades should be executed first.
+        - Closing trades should go first
+
+        - Selling trades should go first
 
         We need to execute sells first because we need to have cash in hand to execute buys.
 
         :return:
             Sortable int
         """
-        if self.is_sell():
+
+        if self.closing:
+            # Magic number
+            return -self.trade_id - 100_000_000
+        elif self.is_sell():
             return -self.trade_id
         else:
             return self.trade_id
@@ -1033,8 +1058,27 @@ class TradeExecution:
             return self.get_executed_value()
         return 0
 
-    def mark_broadcasted(self, broadcasted_at: datetime.datetime):
-        assert self.get_status() == TradeStatus.started, f"Trade in bad state: {self.get_status()}"
+    def mark_broadcasted(
+            self,
+            broadcasted_at: datetime.datetime,
+            rebroadcast=False,
+    ):
+        """Mark this trade to enter a brodcast phase.
+
+        - Move the trade to the broadcasting phase
+
+        - Aftr this, the execution model will attempt to perform blockchain txs
+          and read the results back
+
+        :param broadcasted_at:
+            Wall-clock time
+
+        :param rebroadcast:
+            Is this a second attempt to try to get the tx to the chain
+
+        """
+        if not rebroadcast:
+            assert self.get_status() == TradeStatus.started, f"Trade in bad state: {self.get_status()}"
         self.broadcasted_at = broadcasted_at
 
     def mark_success(self,
@@ -1177,3 +1221,14 @@ class TradeExecution:
             return None
 
         return self.executed_reserve
+
+    def add_note(self, line: str):
+        """Add a new-line separated note to the trade.
+
+        Do not remove any old notes.
+        """
+
+        if not self.notes:
+            self.notes = ""
+
+        self.notes += line + "\n"

@@ -6,6 +6,7 @@ from typing import Dict, Optional, List
 from eth_typing import HexAddress
 
 from eth_defi.tx import AssetDelta
+from tradeexecutor.state.types import Percent
 from tradingstrategy.chain import ChainId
 from web3 import Web3
 
@@ -33,6 +34,7 @@ logger = logging.getLogger(__name__)
 
 
 class UniswapV3RoutingState(EthereumRoutingState):
+
     def __init__(self,
                  pair_universe: PandasPairUniverse,
                  tx_builder: Optional[HotWalletTransactionBuilder]=None,
@@ -51,7 +53,7 @@ class UniswapV3RoutingState(EthereumRoutingState):
             target_pair: TradingPairIdentifier,
             reserve_asset: AssetIdentifier,
             reserve_amount: int,
-            max_slippage: float,
+            max_slippage: Percent,
             check_balances: False,
             asset_deltas: Optional[List[AssetDelta]] = None,
             notes="",
@@ -84,10 +86,18 @@ class UniswapV3RoutingState(EthereumRoutingState):
             base_token=base_token,
             quote_token=quote_token,
             amount_in=reserve_amount,
-            max_slippage=max_slippage * 100,  # In BPS
+            max_slippage=max_slippage * 10_000,  # In BPS
             pool_fees=[raw_fee]
         )
-        
+
+        # If the receiver (vault) has its own security policy for slippage tolerance check it here
+        receiver_slippage_tolerance = self.tx_builder.get_internal_slippage_tolerance()
+        if receiver_slippage_tolerance is not None:
+            # TODO: TxBuilder configures slippage tolerance as opposite of the trades
+            receiver_slippage_tolerance = 1 - receiver_slippage_tolerance
+            trade_slippage_tolerance = max_slippage
+            assert receiver_slippage_tolerance > trade_slippage_tolerance, f"Receiver (vault) slippage tolerance tighter than the trade slippage tolerance.\nReceiver: {receiver_slippage_tolerance * 10_000} BPS, trade: {trade_slippage_tolerance * 10_000} BPS"
+
         return self.create_signed_transaction(
             uniswap.swap_router,
             bound_swap_func,

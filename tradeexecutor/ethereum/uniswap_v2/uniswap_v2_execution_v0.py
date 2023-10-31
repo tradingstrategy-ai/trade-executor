@@ -8,6 +8,8 @@ import datetime
 from decimal import Decimal
 from typing import List, Tuple, Optional
 import logging
+
+from eth_defi.provider.broken_provider import get_almost_latest_block_number
 from hexbytes import HexBytes
 from web3 import Web3
 
@@ -25,6 +27,7 @@ from tradeexecutor.state.freeze import freeze_position_on_failed_trade
 from tradeexecutor.state.state import State
 from tradeexecutor.state.trade import TradeExecution
 from tradeexecutor.state.blockhain_transaction import BlockchainTransaction
+from tradeexecutor.state.types import BlockNumber
 from tradeexecutor.strategy.execution_model import ExecutionModel
 from tradeexecutor.strategy.routing import RoutingModel, RoutingState
 
@@ -49,7 +52,7 @@ class UniswapV2RoutingInstructions:
 class UniswapV2ExecutionModelVersion0(ExecutionModel):
     """Run order execution on a single Uniswap v2 style exchanges.
 
-    TODO: This model was used in the first prototype and later discarded.
+    TODO: This model was used in the first prototype and will be later discarded.
     """
 
     def __init__(self,
@@ -77,6 +80,13 @@ class UniswapV2ExecutionModelVersion0(ExecutionModel):
         self.confirmation_block_count = confirmation_block_count
         self.confirmation_timeout = confirmation_timeout
         self.max_slippage = max_slippage
+
+    def get_balance_address(self):
+        return None
+
+    def get_safe_latest_block(self) -> BlockNumber:
+        web3 = self.web3
+        return get_almost_latest_block_number(web3)
 
     @property
     def chain_id(self) -> int:

@@ -141,11 +141,16 @@ def universe() -> TradingStrategyUniverse:
     return TradingStrategyUniverse(data_universe=universe, reserve_assets=[usdc])
 
 
-def test_ema_on_universe(universe: TradingStrategyUniverse):
+@pytest.fixture(scope="module")
+def strategy_universe(universe) -> TradingStrategyUniverse:
+    return universe
+
+
+def test_ema_on_universe(strategy_universe):
     """Calculate exponential moving average on single pair candle universe."""
     start_timestamp = pd.Timestamp("2021-6-1")
     batch_size = 20
-    candles = universe.data_universe.candles.get_single_pair_data(start_timestamp, sample_count=batch_size, allow_current=True, raise_on_not_enough_data=False)
+    candles = strategy_universe.data_universe.candles.get_single_pair_data(start_timestamp, sample_count=batch_size, allow_current=True, raise_on_not_enough_data=False)
     assert len(candles) == 1
 
     # Not enough data to calculate EMA - we haave only 1 sample
@@ -153,7 +158,7 @@ def test_ema_on_universe(universe: TradingStrategyUniverse):
     assert ema_20_series is None
 
     end_timestamp = pd.Timestamp("2021-12-31")
-    candles = universe.data_universe.candles.get_single_pair_data(end_timestamp, sample_count=batch_size, allow_current=True, raise_on_not_enough_data=False)
+    candles = strategy_universe.data_universe.candles.get_single_pair_data(end_timestamp, sample_count=batch_size, allow_current=True, raise_on_not_enough_data=False)
     assert len(candles) == batch_size
 
     ema_20_series = ema(candles["close"], length=20)
@@ -164,21 +169,21 @@ def test_ema_on_universe(universe: TradingStrategyUniverse):
 # to avoid running backtest multiple times
 @pytest.fixture(scope="module")
 def backtest_result(
-    universe: TradingStrategyUniverse
+    strategy_universe
 ) -> tuple[State, TradingStrategyUniverse, dict]:
-    start_at, end_at = universe.data_universe.candles.get_timestamp_range()
+    start_at, end_at = strategy_universe.data_universe.candles.get_timestamp_range()
 
-    routing_model = generate_simple_routing_model(universe)
+    routing_model = generate_simple_routing_model(strategy_universe)
 
     # Run the test
-    state, universe, debug_dump = run_backtest_inline(
+    state, strategy_universe, debug_dump = run_backtest_inline(
         start_at=start_at.to_pydatetime(),
         end_at=end_at.to_pydatetime(),
         client=None,  # None of downloads needed, because we are using synthetic data
         cycle_duration=CycleDuration.cycle_1d,  # Override to use 24h cycles despite what strategy file says
         decide_trades=decide_trades,
         create_trading_universe=None,
-        universe=universe,
+        universe=strategy_universe,
         initial_deposit=10_000,
         reserve_currency=ReserveCurrency.busd,
         trade_routing=TradeRouting.user_supplied_routing_model,
@@ -186,7 +191,7 @@ def backtest_result(
         log_level=logging.WARNING,
     )
 
-    return state, universe, debug_dump
+    return state, strategy_universe, debug_dump
 
 
 def test_run_inline_synthetic_backtest(
@@ -253,6 +258,7 @@ def test_basic_summary_statistics(
     assert summary.undecided == 1
     assert summary.zero_loss == 0
 
+
 def test_timeline(
     analysis: TradeAnalysis,
     backtest_result: tuple[State, TradingStrategyUniverse, dict],
@@ -292,26 +298,26 @@ def test_timeline_raw(
 
 def test_benchmark_synthetic_trading_portfolio(
     logger: logging.Logger,
-    universe: TradingStrategyUniverse,
+    strategy_universe,
 ):
     """Build benchmark figures.
 
     TODO: Might move this test to its own module.
     """
 
-    start_at, end_at = universe.data_universe.candles.get_timestamp_range()
+    start_at, end_at = strategy_universe.data_universe.candles.get_timestamp_range()
 
-    routing_model = generate_simple_routing_model(universe)
+    routing_model = generate_simple_routing_model(strategy_universe)
 
     # Run the test
-    state, universe, debug_dump = run_backtest_inline(
+    state, strategy_universe, debug_dump = run_backtest_inline(
         start_at=start_at.to_pydatetime(),
         end_at=end_at.to_pydatetime(),
         client=None,  # None of downloads needed, because we are using synthetic data
         cycle_duration=CycleDuration.cycle_1d,  # Override to use 24h cycles despite what strategy file says
         decide_trades=decide_trades,
         create_trading_universe=None,
-        universe=universe,
+        universe=strategy_universe,
         initial_deposit=10_000,
         reserve_currency=ReserveCurrency.busd,
         trade_routing=TradeRouting.user_supplied_routing_model,
@@ -325,7 +331,7 @@ def test_benchmark_synthetic_trading_portfolio(
         portfolio_statistics=state.stats.portfolio,
         all_cash=100_000,
         buy_and_hold_asset_name="ETH",
-        buy_and_hold_price_series=universe.data_universe.candles.get_single_pair_data()["close"],
+        buy_and_hold_price_series=strategy_universe.data_universe.candles.get_single_pair_data()["close"],
     )
 
     # Check that the diagram has 3 plots
