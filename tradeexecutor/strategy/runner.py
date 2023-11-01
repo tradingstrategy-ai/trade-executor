@@ -465,14 +465,14 @@ class StrategyRunner(abc.ABC):
         routing_state_details = self.execution_model.get_routing_state_details()
 
         # Initialise the current routing state with execution details
-        logger.info("Setting up routing.\n"
-                    "Routing model is %s\n"
-                    "Details are %s\n"
-                    "Universe is %s",
-                    self.routing_model,
-                    routing_state_details,
-                    universe,
-                    )
+        # logger.info("Setting up routing.\n"
+        #            "Routing model is %s\n"
+        #            "Details are %s\n"
+        #            "Universe is %s",
+        #            self.routing_model,
+        #            routing_state_details,
+        #            universe,
+        #            )
         routing_state = self.routing_model.create_routing_state(universe, routing_state_details)
 
         # Create a pricing model for assets

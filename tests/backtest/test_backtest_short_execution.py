@@ -462,12 +462,6 @@ def test_open_and_close_one_short_with_interest(
     trades = []
     simulated_time += datetime.timedelta(days=1)
 
-    new_atoken = wallet.get_balance(eth_shorting_pair.quote) * Decimal(1.10)  # Gain 10% on USD
-    new_vtoken = wallet.get_balance(eth_shorting_pair.base) * Decimal(1.50)  # Pay 50% interest on ETH
-    wallet.rebase(eth_short_position.pair.quote, new_atoken)
-    wallet.rebase(eth_short_position.pair.base, new_vtoken)
-    print(wallet.get_all_balances())
-
     # Read on-chain token balances back to the state
     balance_updates = sync_model.sync_interests(
         simulated_time,
@@ -505,6 +499,117 @@ def test_open_and_close_one_short_with_interest(
     #
     # TODO: %0.30 fee to close the position is covered from interest?
     #
+
+    # Check that we have cleared the wallet, including dust
+    assert wallet.get_balance(weth) == 0
+    assert wallet.get_balance(eth_shorting_pair.base) == 0
+    assert wallet.get_balance(eth_shorting_pair.quote) == 0
+    assert wallet.get_balance(usdc) == pytest.approx(Decimal(9997.022719088773168759458312))
+
+    assert portfolio.get_cash() == pytest.approx(9997.07743141754)  # ~$3 Lost on fees
+    assert portfolio.get_net_asset_value() == pytest.approx(9997.07743141754)  # All in cash
+
+
+def test_open_and_close_two_shorts_with_interest(
+    state: State,
+    strategy_universe: TradingStrategyUniverse,
+    pricing_model,
+    weth_usdc: TradingPairIdentifier,
+    aave_usdc: TradingPairIdentifier,
+    weth: AssetIdentifier,
+    usdc: AssetIdentifier,
+    start_timestamp,
+    execution_model: BacktestExecutionModel,
+    routing_model: BacktestRoutingModel,
+    sync_model: BacktestSyncModel,
+    wallet: SimulatedWallet,
+):
+    """Open and close one short position w/interest.
+
+    - See that the accrued interest is correctly distributed across positions.
+
+    - See that we correctly claim accrued interest.
+
+    - Modified to include interest from :py:func:`test_open_and_close_one_short`
+    """
+
+    portfolio = state.portfolio
+    trades = []
+    simulated_time = start_timestamp + datetime.timedelta(days=1)
+    wallet = execution_model.wallet
+
+    position_manager = PositionManager(
+        simulated_time,
+        strategy_universe,
+        state,
+        pricing_model,
+    )
+
+    # Open WETH/USDC short
+    trades += position_manager.open_short(
+        weth_usdc,
+        500.0,
+    )
+
+    # Open WETH/USDC short
+    trades += position_manager.open_short(
+        aave_usdc,
+        250.0,
+    )
+
+    execution_model.execute_trades(
+        simulated_time,
+        state,
+        trades,
+        routing_model,
+        BacktestRoutingState(strategy_universe.data_universe.pairs, wallet),
+    )
+
+    assert any(t.is_success() for t in trades)
+    assert len(state.portfolio.open_positions) == 2
+
+    # Simulate accrued interest
+    # by having the on-chain balances to update "by itself"
+    eth_shorting_pair = strategy_universe.get_shorting_pair(weth_usdc)
+    eth_short_position = position_manager.get_current_position_for_pair(eth_shorting_pair)
+
+    # Next day, gain interest, close shorts
+    trades = []
+    simulated_time += datetime.timedelta(days=1)
+
+    # Read on-chain token balances back to the state
+    balance_updates = sync_model.sync_interests(
+        simulated_time,
+        state,
+        strategy_universe,
+        state.portfolio.get_current_interest_positions(),
+        pricing_model,
+    )
+    assert len(balance_updates) == 4
+    assert eth_short_position.loan.get_collateral_interest() == pytest.approx(0.054712328767123286)
+    assert eth_short_position.loan.get_borrow_interest() == pytest.approx(0.027397260273972605)
+    # assert eth_short_position.get_accrued_interest() == pytest.approx(0)
+
+    # Recreate position manager with changed timestamp
+    position_manager = PositionManager(
+        simulated_time,
+        strategy_universe,
+        state,
+        pricing_model,
+    )
+
+    trades += position_manager.close_all()
+
+    execution_model.execute_trades(
+        simulated_time,
+        state,
+        trades,
+        routing_model,
+        BacktestRoutingState(strategy_universe.data_universe.pairs, wallet),
+    )
+
+    assert any(t.is_success() for t in trades)
+    assert len(state.portfolio.closed_positions) == 2
 
     # Check that we have cleared the wallet, including dust
     assert wallet.get_balance(weth) == 0

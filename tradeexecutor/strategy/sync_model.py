@@ -176,7 +176,11 @@ class SyncModel(ABC):
             credit_positions: List[TradingPosition],
             pricing_model: PricingModel,
     ) -> List[BalanceUpdate]:
-        """Update all credit supply positions.
+        """Update interest on all tokens that receive interest thru rebase.
+
+        - Credit supply positions: aToken
+
+        - Short positions: aToken, vToken
 
         :param timestamp:
             Wall clock time.

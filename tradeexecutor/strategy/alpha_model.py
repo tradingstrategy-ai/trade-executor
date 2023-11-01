@@ -736,7 +736,7 @@ class AlphaModel:
                 else:
                     signal.profit_before_trades = 0
 
-            logger.info("Rebalancing %s,\n trading as %s,\nold weight: %f, new weight: %f, diff: %f USD",
+            logger.info("Rebalancing %s, trading as %s, old weight: %f, new weight: %f, size diff: %f USD",
                         underlying.base.token_symbol,
                         synthetic.base.token_symbol,
                         signal.old_weight,

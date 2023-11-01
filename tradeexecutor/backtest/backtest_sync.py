@@ -145,7 +145,7 @@ class BacktestSyncModel(SyncModel):
     def create_transaction_builder(self) -> None:
         """Backtesting does not need to care about how to build blockchain transactions."""
 
-    def     calculate_accrued_interest(
+    def calculate_accrued_interest(
         self,
         universe: TradingStrategyUniverse,
         position: TradingPosition,
