@@ -149,30 +149,31 @@ class BacktestSyncModel(SyncModel):
         if interest_type == "collateral":
             interest = position.loan.collateral_interest
             amount = Decimal(interest.last_token_amount)
+            df = universe.data_universe.lending_candles.supply_apr.df.copy()
         elif interest_type == "borrow":
             interest = position.loan.borrowed_interest
             amount = Decimal(interest.last_token_amount)
+            df = universe.data_universe.lending_candles.variable_borrow_apr.df.copy()
 
         previous_update_at = interest.last_event_at
 
-        df = universe.data_universe.lending_candles.supply_apr.df.copy()
-        supply_df = df[
+        candles = df[
             (df["timestamp"] >= previous_update_at)
             & (df["timestamp"] <= timestamp)
         ].copy()
 
-        if len(supply_df) == 0:
+        if len(candles) == 0:
             # TODO: this is a temporary hack, we should make it better
-            supply_df = df[
+            candles = df[
                 (df["timestamp"] >= position.opened_at)
                 & (df["timestamp"] <= timestamp)
             ].copy()
 
-        assert len(supply_df) > 0, f"No lending data for {position} from {previous_update_at} to {timestamp}"
+        assert len(candles) > 0, f"No lending data for {position} from {previous_update_at} to {timestamp}"
 
         # get average APR from high and low
-        supply_df["avg"] = supply_df[["high", "low"]].mean(axis=1)
-        avg_apr = Decimal(supply_df["avg"].mean() / 100)
+        candles["avg"] = candles[["high", "low"]].mean(axis=1)
+        avg_apr = Decimal(candles["avg"].mean() / 100)
 
         duration = Decimal((timestamp - previous_update_at).total_seconds())
         accrued_interest_estimation = amount * avg_apr * duration / SECONDS_PER_YEAR

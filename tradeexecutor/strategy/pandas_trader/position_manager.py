@@ -951,7 +951,7 @@ class PositionManager:
             if trade_type is None:
                 trade_type = TradeType.rebalance
 
-            return self.close_short_position(
+            return self.close_short(
                 position,
                 trade_type=trade_type,
                 notes=notes,

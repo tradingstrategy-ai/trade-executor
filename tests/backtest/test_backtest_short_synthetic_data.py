@@ -179,11 +179,11 @@ def test_backtest_open_only_short_synthetic_data(
     assert position.get_collateral() == pytest.approx(29940)
     assert position.get_borrowed() == pytest.approx(19081.72358415404)
     assert position.opened_at == datetime.datetime(2023, 1, 1)
-    assert position.get_accrued_interest() == pytest.approx(1.7850199562898492)
+    assert position.get_accrued_interest() == pytest.approx(-2.9209649618159697)
     assert position.get_claimed_interest() == pytest.approx(0)
     assert position.get_realised_profit_usd() is None
-    assert position.get_unrealised_profit_usd() == pytest.approx(920.2123936214193)
-    assert position.get_value() == Decimal(10860.061435802254)
+    assert position.get_unrealised_profit_usd() == pytest.approx(915.7328764510808)
+    assert position.get_value() == Decimal(10855.355450884148)
 
     # Check 1st trade looks good
     trade = position.get_first_trade()
@@ -194,19 +194,19 @@ def test_backtest_open_only_short_synthetic_data(
 
     # Check that the loan object looks good
     loan = position.loan
-    assert loan.get_net_asset_value() == pytest.approx(10860.061435802254)
+    assert loan.get_net_asset_value() == pytest.approx(10855.355450884148)
     assert loan.collateral.get_usd_value() == pytest.approx(29940)
     assert loan.borrowed.get_usd_value() == pytest.approx(19081.72358415404)
     assert loan.borrowed.last_usd_price == pytest.approx(1712.203057206142)  # ETH current value
     assert loan.get_collateral_interest() == pytest.approx(4.921913519656365)
     assert loan.get_collateral_quantity() == pytest.approx(Decimal(29944.92191351965636348513714))
-    assert loan.get_borrowed_quantity() == pytest.approx(Decimal(11.14637682568958932104287040))
-    assert loan.get_borrow_interest() == pytest.approx(3.136893563366516)
-    assert loan.get_net_interest() == pytest.approx(1.7850199562898492)
+    assert loan.get_borrowed_quantity() == pytest.approx(Decimal(11.14912532266154586534517569))
+    assert loan.get_borrow_interest() == pytest.approx(7.842878481472335)
+    assert loan.get_net_interest() == pytest.approx(-2.9209649618159697)
 
     # Check that the portfolio looks good
     assert portfolio.get_cash() == 0
-    assert portfolio.get_net_asset_value(include_interest=True) == pytest.approx(10860.061435802254)
+    assert portfolio.get_net_asset_value(include_interest=True) == pytest.approx(10855.355450884148)
     assert portfolio.get_net_asset_value(include_interest=False) == pytest.approx(10858.276415845961)
     # difference should come from interest
     assert portfolio.get_net_asset_value(include_interest=True) - portfolio.get_net_asset_value(include_interest=False) == pytest.approx(loan.get_net_interest())
@@ -222,7 +222,7 @@ def test_backtest_open_only_short_synthetic_data(
 
     assert balances[usdc.address] == 0
     assert balances[ausdc.address] == pytest.approx(Decimal(29944.92191351965636348513714))
-    assert balances[vweth.address] == pytest.approx(Decimal(11.14637682568958932104287040))
+    assert balances[vweth.address] == pytest.approx(Decimal(11.14912532266154586534517569))
     assert balances.get(weth.address, Decimal(0)) == pytest.approx(Decimal(0))
 
 
@@ -265,14 +265,14 @@ def test_backtest_open_and_close_short_synthetic_data(
                 # Check that how much total collateral we should receive
                 position = position_manager.get_current_position()
                 loan = position.loan                
-                assert loan.get_net_asset_value() == pytest.approx(10860.061435802254)
+                assert loan.get_net_asset_value() == pytest.approx(10855.355450884148)
                 assert loan.get_collateral_interest() == pytest.approx(4.921913519656365)
-                assert loan.get_borrow_interest() == pytest.approx(3.136893563366516)
-                assert loan.get_net_interest() == pytest.approx(1.7850199562898492)
+                assert loan.get_borrow_interest() == pytest.approx(7.842878481472335)
+                assert loan.get_net_interest() == pytest.approx(-2.9209649618159697)
 
                 received_cash = loan.get_collateral_value(include_interest=False) + loan.get_collateral_interest() - loan.get_borrow_value(include_interest=False) - loan.get_borrow_interest()
                 # Interest double counted: 10462
-                assert received_cash == pytest.approx(10860.061435802254)
+                assert received_cash == pytest.approx(10855.355450884148)
 
                 trades += position_manager.close_all()
 
@@ -306,8 +306,8 @@ def test_backtest_open_and_close_short_synthetic_data(
     assert position.get_borrowed() == 0
     assert position.get_accrued_interest() == pytest.approx(0)
     assert position.get_claimed_interest() == pytest.approx(4.921913519656365)
-    assert position.get_repaid_interest() == pytest.approx(3.136893563366516)
-    assert position.get_realised_profit_usd() == pytest.approx(920.2123936214194)
+    assert position.get_repaid_interest() == pytest.approx(7.842878481472335)
+    assert position.get_realised_profit_usd() == pytest.approx(915.7328764510809)
     assert position.get_unrealised_profit_usd() == 0
     assert position.get_value() == pytest.approx(0)
 
@@ -324,12 +324,12 @@ def test_backtest_open_and_close_short_synthetic_data(
     close_trade = position.get_last_trade()
     assert close_trade.opened_at == datetime.datetime(2023, 1, 4)
     assert close_trade.planned_price == pytest.approx(1712.203057206142)  # ETH current value
-    assert close_trade.get_planned_value() == pytest.approx(19084.860477717408)
-    assert float(close_trade.planned_quantity) == pytest.approx(11.14637682568959)
+    assert close_trade.get_planned_value() == pytest.approx(19089.56646263551)
+    assert float(close_trade.planned_quantity) == pytest.approx(11.149125322661545)
 
     # # Check that the portfolio looks good
-    assert portfolio.get_cash() == pytest.approx(10802.63457378304)
-    assert portfolio.get_net_asset_value(include_interest=True) == pytest.approx(10802.63457378304)
+    assert portfolio.get_cash() == pytest.approx(10797.914428428872)
+    assert portfolio.get_net_asset_value(include_interest=True) == pytest.approx(10797.914428428872)
 
     # Check token balances in the wallet
     wallet = debug_dump["wallet"]
@@ -342,7 +342,7 @@ def test_backtest_open_and_close_short_synthetic_data(
     assert balances[ausdc.address] == pytest.approx(Decimal(0))
     assert balances[vweth.address] == pytest.approx(Decimal(0))
     assert balances.get(weth.address, Decimal(0)) == pytest.approx(Decimal(0))
-    assert balances[usdc.address] == pytest.approx(Decimal(10802.63457378304))
+    assert balances[usdc.address] == pytest.approx(Decimal(10797.914428428872))
 
 
 def test_backtest_short_underlying_price_feed(
@@ -733,4 +733,4 @@ def test_backtest_short_trailing_stop_loss_triggered(persistent_test_client: Cli
     assert position.liquidation_price == pytest.approx(Decimal(1906.762499999999853556031937))
     assert position.stop_loss == pytest.approx(1669.082747543819)
 
-    assert portfolio.get_cash() == pytest.approx(11962.592797114034)
+    assert portfolio.get_cash() == pytest.approx(11952.745496750647)
