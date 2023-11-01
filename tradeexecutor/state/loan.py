@@ -4,6 +4,7 @@
 
 """
 import copy
+import enum
 import math
 from _decimal import Decimal
 from dataclasses import dataclass
@@ -34,6 +35,13 @@ class LiquidationRisked(Exception):
     You would be immediately liquidated if the parameter
     changes would be applied.
     """
+
+
+class LoanSide(enum.Enum):
+
+    collateral = "collateral"
+
+    borrowed = "borrowed"
 
 
 @dataclass_json
@@ -84,6 +92,23 @@ class Loan:
     def clone(self) -> "Loan":
         """Clone this data structure for mutating."""
         return copy.deepcopy(self)
+
+    def get_tracked_asset(self, asset: AssetIdentifier) -> Tuple[LoanSide | None, AssetWithTrackedValue | None]:
+        """Get one side of the loan.
+
+        :param asset:
+            Asset this loan is tracking
+
+        :return:
+            Colleteral tracker, borrowed tracked or ``None`` if this loan does not track an asset.
+        """
+
+        if asset == self.collateral.asset:
+            return LoanSide.collateral, self.collateral
+        elif asset == self.borrowed.asset:
+            return LoanSide.borrowed, self.borrowed
+        else:
+            return None, None
 
     def get_collateral_interest(self) -> USDollarAmount:
         """How much interest we have received on collateral."""

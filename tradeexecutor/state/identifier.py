@@ -144,6 +144,12 @@ class AssetIdentifier:
         """Do we think this asset reprents a stablecoin"""
         return is_stablecoin_like(self.token_symbol)
 
+    def is_interest_accruing(self) -> bool:
+        """Will this token gain on-chain interest thru rebase"""
+
+        # TODO: this condition may change in the future when new asset types are introduced
+        return self.underlying is not None
+
     def get_pricing_asset(self) -> "AssetIdentifier":
         """Get the asset that delivers price for this asset.
 

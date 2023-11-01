@@ -1,17 +1,70 @@
 """Functions to refresh accrued interest on credit positions."""
 import datetime
+from collections import Counter
+from dataclasses import dataclass
 from decimal import Decimal
-from typing import Tuple
+from typing import Tuple, Set, Literal, Dict
 import logging
 
 from tradeexecutor.state.balance_update import BalanceUpdate, BalanceUpdatePositionType, BalanceUpdateCause
-from tradeexecutor.state.identifier import TradingPairKind, AssetIdentifier
+from tradeexecutor.state.identifier import TradingPairKind, AssetIdentifier, AssetWithTrackedValue
+from tradeexecutor.state.loan import LoanSide
+from tradeexecutor.state.portfolio import Portfolio
 from tradeexecutor.state.position import TradingPosition
 from tradeexecutor.state.state import State
-from tradeexecutor.state.types import USDollarPrice
-
+from tradeexecutor.state.types import USDollarPrice, Percent
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass
+class InterestDistributionEntry:
+    """Map interest distribution across different trading positions.
+
+    A helper class to help us to distribute accrued interest across different
+    related trading positions.
+
+    The lifetime of an instance is one sync_interests() run.
+    """
+
+    #: Which side we are on
+    side: LoanSide
+
+    #: The trading position containing this asset
+    position: TradingPosition
+
+    #: Can be either loan.collateral or loan.borrower
+    tracker: AssetWithTrackedValue
+
+    #: All weight are normalised to 0...1 based on loan token amount.
+    weight: Percent = None
+
+    @property
+    def asset(self) -> AssetIdentifier:
+        """Amount of tracked asset in tokens"""
+        return self.tracker.asset
+
+    @property
+    def quantity(self) -> Decimal:
+        """Amount of tracked asset in tokens"""
+        return self.tracker.quantity
+
+    def distribute_interest(self, asset_accrued_across_positions: Decimal):
+        pass
+
+
+@dataclass
+class InterestDistributionOperation:
+    """One interest update batch we do."""
+
+    #: All interest bearing assets we have across positions
+    assets: Set[AssetIdentifier]
+
+    #: All entries we need to udpate
+    entries: Dict[AssetIdentifier, InterestDistributionEntry]
+
+    #: Portfolio totals of interest bearing assets
+    totals: Dict[AssetIdentifier, Decimal]
 
 
 def update_interest(
@@ -225,3 +278,54 @@ def estimate_interest(
     duration = end_at - start_at
     multiplier = (end_at - start_at) / year
     return start_quantity * Decimal(interest_rate ** multiplier)
+
+
+def prepare_interest_distribution(portfolio: Portfolio) -> InterestDistributionOperation:
+    """Get all tokens in open positions that accrue interest.
+
+    - We use this data to sync the accrued interest since
+      the last cycle
+
+    - See :py:func:`tradeexecutor.strategy.sync_model.SyncModel.sync_interests`
+
+    :return:
+        Interest bearing assets used in all open positions
+    """
+
+    assets = set()
+    totals: Counter[AssetIdentifier, Decimal] = Counter()
+    entries: Dict[AssetIdentifier, InterestDistributionEntry] = {}
+
+    for p in portfolio.get_open_and_frozen_positions():
+        for asset in (p.pair.base, p.pair.quote):
+
+            if not asset.is_interest_accruing():
+                # One side in spot-credit pair
+                continue
+
+            side, tracker = p.loan.get_tracked_asset(asset)
+
+            assert side is not None, f"Got confused with asset {asset} on position {p}"
+
+            entry = InterestDistributionEntry(
+                side=side,
+                position=p,
+                tracker=tracker,
+            )
+
+            assert entry.quantity > 0, f"Zero-amount entry in the interest distribution: {p}: {tracker}"
+
+            entries[asset] = entry
+            assets.add(asset)
+
+            totals[asset] += entry.quantity
+
+    # Calculate distribution weights
+    for entry in entries.values():
+        entry.weight = entry.quantity / totals[entry.asset]
+
+    return InterestDistributionOperation(
+        assets,
+        entries,
+        totals,
+    )
