@@ -48,6 +48,8 @@ def export_trade_for_dataframe(p: Portfolio, t: TradeExecution) -> dict:
 
     label = ["-" * 60]
 
+    is_profitable = None
+
     if t.is_failed():
         label += ["Failed trade"]
         type = "failed"
@@ -57,12 +59,17 @@ def export_trade_for_dataframe(p: Portfolio, t: TradeExecution) -> dict:
     else:
         
         if t.is_stop_loss():
+            # TODO work out if profitable stop loss or not
+            position = p.find_position_for_trade(t)
+            profitable = position.is_profitable()
+
             type = "stop-loss"
             label += [
                 f"Stop loss {base_token_symbol}",
                 "",
                 f"Triggered at: {position.stop_loss:.4f} {price_prefix}",
             ]
+            is_profitable = True if profitable else False
         elif t.is_take_profit():
             type = "take-profit"
             label += [
@@ -119,6 +126,7 @@ def export_trade_for_dataframe(p: Portfolio, t: TradeExecution) -> dict:
         "type": type,
         "label": "<br>".join(label),
         "price": t.planned_mid_price if t.planned_mid_price else t.planned_price,
+        "is_profitable": is_profitable,
     }
 
 
@@ -233,6 +241,7 @@ def visualise_trades(
     )
 
     if stop_loss_df is not None:
+        stop_loss_df['colour'] = stop_loss_df['is_profitable'].apply(lambda x: 'green' if x == True else 'orangered')
         fig.add_trace(
             go.Scatter(
                 name="Stop loss",
@@ -244,7 +253,7 @@ def visualise_trades(
                     "symbol": "arrow-down",
                     "size": 12,
                     "line": {"width": 1, "color": "black"},
-                    "color": "orangered",
+                    "color": stop_loss_df['colour'],
                 },
                 hoverinfo="text",
             ),
