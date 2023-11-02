@@ -226,7 +226,9 @@ class BacktestSyncModel(SyncModel):
         # among positions
         events_iter = accrue_interest(state, balances, interest_distribution, timestamp, None)
 
-        return list(events_iter)
+        events = list(events_iter)
+
+        return events
 
     def fetch_onchain_balances(
             self,

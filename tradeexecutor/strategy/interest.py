@@ -59,8 +59,10 @@ class InterestDistributionEntry:
 
     def distribute(self, state: State, timestamp: datetime.datetime, block_number: BlockNumber, total_accrued: Decimal) -> BalanceUpdate:
         position_accrued = total_accrued * self.weight  # Calculate per-position portion of new tokens
-        new_token_amount = self.tracker.quantity * position_accrued
+        new_token_amount = self.tracker.quantity + position_accrued
         assert self.price is not None, f"Asset lacks updated price: {self.asset}"
+        assert new_token_amount > 0
+        assert new_token_amount > self.tracker.quantity
         evt = update_interest(
             state,
             self.position,
@@ -70,7 +72,7 @@ class InterestDistributionEntry:
             asset_price=self.price,
             block_number=block_number,
         )
-        yield evt
+        return evt
 
 
 @dataclass(slots=True)
@@ -86,7 +88,7 @@ class InterestDistributionOperation:
     #: Portfolio totals of interest bearing assets before the update
     totals: Dict[AssetIdentifier, Decimal]
 
-    def accrue_interest_for_asset(
+    def distribute_interest_for_asset(
         self,
         state: State,
         asset: AssetIdentifier,
@@ -95,6 +97,11 @@ class InterestDistributionOperation:
         new_amount: Decimal,
         max_interest_gain: Percent,
     ) -> Iterable[BalanceUpdate]:
+        """Distribute the accrued interest of an asset across all positions holding this asset.
+
+         :return:
+            An event
+         """
 
         interest_accrued = new_amount - self.totals[asset]
         assert interest_accrued > 0, f"Interest cannot go negative: {interest_accrued}"
@@ -103,12 +110,13 @@ class InterestDistributionOperation:
 
         for entry in self.entries:
             if entry.asset == asset:
-                yield entry.distribute(
+                evt = entry.distribute(
                     state,
                     timestamp,
                     block_number,
                     interest_accrued
                 )
+                yield evt
 
 def update_interest(
     state: State,
@@ -424,7 +432,7 @@ def accrue_interest(
     on_chain_balances: Dict[AssetIdentifier, Decimal],
     interest_distribution: InterestDistributionOperation,
     block_timestamp: datetime.datetime,
-    block_number: BlockNumber,
+    block_number: BlockNumber | None,
     max_interest_gain: Percent = 0.05,
 ) -> Iterable[BalanceUpdate]:
     """Update the internal ledger to match interest accrued on on-chain balances.
@@ -461,7 +469,7 @@ def accrue_interest(
     logger.info(f"accrue_interest({block_timestamp}, {block_number_str})")
 
     for asset, new_balance in on_chain_balances.items():
-        yield from interest_distribution.accrue_interest_for_asset(
+        yield from interest_distribution.distribute_interest_for_asset(
             state,
             asset,
             block_timestamp,
@@ -471,7 +479,6 @@ def accrue_interest(
         )
 
     state.sync.interest.assets = on_chain_balances
-
     set_interest_checkpoint(state, block_timestamp, block_number)
 
     #
