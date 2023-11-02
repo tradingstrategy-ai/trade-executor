@@ -342,6 +342,7 @@ def prepare_interest_distribution(
     assets = set()
     totals: Counter[AssetIdentifier, Decimal] = Counter()
     entries: List[InterestDistributionEntry] = []
+    position_count = 0
 
     for p in portfolio.get_open_and_frozen_positions():
         for asset in (p.pair.base, p.pair.quote):
@@ -382,9 +383,13 @@ def prepare_interest_distribution(
 
             totals[asset] += entry.quantity
 
+            position_count += 1
+
     # Calculate distribution weights
     for entry in entries:
         entry.weight = entry.quantity / totals[entry.asset]
+
+    logger.info("Preparing interest distribution with %d assets, %d positions, %d ledger entries", len(assets), position_count, len(entries))
 
     return InterestDistributionOperation(
         assets,
