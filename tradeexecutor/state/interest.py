@@ -2,9 +2,11 @@
 import datetime
 from dataclasses import dataclass
 from decimal import Decimal
+from typing import Dict
 
 from dataclasses_json import dataclass_json
 
+from tradeexecutor.state.identifier import AssetIdentifier
 from tradeexecutor.utils.accuracy import ZERO_DECIMAL
 
 
@@ -106,3 +108,20 @@ class Interest:
     def repay_interest(self, quantity: Decimal):
         """Update interest payments needed to maintain the borrowed debt."""
         self.interest_payments += quantity
+
+
+
+@dataclass_json
+@dataclass(slots=True)
+class PortfolioInterestTracker:
+    """Track interest across all positions."""
+
+    #: All on-chain assets accruing interest with non-zero balance at the portfolio
+    #:
+    #: Asset is either aToken or vToken.
+    #:
+    assets: Dict[AssetIdentifier, Interest]
+
+    #: When did we perform the sync last time
+    #:
+    last_sync_at: datetime.datetime  | None = None

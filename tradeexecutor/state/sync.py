@@ -14,6 +14,7 @@ from typing import Optional, List, Iterable, Dict
 
 from dataclasses_json import dataclass_json
 
+from tradeexecutor.state.interest import PortfolioInterestTracker
 from tradeexecutor.state.types import USDollarAmount
 from tradingstrategy.chain import ChainId
 
@@ -189,6 +190,8 @@ class Sync:
     treasury: Treasury = field(default_factory=Treasury)
 
     accounting: Accounting = field(default_factory=Accounting)
+
+    interest: PortfolioInterestTracker = field(default_factory=PortfolioInterestTracker)
 
     def is_initialised(self) -> bool:
         """Have we scanned the initial deployment event for the sync model."""

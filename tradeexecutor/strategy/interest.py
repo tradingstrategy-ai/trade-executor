@@ -8,6 +8,7 @@ import logging
 
 from tradeexecutor.state.balance_update import BalanceUpdate, BalanceUpdatePositionType, BalanceUpdateCause
 from tradeexecutor.state.identifier import TradingPairKind, AssetIdentifier, AssetWithTrackedValue
+from tradeexecutor.state.interest import PortfolioInterestTracker, Interest
 from tradeexecutor.state.loan import LoanSide
 from tradeexecutor.state.portfolio import Portfolio
 from tradeexecutor.state.position import TradingPosition
@@ -329,3 +330,24 @@ def prepare_interest_distribution(portfolio: Portfolio) -> InterestDistributionO
         entries,
         totals,
     )
+
+
+def initialise_tracking(
+    tracker: PortfolioInterestTracker,
+    interest_distribution: InterestDistributionOperation,
+):
+    """Start tracking any interest-based assets we do not track yet.
+
+    If the asset was just added to the portfolio start with zero interest accrued.
+    """
+
+    for asset in interest_distribution.assets:
+        if asset not in tracker.assets:
+            tracker.assets[asset] = Interest(
+                opening_amount=interest_distribution.totals[asset],
+                last_token_amount=interest_distribution.totals[asset],
+                last_updated_at=datetime.datetime.utcnow(),
+                last_event_at=datetime.datetime.utcnow(),
+                last_accrued_interest=Decimal(0),
+                last_updated_block_number=None,
+            )

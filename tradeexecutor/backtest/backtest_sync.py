@@ -13,10 +13,11 @@ from tradeexecutor.backtest.simulated_wallet import SimulatedWallet
 from tradeexecutor.ethereum.wallet import ReserveUpdateEvent
 from tradeexecutor.state.balance_update import BalanceUpdate
 from tradeexecutor.state.identifier import AssetIdentifier
+from tradeexecutor.state.interest import Interest
 from tradeexecutor.state.position import TradingPosition
 from tradeexecutor.state.state import State
 from tradeexecutor.state.types import JSONHexAddress, BlockNumber
-from tradeexecutor.strategy.interest import update_interest, update_leveraged_position_interest
+from tradeexecutor.strategy.interest import update_interest, update_leveraged_position_interest, prepare_interest_distribution, initialise_tracking
 from tradeexecutor.strategy.pricing_model import PricingModel
 from tradeexecutor.strategy.sync_model import SyncModel, OnChainBalance
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
@@ -187,6 +188,42 @@ class BacktestSyncModel(SyncModel):
 
         return accrued_interest_estimation
 
+    def calculate_accrued_interest_2(
+        self,
+        universe: TradingStrategyUniverse,
+        interest: Interest,
+        timestamp: datetime.datetime,
+        interest_type: Literal["collateral"] | Literal["borrow"],
+    ) -> Decimal:
+        """Calculate accrued interest of a position since last update."""
+        # get relevant candles for the position period since last update until now
+
+        previous_update_at = interest.last_event_at
+
+        df = universe.data_universe.lending_candles.supply_apr.df.copy()
+        supply_df = df[
+            (df["timestamp"] >= previous_update_at)
+            & (df["timestamp"] <= timestamp)
+        ].copy()
+
+        if len(supply_df) == 0:
+            # TODO: this is a temporary hack, we should make it better
+            supply_df = df[
+                (df["timestamp"] >= position.opened_at)
+                & (df["timestamp"] <= timestamp)
+            ].copy()
+
+        assert len(supply_df) > 0, f"No lending data for {position} from {previous_update_at} to {timestamp}"
+
+        # get average APR from high and low
+        supply_df["avg"] = supply_df[["high", "low"]].mean(axis=1)
+        avg_apr = Decimal(supply_df["avg"].mean() / 100)
+
+        duration = Decimal((timestamp - previous_update_at).total_seconds())
+        accrued_interest_estimation = amount * avg_apr * duration / SECONDS_PER_YEAR
+
+        return accrued_interest_estimation
+
     def sync_interests(
         self,
         timestamp: datetime.datetime,
@@ -198,17 +235,26 @@ class BacktestSyncModel(SyncModel):
 
         assert universe.has_lending_data(), "Cannot update credit positions if no data is available"
 
+        portfolio_interest_tracker = state.sync.interest
+
+        interest_distribution = prepare_interest_distribution(state.portfolio)
+
+        initialise_tracking(portfolio_interest_tracker, interest_distribution)
+
+        for asset in interest_distribution.assets:
+            accrued = self.calculate_accrued_interest(
+                universe,
+                asset,
+                timestamp,
+                "collateral" if asset.is_credit() else "borrow",
+            )
+
+
+
         events = []
         for p in positions:
             if p.is_credit_supply():
                 assert len(p.trades) <= 2, "This interest calculation does not support increase/reduce position"
-
-                accrued = self.calculate_accrued_interest(
-                    universe,
-                    p,
-                    timestamp,
-                    "collateral",
-                )
 
                 new_amount = p.loan.collateral_interest.last_token_amount + accrued
 

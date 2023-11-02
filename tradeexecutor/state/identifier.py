@@ -150,6 +150,16 @@ class AssetIdentifier:
         # TODO: this condition may change in the future when new asset types are introduced
         return self.underlying is not None
 
+    def is_credit(self) -> bool:
+        """Is this a credit asset that accrue interest for us"""
+        assert self.underlying
+        return self.token_symbol.startswith("a")  # TODO: Hardcoded Aave v3
+
+    def is_debit(self) -> bool:
+        """Is this a credit asset that accrue interest for us"""
+        assert self.underlying
+        return self.token_symbol.startswith("v")  # TODO: Hardcoded Aave v3
+
     def get_pricing_asset(self) -> "AssetIdentifier":
         """Get the asset that delivers price for this asset.
 
