@@ -44,7 +44,7 @@ class BalanceUpdatePositionType(enum.Enum):
 
 @dataclass_json
 @dataclass
-class   BalanceUpdate:
+class BalanceUpdate:
     """Processed balance update event.
 
     Events that are generated on
@@ -53,11 +53,12 @@ class   BalanceUpdate:
 
     - Redemptions
 
-    - Interest payments
+    - Interest payments. There will be one event per rebase asset per a trading position.
+      See :py:meth:`tradeexecutor.strategy.sync_model.SyncModel.sync_interests`.
 
     Events are stored in :py:class:`TradingPosition` and :py:class:`ReservePosition` by their id.
 
-    Events are referred in :py:class:`tradeexecutor.sync.Treasury`..
+    Events are referred in :py:class:`tradeexecutor.sync.Treasury`.
     """
 
     #: Allocated from portfolio

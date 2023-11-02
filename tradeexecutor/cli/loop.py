@@ -459,7 +459,6 @@ class ExecutionLoop:
                 strategy_cycle_timestamp,
                 state,
                 cast(TradingStrategyUniverse, universe),
-                to_be_synced,
                 pricing_model,
             )
             logger.info("Generated %d sync interest events", len(sync_events))

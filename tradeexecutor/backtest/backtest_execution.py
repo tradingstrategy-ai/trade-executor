@@ -11,6 +11,7 @@ from tradeexecutor.state.state import State
 from tradeexecutor.state.trade import TradeExecution, TradeStatus
 from tradeexecutor.state.types import Percent
 from tradeexecutor.strategy.execution_model import ExecutionModel, AutoClosingOrderUnsupported
+from tradeexecutor.strategy.interest import set_interest_checkpoint
 
 logger = logging.getLogger(__name__)
 
@@ -385,6 +386,11 @@ class BacktestExecutionModel(ExecutionModel):
                 executed_collateral_allocation=executed_collateral_allocation,
                 executed_collateral_consumption=executed_collateral_consumption,
             )
+
+        # Set the check point interest balacnes for new positions
+        set_interest_checkpoint(state, ts, None)
+
+        logger.info("Finished backtest execution for %s", ts)
 
     def get_routing_state_details(self) -> dict:
         return {"wallet": self.wallet}

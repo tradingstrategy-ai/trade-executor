@@ -1,12 +1,13 @@
 """Interest tracking data structures."""
 import datetime
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from decimal import Decimal
 from typing import Dict
 
 from dataclasses_json import dataclass_json
 
 from tradeexecutor.state.identifier import AssetIdentifier
+from tradeexecutor.state.types import BlockNumber
 from tradeexecutor.utils.accuracy import ZERO_DECIMAL
 
 
@@ -116,12 +117,19 @@ class Interest:
 class PortfolioInterestTracker:
     """Track interest across all positions."""
 
-    #: All on-chain assets accruing interest with non-zero balance at the portfolio
+    #: All on-chain assets from the last snapshot
     #:
-    #: Asset is either aToken or vToken.
+    #: These are rebased asset quantity at :py:attr:`last_sync_block`.
+    #: Empty dict if not available.
     #:
-    assets: Dict[AssetIdentifier, Interest]
+    assets: Dict[AssetIdentifier, Decimal] = field(default_factory=dict)
 
-    #: When did we perform the sync last time
+    #: When did we perform the last interest sync all all assets
     #:
-    last_sync_at: datetime.datetime  | None = None
+    last_sync_at: datetime.datetime | None = None
+
+    #: Block number when we synced the portfolio
+    #:
+    #: Backtesting does not use block numbers and has this always set to ``None``.
+    #:
+    last_sync_block: BlockNumber | None = None

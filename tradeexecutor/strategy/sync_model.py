@@ -173,7 +173,6 @@ class SyncModel(ABC):
             timestamp: datetime.datetime,
             state: State,
             universe: TradingStrategyUniverse,
-            credit_positions: List[TradingPosition],
             pricing_model: PricingModel,
     ) -> List[BalanceUpdate]:
         """Update interest on all tokens that receive interest thru rebase.
@@ -193,14 +192,11 @@ class SyncModel(ABC):
         :param universe:
             Trading universe that must include lending data.
 
-        :param credit_positions:
-            Prefiltered list of credit positions to update.
-
         :param pricing_model:
             Used to re-value loans
 
         :return:
-            All triggered balance update events
+            All triggered balance update events, one per asset per position
         """
         raise NotImplementedError()
 

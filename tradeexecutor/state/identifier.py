@@ -155,7 +155,7 @@ class AssetIdentifier:
         assert self.underlying
         return self.token_symbol.startswith("a")  # TODO: Hardcoded Aave v3
 
-    def is_debit(self) -> bool:
+    def is_debt(self) -> bool:
         """Is this a credit asset that accrue interest for us"""
         assert self.underlying
         return self.token_symbol.startswith("v")  # TODO: Hardcoded Aave v3
