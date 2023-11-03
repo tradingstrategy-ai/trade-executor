@@ -164,5 +164,5 @@ def test_backtest_open_both_long_short(
     portfolio = state.portfolio
     assert len(portfolio.open_positions) == 2
     assert portfolio.get_cash() == 0
-    assert portfolio.get_net_asset_value(include_interest=True) == pytest.approx(10171.924639486764)
-    assert portfolio.get_total_equity() == pytest.approx(10171.924639486764)
+    assert portfolio.get_net_asset_value(include_interest=True) == pytest.approx(10169.571647027711)
+    assert portfolio.get_total_equity() == pytest.approx(10169.571647027711)

@@ -126,7 +126,7 @@ def state(usdc: AssetIdentifier):
         last_pricing_at=datetime.datetime.utcnow(),
         last_sync_at=datetime.datetime.utcnow(),
     )
-    state.portfolio.reserves = {usdc.address: reserve_position}
+    state.portfolio.reserves = {usdc.get_identifier(): reserve_position}
     return state
 
 

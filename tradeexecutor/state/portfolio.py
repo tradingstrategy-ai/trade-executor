@@ -11,7 +11,7 @@ from typing import Dict, Iterable, Optional, Tuple, List
 from dataclasses_json import dataclass_json
 
 from tradingstrategy.types import PrimaryKey
-from tradeexecutor.state.identifier import TradingPairIdentifier, AssetIdentifier
+from tradeexecutor.state.identifier import TradingPairIdentifier, AssetIdentifier, AssetFriendlyId
 from tradeexecutor.state.loan import Loan
 from tradeexecutor.state.position import TradingPosition
 from tradeexecutor.state.reserve import ReservePosition
@@ -79,8 +79,10 @@ class Portfolio:
     open_positions: Dict[int, TradingPosition] = field(default_factory=dict)
 
     #: Currently held reserve assets
-    #: Token address -> reserve position mapping.
-    reserves: Dict[str, ReservePosition] = field(default_factory=dict)
+    #:
+    #: Token -> reserve position mapping.
+    #:
+    reserves: Dict[AssetFriendlyId, ReservePosition] = field(default_factory=dict)
 
     #: Trades completed in the past
     closed_positions: Dict[int, TradingPosition] = field(default_factory=dict)

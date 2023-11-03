@@ -12,7 +12,7 @@ import logging
 
 from dataclasses_json import dataclass_json
 
-from tradeexecutor.state.identifier import AssetIdentifier, AssetWithTrackedValue
+from tradeexecutor.state.identifier import AssetIdentifier, AssetWithTrackedValue, AssetFriendlyId
 from tradeexecutor.state.loan import LoanSide
 from tradeexecutor.state.position import TradingPosition
 from tradeexecutor.state.types import USDollarPrice, Percent
@@ -73,17 +73,13 @@ class InterestDistributionEntry:
 class AssetInterestData:
     """Per-asset data we track in interest calculations."""
 
-    #: Portfolio totals of interest bearing assets before the update
-    #:
-    #: hash(AssetIdentifier) -> balance mappings.
-    #: Need to use hash because JSON serialisation issues.
+    #: Portfolio total quantity of interest bearing assets before the update.
     #:
     total: Decimal = field(default=Decimal(0))
 
-    #: Calculated the effective interest rates we had for different assets
+    #: Calculated the effective interest rate for this asset.
     #:
-    #: hash(AssetIdentifier) -> interest % mapping.
-    #: Need to use hash because JSON serialisation issues.
+    #: What was the rate based on the operation duration and on-chain balance change.
     #:
     effective_rate: Percent = None
 
@@ -110,7 +106,7 @@ class InterestDistributionOperation:
 
     #: Asset interest data entries keyed (chain id, address) tuples
     #:
-    asset_interest_data: Dict[str, AssetInterestData]
+    asset_interest_data: Dict[AssetFriendlyId, AssetInterestData]
 
     #: All entries we need to update.
     #:

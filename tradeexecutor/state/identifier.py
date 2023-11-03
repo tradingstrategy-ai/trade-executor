@@ -6,7 +6,7 @@ import datetime
 import enum
 from dataclasses import dataclass, field
 from decimal import Decimal
-from typing import Optional, Literal
+from typing import Optional, Literal, TypeAlias
 
 from dataclasses_json import dataclass_json
 from eth_typing import HexAddress
@@ -19,6 +19,15 @@ from tradeexecutor.state.types import JSONHexAddress, USDollarAmount, LeverageMu
 from tradingstrategy.lending import LendingProtocolType
 from tradingstrategy.stablecoin import is_stablecoin_like
 from tradingstrategy.types import PrimaryKey
+
+
+#: Asset unique id as a human readable string
+#:
+#: chain id - address tuple as string.
+#:
+#: Can be persisted.
+#:
+AssetFriendlyId: TypeAlias = str
 
 
 @dataclass_json
@@ -113,7 +122,7 @@ class AssetIdentifier:
         assert type(self.decimals) == int, f"Bad decimals {self.decimals}"
         assert self.decimals >= 0
 
-    def get_identifier(self) -> str:
+    def get_identifier(self) -> AssetFriendlyId:
         """Assets are identified by their smart contract address.
 
         JSON/Human friendly format to give hash keys to assets,
