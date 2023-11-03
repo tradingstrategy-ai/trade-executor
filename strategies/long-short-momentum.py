@@ -13,7 +13,7 @@ import pandas as pd
 
 from tradeexecutor.state.state import State
 from tradeexecutor.state.trade import TradeExecution
-from tradeexecutor.strategy.alpha_model import AlphaModel
+from tradeexecutor.strategy.alpha_model import AlphaModel, format_signals
 from tradeexecutor.strategy.execution_context import ExecutionContext
 from tradeexecutor.strategy.pandas_trader.position_manager import PositionManager
 from tradeexecutor.strategy.pricing_model import PricingModel
@@ -146,8 +146,6 @@ def decide_trades(
     alpha_model.assign_weights(method=weight_by_1_slash_n)
     alpha_model.normalise_weights()
 
-    dump_signals(timestamp, alpha_model)
-
     # Load in old weight for each trading pair signal,
     # so we can calculate the adjustment trade size
     alpha_model.update_old_weights(state.portfolio)
@@ -157,6 +155,9 @@ def decide_trades(
     portfolio = position_manager.get_current_portfolio()
     portfolio_target_value = portfolio.get_total_equity() * value_allocated_to_positions
     alpha_model.calculate_target_positions(position_manager, portfolio_target_value)
+
+    signal_df = format_signals(alpha_model)
+    logger.info("Cycle %s signals:\n%s", timestamp, signal_df)
 
     # Shift portfolio from current positions to target positions
     # determined by the alpha signals (momentum)
@@ -200,17 +201,4 @@ def create_trading_universe(
     return universe
 
 
-def dump_signals(
-    timestamp: pd.Timestamp,
-    alpha_model: AlphaModel,
-):
-    """Debug helper used to develop the strategy.
-
-    Print the signal state to the logging output.
-    """
-    sorted_signals = sorted([s for s in alpha_model.signals.values()], key=lambda s: s.pair.base.token_symbol)
-    print(f"{timestamp} cycle signals")
-    for s in sorted_signals:
-        pair = s.pair
-        print(f"Pair: {pair.get_ticker()}, signal: {s.signal}")
 

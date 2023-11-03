@@ -164,6 +164,8 @@ def setup_pytest_logging(request=None, mute_requests=True) -> logging.Logger:
     # Don't log section duration monitors
     logging.getLogger("tradeexecutor.utils.timer").setLevel(logging.WARNING)
 
+    # Mute mainloop (a lot of logs about nothing happening in backtesting)
+    logging.getLogger("tradeexecutor.strategy.runner").setLevel(logging.WARNING)
     return logging.getLogger("test")
 
 

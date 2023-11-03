@@ -23,7 +23,7 @@ class BacktestExecutionFailed(Exception):
 def fix_sell_token_amount(
         current_balance: Decimal,
         order_quantity: Decimal,
-        epsilon=Decimal(10**-9)
+        epsilon=Decimal(10 ** -9)
 ) -> Tuple[Decimal, bool]:
     """Fix rounding errors that may cause wallet dust overflow.
 
@@ -66,8 +66,8 @@ class BacktestExecutionModel(ExecutionModel):
 
     def __init__(self,
                  wallet: SimulatedWallet,
-                 max_slippage: Percent=0.01,
-                 lp_fees: Percent=0.0030,
+                 max_slippage: Percent = 0.01,
+                 lp_fees: Percent = 0.0030,
                  stop_loss_data_available=False,
                  ):
         self.wallet = wallet
@@ -112,6 +112,9 @@ class BacktestExecutionModel(ExecutionModel):
             Wallet does not have enough tokens to do the trade
         """
 
+        assert trade.is_spot()
+        assert trade.pair.is_spot()
+
         #
         base = trade.pair.base
         # quote = trade.pair.quote
@@ -129,7 +132,7 @@ class BacktestExecutionModel(ExecutionModel):
             executed_reserve = trade.planned_reserve
             executed_quantity = trade.planned_quantity
         else:
-            assert position and position.is_open(), f"Tried to execute sell on position that is not open: {trade}"
+            assert position and position.is_open(), f"Tried to execute sell on position {position} that is not open: {trade}"
             executed_quantity, sell_amount_epsilon_fix = fix_sell_token_amount(base_balance, trade.planned_quantity)
             executed_reserve = abs(Decimal(trade.planned_quantity) * Decimal(trade.planned_price))
 
@@ -140,7 +143,8 @@ class BacktestExecutionModel(ExecutionModel):
             self.wallet.update_balance(base, executed_quantity, f"spot sell #{trade.trade_id}")
             self.wallet.update_balance(reserve, executed_reserve, f"spot sell #{trade.trade_id}")
 
-        assert abs(executed_quantity) > 0, f"Expected executed_quantity for the trade to be above zero, got executed_quantity:{executed_quantity}, planned_quantity:{trade.planned_quantity}, trade is {trade}"
+        assert abs(
+            executed_quantity) > 0, f"Expected executed_quantity for the trade to be above zero, got executed_quantity:{executed_quantity}, planned_quantity:{trade.planned_quantity}, trade is {trade}"
 
         return executed_quantity, executed_reserve, sell_amount_epsilon_fix
 
@@ -216,7 +220,8 @@ class BacktestExecutionModel(ExecutionModel):
             # aToken appears in the wallet
             self.wallet.update_balance(collateral_token, collateral_token_change, f"Depositing/redeeming aToken for  #{trade.trade_id}")
 
-        assert abs(executed_quantity) > 0, f"Expected executed_quantity for the trade to be above zero, got executed_quantity:{executed_quantity}, planned_quantity:{trade.planned_quantity}, trade is {trade}"
+        assert abs(
+            executed_quantity) > 0, f"Expected executed_quantity for the trade to be above zero, got executed_quantity:{executed_quantity}, planned_quantity:{trade.planned_quantity}, trade is {trade}"
 
         logger.info("simulate_leverage(): wallet balances after updating for %s:\n%s", trade.get_short_label(), self.wallet.get_all_balances())
 
@@ -298,23 +303,23 @@ class BacktestExecutionModel(ExecutionModel):
                 extra_help_message = ""
 
             raise BacktestExecutionFailed(f"\n"
-                f"  Trade {idx+1}. failed on strategy cycle {ts}\n"
-                f"  Execution of trade failed:\n  {trade}\n"
-                f"  Pair: {trade.pair}.\n"
-                f"  Trade type: {trade.trade_type.name}.\n"
-                f"  Trade quantity: {trade.planned_quantity}, reserve: {trade.planned_reserve} {trade.reserve_currency}.\n"
-                f"  Wallet base balance: {base_balance} {base.token_symbol} ({base.address}).\n"
-                f"  Wallet quote balance: {quote_balance} {quote.token_symbol} ({quote.address}).\n"
-                f"  Wallet reserve balance: {reserve_balance} {reserve.token_symbol} ({reserve.address}).\n"
-                f"  Executed base amount: {executed_quantity} {base.token_symbol} ({base.address})\n"
-                f"  Executed reserve amount: {executed_reserve} {reserve.token_symbol} ({reserve.address})\n"
-                f"  Planned base amount: {trade.planned_quantity} {base.token_symbol} ({base.address})\n"
-                f"  Planned reserve amount: {trade.planned_reserve} {reserve.token_symbol} ({reserve.address})\n"
-                f"  Existing position quantity: {position and position.get_quantity() or '-'} {base.token_symbol}\n"
-                f"  Sell amount epsilon fix applied: {sell_amount_epsilon_fix}.\n"
-                f"  Out of balance: {e}\n"
-                f"  {extra_help_message}\n"
-            ) from e
+                                          f"  Trade {idx + 1}. failed on strategy cycle {ts}\n"
+                                          f"  Execution of trade failed:\n  {trade}\n"
+                                          f"  Pair: {trade.pair}.\n"
+                                          f"  Trade type: {trade.trade_type.name}.\n"
+                                          f"  Trade quantity: {trade.planned_quantity}, reserve: {trade.planned_reserve} {trade.reserve_currency}.\n"
+                                          f"  Wallet base balance: {base_balance} {base.token_symbol} ({base.address}).\n"
+                                          f"  Wallet quote balance: {quote_balance} {quote.token_symbol} ({quote.address}).\n"
+                                          f"  Wallet reserve balance: {reserve_balance} {reserve.token_symbol} ({reserve.address}).\n"
+                                          f"  Executed base amount: {executed_quantity} {base.token_symbol} ({base.address})\n"
+                                          f"  Executed reserve amount: {executed_reserve} {reserve.token_symbol} ({reserve.address})\n"
+                                          f"  Planned base amount: {trade.planned_quantity} {base.token_symbol} ({base.address})\n"
+                                          f"  Planned reserve amount: {trade.planned_reserve} {reserve.token_symbol} ({reserve.address})\n"
+                                          f"  Existing position quantity: {position and position.get_quantity() or '-'} {base.token_symbol}\n"
+                                          f"  Sell amount epsilon fix applied: {sell_amount_epsilon_fix}.\n"
+                                          f"  Out of balance: {e}\n"
+                                          f"  {extra_help_message}\n"
+                                          ) from e
 
         return executed_quantity, executed_reserve, executed_collateral_allocation, executed_collateral_consumption
 

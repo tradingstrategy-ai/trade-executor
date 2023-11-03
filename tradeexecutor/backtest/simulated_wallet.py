@@ -93,6 +93,10 @@ class SimulatedWallet:
         old_balance = self.get_balance(token)
         new_balance = old_balance + delta
 
+        if abs(new_balance) < epsilon:
+            # Decimal rounding errors
+            new_balance = Decimal(0)
+
         reason = reason or "unhinted reason"
         logger.info("Wallet balance for %s: %f -> %f (%+f), %s", token_symbol, old_balance, new_balance, delta, reason)
 

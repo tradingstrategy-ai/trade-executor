@@ -54,6 +54,7 @@ class TradingPairSignal:
 
     #: For which pair is this alpha weight.
     #:
+    #: Always the spot pair, the determines the asset price.
     #: For lending protocol leveraged trading this is the underlying trading pair.
     #:
     #: See also :py:attr`leveraged_pair`.
@@ -268,6 +269,9 @@ class TradingPairSignal:
         """The asset did not have any trades (long/short) open on the previous cycle."""
         return self.old_weight == 0
 
+    def is_closing(self) -> bool:
+        return self.normalised_weight == 0
+
     def is_flipping(self) -> bool:
         """On this cycle, are we flipping between long and short.
 
@@ -295,7 +299,17 @@ class TradingPairSignal:
     def get_flip_label(self) -> str:
         """Get flip label"""
 
-        if self.old_synthetic_pair.is_spot():
+        if self.old_synthetic_pair is None:
+            if self.signal > 0:
+                return "none -> spot"
+            elif self.signal < 0:
+                return "none -> short"
+            elif self.signal == 0:
+                return "spot -> close"
+            else:
+                return "no flip"
+
+        elif self.old_synthetic_pair.is_spot():
             if self.signal < 0:
                 return "spot -> short"
             elif self.signal == 0:
@@ -469,6 +483,8 @@ class AlphaModel:
             If not set assume spot.
         """
 
+        assert pair.is_spot(), f"Signals are tracked by their spot pairs. got {pair}"
+
         # Don't let Numpy values beyond this point, as
         # they cause havoc in serisaliation
         if isinstance(alpha, np.float32):
@@ -636,16 +652,22 @@ class AlphaModel:
 
             s.position_target = s.normalised_weight * investable_equity
 
-            #
-            s.position_adjust_usd = s.position_target - s.old_value
+            if s.is_flipping():
+                # When we go between short/long/spot
+                # we close the previous position and the
+                # adjust the full size of the new position
+                s.position_adjust_usd = s.position_target
+            else:
+                #
+                s.position_adjust_usd = s.position_target - s.old_value
 
-            if s.position_adjust_usd < 0:
-                # Decreasing positions by selling the token
-                # A lot of options here how to go about this.
-                # We might get some minor position size skew here because fees not included
-                # for these transactions
-                s.position_adjust_quantity = position_manager.estimate_asset_quantity(s.pair, s.position_adjust_usd)
-                assert type(s.position_adjust_quantity) == float
+                if s.position_adjust_usd < 0:
+                    # Decreasing positions by selling the token
+                    # A lot of options here how to go about this.
+                    # We might get some minor position size skew here because fees not included
+                    # for these transactions
+                    s.position_adjust_quantity = position_manager.estimate_asset_quantity(s.pair, s.position_adjust_usd)
+                    assert type(s.position_adjust_quantity) == float
 
     def map_pair_for_signal(
         self,
@@ -728,17 +750,19 @@ class AlphaModel:
 
             # Do backtesting record keeping, so that
             # it is later easier to display alpha model thinking
+            current_position = None
             if signal.old_synthetic_pair:
-                position = position_manager.get_current_position_for_pair(signal.old_synthetic_pair)
-                if position:
-                    signal.profit_before_trades = position.get_total_profit_usd()
-                    signal.profit_before_trades_pct = position.get_total_profit_percent()
+                current_position = position_manager.get_current_position_for_pair(signal.old_synthetic_pair)
+                if current_position:
+                    signal.profit_before_trades = current_position.get_total_profit_usd()
+                    signal.profit_before_trades_pct = current_position.get_total_profit_percent()
                 else:
                     signal.profit_before_trades = 0
 
-            logger.info("Rebalancing %s, trading as %s, old weight: %f, new weight: %f, size diff: %f USD",
+            logger.info("Rebalancing %s, trading as %s, old position %s, old weight: %f, new weight: %f, size diff: %f USD",
                         underlying.base.token_symbol,
                         synthetic.base.token_symbol,
+                        current_position and current_position.pair or "-",
                         signal.old_weight,
                         signal.normalised_weight,
                         dollar_diff)
@@ -748,8 +772,6 @@ class AlphaModel:
                 logger.info("Not doing anything, diff %f (value %f) below trade threshold %f", dollar_diff, value, min_trade_threshold)
                 signal.position_adjust_ignored = True
             else:
-
-                current_position = position_manager.get_current_position_for_pair(synthetic)
 
                 if signal.normalised_weight < self.close_position_weight_epsilon:
                     # Signal too weak, get rid of any open position
@@ -776,7 +798,8 @@ class AlphaModel:
                             )
 
                     if signal.signal < 0:
-                        # A shorting signal
+                        # A shorting signal.
+                        # Open new short or adjust existing short.
 
                         leverage = signal.leverage
                         assert type(leverage) == float, f"Signal is short, but does not have levarage multiplier set {signal}"
@@ -802,8 +825,11 @@ class AlphaModel:
                             )
 
                     elif signal.leverage is None:
+                        # A spot buy signal.
+                        # Open new spot or adjust existing one.
                         # Increase or decrease the position for the target pair
                         # Open new position if needed.
+                        logger.info("Adjusting spot position")
                         position_rebalance_trades += position_manager.adjust_position(
                             synthetic,
                             dollar_diff,
@@ -829,7 +855,7 @@ class AlphaModel:
                 trade_str = ", ".join(t.get_short_label() for t in position_rebalance_trades)
                 logger.info("Adjusting holdings for %s: %s", underlying.get_ticker(), trade_str)
             else:
-                logger.info("No trades for: %s", underlying)
+                logger.info("No trades generated for: %s", underlying.get_ticker())
 
             trades += position_rebalance_trades
 
@@ -837,3 +863,30 @@ class AlphaModel:
 
         # Return all rebalance trades
         return trades
+
+
+def format_signals(
+    alpha_model: AlphaModel,
+) -> pd.DataFrame:
+    """Debug helper used to develop the strategy.
+
+    Print the signal state to the logging output.
+
+    :return:
+        DataFrame containing a table for signals on this cycle
+    """
+
+    data = []
+
+    sorted_signals = sorted([s for s in alpha_model.signals.values()], key=lambda s: s.pair.base.token_symbol)
+    # print(f"{timestamp} cycle signals")
+    for s in sorted_signals:
+        pair = s.pair
+
+        data.append((pair.get_ticker(), s.signal, s.position_adjust_usd, s.normalised_weight, s.old_weight, s.get_flip_label()))
+
+        #print(f"Pair: {pair.get_ticker()}, signal: {s.signal}")
+
+    df = pd.DataFrame(data, columns=["Pair", "Signal", "Value adj", "Norm weight", "Old weight", "Flipping"])
+    df = df.set_index("Pair")
+    return df
