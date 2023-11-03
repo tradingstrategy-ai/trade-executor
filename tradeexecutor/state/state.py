@@ -671,14 +671,14 @@ class State:
                 # Mark that the trade claimed any interest
                 # that was available on the collateral
                 if trade.is_leverage():
-                    # TODO: Currently there is minor difference between credit supply and leveraged positions.
-                    # Credit supply positions put any claimed interest in executed_reserve,
-                    # whereas leveraged closing trade assumes interest will be automatically claimed.
-                    self.portfolio.adjust_reserves(
-                        trade.pair.quote.get_pricing_asset(),
-                        trade.claimed_interest,
-                        reason=f"Claimed interest on position #{position.position_id}"
-                    )
+                    pass
+
+                    # Claimed interest is already include in the collateral release
+                    # self.portfolio.adjust_reserves(
+                    #    trade.pair.quote.get_pricing_asset(),
+                    #    trade.claimed_interest,
+                    #    reason=f"Claimed interest on position #{position.position_id}"
+                    #)
 
                 # Mark that the trade paid any remaining interest
                 # on the debt

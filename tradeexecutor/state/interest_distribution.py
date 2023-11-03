@@ -102,7 +102,7 @@ class InterestDistributionOperation:
     #:
     #: Asset -> interest % mapping.
     #:
-    effective_interest: Dict[AssetIdentifier, Percent]
+    effective_rate: Dict[AssetIdentifier, Percent]
 
     @property
     def duration(self) -> datetime.timedelta:

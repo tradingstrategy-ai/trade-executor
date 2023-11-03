@@ -255,7 +255,6 @@ def test_open_and_close_one_short(
 ):
     """Open and close one short position."""
 
-
     portfolio = state.portfolio
     trades = []
     simulated_time = start_timestamp + datetime.timedelta(days=1)
@@ -484,8 +483,13 @@ def test_open_and_close_one_short_with_interest(
         pricing_model,
     )
     assert len(balance_updates) == 2
-    assert eth_short_position.loan.get_collateral_interest() == pytest.approx(0.054712328767123286)
-    assert eth_short_position.loan.get_borrow_interest() == pytest.approx(0.027397260273972605)
+    assert eth_short_position.loan.get_collateral_interest() == pytest.approx(6.839041095890411)
+    assert eth_short_position.loan.get_borrow_interest() == pytest.approx(13.698630136986301)
+
+    assert eth_short_position.get_loan_based_nav(include_interest=False) == pytest.approx(498.5)
+    assert eth_short_position.get_loan_based_nav(include_interest=True) == pytest.approx(491.6404109589041)
+    assert portfolio.get_cash() == pytest.approx(9500.0)
+
     # assert eth_short_position.get_accrued_interest() == pytest.approx(0)
 
     # Recreate position manager with changed timestamp
@@ -517,10 +521,10 @@ def test_open_and_close_one_short_with_interest(
     assert wallet.get_balance(weth) == 0
     assert wallet.get_balance(eth_shorting_pair.base) == 0
     assert wallet.get_balance(eth_shorting_pair.quote) == 0
-    assert wallet.get_balance(usdc) == pytest.approx(Decimal(9997.022719088773168759458312))
+    assert wallet.get_balance(usdc) == pytest.approx(Decimal(9990.094677869224110624516323))
 
-    assert portfolio.get_cash() == pytest.approx(9997.07743141754)  # ~$3 Lost on fees
-    assert portfolio.get_net_asset_value() == pytest.approx(9997.07743141754)  # All in cash
+    assert portfolio.get_cash() == pytest.approx(9990.094677869224110624516323)
+    assert portfolio.get_net_asset_value() == pytest.approx(9990.094677869224110624516323)
 
 
 def test_open_and_close_two_shorts_with_interest(
@@ -539,7 +543,7 @@ def test_open_and_close_two_shorts_with_interest(
 ):
     """Open and close one short position w/interest.
 
-    - See that the accrued interest is correctly distributed across positions.
+    - See that the shared collateral accrued interest is correctly distributed across positions.
 
     - See that we correctly claim accrued interest.
 
@@ -616,14 +620,12 @@ def test_open_and_close_two_shorts_with_interest(
     interest_distribution = state.sync.interest.last_distribution
     assert interest_distribution.duration == datetime.timedelta(days=1)
     assert interest_distribution.assets == {ausdc, vweth, vaave}
-    assert interest_distribution.effective_interest[vweth] == pytest.approx(9.863013698630136)  # Around ~1000%
-    assert interest_distribution.effective_interest[ausdc] == pytest.approx(2.465753424657534)  # Around ~250%
+    assert interest_distribution.effective_rate[vweth] == pytest.approx(9.863013698630136)  # Around ~1000% interest
+    assert interest_distribution.effective_rate[ausdc] == pytest.approx(2.465753424657534)  # Around ~250% interest
 
     assert eth_short_position.loan.get_collateral_interest() == pytest.approx(6.839041095890411)
     assert eth_short_position.loan.get_borrow_interest() == pytest.approx(13.698630136986301)
     assert aave_short_position.loan.get_collateral_interest() == pytest.approx(3.4195205479452055)  # Should be 50% of ETH
-
-    # assert eth_short_position.get_accrued_interest() == pytest.approx(0)
 
     # Recreate position manager with changed timestamp
     position_manager = PositionManager(

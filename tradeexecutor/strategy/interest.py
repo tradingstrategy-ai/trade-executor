@@ -309,7 +309,7 @@ def prepare_interest_distribution(
         assets,
         entries=entries,
         totals=totals,
-        effective_interest={},
+        effective_rate={},
     )
 
 
@@ -412,7 +412,7 @@ def accrue_interest(
 
         # Track the effective interest for the asset
         interest = float((new_balance - interest_distribution.totals[asset]) / interest_distribution.totals[asset]) / part_of_year
-        interest_distribution.effective_interest[asset] = interest
+        interest_distribution.effective_rate[asset] = interest
 
         yield from distribute_interest_for_assets(
             interest_distribution,
