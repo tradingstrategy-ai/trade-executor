@@ -65,7 +65,7 @@ def lending_pool_identifier(usdc, ausdc) -> TradingPairIdentifier:
 
 
 @pytest.fixture()
-def state(usdc):
+def state(usdc: AssetIdentifier):
     """Set up a state with a starting balance."""
     state = State()
     reserve_position = ReservePosition(
@@ -75,14 +75,14 @@ def state(usdc):
         last_pricing_at=datetime.datetime.utcnow(),
         last_sync_at=datetime.datetime.utcnow(),
     )
-    state.portfolio.reserves = {usdc.address: reserve_position}
+    state.portfolio.reserves = {usdc.get_identifier(): reserve_position}
     return state
 
 
 def test_open_supply_credit(
-        state: State,
-        lending_pool_identifier: TradingPairIdentifier,
-        usdc: AssetIdentifier,
+    state: State,
+    lending_pool_identifier: TradingPairIdentifier,
+    usdc: AssetIdentifier,
 ):
     """Open a credit supply position.
 

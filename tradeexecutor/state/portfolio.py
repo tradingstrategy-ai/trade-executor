@@ -619,6 +619,13 @@ class Portfolio:
         :raise KeyError:
             If we do not have reserves for the asset
         """
+
+        # Legacy data support.
+        # All new reserves are encoded as chain id + address
+        if asset.address in self.reserves:
+            return self.reserves[asset.address]
+
+        # The modern code path
         return self.reserves[asset.get_identifier()]
 
     def get_default_reserve_position(self) -> ReservePosition:

@@ -21,11 +21,12 @@ from tradingstrategy.stablecoin import is_stablecoin_like
 from tradingstrategy.types import PrimaryKey
 
 
-#: Asset unique id as a human readable string
+#: Asset unique id as a human-readable string.
 #:
 #: chain id - address tuple as string.
 #:
 #: Can be persisted.
+#: Can be used in JSON serialisation.
 #:
 AssetFriendlyId: TypeAlias = str
 
