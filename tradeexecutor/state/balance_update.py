@@ -13,6 +13,7 @@ from dataclasses import dataclass, field
 from typing import Optional
 
 from dataclasses_json import dataclass_json
+from eth_defi.aave_v3.rates import SECONDS_PER_YEAR, SECONDS_PER_YEAR_INT
 
 from tradeexecutor.state.identifier import AssetIdentifier
 from tradingstrategy.types import USDollarAmount, Percent
@@ -212,7 +213,7 @@ class BalanceUpdate:
 
         return (self.block_mined_at - self.previous_update_at)
 
-    def get_effective_yearly_yield(self, year=datetime.timedelta(days=360)) -> Percent | None:
+    def get_effective_yearly_yield(self, year=datetime.timedelta(seconds=SECONDS_PER_YEAR_INT)) -> Percent | None:
         """How much we are gaining % yearly.
 
         - Based on the this balance update and the previous balance update

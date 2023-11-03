@@ -1228,7 +1228,7 @@ def test_short_unrealised_interest_and_profit(
     )
 
     assert new_atoken == pytest.approx(Decimal('1814.905206376357316063955614'))
-    assert new_vtoken == Decimal('0.5552334719541217745270929036')
+    assert new_vtoken == pytest.approx(Decimal('0.5549274775700127945499953131'))
 
     # Tell strategy state about interest gains
     # Note that this BalanceUpdate event
@@ -1244,25 +1244,25 @@ def test_short_unrealised_interest_and_profit(
     )
 
     # We gain around 15 USDC in half a year
-    assert aevt.quantity == pytest.approx(Decimal('15.113089799044887491284317'))
+    assert aevt.quantity == pytest.approx(Decimal('14.905206376357327166185860'))
 
     # We need to pay ~ 0.02 ETH half a year,
     # worth 30 USD at 1400 ETH/USD
-    assert vevt.quantity == pytest.approx(Decimal('0.0219001386207884485952464011'))
+    assert vevt.quantity == pytest.approx(Decimal('0.0215941442366794686181488106'))
 
     assert aevt.get_update_period() == datetime.timedelta(days=152)
     assert vevt.get_update_period() == datetime.timedelta(days=152)
-    assert aevt.get_effective_yearly_yield() == pytest.approx(0.02, rel=0.01)
+    assert aevt.get_effective_yearly_yield() == pytest.approx(0.019884504120505936, rel=0.01)
     assert vevt.get_effective_yearly_yield() == pytest.approx(0.097, rel=0.01)
 
     # New ETH loan worth of 746.6666666666666 USD
     assert short_position.get_current_price() == 1400
     assert short_position.get_average_price() == 1500
 
-    assert short_position.loan.get_collateral_interest() == pytest.approx(15.113089799044888)
-    assert short_position.loan.get_borrow_interest() == pytest.approx(30.660194069103827)
-    assert short_position.get_accrued_interest() == pytest.approx(-15.54710427005894)
-    assert short_position.get_value() == pytest.approx(1037.7862290632745)
+    assert short_position.loan.get_collateral_interest() == pytest.approx(14.905206376357327)
+    assert short_position.loan.get_borrow_interest() == pytest.approx(30.23180193135126)
+    assert short_position.get_accrued_interest() == pytest.approx(-15.326595554993933)
+    assert short_position.get_value() == pytest.approx(1038.0067377783394)
 
     #  assert short_position.get_unrealised_profit_usd() == pytest.approx(800 - 746.6666666666666)
     assert short_position.get_realised_profit_usd() is None
@@ -1275,9 +1275,9 @@ def test_short_unrealised_interest_and_profit(
     assert loan.get_loan_to_value() == pytest.approx(0.4148148148148148)
 
     # Check that we track the equity value correctly
-    assert state.portfolio.get_loan_net_asset_value() == pytest.approx(1037.7862290632745)
+    assert state.portfolio.get_loan_net_asset_value() == pytest.approx(1038.0067377783394)
     assert state.portfolio.get_cash() == 9000
-    assert state.portfolio.get_net_asset_value() == pytest.approx(10037.786229063275)
+    assert state.portfolio.get_net_asset_value() == pytest.approx(10038.0067377783394)
 
 
 def test_short_unrealised_interest_and_losses(
@@ -1442,7 +1442,7 @@ def test_short_realised_interest_and_profit(
         vtoken_interest,
     )
 
-    assert new_atoken == pytest.approx(Decimal('1815.113089799044876389054071'))  # We have gained 15 USDC on our dollar long
+    assert new_atoken == pytest.approx(Decimal('1814.905206376357316063955614'))  # We have gained 15 USDC on our dollar long
     assert new_vtoken == pytest.approx(Decimal('0.5552334719541217745270929036'))
 
     # Tell strategy state about interest gains
