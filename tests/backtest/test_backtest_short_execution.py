@@ -20,7 +20,7 @@ from tradeexecutor.state.blockhain_transaction import BlockchainTransaction
 from tradeexecutor.state.reserve import ReservePosition
 from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier
 from tradeexecutor.strategy.alpha_model import AlphaModel
-from tradeexecutor.strategy.interest import update_leveraged_position_interest
+from tradeexecutor.strategy.interest import update_leveraged_position_interest, estimate_interest
 from tradeexecutor.strategy.pandas_trader.position_manager import PositionManager
 from tradeexecutor.strategy.pandas_trader.rebalance import get_existing_portfolio_weights, rebalance_portfolio_old, \
     get_weight_diffs
@@ -225,6 +225,19 @@ def state(
     state = State()
     state.update_reserves([ReservePosition(usdc, wallet.get_balance(usdc.address), start_timestamp, 1.0, start_timestamp)])
     return state
+
+
+def test_estimate_interest():
+    start = datetime.datetime(2020, 1, 1)
+    end = datetime.datetime(2021, 1, 1)
+    new_amount = estimate_interest(
+        start,
+        end,
+        Decimal(100.0),
+        1.02,
+    )
+    # Financial year = 360 days instead of 365
+    assert new_amount == pytest.approx(Decimal("102.0336700223887449467952138"))
 
 
 def test_open_and_close_one_short(
@@ -573,6 +586,7 @@ def test_open_and_close_two_shorts_with_interest(
     eth_shorting_pair = strategy_universe.get_shorting_pair(weth_usdc)
     aave_shorting_pair = strategy_universe.get_shorting_pair(aave_usdc)
     eth_short_position = position_manager.get_current_position_for_pair(eth_shorting_pair)
+    aave_short_position = position_manager.get_current_position_for_pair(aave_shorting_pair)
 
     # Check that we have a interest sync checkmark
     assert state.sync.interest.last_sync_at == simulated_time
@@ -597,15 +611,18 @@ def test_open_and_close_two_shorts_with_interest(
 
     vweth = eth_short_position.pair.base
     ausdc = eth_short_position.pair.quote
+    vaave = aave_shorting_pair.base
 
     interest_distribution = state.sync.interest.last_distribution
     assert interest_distribution.duration == datetime.timedelta(days=1)
-    import ipdb ; ipdb.set_trace()
-    assert interest_distribution.effective_interest[vweth] == pytest.approx(0)
-    assert interest_distribution.effective_interest[ausdc] == pytest.approx(0)
+    assert interest_distribution.assets == {ausdc, vweth, vaave}
+    assert interest_distribution.effective_interest[vweth] == pytest.approx(9.863013698630136)  # Around ~1000%
+    assert interest_distribution.effective_interest[ausdc] == pytest.approx(2.465753424657534)  # Around ~250%
 
     assert eth_short_position.loan.get_collateral_interest() == pytest.approx(6.839041095890411)
     assert eth_short_position.loan.get_borrow_interest() == pytest.approx(13.698630136986301)
+    assert aave_short_position.loan.get_collateral_interest() == pytest.approx(3.4195205479452055)  # Should be 50% of ETH
+
     # assert eth_short_position.get_accrued_interest() == pytest.approx(0)
 
     # Recreate position manager with changed timestamp
