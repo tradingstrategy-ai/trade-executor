@@ -712,8 +712,7 @@ class State:
 
     def blacklist_asset(self, asset: AssetIdentifier):
         """Add a asset to the blacklist."""
-        address = asset.get_identifier()
-        self.asset_blacklist.add(address)
+        self.asset_blacklist.add(asset.get_identifier())
 
     def perform_integrity_check(self):
         """Check that we are not reusing any trade or position ids and counters are correct.

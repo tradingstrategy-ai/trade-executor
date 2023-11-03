@@ -744,7 +744,8 @@ class Portfolio:
 
         reserve = trade.get_planned_reserve()
         try:
-            available = self.reserves[trade.reserve_currency.get_identifier()].quantity
+            position = self.get_reserve_position(trade.reserve_currency)
+            available = position.quantity
         except KeyError as e:
             raise RuntimeError(f"Reserve missing for {trade.reserve_currency}") from e
 

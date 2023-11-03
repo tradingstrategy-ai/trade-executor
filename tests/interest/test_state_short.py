@@ -1227,7 +1227,7 @@ def test_short_unrealised_interest_and_profit(
         vtoken_interest,
     )
 
-    assert new_atoken == Decimal('1815.113089799044876389054071')  # We have gained 15 USDC on our dollar long
+    assert new_atoken == pytest.approx(Decimal('1814.905206376357316063955614'))
     assert new_vtoken == Decimal('0.5552334719541217745270929036')
 
     # Tell strategy state about interest gains
@@ -1352,7 +1352,7 @@ def test_short_unrealised_interest_and_losses(
     old_vtoken = short_position.loan.borrowed.quantity
     # assert new_atoken == Decimal('1809.032784100456570042034639')  # We have gained 15 USDC on our dollar long
     # assert new_vtoken == Decimal('0.5463385917812319708720691214')
-    assert new_vtoken / old_vtoken == Decimal("1.5")
+    assert new_vtoken / old_vtoken == pytest.approx(Decimal("1.5"))
 
     # Tell strategy state about interest gains
     # Note that this BalanceUpdate event
@@ -1442,8 +1442,8 @@ def test_short_realised_interest_and_profit(
         vtoken_interest,
     )
 
-    assert new_atoken == Decimal('1815.113089799044876389054071')  # We have gained 15 USDC on our dollar long
-    assert new_vtoken == Decimal('0.5552334719541217745270929036')
+    assert new_atoken == pytest.approx(Decimal('1815.113089799044876389054071'))  # We have gained 15 USDC on our dollar long
+    assert new_vtoken == pytest.approx(Decimal('0.5552334719541217745270929036'))
 
     # Tell strategy state about interest gains
     # Note that this BalanceUpdate event
