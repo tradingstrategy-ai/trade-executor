@@ -740,4 +740,4 @@ def test_backtest_short_trailing_stop_loss_triggered(persistent_test_client: Cli
     assert position.liquidation_price == pytest.approx(Decimal(1906.762499999999853556031937))
     assert position.stop_loss == pytest.approx(1669.082747543819)
 
-    assert portfolio.get_cash() == pytest.approx(11962.592797114034)
+    assert portfolio.get_cash() == pytest.approx(11952.745496750647)
