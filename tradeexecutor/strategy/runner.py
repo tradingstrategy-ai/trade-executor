@@ -258,11 +258,15 @@ class StrategyRunner(abc.ABC):
         for t in trades:
 
             if execution_context.mode.is_live_trading():
+                # In live trading, use the current UTC time to fetch
+                # the post execution price info
                 ts = datetime.datetime.utcnow()
             else:
                 # Backtesting does not yet have a way
                 # to simulate slippage
                 ts = t.strategy_cycle_at
+
+            logger.info("Fetching post-execution price data for %s at %s", t.get_short_label(), ts)
 
             # Credit supply pairs do not have pricing ATM
             if t.pair.is_spot():
@@ -276,6 +280,8 @@ class StrategyRunner(abc.ABC):
                     t.post_execution_price_structure = pricing_model.get_buy_price(ts, spot_pair, t.planned_collateral_consumption)
                 else:
                     t.post_execution_price_structure = pricing_model.get_sell_price(ts, spot_pair, t.planned_quantity)
+            else:
+                raise AssertionError(f"Unsupported: {t}")
 
             #
             # Check if we got so bad trade execution we should worry about it

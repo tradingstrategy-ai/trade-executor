@@ -845,7 +845,10 @@ class TradeExecution:
         return self.pair.kind.is_longing()
 
     def is_reduce(self) -> bool:
-        """This trade decreases the exposure of existing leveraged position."""
+        """This trade decreases the exposure of existing position.
+
+        After the trade is executed we have more cash in hand.
+        """
         if self.is_short():
             return self.planned_quantity > 0
         elif self.is_long():

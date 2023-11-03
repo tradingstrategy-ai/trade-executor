@@ -1421,7 +1421,7 @@ class PositionManager:
                 borrowed_quantity_delta = loan.calculate_size_adjust(collateral_adjustment)
 
                 _, adjust_trade, _ = state.trade_short(
-                    strategy_cycle_at=datetime.datetime.utcnow(),
+                    strategy_cycle_at=self.timestamp,
                     pair=pair,
                     borrowed_quantity=-borrowed_quantity_delta,
                     collateral_quantity=collateral_adjustment,
@@ -1442,7 +1442,7 @@ class PositionManager:
                 reserves_released = Decimal(delta)
 
                 _, adjust_trade, _ = state.trade_short(
-                    strategy_cycle_at=datetime.datetime.utcnow(),
+                    strategy_cycle_at=self.timestamp,
                     pair=pair,
                     borrowed_quantity=borrowed_quantity_delta, # Buy back shorted tokens to decrease exposute
                     collateral_quantity=0,  # Not used when releasing reserves
