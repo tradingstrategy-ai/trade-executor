@@ -31,6 +31,7 @@ def update_interest(
     block_number: int | None = None,
     tx_hash: int | None = None,
     log_index: int | None = None,
+    sane_interest_update_threshold: Percent=999,
 ) -> BalanceUpdate:
     """Poke credit supply position to increase its interest amount.
 
@@ -53,6 +54,10 @@ def update_interest(
     :param event_at:
         Block mined timestamp
 
+    :param sane_interest_update_threshold:
+        Safety threshold to check that any interest gains are below this value.
+
+        Terminate execution if bad math detected.
     """
 
     assert asset is not None
@@ -93,7 +98,7 @@ def update_interest(
     gained_interest = new_token_amount - old_balance
     usd_value = float(new_token_amount) * asset_price
 
-    assert 0 <= abs(gained_interest) < 999, f"Unlikely gained_interest: {gained_interest}, old quantity: {old_balance}, new quantity: {new_token_amount}"
+    assert 0 <= abs(gained_interest) < sane_interest_update_threshold, f"Unlikely gained_interest for {asset}: {gained_interest}, old quantity: {old_balance}, new quantity: {new_token_amount}"
 
     evt = BalanceUpdate(
         balance_update_id=event_id,
@@ -358,7 +363,7 @@ def distribute_interest_for_assets(
     assert interest_accrued >= 0, f"Interest cannot go negative: {interest_accrued}"
     interest_accrued_relative = interest_accrued / asset_total
 
-    assert interest_accrued_relative <= max_interest_gain, f"Interest gain tripwired. Asset: {asset}, accrued: {interest_accrued_relative * 100}%, check threshold: {max_interest_gain}, increase: {new_amount}. asset total: {asset_total}"
+    assert interest_accrued_relative <= max_interest_gain, f"Interest gain safety check tripwired.\nAsset: {asset} at {timestamp}\nAccrued: {interest_accrued_relative * 100}%, check threshold: {max_interest_gain}, increase: {new_amount}. asset total: {asset_total}"
 
     for entry in operation.entries:
         if entry.asset == asset:
