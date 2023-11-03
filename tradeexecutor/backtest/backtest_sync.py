@@ -191,7 +191,9 @@ class BacktestSyncModel(SyncModel):
             return []
 
         duration = timestamp - previous_update_at
-        assert duration > ZERO_TIMEDELTA, f"Sync time span must be positive:{previous_update_at} - {timestamp}"
+        if duration == ZERO_TIMEDELTA:
+            logger.warning(f"Sync time span must be positive:{previous_update_at} - {timestamp}")
+            return []
 
         logger.info(
             "Starting backtest interest distribution operation at: %s, previous update %s, syncing %s",
