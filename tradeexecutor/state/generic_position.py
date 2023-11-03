@@ -2,9 +2,10 @@
 
 from _decimal import Decimal
 from abc import abstractmethod, ABC
-from typing import Iterable
+from typing import Iterable, Tuple
 
 from tradeexecutor.state.balance_update import BalanceUpdate
+from tradeexecutor.state.identifier import AssetIdentifier
 from tradeexecutor.state.types import USDollarAmount
 
 
@@ -90,3 +91,18 @@ class GenericPosition(ABC):
         :raise BalanceUpdateEventAlreadyAdded:
             In the case of a duplicate and event id is already used.
         """
+
+    @abstractmethod
+    def get_held_assets(self) -> Iterable[Tuple[AssetIdentifier, Decimal]]:
+        """Get all assets on-chain wallet should hold for this position.
+
+        - A position may hold multiple on-chain assets
+
+        - Multiple positions can share the same on-chain asset
+
+        - Any on-chain accrued interest is included in ``quantity``
+
+        :return:
+            Iterable (asset, quantity) tuples
+        """
+

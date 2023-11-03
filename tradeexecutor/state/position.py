@@ -7,7 +7,7 @@ import warnings
 from dataclasses import dataclass, field, asdict
 from decimal import Decimal
 
-from typing import Dict, Optional, List, Iterable
+from typing import Dict, Optional, List, Iterable, Tuple
 
 import numpy as np
 import pandas as pd
@@ -1568,3 +1568,14 @@ class TradingPosition(GenericPosition):
         """Get the amount of outstanding loans we have."""
         return self.loan.collateral.get_usd_value()
 
+    def get_held_assets(self) -> Iterable[Tuple[AssetIdentifier, Decimal]]:
+        assert self.is_open() or self.is_frozen()
+        if self.is_spot():
+            yield self.pair.base, self.get_quantity()
+        elif self.is_credit_supply():
+            yield self.loan.collateral.asset, self.loan.collateral.quantity
+        elif self.is_short():
+            yield self.loan.collateral.asset, self.loan.get_collateral_quantity()
+            yield self.loan.borrowed.asset, self.loan.get_borrowed_quantity()
+        else:
+            raise AssertionError(f"Unsupported: {self}")

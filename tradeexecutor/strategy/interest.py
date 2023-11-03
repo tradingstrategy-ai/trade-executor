@@ -363,7 +363,7 @@ def distribute_interest_for_assets(
     assert interest_accrued >= 0, f"Interest cannot go negative: {interest_accrued}"
     interest_accrued_relative = interest_accrued / asset_total
 
-    assert interest_accrued_relative <= max_interest_gain, f"Interest gain safety check tripwired.\nAsset: {asset} at {timestamp}\nAccrued: {interest_accrued_relative * 100}%, check threshold: {max_interest_gain}, increase: {new_amount}. asset total: {asset_total}"
+    assert interest_accrued_relative <= max_interest_gain, f"Interest gain safety check tripwired.\nAsset: {asset} at {timestamp}\nAccrued: {interest_accrued_relative * 100}%, check threshold: {max_interest_gain}, increase: {interest_accrued}, new amount: {new_amount}, asset total: {asset_total}"
 
     for entry in operation.entries:
         if entry.asset == asset:
@@ -532,7 +532,10 @@ def set_interest_checkpoint(
 
     state.sync.interest.last_sync_at = timestamp
     state.sync.interest.last_sync_block = block_number
-    state.sync.interest.last_distribution = distribution
+
+    # Always save the last distribution
+    if distribution is not None:
+        state.sync.interest.last_distribution = distribution
 
     block_number_str = f"{block_number,}" if block_number else "<no block>"
     logger.info(f"Interest check point set to {timestamp}, block: {block_number_str}")

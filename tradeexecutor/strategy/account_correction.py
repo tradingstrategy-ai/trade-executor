@@ -13,8 +13,9 @@ import logging
 import datetime
 import enum
 from _decimal import Decimal
+from collections import Counter
 from dataclasses import dataclass
-from typing import List, Iterable, Collection, Tuple
+from typing import List, Iterable, Collection, Tuple, Dict
 
 import pandas as pd
 from web3 import Web3
@@ -27,6 +28,7 @@ from eth_typing import HexAddress
 
 from eth_defi.tx import AssetDelta
 from tradeexecutor.ethereum.tx import TransactionBuilder
+from tradeexecutor.state.portfolio import Portfolio
 from tradeexecutor.state.repair import close_position_with_empty_trade
 from tradeexecutor.strategy.dust import DEFAULT_DUST_EPSILON, get_dust_epsilon_for_pair, get_dust_epsilon_for_asset
 from tradingstrategy.pair import PandasPairUniverse
@@ -188,6 +190,17 @@ def is_relative_mismatch(
         return actual_amount != expected_amount
 
     return abs((expected_amount - actual_amount) / actual_amount) > relative_epsilon
+
+
+def calculate_total_assets(portfolio: Portfolio) -> Dict[AssetIdentifier, Decimal]:
+    """Calculate total tokens the portfolio should held."""
+
+    assets: Counter[AssetIdentifier, Decimal] = Counter()
+    for p in portfolio.get_open_and_frozen_positions():
+        for asset, quantity in p.get_held_assets():
+            assets[asset] += quantity
+
+    return assets
 
 
 def calculate_account_corrections(

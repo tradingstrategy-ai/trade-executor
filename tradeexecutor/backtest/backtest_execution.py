@@ -10,6 +10,7 @@ from tradeexecutor.backtest.simulated_wallet import SimulatedWallet, OutOfSimula
 from tradeexecutor.state.state import State
 from tradeexecutor.state.trade import TradeExecution, TradeStatus
 from tradeexecutor.state.types import Percent
+from tradeexecutor.strategy.account_correction import calculate_total_assets
 from tradeexecutor.strategy.execution_model import ExecutionModel, AutoClosingOrderUnsupported
 from tradeexecutor.strategy.interest import set_interest_checkpoint
 
@@ -396,6 +397,11 @@ class BacktestExecutionModel(ExecutionModel):
                 executed_collateral_allocation=executed_collateral_allocation,
                 executed_collateral_consumption=executed_collateral_consumption,
             )
+
+        all_assets = calculate_total_assets(state.portfolio)
+        clean, asset_df = self.wallet.verify_balances(all_assets)
+        if not clean:
+            raise RuntimeError(f"Backtest simulated wallet and portfolio out of sync at {ts}:\n{asset_df}")
 
         # Set the check point interest balacnes for new positions
         set_interest_checkpoint(state, ts, None)
