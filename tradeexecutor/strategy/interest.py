@@ -7,14 +7,14 @@ from typing import Tuple, Dict, List, Iterable
 
 from tradeexecutor.state.balance_update import BalanceUpdate, BalanceUpdatePositionType, BalanceUpdateCause
 from tradeexecutor.state.identifier import AssetIdentifier
-from tradeexecutor.state.interest_distribution import InterestDistributionEntry, InterestDistributionOperation
+from tradeexecutor.state.interest_distribution import InterestDistributionEntry, InterestDistributionOperation, AssetInterestData
 from tradeexecutor.state.loan import LoanSide
 from tradeexecutor.state.portfolio import Portfolio
 from tradeexecutor.state.position import TradingPosition
 from tradeexecutor.state.state import State
 from tradeexecutor.state.types import USDollarPrice, Percent, BlockNumber
 from tradeexecutor.strategy.pricing_model import PricingModel
-
+from tradingstrategy.utils.time import ZERO_TIMEDELTA
 
 logger = logging.getLogger(__name__)
 
@@ -91,7 +91,7 @@ def update_interest(
     gained_interest = new_token_amount - old_balance
     usd_value = float(new_token_amount) * asset_price
 
-    assert 0 < abs(gained_interest) < 999, f"Unlikely gained_interest: {gained_interest}, old quantity: {old_balance}, new quantity: {new_token_amount}"
+    assert 0 <= abs(gained_interest) < 999, f"Unlikely gained_interest: {gained_interest}, old quantity: {old_balance}, new quantity: {new_token_amount}"
 
     evt = BalanceUpdate(
         balance_update_id=event_id,
@@ -252,6 +252,7 @@ def prepare_interest_distribution(
     assets = set()
     totals: Counter[AssetIdentifier, Decimal] = Counter()
     entries: List[InterestDistributionEntry] = []
+    asset_interest_data: Dict[str, AssetInterestData] = {}
     position_count = 0
 
     timestamp = end
@@ -269,7 +270,8 @@ def prepare_interest_distribution(
 
             if side == LoanSide.collateral:
                 # Currently supports stablecoin collateral only
-                assert not p.is_long()
+                if not p.is_credit_supply():
+                    assert not p.is_long(), f"Cannot handle position: {p}"
                 underlying = asset.get_pricing_asset()
                 assert underlying.is_stablecoin(), f"Asset is collateral but not stablecoin based: {asset}"
                 price = 1.0
@@ -293,13 +295,17 @@ def prepare_interest_distribution(
             entries.append(entry)
             assets.add(asset)
 
-            totals[asset] += entry.quantity
+            # Update totals
+            asset_id = asset.get_identifier()
+            asset_interest = asset_interest_data.get(asset_id, AssetInterestData())
+            asset_interest.total += entry.quantity
+            asset_interest_data[asset_id] = asset_interest
 
             position_count += 1
 
     # Calculate distribution weights
     for entry in entries:
-        entry.weight = entry.quantity / totals[entry.asset]
+        entry.weight = entry.quantity / asset_interest_data[entry.asset.get_identifier()].total
 
     logger.info("Preparing interest distribution with %d assets, %d positions, %d ledger entries", len(assets), position_count, len(entries))
 
@@ -307,8 +313,8 @@ def prepare_interest_distribution(
         start,
         end,
         assets,
+        asset_interest_data=asset_interest_data,
         entries=entries,
-        totals=totals,
         effective_rate={},
     )
 
@@ -319,7 +325,7 @@ def distribute_to_entry(entry: InterestDistributionEntry, state: State, timestam
     new_token_amount = entry.tracker.quantity + position_accrued
     assert entry.price is not None, f"Asset lacks updated price: {entry.asset}"
     assert new_token_amount > 0
-    assert new_token_amount > entry.tracker.quantity
+    assert new_token_amount >= entry.tracker.quantity
     evt = update_interest(
         state,
         entry.position,
@@ -347,10 +353,12 @@ def distribute_interest_for_assets(
         An event
      """
 
-    interest_accrued = new_amount - operation.totals[asset]
-    assert interest_accrued > 0, f"Interest cannot go negative: {interest_accrued}"
+    asset_total = operation.asset_interest_data[asset.get_identifier()].total
 
-    assert abs(interest_accrued / operation.totals[asset]) <= max_interest_gain, f"Interest gain tripwired. Asset: {asset}, accrued: {interest_accrued}, check threshold: {max_interest_gain}"
+    interest_accrued = new_amount - asset_total
+    assert interest_accrued >= 0, f"Interest cannot go negative: {interest_accrued}"
+
+    assert abs(interest_accrued / asset_total) <= max_interest_gain, f"Interest gain tripwired. Asset: {asset}, accrued: {interest_accrued}, check threshold: {max_interest_gain}"
 
     for entry in operation.entries:
         if entry.asset == asset:
@@ -403,6 +411,8 @@ def accrue_interest(
 
     """
 
+    assert interest_distribution.duration > ZERO_TIMEDELTA, f"Tried to distribute interest for zero timespan {interest_distribution.start} - {interest_distribution.end}"
+
     block_number_str = f"{block_number,}" if block_number else "<no block>"
     logger.info(f"accrue_interest({block_timestamp}, {block_number_str})")
 
@@ -411,8 +421,15 @@ def accrue_interest(
     for asset, new_balance in on_chain_balances.items():
 
         # Track the effective interest for the asset
-        interest = float((new_balance - interest_distribution.totals[asset]) / interest_distribution.totals[asset]) / part_of_year
-        interest_distribution.effective_rate[asset] = interest
+        asset_interest_data = interest_distribution.get_interest_data(asset)
+        interest = float((new_balance - asset_interest_data.total) / asset_interest_data.total) / part_of_year
+        asset_interest_data.effective_rate = interest
+
+        # We cannot generate interest events for zero updates,
+        # as it breaks math
+        if interest == 0:
+            logger.warning(f"Effective interest is zero for the asset %s", asset)
+            continue
 
         yield from distribute_interest_for_assets(
             interest_distribution,

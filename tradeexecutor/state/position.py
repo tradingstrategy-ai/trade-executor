@@ -339,6 +339,8 @@ class TradingPosition(GenericPosition):
         """Is this position long on the underlying base asset.
 
         We consider the position long if the first trade is buy.
+
+        This includes spot buy.
         """
         assert len(self.trades) > 0, "Cannot determine if position is long or short because there are no trades"
         return self.get_first_trade().is_buy()

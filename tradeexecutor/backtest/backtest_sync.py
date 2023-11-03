@@ -175,12 +175,14 @@ class BacktestSyncModel(SyncModel):
         timestamp: datetime.datetime,
         state: State,
         universe: TradingStrategyUniverse,
-        positions: List[TradingPosition],
         pricing_model: PricingModel,
     ) -> List[BalanceUpdate]:
 
         assert isinstance(timestamp, datetime.datetime)
-        assert universe.has_lending_data(), "Cannot update credit positions if no data is available"
+        if not universe.has_lending_data():
+            # sync_interests() is not needed for backtesting that do not deal with
+            # leveraged positions
+            return []
 
         previous_update_at = state.sync.interest.last_sync_at
         if not previous_update_at:

@@ -114,8 +114,15 @@ class AssetIdentifier:
         assert self.decimals >= 0
 
     def get_identifier(self) -> str:
-        """Assets are identified by their smart contract address."""
-        return self.address.lower()
+        """Assets are identified by their smart contract address.
+
+        JSON/Human friendly format to give hash keys to assets,
+        in the format chain id-address.
+
+        :return:
+            JSON friendly hask key
+        """
+        return f"{self.chain_id}-{self.address.lower()}"
 
     @property
     def checksum_address(self) -> HexAddress:

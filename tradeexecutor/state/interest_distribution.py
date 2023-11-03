@@ -5,7 +5,7 @@ Data structures used in interest distribution.
 
 import datetime
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from decimal import Decimal
 from typing import Set, Dict, List
 import logging
@@ -16,7 +16,7 @@ from tradeexecutor.state.identifier import AssetIdentifier, AssetWithTrackedValu
 from tradeexecutor.state.loan import LoanSide
 from tradeexecutor.state.position import TradingPosition
 from tradeexecutor.state.types import USDollarPrice, Percent
-
+from tradingstrategy.types import PrimaryKey
 
 logger = logging.getLogger(__name__)
 
@@ -70,6 +70,26 @@ class InterestDistributionEntry:
 
 @dataclass_json
 @dataclass(slots=True)
+class AssetInterestData:
+    """Per-asset data we track in interest calculations."""
+
+    #: Portfolio totals of interest bearing assets before the update
+    #:
+    #: hash(AssetIdentifier) -> balance mappings.
+    #: Need to use hash because JSON serialisation issues.
+    #:
+    total: Decimal = field(default=Decimal(0))
+
+    #: Calculated the effective interest rates we had for different assets
+    #:
+    #: hash(AssetIdentifier) -> interest % mapping.
+    #: Need to use hash because JSON serialisation issues.
+    #:
+    effective_rate: Percent = None
+
+
+@dataclass_json
+@dataclass(slots=True)
 class InterestDistributionOperation:
     """One interest update batch we do."""
 
@@ -88,9 +108,9 @@ class InterestDistributionOperation:
     #: All interest bearing assets we have across positions
     assets: Set[AssetIdentifier]
 
-    #: Portfolio totals of interest bearing assets before the update
+    #: Asset interest data entries keyed (chain id, address) tuples
     #:
-    totals: Dict[AssetIdentifier, Decimal]
+    asset_interest_data: Dict[str, AssetInterestData]
 
     #: All entries we need to update.
     #:
@@ -98,15 +118,12 @@ class InterestDistributionOperation:
     #:
     entries: List[InterestDistributionEntry]
 
-    #: Calculated the effective interest rates we had for different assets
-    #:
-    #: Asset -> interest % mapping.
-    #:
-    effective_rate: Dict[AssetIdentifier, Percent]
+    effective_rate: Dict[int, Percent]
 
     @property
     def duration(self) -> datetime.timedelta:
         """The time span for which we updated the accrued interest."""
         return self.end - self.start
 
-
+    def get_interest_data(self, asset: AssetIdentifier) -> AssetInterestData | None:
+        return self.asset_interest_data.get(asset.get_identifier())

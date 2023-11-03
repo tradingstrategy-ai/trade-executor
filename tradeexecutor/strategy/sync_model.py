@@ -198,7 +198,7 @@ class SyncModel(ABC):
         :return:
             All triggered balance update events, one per asset per position
         """
-        raise NotImplementedError()
+        pass
 
     def reset_deposits(self, state: State):
         """Clear out pending withdrawals/deposits events."""
