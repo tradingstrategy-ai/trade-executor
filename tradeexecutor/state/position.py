@@ -1579,3 +1579,4 @@ class TradingPosition(GenericPosition):
             yield self.loan.borrowed.asset, self.loan.get_borrowed_quantity()
         else:
             raise AssertionError(f"Unsupported: {self}")
+

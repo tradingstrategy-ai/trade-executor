@@ -657,3 +657,111 @@ def test_open_and_close_two_shorts_with_interest(
 
     assert portfolio.get_cash() == pytest.approx(9985.142016803836165936774485)
     assert portfolio.get_net_asset_value() == pytest.approx(9985.142016803836165936774485)
+
+
+def test_open_and_reduce_one_short_with_interest(
+    state: State,
+    strategy_universe: TradingStrategyUniverse,
+    pricing_model,
+    weth_usdc: TradingPairIdentifier,
+    aave_usdc: TradingPairIdentifier,
+    weth: AssetIdentifier,
+    usdc: AssetIdentifier,
+    start_timestamp,
+    execution_model: BacktestExecutionModel,
+    routing_model: BacktestRoutingModel,
+    sync_model: BacktestSyncModel,
+    wallet: SimulatedWallet,
+):
+    """Open and reduce a short position w/interest.
+    """
+
+
+    portfolio = state.portfolio
+    trades = []
+    simulated_time = start_timestamp + datetime.timedelta(days=1)
+    wallet = execution_model.wallet
+
+    position_manager = PositionManager(
+        simulated_time,
+        strategy_universe,
+        state,
+        pricing_model,
+    )
+
+    # Open WETH/USDC short
+    trades += position_manager.open_short(
+        weth_usdc,
+        500.0,
+    )
+
+    execution_model.execute_trades(
+        simulated_time,
+        state,
+        trades,
+        routing_model,
+        BacktestRoutingState(strategy_universe.data_universe.pairs, wallet),
+    )
+
+    assert any(t.is_success() for t in trades)
+    assert len(state.portfolio.open_positions) == 1
+
+    # Simulate accrued interest
+    # by having the on-chain balances to update "by itself"
+    eth_shorting_pair = strategy_universe.get_shorting_pair(weth_usdc)
+    eth_short_position = position_manager.get_current_position_for_pair(eth_shorting_pair)
+
+    # Next day, gain interest, close shorts
+    trades = []
+    simulated_time += datetime.timedelta(days=1)
+
+    # Read on-chain token balances back to the state
+    balance_updates = sync_model.sync_interests(
+        simulated_time,
+        state,
+        strategy_universe,
+        pricing_model,
+    )
+    assert len(balance_updates) == 2
+    assert eth_short_position.loan.get_collateral_interest() == pytest.approx(6.839041095890411)
+    assert eth_short_position.loan.get_borrow_interest() == pytest.approx(13.698630136986301)
+
+    assert eth_short_position.get_loan_based_nav(include_interest=False) == pytest.approx(498.5)
+    assert eth_short_position.get_loan_based_nav(include_interest=True) == pytest.approx(491.6404109589041)
+    assert portfolio.get_cash() == pytest.approx(9500.0)
+
+    # assert eth_short_position.get_accrued_interest() == pytest.approx(0)
+
+    # Recreate position manager with changed timestamp
+    position_manager = PositionManager(
+        simulated_time,
+        strategy_universe,
+        state,
+        pricing_model,
+    )
+
+    # Reduce the short 50%
+    trades += position_manager.adjust_short(
+        eth_short_position,
+        250,
+    )
+
+    execution_model.execute_trades(
+        simulated_time,
+        state,
+        trades,
+        routing_model,
+        BacktestRoutingState(strategy_universe.data_universe.pairs, wallet),
+    )
+
+    assert any(t.is_success() for t in trades)
+    assert len(state.portfolio.closed_positions) == 1
+
+    # Check that we have cleared the wallet, including dust
+    assert wallet.get_balance(weth) == 0
+    assert wallet.get_balance(eth_shorting_pair.base) == 0
+    assert wallet.get_balance(eth_shorting_pair.quote) == 0
+    assert wallet.get_balance(usdc) == pytest.approx(Decimal(9990.094677869224110624516323))
+
+    assert portfolio.get_cash() == pytest.approx(9990.094677869224110624516323)
+    assert portfolio.get_net_asset_value() == pytest.approx(9990.094677869224110624516323)
