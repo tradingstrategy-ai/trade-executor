@@ -444,24 +444,17 @@ class ExecutionLoop:
             logger.info("Performing initial backtest account funding")
             self.backtest_setup(state, universe, self.sync_model)
 
-        # Sync credit supply information before each tick.
-        # This will update the latest accrued interest.
-        to_be_synced = state.portfolio.get_current_interest_positions()
+        # TODO: This setup repeated in tick().
+        # Modify tick() to take these as argument
+        routing_state, pricing_model, valuation_model = self.runner.setup_routing(universe)
 
-        if to_be_synced:
-            logger.info("We have %d positions open that need interest syncing", len(to_be_synced))
-
-            # TODO: This setup repeated in tick().
-            # Modify tick() to take these as argument
-            routing_state, pricing_model, valuation_model = self.runner.setup_routing(universe)
-
-            sync_events = self.sync_model.sync_interests(
-                strategy_cycle_timestamp,
-                state,
-                cast(TradingStrategyUniverse, universe),
-                pricing_model,
-            )
-            logger.info("Generated %d sync interest events", len(sync_events))
+        interest_events = self.sync_model.sync_interests(
+            strategy_cycle_timestamp,
+            state,
+            cast(TradingStrategyUniverse, universe),
+            pricing_model,
+        )
+        logger.info("Generated %d sync interest events", len(interest_events))
 
         # Execute the strategy tick and trades
         self.runner.tick(

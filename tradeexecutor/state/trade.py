@@ -578,7 +578,7 @@ class TradeExecution:
             token = pricing_pair.base.token_symbol
         else:
             # Credit supply
-            token = self.base.token_symbol
+            token = self.pair.base.token_symbol
         verb = self.get_action_verb()
         return f"{verb} {token} #{self.trade_id}"
 
