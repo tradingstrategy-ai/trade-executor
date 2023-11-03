@@ -600,6 +600,7 @@ def test_open_and_close_two_shorts_with_interest(
 
     interest_distribution = state.sync.interest.last_distribution
     assert interest_distribution.duration == datetime.timedelta(days=1)
+    import ipdb ; ipdb.set_trace()
     assert interest_distribution.effective_interest[vweth] == pytest.approx(0)
     assert interest_distribution.effective_interest[ausdc] == pytest.approx(0)
 
