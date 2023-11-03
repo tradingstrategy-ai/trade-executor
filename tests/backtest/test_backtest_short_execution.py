@@ -620,8 +620,8 @@ def test_open_and_close_two_shorts_with_interest(
     interest_distribution = state.sync.interest.last_distribution
     assert interest_distribution.duration == datetime.timedelta(days=1)
     assert interest_distribution.assets == {ausdc, vweth, vaave}
-    assert interest_distribution.effective_rate[vweth] == pytest.approx(9.863013698630136)  # Around ~1000% interest
-    assert interest_distribution.effective_rate[ausdc] == pytest.approx(2.465753424657534)  # Around ~250% interest
+    assert interest_distribution.effective_rate[vweth] == pytest.approx(9.863013698630136)  # Around ~1000% interest, minus few days + rounding errors
+    assert interest_distribution.effective_rate[ausdc] == pytest.approx(2.465753424657534)  # Around ~250% interest, minus few days + rounding errors
 
     assert eth_short_position.loan.get_collateral_interest() == pytest.approx(6.839041095890411)
     assert eth_short_position.loan.get_borrow_interest() == pytest.approx(13.698630136986301)

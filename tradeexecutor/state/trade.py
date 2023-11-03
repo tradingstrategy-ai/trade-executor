@@ -574,7 +574,11 @@ class TradeExecution:
         - :py:meth:`get_action_verb`
         """
         pricing_pair = self.pair.get_pricing_pair()
-        token = pricing_pair.base.token_symbol
+        if pricing_pair:
+            token = pricing_pair.base.token_symbol
+        else:
+            # Credit supply
+            token = self.base.token_symbol
         verb = self.get_action_verb()
         return f"{verb} {token} #{self.trade_id}"
 
