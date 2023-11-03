@@ -237,7 +237,7 @@ def test_estimate_interest():
         1.02,
     )
     # Financial year = 360 days instead of 365
-    assert new_amount == pytest.approx(Decimal("102.0336700223887449467952138"))
+    assert new_amount == pytest.approx(Decimal("102.0055340350080275158006771"))
 
 
 def test_open_and_close_one_short(
@@ -479,7 +479,6 @@ def test_open_and_close_one_short_with_interest(
         simulated_time,
         state,
         strategy_universe,
-        state.portfolio.get_current_interest_positions(),
         pricing_model,
     )
     assert len(balance_updates) == 2
@@ -605,7 +604,6 @@ def test_open_and_close_two_shorts_with_interest(
         simulated_time,
         state,
         strategy_universe,
-        state.portfolio.get_current_interest_positions(),
         pricing_model,
     )
     assert len(balance_updates) == 4
@@ -620,8 +618,8 @@ def test_open_and_close_two_shorts_with_interest(
     interest_distribution = state.sync.interest.last_distribution
     assert interest_distribution.duration == datetime.timedelta(days=1)
     assert interest_distribution.assets == {ausdc, vweth, vaave}
-    assert interest_distribution.effective_rate[vweth] == pytest.approx(9.863013698630136)  # Around ~1000% interest, minus few days + rounding errors
-    assert interest_distribution.effective_rate[ausdc] == pytest.approx(2.465753424657534)  # Around ~250% interest, minus few days + rounding errors
+    assert interest_distribution.asset_interest_data[vweth.get_identifier()].effective_rate == pytest.approx(10)  # Around ~1000% interest, minus few days + rounding errors
+    assert interest_distribution.asset_interest_data[ausdc.get_identifier()].effective_rate == pytest.approx(2.5)  # Around ~250% interest, minus few days + rounding errors
 
     assert eth_short_position.loan.get_collateral_interest() == pytest.approx(6.839041095890411)
     assert eth_short_position.loan.get_borrow_interest() == pytest.approx(13.698630136986301)

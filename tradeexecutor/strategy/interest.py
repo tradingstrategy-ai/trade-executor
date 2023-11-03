@@ -5,6 +5,8 @@ from collections import Counter
 from decimal import Decimal
 from typing import Tuple, Dict, List, Iterable
 
+from eth_defi.aave_v3.rates import SECONDS_PER_YEAR_INT
+
 from tradeexecutor.state.balance_update import BalanceUpdate, BalanceUpdatePositionType, BalanceUpdateCause
 from tradeexecutor.state.identifier import AssetIdentifier
 from tradeexecutor.state.interest_distribution import InterestDistributionEntry, InterestDistributionOperation, AssetInterestData
@@ -196,7 +198,7 @@ def estimate_interest(
     end_at: datetime.datetime,
     start_quantity: Decimal,
     interest_rate: float,
-    year=datetime.timedelta(days=360),
+    year=datetime.timedelta(seconds=SECONDS_PER_YEAR_INT),
 ) -> Decimal:
     """Calculate new token amount, assuming fixed interest.
 
@@ -214,10 +216,7 @@ def estimate_interest(
         Tokens at the start of the period
 
     :param year:
-        Year length.
-
-        Default to the financial year or 360 days, 30 * 12 months,
-        not calendar year.
+        Year length in Aave.
 
     :return:
         Amount of token quantity with principal + interest after the period.
@@ -379,7 +378,7 @@ def accrue_interest(
     block_timestamp: datetime.datetime,
     block_number: BlockNumber | None,
     max_interest_gain: Percent = 0.05,
-    financial_year=datetime.timedelta(days=360),
+    aave_financial_year=datetime.timedelta(seconds=SECONDS_PER_YEAR_INT),
 ) -> Iterable[BalanceUpdate]:
     """Update the internal ledger to match interest accrued on on-chain balances.
 
@@ -416,7 +415,7 @@ def accrue_interest(
     block_number_str = f"{block_number,}" if block_number else "<no block>"
     logger.info(f"accrue_interest({block_timestamp}, {block_number_str})")
 
-    part_of_year = interest_distribution.duration / financial_year
+    part_of_year = interest_distribution.duration / aave_financial_year
 
     for asset, new_balance in on_chain_balances.items():
 
