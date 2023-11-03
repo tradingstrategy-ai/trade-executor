@@ -535,7 +535,7 @@ class AlphaModel:
                 signal=0,
                 old_weight=old_weight,
                 old_value=old_value,
-                old_pair=None,
+                old_pair=old_synthetic_pair,
             )
 
     def select_top_signals(self,
@@ -643,7 +643,14 @@ class AlphaModel:
         return diffs
 
     def calculate_target_positions(self, position_manager: PositionManager, investable_equity: USDollarAmount):
-        """Calculate individual dollar amount for each position based on its normalised weight."""
+        """Calculate individual dollar amount for each position based on its normalised weight.
+
+        - Sets the dollar value of the position
+
+        - Adjusts the existing dollar value of positions
+
+        - Map the signal to a trading pair (spot, synthetic short pair, etc.)
+        """
         # dollar_values = {pair_id: weight * investable_equity for pair_id, weight in diffs.items()}
 
         self.investable_equity = investable_equity
@@ -651,6 +658,8 @@ class AlphaModel:
         for s in self.iterate_signals():
 
             s.position_target = s.normalised_weight * investable_equity
+
+            s.synthetic_pair = self.map_pair_for_signal(position_manager, s)
 
             if s.is_flipping():
                 # When we go between short/long/spot
@@ -746,7 +755,7 @@ class AlphaModel:
             value = signal.position_target
 
             underlying = signal.pair
-            signal.synthetic_pair = synthetic = self.map_pair_for_signal(position_manager, signal)
+            synthetic = signal.synthetic_pair
 
             # Do backtesting record keeping, so that
             # it is later easier to display alpha model thinking
@@ -882,11 +891,12 @@ def format_signals(
     # print(f"{timestamp} cycle signals")
     for s in sorted_signals:
         pair = s.pair
+        synthetic_pair = s.synthetic_pair.get_ticker()
         old_pair = s.old_pair.get_ticker() if s.old_pair else "-"
-        data.append((pair.get_ticker(), s.signal, s.position_adjust_usd, s.normalised_weight, s.old_weight, s.get_flip_label(), old_pair))
+        data.append((pair.get_ticker(), s.signal, s.position_adjust_usd, s.normalised_weight, s.old_weight, s.get_flip_label(), synthetic_pair, old_pair))
 
         #print(f"Pair: {pair.get_ticker()}, signal: {s.signal}")
 
-    df = pd.DataFrame(data, columns=["Pair", "Signal", "Value adj", "Norm weight", "Old weight", "Flipping", "Old pair"])
-    df = df.set_index("Pair")
+    df = pd.DataFrame(data, columns=["Core pair", "Signal", "Value adj", "Norm weight", "Old weight", "Flipping", "Trade as", "Old trade as"])
+    df = df.set_index("Core pair")
     return df

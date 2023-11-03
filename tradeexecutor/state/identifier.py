@@ -318,11 +318,12 @@ class TradingPairIdentifier:
     #:
     #: For synthetic pairs, like leveraged pairs on lending protocols,
     #: the internal id is the same as the underlying spot pair id.
+    #: TODO: Confirm this, or missing?
     #:
-    internal_id: Optional[int] = None
+    internal_id: Optional[PrimaryKey] = None
 
     #: What is the internal exchange id of this trading pair.
-    internal_exchange_id: Optional[int] = None
+    internal_exchange_id: Optional[PrimaryKey] = None
 
     #: Info page URL for this trading pair e.g. with the price charts
     info_url: Optional[str] = None

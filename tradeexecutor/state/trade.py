@@ -850,6 +850,8 @@ class TradeExecution:
             return self.planned_quantity > 0
         elif self.is_long():
             return self.planned_quantity < 0
+        elif self.is_spot():
+            return self.planned_quantity < 0
         else:
             raise NotImplementedError(f"Not leveraged trade: {self}")
 
@@ -1057,9 +1059,11 @@ class TradeExecution:
         """
 
         if self.closing:
-            # Magic number
+            # Close positions always first to release maximum cash
             return -self.trade_id - 100_000_000
-        elif self.is_sell():
+        elif self.is_reduce():
+            # Trades that release cash need to go before
+            # trades where we spend reserves
             return -self.trade_id
         else:
             return self.trade_id
