@@ -112,24 +112,3 @@ class Interest:
 
 
 
-@dataclass_json
-@dataclass(slots=True)
-class PortfolioInterestTracker:
-    """Track interest across all positions."""
-
-    #: All on-chain assets from the last snapshot
-    #:
-    #: These are rebased asset quantity at :py:attr:`last_sync_block`.
-    #: Empty dict if not available.
-    #:
-    assets: Dict[AssetIdentifier, Decimal] = field(default_factory=dict)
-
-    #: When did we perform the last interest sync all all assets
-    #:
-    last_sync_at: datetime.datetime | None = None
-
-    #: Block number when we synced the portfolio
-    #:
-    #: Backtesting does not use block numbers and has this always set to ``None``.
-    #:
-    last_sync_block: BlockNumber | None = None

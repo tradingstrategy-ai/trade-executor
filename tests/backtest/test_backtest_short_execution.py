@@ -162,8 +162,8 @@ def strategy_universe(
         end_at,
         reserves=[usdc_reserve, weth_reserve, aave_reserve],
         aprs={
-            "supply": 2,
-            "variable": 5,
+            "supply": 250,
+            "variable": 1000,
         }
     )
 
@@ -571,7 +571,12 @@ def test_open_and_close_two_shorts_with_interest(
     # Simulate accrued interest
     # by having the on-chain balances to update "by itself"
     eth_shorting_pair = strategy_universe.get_shorting_pair(weth_usdc)
+    aave_shorting_pair = strategy_universe.get_shorting_pair(aave_usdc)
     eth_short_position = position_manager.get_current_position_for_pair(eth_shorting_pair)
+
+    # Check that we have a interest sync checkmark
+    assert state.sync.interest.last_sync_at == simulated_time
+    assert state.sync.interest.last_distribution is None
 
     # Next day, gain interest, close shorts
     trades = []
@@ -586,8 +591,20 @@ def test_open_and_close_two_shorts_with_interest(
         pricing_model,
     )
     assert len(balance_updates) == 4
-    assert eth_short_position.loan.get_collateral_interest() == pytest.approx(0.054712328767123286)
-    assert eth_short_position.loan.get_borrow_interest() == pytest.approx(0.027397260273972605)
+
+    assert state.sync.interest.last_sync_at == simulated_time
+    assert state.sync.interest.last_distribution is not None
+
+    vweth = eth_short_position.pair.base
+    ausdc = eth_short_position.pair.quote
+
+    interest_distribution = state.sync.interest.last_distribution
+    assert interest_distribution.duration == datetime.timedelta(days=1)
+    assert interest_distribution.effective_interest[vweth] == pytest.approx(0)
+    assert interest_distribution.effective_interest[ausdc] == pytest.approx(0)
+
+    assert eth_short_position.loan.get_collateral_interest() == pytest.approx(6.839041095890411)
+    assert eth_short_position.loan.get_borrow_interest() == pytest.approx(13.698630136986301)
     # assert eth_short_position.get_accrued_interest() == pytest.approx(0)
 
     # Recreate position manager with changed timestamp
@@ -608,6 +625,7 @@ def test_open_and_close_two_shorts_with_interest(
         BacktestRoutingState(strategy_universe.data_universe.pairs, wallet),
     )
 
+    assert len(trades) == 2
     assert any(t.is_success() for t in trades)
     assert len(state.portfolio.closed_positions) == 2
 
@@ -615,7 +633,9 @@ def test_open_and_close_two_shorts_with_interest(
     assert wallet.get_balance(weth) == 0
     assert wallet.get_balance(eth_shorting_pair.base) == 0
     assert wallet.get_balance(eth_shorting_pair.quote) == 0
-    assert wallet.get_balance(usdc) == pytest.approx(Decimal(9997.022719088773168759458312))
+    assert wallet.get_balance(aave_shorting_pair.base) == 0
+    assert wallet.get_balance(aave_shorting_pair.quote) == 0
+    assert wallet.get_balance(usdc) == pytest.approx(Decimal(9985.142016803836165936774485))
 
-    assert portfolio.get_cash() == pytest.approx(9997.07743141754)  # ~$3 Lost on fees
-    assert portfolio.get_net_asset_value() == pytest.approx(9997.07743141754)  # All in cash
+    assert portfolio.get_cash() == pytest.approx(9985.142016803836165936774485)
+    assert portfolio.get_net_asset_value() == pytest.approx(9985.142016803836165936774485)

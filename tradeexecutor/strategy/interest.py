@@ -1,14 +1,13 @@
 """Functions to refresh accrued interest on credit positions."""
+import logging
 import datetime
 from collections import Counter
-from dataclasses import dataclass
 from decimal import Decimal
-from typing import Tuple, Set, Literal, Dict, List, Iterable
-import logging
+from typing import Tuple, Dict, List, Iterable
 
 from tradeexecutor.state.balance_update import BalanceUpdate, BalanceUpdatePositionType, BalanceUpdateCause
-from tradeexecutor.state.identifier import TradingPairKind, AssetIdentifier, AssetWithTrackedValue
-from tradeexecutor.state.interest import PortfolioInterestTracker, Interest
+from tradeexecutor.state.identifier import AssetIdentifier
+from tradeexecutor.state.interest_distribution import InterestDistributionEntry, InterestDistributionOperation
 from tradeexecutor.state.loan import LoanSide
 from tradeexecutor.state.portfolio import Portfolio
 from tradeexecutor.state.position import TradingPosition
@@ -16,107 +15,9 @@ from tradeexecutor.state.state import State
 from tradeexecutor.state.types import USDollarPrice, Percent, BlockNumber
 from tradeexecutor.strategy.pricing_model import PricingModel
 
+
 logger = logging.getLogger(__name__)
 
-
-@dataclass(slots=True)
-class InterestDistributionEntry:
-    """Map interest distribution across different trading positions.
-
-    A helper class to help us to distribute accrued interest across different
-    related trading positions.
-
-    The lifetime of an instance is one sync_interests() run.
-    """
-
-    #: Which side we are on
-    side: LoanSide
-
-    #: The trading position containing this asset
-    position: TradingPosition
-
-    #: Can be either loan.collateral or loan.borrower
-    tracker: AssetWithTrackedValue
-
-    #: All weight are normalised to 0...1 based on loan token amount.
-    weight: Decimal = None
-
-    #: The updated price for the tracked asset
-    price: USDollarPrice = None
-
-    def __repr__(self):
-        return f"<InterestDistributionEntry {self.side.name} {self.position.pair.get_ticker()} {self.weight * 100}%>"
-
-    @property
-    def asset(self) -> AssetIdentifier:
-        """Amount of tracked asset in tokens"""
-        return self.tracker.asset
-
-    @property
-    def quantity(self) -> Decimal:
-        """Amount of tracked asset in tokens"""
-        return self.tracker.quantity
-
-    def distribute(self, state: State, timestamp: datetime.datetime, block_number: BlockNumber, total_accrued: Decimal) -> BalanceUpdate:
-        position_accrued = total_accrued * self.weight  # Calculate per-position portion of new tokens
-        new_token_amount = self.tracker.quantity + position_accrued
-        assert self.price is not None, f"Asset lacks updated price: {self.asset}"
-        assert new_token_amount > 0
-        assert new_token_amount > self.tracker.quantity
-        evt = update_interest(
-            state,
-            self.position,
-            self.asset,
-            new_token_amount=new_token_amount,
-            event_at=timestamp,
-            asset_price=self.price,
-            block_number=block_number,
-        )
-        return evt
-
-
-@dataclass(slots=True)
-class InterestDistributionOperation:
-    """One interest update batch we do."""
-
-    #: All interest bearing assets we have across positions
-    assets: Set[AssetIdentifier]
-
-    #: All entries we need to udpate
-    entries: List[InterestDistributionEntry]
-
-    #: Portfolio totals of interest bearing assets before the update
-    totals: Dict[AssetIdentifier, Decimal]
-
-    def distribute_interest_for_asset(
-        self,
-        state: State,
-        asset: AssetIdentifier,
-        timestamp: datetime.datetime,
-        block_number: BlockNumber | None,
-        new_amount: Decimal,
-        max_interest_gain: Percent,
-    ) -> Iterable[BalanceUpdate]:
-        """Distribute the accrued interest of an asset across all positions holding this asset.
-
-         :return:
-            An event
-         """
-
-        interest_accrued = new_amount - self.totals[asset]
-        assert interest_accrued > 0, f"Interest cannot go negative: {interest_accrued}"
-
-        assert abs(interest_accrued / self.totals[asset]) <= max_interest_gain, f"Interest gain tripwired. Asset: {asset}, accrued: {interest_accrued}, check threshold: {max_interest_gain}"
-
-        for entry in self.entries:
-            if entry.asset == asset:
-                evt = entry.distribute(
-                    state,
-                    timestamp,
-                    block_number,
-                    interest_accrued
-                )
-                yield evt
 
 def update_interest(
     state: State,
@@ -295,7 +196,7 @@ def estimate_interest(
     end_at: datetime.datetime,
     start_quantity: Decimal,
     interest_rate: float,
-    year = datetime.timedelta(days=360),
+    year=datetime.timedelta(days=360),
 ) -> Decimal:
     """Calculate new token amount, assuming fixed interest.
 
@@ -332,7 +233,8 @@ def estimate_interest(
 
 
 def prepare_interest_distribution(
-    timestamp: datetime.datetime,
+    start: datetime.datetime,
+    end: datetime.datetime,
     portfolio: Portfolio,
     pricing_model: PricingModel
 ) -> InterestDistributionOperation:
@@ -351,6 +253,8 @@ def prepare_interest_distribution(
     totals: Counter[AssetIdentifier, Decimal] = Counter()
     entries: List[InterestDistributionEntry] = []
     position_count = 0
+
+    timestamp = end
 
     for p in portfolio.get_open_and_frozen_positions():
         for asset in (p.pair.base, p.pair.quote):
@@ -400,31 +304,64 @@ def prepare_interest_distribution(
     logger.info("Preparing interest distribution with %d assets, %d positions, %d ledger entries", len(assets), position_count, len(entries))
 
     return InterestDistributionOperation(
+        start,
+        end,
         assets,
-        entries,
-        totals,
+        entries=entries,
+        totals=totals,
+        effective_interest={},
     )
 
 
-def initialise_tracking(
-    tracker: PortfolioInterestTracker,
-    interest_distribution: InterestDistributionOperation,
-):
-    """Start tracking any interest-based assets we do not track yet.
+def distribute_to_entry(entry: InterestDistributionEntry, state: State, timestamp: datetime.datetime, block_number: BlockNumber, total_accrued: Decimal) -> BalanceUpdate:
+    """Update interest one position, one side of loan."""
+    position_accrued = total_accrued * entry.weight  # Calculate per-position portion of new tokens
+    new_token_amount = entry.tracker.quantity + position_accrued
+    assert entry.price is not None, f"Asset lacks updated price: {entry.asset}"
+    assert new_token_amount > 0
+    assert new_token_amount > entry.tracker.quantity
+    evt = update_interest(
+        state,
+        entry.position,
+        entry.asset,
+        new_token_amount=new_token_amount,
+        event_at=timestamp,
+        asset_price=entry.price,
+        block_number=block_number,
+    )
+    return evt
 
-    If the asset was just added to the portfolio start with zero interest accrued.
-    """
 
-    for asset in interest_distribution.assets:
-        if asset not in tracker.assets:
-            tracker.assets[asset] = Interest(
-                opening_amount=interest_distribution.totals[asset],
-                last_token_amount=interest_distribution.totals[asset],
-                last_updated_at=datetime.datetime.utcnow(),
-                last_event_at=datetime.datetime.utcnow(),
-                last_accrued_interest=Decimal(0),
-                last_updated_block_number=None,
+def distribute_interest_for_assets(
+    operation: InterestDistributionOperation,
+    state: State,
+    asset: AssetIdentifier,
+    timestamp: datetime.datetime,
+    block_number: BlockNumber | None,
+    new_amount: Decimal,
+    max_interest_gain: Percent,
+) -> Iterable[BalanceUpdate]:
+    """Distribute the accrued interest of an asset across all positions holding this asset.
+
+     :return:
+        An event
+     """
+
+    interest_accrued = new_amount - operation.totals[asset]
+    assert interest_accrued > 0, f"Interest cannot go negative: {interest_accrued}"
+
+    assert abs(interest_accrued / operation.totals[asset]) <= max_interest_gain, f"Interest gain tripwired. Asset: {asset}, accrued: {interest_accrued}, check threshold: {max_interest_gain}"
+
+    for entry in operation.entries:
+        if entry.asset == asset:
+            evt = distribute_to_entry(
+                entry,
+                state,
+                timestamp,
+                block_number,
+                interest_accrued
             )
+            yield evt
 
 
 def accrue_interest(
@@ -434,6 +371,7 @@ def accrue_interest(
     block_timestamp: datetime.datetime,
     block_number: BlockNumber | None,
     max_interest_gain: Percent = 0.05,
+    financial_year=datetime.timedelta(days=360),
 ) -> Iterable[BalanceUpdate]:
     """Update the internal ledger to match interest accrued on on-chain balances.
 
@@ -468,8 +406,16 @@ def accrue_interest(
     block_number_str = f"{block_number,}" if block_number else "<no block>"
     logger.info(f"accrue_interest({block_timestamp}, {block_number_str})")
 
+    part_of_year = interest_distribution.duration / financial_year
+
     for asset, new_balance in on_chain_balances.items():
-        yield from interest_distribution.distribute_interest_for_asset(
+
+        # Track the effective interest for the asset
+        interest = float((new_balance - interest_distribution.totals[asset]) / interest_distribution.totals[asset]) / part_of_year
+        interest_distribution.effective_interest[asset] = interest
+
+        yield from distribute_interest_for_assets(
+            interest_distribution,
             state,
             asset,
             block_timestamp,
@@ -478,8 +424,7 @@ def accrue_interest(
             max_interest_gain=max_interest_gain,
         )
 
-    state.sync.interest.assets = on_chain_balances
-    set_interest_checkpoint(state, block_timestamp, block_number)
+    set_interest_checkpoint(state, block_timestamp, block_number, interest_distribution)
 
     #
     # events = []
@@ -555,6 +500,7 @@ def set_interest_checkpoint(
     state: State,
     timestamp: datetime.datetime,
     block_number: BlockNumber | None,
+    distribution: InterestDistributionOperation | None = None,
 ):
     """Set the last updated at flag for rebase interest calcualtions at the internal state."""
 
@@ -564,6 +510,7 @@ def set_interest_checkpoint(
 
     state.sync.interest.last_sync_at = timestamp
     state.sync.interest.last_sync_block = block_number
+    state.sync.interest.last_distribution = distribution
 
     block_number_str = f"{block_number,}" if block_number else "<no block>"
     logger.info(f"Interest check point set to {timestamp}, block: {block_number_str}")

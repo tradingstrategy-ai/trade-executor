@@ -3,21 +3,18 @@ import datetime
 from dataclasses import dataclass
 from decimal import Decimal
 from types import NoneType
-from typing import List, Optional, Literal, Collection, Iterable
+from typing import List, Optional, Collection, Iterable
 
 from web3.types import BlockIdentifier
-
-from eth_defi.aave_v3.rates import SECONDS_PER_YEAR
 
 from tradeexecutor.backtest.simulated_wallet import SimulatedWallet
 from tradeexecutor.ethereum.wallet import ReserveUpdateEvent
 from tradeexecutor.state.balance_update import BalanceUpdate
 from tradeexecutor.state.identifier import AssetIdentifier
-from tradeexecutor.state.interest import Interest
 from tradeexecutor.state.position import TradingPosition
 from tradeexecutor.state.state import State
 from tradeexecutor.state.types import JSONHexAddress, BlockNumber
-from tradeexecutor.strategy.interest import update_interest, update_leveraged_position_interest, prepare_interest_distribution, initialise_tracking, \
+from tradeexecutor.strategy.interest import prepare_interest_distribution, \
     accrue_interest
 from tradeexecutor.strategy.pricing_model import PricingModel
 from tradeexecutor.strategy.sync_model import SyncModel, OnChainBalance
@@ -201,7 +198,12 @@ class BacktestSyncModel(SyncModel):
             duration,
         )
 
-        interest_distribution = prepare_interest_distribution(timestamp, state.portfolio, pricing_model)
+        interest_distribution = prepare_interest_distribution(
+            state.sync.interest.last_sync_at,
+            timestamp,
+            state.portfolio,
+            pricing_model
+        )
 
         # initialise_tracking(portfolio_interest_tracker, interest_distribution)
 
