@@ -136,7 +136,7 @@ class TradingPairSignal:
     #:
     #: Allows us to switch between spot, leveraged long, leveraged short.
     #:
-    old_synthetic_pair: TradingPairIdentifier | None = None
+    old_pair: TradingPairIdentifier | None = None
 
     #: How many dollars we plan to invest on trading pair.
     #:
@@ -286,20 +286,20 @@ class TradingPairSignal:
         if self.normalised_weight == 0:
             return False
 
-        if self.old_synthetic_pair is None:
+        if self.old_pair is None:
             return False
 
         if self.signal < 0:
-            return self.old_synthetic_pair.is_long() or self.old_synthetic_pair.is_spot()
+            return self.old_pair.is_long() or self.old_pair.is_spot()
         elif self.signal > 0:
-            return self.old_synthetic_pair.is_short()
+            return self.old_pair.is_short()
         else:
             return False
 
     def get_flip_label(self) -> str:
         """Get flip label"""
 
-        if self.old_synthetic_pair is None:
+        if self.old_pair is None:
             if self.signal > 0:
                 return "none -> spot"
             elif self.signal < 0:
@@ -309,7 +309,7 @@ class TradingPairSignal:
             else:
                 return "no flip"
 
-        elif self.old_synthetic_pair.is_spot():
+        elif self.old_pair.is_spot():
             if self.signal < 0:
                 return "spot -> short"
             elif self.signal == 0:
@@ -317,7 +317,7 @@ class TradingPairSignal:
             else:
                 return "no flip"
 
-        elif self.old_synthetic_pair.is_short():
+        elif self.old_pair.is_short():
             if self.signal > 0:
                 return "short -> spot"
             elif self.signal == 0:
@@ -528,14 +528,14 @@ class AlphaModel:
         if pair.internal_id in self.signals:
             self.signals[pair.internal_id].old_weight = old_weight
             self.signals[pair.internal_id].old_value = old_value
-            self.signals[pair.internal_id].old_synthetic_pair = old_synthetic_pair
+            self.signals[pair.internal_id].old_pair = old_synthetic_pair
         else:
             self.signals[pair.internal_id] = TradingPairSignal(
                 pair=pair,
                 signal=0,
                 old_weight=old_weight,
                 old_value=old_value,
-                old_synthetic_pair=None,
+                old_pair=None,
             )
 
     def select_top_signals(self,
@@ -751,8 +751,8 @@ class AlphaModel:
             # Do backtesting record keeping, so that
             # it is later easier to display alpha model thinking
             current_position = None
-            if signal.old_synthetic_pair:
-                current_position = position_manager.get_current_position_for_pair(signal.old_synthetic_pair)
+            if signal.old_pair:
+                current_position = position_manager.get_current_position_for_pair(signal.old_pair)
                 if current_position:
                     signal.profit_before_trades = current_position.get_total_profit_usd()
                     signal.profit_before_trades_pct = current_position.get_total_profit_percent()
@@ -789,7 +789,7 @@ class AlphaModel:
 
                         logger.info("Alpha model signal flipping for %s: %s, new strength %f", signal.pair.get_pricing_pair().base.token_symbol, signal.get_flip_label(), signal.signal)
 
-                        old_position = position_manager.get_current_position_for_pair(signal.old_synthetic_pair)
+                        old_position = position_manager.get_current_position_for_pair(signal.old_pair)
                         if old_position:
                             position_rebalance_trades += position_manager.close_position(
                                 old_position,
@@ -882,11 +882,11 @@ def format_signals(
     # print(f"{timestamp} cycle signals")
     for s in sorted_signals:
         pair = s.pair
-
-        data.append((pair.get_ticker(), s.signal, s.position_adjust_usd, s.normalised_weight, s.old_weight, s.get_flip_label()))
+        old_pair = s.old_pair.get_ticker() if s.old_pair else "-"
+        data.append((pair.get_ticker(), s.signal, s.position_adjust_usd, s.normalised_weight, s.old_weight, s.get_flip_label(), old_pair))
 
         #print(f"Pair: {pair.get_ticker()}, signal: {s.signal}")
 
-    df = pd.DataFrame(data, columns=["Pair", "Signal", "Value adj", "Norm weight", "Old weight", "Flipping"])
+    df = pd.DataFrame(data, columns=["Pair", "Signal", "Value adj", "Norm weight", "Old weight", "Flipping", "Old pair"])
     df = df.set_index("Pair")
     return df

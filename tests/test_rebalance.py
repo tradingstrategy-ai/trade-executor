@@ -728,7 +728,7 @@ def test_alpha_model_open_short(
     alpha_model.update_old_weights(state.portfolio)
     weth_signal = alpha_model.get_signal_by_pair(weth_usdc)
     assert weth_signal.old_value == pytest.approx(157.7)
-    assert weth_signal.old_synthetic_pair == weth_usdc
+    assert weth_signal.old_pair == weth_usdc
 
     # Calculate how much dollar value we want each individual position to be on this strategy cycle,
     # based on our total available equity
