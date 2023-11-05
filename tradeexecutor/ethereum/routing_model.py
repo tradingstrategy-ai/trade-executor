@@ -202,6 +202,85 @@ class EthereumRoutingModel(RoutingModel):
         }
         return txs
 
+    def make_leverage_trade(
+        self,
+        routing_state: EthereumRoutingState,
+        target_pair: TradingPairIdentifier,
+        reserve_asset: AssetIdentifier,
+        reserve_amount: int,
+        max_slippage: Percent,
+        address_map: Dict,
+        check_balances=False,
+        asset_deltas: Optional[List[AssetDelta]] = None,
+        notes="",
+    ) -> List[BlockchainTransaction]:
+        """Prepare a short trade where target pair has out reserve asset as a quote token.
+
+        :param max_slippage:
+            Max slippage tolerance as percent.
+
+            E.g. 0.01 for 100 BPS slippage tolerance.
+
+        :return:
+            List of approval transactions (if any needed)
+        """
+        uniswap = routing_state.get_uniswap_for_pair(address_map, target_pair)
+        one_delta = routing_state.get_one_delta_for_pair(address_map, target_pair)
+        
+        spot_pair = target_pair.get_pricing_pair()
+        collateral_token_address = target_pair.quote
+        token_address = reserve_asset.address
+        
+        # TODO: refactor this
+        # if hasattr(uniswap, "router"):
+        #     txs = routing_state.ensure_token_approved(token_address, uniswap.router.address)
+        # elif hasattr(uniswap, "swap_router"):
+        #     txs = routing_state.ensure_token_approved(token_address, uniswap.swap_router.address)
+        # else:
+        #     raise TypeError("Incorrect Uniswap Instance provided. Can't get router.")
+        # txs = routing_state.ensure_multiple_tokens_approved(one_delta)
+
+        # adjusted_reserve_amount = routing_state.adjust_spend(
+        #     reserve_asset,
+        #     reserve_amount,
+        # )
+        adjusted_reserve_amount = reserve_amount
+
+        logger.info(
+            "Doing leverage short way trade. Pair:%s\n Reserve:%s Adjusted reserve amount: %s Max slippage: %s BPS",
+            target_pair,
+            reserve_asset,
+            adjusted_reserve_amount,
+            max_slippage * 10_000 if max_slippage else "-")
+
+        if max_slippage:
+            # Validate slippage tolerance a bit
+            # Assume 5% is the max sane slippage tolerance
+            assert 0 < max_slippage <= 0.05, f"Received max_slippage: {max_slippage}"
+        
+        trade_txs = routing_state.trade_on_one_delta(
+            one_delta=one_delta,
+            uniswap=uniswap,
+            target_pair=target_pair,
+            reserve_asset=reserve_asset,
+            collateral_amount=adjusted_reserve_amount,
+            borrow_amount=0, # TODO
+            max_slippage=max_slippage,
+            check_balances=check_balances,
+            asset_deltas=asset_deltas,
+            notes=notes,
+        )
+
+        # Leave note of adjustment.
+        # Use str() because JSON cannot handle big int
+        trade_txs[0].other = {
+            "reserve_amount": str(reserve_amount),
+            "adjusted_reserve_amount": str(adjusted_reserve_amount),
+        }
+
+        txs = trade_txs
+        return txs
+
     def trade(self,
               routing_state: EthereumRoutingState,
               target_pair: TradingPairIdentifier,
@@ -251,8 +330,8 @@ class EthereumRoutingModel(RoutingModel):
         # Our reserves match directly the asset on trading pair
         # -> we can do one leg trade
         if not intermediary_pair:
-            if target_pair.quote == reserve_asset or target_pair.base == reserve_asset:
-                return self.make_direct_trade(
+            if target_pair.is_leverage():
+                return self.make_leverage_trade(
                     routing_state,
                     target_pair,
                     reserve_asset,
@@ -262,7 +341,19 @@ class EthereumRoutingModel(RoutingModel):
                     asset_deltas=asset_deltas,
                     notes=notes,
                 )
-            raise RuntimeError(f"Do not how to trade reserve {reserve_asset} with {target_pair}")
+            else:
+                if target_pair.quote == reserve_asset or target_pair.base == reserve_asset:
+                    return self.make_direct_trade(
+                        routing_state,
+                        target_pair,
+                        reserve_asset,
+                        reserve_asset_amount,
+                        max_slippage=max_slippage,
+                        check_balances=check_balances,
+                        asset_deltas=asset_deltas,
+                        notes=notes,
+                    )
+                raise RuntimeError(f"Do not how to trade reserve {reserve_asset} with {target_pair}")
         else:
 
             self.intermediary_pair_assertion(intermediary_pair)
@@ -323,7 +414,12 @@ class EthereumRoutingModel(RoutingModel):
 
             logger.info("Slippage tolerance is: %f %%, expected asset deltas: %s", max_slippage * 100, asset_deltas)
 
-            target_pair, intermediary_pair = self.route_trade(pair_universe, t)
+            # TODO: hack to bypass route_trade(), fix later
+            if t.is_leverage():
+                target_pair = t.pair
+                intermediary_pair = None
+            else:
+                target_pair, intermediary_pair = self.route_trade(pair_universe, t)
 
             notes = f"Trade: {t}\n" \
                     f"Position {t.position_id}\n" \

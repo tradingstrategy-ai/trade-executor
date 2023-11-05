@@ -968,7 +968,7 @@ def wait_trades_to_complete(
 
 
 def is_swap_function(name: str):
-    return name in {"swapExactTokensForTokens", "exactInput"}
+    return name in {"swapExactTokensForTokens", "exactInput", "multicall"}
 
 
 def get_swap_transactions(trade: TradeExecution) -> BlockchainTransaction:
