@@ -36,7 +36,7 @@ from tradeexecutor.state.types import USDollarAmount
 from tradeexecutor.strategy.cycle import CycleDuration
 from tradeexecutor.strategy.default_routing_options import TradeRouting
 from tradeexecutor.strategy.routing import RoutingModel
-from tradeexecutor.strategy.strategy_module import DecideTradesProtocol
+from tradeexecutor.strategy.strategy_module import DecideTradesProtocol, DecideTradesProtocol2
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
 from tradeexecutor.visual.equity_curve import calculate_equity_curve, calculate_returns
 
@@ -449,7 +449,7 @@ def perform_grid_search(
 
 def run_grid_search_backtest(
         combination: GridCombination,
-        decide_trades: DecideTradesProtocol,
+        decide_trades: DecideTradesProtocol | DecideTradesProtocol2,
         universe: TradingStrategyUniverse,
         cycle_duration: Optional[CycleDuration] = None,
         start_at: Optional[datetime.datetime | pd.Timestamp] = None,
