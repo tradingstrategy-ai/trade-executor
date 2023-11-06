@@ -87,10 +87,16 @@ class Loan:
 
     def __repr__(self):
         asset_symbol = self.borrowed.asset.token_symbol if self.borrowed else ""
-        return f"<Loan, borrowed ${self.get_borrow_value()} {asset_symbol} for collateral ${self.get_collateral_value()}, at leverage {self.get_leverage()}, borrow price: {self.borrowed.last_usd_price}, collateral price: {self.collateral.last_usd_price}>"
+        return f"<Loan, borrowed {self.get_borrowed_quantity()} {asset_symbol} ${self.get_borrow_value()} for collateral ${self.get_collateral_value()}, at leverage {self.get_leverage()}, borrow price: {self.borrowed.last_usd_price}, collateral price: {self.collateral.last_usd_price}>"
 
     def clone(self) -> "Loan":
-        """Clone this data structure for mutating."""
+        """Clone this data structure for mutating.
+
+        Used when increasing/reducing shorts,
+        as we copy the existing on-chain data
+        and then apply our delta in :py:func:`tradeexecutor.state.position.TradingPosition.open_trade`
+        on the top of this.
+        """
         return copy.deepcopy(self)
 
     def get_tracked_asset(self, asset: AssetIdentifier) -> Tuple[LoanSide | None, AssetWithTrackedValue | None]:

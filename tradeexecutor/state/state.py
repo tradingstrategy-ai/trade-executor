@@ -632,6 +632,8 @@ class State:
             executed_collateral_allocation=executed_collateral_allocation,
         )
 
+        # The loan status of the position is reflected back to be
+        # whatever is on chain after the execution
         if trade.planned_loan_update:
             assert trade.executed_loan_update, "TradeExecution.executed_loan_update structure not filled"
             position.loan = trade.executed_loan_update

@@ -110,5 +110,17 @@ class Interest:
         """Update interest payments needed to maintain the borrowed debt."""
         self.interest_payments += quantity
 
+    def adjust(self, delta: Decimal):
+        """Adjust the quantity on this loan.
+
+        Used when doing increase/reduce shorts to get a new amount.
+        With safety checks.
+
+        :param delta:
+            Positive: increase amount, negative decrease amount.
+        """
+        self.last_token_amount += delta
+        assert self.last_token_amount >= 0, f"last_token_amount cannot go negative on {self}: {delta}"
+
 
 

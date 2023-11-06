@@ -966,6 +966,7 @@ class TradingPosition(GenericPosition):
                             self,
                             trade,
                         )
+
                 else:
                     raise NotImplementedError()
             else:

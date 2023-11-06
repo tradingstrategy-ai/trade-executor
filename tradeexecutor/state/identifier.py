@@ -627,3 +627,5 @@ class AssetWithTrackedValue:
             self.quantity = Decimal(0)
 
 
+
+

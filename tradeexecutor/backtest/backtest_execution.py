@@ -273,6 +273,7 @@ class BacktestExecutionModel(ExecutionModel):
                 executed_quantity, executed_reserve, sell_amount_epsilon_fix = self.simulate_spot(state, trade)
             elif trade.is_leverage():
                 executed_quantity, executed_reserve, executed_collateral_allocation, executed_collateral_consumption = self.simulate_leverage(state, trade)
+
             else:
                 raise NotImplementedError(f"Does not know how to simulate: {trade}")
 
@@ -398,6 +399,8 @@ class BacktestExecutionModel(ExecutionModel):
                 executed_collateral_consumption=executed_collateral_consumption,
             )
 
+        # After all backtested trades have been executed and simulated wallet updated,
+        # check that the simulated wallet and internal ledger still agree how rich we are
         all_assets = calculate_total_assets(state.portfolio)
         clean, asset_df = self.wallet.verify_balances(all_assets)
         if not clean:

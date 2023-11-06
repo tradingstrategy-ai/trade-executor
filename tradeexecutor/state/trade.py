@@ -1033,6 +1033,24 @@ class TradeExecution:
 
         return float(self.paid_interest) * self.executed_price
 
+    def get_expected_borrow_quantity_change(self) -> Decimal:
+        """How much this trade is impacting the borrowed quantity on a loan.
+
+        :return:
+            Planned value only
+        """
+        assert self.is_credit_based()
+        return self.planned_quantity
+
+    def get_expected_collateral_quantity_change(self) -> Decimal:
+        """How much this trade is impacting the collateral quantity on a loan.
+
+        :return:
+            Planned value only
+        """
+        assert self.is_credit_based()
+        return self.planned_reserve
+
     def get_fees_paid(self) -> USDollarAmount:
         """
         Get total swap fees paid for trade. Returns 0 instead of `None`
