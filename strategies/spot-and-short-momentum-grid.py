@@ -35,10 +35,6 @@ trading_strategy_type = StrategyType.managed_positions
 # and three way trades with BUSD-BNB hop.
 trade_routing = TradeRouting.ignore
 
-# Set cycle to 7 days and look back the momentum of the previous candle
-trading_strategy_cycle = CycleDuration.cycle_7d
-momentum_lookback_period = datetime.timedelta(days=7)
-
 # Hold top 3 coins for every cycle
 max_assets_in_portfolio = 3
 
@@ -84,6 +80,7 @@ def grid_search_worker(
     # Open grid search options as they are given in the setup later.
     # The order here *must be* the same as given for prepare_grid_combinations()
     cycle_duration_days, momentum_lookback = combination.destructure()
+    momentum_lookback_period = datetime.timedelta(days=momentum_lookback)
 
     def decide_trades(
             timestamp: pd.Timestamp,
@@ -92,6 +89,11 @@ def grid_search_worker(
             pricing_model: PricingModel,
             cycle_debug_data: Dict
     ) -> List[TradeExecution]:
+
+        # Simulate different cycles
+        cycle = cycle_debug_data["cycle"]
+        if cycle % cycle_duration_days != 0:
+            return []
 
         # Create a position manager helper class that allows us easily to create
         # opening/closing trades for different positions
@@ -135,15 +137,16 @@ def grid_search_worker(
                     take_profit=take_profit,
                 )
             elif momentum <= negative_mometum_threshold:
-                if strategy_universe.can_open_short(timestamp, pair):
-                    # Only open a short if we have lending markets available at this point
-                    alpha_model.set_signal(
-                        pair,
-                        momentum,
-                        stop_loss=stop_loss,
-                        take_profit=take_profit,
-                        leverage=1.0,
-                    )
+                pass
+                # if strategy_universe.can_open_short(timestamp, pair):
+                #     # Only open a short if we have lending markets available at this point
+                #     alpha_model.set_signal(
+                #         pair,
+                #         momentum,
+                #         stop_loss=stop_loss,
+                #         take_profit=take_profit,
+                #         leverage=1.0,
+                #     )
             else:
                 # Momentum is ~0,
                 # not worth of a signal
@@ -187,6 +190,7 @@ def grid_search_worker(
         start_at=universe_options.start_at,
         end_at=universe_options.end_at,
         cycle_duration=CycleDuration.cycle_1d,
+        trading_strategy_engine_version=trading_strategy_engine_version,
     )
 
 

@@ -20,6 +20,8 @@ import numpy as np
 import pandas as pd
 import futureproof
 
+from tradeexecutor.strategy.engine_version import TradingStrategyEngineVersion
+
 try:
     from tqdm_loggable.auto import tqdm
 except ImportError:
@@ -284,9 +286,9 @@ def prepare_grid_combinations(
 
 
 def run_grid_combination(
-        grid_search_worker: GridSearchWorker,
-        universe: TradingStrategyUniverse,
-        combination: GridCombination,
+    grid_search_worker: GridSearchWorker,
+    universe: TradingStrategyUniverse,
+    combination: GridCombination,
 ):
     if GridSearchResult.has_result(combination):
         result = GridSearchResult.load(combination)
@@ -324,13 +326,13 @@ def run_grid_combination_multiprocess(
 
 @_hide_warnings
 def perform_grid_search(
-        grid_search_worker: GridSearchWorker,
-        universe: TradingStrategyUniverse,
-        combinations: List[GridCombination],
-        max_workers=16,
-        clear_cached_results=False,
-        stats: Optional[Counter] = None,
-        multiprocess=False,
+    grid_search_worker: GridSearchWorker,
+    universe: TradingStrategyUniverse,
+    combinations: List[GridCombination],
+    max_workers=16,
+    clear_cached_results=False,
+    stats: Optional[Counter] = None,
+    multiprocess=False,
 ) -> List[GridSearchResult]:
     """Search different strategy parameters over a grid.
 
@@ -448,17 +450,18 @@ def perform_grid_search(
 
 
 def run_grid_search_backtest(
-        combination: GridCombination,
-        decide_trades: DecideTradesProtocol | DecideTradesProtocol2,
-        universe: TradingStrategyUniverse,
-        cycle_duration: Optional[CycleDuration] = None,
-        start_at: Optional[datetime.datetime | pd.Timestamp] = None,
-        end_at: Optional[datetime.datetime | pd.Timestamp] = None,
-        initial_deposit: USDollarAmount = 5000.0,
-        trade_routing: Optional[TradeRouting] = None,
-        data_delay_tolerance: Optional[pd.Timedelta] = None,
-        name: Optional[str] = None,
-        routing_model: Optional[RoutingModel] = None,
+    combination: GridCombination,
+    decide_trades: DecideTradesProtocol | DecideTradesProtocol2,
+    universe: TradingStrategyUniverse,
+    cycle_duration: Optional[CycleDuration] = None,
+    start_at: Optional[datetime.datetime | pd.Timestamp] = None,
+    end_at: Optional[datetime.datetime | pd.Timestamp] = None,
+    initial_deposit: USDollarAmount = 5000.0,
+    trade_routing: Optional[TradeRouting] = None,
+    data_delay_tolerance: Optional[pd.Timedelta] = None,
+    name: Optional[str] = None,
+    routing_model: Optional[TradingStrategyEngineVersion] = None,
+    trading_strategy_engine_version: Optional[str] = None,
 ) -> GridSearchResult:
     assert isinstance(universe, TradingStrategyUniverse)
 
@@ -502,6 +505,7 @@ def run_grid_search_backtest(
         routing_model=routing_model,
         allow_missing_fees=True,
         data_delay_tolerance=data_delay_tolerance,
+        engine_version=trading_strategy_engine_version,
     )
 
     analysis = build_trade_analysis(state.portfolio)
