@@ -45,21 +45,22 @@ trading_strategy_cycle = CycleDuration.cycle_7d
 momentum_lookback_period = datetime.timedelta(days=7)
 
 # Hold top 3 coins for every cycle
-max_assets_in_portfolio = 4
+max_assets_in_portfolio = 2
 
 # Leave 20% cash buffer
 value_allocated_to_positions = 0.80
 
 # Set 33% stop loss over mid price
-stop_loss = 0.66
+stop_loss = 0.70
 
 # Set 5% take profit over mid price
-take_profit = 1.05
+take_profit = 1.10
+#take_profit = None
 
 # The weekly price must be up 2.5% for us to take a long position
 positive_mometum_threshold = 0.025
 
-negative_mometum_threshold = -0.025
+negative_mometum_threshold = -0.035
 
 # Don't bother with trades that would move position
 # less than 300 USD
@@ -70,7 +71,7 @@ reserve_currency = ReserveCurrency.usdc
 
 # The duration of the backtesting period
 backtest_start = datetime.datetime(2022, 1, 1)
-backtest_end = datetime.datetime(2023, 10, 1)
+backtest_end = datetime.datetime(2023, 11, 1)
 
 # Start with 10,000 USD
 initial_cash = 10_000

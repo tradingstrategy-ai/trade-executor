@@ -8,7 +8,7 @@ from dataclasses_json import dataclass_json
 
 from tradeexecutor.state.identifier import AssetIdentifier
 from tradeexecutor.state.types import BlockNumber
-from tradeexecutor.utils.accuracy import ZERO_DECIMAL
+from tradeexecutor.utils.accuracy import ZERO_DECIMAL, QUANTITY_EPSILON
 
 
 @dataclass_json
@@ -120,6 +120,10 @@ class Interest:
             Positive: increase amount, negative decrease amount.
         """
         self.last_token_amount += delta
+
+        if abs(self.last_token_amount) < QUANTITY_EPSILON:
+            self.last_token_amount = ZERO_DECIMAL
+
         assert self.last_token_amount >= 0, f"last_token_amount cannot go negative on {self}: {delta}"
 
 

@@ -15,7 +15,7 @@ from typing import Dict, Tuple
 import pandas as pd
 
 from tradeexecutor.state.identifier import AssetIdentifier
-from tradeexecutor.state.trade import QUANTITY_EPSILON
+from tradeexecutor.utils.accuracy import QUANTITY_EPSILON
 from tradeexecutor.state.types import JSONHexAddress
 
 

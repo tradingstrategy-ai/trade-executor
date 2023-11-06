@@ -6,7 +6,7 @@ import pprint
 import logging
 from dataclasses import dataclass, field, asdict
 from decimal import Decimal
-from typing import Optional, Tuple, List
+from typing import Optional, List
 from types import NoneType
 
 from dataclasses_json import dataclass_json
@@ -19,15 +19,9 @@ from tradeexecutor.state.identifier import TradingPairIdentifier, AssetIdentifie
 from tradeexecutor.state.loan import Loan
 from tradeexecutor.state.types import USDollarAmount, USDollarPrice, BPS, LeverageMultiplier
 from tradeexecutor.strategy.trade_pricing import TradePricing
-
+from tradeexecutor.utils.accuracy import QUANTITY_EPSILON
 
 logger = logging.getLogger()
-
-
-#: Absolute minimum units we are willing to trade regardless of an asset
-#:
-#: Used to catch floating point rounding errors
-QUANTITY_EPSILON = Decimal(10**-18)
 
 
 class TradeType(enum.Enum):
