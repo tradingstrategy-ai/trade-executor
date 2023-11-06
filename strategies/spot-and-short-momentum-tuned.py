@@ -41,7 +41,7 @@ trading_strategy_type = StrategyType.managed_positions
 trade_routing = TradeRouting.ignore
 
 # Set cycle to 7 days and look back the momentum of the previous candle
-trading_strategy_cycle = CycleDuration.cycle_7d
+trading_strategy_cycle = CycleDuration.cycle_1d
 momentum_lookback_period = datetime.timedelta(days=7)
 
 # Hold top 3 coins for every cycle
@@ -87,6 +87,10 @@ def decide_trades(
         cycle_debug_data: Dict
 ) -> List[TradeExecution]:
 
+    cycle = cycle_debug_data["cycle"]
+    if cycle % 7 != 0:
+        return []
+
     # Create a position manager helper class that allows us easily to create
     # opening/closing trades for different positions
     position_manager = PositionManager(timestamp, strategy_universe, state, pricing_model)
@@ -105,6 +109,11 @@ def decide_trades(
 
     # Iterate over all candles for all pairs in this timestamp (ts)
     for pair_id, pair_df in candle_data:
+
+        # Workaround LINK issues
+        # Need at least 4 days worth of data
+        if len(pair_df) < 4:
+            continue
 
         first_candle = pair_df.iloc[0]
         last_candle = pair_df.iloc[-1]
@@ -194,8 +203,8 @@ def create_trading_universe(
         reserve_asset_symbols={"USDC"},
         asset_symbols={"LINK", "WMATIC", "WETH", "BAL"},
         trading_fee=0.0005,
-        time_bucket=TimeBucket.d7,
-        stop_loss_time_bucket=TimeBucket.h4,
+        time_bucket=TimeBucket.d1,
+        stop_loss_time_bucket=TimeBucket.h1,
     )
 
     # Filter down the dataset to the pairs we specified

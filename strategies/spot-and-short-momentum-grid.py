@@ -79,7 +79,7 @@ def grid_search_worker(
 
     # Open grid search options as they are given in the setup later.
     # The order here *must be* the same as given for prepare_grid_combinations()
-    cycle_duration_days, momentum_lookback, take_profit, positive_mometum_threshold, negative_mometum_threshold = combination.destructure()
+    cycle_duration_days, momentum_lookback, take_profit, negative_take_profit, positive_mometum_threshold, negative_mometum_threshold = combination.destructure()
     momentum_lookback_period = datetime.timedelta(days=momentum_lookback)
 
     def decide_trades(
@@ -150,7 +150,7 @@ def grid_search_worker(
                         pair,
                         momentum,
                         stop_loss=stop_loss,
-                        take_profit=take_profit,
+                        take_profit=negative_take_profit,
                         leverage=1.0,
                     )
             else:
