@@ -736,7 +736,7 @@ def test_alpha_model_open_short(
     portfolio_target_value = portfolio.get_position_equity_and_loan_nav()
     alpha_model.calculate_target_positions(position_manager, portfolio_target_value)
 
-    assert weth_signal.position_adjust_usd < 0  # We reduce the position
+    assert weth_signal.position_adjust_usd == pytest.approx(78.85)  # For flipped position, we adjust from zero to size
     assert weth_signal.is_flipping()
 
     aave_signal = alpha_model.get_signal_by_pair(aave_usdc)
@@ -769,17 +769,17 @@ def test_alpha_model_open_short(
     # Opening ETH short comes next
     # Use 50% of portfolio value to go short on ETH
     weth_usdc_short_pair = strategy_universe.get_shorting_pair(weth_usdc)
-    t = trades[1]
-    assert t.is_sell()
-    assert t.is_short()
-    assert t.is_planned()
+    t = trades[2]
+    assert t.is_sell(), f"{t}"
+    assert t.is_short(), f"{t}"
+    assert t.is_planned(), f"{t}"
     assert t.pair == weth_usdc_short_pair
     assert t.planned_price == pytest.approx(1664.99)
     assert t.planned_quantity == pytest.approx(Decimal("-0.04735764178763836052165050297"))
 
     # Spot buy comes next,
     # buy 50% of AAVE
-    t = trades[2]
+    t = trades[1]
     assert t.is_buy()
     assert t.is_spot()
     assert t.is_planned()
@@ -855,13 +855,13 @@ def test_alpha_model_increase_short(
 
     # Opening ETH short comes next
     # Use 50% of portfolio value to go short on ETH
-    t = trades[1]
+    t = trades[2]
     assert t.is_sell()
     assert t.is_short()
 
     # Spot buy comes next,
     # buy 50% of AAVE
-    t = trades[2]
+    t = trades[1]
     assert t.is_buy()
     assert t.is_spot()
 
@@ -1018,13 +1018,13 @@ def test_alpha_model_decrease_short(
 
     # Opening ETH short comes next
     # Use 50% of portfolio value to go short on ETH
-    t = trades[1]
+    t = trades[2]
     assert t.is_sell()
     assert t.is_short()
 
     # Spot buy comes next,
     # buy 50% of AAVE
-    t = trades[2]
+    t = trades[1]
     assert t.is_buy()
     assert t.is_spot()
 

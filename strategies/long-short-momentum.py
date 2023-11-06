@@ -45,16 +45,16 @@ trading_strategy_cycle = CycleDuration.cycle_7d
 momentum_lookback_period = datetime.timedelta(days=7)
 
 # Hold top 3 coins for every cycle
-max_assets_in_portfolio = 2
+max_assets_in_portfolio = 3
 
 # Leave 20% cash buffer
 value_allocated_to_positions = 0.80
 
 # Set 33% stop loss over mid price
-stop_loss = 0.70
+stop_loss = 0.75
 
 # Set 5% take profit over mid price
-take_profit = 1.10
+take_profit = 1.08
 #take_profit = None
 
 # The weekly price must be up 2.5% for us to take a long position

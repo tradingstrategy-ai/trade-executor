@@ -280,6 +280,9 @@ class StrategyRunner(abc.ABC):
                     t.post_execution_price_structure = pricing_model.get_buy_price(ts, spot_pair, t.planned_collateral_consumption)
                 else:
                     t.post_execution_price_structure = pricing_model.get_sell_price(ts, spot_pair, t.planned_quantity)
+            elif t.pair.is_credit_supply():
+                # For credit supply, no swaps are executed
+                t.post_execution_price_structure = None
             else:
                 raise AssertionError(f"Unsupported: {t}")
 

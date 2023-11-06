@@ -113,8 +113,9 @@ class BacktestExecutionModel(ExecutionModel):
             Wallet does not have enough tokens to do the trade
         """
 
-        assert trade.is_spot()
-        assert trade.pair.is_spot()
+        # More credit supply to its own function
+        assert trade.is_spot() or trade.is_credit_supply(), f"simulate_spot(): received a trade that is not spot {trade}"
+        # assert trade.pair.is_spot()
 
         #
         base = trade.pair.base
