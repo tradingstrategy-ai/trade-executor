@@ -1914,16 +1914,16 @@ def test_short_increase_size(
         trade_type=TradeType.rebalance,
         reserve_currency=usdc,
         collateral_asset_price=1.0,
-        planned_collateral_consumption=target_params.total_collateral_quantity - loan.collateral.quantity,
+        planned_collateral_consumption=target_params.total_collateral_quantity - loan.collateral.quantity - 500,
     )
 
     # Check that we have trade and loan parameters correct
     assert trade_2.planned_reserve == 500
+    assert trade_2.planned_loan_update.get_leverage() == pytest.approx(1.1428571428571423)
     assert trade_2.planned_quantity == pytest.approx(-increase_borrowed_quantity)
     assert trade_2.planned_loan_update.borrowed.quantity == pytest.approx(Decimal(1.023809523809523683302025176))
-    assert trade_2.planned_loan_update.collateral.quantity == pytest.approx(Decimal(3071.42857071428538809751031))
-    assert trade_2.planned_collateral_consumption == pytest.approx(Decimal(1071.428570714285443608661546))
-    assert trade_2.planned_loan_update.get_leverage() == pytest.approx(1.1428571428571423)
+    assert trade_2.planned_loan_update.collateral.quantity == pytest.approx(Decimal(3071.428570714285388097510315))
+    assert trade_2.planned_collateral_consumption == pytest.approx(Decimal(571.428570714285443608661546))
 
     trader.set_perfectly_executed(trade_2)
 
