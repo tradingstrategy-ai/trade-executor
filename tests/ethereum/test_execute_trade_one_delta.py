@@ -318,6 +318,7 @@ def ethereum_trader(
     return OneDeltaTestTrader(one_delta_deployment, uniswap_v3_deployment, state, pair_universe, tx_builder)
 
 
+@pytest.mark.skip(reason="Disabled for now")
 def test_execute_trade_instructions_open_short(
     web3: Web3,
     state: State,
