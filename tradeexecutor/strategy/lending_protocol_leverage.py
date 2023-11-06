@@ -197,13 +197,14 @@ def plan_loan_update_for_short(
 
     planned_collateral_consumption = trade.planned_collateral_consumption or Decimal(0)
     planned_collateral_allocation = trade.planned_collateral_allocation or Decimal(0)
+    reserve_adjust = trade.planned_reserve or Decimal(0)
 
     # TODO: How planned_collateral_consumption + planned_collateral_allocation
     # might not be the best way to do this, see test_short_decrease_size
 
     available_collateral_interest = loan.collateral_interest.get_remaining_interest()
 
-    collateral_change = planned_collateral_consumption + planned_collateral_allocation
+    collateral_change = planned_collateral_consumption + planned_collateral_allocation + reserve_adjust
     borrow_change = -trade.planned_quantity
 
     loan.collateral.change_quantity_and_value(

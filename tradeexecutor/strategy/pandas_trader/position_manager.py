@@ -1361,11 +1361,9 @@ class PositionManager:
         assert pair.kind.is_shorting()
         assert pair.base.underlying is not None, f"Lacks underlying asset: {pair.base}"
         assert pair.quote.underlying is not None, f"Lacks underlying asset: {pair.quote}"
-
-        # TODO: Assume USD stablecoin 1:1
         assert pair.underlying_spot_pair.quote.is_stablecoin(), f"Assuming stablecoin backed pair"
-
         assert new_value > 0, "Cannot use adjust_short() to close short position"
+        assert position.is_open(), "Cannot adjust closed short position"
 
         underlying = pair.underlying_spot_pair
 
@@ -1417,6 +1415,9 @@ class PositionManager:
 
         try:
             if delta > 0:
+                # Iincrease short
+                # See test_open_and_increase_one_short_with_interest
+                # import ipdb ; ipdb.set_trace()
 
                 borrowed_quantity_delta = loan.calculate_size_adjust(collateral_adjustment)
 
@@ -1429,7 +1430,7 @@ class PositionManager:
                     trade_type=TradeType.rebalance,
                     reserve_currency=reserve_currency,
                     collateral_asset_price=1.0,
-                    planned_collateral_consumption=target_params.total_collateral_quantity - loan.collateral.quantity,
+                    planned_collateral_consumption=target_params.total_collateral_quantity - loan.collateral.quantity - collateral_adjustment,
                     notes=notes,
                 )
 
