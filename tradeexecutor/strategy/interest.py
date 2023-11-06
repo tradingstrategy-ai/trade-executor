@@ -1,15 +1,22 @@
 """Functions to refresh accrued interest on credit positions."""
-import datetime
-from decimal import Decimal
-from typing import Tuple
 import logging
+import datetime
+from collections import Counter
+from decimal import Decimal
+from typing import Tuple, Dict, List, Iterable
+
+from eth_defi.aave_v3.rates import SECONDS_PER_YEAR_INT
 
 from tradeexecutor.state.balance_update import BalanceUpdate, BalanceUpdatePositionType, BalanceUpdateCause
-from tradeexecutor.state.identifier import TradingPairKind, AssetIdentifier
+from tradeexecutor.state.identifier import AssetIdentifier
+from tradeexecutor.state.interest_distribution import InterestDistributionEntry, InterestDistributionOperation, AssetInterestData
+from tradeexecutor.state.loan import LoanSide
+from tradeexecutor.state.portfolio import Portfolio
 from tradeexecutor.state.position import TradingPosition
 from tradeexecutor.state.state import State
-from tradeexecutor.state.types import USDollarPrice
-
+from tradeexecutor.state.types import USDollarPrice, Percent, BlockNumber
+from tradeexecutor.strategy.pricing_model import PricingModel
+from tradingstrategy.utils.time import ZERO_TIMEDELTA
 
 logger = logging.getLogger(__name__)
 
@@ -24,6 +31,7 @@ def update_interest(
     block_number: int | None = None,
     tx_hash: int | None = None,
     log_index: int | None = None,
+    sane_interest_update_threshold: Percent=999,
 ) -> BalanceUpdate:
     """Poke credit supply position to increase its interest amount.
 
@@ -46,6 +54,10 @@ def update_interest(
     :param event_at:
         Block mined timestamp
 
+    :param sane_interest_update_threshold:
+        Safety threshold to check that any interest gains are below this value.
+
+        Terminate execution if bad math detected.
     """
 
     assert asset is not None
@@ -86,7 +98,7 @@ def update_interest(
     gained_interest = new_token_amount - old_balance
     usd_value = float(new_token_amount) * asset_price
 
-    assert 0 < abs(gained_interest) < 999, f"Unlikely gained_interest: {gained_interest}, old quantity: {old_balance}, new quantity: {new_token_amount}"
+    assert 0 <= abs(gained_interest) < sane_interest_update_threshold, f"Unlikely gained_interest for {asset}: {gained_interest}, old quantity: {old_balance}, new quantity: {new_token_amount}"
 
     evt = BalanceUpdate(
         balance_update_id=event_id,
@@ -191,7 +203,7 @@ def estimate_interest(
     end_at: datetime.datetime,
     start_quantity: Decimal,
     interest_rate: float,
-    year = datetime.timedelta(days=360),
+    year=datetime.timedelta(seconds=SECONDS_PER_YEAR_INT),
 ) -> Decimal:
     """Calculate new token amount, assuming fixed interest.
 
@@ -209,10 +221,7 @@ def estimate_interest(
         Tokens at the start of the period
 
     :param year:
-        Year length.
-
-        Default to the financial year or 360 days, 30 * 12 months,
-        not calendar year.
+        Year length in Aave.
 
     :return:
         Amount of token quantity with principal + interest after the period.
@@ -225,3 +234,308 @@ def estimate_interest(
     duration = end_at - start_at
     multiplier = (end_at - start_at) / year
     return start_quantity * Decimal(interest_rate ** multiplier)
+
+
+def prepare_interest_distribution(
+    start: datetime.datetime,
+    end: datetime.datetime,
+    portfolio: Portfolio,
+    pricing_model: PricingModel
+) -> InterestDistributionOperation:
+    """Get all tokens in open positions that accrue interest.
+
+    - We use this data to sync the accrued interest since
+      the last cycle
+
+    - See :py:func:`tradeexecutor.strategy.sync_model.SyncModel.sync_interests`
+
+    :return:
+        Interest bearing assets used in all open positions
+    """
+
+    assets = set()
+    totals: Counter[AssetIdentifier, Decimal] = Counter()
+    entries: List[InterestDistributionEntry] = []
+    asset_interest_data: Dict[str, AssetInterestData] = {}
+    position_count = 0
+
+    timestamp = end
+
+    for p in portfolio.get_open_and_frozen_positions():
+        for asset in (p.pair.base, p.pair.quote):
+
+            if not asset.is_interest_accruing():
+                # One side in spot-credit pair
+                continue
+
+            side, tracker = p.loan.get_tracked_asset(asset)
+
+            assert side is not None, f"Got confused with asset {asset} on position {p}"
+
+            if side == LoanSide.collateral:
+                # Currently supports stablecoin collateral only
+                if not p.is_credit_supply():
+                    assert not p.is_long(), f"Cannot handle position: {p}"
+                underlying = asset.get_pricing_asset()
+                assert underlying.is_stablecoin(), f"Asset is collateral but not stablecoin based: {asset}"
+                price = 1.0
+            else:
+                price_structure = pricing_model.get_sell_price(
+                    timestamp,
+                    p.pair.get_pricing_pair(),
+                    tracker.quantity,
+                )
+                price = price_structure.price
+
+            entry = InterestDistributionEntry(
+                side=side,
+                position=p,
+                tracker=tracker,
+                price=price,
+            )
+
+            assert entry.quantity > 0, f"Zero-amount entry in the interest distribution: {p}: {tracker}"
+
+            entries.append(entry)
+            assets.add(asset)
+
+            # Update totals
+            asset_id = asset.get_identifier()
+            asset_interest = asset_interest_data.get(asset_id, AssetInterestData())
+            asset_interest.total += entry.quantity
+            asset_interest_data[asset_id] = asset_interest
+
+            position_count += 1
+
+    # Calculate distribution weights
+    for entry in entries:
+        entry.weight = entry.quantity / asset_interest_data[entry.asset.get_identifier()].total
+
+    logger.info("Preparing interest distribution with %d assets, %d positions, %d ledger entries", len(assets), position_count, len(entries))
+
+    return InterestDistributionOperation(
+        start,
+        end,
+        assets,
+        asset_interest_data=asset_interest_data,
+        entries=entries,
+        effective_rate={},
+    )
+
+
+def distribute_to_entry(entry: InterestDistributionEntry, state: State, timestamp: datetime.datetime, block_number: BlockNumber, total_accrued: Decimal) -> BalanceUpdate:
+    """Update interest one position, one side of loan."""
+    position_accrued = total_accrued * entry.weight  # Calculate per-position portion of new tokens
+    new_token_amount = entry.tracker.quantity + position_accrued
+    assert entry.price is not None, f"Asset lacks updated price: {entry.asset}"
+    assert new_token_amount > 0
+    assert new_token_amount >= entry.tracker.quantity
+    evt = update_interest(
+        state,
+        entry.position,
+        entry.asset,
+        new_token_amount=new_token_amount,
+        event_at=timestamp,
+        asset_price=entry.price,
+        block_number=block_number,
+    )
+    return evt
+
+
+def distribute_interest_for_assets(
+    operation: InterestDistributionOperation,
+    state: State,
+    asset: AssetIdentifier,
+    timestamp: datetime.datetime,
+    block_number: BlockNumber | None,
+    new_amount: Decimal,
+    max_interest_gain: Percent,
+) -> Iterable[BalanceUpdate]:
+    """Distribute the accrued interest of an asset across all positions holding this asset.
+
+     :return:
+        An event
+     """
+
+    asset_total = operation.asset_interest_data[asset.get_identifier()].total
+
+    interest_accrued = new_amount - asset_total
+    assert interest_accrued >= 0, f"Interest cannot go negative: {interest_accrued}"
+    interest_accrued_relative = interest_accrued / asset_total
+
+    assert interest_accrued_relative <= max_interest_gain, f"Interest gain safety check tripwired.\nAsset: {asset} at {timestamp}\nAccrued: {interest_accrued_relative * 100}%, check threshold: {max_interest_gain}, increase: {interest_accrued}, new amount: {new_amount}, asset total: {asset_total}"
+
+    for entry in operation.entries:
+        if entry.asset == asset:
+            evt = distribute_to_entry(
+                entry,
+                state,
+                timestamp,
+                block_number,
+                interest_accrued
+            )
+            yield evt
+
+
+def accrue_interest(
+    state: State,
+    on_chain_balances: Dict[AssetIdentifier, Decimal],
+    interest_distribution: InterestDistributionOperation,
+    block_timestamp: datetime.datetime,
+    block_number: BlockNumber | None,
+    max_interest_gain: Percent = 0.05,
+    aave_financial_year=datetime.timedelta(seconds=SECONDS_PER_YEAR_INT),
+) -> Iterable[BalanceUpdate]:
+    """Update the internal ledger to match interest accrued on on-chain balances.
+
+    - Read incoming on-chain balance updates
+
+    - Distribute it to the trading positions based on our ``interest_distribution``
+
+    - Set the interest sync checkpoint
+
+    :param state:
+        Strategy state.
+
+    :param on_chain_balances:
+        The current on-chain balances at ``block_number``.
+
+    :param block_number:
+        Last safe block read
+
+    :param block_timestamp:
+        The timestamp of ``block_number``.
+
+    :param max_interest_gain:
+        Abort if some asset has gained more interest than this threshold.
+
+        A safety check to abort buggy code.
+
+    :return:
+        Balance update events applied to all positions.
+
+    """
+
+    assert interest_distribution.duration > ZERO_TIMEDELTA, f"Tried to distribute interest for zero timespan {interest_distribution.start} - {interest_distribution.end}"
+
+    block_number_str = f"{block_number,}" if block_number else "<no block>"
+    logger.info(f"accrue_interest({block_timestamp}, {block_number_str})")
+
+    part_of_year = interest_distribution.duration / aave_financial_year
+
+    for asset, new_balance in on_chain_balances.items():
+
+        # Track the effective interest for the asset
+        asset_interest_data = interest_distribution.get_interest_data(asset)
+        interest = float((new_balance - asset_interest_data.total) / asset_interest_data.total) / part_of_year
+        asset_interest_data.effective_rate = interest
+
+        # We cannot generate interest events for zero updates,
+        # as it breaks math
+        if interest == 0:
+            logger.warning(f"Effective interest is zero for the asset %s", asset)
+            continue
+
+        yield from distribute_interest_for_assets(
+            interest_distribution,
+            state,
+            asset,
+            block_timestamp,
+            block_number,
+            on_chain_balances[asset],
+            max_interest_gain=max_interest_gain,
+        )
+
+    set_interest_checkpoint(state, block_timestamp, block_number, interest_distribution)
+
+    #
+    # events = []
+    # for p in positions:
+    #     if p.is_credit_supply():
+    #         assert len(p.trades) <= 2, "This interest calculation does not support increase/reduce position"
+    #
+    #         new_amount = p.loan.collateral_interest.last_token_amount + accrued
+    #
+    #         # TODO: the collateral is stablecoin so this can be hardcode for now
+    #         # but make sure to fetch it from somewhere later
+    #         price = 1.0
+    #
+    #         evt = update_interest(
+    #             state,
+    #             p,
+    #             p.pair.base,
+    #             new_token_amount=new_amount,
+    #             event_at=timestamp,
+    #             asset_price=price,
+    #         )
+    #         events.append(evt)
+    #
+    #         # Make atokens magically appear in the simulated
+    #         # backtest wallet. The amount must be updated, or
+    #         # otherwise we get errors when closing the position.
+    #         self.wallet.update_token_info(p.pair.base)
+    #         self.wallet.update_balance(p.pair.base.address, accrued)
+    #     elif p.is_leverage() and p.is_short():
+    #         assert len(p.trades) <= 2, "This interest calculation does not support increase/reduce position"
+    #
+    #         accrued_collateral_interest = self.calculate_accrued_interest(
+    #             universe,
+    #             p,
+    #             timestamp,
+    #             "collateral",
+    #         )
+    #         accrued_borrow_interest = self.calculate_accrued_interest(
+    #             universe,
+    #             p,
+    #             timestamp,
+    #             "borrow",
+    #         )
+    #
+    #         new_atoken_amount = p.loan.collateral_interest.last_token_amount + accrued_collateral_interest
+    #         new_vtoken_amount = p.loan.borrowed_interest.last_token_amount + accrued_borrow_interest
+    #
+    #         atoken_price = 1.0
+    #
+    #         vtoken_price_structure = pricing_model.get_sell_price(
+    #             timestamp,
+    #             p.pair.get_pricing_pair(),
+    #             p.loan.borrowed.quantity,
+    #         )
+    #         vtoken_price = vtoken_price_structure.price
+    #
+    #         vevt, aevt = update_leveraged_position_interest(
+    #             state,
+    #             p,
+    #             new_vtoken_amount=new_vtoken_amount,
+    #             new_token_amount=new_atoken_amount,
+    #             vtoken_price=vtoken_price,
+    #             atoken_price=atoken_price,
+    #             event_at=timestamp,
+    #         )
+    #         events.append(vevt)
+    #         events.append(aevt)
+
+    # return events
+
+
+def set_interest_checkpoint(
+    state: State,
+    timestamp: datetime.datetime,
+    block_number: BlockNumber | None,
+    distribution: InterestDistributionOperation | None = None,
+):
+    """Set the last updated at flag for rebase interest calcualtions at the internal state."""
+
+    assert isinstance(timestamp, datetime.datetime)
+    if block_number is not None:
+        assert type(block_number) == int
+
+    state.sync.interest.last_sync_at = timestamp
+    state.sync.interest.last_sync_block = block_number
+
+    # Always save the last distribution
+    if distribution is not None:
+        state.sync.interest.last_distribution = distribution
+
+    block_number_str = f"{block_number,}" if block_number else "<no block>"
+    logger.info(f"Interest check point set to {timestamp}, block: {block_number_str}")

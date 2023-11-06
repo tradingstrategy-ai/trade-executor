@@ -14,7 +14,8 @@ from typing import Optional, List, Iterable, Dict
 
 from dataclasses_json import dataclass_json
 
-from tradeexecutor.state.types import USDollarAmount
+from tradeexecutor.state.interest_distribution import InterestDistributionOperation
+from tradeexecutor.state.types import USDollarAmount, BlockNumber
 from tradingstrategy.chain import ChainId
 
 from tradeexecutor.state.balance_update import BalanceUpdate, BalanceUpdateCause, BalanceUpdatePositionType
@@ -173,6 +174,31 @@ class Accounting:
     balance_update_refs: List[BalanceEventRef] = field(default_factory=list)
 
 
+
+@dataclass_json
+@dataclass(slots=True)
+class InterestSync:
+    """Track the interest sync for on-chain rebase tokens.
+    """
+
+    #: When did we perform the last interest sync all all assets
+    #:
+    last_sync_at: datetime.datetime | None = None
+
+    #: Block number when we synced the portfolio
+    #:
+    #: Backtesting does not use block numbers and has this always set to ``None``.
+    #:
+    last_sync_block: BlockNumber | None = None
+
+    #: Last operation we did.
+    #:
+    #: Data is not needed. Stored only for diagnostics purposes.
+    #: Always overwritten in the next sync.
+    #:
+    last_distribution: InterestDistributionOperation | None = None
+
+
 @dataclass_json
 @dataclass
 class Sync:
@@ -189,6 +215,8 @@ class Sync:
     treasury: Treasury = field(default_factory=Treasury)
 
     accounting: Accounting = field(default_factory=Accounting)
+
+    interest: InterestSync = field(default_factory=InterestSync)
 
     def is_initialised(self) -> bool:
         """Have we scanned the initial deployment event for the sync model."""

@@ -426,7 +426,8 @@ def test_live_stop_loss(
     mid_price = pricing_method.get_mid_price(ts, pair)
     assert mid_price == pytest.approx(1701.9176812836754, rel=APPROX_REL)
 
-    assert state.portfolio.reserves[usdc_token.address.lower()].quantity == 8000
+    usdc_id = f"{web3.eth.chain_id}-{usdc_token.address.lower()}"
+    assert state.portfolio.reserves[usdc_id].quantity == 8000
     assert state.portfolio.open_positions[1].get_quantity() == Decimal('0.586126842081438205')
     assert state.portfolio.open_positions[1].get_value() == pytest.approx(994.010747, rel=APPROX_REL)
 
@@ -467,7 +468,8 @@ def test_live_stop_loss(
     assert state.portfolio.closed_positions[1].is_stop_loss()
 
     # We are ~500 USD on loss after stop loss trigger
-    assert state.portfolio.reserves[usdc_token.address.lower()].quantity == pytest.approx(Decimal('8588.907521'))
+    usdc_id = f"{web3.eth.chain_id}-{usdc_token.address.lower()}"
+    assert state.portfolio.reserves[usdc_id].quantity == pytest.approx(Decimal('8588.907521'))
 
 
 

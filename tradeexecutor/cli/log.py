@@ -161,6 +161,12 @@ def setup_pytest_logging(request=None, mute_requests=True) -> logging.Logger:
     # maplotlib burps a lot on startup
     logging.getLogger("matplotlib").setLevel(logging.WARNING)
 
+    # Don't log section duration monitors
+    logging.getLogger("tradeexecutor.utils.timer").setLevel(logging.WARNING)
+
+    # Mute mainloop (a lot of logs about nothing happening in backtesting)
+    # logging.getLogger("tradeexecutor.strategy.runner").setLevel(logging.WARNING)
+
     return logging.getLogger("test")
 
 
@@ -216,7 +222,7 @@ def setup_custom_log_levels():
         return
 
     # https://www.programcreek.com/python/?code=dwavesystems%2Fdwave-hybrid%2Fdwave-hybrid-master%2Fhybrid%2F__init__.py
-    logging.TRADE = logging.INFO + 1  # Info is 20, Warning is 30
+    logging.TRADE = logging.INFO + 1  # Info is 20, TRADE is 21, Warning is 30
     logging.addLevelName(logging.TRADE, "TRADE")
 
     def _trade(logger, message, *args, **kwargs):

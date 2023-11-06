@@ -1,11 +1,14 @@
 """Interest tracking data structures."""
 import datetime
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from decimal import Decimal
+from typing import Dict
 
 from dataclasses_json import dataclass_json
 
-from tradeexecutor.utils.accuracy import ZERO_DECIMAL
+from tradeexecutor.state.identifier import AssetIdentifier
+from tradeexecutor.state.types import BlockNumber
+from tradeexecutor.utils.accuracy import ZERO_DECIMAL, QUANTITY_EPSILON
 
 
 @dataclass_json
@@ -26,6 +29,8 @@ class Interest:
     opening_amount: Decimal
 
     #: How many atokens/votkens we had on the previous read.
+    #:
+    #: Absolute number of on-chain balance.
     #:
     #: This is principal + interest.
     #:
@@ -104,3 +109,22 @@ class Interest:
     def repay_interest(self, quantity: Decimal):
         """Update interest payments needed to maintain the borrowed debt."""
         self.interest_payments += quantity
+
+    def adjust(self, delta: Decimal):
+        """Adjust the quantity on this loan.
+
+        Used when doing increase/reduce shorts to get a new amount.
+        With safety checks.
+
+        :param delta:
+            Positive: increase amount, negative decrease amount.
+        """
+        self.last_token_amount += delta
+
+        if abs(self.last_token_amount) < QUANTITY_EPSILON:
+            self.last_token_amount = ZERO_DECIMAL
+
+        assert self.last_token_amount >= 0, f"last_token_amount cannot go negative on {self}: {delta}"
+
+
+

@@ -132,7 +132,8 @@ def rebalance_portfolio_old(
         else:
             position_rebalance_trades = position_manager.adjust_position(pair, dollar_diff, quantity_diff, weight)
             assert len(position_rebalance_trades) == 1, "Assuming always on trade for rebalance"
-            logger.info("Adjusting holdings for %s: %s", pair, position_rebalance_trades[0])
+            trade_str = " ,".join(t.get_human_description() for t in position_rebalance_trades)
+            logger.info("Rebalancing token %s with trades %s", pair.base.token_symbol, trade_str)
             trades += position_rebalance_trades
 
     trades.sort(key=lambda t: t.get_execution_sort_position())

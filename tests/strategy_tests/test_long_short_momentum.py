@@ -43,7 +43,12 @@ def test_long_short_momentum(
         strategy_path,
     )
 
-    state, universe, debug_dump = run_backtest(setup, client)
+    try:
+        state, universe, debug_dump = run_backtest(setup, client)
+    except Exception as e:
+        logger.error("Backtest failed:\n%s", e)
+        logger.exception(e)
+        raise e
 
     analysis = build_trade_analysis(state.portfolio)
     summary = analysis.calculate_summary_statistics(universe.data_universe.time_bucket, state)

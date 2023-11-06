@@ -274,10 +274,11 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
 
         try:
             reserve = self.data_universe.lending_reserves.get_by_chain_and_address(
-                asset.chain_id,
+                ChainId(asset.chain_id),
                 asset.address,
             )
-        except UnknownLendingReserve as e:
+        except UnknownLendingReserve:
+            # Market not registered, not available in the dataset
             return False
 
         assert market_metric == LendingCandleType.variable_borrow_apr, f"Not supported yet: {market_metric}"

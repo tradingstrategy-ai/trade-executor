@@ -258,11 +258,15 @@ class StrategyRunner(abc.ABC):
         for t in trades:
 
             if execution_context.mode.is_live_trading():
+                # In live trading, use the current UTC time to fetch
+                # the post execution price info
                 ts = datetime.datetime.utcnow()
             else:
                 # Backtesting does not yet have a way
                 # to simulate slippage
                 ts = t.strategy_cycle_at
+
+            logger.info("Fetching post-execution price data for %s at %s", t.get_short_label(), ts)
 
             # Credit supply pairs do not have pricing ATM
             if t.pair.is_spot():
@@ -276,6 +280,11 @@ class StrategyRunner(abc.ABC):
                     t.post_execution_price_structure = pricing_model.get_buy_price(ts, spot_pair, t.planned_collateral_consumption)
                 else:
                     t.post_execution_price_structure = pricing_model.get_sell_price(ts, spot_pair, t.planned_quantity)
+            elif t.pair.is_credit_supply():
+                # For credit supply, no swaps are executed
+                t.post_execution_price_structure = None
+            else:
+                raise AssertionError(f"Unsupported: {t}")
 
             #
             # Check if we got so bad trade execution we should worry about it
@@ -299,7 +308,7 @@ class StrategyRunner(abc.ABC):
             logger.log(
                 log_level,
                 "Trade quantity and reserve match for pre an post-execution for: %s\n  Estimated reserve %s, executed reserve %s\n  Estimated quantity %s, executed quantity %s\n  Reserve drift %f %%, quantity drift %f %%",
-                t,
+                t.get_short_label(),
                 t.planned_reserve,
                 t.executed_reserve,
                 t.planned_quantity,
@@ -465,14 +474,14 @@ class StrategyRunner(abc.ABC):
         routing_state_details = self.execution_model.get_routing_state_details()
 
         # Initialise the current routing state with execution details
-        logger.info("Setting up routing.\n"
-                    "Routing model is %s\n"
-                    "Details are %s\n"
-                    "Universe is %s",
-                    self.routing_model,
-                    routing_state_details,
-                    universe,
-                    )
+        # logger.info("Setting up routing.\n"
+        #            "Routing model is %s\n"
+        #            "Details are %s\n"
+        #            "Universe is %s",
+        #            self.routing_model,
+        #            routing_state_details,
+        #            universe,
+        #            )
         routing_state = self.routing_model.create_routing_state(universe, routing_state_details)
 
         # Create a pricing model for assets
@@ -651,11 +660,11 @@ class StrategyRunner(abc.ABC):
                 if self.is_progress_report_needed():
                     self.report_before_execution(strategy_cycle_timestamp, universe, state, approved_trades, debug_details)
 
-                # Physically execute the trades
-                with self.timed_task_context_manager("execute_trades", trade_count=len(approved_trades)):
+                # Unit tests can turn this flag to make it easier to see why trades fail
+                check_balances = debug_details.get("check_balances", False)
 
-                    # Unit tests can turn this flag to make it easier to see why trades fail
-                    check_balances = debug_details.get("check_balances", False)
+                # Physically execute the trades
+                with self.timed_task_context_manager("execute_trades", trade_count=len(approved_trades), check_balances=check_balances):
 
                     # Make sure our hot wallet nonce is up to date
                     self.sync_model.resync_nonce()

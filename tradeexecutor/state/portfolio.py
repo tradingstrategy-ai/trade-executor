@@ -11,7 +11,7 @@ from typing import Dict, Iterable, Optional, Tuple, List
 from dataclasses_json import dataclass_json
 
 from tradingstrategy.types import PrimaryKey
-from tradeexecutor.state.identifier import TradingPairIdentifier, AssetIdentifier
+from tradeexecutor.state.identifier import TradingPairIdentifier, AssetIdentifier, AssetFriendlyId
 from tradeexecutor.state.loan import Loan
 from tradeexecutor.state.position import TradingPosition
 from tradeexecutor.state.reserve import ReservePosition
@@ -79,8 +79,10 @@ class Portfolio:
     open_positions: Dict[int, TradingPosition] = field(default_factory=dict)
 
     #: Currently held reserve assets
-    #: Token address -> reserve position mapping.
-    reserves: Dict[str, ReservePosition] = field(default_factory=dict)
+    #:
+    #: Token -> reserve position mapping.
+    #:
+    reserves: Dict[AssetFriendlyId, ReservePosition] = field(default_factory=dict)
 
     #: Trades completed in the past
     closed_positions: Dict[int, TradingPosition] = field(default_factory=dict)
@@ -617,6 +619,13 @@ class Portfolio:
         :raise KeyError:
             If we do not have reserves for the asset
         """
+
+        # Legacy data support.
+        # All new reserves are encoded as chain id + address
+        if asset.address in self.reserves:
+            return self.reserves[asset.address]
+
+        # The modern code path
         return self.reserves[asset.get_identifier()]
 
     def get_default_reserve_position(self) -> ReservePosition:
@@ -698,6 +707,11 @@ class Portfolio:
         assert asset is not None, "Asset missing"
 
         assert isinstance(amount, Decimal), f"Expected Decimal. Got amount {amount.__class__}: {amount}"
+
+        if amount == 0:
+            # This action does not need reserve adjustment
+            return
+
         reserve = self.get_reserve_position(asset)
         assert reserve, f"No reserves available for {asset}"
         assert reserve.quantity is not None, f"Reserve quantity not set for {asset} in portfolio {self}"
@@ -730,7 +744,8 @@ class Portfolio:
 
         reserve = trade.get_planned_reserve()
         try:
-            available = self.reserves[trade.reserve_currency.get_identifier()].quantity
+            position = self.get_reserve_position(trade.reserve_currency)
+            available = position.quantity
         except KeyError as e:
             raise RuntimeError(f"Reserve missing for {trade.reserve_currency}") from e
 
@@ -740,7 +755,7 @@ class Portfolio:
 
         if underflow_check:
             if available < reserve:
-                raise NotEnoughMoney(f"Not enough reserves. We have {available}, trade wants {reserve}")
+                raise NotEnoughMoney(f"Not enough reserves. We have {available}, trade {trade} wants {reserve}")
 
         trade.reserve_currency_allocated = reserve
 
@@ -984,6 +999,10 @@ class Portfolio:
     def get_leverage_positions(self) -> List[TradingPosition]:
         """Return currently open credit positions."""
         return [p for p in self.get_open_and_frozen_positions() if p.is_leverage()]
+
+    def get_current_interest_positions(self) -> List[TradingPosition]:
+        """Get lis of all positions for which we need to sync the on-chain interest"""
+        return self.get_current_credit_positions() + self.get_leverage_positions()
 
     def get_borrowed(self) -> USDollarAmount:
         return sum([p.get_borrowed() for p in self.get_open_and_frozen_positions()])

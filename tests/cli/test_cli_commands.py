@@ -36,6 +36,7 @@ def unit_test_cache_path():
     return path
 
 
+@pytest.mark.skip(reason="Disbled for now, because of the massive chain reorg of BNB Chain over the weekend")
 def test_cli_check_universe(
         strategy_path: str,
         unit_test_cache_path: str,

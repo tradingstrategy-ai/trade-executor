@@ -565,16 +565,16 @@ class State:
                 # because reservs will be there after we have executed some sell trades first
                 self.portfolio.move_capital_from_reserves_to_spot_trade(trade, underflow_check=underflow_check)
         elif trade.is_leverage():
-            self.portfolio.move_capital_from_reserves_to_spot_trade(trade)
+            self.portfolio.move_capital_from_reserves_to_spot_trade(trade, underflow_check=underflow_check)
         elif trade.is_credit_supply():
             if trade.is_buy():
-                self.portfolio.move_capital_from_reserves_to_spot_trade(trade)
+                self.portfolio.move_capital_from_reserves_to_spot_trade(trade, underflow_check=underflow_check)
         else:
             raise NotImplementedError()
 
         trade.started_at = ts
 
-        logger.info("Trade #%d started at %s", trade.trade_id, ts)
+        logger.info("Trade %s started at %s", trade.get_short_label(), ts)
 
         # TODO: Legacy attributes that need to go away
         if txid is not None:
@@ -632,6 +632,8 @@ class State:
             executed_collateral_allocation=executed_collateral_allocation,
         )
 
+        # The loan status of the position is reflected back to be
+        # whatever is on chain after the execution
         if trade.planned_loan_update:
             assert trade.executed_loan_update, "TradeExecution.executed_loan_update structure not filled"
             position.loan = trade.executed_loan_update
@@ -646,7 +648,7 @@ class State:
                 self.portfolio.adjust_reserves(
                     trade.pair.quote.underlying,
                     -executed_collateral_allocation,
-                    reason=f"Collateral allocation for position #{position.position_id}"
+                    reason=f"Collateral allocation for leveraged position #{position.position_id}, trade #{trade.trade_id}"
                 )
 
         elif trade.is_credit_supply():
@@ -671,14 +673,14 @@ class State:
                 # Mark that the trade claimed any interest
                 # that was available on the collateral
                 if trade.is_leverage():
-                    # TODO: Currently there is minor difference between credit supply and leveraged positions.
-                    # Credit supply positions put any claimed interest in executed_reserve,
-                    # whereas leveraged closing trade assumes interest will be automatically claimed.
-                    self.portfolio.adjust_reserves(
-                        trade.pair.quote.get_pricing_asset(),
-                        trade.claimed_interest,
-                        reason=f"Claimed interest on position #{position.position_id}"
-                    )
+                    pass
+
+                    # Claimed interest is already include in the collateral release
+                    # self.portfolio.adjust_reserves(
+                    #    trade.pair.quote.get_pricing_asset(),
+                    #    trade.claimed_interest,
+                    #    reason=f"Claimed interest on position #{position.position_id}"
+                    #)
 
                 # Mark that the trade paid any remaining interest
                 # on the debt
@@ -687,7 +689,7 @@ class State:
                     trade.paid_interest = position.loan.repay_interest()
 
         else:
-            logger.info("Position still open after a trade: %s", position)
+            logger.info("Position #%d still open after a trade: %s", position.position_id, trade.get_short_label())
 
     def mark_trade_failed(self, failed_at: datetime.datetime, trade: TradeExecution):
         """Unroll the allocated capital."""
@@ -712,8 +714,7 @@ class State:
 
     def blacklist_asset(self, asset: AssetIdentifier):
         """Add a asset to the blacklist."""
-        address = asset.get_identifier()
-        self.asset_blacklist.add(address)
+        self.asset_blacklist.add(asset.get_identifier())
 
     def perform_integrity_check(self):
         """Check that we are not reusing any trade or position ids and counters are correct.

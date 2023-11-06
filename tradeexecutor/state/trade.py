@@ -6,7 +6,7 @@ import pprint
 import logging
 from dataclasses import dataclass, field, asdict
 from decimal import Decimal
-from typing import Optional, Tuple, List
+from typing import Optional, List
 from types import NoneType
 
 from dataclasses_json import dataclass_json
@@ -19,15 +19,9 @@ from tradeexecutor.state.identifier import TradingPairIdentifier, AssetIdentifie
 from tradeexecutor.state.loan import Loan
 from tradeexecutor.state.types import USDollarAmount, USDollarPrice, BPS, LeverageMultiplier
 from tradeexecutor.strategy.trade_pricing import TradePricing
-
+from tradeexecutor.utils.accuracy import QUANTITY_EPSILON
 
 logger = logging.getLogger()
-
-
-#: Absolute minimum units we are willing to trade regardless of an asset
-#:
-#: Used to catch floating point rounding errors
-QUANTITY_EPSILON = Decimal(10**-18)
 
 
 class TradeType(enum.Enum):
@@ -498,26 +492,89 @@ class TradeExecution:
     exchange_name: Optional[str] = None
 
     def __repr__(self) -> str:
+        """Python debug string representation.
+
+        See also
+
+        - :py:meth:`get_action_verb`
+
+        - :py:meth:`get_short_label`
+        """
+        label = self.get_action_verb()
         if self.is_spot():
             if self.is_buy():
-                return f"<Buy #{self.trade_id} {self.planned_quantity} {self.pair.base.token_symbol} at {self.planned_price}, {self.get_status().name} phase>"
+                return f"<{label} #{self.trade_id} {self.planned_quantity} {self.pair.base.token_symbol} at {self.planned_price}, {self.get_status().name} phase>"
             else:
-                return f"<Sell #{self.trade_id} {abs(self.planned_quantity)} {self.pair.base.token_symbol} at {self.planned_price}, {self.get_status().name} phase>"
+                return f"<{label} #{self.trade_id} {abs(self.planned_quantity)} {self.pair.base.token_symbol} at {self.planned_price}, {self.get_status().name} phase>"
         elif self.is_short():
-                return f"<Short #{self.trade_id} \n" \
-                       f"   {self.planned_quantity} {self.pair.base.token_symbol} at {self.planned_price}, {self.get_status().name} phase\n" \
-                       f"   collateral consumption: {self.planned_collateral_consumption} collateral allocation: {self.planned_collateral_allocation} \n" \
-                       f"   reserve: {self.planned_reserve} quantity: {self.planned_quantity} \n" \
-                       f">"
+
+                pair = self.pair
+                underlying = self.pair.get_pricing_pair()
+
+                return f"<{label} short #{self.trade_id} \n" \
+                       f"   {self.planned_quantity} {underlying.base.token_symbol} at {self.planned_price} USD, {self.get_status().name} phase\n" \
+                       f"   collateral consumption: {self.planned_collateral_consumption} {pair.quote.token_symbol}, collateral allocation: {self.planned_collateral_allocation} {pair.quote.token_symbol}\n" \
+                       f"   reserve: {self.planned_reserve}\n" \
+                       f"   >"
         else:
             if self.is_buy():
-                return f"<Supply credit #{self.trade_id} \n" \
+                return f"<{label} #{self.trade_id} \n" \
                        f"   {self.planned_quantity} {self.pair.base.token_symbol} at {self.planned_price}, {self.get_status().name} phase\n" \
-                       f">"
+                       f"   >"
             else:
-                return f"<Recall credit collateral #{self.trade_id} \n" \
+                return f"<{label} #{self.trade_id} \n" \
                        f"   {self.planned_quantity} {self.pair.base.token_symbol} at {self.planned_price}, {self.get_status().name} phase\n" \
-                       f">"
+                       f"   >"
+
+    def get_action_verb(self) -> str:
+        """What is the action verb for this trade.
+
+        Used to build human readable output.
+
+        See also
+
+        - :py:meth:`__repr__`
+
+        - :py:meth:`get_short_label`
+        """
+        if self.is_spot():
+            if self.is_buy():
+                return "Buy"
+            else:
+                return "Sell"
+        elif self.is_short():
+            if self.planned_quantity < 0:
+                return "Increase short"
+            else:
+                if self.closing:
+                    return "Close short"
+                else:
+                    return "Reduce short"
+        elif self.is_credit_supply():
+            if self.is_buy():
+                return "Supply credit"
+            else:
+                return "Recall credit"
+        else:
+            raise AssertionError(f"Could not figure out action verb")
+
+    def get_short_label(self) -> str:
+        """Get action + token + trade id label.
+
+        See also
+
+        - :py:meth:`__repr__`
+
+        - :py:meth:`get_action_verb`
+        """
+        pricing_pair = self.pair.get_pricing_pair()
+        if pricing_pair:
+            token = pricing_pair.base.token_symbol
+        else:
+            # Credit supply
+            token = self.pair.base.token_symbol
+        verb = self.get_action_verb()
+        return f"{verb} {token} #{self.trade_id}"
 
     def pretty_print(self) -> str:
         """Get diagnostics output for the trade.
@@ -782,10 +839,15 @@ class TradeExecution:
         return self.pair.kind.is_longing()
 
     def is_reduce(self) -> bool:
-        """This trade decreases the exposure of existing leveraged position."""
+        """This trade decreases the exposure of existing position.
+
+        After the trade is executed we have more cash in hand.
+        """
         if self.is_short():
             return self.planned_quantity > 0
         elif self.is_long():
+            return self.planned_quantity < 0
+        elif self.is_spot():
             return self.planned_quantity < 0
         else:
             raise NotImplementedError(f"Not leveraged trade: {self}")
@@ -965,6 +1027,24 @@ class TradeExecution:
 
         return float(self.paid_interest) * self.executed_price
 
+    def get_expected_borrow_quantity_change(self) -> Decimal:
+        """How much this trade is impacting the borrowed quantity on a loan.
+
+        :return:
+            Planned value only
+        """
+        assert self.is_credit_based()
+        return self.planned_quantity
+
+    def get_expected_collateral_quantity_change(self) -> Decimal:
+        """How much this trade is impacting the collateral quantity on a loan.
+
+        :return:
+            Planned value only
+        """
+        assert self.is_credit_based()
+        return self.planned_reserve
+
     def get_fees_paid(self) -> USDollarAmount:
         """
         Get total swap fees paid for trade. Returns 0 instead of `None`
@@ -994,9 +1074,11 @@ class TradeExecution:
         """
 
         if self.closing:
-            # Magic number
+            # Close positions always first to release maximum cash
             return -self.trade_id - 100_000_000
-        elif self.is_sell():
+        elif self.is_reduce():
+            # Trades that release cash need to go before
+            # trades where we spend reserves
             return -self.trade_id
         else:
             return self.trade_id

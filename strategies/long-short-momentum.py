@@ -8,12 +8,12 @@
 
 import datetime
 from typing import List, Dict
-
+import logging
 import pandas as pd
 
 from tradeexecutor.state.state import State
 from tradeexecutor.state.trade import TradeExecution
-from tradeexecutor.strategy.alpha_model import AlphaModel
+from tradeexecutor.strategy.alpha_model import AlphaModel, format_signals
 from tradeexecutor.strategy.execution_context import ExecutionContext
 from tradeexecutor.strategy.pandas_trader.position_manager import PositionManager
 from tradeexecutor.strategy.pricing_model import PricingModel
@@ -25,6 +25,8 @@ from tradingstrategy.client import Client
 from tradingstrategy.timebucket import TimeBucket
 from tradeexecutor.strategy.cycle import CycleDuration
 from tradeexecutor.strategy.strategy_module import StrategyType, TradeRouting, ReserveCurrency
+
+logger = logging.getLogger(__name__)
 
 # Tell what trade execution engine version this strategy needs to use
 trading_strategy_engine_version = "0.3"
@@ -43,21 +45,22 @@ trading_strategy_cycle = CycleDuration.cycle_7d
 momentum_lookback_period = datetime.timedelta(days=7)
 
 # Hold top 3 coins for every cycle
-max_assets_in_portfolio = 4
+max_assets_in_portfolio = 3
 
 # Leave 20% cash buffer
 value_allocated_to_positions = 0.80
 
 # Set 33% stop loss over mid price
-stop_loss = 0.66
+stop_loss = 0.75
 
 # Set 5% take profit over mid price
-take_profit = 1.05
+take_profit = 1.08
+#take_profit = None
 
 # The weekly price must be up 2.5% for us to take a long position
 positive_mometum_threshold = 0.025
 
-negative_mometum_threshold = -0.025
+negative_mometum_threshold = -0.035
 
 # Don't bother with trades that would move position
 # less than 300 USD
@@ -68,7 +71,7 @@ reserve_currency = ReserveCurrency.usdc
 
 # The duration of the backtesting period
 backtest_start = datetime.datetime(2022, 1, 1)
-backtest_end = datetime.datetime(2023, 10, 1)
+backtest_end = datetime.datetime(2023, 11, 1)
 
 # Start with 10,000 USD
 initial_cash = 10_000
@@ -124,16 +127,14 @@ def decide_trades(
                 take_profit=take_profit,
             )
         elif momentum <= negative_mometum_threshold:
-            if strategy_universe.can_open_short(
-                    timestamp,
-                    pair
-            ):
+            if strategy_universe.can_open_short(timestamp, pair):
                 # Only open a short if we have lending markets available at this point
                 alpha_model.set_signal(
                     pair,
-                    -momentum,
+                    momentum,
                     stop_loss=stop_loss,
                     take_profit=take_profit,
+                    leverage=1.0,
                 )
         else:
             # Momentum is ~0,
@@ -155,6 +156,9 @@ def decide_trades(
     portfolio = position_manager.get_current_portfolio()
     portfolio_target_value = portfolio.get_total_equity() * value_allocated_to_positions
     alpha_model.calculate_target_positions(position_manager, portfolio_target_value)
+
+    signal_df = format_signals(alpha_model)
+    logger.info("Cycle %s signals:\n%s", timestamp, signal_df)
 
     # Shift portfolio from current positions to target positions
     # determined by the alpha signals (momentum)
@@ -196,5 +200,6 @@ def create_trading_universe(
     universe = TradingStrategyUniverse.create_from_dataset(dataset)
 
     return universe
+
 
 

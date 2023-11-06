@@ -314,7 +314,6 @@ def trading_strategy_universe(core_universe: Universe, asset_usdc) -> TradingStr
     return TradingStrategyUniverse(data_universe=core_universe, reserve_assets=[asset_usdc])
 
 
-
 def test_live_stop_loss(
         logger,
         web3: Web3,
@@ -390,7 +389,8 @@ def test_live_stop_loss(
     mid_price = pricing_method.get_mid_price(ts, pair)
     assert mid_price == pytest.approx(1704.4706166795725, rel=APPROX_REL)
 
-    assert state.portfolio.reserves[usdc_token.address.lower()].quantity == 8000
+    usdc_id = f"{web3.eth.chain_id}-{usdc_token.address.lower()}"
+    assert state.portfolio.reserves[usdc_id].quantity == 8000
     assert state.portfolio.open_positions[1].get_quantity() == Decimal('0.586126842081438121')
     assert state.portfolio.open_positions[1].get_value() == pytest.approx(996.998769, rel=APPROX_REL)
 
@@ -430,7 +430,8 @@ def test_live_stop_loss(
     assert state.portfolio.closed_positions[1].is_stop_loss()
 
     # We are ~500 USD on loss after stop loss trigger
-    assert state.portfolio.reserves[usdc_token.address.lower()].quantity == pytest.approx(Decimal('8588.500854'))
+    usdc_id = f"{web3.eth.chain_id}-{usdc_token.address.lower()}"
+    assert state.portfolio.reserves[usdc_id].quantity == pytest.approx(Decimal('8588.500854'))
 
     # Check that transaction notes is filled correctly
     assert len(t.blockchain_transactions) == 2  # Approve + swap

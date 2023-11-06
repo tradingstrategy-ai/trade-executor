@@ -3,7 +3,7 @@
 Ethereum assets have 18 decimals.
 
 """
-
+from _decimal import Decimal
 from decimal import Decimal
 from typing import Iterable
 
@@ -22,6 +22,12 @@ SNAP_EPSILON = Decimal(10**-8)
 #:
 #: Avoid object reinitialisation.
 ZERO_DECIMAL = Decimal(0)
+
+
+#: Absolute minimum units we are willing to trade regardless of an asset
+#:
+#: Used to catch floating point rounding errors
+QUANTITY_EPSILON = Decimal(10**-18)
 
 
 def setup_decimal_accuracy():
@@ -102,3 +108,5 @@ def ensure_exact_zero(
         return ZERO_DECIMAL
 
     return quantity
+
+
