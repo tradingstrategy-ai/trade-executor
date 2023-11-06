@@ -403,19 +403,37 @@ class TradingPairIdentifier:
     def get_ticker(self) -> str:
         """Return base token symbol - quote token symbol human readable ticket.
 
-        Example: `WETH-USDC`.
+        Example: ``WETH-USDC``, ``
+
+        See also :py:meth:`get_human_description`.
         """
         return f"{self.base.token_symbol}-{self.quote.token_symbol}"
-
-    def get_human_description(self) -> str:
-        """Same as get_ticker()."""
-        return self.get_ticker()
 
     def get_lending_protocol(self) -> LendingProtocolType | None:
         """Is this pair on a particular lending protocol."""
         if self.kind in (TradingPairKind.lending_protocol_short, TradingPairKind.lending_protocol_long):
             return LendingProtocolType.aave_v3
         return None
+
+    def get_human_description(self, describe_type=False) -> str:
+        """Get short ticker human description for this pair.
+
+        :param describe_type:
+            Handle spot, short and such pairs.
+
+        See :py:meth:`get_ticker`.
+        """
+
+        if describe_type:
+            underlying = self.underlying_spot_pair or self
+            if self.is_short():
+                return f"{underlying.get_ticker()} short"
+            elif self.is_spot():
+                return f"{self.get_ticker()} spot"
+            elif self.is_credit_supply():
+                return f"{underlying.get_ticker()} credit"
+
+        return self.get_ticker()
 
     def has_complete_info(self) -> bool:
         """Check if the pair has good information.
