@@ -447,7 +447,9 @@ class AlphaModel:
         remember the last value.
 
         :param pair:
-            Trading pair
+            Trading pair.
+
+            Always the underlying spot pair.
 
         :param alpha:
             How much alpha signal this trading pair carries.
@@ -486,7 +488,7 @@ class AlphaModel:
         assert pair.is_spot(), f"Signals are tracked by their spot pairs. got {pair}"
 
         # Don't let Numpy values beyond this point, as
-        # they cause havoc in serisaliation
+        # they cause havoc in serialisation
         if isinstance(alpha, np.float32):
             alpha = float(alpha)
 
@@ -494,7 +496,8 @@ class AlphaModel:
             assert leverage is not None, "Leverage must be set for short"
 
         if alpha == 0:
-            # Delete so that the pair so that it does not get any further computations
+            # Zero signal.
+            # Delete the pair from the signal mappings so that the pair so that it does not get any further computations
             if pair.internal_id in self.raw_signals:
                 del self.raw_signals[pair.internal_id]
 
@@ -811,7 +814,7 @@ class AlphaModel:
                         # Open new short or adjust existing short.
 
                         leverage = signal.leverage
-                        assert type(leverage) == float, f"Signal is short, but does not have levarage multiplier set {signal}"
+                        assert type(leverage) == float, f"Signal is short, but does not have a leverage multiplier set {signal}"
 
                         if signal.is_flipping() or signal.is_new():
                             # Open new short,
@@ -851,7 +854,7 @@ class AlphaModel:
                             notes="Rebalance for signal {signal}"
                         )
                     else:
-                        raise NotImplementedError(f"Leveraged long missing: {signal}")
+                        raise NotImplementedError(f"Leveraged long missing w/leverage {signal.leverage}, {signal.get_flip_label()}: {signal}")
 
                     assert len(position_rebalance_trades) >= 1, "Assuming always on trade for rebalance"
 

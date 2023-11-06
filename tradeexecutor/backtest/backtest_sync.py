@@ -192,7 +192,8 @@ class BacktestSyncModel(SyncModel):
 
         duration = timestamp - previous_update_at
         if duration == ZERO_TIMEDELTA:
-            logger.warning(f"Sync time span must be positive:{previous_update_at} - {timestamp}")
+            # TODO: Promote to warning and fix the cause
+            logger.info(f"Sync time span must be positive:{previous_update_at} - {timestamp}")
             return []
 
         logger.info(

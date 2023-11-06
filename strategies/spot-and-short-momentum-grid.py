@@ -42,11 +42,11 @@ max_assets_in_portfolio = 3
 value_allocated_to_positions = 0.80
 
 # Set 33% stop loss over mid price
-stop_loss = 0.75
+stop_loss = None
 
 # Set 5% take profit over mid price
-take_profit = 1.08
-#take_profit = None
+# take_profit = 1.08
+# take_profit = None
 
 # The weekly price must be up 2.5% for us to take a long position
 positive_mometum_threshold = 0.025
@@ -79,7 +79,7 @@ def grid_search_worker(
 
     # Open grid search options as they are given in the setup later.
     # The order here *must be* the same as given for prepare_grid_combinations()
-    cycle_duration_days, momentum_lookback = combination.destructure()
+    cycle_duration_days, momentum_lookback, take_profit, positive_mometum_threshold, negative_mometum_threshold = combination.destructure()
     momentum_lookback_period = datetime.timedelta(days=momentum_lookback)
 
     def decide_trades(
@@ -94,6 +94,9 @@ def grid_search_worker(
         cycle = cycle_debug_data["cycle"]
         if cycle % cycle_duration_days != 0:
             return []
+
+        assert positive_mometum_threshold >= 0
+        assert negative_mometum_threshold <= 0
 
         # Create a position manager helper class that allows us easily to create
         # opening/closing trades for different positions
@@ -113,6 +116,10 @@ def grid_search_worker(
 
         # Iterate over all candles for all pairs in this timestamp (ts)
         for pair_id, pair_df in candle_data:
+
+            # Work around some missing data problems for LINK
+            if len(pair_df) < 4:
+                continue
 
             first_candle = pair_df.iloc[0]
             last_candle = pair_df.iloc[-1]
@@ -137,16 +144,15 @@ def grid_search_worker(
                     take_profit=take_profit,
                 )
             elif momentum <= negative_mometum_threshold:
-                pass
-                # if strategy_universe.can_open_short(timestamp, pair):
-                #     # Only open a short if we have lending markets available at this point
-                #     alpha_model.set_signal(
-                #         pair,
-                #         momentum,
-                #         stop_loss=stop_loss,
-                #         take_profit=take_profit,
-                #         leverage=1.0,
-                #     )
+                if strategy_universe.can_open_short(timestamp, pair):
+                    # Only open a short if we have lending markets available at this point
+                    alpha_model.set_signal(
+                        pair,
+                        momentum,
+                        stop_loss=stop_loss,
+                        take_profit=take_profit,
+                        leverage=1.0,
+                    )
             else:
                 # Momentum is ~0,
                 # not worth of a signal
