@@ -491,7 +491,7 @@ class AlphaModel:
             alpha = float(alpha)
 
         if alpha < 0:
-            assert leverage is not None, "Leverage must be set for short"
+            assert leverage is not None, f"Leverage must be set for short, received signal {alpha} for pair {pair.get_human_description(describe_type=True)}"
 
         if alpha == 0:
             # Delete so that the pair so that it does not get any further computations
