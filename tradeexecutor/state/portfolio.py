@@ -877,6 +877,11 @@ class Portfolio:
     def get_initial_deposit(self) -> Optional[USDollarAmount]:
         """How much we invested at the beginning of a backtest.
 
+        .. note::
+
+            Only applicable to the backtest. Will fail
+            for live strategies.
+
         - Assumes we track the performance against the US dollar
 
         - Assume there has been only one deposit event
@@ -891,7 +896,8 @@ class Portfolio:
             return 0
 
         assert len(self.reserves) == 1, f"Reserve assets are not defined for this state, cannot get initial deposit\n" \
-                                        f"State is {self}"
+                                        f"State is {self}\n" \
+                                        f"Reserves are {self.reserves}\n"
         reserve = next(iter(self.reserves.values()))
         if reserve.initial_deposit:
             return float(reserve.initial_deposit) * reserve.initial_deposit_reserve_token_price
