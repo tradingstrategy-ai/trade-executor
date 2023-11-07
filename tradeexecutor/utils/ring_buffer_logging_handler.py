@@ -86,6 +86,13 @@ class RingBufferHandler(Handler):
         :return:
             Log records sorted by timestamp, for oldest to newest
         """
-        records = [ExportedRecord.export(r) for r in self.buffer]
+        records = []
+        for r in self.buffer:
+            try:
+                records.append(ExportedRecord.export(r))
+            except TypeError as e:
+                # TypeError: not enough arguments for format string
+                raise TypeError(f"Could not format: {r.msg}") from e
+
         records.sort(key=lambda r: r["timestamp"])
         return records
