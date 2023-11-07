@@ -49,7 +49,7 @@ stop_loss = None
 # take_profit = None
 
 # The weekly price must be up 2.5% for us to take a long position
-positive_mometum_threshold = 0.025
+positive_mometum_threshold = 0.001
 
 negative_mometum_threshold = -0.035
 
@@ -144,7 +144,7 @@ def grid_search_worker(
                     take_profit=take_profit,
                 )
             elif momentum <= negative_mometum_threshold:
-                if strategy_universe.can_open_short(timestamp, pair):
+                if False and strategy_universe.can_open_short(timestamp, pair):
                     # Only open a short if we have lending markets available at this point
                     alpha_model.set_signal(
                         pair,
