@@ -1,11 +1,3 @@
-"""Unit test version of Aave long/short strategy.
-
-- Long is spot buy
-
-- Short is Aave 1x leveraged short
-
-"""
-
 import datetime
 from typing import List, Dict
 import logging
@@ -88,7 +80,7 @@ def decide_trades(
 ) -> List[TradeExecution]:
 
     cycle = cycle_debug_data["cycle"]
-    if cycle % 7 != 0:
+    if (cycle + 3) % 7 != 0:
         return []
 
     # Create a position manager helper class that allows us easily to create
