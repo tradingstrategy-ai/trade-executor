@@ -51,16 +51,16 @@ max_assets_in_portfolio = 3
 value_allocated_to_positions = 0.80
 
 # Set 33% stop loss over mid price
-stop_loss = 0.75
+stop_loss = None
 
 # Set 5% take profit over mid price
-take_profit = 1.08
+take_profit = 1.07
 #take_profit = None
 
 # The weekly price must be up 2.5% for us to take a long position
-positive_mometum_threshold = 0.025
+positive_mometum_threshold = 0.001
 
-negative_mometum_threshold = -0.035
+negative_mometum_threshold = -0.06
 
 # Don't bother with trades that would move position
 # less than 300 USD
@@ -75,6 +75,8 @@ backtest_end = datetime.datetime(2023, 11, 1)
 
 # Start with 10,000 USD
 initial_cash = 10_000
+
+
 
 
 def decide_trades(
@@ -193,7 +195,7 @@ def create_trading_universe(
         asset_symbols={"LINK", "WMATIC", "WETH", "BAL"},
         trading_fee=0.0005,
         time_bucket=TimeBucket.d7,
-        stop_loss_time_bucket=TimeBucket.d1,
+        stop_loss_time_bucket=TimeBucket.h4,
     )
 
     # Filter down the dataset to the pairs we specified

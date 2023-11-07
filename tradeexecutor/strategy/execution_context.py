@@ -119,6 +119,11 @@ class ExecutionContext:
             mode=ExecutionMode.backtesting,
         )
 
+    See also
+
+    - :py:data:`unit_test_execution_context`
+
+    - :py:data:`notebook_execution_context`
     """
 
     #: What is the current mode of the execution.
