@@ -24,6 +24,8 @@ def setup_charting_and_output(
     mode: OutputMode=OutputMode.interactive,
     image_format="svg",
     max_rows=1000,
+    width=1500,
+    height=1500,
 ):
     """Sets charting and other output options for Jupyter Notebooks.
 
@@ -79,9 +81,11 @@ def setup_charting_and_output(
 
         # https://plotly.com/python/renderers/#overriding-the-default-renderer
         pio.renderers.default = image_format
-        svg_renderer = pio.renderers[image_format]
+        
+        current_renderer = pio.renderers[image_format]
         # Have SVGs default pixel with
-        svg_renderer.width = 1500
+        current_renderer.width = width
+        current_renderer.height = height
 
     if max_rows:
         pd.set_option('display.max_rows', max_rows)
