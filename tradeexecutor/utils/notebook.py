@@ -25,11 +25,15 @@ def setup_charting_and_output(
     image_format="svg",
     max_rows=1000,
 ):
-    """Sets up Jupyter Notebook based charting.
+    """Sets charting and other output options for Jupyter Notebooks.
+
+    Interactive charts are better for local development, but are not compatible with most web-based notebook viewers.
 
     - `Set Quantstats chart to SVG output and for high-resolution screens <https://stackoverflow.com/questions/74721731/how-to-generate-svg-images-using-python-quantstat-library>`__
 
     - Mute common warnings like `Matplotlib font loading <https://stackoverflow.com/questions/42097053/matplotlib-cannot-find-basic-fonts/76136516#76136516>`__
+
+    - `Plotly discussion <https://github.com/plotly/plotly.py/issues/931>`__
 
     Example:
 
