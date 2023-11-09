@@ -226,19 +226,19 @@ class EthereumRoutingModel(RoutingModel):
         """
         uniswap = routing_state.get_uniswap_for_pair(address_map, target_pair)
         one_delta = routing_state.get_one_delta_for_pair(address_map, target_pair)
+        aave_v3 = routing_state.get_aave_v3_for_pair(address_map, target_pair)
         
         spot_pair = target_pair.get_pricing_pair()
-        collateral_token_address = target_pair.quote
-        token_address = reserve_asset.address
         
-        # TODO: refactor this
-        # if hasattr(uniswap, "router"):
-        #     txs = routing_state.ensure_token_approved(token_address, uniswap.router.address)
-        # elif hasattr(uniswap, "swap_router"):
-        #     txs = routing_state.ensure_token_approved(token_address, uniswap.swap_router.address)
-        # else:
-        #     raise TypeError("Incorrect Uniswap Instance provided. Can't get router.")
-        # txs = routing_state.ensure_multiple_tokens_approved(one_delta)
+        txs = routing_state.ensure_multiple_tokens_approved(
+            one_delta=one_delta,
+            aave_v3=aave_v3,
+            uniswap_v3=uniswap,
+            collateral_token_address=reserve_asset.address,
+            borrow_token_address=spot_pair.base.address,
+            atoken_address=target_pair.quote.address,
+            vtoken_address=target_pair.base.address,
+        )
 
         # adjusted_reserve_amount = routing_state.adjust_spend(
         #     reserve_asset,
@@ -278,7 +278,7 @@ class EthereumRoutingModel(RoutingModel):
             "adjusted_reserve_amount": str(adjusted_reserve_amount),
         }
 
-        txs = trade_txs
+        txs += trade_txs
         return txs
 
     def trade(self,
@@ -425,6 +425,8 @@ class EthereumRoutingModel(RoutingModel):
                     f"Position {t.position_id}\n" \
                     f"Asset deltas: {asset_deltas}"
 
+            trade_direction = "buy" if t.is_buy() and target_pair.is_spot() else "sell"
+
             if intermediary_pair is None:
                 # Two way trade
                 # Decide between buying and selling
@@ -439,7 +441,7 @@ class EthereumRoutingModel(RoutingModel):
                         max_slippage=max_slippage,
                         notes=notes,
                     )
-                    if t.is_buy()
+                    if trade_direction
                     else self.trade(
                         routing_state,
                         target_pair=target_pair,
@@ -451,7 +453,7 @@ class EthereumRoutingModel(RoutingModel):
                         notes=notes,
                     )
                 )
-            elif t.is_buy():
+            elif trade_direction:
                 trade_txs = self.trade(
                     routing_state,
                     target_pair=target_pair,

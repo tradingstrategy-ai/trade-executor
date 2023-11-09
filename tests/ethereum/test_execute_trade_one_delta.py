@@ -25,7 +25,7 @@ from eth_defi.token import create_token, fetch_erc20_details
 from eth_defi.uniswap_v3.deployment import UniswapV3Deployment, fetch_deployment as fetch_uniswap_v3_deployment
 from eth_defi.uniswap_v3.price import UniswapV3PriceHelper
 from eth_defi.uniswap_v3.utils import get_default_tick_range
-from eth_defi.aave_v3.deployment import fetch_deployment as fetch_aave_deployment
+from eth_defi.aave_v3.deployment import AaveV3Deployment, fetch_deployment as fetch_aave_deployment
 from eth_defi.one_delta.deployment import OneDeltaDeployment
 from eth_defi.one_delta.deployment import fetch_deployment as fetch_1delta_deployment
 from eth_defi.provider.multi_provider import create_multi_provider_web3
@@ -74,7 +74,11 @@ def anvil_polygon_chain_fork(request, large_usdc_holder) -> str:
     :return: JSON-RPC URL for Web3
     """
     mainnet_rpc = os.environ["JSON_RPC_POLYGON"]
-    launch = fork_network_anvil(mainnet_rpc, unlocked_addresses=[large_usdc_holder])
+    launch = fork_network_anvil(
+        mainnet_rpc,
+        unlocked_addresses=[large_usdc_holder],
+        fork_block_number=49_000_000,
+    )
     try:
         yield launch.json_rpc_url
     finally:
@@ -153,10 +157,9 @@ def aave_v3_deployment(web3):
 
 
 @pytest.fixture
-def one_delta_deployment(web3, aave_v3_deployment) -> OneDeltaDeployment:
+def one_delta_deployment(web3) -> OneDeltaDeployment:
     return fetch_1delta_deployment(
         web3,
-        aave_v3_deployment,
         flash_aggregator_address="0x74E95F3Ec71372756a01eB9317864e3fdde1AC53",
         broker_proxy_address="0x74E95F3Ec71372756a01eB9317864e3fdde1AC53",
     )
@@ -309,16 +312,23 @@ def tx_builder(web3, hot_wallet) -> HotWalletTransactionBuilder:
 def ethereum_trader(
     web3: Web3,
     uniswap_v3_deployment: UniswapV3Deployment,
+    aave_v3_deployment: AaveV3Deployment,
     one_delta_deployment: OneDeltaDeployment,
     hot_wallet: HotWallet,
     state: State,
     pair_universe: PandasPairUniverse,
     tx_builder: HotWalletTransactionBuilder,
 ) -> OneDeltaTestTrader:
-    return OneDeltaTestTrader(one_delta_deployment, uniswap_v3_deployment, state, pair_universe, tx_builder)
+    return OneDeltaTestTrader(
+        one_delta_deployment,
+        aave_v3_deployment,
+        uniswap_v3_deployment,
+        state,
+        pair_universe,
+        tx_builder,
+    )
 
 
-@pytest.mark.skip(reason="Disabled for now")
 def test_execute_trade_instructions_open_short(
     web3: Web3,
     state: State,

@@ -174,9 +174,12 @@ class EthereumRoutingState(RoutingState):
             d_amount = token_details.convert_to_decimals(amount)
             raise OutOfBalance(f"Address {address} does not have enough {token_details} tokens to trade. Need {d_amount}, has {d_balance}")
 
-    def ensure_token_approved(self,
-                              token_address: str,
-                              router_address: str) -> List[BlockchainTransaction]:
+    def ensure_token_approved(
+        self,
+        token_address: str,
+        router_address: str,
+        amount: int = 2**256-1,
+    ) -> List[BlockchainTransaction]:
         """Make sure we have ERC-20 approve() for the trade
 
         - Infinite approval on-chain
@@ -185,6 +188,7 @@ class EthereumRoutingState(RoutingState):
 
         :param token_address:
         :param router_address:
+        :param amount: How much to approve, default to approve infinite amount
 
         :return: Create 0 or 1 transactions if needs to be approved
         """
@@ -213,7 +217,7 @@ class EthereumRoutingState(RoutingState):
         # Create infinite approval
         tx = self.tx_builder.sign_transaction(
             erc_20,
-            erc_20.functions.approve(router_address, 2**256-1),
+            erc_20.functions.approve(router_address, amount),
             gas_limit=gas_limit,
             gas_price_suggestion=None,
             asset_deltas=[],
