@@ -848,7 +848,7 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
         if not reserve_asset_desc:
             quote_token = pairs.get_single_quote_token()
             reserve_asset = translate_token(quote_token)
-        elif 
+        else:
             reserve_asset_token = pairs.get_token(reserve_asset_desc)
             assert reserve_asset_token, f"Pairs dataset does not contain data for token: {reserve_asset_desc}"
             reserve_asset = translate_token(reserve_asset_token)
