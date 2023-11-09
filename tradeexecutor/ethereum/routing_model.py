@@ -206,8 +206,9 @@ class EthereumRoutingModel(RoutingModel):
         self,
         routing_state: EthereumRoutingState,
         target_pair: TradingPairIdentifier,
-        reserve_asset: AssetIdentifier,
-        reserve_amount: int,
+        *,
+        borrow_amount: int,
+        collateral_amount: int,
         max_slippage: Percent,
         address_map: Dict,
         check_balances=False,
@@ -234,7 +235,7 @@ class EthereumRoutingModel(RoutingModel):
             one_delta=one_delta,
             aave_v3=aave_v3,
             uniswap_v3=uniswap,
-            collateral_token_address=reserve_asset.address,
+            collateral_token_address=spot_pair.quote.address,
             borrow_token_address=spot_pair.base.address,
             atoken_address=target_pair.quote.address,
             vtoken_address=target_pair.base.address,
@@ -244,13 +245,12 @@ class EthereumRoutingModel(RoutingModel):
         #     reserve_asset,
         #     reserve_amount,
         # )
-        adjusted_reserve_amount = reserve_amount
 
         logger.info(
-            "Doing leverage short way trade. Pair:%s\n Reserve:%s Adjusted reserve amount: %s Max slippage: %s BPS",
+            "Doing leverage short way trade. Pair:%s\n Borrow asset:%s Adjusted reserve amount: %s Max slippage: %s BPS",
             target_pair,
-            reserve_asset,
-            adjusted_reserve_amount,
+            target_pair.base,
+            borrow_amount,
             max_slippage * 10_000 if max_slippage else "-")
 
         if max_slippage:
@@ -262,9 +262,8 @@ class EthereumRoutingModel(RoutingModel):
             one_delta=one_delta,
             uniswap=uniswap,
             target_pair=target_pair,
-            reserve_asset=reserve_asset,
-            collateral_amount=adjusted_reserve_amount,
-            borrow_amount=0, # TODO
+            collateral_amount=collateral_amount,
+            borrow_amount=borrow_amount,
             max_slippage=max_slippage,
             check_balances=check_balances,
             asset_deltas=asset_deltas,
@@ -273,10 +272,10 @@ class EthereumRoutingModel(RoutingModel):
 
         # Leave note of adjustment.
         # Use str() because JSON cannot handle big int
-        trade_txs[0].other = {
-            "reserve_amount": str(reserve_amount),
-            "adjusted_reserve_amount": str(adjusted_reserve_amount),
-        }
+        # trade_txs[0].other = {
+        #     "reserve_amount": str(reserve_amount),
+        #     "adjusted_reserve_amount": str(adjusted_reserve_amount),
+        # }
 
         txs += trade_txs
         return txs
@@ -330,8 +329,8 @@ class EthereumRoutingModel(RoutingModel):
         # Our reserves match directly the asset on trading pair
         # -> we can do one leg trade
         if not intermediary_pair:
-            if target_pair.is_leverage():
-                return self.make_leverage_trade(
+            if target_pair.quote == reserve_asset or target_pair.base == reserve_asset:
+                return self.make_direct_trade(
                     routing_state,
                     target_pair,
                     reserve_asset,
@@ -341,19 +340,7 @@ class EthereumRoutingModel(RoutingModel):
                     asset_deltas=asset_deltas,
                     notes=notes,
                 )
-            else:
-                if target_pair.quote == reserve_asset or target_pair.base == reserve_asset:
-                    return self.make_direct_trade(
-                        routing_state,
-                        target_pair,
-                        reserve_asset,
-                        reserve_asset_amount,
-                        max_slippage=max_slippage,
-                        check_balances=check_balances,
-                        asset_deltas=asset_deltas,
-                        notes=notes,
-                    )
-                raise RuntimeError(f"Do not how to trade reserve {reserve_asset} with {target_pair}")
+            raise RuntimeError(f"Do not how to trade reserve {reserve_asset} with {target_pair}")
         else:
 
             self.intermediary_pair_assertion(intermediary_pair)
@@ -425,9 +412,19 @@ class EthereumRoutingModel(RoutingModel):
                     f"Position {t.position_id}\n" \
                     f"Asset deltas: {asset_deltas}"
 
-            trade_direction = "buy" if t.is_buy() and target_pair.is_spot() else "sell"
-
-            if intermediary_pair is None:
+            # TODO: refactor this part as too many nested if else here
+            if t.is_leverage():
+                trade_txs = self.make_leverage_trade(
+                    routing_state,
+                    target_pair,
+                    borrow_amount=t.get_raw_planned_quantity(),
+                    collateral_amount=t.get_raw_planned_reserve(),
+                    max_slippage=max_slippage,
+                    check_balances=check_balances,
+                    asset_deltas=asset_deltas,
+                    notes=notes,
+                )
+            elif intermediary_pair is None:
                 # Two way trade
                 # Decide between buying and selling
                 trade_txs = (
@@ -441,7 +438,7 @@ class EthereumRoutingModel(RoutingModel):
                         max_slippage=max_slippage,
                         notes=notes,
                     )
-                    if trade_direction
+                    if t.is_buy()
                     else self.trade(
                         routing_state,
                         target_pair=target_pair,
@@ -453,7 +450,7 @@ class EthereumRoutingModel(RoutingModel):
                         notes=notes,
                     )
                 )
-            elif trade_direction:
+            elif t.is_buy():
                 trade_txs = self.trade(
                     routing_state,
                     target_pair=target_pair,

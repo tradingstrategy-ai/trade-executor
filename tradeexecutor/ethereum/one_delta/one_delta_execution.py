@@ -73,20 +73,16 @@ class OneDeltaExecutionModel(EthereumExecutionModel):
         tx_receipt: dict,
         input_args: tuple,
     ) -> (TradeSuccess | TradeFail):
-        assert type(input_args) == tuple and len(input_args) > 0, "Uniswap v3 trade success analysis needs input args"
-        return analyse_trade_by_receipt(web3, uniswap, tx, tx_hash, tx_receipt, input_args)
+        # assert type(input_args) == tuple and len(input_args) > 0, "Uniswap v3 trade success analysis needs input args"
+        # return analyse_trade_by_receipt(web3, uniswap, tx, tx_hash, tx_receipt, input_args)
+        return None
 
-    def mock_partial_deployment_for_analysis(
-        self,
-        web3: Web3, 
-        router_address: str
-    ) -> UniswapV3Deployment:
-        return mock_partial_deployment_for_analysis(web3, router_address)
-
-    def is_v3(self) -> bool:
-        """Returns true if instance is related to Uniswap V3, else false. 
-        Kind of a hack to be able to share resolve trades function amongst v2 and v3."""
-        return True
+    # def mock_partial_deployment_for_analysis(
+    #     self,
+    #     web3: Web3, 
+    #     router_address: str
+    # ) -> UniswapV3Deployment:
+    #     return mock_partial_deployment_for_analysis(web3, router_address)
     
 
 def get_current_price(web3: Web3, uniswap: UniswapV3Deployment, pair: TradingPairIdentifier, quantity=Decimal(1)) -> float:

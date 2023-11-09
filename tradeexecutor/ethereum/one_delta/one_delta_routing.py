@@ -87,7 +87,6 @@ class OneDeltaRoutingState(EthereumRoutingState):
         one_delta: OneDeltaDeployment,
         uniswap: UniswapV3Deployment,
         target_pair: TradingPairIdentifier,
-        reserve_asset: AssetIdentifier,
         collateral_amount: int,
         borrow_amount: int,
         max_slippage: Percent,
@@ -98,35 +97,46 @@ class OneDeltaRoutingState(EthereumRoutingState):
         assert one_delta
         assert target_pair.kind.is_leverage()
 
-        base_token, quote_token = get_base_quote(self.web3, target_pair.get_pricing_pair(), reserve_asset)
+        # base_token = target_pair.get_pricing_pair().base
+        # quote_token = target_pair.get_pricing_pair().quote
+        base_token, quote_token = get_base_quote(self.web3, target_pair.get_pricing_pair(), target_pair.get_pricing_pair().quote)
 
         if check_balances:
-            self.check_has_enough_tokens(quote_token, reserve_amount)
+            self.check_has_enough_tokens(quote_token, collateral_amount)
 
         logger.info(
-            "Creating a trade for %s, slippage tolerance %f, trade reserve %s, amount in %d",
+            "Creating a trade for %s, slippage tolerance %f, borrow amount in %d",
             target_pair,
             max_slippage,
-            reserve_asset,
-            collateral_amount,
+            borrow_amount,
         )
 
         pool_fee_raw = int(target_pair.get_pricing_pair().fee * 1_000_000)
 
-        # TODO: differentiate open and close
-        bound_swap_func = open_short_position(
-            one_delta_deployment=one_delta,
-            collateral_token=quote_token,
-            borrow_token=base_token,
-            pool_fee=pool_fee_raw,
-            collateral_amount=collateral_amount,
-            borrow_amount=borrow_amount,
-            wallet_address=self.tx_builder.get_token_delivery_address(),
-        )
+        if borrow_amount < 0:
+            bound_func = open_short_position(
+                one_delta_deployment=one_delta,
+                collateral_token=quote_token,
+                borrow_token=base_token,
+                pool_fee=pool_fee_raw,
+                collateral_amount=collateral_amount,
+                borrow_amount=-borrow_amount,
+                wallet_address=self.tx_builder.get_token_delivery_address(),
+            )
+        else:
+            bound_func = close_short_position(
+                one_delta_deployment=one_delta,
+                collateral_token=quote_token,
+                borrow_token=base_token,
+                pool_fee=pool_fee_raw,
+                collateral_amount=collateral_amount,
+                borrow_amount=borrow_amount,
+                wallet_address=self.tx_builder.get_token_delivery_address(),
+            )
 
         return self.create_signed_transaction(
             one_delta.broker_proxy,
-            bound_swap_func,
+            bound_func,
             self.swap_gas_limit,
             asset_deltas,
             notes=notes,
@@ -338,8 +348,9 @@ class OneDeltaSimpleRoutingModel(EthereumRoutingModel):
         self, 
         routing_state: EthereumRoutingState,
         target_pair: TradingPairIdentifier,
-        reserve_asset: AssetIdentifier,
-        reserve_amount: int,
+        *,
+        borrow_amount: int,
+        collateral_amount: int,
         max_slippage: float,
         check_balances=False,
         asset_deltas: Optional[List[AssetDelta]] = None,
@@ -349,12 +360,12 @@ class OneDeltaSimpleRoutingModel(EthereumRoutingModel):
         return super().make_leverage_trade(
             routing_state,
             target_pair,
-            reserve_asset,
-            reserve_amount,
-            max_slippage,
-            self.address_map,
-            check_balances,
+            borrow_amount=borrow_amount,
+            collateral_amount=collateral_amount,
+            max_slippage=max_slippage,
+            address_map=self.address_map,
+            check_balances=check_balances,
             asset_deltas=asset_deltas,
-            notes="",
+            notes=notes,
         )
 
