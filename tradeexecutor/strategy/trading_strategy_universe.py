@@ -832,6 +832,10 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
             - If dataset has trading pairs with different quote tokens,
               aborts
 
+            Examples: 
+            
+            - ``0x22177148e681a6ca5242c9888ace170ee7ec47bd``  (USDC address on Polygon)
+
         """
 
         chain_ids = dataset.pairs["chain_id"].unique()
@@ -844,7 +848,7 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
         if not reserve_asset_desc:
             quote_token = pairs.get_single_quote_token()
             reserve_asset = translate_token(quote_token)
-        else:
+        elif 
             reserve_asset_token = pairs.get_token(reserve_asset_desc)
             assert reserve_asset_token, f"Pairs dataset does not contain data for token: {reserve_asset_desc}"
             reserve_asset = translate_token(reserve_asset_token)
