@@ -174,6 +174,9 @@ unit_test_execution_context = ExecutionContext(ExecutionMode.unit_testing_tradin
 #: Shorthand for notebooks
 notebook_execution_context = ExecutionContext(ExecutionMode.backtesting)
 
+#: Shorthand for Python scripts
+python_script_execution_context = ExecutionContext(ExecutionMode.backtesting)
+
 
 #: Shorthand for unit testing
 ExecutionContext.unit_test = unit_test_execution_context
