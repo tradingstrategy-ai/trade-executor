@@ -82,6 +82,8 @@ class Portfolio:
     #:
     #: Token -> reserve position mapping.
     #:
+    #: For migration code, see :py:class:`ReservePosition`.
+    #:
     reserves: Dict[AssetFriendlyId, ReservePosition] = field(default_factory=dict)
 
     #: Trades completed in the past
