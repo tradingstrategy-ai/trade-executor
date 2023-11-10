@@ -12,19 +12,19 @@ from pathlib import Path
 def get_parquet_path(
     symbol: str,
     time_bucket: TimeBucket,
-    start_date: datetime.datetime,
-    end_date: datetime.datetime,
+    start_at: datetime.datetime,
+    end_at: datetime.datetime,
 ):
     return Path(
-        f"../tests/binance_data/{symbol}-{time_bucket.value}-{start_date}-{end_date}.parquet"
+        f"../tests/binance_data/{symbol}-{time_bucket.value}-{start_at}-{end_at}.parquet"
     )
 
 
 def get_binance_candlestick_data(
     symbol: str,
     time_bucket: TimeBucket,
-    start_date: datetime.datetime,
-    end_date: datetime.datetime,
+    start_at: datetime.datetime,
+    end_at: datetime.datetime,
 ):
     """Get candlestick price and volume data from Binance.
 
@@ -37,10 +37,10 @@ def get_binance_candlestick_data(
     :param interval:
         Can be one of `1s, 1m, 3m, 5m, 15m, 30m, 1h, 2h, 4h, 6h, 8h, 12h, 1d, 3d, 1w, 1M`
 
-    :param start_date:
+    :param start_at:
         Start date of the data
 
-    :param end_date:
+    :param end_at:
         End date of the data
 
     :return:
@@ -48,11 +48,11 @@ def get_binance_candlestick_data(
     """
 
     # to include the end date, we need to add one day
-    end_date = end_date + datetime.timedelta(days=1)
+    end_at = end_at + datetime.timedelta(days=1)
 
     try:
         df = pd.read_parquet(
-            get_parquet_path(symbol, time_bucket, start_date, end_date)
+            get_parquet_path(symbol, time_bucket, start_at, end_at)
         )
         return df
     except:
@@ -60,29 +60,29 @@ def get_binance_candlestick_data(
 
     params_str = f"symbol={symbol}&interval={time_bucket.value}"
 
-    if start_date:
+    if start_at:
         assert (
-            end_date
-        ), "If you specify a start_date, you must also specify an end_date"
+            end_at
+        ), "If you specify a start_at, you must also specify an end_at"
         assert isinstance(
-            start_date, datetime.datetime
-        ), "start_date must be a datetime.datetime object"
+            start_at, datetime.datetime
+        ), "start_at must be a datetime.datetime object"
         assert isinstance(
-            end_date, datetime.datetime
-        ), "end_date must be a datetime.datetime object"
-        start_timestamp = int(start_date.timestamp() * 1000)
-        end_timestamp = int(end_date.timestamp() * 1000)
+            end_at, datetime.datetime
+        ), "end_at must be a datetime.datetime object"
+        start_timestamp = int(start_at.timestamp() * 1000)
+        end_timestamp = int(end_at.timestamp() * 1000)
 
     # generate timestamps for each iteration
-    dates = [start_date]
-    current_date = start_date
-    while current_date < end_date:
-        if (end_date - current_date) / time_bucket.to_timedelta() > 999:
+    dates = [start_at]
+    current_date = start_at
+    while current_date < end_at:
+        if (end_at - current_date) / time_bucket.to_timedelta() > 999:
             dates.append((current_date + time_bucket.to_timedelta() * 999))
             current_date += time_bucket.to_timedelta() * 999
         else:
-            dates.append(end_date)
-            current_date = end_date
+            dates.append(end_at)
+            current_date = end_at
 
     timestamps = [int(date.timestamp() * 1000) for date in dates]
     open_prices, high_prices, low_prices, close_prices, volume, dates = (
@@ -127,6 +127,6 @@ def get_binance_candlestick_data(
         index=dates,
     )
 
-    df.to_parquet(get_parquet_path(symbol, time_bucket, start_date, end_date))
+    df.to_parquet(get_parquet_path(symbol, time_bucket, start_at, end_at))
 
     return df
