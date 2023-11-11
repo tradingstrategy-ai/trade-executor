@@ -1,4 +1,7 @@
-"""Prepare a filtered Parquet file containing candles for all pairs on Uniswap v3 on Polygon."""
+"""Prepare a filtered Parquet file containing candles for pairs on Polygon.
+
+- Include pairs from Uniswap and Quickswap
+"""
 import os
 
 from tradeexecutor.strategy.execution_context import python_script_execution_context
@@ -14,10 +17,10 @@ client = Client.create_jupyter_client()
 
 chain_id = ChainId.polygon
 time_bucket = TimeBucket.d1
-exchange_slug = "uniswap-v3"
+exchange_slugs = ["uniswap-v3", "quickswap"]
 
 exchanges = client.fetch_exchange_universe()
-uni = exchanges.get_by_chain_and_slug(ChainId.polygon, exchange_slug)
+exchange_ids = [exchanges.get_by_chain_and_slug(ChainId.polygon, s).exchange_id for s in exchange_slugs]
 
 dataset = load_all_data(
     client,
@@ -29,15 +32,16 @@ dataset = load_all_data(
 
 # Filter out pair ids that belong to our target dataset
 pair_universe = dataset.pairs
-pair_ids = pair_universe.loc[pair_universe["exchange_id"] == uni.exchange_id]["pair_id"]
+pair_ids = pair_universe.loc[pair_universe["exchange_id"].isin(exchange_ids)]["pair_id"]
 filtered_df = dataset.candles.loc[dataset.candles["pair_id"].isin(pair_ids)]
 
-# Forward fill data
-filtered_df = filtered_df.set_index("timestamp")
+print(f"Total {len(pair_ids)} pairs")
 
 # Sanitise price data
+filtered_df = filtered_df.set_index("timestamp")
 filtered_df = fix_bad_wicks(filtered_df)
 
+# Forward fill data
 # Make sure there are no gaps in the data
 filtered_df = filtered_df.groupby("pair_id")
 pairs_df = forward_fill(
@@ -46,8 +50,10 @@ pairs_df = forward_fill(
     columns=("open", "high", "low", "close", "volume"),
 )
 
+slug_str = "-and-".join(exchange_slugs)
+
 # Wrote Parquest file under /tmp
-fpath = f"/tmp/{chain_id.get_slug()}-{exchange_slug}-candles-{time_bucket.value}.parquet"
+fpath = f"/tmp/{chain_id.get_slug()}-{slug_str}-candles-{time_bucket.value}.parquet"
 flattened_df = pairs_df.obj
 flattened_df = flattened_df.reset_index().set_index("timestamp")  # Get rid of grouping
 flattened_df.to_parquet(fpath)
