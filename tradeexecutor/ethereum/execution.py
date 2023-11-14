@@ -503,7 +503,7 @@ class EthereumExecutionModel(ExecutionModel):
                 tx_hash=swap_tx.tx_hash,
                 tx_receipt=receipt,
                 input_args=input_args,
-                pair_fee=pricing_pair.fee,
+                pair_fee=trade.pair.fee,
             )
 
             if isinstance(result, TradeSuccess):
