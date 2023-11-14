@@ -59,7 +59,6 @@ def export_trade_for_dataframe(p: Portfolio, t: TradeExecution) -> dict:
     else:
         
         if t.is_stop_loss():
-            # TODO work out if profitable stop loss or not
             position = p.find_position_for_trade(t)
             profitable = position.is_profitable()
 
