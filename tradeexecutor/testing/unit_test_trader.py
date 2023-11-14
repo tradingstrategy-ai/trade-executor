@@ -188,6 +188,9 @@ class UnitTestTrader:
             lp_fees_estimated=estimation.lp_fees,
         )
 
+        if trade.planned_loan_update:
+            trade.executed_loan_update = trade.planned_loan_update
+
         self.ts += datetime.timedelta(seconds=1)
         return position, trade
 

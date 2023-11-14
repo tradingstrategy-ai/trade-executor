@@ -5,18 +5,25 @@ from decimal import Decimal
 import logging
 
 from web3 import Web3
+from eth_typing import HexAddress, HexStr
+from hexbytes import HexBytes
 
 from eth_defi.hotwallet import HotWallet
 from eth_defi.uniswap_v2.analysis import TradeSuccess, TradeFail
 from eth_defi.uniswap_v3.deployment import UniswapV3Deployment
 from eth_defi.uniswap_v3.price import UniswapV3PriceHelper, estimate_sell_received_amount
-from eth_defi.uniswap_v3.analysis import analyse_trade_by_receipt
 from eth_defi.uniswap_v3.deployment import mock_partial_deployment_for_analysis
-from tradeexecutor.ethereum.tx import TransactionBuilder
+from eth_defi.token import fetch_erc20_details, TokenDetails
 
+from tradeexecutor.ethereum.tx import TransactionBuilder
+from tradeexecutor.state.state import State
+from tradeexecutor.state.trade import TradeExecution, TradeStatus
+from tradeexecutor.state.blockhain_transaction import BlockchainTransaction, BlockchainTransactionType
 from tradeexecutor.state.identifier import TradingPairIdentifier
-#from tradeexecutor.strategy.execution_model import ExecutionModel
-from tradeexecutor.ethereum.execution import EthereumExecutionModel
+from tradeexecutor.ethereum.execution import EthereumExecutionModel, get_swap_transactions
+
+from tradeexecutor.ethereum.one_delta.analysis import analyse_trade_by_receipt
+from tradeexecutor.strategy.lending_protocol_leverage import create_short_loan, plan_loan_update_for_short, create_credit_supply_loan, update_credit_supply_loan
 
 logger = logging.getLogger(__name__)
 
@@ -67,22 +74,128 @@ class OneDeltaExecutionModel(EthereumExecutionModel):
     def analyse_trade_by_receipt(
         self,
         web3: Web3, 
-        uniswap: UniswapV3Deployment, 
+        *,
+        deployment: "OneDeltaDeployment",
         tx: dict, 
         tx_hash: str,
         tx_receipt: dict,
-        input_args: tuple,
+        input_args: tuple | None = None,
+        pair_fee: float | None = None,
     ) -> (TradeSuccess | TradeFail):
-        # assert type(input_args) == tuple and len(input_args) > 0, "Uniswap v3 trade success analysis needs input args"
-        # return analyse_trade_by_receipt(web3, uniswap, tx, tx_hash, tx_receipt, input_args)
-        return None
+        return analyse_trade_by_receipt(web3, deployment, tx, tx_hash, tx_receipt, input_args)
 
-    # def mock_partial_deployment_for_analysis(
-    #     self,
-    #     web3: Web3, 
-    #     router_address: str
-    # ) -> UniswapV3Deployment:
-    #     return mock_partial_deployment_for_analysis(web3, router_address)
+    def is_v3(self) -> bool:
+        return True
+
+    def mock_partial_deployment_for_analysis(
+        self,
+        web3: Web3, 
+        router_address: str
+    ) -> UniswapV3Deployment:
+        return mock_partial_deployment_for_analysis(web3, router_address)
+
+    def resolve_trades(
+        self,
+        ts: datetime.datetime,
+        state: State,
+        tx_map: dict[HexStr, tuple[TradeExecution, BlockchainTransaction]],
+        receipts: dict[HexBytes, dict],
+        stop_on_execution_failure=True,
+    ):
+        """Resolve trade outcome.
+
+        Read on-chain Uniswap swap data from the transaction receipt and record how it went.
+
+        Mutates the trade objects in-place.
+
+        :param tx_map:
+            tx hash -> (trade, transaction) mapping
+
+        :param receipts:
+            tx hash -> receipt object mapping
+
+        :param stop_on_execution_failure:
+            Raise an exception if any of the trades failed"""
+
+        web3 = self.web3
+
+        trades = self.update_confirmation_status(ts, tx_map, receipts)
+
+        # Then resolve trade status by analysis the tx receipt
+        # if the blockchain transaction was successsful.
+        # Also get the actual executed token counts.
+        for trade in trades:
+            pricing_pair = trade.pair.get_pricing_pair()
+            base_token_details = fetch_erc20_details(web3, pricing_pair.base.checksum_address)
+            quote_token_details = fetch_erc20_details(web3, pricing_pair.quote.checksum_address)
+            reserve = trade.reserve_currency
+            swap_tx = get_swap_transactions(trade)
+            uniswap = self.mock_partial_deployment_for_analysis(web3, swap_tx.contract_address)
+
+            tx_dict = swap_tx.get_transaction()
+            receipt = receipts[HexBytes(swap_tx.tx_hash)]
+
+            input_args = swap_tx.get_actual_function_input_args()
+
+            result = self.analyse_trade_by_receipt(
+                web3,
+                deployment=uniswap,
+                tx=tx_dict,
+                tx_hash=swap_tx.tx_hash,
+                tx_receipt=receipt,
+                input_args=input_args,
+                pair_fee=pricing_pair.fee,
+            )
+
+            if isinstance(result, TradeSuccess):
+
+                # v3 path includes fee (int) as well
+                path = [a.lower() for a in result.path if type(a) == str]
+                
+                if trade.is_buy():
+                    assert path[0] == reserve.address, f"Was expecting the route path to start with reserve token {reserve}, got path {result.path}"
+
+                    if self.is_v3():
+                        price = result.get_human_price(quote_token_details.address == result.token0.address)
+                    else:
+                        price = 1 / result.price
+
+                    executed_reserve = result.amount_in / Decimal(10**reserve.decimals)
+                    executed_amount = result.amount_out / Decimal(10**base_token_details.decimals)
+
+                    # lp fee is already in terms of quote token
+                    lp_fee_paid = result.lp_fee_paid
+                else:
+                    # Ordered other way around
+                    assert path[0] == base_token_details.address.lower(), f"Path is {path}, base token is {base_token_details}"
+                    assert path[-1] == reserve.address
+
+                    if self.is_v3():
+                        price = result.get_human_price(quote_token_details.address == result.token0.address)
+                    else:
+                        price = result.price
+
+                    executed_amount = -result.amount_in / Decimal(10**base_token_details.decimals)
+                    executed_reserve = result.amount_out / Decimal(10**reserve.decimals)
+
+                    lp_fee_paid = result.lp_fee_paid
+
+                assert (executed_reserve > 0) and (executed_amount != 0) and (price > 0), f"Executed amount {executed_amount}, executed_reserve: {executed_reserve}, price: {price}, tx info {trade.tx_info}"
+
+                # Mark as success
+                state.mark_trade_success(
+                    ts,
+                    trade,
+                    executed_price=float(price),
+                    executed_amount=executed_amount,
+                    executed_reserve=executed_reserve,
+                    lp_fees=lp_fee_paid,
+                    native_token_price=0,  # won't fix
+                    cost_of_gas=result.get_cost_of_gas(),
+                )
+            else:
+                # Trade failed
+                report_failure(ts, state, trade, stop_on_execution_failure)
     
 
 def get_current_price(web3: Web3, uniswap: UniswapV3Deployment, pair: TradingPairIdentifier, quantity=Decimal(1)) -> float:
