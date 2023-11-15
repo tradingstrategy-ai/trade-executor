@@ -85,21 +85,31 @@ def load_candles_from_parquet(
     original_bucket = TimeBucket.from_pandas_timedelta(granularity)
 
     if resample:
-        df = resample_single_pair(df, resample)
+        new_df = resample_single_pair(df, resample)
         bucket = resample
+
+        # to preserve addtional columns beyond OHLCV, we need to left join
+        if len(df.columns) > 5:
+            del df['open']
+            del df['high']
+            del df['low']
+            del df['close']
+            del df['volume']
+
+            new_df = new_df.join(df, how='left')
     else:
         bucket = TimeBucket.from_pandas_timedelta(granularity)
 
-    df = _fix_nans(df)
+    new_df = _fix_nans(new_df)
 
-    df["pair_id"] = pair_id
+    new_df["pair_id"] = pair_id
 
     # Because we assume multipair data from now on,
     # with group index instead of timestamp index,
     # we make timestamp a column
-    df["timestamp"] = df.index.to_series()
+    new_df["timestamp"] = new_df.index.to_series()
 
-    return df, orig, bucket, original_bucket
+    return new_df, orig, bucket, original_bucket
 
 
 def load_candle_universe_from_parquet(
