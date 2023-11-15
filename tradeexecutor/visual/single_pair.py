@@ -296,6 +296,7 @@ def visualise_single_pair(
         volume_axis_name: str = "Volume USD",
         candle_decimals: int = 4,
         detached_indicators: bool = True,
+        hover_text: bool = True,
 ) -> go.Figure:
     """Visualise single-pair trade execution.
 
@@ -365,6 +366,8 @@ def visualise_single_pair(
     :param detached_indicators:
         If set, draw detached indicators. Has no effect if `technical_indicators` is False.
 
+    :param hover_text:
+        If True, show all standard hover text. If False, show no hover text at all.
     """
     
     logger.info("Visualising %s", state)
@@ -435,6 +438,7 @@ def visualise_single_pair(
         volume_axis_name=volume_axis_name,
         pair_id=pair_id,
         detached_indicators=detached_indicators,
+        hover_text=hover_text,
     )
 
 
@@ -617,6 +621,7 @@ def _get_grid_with_candles_volume_indicators(
     volume_axis_name: str = "Volume USD",
     pair_id: int | None = None,
     detached_indicators: bool = True,
+    hover_text: bool = True,
 ):
     """Gets figure grid with candles, volume, and indicators overlayed."""
     
@@ -667,7 +672,10 @@ def _get_grid_with_candles_volume_indicators(
         )
 
     fig.update_yaxes(showspikes=True, spikemode='across', spikesnap='cursor', spikedash='dot', spikethickness=1)
-    fig.update_layout(hovermode='x unified')
+
+    if hover_text:
+        fig.update_layout(hovermode='x unified')
+
     fig.update_traces(xaxis='x')
         
     return fig
