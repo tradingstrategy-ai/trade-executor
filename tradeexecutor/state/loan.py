@@ -4,6 +4,7 @@
 
 """
 import copy
+import enum
 import math
 from _decimal import Decimal
 from dataclasses import dataclass
@@ -34,6 +35,13 @@ class LiquidationRisked(Exception):
     You would be immediately liquidated if the parameter
     changes would be applied.
     """
+
+
+class LoanSide(enum.Enum):
+
+    collateral = "collateral"
+
+    borrowed = "borrowed"
 
 
 @dataclass_json
@@ -79,11 +87,34 @@ class Loan:
 
     def __repr__(self):
         asset_symbol = self.borrowed.asset.token_symbol if self.borrowed else ""
-        return f"<Loan, borrowed ${self.get_borrow_value()} {asset_symbol} for collateral ${self.get_collateral_value()}, at leverage {self.get_leverage()}>"
+        return f"<Loan, borrowed {self.get_borrowed_quantity()} {asset_symbol} ${self.get_borrow_value()} for collateral ${self.get_collateral_value()}, at leverage {self.get_leverage()}, borrow price: {self.borrowed.last_usd_price}, collateral price: {self.collateral.last_usd_price}>"
 
     def clone(self) -> "Loan":
-        """Clone this data structure for mutating."""
+        """Clone this data structure for mutating.
+
+        Used when increasing/reducing shorts,
+        as we copy the existing on-chain data
+        and then apply our delta in :py:func:`tradeexecutor.state.position.TradingPosition.open_trade`
+        on the top of this.
+        """
         return copy.deepcopy(self)
+
+    def get_tracked_asset(self, asset: AssetIdentifier) -> Tuple[LoanSide | None, AssetWithTrackedValue | None]:
+        """Get one side of the loan.
+
+        :param asset:
+            Asset this loan is tracking
+
+        :return:
+            Colleteral tracker, borrowed tracked or ``None`` if this loan does not track an asset.
+        """
+
+        if asset == self.collateral.asset:
+            return LoanSide.collateral, self.collateral
+        elif asset == self.borrowed.asset:
+            return LoanSide.borrowed, self.borrowed
+        else:
+            return None, None
 
     def get_collateral_interest(self) -> USDollarAmount:
         """How much interest we have received on collateral."""

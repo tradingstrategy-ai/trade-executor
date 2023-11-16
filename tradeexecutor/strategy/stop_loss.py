@@ -32,7 +32,7 @@ def report_position_triggered(
 
     buf = StringIO()
 
-    name = "Stop loss" if condition == TradeType.stop_loss else "Trade profit"
+    name = "Stop loss" if condition == TradeType.stop_loss else "Take profit"
 
     size = position.get_quantity()
 

@@ -60,8 +60,8 @@ class ValuationModel(ABC):
             old_price = position.last_token_price
             ts, new_price = self(ts, position)
             position.revalue_base_asset(ts, new_price)
-            logger.info("Re-valued positio base asset %s. Price movement: %f USD -> %d USD",
-                        position,
+            logger.info("Re-valued position base asset %s. Price movement: %f USD -> %f USD",
+                        position.pair.base.token_symbol,
                         old_price,
                         new_price,
                         )

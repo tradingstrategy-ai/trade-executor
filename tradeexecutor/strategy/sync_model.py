@@ -173,10 +173,13 @@ class SyncModel(ABC):
             timestamp: datetime.datetime,
             state: State,
             universe: TradingStrategyUniverse,
-            credit_positions: List[TradingPosition],
             pricing_model: PricingModel,
     ) -> List[BalanceUpdate]:
-        """Update all credit supply positions.
+        """Update interest on all tokens that receive interest thru rebase.
+
+        - Credit supply positions: aToken
+
+        - Short positions: aToken, vToken
 
         :param timestamp:
             Wall clock time.
@@ -189,16 +192,13 @@ class SyncModel(ABC):
         :param universe:
             Trading universe that must include lending data.
 
-        :param credit_positions:
-            Prefiltered list of credit positions to update.
-
         :param pricing_model:
             Used to re-value loans
 
         :return:
-            All triggered balance update events
+            All triggered balance update events, one per asset per position
         """
-        raise NotImplementedError()
+        return []
 
     def reset_deposits(self, state: State):
         """Clear out pending withdrawals/deposits events."""

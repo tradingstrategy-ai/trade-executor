@@ -7,7 +7,7 @@ import enum
 from pandas import DataFrame
 from dataclasses import dataclass, field
 from decimal import Decimal
-from typing import Optional, Literal
+from typing import Optional, Literal, TypeAlias
 
 from dataclasses_json import dataclass_json
 from eth_typing import HexAddress
@@ -20,6 +20,16 @@ from tradeexecutor.state.types import JSONHexAddress, USDollarAmount, LeverageMu
 from tradingstrategy.lending import LendingProtocolType
 from tradingstrategy.stablecoin import is_stablecoin_like
 from tradingstrategy.types import PrimaryKey
+
+
+#: Asset unique id as a human-readable string.
+#:
+#: chain id - address tuple as string.
+#:
+#: Can be persisted.
+#: Can be used in JSON serialisation.
+#:
+AssetFriendlyId: TypeAlias = str
 
 
 @dataclass_json
@@ -45,6 +55,11 @@ class AssetType:
 @dataclass
 class AssetIdentifier:
     """Identify a blockchain asset for trade execution.
+
+    This is pass-by-copy (as opposite to pass-by-reference) asset identifier
+    we use across the persistent state. Because we copy a lot of information
+    about asset, not just its id, this makes data reads and diagnosing problems
+    simpler.
 
     As internal token_ids and pair_ids may be unstable, trading pairs and tokens are explicitly
     referred by their smart contract addresses when a strategy decision moves to the execution.
@@ -109,9 +124,16 @@ class AssetIdentifier:
         assert type(self.decimals) == int, f"Bad decimals {self.decimals}"
         assert self.decimals >= 0
 
-    def get_identifier(self) -> str:
-        """Assets are identified by their smart contract address."""
-        return self.address.lower()
+    def get_identifier(self) -> AssetFriendlyId:
+        """Assets are identified by their smart contract address.
+
+        JSON/Human friendly format to give hash keys to assets,
+        in the format chain id-address.
+
+        :return:
+            JSON friendly hask key
+        """
+        return f"{self.chain_id}-{self.address.lower()}"
 
     @property
     def checksum_address(self) -> HexAddress:
@@ -139,6 +161,22 @@ class AssetIdentifier:
     def is_stablecoin(self) -> bool:
         """Do we think this asset reprents a stablecoin"""
         return is_stablecoin_like(self.token_symbol)
+
+    def is_interest_accruing(self) -> bool:
+        """Will this token gain on-chain interest thru rebase"""
+
+        # TODO: this condition may change in the future when new asset types are introduced
+        return self.underlying is not None
+
+    def is_credit(self) -> bool:
+        """Is this a credit asset that accrue interest for us"""
+        assert self.underlying
+        return self.token_symbol.startswith("a")  # TODO: Hardcoded Aave v3
+
+    def is_debt(self) -> bool:
+        """Is this a credit asset that accrue interest for us"""
+        assert self.underlying
+        return self.token_symbol.startswith("v")  # TODO: Hardcoded Aave v3
 
     def get_pricing_asset(self) -> "AssetIdentifier":
         """Get the asset that delivers price for this asset.
@@ -215,6 +253,11 @@ class TradingPairKind(enum.Enum):
 class TradingPairIdentifier:
     """Uniquely identify one trading pair across all tradeable blockchain assets.
 
+    This is pass-by-copy (as opposite to pass-by-reference) trading pair identifier
+    we use across the persistent state. Because we copy a lot of information
+    about asset, not just its id, this makes data reads and diagnosing problems
+    simpler.
+
     - Tokens are converted from machine readable token0 - token1 pair
       to more human-friendly base and quote token pair.
       See :ref:`conversion <trading pair>`.
@@ -276,11 +319,12 @@ class TradingPairIdentifier:
     #:
     #: For synthetic pairs, like leveraged pairs on lending protocols,
     #: the internal id is the same as the underlying spot pair id.
+    #: TODO: Confirm this, or missing?
     #:
-    internal_id: Optional[int] = None
+    internal_id: Optional[PrimaryKey] = None
 
     #: What is the internal exchange id of this trading pair.
-    internal_exchange_id: Optional[int] = None
+    internal_exchange_id: Optional[PrimaryKey] = None
 
     #: Info page URL for this trading pair e.g. with the price charts
     info_url: Optional[str] = None
@@ -360,19 +404,37 @@ class TradingPairIdentifier:
     def get_ticker(self) -> str:
         """Return base token symbol - quote token symbol human readable ticket.
 
-        Example: `WETH-USDC`.
+        Example: ``WETH-USDC``, ``
+
+        See also :py:meth:`get_human_description`.
         """
         return f"{self.base.token_symbol}-{self.quote.token_symbol}"
-
-    def get_human_description(self) -> str:
-        """Same as get_ticker()."""
-        return self.get_ticker()
 
     def get_lending_protocol(self) -> LendingProtocolType | None:
         """Is this pair on a particular lending protocol."""
         if self.kind in (TradingPairKind.lending_protocol_short, TradingPairKind.lending_protocol_long):
             return LendingProtocolType.aave_v3
         return None
+
+    def get_human_description(self, describe_type=False) -> str:
+        """Get short ticker human description for this pair.
+
+        :param describe_type:
+            Handle spot, short and such pairs.
+
+        See :py:meth:`get_ticker`.
+        """
+
+        if describe_type:
+            underlying = self.underlying_spot_pair or self
+            if self.is_short():
+                return f"{underlying.get_ticker()} short"
+            elif self.is_spot():
+                return f"{self.get_ticker()} spot"
+            elif self.is_credit_supply():
+                return f"{underlying.get_ticker()} credit"
+
+        return self.get_ticker()
 
     def has_complete_info(self) -> bool:
         """Check if the pair has good information.
@@ -553,13 +615,26 @@ class AssetWithTrackedValue:
         price: USDollarPrice,
         when: datetime.datetime,
         allow_negative=False,
+        available_accrued_interest: Decimal = Decimal(0),
     ):
-        """The tracked asset amount is changing due to position increase/reduce."""
+        """The tracked asset amount is changing due to position increase/reduce.
+
+        :param allow_negative:
+            Backtesting helper parameter.
+
+            Bail out with an exception if delta is too high and balance would go negative.
+
+        :param available_accrued_interest:
+            How much interest we have gained.
+
+            To be used with ``allow_negative``.
+        """
         assert delta is not None, "Asset delta must be given"
         self.revalue(price, when)
 
         if not allow_negative:
-            assert sum_decimal((self.quantity, delta,)) >= 0, f"Tracked asset cannot go negative: {self}. Quantity: {self.quantity}, delta: {delta}"
+            total_available = self.quantity + available_accrued_interest
+            assert sum_decimal((total_available, delta,)) >= 0, f"Tracked asset cannot go negative: {self}. delta: {delta}, total available: {total_available}, quantity: {self.quantity}, interest: {available_accrued_interest}"
 
         self.quantity += delta
 

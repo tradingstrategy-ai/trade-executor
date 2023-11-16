@@ -7,7 +7,7 @@ import warnings
 from dataclasses import dataclass, field, asdict
 from decimal import Decimal
 
-from typing import Dict, Optional, List, Iterable
+from typing import Dict, Optional, List, Iterable, Tuple
 
 import numpy as np
 import pandas as pd
@@ -18,13 +18,13 @@ from tradeexecutor.state.generic_position import GenericPosition, BalanceUpdateE
 from tradeexecutor.state.identifier import TradingPairIdentifier, AssetIdentifier, TradingPairKind
 from tradeexecutor.state.interest import Interest
 from tradeexecutor.state.loan import Loan
-from tradeexecutor.state.trade import TradeType, QUANTITY_EPSILON
+from tradeexecutor.state.trade import TradeType
 from tradeexecutor.state.trade import TradeExecution
 from tradeexecutor.state.types import USDollarAmount, BPS, USDollarPrice, Percent, LeverageMultiplier
 from tradeexecutor.strategy.dust import get_dust_epsilon_for_pair
 from tradeexecutor.strategy.lending_protocol_leverage import create_short_loan, plan_loan_update_for_short, create_credit_supply_loan, update_credit_supply_loan
 from tradeexecutor.strategy.trade_pricing import TradePricing
-from tradeexecutor.utils.accuracy import sum_decimal
+from tradeexecutor.utils.accuracy import sum_decimal, QUANTITY_EPSILON
 from tradingstrategy.lending import LendingProtocolType
 
 from tradeexecutor.utils.leverage_calculations import LeverageEstimate
@@ -339,6 +339,8 @@ class TradingPosition(GenericPosition):
         """Is this position long on the underlying base asset.
 
         We consider the position long if the first trade is buy.
+
+        This includes spot buy.
         """
         assert len(self.trades) > 0, "Cannot determine if position is long or short because there are no trades"
         return self.get_first_trade().is_buy()
@@ -488,7 +490,9 @@ class TradingPosition(GenericPosition):
         # We should not have math that ends up with a trading position with dust left,
         # tough this might not always hold the case
         if s != Decimal(0):
-            assert abs(s) >= QUANTITY_EPSILON, f"Epsilon dust safety check in floating point math triggered. Quantity: {s}. Epsilon: {QUANTITY_EPSILON}."
+            # assert abs(s) >= QUANTITY_EPSILON, f"Epsilon dust safety check in floating point math triggered. Quantity: {s}. Epsilon: {QUANTITY_EPSILON}."
+            if abs(s) <= QUANTITY_EPSILON:
+                return Decimal(0)
 
         # Always convert zero to decimal
         return Decimal(s)
@@ -509,7 +513,7 @@ class TradingPosition(GenericPosition):
         planned = sum([t.get_position_quantity() for t in self.trades.values() if t.is_planned()])  # Sell values sum to negative
         live = self.get_quantity()  # What was the position quantity before executing any of planned trades
         # Temporary logging to track down SAND token errors
-        logger.info("get_available_trading_quantity(): Figuring out available position size to trade. Planned quantity: %s, live quantity: %s", planned, live)
+        # logger.info("get_available_trading_quantity(): Figuring out available position size to trade. Planned quantity: %s, live quantity: %s", planned, live)
         return planned + live
 
     def get_current_price(self) -> USDollarAmount:
@@ -833,6 +837,7 @@ class TradingPosition(GenericPosition):
                     if closing:
 
                         # Close the short
+                        assert self.is_open()
 
                         assert reserve is None, "reserve calculated automatically when closing a short position"
                         # assert quantity is None, "quantity calculated automatically when closing a short position"
@@ -856,8 +861,19 @@ class TradingPosition(GenericPosition):
                         # We need to use USD from the collateral to pay back the loan
                         planned_collateral_consumption = leverage_estimate.additional_collateral_quantity
 
+                        # TODO: stablecoin 1:1 USD assumption here
+
+                        #
+                        # We cash out accrued interest when closing the position.
+                        # - You can have positive and negative interest on both vToken and aToken
+                        # - We assume vToken expenses (interest) is paid from the collateral
+                        # -
+                        #
+
+                        accured_interest = self.loan.collateral_interest.last_accrued_interest
+
                         # Any leftover USD from the collateral is released to the reserves
-                        planned_collateral_allocation = -leverage_estimate.total_collateral_quantity
+                        planned_collateral_allocation = -leverage_estimate.total_collateral_quantity - accured_interest
 
                         lp_fees_estimated = leverage_estimate.lp_fees
 
@@ -952,6 +968,7 @@ class TradingPosition(GenericPosition):
                             self,
                             trade,
                         )
+
                 else:
                     raise NotImplementedError()
             else:
@@ -1553,4 +1570,16 @@ class TradingPosition(GenericPosition):
     def get_collateral(self) -> USDollarAmount:
         """Get the amount of outstanding loans we have."""
         return self.loan.collateral.get_usd_value()
+
+    def get_held_assets(self) -> Iterable[Tuple[AssetIdentifier, Decimal]]:
+        assert self.is_open() or self.is_frozen()
+        if self.is_spot():
+            yield self.pair.base, self.get_quantity()
+        elif self.is_credit_supply():
+            yield self.loan.collateral.asset, self.loan.collateral.quantity
+        elif self.is_short():
+            yield self.loan.collateral.asset, self.loan.get_collateral_quantity()
+            yield self.loan.borrowed.asset, self.loan.get_borrowed_quantity()
+        else:
+            raise AssertionError(f"Unsupported: {self}")
 

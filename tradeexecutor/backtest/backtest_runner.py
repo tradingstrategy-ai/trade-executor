@@ -18,7 +18,7 @@ from tradeexecutor.backtest.backtest_sync import BacktestSyncModel
 from tradeexecutor.backtest.legacy_backtest_sync import BacktestSyncer
 from tradeexecutor.backtest.backtest_valuation import BacktestValuationModel
 from tradeexecutor.backtest.simulated_wallet import SimulatedWallet
-from tradeexecutor.cli.log import setup_notebook_logging
+from tradeexecutor.cli.log import setup_notebook_logging, setup_custom_log_levels
 from tradeexecutor.cli.loop import ExecutionLoop, ExecutionTestHook
 from tradeexecutor.ethereum.routing_data import get_routing_model, get_backtest_routing_model
 from tradeexecutor.state.state import State
@@ -306,6 +306,9 @@ def setup_backtest(
 
     assert initial_deposit, "Initial cash not given as argument or strategy module"
     assert initial_deposit > 0, "Must have money"
+
+    # Just in case we have not done this yet
+    setup_custom_log_levels()
 
     wallet = SimulatedWallet()
     # deposit_syncer = BacktestSyncer(wallet, Decimal(initial_deposit))

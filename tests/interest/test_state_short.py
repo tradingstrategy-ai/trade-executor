@@ -16,7 +16,7 @@ from tradeexecutor.utils.leverage_calculations import LeverageEstimate
 from tradeexecutor.state.reserve import ReservePosition
 from tradeexecutor.state.state import State
 from tradeexecutor.state.trade import TradeType
-from tradeexecutor.strategy.interest import estimate_interest, update_leveraged_position_interest
+from tradeexecutor.strategy.interest import estimate_interest, update_leveraged_position_interest, prepare_interest_distribution
 from tradeexecutor.testing.unit_test_trader import UnitTestTrader
 from tradingstrategy.chain import ChainId
 from tradingstrategy.lending import LendingProtocolType
@@ -126,7 +126,7 @@ def state(usdc: AssetIdentifier):
         last_pricing_at=datetime.datetime.utcnow(),
         last_sync_at=datetime.datetime.utcnow(),
     )
-    state.portfolio.reserves = {usdc.address: reserve_position}
+    state.portfolio.reserves = {usdc.get_identifier(): reserve_position}
     return state
 
 
@@ -225,6 +225,10 @@ def test_open_short(
     assert state.portfolio.get_cash() == 9000
     assert state.portfolio.get_loan_net_asset_value() == 1000
     assert state.portfolio.get_total_equity() == 10000
+
+    apolusdc = loan.collateral.asset
+    vdebtpolweth = loan.borrowed.asset
+
 
 
 def test_short_unrealised_profit(
@@ -1223,8 +1227,8 @@ def test_short_unrealised_interest_and_profit(
         vtoken_interest,
     )
 
-    assert new_atoken == Decimal('1815.113089799044876389054071')  # We have gained 15 USDC on our dollar long
-    assert new_vtoken == Decimal('0.5552334719541217745270929036')
+    assert new_atoken == pytest.approx(Decimal('1814.905206376357316063955614'))
+    assert new_vtoken == pytest.approx(Decimal('0.5549274775700127945499953131'))
 
     # Tell strategy state about interest gains
     # Note that this BalanceUpdate event
@@ -1240,25 +1244,25 @@ def test_short_unrealised_interest_and_profit(
     )
 
     # We gain around 15 USDC in half a year
-    assert aevt.quantity == pytest.approx(Decimal('15.113089799044887491284317'))
+    assert aevt.quantity == pytest.approx(Decimal('14.905206376357327166185860'))
 
     # We need to pay ~ 0.02 ETH half a year,
     # worth 30 USD at 1400 ETH/USD
-    assert vevt.quantity == pytest.approx(Decimal('0.0219001386207884485952464011'))
+    assert vevt.quantity == pytest.approx(Decimal('0.0215941442366794686181488106'))
 
     assert aevt.get_update_period() == datetime.timedelta(days=152)
     assert vevt.get_update_period() == datetime.timedelta(days=152)
-    assert aevt.get_effective_yearly_yield() == pytest.approx(0.02, rel=0.01)
+    assert aevt.get_effective_yearly_yield() == pytest.approx(0.019884504120505936, rel=0.01)
     assert vevt.get_effective_yearly_yield() == pytest.approx(0.097, rel=0.01)
 
     # New ETH loan worth of 746.6666666666666 USD
     assert short_position.get_current_price() == 1400
     assert short_position.get_average_price() == 1500
 
-    assert short_position.loan.get_collateral_interest() == pytest.approx(15.113089799044888)
-    assert short_position.loan.get_borrow_interest() == pytest.approx(30.660194069103827)
-    assert short_position.get_accrued_interest() == pytest.approx(-15.54710427005894)
-    assert short_position.get_value() == pytest.approx(1037.7862290632745)
+    assert short_position.loan.get_collateral_interest() == pytest.approx(14.905206376357327)
+    assert short_position.loan.get_borrow_interest() == pytest.approx(30.23180193135126)
+    assert short_position.get_accrued_interest() == pytest.approx(-15.326595554993933)
+    assert short_position.get_value() == pytest.approx(1038.0067377783394)
 
     #  assert short_position.get_unrealised_profit_usd() == pytest.approx(800 - 746.6666666666666)
     assert short_position.get_realised_profit_usd() is None
@@ -1271,9 +1275,9 @@ def test_short_unrealised_interest_and_profit(
     assert loan.get_loan_to_value() == pytest.approx(0.4148148148148148)
 
     # Check that we track the equity value correctly
-    assert state.portfolio.get_loan_net_asset_value() == pytest.approx(1037.7862290632745)
+    assert state.portfolio.get_loan_net_asset_value() == pytest.approx(1038.0067377783394)
     assert state.portfolio.get_cash() == 9000
-    assert state.portfolio.get_net_asset_value() == pytest.approx(10037.786229063275)
+    assert state.portfolio.get_net_asset_value() == pytest.approx(10038.0067377783394)
 
 
 def test_short_unrealised_interest_and_losses(
@@ -1318,7 +1322,7 @@ def test_short_unrealised_interest_and_losses(
     assert state.portfolio.get_total_equity() == 10000
 
     # Move forward a financial year
-    now_at = datetime.datetime(2020, 1, 1) + datetime.timedelta(days=360)
+    now_at = datetime.datetime(2020, 1, 1) + datetime.timedelta(days=365)
 
     # ETH price 1500 -> 1600,
     # cause short to go negative
@@ -1348,7 +1352,7 @@ def test_short_unrealised_interest_and_losses(
     old_vtoken = short_position.loan.borrowed.quantity
     # assert new_atoken == Decimal('1809.032784100456570042034639')  # We have gained 15 USDC on our dollar long
     # assert new_vtoken == Decimal('0.5463385917812319708720691214')
-    assert new_vtoken / old_vtoken == Decimal("1.5")
+    assert new_vtoken / old_vtoken == pytest.approx(Decimal("1.500000000000000000000000000"))
 
     # Tell strategy state about interest gains
     # Note that this BalanceUpdate event
@@ -1365,8 +1369,8 @@ def test_short_unrealised_interest_and_losses(
 
     # We gain around 15 USDC in half a year
     assert aevt.quantity == pytest.approx(Decimal('36.000000000000031752378504'))
-    assert aevt.get_update_period() == datetime.timedelta(days=360)
-    assert aevt.get_effective_yearly_yield() == pytest.approx(0.02)
+    assert aevt.get_update_period() == datetime.timedelta(days=365)
+    assert aevt.get_effective_yearly_yield() == pytest.approx(0.020000000000000018)
     assert vevt.get_effective_yearly_yield() == pytest.approx(0.50)
 
     assert short_position.get_current_price() == 1600
@@ -1438,8 +1442,8 @@ def test_short_realised_interest_and_profit(
         vtoken_interest,
     )
 
-    assert new_atoken == Decimal('1815.113089799044876389054071')  # We have gained 15 USDC on our dollar long
-    assert new_vtoken == Decimal('0.5552334719541217745270929036')
+    assert new_atoken == pytest.approx(Decimal('1814.905206376357316063955614'))  # We have gained 15 USDC on our dollar long
+    assert new_vtoken == pytest.approx(Decimal('0.5549274775700127945499953131'))
 
     # Tell strategy state about interest gains
     # Note that this BalanceUpdate event
@@ -1455,47 +1459,47 @@ def test_short_realised_interest_and_profit(
     )
 
     # How much total increment vToken has seen
-    assert short_position.get_base_token_balance_update_quantity() == pytest.approx(Decimal('0.0219001386207884485952464011'))
+    assert short_position.get_base_token_balance_update_quantity() == pytest.approx(Decimal('0.0215941442366794686181488106'))
 
     # All vToken left
-    assert short_position.get_quantity() == pytest.approx(Decimal('-0.5552334719541217745270929036'))
+    assert short_position.get_quantity() == pytest.approx(Decimal('-0.5549274775700127945499953131'))
 
     # Calculate unrealised and realised PnL
     loan = short_position.loan
-    assert loan.collateral_interest.last_token_amount == pytest.approx(Decimal(1815.113089799045))
+    assert loan.collateral_interest.last_token_amount == pytest.approx(Decimal(1814.905206376357316063955614))
     assert loan.collateral_interest.last_event_at == now_at
-    assert loan.collateral_interest.last_accrued_interest == pytest.approx(Decimal(15.113089799044887491284317))
-    assert loan.get_collateral_quantity() == pytest.approx(Decimal(1815.113089799044876389054071))
-    assert loan.get_collateral_value() == pytest.approx(1815.113089799045)
-    assert loan.get_borrow_value() == pytest.approx(777.3268607357704)
-    assert loan.get_collateral_interest() == pytest.approx(15.113089799044888)
-    assert loan.get_borrow_interest() == pytest.approx(30.66019406910382)
-    assert loan.get_net_interest() == pytest.approx(-15.54710427005894)
+    assert loan.collateral_interest.last_accrued_interest == pytest.approx(Decimal(14.905206376357327166185860))
+    assert loan.get_collateral_quantity() == pytest.approx(Decimal(1814.905206376357316063955614))
+    assert loan.get_collateral_value() == pytest.approx(1814.905206376357316063955614)
+    assert loan.get_borrow_value() == pytest.approx(776.8984685980179)
+    assert loan.get_collateral_interest() == pytest.approx(14.905206376357327166185860)
+    assert loan.get_borrow_interest() == pytest.approx(30.23180193135126)
+    assert loan.get_net_interest() == pytest.approx(-15.326595554993933)
     assert loan.get_net_asset_value(include_interest=False) == pytest.approx(1053.3333333333335)
-    assert loan.get_net_asset_value(include_interest=True) == pytest.approx(1037.786229063274)
+    assert loan.get_net_asset_value(include_interest=True) == pytest.approx(1038.0067377783394)
     assert loan.borrowed.quantity == Decimal('0.5333333333333333259318465025')
-    assert loan.get_borrowed_principal_and_interest_quantity() == Decimal('0.5552334719541217745270929036')
+    assert loan.get_borrowed_principal_and_interest_quantity() == Decimal('0.5549274775700127945499953131')
 
-    assert short_position.get_accrued_interest() == pytest.approx(-15.54710427005894)
-    assert short_position.get_quantity() == Decimal('-0.5552334719541217745270929036')
-    assert short_position.get_net_quantity() == Decimal('-0.5552334719541217745270929036')
+    assert short_position.get_accrued_interest() == pytest.approx(-15.326595554993933)
+    assert short_position.get_quantity() == Decimal('-0.5549274775700127945499953131')
+    assert short_position.get_net_quantity() == Decimal('-0.5549274775700127945499953131')
 
     unrealised_equity = (short_position.get_current_price() - short_position.get_average_price()) * float(short_position.get_net_quantity())
-    assert unrealised_equity == pytest.approx(55.52334719541218)
+    assert unrealised_equity == pytest.approx(55.49274775700128)
 
-    assert short_position.get_accrued_interest_with_repayments() == pytest.approx(-15.54710427005894)
-    assert short_position.get_unrealised_profit_usd(include_interest=False) == pytest.approx(55.52334719541218)
-    assert short_position.get_unrealised_profit_usd(include_interest=True) == pytest.approx(39.97624292535324)
+    assert short_position.get_accrued_interest_with_repayments() == pytest.approx(-15.326595554993933)
+    assert short_position.get_unrealised_profit_usd(include_interest=False) == pytest.approx(55.49274775700128)
+    assert short_position.get_unrealised_profit_usd(include_interest=True) == pytest.approx(40.16615220200735)
 
     assert short_position.get_realised_profit_usd() is None
-    assert short_position.get_value() == pytest.approx(1037.7862290632745)
-    assert short_position.loan.get_net_asset_value() == pytest.approx(1037.7862290632745)
+    assert short_position.get_value() == pytest.approx(1038.0067377783394)
+    assert short_position.loan.get_net_asset_value() == pytest.approx(1038.0067377783394)
 
     # Prepare a closing trade and check it matches full vToken amount
     assert short_position.loan.borrowed.quantity == pytest.approx(Decimal('0.5333333333333333259318465025'))
-    assert short_position.loan.borrowed_interest.last_accrued_interest == pytest.approx(Decimal('0.0219001386207884485952464011'))
+    assert short_position.loan.borrowed_interest.last_accrued_interest == pytest.approx(Decimal('0.0215941442366794686181488106'))
     principal_and_interest = short_position.loan.get_borrowed_principal_and_interest_quantity()
-    assert principal_and_interest == pytest.approx(Decimal('0.5552334719541217745270929036'))
+    assert principal_and_interest == pytest.approx(Decimal('0.5549274775700127945499953131'))
 
     _, trade_2, _ = state.trade_short(
         closing=True,
@@ -1516,40 +1520,40 @@ def test_short_realised_interest_and_profit(
     assert trade_2.is_success()
     assert trade_2.executed_quantity == principal_and_interest
     assert trade_2.get_position_quantity() == principal_and_interest
-    assert trade_2.get_value() == pytest.approx(777.3268607357704)
+    assert trade_2.get_value() == pytest.approx(776.898468598018)
 
     # How much USDC gained we got from the collateral
-    assert trade_2.claimed_interest == pytest.approx(Decimal('15.113089799044887491284317'))
+    assert trade_2.claimed_interest == pytest.approx(Decimal('14.905206376357327166185860'))
 
     # How much ETH this trade paid in interest cose
-    assert trade_2.paid_interest == pytest.approx(Decimal('0.0219001386207884485952464011'))
+    assert trade_2.paid_interest == pytest.approx(Decimal('0.0215941442366794686181488106'))
 
     # The difference between opening and closing trades quantity
     # is the interest amount
-    assert trade.executed_quantity + trade_2.executed_quantity == pytest.approx(Decimal('0.0219001386207884485952464011'))
+    assert trade.executed_quantity + trade_2.executed_quantity == pytest.approx(Decimal('0.0215941442366794686181488106'))
 
     # This trade included repaid interest
-    assert trade_2.get_repaid_interest() == pytest.approx(30.660194069103827)
+    assert trade_2.get_repaid_interest() == pytest.approx(30.23180193135126)
 
     # Net asset value does not correctly work when the interest is repaid
     loan = short_position.loan
     assert loan.collateral_interest.get_remaining_interest() == 0
     assert loan.borrowed_interest.get_remaining_interest() == 0
-    assert loan.collateral_interest.interest_payments == pytest.approx(Decimal('15.113089799044887491284317'))
-    assert loan.borrowed_interest.interest_payments == pytest.approx(Decimal('0.0219001386207884485952464011'))
+    assert loan.collateral_interest.interest_payments == pytest.approx(Decimal('14.905206376357327166185860'))
+    assert loan.borrowed_interest.interest_payments == pytest.approx(Decimal('0.0215941442366794686181488106'))
     assert loan.get_net_asset_value() == 0
 
     # Position is properly closed
     assert short_position.get_quantity() == 0
     assert short_position.is_closed()
     assert short_position.get_unrealised_profit_usd() == 0
-    assert short_position.get_repaid_interest() == pytest.approx(30.660194069103827)
-    assert short_position.get_claimed_interest() == pytest.approx(15.113089799044887491284317)  # Profit we got from collateral interest
-    assert short_position.get_realised_profit_usd(include_interest=False) == pytest.approx(55.52334719541218)
-    assert short_position.get_realised_profit_usd(include_interest=True) == pytest.approx(39.97624292535325)
+    assert short_position.get_repaid_interest() == pytest.approx(30.23180193135126)
+    assert short_position.get_claimed_interest() == pytest.approx(14.905206376357327)  # Profit we got from collateral interest
+    assert short_position.get_realised_profit_usd(include_interest=False) == pytest.approx(55.49274775700128)
+    assert short_position.get_realised_profit_usd(include_interest=True) == pytest.approx(40.16615220200735)
 
     portfolio = state.portfolio
-    assert portfolio.get_cash() == pytest.approx(10037.786229063275)
+    assert portfolio.get_cash() == pytest.approx(10038.00673777834)
 
 
 def test_short_open_with_fee(
@@ -1910,16 +1914,16 @@ def test_short_increase_size(
         trade_type=TradeType.rebalance,
         reserve_currency=usdc,
         collateral_asset_price=1.0,
-        planned_collateral_consumption=target_params.total_collateral_quantity - loan.collateral.quantity,
+        planned_collateral_consumption=target_params.total_collateral_quantity - loan.collateral.quantity - 500,
     )
 
     # Check that we have trade and loan parameters correct
     assert trade_2.planned_reserve == 500
+    assert trade_2.planned_loan_update.get_leverage() == pytest.approx(1.1428571428571423)
     assert trade_2.planned_quantity == pytest.approx(-increase_borrowed_quantity)
     assert trade_2.planned_loan_update.borrowed.quantity == pytest.approx(Decimal(1.023809523809523683302025176))
-    assert trade_2.planned_loan_update.collateral.quantity == pytest.approx(Decimal(3071.42857071428538809751031))
-    assert trade_2.planned_collateral_consumption == pytest.approx(Decimal(1071.428570714285443608661546))
-    assert trade_2.planned_loan_update.get_leverage() == pytest.approx(1.1428571428571423)
+    assert trade_2.planned_loan_update.collateral.quantity == pytest.approx(Decimal(3071.428570714285388097510315))
+    assert trade_2.planned_collateral_consumption == pytest.approx(Decimal(571.428570714285443608661546))
 
     trader.set_perfectly_executed(trade_2)
 
@@ -2072,3 +2076,4 @@ def test_short_decrease_size(
     assert loan.get_net_asset_value() == pytest.approx(433.33333300000004)
     assert portfolio.get_cash() == pytest.approx(9500)  # We get $500 back
     assert portfolio.get_net_asset_value() == pytest.approx(9933.333333333334)  # NAV does not change in zero fee trade
+

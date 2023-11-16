@@ -187,6 +187,8 @@ class PositionManager:
         else:
             raise RuntimeError(f"Does not know the universe: {universe}")
 
+        assert self.data_universe is not None, "Data universe was None"
+
         self.state = state
         self.pricing_model = pricing_model
         self.default_slippage_tolerance = default_slippage_tolerance
@@ -333,12 +335,20 @@ class PositionManager:
         This is a shortcut function for trading strategies
         that operate only a single trading pair and a single short position.
 
+        If you have multiple short positions open use :py:meth:`get_current_position_for_pair`
+        to distinguish between them.
+
+        .. code-block:: python
+
+            # aave_usdc is an instance of TradingPairIdentifier
+            aave_shorting_pair = strategy_universe.get_shorting_pair(aave_usdc)
+            aave_short_position = position_manager.get_current_position_for_pair(aave_shorting_pair)
+
         See also
 
         - :py:meth:`get_current_long_position`
         
         - :py:meth:`get_current_credit_supply_position`
-
 
         :return:
             Currently open short trading position
@@ -729,8 +739,8 @@ class PositionManager:
             assert quantity_delta is not None
             assert quantity_delta < 0, f"Received non-negative sell quantity {quantity_delta} for {pair}"
 
-            position = self.state.portfolio.get_position_by_trading_pair(pair)
-            assert position is not None, f"Assumed {pair} has open position because of attempt sell at {dollar_delta} USD adjust"
+            # position = self.state.portfolio.get_position_by_trading_pair(pair)
+            # assert position is not None, f"Assumed {pair} has open short position because of attempt sell at {dollar_delta} USD adjust, but did not get open position"
 
             position, trade, created = self.state.create_trade(
                 self.timestamp,
@@ -951,7 +961,7 @@ class PositionManager:
             if trade_type is None:
                 trade_type = TradeType.rebalance
 
-            return self.close_short_position(
+            return self.close_short(
                 position,
                 trade_type=trade_type,
                 notes=notes,
@@ -1241,6 +1251,12 @@ class PositionManager:
     ) -> List[TradeExecution]:
         """Close a short position
 
+        - Buy back the shorted token
+
+        - Release collateral and return it as cash to the reserves
+
+        - Move any gained interest back to the reserves as well
+
         :param position:
             Position to close.
 
@@ -1271,7 +1287,6 @@ class PositionManager:
             quantity = Decimal(quantity)
 
         # TODO: Hardcoded USD exchange rate
-        reserve_asset = self.strategy_universe.get_reserve_asset()
         price_structure = self.pricing_model.get_sell_price(self.timestamp, pair.underlying_spot_pair, 1)
 
         position, trade, _ = self.state.trade_short(
@@ -1346,11 +1361,9 @@ class PositionManager:
         assert pair.kind.is_shorting()
         assert pair.base.underlying is not None, f"Lacks underlying asset: {pair.base}"
         assert pair.quote.underlying is not None, f"Lacks underlying asset: {pair.quote}"
-
-        # TODO: Assume USD stablecoin 1:1
         assert pair.underlying_spot_pair.quote.is_stablecoin(), f"Assuming stablecoin backed pair"
-
         assert new_value > 0, "Cannot use adjust_short() to close short position"
+        assert position.is_open(), "Cannot adjust closed short position"
 
         underlying = pair.underlying_spot_pair
 
@@ -1402,11 +1415,14 @@ class PositionManager:
 
         try:
             if delta > 0:
+                # Iincrease short
+                # See test_open_and_increase_one_short_with_interest
+                # import ipdb ; ipdb.set_trace()
 
                 borrowed_quantity_delta = loan.calculate_size_adjust(collateral_adjustment)
 
                 _, adjust_trade, _ = state.trade_short(
-                    strategy_cycle_at=datetime.datetime.utcnow(),
+                    strategy_cycle_at=self.timestamp,
                     pair=pair,
                     borrowed_quantity=-borrowed_quantity_delta,
                     collateral_quantity=collateral_adjustment,
@@ -1414,7 +1430,7 @@ class PositionManager:
                     trade_type=TradeType.rebalance,
                     reserve_currency=reserve_currency,
                     collateral_asset_price=1.0,
-                    planned_collateral_consumption=target_params.total_collateral_quantity - loan.collateral.quantity,
+                    planned_collateral_consumption=target_params.total_collateral_quantity - loan.collateral.quantity - collateral_adjustment,
                     notes=notes,
                 )
 
@@ -1427,7 +1443,7 @@ class PositionManager:
                 reserves_released = Decimal(delta)
 
                 _, adjust_trade, _ = state.trade_short(
-                    strategy_cycle_at=datetime.datetime.utcnow(),
+                    strategy_cycle_at=self.timestamp,
                     pair=pair,
                     borrowed_quantity=borrowed_quantity_delta, # Buy back shorted tokens to decrease exposute
                     collateral_quantity=0,  # Not used when releasing reserves

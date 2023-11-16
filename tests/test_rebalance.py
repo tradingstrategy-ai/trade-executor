@@ -6,7 +6,6 @@
   WETH/USD and AAVE/USD
 
 """
-import os
 import datetime
 import random
 from decimal import Decimal
@@ -40,10 +39,6 @@ from tradingstrategy.chain import ChainId
 from tradingstrategy.exchange import Exchange
 from tradingstrategy.timebucket import TimeBucket
 from tradingstrategy.universe import Universe
-
-
-# https://docs.pytest.org/en/latest/how-to/skipping.html#skip-all-test-functions-of-a-class-or-module
-pytestmark = pytest.mark.skipif(os.environ.get("TRADING_STRATEGY_API_KEY") is None, reason="Set TRADING_STRATEGY_API_KEY environment variable to run this test")
 
 
 @pytest.fixture
@@ -733,7 +728,7 @@ def test_alpha_model_open_short(
     alpha_model.update_old_weights(state.portfolio)
     weth_signal = alpha_model.get_signal_by_pair(weth_usdc)
     assert weth_signal.old_value == pytest.approx(157.7)
-    assert weth_signal.old_synthetic_pair == weth_usdc
+    assert weth_signal.old_pair == weth_usdc
 
     # Calculate how much dollar value we want each individual position to be on this strategy cycle,
     # based on our total available equity
@@ -741,7 +736,7 @@ def test_alpha_model_open_short(
     portfolio_target_value = portfolio.get_position_equity_and_loan_nav()
     alpha_model.calculate_target_positions(position_manager, portfolio_target_value)
 
-    assert weth_signal.position_adjust_usd < 0  # We reduce the position
+    assert weth_signal.position_adjust_usd == pytest.approx(78.85)  # For flipped position, we adjust from zero to size
     assert weth_signal.is_flipping()
 
     aave_signal = alpha_model.get_signal_by_pair(aave_usdc)
@@ -774,17 +769,17 @@ def test_alpha_model_open_short(
     # Opening ETH short comes next
     # Use 50% of portfolio value to go short on ETH
     weth_usdc_short_pair = strategy_universe.get_shorting_pair(weth_usdc)
-    t = trades[1]
-    assert t.is_sell()
-    assert t.is_short()
-    assert t.is_planned()
+    t = trades[2]
+    assert t.is_sell(), f"{t}"
+    assert t.is_short(), f"{t}"
+    assert t.is_planned(), f"{t}"
     assert t.pair == weth_usdc_short_pair
     assert t.planned_price == pytest.approx(1664.99)
     assert t.planned_quantity == pytest.approx(Decimal("-0.04735764178763836052165050297"))
 
     # Spot buy comes next,
     # buy 50% of AAVE
-    t = trades[2]
+    t = trades[1]
     assert t.is_buy()
     assert t.is_spot()
     assert t.is_planned()
@@ -860,13 +855,13 @@ def test_alpha_model_increase_short(
 
     # Opening ETH short comes next
     # Use 50% of portfolio value to go short on ETH
-    t = trades[1]
+    t = trades[2]
     assert t.is_sell()
     assert t.is_short()
 
     # Spot buy comes next,
     # buy 50% of AAVE
-    t = trades[2]
+    t = trades[1]
     assert t.is_buy()
     assert t.is_spot()
 
@@ -1023,13 +1018,13 @@ def test_alpha_model_decrease_short(
 
     # Opening ETH short comes next
     # Use 50% of portfolio value to go short on ETH
-    t = trades[1]
+    t = trades[2]
     assert t.is_sell()
     assert t.is_short()
 
     # Spot buy comes next,
     # buy 50% of AAVE
-    t = trades[2]
+    t = trades[1]
     assert t.is_buy()
     assert t.is_spot()
 

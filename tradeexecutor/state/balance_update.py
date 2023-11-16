@@ -13,6 +13,7 @@ from dataclasses import dataclass, field
 from typing import Optional
 
 from dataclasses_json import dataclass_json
+from eth_defi.aave_v3.rates import SECONDS_PER_YEAR, SECONDS_PER_YEAR_INT
 
 from tradeexecutor.state.identifier import AssetIdentifier
 from tradingstrategy.types import USDollarAmount, Percent
@@ -44,7 +45,7 @@ class BalanceUpdatePositionType(enum.Enum):
 
 @dataclass_json
 @dataclass
-class   BalanceUpdate:
+class BalanceUpdate:
     """Processed balance update event.
 
     Events that are generated on
@@ -53,11 +54,12 @@ class   BalanceUpdate:
 
     - Redemptions
 
-    - Interest payments
+    - Interest payments. There will be one event per rebase asset per a trading position.
+      See :py:meth:`tradeexecutor.strategy.sync_model.SyncModel.sync_interests`.
 
     Events are stored in :py:class:`TradingPosition` and :py:class:`ReservePosition` by their id.
 
-    Events are referred in :py:class:`tradeexecutor.sync.Treasury`..
+    Events are referred in :py:class:`tradeexecutor.sync.Treasury`.
     """
 
     #: Allocated from portfolio
@@ -156,7 +158,7 @@ class   BalanceUpdate:
     block_number: int | None = None
 
     def __post_init__(self):
-        assert self.quantity != 0, "Balance update cannot be zero: {self}"
+        assert self.quantity != 0, f"Balance update cannot be zero: {self}"
 
         if self.previous_update_at:
             assert self.previous_update_at <= self.block_mined_at, f"Travelling back in time: {self.previous_update_at} - {self.block_mined_at}"
@@ -211,7 +213,7 @@ class   BalanceUpdate:
 
         return (self.block_mined_at - self.previous_update_at)
 
-    def get_effective_yearly_yield(self, year=datetime.timedelta(days=360)) -> Percent | None:
+    def get_effective_yearly_yield(self, year=datetime.timedelta(seconds=SECONDS_PER_YEAR_INT)) -> Percent | None:
         """How much we are gaining % yearly.
 
         - Based on the this balance update and the previous balance update

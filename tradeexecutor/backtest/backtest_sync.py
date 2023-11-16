@@ -3,11 +3,9 @@ import datetime
 from dataclasses import dataclass
 from decimal import Decimal
 from types import NoneType
-from typing import List, Optional, Literal, Collection, Iterable
+from typing import List, Optional, Collection, Iterable
 
 from web3.types import BlockIdentifier
-
-from eth_defi.aave_v3.rates import SECONDS_PER_YEAR
 
 from tradeexecutor.backtest.simulated_wallet import SimulatedWallet
 from tradeexecutor.ethereum.wallet import ReserveUpdateEvent
@@ -16,12 +14,14 @@ from tradeexecutor.state.identifier import AssetIdentifier
 from tradeexecutor.state.position import TradingPosition
 from tradeexecutor.state.state import State
 from tradeexecutor.state.types import JSONHexAddress, BlockNumber
-from tradeexecutor.strategy.interest import update_interest, update_leveraged_position_interest
+from tradeexecutor.strategy.interest import prepare_interest_distribution, \
+    accrue_interest
 from tradeexecutor.strategy.pricing_model import PricingModel
 from tradeexecutor.strategy.sync_model import SyncModel, OnChainBalance
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
 from tradeexecutor.testing.dummy_wallet import apply_sync_events
-
+from tradingstrategy.chain import ChainId
+from tradingstrategy.utils.time import ZERO_TIMEDELTA
 
 logger = logging.getLogger(__name__)
 
@@ -45,16 +45,23 @@ class FundFlowEvent:
 class BacktestSyncModel(SyncModel):
     """Backtest sync model.
 
-    Simulate deposit events to the backtest wallet."""
+    Simulate deposit events to the backtest wallet.
 
-    def __init__(self, wallet: SimulatedWallet, initial_deposit_amount: Decimal):
-        assert isinstance(initial_deposit_amount, Decimal)
+    - Read on-chain simulated wallet and reflect its balances back to the state
+    """
+
+    def __init__(self, wallet: SimulatedWallet, initial_deposit_amount: Decimal | None = None):
         self.wallet = wallet
 
         #: Simulated deposit/redemption events pending to be processed
+        #:
+        #: Legacy code path.
+        #:
         self.fund_flow_queue: List[FundFlowEvent] = []
-        if initial_deposit_amount > 0:
-            self.fund_flow_queue.append(FundFlowEvent(datetime.datetime.utcnow(), initial_deposit_amount))
+        if initial_deposit_amount is not None:
+            assert isinstance(initial_deposit_amount, Decimal)
+            if initial_deposit_amount > 0:
+                self.fund_flow_queue.append(FundFlowEvent(datetime.datetime.utcnow(), initial_deposit_amount))
 
     def get_token_storage_address(self) -> Optional[JSONHexAddress]:
         return None
@@ -99,6 +106,7 @@ class BacktestSyncModel(SyncModel):
             past_balance = self.wallet.get_balance(reserve_token.address)
 
             # Update wallet
+            self.wallet.update_token_info(reserve_token)
             self.wallet.update_balance(reserve_token.address, funding_event.amount)
 
             # Generate a deposit event
@@ -139,134 +147,93 @@ class BacktestSyncModel(SyncModel):
 
     def calculate_accrued_interest(
         self,
-        universe: TradingStrategyUniverse,
-        position: TradingPosition,
-        timestamp: datetime.datetime,
-        interest_type: Literal["collateral"] | Literal["borrow"],
+        strategy_universe: TradingStrategyUniverse,
+        asset: AssetIdentifier,
+        start: datetime.datetime,
+        end: datetime.datetime,
     ) -> Decimal:
         """Calculate accrued interest of a position since last update."""
-        # get relevant candles for the position period since last update until now
-        if interest_type == "collateral":
-            interest = position.loan.collateral_interest
-            amount = Decimal(interest.last_token_amount)
-        elif interest_type == "borrow":
-            interest = position.loan.borrowed_interest
-            amount = Decimal(interest.last_token_amount)
 
-        previous_update_at = interest.last_event_at
+        lending_universe = strategy_universe.data_universe.lending_candles
 
-        df = universe.data_universe.lending_candles.supply_apr.df.copy()
-        supply_df = df[
-            (df["timestamp"] >= previous_update_at)
-            & (df["timestamp"] <= timestamp)
-        ].copy()
+        if asset.is_credit():
+            candles = lending_universe.supply_apr
+        elif asset.is_debt():
+            candles = lending_universe.variable_borrow_apr
+        else:
+            raise AssertionError(f"Does not know how an asset behaves and lending markets {asset}")
 
-        if len(supply_df) == 0:
-            # TODO: this is a temporary hack, we should make it better
-            supply_df = df[
-                (df["timestamp"] >= position.opened_at)
-                & (df["timestamp"] <= timestamp)
-            ].copy()
+        reserve = strategy_universe.data_universe.lending_reserves.get_by_chain_and_address(
+            ChainId(asset.chain_id),
+            asset.underlying.address
+        )
 
-        assert len(supply_df) > 0, f"No lending data for {position} from {previous_update_at} to {timestamp}"
-
-        # get average APR from high and low
-        supply_df["avg"] = supply_df[["high", "low"]].mean(axis=1)
-        avg_apr = Decimal(supply_df["avg"].mean() / 100)
-
-        duration = Decimal((timestamp - previous_update_at).total_seconds())
-        accrued_interest_estimation = amount * avg_apr * duration / SECONDS_PER_YEAR
-
-        return accrued_interest_estimation
+        return candles.estimate_accrued_interest(reserve, start, end)
 
     def sync_interests(
         self,
         timestamp: datetime.datetime,
         state: State,
         universe: TradingStrategyUniverse,
-        positions: List[TradingPosition],
         pricing_model: PricingModel,
     ) -> List[BalanceUpdate]:
 
-        assert universe.has_lending_data(), "Cannot update credit positions if no data is available"
+        assert isinstance(timestamp, datetime.datetime)
+        if not universe.has_lending_data():
+            # sync_interests() is not needed for backtesting that do not deal with
+            # leveraged positions
+            return []
 
-        events = []
-        for p in positions:
-            if p.is_credit_supply():
-                assert len(p.trades) <= 2, "This interest calculation does not support increase/reduce position"
+        previous_update_at = state.sync.interest.last_sync_at
+        if not previous_update_at:
+            # No interest based positions yet?
+            logger.info(f"Interest sync checkpoint not set at {timestamp}, nothing to sync/cannot sync interest.")
+            return []
 
-                accrued = self.calculate_accrued_interest(
-                    universe,
-                    p,
-                    timestamp,
-                    "collateral",
-                )
+        duration = timestamp - previous_update_at
+        if duration == ZERO_TIMEDELTA:
+            # TODO: Promote to warning and fix the cause
+            logger.info(f"Sync time span must be positive:{previous_update_at} - {timestamp}")
+            return []
 
-                new_amount = p.loan.collateral_interest.last_token_amount + accrued
+        logger.info(
+            "Starting backtest interest distribution operation at: %s, previous update %s, syncing %s",
+            timestamp,
+            previous_update_at,
+            duration,
+        )
 
-                # TODO: the collateral is stablecoin so this can be hardcode for now
-                # but make sure to fetch it from somewhere later
-                price = 1.0
+        interest_distribution = prepare_interest_distribution(
+            state.sync.interest.last_sync_at,
+            timestamp,
+            state.portfolio,
+            pricing_model
+        )
 
-                evt = update_interest(
-                    state,
-                    p,
-                    p.pair.base,
-                    new_token_amount=new_amount,
-                    event_at=timestamp,
-                    asset_price=price,
-                )
-                events.append(evt)
+        # initialise_tracking(portfolio_interest_tracker, interest_distribution)
 
-                # Make atokens magically appear in the simulated
-                # backtest wallet. The amount must be updated, or
-                # otherwise we get errors when closing the position.
-                self.wallet.update_balance(p.pair.base.address, accrued)
-            elif p.is_leverage() and p.is_short():
-                assert len(p.trades) <= 2, "This interest calculation does not support increase/reduce position"
+        # First simulate balances going up in the wallet
+        for asset in interest_distribution.assets:
+            accrued_multiplier = self.calculate_accrued_interest(
+                universe,
+                asset,
+                previous_update_at,
+                timestamp,
+            )
 
-                accrued_collateral_interest = self.calculate_accrued_interest(
-                    universe,
-                    p,
-                    timestamp,
-                    "collateral",
-                )
-                accrued_borrow_interest = self.calculate_accrued_interest(
-                    universe,
-                    p,
-                    timestamp,
-                    "borrow",
-                )
+            old_amount = self.wallet.get_balance(asset)
+            self.wallet.rebase(asset, old_amount * accrued_multiplier)
 
-                new_atoken_amount = p.loan.collateral_interest.last_token_amount + accrued_collateral_interest
-                new_vtoken_amount = p.loan.borrowed_interest.last_token_amount + accrued_borrow_interest
+        # Then sync interest "back from the chain"
+        balances = {}
+        for asset in interest_distribution.assets:
+            balances[asset] = self.wallet.get_balance(asset)
 
-                atoken_price = 1.0
+        # Then distribute gained interest (new atokens/vtokens)
+        # among positions
+        events_iter = accrue_interest(state, balances, interest_distribution, timestamp, None)
 
-                vtoken_price_structure = pricing_model.get_sell_price(
-                    timestamp,
-                    p.pair.get_pricing_pair(),
-                    p.loan.borrowed.quantity,
-                )
-                vtoken_price = vtoken_price_structure.price
-
-                vevt, aevt = update_leveraged_position_interest(
-                    state,
-                    p,
-                    new_vtoken_amount=new_vtoken_amount,
-                    new_token_amount=new_atoken_amount,
-                    vtoken_price=vtoken_price,
-                    atoken_price=atoken_price,
-                    event_at=timestamp,
-                )
-                events.append(vevt)
-                events.append(aevt)
-
-                # Make aToken and vToken magically appear in the simulated
-                # backtest wallet. The amount must be updated, or
-                # otherwise we get errors when closing the position.
-                self.wallet.rebase(p.pair.base.address, new_vtoken_amount)
-                self.wallet.rebase(p.pair.quote.address, new_atoken_amount)
+        events = list(events_iter)
 
         return events
 

@@ -3,7 +3,7 @@
 import datetime
 from dataclasses import dataclass, field
 from decimal import Decimal
-from typing import Optional, Dict, List, Iterable
+from typing import Optional, Dict, List, Iterable, Tuple
 
 from dataclasses_json import dataclass_json
 
@@ -21,6 +21,21 @@ class ReservePosition(GenericPosition):
 
     - One portfolio can have multiple reserve currencies,
       but currently the code is simplified to handle only one reserve currency
+
+    See :py:attr:`tradeexecutor.state.portfolio.Portfolio.reserves`.
+
+    Migration code for old strategies:
+
+    .. code-block:: shell
+
+        source scripts/set-latest-tag.sh
+        docker-compose run -it polygon-momentum-multipair console
+
+    .. code-block:: python
+
+        assert len(state.portfolio.reserves) == 2, f"Double reserves due to asset id migration: {state.portfolio.reserves}"
+        del state.portfolio.reserves["0x2791bca1f2de4661ed88a30c99a7a9449aa84174"]  # Remove old USDC id
+        store.sync(state)
 
     """
 
@@ -133,3 +148,6 @@ class ReservePosition(GenericPosition):
             raise BalanceUpdateEventAlreadyAdded(f"Duplicate balance update: {event}")
 
         self.balance_updates[event.balance_update_id] = event
+
+    def get_held_assets(self) -> Iterable[Tuple[AssetIdentifier, Decimal]]:
+        yield self.asset, self.quantity

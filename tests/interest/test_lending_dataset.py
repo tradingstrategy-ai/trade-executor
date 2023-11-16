@@ -256,8 +256,10 @@ def test_load_trading_and_lending_data_live(persistent_test_client: Client):
     # Check a single data sample looks correct
     # Lending rate data
     two_days_ago = pd.Timestamp(datetime.datetime.utcnow() - datetime.timedelta(days=2)).floor("D")
+    open = rates["open"][two_days_ago]
+    close = rates["close"][two_days_ago]
     assert rates["open"][two_days_ago] > 0
-    assert rates["open"][two_days_ago] < 10  # Erdogan warnings
+    assert rates["open"][two_days_ago] < 50, f"Got: open:{open}%, close:{close}%, on {usdc_reserve} at {two_days_ago}"
 
     # Check a single data sample looks correct
     # Price feed

@@ -4,12 +4,13 @@ from decimal import Decimal
 from typing import Tuple
 
 import pandas as pd
+from tradingstrategy.candle import GroupedCandleUniverse
 
 from tradeexecutor.state.state import State, TradeType
 from tradeexecutor.state.position import TradingPosition
 from tradeexecutor.state.trade import TradeExecution
 from tradeexecutor.state.identifier import TradingPairIdentifier
-from tradingstrategy.candle import GroupedCandleUniverse
+from tradeexecutor.utils.leverage_calculations import LeverageEstimate
 
 
 class UnitTestTrader:
@@ -162,3 +163,31 @@ class UnitTestTrader:
     def sell_with_price_data(self, pair, quantity, candle_universe: GroupedCandleUniverse) -> Tuple[TradingPosition, TradeExecution]:
         price = candle_universe.get_closest_price(pair.internal_id, pd.Timestamp(self.ts))
         return self.create_and_execute(pair, -quantity, float(price))
+
+    def open_short(self, pair, quantity, price, leverage=1) -> tuple[TradingPosition, TradeExecution]:
+        assert pair.kind.is_leverage()
+
+        estimation = LeverageEstimate.open_short(
+            starting_reserve=quantity,
+            leverage=leverage,
+            borrowed_asset_price=price,
+            shorting_pair=pair,
+            fee=pair.get_pricing_pair().fee,
+        )
+
+        position, trade, _ = self.state.trade_short(
+            strategy_cycle_at=self.ts,
+            pair=pair,
+            borrowed_quantity=-estimation.borrowed_quantity,
+            collateral_quantity=quantity,
+            borrowed_asset_price=price,
+            trade_type=TradeType.rebalance,
+            reserve_currency=pair.get_pricing_pair().quote,
+            collateral_asset_price=1.0,
+            planned_collateral_consumption=estimation.additional_collateral_quantity,
+            lp_fees_estimated=estimation.lp_fees,
+        )
+
+        self.ts += datetime.timedelta(seconds=1)
+        return position, trade
+

@@ -10,7 +10,9 @@ from tradeexecutor.backtest.simulated_wallet import SimulatedWallet, OutOfSimula
 from tradeexecutor.state.state import State
 from tradeexecutor.state.trade import TradeExecution, TradeStatus
 from tradeexecutor.state.types import Percent
+from tradeexecutor.strategy.account_correction import calculate_total_assets
 from tradeexecutor.strategy.execution_model import ExecutionModel, AutoClosingOrderUnsupported
+from tradeexecutor.strategy.interest import set_interest_checkpoint
 
 logger = logging.getLogger(__name__)
 
@@ -22,7 +24,7 @@ class BacktestExecutionFailed(Exception):
 def fix_sell_token_amount(
         current_balance: Decimal,
         order_quantity: Decimal,
-        epsilon=Decimal(10**-9)
+        epsilon=Decimal(10 ** -9)
 ) -> Tuple[Decimal, bool]:
     """Fix rounding errors that may cause wallet dust overflow.
 
@@ -65,8 +67,8 @@ class BacktestExecutionModel(ExecutionModel):
 
     def __init__(self,
                  wallet: SimulatedWallet,
-                 max_slippage: Percent=0.01,
-                 lp_fees: Percent=0.0030,
+                 max_slippage: Percent = 0.01,
+                 lp_fees: Percent = 0.0030,
                  stop_loss_data_available=False,
                  ):
         self.wallet = wallet
@@ -111,14 +113,18 @@ class BacktestExecutionModel(ExecutionModel):
             Wallet does not have enough tokens to do the trade
         """
 
+        # More credit supply to its own function
+        assert trade.is_spot() or trade.is_credit_supply(), f"simulate_spot(): received a trade that is not spot {trade}"
+        # assert trade.pair.is_spot()
+
         #
         base = trade.pair.base
-        quote = trade.pair.quote
+        # quote = trade.pair.quote
         reserve = trade.reserve_currency
 
         base_balance = self.wallet.get_balance(base.address)
-        quote_balance = self.wallet.get_balance(quote.address)
-        reserve_balance = self.wallet.get_balance(reserve.address)
+        # quote_balance = self.wallet.get_balance(quote.address)
+        # reserve_balance = self.wallet.get_balance(reserve.address)
 
         position = state.portfolio.get_existing_open_position_by_trading_pair(trade.pair)
 
@@ -128,18 +134,19 @@ class BacktestExecutionModel(ExecutionModel):
             executed_reserve = trade.planned_reserve
             executed_quantity = trade.planned_quantity
         else:
-            assert position and position.is_open(), f"Tried to execute sell on position that is not open: {trade}"
+            assert position and position.is_open(), f"Tried to execute sell on position {position} that is not open: {trade}"
             executed_quantity, sell_amount_epsilon_fix = fix_sell_token_amount(base_balance, trade.planned_quantity)
             executed_reserve = abs(Decimal(trade.planned_quantity) * Decimal(trade.planned_price))
 
         if trade.is_buy():
-            self.wallet.update_balance(base.address, executed_quantity)
-            self.wallet.update_balance(reserve.address, -executed_reserve)
+            self.wallet.update_balance(base, executed_quantity, f"spot buy trade #{trade.trade_id}")
+            self.wallet.update_balance(reserve, -executed_reserve, f"spot buy trade #{trade.trade_id}")
         else:
-            self.wallet.update_balance(base.address, executed_quantity)
-            self.wallet.update_balance(reserve.address, executed_reserve)
+            self.wallet.update_balance(base, executed_quantity, f"spot sell #{trade.trade_id}")
+            self.wallet.update_balance(reserve, executed_reserve, f"spot sell #{trade.trade_id}")
 
-        assert abs(executed_quantity) > 0, f"Expected executed_quantity for the trade to be above zero, got executed_quantity:{executed_quantity}, planned_quantity:{trade.planned_quantity}, trade is {trade}"
+        assert abs(
+            executed_quantity) > 0, f"Expected executed_quantity for the trade to be above zero, got executed_quantity:{executed_quantity}, planned_quantity:{trade.planned_quantity}, trade is {trade}"
 
         return executed_quantity, executed_reserve, sell_amount_epsilon_fix
 
@@ -164,9 +171,11 @@ class BacktestExecutionModel(ExecutionModel):
         """
         assert trade.is_short(), "Leverage long is not supported yet"
 
-        borrowed_address = trade.pair.base.address
-        collateral_address = trade.pair.quote.address
-        reserve_address = trade.reserve_currency.address
+        # TODO: Correctly use fix_sell_token_amount() here to work around dust issues
+
+        borrowed_token = trade.pair.base
+        collateral_token = trade.pair.quote
+        reserve_token = trade.reserve_currency
 
         # position = state.portfolio.get_existing_open_position_by_trading_pair(trade.pair)
         executed_reserve = trade.planned_reserve
@@ -174,33 +183,49 @@ class BacktestExecutionModel(ExecutionModel):
         executed_collateral_consumption = trade.planned_collateral_consumption
         executed_collateral_allocation = trade.planned_collateral_allocation
 
+        assert isinstance(executed_reserve, Decimal)
+        assert isinstance(executed_quantity, Decimal)
+        assert isinstance(executed_collateral_consumption, Decimal)
+        assert isinstance(executed_collateral_allocation, Decimal)
+
+        logger.info("simulate_leverage(): wallet balances before updating for %s:\n%s", trade.get_short_label(), self.wallet.get_all_balances())
+
         # Here is a mismatch between spot and leverage:
         # base.underlying token, or executed_quantity, never appears in the wallet
         # as we do loan based trading
 
-        self.wallet.update_balance(reserve_address, -executed_reserve)
+        self.wallet.update_balance(reserve_token, -executed_reserve, f"trade #{trade.trade_id} reserve updates")
 
         # The leveraged tokens appear in the wallet
-
         # aToken amount is original deposit + any leverage we do
 
-        self.wallet.update_balance(collateral_address, executed_collateral_consumption)
-        self.wallet.update_balance(collateral_address, executed_reserve)
+        self.wallet.update_balance(collateral_token, executed_collateral_consumption, f"collateral consumption trade #{trade.trade_id}")
+        self.wallet.update_balance(collateral_token, executed_reserve, f"reserves trade #{trade.trade_id}")
 
-        # vToken amount us whatever quantity we execute
-        if trade.is_short():
-            self.wallet.update_balance(borrowed_address, -executed_quantity)
-        else:
-            self.wallet.update_balance(borrowed_address, executed_quantity)
+        # vToken amount us whatever quantity we execute.
+        # When we short we gain more vToken (executed quantity), but executed quantity is negative for sell
+        self.wallet.update_balance(borrowed_token, -executed_quantity, f"executed quantity trade #{trade.trade_id}")
 
-        # move all leftover atoken to reserve when the position is closing
-        # TODO: check if this is correct place to do this
-        if self.wallet.get_balance(borrowed_address) == 0:
-            remaining_collateral = self.wallet.get_balance(collateral_address)
-            self.wallet.update_balance(reserve_address, remaining_collateral)
-            self.wallet.update_balance(collateral_address, -remaining_collateral)
+        # <Close short #2
+        #    0.3003021039165400376391259260 WETH at 1664.99 USD, broadcasted phase
+        #    collateral consumption: -501.5045135406218656282035903 USDC, collateral allocation: -496.9954864593781343405713871 USDC
+        #    reserve: 0
+        #    >
+        # remaining_collateral = self.wallet.get_balance(collateral_address)
+        # import ipdb ; ipdb.set_trace()
+        collateral_token_change = executed_collateral_allocation
 
-        assert abs(executed_quantity) > 0, f"Expected executed_quantity for the trade to be above zero, got executed_quantity:{executed_quantity}, planned_quantity:{trade.planned_quantity}, trade is {trade}"
+        if collateral_token_change is not None:
+            # Convert reserve to aToken
+            self.wallet.update_balance(reserve_token, -collateral_token_change, f"Depositing/redeeming aToken for #{trade.trade_id}")
+
+            # aToken appears in the wallet
+            self.wallet.update_balance(collateral_token, collateral_token_change, f"Depositing/redeeming aToken for  #{trade.trade_id}")
+
+        assert abs(
+            executed_quantity) > 0, f"Expected executed_quantity for the trade to be above zero, got executed_quantity:{executed_quantity}, planned_quantity:{trade.planned_quantity}, trade is {trade}"
+
+        logger.info("simulate_leverage(): wallet balances after updating for %s:\n%s", trade.get_short_label(), self.wallet.get_all_balances())
 
         # for leverage short, we use collateral token as the reserve currency
         # so return executed_collateral_quantity here to correctly calculate the price
@@ -249,6 +274,7 @@ class BacktestExecutionModel(ExecutionModel):
                 executed_quantity, executed_reserve, sell_amount_epsilon_fix = self.simulate_spot(state, trade)
             elif trade.is_leverage():
                 executed_quantity, executed_reserve, executed_collateral_allocation, executed_collateral_consumption = self.simulate_leverage(state, trade)
+
             else:
                 raise NotImplementedError(f"Does not know how to simulate: {trade}")
 
@@ -280,23 +306,23 @@ class BacktestExecutionModel(ExecutionModel):
                 extra_help_message = ""
 
             raise BacktestExecutionFailed(f"\n"
-                f"  Trade #{idx} failed on strategy cycle {ts}\n"
-                f"  Execution of trade {trade} failed.\n"
-                f"  Pair: {trade.pair}.\n"
-                f"  Trade type: {trade.trade_type.name}.\n"
-                f"  Trade quantity: {trade.planned_quantity}, reserve: {trade.planned_reserve} {trade.reserve_currency}.\n"
-                f"  Wallet base balance: {base_balance} {base.token_symbol} ({base.address}).\n"
-                f"  Wallet quote balance: {quote_balance} {quote.token_symbol} ({quote.address}).\n"
-                f"  Wallet reserve balance: {reserve_balance} {reserve.token_symbol} ({reserve.address}).\n"
-                f"  Executed base amount: {executed_quantity} {base.token_symbol} ({base.address})\n"
-                f"  Executed reserve amount: {executed_reserve} {reserve.token_symbol} ({reserve.address})\n"
-                f"  Planned base amount: {trade.planned_quantity} {base.token_symbol} ({base.address})\n"
-                f"  Planned reserve amount: {trade.planned_reserve} {reserve.token_symbol} ({reserve.address})\n"
-                f"  Existing position quantity: {position and position.get_quantity() or '-'} {base.token_symbol}\n"
-                f"  Sell amount epsilon fix applied: {sell_amount_epsilon_fix}.\n"
-                f"  Out of balance: {e}\n"
-                f"  {extra_help_message}\n"
-            ) from e
+                                          f"  Trade {idx + 1}. failed on strategy cycle {ts}\n"
+                                          f"  Execution of trade failed:\n  {trade}\n"
+                                          f"  Pair: {trade.pair}.\n"
+                                          f"  Trade type: {trade.trade_type.name}.\n"
+                                          f"  Trade quantity: {trade.planned_quantity}, reserve: {trade.planned_reserve} {trade.reserve_currency}.\n"
+                                          f"  Wallet base balance: {base_balance} {base.token_symbol} ({base.address}).\n"
+                                          f"  Wallet quote balance: {quote_balance} {quote.token_symbol} ({quote.address}).\n"
+                                          f"  Wallet reserve balance: {reserve_balance} {reserve.token_symbol} ({reserve.address}).\n"
+                                          f"  Executed base amount: {executed_quantity} {base.token_symbol} ({base.address})\n"
+                                          f"  Executed reserve amount: {executed_reserve} {reserve.token_symbol} ({reserve.address})\n"
+                                          f"  Planned base amount: {trade.planned_quantity} {base.token_symbol} ({base.address})\n"
+                                          f"  Planned reserve amount: {trade.planned_reserve} {reserve.token_symbol} ({reserve.address})\n"
+                                          f"  Existing position quantity: {position and position.get_quantity() or '-'} {base.token_symbol}\n"
+                                          f"  Sell amount epsilon fix applied: {sell_amount_epsilon_fix}.\n"
+                                          f"  Out of balance: {e}\n"
+                                          f"  {extra_help_message}\n"
+                                          ) from e
 
         return executed_quantity, executed_reserve, executed_collateral_allocation, executed_collateral_consumption
 
@@ -342,7 +368,12 @@ class BacktestExecutionModel(ExecutionModel):
         for idx, trade in enumerate(trades):
 
             # 3. Simulate tx broadcast
-            executed_quantity, executed_reserve, executed_collateral_allocation, executed_collateral_consumption = self.simulate_trade(ts, state, idx, trade)
+            try:
+                executed_quantity, executed_reserve, executed_collateral_allocation, executed_collateral_consumption = self.simulate_trade(ts, state, idx, trade)
+            except Exception as e:
+                logger.error("Simulating %d. trade %s failed: %s", idx+1, trade.get_short_label(), e)
+                logger.exception(e)
+                raise e
 
             # TODO: Use colleteral values here
 
@@ -368,6 +399,18 @@ class BacktestExecutionModel(ExecutionModel):
                 executed_collateral_allocation=executed_collateral_allocation,
                 executed_collateral_consumption=executed_collateral_consumption,
             )
+
+        # After all backtested trades have been executed and simulated wallet updated,
+        # check that the simulated wallet and internal ledger still agree how rich we are
+        all_assets = calculate_total_assets(state.portfolio)
+        clean, asset_df = self.wallet.verify_balances(all_assets)
+        if not clean:
+            raise RuntimeError(f"Backtest simulated wallet and portfolio out of sync at {ts}:\n{asset_df}")
+
+        # Set the check point interest balacnes for new positions
+        set_interest_checkpoint(state, ts, None)
+
+        logger.info("Finished backtest execution for %s", ts)
 
     def get_routing_state_details(self) -> dict:
         return {"wallet": self.wallet}

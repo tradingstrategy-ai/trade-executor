@@ -893,7 +893,7 @@ class TradeAnalysis:
         total_value = 0
 
         for pair_id, position in positions:
-            total_profit += position.get_realised_profit_usd() * position.get_value_at_open()
+            total_profit += (position.get_realised_profit_usd() or 0) * position.get_value_at_open()
             total_value += position.get_price_at_open() * position.get_value_at_open()
 
         return total_profit / total_value if total_value else 0
@@ -903,7 +903,7 @@ class TradeAnalysis:
         time_bucket: Optional[TimeBucket] = None,
         state = None,
         format_headings = True,
-    ) -> pd.DataFrame:
+    ) -> pd.DataFrame | HTML:
         """Calculate some statistics how our trades went. This returns a table with 3 separate columns for overall, long and short.
         
         For just a single column table for overall statistics, use :py:meth:calculate_summary_statistics() instead.
@@ -914,8 +914,10 @@ class TradeAnalysis:
         :param state:
             Optional, should be specified if user would like to see advanced statistics such as sharpe ratio, sortino ratio, etc.
 
-        :param format_columns:
+        :param format_headings:
             Optional, if True, make headings clickable, directing user to relevant glossary link.
+
+            In this case, return ``HTML`` object.
 
         :return:
             DataFrame with all the stats for overall, long and short.

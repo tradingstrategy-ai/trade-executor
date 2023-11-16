@@ -45,7 +45,7 @@ def analyse_pair_trades(pair: TradingPairIdentifier, portfolio: Portfolio) -> di
     volatility = np.std(profits)
 
     return {
-        "Trading pair": pair.get_human_description(),
+        "Trading pair": pair.get_human_description(describe_type=True),
         "Positions": len(positions),
         "Trades": len(trades),
         "Total PnL USD": total_usd_profit,
@@ -72,16 +72,22 @@ def analyse_multipair(state: State) -> pd.DataFrame:
     :param state:
 
     :return:
-        Raw dataframe.
+        Datframe of the results.
+
+        Sorted by the best return.
     """
 
     pairs = state.portfolio.get_all_traded_pairs()
     rows = [analyse_pair_trades(p, state.portfolio) for p in pairs]
-    return pd.DataFrame(rows)
+    df = pd.DataFrame(rows)
+    return df
 
 
 def format_multipair_summary(
-    df: pd.DataFrame, sort_column="Total PnL USD", ascending=False, format_columns=True
+    df: pd.DataFrame,
+    sort_column="Total return %",
+    ascending=False,
+    format_columns=True
 ) -> pd.DataFrame:
     """Format the multipair summary table.
 

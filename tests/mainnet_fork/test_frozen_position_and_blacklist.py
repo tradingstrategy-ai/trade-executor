@@ -425,7 +425,7 @@ def test_buy_and_sell_blacklisted_asset(
     assert portfolio.get_frozen_position_equity() > 0
 
     # The asset is now blacklisted for the future trades
-    assert state.asset_blacklist == {bit_busd_pair.base.address.lower()}
+    assert state.asset_blacklist == {bit_busd_pair.base.get_identifier()}
 
     #
     # 3nd day - we no longer try to buy BIT,

@@ -120,10 +120,12 @@ class BacktestSimplePricingModel(PricingModel):
     def check_supported_quote_token(self, pair: TradingPairIdentifier):
         assert pair.quote.address == self.routing_model.reserve_token_address, f"Quote token {self.routing_model.reserve_token_address} not supported for pair {pair}, pair tokens are {pair.base.address} - {pair.quote.address}"
 
-    def get_sell_price(self,
-                       ts: datetime.datetime,
-                       pair: TradingPairIdentifier,
-                       quantity: Optional[Decimal]) -> TradePricing:
+    def get_sell_price(
+            self,
+            ts: datetime.datetime,
+            pair: TradingPairIdentifier,
+            quantity: Optional[Decimal]
+    ) -> TradePricing:
 
         if quantity:
             assert quantity > 0, f"Cannot sell negative amounts: {quantity} {pair}"
@@ -135,7 +137,9 @@ class BacktestSimplePricingModel(PricingModel):
             pair_id,
             ts,
             tolerance=self.data_delay_tolerance,
-            kind=self.candle_timepoint_kind)
+            kind=self.candle_timepoint_kind,
+            pair_name_hint=pair.get_ticker(),
+        )
 
         pair_fee = self.get_pair_fee(ts, pair)
 

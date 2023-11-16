@@ -2,7 +2,7 @@
 import enum
 import logging
 
-
+import pandas as pd
 import matplotlib_inline
 
 
@@ -20,12 +20,22 @@ class OutputMode(enum.Enum):
     interactive = "interactive"
 
 
-def setup_charting_and_output(mode: OutputMode=OutputMode.interactive, image_format="svg"):
-    """Sets up Jupyter Notebook based charting.
+def setup_charting_and_output(
+    mode: OutputMode=OutputMode.interactive,
+    image_format="svg",
+    max_rows=1000,
+    width=1500,
+    height=1500,
+):
+    """Sets charting and other output options for Jupyter Notebooks.
+
+    Interactive charts are better for local development, but are not compatible with most web-based notebook viewers.
 
     - `Set Quantstats chart to SVG output and for high-resolution screens <https://stackoverflow.com/questions/74721731/how-to-generate-svg-images-using-python-quantstat-library>`__
 
     - Mute common warnings like `Matplotlib font loading <https://stackoverflow.com/questions/42097053/matplotlib-cannot-find-basic-fonts/76136516#76136516>`__
+
+    - `Plotly discussion <https://github.com/plotly/plotly.py/issues/931>`__
 
     Example:
 
@@ -38,6 +48,15 @@ def setup_charting_and_output(mode: OutputMode=OutputMode.interactive, image_for
     :param mode:
         What kind of viewing context we have for this notebook output
 
+    :param image_format:
+        Do we do SVG or PNG.
+
+        SVG is better, but Github inline viewer cannot display it in the notebooks.
+
+    :param max_rows:
+        Do we remove the ``max_rows`` limitation from Pandas tables.
+
+        Default 20 is too low to display summary tables.
     """
 
     # Get rid of findfont: Font family 'Arial' not found.
@@ -62,6 +81,11 @@ def setup_charting_and_output(mode: OutputMode=OutputMode.interactive, image_for
 
         # https://plotly.com/python/renderers/#overriding-the-default-renderer
         pio.renderers.default = image_format
-        svg_renderer = pio.renderers[image_format]
+        
+        current_renderer = pio.renderers[image_format]
         # Have SVGs default pixel with
-        svg_renderer.width = 1500
+        current_renderer.width = width
+        current_renderer.height = height
+
+    if max_rows:
+        pd.set_option('display.max_rows', max_rows)
