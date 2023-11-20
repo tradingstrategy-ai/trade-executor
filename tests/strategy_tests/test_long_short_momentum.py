@@ -26,7 +26,7 @@ def logger(request):
 @pytest.fixture()
 def strategy_path() -> Path:
     """Where do we load our strategy file."""
-    return Path(os.path.join(os.path.dirname(__file__), "..", "..", "strategies", "long-short-momentum.py"))
+    return Path(os.path.join(os.path.dirname(__file__), "..", "..", "strategies", "spot-and-short-momentum.py"))
 
 
 def test_long_short_momentum(

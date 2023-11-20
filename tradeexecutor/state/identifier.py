@@ -372,8 +372,11 @@ class TradingPairIdentifier:
         return f"<Pair {self.base.token_symbol}-{self.quote.token_symbol} {type_name} at {self.pool_address} ({fee * 100:.4f}% fee) on exchange {self.exchange_address}>"
 
     def __hash__(self):
-        assert self.internal_id, "Internal id needed to be hashable"
-        return self.internal_id
+        """Trading pair hash is hash(base, quote, fee).
+
+        This might not hold true for all upcoming markets.
+        """
+        return hash((self.base, self.quote, self.fee))
 
     def __eq__(self, other: "TradingPairIdentifier | None"):
 

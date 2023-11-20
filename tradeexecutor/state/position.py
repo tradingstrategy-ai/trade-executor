@@ -1097,8 +1097,13 @@ class TradingPosition(GenericPosition):
         - Any avg buy and sell contains all fees we have paid in included in the price,
           so we do not need to add them to profit here
 
-        TODO: Handle account corrections
+        - See also :py:meth:`get_realised_profit_percent`.
 
+        .. note ::
+
+            This function does not account for in-kind redemptions or any other account corrections.
+            Please use :py:meth:`get_realised_profit_percent` if possible.
+loca
         :param include_interest:
             Include any accrued interest in PnL.
 
@@ -1337,6 +1342,8 @@ class TradingPosition(GenericPosition):
         Calculate how many percent profit this position made,
         relative to all trades taken over the life time of the position.
 
+        See also :py:meth:`get_realised_profit_usd`.
+
         See :ref:`profitability` for more details.
 
         :return:
@@ -1351,6 +1358,15 @@ class TradingPosition(GenericPosition):
         buy_value = self.get_buy_value()
         sell_value = self.get_sell_value()
 
+        # We only need to handle in-kind redemptions,
+        # because deposits are never applied to an open position
+        redemptions = [r for r in self.balance_updates.values() if r.cause == BalanceUpdateCause.redemption]
+        if redemptions:
+            assert self.is_spot(), "Does not know how to handle redemptions for credit positions"
+            redemptions_value = sum(r.usd_value for r in redemptions)
+        else:
+            redemptions_value = 0
+
         if buy_value == 0:
             # Repaired trade
             return 0
@@ -1359,7 +1375,7 @@ class TradingPosition(GenericPosition):
             # Another way of damaged/repaired trade
             return 0
 
-        return sell_value / buy_value - 1
+        return sell_value / (buy_value - redemptions_value) - 1
 
     def get_size_relative_realised_profit_percent(self) -> Percent:
         """Calculated life-time profit over this position.
