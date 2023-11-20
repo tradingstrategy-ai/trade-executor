@@ -42,6 +42,8 @@ from tradeexecutor.state.portfolio import Portfolio
 from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier, AssetType, TradingPairKind
 from tradeexecutor.testing.ethereumtrader_one_delta import OneDeltaTestTrader
 from tradeexecutor.testing.unit_test_trader import UnitTestTrader
+from tradeexecutor.ethereum.one_delta.analysis import decode_path
+
 
 pytestmark = pytest.mark.skipif(
     (os.environ.get("JSON_RPC_POLYGON") is None) or (shutil.which("anvil") is None),
@@ -327,6 +329,13 @@ def ethereum_trader(
         pair_universe,
         tx_builder,
     )
+
+
+def test_one_delta_decode_path():
+    encoded = bytes.fromhex("7ceb23fd6bc0add59e62ac25578270cff1b9f619000bb800062791bca1f2de4661ed88a30c99a7a9449aa8417402")
+    decoded = decode_path(byte)
+
+    assert decoded == ['0x7ceB23fD6bC0adD59E62ac25578270cFf1b9f619', 3000, 0, 6, '0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174']
 
 
 def test_execute_trade_instructions_open_short(

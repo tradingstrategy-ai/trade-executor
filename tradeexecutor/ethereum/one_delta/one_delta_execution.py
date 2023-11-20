@@ -14,6 +14,7 @@ from eth_defi.uniswap_v3.deployment import UniswapV3Deployment
 from eth_defi.uniswap_v3.price import UniswapV3PriceHelper, estimate_sell_received_amount
 from eth_defi.uniswap_v3.deployment import mock_partial_deployment_for_analysis
 from eth_defi.token import fetch_erc20_details, TokenDetails
+from eth_defi.one_delta.deployment import OneDeltaDeployment, fetch_deployment
 
 from tradeexecutor.ethereum.tx import TransactionBuilder
 from tradeexecutor.state.state import State
@@ -31,16 +32,17 @@ logger = logging.getLogger(__name__)
 class OneDeltaExecutionModel(EthereumExecutionModel):
     """Run order execution on a single Uniswap v3 style exchanges."""
 
-    def __init__(self,
-                 tx_builder: TransactionBuilder,
-                 min_balance_threshold=Decimal("0.5"),
-                 confirmation_block_count=6,
-                 confirmation_timeout=datetime.timedelta(minutes=5),
-                 max_slippage: float = 0.01,
-                 stop_on_execution_failure=True,
-                 swap_gas_fee_limit=2_000_000,
-                 mainnet_fork=False,
-                 ):
+    def __init__(
+        self,
+        tx_builder: TransactionBuilder,
+        min_balance_threshold=Decimal("0.5"),
+        confirmation_block_count=6,
+        confirmation_timeout=datetime.timedelta(minutes=5),
+        max_slippage: float = 0.01,
+        stop_on_execution_failure=True,
+        swap_gas_fee_limit=2_000_000,
+        mainnet_fork=False,
+    ):
         """
         :param tx_builder:
             Hot wallet instance used for this execution
@@ -75,14 +77,15 @@ class OneDeltaExecutionModel(EthereumExecutionModel):
         self,
         web3: Web3, 
         *,
-        deployment: "OneDeltaDeployment",
+        one_delta: "OneDeltaDeployment",
+        uniswap: "UniswapV3Deployment",
         tx: dict, 
         tx_hash: str,
         tx_receipt: dict,
         input_args: tuple | None = None,
         pair_fee: float | None = None,
     ) -> (TradeSuccess | TradeFail):
-        return analyse_trade_by_receipt(web3, deployment, tx, tx_hash, tx_receipt, input_args)
+        return analyse_trade_by_receipt(web3, one_delta, uniswap, tx, tx_hash, tx_receipt, input_args)
 
     def is_v3(self) -> bool:
         return True
@@ -129,19 +132,22 @@ class OneDeltaExecutionModel(EthereumExecutionModel):
             base_token_details = fetch_erc20_details(web3, pricing_pair.base.checksum_address)
             quote_token_details = fetch_erc20_details(web3, pricing_pair.quote.checksum_address)
             reserve = trade.reserve_currency
-            swap_tx = get_swap_transactions(trade)
-            uniswap = self.mock_partial_deployment_for_analysis(web3, swap_tx.contract_address)
+            tx = get_swap_transactions(trade)
+            one_delta = fetch_deployment(web3, tx.contract_address, tx.contract_address)
+            # TODO: this router address is wrong, but it doesn't matter since we don't use it here
+            uniswap = self.mock_partial_deployment_for_analysis(web3, tx.contract_address)
 
-            tx_dict = swap_tx.get_transaction()
-            receipt = receipts[HexBytes(swap_tx.tx_hash)]
+            tx_dict = tx.get_transaction()
+            receipt = receipts[HexBytes(tx.tx_hash)]
 
-            input_args = swap_tx.get_actual_function_input_args()
+            input_args = tx.get_actual_function_input_args()
 
             result = self.analyse_trade_by_receipt(
                 web3,
-                deployment=uniswap,
+                one_delta=one_delta,
+                uniswap=uniswap,
                 tx=tx_dict,
-                tx_hash=swap_tx.tx_hash,
+                tx_hash=tx.tx_hash,
                 tx_receipt=receipt,
                 input_args=input_args,
                 pair_fee=pricing_pair.fee,
@@ -155,10 +161,7 @@ class OneDeltaExecutionModel(EthereumExecutionModel):
                 if trade.is_buy():
                     assert path[0] == reserve.address, f"Was expecting the route path to start with reserve token {reserve}, got path {result.path}"
 
-                    if self.is_v3():
-                        price = result.get_human_price(quote_token_details.address == result.token0.address)
-                    else:
-                        price = 1 / result.price
+                    price = result.get_human_price(quote_token_details.address == result.token0.address)
 
                     executed_reserve = result.amount_in / Decimal(10**reserve.decimals)
                     executed_amount = result.amount_out / Decimal(10**base_token_details.decimals)
@@ -170,10 +173,8 @@ class OneDeltaExecutionModel(EthereumExecutionModel):
                     assert path[0] == base_token_details.address.lower(), f"Path is {path}, base token is {base_token_details}"
                     assert path[-1] == reserve.address
 
-                    if self.is_v3():
-                        price = result.get_human_price(quote_token_details.address == result.token0.address)
-                    else:
-                        price = result.price
+                    
+                    price = result.get_human_price(quote_token_details.address == result.token0.address)
 
                     executed_amount = -result.amount_in / Decimal(10**base_token_details.decimals)
                     executed_reserve = result.amount_out / Decimal(10**reserve.decimals)
@@ -196,25 +197,3 @@ class OneDeltaExecutionModel(EthereumExecutionModel):
             else:
                 # Trade failed
                 report_failure(ts, state, trade, stop_on_execution_failure)
-    
-
-def get_current_price(web3: Web3, uniswap: UniswapV3Deployment, pair: TradingPairIdentifier, quantity=Decimal(1)) -> float:
-    """Get a price from Uniswap v3 pool, assuming you are selling 1 unit of base token.
-    
-    Does decimal adjustment.
-    
-    :return: Price in quote token.
-    """
-    
-    quantity_raw = pair.base.convert_to_raw_amount(quantity)
-    
-    out_raw = estimate_sell_received_amount(
-        uniswap=uniswap,
-        base_token_address=pair.base.checksum_address,
-        quote_token_address=pair.quote.checksum_address,
-        quantity=quantity_raw,
-        target_pair_fee=int(pair.fee * 1_000_000),        
-    )
-
-    return float(pair.quote.convert_to_decimal(out_raw))
-
