@@ -115,9 +115,11 @@ def test_enzyme_redeemed_position_profit(
 
     - Redeem from one open WETH position
 
-    - Move the price, so that we make losses
+    - Move the price, so that we make losses on the position
 
     - Close the position
+
+    - Chec that realised PnL is correctly calculated for the position with redemptions
     """
 
     reorg_mon = create_reorganisation_monitor(web3)
@@ -221,3 +223,6 @@ def test_enzyme_redeemed_position_profit(
     assert reserve.get_value() == pytest.approx(242.627953)
     assert state.portfolio.get_total_equity() == pytest.approx(242.627953)
 
+    assert position.get_realised_profit_usd() == pytest.approx(-7.372047000000003)
+    # (1359.153875 - 1582.577362) / 1582.577362 ~= -14.1
+    assert position.get_realised_profit_percent() == pytest.approx(-0.14744093999999996)
