@@ -32,6 +32,7 @@ from tradeexecutor.ethereum.routing_state import (
     OutOfBalance, # don't remove, forwarded import
     get_base_quote,
     get_base_quote_intermediary,
+    get_token_for_asset,
     DEFAULT_APPROVE_GAS_LIMIT,
     APPROVE_GAS_LIMITS,
 )
@@ -97,9 +98,8 @@ class OneDeltaRoutingState(EthereumRoutingState):
         assert one_delta
         assert target_pair.kind.is_leverage()
 
-        # base_token = target_pair.get_pricing_pair().base
-        # quote_token = target_pair.get_pricing_pair().quote
         base_token, quote_token = get_base_quote(self.web3, target_pair.get_pricing_pair(), target_pair.get_pricing_pair().quote)
+        atoken = get_token_for_asset(self.web3, target_pair.quote)
 
         if check_balances:
             self.check_has_enough_tokens(quote_token, collateral_amount)
@@ -124,13 +124,14 @@ class OneDeltaRoutingState(EthereumRoutingState):
                 wallet_address=self.tx_builder.get_token_delivery_address(),
             )
         else:
+            # TODO: this is currently fully close the position
+            # we should support reducing the position later
             bound_func = close_short_position(
                 one_delta_deployment=one_delta,
                 collateral_token=quote_token,
                 borrow_token=base_token,
+                atoken=atoken,
                 pool_fee=pool_fee_raw,
-                collateral_amount=collateral_amount,
-                borrow_amount=borrow_amount,
                 wallet_address=self.tx_builder.get_token_delivery_address(),
             )
 

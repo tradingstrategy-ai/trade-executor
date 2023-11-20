@@ -5,6 +5,7 @@ from web3.logs import DISCARD
 
 from eth_defi.abi import get_transaction_data_field
 from eth_defi.one_delta.deployment import OneDeltaDeployment
+from eth_defi.one_delta.constants import TradeOperation
 from eth_defi.revert_reason import fetch_transaction_revert_reason
 from eth_defi.token import fetch_erc20_details
 from eth_defi.trade import TradeFail, TradeSuccess
@@ -66,7 +67,7 @@ def analyse_trade_by_receipt(
     tx_hash: str | bytes,
     tx_receipt: dict,
     input_args: tuple | None = None,
-    trade_operation: str = "open_short",
+    trade_operation: TradeOperation = TradeOperation.OPEN,
 ) -> TradeSuccess | TradeFail:
     """Analyse a 1delta trade.
 
@@ -95,7 +96,10 @@ def analyse_trade_by_receipt(
 
     input_args = input_args[0]
     if len(input_args) == 3:
-        encoded_multicall_args = input_args[-1]
+        if trade_operation == TradeOperation.OPEN:
+            encoded_multicall_args = input_args[-1]
+        else:
+            encoded_multicall_args = input_args[0]
     elif len(input_args) == 1:
         encoded_multicall_args = input_args[0]
     else:
@@ -104,7 +108,7 @@ def analyse_trade_by_receipt(
     _, multicall_args = one_delta.flash_aggregator.decode_function_input(encoded_multicall_args)
 
     # amount_in = multicall_args["amountIn"]
-    amount_out_min = multicall_args["amountOutMinimum"]
+    amount_out_min = multicall_args.get("amountOutMinimum", 0)
     path = decode_path(multicall_args["path"])
 
     # there should be only 1 swap event
@@ -122,14 +126,17 @@ def analyse_trade_by_receipt(
     # For complex swaps (unspported) we can have both
     assert (amount0 > 0 and amount1 < 0) or (amount0 < 0 and amount1 > 0), "Unsupported swap type"
 
-    amount_out = amount0 if amount0 < 0 else amount1
+    if amount0 > 0:
+        amount_in = amount0
+        amount_out = amount1
+    else:
+        amount_in = amount1
+        amount_out = amount0
     assert amount_out < 0, "amount out should be negative for uniswap v3"
 
     in_token_details = fetch_erc20_details(web3, path[0])
     out_token_details = fetch_erc20_details(web3, path[-1])
     price = pool.convert_price_to_human(tick)
-
-    amount_in = amount0 if amount0 > 0 else amount1
 
     # TODO: this doesn't look quite correct
     lp_fee_paid = float(amount_in * pool.fee / 10**in_token_details.decimals)

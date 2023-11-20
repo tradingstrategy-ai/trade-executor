@@ -386,8 +386,91 @@ def test_execute_trade_instructions_open_short(
 
     assert trade.get_status() == TradeStatus.success
     assert trade.executed_price == pytest.approx(1624.626136536907)
-    # TODO
-    # assert trade.executed_quantity == pytest.approx(-6.1821939319, rel=0.05)
-    # assert trade.lp_fees_paid == pytest.approx(1.495061595)
+    assert abs(trade.executed_quantity) == pytest.approx(Decimal(6.110729821939321144))
+    # TODO:
+    assert trade.lp_fees_paid == pytest.approx(0.018332189465817963)
     assert trade.native_token_price == 0.0
 
+    portfolio = state.portfolio
+    assert len(portfolio.open_positions) == 1
+    position = portfolio.open_positions[1]
+    assert position.get_collateral() == pytest.approx(14970)
+    assert position.get_borrowed() == pytest.approx(10000)
+    assert position.get_value() == pytest.approx(4970)
+
+
+def test_execute_trade_instructions_open_and_close_short(
+    web3: Web3,
+    state: State,
+    pair_universe: PandasPairUniverse,
+    uniswap_v3_deployment: UniswapV3Deployment,
+    hot_wallet: HotWallet,
+    usdc: AssetIdentifier,
+    weth: AssetIdentifier,
+    weth_usdc_shorting_pair: TradingPairIdentifier,
+    start_ts: datetime.datetime,
+    price_helper: UniswapV3PriceHelper,
+    ethereum_trader: OneDeltaTestTrader 
+):
+    """Open short position."""
+
+    portfolio = state.portfolio
+
+    # We have everything in cash
+    assert portfolio.get_total_equity() == 10_000
+    assert portfolio.get_cash() == 10_000
+
+    # Buy 500 USDC worth of WETH
+    trader = UnitTestTrader(state)
+
+    # swap from quote to base (usdc to weth)
+    path = [usdc.contract.address, weth.contract.address]
+    fees = [WETH_USDC_FEE_RAW]
+    eth_price = price_helper.get_amount_in(1 * 10 ** 18, path, fees) / 10 ** 6
+    
+    assert eth_price == pytest.approx(1636.46574)
+
+    reserve_amount = Decimal(5000)
+    leverage = 2
+
+    position1, trade1 = trader.open_short(
+        weth_usdc_shorting_pair,
+        reserve_amount,
+        eth_price,
+        leverage,
+    )
+    assert trade1.is_leverage()
+    assert state.portfolio.get_total_equity() == pytest.approx(10000.0)
+    assert trade1.get_status() == TradeStatus.planned
+
+    ethereum_trader.execute_trades_simple([trade1])
+
+    assert len(state.portfolio.open_positions) == 1
+    assert trade1.get_status() == TradeStatus.success
+    assert trade1.executed_price == pytest.approx(1624.626136536907)
+    assert abs(trade1.executed_quantity) == pytest.approx(Decimal(6.110729821939321144))
+    assert trade1.native_token_price == 0.0
+
+    position2, trade2 = trader.close_short(
+        weth_usdc_shorting_pair,
+        reserve_amount, # TODO
+        eth_price,
+        leverage,
+    )
+
+    assert trade2.is_leverage()
+    assert trade2.get_status() == TradeStatus.planned
+
+    ethereum_trader.execute_trades_simple([trade2])
+
+    assert trade2.get_status() == TradeStatus.success
+    assert trade2.executed_price == pytest.approx(1631.137329233084)
+    # assert abs(trade2.executed_quantity) == pytest.approx(Decimal(6.110729821939321144))
+
+    # TODO: check why this position isn't closed
+    portfolio = state.portfolio
+    assert len(portfolio.open_positions) == 1
+    position = portfolio.open_positions[1]
+    assert position.get_collateral() == pytest.approx(0)
+    assert position.get_borrowed() == pytest.approx(0)
+    assert position.get_value() == pytest.approx(0)

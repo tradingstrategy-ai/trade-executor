@@ -15,6 +15,7 @@ from eth_defi.uniswap_v3.price import UniswapV3PriceHelper, estimate_sell_receiv
 from eth_defi.uniswap_v3.deployment import mock_partial_deployment_for_analysis
 from eth_defi.token import fetch_erc20_details, TokenDetails
 from eth_defi.one_delta.deployment import OneDeltaDeployment, fetch_deployment
+from eth_defi.one_delta.constants import TradeOperation
 
 from tradeexecutor.ethereum.tx import TransactionBuilder
 from tradeexecutor.state.state import State
@@ -30,7 +31,7 @@ logger = logging.getLogger(__name__)
 
 
 class OneDeltaExecutionModel(EthereumExecutionModel):
-    """Run order execution on a single Uniswap v3 style exchanges."""
+    """Run order execution on 1delta."""
 
     def __init__(
         self,
@@ -73,19 +74,8 @@ class OneDeltaExecutionModel(EthereumExecutionModel):
             mainnet_fork=mainnet_fork,
         )
 
-    def analyse_trade_by_receipt(
-        self,
-        web3: Web3, 
-        *,
-        one_delta: "OneDeltaDeployment",
-        uniswap: "UniswapV3Deployment",
-        tx: dict, 
-        tx_hash: str,
-        tx_receipt: dict,
-        input_args: tuple | None = None,
-        pair_fee: float | None = None,
-    ) -> (TradeSuccess | TradeFail):
-        return analyse_trade_by_receipt(web3, one_delta, uniswap, tx, tx_hash, tx_receipt, input_args)
+    def analyse_trade_by_receipt(self, *args, **kwargs) -> (TradeSuccess | TradeFail):
+        pass
 
     def is_v3(self) -> bool:
         return True
@@ -93,9 +83,9 @@ class OneDeltaExecutionModel(EthereumExecutionModel):
     def mock_partial_deployment_for_analysis(
         self,
         web3: Web3, 
-        router_address: str
+        router_address: str,
     ) -> UniswapV3Deployment:
-        return mock_partial_deployment_for_analysis(web3, router_address)
+        pass
 
     def resolve_trades(
         self,
@@ -135,14 +125,14 @@ class OneDeltaExecutionModel(EthereumExecutionModel):
             tx = get_swap_transactions(trade)
             one_delta = fetch_deployment(web3, tx.contract_address, tx.contract_address)
             # TODO: this router address is wrong, but it doesn't matter since we don't use it here
-            uniswap = self.mock_partial_deployment_for_analysis(web3, tx.contract_address)
+            uniswap = mock_partial_deployment_for_analysis(web3, tx.contract_address)
 
             tx_dict = tx.get_transaction()
             receipt = receipts[HexBytes(tx.tx_hash)]
 
             input_args = tx.get_actual_function_input_args()
 
-            result = self.analyse_trade_by_receipt(
+            result = analyse_trade_by_receipt(
                 web3,
                 one_delta=one_delta,
                 uniswap=uniswap,
@@ -150,36 +140,25 @@ class OneDeltaExecutionModel(EthereumExecutionModel):
                 tx_hash=tx.tx_hash,
                 tx_receipt=receipt,
                 input_args=input_args,
-                pair_fee=pricing_pair.fee,
+                trade_operation=TradeOperation.OPEN if trade.is_sell() else TradeOperation.CLOSE,
             )
 
             if isinstance(result, TradeSuccess):
-
-                # v3 path includes fee (int) as well
-                path = [a.lower() for a in result.path if type(a) == str]
+                # path in 1delta is always from base -> quote
+                assert result.path[0].lower() == base_token_details.address.lower(), f"Path is {path}, base token is {base_token_details}"
+                assert result.path[-1].lower() == reserve.address.lower()
                 
+                price = result.get_human_price(quote_token_details.address == result.token0.address)
+
+                # TODO: verify these numbers
                 if trade.is_buy():
-                    assert path[0] == reserve.address, f"Was expecting the route path to start with reserve token {reserve}, got path {result.path}"
-
-                    price = result.get_human_price(quote_token_details.address == result.token0.address)
-
-                    executed_reserve = result.amount_in / Decimal(10**reserve.decimals)
-                    executed_amount = result.amount_out / Decimal(10**base_token_details.decimals)
-
-                    # lp fee is already in terms of quote token
-                    lp_fee_paid = result.lp_fee_paid
-                else:
-                    # Ordered other way around
-                    assert path[0] == base_token_details.address.lower(), f"Path is {path}, base token is {base_token_details}"
-                    assert path[-1] == reserve.address
-
-                    
-                    price = result.get_human_price(quote_token_details.address == result.token0.address)
-
                     executed_amount = -result.amount_in / Decimal(10**base_token_details.decimals)
                     executed_reserve = result.amount_out / Decimal(10**reserve.decimals)
+                else:
+                    executed_amount = result.amount_in / Decimal(10**base_token_details.decimals)
+                    executed_reserve = result.amount_out / Decimal(10**reserve.decimals)
 
-                    lp_fee_paid = result.lp_fee_paid
+                lp_fee_paid = result.lp_fee_paid
 
                 assert (executed_reserve > 0) and (executed_amount != 0) and (price > 0), f"Executed amount {executed_amount}, executed_reserve: {executed_reserve}, price: {price}, tx info {trade.tx_info}"
 

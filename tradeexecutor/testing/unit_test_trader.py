@@ -194,3 +194,22 @@ class UnitTestTrader:
         self.ts += datetime.timedelta(seconds=1)
         return position, trade
 
+    def close_short(self, pair, quantity, price, leverage=1) -> tuple[TradingPosition, TradeExecution]:
+        assert pair.kind.is_leverage()
+
+        position, trade, _ = self.state.trade_short(
+            strategy_cycle_at=self.ts,
+            closing=True,
+            pair=pair,
+            borrowed_asset_price=price,
+            trade_type=TradeType.rebalance,
+            reserve_currency=pair.get_pricing_pair().quote,
+            collateral_asset_price=1.0,
+        )
+
+        if trade.planned_loan_update:
+            trade.executed_loan_update = trade.planned_loan_update
+
+        self.ts += datetime.timedelta(seconds=1)
+        return position, trade
+
