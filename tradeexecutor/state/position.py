@@ -1099,8 +1099,11 @@ class TradingPosition(GenericPosition):
 
         - See also :py:meth:`get_realised_profit_percent`.
 
-        TODO: Handle account corrections
+        .. note ::
 
+            This function does not account for in-kind redemptions or any other account corrections.
+            Please use :py:meth:`get_realised_profit_percent` if possible.
+loca
         :param include_interest:
             Include any accrued interest in PnL.
 
