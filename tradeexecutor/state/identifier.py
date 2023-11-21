@@ -376,7 +376,7 @@ class TradingPairIdentifier:
 
         This might not hold true for all upcoming markets.
         """
-        return hash((self.base, self.quote, self.fee))
+        return hash((self.base.address, self.quote.address, self.fee))
 
     def __eq__(self, other: "TradingPairIdentifier | None"):
 
