@@ -49,7 +49,16 @@ def resample_single_pair(df, bucket: TimeBucket) -> pd.DataFrame:
 
 
 def _fix_nans(df: pd.DataFrame) -> pd.DataFrame:
-    """External data sources might have NaN values for prices."""
+    """External data sources might have NaN values for prices.
+    
+    Apply forward fill to columns not in [ 'open', 'high', 'low', 'close', 'volume']. This is fine if used for single pair data only where values are simply repeated down all rows.
+    """
+    
+    exclude_columns= [ 'open', 'high', 'low', 'close', 'volume']
+    
+    for column in df.columns:
+        if column not in exclude_columns:
+            df[column].fillna(method='ffill', inplace=True)
 
     # TODO: Add NaN fixing logic here
     # https://stackoverflow.com/a/29530303/315168
@@ -85,7 +94,7 @@ def load_candles_from_parquet(
     original_bucket = TimeBucket.from_pandas_timedelta(granularity)
 
     if resample:
-        new_df = resample_single_pair(df, resample)
+        _df = resample_single_pair(df, resample)
         bucket = resample
 
         # to preserve addtional columns beyond OHLCV, we need to left join
@@ -96,7 +105,7 @@ def load_candles_from_parquet(
             del df['close']
             del df['volume']
 
-            new_df = new_df.join(df, how='left')
+            new_df = _df.join(df, how='left')
     else:
         bucket = TimeBucket.from_pandas_timedelta(granularity)
 
