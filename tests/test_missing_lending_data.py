@@ -79,7 +79,7 @@ TRADE_ROUTING = TradeRouting.uniswap_v3_usdc
 
 INITIAL_DEPOSIT = 50_000
 
-TRADING_STRATEGY_CYCLE = CycleDuration.cycle_4h
+TRADING_STRATEGY_CYCLE = CycleDuration.cycle_1h
 
 # Strategy keeps its cash in USDC
 RESERVE_CURRENCY = ReserveCurrency.usdc
