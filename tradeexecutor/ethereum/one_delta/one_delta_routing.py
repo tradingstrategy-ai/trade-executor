@@ -9,10 +9,11 @@ from web3.exceptions import ContractLogicError
 
 from tradingstrategy.chain import ChainId
 from tradingstrategy.pair import PandasPairUniverse
+from eth_defi.abi import get_deployed_contract
 from eth_defi.tx import AssetDelta
 from eth_defi.gas import estimate_gas_fees
 from eth_defi.uniswap_v3.deployment import UniswapV3Deployment
-from eth_defi.aave_v3.deployment import fetch_deployment as fetch_aave_v3_deployment
+from eth_defi.aave_v3.deployment import AaveV3Deployment, fetch_deployment as fetch_aave_v3_deployment
 from eth_defi.one_delta.deployment import OneDeltaDeployment, fetch_deployment
 from eth_defi.one_delta.position import (
     approve,
@@ -30,7 +31,10 @@ from tradeexecutor.ethereum.routing_state import (
     route_tokens, # don't remove, forwarded import
     OutOfBalance, # don't remove, forwarded import
     get_base_quote,
-    get_base_quote_intermediary
+    get_base_quote_intermediary,
+    get_token_for_asset,
+    DEFAULT_APPROVE_GAS_LIMIT,
+    APPROVE_GAS_LIMITS,
 )
 from tradeexecutor.ethereum.routing_model import EthereumRoutingModel
 from tradeexecutor.ethereum.uniswap_v3.uniswap_v3_routing import get_uniswap_for_pair
@@ -54,21 +58,23 @@ class OneDeltaRoutingState(EthereumRoutingState):
         """Get a router for a trading pair."""
         return get_uniswap_for_pair(self.web3, address_map, target_pair)
 
-    def get_one_delta_for_pair(self, address_map: dict, target_pair: TradingPairIdentifier) -> OneDeltaDeployment:    
+    def get_aave_v3_for_pair(self, address_map: dict, target_pair: TradingPairIdentifier) -> AaveV3Deployment:
+        try:
+            return fetch_aave_v3_deployment(
+                self.web3,
+                pool_address=Web3.to_checksum_address(address_map["aave_v3_pool"]),
+                data_provider_address=Web3.to_checksum_address(address_map["aave_v3_data_provider"]),
+                oracle_address=Web3.to_checksum_address(address_map["aave_v3_oracle"]),
+            )
+        except ContractLogicError as e:
+            raise RuntimeError(f"Could not fetch deployment data for router address {router_address} (factory {factory_address}) - data is likely wrong") from e
+
+    def get_one_delta_for_pair(self, address_map: dict, target_pair: TradingPairIdentifier) -> OneDeltaDeployment:
         broker_proxy_address = Web3.to_checksum_address(address_map["one_delta_broker_proxy"])
-        aave_pool_address = Web3.to_checksum_address(address_map["aave_v3_pool"])
 
         try:
-            aave_v3 = fetch_aave_v3_deployment(
-                self.web3,
-                aave_pool_address,
-                # TODO
-                aave_pool_address,
-                aave_pool_address,
-            )
             return fetch_deployment(
                 self.web3,
-                aave_v3,
                 broker_proxy_address,
                 broker_proxy_address,
             )
@@ -82,7 +88,6 @@ class OneDeltaRoutingState(EthereumRoutingState):
         one_delta: OneDeltaDeployment,
         uniswap: UniswapV3Deployment,
         target_pair: TradingPairIdentifier,
-        reserve_asset: AssetIdentifier,
         collateral_amount: int,
         borrow_amount: int,
         max_slippage: Percent,
@@ -93,35 +98,46 @@ class OneDeltaRoutingState(EthereumRoutingState):
         assert one_delta
         assert target_pair.kind.is_leverage()
 
-        base_token, quote_token = get_base_quote(self.web3, target_pair, reserve_asset)
+        base_token, quote_token = get_base_quote(self.web3, target_pair.get_pricing_pair(), target_pair.get_pricing_pair().quote)
+        atoken = get_token_for_asset(self.web3, target_pair.quote)
 
         if check_balances:
-            self.check_has_enough_tokens(quote_token, reserve_amount)
+            self.check_has_enough_tokens(quote_token, collateral_amount)
 
         logger.info(
-            "Creating a trade for %s, slippage tolerance %f, trade reserve %s, amount in %d",
+            "Creating a trade for %s, slippage tolerance %f, borrow amount in %d",
             target_pair,
             max_slippage,
-            reserve_asset,
-            collateral_amount,
+            borrow_amount,
         )
 
         pool_fee_raw = int(target_pair.get_pricing_pair().fee * 1_000_000)
 
-        # TODO: differentiate open and close
-        bound_swap_func = open_short_position(
-            one_delta_deployment=one_delta,
-            collateral_token=quote_token,
-            borrow_token=base_token,
-            pool_fee=pool_fee_raw,
-            collateral_amount=collateral_amount,
-            borrow_amount=borrow_amount,
-            wallet_address=self.tx_builder.get_token_delivery_address(),
-        )
+        if borrow_amount < 0:
+            bound_func = open_short_position(
+                one_delta_deployment=one_delta,
+                collateral_token=quote_token,
+                borrow_token=base_token,
+                pool_fee=pool_fee_raw,
+                collateral_amount=collateral_amount,
+                borrow_amount=-borrow_amount,
+                wallet_address=self.tx_builder.get_token_delivery_address(),
+            )
+        else:
+            # TODO: this is currently fully close the position
+            # we should support reducing the position later
+            bound_func = close_short_position(
+                one_delta_deployment=one_delta,
+                collateral_token=quote_token,
+                borrow_token=base_token,
+                atoken=atoken,
+                pool_fee=pool_fee_raw,
+                wallet_address=self.tx_builder.get_token_delivery_address(),
+            )
 
         return self.create_signed_transaction(
             one_delta.broker_proxy,
-            bound_swap_func,
+            bound_func,
             self.swap_gas_limit,
             asset_deltas,
             notes=notes,
@@ -169,7 +185,17 @@ class OneDeltaRoutingState(EthereumRoutingState):
         # TODO
         pass
 
-    def ensure_multiple_tokens_approved(self, one_delta: OneDeltaDeployment) -> List[BlockchainTransaction]:
+    def ensure_multiple_tokens_approved(
+        self,
+        *,
+        one_delta: OneDeltaDeployment,
+        aave_v3: AaveV3Deployment,
+        uniswap_v3: UniswapV3Deployment,
+        collateral_token_address: str,
+        borrow_token_address: str,
+        atoken_address: str,
+        vtoken_address: str,
+    ) -> list[BlockchainTransaction]:
         """Make sure we have ERC-20 approve() for the 1delta
 
         - Infinite approval on-chain
@@ -177,21 +203,80 @@ class OneDeltaRoutingState(EthereumRoutingState):
         - ...or previous approval in this state,
 
         :param token_address:
-        :param router_address:
 
         :return: Create 0 or 1 transactions if needs to be approved
         """
         txs = []
 
-        # TODO: this is not the right place for approve, move this later
-        for fn in approve(
-            one_delta_deployment=one_delta,
-            collateral_token=usdc.contract,
-            borrow_token=weth.contract,
-            atoken=ausdc.contract,
-            vtoken=vweth.contract,
-        ):
-            _execute_tx(web3, hot_wallet, fn)
+        broker_proxy_address = one_delta.broker_proxy.address
+        aave_v3_pool_address = aave_v3.pool.address
+        uniswap_router_address = uniswap_v3.swap_router.address
+
+        for token_address in [
+            collateral_token_address,
+            borrow_token_address,
+            atoken_address,
+        ]:
+            txs += self.ensure_token_approved(token_address, broker_proxy_address)
+            txs += self.ensure_token_approved(token_address, aave_v3_pool_address)
+            txs += self.ensure_token_approved(token_address, uniswap_router_address)
+
+        txs += self.ensure_vtoken_delegation_approved(vtoken_address, broker_proxy_address)
+
+        return txs
+
+    def ensure_vtoken_delegation_approved(
+        self,
+        token_address: str,
+        destination_address: str,
+        amount: int = 2**256-1,
+    ) -> list[BlockchainTransaction]:
+        """Make sure we have approveDelegation() for the trade
+
+        - Infinite approval on-chain
+        - ...or previous approval in this state,
+
+        :param token_address:
+        :param destination_address:
+        :param amount: How much to approve, default to approve infinite amount
+
+        :return: Create 0 or 1 transactions if needs to be approved
+        """
+
+        assert self.tx_builder is not None
+
+        if token_address in self.approved_routes[destination_address]:
+            # Already approved for this cycle in previous trade
+            return []
+
+        token_contract = get_deployed_contract(
+            self.web3,
+            "aave_v3/VariableDebtToken.json",
+            Web3.to_checksum_address(token_address),
+        )
+
+        # Set internal state we are approved
+        self.mark_router_approved(token_address, destination_address)
+
+        approve_address = self.tx_builder.get_token_delivery_address()
+
+        # TODO
+        # if token_contract.functions.allowance(approve_address, destination_address).call() > 0:
+        #     # already approved in previous execution cycle
+        #     return []
+
+        # Gas limit for ERC-20 approve() may vary per chain,
+        # see Arbitrum
+        gas_limit = APPROVE_GAS_LIMITS.get(self.tx_builder.chain_id, DEFAULT_APPROVE_GAS_LIMIT)
+        
+        # Create infinite approval
+        tx = self.tx_builder.sign_transaction(
+            token_contract,
+            token_contract.functions.approveDelegation(destination_address, amount),
+            gas_limit=gas_limit,
+            gas_price_suggestion=None,
+            asset_deltas=[],
+        )
 
         return [tx]
 
@@ -264,8 +349,9 @@ class OneDeltaSimpleRoutingModel(EthereumRoutingModel):
         self, 
         routing_state: EthereumRoutingState,
         target_pair: TradingPairIdentifier,
-        reserve_asset: AssetIdentifier,
-        reserve_amount: int,
+        *,
+        borrow_amount: int,
+        collateral_amount: int,
         max_slippage: float,
         check_balances=False,
         asset_deltas: Optional[List[AssetDelta]] = None,
@@ -275,12 +361,12 @@ class OneDeltaSimpleRoutingModel(EthereumRoutingModel):
         return super().make_leverage_trade(
             routing_state,
             target_pair,
-            reserve_asset,
-            reserve_amount,
-            max_slippage,
-            self.address_map,
-            check_balances,
+            borrow_amount=borrow_amount,
+            collateral_amount=collateral_amount,
+            max_slippage=max_slippage,
+            address_map=self.address_map,
+            check_balances=check_balances,
             asset_deltas=asset_deltas,
-            notes="",
+            notes=notes,
         )
 

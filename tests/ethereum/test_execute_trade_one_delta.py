@@ -25,7 +25,7 @@ from eth_defi.token import create_token, fetch_erc20_details
 from eth_defi.uniswap_v3.deployment import UniswapV3Deployment, fetch_deployment as fetch_uniswap_v3_deployment
 from eth_defi.uniswap_v3.price import UniswapV3PriceHelper
 from eth_defi.uniswap_v3.utils import get_default_tick_range
-from eth_defi.aave_v3.deployment import fetch_deployment as fetch_aave_deployment
+from eth_defi.aave_v3.deployment import AaveV3Deployment, fetch_deployment as fetch_aave_deployment
 from eth_defi.one_delta.deployment import OneDeltaDeployment
 from eth_defi.one_delta.deployment import fetch_deployment as fetch_1delta_deployment
 from eth_defi.provider.multi_provider import create_multi_provider_web3
@@ -42,6 +42,8 @@ from tradeexecutor.state.portfolio import Portfolio
 from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier, AssetType, TradingPairKind
 from tradeexecutor.testing.ethereumtrader_one_delta import OneDeltaTestTrader
 from tradeexecutor.testing.unit_test_trader import UnitTestTrader
+from tradeexecutor.ethereum.one_delta.analysis import decode_path
+
 
 pytestmark = pytest.mark.skipif(
     (os.environ.get("JSON_RPC_POLYGON") is None) or (shutil.which("anvil") is None),
@@ -74,7 +76,11 @@ def anvil_polygon_chain_fork(request, large_usdc_holder) -> str:
     :return: JSON-RPC URL for Web3
     """
     mainnet_rpc = os.environ["JSON_RPC_POLYGON"]
-    launch = fork_network_anvil(mainnet_rpc, unlocked_addresses=[large_usdc_holder])
+    launch = fork_network_anvil(
+        mainnet_rpc,
+        unlocked_addresses=[large_usdc_holder],
+        fork_block_number=49_000_000,
+    )
     try:
         yield launch.json_rpc_url
     finally:
@@ -153,10 +159,9 @@ def aave_v3_deployment(web3):
 
 
 @pytest.fixture
-def one_delta_deployment(web3, aave_v3_deployment) -> OneDeltaDeployment:
+def one_delta_deployment(web3) -> OneDeltaDeployment:
     return fetch_1delta_deployment(
         web3,
-        aave_v3_deployment,
         flash_aggregator_address="0x74E95F3Ec71372756a01eB9317864e3fdde1AC53",
         broker_proxy_address="0x74E95F3Ec71372756a01eB9317864e3fdde1AC53",
     )
@@ -309,16 +314,30 @@ def tx_builder(web3, hot_wallet) -> HotWalletTransactionBuilder:
 def ethereum_trader(
     web3: Web3,
     uniswap_v3_deployment: UniswapV3Deployment,
+    aave_v3_deployment: AaveV3Deployment,
     one_delta_deployment: OneDeltaDeployment,
     hot_wallet: HotWallet,
     state: State,
     pair_universe: PandasPairUniverse,
     tx_builder: HotWalletTransactionBuilder,
 ) -> OneDeltaTestTrader:
-    return OneDeltaTestTrader(one_delta_deployment, uniswap_v3_deployment, state, pair_universe, tx_builder)
+    return OneDeltaTestTrader(
+        one_delta_deployment,
+        aave_v3_deployment,
+        uniswap_v3_deployment,
+        state,
+        pair_universe,
+        tx_builder,
+    )
 
 
-@pytest.mark.skip(reason="Disabled for now")
+def test_one_delta_decode_path():
+    encoded = bytes.fromhex("7ceb23fd6bc0add59e62ac25578270cff1b9f619000bb800062791bca1f2de4661ed88a30c99a7a9449aa8417402")
+    decoded = decode_path(byte)
+
+    assert decoded == ['0x7ceB23fD6bC0adD59E62ac25578270cFf1b9f619', 3000, 0, 6, '0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174']
+
+
 def test_execute_trade_instructions_open_short(
     web3: Web3,
     state: State,
@@ -347,7 +366,8 @@ def test_execute_trade_instructions_open_short(
     path = [usdc.contract.address, weth.contract.address]
     fees = [WETH_USDC_FEE_RAW]
     eth_price = price_helper.get_amount_in(1 * 10 ** 18, path, fees) / 10 ** 6
-    print(eth_price)
+    
+    assert eth_price == pytest.approx(1636.46574)
 
     reserve_amount = Decimal(5000)
     leverage = 2
@@ -365,8 +385,92 @@ def test_execute_trade_instructions_open_short(
     ethereum_trader.execute_trades_simple([trade])
 
     assert trade.get_status() == TradeStatus.success
-    assert trade.executed_price == pytest.approx(1700.930449623516)
-    assert trade.executed_quantity == pytest.approx(Decimal(0.292184487391376249))
-    assert trade.lp_fees_paid == pytest.approx(1.495061595)
+    assert trade.executed_price == pytest.approx(1624.626136536907)
+    assert abs(trade.executed_quantity) == pytest.approx(Decimal(6.110729821939321144))
+    # TODO:
+    assert trade.lp_fees_paid == pytest.approx(0.018332189465817963)
     assert trade.native_token_price == 0.0
 
+    portfolio = state.portfolio
+    assert len(portfolio.open_positions) == 1
+    position = portfolio.open_positions[1]
+    assert position.get_collateral() == pytest.approx(14970)
+    assert position.get_borrowed() == pytest.approx(10000)
+    assert position.get_value() == pytest.approx(4970)
+
+
+def test_execute_trade_instructions_open_and_close_short(
+    web3: Web3,
+    state: State,
+    pair_universe: PandasPairUniverse,
+    uniswap_v3_deployment: UniswapV3Deployment,
+    hot_wallet: HotWallet,
+    usdc: AssetIdentifier,
+    weth: AssetIdentifier,
+    weth_usdc_shorting_pair: TradingPairIdentifier,
+    start_ts: datetime.datetime,
+    price_helper: UniswapV3PriceHelper,
+    ethereum_trader: OneDeltaTestTrader 
+):
+    """Open short position."""
+
+    portfolio = state.portfolio
+
+    # We have everything in cash
+    assert portfolio.get_total_equity() == 10_000
+    assert portfolio.get_cash() == 10_000
+
+    # Buy 500 USDC worth of WETH
+    trader = UnitTestTrader(state)
+
+    # swap from quote to base (usdc to weth)
+    path = [usdc.contract.address, weth.contract.address]
+    fees = [WETH_USDC_FEE_RAW]
+    eth_price = price_helper.get_amount_in(1 * 10 ** 18, path, fees) / 10 ** 6
+    
+    assert eth_price == pytest.approx(1636.46574)
+
+    reserve_amount = Decimal(5000)
+    leverage = 2
+
+    position1, trade1 = trader.open_short(
+        weth_usdc_shorting_pair,
+        reserve_amount,
+        eth_price,
+        leverage,
+    )
+    assert trade1.is_leverage()
+    assert state.portfolio.get_total_equity() == pytest.approx(10000.0)
+    assert trade1.get_status() == TradeStatus.planned
+
+    ethereum_trader.execute_trades_simple([trade1])
+
+    assert len(state.portfolio.open_positions) == 1
+    assert trade1.get_status() == TradeStatus.success
+    assert trade1.executed_price == pytest.approx(1624.626136536907)
+    assert abs(trade1.executed_quantity) == pytest.approx(Decimal(6.110729821939321144))
+    assert trade1.native_token_price == 0.0
+
+    position2, trade2 = trader.close_short(
+        weth_usdc_shorting_pair,
+        reserve_amount, # TODO
+        eth_price,
+        leverage,
+    )
+
+    assert trade2.is_leverage()
+    assert trade2.get_status() == TradeStatus.planned
+
+    ethereum_trader.execute_trades_simple([trade2])
+
+    assert trade2.get_status() == TradeStatus.success
+    assert trade2.executed_price == pytest.approx(1631.137329233084)
+    # assert abs(trade2.executed_quantity) == pytest.approx(Decimal(6.110729821939321144))
+
+    # TODO: check why this position isn't closed
+    portfolio = state.portfolio
+    assert len(portfolio.open_positions) == 1
+    position = portfolio.open_positions[1]
+    assert position.get_collateral() == pytest.approx(0)
+    assert position.get_borrowed() == pytest.approx(0)
+    assert position.get_value() == pytest.approx(0)

@@ -5,35 +5,45 @@ from decimal import Decimal
 import logging
 
 from web3 import Web3
+from eth_typing import HexAddress, HexStr
+from hexbytes import HexBytes
 
 from eth_defi.hotwallet import HotWallet
 from eth_defi.uniswap_v2.analysis import TradeSuccess, TradeFail
 from eth_defi.uniswap_v3.deployment import UniswapV3Deployment
 from eth_defi.uniswap_v3.price import UniswapV3PriceHelper, estimate_sell_received_amount
-from eth_defi.uniswap_v3.analysis import analyse_trade_by_receipt
 from eth_defi.uniswap_v3.deployment import mock_partial_deployment_for_analysis
-from tradeexecutor.ethereum.tx import TransactionBuilder
+from eth_defi.token import fetch_erc20_details, TokenDetails
+from eth_defi.one_delta.deployment import OneDeltaDeployment, fetch_deployment
+from eth_defi.one_delta.constants import TradeOperation
 
+from tradeexecutor.ethereum.tx import TransactionBuilder
+from tradeexecutor.state.state import State
+from tradeexecutor.state.trade import TradeExecution, TradeStatus
+from tradeexecutor.state.blockhain_transaction import BlockchainTransaction, BlockchainTransactionType
 from tradeexecutor.state.identifier import TradingPairIdentifier
-#from tradeexecutor.strategy.execution_model import ExecutionModel
-from tradeexecutor.ethereum.execution import EthereumExecutionModel
+from tradeexecutor.ethereum.execution import EthereumExecutionModel, get_swap_transactions
+
+from tradeexecutor.ethereum.one_delta.analysis import analyse_trade_by_receipt
+from tradeexecutor.strategy.lending_protocol_leverage import create_short_loan, plan_loan_update_for_short, create_credit_supply_loan, update_credit_supply_loan
 
 logger = logging.getLogger(__name__)
 
 
 class OneDeltaExecutionModel(EthereumExecutionModel):
-    """Run order execution on a single Uniswap v3 style exchanges."""
+    """Run order execution on 1delta."""
 
-    def __init__(self,
-                 tx_builder: TransactionBuilder,
-                 min_balance_threshold=Decimal("0.5"),
-                 confirmation_block_count=6,
-                 confirmation_timeout=datetime.timedelta(minutes=5),
-                 max_slippage: float = 0.01,
-                 stop_on_execution_failure=True,
-                 swap_gas_fee_limit=2_000_000,
-                 mainnet_fork=False,
-                 ):
+    def __init__(
+        self,
+        tx_builder: TransactionBuilder,
+        min_balance_threshold=Decimal("0.5"),
+        confirmation_block_count=6,
+        confirmation_timeout=datetime.timedelta(minutes=5),
+        max_slippage: float = 0.01,
+        stop_on_execution_failure=True,
+        swap_gas_fee_limit=2_000_000,
+        mainnet_fork=False,
+    ):
         """
         :param tx_builder:
             Hot wallet instance used for this execution
@@ -64,48 +74,105 @@ class OneDeltaExecutionModel(EthereumExecutionModel):
             mainnet_fork=mainnet_fork,
         )
 
-    def analyse_trade_by_receipt(
-        self,
-        web3: Web3, 
-        uniswap: UniswapV3Deployment, 
-        tx: dict, 
-        tx_hash: str,
-        tx_receipt: dict,
-        input_args: tuple,
-    ) -> (TradeSuccess | TradeFail):
-        assert type(input_args) == tuple and len(input_args) > 0, "Uniswap v3 trade success analysis needs input args"
-        return analyse_trade_by_receipt(web3, uniswap, tx, tx_hash, tx_receipt, input_args)
+    def analyse_trade_by_receipt(self, *args, **kwargs) -> (TradeSuccess | TradeFail):
+        pass
+
+    def is_v3(self) -> bool:
+        return True
 
     def mock_partial_deployment_for_analysis(
         self,
         web3: Web3, 
-        router_address: str
+        router_address: str,
     ) -> UniswapV3Deployment:
-        return mock_partial_deployment_for_analysis(web3, router_address)
+        pass
 
-    def is_v3(self) -> bool:
-        """Returns true if instance is related to Uniswap V3, else false. 
-        Kind of a hack to be able to share resolve trades function amongst v2 and v3."""
-        return True
-    
+    def resolve_trades(
+        self,
+        ts: datetime.datetime,
+        state: State,
+        tx_map: dict[HexStr, tuple[TradeExecution, BlockchainTransaction]],
+        receipts: dict[HexBytes, dict],
+        stop_on_execution_failure=True,
+    ):
+        """Resolve trade outcome.
 
-def get_current_price(web3: Web3, uniswap: UniswapV3Deployment, pair: TradingPairIdentifier, quantity=Decimal(1)) -> float:
-    """Get a price from Uniswap v3 pool, assuming you are selling 1 unit of base token.
-    
-    Does decimal adjustment.
-    
-    :return: Price in quote token.
-    """
-    
-    quantity_raw = pair.base.convert_to_raw_amount(quantity)
-    
-    out_raw = estimate_sell_received_amount(
-        uniswap=uniswap,
-        base_token_address=pair.base.checksum_address,
-        quote_token_address=pair.quote.checksum_address,
-        quantity=quantity_raw,
-        target_pair_fee=int(pair.fee * 1_000_000),        
-    )
+        Read on-chain Uniswap swap data from the transaction receipt and record how it went.
 
-    return float(pair.quote.convert_to_decimal(out_raw))
+        Mutates the trade objects in-place.
 
+        :param tx_map:
+            tx hash -> (trade, transaction) mapping
+
+        :param receipts:
+            tx hash -> receipt object mapping
+
+        :param stop_on_execution_failure:
+            Raise an exception if any of the trades failed"""
+
+        web3 = self.web3
+
+        trades = self.update_confirmation_status(ts, tx_map, receipts)
+
+        # Then resolve trade status by analysis the tx receipt
+        # if the blockchain transaction was successsful.
+        # Also get the actual executed token counts.
+        for trade in trades:
+            pricing_pair = trade.pair.get_pricing_pair()
+            base_token_details = fetch_erc20_details(web3, pricing_pair.base.checksum_address)
+            quote_token_details = fetch_erc20_details(web3, pricing_pair.quote.checksum_address)
+            reserve = trade.reserve_currency
+            tx = get_swap_transactions(trade)
+            one_delta = fetch_deployment(web3, tx.contract_address, tx.contract_address)
+            # TODO: this router address is wrong, but it doesn't matter since we don't use it here
+            uniswap = mock_partial_deployment_for_analysis(web3, tx.contract_address)
+
+            tx_dict = tx.get_transaction()
+            receipt = receipts[HexBytes(tx.tx_hash)]
+
+            input_args = tx.get_actual_function_input_args()
+
+            result = analyse_trade_by_receipt(
+                web3,
+                one_delta=one_delta,
+                uniswap=uniswap,
+                tx=tx_dict,
+                tx_hash=tx.tx_hash,
+                tx_receipt=receipt,
+                input_args=input_args,
+                trade_operation=TradeOperation.OPEN if trade.is_sell() else TradeOperation.CLOSE,
+            )
+
+            if isinstance(result, TradeSuccess):
+                # path in 1delta is always from base -> quote
+                assert result.path[0].lower() == base_token_details.address.lower(), f"Path is {path}, base token is {base_token_details}"
+                assert result.path[-1].lower() == reserve.address.lower()
+                
+                price = result.get_human_price(quote_token_details.address == result.token0.address)
+
+                # TODO: verify these numbers
+                if trade.is_buy():
+                    executed_amount = -result.amount_in / Decimal(10**base_token_details.decimals)
+                    executed_reserve = result.amount_out / Decimal(10**reserve.decimals)
+                else:
+                    executed_amount = result.amount_in / Decimal(10**base_token_details.decimals)
+                    executed_reserve = result.amount_out / Decimal(10**reserve.decimals)
+
+                lp_fee_paid = result.lp_fee_paid
+
+                assert (executed_reserve > 0) and (executed_amount != 0) and (price > 0), f"Executed amount {executed_amount}, executed_reserve: {executed_reserve}, price: {price}, tx info {trade.tx_info}"
+
+                # Mark as success
+                state.mark_trade_success(
+                    ts,
+                    trade,
+                    executed_price=float(price),
+                    executed_amount=executed_amount,
+                    executed_reserve=executed_reserve,
+                    lp_fees=lp_fee_paid,
+                    native_token_price=0,  # won't fix
+                    cost_of_gas=result.get_cost_of_gas(),
+                )
+            else:
+                # Trade failed
+                report_failure(ts, state, trade, stop_on_execution_failure)
