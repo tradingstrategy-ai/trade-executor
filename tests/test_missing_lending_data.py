@@ -69,7 +69,7 @@ LENDING_RESERVES = [
 
 STOP_LOSS_TIME_BUCKET = TimeBucket.m15
 
-START_AT = datetime.datetime(2022, 10, 1)
+START_AT = datetime.datetime(2023, 1, 9)
 END_AT = datetime.datetime(2023, 1, 12)
 
 TRADING_STRATEGY_TYPE = StrategyType.managed_positions
