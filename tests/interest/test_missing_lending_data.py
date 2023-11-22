@@ -1,3 +1,5 @@
+"""Correctly handle gaps in lending data (no Aave activity, no lending candle)."""
+
 from typing import List, Dict
 from pandas_ta.overlap import ema
 from pandas_ta.momentum import rsi, stoch
@@ -331,6 +333,7 @@ def decide_trades(
 
 
 def test_missing_lending_data():
+    """See that backtest does not fail if lending candles are missing."""
     state, universe, debug_dump = run_backtest_inline(
         name="SMI and MFI strategy",
         start_at=START_AT,
