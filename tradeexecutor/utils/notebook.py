@@ -24,6 +24,8 @@ def setup_charting_and_output(
     mode: OutputMode=OutputMode.interactive,
     image_format="svg",
     max_rows=1000,
+    min_rows=50,
+    max_columns=50,
     width=1500,
     height=1500,
 ):
@@ -89,3 +91,9 @@ def setup_charting_and_output(
 
     if max_rows:
         pd.set_option('display.max_rows', max_rows)
+
+    if min_rows:
+        pd.set_option('display.min_rows', min_rows)
+
+    if max_columns:
+        pd.set_option('display.max_columns', max_columns)
