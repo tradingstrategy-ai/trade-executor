@@ -23,7 +23,7 @@ time_buckets = [TimeBucket.d1, TimeBucket.h1]
 exchange_slugs = ["uniswap-v3", "quickswap"]
 
 max_price_threshold = 100_000
-min_price_threshold = 0.000001
+min_price_threshold = 0.001
 
 exchanges = client.fetch_exchange_universe()
 exchange_ids = [exchanges.get_by_chain_and_slug(ChainId.polygon, s).exchange_id for s in exchange_slugs]
