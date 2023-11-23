@@ -64,6 +64,8 @@ def generate_ohlcv_candles(
     open = start_price
     now = start
 
+    assert pair_id is not None
+
     data = []
 
     while now < end:
@@ -92,6 +94,7 @@ def generate_ohlcv_candles(
 
     df = pd.DataFrame(data)
     df.set_index("timestamp", drop=False, inplace=True)
+    df["volume"] = df["buy_volume"] + df["sell_volume"]   # Convert from Uni v2 style volume
     return df
 
 
