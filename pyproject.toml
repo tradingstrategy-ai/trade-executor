@@ -17,7 +17,7 @@ python = ">=3.10,<3.11"
 
 # Use these during development
 # trading-strategy = {path = "deps/trading-strategy", develop = true}
-trading-strategy = "^0.20.17"
+trading-strategy = "^0.21"
 requests = "^2.27.1"
 matplotlib = "^3.6.0"
 jupyterlab = "^4.0.7"
