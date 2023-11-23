@@ -333,7 +333,7 @@ def ethereum_trader(
 
 def test_one_delta_decode_path():
     encoded = bytes.fromhex("7ceb23fd6bc0add59e62ac25578270cff1b9f619000bb800062791bca1f2de4661ed88a30c99a7a9449aa8417402")
-    decoded = decode_path(byte)
+    decoded = decode_path(encoded)
 
     assert decoded == ['0x7ceB23fD6bC0adD59E62ac25578270cFf1b9f619', 3000, 0, 6, '0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174']
 
