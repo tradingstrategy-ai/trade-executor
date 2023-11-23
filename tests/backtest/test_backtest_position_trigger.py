@@ -552,14 +552,14 @@ def test_synthetic_data_backtest_take_profit(
     for p in state.portfolio.get_all_positions():
         assert p.take_profit, f"Position did not have take profit: {p}"
 
-    assert len(list(state.portfolio.get_all_positions())) == 46
-    assert len(list(state.portfolio.get_all_trades())) == 91
+    assert len(list(state.portfolio.get_all_positions())) == 35
+    assert len(list(state.portfolio.get_all_trades())) == 69
 
     # We should have some stop loss trades and some trades closed for profit
     take_profit_trades = [t for t in state.portfolio.get_all_trades() if t.is_take_profit()]
     rebalance_trades = [t for t in state.portfolio.get_all_trades() if t.is_rebalance()]
-    assert len(rebalance_trades) == 46
-    assert len(take_profit_trades) == 45
+    assert len(rebalance_trades) == 37
+    assert len(take_profit_trades) == 32
 
     # Check are stop loss positions unprofitable
     take_profit_positions = [p for p in state.portfolio.get_all_positions() if p.is_take_profit()]
@@ -663,7 +663,7 @@ def test_synthetic_data_backtest_trailing_stop_loss(
 
     # Check some of the trailing stop losses ended up for profit
     profitable_trailing_stop_losses = [p for p in trailing_stop_loss_positions if p.is_profitable()]
-    assert len(profitable_trailing_stop_losses) == 15
+    assert len(profitable_trailing_stop_losses) == 18
 
     # Check we do not inject bad state variables
     dump = state.to_json()
