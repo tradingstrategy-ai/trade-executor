@@ -22,6 +22,7 @@ from tradeexecutor.ethereum.enzyme.vault import EnzymeVaultSyncModel
 from tradeexecutor.ethereum.hot_wallet_sync_model import HotWalletSyncModel
 from tradeexecutor.ethereum.tx import TransactionBuilder
 from tradeexecutor.ethereum.one_delta.one_delta_execution import OneDeltaExecutionModel
+from tradeexecutor.ethereum.one_delta.one_delta_live_pricing import one_delta_live_pricing_factory
 from tradeexecutor.ethereum.uniswap_v2.uniswap_v2_execution import UniswapV2ExecutionModel
 from tradeexecutor.ethereum.uniswap_v2.uniswap_v2_live_pricing import uniswap_v2_live_pricing_factory
 from tradeexecutor.ethereum.uniswap_v2.uniswap_v2_routing import UniswapV2SimpleRoutingModel
@@ -147,7 +148,7 @@ def create_execution_model(
             mainnet_fork=mainnet_fork,
         )
         valuation_model_factory = uniswap_v3_sell_valuation_factory
-        pricing_model_factory = uniswap_v3_live_pricing_factory
+        pricing_model_factory = one_delta_live_pricing_factory
     else:
         raise RuntimeError(f"Does not know how to route: {routing_hint}")
 

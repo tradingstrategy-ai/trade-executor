@@ -40,21 +40,18 @@ from tradeexecutor.strategy.default_routing_options import TradeRouting
 logger = setup_logging()
 
 
-# from eth_defi.abi import get_contract, get_deployed_contract
-
-web3 = Web3(HTTPProvider(os.environ["JSON_RPC_POLYGON"]))
-
 client = Client.create_live_client(api_key=os.environ["TRADING_STRATEGY_API_KEY"])
 
 # prepare strategy universe
 chain = ChainId.polygon
 
 pairs = [
-    (ChainId.polygon, "uniswap-v3", "WETH", "USDC", 0.0005)
+    (ChainId.polygon, "uniswap-v3", "WETH", "USDC", 0.0005),
 ]
 
 reverses = [
-    (ChainId.polygon, LendingProtocolType.aave_v3, "USDC")
+    (ChainId.polygon, LendingProtocolType.aave_v3, "WETH"),
+    (ChainId.polygon, LendingProtocolType.aave_v3, "USDC"),
 ]
 
 dataset = load_partial_data(
@@ -70,14 +67,6 @@ dataset = load_partial_data(
 
 # Convert loaded data to a trading pair universe
 strategy_universe = TradingStrategyUniverse.create_single_pair_universe(dataset)
-
-# usdc = fetch_erc20_details(web3, "0x2791bca1f2de4661ed88a30c99a7a9449aa84174")
-# asset_usdc = AssetIdentifier(
-#     ChainId.polygon.value,
-#     usdc.contract.address,
-#     usdc.symbol,
-#     usdc.decimals,
-# )
 
 # prepare position manager
 web3config = create_web3_config(
@@ -110,8 +99,6 @@ if store.is_pristine():
 else:
     state = store.load()
 
-# 'execution_model', 'universe', and 'routing_model'
-
 routing_model = OneDeltaSimpleRoutingModel(
     address_map={
         "one_delta_broker_proxy": "0x74E95F3Ec71372756a01eB9317864e3fdde1AC53",
@@ -124,12 +111,12 @@ routing_model = OneDeltaSimpleRoutingModel(
         "quoter": "0xb27308f9F90D607463bb33eA1BeBb41C27CE5AB6",
     },
     allowed_intermediary_pairs={},
-    reserve_token_address="0x2791bca1f2de4661ed88a30c99a7a9449aa84174",
+    reserve_token_address="0x2791bca1f2de4661ed88a30c99a7a9449aa84174",  # USDC
 )
 
 position_manager = PositionManager(
     datetime.datetime.utcnow() + datetime.timedelta(days=1),  # Trade on t plus 1 day
-    strategy_universe.data_universe,
+    strategy_universe,
     state,
     pricing_model_factory(
         execution_model,
@@ -138,6 +125,7 @@ position_manager = PositionManager(
     ),
 )
 
-print(position_manager)
-trade_pair = pairs[0]
-# trades = position_manager.open_short(trade_pair, 1, leverage=1.1)
+pair_universe = strategy_universe.universe.pairs
+pair = pair_universe.get_single()
+
+trades = position_manager.open_short(pair, 0.1, leverage=1.1)
