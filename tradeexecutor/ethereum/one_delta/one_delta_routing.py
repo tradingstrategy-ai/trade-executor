@@ -56,7 +56,7 @@ class OneDeltaRoutingState(EthereumRoutingState):
     
     def get_uniswap_for_pair(self, address_map: dict, target_pair: TradingPairIdentifier) -> UniswapV3Deployment:
         """Get a router for a trading pair."""
-        return get_uniswap_for_pair(self.web3, address_map, target_pair)
+        return get_uniswap_for_pair(self.web3, address_map, target_pair.get_pricing_pair())
 
     def get_aave_v3_for_pair(self, address_map: dict, target_pair: TradingPairIdentifier) -> AaveV3Deployment:
         try:

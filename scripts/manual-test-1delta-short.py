@@ -13,6 +13,7 @@ How to run:
 import datetime
 import os
 from pathlib import Path
+from decimal import Decimal
 
 import pandas as pd
 
@@ -36,6 +37,7 @@ from tradeexecutor.cli.bootstrap import create_execution_and_sync_model, create_
 from tradeexecutor.strategy.execution_model import AssetManagementMode
 from tradeexecutor.cli.log import setup_logging
 from tradeexecutor.strategy.default_routing_options import TradeRouting
+from tradeexecutor.ethereum.tx import HotWalletTransactionBuilder
 
 logger = setup_logging()
 
@@ -68,7 +70,7 @@ dataset = load_partial_data(
 # Convert loaded data to a trading pair universe
 strategy_universe = TradingStrategyUniverse.create_single_pair_universe(dataset)
 
-# prepare position manager
+# setup execution and sync model
 web3config = create_web3_config(
     json_rpc_binance=None,
     json_rpc_polygon=os.environ["JSON_RPC_POLYGON"],
@@ -99,6 +101,7 @@ if store.is_pristine():
 else:
     state = store.load()
 
+usdc = fetch_erc20_details(sync_model.web3, "0x2791bca1f2de4661ed88a30c99a7a9449aa84174")
 routing_model = OneDeltaSimpleRoutingModel(
     address_map={
         "one_delta_broker_proxy": "0x74E95F3Ec71372756a01eB9317864e3fdde1AC53",
@@ -111,11 +114,21 @@ routing_model = OneDeltaSimpleRoutingModel(
         "quoter": "0xb27308f9F90D607463bb33eA1BeBb41C27CE5AB6",
     },
     allowed_intermediary_pairs={},
-    reserve_token_address="0x2791bca1f2de4661ed88a30c99a7a9449aa84174",  # USDC
+    reserve_token_address=usdc.address.lower(),
 )
 
+# sync reserve
+asset_usdc = AssetIdentifier(
+    ChainId.polygon.value,
+    usdc.contract.address,
+    usdc.symbol,
+    usdc.decimals,
+)
+sync_model.setup_all(state, [asset_usdc])
+
+# init position manager
 position_manager = PositionManager(
-    datetime.datetime.utcnow() + datetime.timedelta(days=1),  # Trade on t plus 1 day
+    datetime.datetime.utcnow(),
     strategy_universe,
     state,
     pricing_model_factory(
@@ -125,7 +138,19 @@ position_manager = PositionManager(
     ),
 )
 
+# open short
 pair_universe = strategy_universe.universe.pairs
 pair = pair_universe.get_single()
+trades = position_manager.open_short(pair, Decimal(0.5), leverage=1.1)
 
-trades = position_manager.open_short(pair, 0.1, leverage=1.1)
+logger.info("Opening short trade: %s", trades[0])
+
+# execute trades
+tx_builder = sync_model.create_transaction_builder()
+routing_state = OneDeltaRoutingState(pair_universe, tx_builder)
+
+state.start_execution_all(datetime.datetime.utcnow(), trades)
+routing_model.execute_trades_internal(pair_universe, routing_state, trades)
+execution_model.broadcast_and_resolve_old(state, trades, stop_on_execution_failure=True)
+
+assert trades[0].is_success()
