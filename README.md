@@ -79,6 +79,16 @@ Or directly from Github URL:
 pip install -e "git+https://github.com/tradingstrategy-ai/trade-executor.git@master#egg=trade-executor[web-server,execution,qstrader,quantstats]"  
 ```
 
+[**Limited file size by pre-commit hook**](scripts/pre-commit-sample/README.md)
+```shell
+# The pre-commit hook checks the size of files before allowing a commit to proceed
+# If a file exceeds the specified limit, the commit will be aborted
+# Default MAX FILE SIZE is 35MB
+# Run script setup
+cd trade-executor
+bash scripts/set-pre-commit-checkfilesize.sh 
+```
+
 ## Architecture overview
 
 Here is an example of a live trading deployment of a `trade-executor` package.
