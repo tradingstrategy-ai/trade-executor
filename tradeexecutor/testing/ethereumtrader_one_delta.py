@@ -10,6 +10,7 @@ from web3 import Web3
 from eth_defi.abi import get_deployed_contract
 from eth_defi.gas import estimate_gas_fees
 from eth_defi.hotwallet import HotWallet
+from eth_defi.aave_v3.deployment import AaveV3Deployment
 from eth_defi.uniswap_v3.deployment import UniswapV3Deployment
 from eth_defi.uniswap_v3.price import UniswapV3PriceHelper
 from eth_defi.one_delta.deployment import OneDeltaDeployment
@@ -31,6 +32,7 @@ class OneDeltaTestTrader(EthereumTrader):
     def __init__(
         self,
         one_delta: OneDeltaDeployment,
+        aave: AaveV3Deployment,
         uniswap: UniswapV3Deployment,
         state: State,
         pair_universe: PandasPairUniverse,
@@ -38,6 +40,7 @@ class OneDeltaTestTrader(EthereumTrader):
     ):
         super().__init__(tx_builder, state, pair_universe)
         self.one_delta = one_delta
+        self.aave = aave
         self.uniswap = uniswap
         self.execution_model = OneDeltaExecutionModel(tx_builder)
         # self.price_helper = UniswapV3PriceHelper(uniswap)
@@ -144,7 +147,7 @@ class OneDeltaTestTrader(EthereumTrader):
         pair_universe = self.pair_universe
         web3 = self.web3
         one_delta = self.one_delta
-        # aave = self.aave
+        aave = self.aave
         uniswap = self.uniswap
         state = self.state   
         
@@ -160,7 +163,9 @@ class OneDeltaTestTrader(EthereumTrader):
         routing_model = OneDeltaSimpleRoutingModel(
             address_map={
                 "one_delta_broker_proxy": one_delta.broker_proxy.address,
-                "aave_v3_pool": one_delta.broker_proxy.address,
+                "aave_v3_pool": aave.pool.address,
+                "aave_v3_data_provider": aave.data_provider.address,
+                "aave_v3_oracle": aave.oracle.address,
                 "factory": uniswap.factory.address,
                 "router": uniswap.swap_router.address,
                 "position_manager": uniswap.position_manager.address,

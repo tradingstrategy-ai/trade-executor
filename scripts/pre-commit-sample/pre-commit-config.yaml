@@ -1,0 +1,7 @@
+repos:
+- repo: local
+  hooks:
+  - id: pre-commit-checkfilesize
+    name: pre-commit-checkfilesize
+    entry: .git/hooks/pre-commit-checkfilesize
+    language: script

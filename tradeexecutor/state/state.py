@@ -842,13 +842,17 @@ class State:
         txt = json.dumps(data, cls=_ExtendedEncoder)
         return txt
 
-    def write_json_file(self, path: Path):
+    def write_json_file(self, path: Path | str):
         """Write JSON to a file.
 
         - Validates state before writing it out
 
         - Work around any serialisation quirks
         """
+
+        if type(path) == str:
+            path = Path(path)
+
         assert isinstance(path, Path)
         txt = self.to_json_safe()
         with path.open("wt") as out:
@@ -869,11 +873,14 @@ class State:
         return start_at, end_at
 
     @staticmethod
-    def read_json_file(path: Path) -> "State":
+    def read_json_file(path: Path | str) -> "State":
         """Read state from the JSON file.
 
         - Deal with all serialisation quirks
         """
+
+        if type(path) == str:
+            path = Path(path)
 
         assert isinstance(path, Path), f"Expected Path, got {path.__class__}"
 

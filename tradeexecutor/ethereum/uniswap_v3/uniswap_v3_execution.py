@@ -66,15 +66,16 @@ class UniswapV3ExecutionModel(EthereumExecutionModel):
 
     def analyse_trade_by_receipt(
         self,
-        web3: Web3, 
-        uniswap: UniswapV3Deployment, 
-        tx: dict, 
+        web3: Web3,
+        *,
+        deployment: UniswapV3Deployment,
+        tx: dict,
         tx_hash: str,
         tx_receipt: dict,
-        input_args: tuple,
+        input_args: tuple | None = None,
+        pair_fee: float | None = None,
     ) -> (TradeSuccess | TradeFail):
-        assert type(input_args) == tuple and len(input_args) > 0, "Uniswap v3 trade success analysis needs input args"
-        return analyse_trade_by_receipt(web3, uniswap, tx, tx_hash, tx_receipt, input_args)
+        return analyse_trade_by_receipt(web3, deployment, tx, tx_hash, tx_receipt, input_args)
 
     def mock_partial_deployment_for_analysis(
         self,

@@ -134,13 +134,14 @@ class EthereumExecutionModel(ExecutionModel):
     @abstractmethod
     def analyse_trade_by_receipt(
         self,
-        web3: Web3, 
-        uniswap: UniswapV2Deployment, 
+        web3: Web3,
+        *,
+        deployment: "UniswapV2Deployment", 
         tx: dict, 
         tx_hash: str,
         tx_receipt: dict,
-        input_args: tuple | None,
-        pair_fee: float | None
+        input_args: tuple | None = None,
+        pair_fee: float | None = None,
     ) -> (TradeSuccess | TradeFail):
         """Links to either uniswap v2 or v3 implementation in eth_defi"""
 
@@ -495,25 +496,15 @@ class EthereumExecutionModel(ExecutionModel):
 
             input_args = swap_tx.get_actual_function_input_args()
             
-            if self.is_v3():
-                result = self.analyse_trade_by_receipt(
-                    web3,
-                    uniswap,
-                    tx_dict,
-                    swap_tx.tx_hash,
-                    receipt,
-                    input_args=input_args,
-                )
-            else:
-                result = self.analyse_trade_by_receipt(
-                    web3,
-                    uniswap,
-                    tx_dict,
-                    swap_tx.tx_hash,
-                    receipt,
-                    input_args=input_args,
-                    pair_fee=trade.pair.fee,
-                )
+            result = self.analyse_trade_by_receipt(
+                web3,
+                deployment=uniswap,
+                tx=tx_dict,
+                tx_hash=swap_tx.tx_hash,
+                tx_receipt=receipt,
+                input_args=input_args,
+                pair_fee=trade.pair.fee,
+            )
 
             if isinstance(result, TradeSuccess):
 

@@ -8,7 +8,6 @@ import pytest
 from eth_account import Account
 from hexbytes import HexBytes
 
-from eth_defi.enzyme.integration_manager import IntegrationManagerActionId
 from eth_defi.enzyme.vault import Vault
 from eth_defi.hotwallet import HotWallet
 from eth_defi.trace import assert_transaction_success_with_explanation
@@ -16,7 +15,6 @@ from eth_defi.uniswap_v2.deployment import UniswapV2Deployment
 from eth_typing import HexAddress
 
 from tradeexecutor.state.balance_update import BalanceUpdatePositionType, BalanceUpdateCause
-from tradeexecutor.state.blockhain_transaction import BlockchainTransactionType
 from tradingstrategy.pair import PandasPairUniverse
 from web3 import Web3
 from web3.contract import Contract
@@ -46,7 +44,6 @@ def hot_wallet(web3, deployer, user_1, usdc: Contract) -> HotWallet:
     assert_transaction_success_with_explanation(web3, tx_hash)
     tx_hash = usdc.functions.transfer(wallet.address, 500 * 10**6).transact({"from": deployer})
     assert_transaction_success_with_explanation(web3, tx_hash)
-
     return wallet
 
 
@@ -238,3 +235,5 @@ def test_enzyme_redeem_open_position(
     assert position.get_value() == pytest.approx(100)
     assert reserve.get_value() == pytest.approx(200)
     assert state.portfolio.get_total_equity() == pytest.approx(300)
+
+

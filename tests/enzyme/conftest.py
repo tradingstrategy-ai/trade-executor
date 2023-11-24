@@ -8,6 +8,9 @@
 
 import logging
 import pytest
+from tradingstrategy.timebucket import TimeBucket
+from tradingstrategy.universe import Universe
+
 from eth_defi.enzyme.vault import Vault
 from pytest import FixtureRequest
 
@@ -30,7 +33,8 @@ from eth_defi.uniswap_v2.deployment import deploy_uniswap_v2_like, UniswapV2Depl
 from tradeexecutor.ethereum.token import translate_token_details
 from tradeexecutor.ethereum.universe import create_pair_universe
 from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier
-
+from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
+from tradeexecutor.testing.synthetic_exchange_data import generate_exchange
 
 logger = logging.getLogger(__name__)
 
@@ -543,3 +547,31 @@ def pairs(weth_usdc_trading_pair, pepe_usdc_trading_pair, bob_usdc_trading_pair,
 @pytest.fixture()
 def multipair_universe(web3, uniswap_v2_exchange, pairs) -> PandasPairUniverse:
     return create_pair_universe(web3, uniswap_v2_exchange, pairs)
+
+
+@pytest.fixture()
+def single_pair_strategy_universe(web3, uniswap_v2, usdc_asset, pair_universe) -> TradingStrategyUniverse:
+
+    uni_v2_exchange = generate_exchange(
+        exchange_id=1,
+        chain_id=ChainId(web3.eth.chain_id),
+        address=uniswap_v2.factory.address,
+    )
+
+    data_universe = Universe(
+        time_bucket=TimeBucket.d1,
+        chains={ChainId(web3.eth.chain_id)},
+        exchanges={uni_v2_exchange},
+        pairs=pair_universe,
+        candles=None,
+        liquidity=None
+    )
+
+    strategy_universe = TradingStrategyUniverse(
+       reserve_assets={usdc_asset},
+       data_universe=data_universe,
+    )
+
+    return strategy_universe
+
+

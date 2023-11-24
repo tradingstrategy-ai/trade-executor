@@ -45,3 +45,6 @@ monitor.db
 
 # trade-executor start test instructions
 /quickswap-dummy.py
+
+# Precommit hooks
+.pre-commit-config.yaml
