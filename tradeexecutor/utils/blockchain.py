@@ -5,6 +5,9 @@ from web3 import Web3
 from web3.types import BlockIdentifier
 
 from eth_defi.event_reader.conversion import convert_jsonrpc_value_to_int
+from Crypto.Hash import SHA256
+
+from tradeexecutor.state.types import JSONHexAddress
 
 
 def get_latest_block_timestamp(web3: Web3) -> datetime.datetime:
@@ -49,3 +52,19 @@ def get_block_timestamp(web3: Web3, block_identifier: BlockIdentifier) -> dateti
         ts = ts_str
 
     return datetime.datetime.utcfromtimestamp(ts)
+
+
+def string_to_eth_address(input_string) -> JSONHexAddress:
+    """Convert a string to an Ethereum address deterministically.
+
+    :param input_string: Input string to convert to an Ethereum address.
+    :return: Ethereum address.
+    """
+    hasher = SHA256.new()
+    hasher.update(input_string.encode('utf-8'))
+    hashed = hasher.hexdigest()
+
+    # Take the first 40 characters of the hash and prepend '0x' to create an Ethereum address
+    eth_address = '0x' + hashed[:40]
+
+    return eth_address
