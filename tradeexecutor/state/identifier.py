@@ -644,21 +644,3 @@ class AssetWithTrackedValue:
         # TODO: this is a temp hack for testing to make sure the borrowed quantity can be minimum 0
         if self.quantity < 0:
             self.quantity = Decimal(0)
-
-def add_informational_columns(df: DataFrame, pair: TradingPairIdentifier, exchange_slug: str):
-    df['base_token_symbol'] = pair.base.token_symbol
-    df['quote_token_symbol'] = pair.quote.token_symbol
-    df['exchange_slug'] = exchange_slug
-    df['chain_id'] = pair.base.chain_id
-    df['fee'] = pair.fee * 10_000
-    df['pair_id'] = pair.internal_id
-    df['buy_volume_all_time'] = 0
-    df['address'] = pair.pool_address
-    df['exchange_id'] = pair.internal_exchange_id
-    df['token0_address'] = pair.base.address
-    df['token1_address'] = pair.quote.address
-    df['token0_symbol'] = pair.base.token_symbol
-    df['token1_symbol'] = pair.quote.token_symbol
-    df['token0_decimals'] = pair.base.decimals
-    df['token1_decimals'] = pair.quote.decimals
-    return df
