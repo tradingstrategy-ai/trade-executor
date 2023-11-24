@@ -79,7 +79,7 @@ Or directly from Github URL:
 pip install -e "git+https://github.com/tradingstrategy-ai/trade-executor.git@master#egg=trade-executor[web-server,execution,qstrader,quantstats]"  
 ```
 
-**Limited file size by pre-commit**
+[**Limited file size by pre-commit hook**](scripts/pre-commit-sample/README.md)
 ```shell
 # The pre-commit hook checks the size of files before allowing a commit to proceed
 # If a file exceeds the specified limit, the commit will be aborted

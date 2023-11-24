@@ -7,17 +7,17 @@ This repository includes a pre-commit hook to prevent large file commits. The pr
 1. **Clone the Repository:**
 
     ```bash
-    git clone https://github.com/your-username/your-repository.git
+    git clone git@github.com:tradingstrategy-ai/trade-executor.git
     ```
 2. **Navigate to the Repository:**
 
     ```bash
-    cd your-repository
+    cd trade-executor
     ```
 
 3. **Copy the Pre-commit Hook:**
 
-    Run script to copy the pre-commit file from this repository to the .git/hooks/ directory of project and add it to git stage
+    Run script to copy the pre-commit file from this repository to the `.git/hooks/` directory of project and add it to git stage
 
     ```bash
     bash scripts/set-pre-commit-checkfilesize.sh 
@@ -25,13 +25,17 @@ This repository includes a pre-commit hook to prevent large file commits. The pr
 ## Configuration
 You can customize the behavior of the pre-commit hook by adjusting the MAX_FILE_SIZE variable in the pre-commit script. This variable represents the maximum allowed file size in megabytes.
 
-    # Set the maximum allowed file size in megabytes
-    MAX_FILE_SIZE=35
+```bash
+# Set the maximum allowed file size in megabytes
+vim .git/hooks/pre-commit
+# Edit MAX_FILE_SIZE
+MAX_FILE_SIZE=35
+```
 
-Modify the **MAX_FILE_SIZE** value according to your project requirements.
+Modify the **MAX_FILE_SIZE** value according to project requirements.
 
 ## Testing the Pre-commit Hook
-To test the pre-commit hook, attempt to commit changes to your repository. If a file exceeds the specified size limit, the commit will be aborted with an error message indicating the problematic file.
+To test the pre-commit hook, attempt to commit changes to repository. If a file exceeds the specified size limit, the commit will be aborted with an error message indicating the problematic file.
 
 ## Troubleshooting
 - Double-check the MAX_FILE_SIZE variable in the pre-commit script to ensure it meets your project's requirements.
