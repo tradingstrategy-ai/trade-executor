@@ -105,20 +105,20 @@ def load_candles_from_parquet(
             del df['close']
             del df['volume']
 
-            new_df = _df.join(df, how='left')
+            df = _df.join(df, how='left')
     else:
         bucket = TimeBucket.from_pandas_timedelta(granularity)
 
-    new_df = _fix_nans(new_df)
+    df = _fix_nans(df)
 
-    new_df["pair_id"] = pair_id
+    df["pair_id"] = pair_id
 
     # Because we assume multipair data from now on,
     # with group index instead of timestamp index,
     # we make timestamp a column
-    new_df["timestamp"] = new_df.index.to_series()
+    df["timestamp"] = df.index.to_series()
 
-    return new_df, orig, bucket, original_bucket
+    return df, orig, bucket, original_bucket
 
 
 def load_candle_universe_from_parquet(
