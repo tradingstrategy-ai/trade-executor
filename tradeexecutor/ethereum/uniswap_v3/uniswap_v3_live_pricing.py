@@ -59,7 +59,7 @@ class UniswapV3LivePricing(EthereumPricingModel):
                  epsilon: Optional[float] = LP_FEE_VALIDATION_EPSILON,
                  ):
 
-        assert isinstance(routing_model, UniswapV3SimpleRoutingModel)
+        # assert isinstance(routing_model, UniswapV3SimpleRoutingModel)
 
         self.uniswap_cache: Dict[TradingPairIdentifier, UniswapV3Deployment] = {}
 

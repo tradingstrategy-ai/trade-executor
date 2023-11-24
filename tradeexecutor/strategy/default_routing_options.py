@@ -185,6 +185,11 @@ class TradeRouting(enum.Enum):
     #: - Open positions with WETH quote token.
     uniswap_v3_usdt_arbitrum = "uniswap_v3_usdt_arbitrum"
 
+    #: Two legged trades on 1delta on Polygon mainnet
+    #:
+    #: - Open positions with USDC quote token.
+    one_delta_polygon_usdc = "one_delta_polygon_usdc"
+
     #: Use user supplied routing model
     #:
     #: The routing table is constructed by the developer in the
@@ -200,18 +205,18 @@ class TradeRouting(enum.Enum):
     ignore = "ignore"
 
     def is_uniswap_v2(self) -> bool:
-        """Do we neeed Uniswap v2 routing model"""
+        """Do we need Uniswap v2 routing model"""
 
-        return self not in self.get_uniswap_v3_elements() | {TradeRouting.ignore, TradeRouting.user_supplied_routing_model}
+        return not any([
+            self.is_uniswap_v3(),
+            self.is_one_delta(),
+            self in {TradeRouting.ignore, TradeRouting.user_supplied_routing_model},
+        ])
 
     def is_uniswap_v3(self) -> bool:
-        """Do we neeed Uniswap v3 routing model"""
+        """Do we need Uniswap v3 routing model"""
 
-        return self in self.get_uniswap_v3_elements()
-    
-    @staticmethod
-    def get_uniswap_v3_elements() -> set:
-        return {
+        return self in {
             TradeRouting.uniswap_v3_usdc_poly,
             TradeRouting.uniswap_v3_usdc,
             TradeRouting.uniswap_v3_usdt_poly,
@@ -222,3 +227,10 @@ class TradeRouting(enum.Enum):
             TradeRouting.uniswap_v3_usdc_arbitrum_native,
             TradeRouting.uniswap_v3_usdt_arbitrum,
         }
+
+    def is_one_delta(self) -> bool:
+        """Do we need 1delta routing model"""
+        return self in {
+            TradeRouting.one_delta_polygon_usdc,
+        }
+    

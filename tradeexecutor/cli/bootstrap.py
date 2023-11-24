@@ -21,6 +21,8 @@ from tradeexecutor.cli.approval import CLIApprovalModel
 from tradeexecutor.ethereum.enzyme.vault import EnzymeVaultSyncModel
 from tradeexecutor.ethereum.hot_wallet_sync_model import HotWalletSyncModel
 from tradeexecutor.ethereum.tx import TransactionBuilder
+from tradeexecutor.ethereum.one_delta.one_delta_execution import OneDeltaExecutionModel
+from tradeexecutor.ethereum.one_delta.one_delta_live_pricing import one_delta_live_pricing_factory
 from tradeexecutor.ethereum.uniswap_v2.uniswap_v2_execution import UniswapV2ExecutionModel
 from tradeexecutor.ethereum.uniswap_v2.uniswap_v2_live_pricing import uniswap_v2_live_pricing_factory
 from tradeexecutor.ethereum.uniswap_v2.uniswap_v2_routing import UniswapV2SimpleRoutingModel
@@ -135,6 +137,18 @@ def create_execution_model(
         )
         valuation_model_factory = uniswap_v3_sell_valuation_factory
         pricing_model_factory = uniswap_v3_live_pricing_factory
+    elif routing_hint.is_one_delta():
+        logger.info("1delta routing. Routing hint is %s", routing_hint)
+        execution_model = OneDeltaExecutionModel(
+            tx_builder,
+            confirmation_timeout=confirmation_timeout,
+            confirmation_block_count=confirmation_block_count,
+            max_slippage=max_slippage,
+            min_balance_threshold=min_gas_balance,
+            mainnet_fork=mainnet_fork,
+        )
+        valuation_model_factory = uniswap_v3_sell_valuation_factory
+        pricing_model_factory = one_delta_live_pricing_factory
     else:
         raise RuntimeError(f"Does not know how to route: {routing_hint}")
 
@@ -179,7 +193,7 @@ def create_execution_and_sync_model(
             vault_payment_forwarder_address,
         )
 
-        logger.info("Creating execution model. Asset management mode is %s, routing hint is %s", asset_management_mode.value, routing_hint.value)
+        logger.info("Creating execution model. Asset management mode is %s, routing hint is %s", asset_management_mode.value, routing_hint)
 
         execution_model, valuation_model_factory, pricing_model_factory = create_execution_model(
             routing_hint=routing_hint,
