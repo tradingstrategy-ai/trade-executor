@@ -1,0 +1,20 @@
+#!/bin/bash
+
+# Set the maximum allowed file size in megabytes
+MAX_FILE_SIZE=35
+
+# Get the list of files about to be committed
+FILES=$(git diff --cached --name-only --diff-filter=ACM)
+
+# Loop through each file
+for FILE in $FILES; do
+    # Check if the file size exceeds the limit
+    FILE_SIZE=$(wc -c < "$FILE")
+    if [ "$FILE_SIZE" -gt "$((MAX_FILE_SIZE * 1024 * 1024))" ]; then
+        echo "Error: Commit aborted. File $FILE is larger than $MAX_FILE_SIZE MB."
+        exit 1
+    fi
+done
+
+# If all checks pass, allow the commit to proceed
+exit 0
