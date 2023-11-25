@@ -460,6 +460,8 @@ def perform_grid_search_parallelbar(
     """Search different strategy parameters over a grid using Parallelbar backend.
 
     - Uses `Parallelbar <https://github.com/dubovikmaster/parallelbar>`__ library for the search
+
+    - Works within Jupyter Notebook
     
     :param combinations:
         Prepared grid combinations.
