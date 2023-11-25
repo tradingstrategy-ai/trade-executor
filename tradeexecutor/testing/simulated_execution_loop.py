@@ -35,6 +35,7 @@ from tradeexecutor.ethereum.uniswap_v3.uniswap_v3_valuation import UniswapV3Pool
 from tradeexecutor.ethereum.one_delta.one_delta_execution import OneDeltaExecutionModel
 from tradeexecutor.ethereum.one_delta.one_delta_live_pricing import OneDeltaLivePricing
 from tradeexecutor.ethereum.one_delta.one_delta_routing import OneDeltaSimpleRoutingModel
+from tradeexecutor.ethereum.one_delta.one_delta_valuation import OneDeltaPoolRevaluator
 
 
 def set_up_simulated_execution_loop_uniswap_v2(
@@ -299,7 +300,6 @@ def set_up_simulated_execution_loop_one_delta(
         confirmation_block_count=0,
     )
 
-    # Pricing model factory for single Uni v2 exchange
     def pricing_model_factory(execution_model, universe: StrategyExecutionUniverse, routing_model):
         return OneDeltaLivePricing(
             web3,
@@ -307,9 +307,8 @@ def set_up_simulated_execution_loop_one_delta(
             routing_model
         )
 
-    # Valuation model factory for single Uni v2 exchange
     def valuation_model_factory(pricing_model):
-        return UniswapV3PoolRevaluator(pricing_model)
+        return OneDeltaPoolRevaluator(pricing_model)
 
     runner = PandasTraderRunner(
         timed_task_context_manager=timed_task,
@@ -321,6 +320,7 @@ def set_up_simulated_execution_loop_one_delta(
         routing_model=routing_model,
         decide_trades=decide_trades,
         execution_context=execution_context,
+        unit_testing=True,
     )
 
     loop = ExecutionLoop(

@@ -320,24 +320,6 @@ def routing_model(
     asset_usdc,
     asset_weth,
 ) -> OneDeltaSimpleRoutingModel:
-
-    # Allowed exchanges as factory -> router pairs
-    # address_map = {
-    #     "one_delta_broker_proxy": "0x74E95F3Ec71372756a01eB9317864e3fdde1AC53",
-    #     "aave_v3_pool": "0x794a61358D6845594F94dc1DB02A252b5b4814aD",
-    #     "aave_v3_data_provider": "0x69FA688f1Dc47d4B5d8029D5a35FB7a548310654",
-    #     "aave_v3_oracle": "0xb023e699F5a33916Ea823A16485e259257cA8Bd1",
-    #     "factory": "0x1F98431c8aD98523631AE4a59f267346ea31F984",
-    #     "router": "0xE592427A0AEce92De3Edee1F18E0157C05861564",
-    #     "position_manager": "0xC36442b4a4522E871399CD717aBDD847Ab11FE88",
-    #     "quoter": "0xb27308f9F90D607463bb33eA1BeBb41C27CE5AB6",
-    # }
-
-    # # Three way ETH quoted trades are routed thru WETH/USDC pool
-    # allowed_intermediary_pairs = {
-    #     asset_weth.address: weth_usdc_pair.pool_address
-    # }
-
     return OneDeltaSimpleRoutingModel(
         address_map={
             "one_delta_broker_proxy": one_delta_deployment.broker_proxy.address,
@@ -349,51 +331,9 @@ def routing_model(
             "position_manager": uniswap_v3_deployment.position_manager.address,
             "quoter": uniswap_v3_deployment.quoter.address
         },
-        # address_map={
-        #     "one_delta_broker_proxy": one_delta_deployment.broker_proxy.address,
-        #     "aave_v3_pool": "0x794a61358D6845594F94dc1DB02A252b5b4814aD",
-        #     "aave_v3_data_provider": "0x69FA688f1Dc47d4B5d8029D5a35FB7a548310654",
-        #     "aave_v3_oracle": "0xb023e699F5a33916Ea823A16485e259257cA8Bd1",
-        #     "factory": "0x1F98431c8aD98523631AE4a59f267346ea31F984",
-        #     "router": "0xE592427A0AEce92De3Edee1F18E0157C05861564",
-        #     "position_manager": "0xC36442b4a4522E871399CD717aBDD847Ab11FE88",
-        #     "quoter": "0xb27308f9F90D607463bb33eA1BeBb41C27CE5AB6",
-        # },
         allowed_intermediary_pairs={},
         reserve_token_address=asset_usdc.address.lower(),
     )
-
-
-
-# @pytest.fixture
-# def tx_builder(web3, hot_wallet) -> HotWalletTransactionBuilder:
-#     tx_builder = HotWalletTransactionBuilder(
-#         web3,
-#         hot_wallet,
-#     )
-#     return tx_builder
-
-
-# @pytest.fixture
-# def ethereum_trader(
-#     web3: Web3,
-#     uniswap_v3_deployment: UniswapV3Deployment,
-#     aave_v3_deployment: AaveV3Deployment,
-#     one_delta_deployment: OneDeltaDeployment,
-#     hot_wallet: HotWallet,
-#     state: State,
-#     pair_universe: PandasPairUniverse,
-#     tx_builder: HotWalletTransactionBuilder,
-# ) -> OneDeltaTestTrader:
-#     return OneDeltaTestTrader(
-#         one_delta_deployment,
-#         aave_v3_deployment,
-#         uniswap_v3_deployment,
-#         state,
-#         pair_universe,
-#         tx_builder,
-#     )
-
 
 
 @pytest.fixture()
@@ -407,65 +347,6 @@ def pair_universe(web3, exchange_universe: ExchangeUniverse, weth_usdc_spot_pair
     """We trade on two trading pairs."""
     exchange = next(iter(exchange_universe.exchanges.values()))
     return create_pair_universe(web3, exchange, [weth_usdc_spot_pair])
-
-
-
-# @pytest.fixture()
-# def trader(web3, deployer, usdc_token) -> LocalAccount:
-#     """Trader account.
-
-#     - Start with piles of ETH
-
-#     - Start with 9,000 USDC token
-
-#     Trades against deployer
-#     """
-#     trader = Account.create()
-
-#     # Give 1 ETH gas money to the trader
-#     web3.eth.send_transaction({
-#         "from": deployer,
-#         "to": trader.address,
-#         "value": 1 * 10 ** 18
-#     })
-
-#     # Give 9000 USD trading money
-#     usdc_token.functions.transfer(
-#         trader.address,
-#         9_000 * 10**6,
-#     ).transact({
-#         "from": deployer,
-#     })
-
-#     return trader
-
-# def decide_trades_no_stop_loss(
-#         timestamp: pd.Timestamp,
-#         universe: Universe,
-#         state: State,
-#         pricing_model: PricingModel,
-#         cycle_debug_data: dict) -> List[TradeExecution]:
-#     """Stop loss free trading logic."""
-
-#     pair = universe.pairs.get_single()
-
-#     # Open for 1,000 USD
-#     position_size = 1000.00
-
-#     trades = []
-
-#     position_manager = PositionManager(timestamp, universe, state, pricing_model)
-
-#     if not position_manager.is_any_open():
-#         buy_amount = position_size
-#         trades += position_manager.open_1x_long(
-#             pair,
-#             buy_amount,
-#         )
-#     else:
-#         position_manager.close_all()
-
-#     return trades
 
 
 @pytest.fixture()
@@ -498,7 +379,7 @@ def trading_strategy_universe(chain_id, exchange_universe, pair_universe, asset_
         pairs=pairs,
         universe_options=default_universe_options,
         start_at=pd.Timestamp("2023-10-01"),
-        end_at=pd.Timestamp("2023-11-23"),
+        end_at=pd.Timestamp("2023-10-30"),
         lending_reserves=reverses,
     )
 
@@ -530,8 +411,8 @@ def decide_trades(
             position_size,
             leverage=2,
         )
-    # else:
-    #     position_manager.close_all()
+    else:
+        trades += position_manager.close_all()
 
     return trades
 
@@ -618,52 +499,35 @@ def test_one_delta_live_strategy_short(
         ExecutionMode.real_trading
     )
 
+    assert len(state.portfolio.open_positions) == 1
+
     # After the first tick, we should have synced our reserves and opened the first position
     mid_price = pricing_method.get_mid_price(ts, pair)
-    assert mid_price == pytest.approx(1701.9176812836754, rel=APPROX_REL)
+    assert mid_price == pytest.approx(1630.1912407577722, rel=APPROX_REL)
 
-    # usdc_id = f"{web3.eth.chain_id}-{usdc_token.address.lower()}"
-    # assert state.portfolio.reserves[usdc_id].quantity == 8000
-    # assert state.portfolio.open_positions[1].get_quantity() == Decimal('0.586126842081438205')
-    # assert state.portfolio.open_positions[1].get_value() == pytest.approx(994.010747, rel=APPROX_REL)
+    usdc_id = f"{web3.eth.chain_id}-{usdc.address.lower()}"
+    assert state.portfolio.reserves[usdc_id].quantity == 9000
+    assert state.portfolio.open_positions[1].get_quantity() == Decimal('1.261256429210282326')
+    assert state.portfolio.open_positions[1].get_value() == pytest.approx(944.0010729999999, rel=APPROX_REL)
 
-    # # Sell ETH on the pool to change the price more than 10%.
-    # # The pool is 1000 ETH / 1.7M USDC.
-    # # Deployer dumps 300 ETH to cause a massive price impact.
-    # weth_token.functions.approve(uniswap_v3.swap_router.address, 1000 * 10**18).transact({"from": deployer})
-    # prepared_swap_call = swap_with_slippage_protection(
-    #     uniswap_v3_deployment=uniswap_v3,
-    #     recipient_address=deployer,
-    #     base_token=usdc_token,
-    #     quote_token=weth_token,
-    #     amount_in=300 * 10**18,
-    #     max_slippage=10_000,
-    #     pool_fees=[WETH_USDC_FEE_RAW]
-    # )
-    # prepared_swap_call.transact({"from": deployer})
+    # trade another cycle
+    ts = get_latest_block_timestamp(web3)
+    strategy_cycle_timestamp = snap_to_next_tick(ts, loop.cycle_duration)
 
-    # # ETH price is down $1700 -> $1000
-    # price_structure = pricing_method.get_buy_price(datetime.datetime.utcnow(), pair, None)
-    # assert price_structure.price == pytest.approx(1011.2548284709007, rel=APPROX_REL)
+    loop.tick(
+        ts,
+        loop.cycle_duration,
+        state,
+        cycle=2,
+        live=True,
+        strategy_cycle_timestamp=strategy_cycle_timestamp,
+    )
 
-    # ts = get_latest_block_timestamp(web3)
+    loop.update_position_valuations(
+        ts,
+        state,
+        trading_strategy_universe,
+        ExecutionMode.real_trading
+    )
 
-    # # Trigger stop loss
-    # trades = loop.check_position_triggers(
-    #     ts,
-    #     state,
-    #     trading_strategy_universe,
-    # )
-
-    # # Check state data looks sane
-    # assert len(trades) == 1, "No stop loss triggered"
-    # t = trades[0]
-    # assert t.is_stop_loss()
-    # assert len(state.portfolio.closed_positions) == 1
-    # assert len(state.portfolio.open_positions) == 0
-    # assert state.portfolio.closed_positions[1].is_stop_loss()
-
-    # # We are ~500 USD on loss after stop loss trigger
-    # usdc_id = f"{web3.eth.chain_id}-{usdc_token.address.lower()}"
-    # assert state.portfolio.reserves[usdc_id].quantity == pytest.approx(Decimal('8588.907521'))
-
+    assert len(state.portfolio.open_positions) == 0
