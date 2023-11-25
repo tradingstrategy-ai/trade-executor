@@ -162,6 +162,10 @@ class OneDeltaExecutionModel(EthereumExecutionModel):
 
                 assert (executed_reserve > 0) and (executed_amount != 0) and (price > 0), f"Executed amount {executed_amount}, executed_reserve: {executed_reserve}, price: {price}, tx info {trade.tx_info}"
 
+                # update the executed loan
+                # TODO: check if this is the right spot for this
+                trade.executed_loan_update = trade.planned_loan_update
+
                 # Mark as success
                 state.mark_trade_success(
                     ts,
