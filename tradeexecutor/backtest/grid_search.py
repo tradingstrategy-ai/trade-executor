@@ -491,15 +491,21 @@ def perform_grid_search_parallelbar(
                 )
 
     if max_workers > 1:
-        task_args = [(grid_search_worker, universe, c) for c in combinations]
+        pickled_universe = pickle.dumps(universe)
+        task_args = [(grid_search_worker, c) for c in combinations]
         logger.info("Doing a Parallelbar multiprocess grid search")
-        # Extract results from the parallel task queue
-        results = parallelbar.progress_starmap(run_grid_combination, task_args, n_cpu=max_workers)
+
+        results = parallelbar.progress_starmap(
+            run_grid_combination_multiprocess,
+            task_args,
+            n_cpu=max_workers,
+            initializer=_process_init,
+            initargs=(pickled_universe,)
+        )
 
     else:
         # Do single thread - good for debuggers like pdb/ipdb
         #
-
         logger.info("Doing a single thread grid search")
         task_args = [(grid_search_worker, universe, c) for c in combinations]
         iter = itertools.starmap(run_grid_combination, task_args)
