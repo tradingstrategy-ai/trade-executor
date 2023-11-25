@@ -3307,6 +3307,24 @@ files = [
 ]
 
 [[package]]
+name = "parallelbar"
+version = "2.4"
+description = "Parallel processing with progress bars"
+optional = false
+python-versions = "*"
+files = [
+    {file = "parallelbar-2.4-py3-none-any.whl", hash = "sha256:8e0153cd5f0b5b43da3df14089d3ba0e08345347baf42295d9ad1fa5388ea0b6"},
+    {file = "parallelbar-2.4.tar.gz", hash = "sha256:63453b7016515d2e26e1a532b484ba94c6208d147494eeb1e2a623b4b561c197"},
+]
+
+[package.dependencies]
+colorama = "*"
+tqdm = "*"
+
+[package.extras]
+dill = ["dill"]
+
+[[package]]
 name = "parse"
 version = "1.19.1"
 description = "parse() is the opposite of format()"
@@ -5890,4 +5908,4 @@ web-server = ["WebTest", "openapi-core", "pyramid", "pyramid-openapi3", "waitres
 [metadata]
 lock-version = "2.0"
 python-versions = ">=3.10,<3.11"
-content-hash = "e933129e45e143eec923cd385d71ed4575269d625eb8f264af356d54e755e1f6"
+content-hash = "59b3c8820ad4f299cd844e59286083d2e57d0f6b26b5b96ecb01a0386873686e"

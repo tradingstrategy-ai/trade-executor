@@ -449,6 +449,70 @@ def perform_grid_search(
     return results
 
 
+
+@_hide_warnings
+def perform_grid_search_parallelbar(
+    grid_search_worker: GridSearchWorker,
+    universe: TradingStrategyUniverse,
+    combinations: List[GridCombination],
+    max_workers=16,
+) -> List[GridSearchResult]:
+    """Search different strategy parameters over a grid using Parallelbar backend.
+
+    - Uses `Parallelbar <https://github.com/dubovikmaster/parallelbar>`__ library for the search
+    
+    :param combinations:
+        Prepared grid combinations.
+
+        See :py:func:`prepare_grid_combinations`
+
+    :param stats:
+        If passed, collect run-time and unit testing statistics to this dictionary.
+
+    :param multiprocess:
+        Perform the search using multiple CPUs and Python's multiprocessing.
+
+        If not set, use threaded approach.
+
+        Scales much better, but disabled by default, as it does not work with Jupyter Notebooks very well.
+
+    :return:
+        Grid search results for different combinations.
+
+    """
+
+    import parallelbar
+
+    start = datetime.datetime.utcnow()
+
+    logger.info("Performing a Parallelbar grid search over %s combinations, with %d threads",
+                len(combinations),
+                max_workers,
+                )
+
+    if max_workers > 1:
+        task_args = [(grid_search_worker, universe, c) for c in combinations]
+        logger.info("Doing a Parallelbar multiprocess grid search")
+        # Extract results from the parallel task queue
+        results = parallelbar.progress_starmap(run_grid_combination, task_args, n_cpu=max_workers)
+
+    else:
+        # Do single thread - good for debuggers like pdb/ipdb
+        #
+
+        logger.info("Doing a single thread grid search")
+        task_args = [(grid_search_worker, universe, c) for c in combinations]
+        iter = itertools.starmap(run_grid_combination, task_args)
+
+        # Force workers to finish
+        results = list(iter)
+
+    duration = datetime.datetime.utcnow() - start
+    logger.info("Grid search finished in %s, total %d results", duration, len(results))
+
+    return results
+
+
 def run_grid_search_backtest(
     combination: GridCombination,
     decide_trades: DecideTradesProtocol | DecideTradesProtocol2,

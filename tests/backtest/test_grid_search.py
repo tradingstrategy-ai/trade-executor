@@ -14,7 +14,7 @@ from tradingstrategy.universe import Universe
 
 from tradeexecutor.analysis.grid_search import analyse_grid_search_result, visualise_table, visualise_heatmap_2d
 from tradeexecutor.backtest.grid_search import prepare_grid_combinations, run_grid_search_backtest, perform_grid_search, GridCombination, GridSearchResult, \
-    pick_grid_search_result, pick_best_grid_search_result
+    pick_grid_search_result, pick_best_grid_search_result, perform_grid_search_parallelbar
 from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier
 from tradeexecutor.state.state import State
 from tradeexecutor.state.visualisation import PlotKind
@@ -329,6 +329,35 @@ def test_perform_grid_search_multiprocess(
         combinations,
         max_workers=4,
         multiprocess=True,
+    )
+
+    assert len(results) == 4
+
+    # Check we got results back
+    for r in results:
+        assert r.metrics.loc["Sharpe"][0] != 0
+        assert r.process_id > 1
+
+
+def test_perform_grid_search_parallelbar(
+        strategy_universe,
+        tmp_path,
+):
+    """Run a grid search using Parallelbar backend."""
+
+    parameters = {
+        "stop_loss_pct": [0.9, 0.95],
+        "slow_ema_candle_count": [7],
+        "fast_ema_candle_count": [1, 2],
+    }
+
+    combinations = prepare_grid_combinations(parameters, tmp_path)
+
+    results = perform_grid_search_parallelbar(
+        grid_search_worker,
+        strategy_universe,
+        combinations,
+        max_workers=4,
     )
 
     assert len(results) == 4
