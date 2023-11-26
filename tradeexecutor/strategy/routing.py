@@ -196,10 +196,12 @@ class RoutingModel(abc.ABC):
         """
 
     @abc.abstractmethod
-    def setup_trades(self,
-                     state: RoutingState,
-                     trades: List[TradeExecution],
-                     check_balances=False):
+    def setup_trades(
+            self,
+            state: RoutingState,
+            trades: List[TradeExecution],
+            check_balances=False
+    ):
         """Setup the trades decided by a strategy.
 
         - Decides the best way, or a way, to execute a trade

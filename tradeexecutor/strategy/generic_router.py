@@ -1,6 +1,6 @@
 """Map trades to different routing backends based on their type."""
 
-from typing import Collection, Dict, TypeAlias, Protocol
+from typing import Collection, Dict, TypeAlias, Protocol, List
 
 from tradeexecutor.state.trade import TradeExecution
 from tradeexecutor.strategy.routing import RoutingModel, RoutingState
@@ -13,6 +13,11 @@ from tradeexecutor.strategy.universe_model import StrategyExecutionUniverse
 #:
 #:
 RoutingMap: TypeAlias = Dict[str, RoutingModel]
+
+
+class UnroutableTrade(Exception):
+    """Trade cannot be routed, as we could not find a matching route."""
+
 
 class RoutingFunction(Protocol):
     """A function protocol definition for router choose.
@@ -29,8 +34,10 @@ class RoutingFunction(Protocol):
         """
 
 
-def default_choose_route(trade: TradeExecution) -> str | None:
+def default_route_chooser(trade: TradeExecution) -> str | None:
     """Default router function.
+
+    Comes with some DEXes and protocols prebuilt.
 
     Use smart contract addresses hardcoded in :py:mod:`tradeexecutor.ethereum.routing_data`.
     """
@@ -47,9 +54,13 @@ class GenericRoutingState(RoutingState):
 class GenericRouting(RoutingModel):
     """Routes trade to a different routing backend depending on the trade type."""
 
-    def __init__(self, routers: RoutingMap, routing_function: RoutingFunction = default_choose_route):
+    def __init__(
+            self,
+            routers: RoutingMap,
+            routing_function: RoutingFunction = default_route_chooser
+    ):
         self.routers = routers
-        self.routing_function = default_choose_route
+        self.routing_function = routing_function
 
     def create_routing_state(
             self,
@@ -66,4 +77,47 @@ class GenericRouting(RoutingModel):
             substates[router_name] = router.create_routing_state(universe, execution_details)
 
         return GenericRoutingState(substates)
+
+    def setup_trades(
+            self,
+            state: GenericRoutingState,
+            trades: List[TradeExecution],
+            check_balances=False
+    ):
+        """Route trades.
+
+        - The trade order must be preserved (sells must come before buys,
+          so that we have cash)
+
+        - Fills in Blockchain transaction details for each trade
+          by using the corresponding router
+        """
+
+        assert isinstance(state, GenericRoutingState)
+
+        for t in trades:
+            router_name = self.routing_function(t)
+            if router_name is None:
+                raise UnroutableTrade(
+                    f"Cannot route: {t}\n"
+                    f"Using routing function: {self.routing_function}"
+                    f"Available routes: {list(self.routers.keys())}"
+                )
+
+            router = self.routers.get(router_name)
+            if router is None:
+                raise UnroutableTrade(
+                    f"Router not available: {t}\n"
+                    f"Trade routing function give us a route: {router_name}, but it is not configured\n"
+                    f"Available routes: {list(self.routers.keys())}"
+                )
+
+            router_state = state.state_map[router_name]
+            router.setup_trades(
+                router_state,
+                [t],
+                check_balances=check_balances,
+            )
+
+
 
