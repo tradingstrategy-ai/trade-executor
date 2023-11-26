@@ -4,8 +4,10 @@ from typing import Collection, Dict, TypeAlias, Protocol, List
 
 from tradeexecutor.state.trade import TradeExecution
 from tradeexecutor.strategy.routing import RoutingModel, RoutingState
+from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
 from tradeexecutor.strategy.universe_model import StrategyExecutionUniverse
-
+from tradingstrategy.chain import ChainId
+from tradingstrategy.pair import PandasPairUniverse
 
 #: Router name to router implementation mapping
 #:
@@ -24,8 +26,18 @@ class RoutingFunction(Protocol):
 
     """
 
-    def __call__(self, trade: TradeExecution) -> str | None:
+    def __call__(
+            self,
+            pair_universe: PandasPairUniverse,
+            trade: TradeExecution
+    ) -> str | None:
         """For each trade, return the name of the route that should be used.
+
+        :param pair_univerwse:
+            Give us loaded exchange and pair data to route the trade.
+
+        :param trade:
+            A trade in starting state that needs to be routed.
 
         :return:
             The route name that should be taken.
@@ -34,49 +46,81 @@ class RoutingFunction(Protocol):
         """
 
 
-def default_route_chooser(trade: TradeExecution) -> str | None:
+def default_route_chooser(
+    pair_universe: PandasPairUniverse,
+    trade: TradeExecution
+) -> str | None:
     """Default router function.
 
     Comes with some DEXes and protocols prebuilt.
 
     Use smart contract addresses hardcoded in :py:mod:`tradeexecutor.ethereum.routing_data`.
+
     """
-    return None
+    pair = trade.pair
+    exchange = pair_universe.exchange_universe.get_by_chain_and_factory(
+        ChainId(pair.chain_id),
+        pair.exchange_address
+    )
+    return exchange.exchange_slug
 
 
 class GenericRoutingState(RoutingState):
-    """Store one state per router."""
+    """Store one state per router.
 
-    def __init__(self, state_map: Dict[str, RoutingState]):
+    Strategy universe is part of the state, as it will change between
+    trading strategy cycles (pairs are added and removed).
+    """
+
+    def __init__(
+        self,
+        strategy_universe: TradingStrategyUniverse,
+        state_map: Dict[str, RoutingState]
+    ):
+
+        assert isinstance(strategy_universe, TradingStrategyUniverse)
+        assert strategy_universe.data_universe.exchange_universe is not None,  "pair_universe is not initialised with exchange data"
+
+        self.strategy_universe = strategy_universe
         self.state_map = state_map
 
 
 class GenericRouting(RoutingModel):
-    """Routes trade to a different routing backend depending on the trade type."""
+    """Routes trade to a different routing backend depending on the trade type.
+
+    Based on the pair and exchange data (contained within pairs),
+    make choices which router should take the trade.
+
+    Usually there is very direct map exchange -> router,
+    as long as the router has the correct smart contract address
+    information available for various contracts needed
+    to perform the trade.
+    """
 
     def __init__(
             self,
             routers: RoutingMap,
-            routing_function: RoutingFunction = default_route_chooser
+            routing_function: RoutingFunction = default_route_chooser,
     ):
         self.routers = routers
         self.routing_function = routing_function
 
     def create_routing_state(
-            self,
-            universe: StrategyExecutionUniverse,
-            execution_details: object
+        self,
+        universe: TradingStrategyUniverse,
+        execution_details: object
     ) -> RoutingState:
         """Create a new routing state for this cycle.
 
         :param execution_details:
             A dict of whatever connects live execution to routing.
         """
+        assert isinstance(universe, TradingStrategyUniverse)
         substates = {}
         for router_name, router in self.routers.items():
             substates[router_name] = router.create_routing_state(universe, execution_details)
 
-        return GenericRoutingState(substates)
+        return GenericRoutingState(universe, substates)
 
     def setup_trades(
             self,
@@ -95,8 +139,10 @@ class GenericRouting(RoutingModel):
 
         assert isinstance(state, GenericRoutingState)
 
+        strategy_universe = state.strategy_universe
+
         for t in trades:
-            router_name = self.routing_function(t)
+            router_name = self.routing_function(strategy_universe.data_universe.pairs, t)
             if router_name is None:
                 raise UnroutableTrade(
                     f"Cannot route: {t}\n"
