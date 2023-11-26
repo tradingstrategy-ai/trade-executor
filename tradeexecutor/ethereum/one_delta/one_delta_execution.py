@@ -152,8 +152,8 @@ class OneDeltaExecutionModel(EthereumExecutionModel):
 
                 # TODO: verify these numbers
                 if trade.is_buy():
-                    executed_amount = -result.amount_in / Decimal(10**base_token_details.decimals)
-                    executed_reserve = result.amount_out / Decimal(10**reserve.decimals)
+                    executed_amount = -result.amount_out / Decimal(10**base_token_details.decimals)
+                    executed_reserve = result.amount_in / Decimal(10**reserve.decimals)
                 else:
                     executed_amount = result.amount_in / Decimal(10**base_token_details.decimals)
                     executed_reserve = result.amount_out / Decimal(10**reserve.decimals)

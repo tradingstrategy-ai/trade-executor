@@ -253,7 +253,6 @@ def set_up_simulated_execution_loop_one_delta(
     universe: StrategyExecutionUniverse,
     routing_model: OneDeltaSimpleRoutingModel,
     state: State,
-    hot_wallet: HotWallet,
     wallet_account = None,
 ) -> ExecutionLoop:
     """Set up a simulated execution loop for 1delta.
@@ -280,7 +279,7 @@ def set_up_simulated_execution_loop_one_delta(
     # Create empty state for this backtest
     store = NoneStore(state)
 
-    # hot_wallet = HotWallet(wallet_account)
+    hot_wallet = HotWallet(wallet_account)
 
     # hot_wallet_sync = EthereumHotWalletReserveSyncer(web3, wallet_account.address)
     sync_model = HotWalletSyncModel(web3, hot_wallet)

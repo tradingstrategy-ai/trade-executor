@@ -286,18 +286,6 @@ def weth_usdc_shorting_pair(uniswap_v3_deployment, asset_ausdc, asset_vweth, wet
 
 
 @pytest.fixture
-def start_ts() -> datetime.datetime:
-    """Timestamp of action started"""
-    return datetime.datetime(2022, 1, 1, tzinfo=None)
-
-
-@pytest.fixture
-def supported_reserves(asset_usdc) -> List[AssetIdentifier]:
-    """The reserve currencies we support."""
-    return [asset_usdc]
-
-
-@pytest.fixture
 def state(web3, hot_wallet, asset_usdc, usdc) -> State:
     """State used in the tests."""
     state = State()
@@ -344,7 +332,6 @@ def exchange_universe(web3, uniswap_v3_deployment: UniswapV3Deployment) -> Excha
 
 @pytest.fixture()
 def pair_universe(web3, exchange_universe: ExchangeUniverse, weth_usdc_spot_pair) -> PandasPairUniverse:
-    """We trade on two trading pairs."""
     exchange = next(iter(exchange_universe.exchanges.values()))
     return create_pair_universe(web3, exchange, [weth_usdc_spot_pair])
 
@@ -394,7 +381,7 @@ def decide_trades(
     pricing_model: PricingModel,
     cycle_debug_data: dict
 ) -> List[TradeExecution]:
-    """Opens new buy and hold position for $1000 if no position is open."""
+    """Opens a 2x short position and closes in next trade cycle."""
     
     pair = strategy_universe.universe.pairs.get_single()
 
@@ -418,7 +405,7 @@ def decide_trades(
 
 
 
-def test_one_delta_live_strategy_short(
+def test_one_delta_live_strategy_short_open_and_close(
     logger,
     web3: Web3,
     hot_wallet: HotWallet,
@@ -431,28 +418,19 @@ def test_one_delta_live_strategy_short(
 ):
     """Live 1delta trade.
 
-    - Trade ETH/USDC pool
+    - Trade ETH/USDC 0.3% pool
 
-    # TODO
-
-    - Two accounts: deployer and trader. Deployer holds 1.7M worth of ETH in the tool. Trader starts with 9000 USDC
-      trade balance.
-
-    - Set up an in-memory blockchain with Uni v2 instance we can manipulate
-
-    - Sets up a buy and hold strategy with 10% stop loss trigger
+    - Sets up a simple strategy that open a 2x short position then close in next cycle
 
     - Start the strategy, check that the trading account is funded
 
-    - Advance to cycle 1 and make sure the long position on ETH is opened
+    - Advance to cycle 1 and make sure the short position on ETH is opened
 
-    - Cause an external price shock
-
-    - Check that the stop loss trigger was correctly executed and we sold ETH for loss
+    - Advance to cycle 2 and make sure the short position is closed
     """
 
     # Sanity check for the trading universe
-    # that we start with 1635 USD/ETH price
+    # that we start with 1631 USD/ETH price
     pair_universe = trading_strategy_universe.data_universe.pairs
     exchanges = trading_strategy_universe.data_universe.exchange_universe
     pricing_method = OneDeltaLivePricing(web3, pair_universe, routing_model)
@@ -460,13 +438,10 @@ def test_one_delta_live_strategy_short(
     weth_usdc = pair_universe.get_single()
     pair = translate_trading_pair(weth_usdc)
 
-    # assert pair == weth_usdc_spot_pair
-
     # Check that our preflight checks pass
     routing_model.perform_preflight_checks_and_logging(pair_universe)
 
     price_structure = pricing_method.get_buy_price(datetime.datetime.utcnow(), pair, None)
-    # assert price_structure.price == pytest.approx(1635.9293, rel=APPROX_REL)
     assert price_structure.price == pytest.approx(1631.0085715155444, rel=APPROX_REL)
 
     # Set up an execution loop we can step through
@@ -476,8 +451,7 @@ def test_one_delta_live_strategy_short(
         decide_trades=decide_trades,
         universe=trading_strategy_universe,
         state=state,
-        # wallet_account=hot_wallet.account,
-        hot_wallet=hot_wallet,
+        wallet_account=hot_wallet.account,
         routing_model=routing_model,
     )
     loop.runner.run_state = RunState()  # Needed for visualisations
@@ -510,7 +484,7 @@ def test_one_delta_live_strategy_short(
     assert state.portfolio.open_positions[1].get_quantity() == Decimal('1.261256429210282326')
     assert state.portfolio.open_positions[1].get_value() == pytest.approx(944.0010729999999, rel=APPROX_REL)
 
-    # trade another cycle
+    # trade another cycle to close the short position
     ts = get_latest_block_timestamp(web3)
     strategy_cycle_timestamp = snap_to_next_tick(ts, loop.cycle_duration)
 
@@ -531,3 +505,5 @@ def test_one_delta_live_strategy_short(
     )
 
     assert len(state.portfolio.open_positions) == 0
+    assert len(state.portfolio.closed_positions) == 1
+    assert state.portfolio.reserves[usdc_id].quantity == 10000

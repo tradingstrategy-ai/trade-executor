@@ -465,12 +465,9 @@ def test_execute_trade_instructions_open_and_close_short(
 
     assert trade2.get_status() == TradeStatus.success
     assert trade2.executed_price == pytest.approx(1631.137329233084)
-    # assert abs(trade2.executed_quantity) == pytest.approx(Decimal(6.110729821939321144))
+    assert abs(trade2.executed_quantity) == pytest.approx(Decimal(6.110729821939321144))
 
-    # TODO: check why this position isn't closed
+    # position should be closed successfully
     portfolio = state.portfolio
-    assert len(portfolio.open_positions) == 1
-    position = portfolio.open_positions[1]
-    assert position.get_collateral() == pytest.approx(0)
-    assert position.get_borrowed() == pytest.approx(0)
-    assert position.get_value() == pytest.approx(0)
+    assert len(portfolio.open_positions) == 0
+    assert len(portfolio.closed_positions) == 1
