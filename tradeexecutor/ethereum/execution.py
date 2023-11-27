@@ -308,6 +308,7 @@ class EthereumExecutionModel(ExecutionModel):
 
     def broadcast_and_resolve_multiple_nodes(
         self,
+        routing_model: RoutingModel,
         state: State,
         trades: List[TradeExecution],
         confirmation_timeout: datetime.timedelta = datetime.timedelta(minutes=1),
@@ -382,6 +383,7 @@ class EthereumExecutionModel(ExecutionModel):
 
         self.resolve_trades(
             datetime.datetime.now(),
+            routing_model,
             state,
             tx_map,
             receipts,
@@ -421,6 +423,7 @@ class EthereumExecutionModel(ExecutionModel):
         if isinstance(self.web3.provider, (FallbackProvider, MEVBlockerProvider)):
             # Multi node broadcast
             self.broadcast_and_resolve_multiple_nodes(
+                routing_model,
                 state,
                 trades,
                 confirmation_timeout=self.confirmation_timeout,

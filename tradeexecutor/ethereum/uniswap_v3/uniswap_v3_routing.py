@@ -5,6 +5,7 @@ from _decimal import Decimal
 from typing import Dict, Optional, List
 
 from eth_typing import HexAddress
+from hexbytes import HexBytes
 
 from eth_defi.token import fetch_erc20_details
 from eth_defi.trade import TradeSuccess
@@ -313,7 +314,7 @@ class UniswapV3SimpleRoutingModel(EthereumRoutingModel):
 
         result = analyse_trade_by_receipt(
             web3,
-            deployment=uniswap,
+            uniswap=uniswap,
             tx=tx_dict,
             tx_hash=swap_tx.tx_hash,
             tx_receipt=receipt,
