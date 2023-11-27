@@ -2,14 +2,14 @@
 import pandas as pd
 import pytest as pytest
 from eth_typing import ChainId
-from tradingstrategy.exchange import ExchangeUniverse
-from tradingstrategy.lending import LendingProtocolType
-from tradingstrategy.pair import PandasPairUniverse
-from tradingstrategy.timebucket import TimeBucket
 
 from eth_defi.hotwallet import HotWallet
 from eth_defi.uniswap_v2.deployment import UniswapV2Deployment
 from eth_defi.uniswap_v3.deployment import UniswapV3Deployment
+from tradingstrategy.exchange import ExchangeUniverse
+from tradingstrategy.lending import LendingProtocolType
+from tradingstrategy.pair import PandasPairUniverse
+from tradingstrategy.timebucket import TimeBucket
 from tradeexecutor.ethereum.hot_wallet_sync_model import HotWalletSyncModel
 from tradeexecutor.ethereum.one_delta.one_delta_live_pricing import OneDeltaLivePricing
 from tradeexecutor.ethereum.one_delta.one_delta_routing import OneDeltaSimpleRoutingModel
@@ -21,8 +21,7 @@ from tradeexecutor.ethereum.universe import create_exchange_universe, create_pai
 from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier
 from tradeexecutor.state.state import State
 from tradeexecutor.strategy.execution_context import unit_test_execution_context
-from tradeexecutor.strategy.generic_router import GenericRouting
-
+from tradeexecutor.strategy.generic.generic_router import GenericRouting
 from tradeexecutor.strategy.generic.generic_pricing_model import GenericPricingModel
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse, load_partial_data
 from tradeexecutor.strategy.universe_model import default_universe_options

@@ -3,7 +3,7 @@
 from typing import Collection, Dict, TypeAlias, Protocol, List
 
 from tradeexecutor.state.trade import TradeExecution
-from tradeexecutor.strategy.generic.routing_function import UnroutableTrade
+from tradeexecutor.strategy.generic.routing_function import UnroutableTrade, default_route_chooser, RoutingFunction
 from tradeexecutor.strategy.routing import RoutingModel, RoutingState
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
 from tradeexecutor.strategy.universe_model import StrategyExecutionUniverse
@@ -106,7 +106,7 @@ class GenericRouting(RoutingModel):
             router = self.routers.get(router_name)
             if router is None:
                 raise UnroutableTrade(
-                    f"Router not available: {t}\n"
+                    f"Router not available: {router_name} for {t}\n"
                     f"Trade routing function give us a route: {router_name}, but it is not configured\n"
                     f"Available routes: {list(self.routers.keys())}"
                 )

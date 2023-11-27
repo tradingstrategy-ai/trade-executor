@@ -9,7 +9,7 @@ from eth_account.signers.local import LocalAccount
 from eth_typing import HexAddress, HexStr
 
 from eth_defi.token import fetch_erc20_details, TokenDetails
-from eth_defi.uniswap_v2.deployment import UniswapV2Deployment
+from eth_defi.uniswap_v2.deployment import UniswapV2Deployment, fetch_deployment
 from eth_defi.uniswap_v3.deployment import UniswapV3Deployment, fetch_deployment as fetch_uniswap_v3_deployment
 from eth_defi.hotwallet import HotWallet
 from eth_defi.aave_v3.deployment import AaveV3Deployment, fetch_deployment as fetch_aave_deployment
@@ -113,19 +113,14 @@ def hot_wallet(web3, user_1, usdc, large_usdc_holder) -> HotWallet:
     return wallet
 
 
-
 @pytest.fixture
 def quickswap_deployment(web3) -> UniswapV2Deployment:
-    """Uniswap v3 deployment."""
-
-    routing = get_quickswap_default_routing_parameters(ReserveCurrency.usdc)
-    import ipdb ; ipdb.set_trace()
-    return fetch_uniswap_v2_deployment(
+    """Quickswap deployment on Polygon."""
+    return fetch_deployment(
         web3,
-        "0x1F98431c8aD98523631AE4a59f267346ea31F984",
-        "0xE592427A0AEce92De3Edee1F18E0157C05861564",
-        "0xC36442b4a4522E871399CD717aBDD847Ab11FE88",
-        "0xb27308f9F90D607463bb33eA1BeBb41C27CE5AB6",
+        "0x5757371414417b8C6CAad45bAeF941aBc7d3Ab32",
+        "0xa5E0829CaCEd8fFDD4De3c43696c57F7D7A678ff",
+        "0x96e8ac4277198ff8b6f785478aa9a39f403cb768dd02cbee326c3e7da348845f",
     )
 
 
@@ -342,7 +337,11 @@ def uniswap_v3_routing_model(asset_usdc) -> UniswapV3SimpleRoutingModel:
 
 
 @pytest.fixture()
-def quickswap_routing_model(quickswap, asset_usdc) -> UniswapV2SimpleRoutingModel:
+def quickswap_routing_model(
+        quickswap_deployment,
+        wmatic_usdc_spot_pair,
+        asset_usdc,
+) -> UniswapV2SimpleRoutingModel:
     # Route WMATIC and USDC quoted pairs on Quickswap
     uniswap_v2_router = UniswapV2SimpleRoutingModel(
         factory_router_map={quickswap_deployment.factory.address: (quickswap_deployment.router.address, quickswap_deployment.init_code_hash)},
