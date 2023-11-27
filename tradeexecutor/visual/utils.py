@@ -144,11 +144,16 @@ def export_trades_as_dataframe(
     """
 
     if start:
-        assert isinstance(start, pd.Timestamp)
+        if isinstance(start, datetime.datetime):
+            start = pd.Timestamp(start)
+        assert isinstance(start, pd.Timestamp), f"Got {start} {start.__class__}"
 
     if end:
-        assert isinstance(end, pd.Timestamp)
-        assert start
+        if isinstance(end, datetime.datetime):
+            start = pd.Timestamp(end)
+
+        assert isinstance(end, pd.Timestamp), f"Got {end} {end.__class__}"
+        assert end
 
     data = []
 
