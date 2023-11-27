@@ -7,8 +7,10 @@ from tradingstrategy.lending import LendingProtocolType
 from tradingstrategy.pair import PandasPairUniverse
 from tradingstrategy.timebucket import TimeBucket
 
+from eth_defi.hotwallet import HotWallet
 from eth_defi.uniswap_v2.deployment import UniswapV2Deployment
 from eth_defi.uniswap_v3.deployment import UniswapV3Deployment
+from tradeexecutor.ethereum.hot_wallet_sync_model import HotWalletSyncModel
 from tradeexecutor.ethereum.one_delta.one_delta_live_pricing import OneDeltaLivePricing
 from tradeexecutor.ethereum.one_delta.one_delta_routing import OneDeltaSimpleRoutingModel
 from tradeexecutor.ethereum.uniswap_v2.uniswap_v2_live_pricing import UniswapV2LivePricing
@@ -17,6 +19,7 @@ from tradeexecutor.ethereum.uniswap_v3.uniswap_v3_live_pricing import UniswapV3L
 from tradeexecutor.ethereum.uniswap_v3.uniswap_v3_routing import UniswapV3SimpleRoutingModel
 from tradeexecutor.ethereum.universe import create_exchange_universe, create_pair_universe
 from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier
+from tradeexecutor.state.state import State
 from tradeexecutor.strategy.execution_context import unit_test_execution_context
 from tradeexecutor.strategy.generic_router import GenericRouting
 
@@ -120,7 +123,21 @@ def generic_pricing_model(
 
 def test_generic_routing_open_position_across_markets(
     web3,
+    hot_wallet: HotWallet,
+    pair_universe,
     generic_routing_model,
     generic_pricing_model,
 ):
     """Open Uniswap v2, v3 and 1delta position in the same state."""
+
+    # Check that our preflight checks pass
+    generic_routing_model.perform_preflight_checks_and_logging(pair_universe)
+
+    sync_model = HotWalletSyncModel(
+        web3,
+        hot_wallet,
+    )
+
+    state = State()
+    sync_model.sync_initial(state)
+
