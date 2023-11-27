@@ -45,6 +45,10 @@ def resample_single_pair(df, bucket: TimeBucket) -> pd.DataFrame:
     # may case NaN to appear as price
     resampled = df.resample(bucket.to_frequency()).agg(ohlc_dict)
     filled = resampled.ffill()
+
+    # Remove rows that appear before first row in df
+    filled = filled[filled.index >= df.index[0]]
+
     return filled
 
 
