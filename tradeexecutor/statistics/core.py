@@ -188,10 +188,11 @@ def update_statistics(
         at the end of live trading cycle.
     """
 
-    logger.info("update_statistics(), real-time clock at %s, strategy cycle at %s",
-                clock,
-                strategy_cycle_or_wall_clock
-                )
+    logger.info(
+        "update_statistics(), real-time clock at %s, strategy cycle at %s",
+        clock,
+        strategy_cycle_or_wall_clock
+    )
 
     new_stats = calculate_statistics(clock, portfolio, execution_mode)
     stats.portfolio.append(new_stats.portfolio)
