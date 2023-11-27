@@ -21,6 +21,7 @@ from eth_defi.uniswap_v3.price import UniswapV3PriceHelper
 from tradeexecutor.ethereum.one_delta.one_delta_routing import OneDeltaSimpleRoutingModel
 from tradeexecutor.ethereum.routing_data import get_quickswap_default_routing_parameters
 from tradeexecutor.ethereum.token import translate_token_details
+from tradeexecutor.ethereum.uniswap_v2.uniswap_v2_routing import UniswapV2SimpleRoutingModel
 from tradeexecutor.ethereum.uniswap_v3.uniswap_v3_routing import UniswapV3SimpleRoutingModel
 
 from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier, TradingPairKind, AssetType
@@ -338,3 +339,14 @@ def uniswap_v3_routing_model(asset_usdc) -> UniswapV3SimpleRoutingModel:
         allowed_intermediary_pairs,
         reserve_token_address=asset_usdc.address,
     )
+
+
+@pytest.fixture()
+def quickswap_routing_model(quickswap, asset_usdc) -> UniswapV2SimpleRoutingModel:
+    # Route WMATIC and USDC quoted pairs on Quickswap
+    uniswap_v2_router = UniswapV2SimpleRoutingModel(
+        factory_router_map={quickswap_deployment.factory.address: (quickswap_deployment.router.address, quickswap_deployment.init_code_hash)},
+        allowed_intermediary_pairs={wmatic_usdc_spot_pair.base.address: wmatic_usdc_spot_pair.pool_address},
+        reserve_token_address=asset_usdc.address,
+    )
+    return uniswap_v2_router

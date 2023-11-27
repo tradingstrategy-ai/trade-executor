@@ -9,13 +9,18 @@ from tradingstrategy.timebucket import TimeBucket
 
 from eth_defi.uniswap_v2.deployment import UniswapV2Deployment
 from eth_defi.uniswap_v3.deployment import UniswapV3Deployment
+from tradeexecutor.ethereum.one_delta.one_delta_live_pricing import OneDeltaLivePricing
 from tradeexecutor.ethereum.one_delta.one_delta_routing import OneDeltaSimpleRoutingModel
+from tradeexecutor.ethereum.uniswap_v2.uniswap_v2_live_pricing import UniswapV2LivePricing
 from tradeexecutor.ethereum.uniswap_v2.uniswap_v2_routing import UniswapV2SimpleRoutingModel
+from tradeexecutor.ethereum.uniswap_v3.uniswap_v3_live_pricing import UniswapV3LivePricing
 from tradeexecutor.ethereum.uniswap_v3.uniswap_v3_routing import UniswapV3SimpleRoutingModel
 from tradeexecutor.ethereum.universe import create_exchange_universe, create_pair_universe
 from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier
 from tradeexecutor.strategy.execution_context import unit_test_execution_context
 from tradeexecutor.strategy.generic_router import GenericRouting
+
+from tradeexecutor.strategy.generic.generic_pricing_model import GenericPricingModel
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse, load_partial_data
 from tradeexecutor.strategy.universe_model import default_universe_options
 
@@ -64,6 +69,7 @@ def trading_strategy_universe(chain_id, exchange_universe, pair_universe, asset_
 def generic_routing_model(
     quickswap_deployment: UniswapV2Deployment,
     wmatic_usdc_spot_pair: TradingPairIdentifier,
+    quickswap_routing_model: UniswapV2SimpleRoutingModel,
     one_delta_routing_model: OneDeltaSimpleRoutingModel,
     uniswap_v3_routing_model: UniswapV3SimpleRoutingModel,
     asset_usdc: AssetIdentifier,
@@ -74,17 +80,10 @@ def generic_routing_model(
     Live Polygon deployment addresses.
     """
 
-    # Route WMATIC and USDC quoted pairs on Quickswap
-    uniswap_v2_router = UniswapV2SimpleRoutingModel(
-        factory_router_map={quickswap_deployment.factory.address: (quickswap_deployment.router.address, quickswap_deployment.init_code_hash)},
-        allowed_intermediary_pairs={wmatic_usdc_spot_pair.base.address: wmatic_usdc_spot_pair.pool_address},
-        reserve_token_address=asset_usdc.address,
-    )
-
     # Uses default router choose function
     return GenericRouting(
         routers={
-            "quickswap": uniswap_v2_router,
+            "quickswap": quickswap_routing_model,
             "uniswap-v3": uniswap_v3_routing_model,
             "1delta": one_delta_routing_model,
         }
@@ -93,37 +92,35 @@ def generic_routing_model(
 
 @pytest.fixture()
 def generic_pricing_model(
-    quickswap_deployment: UniswapV2Deployment,
-    wmatic_usdc_spot_pair: TradingPairIdentifier,
+    web3,
+    pair_universe: PandasPairUniverse,
+    quickswap_routing_model: UniswapV2SimpleRoutingModel,
     one_delta_routing_model: OneDeltaSimpleRoutingModel,
     uniswap_v3_routing_model: UniswapV3SimpleRoutingModel,
-    asset_usdc: AssetIdentifier,
-    asset_wmatic: AssetIdentifier,
-) -> GenericRouting:
+) -> GenericPricingModel:
     """Create a routing model that trades Uniswap v2, v3 and 1delta + Aave.
 
     Live Polygon deployment addresses.
     """
 
-    # Route WMATIC and USDC quoted pairs on Quickswap
-    uniswap_v2_router = UniswapV2SimpleRoutingModel(
-        factory_router_map={quickswap_deployment.factory.address: (quickswap_deployment.router.address, quickswap_deployment.init_code_hash)},
-        allowed_intermediary_pairs={wmatic_usdc_spot_pair.base.address: wmatic_usdc_spot_pair.pool_address},
-        reserve_token_address=asset_usdc.address,
-    )
+    quickswap_pricing_model = UniswapV2LivePricing(web3, pair_universe, quickswap_routing_model)
+    uniswap_v3_pricing_model = UniswapV3LivePricing(web3, pair_universe, uniswap_v3_routing_model)
+    one_delta_pricing = OneDeltaLivePricing(web3, pair_universe, one_delta_routing_model)
 
     # Uses default router choose function
-    return GenericRouting(
-        routers={
-            "quickswap": uniswap_v2_router,
-            "uniswap-v3": uniswap_v3_routing_model,
-            "1delta": one_delta_routing_model,
+    return GenericPricingModel(
+        pair_universe,
+        routes = {
+            "quickswap": quickswap_pricing_model,
+            "uniswap-v3": uniswap_v3_pricing_model,
+            "1delta": one_delta_pricing,
         }
     )
 
 
-def test_generic_routing_open_all_positions(
+def test_generic_routing_open_position_across_markets(
     web3,
     generic_routing_model,
+    generic_pricing_model,
 ):
     """Open Uniswap v2, v3 and 1delta position in the same state."""
