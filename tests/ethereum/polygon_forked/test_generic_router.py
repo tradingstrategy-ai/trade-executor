@@ -1,5 +1,6 @@
 """Test live routing of combined Uniswap v2, v3 spot and 1delta leveraged positions."""
 import datetime
+from _decimal import Decimal
 
 import pandas as pd
 import pytest as pytest
@@ -145,8 +146,8 @@ def test_generic_routing_open_position_across_markets(
     sync_model.sync_initial(state)
 
     # Strategy has its reserve balances updated
-    sync_model.sync_treasury(datetime.datetime.utcnow(), state)
+    sync_model.sync_treasury(datetime.datetime.utcnow(), state, supported_reserves=[asset_usdc])
 
-    assert state.portfolio.get_reserve_position(asset_usdc) == Decimal(10_000)
+    assert state.portfolio.get_reserve_position(asset_usdc).quantity == Decimal('10_000')
 
 

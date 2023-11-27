@@ -62,7 +62,8 @@ def anvil_polygon_chain_fork(request, large_usdc_holder) -> str:
         yield launch.json_rpc_url
     finally:
         # Wind down Anvil process after the test is complete
-        launch.close(log_level=logging.ERROR)
+        # launch.close(log_level=logging.ERROR)
+        launch.close()
 
 
 @pytest.fixture
