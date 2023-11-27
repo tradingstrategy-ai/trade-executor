@@ -340,6 +340,7 @@ class EthereumExecutionModel(ExecutionModel):
             Set for unit test.
         """
         assert isinstance(confirmation_timeout, datetime.timedelta)
+        assert isinstance(routing_model, RoutingModel)
 
         web3 = self.web3
         logger.info("Using multi-node broadcast for %s", web3.provider)
@@ -480,6 +481,9 @@ class EthereumExecutionModel(ExecutionModel):
 
         :param stop_on_execution_failure:
             Raise an exception if any of the trades failed"""
+
+        assert isinstance(state, State)
+        assert isinstance(routing_model, RoutingModel)
 
         web3 = self.web3
 
