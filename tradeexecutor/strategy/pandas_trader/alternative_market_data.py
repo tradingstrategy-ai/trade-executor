@@ -89,38 +89,7 @@ def load_candles_from_parquet(
 
     df = pd.read_parquet(file)
 
-    assert isinstance(df.index, pd.DatetimeIndex), f"Parquet did not have DateTime index: {df.index}"
-
-    orig = df = df.rename(columns=column_map)
-
-    # What's the spacing of candles
-    granularity = df.index[1] - df.index[0]
-    original_bucket = TimeBucket.from_pandas_timedelta(granularity)
-
-    if resample:
-        _df = resample_single_pair(df, resample)
-        bucket = resample
-
-        # to preserve addtional columns beyond OHLCV, we need to left join
-        if len(df.columns) > 5:
-            del df['open']
-            del df['high']
-            del df['low']
-            del df['close']
-            del df['volume']
-
-            df = _df.join(df, how='left')
-    else:
-        bucket = TimeBucket.from_pandas_timedelta(granularity)
-
-    df = _fix_nans(df)
-
-    df["pair_id"] = pair_id
-
-    # Because we assume multipair data from now on,
-    # with group index instead of timestamp index,
-    # we make timestamp a column
-    df["timestamp"] = df.index.to_series()
+    df, orig, bucket, original_bucket = load_candles_from_dataframe(column_map, df, pair_id, resample)
 
     return df, orig, bucket, original_bucket
 
@@ -174,6 +143,100 @@ def load_candle_universe_from_parquet(
         file,
         pair.internal_id,
         column_map,
+        resample,
+    )
+
+    candles, stop_loss_candles = load_candle_universe_from_dataframe(
+        pair,
+        df,
+        column_map,
+        resample,
+        include_as_trigger_signal,
+    )
+
+    return candles, stop_loss_candles
+
+
+def load_candles_from_dataframe(column_map: Dict[str, str], df: pd.DataFrame, pair_id: int, resample: TimeBucket | None):
+    assert isinstance(df.index, pd.DatetimeIndex), f"Parquet did not have DateTime index: {df.index}"
+
+    orig = df = df.rename(columns=column_map)
+
+    # What's the spacing of candles
+    granularity = df.index[1] - df.index[0]
+    original_bucket = TimeBucket.from_pandas_timedelta(granularity)
+
+    if resample:
+        _df = resample_single_pair(df, resample)
+        bucket = resample
+
+        # to preserve addtional columns beyond OHLCV, we need to left join
+        if len(df.columns) > 5:
+            del df['open']
+            del df['high']
+            del df['low']
+            del df['close']
+            del df['volume']
+
+            df = _df.join(df, how='left')
+    else:
+        bucket = TimeBucket.from_pandas_timedelta(granularity)
+
+    df = _fix_nans(df)
+
+    df["pair_id"] = pair_id
+
+    # Because we assume multipair data from now on,
+    # with group index instead of timestamp index,
+    # we make timestamp a column
+    df["timestamp"] = df.index.to_series()
+
+    return df, orig, bucket, original_bucket
+
+
+def load_candle_universe_from_dataframe(
+    pair: TradingPairIdentifier,
+    df: pd.DataFrame,
+    column_map: Dict[str, str] = DEFAULT_COLUMN_MAP,
+    resample: TimeBucket | None = None,
+    include_as_trigger_signal=True,
+) -> Tuple[GroupedCandleUniverse, GroupedCandleUniverse | None]:
+    """Load a single pair price feed from a DataFrame.
+    
+    Same as :py:func:`load_candle_universe_from_parquet` but from a DataFrame.
+
+    Overrides the current price candle feed with an alternative version,
+    usually from a centralised exchange. This allows
+    strategy testing to see there is no price feed data issues
+    or specificity with it.
+    
+    :param pair:
+        The trading pair data this Parquet file contains.
+
+        E.g. ticker symbols and trading fee are read from this argument.
+
+    :param resample:
+        Resample OHLCV data to a higher timeframe
+
+    :param include_as_trigger_signal:
+        Create take profit/stop loss signal from the data.
+
+        For this, any upsampling is not used.
+
+    :raise NoMatchingBucket:
+        Could not match candle time frame to any of our timeframes.
+
+    :return:
+        (Price feed universe, stop loss trigger candls universe) tuple.
+
+        Stop loss data is only generated if `include_as_trigger_signal` is True.
+        Stop loss data is never resampled and is in the most accurate available resolution.
+    """
+
+    df, orig, bucket, original_bucket = load_candles_from_dataframe(
+        column_map,
+        df,
+        pair.internal_id,
         resample,
     )
 
