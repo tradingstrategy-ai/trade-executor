@@ -10,7 +10,7 @@ from eth_defi.token import fetch_erc20_details
 from eth_defi.trade import TradeSuccess
 from eth_defi.tx import AssetDelta
 from eth_defi.uniswap_v3.analysis import analyse_trade_by_receipt
-from tradeexecutor.ethereum.ethereum_execution_model import get_swap_transactions, report_failure
+from tradeexecutor.ethereum.swap import get_swap_transactions, report_failure
 from tradeexecutor.state.state import State
 from tradeexecutor.state.trade import TradeExecution
 from tradeexecutor.state.types import Percent

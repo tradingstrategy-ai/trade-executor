@@ -32,7 +32,7 @@ from eth_defi.revert_reason import fetch_transaction_revert_reason
 from tradeexecutor.ethereum.tx import TransactionBuilder
 from tradeexecutor.state.state import State
 from tradeexecutor.state.trade import TradeExecution, TradeStatus
-from tradeexecutor.state.blockhain_transaction import BlockchainTransaction, BlockchainTransactionType
+from tradeexecutor.state.blockhain_transaction import BlockchainTransaction
 from tradeexecutor.state.freeze import freeze_position_on_failed_trade
 from tradeexecutor.state.identifier import AssetIdentifier
 from tradeexecutor.ethereum.uniswap_v2.uniswap_v2_routing import UniswapV2SimpleRoutingModel, UniswapV2RoutingState
@@ -44,10 +44,6 @@ from tradingstrategy.chain import ChainId
 
 
 logger = logging.getLogger(__name__)
-
-
-class TradeExecutionFailed(Exception):
-    """Our Uniswap trade reverted"""
 
 
 # TODO check with tradeexuctor.strategy.execution ExecutionModel
@@ -258,6 +254,7 @@ class EthereumExecutionModel(ExecutionModel):
         self,
         state: State,
         trades: List[TradeExecution],
+        routing_model: RoutingModel,
         confirmation_timeout: datetime.timedelta = datetime.timedelta(minutes=1),
         confirmation_block_count: int=0,
         stop_on_execution_failure=False,
@@ -303,6 +300,7 @@ class EthereumExecutionModel(ExecutionModel):
 
             self.resolve_trades(
                 datetime.datetime.now(),
+                routing_model,
                 state,
                 broadcasted,
                 receipts,
@@ -543,48 +541,6 @@ def update_confirmation_status(
         return trades                
                 
 # Only usage outside this module is UniswapV2ExecutionModelV0
-def report_failure(
-    ts: datetime.datetime,
-    state: State,
-    trade: TradeExecution,
-    stop_on_execution_failure: bool,
-) -> None:
-    """What to do if trade fails.
-
-    :param ts:
-        Wall clock time
-
-    :param state:
-        The strategy state
-
-    :param trade:
-        Which trade had reverted transactions
-
-    :param stop_on_execution_failure:
-        If set, abort with exceptionm instead of trying to keep going.
-    """
-    
-    logger.error(
-        "Trade %s failed and freezing the position: %s",
-        trade,
-        trade.get_revert_reason(),
-    )
-    
-    state.mark_trade_failed(
-        ts,
-        trade,
-    )
-    
-    if stop_on_execution_failure:
-        success_txs = []
-        for tx in trade.blockchain_transactions:
-            if not tx.is_success():
-                raise TradeExecutionFailed(f"Could not execute a trade: {trade}.\n"
-                                           f"Transaction failed: {tx}\n"
-                                           f"Other succeeded transactions: {success_txs}\n"
-                                           f"Stack trace:{tx.stack_trace}")
-            else:
-                success_txs.append(tx)
 
 
 def translate_to_naive_swap(
@@ -888,24 +844,6 @@ def wait_trades_to_complete(
         tx_hashes.extend(tx.tx_hash for tx in t.blockchain_transactions)
     receipts = wait_transactions_to_complete(web3, tx_hashes, confirmation_block_count, max_timeout, poll_delay)
     return receipts
-
-
-def is_swap_function(name: str):
-    return name in {"swapExactTokensForTokens", "exactInput", "multicall"}
-
-
-def get_swap_transactions(trade: TradeExecution) -> BlockchainTransaction:
-    """Get the swap transaction from multiple transactions associated with the trade"""
-    
-    for tx in trade.blockchain_transactions:
-        if tx.type == BlockchainTransactionType.hot_wallet:
-            if is_swap_function(tx.function_selector):
-                return tx
-        elif tx.type == BlockchainTransactionType.enzyme_vault:
-            if is_swap_function(tx.details["function"]):
-                return tx
-
-    raise RuntimeError("Should not happen")
 
 
 def get_held_assets(web3: Web3, address: HexAddress, assets: List[AssetIdentifier]) -> Dict[str, Decimal]:

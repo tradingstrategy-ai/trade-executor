@@ -786,7 +786,7 @@ def test_stateful_routing_three_legstest_stateful_routing_three_legs(
 
     state.start_execution_all(datetime.datetime.utcnow(), trades)
     routing_model.execute_trades_internal(pair_universe, routing_state, trades, check_balances=True)
-    execution_model.broadcast_and_resolve_old(state, trades, stop_on_execution_failure=True)
+    execution_model.broadcast_and_resolve_old(state, trades, routing_model, stop_on_execution_failure=True)
 
     # Check all all trades and transactions completed
     for t in trades:
@@ -813,7 +813,7 @@ def test_stateful_routing_three_legstest_stateful_routing_three_legs(
 
     state.start_execution_all(datetime.datetime.utcnow(), trades)
     routing_model.execute_trades_internal(pair_universe, routing_state, trades, check_balances=True)
-    execution_model.broadcast_and_resolve_old(state, trades, stop_on_execution_failure=True)
+    execution_model.broadcast_and_resolve_old(state, trades, routing_model, stop_on_execution_failure=True)
 
     # Check all all trades and transactions completed
     for t in trades:

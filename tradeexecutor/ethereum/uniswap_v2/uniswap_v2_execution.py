@@ -27,7 +27,7 @@ from eth_defi.hotwallet import HotWallet
 from eth_defi.uniswap_v2.fees import estimate_sell_price_decimals
 from eth_defi.uniswap_v2.analysis import TradeSuccess, analyse_trade_by_receipt
 from eth_defi.uniswap_v2.deployment import UniswapV2Deployment, mock_partial_deployment_for_analysis
-from tradeexecutor.ethereum.ethereum_execution_model import get_swap_transactions, report_failure
+from tradeexecutor.ethereum.swap import get_swap_transactions, report_failure
 from tradeexecutor.ethereum.tx import TransactionBuilder
 from tradeexecutor.state.identifier import TradingPairIdentifier
 from tradeexecutor.state.state import State

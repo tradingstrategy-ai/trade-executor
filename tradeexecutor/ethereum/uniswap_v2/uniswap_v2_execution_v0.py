@@ -22,7 +22,8 @@ from eth_defi.uniswap_v2.deployment import mock_partial_deployment_for_analysis
 from eth_defi.uniswap_v2.analysis import analyse_trade_by_receipt
 from tradeexecutor.ethereum.tx import HotWalletTransactionBuilder
 from tradeexecutor.ethereum.uniswap_v2.uniswap_v2_routing import UniswapV2RoutingState, UniswapV2SimpleRoutingModel
-from tradeexecutor.ethereum.execution import broadcast, wait_trades_to_complete, report_failure, get_swap_transactions, update_confirmation_status
+from tradeexecutor.ethereum.execution import broadcast, wait_trades_to_complete, update_confirmation_status
+from tradeexecutor.ethereum.swap import report_failure, get_swap_transactions
 from tradeexecutor.state.freeze import freeze_position_on_failed_trade
 from tradeexecutor.state.state import State
 from tradeexecutor.state.trade import TradeExecution

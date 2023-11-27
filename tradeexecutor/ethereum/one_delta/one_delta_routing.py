@@ -1,12 +1,21 @@
 """Route trades for 1delta."""
 
 import logging
+from _decimal import Decimal
 from typing import Dict, Optional, List
 
+from eth_defi.one_delta.constants import TradeOperation
 from eth_typing import HexAddress
+from hexbytes import HexBytes
 from web3 import Web3
 from web3.exceptions import ContractLogicError
 
+from eth_defi.token import fetch_erc20_details
+from eth_defi.trade import TradeSuccess
+from tradeexecutor.ethereum.one_delta.analysis import analyse_trade_by_receipt
+from tradeexecutor.ethereum.swap import get_swap_transactions, report_failure
+from tradeexecutor.state.state import State
+from tradeexecutor.state.trade import TradeExecution
 from tradingstrategy.chain import ChainId
 from tradingstrategy.pair import PandasPairUniverse
 from eth_defi.abi import get_deployed_contract
@@ -386,3 +395,75 @@ class OneDeltaSimpleRoutingModel(EthereumRoutingModel):
             notes=notes,
         )
 
+    def settle_trade(
+        self,
+        web3: Web3,
+        state: State,
+        trade: TradeExecution,
+        receipts: Dict[str, dict],
+        stop_on_execution_failure=False,
+    ):
+        pricing_pair = trade.pair.get_pricing_pair()
+        base_token_details = fetch_erc20_details(web3, pricing_pair.base.checksum_address)
+        quote_token_details = fetch_erc20_details(web3, pricing_pair.quote.checksum_address)
+        reserve = trade.reserve_currency
+        tx = get_swap_transactions(trade)
+        one_delta = fetch_deployment(web3, tx.contract_address, tx.contract_address)
+        # TODO: this router address is wrong, but it doesn't matter since we don't use it here
+        uniswap = mock_partial_deployment_for_analysis(web3, tx.contract_address)
+
+        tx_dict = tx.get_transaction()
+        receipt = receipts[HexBytes(tx.tx_hash)]
+
+        input_args = tx.get_actual_function_input_args()
+
+        ts = get_block_timestamp(web3, receipt["blockNumber"])
+
+        result = analyse_trade_by_receipt(
+            web3,
+            one_delta=one_delta,
+            uniswap=uniswap,
+            tx=tx_dict,
+            tx_hash=tx.tx_hash,
+            tx_receipt=receipt,
+            input_args=input_args,
+            trade_operation=TradeOperation.OPEN if trade.is_sell() else TradeOperation.CLOSE,
+        )
+
+        if isinstance(result, TradeSuccess):
+            # path in 1delta is always from base -> quote
+            assert result.path[0].lower() == base_token_details.address.lower(), f"Path is {path}, base token is {base_token_details}"
+            assert result.path[-1].lower() == reserve.address.lower()
+
+            price = result.get_human_price(quote_token_details.address == result.token0.address)
+
+            # TODO: verify these numbers
+            if trade.is_buy():
+                executed_amount = -result.amount_out / Decimal(10 ** base_token_details.decimals)
+                executed_reserve = result.amount_in / Decimal(10 ** reserve.decimals)
+            else:
+                executed_amount = result.amount_in / Decimal(10 ** base_token_details.decimals)
+                executed_reserve = result.amount_out / Decimal(10 ** reserve.decimals)
+
+            lp_fee_paid = result.lp_fee_paid
+
+            assert (executed_reserve > 0) and (executed_amount != 0) and (price > 0), f"Executed amount {executed_amount}, executed_reserve: {executed_reserve}, price: {price}, tx info {trade.tx_info}"
+
+            # update the executed loan
+            # TODO: check if this is the right spot for this
+            trade.executed_loan_update = trade.planned_loan_update
+
+            # Mark as success
+            state.mark_trade_success(
+                ts,
+                trade,
+                executed_price=float(price),
+                executed_amount=executed_amount,
+                executed_reserve=executed_reserve,
+                lp_fees=lp_fee_paid,
+                native_token_price=0,  # won't fix
+                cost_of_gas=result.get_cost_of_gas(),
+            )
+        else:
+            # Trade failed
+            report_failure(ts, state, trade, stop_on_execution_failure)
