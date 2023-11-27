@@ -152,8 +152,8 @@ class OneDeltaExecutionModel(EthereumExecutionModel):
 
                 # TODO: verify these numbers
                 if trade.is_buy():
-                    executed_amount = -result.amount_in / Decimal(10**base_token_details.decimals)
-                    executed_reserve = result.amount_out / Decimal(10**reserve.decimals)
+                    executed_amount = -result.amount_out / Decimal(10**base_token_details.decimals)
+                    executed_reserve = result.amount_in / Decimal(10**reserve.decimals)
                 else:
                     executed_amount = result.amount_in / Decimal(10**base_token_details.decimals)
                     executed_reserve = result.amount_out / Decimal(10**reserve.decimals)
@@ -161,6 +161,10 @@ class OneDeltaExecutionModel(EthereumExecutionModel):
                 lp_fee_paid = result.lp_fee_paid
 
                 assert (executed_reserve > 0) and (executed_amount != 0) and (price > 0), f"Executed amount {executed_amount}, executed_reserve: {executed_reserve}, price: {price}, tx info {trade.tx_info}"
+
+                # update the executed loan
+                # TODO: check if this is the right spot for this
+                trade.executed_loan_update = trade.planned_loan_update
 
                 # Mark as success
                 state.mark_trade_success(

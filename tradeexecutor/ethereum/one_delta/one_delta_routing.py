@@ -328,6 +328,22 @@ class OneDeltaSimpleRoutingModel(EthereumRoutingModel):
         assert type(address_map) == dict
         self.address_map = self.convert_address_dict_to_lower(address_map)
 
+    def create_routing_state(
+        self,
+        universe: StrategyExecutionUniverse,
+        execution_details: dict
+    ) -> OneDeltaRoutingState:
+        """Create a new routing state for this cycle.
+
+        - Connect routing to web3 and hot wallet
+
+        - Read on-chain data on what gas fee we are going to use
+
+        - Setup transaction builder based on this information
+        """
+
+        return super().create_routing_state(universe, execution_details, OneDeltaRoutingState)
+
     def perform_preflight_checks_and_logging(
         self,
         pair_universe: PandasPairUniverse,

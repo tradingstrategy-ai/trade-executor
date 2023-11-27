@@ -1287,9 +1287,9 @@ class PositionManager:
             quantity = Decimal(quantity)
 
         # TODO: Hardcoded USD exchange rate
-        price_structure = self.pricing_model.get_sell_price(self.timestamp, pair.underlying_spot_pair, 1)
+        price_structure = self.pricing_model.get_sell_price(self.timestamp, pair.underlying_spot_pair, Decimal(1))
 
-        position, trade, _ = self.state.trade_short(
+        position2, trade, _ = self.state.trade_short(
             self.timestamp,
             closing=True,
             pair=pair,
@@ -1302,6 +1302,15 @@ class PositionManager:
             position=position,
         )
 
+        assert position == position2, f"Somehow messed up the close_position() trade.\n" \
+                                      f"Original position: {position}.\n" \
+                                      f"Trade's position: {position2}.\n" \
+                                      f"Trade: {trade}\n" \
+                                      f"Quantity left: {quantity_left}\n" \
+                                      f"Price structure: {price_structure}\n" \
+                                      f"Reserve asset: {reserve_asset}\n"
+
+        assert trade.closing
         return [trade]
 
     def adjust_short(
