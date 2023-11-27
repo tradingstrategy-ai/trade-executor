@@ -1,5 +1,7 @@
 """Test live routing of combined Uniswap v2, v3 spot and 1delta leveraged positions."""
 import datetime
+import os
+import shutil
 from _decimal import Decimal
 
 import pandas as pd
@@ -30,6 +32,12 @@ from tradeexecutor.strategy.generic.generic_router import GenericRouting
 from tradeexecutor.strategy.generic.generic_pricing_model import GenericPricingModel
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse, load_partial_data
 from tradeexecutor.strategy.universe_model import default_universe_options
+
+
+pytestmark = pytest.mark.skipif(
+    (os.environ.get("JSON_RPC_POLYGON") is None) or (shutil.which("anvil") is None),
+    reason="Set JSON_RPC_POLYGON env install anvil command to run these tests",
+)
 
 
 @pytest.fixture()
