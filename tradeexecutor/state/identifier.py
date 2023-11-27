@@ -734,14 +734,14 @@ def generate_pair_for_binance_data(
     assert 0 < fee < 1, f"Bad fee {fee}. Must be 0..1"
 
     base = AssetIdentifier(
-        ChainId.unknown.value,
+        int(ChainId.unknown.value),
         string_to_eth_address(base_token_symbol),
         base_token_symbol,
         base_token_decimals,
     )
 
     quote = AssetIdentifier(
-        ChainId.unknown.value,
+        int(ChainId.unknown.value),
         string_to_eth_address(quote_token_symbol),
         quote_token_symbol,
         quote_token_decimals,
@@ -778,26 +778,41 @@ def generate_exchange_for_binance_data(
     )
 
 @staticmethod
-def add_info_columns_to_ohlc(df: pd.DataFrame, pair: TradingPairIdentifier):
+def add_info_columns_to_ohlc(df: pd.DataFrame, *args):
     """Add single pair informational columns to an OHLC dataframe.
     
-    Specifically, this needs to be done for downloaded Binance data to be used in a backtest.
+    :param *args: Each argument is a dict with the format {symbol: pair}
+        E.g. {'ETHUSDT': TradingPairIdentifier(...)}
 
     :return: The same dataframe with added columns
     """
-    df['base_token_symbol'] = pair.base.token_symbol
-    df['quote_token_symbol'] = pair.quote.token_symbol
-    df['exchange_slug'] = 'binance'
-    df['chain_id'] = pair.base.chain_id
-    df['fee'] = pair.fee * 10_000
-    df['pair_id'] = pair.internal_id
-    df['buy_volume_all_time'] = 0
-    df['address'] = pair.pool_address
-    df['exchange_id'] = pair.internal_exchange_id
-    df['token0_address'] = pair.base.address
-    df['token1_address'] = pair.quote.address
-    df['token0_symbol'] = pair.base.token_symbol
-    df['token1_symbol'] = pair.quote.token_symbol
-    df['token0_decimals'] = pair.base.decimals
-    df['token1_decimals'] = pair.quote.decimals
+
+    for arg in args:
+        assert type(arg) == dict, f"Bad arg {arg}"
+
+        if len(arg) != 1:
+            raise ValueError(f"Bad arg {arg}")
+        symbol, pair = next(iter(arg.items()))
+
+        if symbol not in df['symbol'].values:
+            raise ValueError(f"Symbol {symbol} not found in DataFrame")
+
+        # Update the DataFrame only for the rows where 'symbol' matches
+        mask = df['symbol'] == symbol
+        df.loc[mask, 'base_token_symbol'] = pair.base.token_symbol
+        df.loc[mask, 'quote_token_symbol'] = pair.quote.token_symbol
+        df.loc[mask, 'exchange_slug'] = 'binance'
+        df.loc[mask, 'chain_id'] = int(pair.base.chain_id)
+        df.loc[mask, 'fee'] = pair.fee * 10_000
+        df.loc[mask, 'pair_id'] = pair.internal_id
+        df.loc[mask, 'buy_volume_all_time'] = 0
+        df.loc[mask, 'address'] = pair.pool_address
+        df.loc[mask, 'exchange_id'] = pair.internal_exchange_id
+        df.loc[mask, 'token0_address'] = pair.base.address
+        df.loc[mask, 'token1_address'] = pair.quote.address
+        df.loc[mask, 'token0_symbol'] = pair.base.token_symbol
+        df.loc[mask, 'token1_symbol'] = pair.quote.token_symbol
+        df.loc[mask, 'token0_decimals'] = pair.base.decimals
+        df.loc[mask, 'token1_decimals'] = pair.quote.decimals
+
     return df
