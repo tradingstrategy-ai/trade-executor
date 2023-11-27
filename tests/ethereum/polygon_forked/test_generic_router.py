@@ -2,6 +2,7 @@
 import pandas as pd
 import pytest as pytest
 from eth_typing import ChainId
+from web3 import Web3
 
 from eth_defi.hotwallet import HotWallet
 from eth_defi.uniswap_v2.deployment import UniswapV2Deployment
@@ -121,11 +122,11 @@ def generic_pricing_model(
 
 
 def test_generic_routing_open_position_across_markets(
-    web3,
+    web3: Web3,
     hot_wallet: HotWallet,
-    pair_universe,
-    generic_routing_model,
-    generic_pricing_model,
+    pair_universe: PandasPairUniverse,
+    generic_routing_model: GenericRouting,
+    generic_pricing_model: GenericPricingModel,
 ):
     """Open Uniswap v2, v3 and 1delta position in the same state."""
 

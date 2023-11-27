@@ -114,12 +114,6 @@ class EthereumPricingModel(PricingModel):
         sp = self.get_sell_price(ts, pair, self.very_small_amount)
         return (bp.price + sp.price) / 2
 
-    def quantize_base_quantity(self, pair: TradingPairIdentifier, quantity: Decimal, rounding=ROUND_DOWN) -> Decimal:
-        """Convert any base token quantity to the native token units by its ERC-20 decimals."""
-        assert isinstance(pair, TradingPairIdentifier)
-        decimals = pair.base.decimals
-        return Decimal(quantity).quantize((Decimal(10) ** Decimal(-decimals)), rounding=rounding)
-    
     def get_pair_fee(self,
                      ts: datetime.datetime,
                      pair: TradingPairIdentifier,
