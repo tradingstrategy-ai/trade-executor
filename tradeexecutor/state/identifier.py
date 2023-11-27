@@ -8,6 +8,7 @@ import pandas as pd
 from dataclasses import dataclass, field
 from decimal import Decimal
 from typing import Optional, Literal, TypeAlias
+from web3 import Web3
 
 from dataclasses_json import dataclass_json
 from eth_typing import HexAddress
@@ -15,9 +16,9 @@ from eth_typing import HexAddress
 from tradeexecutor.utils.accuracy import sum_decimal, ensure_exact_zero
 from tradeexecutor.utils.blockchain import string_to_eth_address
 from tradingstrategy.exchange import Exchange
-from tradingstrategy.exchange import ExchangeType
+from tradingstrategy.exchange import ExchangeUniverse
 from tradingstrategy.chain import ChainId
-from web3 import Web3
+from tradingstrategy.binance.constants import BINANCE_CHAIN_ID, BINANCE_EXCHANGE_ADDRESS, BINANCE_EXCHANGE_ID, BINANCE_FEE, BINANCE_EXCHANGE_SLUG, BINANCE_CHAIN_SLUG, BINANCE_EXCHANGE_TYPE
 
 from tradeexecutor.state.types import (
     JSONHexAddress,
@@ -708,7 +709,7 @@ class AssetWithTrackedValue:
             self.quantity = Decimal(0)
 
 
-def generate_pair_for_binance_data(
+def generate_pair_for_binance(
     base_token_symbol: str,
     quote_token_symbol: str,
     fee: float,
@@ -758,24 +759,23 @@ def generate_pair_for_binance_data(
     )
 
 
-def generate_exchange_for_binance_data(
-    pair: TradingPairIdentifier,
-) -> Exchange:
+def generate_exchange_for_binance(pair_count: int) -> Exchange:
     """Generate an exchange identifier for Binance data."""
-
-    assert pair.chain_id == ChainId.unknown, f"Bad chain id {pair.chain_id}"
-    assert pair.internal_exchange_id == 129875571, f"Bad exchange id {pair.internal_exchange_id}"
-    assert pair.exchange_address == hex(hash("binance")), f"Bad exchange address {pair.exchange_address}"
-
     return Exchange(
-        chain_id=pair.chain_id,
-        chain_slug=ChainId(pair.chain_id),
-        exchange_id=pair.internal_exchange_id,
-        exchange_slug='binance',
-        address=pair.exchange_address,
-        exchange_type=ExchangeType.uniswap_v2,
-        pair_count=1,
+        chain_id=BINANCE_CHAIN_ID,
+        chain_slug=ChainId(BINANCE_CHAIN_SLUG),
+        exchange_id=BINANCE_EXCHANGE_ID,
+        exchange_slug=BINANCE_EXCHANGE_SLUG,
+        address=BINANCE_EXCHANGE_ADDRESS,
+        exchange_type=BINANCE_EXCHANGE_TYPE,
+        pair_count=pair_count,
     )
+
+
+def generate_exchange_universe_for_binance(pair_count: int) -> Exchange:
+    """Generate an exchange universe for Binance data."""
+    return ExchangeUniverse.from_collection([generate_exchange_for_binance(pair_count)])
+
 
 @staticmethod
 def add_info_columns_to_ohlc(df: pd.DataFrame, *args):
