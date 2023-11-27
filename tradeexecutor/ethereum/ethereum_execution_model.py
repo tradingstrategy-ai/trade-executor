@@ -39,6 +39,7 @@ from tradeexecutor.ethereum.uniswap_v2.uniswap_v2_routing import UniswapV2Simple
 from tradeexecutor.ethereum.uniswap_v3.uniswap_v3_routing import UniswapV3SimpleRoutingModel, UniswapV3RoutingState
 from tradeexecutor.state.types import BlockNumber
 from tradeexecutor.strategy.execution_model import ExecutionModel, RoutingStateDetails
+from tradeexecutor.strategy.routing import RoutingModel
 from tradingstrategy.chain import ChainId
 
 
@@ -458,6 +459,7 @@ class EthereumExecutionModel(ExecutionModel):
     def resolve_trades(
         self,
         ts: datetime.datetime,
+        routing_model: RoutingModel,
         state: State,
         tx_map: Dict[HexStr, Tuple[TradeExecution, BlockchainTransaction]],
         receipts: Dict[HexBytes, dict],
@@ -485,82 +487,12 @@ class EthereumExecutionModel(ExecutionModel):
         # if the blockchain transaction was successsful.
         # Also get the actual executed token counts.
         for trade in trades:
-            base_token_details = fetch_erc20_details(web3, trade.pair.base.checksum_address)
-            quote_token_details = fetch_erc20_details(web3, trade.pair.quote.checksum_address)
-            reserve = trade.reserve_currency
-            swap_tx = get_swap_transactions(trade)
-            uniswap = self.mock_partial_deployment_for_analysis(web3, swap_tx.contract_address)
-
-            tx_dict = swap_tx.get_transaction()
-            receipt = receipts[HexBytes(swap_tx.tx_hash)]
-
-            input_args = swap_tx.get_actual_function_input_args()
-            
-            result = self.analyse_trade_by_receipt(
+            routing_model.settle_trade(
                 web3,
-                deployment=uniswap,
-                tx=tx_dict,
-                tx_hash=swap_tx.tx_hash,
-                tx_receipt=receipt,
-                input_args=input_args,
-                pair_fee=trade.pair.fee,
+                state,
+                trade,
+                receipts,
             )
-
-            if isinstance(result, TradeSuccess):
-
-                # v3 path includes fee (int) as well
-                path = [a.lower() for a in result.path if type(a) == str]
-                
-                if trade.is_buy():
-                    assert path[0] == reserve.address, f"Was expecting the route path to start with reserve token {reserve}, got path {result.path}"
-
-                    if self.is_v3():
-                        price = result.get_human_price(quote_token_details.address == result.token0.address)
-                    else:
-                        price = 1 / result.price
-
-                    executed_reserve = result.amount_in / Decimal(10**reserve.decimals)
-                    executed_amount = result.amount_out / Decimal(10**base_token_details.decimals)
-
-                    # lp fee is already in terms of quote token
-                    lp_fee_paid = result.lp_fee_paid
-                else:
-                    # Ordered other way around
-                    assert path[0] == base_token_details.address.lower(), f"Path is {path}, base token is {base_token_details}"
-                    assert path[-1] == reserve.address
-
-                    if self.is_v3():
-                        price = result.get_human_price(quote_token_details.address == result.token0.address)
-                    else:
-                        price = result.price
-
-                    executed_amount = -result.amount_in / Decimal(10**base_token_details.decimals)
-                    executed_reserve = result.amount_out / Decimal(10**reserve.decimals)
-
-                    # convert lp fee to be in terms of quote token
-                    lp_fee_paid = result.lp_fee_paid * float(price) if result.lp_fee_paid else None
-
-                assert (executed_reserve > 0) and (executed_amount != 0) and (price > 0), f"Executed amount {executed_amount}, executed_reserve: {executed_reserve}, price: {price}, tx info {trade.tx_info}"
-
-                # Mark as success
-                state.mark_trade_success(
-                    ts,
-                    trade,
-                    executed_price=float(price),
-                    executed_amount=executed_amount,
-                    executed_reserve=executed_reserve,
-                    lp_fees=lp_fee_paid,
-                    native_token_price=0,  # won't fix
-                    cost_of_gas=result.get_cost_of_gas(),
-                )
-            else:
-                # Trade failed
-
-
-
-
-                report_failure(ts, state, trade, stop_on_execution_failure)
-
 
 # Only usage outside this module is UniswapV2ExecutionModelV0
 def update_confirmation_status(

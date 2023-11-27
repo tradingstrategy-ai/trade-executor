@@ -10,6 +10,7 @@ from web3 import Web3
 from eth_defi.hotwallet import HotWallet
 from eth_defi.uniswap_v2.deployment import UniswapV2Deployment
 from eth_defi.uniswap_v3.deployment import UniswapV3Deployment
+from tradeexecutor.strategy.pandas_trader.position_manager import PositionManager
 from tradingstrategy.exchange import ExchangeUniverse
 from tradingstrategy.lending import LendingProtocolType
 from tradingstrategy.pair import PandasPairUniverse
@@ -44,7 +45,7 @@ def pair_universe(web3, exchange_universe: ExchangeUniverse, weth_usdc_spot_pair
 
 
 @pytest.fixture()
-def trading_strategy_universe(chain_id, exchange_universe, pair_universe, asset_usdc, persistent_test_client) -> TradingStrategyUniverse:
+def strategy_universe(chain_id, exchange_universe, pair_universe, asset_usdc, persistent_test_client) -> TradingStrategyUniverse:
     """Universe that also contains data about our reserve assets."""
 
     pairs = [
@@ -127,10 +128,11 @@ def generic_pricing_model(
 def test_generic_routing_open_position_across_markets(
     web3: Web3,
     hot_wallet: HotWallet,
-    pair_universe: PandasPairUniverse,
+    strategy_universe: TradingStrategyUniverse,
     generic_routing_model: GenericRouting,
     generic_pricing_model: GenericPricingModel,
     asset_usdc: AssetIdentifier,
+    wmatic_usdc_spot_pair: TradingPairIdentifier,
 ):
     """Open Uniswap v2, v3 and 1delta position in the same state."""
 
@@ -150,4 +152,16 @@ def test_generic_routing_open_position_across_markets(
 
     assert state.portfolio.get_reserve_position(asset_usdc).quantity == Decimal('10_000')
 
+    position_manager = PositionManager(
+        datetime.datetime.utcnow(),
+        strategy_universe,
+        state,
+        generic_pricing_model
+    )
+
+    # WMATIC-USDC on Quickswap
+    trades = position_manager.open_spot(
+        wmatic_usdc_spot_pair,
+        Decimal(1000)
+    )
 

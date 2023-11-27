@@ -1,7 +1,8 @@
 """Map trades to different routing backends based on their type."""
 
-from typing import Collection, Dict, TypeAlias, Protocol, List
+from typing import Collection, Dict, TypeAlias, Protocol, List, Tuple
 
+from tradeexecutor.state.state import State
 from tradeexecutor.state.trade import TradeExecution
 from tradeexecutor.strategy.generic.routing_function import UnroutableTrade, default_route_chooser, RoutingFunction
 from tradeexecutor.strategy.routing import RoutingModel, RoutingState
@@ -75,6 +76,30 @@ class GenericRouting(RoutingModel):
 
         return GenericRoutingState(universe, substates)
 
+    def get_router(
+        self,
+        strategy_universe: TradingStrategyUniverse,
+        trade: TradeExecution,
+    ) -> Tuple[str, RoutingModel]:
+        t = trade
+        router_name = self.routing_function(strategy_universe.data_universe.pairs, t)
+        if router_name is None:
+            raise UnroutableTrade(
+                f"Cannot route: {t}\n"
+                f"Using routing function: {self.routing_function}"
+                f"Available routes: {list(self.routers.keys())}"
+            )
+
+        router = self.routers.get(router_name)
+        if router is None:
+            raise UnroutableTrade(
+                f"Router not available: {router_name} for {t}\n"
+                f"Trade routing function give us a route: {router_name}, but it is not configured\n"
+                f"Available routes: {list(self.routers.keys())}"
+            )
+
+        return router_name, router
+
     def setup_trades(
             self,
             state: GenericRoutingState,
@@ -95,21 +120,11 @@ class GenericRouting(RoutingModel):
         strategy_universe = state.strategy_universe
 
         for t in trades:
-            router_name = self.routing_function(strategy_universe.data_universe.pairs, t)
-            if router_name is None:
-                raise UnroutableTrade(
-                    f"Cannot route: {t}\n"
-                    f"Using routing function: {self.routing_function}"
-                    f"Available routes: {list(self.routers.keys())}"
-                )
+            router_name, router = self.get_router(strategy_universe, t)
 
-            router = self.routers.get(router_name)
-            if router is None:
-                raise UnroutableTrade(
-                    f"Router not available: {router_name} for {t}\n"
-                    f"Trade routing function give us a route: {router_name}, but it is not configured\n"
-                    f"Available routes: {list(self.routers.keys())}"
-                )
+            # Set the router, so we know
+            # in the post-trade analysis which route this trade took
+            t.route = router_name
 
             router_state = state.state_map[router_name]
             router.setup_trades(
@@ -118,5 +133,18 @@ class GenericRouting(RoutingModel):
                 check_balances=check_balances,
             )
 
-
-
+    def settle_trade(
+        self,
+        state: State,
+        trade: TradeExecution,
+        receipts: Dict[str, dict],
+        stop_on_execution_failure=False,
+    ):
+        assert trade.route is not None, f"Trade was not executed with GenericRouter: {t}"
+        router = self.routers[trade.route]
+        return router.settle_trade(
+            state,
+            trade,
+            receipts,
+            stop_on_execution_failure,
+        )
