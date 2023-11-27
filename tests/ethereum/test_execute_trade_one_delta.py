@@ -85,7 +85,8 @@ def anvil_polygon_chain_fork(request, large_usdc_holder) -> str:
         yield launch.json_rpc_url
     finally:
         # Wind down Anvil process after the test is complete
-        launch.close(log_level=logging.ERROR)
+        # launch.close(log_level=logging.ERROR)
+        launch.close()
 
 
 @pytest.fixture
@@ -382,7 +383,7 @@ def test_execute_trade_instructions_open_short(
     assert state.portfolio.get_total_equity() == pytest.approx(10000.0)
     assert trade.get_status() == TradeStatus.planned
 
-    ethereum_trader.execute_trades_simple([trade])
+    ethereum_trader.execute_trades_simple(ethereum_trader.create_routing_model(), [trade])
 
     assert trade.get_status() == TradeStatus.success
     assert trade.executed_price == pytest.approx(1624.626136536907)
@@ -443,7 +444,7 @@ def test_execute_trade_instructions_open_and_close_short(
     assert state.portfolio.get_total_equity() == pytest.approx(10000.0)
     assert trade1.get_status() == TradeStatus.planned
 
-    ethereum_trader.execute_trades_simple([trade1])
+    ethereum_trader.execute_trades_simple(ethereum_trader.create_routing_model(), [trade1])
 
     assert len(state.portfolio.open_positions) == 1
     assert trade1.get_status() == TradeStatus.success
@@ -461,7 +462,7 @@ def test_execute_trade_instructions_open_and_close_short(
     assert trade2.is_leverage()
     assert trade2.get_status() == TradeStatus.planned
 
-    ethereum_trader.execute_trades_simple([trade2])
+    ethereum_trader.execute_trades_simple(ethereum_trader.create_routing_model(), [trade2])
 
     assert trade2.get_status() == TradeStatus.success
     assert trade2.executed_price == pytest.approx(1631.137329233084)

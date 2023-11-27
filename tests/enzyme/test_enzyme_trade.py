@@ -164,7 +164,7 @@ def test_enzyme_execute_open_position(
     assert deltas[1].asset == weth_asset.address
     assert deltas[1].raw_amount == pytest.approx(eth_amount * Decimal(1 - trade.slippage_tolerance) * 10**18)
 
-    trader.execute_trades_simple([trade], broadcast=False)
+    trader.execute_trades_simple(trader.create_routing_model(), [trade], broadcast=False)
 
     # Check that the blockchain transactions where constructed for Enzyme's vault
     txs = trade.blockchain_transactions

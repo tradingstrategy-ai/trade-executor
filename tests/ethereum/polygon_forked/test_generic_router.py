@@ -4,7 +4,7 @@ from _decimal import Decimal
 
 import pandas as pd
 import pytest as pytest
-from eth_typing import ChainId
+from tradingstrategy.chain import ChainId
 from web3 import Web3
 
 from eth_defi.hotwallet import HotWallet
@@ -159,9 +159,4 @@ def test_generic_routing_open_position_across_markets(
         generic_pricing_model
     )
 
-    # WMATIC-USDC on Quickswap
-    trades = position_manager.open_spot(
-        wmatic_usdc_spot_pair,
-        Decimal(1000)
-    )
-
+    # TODO

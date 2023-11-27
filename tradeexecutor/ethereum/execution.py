@@ -128,29 +128,6 @@ class EthereumExecutionModel(ExecutionModel):
         else:
             raise ValueError("Incorrect routing model specified")
 
-    @abstractmethod
-    def analyse_trade_by_receipt(
-        self,
-        web3: Web3,
-        *,
-        deployment: "UniswapV2Deployment", 
-        tx: dict, 
-        tx_hash: str,
-        tx_receipt: dict,
-        input_args: tuple | None = None,
-        pair_fee: float | None = None,
-    ) -> (TradeSuccess | TradeFail):
-        """Links to either uniswap v2 or v3 implementation in eth_defi"""
-
-    @abstractmethod
-    def mock_partial_deployment_for_analysis(self):
-        """Links to either uniswap v2 or v3 implementation in eth_defi"""
-
-    @abstractmethod 
-    def is_v3(self):
-        """Returns true if instance is related to Uniswap V3, else false. 
-        Kind of a hack to be able to share resolve trades function amongst v2 and v3."""
-    
     def repair_unconfirmed_trades(self, state: State) -> List[TradeExecution]:
         """Repair unconfirmed trades.
 

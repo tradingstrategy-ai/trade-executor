@@ -21,7 +21,7 @@ from tradingstrategy.pair import PandasPairUniverse
 from eth_defi.abi import get_deployed_contract
 from eth_defi.tx import AssetDelta
 from eth_defi.gas import estimate_gas_fees
-from eth_defi.uniswap_v3.deployment import UniswapV3Deployment
+from eth_defi.uniswap_v3.deployment import UniswapV3Deployment, mock_partial_deployment_for_analysis
 from eth_defi.aave_v3.deployment import AaveV3Deployment, fetch_deployment as fetch_aave_v3_deployment
 from eth_defi.one_delta.deployment import OneDeltaDeployment, fetch_deployment
 from eth_defi.one_delta.position import (
@@ -47,6 +47,7 @@ from tradeexecutor.ethereum.routing_state import (
 )
 from tradeexecutor.ethereum.routing_model import EthereumRoutingModel
 from tradeexecutor.ethereum.uniswap_v3.uniswap_v3_routing import get_uniswap_for_pair
+from tradeexecutor.utils.blockchain import get_block_timestamp
 
 logger = logging.getLogger(__name__)
 
