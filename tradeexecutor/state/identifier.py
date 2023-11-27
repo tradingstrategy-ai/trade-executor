@@ -14,10 +14,10 @@ from dataclasses_json import dataclass_json
 from eth_typing import HexAddress
 
 from tradeexecutor.utils.accuracy import sum_decimal, ensure_exact_zero
-from tradeexecutor.utils.blockchain import string_to_eth_address
 from tradingstrategy.exchange import Exchange
 from tradingstrategy.exchange import ExchangeUniverse
 from tradingstrategy.chain import ChainId
+from tradingstrategy.utils.format import string_to_eth_address
 from tradingstrategy.binance.constants import BINANCE_CHAIN_ID, BINANCE_EXCHANGE_ADDRESS, BINANCE_EXCHANGE_ID, BINANCE_FEE, BINANCE_EXCHANGE_SLUG, BINANCE_CHAIN_SLUG, BINANCE_EXCHANGE_TYPE
 
 from tradeexecutor.state.types import (
@@ -713,6 +713,7 @@ def generate_pair_for_binance(
     base_token_symbol: str,
     quote_token_symbol: str,
     fee: float,
+    internal_id: int,
     base_token_decimals: int = 18,
     quote_token_decimals: int = 18,
 ) -> TradingPairIdentifier:
@@ -751,11 +752,11 @@ def generate_pair_for_binance(
     return TradingPairIdentifier(
         base=base,
         quote=quote,
-        pool_address=hex(hash(f"{base_token_symbol}{quote_token_symbol}")),
-        exchange_address=hex(hash("binance")),
-        fee=fee,
-        internal_exchange_id=129875571,
-        internal_id=134093847,
+        pool_address=string_to_eth_address(f"{base_token_symbol}{quote_token_symbol}"),
+        exchange_address=BINANCE_EXCHANGE_ADDRESS,
+        fee=BINANCE_FEE,
+        internal_exchange_id=BINANCE_EXCHANGE_ID,
+        internal_id=internal_id,
     )
 
 
@@ -854,11 +855,11 @@ def generate_lending_reserve_for_binance(
         atoken_id=1,
         asset_name=asset_symbol,
         atoken_symbol=atoken_symbol,
-        atoken_address=hex(hash(atoken_symbol)),
+        atoken_address=string_to_eth_address(atoken_symbol),
         atoken_decimals=18,
         vtoken_id=1,
         vtoken_symbol=vtoken_symbol,
-        vtoken_address=hex(hash(vtoken_symbol)),
+        vtoken_address=string_to_eth_address(vtoken_symbol),
         vtoken_decimals=18,
         additional_details=LendingReserveAdditionalDetails(
             ltv=0.825,
