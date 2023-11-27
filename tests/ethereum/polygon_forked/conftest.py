@@ -85,7 +85,10 @@ def user_1() -> LocalAccount:
 
 @pytest.fixture
 def hot_wallet(web3, user_1, usdc, large_usdc_holder) -> HotWallet:
-    """Hot wallet."""
+    """Hot wallet used for fork tets.
+
+    - Starts with MATIC and $10k USDC balance
+    """
     assert isinstance(user_1, LocalAccount)
     wallet = HotWallet(user_1)
     wallet.sync_nonce(web3)

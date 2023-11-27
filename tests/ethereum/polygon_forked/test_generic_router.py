@@ -1,4 +1,6 @@
 """Test live routing of combined Uniswap v2, v3 spot and 1delta leveraged positions."""
+import datetime
+
 import pandas as pd
 import pytest as pytest
 from eth_typing import ChainId
@@ -127,6 +129,7 @@ def test_generic_routing_open_position_across_markets(
     pair_universe: PandasPairUniverse,
     generic_routing_model: GenericRouting,
     generic_pricing_model: GenericPricingModel,
+    asset_usdc: AssetIdentifier,
 ):
     """Open Uniswap v2, v3 and 1delta position in the same state."""
 
@@ -140,4 +143,10 @@ def test_generic_routing_open_position_across_markets(
 
     state = State()
     sync_model.sync_initial(state)
+
+    # Strategy has its reserve balances updated
+    sync_model.sync_treasury(datetime.datetime.utcnow(), state)
+
+    assert state.portfolio.get_reserve_position(asset_usdc) == Decimal(10_000)
+
 
