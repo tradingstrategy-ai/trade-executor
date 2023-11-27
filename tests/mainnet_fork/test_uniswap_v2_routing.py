@@ -866,7 +866,7 @@ def test_stateful_routing_two_legs(
 
     state.start_execution_all(datetime.datetime.utcnow(), trades)
     routing_model.execute_trades_internal(pair_universe, routing_state, trades, check_balances=True)
-    execution_model.broadcast_and_resolve_old(state, trades, stop_on_execution_failure=True)
+    execution_model.broadcast_and_resolve_old(state, trades, routing_model, stop_on_execution_failure=True)
 
     # Check all all trades and transactions completed
     for t in trades:
@@ -898,7 +898,7 @@ def test_stateful_routing_two_legs(
 
     state.start_execution_all(datetime.datetime.utcnow(), trades)
     routing_model.execute_trades_internal(pair_universe, routing_state, trades, check_balances=True)
-    execution_model.broadcast_and_resolve_old(state, trades, stop_on_execution_failure=True)
+    execution_model.broadcast_and_resolve_old(state, trades, routing_model, stop_on_execution_failure=True)
 
     # Check all all trades and transactions completed
     for t in trades:
@@ -997,7 +997,7 @@ def test_stateful_routing_adjust_epsilon(
 
     state.start_execution_all(datetime.datetime.utcnow(), trades)
     routing_model.execute_trades_internal(pair_universe, routing_state, trades, check_balances=True)
-    execution_model.broadcast_and_resolve_old(state, trades, stop_on_execution_failure=True)
+    execution_model.broadcast_and_resolve_old(state, trades, routing_model, stop_on_execution_failure=True)
 
     # Check all all trades and transactions completed
     for t in trades:
@@ -1040,7 +1040,7 @@ def test_stateful_routing_adjust_epsilon_sell(
 
     state.start_execution_all(datetime.datetime.utcnow(), trades)
     routing_model.execute_trades_internal(pair_universe, routing_state, trades, check_balances=True)
-    execution_model.broadcast_and_resolve_old(state, trades, stop_on_execution_failure=True)
+    execution_model.broadcast_and_resolve_old(state, trades, routing_model, stop_on_execution_failure=True)
 
     # We received the tokens we bought
     assert cake_token.functions.balanceOf(hot_wallet.address).call() > 0
@@ -1058,7 +1058,7 @@ def test_stateful_routing_adjust_epsilon_sell(
     trades = [t]
     state.start_execution_all(datetime.datetime.utcnow(), trades)
     routing_model.execute_trades_internal(pair_universe, routing_state, trades, check_balances=True)
-    execution_model.broadcast_and_resolve_old(state, trades, stop_on_execution_failure=True)
+    execution_model.broadcast_and_resolve_old(state, trades, routing_model, stop_on_execution_failure=True)
     assert t.is_success()
 
     # On-chain balance is zero after the sell

@@ -433,6 +433,7 @@ class EthereumExecutionModel(ExecutionModel):
             self.broadcast_and_resolve_old(
                 state,
                 trades,
+                routing_model,
                 confirmation_timeout=self.confirmation_timeout,
                 confirmation_block_count=self.confirmation_block_count,
             )
