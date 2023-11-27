@@ -816,3 +816,54 @@ def add_info_columns_to_ohlc(df: pd.DataFrame, *args):
         df.loc[mask, 'token1_decimals'] = pair.quote.decimals
 
     return df
+
+from tradingstrategy.lending import LendingReserve, LendingProtocolType, LendingReserveAdditionalDetails
+
+def generate_lending_reserve_for_binance(
+    asset_symbol: str,
+    address: HexAddress,
+    reserve_id: int,
+    asset_decimals=18,
+) -> LendingReserve:
+    """Generate a lending reserve for Binance data.
+
+    Binance data is not on-chain, so we need to generate the identifiers
+    for the trading pairs.
+
+    :param asset_symbol: E.g. `ETH`
+    :param address: address of the reserve
+    :param reserve_id: id of the reserve
+    :return: LendingReserve
+    """
+
+    assert isinstance(reserve_id, int), f"Bad reserve_id {reserve_id}"
+
+    atoken_symbol = f"a{asset_symbol.upper()}"
+    vtoken_symbol = f"v{asset_symbol.upper()}"
+
+    return LendingReserve(
+        reserve_id=reserve_id,
+        reserve_slug=asset_symbol.lower(),
+        protocol_slug=LendingProtocolType.aave_v3,
+        chain_id=BINANCE_CHAIN_ID,
+        chain_slug=BINANCE_CHAIN_SLUG,
+        asset_id=1,
+        asset_symbol=asset_symbol,
+        asset_address=address,
+        asset_decimals=asset_decimals,
+        atoken_id=1,
+        asset_name=asset_symbol,
+        atoken_symbol=atoken_symbol,
+        atoken_address=hex(hash(atoken_symbol)),
+        atoken_decimals=18,
+        vtoken_id=1,
+        vtoken_symbol=vtoken_symbol,
+        vtoken_address=hex(hash(vtoken_symbol)),
+        vtoken_decimals=18,
+        additional_details=LendingReserveAdditionalDetails(
+            ltv=0.825,
+            liquidation_threshold=0.85,
+        )
+    )
+
+
