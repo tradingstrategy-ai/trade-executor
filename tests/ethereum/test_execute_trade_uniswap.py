@@ -266,7 +266,8 @@ def test_execute_trade_instructions_buy_weth(
     assert state.portfolio.get_total_equity() == pytest.approx(10000.0)
     assert trade.get_status() == TradeStatus.planned
 
-    ethereum_trader.execute_trades_simple([trade])
+    routing_model = ethereum_trader.create_routing_model()
+    ethereum_trader.execute_trades_simple(routing_model, [trade])
 
     assert trade.get_status() == TradeStatus.success
     assert trade.executed_price == pytest.approx(Decimal(1705.6136999031144))

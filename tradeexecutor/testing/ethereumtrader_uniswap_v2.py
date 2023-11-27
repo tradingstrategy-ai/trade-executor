@@ -21,6 +21,8 @@ from tradeexecutor.state.position import TradingPosition
 from tradeexecutor.state.trade import TradeExecution
 from tradeexecutor.state.identifier import TradingPairIdentifier
 from tradeexecutor.ethereum.ethereumtrader import EthereumTrader, get_base_quote_contracts
+from tradeexecutor.strategy.routing import RoutingModel
+
 
 class UniswapV2TestTrader(EthereumTrader):
     """Helper class to trade against a locally deployed Uniswap v2 contract.
@@ -58,6 +60,20 @@ class UniswapV2TestTrader(EthereumTrader):
         self.uniswap = uniswap
         self.execution_model = UniswapV2ExecutionModel(tx_builder)
         self.pricing_model = pricing_model
+
+    def create_routing_model(self) -> RoutingModel:
+        # We know only about one exchange
+        uniswap = self.uniswap
+        reserve_asset, rate = self.state.portfolio.get_default_reserve_asset()
+        routing_model = UniswapV2SimpleRoutingModel(
+            factory_router_map={
+                uniswap.factory.address: (uniswap.router.address, uniswap.init_code_hash),
+            },
+            allowed_intermediary_pairs={},
+            reserve_token_address=reserve_asset.address,
+            trading_fee=0.030,
+        )
+        return routing_model
 
     def buy(self,
             pair: TradingPairIdentifier,
@@ -99,7 +115,8 @@ class UniswapV2TestTrader(EthereumTrader):
         )
 
         if execute:
-            self.execute_trades_simple([trade])
+            routing_model = self.create_routing_model()
+            self.execute_trades_simple(routing_model,[trade])
 
         return position, trade
 
@@ -145,13 +162,15 @@ class UniswapV2TestTrader(EthereumTrader):
             lp_fees_estimated=estimated_lp_fees,
         )
 
+        routing_model = self.create_routing_model()
         if execute:
-            self.execute_trades_simple([trade])
+            self.execute_trades_simple(routing_model, [trade])
 
         return position, trade
     
     def execute_trades_simple(
         self,
+        routing_model: RoutingModel,
         trades: List[TradeExecution],
         stop_on_execution_failure=True,
         broadcast=True,
@@ -176,38 +195,32 @@ class UniswapV2TestTrader(EthereumTrader):
             Broadcast trades over web3 connection
         """
 
+        assert isinstance(routing_model, RoutingModel)
+
         pair_universe = self.pair_universe   
         uniswap = self.uniswap
         state = self.state
         
         assert isinstance(pair_universe, PandasPairUniverse)
 
-        reserve_asset, rate = state.portfolio.get_default_reserve_asset()
-
-        # We know only about one exchange
-        routing_model = UniswapV2SimpleRoutingModel(
-            factory_router_map={
-                uniswap.factory.address: (uniswap.router.address, uniswap.init_code_hash),
-            },
-            allowed_intermediary_pairs={},
-            reserve_token_address=reserve_asset.address,
-            trading_fee=0.030,
-        )
+        routing_model = self.create_routing_model()
 
         state.start_execution_all(datetime.datetime.utcnow(), trades)
         routing_state = UniswapV2RoutingState(pair_universe, self.tx_builder)
         routing_model.execute_trades_internal(pair_universe, routing_state, trades)
 
         if broadcast:
-            self.broadcast_trades(trades, stop_on_execution_failure)
+            self.broadcast_trades(routing_model, trades, stop_on_execution_failure)
 
-    def broadcast_trades(self, trades: List[TradeExecution], stop_on_execution_failure=True):
+    def broadcast_trades(self, routing_model, trades: List[TradeExecution], stop_on_execution_failure=True):
         """Broadcast prepared trades."""
+
+        assert isinstance(routing_model, RoutingModel)
 
         state = self.state
 
         execution_model = UniswapV2ExecutionModel(self.tx_builder)
-        execution_model.broadcast_and_resolve_old(state, trades, stop_on_execution_failure=stop_on_execution_failure)
+        execution_model.broadcast_and_resolve_old(state, trades, routing_model, stop_on_execution_failure=stop_on_execution_failure)
 
         # Clean up failed trades
         freeze_position_on_failed_trade(datetime.datetime.utcnow(), state, trades)
