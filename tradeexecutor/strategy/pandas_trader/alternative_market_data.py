@@ -158,6 +158,25 @@ def load_candle_universe_from_parquet(
 
 
 def load_candles_from_dataframe(column_map: Dict[str, str], df: pd.DataFrame, pair_id: int, resample: TimeBucket | None):
+    """Load OHLCV candle data from a DataFrame.
+    
+    :param column_map:
+        Column name mapping from the DataFrame to our internal format.
+
+        E.g. { "open": "open", "high": "high", ... }
+
+    :param df:
+        DataFrame to load from
+
+    :param pair_id:
+        Pair id to set for the DataFrame
+
+    :param resample:
+        Resample OHLCV data to a higher timeframe
+
+    :return:
+        Tuple (Original dataframe, processed candles dataframe, resampled time bucket, original time bucket) tuple
+    """
     assert isinstance(df.index, pd.DatetimeIndex), f"Parquet did not have DateTime index: {df.index}"
 
     orig = df = df.rename(columns=column_map)
@@ -214,6 +233,9 @@ def load_candle_universe_from_dataframe(
         The trading pair data this Parquet file contains.
 
         E.g. ticker symbols and trading fee are read from this argument.
+
+    :param df:
+        DataFrame to load from
 
     :param resample:
         Resample OHLCV data to a higher timeframe
