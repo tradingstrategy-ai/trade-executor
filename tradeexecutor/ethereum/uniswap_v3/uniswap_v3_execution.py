@@ -64,6 +64,9 @@ class UniswapV3ExecutionModel(EthereumExecutionModel):
             mainnet_fork=mainnet_fork,
         )
 
+    def analyse_post_trade(self):
+        pass
+
     def analyse_trade_by_receipt(
         self,
         web3: Web3,

@@ -858,14 +858,22 @@ class State:
         with path.open("wt") as out:
             out.write(txt)
 
-    def get_strategy_start_and_end(self) -> tuple[pd.Timestamp, pd.Timestamp]:
+    def get_strategy_start_and_end(self) -> tuple[pd.Timestamp | None, pd.Timestamp | None]:
         """Get the time range for which the strategy should have data.
+
+        TODO: Clean up this. In the future, each strategy must record its start (launched at)
+        and end (last run) dates on the state itself.
         """
-        
+
         if not self.stats.portfolio:
             logger.warning("No portfolio statistics, this is required for the time range")
-            return None, None
 
+            # Backwards compatible with legacy unit testing
+            trades = list(self.portfolio.get_all_trades())
+            if trades:
+                return pd.Timestamp(trades[0].opened_at), pd.Timestamp(trades[-1].executed_at)
+
+            return None, None
 
         start_at = pd.Timestamp(self.stats.portfolio[0].calculated_at)
         end_at = pd.Timestamp(self.stats.portfolio[-1].calculated_at)

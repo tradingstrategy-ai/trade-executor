@@ -12,6 +12,8 @@ from tradeexecutor.state.reserve import ReservePosition
 from tradeexecutor.state.state import State
 from tradeexecutor.state.validator import validate_state_serialisation
 from tradeexecutor.state.visualisation import PlotKind
+from tradeexecutor.statistics.core import calculate_statistics, update_statistics
+from tradeexecutor.strategy.execution_context import ExecutionMode
 from tradeexecutor.testing.synthetic_price_data import generate_ohlcv_candles
 from tradeexecutor.testing.unit_test_trader import UnitTestTrader
 from tradeexecutor.visual.single_pair import visualise_single_pair, visualise_single_pair_positions_with_duration_and_slippage
@@ -20,6 +22,8 @@ from tradingstrategy.candle import GroupedCandleUniverse
 from tradingstrategy.chain import ChainId
 from tradingstrategy.timebucket import TimeBucket
 from tradingstrategy.charting.candle_chart import VolumeBarMode
+
+from tradeexecutor.visual.utils import export_trades_as_dataframe
 
 
 @pytest.fixture(scope = "module")
@@ -44,6 +48,7 @@ def weth() -> AssetIdentifier:
 def weth_usdc(mock_exchange_address, usdc, weth) -> TradingPairIdentifier:
     """Mock some assets"""
     return TradingPairIdentifier(weth, usdc, "0x4", mock_exchange_address, internal_id=555)
+
 
 @pytest.fixture(scope = "module")
 def state_and_candles(usdc, weth, weth_usdc) -> tuple[State, pd.DataFrame]:
@@ -116,8 +121,9 @@ def state_and_candles(usdc, weth, weth_usdc) -> tuple[State, pd.DataFrame]:
     state.visualisation.plot_indicator(trader.ts, "random 3", PlotKind.technical_indicator_overlay_on_detached, 1400, colour="green", detached_overlay_name="random 2")
     
     state.visualisation.plot_indicator(trader.ts, "random 4", PlotKind.technical_indicator_overlay_on_detached, 1500, colour="blue", detached_overlay_name="random 2")
-    
+
     return state, candles
+
 
 def test_synthetic_candles_timezone(usdc, weth, weth_usdc):
     """Check synthetic candle data for timezone issues."""
@@ -126,63 +132,6 @@ def test_synthetic_candles_timezone(usdc, weth, weth_usdc):
     candles = generate_ohlcv_candles(TimeBucket.d1, start_date, end_date, pair_id=weth_usdc.internal_id)
     assert candles.iloc[0]["timestamp"] == pd.Timestamp("2021-01-01 00:00:00")
     
-
-def test_visualise_trades_with_indicator(state_and_candles: tuple[State, pd.DataFrame]):
-    """Do a single token purchase.
-    
-    Uses default VolumeBarMode.overlay"""
-
-    state, candles = state_and_candles
-    candle_universe = GroupedCandleUniverse.create_from_single_pair_dataframe(candles)
-    
-    validate_state_serialisation(state)
-
-    assert len(list(state.portfolio.get_all_trades())) == 3
-    assert len(state.portfolio.open_positions) == 0
-    assert len(state.portfolio.closed_positions) == 1
-    
-    #
-    # Now visualise the events with default arguments
-    #
-    fig = visualise_single_pair(
-        state, 
-        candle_universe,
-    )
-
-    # 3 distinct plot grids
-    assert len(fig._grid_ref) == 3
-    
-    # check the main title
-    assert fig.layout.title.text == "Visualisation test"
-    
-    # check subplot titles
-    subplot_titles = [annotation['text'] for annotation in fig['layout']['annotations']]
-    assert subplot_titles[0] == "random 1"
-    assert subplot_titles[1] == "random 2<br> + random 3<br> + random 4"
-    
-    # List of candles, indicators, and markers
-    data = fig.to_dict()["data"]
-    assert len(data) == 8
-    assert data[1]["name"] == "Test indicator"
-    assert data[2]["name"] == "random 1"
-    assert data[3]["name"] == "random 2"
-    assert data[4]["name"] == "random 3"
-    assert data[5]["name"] == "random 4"
-    assert data[6]["name"] == "Buy"
-    assert data[7]["name"] == "Sell"
-
-    # check dates
-    assert data[0]['x'][0] == datetime.datetime(2021, 1, 1, 0, 0)
-    assert data[0]['x'][-1] == datetime.datetime(2021, 2, 28, 0, 0)
-
-    # Check test indicator data
-    # that we have proper timestamps
-    plot = state.visualisation.plots["Test indicator"]
-    df = export_plot_as_dataframe(plot)
-    ts = df.iloc[0]["timestamp"]
-    ts = ts.replace(minute=0, second=0)
-    assert ts == pd.Timestamp("2021-1-1 00:00")
-
 
 def test_visualise_trades_with_indicator(state_and_candles: tuple[State, pd.DataFrame]):
     """Do a single token purchase.
@@ -202,6 +151,19 @@ def test_visualise_trades_with_indicator(state_and_candles: tuple[State, pd.Data
     assert len(list(state.portfolio.get_all_trades())) == 3
     assert len(state.portfolio.open_positions) == 0
     assert len(state.portfolio.closed_positions) == 1
+
+    # Some legacy date range logic checks
+    pair_id = candles["pair_id"].unique()[0]
+    start_at, end_at = state.get_strategy_start_and_end()
+    #assert start_at is None
+    #assert end_at is None
+    #start_at = candle_universe.get_timestamp_range()[0]
+    #end_at = candle_universe.get_timestamp_range()[1]
+    assert start_at == pd.Timestamp('2021-01-01 00:00:00')
+    assert end_at == pd.Timestamp('2021-03-01 00:00:03')
+    trades = export_trades_as_dataframe(state.portfolio, pair_id, start_at, end_at)
+    assert len(trades) == 3
+
 
     #
     # Now visualise the events
@@ -286,7 +248,7 @@ def test_visualise_trades_with_indicator(state_and_candles: tuple[State, pd.Data
     assert len(fig5._grid_ref) == 2
 
 
-def test_visualise_trades_with_indicator_separate_volume(
+def test_visualise_trades_separate_volume(
     state_and_candles: tuple[State, pd.DataFrame]
 ):
     """Do a single token purchase.

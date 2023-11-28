@@ -66,6 +66,9 @@ jobs:
           BNB_CHAIN_JSON_RPC: ${{ secrets.BNB_CHAIN_JSON_RPC }}
           # https://stackoverflow.com/a/75274358/315168
           PYDEVD_DISABLE_FILE_VALIDATION: 1
+          JSON_RPC_POLYGON: ${{ secrets.JSON_RPC_POLYGON }}
+          JSON_RPC_POLYGON_ARCHIVE: ${{ secrets.JSON_RPC_POLYGON_ARCHIVE }}
+
 
       # Save our current datasets for the next test run
       - name: Save unit test datasets

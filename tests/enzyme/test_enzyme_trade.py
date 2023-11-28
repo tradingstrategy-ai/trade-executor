@@ -29,6 +29,7 @@ from tradeexecutor.ethereum.enzyme.vault import EnzymeVaultSyncModel
 
 from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier
 from tradeexecutor.state.state import State
+from tradeexecutor.strategy.routing import RoutingModel
 from tradeexecutor.testing.ethereumtrader_uniswap_v2 import UniswapV2TestTrader
 
 
@@ -103,6 +104,7 @@ def test_enzyme_execute_open_position(
     weth_usdc_trading_pair: TradingPairIdentifier,
     pair_universe: PandasPairUniverse,
     hot_wallet: HotWallet,
+    routing_model: RoutingModel,
 ):
     """Open a simple spot buy position using Enzyme."""
 
@@ -162,7 +164,7 @@ def test_enzyme_execute_open_position(
     assert deltas[1].asset == weth_asset.address
     assert deltas[1].raw_amount == pytest.approx(eth_amount * Decimal(1 - trade.slippage_tolerance) * 10**18)
 
-    trader.execute_trades_simple([trade], broadcast=False)
+    trader.execute_trades_simple(trader.create_routing_model(), [trade], broadcast=False)
 
     # Check that the blockchain transactions where constructed for Enzyme's vault
     txs = trade.blockchain_transactions
@@ -205,7 +207,7 @@ def test_enzyme_execute_open_position(
     # assert swap_tx.asset_deltas[1].int_amount == pytest.approx(eth_amount * Decimal(1 - trade.slippage_tolerance) * 10**18, rel=Decimal(0.01))
 
     # Broadcast both transactions
-    trader.broadcast_trades([trade], stop_on_execution_failure=True)
+    trader.broadcast_trades(routing_model, [trade], stop_on_execution_failure=True)
 
     assert weth.functions.balanceOf(vault.vault.address).call() > 0
 

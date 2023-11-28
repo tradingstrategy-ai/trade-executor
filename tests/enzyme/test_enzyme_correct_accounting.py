@@ -163,7 +163,7 @@ def test_enzyme_no_accounting_errors(
         slippage_tolerance=0.01,
     )
 
-    trader.execute_trades_simple([trade], broadcast=True)
+    trader.execute_trades_simple(trader.create_routing_model(), [trade], broadcast=True)
 
     assert weth.functions.balanceOf(vault.vault.address).call() > 0
 
@@ -266,7 +266,7 @@ def test_enzyme_correct_accounting_errors(
         slippage_tolerance=0.01,
     )
 
-    trader.execute_trades_simple([trade], broadcast=True)
+    trader.execute_trades_simple(trader.create_routing_model(), [trade], broadcast=True)
 
     reserve_position: ReservePosition = state.portfolio.get_default_reserve_position()
     assert reserve_position.get_quantity() == pytest.approx(Decimal(0))
@@ -576,7 +576,7 @@ def test_correct_accounting_errors_for_zero_position(
         slippage_tolerance=0.01,
     )
 
-    trader.execute_trades_simple([trade], broadcast=True)
+    trader.execute_trades_simple(trader.create_routing_model(), [trade], broadcast=True)
 
     reserve_position: ReservePosition = state.portfolio.get_default_reserve_position()
     assert reserve_position.get_quantity() == pytest.approx(Decimal(0))

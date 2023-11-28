@@ -127,8 +127,31 @@ class OneDeltaTestTrader(EthereumTrader):
             self.execute_trades_simple([trade])
         return position, trade
 
+    def create_routing_model(self):
+        # We know only about one exchange
+        one_delta = self.one_delta
+        aave = self.aave
+        reserve_asset, rate = self.state.portfolio.get_default_reserve_asset()
+        uniswap = self.uniswap
+        routing_model = OneDeltaSimpleRoutingModel(
+            address_map={
+                "one_delta_broker_proxy": one_delta.broker_proxy.address,
+                "aave_v3_pool": aave.pool.address,
+                "aave_v3_data_provider": aave.data_provider.address,
+                "aave_v3_oracle": aave.oracle.address,
+                "factory": uniswap.factory.address,
+                "router": uniswap.swap_router.address,
+                "position_manager": uniswap.position_manager.address,
+                "quoter": uniswap.quoter.address
+            },
+            allowed_intermediary_pairs={},
+            reserve_token_address=reserve_asset.address,
+        )
+        return routing_model
+
     def execute_trades_simple(
         self,
+        routing_model: OneDeltaSimpleRoutingModel,
         trades: List[TradeExecution],
         max_slippage=0.01, 
         stop_on_execution_failure=True
@@ -144,11 +167,10 @@ class OneDeltaTestTrader(EthereumTrader):
         - Works with single Uniswap test deployment
         """
 
+        assert isinstance(routing_model, OneDeltaSimpleRoutingModel)
+
         pair_universe = self.pair_universe
         web3 = self.web3
-        one_delta = self.one_delta
-        aave = self.aave
-        uniswap = self.uniswap
         state = self.state   
         
         assert isinstance(pair_universe, PandasPairUniverse)
@@ -157,29 +179,14 @@ class OneDeltaTestTrader(EthereumTrader):
 
         tx_builder = self.tx_builder
 
-        reserve_asset, rate = state.portfolio.get_default_reserve_asset()
-
         # We know only about one exchange
-        routing_model = OneDeltaSimpleRoutingModel(
-            address_map={
-                "one_delta_broker_proxy": one_delta.broker_proxy.address,
-                "aave_v3_pool": aave.pool.address,
-                "aave_v3_data_provider": aave.data_provider.address,
-                "aave_v3_oracle": aave.oracle.address,
-                "factory": uniswap.factory.address,
-                "router": uniswap.swap_router.address,
-                "position_manager": uniswap.position_manager.address,
-                "quoter": uniswap.quoter.address
-            },
-            allowed_intermediary_pairs={},
-            reserve_token_address=reserve_asset.address,
-        )
+        routing_model = self.create_routing_model()
 
         state.start_execution_all(datetime.datetime.utcnow(), trades)
         routing_state = OneDeltaRoutingState(pair_universe, tx_builder)
         routing_model.execute_trades_internal(pair_universe, routing_state, trades)
         
-        self.execution_model.broadcast_and_resolve_old(state, trades, stop_on_execution_failure=stop_on_execution_failure)
+        self.execution_model.broadcast_and_resolve_old(state, trades, routing_model, stop_on_execution_failure=stop_on_execution_failure)
 
         # Clean up failed trades
         freeze_position_on_failed_trade(datetime.datetime.utcnow(), state, trades)

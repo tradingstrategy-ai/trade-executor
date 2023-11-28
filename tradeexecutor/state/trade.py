@@ -188,6 +188,19 @@ class TradeExecution:
     #: when our routing model supports this.
     reserve_currency: AssetIdentifier
 
+    #: Taken route.
+    #:
+    #: This is set by :py:class:`GenericRouting`
+    #: and allows match to trades to their taken routes
+    #: after the trades have been executed.
+    #:
+    #: This is e.g. used when analysing the execution success of trades.
+    #:
+    #: The value of the string is one of the route names in py:class:`GenericRouting`.
+    #: For single executer configuration, this value is left ``None``.
+    #:
+    route: str | None = None
+
     #: Planned amount of reserve currency that goes in or out to collateral.
     #:
     #: - Negative if collateral is released and added to the reserves

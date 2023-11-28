@@ -137,8 +137,10 @@ def export_trades_as_dataframe(
     end: Optional[pd.Timestamp] = None,
 ) -> pd.DataFrame:
     """Convert executed trades to a dataframe, so it is easier to work with them in Plotly.
+
     :param start_at:
         Crop range
+
     :param end_at:
         Crop range
     """
@@ -150,7 +152,7 @@ def export_trades_as_dataframe(
 
     if end:
         if isinstance(end, datetime.datetime):
-            start = pd.Timestamp(end)
+            end = pd.Timestamp(end)
 
         assert isinstance(end, pd.Timestamp), f"Got {end} {end.__class__}"
         assert end
@@ -169,7 +171,7 @@ def export_trades_as_dataframe(
                 # Hotfix to some invalid data?
                 logger.info("Trade lacks start date: %s", t)
                 continue
-            
+
             if s < start or s > end:
                 continue
 

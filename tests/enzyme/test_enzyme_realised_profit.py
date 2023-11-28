@@ -212,7 +212,7 @@ def test_enzyme_redeemed_position_profit(
     trades = position_manager.close_all()
     assert len(trades) == 1
 
-    trader.execute_trades_simple(trades)
+    trader.execute_trades_simple(trader.create_routing_model(), trades)
 
     # Position has redemptions
     assert len(position.balance_updates) == 1

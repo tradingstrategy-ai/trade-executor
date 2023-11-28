@@ -16,6 +16,9 @@ from tradeexecutor.state.position import TradingPosition
 
 from tradingstrategy.pair import PandasPairUniverse
 
+from tradeexecutor.strategy.routing import RoutingModel
+
+
 class EthereumTrader(ABC):
     """Base class for Uniswap v2 and v3 test traders."""
 
@@ -50,6 +53,7 @@ class EthereumTrader(ABC):
     @abstractmethod
     def execute_trades_simple(
         self,
+        routing_model: RoutingModel,
         trades: list[TradeExecution],
         stop_on_execution_failure=True
     ):

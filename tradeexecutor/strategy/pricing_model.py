@@ -86,7 +86,7 @@ class PricingModel(abc.ABC):
     def get_mid_price(self,
                       ts: datetime.datetime,
                       pair: TradingPairIdentifier) -> USDollarPrice:
-        """Get the mid-price for an asset.
+        """Get the mid-price     for an asset.
 
         Mid price is an non-trddeable price between the best ask
         and the best pid.
@@ -100,10 +100,6 @@ class PricingModel(abc.ABC):
         :return:
             The mid price for the pair at a timestamp.
         """
-
-    @abc.abstractmethod
-    def quantize_base_quantity(self, pair: TradingPairIdentifier, quantity: Decimal, rounding=ROUND_DOWN) -> Decimal:
-        """Convert any base token quantity to the native token units by its ERC-20 decimals."""
 
     @abc.abstractmethod
     def get_pair_fee(self,
@@ -135,6 +131,12 @@ class PricingModel(abc.ABC):
             Returns None if the fee information is not available.
             This can be different from zero fees.
         """
+
+    def quantize_base_quantity(self, pair: TradingPairIdentifier, quantity: Decimal, rounding=ROUND_DOWN) -> Decimal:
+        """Convert any base token quantity to the native token units by its ERC-20 decimals."""
+        assert isinstance(pair, TradingPairIdentifier)
+        decimals = pair.base.decimals
+        return Decimal(quantity).quantize((Decimal(10) ** Decimal(-decimals)), rounding=rounding)
 
 #: This factory creates a new pricing model for each trade cycle.
 #: Pricing model depends on the trading universe that may change for each strategy tick,

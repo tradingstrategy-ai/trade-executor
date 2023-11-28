@@ -461,17 +461,45 @@ class PositionManager:
         """
         return self.pricing_model.get_pair_fee(self.timestamp, pair)
 
-    def open_1x_long(self,
-                     pair: Union[DEXPair, TradingPairIdentifier],
-                     value: USDollarAmount | Decimal,
-                     take_profit_pct: Optional[float] = None,
-                     stop_loss_pct: Optional[float] = None,
-                     trailing_stop_loss_pct: Optional[float] = None,
-                     stop_loss_usd: Optional[USDollarAmount] = None,
-                     notes: Optional[str] = None,
-                     slippage_tolerance: Optional[float] = None,
-                     ) -> List[TradeExecution]:
-        """Open a long.
+    def open_1x_long(
+        self,
+         pair: Union[DEXPair, TradingPairIdentifier],
+         value: USDollarAmount | Decimal,
+         take_profit_pct: Optional[float] = None,
+         stop_loss_pct: Optional[float] = None,
+         trailing_stop_loss_pct: Optional[float] = None,
+         stop_loss_usd: Optional[USDollarAmount] = None,
+         notes: Optional[str] = None,
+         slippage_tolerance: Optional[float] = None,
+    ) -> List[TradeExecution]:
+        """Deprecated function for opening a spot position.
+
+        Use :py:meth:`open_spot` instead.
+        """
+        warnings.warn('This function is deprecated. Use PositionManager.close_short() instead', DeprecationWarning, stacklevel=2)
+        return self.open_spot(
+            pair=pair,
+            value=value,
+            take_profit_pct=take_profit_pct,
+            stop_loss_pct=stop_loss_pct,
+            trailing_stop_loss_pct=trailing_stop_loss_pct,
+            stop_loss_usd=stop_loss_usd,
+            notes=notes,
+            slippage_tolerance=slippage_tolerance
+        )
+
+    def open_spot(
+        self,
+         pair: Union[DEXPair, TradingPairIdentifier],
+         value: USDollarAmount | Decimal,
+         take_profit_pct: Optional[float] = None,
+         stop_loss_pct: Optional[float] = None,
+         trailing_stop_loss_pct: Optional[float] = None,
+         stop_loss_usd: Optional[USDollarAmount] = None,
+         notes: Optional[str] = None,
+         slippage_tolerance: Optional[float] = None,
+    ) -> List[TradeExecution]:
+        """Open a spot position.
 
         - For simple buy and hold trades
 
@@ -1239,7 +1267,7 @@ class PositionManager:
         Use :py:meth:`close_short`.
 
         """
-        warnings.warn('This function is deprecated. Use PositionManager.close_shor() instead', DeprecationWarning, stacklevel=2)
+        warnings.warn('This function is deprecated. Use PositionManager.close_short() instead', DeprecationWarning, stacklevel=2)
         return self.close_short(position, quantity, notes, trade_type)
     
     def close_short(
