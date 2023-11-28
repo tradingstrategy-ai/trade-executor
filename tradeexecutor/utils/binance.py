@@ -3,7 +3,10 @@ import pandas as pd
 from eth_typing import HexAddress
 
 from tradeexecutor.state.identifier import TradingPairIdentifier, AssetIdentifier
-from tradeexecutor.strategy.trading_strategy_universe import Dataset, TradingStrategyUniverse
+from tradeexecutor.strategy.trading_strategy_universe import (
+    Dataset,
+    TradingStrategyUniverse,
+)
 from tradingstrategy.timebucket import TimeBucket
 
 from tradingstrategy.binance.constants import (
@@ -31,7 +34,7 @@ def generate_pairs_for_binance(
     symbols: list[str],
 ) -> list[TradingPairIdentifier]:
     """Generate trading pair identifiers for Binance data.
-    
+
     :param symbols: List of symbols to generate pairs for
     :return: List of trading pair identifiers
     """
@@ -188,9 +191,12 @@ def generate_lending_reserve_for_binance(
     )
 
 
-from tradeexecutor.strategy.pandas_trader.alternative_market_data import load_candle_universe_from_dataframe
+from tradeexecutor.strategy.pandas_trader.alternative_market_data import (
+    load_candle_universe_from_dataframe,
+)
 from tradingstrategy.binance.downloader import BinanceDownloader
 from tradingstrategy.lending import LendingReserveUniverse, LendingCandleUniverse
+
 
 def load_binance_dataset(
     symbols: list[str] | str,
@@ -200,7 +206,7 @@ def load_binance_dataset(
     end_at: datetime.datetime | None = None,
 ) -> Dataset:
     """Load a Binance dataset.
-    
+
     This is the one-stop shop function for loading all your Binance data. It can include
     candlestick, stop loss, lending and supply data for all valid symbols.
 
@@ -229,14 +235,16 @@ def load_binance_dataset(
         end_at,
     )
 
-    candle_df = add_info_columns_to_ohlc(df, {symbol: pair for symbol, pair in zip(symbols, pairs)})
+    candle_df = add_info_columns_to_ohlc(
+        df, {symbol: pair for symbol, pair in zip(symbols, pairs)}
+    )
 
     # TODO use stop_loss_candle_universe (have to fix it)
     candle_universe, stop_loss_candle_universe = load_candle_universe_from_dataframe(
         pair=pairs[0],  # TODO fix to be multipair
         df=candle_df,
         include_as_trigger_signal=True,
-        resample=candle_time_bucket, 
+        resample=candle_time_bucket,
     )
 
     exchange_universe = generate_exchange_universe_for_binance(pair_count=len(pairs))
@@ -246,15 +254,32 @@ def load_binance_dataset(
     reserves = []
     reserve_id = 1
     for pair in pairs:
-        reserves.append(generate_lending_reserve_for_binance(pair.base.token_symbol, pair.base.address, reserve_id)) 
-        reserves.append(generate_lending_reserve_for_binance(pair.quote.token_symbol, pair.quote.address, reserve_id + 1))
+        reserves.append(
+            generate_lending_reserve_for_binance(
+                pair.base.token_symbol, pair.base.address, reserve_id
+            )
+        )
+        reserves.append(
+            generate_lending_reserve_for_binance(
+                pair.quote.token_symbol, pair.quote.address, reserve_id + 1
+            )
+        )
         reserve_id += 2
 
-    lending_reserve_universe = LendingReserveUniverse({reserve.reserve_id: reserve for reserve in reserves})
+    lending_reserve_universe = LendingReserveUniverse(
+        {reserve.reserve_id: reserve for reserve in reserves}
+    )
 
-    lending_candle_type_map = downloader.load_lending_candle_type_map({reserve.reserve_id: reserve.asset_symbol for reserve in reserves}, candle_time_bucket, start_at, end_at)
+    lending_candle_type_map = downloader.load_lending_candle_type_map(
+        {reserve.reserve_id: reserve.asset_symbol for reserve in reserves},
+        candle_time_bucket,
+        start_at,
+        end_at,
+    )
 
-    lending_candle_universe = LendingCandleUniverse(lending_candle_type_map, lending_reserve_universe)
+    lending_candle_universe = LendingCandleUniverse(
+        lending_candle_type_map, lending_reserve_universe
+    )
 
     dataset = Dataset(
         time_bucket=candle_time_bucket,
@@ -278,7 +303,7 @@ def create_binance_universe(
     end_at: datetime.datetime | None = None,
 ) -> TradingStrategyUniverse:
     """Create a Binance universe that can be used for backtesting.
-    
+
     Similarly to `load_binance_dataset`, this function loads all the data needed for backtesting,
     including candlestick, stop loss, lending and supply data for all valid symbols.
 
@@ -297,13 +322,9 @@ def create_binance_universe(
         end_at,
     )
 
-    pair = generate_pair_for_binance("ETHUSDT", 1)
-    pair_ticker = pair.identifier_to_pair_ticker('binance')
-
-    # iterrate
     pair_tickers = []
     for index, row in dataset.pairs.iterrows():
-        pair_tickers.append((row['base_token_symbol'], row['quote_token_symbol']))
+        pair_tickers.append((row["base_token_symbol"], row["quote_token_symbol"]))
 
     universe = TradingStrategyUniverse.create_limited_pair_universe(
         dataset=dataset,
