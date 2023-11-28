@@ -35,6 +35,7 @@ from tradeexecutor.ethereum.tx import HotWalletTransactionBuilder
 from tradeexecutor.state.identifier import TradingPairIdentifier, AssetIdentifier
 from tradeexecutor.state.blockhain_transaction import BlockchainTransaction
 from tradeexecutor.strategy.universe_model import StrategyExecutionUniverse
+from tradeexecutor.strategy.interest import set_interest_checkpoint
 from tradeexecutor.ethereum.routing_state import (
     EthereumRoutingState, 
     route_tokens, # don't remove, forwarded import
@@ -465,6 +466,9 @@ class OneDeltaSimpleRoutingModel(EthereumRoutingModel):
                 native_token_price=0,  # won't fix
                 cost_of_gas=result.get_cost_of_gas(),
             )
+
+            # Set the check point interest balances for new positions
+            set_interest_checkpoint(state, ts, None)
         else:
             # Trade failed
             report_failure(ts, state, trade, stop_on_execution_failure)

@@ -12,8 +12,7 @@ from web3.contract import Contract
 
 from eth_defi.uniswap_v3.deployment import UniswapV3Deployment
 from eth_defi.hotwallet import HotWallet
-from tradeexecutor.ethereum.wallet import sync_reserves
-from tradeexecutor.testing.dummy_wallet import apply_sync_events
+from eth_defi.provider.anvil import mine
 from tradingstrategy.exchange import ExchangeUniverse
 from tradingstrategy.pair import PandasPairUniverse
 from tradingstrategy.chain import ChainId
@@ -35,7 +34,6 @@ from tradeexecutor.strategy.run_state import RunState
 from tradeexecutor.ethereum.universe import create_exchange_universe, create_pair_universe
 from tradeexecutor.testing.simulated_execution_loop import set_up_simulated_execution_loop_one_delta
 from tradeexecutor.utils.blockchain import get_latest_block_timestamp
-
 
 
 pytestmark = pytest.mark.skipif(
@@ -106,36 +104,6 @@ def trading_strategy_universe(chain_id, exchange_universe, pair_universe, asset_
     return TradingStrategyUniverse.create_single_pair_universe(dataset)
 
 
-def decide_trades(
-    timestamp: pd.Timestamp,
-    strategy_universe: TradingStrategyUniverse,
-    state: State,
-    pricing_model: PricingModel,
-    cycle_debug_data: dict
-) -> List[TradeExecution]:
-    """Opens a 2x short position and closes in next trade cycle."""
-    
-    pair = strategy_universe.universe.pairs.get_single()
-
-    # Open for 1,000 USD
-    position_size = 1000.00
-
-    trades = []
-
-    position_manager = PositionManager(timestamp, strategy_universe, state, pricing_model)
-
-    if not position_manager.is_any_short_position_open():
-        trades += position_manager.open_short(
-            pair,
-            position_size,
-            leverage=2,
-        )
-    else:
-        trades += position_manager.close_all()
-
-    return trades
-
-
 def test_one_delta_live_strategy_short_open_and_close(
     logger,
     web3: Web3,
@@ -159,6 +127,35 @@ def test_one_delta_live_strategy_short_open_and_close(
 
     - Advance to cycle 2 and make sure the short position is closed
     """
+
+    def decide_trades(
+        timestamp: pd.Timestamp,
+        strategy_universe: TradingStrategyUniverse,
+        state: State,
+        pricing_model: PricingModel,
+        cycle_debug_data: dict
+    ) -> List[TradeExecution]:
+        """Opens a 2x short position and closes in next trade cycle."""
+        
+        pair = strategy_universe.universe.pairs.get_single()
+
+        # Open for 1,000 USD
+        position_size = 1000.00
+
+        trades = []
+
+        position_manager = PositionManager(timestamp, strategy_universe, state, pricing_model)
+
+        if not position_manager.is_any_short_position_open():
+            trades += position_manager.open_short(
+                pair,
+                position_size,
+                leverage=2,
+            )
+        else:
+            trades += position_manager.close_all()
+
+        return trades
 
     routing_model = one_delta_routing_model
 
@@ -239,3 +236,142 @@ def test_one_delta_live_strategy_short_open_and_close(
     assert len(state.portfolio.open_positions) == 0
     assert len(state.portfolio.closed_positions) == 1
     assert state.portfolio.reserves[usdc_id].quantity == 10000
+
+
+def test_one_delta_live_strategy_short_open_accrue_interests(
+    logger,
+    web3: Web3,
+    hot_wallet: HotWallet,
+    trading_strategy_universe: TradingStrategyUniverse,
+    uniswap_v3_deployment: UniswapV3Deployment,
+    one_delta_routing_model: OneDeltaSimpleRoutingModel,
+    usdc: Contract,
+    weth: Contract,
+    weth_usdc_spot_pair,
+):
+    """Live 1delta trade.
+
+    - Trade ETH/USDC 0.3% pool
+
+    - Sets up a simple strategy that open a 2x short position, and keep it running in next cycles
+
+    - Start the strategy, check that the trading account is funded
+
+    - Advance to cycle 1 and make sure the short position on ETH is opened
+
+    - Advance to cycle 2-3 cycle and check the interest
+    """
+
+    def decide_trades(
+        timestamp: pd.Timestamp,
+        strategy_universe: TradingStrategyUniverse,
+        state: State,
+        pricing_model: PricingModel,
+        cycle_debug_data: dict
+    ) -> List[TradeExecution]:
+        """Opens a 2x short position and keep it opened"""
+        
+        pair = strategy_universe.universe.pairs.get_single()
+
+        # Open for 1,000 USD
+        position_size = 1000.00
+
+        trades = []
+        position_manager = PositionManager(timestamp, strategy_universe, state, pricing_model)
+
+        if not position_manager.is_any_short_position_open():
+            trades += position_manager.open_short(
+                pair,
+                position_size,
+                leverage=2,
+            )
+
+        return trades
+
+    routing_model = one_delta_routing_model
+
+    # Sanity check for the trading universe
+    # that we start with 1631 USD/ETH price
+    pair_universe = trading_strategy_universe.data_universe.pairs
+    pricing_method = OneDeltaLivePricing(web3, pair_universe, routing_model)
+
+    weth_usdc = pair_universe.get_single()
+    pair = translate_trading_pair(weth_usdc)
+
+    # Check that our preflight checks pass
+    routing_model.perform_preflight_checks_and_logging(pair_universe)
+
+    price_structure = pricing_method.get_buy_price(datetime.datetime.utcnow(), pair, None)
+    assert price_structure.price == pytest.approx(1631.0085715155444, rel=APPROX_REL)
+
+    # Set up an execution loop we can step through
+    state = State()
+    loop = set_up_simulated_execution_loop_one_delta(
+        web3=web3,
+        decide_trades=decide_trades,
+        universe=trading_strategy_universe,
+        state=state,
+        wallet_account=hot_wallet.account,
+        routing_model=routing_model,
+    )
+    loop.runner.run_state = RunState()  # Needed for visualisations
+
+    ts = get_latest_block_timestamp(web3)
+
+    loop.tick(
+        ts,
+        loop.cycle_duration,
+        state,
+        cycle=1,
+        live=True,
+    )
+
+    loop.update_position_valuations(
+        ts,
+        state,
+        trading_strategy_universe,
+        ExecutionMode.real_trading
+    )
+
+    assert len(state.portfolio.open_positions) == 1
+
+    # After the first tick, we should have synced our reserves and opened the first position
+    mid_price = pricing_method.get_mid_price(ts, pair)
+    assert mid_price == pytest.approx(1630.1912407577722, rel=APPROX_REL)
+
+    usdc_id = f"{web3.eth.chain_id}-{usdc.address.lower()}"
+    assert state.portfolio.reserves[usdc_id].quantity == 9000
+    assert state.portfolio.open_positions[1].get_quantity() == Decimal('1.261256429210282326')
+    assert state.portfolio.open_positions[1].get_value() == pytest.approx(944.0010729999999, rel=APPROX_REL)
+
+    # mine a few block before running next tick
+    for i in range(1, 10):
+        mine(web3)
+
+    # trade another cycle to close the short position
+    ts = get_latest_block_timestamp(web3)
+    strategy_cycle_timestamp = snap_to_next_tick(ts, loop.cycle_duration)
+
+    loop.tick(
+        ts,
+        loop.cycle_duration,
+        state,
+        cycle=2,
+        live=True,
+        strategy_cycle_timestamp=strategy_cycle_timestamp,
+    )
+
+    loop.update_position_valuations(
+        ts,
+        state,
+        trading_strategy_universe,
+        ExecutionMode.real_trading
+    )
+
+    # position should still be open
+    assert len(state.portfolio.open_positions) == 1
+    position = state.portfolio.open_positions[1]
+
+    # TODO: verify the interests here
+    assert position.loan.get_collateral_interest() == pytest.approx(55.998942)
+    # assert position.loan.get_borrow_interest() == pytest.approx(7.4281271778879665)
