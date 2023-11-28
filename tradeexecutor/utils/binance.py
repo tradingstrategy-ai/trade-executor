@@ -3,8 +3,7 @@ import pandas as pd
 from eth_typing import HexAddress
 
 from tradeexecutor.state.identifier import TradingPairIdentifier, AssetIdentifier
-from tradeexecutor.strategy.trading_strategy_universe import Dataset
-
+from tradeexecutor.strategy.trading_strategy_universe import Dataset, TradingStrategyUniverse
 from tradingstrategy.timebucket import TimeBucket
 
 from tradingstrategy.binance.constants import (
@@ -212,6 +211,7 @@ def load_binance_dataset(
     :param stop_loss_time_bucket: Time bucket for stop loss data
     :param start_at: Start time for data
     :param end_at: End time for data
+    :return: Dataset
     """
     if isinstance(symbols, str):
         symbols = [symbols]
@@ -268,3 +268,48 @@ def load_binance_dataset(
     )
 
     return dataset
+
+
+def create_binance_universe(
+    symbols: list[str] | str,
+    candle_time_bucket: TimeBucket,
+    stop_loss_time_bucket: TimeBucket,
+    start_at: datetime.datetime | None = None,
+    end_at: datetime.datetime | None = None,
+) -> TradingStrategyUniverse:
+    """Create a Binance universe that can be used for backtesting.
+    
+    Similarly to `load_binance_dataset`, this function loads all the data needed for backtesting,
+    including candlestick, stop loss, lending and supply data for all valid symbols.
+
+    :param symbols: List of symbols to load
+    :param candle_time_bucket: Time bucket for candle data
+    :param stop_loss_time_bucket: Time bucket for stop loss data
+    :param start_at: Start time for data
+    :param end_at: End time for data
+    :return: Trading strategy universe
+    """
+    dataset = load_binance_dataset(
+        symbols,
+        candle_time_bucket,
+        stop_loss_time_bucket,
+        start_at,
+        end_at,
+    )
+
+    pair = generate_pair_for_binance("ETHUSDT", 1)
+    pair_ticker = pair.identifier_to_pair_ticker('binance')
+
+    # iterrate
+    pair_tickers = []
+    for index, row in dataset.pairs.iterrows():
+        pair_tickers.append((row['base_token_symbol'], row['quote_token_symbol']))
+
+    universe = TradingStrategyUniverse.create_limited_pair_universe(
+        dataset=dataset,
+        chain_id=BINANCE_CHAIN_ID,
+        exchange_slug=BINANCE_EXCHANGE_SLUG,
+        pairs=pair_tickers,
+    )
+
+    return universe
