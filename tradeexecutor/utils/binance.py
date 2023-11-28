@@ -1,7 +1,11 @@
+import datetime
 import pandas as pd
 from eth_typing import HexAddress
 
 from tradeexecutor.state.identifier import TradingPairIdentifier, AssetIdentifier
+from tradeexecutor.strategy.trading_strategy_universe import Dataset
+
+from tradingstrategy.timebucket import TimeBucket
 
 from tradingstrategy.binance.constants import (
     BINANCE_CHAIN_ID,
@@ -11,6 +15,8 @@ from tradingstrategy.binance.constants import (
     BINANCE_EXCHANGE_ADDRESS,
     BINANCE_EXCHANGE_TYPE,
     BINANCE_FEE,
+    BINANCE_SUPPORTED_QUOTE_TOKENS,
+    split_binance_symbol,
 )
 from tradingstrategy.exchange import Exchange, ExchangeUniverse
 from tradingstrategy.chain import ChainId
@@ -22,11 +28,21 @@ from tradingstrategy.lending import (
 )
 
 
+def generate_pairs_for_binance(
+    symbols: list[str],
+) -> list[TradingPairIdentifier]:
+    """Generate trading pair identifiers for Binance data.
+    
+    :param symbols: List of symbols to generate pairs for
+    :return: List of trading pair identifiers
+    """
+    return [generate_pair_for_binance(symbol, i) for i, symbol in enumerate(symbols)]
+
+
 def generate_pair_for_binance(
-    base_token_symbol: str,
-    quote_token_symbol: str,
-    fee: float,
+    symbol: str,
     internal_id: int,
+    fee: float = BINANCE_FEE,
     base_token_decimals: int = 18,
     quote_token_decimals: int = 18,
 ) -> TradingPairIdentifier:
@@ -37,26 +53,25 @@ def generate_pair_for_binance(
 
     .. note:: Internal exchange id is hardcoded to 129875571 and internal id to 134093847
 
-    :param base_token_symbol:
-        E.g. ``ETH``
 
-    :param quote_token_symbol:
-        E.g. ``USDT``
-
-    :return:
-        Trading pair identifier
+    :param symbol: E.g. `ETHUSDT`
+    :return: Trading pair identifier
     """
     assert 0 < fee < 1, f"Bad fee {fee}. Must be 0..1"
 
+    assert symbol.endswith(BINANCE_SUPPORTED_QUOTE_TOKENS), f"Bad symbol {symbol}"
+
+    base_token_symbol, quote_token_symbol = split_binance_symbol(symbol)
+
     base = AssetIdentifier(
-        int(ChainId.unknown.value),
+        int(BINANCE_CHAIN_ID.value),
         string_to_eth_address(base_token_symbol),
         base_token_symbol,
         base_token_decimals,
     )
 
     quote = AssetIdentifier(
-        int(ChainId.unknown.value),
+        int(BINANCE_CHAIN_ID.value),
         string_to_eth_address(quote_token_symbol),
         quote_token_symbol,
         quote_token_decimals,
@@ -172,3 +187,90 @@ def generate_lending_reserve_for_binance(
             liquidation_threshold=0.85,
         ),
     )
+
+
+from tradeexecutor.strategy.pandas_trader.alternative_market_data import load_candle_universe_from_dataframe
+from tradingstrategy.binance.downloader import BinanceDownloader
+from tradingstrategy.lending import LendingReserveUniverse, LendingCandleUniverse
+
+def load_binance_dataset(
+    symbols: list[str],
+    candle_time_bucket: TimeBucket,
+    stop_loss_time_bucket: TimeBucket,
+    start_at: datetime.datetime | None = None,
+    end_at: datetime.datetime | None = None,
+) -> Dataset:
+    """Load a Binance dataset.
+    
+    This is the one-stop shop function for loading all your Binance data. It can include
+    candlestick, stop loss, lending and supply data for all valid symbols.
+
+    If start_at and end_at are not provided, the entire dataset will be loaded.
+
+    :param symbols: List of symbols to load
+    :param candle_time_bucket: Time bucket for candle data
+    :param stop_loss_time_bucket: Time bucket for stop loss data
+    :param start_at: Start time for data
+    :param end_at: End time for data
+    """
+    downloader = BinanceDownloader()
+
+    pairs = generate_pairs_for_binance(symbols)
+
+    dataset = load_binance_dataset(
+        symbols,
+        candle_time_bucket,
+        stop_loss_time_bucket,
+        start_at,
+        end_at,
+    )
+
+
+    # use stop_loss_time_bucket since, in this case, it's more granular data than the candle_time_bucket
+    # we later resample to the higher time bucket for the backtest candles
+    df = downloader.fetch_candlestick_data(
+        symbols,
+        stop_loss_time_bucket,
+        start_at,
+        end_at,
+    )
+
+    candle_df = add_info_columns_to_ohlc(df, {symbol: pair for symbol, pair in zip(symbols, pairs)})
+
+    # TODO use stop_loss_candle_universe (have to fix it)
+    candle_universe, stop_loss_candle_universe = load_candle_universe_from_dataframe(
+        pair=pair,
+        df=candle_df,
+        include_as_trigger_signal=True,
+        resample=candle_time_bucket, 
+    )
+
+    exchange_universe = generate_exchange_universe_for_binance(pair_count=1)
+
+    pairs_df = candle_universe.get_pairs_df()
+
+    reserves = []
+    reserve_id = 1
+    for pair in pairs:
+        reserves.append(generate_lending_reserve_for_binance(pair.base.token_symbol, pair.base.address, reserve_id)) 
+        reserves.append(generate_lending_reserve_for_binance(pair.quote.token_symbol, pair.quote.address, reserve_id + 1))
+        reserve_id += 2
+
+    lending_reserve_universe = LendingReserveUniverse({reserve.reserve_id: reserve for reserve in reserves})
+
+    lending_candle_type_map = downloader.load_lending_candle_type_map({reserve.reserve_id: reserve.asset_symbol for reserve in reserves}, candle_time_bucket, start_at, end_at)
+
+    lending_candle_universe = LendingCandleUniverse(lending_candle_type_map, lending_reserve_universe)
+
+    dataset = Dataset(
+        time_bucket=candle_time_bucket,
+        exchanges=exchange_universe,
+        pairs=pairs_df,
+        candles=candle_universe.df,
+        backtest_stop_loss_time_bucket=stop_loss_time_bucket,
+        backtest_stop_loss_candles=candle_universe.df,
+        lending_candles=lending_candle_universe,
+        lending_reserves=lending_reserve_universe,
+    )
+
+    return dataset
