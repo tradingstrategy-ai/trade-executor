@@ -145,14 +145,14 @@ def execution_model(
         hot_wallet: HotWallet,
         exchange_universe: ExchangeUniverse,
         weth_usdc_spot_pair,
-) -> PandasPairUniverse:
-
+) -> EthereumExecutionModel:
+    """Set EthereumExecutionModel in mainnet fork testing mode."""
     execution_model = EthereumExecutionModel(
-        HotWalletTransactionBuilder(hot_wallet),
+        HotWalletTransactionBuilder(web3, hot_wallet),
+        mainnet_fork=True,
+        confirmation_block_count=0,
     )
-
-    exchange = next(iter(exchange_universe.exchanges.values()))
-    return create_pair_universe(web3, exchange, [weth_usdc_spot_pair])
+    return execution_model
 
 
 def test_generic_routing_open_position_across_markets(
@@ -163,6 +163,8 @@ def test_generic_routing_open_position_across_markets(
     generic_pricing_model: GenericPricingModel,
     asset_usdc: AssetIdentifier,
     wmatic_usdc_spot_pair: TradingPairIdentifier,
+    weth_usdc_spot_pair: TradingPairIdentifier,
+    weth_usdc_shorting_pair: TradingPairIdentifier,
     execution_model: EthereumExecutionModel,
 ):
     """Open Uniswap v2, v3 and 1delta position in the same state."""
@@ -193,7 +195,7 @@ def test_generic_routing_open_position_across_markets(
 
     assert state.portfolio.get_reserve_position(asset_usdc).quantity == Decimal('10_000')
 
-    # Setup routing state for first cycle
+    # Setup routing state for the approvals of this cycle
     routing_state_details = execution_model.get_routing_state_details()
     routing_state = routing_model.create_routing_state(strategy_universe, routing_state_details)
 
@@ -204,16 +206,49 @@ def test_generic_routing_open_position_across_markets(
         generic_pricing_model
     )
 
+    # Trade on Quickswap spot
     trades = position_manager.open_spot(
         wmatic_usdc_spot_pair,
         100.0,
     )
-
     execution_model.execute_trades(
         datetime.datetime.utcnow(),
+        state,
         trades,
         routing_model,
         routing_state,
         check_balances=True,
     )
+    assert all([t.is_success() for t in trades])
 
+    # Trade on Uniswap spot
+    trades = position_manager.open_spot(
+        weth_usdc_spot_pair,
+        100.0,
+    )
+    execution_model.execute_trades(
+        datetime.datetime.utcnow(),
+        state,
+        trades,
+        routing_model,
+        routing_state,
+        check_balances=True,
+    )
+    assert all([t.is_success() for t in trades])
+
+    # Trade 1delta + Aave short
+    trades = position_manager.open_short(
+        weth_usdc_spot_pair,
+        300.0,
+        leverage=2.0,
+    )
+    execution_model.execute_trades(
+        datetime.datetime.utcnow(),
+        state,
+        trades,
+        routing_model,
+        routing_state,
+        check_balances=True,
+    )
+    assert all([t.is_success() for t in trades])
+    assert len(state.portfolio.open_positions) == 3

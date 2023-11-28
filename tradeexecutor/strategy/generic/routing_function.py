@@ -64,8 +64,12 @@ def default_route_chooser(
         Usually due to missing data.
     """
 
+    assert isinstance(pair, TradingPairIdentifier), f"Expected TradingPairIdentifier, got {pair.__class__}"
     assert pair_universe.exchange_universe, f"PandasPairUniverse.exchange_universe not set"
     assert pair.exchange_address, f"Pair does not have exchange_address filled in: {pair}"
+
+    if pair.is_leverage() or pair.is_credit_supply():
+        return "1delta"
 
     try:
         exchange = pair_universe.exchange_universe.get_by_chain_and_factory(

@@ -50,7 +50,6 @@ logger = logging.getLogger(__name__)
 class EthereumExecutionModel(ExecutionModel):
     """Run order execution on a single Uniswap v2 style exchanges."""
 
-    @abstractmethod
     def __init__(self,
                  tx_builder: TransactionBuilder,
                  min_balance_threshold=Decimal("0.5"),
@@ -443,7 +442,8 @@ class EthereumExecutionModel(ExecutionModel):
         state: State,
         tx_map: Dict[HexStr, Tuple[TradeExecution, BlockchainTransaction]],
         receipts: Dict[HexBytes, dict],
-        stop_on_execution_failure=True):
+        stop_on_execution_failure=True
+    ):
         """Resolve trade outcome.
 
         Read on-chain Uniswap swap data from the transaction receipt and record how it went.
@@ -475,6 +475,7 @@ class EthereumExecutionModel(ExecutionModel):
                 state,
                 trade,
                 receipts,
+                stop_on_execution_failure=stop_on_execution_failure,
             )
 
 # Only usage outside this module is UniswapV2ExecutionModelV0

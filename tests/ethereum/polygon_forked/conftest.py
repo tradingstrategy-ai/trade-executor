@@ -249,7 +249,6 @@ def asset_wmatic(wmatic_token: TokenDetails) -> AssetIdentifier:
     return translate_token_details(wmatic_token)
 
 
-
 @pytest.fixture
 def weth_usdc_spot_pair(uniswap_v3_deployment, asset_usdc, asset_weth) -> TradingPairIdentifier:
     return TradingPairIdentifier(

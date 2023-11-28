@@ -2,6 +2,8 @@
 
 from typing import Dict, TypeAlias, List, Tuple
 
+from web3 import Web3
+
 from tradeexecutor.state.state import State
 from tradeexecutor.state.trade import TradeExecution
 from tradeexecutor.strategy.generic.routing_function import UnroutableTrade, default_route_chooser, RoutingFunction
@@ -80,7 +82,7 @@ class GenericRouting(RoutingModel):
         trade: TradeExecution,
     ) -> Tuple[str, RoutingModel]:
         t = trade
-        router_name = self.routing_function(strategy_universe.data_universe.pairs, t)
+        router_name = self.routing_function(strategy_universe.data_universe.pairs, t.pair)
         if router_name is None:
             raise UnroutableTrade(
                 f"Cannot route: {t}\n"
@@ -102,7 +104,8 @@ class GenericRouting(RoutingModel):
             self,
             state: GenericRoutingState,
             trades: List[TradeExecution],
-            check_balances=False
+            check_balances=False,
+            rebroadcast=False,
     ):
         """Route trades.
 
@@ -129,18 +132,24 @@ class GenericRouting(RoutingModel):
                 router_state,
                 [t],
                 check_balances=check_balances,
+                rebroadcast=rebroadcast,
             )
 
     def settle_trade(
         self,
+        web3: Web3,
         state: State,
         trade: TradeExecution,
         receipts: Dict[str, dict],
         stop_on_execution_failure=False,
     ):
-        assert trade.route is not None, f"Trade was not executed with GenericRouter: {t}"
+        assert isinstance(state, State)
+        assert isinstance(trade, TradeExecution)
+        assert type(receipts) == dict
+        assert trade.route is not None, f"TradeExecution lacks TradeExecution.route, it was not executed with GenericRouter?\n{t}"
         router = self.routers[trade.route]
         return router.settle_trade(
+            web3,
             state,
             trade,
             receipts,
