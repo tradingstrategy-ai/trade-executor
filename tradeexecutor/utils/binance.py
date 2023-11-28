@@ -194,7 +194,7 @@ from tradingstrategy.binance.downloader import BinanceDownloader
 from tradingstrategy.lending import LendingReserveUniverse, LendingCandleUniverse
 
 def load_binance_dataset(
-    symbols: list[str],
+    symbols: list[str] | str,
     candle_time_bucket: TimeBucket,
     stop_loss_time_bucket: TimeBucket,
     start_at: datetime.datetime | None = None,
@@ -213,18 +213,12 @@ def load_binance_dataset(
     :param start_at: Start time for data
     :param end_at: End time for data
     """
+    if isinstance(symbols, str):
+        symbols = [symbols]
+
     downloader = BinanceDownloader()
 
     pairs = generate_pairs_for_binance(symbols)
-
-    dataset = load_binance_dataset(
-        symbols,
-        candle_time_bucket,
-        stop_loss_time_bucket,
-        start_at,
-        end_at,
-    )
-
 
     # use stop_loss_time_bucket since, in this case, it's more granular data than the candle_time_bucket
     # we later resample to the higher time bucket for the backtest candles
@@ -239,13 +233,13 @@ def load_binance_dataset(
 
     # TODO use stop_loss_candle_universe (have to fix it)
     candle_universe, stop_loss_candle_universe = load_candle_universe_from_dataframe(
-        pair=pair,
+        pair=pairs[0],  # TODO fix to be multipair
         df=candle_df,
         include_as_trigger_signal=True,
         resample=candle_time_bucket, 
     )
 
-    exchange_universe = generate_exchange_universe_for_binance(pair_count=1)
+    exchange_universe = generate_exchange_universe_for_binance(pair_count=len(pairs))
 
     pairs_df = candle_universe.get_pairs_df()
 
