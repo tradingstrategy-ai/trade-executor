@@ -1,15 +1,13 @@
 """Map trades to different routing backends based on their type."""
 
-from typing import Collection, Dict, TypeAlias, Protocol, List, Tuple
+from typing import Dict, TypeAlias, List, Tuple
 
 from tradeexecutor.state.state import State
 from tradeexecutor.state.trade import TradeExecution
 from tradeexecutor.strategy.generic.routing_function import UnroutableTrade, default_route_chooser, RoutingFunction
 from tradeexecutor.strategy.routing import RoutingModel, RoutingState
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
-from tradeexecutor.strategy.universe_model import StrategyExecutionUniverse
-from tradingstrategy.chain import ChainId
-from tradingstrategy.pair import PandasPairUniverse
+
 
 #: Router name to router implementation mapping
 #:

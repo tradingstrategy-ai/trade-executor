@@ -1,10 +1,16 @@
+"""Router functions.
+
+- Interface for the route chooser function :py:class:`RoutingFunction`
+
+- The default router choose :py:func:`default_route_chooser`
+"""
+
 from typing import Protocol
 
 from eth_typing import ChainId
 from tradingstrategy.pair import PandasPairUniverse
 
 from tradeexecutor.state.identifier import TradingPairIdentifier
-from tradeexecutor.state.trade import TradeExecution
 
 
 class UnroutableTrade(Exception):
