@@ -165,10 +165,8 @@ class HotWalletSyncModel(SyncModel):
             pricing_model
         )
 
-        # if block_identifier is None:
-        block_identifier = get_almost_latest_block_number(self.web3)
-
         # Then sync interest back from the chain
+        block_identifier = get_almost_latest_block_number(self.web3)
         balances = {}
         onchain_balances = fetch_address_balances(
             self.web3,
@@ -183,8 +181,7 @@ class HotWalletSyncModel(SyncModel):
             for b in onchain_balances
         }
 
-        # Then distribute gained interest (new atokens/vtokens)
-        # among positions
+        # Then distribute gained interest (new atokens/vtokens) among positions
         events_iter = accrue_interest(state, balances, interest_distribution, timestamp, None)
 
         events = list(events_iter)

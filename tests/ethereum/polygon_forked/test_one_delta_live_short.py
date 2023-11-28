@@ -344,6 +344,15 @@ def test_one_delta_live_strategy_short_open_accrue_interests(
     assert state.portfolio.open_positions[1].get_quantity() == Decimal('1.261256429210282326')
     assert state.portfolio.open_positions[1].get_value() == pytest.approx(944.0010729999999, rel=APPROX_REL)
 
+    # sync time should be initialized
+    first_sync_at = state.sync.interest.last_sync_at
+    assert first_sync_at
+
+    # there shouldn't be any accrued interest yet
+    loan = state.portfolio.open_positions[1].loan
+    assert loan.get_collateral_interest() == pytest.approx(0)
+    assert loan.get_borrow_interest() == pytest.approx(0)
+
     # mine a few block before running next tick
     for i in range(1, 10):
         mine(web3)
@@ -370,8 +379,39 @@ def test_one_delta_live_strategy_short_open_accrue_interests(
 
     # position should still be open
     assert len(state.portfolio.open_positions) == 1
-    position = state.portfolio.open_positions[1]
 
-    # TODO: verify the interests here
-    assert position.loan.get_collateral_interest() == pytest.approx(55.998942)
-    # assert position.loan.get_borrow_interest() == pytest.approx(7.4281271778879665)
+    # sync time should be updated
+    assert state.sync.interest.last_sync_at > first_sync_at
+
+    # there should be accrued interest now
+    loan = state.portfolio.open_positions[1].loan
+    assert loan.get_collateral_interest() == pytest.approx(55.998942)
+    assert loan.get_borrow_interest() == pytest.approx(7.4281271827756406e-06)
+    
+    # mine a few more blocks and do the same checks
+    for i in range(1, 20):
+        mine(web3)
+
+    ts = get_latest_block_timestamp(web3)
+    strategy_cycle_timestamp = snap_to_next_tick(ts, loop.cycle_duration)
+
+    loop.tick(
+        ts,
+        loop.cycle_duration,
+        state,
+        cycle=2,
+        live=True,
+        strategy_cycle_timestamp=strategy_cycle_timestamp,
+    )
+
+    loop.update_position_valuations(
+        ts,
+        state,
+        trading_strategy_universe,
+        ExecutionMode.real_trading
+    )
+
+    # there should be accrued interest now
+    position = state.portfolio.open_positions[1]
+    assert position.loan.get_collateral_interest() == pytest.approx(55.998995)
+    assert position.loan.get_borrow_interest() == pytest.approx(3.565501072898451e-05)
