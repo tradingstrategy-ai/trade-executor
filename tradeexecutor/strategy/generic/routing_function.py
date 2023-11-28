@@ -7,7 +7,8 @@
 
 from typing import Protocol
 
-from eth_typing import ChainId
+from tradingstrategy.chain import ChainId
+from tradingstrategy.exchange import ExchangeNotFoundError
 from tradingstrategy.pair import PandasPairUniverse
 
 from tradeexecutor.state.identifier import TradingPairIdentifier
@@ -52,9 +53,33 @@ def default_route_chooser(
 
     Use smart contract addresses hardcoded in :py:mod:`tradeexecutor.ethereum.routing_data`.
 
+    :return:
+        Exchange slug if a spot market.
+
+        ``1delta`` if we are doing a leveraged position.
+
+    :raise UnroutableTrade:
+        If we cannot figure out how to trade.
+
+        Usually due to missing data.
     """
-    exchange = pair_universe.exchange_universe.get_by_chain_and_factory(
-        ChainId(pair.chain_id),
-        pair.exchange_address
-    )
+
+    assert pair_universe.exchange_universe, f"PandasPairUniverse.exchange_universe not set"
+    assert pair.exchange_address, f"Pair does not have exchange_address filled in: {pair}"
+
+    try:
+        exchange = pair_universe.exchange_universe.get_by_chain_and_factory(
+            ChainId(pair.chain_id),
+            pair.exchange_address
+        )
+    except ExchangeNotFoundError as e:
+        raise UnroutableTrade(
+            f"Could not find exchange for pair: {pair}, exchange address {pair.exchange_address}.\n"
+            f"We have data for {pair_universe.exchange_universe.get_exchange_count()} exchanges.\n"
+        ) from e
+
+    assert exchange is not None, \
+        f"Loaded exchange data does not have exchange for pair {pair}, exchange address {pair.exchange_address}\n" \
+        f"We have data for {pair_universe.exchange_universe.get_exchange_count()} exchanges"
+
     return exchange.exchange_slug

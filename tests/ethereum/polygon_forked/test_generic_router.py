@@ -58,6 +58,7 @@ def strategy_universe(chain_id, exchange_universe, pair_universe, asset_usdc, pe
 
     pairs = [
         (ChainId.polygon, "uniswap-v3", "WETH", "USDC", 0.0005),
+        (ChainId.polygon, "quickswap", "WMATIC", "USDC", 0.0030),
     ]
 
     reverses = [
@@ -77,7 +78,7 @@ def strategy_universe(chain_id, exchange_universe, pair_universe, asset_usdc, pe
     )
 
     # Convert loaded data to a trading pair universe
-    return TradingStrategyUniverse.create_single_pair_universe(dataset)
+    return TradingStrategyUniverse.create_from_dataset(dataset, asset_usdc.address)
 
 
 @pytest.fixture()
@@ -108,7 +109,7 @@ def generic_routing_model(
 @pytest.fixture()
 def generic_pricing_model(
     web3,
-    pair_universe: PandasPairUniverse,
+    strategy_universe: TradingStrategyUniverse,
     quickswap_routing_model: UniswapV2SimpleRoutingModel,
     one_delta_routing_model: OneDeltaSimpleRoutingModel,
     uniswap_v3_routing_model: UniswapV3SimpleRoutingModel,
@@ -117,6 +118,8 @@ def generic_pricing_model(
 
     Live Polygon deployment addresses.
     """
+
+    pair_universe = strategy_universe.data_universe.pairs
 
     quickswap_pricing_model = UniswapV2LivePricing(web3, pair_universe, quickswap_routing_model)
     uniswap_v3_pricing_model = UniswapV3LivePricing(web3, pair_universe, uniswap_v3_routing_model)
@@ -144,6 +147,14 @@ def test_generic_routing_open_position_across_markets(
 ):
     """Open Uniswap v2, v3 and 1delta position in the same state."""
 
+    # Check we have data for both DEXes needed
+    exchange_universe = strategy_universe.data_universe.pairs.exchange_universe
+    assert exchange_universe.get_exchange_count() == 2
+    quickswap = exchange_universe.get_by_chain_and_slug(ChainId.polygon, "quickswap")
+    assert quickswap is not None
+    uniswap_v3 = exchange_universe.get_by_chain_and_slug(ChainId.polygon, "uniswap-v3")
+    assert uniswap_v3 is not None
+
     # Check that our preflight checks pass
     generic_routing_model.perform_preflight_checks_and_logging(pair_universe)
 
@@ -167,4 +178,8 @@ def test_generic_routing_open_position_across_markets(
         generic_pricing_model
     )
 
-    # TODO
+    trades  = position_manager.open_spot(
+        wmatic_usdc_spot_pair,
+        100.0,
+    )
+
