@@ -39,7 +39,7 @@ from tradeexecutor.ethereum.uniswap_v2.uniswap_v2_routing import UniswapV2Simple
 from tradeexecutor.ethereum.uniswap_v3.uniswap_v3_routing import UniswapV3SimpleRoutingModel, UniswapV3RoutingState
 from tradeexecutor.state.types import BlockNumber
 from tradeexecutor.strategy.execution_model import ExecutionModel, RoutingStateDetails
-from tradeexecutor.strategy.routing import RoutingModel
+from tradeexecutor.strategy.routing import RoutingModel, RoutingState
 from tradingstrategy.chain import ChainId
 
 
@@ -373,8 +373,8 @@ class EthereumExecutionModel(ExecutionModel):
         ts: datetime.datetime,
         state: State,
         trades: List[TradeExecution],
-        routing_model: UniswapV2SimpleRoutingModel | UniswapV3SimpleRoutingModel,
-        routing_state: UniswapV2RoutingState | UniswapV3RoutingState,
+        routing_model: RoutingModel,
+        routing_state: RoutingState,
         check_balances=False,
         rebroadcast=False,
     ):

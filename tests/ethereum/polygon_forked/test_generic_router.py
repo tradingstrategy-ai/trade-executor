@@ -6,6 +6,9 @@ from _decimal import Decimal
 
 import pandas as pd
 import pytest as pytest
+
+from tradeexecutor.ethereum.execution import EthereumExecutionModel
+from tradeexecutor.ethereum.tx import HotWalletTransactionBuilder
 from tradingstrategy.chain import ChainId
 from web3 import Web3
 
@@ -136,6 +139,22 @@ def generic_pricing_model(
     )
 
 
+@pytest.fixture()
+def execution_model(
+        web3,
+        hot_wallet: HotWallet,
+        exchange_universe: ExchangeUniverse,
+        weth_usdc_spot_pair,
+) -> PandasPairUniverse:
+
+    execution_model = EthereumExecutionModel(
+        HotWalletTransactionBuilder(hot_wallet),
+    )
+
+    exchange = next(iter(exchange_universe.exchanges.values()))
+    return create_pair_universe(web3, exchange, [weth_usdc_spot_pair])
+
+
 def test_generic_routing_open_position_across_markets(
     web3: Web3,
     hot_wallet: HotWallet,
@@ -144,8 +163,11 @@ def test_generic_routing_open_position_across_markets(
     generic_pricing_model: GenericPricingModel,
     asset_usdc: AssetIdentifier,
     wmatic_usdc_spot_pair: TradingPairIdentifier,
+    execution_model: EthereumExecutionModel,
 ):
     """Open Uniswap v2, v3 and 1delta position in the same state."""
+
+    routing_model = generic_routing_model
 
     # Check we have data for both DEXes needed
     exchange_universe = strategy_universe.data_universe.pairs.exchange_universe
@@ -156,7 +178,7 @@ def test_generic_routing_open_position_across_markets(
     assert uniswap_v3 is not None
 
     # Check that our preflight checks pass
-    generic_routing_model.perform_preflight_checks_and_logging(pair_universe)
+    routing_model.perform_preflight_checks_and_logging(pair_universe)
 
     sync_model = HotWalletSyncModel(
         web3,
@@ -171,6 +193,10 @@ def test_generic_routing_open_position_across_markets(
 
     assert state.portfolio.get_reserve_position(asset_usdc).quantity == Decimal('10_000')
 
+    # Setup routing state for first cycle
+    routing_state_details = execution_model.get_routing_state_details()
+    routing_state = routing_model.create_routing_state(strategy_universe, routing_state_details)
+
     position_manager = PositionManager(
         datetime.datetime.utcnow(),
         strategy_universe,
@@ -178,8 +204,16 @@ def test_generic_routing_open_position_across_markets(
         generic_pricing_model
     )
 
-    trades  = position_manager.open_spot(
+    trades = position_manager.open_spot(
         wmatic_usdc_spot_pair,
         100.0,
+    )
+
+    execution_model.execute_trades(
+        datetime.datetime.utcnow(),
+        trades,
+        routing_model,
+        routing_state,
+        check_balances=True,
     )
 
