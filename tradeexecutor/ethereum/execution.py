@@ -39,7 +39,7 @@ from tradeexecutor.ethereum.uniswap_v2.uniswap_v2_routing import UniswapV2Simple
 from tradeexecutor.ethereum.uniswap_v3.uniswap_v3_routing import UniswapV3SimpleRoutingModel, UniswapV3RoutingState
 from tradeexecutor.state.types import BlockNumber
 from tradeexecutor.strategy.execution_model import ExecutionModel, RoutingStateDetails
-from tradeexecutor.strategy.routing import RoutingModel
+from tradeexecutor.strategy.routing import RoutingModel, RoutingState
 from tradingstrategy.chain import ChainId
 
 
@@ -50,7 +50,6 @@ logger = logging.getLogger(__name__)
 class EthereumExecutionModel(ExecutionModel):
     """Run order execution on a single Uniswap v2 style exchanges."""
 
-    @abstractmethod
     def __init__(self,
                  tx_builder: TransactionBuilder,
                  min_balance_threshold=Decimal("0.5"),
@@ -373,8 +372,8 @@ class EthereumExecutionModel(ExecutionModel):
         ts: datetime.datetime,
         state: State,
         trades: List[TradeExecution],
-        routing_model: UniswapV2SimpleRoutingModel | UniswapV3SimpleRoutingModel,
-        routing_state: UniswapV2RoutingState | UniswapV3RoutingState,
+        routing_model: RoutingModel,
+        routing_state: RoutingState,
         check_balances=False,
         rebroadcast=False,
     ):
@@ -443,7 +442,8 @@ class EthereumExecutionModel(ExecutionModel):
         state: State,
         tx_map: Dict[HexStr, Tuple[TradeExecution, BlockchainTransaction]],
         receipts: Dict[HexBytes, dict],
-        stop_on_execution_failure=True):
+        stop_on_execution_failure=True
+    ):
         """Resolve trade outcome.
 
         Read on-chain Uniswap swap data from the transaction receipt and record how it went.
@@ -475,6 +475,7 @@ class EthereumExecutionModel(ExecutionModel):
                 state,
                 trade,
                 receipts,
+                stop_on_execution_failure=stop_on_execution_failure,
             )
 
 # Only usage outside this module is UniswapV2ExecutionModelV0

@@ -63,7 +63,7 @@ class EthereumPricingModel(PricingModel):
                  ):
 
         assert isinstance(web3, Web3)
-        assert isinstance(pair_universe, PandasPairUniverse)
+        assert isinstance(pair_universe, PandasPairUniverse), f"Expected PandasPairUniverse, got {pair_universe.__class__}"
 
         self.web3 = web3
         self.pair_universe = pair_universe

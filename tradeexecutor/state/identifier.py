@@ -11,6 +11,7 @@ from typing import Optional, Literal, TypeAlias
 from dataclasses_json import dataclass_json
 from eth_typing import HexAddress
 
+from eth_defi.uniswap_v2.utils import sort_tokens
 from tradeexecutor.utils.accuracy import sum_decimal, ensure_exact_zero
 from tradingstrategy.chain import ChainId
 from web3 import Web3
@@ -342,6 +343,7 @@ class TradingPairIdentifier:
     #: The underlying token0/token1 for Uniswap pair is flipped compared to base token/quote token.
     #:
     #: Use :py:meth:`has_reverse_token_order` to access - might not be set.
+    #: This is set when :py:class:`TradingPairIdentifier` is constructed.
     #:
     reverse_token_order: Optional[bool] = None
 
@@ -365,6 +367,10 @@ class TradingPairIdentifier:
             self.fee = 0.0
 
         assert (type(self.fee) in {float, type(None)}) or (self.fee == 0)
+
+        if self.reverse_token_order is None:
+            # TODO: Make this lazy property
+            self.reverse_token_order = int(self.base.address, 16) > int(self.quote.address, 16)
 
     def __repr__(self):
         fee = self.fee or 0
@@ -465,7 +471,10 @@ class TradingPairIdentifier:
 
         See :py:func:`eth_defi.uniswap_v3.price.get_onchain_price`
         """
-        assert self.reverse_token_order is not None, f"reverse_token_order not set for: {self}"
+        assert self.reverse_token_order is not None, \
+            f"reverse_token_order not set for: {self}.\n" \
+            f"This is needed for Uniswap routing.\n" \
+            f"If you construct TradingPairIdentifier by hand remember to set TradingPairIdentifier.reverse_token_order"
         return self.reverse_token_order
 
     def get_max_leverage_at_open(

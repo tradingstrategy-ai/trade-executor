@@ -202,7 +202,8 @@ class RoutingModel(abc.ABC):
             self,
             state: RoutingState,
             trades: List[TradeExecution],
-            check_balances=False
+            check_balances=False,
+            rebroadcast=False,
     ):
         """Setup the trades decided by a strategy.
 
@@ -217,6 +218,9 @@ class RoutingModel(abc.ABC):
             Check that the wallet has enough reserves to perform the trades
             before executing them. Because we are selling before buying.
             sometimes we do no know this until the sell tx has been completed.
+
+        :param rebroadcast:
+            Allow rebroadcast of already broadcasted trades, but for which we did not get a receipt yet.
 
         :raise CannotExecuteTrade:
             If a trade cannot be executed, e.g. due to an unsupported pair or an exchange,
@@ -259,3 +263,4 @@ class RoutingModel(abc.ABC):
 
             Used in unit testing.
         """
+        raise NotImplementedError()

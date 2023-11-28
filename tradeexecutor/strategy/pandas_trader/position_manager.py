@@ -1110,7 +1110,9 @@ class PositionManager:
         percentage than to the price. So this will likely be changed in the future.
 
         :param pair:
-            Trading pair where we take the position
+            Trading pair where we take the position.
+
+            For lending protocol shorts must be the underlying spot pair.
 
         :param value:
             How much cash reserves we allocate to open this position.
