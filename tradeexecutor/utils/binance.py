@@ -7,6 +7,9 @@ from tradeexecutor.strategy.trading_strategy_universe import (
     Dataset,
     TradingStrategyUniverse,
 )
+from tradeexecutor.strategy.pandas_trader.alternative_market_data import (
+    load_candle_universe_from_dataframe,
+)
 from tradingstrategy.timebucket import TimeBucket
 
 from tradingstrategy.binance.constants import (
@@ -28,6 +31,8 @@ from tradingstrategy.lending import (
     LendingProtocolType,
     LendingReserveAdditionalDetails,
 )
+from tradingstrategy.binance.downloader import BinanceDownloader
+from tradingstrategy.lending import LendingReserveUniverse, LendingCandleUniverse
 
 
 def generate_pairs_for_binance(
@@ -191,13 +196,6 @@ def generate_lending_reserve_for_binance(
     )
 
 
-from tradeexecutor.strategy.pandas_trader.alternative_market_data import (
-    load_candle_universe_from_dataframe,
-)
-from tradingstrategy.binance.downloader import BinanceDownloader
-from tradingstrategy.lending import LendingReserveUniverse, LendingCandleUniverse
-
-
 def load_binance_dataset(
     symbols: list[str] | str,
     candle_time_bucket: TimeBucket,
@@ -322,9 +320,8 @@ def create_binance_universe(
         end_at,
     )
 
-    pair_tickers = []
-    for index, row in dataset.pairs.iterrows():
-        pair_tickers.append((row["base_token_symbol"], row["quote_token_symbol"]))
+    selected_columns = dataset.pairs[["base_token_symbol", "quote_token_symbol"]]
+    pair_tickers = [tuple(x) for x in selected_columns.to_numpy()]
 
     universe = TradingStrategyUniverse.create_limited_pair_universe(
         dataset=dataset,
