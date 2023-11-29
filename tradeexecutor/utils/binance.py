@@ -204,6 +204,8 @@ def load_binance_dataset(
     stop_loss_time_bucket: TimeBucket,
     start_at: datetime.datetime | None = None,
     end_at: datetime.datetime | None = None,
+    include_lending: bool = False,
+    force_download: bool = False,
 ) -> Dataset:
     """Load a Binance dataset.
 
@@ -217,6 +219,8 @@ def load_binance_dataset(
     :param stop_loss_time_bucket: Time bucket for stop loss data
     :param start_at: Start time for data
     :param end_at: End time for data
+    :param include_lending: Whether to include lending data or not
+    :param force_download: Force download of data
     :return: Dataset
     """
     if isinstance(symbols, str):
@@ -233,6 +237,7 @@ def load_binance_dataset(
         stop_loss_time_bucket,
         start_at,
         end_at,
+        force_download=force_download,
     )
 
     candle_df = add_info_columns_to_ohlc(
@@ -250,35 +255,40 @@ def load_binance_dataset(
 
     pairs_df = candle_universe.get_pairs_df()
 
-    reserves = []
-    reserve_id = 1
-    for pair in pairs:
-        reserves.append(
-            generate_lending_reserve_for_binance(
-                pair.base.token_symbol, pair.base.address, reserve_id
+    if include_lending:
+        reserves = []
+        reserve_id = 1
+        for pair in pairs:
+            reserves.append(
+                generate_lending_reserve_for_binance(
+                    pair.base.token_symbol, pair.base.address, reserve_id
+                )
             )
-        )
-        reserves.append(
-            generate_lending_reserve_for_binance(
-                pair.quote.token_symbol, pair.quote.address, reserve_id + 1
+            reserves.append(
+                generate_lending_reserve_for_binance(
+                    pair.quote.token_symbol, pair.quote.address, reserve_id + 1
+                )
             )
+            reserve_id += 2
+
+        lending_reserve_universe = LendingReserveUniverse(
+            {reserve.reserve_id: reserve for reserve in reserves}
         )
-        reserve_id += 2
 
-    lending_reserve_universe = LendingReserveUniverse(
-        {reserve.reserve_id: reserve for reserve in reserves}
-    )
+        lending_candle_type_map = downloader.load_lending_candle_type_map(
+            {reserve.reserve_id: reserve.asset_symbol for reserve in reserves},
+            candle_time_bucket,
+            start_at,
+            end_at,
+            force_download=force_download,
+        )
 
-    lending_candle_type_map = downloader.load_lending_candle_type_map(
-        {reserve.reserve_id: reserve.asset_symbol for reserve in reserves},
-        candle_time_bucket,
-        start_at,
-        end_at,
-    )
-
-    lending_candle_universe = LendingCandleUniverse(
-        lending_candle_type_map, lending_reserve_universe
-    )
+        lending_candle_universe = LendingCandleUniverse(
+            lending_candle_type_map, lending_reserve_universe
+        )
+    else:
+        lending_reserve_universe = None
+        lending_candle_universe = None
 
     dataset = Dataset(
         time_bucket=candle_time_bucket,
@@ -301,6 +311,8 @@ def create_binance_universe(
     start_at: datetime.datetime | None = None,
     end_at: datetime.datetime | None = None,
     reserve_pair_ticker: str | None = None,
+    include_lending: bool = False,
+    force_download: bool = False,
 ) -> TradingStrategyUniverse:
     """Create a Binance universe that can be used for backtesting.
 
@@ -312,6 +324,9 @@ def create_binance_universe(
     :param stop_loss_time_bucket: Time bucket for stop loss data
     :param start_at: Start time for data
     :param end_at: End time for data
+    :param reserve_pair_ticker: Pair ticker to use as the reserve asset
+    :param include_lending: Whether to include lending data or not
+    :param force_download: Whether to force download of data or get it from cache
     :return: Trading strategy universe
     """
     dataset = load_binance_dataset(
@@ -320,6 +335,8 @@ def create_binance_universe(
         stop_loss_time_bucket,
         start_at,
         end_at,
+        include_lending=include_lending,
+        force_download=force_download,
     )
 
     selected_columns = dataset.pairs[["base_token_symbol", "quote_token_symbol"]]
