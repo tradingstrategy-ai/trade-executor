@@ -387,7 +387,7 @@ def test_one_delta_live_strategy_short_open_accrue_interests(
     loan = state.portfolio.open_positions[1].loan
     assert loan.get_collateral_interest() == pytest.approx(55.998942)
     assert loan.get_borrow_interest() == pytest.approx(7.4281271827756406e-06)
-    
+
     # mine a few more blocks and do the same checks
     for i in range(1, 20):
         mine(web3)
@@ -415,3 +415,9 @@ def test_one_delta_live_strategy_short_open_accrue_interests(
     position = state.portfolio.open_positions[1]
     assert position.loan.get_collateral_interest() == pytest.approx(55.998995)
     assert position.loan.get_borrow_interest() == pytest.approx(3.565501072898451e-05)
+
+    # there should be 4 interest update events (2 per cycle)
+    events = list(position.balance_updates.values())
+    assert len(events) == 4
+    assert len([event for event in events if event.asset.token_symbol == "variableDebtPolWETH"]) == 2
+    assert len([event for event in events if event.asset.token_symbol == "aPolUSDC"]) == 2
