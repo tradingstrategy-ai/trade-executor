@@ -43,7 +43,9 @@ def generate_pairs_for_binance(
     :param symbols: List of symbols to generate pairs for
     :return: List of trading pair identifiers
     """
-    return [generate_pair_for_binance(symbol, i) for i, symbol in enumerate(symbols)]
+    return [
+        generate_pair_for_binance(symbol, i + 1) for i, symbol in enumerate(symbols)
+    ]
 
 
 def generate_pair_for_binance(
@@ -91,7 +93,7 @@ def generate_pair_for_binance(
         exchange_address=BINANCE_EXCHANGE_ADDRESS,
         fee=BINANCE_FEE,
         internal_exchange_id=BINANCE_EXCHANGE_ID,
-        internal_id=internal_id,
+        internal_id=int(internal_id),
     )
 
 
@@ -239,7 +241,6 @@ def load_binance_dataset(
 
     # TODO use stop_loss_candle_universe (have to fix it)
     candle_universe, stop_loss_candle_universe = load_candle_universe_from_dataframe(
-        pair=pairs[0],  # TODO fix to be multipair
         df=candle_df,
         include_as_trigger_signal=True,
         resample=candle_time_bucket,
@@ -299,6 +300,7 @@ def create_binance_universe(
     stop_loss_time_bucket: TimeBucket,
     start_at: datetime.datetime | None = None,
     end_at: datetime.datetime | None = None,
+    reserve_pair_ticker: str | None = None,
 ) -> TradingStrategyUniverse:
     """Create a Binance universe that can be used for backtesting.
 
@@ -323,11 +325,15 @@ def create_binance_universe(
     selected_columns = dataset.pairs[["base_token_symbol", "quote_token_symbol"]]
     pair_tickers = [tuple(x) for x in selected_columns.to_numpy()]
 
+    if reserve_pair_ticker is None:
+        reserve_asset_ticker = pair_tickers[0]
+
     universe = TradingStrategyUniverse.create_limited_pair_universe(
         dataset=dataset,
         chain_id=BINANCE_CHAIN_ID,
         exchange_slug=BINANCE_EXCHANGE_SLUG,
         pairs=pair_tickers,
+        reserve_asset_pair_ticker=reserve_asset_ticker,
     )
 
     return universe
