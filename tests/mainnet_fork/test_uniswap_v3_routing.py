@@ -722,7 +722,7 @@ def test_stateful_routing_three_legs(
     routing_model.execute_trades_internal(
         pair_universe, routing_state, trades, check_balances=True
     )
-    execution_model.broadcast_and_resolve_old(state, trades, stop_on_execution_failure=True)
+    execution_model.broadcast_and_resolve_old(state, trades, routing_model, stop_on_execution_failure=True)
 
     # Check all all trades and transactions completed
     for t in trades:
@@ -749,7 +749,7 @@ def test_stateful_routing_three_legs(
     routing_model.execute_trades_internal(
         pair_universe, routing_state, trades, check_balances=True
     )
-    execution_model.broadcast_and_resolve_old(state, trades, stop_on_execution_failure=True)
+    execution_model.broadcast_and_resolve_old(state, trades, routing_model, stop_on_execution_failure=True)
 
     # Check all all trades and transactions completed
     for t in trades:
@@ -802,7 +802,7 @@ def test_stateful_routing_two_legs(
     routing_model.execute_trades_internal(
         pair_universe, routing_state, trades, check_balances=True
     )
-    execution_model.broadcast_and_resolve_old(state, trades, stop_on_execution_failure=True)
+    execution_model.broadcast_and_resolve_old(state, trades, routing_model, stop_on_execution_failure=True)
 
     # Check all all trades and transactions completed
     for t in trades:
@@ -829,7 +829,7 @@ def test_stateful_routing_two_legs(
     routing_model.execute_trades_internal(
         pair_universe, routing_state, trades, check_balances=True
     )
-    execution_model.broadcast_and_resolve_old(state, trades, stop_on_execution_failure=True)
+    execution_model.broadcast_and_resolve_old(state, trades, routing_model, stop_on_execution_failure=True)
 
     # Check all all trades and transactions completed
     for t in trades:
@@ -890,7 +890,7 @@ def test_stateful_routing_two_leg_multi_node_broadcast(
     routing_model.execute_trades_internal(
         pair_universe, routing_state, trades, check_balances=True
     )
-    execution_model.broadcast_and_resolve_multiple_nodes(state, trades, stop_on_execution_failure=True)
+    execution_model.broadcast_and_resolve_multiple_nodes(routing_model, state, trades, stop_on_execution_failure=True)
 
     # Check all all trades and transactions completed
     for t in trades:
@@ -917,7 +917,7 @@ def test_stateful_routing_two_leg_multi_node_broadcast(
     routing_model.execute_trades_internal(
         pair_universe, routing_state, trades, check_balances=True
     )
-    execution_model.broadcast_and_resolve_old(state, trades, stop_on_execution_failure=True)
+    execution_model.broadcast_and_resolve_old(state, trades, routing_model, stop_on_execution_failure=True)
 
     # Check all all trades and transactions completed
     for t in trades:

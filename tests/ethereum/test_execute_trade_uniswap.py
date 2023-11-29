@@ -266,7 +266,8 @@ def test_execute_trade_instructions_buy_weth(
     assert state.portfolio.get_total_equity() == pytest.approx(10000.0)
     assert trade.get_status() == TradeStatus.planned
 
-    ethereum_trader.execute_trades_simple([trade])
+    routing_model = ethereum_trader.create_routing_model()
+    ethereum_trader.execute_trades_simple(routing_model, [trade])
 
     assert trade.get_status() == TradeStatus.success
     assert trade.executed_price == pytest.approx(Decimal(1705.6136999031144))
@@ -484,7 +485,7 @@ def test_two_parallel_positions(
     assert len(portfolio.open_positions) == 2
 
     # Execute both trades
-    trader.execute_trades_simple([trade1, trade2])
+    trader.execute_trades_simple(trader.create_routing_model(), [trade1, trade2])
     assert hot_wallet.current_nonce == 3
 
     assert position1.get_quantity_old() == pytest.approx(Decimal("0.293149331800817389"))
@@ -507,7 +508,7 @@ def test_two_parallel_positions(
     position3, trade3 = trader.sell(weth_usdc_pair, position1.get_quantity_old(), execute=False)
     position4, trade4 = trader.sell(aave_usdc_pair, position2.get_quantity_old(), execute=False)
 
-    trader.execute_trades_simple([trade3, trade4])
+    trader.execute_trades_simple(trader.create_routing_model(), [trade3, trade4])
 
     assert trade3.blockchain_transactions[0].nonce == 3
     assert trade4.blockchain_transactions[0].nonce == 5

@@ -19,6 +19,7 @@ from tradeexecutor.strategy.execution_context import ExecutionContext, Execution
 from tradeexecutor.strategy.pandas_trader.runner import PandasTraderRunner
 from tradeexecutor.strategy.strategy_module import DecideTradesProtocol
 from tradeexecutor.strategy.universe_model import StaticUniverseModel, StrategyExecutionUniverse
+from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
 from tradeexecutor.utils.timer import timed_task
 
 from tradeexecutor.ethereum.uniswap_v2.uniswap_v2_execution import UniswapV2ExecutionModel
@@ -30,6 +31,11 @@ from tradeexecutor.ethereum.uniswap_v3.uniswap_v3_execution import UniswapV3Exec
 from tradeexecutor.ethereum.uniswap_v3.uniswap_v3_live_pricing import UniswapV3LivePricing
 from tradeexecutor.ethereum.uniswap_v3.uniswap_v3_routing import UniswapV3SimpleRoutingModel
 from tradeexecutor.ethereum.uniswap_v3.uniswap_v3_valuation import UniswapV3PoolRevaluator
+
+from tradeexecutor.ethereum.one_delta.one_delta_execution import OneDeltaExecutionModel
+from tradeexecutor.ethereum.one_delta.one_delta_live_pricing import OneDeltaLivePricing
+from tradeexecutor.ethereum.one_delta.one_delta_routing import OneDeltaSimpleRoutingModel
+from tradeexecutor.ethereum.one_delta.one_delta_valuation import OneDeltaPoolRevaluator
 
 
 def set_up_simulated_execution_loop_uniswap_v2(
@@ -236,5 +242,103 @@ def set_up_simulated_execution_loop_uniswap_v3(
         universe_model,
         runner,
     )
+
+    return loop
+
+
+def set_up_simulated_execution_loop_one_delta(
+    *,
+    web3: Web3,
+    decide_trades: DecideTradesProtocol,
+    universe: StrategyExecutionUniverse,
+    routing_model: OneDeltaSimpleRoutingModel,
+    state: State,
+    wallet_account = None,
+) -> ExecutionLoop:
+    """Set up a simulated execution loop for 1delta.
+
+    Create a strategy execution that connects to in-memory blockchain simulation.
+
+    This allows us to step through trades block by block and have
+    strategies to respodn to price action (e.g. stop loss)
+
+    See `test_one_delta_live_short.py` for an example.
+
+    :return:
+        Execution loop you can manually poke forward tick by tick,
+        block by block.
+    """
+    # assert isinstance(wallet_account, LocalAccount)
+    assert isinstance(routing_model, OneDeltaSimpleRoutingModel)
+
+    execution_context = ExecutionContext(
+        mode=ExecutionMode.simulated_trading,
+        engine_version="0.3",
+    )
+
+    # Create empty state for this backtest
+    store = NoneStore(state)
+
+    hot_wallet = HotWallet(wallet_account)
+
+    # hot_wallet_sync = EthereumHotWalletReserveSyncer(web3, wallet_account.address)
+    sync_model = HotWalletSyncModel(web3, hot_wallet)
+
+    cycle_duration = CycleDuration.cycle_unknown
+
+    assert isinstance(universe, TradingStrategyUniverse)
+
+    universe_model = StaticUniverseModel(universe)
+
+    tx_builder = HotWalletTransactionBuilder(web3, hot_wallet)
+
+    execution_model = OneDeltaExecutionModel(
+        tx_builder,
+        max_slippage=1.00,
+        mainnet_fork=True,
+        confirmation_block_count=0,
+    )
+
+    def pricing_model_factory(execution_model, universe: StrategyExecutionUniverse, routing_model):
+        return OneDeltaLivePricing(
+            web3,
+            universe.universe.pairs,
+            routing_model
+        )
+
+    def valuation_model_factory(pricing_model):
+        return OneDeltaPoolRevaluator(pricing_model)
+
+    runner = PandasTraderRunner(
+        timed_task_context_manager=timed_task,
+        execution_model=execution_model,
+        approval_model=UncheckedApprovalModel(),
+        valuation_model_factory=valuation_model_factory,
+        sync_model=sync_model,
+        pricing_model_factory=pricing_model_factory,
+        routing_model=routing_model,
+        decide_trades=decide_trades,
+        execution_context=execution_context,
+        unit_testing=True,
+    )
+
+    loop = ExecutionLoop(
+        name="simulated_execution",
+        command_queue=queue.Queue(),
+        execution_context=execution_context,
+        execution_model=execution_model,
+        sync_model=sync_model,
+        pricing_model_factory=pricing_model_factory,
+        valuation_model_factory=valuation_model_factory,
+        strategy_factory=None,
+        store=store,
+        cycle_duration=cycle_duration,
+        client=None,
+        approval_model=UncheckedApprovalModel(),
+        stats_refresh_frequency=datetime.timedelta(0),
+        position_trigger_check_frequency=datetime.timedelta(0),
+    )
+
+    loop.init_simulation(universe_model, runner)
 
     return loop

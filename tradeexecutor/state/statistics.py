@@ -143,9 +143,13 @@ class Statistics:
     """
 
     #: Per portfolio statistics.
+    #:
     #: Contains list of statistics for the portfolio over time.
     #: The first timestamp is the first entry in the list.
     #: Note that now we have only one portfolio per state.
+    #:
+    #: This is calculated in :py:func:`tradeexecutor.statistics.core.calculate_statistics`.
+    #:
     portfolio: List[PortfolioStatistics] = field(default_factory=list)
 
     #: Per position statistics.

@@ -461,17 +461,45 @@ class PositionManager:
         """
         return self.pricing_model.get_pair_fee(self.timestamp, pair)
 
-    def open_1x_long(self,
-                     pair: Union[DEXPair, TradingPairIdentifier],
-                     value: USDollarAmount | Decimal,
-                     take_profit_pct: Optional[float] = None,
-                     stop_loss_pct: Optional[float] = None,
-                     trailing_stop_loss_pct: Optional[float] = None,
-                     stop_loss_usd: Optional[USDollarAmount] = None,
-                     notes: Optional[str] = None,
-                     slippage_tolerance: Optional[float] = None,
-                     ) -> List[TradeExecution]:
-        """Open a long.
+    def open_1x_long(
+        self,
+         pair: Union[DEXPair, TradingPairIdentifier],
+         value: USDollarAmount | Decimal,
+         take_profit_pct: Optional[float] = None,
+         stop_loss_pct: Optional[float] = None,
+         trailing_stop_loss_pct: Optional[float] = None,
+         stop_loss_usd: Optional[USDollarAmount] = None,
+         notes: Optional[str] = None,
+         slippage_tolerance: Optional[float] = None,
+    ) -> List[TradeExecution]:
+        """Deprecated function for opening a spot position.
+
+        Use :py:meth:`open_spot` instead.
+        """
+        warnings.warn('This function is deprecated. Use PositionManager.close_short() instead', DeprecationWarning, stacklevel=2)
+        return self.open_spot(
+            pair=pair,
+            value=value,
+            take_profit_pct=take_profit_pct,
+            stop_loss_pct=stop_loss_pct,
+            trailing_stop_loss_pct=trailing_stop_loss_pct,
+            stop_loss_usd=stop_loss_usd,
+            notes=notes,
+            slippage_tolerance=slippage_tolerance
+        )
+
+    def open_spot(
+        self,
+         pair: Union[DEXPair, TradingPairIdentifier],
+         value: USDollarAmount | Decimal,
+         take_profit_pct: Optional[float] = None,
+         stop_loss_pct: Optional[float] = None,
+         trailing_stop_loss_pct: Optional[float] = None,
+         stop_loss_usd: Optional[USDollarAmount] = None,
+         notes: Optional[str] = None,
+         slippage_tolerance: Optional[float] = None,
+    ) -> List[TradeExecution]:
+        """Open a spot position.
 
         - For simple buy and hold trades
 
@@ -1082,7 +1110,9 @@ class PositionManager:
         percentage than to the price. So this will likely be changed in the future.
 
         :param pair:
-            Trading pair where we take the position
+            Trading pair where we take the position.
+
+            For lending protocol shorts must be the underlying spot pair.
 
         :param value:
             How much cash reserves we allocate to open this position.
@@ -1239,7 +1269,7 @@ class PositionManager:
         Use :py:meth:`close_short`.
 
         """
-        warnings.warn('This function is deprecated. Use PositionManager.close_shor() instead', DeprecationWarning, stacklevel=2)
+        warnings.warn('This function is deprecated. Use PositionManager.close_short() instead', DeprecationWarning, stacklevel=2)
         return self.close_short(position, quantity, notes, trade_type)
     
     def close_short(
@@ -1287,9 +1317,9 @@ class PositionManager:
             quantity = Decimal(quantity)
 
         # TODO: Hardcoded USD exchange rate
-        price_structure = self.pricing_model.get_sell_price(self.timestamp, pair.underlying_spot_pair, 1)
+        price_structure = self.pricing_model.get_sell_price(self.timestamp, pair.underlying_spot_pair, Decimal(1))
 
-        position, trade, _ = self.state.trade_short(
+        position2, trade, _ = self.state.trade_short(
             self.timestamp,
             closing=True,
             pair=pair,
@@ -1302,6 +1332,15 @@ class PositionManager:
             position=position,
         )
 
+        assert position == position2, f"Somehow messed up the close_position() trade.\n" \
+                                      f"Original position: {position}.\n" \
+                                      f"Trade's position: {position2}.\n" \
+                                      f"Trade: {trade}\n" \
+                                      f"Quantity left: {quantity_left}\n" \
+                                      f"Price structure: {price_structure}\n" \
+                                      f"Reserve asset: {reserve_asset}\n"
+
+        assert trade.closing
         return [trade]
 
     def adjust_short(

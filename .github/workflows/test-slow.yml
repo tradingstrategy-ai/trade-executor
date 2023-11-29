@@ -45,4 +45,8 @@ jobs:
           poetry run pytest --tb=native -m slow_test_group --durations=20 -n 6 --dist loadscope
         env:
           TRADING_STRATEGY_API_KEY: ${{ secrets.TRADING_STRATEGY_API_KEY }}
-          BNB_CHAIN_JSON_RPC: ${{ secrets.BNB_CHAIN_JSON_RPC }}      
+          BNB_CHAIN_JSON_RPC: ${{ secrets.BNB_CHAIN_JSON_RPC }}
+          # https://stackoverflow.com/a/75274358/315168
+          PYDEVD_DISABLE_FILE_VALIDATION: 1
+          JSON_RPC_POLYGON: ${{ secrets.JSON_RPC_POLYGON }}
+          JSON_RPC_POLYGON_ARCHIVE: ${{ secrets.JSON_RPC_POLYGON_ARCHIVE }}

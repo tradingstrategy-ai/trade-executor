@@ -6,13 +6,15 @@ based on the exchanges the universe covers.
 Here we define the abstract overview of routing.
 """
 import abc
-from typing import List, Optional
+from typing import List, Optional, Dict
 
+from hexbytes import HexBytes
 from web3 import Web3
 from web3.contract import Contract
 from eth_defi.abi import get_deployed_contract
 
 from tradeexecutor.state.identifier import TradingPairIdentifier, AssetIdentifier
+from tradeexecutor.state.state import State
 from tradeexecutor.state.trade import TradeExecution
 from tradeexecutor.strategy.universe_model import StrategyExecutionUniverse
 from tradeexecutor.strategy.trading_strategy_universe import translate_token, translate_trading_pair
@@ -196,10 +198,13 @@ class RoutingModel(abc.ABC):
         """
 
     @abc.abstractmethod
-    def setup_trades(self,
-                     state: RoutingState,
-                     trades: List[TradeExecution],
-                     check_balances=False):
+    def setup_trades(
+            self,
+            state: RoutingState,
+            trades: List[TradeExecution],
+            check_balances=False,
+            rebroadcast=False,
+    ):
         """Setup the trades decided by a strategy.
 
         - Decides the best way, or a way, to execute a trade
@@ -214,8 +219,48 @@ class RoutingModel(abc.ABC):
             before executing them. Because we are selling before buying.
             sometimes we do no know this until the sell tx has been completed.
 
+        :param rebroadcast:
+            Allow rebroadcast of already broadcasted trades, but for which we did not get a receipt yet.
+
         :raise CannotExecuteTrade:
             If a trade cannot be executed, e.g. due to an unsupported pair or an exchange,
         """
 
+    def settle_trade(
+        self,
+        web3,
+        state: State,
+        trade: TradeExecution,
+        receipts: Dict[HexBytes, dict],
+        stop_on_execution_failure=False,
+    ):
+        """Post-trade
 
+        - Read on-chain data about the execution success and performance
+
+        - Mark trade succeed or failed
+
+        :param state:
+            Strategy state
+
+        :param web3:
+            Web3 connection.
+
+            TODO: Breaks abstraction. Figure better way to pass
+            this around later. Maybe create an Ethereum-specific
+            routing parent class?
+
+        :param trade:
+            Trade executed in this execution batch
+
+        :param receipts:
+            Blockchain receipts we received in this execution batch.
+
+            Hash -> receipt mapping.
+
+        :param stop_on_execution_failure:
+            Raise an error if the trade failed.
+
+            Used in unit testing.
+        """
+        raise NotImplementedError()

@@ -100,6 +100,8 @@ class UniswapV3LivePricing(EthereumPricingModel):
                        ) -> TradePricing:
         """Get live price on Uniswap."""
 
+        assert pair.is_spot()
+
         if quantity is None:
             quantity = Decimal(self.very_small_amount)
 
@@ -204,6 +206,8 @@ class UniswapV3LivePricing(EthereumPricingModel):
 
         :return: Price for one reserve unit e.g. a dollar
         """
+
+        assert pair.is_spot()
 
         if reserve is None:
             reserve = Decimal(self.very_small_amount)

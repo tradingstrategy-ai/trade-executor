@@ -5,6 +5,7 @@ import pandas as pd
 from web3 import Web3
 
 from eth_defi.uniswap_v2.deployment import UniswapV2Deployment
+from eth_defi.uniswap_v3.deployment import UniswapV3Deployment
 from tradeexecutor.state.identifier import TradingPairIdentifier
 from tradingstrategy.chain import ChainId
 from tradingstrategy.exchange import ExchangeUniverse, Exchange, ExchangeType
@@ -68,7 +69,7 @@ def create_pair_universe(web3: Web3, exchange: Exchange, pairs: List[TradingPair
     return PandasPairUniverse(df, exchange_universe=exchange_universe)
 
 
-def create_exchange_universe(web3: Web3, uniswaps: List[UniswapV2Deployment]) -> ExchangeUniverse:
+def create_exchange_universe(web3: Web3, uniswaps: List[UniswapV2Deployment | UniswapV3Deployment]) -> ExchangeUniverse:
     """Create an exchange universe with a list of Uniswap v2 deployments."""
 
     exchanges = {}

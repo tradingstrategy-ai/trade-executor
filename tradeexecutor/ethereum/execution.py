@@ -32,28 +32,24 @@ from eth_defi.revert_reason import fetch_transaction_revert_reason
 from tradeexecutor.ethereum.tx import TransactionBuilder
 from tradeexecutor.state.state import State
 from tradeexecutor.state.trade import TradeExecution, TradeStatus
-from tradeexecutor.state.blockhain_transaction import BlockchainTransaction, BlockchainTransactionType
+from tradeexecutor.state.blockhain_transaction import BlockchainTransaction
 from tradeexecutor.state.freeze import freeze_position_on_failed_trade
 from tradeexecutor.state.identifier import AssetIdentifier
 from tradeexecutor.ethereum.uniswap_v2.uniswap_v2_routing import UniswapV2SimpleRoutingModel, UniswapV2RoutingState
 from tradeexecutor.ethereum.uniswap_v3.uniswap_v3_routing import UniswapV3SimpleRoutingModel, UniswapV3RoutingState
 from tradeexecutor.state.types import BlockNumber
 from tradeexecutor.strategy.execution_model import ExecutionModel, RoutingStateDetails
+from tradeexecutor.strategy.routing import RoutingModel, RoutingState
 from tradingstrategy.chain import ChainId
 
 
 logger = logging.getLogger(__name__)
 
 
-class TradeExecutionFailed(Exception):
-    """Our Uniswap trade reverted"""
-
-
 # TODO check with tradeexuctor.strategy.execution ExecutionModel
 class EthereumExecutionModel(ExecutionModel):
     """Run order execution on a single Uniswap v2 style exchanges."""
 
-    @abstractmethod
     def __init__(self,
                  tx_builder: TransactionBuilder,
                  min_balance_threshold=Decimal("0.5"),
@@ -131,29 +127,6 @@ class EthereumExecutionModel(ExecutionModel):
         else:
             raise ValueError("Incorrect routing model specified")
 
-    @abstractmethod
-    def analyse_trade_by_receipt(
-        self,
-        web3: Web3,
-        *,
-        deployment: "UniswapV2Deployment", 
-        tx: dict, 
-        tx_hash: str,
-        tx_receipt: dict,
-        input_args: tuple | None = None,
-        pair_fee: float | None = None,
-    ) -> (TradeSuccess | TradeFail):
-        """Links to either uniswap v2 or v3 implementation in eth_defi"""
-
-    @abstractmethod
-    def mock_partial_deployment_for_analysis(self):
-        """Links to either uniswap v2 or v3 implementation in eth_defi"""
-
-    @abstractmethod 
-    def is_v3(self):
-        """Returns true if instance is related to Uniswap V3, else false. 
-        Kind of a hack to be able to share resolve trades function amongst v2 and v3."""
-    
     def repair_unconfirmed_trades(self, state: State) -> List[TradeExecution]:
         """Repair unconfirmed trades.
 
@@ -257,6 +230,7 @@ class EthereumExecutionModel(ExecutionModel):
         self,
         state: State,
         trades: List[TradeExecution],
+        routing_model: RoutingModel,
         confirmation_timeout: datetime.timedelta = datetime.timedelta(minutes=1),
         confirmation_block_count: int=0,
         stop_on_execution_failure=False,
@@ -302,6 +276,7 @@ class EthereumExecutionModel(ExecutionModel):
 
             self.resolve_trades(
                 datetime.datetime.now(),
+                routing_model,
                 state,
                 broadcasted,
                 receipts,
@@ -309,6 +284,7 @@ class EthereumExecutionModel(ExecutionModel):
 
     def broadcast_and_resolve_multiple_nodes(
         self,
+        routing_model: RoutingModel,
         state: State,
         trades: List[TradeExecution],
         confirmation_timeout: datetime.timedelta = datetime.timedelta(minutes=1),
@@ -340,6 +316,7 @@ class EthereumExecutionModel(ExecutionModel):
             Set for unit test.
         """
         assert isinstance(confirmation_timeout, datetime.timedelta)
+        assert isinstance(routing_model, RoutingModel)
 
         web3 = self.web3
         logger.info("Using multi-node broadcast for %s", web3.provider)
@@ -383,6 +360,7 @@ class EthereumExecutionModel(ExecutionModel):
 
         self.resolve_trades(
             datetime.datetime.now(),
+            routing_model,
             state,
             tx_map,
             receipts,
@@ -394,8 +372,8 @@ class EthereumExecutionModel(ExecutionModel):
         ts: datetime.datetime,
         state: State,
         trades: List[TradeExecution],
-        routing_model: UniswapV2SimpleRoutingModel | UniswapV3SimpleRoutingModel,
-        routing_state: UniswapV2RoutingState | UniswapV3RoutingState,
+        routing_model: RoutingModel,
+        routing_state: RoutingState,
         check_balances=False,
         rebroadcast=False,
     ):
@@ -422,6 +400,7 @@ class EthereumExecutionModel(ExecutionModel):
         if isinstance(self.web3.provider, (FallbackProvider, MEVBlockerProvider)):
             # Multi node broadcast
             self.broadcast_and_resolve_multiple_nodes(
+                routing_model,
                 state,
                 trades,
                 confirmation_timeout=self.confirmation_timeout,
@@ -434,6 +413,7 @@ class EthereumExecutionModel(ExecutionModel):
             self.broadcast_and_resolve_old(
                 state,
                 trades,
+                routing_model,
                 confirmation_timeout=self.confirmation_timeout,
                 confirmation_block_count=self.confirmation_block_count,
             )
@@ -458,10 +438,12 @@ class EthereumExecutionModel(ExecutionModel):
     def resolve_trades(
         self,
         ts: datetime.datetime,
+        routing_model: RoutingModel,
         state: State,
         tx_map: Dict[HexStr, Tuple[TradeExecution, BlockchainTransaction]],
         receipts: Dict[HexBytes, dict],
-        stop_on_execution_failure=True):
+        stop_on_execution_failure=True
+    ):
         """Resolve trade outcome.
 
         Read on-chain Uniswap swap data from the transaction receipt and record how it went.
@@ -477,6 +459,9 @@ class EthereumExecutionModel(ExecutionModel):
         :param stop_on_execution_failure:
             Raise an exception if any of the trades failed"""
 
+        assert isinstance(state, State)
+        assert isinstance(routing_model, RoutingModel)
+
         web3 = self.web3
 
         trades = self.update_confirmation_status(ts, tx_map, receipts)
@@ -485,82 +470,13 @@ class EthereumExecutionModel(ExecutionModel):
         # if the blockchain transaction was successsful.
         # Also get the actual executed token counts.
         for trade in trades:
-            base_token_details = fetch_erc20_details(web3, trade.pair.base.checksum_address)
-            quote_token_details = fetch_erc20_details(web3, trade.pair.quote.checksum_address)
-            reserve = trade.reserve_currency
-            swap_tx = get_swap_transactions(trade)
-            uniswap = self.mock_partial_deployment_for_analysis(web3, swap_tx.contract_address)
-
-            tx_dict = swap_tx.get_transaction()
-            receipt = receipts[HexBytes(swap_tx.tx_hash)]
-
-            input_args = swap_tx.get_actual_function_input_args()
-            
-            result = self.analyse_trade_by_receipt(
+            routing_model.settle_trade(
                 web3,
-                deployment=uniswap,
-                tx=tx_dict,
-                tx_hash=swap_tx.tx_hash,
-                tx_receipt=receipt,
-                input_args=input_args,
-                pair_fee=trade.pair.fee,
+                state,
+                trade,
+                receipts,
+                stop_on_execution_failure=stop_on_execution_failure,
             )
-
-            if isinstance(result, TradeSuccess):
-
-                # v3 path includes fee (int) as well
-                path = [a.lower() for a in result.path if type(a) == str]
-                
-                if trade.is_buy():
-                    assert path[0] == reserve.address, f"Was expecting the route path to start with reserve token {reserve}, got path {result.path}"
-
-                    if self.is_v3():
-                        price = result.get_human_price(quote_token_details.address == result.token0.address)
-                    else:
-                        price = 1 / result.price
-
-                    executed_reserve = result.amount_in / Decimal(10**reserve.decimals)
-                    executed_amount = result.amount_out / Decimal(10**base_token_details.decimals)
-
-                    # lp fee is already in terms of quote token
-                    lp_fee_paid = result.lp_fee_paid
-                else:
-                    # Ordered other way around
-                    assert path[0] == base_token_details.address.lower(), f"Path is {path}, base token is {base_token_details}"
-                    assert path[-1] == reserve.address
-
-                    if self.is_v3():
-                        price = result.get_human_price(quote_token_details.address == result.token0.address)
-                    else:
-                        price = result.price
-
-                    executed_amount = -result.amount_in / Decimal(10**base_token_details.decimals)
-                    executed_reserve = result.amount_out / Decimal(10**reserve.decimals)
-
-                    # convert lp fee to be in terms of quote token
-                    lp_fee_paid = result.lp_fee_paid * float(price) if result.lp_fee_paid else None
-
-                assert (executed_reserve > 0) and (executed_amount != 0) and (price > 0), f"Executed amount {executed_amount}, executed_reserve: {executed_reserve}, price: {price}, tx info {trade.tx_info}"
-
-                # Mark as success
-                state.mark_trade_success(
-                    ts,
-                    trade,
-                    executed_price=float(price),
-                    executed_amount=executed_amount,
-                    executed_reserve=executed_reserve,
-                    lp_fees=lp_fee_paid,
-                    native_token_price=0,  # won't fix
-                    cost_of_gas=result.get_cost_of_gas(),
-                )
-            else:
-                # Trade failed
-
-
-
-
-                report_failure(ts, state, trade, stop_on_execution_failure)
-
 
 # Only usage outside this module is UniswapV2ExecutionModelV0
 def update_confirmation_status(
@@ -611,48 +527,6 @@ def update_confirmation_status(
         return trades                
                 
 # Only usage outside this module is UniswapV2ExecutionModelV0
-def report_failure(
-    ts: datetime.datetime,
-    state: State,
-    trade: TradeExecution,
-    stop_on_execution_failure: bool,
-) -> None:
-    """What to do if trade fails.
-
-    :param ts:
-        Wall clock time
-
-    :param state:
-        The strategy state
-
-    :param trade:
-        Which trade had reverted transactions
-
-    :param stop_on_execution_failure:
-        If set, abort with exceptionm instead of trying to keep going.
-    """
-    
-    logger.error(
-        "Trade %s failed and freezing the position: %s",
-        trade,
-        trade.get_revert_reason(),
-    )
-    
-    state.mark_trade_failed(
-        ts,
-        trade,
-    )
-    
-    if stop_on_execution_failure:
-        success_txs = []
-        for tx in trade.blockchain_transactions:
-            if not tx.is_success():
-                raise TradeExecutionFailed(f"Could not execute a trade: {trade}.\n"
-                                           f"Transaction failed: {tx}\n"
-                                           f"Other succeeded transactions: {success_txs}\n"
-                                           f"Stack trace:{tx.stack_trace}")
-            else:
-                success_txs.append(tx)
 
 
 def translate_to_naive_swap(
@@ -956,24 +830,6 @@ def wait_trades_to_complete(
         tx_hashes.extend(tx.tx_hash for tx in t.blockchain_transactions)
     receipts = wait_transactions_to_complete(web3, tx_hashes, confirmation_block_count, max_timeout, poll_delay)
     return receipts
-
-
-def is_swap_function(name: str):
-    return name in {"swapExactTokensForTokens", "exactInput", "multicall"}
-
-
-def get_swap_transactions(trade: TradeExecution) -> BlockchainTransaction:
-    """Get the swap transaction from multiple transactions associated with the trade"""
-    
-    for tx in trade.blockchain_transactions:
-        if tx.type == BlockchainTransactionType.hot_wallet:
-            if is_swap_function(tx.function_selector):
-                return tx
-        elif tx.type == BlockchainTransactionType.enzyme_vault:
-            if is_swap_function(tx.details["function"]):
-                return tx
-
-    raise RuntimeError("Should not happen")
 
 
 def get_held_assets(web3: Web3, address: HexAddress, assets: List[AssetIdentifier]) -> Dict[str, Decimal]:
