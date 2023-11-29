@@ -52,6 +52,7 @@ def resample_single_pair(df, bucket: TimeBucket) -> pd.DataFrame:
     return filled
 
 
+# TODO multipair data
 def _fix_nans(df: pd.DataFrame) -> pd.DataFrame:
     """External data sources might have NaN values for prices.
     
@@ -72,9 +73,9 @@ def _fix_nans(df: pd.DataFrame) -> pd.DataFrame:
 
 def load_candles_from_parquet(
     file: Path,
-    pair_id=int | None,
     column_map: Dict[str, str] = DEFAULT_COLUMN_MAP,
     resample: TimeBucket | None = None,
+    identifier_column: str = "pair_id",
 ) -> Tuple[pd.DataFrame, pd.DataFrame, TimeBucket, TimeBucket]:
     """Loads OHLCV candle data from a Parquest file.
 
@@ -89,17 +90,17 @@ def load_candles_from_parquet(
 
     df = pd.read_parquet(file)
 
-    df, orig, bucket, original_bucket = load_candles_from_dataframe(column_map, df, pair_id, resample)
+    df, orig, bucket, original_bucket = load_candles_from_dataframe(column_map, df, resample, identifier_column)
 
     return df, orig, bucket, original_bucket
 
 
 def load_candle_universe_from_parquet(
-    pair: TradingPairIdentifier,
     file: Path,
     column_map: Dict[str, str] = DEFAULT_COLUMN_MAP,
     resample: TimeBucket | None = None,
     include_as_trigger_signal=True,
+    identifier_column: str = "pair_id",
 ) -> Tuple[GroupedCandleUniverse, GroupedCandleUniverse | None]:
     """Load a single pair price feed from an alternative file.
 
@@ -134,30 +135,25 @@ def load_candle_universe_from_parquet(
 
     """
 
-    assert isinstance(pair, TradingPairIdentifier)
-
-    # Add pair column
-    assert pair.internal_id, f"Internal id missing"
-
     df, orig, bucket, original_bucket = load_candles_from_parquet(
         file,
-        pair.internal_id,
         column_map,
         resample,
+        identifier_column,
     )
 
     candles, stop_loss_candles = load_candle_universe_from_dataframe(
-        pair,
         df,
         column_map,
         resample,
         include_as_trigger_signal,
+        identifier_column,
     )
 
     return candles, stop_loss_candles
 
 
-def load_candles_from_dataframe(column_map: Dict[str, str], df: pd.DataFrame, pair_id: int, resample: TimeBucket | None):
+def load_candles_from_dataframe(column_map: Dict[str, str], df: pd.DataFrame, resample: TimeBucket | None, identifier_column: str = "pair_id"):
     """Load OHLCV candle data from a DataFrame.
     
     :param column_map:
@@ -177,6 +173,8 @@ def load_candles_from_dataframe(column_map: Dict[str, str], df: pd.DataFrame, pa
     :return:
         Tuple (Original dataframe, processed candles dataframe, resampled time bucket, original time bucket) tuple
     """
+    assert identifier_column in df.columns, f"DataFrame does not have {identifier_column} column"
+
     assert isinstance(df.index, pd.DatetimeIndex), f"Parquet did not have DateTime index: {df.index}"
 
     orig = df = df.rename(columns=column_map)
@@ -203,8 +201,6 @@ def load_candles_from_dataframe(column_map: Dict[str, str], df: pd.DataFrame, pa
 
     df = _fix_nans(df)
 
-    df["pair_id"] = pair_id
-
     # Because we assume multipair data from now on,
     # with group index instead of timestamp index,
     # we make timestamp a column
@@ -214,11 +210,11 @@ def load_candles_from_dataframe(column_map: Dict[str, str], df: pd.DataFrame, pa
 
 
 def load_candle_universe_from_dataframe(
-    pair: TradingPairIdentifier,
     df: pd.DataFrame,
     column_map: Dict[str, str] = DEFAULT_COLUMN_MAP,
     resample: TimeBucket | None = None,
     include_as_trigger_signal=True,
+    identifier_column: str = "pair_id",
 ) -> Tuple[GroupedCandleUniverse, GroupedCandleUniverse | None]:
     """Load a single pair price feed from a DataFrame.
     
@@ -258,8 +254,8 @@ def load_candle_universe_from_dataframe(
     df, orig, bucket, original_bucket = load_candles_from_dataframe(
         column_map,
         df,
-        pair.internal_id,
         resample,
+        identifier_column=identifier_column,
     )
 
     candles = GroupedCandleUniverse(
@@ -270,8 +266,8 @@ def load_candle_universe_from_dataframe(
     )
 
     if include_as_trigger_signal:
-        orig["pair_id"] = pair.internal_id
-        orig["timestamp"] = df.index.to_series()
+        orig.index.name = "timestamp"
+        orig = orig.reset_index()
         stop_loss_candles = GroupedCandleUniverse(
             orig,
             time_bucket=original_bucket,
