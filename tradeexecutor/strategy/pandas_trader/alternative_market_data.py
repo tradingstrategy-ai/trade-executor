@@ -52,7 +52,6 @@ def resample_single_pair(df, bucket: TimeBucket) -> pd.DataFrame:
     return filled
 
 
-# TODO multipair data
 def _fix_nans(df: pd.DataFrame) -> pd.DataFrame:
     """External data sources might have NaN values for prices.
     
