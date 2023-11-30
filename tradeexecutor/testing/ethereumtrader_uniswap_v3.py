@@ -14,7 +14,7 @@ from eth_defi.uniswap_v3.deployment import UniswapV3Deployment
 from eth_defi.uniswap_v3.price import UniswapV3PriceHelper
 
 from tradeexecutor.ethereum.tx import HotWalletTransactionBuilder, TransactionBuilder
-from tradeexecutor.ethereum.uniswap_v3.uniswap_v3_routing import UniswapV3SimpleRoutingModel, UniswapV3RoutingState
+from tradeexecutor.ethereum.uniswap_v3.uniswap_v3_routing import UniswapV3Routing, UniswapV3RoutingState
 from tradeexecutor.ethereum.uniswap_v3.uniswap_v3_execution import UniswapV3ExecutionModel
 from tradeexecutor.state.freeze import freeze_position_on_failed_trade
 from tradeexecutor.state.state import State, TradeType
@@ -148,7 +148,7 @@ class UniswapV3TestTrader(EthereumTrader):
         reserve_asset, rate = state.portfolio.get_default_reserve_asset()
 
         # We know only about one exchange
-        routing_model = UniswapV3SimpleRoutingModel(
+        routing_model = UniswapV3Routing(
             address_map={
                 "factory": uniswap.factory.address,
                 "router": uniswap.swap_router.address,

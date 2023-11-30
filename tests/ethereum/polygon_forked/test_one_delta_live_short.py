@@ -20,7 +20,7 @@ from tradingstrategy.timebucket import TimeBucket
 from tradingstrategy.lending import LendingProtocolType
 
 from tradeexecutor.ethereum.one_delta.one_delta_live_pricing import OneDeltaLivePricing
-from tradeexecutor.ethereum.one_delta.one_delta_routing import OneDeltaSimpleRoutingModel
+from tradeexecutor.ethereum.one_delta.one_delta_routing import OneDeltaRouting
 from tradeexecutor.state.state import State
 from tradeexecutor.state.trade import TradeExecution
 from tradeexecutor.strategy.cycle import snap_to_next_tick
@@ -109,7 +109,7 @@ def test_one_delta_live_strategy_short_open_and_close(
     web3: Web3,
     hot_wallet: HotWallet,
     trading_strategy_universe: TradingStrategyUniverse,
-    one_delta_routing_model: OneDeltaSimpleRoutingModel,
+    one_delta_routing_model: OneDeltaRouting,
     uniswap_v3_deployment: UniswapV3Deployment,
     usdc: Contract,
     weth: Contract,
@@ -248,7 +248,7 @@ def test_one_delta_live_strategy_short_open_accrue_interests(
     hot_wallet: HotWallet,
     trading_strategy_universe: TradingStrategyUniverse,
     uniswap_v3_deployment: UniswapV3Deployment,
-    one_delta_routing_model: OneDeltaSimpleRoutingModel,
+    one_delta_routing_model: OneDeltaRouting,
     usdc: Contract,
     weth: Contract,
     weth_usdc_spot_pair,

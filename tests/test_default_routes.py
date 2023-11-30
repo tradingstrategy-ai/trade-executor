@@ -4,7 +4,7 @@ from tradingstrategy.chain import ChainId
 
 from tradeexecutor.ethereum.routing_data import get_routing_model, MismatchReserveCurrency
 from tradeexecutor.ethereum.uniswap_v2.uniswap_v2_routing import UniswapV2Routing
-from tradeexecutor.ethereum.uniswap_v3.uniswap_v3_routing import UniswapV3SimpleRoutingModel
+from tradeexecutor.ethereum.uniswap_v3.uniswap_v3_routing import UniswapV3Routing
 from tradeexecutor.strategy.default_routing_options import TradeRouting
 from tradeexecutor.strategy.execution_context import ExecutionContext, ExecutionMode
 from tradeexecutor.strategy.reserve_currency import ReserveCurrency
@@ -84,25 +84,25 @@ def test_route_ethereum_dai(execution_context):
 def test_route_uniswap_v3_usdc(execution_context):
     """Test Uniswap v3 USDC routing."""
     routing = get_routing_model(execution_context, TradeRouting.uniswap_v3_usdc, ReserveCurrency.usdc)
-    assert isinstance(routing, UniswapV3SimpleRoutingModel)
+    assert isinstance(routing, UniswapV3Routing)
     assert routing.chain_id == ChainId.ethereum
 
 def test_route_polygon_usdc(execution_context):
     """Test Uniswap v3 Polygon USDC routing."""
     routing = get_routing_model(execution_context, TradeRouting.uniswap_v3_usdc_poly, ReserveCurrency.usdc)
-    assert isinstance(routing, UniswapV3SimpleRoutingModel)
+    assert isinstance(routing, UniswapV3Routing)
     assert routing.chain_id == ChainId.polygon
 
 def test_route_arbitrum_usdc(execution_context):
     """Test Uniswap v3 Arbitrum USDC routing."""
     routing = get_routing_model(execution_context, TradeRouting.uniswap_v3_usdc_arbitrum_native, ReserveCurrency.usdc)
-    assert isinstance(routing, UniswapV3SimpleRoutingModel)
+    assert isinstance(routing, UniswapV3Routing)
     assert routing.chain_id == ChainId.arbitrum
 
 def test_route_arbitrum_usdc(execution_context):
     """Test Uniswap v3 Arbitrum USDC routing."""
     routing = get_routing_model(execution_context, TradeRouting.uniswap_v3_usdc_arbitrum_bridged, ReserveCurrency.usdc_e)
-    assert isinstance(routing, UniswapV3SimpleRoutingModel)
+    assert isinstance(routing, UniswapV3Routing)
     assert routing.chain_id == ChainId.arbitrum
 
 

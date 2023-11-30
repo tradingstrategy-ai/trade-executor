@@ -27,7 +27,7 @@ from eth_defi.uniswap_v3.deployment import UniswapV3Deployment, deploy_pool, dep
 from eth_defi.uniswap_v3.utils import get_default_tick_range
 
 from tradeexecutor.ethereum.uniswap_v3.uniswap_v3_execution import UniswapV3ExecutionModel
-from tradeexecutor.ethereum.uniswap_v3.uniswap_v3_routing import UniswapV3SimpleRoutingModel
+from tradeexecutor.ethereum.uniswap_v3.uniswap_v3_routing import UniswapV3Routing
 from tradeexecutor.ethereum.uniswap_v3.uniswap_v3_live_pricing import UniswapV3LivePricing
 from tradeexecutor.state.state import State, UncleanState
 from tradeexecutor.state.trade import TradeExecution
@@ -195,7 +195,7 @@ def pair_universe(web3, exchange_universe: ExchangeUniverse, weth_usdc_pair) -> 
 
 
 @pytest.fixture()
-def routing_model(uniswap_v3: UniswapV3Deployment, asset_usdc, asset_weth, weth_usdc_pair) -> UniswapV3SimpleRoutingModel:
+def routing_model(uniswap_v3: UniswapV3Deployment, asset_usdc, asset_weth, weth_usdc_pair) -> UniswapV3Routing:
 
     # Allowed exchanges as factory -> router pairs
     address_map = {
@@ -210,7 +210,7 @@ def routing_model(uniswap_v3: UniswapV3Deployment, asset_usdc, asset_weth, weth_
         asset_weth.address: weth_usdc_pair.pool_address
     }
 
-    return UniswapV3SimpleRoutingModel(
+    return UniswapV3Routing(
         address_map,
         allowed_intermediary_pairs,
         reserve_token_address=asset_usdc.address,
@@ -352,7 +352,7 @@ def test_live_stop_loss(
         deployer: HexAddress,
         trader: LocalAccount,
         trading_strategy_universe: TradingStrategyUniverse,
-        routing_model: UniswapV3SimpleRoutingModel,
+        routing_model: UniswapV3Routing,
         uniswap_v3: UniswapV3Deployment,
         usdc_token: Contract,
         weth_token: Contract,
@@ -479,7 +479,7 @@ def test_live_stop_loss_missing(
         deployer: HexAddress,
         trader: LocalAccount,
         trading_strategy_universe: TradingStrategyUniverse,
-        routing_model: UniswapV3SimpleRoutingModel,
+        routing_model: UniswapV3Routing,
         uniswap_v3: UniswapV3Deployment,
         usdc_token: Contract,
         weth_token: Contract,
@@ -545,7 +545,7 @@ def test_broadcast_failed_and_repair_state(
         deployer: HexAddress,
         trader: LocalAccount,
         trading_strategy_universe: TradingStrategyUniverse,
-        routing_model: UniswapV3SimpleRoutingModel,
+        routing_model: UniswapV3Routing,
         uniswap_v3: UniswapV3Deployment,
         usdc_token: Contract,
         weth_token: Contract,
@@ -619,7 +619,7 @@ def test_refresh_visualisations(
         deployer: HexAddress,
         trader: LocalAccount,
         trading_strategy_universe: TradingStrategyUniverse,
-        routing_model: UniswapV3SimpleRoutingModel,
+        routing_model: UniswapV3Routing,
         uniswap_v3: UniswapV3Deployment,
         usdc_token: Contract,
         weth_token: Contract,

@@ -31,7 +31,7 @@ from tradingstrategy.chain import ChainId
 
 from tradeexecutor.backtest.backtest_routing import BacktestRoutingModel, BacktestRoutingIgnoredModel
 from tradeexecutor.ethereum.uniswap_v2.uniswap_v2_routing import UniswapV2Routing
-from tradeexecutor.ethereum.uniswap_v3.uniswap_v3_routing import UniswapV3SimpleRoutingModel
+from tradeexecutor.ethereum.uniswap_v3.uniswap_v3_routing import UniswapV3Routing
 from tradeexecutor.strategy.execution_context import ExecutionContext, ExecutionMode
 from tradeexecutor.strategy.reserve_currency import ReserveCurrency
 from tradeexecutor.strategy.default_routing_options import TradeRouting
@@ -622,7 +622,7 @@ def get_backtest_routing_model(
             real_routing_model.allowed_intermediary_pairs,
             real_routing_model.reserve_token_address,
         )
-    elif isinstance(real_routing_model, UniswapV3SimpleRoutingModel):
+    elif isinstance(real_routing_model, UniswapV3Routing):
         return BacktestRoutingModel(
             real_routing_model.address_map,
             real_routing_model.allowed_intermediary_pairs,
@@ -689,7 +689,7 @@ def create_uniswap_v2_compatible_routing(
 
 def create_uniswap_v3_compatible_routing(
     routing_type: TradeRouting, reserve_currency: ReserveCurrency
-) -> UniswapV3SimpleRoutingModel:
+) -> UniswapV3Routing:
     """Set up Uniswap v3 compatible routing.
     Not recommended to use by itself, because it doesn't validate reserve currency.
     Rather use create_compatible_routing
@@ -713,7 +713,7 @@ def create_uniswap_v3_compatible_routing(
         raise NotImplementedError()
 
     # Trading fee is derived dynamically for each trading pair
-    routing_model = UniswapV3SimpleRoutingModel(
+    routing_model = UniswapV3Routing(
         params["address_map"],
         params["allowed_intermediary_pairs"],
         params["reserve_token_address"],

@@ -16,7 +16,7 @@ from eth_defi.uniswap_v3.price import UniswapV3PriceHelper
 from eth_defi.one_delta.deployment import OneDeltaDeployment
 
 from tradeexecutor.ethereum.tx import HotWalletTransactionBuilder, TransactionBuilder
-from tradeexecutor.ethereum.one_delta.one_delta_routing import OneDeltaSimpleRoutingModel, OneDeltaRoutingState
+from tradeexecutor.ethereum.one_delta.one_delta_routing import OneDeltaRouting, OneDeltaRoutingState
 from tradeexecutor.ethereum.one_delta.one_delta_execution import OneDeltaExecutionModel
 from tradeexecutor.state.freeze import freeze_position_on_failed_trade
 from tradeexecutor.state.state import State, TradeType
@@ -133,7 +133,7 @@ class OneDeltaTestTrader(EthereumTrader):
         aave = self.aave
         reserve_asset, rate = self.state.portfolio.get_default_reserve_asset()
         uniswap = self.uniswap
-        routing_model = OneDeltaSimpleRoutingModel(
+        routing_model = OneDeltaRouting(
             address_map={
                 "one_delta_broker_proxy": one_delta.broker_proxy.address,
                 "aave_v3_pool": aave.pool.address,
@@ -151,7 +151,7 @@ class OneDeltaTestTrader(EthereumTrader):
 
     def execute_trades_simple(
         self,
-        routing_model: OneDeltaSimpleRoutingModel,
+        routing_model: OneDeltaRouting,
         trades: List[TradeExecution],
         max_slippage=0.01, 
         stop_on_execution_failure=True
@@ -167,7 +167,7 @@ class OneDeltaTestTrader(EthereumTrader):
         - Works with single Uniswap test deployment
         """
 
-        assert isinstance(routing_model, OneDeltaSimpleRoutingModel)
+        assert isinstance(routing_model, OneDeltaRouting)
 
         pair_universe = self.pair_universe
         web3 = self.web3

@@ -11,7 +11,7 @@ from eth_defi.provider.broken_provider import get_block_tip_latency
 from web3 import Web3
 
 from tradeexecutor.ethereum.one_delta.one_delta_execution import OneDeltaExecutionModel
-from tradeexecutor.ethereum.one_delta.one_delta_routing import OneDeltaSimpleRoutingModel
+from tradeexecutor.ethereum.one_delta.one_delta_routing import OneDeltaRouting
 from tradeexecutor.ethereum.uniswap_v3.uniswap_v3_live_pricing import UniswapV3LivePricing
 from tradeexecutor.ethereum.eth_pricing_model import EthereumPricingModel, LP_FEE_VALIDATION_EPSILON
 from tradeexecutor.state.identifier import TradingPairIdentifier
@@ -34,11 +34,11 @@ class OneDeltaLivePricing(UniswapV3LivePricing):
         self,
         web3: Web3,
         pair_universe: PandasPairUniverse,
-        routing_model: OneDeltaSimpleRoutingModel,
+        routing_model: OneDeltaRouting,
         very_small_amount: float = Decimal("0.10"),
         epsilon: float | None = LP_FEE_VALIDATION_EPSILON,
     ):
-        assert isinstance(routing_model, OneDeltaSimpleRoutingModel)
+        assert isinstance(routing_model, OneDeltaRouting)
 
         super().__init__(
             web3,
@@ -52,11 +52,11 @@ class OneDeltaLivePricing(UniswapV3LivePricing):
 def one_delta_live_pricing_factory(
     execution_model: ExecutionModel,
     universe: TradingStrategyUniverse,
-    routing_model: OneDeltaSimpleRoutingModel,
+    routing_model: OneDeltaRouting,
 ) -> OneDeltaLivePricing:
     assert isinstance(universe, TradingStrategyUniverse)
     assert isinstance(execution_model, OneDeltaExecutionModel), f"Execution model not compatible with this execution model. Received {execution_model}"
-    assert isinstance(routing_model, OneDeltaSimpleRoutingModel), f"This pricing method only works with 1delta routing model, we received {routing_model}"
+    assert isinstance(routing_model, OneDeltaRouting), f"This pricing method only works with 1delta routing model, we received {routing_model}"
 
     return OneDeltaLivePricing(
         execution_model.web3,

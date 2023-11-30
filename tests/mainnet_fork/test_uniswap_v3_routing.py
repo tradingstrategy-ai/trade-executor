@@ -34,7 +34,7 @@ from eth_defi.uniswap_v3.deployment import (
 from tradeexecutor.ethereum.tx import HotWalletTransactionBuilder
 from tradeexecutor.ethereum.uniswap_v3.uniswap_v3_routing import (
     UniswapV3RoutingState,
-    UniswapV3SimpleRoutingModel,
+    UniswapV3Routing,
     OutOfBalance,
 )
 from tradeexecutor.ethereum.uniswap_v3.uniswap_v3_execution import UniswapV3ExecutionModel
@@ -197,7 +197,7 @@ def routing_model(usdc_asset):
         "0x7ceb23fd6bc0add59e62ac25578270cff1b9f619": "0x45dda9cb7c25131df268515131f647d726f50608",
     }
 
-    return UniswapV3SimpleRoutingModel(
+    return UniswapV3Routing(
         address_map,
         allowed_intermediary_pairs,
         reserve_token_address=usdc_asset.address,
@@ -284,7 +284,7 @@ def test_simple_routing_buy_sell(
     eth_asset,
     eth_token,
     usdc_token,
-    routing_model: UniswapV3SimpleRoutingModel,
+    routing_model: UniswapV3Routing,
     eth_usdc_trading_pair,
     pair_universe,
 ):
@@ -380,7 +380,7 @@ def test_simple_routing_three_leg(
     matic_asset,
     eth_asset,
     eth_token,
-    routing_model: UniswapV3SimpleRoutingModel,
+    routing_model: UniswapV3Routing,
     eth_matic_trading_pair,
     matic_usdc_trading_pair,
     pair_universe,
@@ -431,7 +431,7 @@ def test_three_leg_buy_sell(
     eth_asset,
     eth_token,
     usdc_token,
-    routing_model: UniswapV3SimpleRoutingModel,
+    routing_model: UniswapV3Routing,
     eth_matic_trading_pair,
     matic_usdc_trading_pair,
     pair_universe,

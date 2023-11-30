@@ -22,11 +22,11 @@ from tradingstrategy.pair import PandasPairUniverse
 from tradingstrategy.timebucket import TimeBucket
 from tradeexecutor.ethereum.hot_wallet_sync_model import HotWalletSyncModel
 from tradeexecutor.ethereum.one_delta.one_delta_live_pricing import OneDeltaLivePricing
-from tradeexecutor.ethereum.one_delta.one_delta_routing import OneDeltaSimpleRoutingModel
+from tradeexecutor.ethereum.one_delta.one_delta_routing import OneDeltaRouting
 from tradeexecutor.ethereum.uniswap_v2.uniswap_v2_live_pricing import UniswapV2LivePricing
 from tradeexecutor.ethereum.uniswap_v2.uniswap_v2_routing import UniswapV2Routing
 from tradeexecutor.ethereum.uniswap_v3.uniswap_v3_live_pricing import UniswapV3LivePricing
-from tradeexecutor.ethereum.uniswap_v3.uniswap_v3_routing import UniswapV3SimpleRoutingModel
+from tradeexecutor.ethereum.uniswap_v3.uniswap_v3_routing import UniswapV3Routing
 from tradeexecutor.ethereum.universe import create_exchange_universe, create_pair_universe
 from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier
 from tradeexecutor.state.state import State
@@ -89,8 +89,8 @@ def generic_routing_model(
     quickswap_deployment: UniswapV2Deployment,
     wmatic_usdc_spot_pair: TradingPairIdentifier,
     quickswap_routing_model: UniswapV2Routing,
-    one_delta_routing_model: OneDeltaSimpleRoutingModel,
-    uniswap_v3_routing_model: UniswapV3SimpleRoutingModel,
+    one_delta_routing_model: OneDeltaRouting,
+    uniswap_v3_routing_model: UniswapV3Routing,
     asset_usdc: AssetIdentifier,
     asset_wmatic: AssetIdentifier,
 ) -> GenericRouting:
@@ -114,8 +114,8 @@ def generic_pricing_model(
     web3,
     strategy_universe: TradingStrategyUniverse,
     quickswap_routing_model: UniswapV2Routing,
-    one_delta_routing_model: OneDeltaSimpleRoutingModel,
-    uniswap_v3_routing_model: UniswapV3SimpleRoutingModel,
+    one_delta_routing_model: OneDeltaRouting,
+    uniswap_v3_routing_model: UniswapV3Routing,
 ) -> GenericPricing:
     """Create a routing model that trades Uniswap v2, v3 and 1delta + Aave.
 

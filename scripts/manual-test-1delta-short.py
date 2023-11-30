@@ -32,7 +32,7 @@ from tradeexecutor.strategy.universe_model import default_universe_options
 from tradeexecutor.strategy.trading_strategy_universe import load_partial_data, TradingStrategyUniverse, load_trading_and_lending_data, translate_trading_pair
 from tradeexecutor.strategy.pandas_trader.position_manager import PositionManager
 from tradeexecutor.ethereum.uniswap_v3.uniswap_v3_live_pricing import UniswapV3LivePricing
-from tradeexecutor.ethereum.one_delta.one_delta_routing import OneDeltaSimpleRoutingModel, OneDeltaRoutingState
+from tradeexecutor.ethereum.one_delta.one_delta_routing import OneDeltaRouting, OneDeltaRoutingState
 from tradeexecutor.cli.bootstrap import create_execution_and_sync_model, create_web3_config, create_state_store
 from tradeexecutor.strategy.execution_model import AssetManagementMode
 from tradeexecutor.cli.log import setup_logging
@@ -102,7 +102,7 @@ else:
     state = store.load()
 
 usdc = fetch_erc20_details(sync_model.web3, "0x2791bca1f2de4661ed88a30c99a7a9449aa84174")
-routing_model = OneDeltaSimpleRoutingModel(
+routing_model = OneDeltaRouting(
     address_map={
         "one_delta_broker_proxy": "0x74E95F3Ec71372756a01eB9317864e3fdde1AC53",
         "aave_v3_pool": "0x794a61358D6845594F94dc1DB02A252b5b4814aD",

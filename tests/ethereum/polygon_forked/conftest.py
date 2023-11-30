@@ -18,11 +18,11 @@ from eth_defi.one_delta.deployment import fetch_deployment as fetch_1delta_deplo
 from eth_defi.provider.multi_provider import create_multi_provider_web3
 from eth_defi.provider.anvil import fork_network_anvil, mine
 from eth_defi.uniswap_v3.price import UniswapV3PriceHelper
-from tradeexecutor.ethereum.one_delta.one_delta_routing import OneDeltaSimpleRoutingModel
+from tradeexecutor.ethereum.one_delta.one_delta_routing import OneDeltaRouting
 from tradeexecutor.ethereum.routing_data import get_quickswap_default_routing_parameters
 from tradeexecutor.ethereum.token import translate_token_details
 from tradeexecutor.ethereum.uniswap_v2.uniswap_v2_routing import UniswapV2Routing
-from tradeexecutor.ethereum.uniswap_v3.uniswap_v3_routing import UniswapV3SimpleRoutingModel
+from tradeexecutor.ethereum.uniswap_v3.uniswap_v3_routing import UniswapV3Routing
 
 from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier, TradingPairKind, AssetType
 from tradeexecutor.strategy.reserve_currency import ReserveCurrency
@@ -291,8 +291,8 @@ def one_delta_routing_model(
     uniswap_v3_deployment,
     asset_usdc,
     asset_weth,
-) -> OneDeltaSimpleRoutingModel:
-    return OneDeltaSimpleRoutingModel(
+) -> OneDeltaRouting:
+    return OneDeltaRouting(
         address_map={
             "one_delta_broker_proxy": one_delta_deployment.broker_proxy.address,
             "aave_v3_pool": aave_v3_deployment.pool.address,
@@ -309,7 +309,7 @@ def one_delta_routing_model(
 
 
 @pytest.fixture()
-def uniswap_v3_routing_model(asset_usdc) -> UniswapV3SimpleRoutingModel:
+def uniswap_v3_routing_model(asset_usdc) -> UniswapV3Routing:
 
     # for uniswap v3
     # same addresses for Mainnet, Polygon, Optimism, Arbitrum, Testnets Address
@@ -332,7 +332,7 @@ def uniswap_v3_routing_model(asset_usdc) -> UniswapV3SimpleRoutingModel:
         "0x7ceb23fd6bc0add59e62ac25578270cff1b9f619": "0x45dda9cb7c25131df268515131f647d726f50608",
     }
 
-    return UniswapV3SimpleRoutingModel(
+    return UniswapV3Routing(
         address_map,
         allowed_intermediary_pairs,
         reserve_token_address=asset_usdc.address,
