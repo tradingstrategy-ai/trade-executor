@@ -11,7 +11,7 @@ from typing import Dict
 
 import pandas as pd
 
-from tradeexecutor.ethereum.uniswap_v2.uniswap_v2_routing import UniswapV2SimpleRoutingModel
+from tradeexecutor.ethereum.uniswap_v2.uniswap_v2_routing import UniswapV2Routing
 from tradingstrategy.client import Client
 from tradingstrategy.candle import GroupedCandleUniverse
 from tradingstrategy.chain import ChainId
@@ -375,7 +375,7 @@ def strategy_factory(
         sync_model=sync_model,
         pricing_model_factory=pricing_model_factory,
         cash_buffer=cash_buffer,
-        routing_model=UniswapV2SimpleRoutingModel(
+        routing_model=UniswapV2Routing(
             factory_router_map,
             allowed_intermediary_pairs,
             reserve_token_address=reserve_token_address,

@@ -30,7 +30,7 @@ from typing import TypedDict, List
 from tradingstrategy.chain import ChainId
 
 from tradeexecutor.backtest.backtest_routing import BacktestRoutingModel, BacktestRoutingIgnoredModel
-from tradeexecutor.ethereum.uniswap_v2.uniswap_v2_routing import UniswapV2SimpleRoutingModel
+from tradeexecutor.ethereum.uniswap_v2.uniswap_v2_routing import UniswapV2Routing
 from tradeexecutor.ethereum.uniswap_v3.uniswap_v3_routing import UniswapV3SimpleRoutingModel
 from tradeexecutor.strategy.execution_context import ExecutionContext, ExecutionMode
 from tradeexecutor.strategy.reserve_currency import ReserveCurrency
@@ -616,7 +616,7 @@ def get_backtest_routing_model(
 
     real_routing_model = create_compatible_routing(routing_type, reserve_currency)
     
-    if isinstance(real_routing_model, UniswapV2SimpleRoutingModel):
+    if isinstance(real_routing_model, UniswapV2Routing):
         return BacktestRoutingModel(
             real_routing_model.factory_router_map,
             real_routing_model.allowed_intermediary_pairs,
@@ -635,7 +635,7 @@ def get_backtest_routing_model(
 
 def create_uniswap_v2_compatible_routing(
     routing_type: TradeRouting, reserve_currency: ReserveCurrency
-) -> UniswapV2SimpleRoutingModel:
+) -> UniswapV2Routing:
     """Set up Uniswap v2 compatible routing.
     Not recommended to use by itself, because it doesn't validate reserve currency.
     Rather use create_compatible_routing
@@ -676,7 +676,7 @@ def create_uniswap_v2_compatible_routing(
     else:
         raise NotImplementedError()
 
-    routing_model = UniswapV2SimpleRoutingModel(
+    routing_model = UniswapV2Routing(
         params["factory_router_map"],
         params["allowed_intermediary_pairs"],
         params["reserve_token_address"],

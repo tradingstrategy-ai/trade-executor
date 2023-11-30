@@ -10,7 +10,7 @@ from web3 import EthereumTesterProvider, Web3
 from web3.contract import Contract
 from eth_defi.token import create_token
 from eth_defi.uniswap_v2.deployment import UniswapV2Deployment, deploy_trading_pair, deploy_uniswap_v2_like
-from tradeexecutor.ethereum.uniswap_v2.uniswap_v2_routing import UniswapV2SimpleRoutingModel
+from tradeexecutor.ethereum.uniswap_v2.uniswap_v2_routing import UniswapV2Routing
 from tradeexecutor.strategy.trading_strategy_universe import translate_trading_pair
 from tradingstrategy.exchange import ExchangeUniverse
 from tradingstrategy.pair import PandasPairUniverse
@@ -180,7 +180,7 @@ def pair_universe(web3, exchange_universe: ExchangeUniverse, weth_usdc_pair, aav
 
 
 @pytest.fixture()
-def routing_model(uniswap_v2, asset_usdc, asset_weth, weth_usdc_pair) -> UniswapV2SimpleRoutingModel:
+def routing_model(uniswap_v2, asset_usdc, asset_weth, weth_usdc_pair) -> UniswapV2Routing:
 
     # Allowed exchanges as factory -> router pairs
     factory_router_map = {
@@ -192,7 +192,7 @@ def routing_model(uniswap_v2, asset_usdc, asset_weth, weth_usdc_pair) -> Uniswap
         asset_weth.address: weth_usdc_pair.pool_address
     }
 
-    return UniswapV2SimpleRoutingModel(
+    return UniswapV2Routing(
         factory_router_map,
         allowed_intermediary_pairs,
         reserve_token_address=asset_usdc.address,
@@ -204,7 +204,7 @@ def test_uniswap_two_leg_buy_price_no_price_impact(
         web3: Web3,
         exchange_universe,
         pair_universe: PandasPairUniverse,
-        routing_model: UniswapV2SimpleRoutingModel,
+        routing_model: UniswapV2Routing,
 ):
     """Two-leg buy trade."""
     pricing_method = UniswapV2LivePricing(web3, pair_universe, routing_model)
@@ -229,7 +229,7 @@ def test_uniswap_two_leg_buy_price_with_price_impact(
         web3: Web3,
         exchange_universe,
         pair_universe: PandasPairUniverse,
-        routing_model: UniswapV2SimpleRoutingModel,
+        routing_model: UniswapV2Routing,
 ):
     """Two-leg buy trade w/signficant price impact."""
     pricing_method = UniswapV2LivePricing(web3, pair_universe, routing_model)
@@ -256,7 +256,7 @@ def test_uniswap_two_leg_sell_price_no_price_impact(
         web3: Web3,
         exchange_universe,
         pair_universe: PandasPairUniverse,
-        routing_model: UniswapV2SimpleRoutingModel,
+        routing_model: UniswapV2Routing,
 ):
     pricing_method = UniswapV2LivePricing(web3, pair_universe, routing_model)
 
@@ -282,7 +282,7 @@ def test_uniswap_two_leg_sell_price_with_price_impact(
         web3: Web3,
         exchange_universe,
         pair_universe: PandasPairUniverse,
-        routing_model: UniswapV2SimpleRoutingModel,
+        routing_model: UniswapV2Routing,
 ):
     """Two-leg buy trade w/signficant price impact."""
     pricing_method = UniswapV2LivePricing(web3, pair_universe, routing_model)
@@ -307,7 +307,7 @@ def test_uniswap_three_leg_buy_price_with_price_impact(
         uniswap_v2,
         exchange_universe,
         pair_universe: PandasPairUniverse,
-        routing_model: UniswapV2SimpleRoutingModel,
+        routing_model: UniswapV2Routing,
 ):
     """Three leg trade w/signficant price impact.
 
@@ -362,7 +362,7 @@ def test_uniswap_three_leg_sell_price_with_price_impact(
         uniswap_v2,
         exchange_universe,
         pair_universe: PandasPairUniverse,
-        routing_model: UniswapV2SimpleRoutingModel,
+        routing_model: UniswapV2Routing,
 ):
     """Three leg sell w/signficant price impact.
 

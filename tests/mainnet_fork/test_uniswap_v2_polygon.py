@@ -32,7 +32,7 @@ from tradeexecutor.ethereum.tx import HotWalletTransactionBuilder
 from tradeexecutor.ethereum.uniswap_v2.uniswap_v2_live_pricing import UniswapV2LivePricing
 from tradeexecutor.ethereum.uniswap_v2.uniswap_v2_routing import (
     UniswapV2RoutingState,
-    UniswapV2SimpleRoutingModel,
+    UniswapV2Routing,
 )
 from tradeexecutor.ethereum.uniswap_v2.uniswap_v2_execution import UniswapV2ExecutionModel
 from tradeexecutor.strategy.pandas_trader.position_manager import PositionManager
@@ -207,7 +207,7 @@ def pair_universe(
 
 
 @pytest.fixture()
-def routing_model(usdc_asset) -> UniswapV2SimpleRoutingModel:
+def routing_model(usdc_asset) -> UniswapV2Routing:
 
     # Allowed exchanges as factory -> router pairs
     factory_router_map = {
@@ -224,7 +224,7 @@ def routing_model(usdc_asset) -> UniswapV2SimpleRoutingModel:
         "0x7ceb23fd6bc0add59e62ac25578270cff1b9f619": "0x853ee4b2a13f8a742d64c8f088be7ba2131f670d",
     }
 
-    return UniswapV2SimpleRoutingModel(
+    return UniswapV2Routing(
         factory_router_map,
         allowed_intermediary_pairs,
         reserve_token_address=usdc_asset.address,
@@ -322,7 +322,7 @@ def test_simple_routing_three_leg_live(
     eth_matic_trading_pair: TradingPairIdentifier,
     matic_usdc_trading_pair: TradingPairIdentifier,
     sand_matic_trading_pair: TradingPairIdentifier,
-    routing_model:  UniswapV2SimpleRoutingModel,
+    routing_model:  UniswapV2Routing,
     sand_token: TokenDetails,
     usdc_asset: AssetIdentifier,
     usdc_token: Contract,

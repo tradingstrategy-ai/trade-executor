@@ -180,7 +180,7 @@ class UniswapV2RoutingState(EthereumRoutingState):
         return [tx]
 
 
-class UniswapV2SimpleRoutingModel(EthereumRoutingModel):
+class UniswapV2Routing(EthereumRoutingModel):
     """A simple router that does not optimise the trade execution cost.
 
     - Able to trade on multiple exchanges

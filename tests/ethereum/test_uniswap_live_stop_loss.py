@@ -25,7 +25,7 @@ from eth_defi.token import create_token
 from eth_defi.uniswap_v2.deployment import UniswapV2Deployment, deploy_trading_pair, deploy_uniswap_v2_like
 
 from tradeexecutor.ethereum.uniswap_v2.uniswap_v2_execution import UniswapV2ExecutionModel
-from tradeexecutor.ethereum.uniswap_v2.uniswap_v2_routing import UniswapV2SimpleRoutingModel
+from tradeexecutor.ethereum.uniswap_v2.uniswap_v2_routing import UniswapV2Routing
 from tradeexecutor.state.state import State, UncleanState
 from tradeexecutor.state.trade import TradeExecution
 from tradeexecutor.strategy.cycle import snap_to_previous_tick
@@ -188,7 +188,7 @@ def pair_universe(web3, exchange_universe: ExchangeUniverse, weth_usdc_pair) -> 
 
 
 @pytest.fixture()
-def routing_model(uniswap_v2, asset_usdc, asset_weth, weth_usdc_pair) -> UniswapV2SimpleRoutingModel:
+def routing_model(uniswap_v2, asset_usdc, asset_weth, weth_usdc_pair) -> UniswapV2Routing:
 
     # Allowed exchanges as factory -> router pairs
     factory_router_map = {
@@ -200,7 +200,7 @@ def routing_model(uniswap_v2, asset_usdc, asset_weth, weth_usdc_pair) -> Uniswap
         asset_weth.address: weth_usdc_pair.pool_address
     }
 
-    return UniswapV2SimpleRoutingModel(
+    return UniswapV2Routing(
         factory_router_map,
         allowed_intermediary_pairs,
         reserve_token_address=asset_usdc.address,
@@ -320,7 +320,7 @@ def test_live_stop_loss(
         deployer: HexAddress,
         trader: LocalAccount,
         trading_strategy_universe: TradingStrategyUniverse,
-        routing_model: UniswapV2SimpleRoutingModel,
+        routing_model: UniswapV2Routing,
         uniswap_v2: UniswapV2Deployment,
         usdc_token: Contract,
         weth_token: Contract,
@@ -445,7 +445,7 @@ def test_live_stop_loss_missing(
         deployer: HexAddress,
         trader: LocalAccount,
         trading_strategy_universe: TradingStrategyUniverse,
-        routing_model: UniswapV2SimpleRoutingModel,
+        routing_model: UniswapV2Routing,
         uniswap_v2: UniswapV2Deployment,
         usdc_token: Contract,
         weth_token: Contract,
@@ -509,7 +509,7 @@ def test_broadcast_failed_and_repair_state(
         deployer: HexAddress,
         trader: LocalAccount,
         trading_strategy_universe: TradingStrategyUniverse,
-        routing_model: UniswapV2SimpleRoutingModel,
+        routing_model: UniswapV2Routing,
         uniswap_v2: UniswapV2Deployment,
         usdc_token: Contract,
         weth_token: Contract,

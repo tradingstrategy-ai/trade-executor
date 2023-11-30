@@ -26,7 +26,7 @@ from tradeexecutor.ethereum.one_delta.one_delta_live_pricing import one_delta_li
 from tradeexecutor.ethereum.one_delta.one_delta_valuation import one_delta_valuation_factory
 from tradeexecutor.ethereum.uniswap_v2.uniswap_v2_execution import UniswapV2ExecutionModel
 from tradeexecutor.ethereum.uniswap_v2.uniswap_v2_live_pricing import uniswap_v2_live_pricing_factory
-from tradeexecutor.ethereum.uniswap_v2.uniswap_v2_routing import UniswapV2SimpleRoutingModel
+from tradeexecutor.ethereum.uniswap_v2.uniswap_v2_routing import UniswapV2Routing
 from tradeexecutor.ethereum.uniswap_v2.uniswap_v2_valuation import uniswap_v2_sell_valuation_factory
 from tradeexecutor.ethereum.uniswap_v3.uniswap_v3_execution import UniswapV3ExecutionModel
 from tradeexecutor.ethereum.uniswap_v3.uniswap_v3_live_pricing import uniswap_v3_live_pricing_factory
@@ -426,7 +426,7 @@ def create_client(
         client.initialise_mock_data()
 
         if mod.trade_routing == TradeRouting.user_supplied_routing_model:
-            routing_model = UniswapV2SimpleRoutingModel(
+            routing_model = UniswapV2Routing(
                 factory_router_map={
                     test_evm_uniswap_v2_factory: (test_evm_uniswap_v2_router, test_evm_uniswap_v2_init_code_hash)},
                 allowed_intermediary_pairs={},

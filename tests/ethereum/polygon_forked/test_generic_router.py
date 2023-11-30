@@ -24,7 +24,7 @@ from tradeexecutor.ethereum.hot_wallet_sync_model import HotWalletSyncModel
 from tradeexecutor.ethereum.one_delta.one_delta_live_pricing import OneDeltaLivePricing
 from tradeexecutor.ethereum.one_delta.one_delta_routing import OneDeltaSimpleRoutingModel
 from tradeexecutor.ethereum.uniswap_v2.uniswap_v2_live_pricing import UniswapV2LivePricing
-from tradeexecutor.ethereum.uniswap_v2.uniswap_v2_routing import UniswapV2SimpleRoutingModel
+from tradeexecutor.ethereum.uniswap_v2.uniswap_v2_routing import UniswapV2Routing
 from tradeexecutor.ethereum.uniswap_v3.uniswap_v3_live_pricing import UniswapV3LivePricing
 from tradeexecutor.ethereum.uniswap_v3.uniswap_v3_routing import UniswapV3SimpleRoutingModel
 from tradeexecutor.ethereum.universe import create_exchange_universe, create_pair_universe
@@ -32,7 +32,7 @@ from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifie
 from tradeexecutor.state.state import State
 from tradeexecutor.strategy.execution_context import unit_test_execution_context
 from tradeexecutor.strategy.generic.generic_router import GenericRouting
-from tradeexecutor.strategy.generic.generic_pricing_model import GenericPricingModel
+from tradeexecutor.strategy.generic.generic_pricing_model import GenericPricing
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse, load_partial_data
 from tradeexecutor.strategy.universe_model import default_universe_options
 
@@ -88,7 +88,7 @@ def strategy_universe(chain_id, exchange_universe, pair_universe, asset_usdc, pe
 def generic_routing_model(
     quickswap_deployment: UniswapV2Deployment,
     wmatic_usdc_spot_pair: TradingPairIdentifier,
-    quickswap_routing_model: UniswapV2SimpleRoutingModel,
+    quickswap_routing_model: UniswapV2Routing,
     one_delta_routing_model: OneDeltaSimpleRoutingModel,
     uniswap_v3_routing_model: UniswapV3SimpleRoutingModel,
     asset_usdc: AssetIdentifier,
@@ -113,10 +113,10 @@ def generic_routing_model(
 def generic_pricing_model(
     web3,
     strategy_universe: TradingStrategyUniverse,
-    quickswap_routing_model: UniswapV2SimpleRoutingModel,
+    quickswap_routing_model: UniswapV2Routing,
     one_delta_routing_model: OneDeltaSimpleRoutingModel,
     uniswap_v3_routing_model: UniswapV3SimpleRoutingModel,
-) -> GenericPricingModel:
+) -> GenericPricing:
     """Create a routing model that trades Uniswap v2, v3 and 1delta + Aave.
 
     Live Polygon deployment addresses.
@@ -129,7 +129,7 @@ def generic_pricing_model(
     one_delta_pricing = OneDeltaLivePricing(web3, pair_universe, one_delta_routing_model)
 
     # Uses default router choose function
-    return GenericPricingModel(
+    return GenericPricing(
         pair_universe,
         routes = {
             "quickswap": quickswap_pricing_model,
@@ -160,7 +160,7 @@ def test_generic_routing_open_position_across_markets(
     hot_wallet: HotWallet,
     strategy_universe: TradingStrategyUniverse,
     generic_routing_model: GenericRouting,
-    generic_pricing_model: GenericPricingModel,
+    generic_pricing_model: GenericPricing,
     asset_usdc: AssetIdentifier,
     wmatic_usdc_spot_pair: TradingPairIdentifier,
     weth_usdc_spot_pair: TradingPairIdentifier,

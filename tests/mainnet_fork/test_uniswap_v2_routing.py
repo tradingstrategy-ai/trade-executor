@@ -30,7 +30,7 @@ from eth_defi.hotwallet import HotWallet
 from eth_defi.uniswap_v2.deployment import UniswapV2Deployment, fetch_deployment
 
 from tradeexecutor.ethereum.tx import HotWalletTransactionBuilder
-from tradeexecutor.ethereum.uniswap_v2.uniswap_v2_routing import UniswapV2RoutingState, UniswapV2SimpleRoutingModel, OutOfBalance
+from tradeexecutor.ethereum.uniswap_v2.uniswap_v2_routing import UniswapV2RoutingState, UniswapV2Routing, OutOfBalance
 from tradeexecutor.ethereum.uniswap_v2.uniswap_v2_execution import UniswapV2ExecutionModel
 from tradeexecutor.ethereum.wallet import sync_reserves
 from tradeexecutor.testing.dummy_wallet import apply_sync_events
@@ -255,7 +255,7 @@ def routing_model(busd_asset):
         "0xbb4cdb9cbd36b01bd1cbaebf2de08d9173bc095c": "0x58f876857a02d6762e0101bb5c46a8c1ed44dc16",
     }
 
-    return UniswapV2SimpleRoutingModel(
+    return UniswapV2Routing(
         factory_router_map,
         allowed_intermediary_pairs,
         reserve_token_address=busd_asset.address,

@@ -34,7 +34,7 @@ from ..watchdog import stop_watchdog
 from ...backtest.backtest_runner import setup_backtest, run_backtest
 from ...backtest.tearsheet import export_backtest_report
 from ...ethereum.enzyme.vault import EnzymeVaultSyncModel
-from ...ethereum.uniswap_v2.uniswap_v2_routing import UniswapV2SimpleRoutingModel
+from ...ethereum.uniswap_v2.uniswap_v2_routing import UniswapV2Routing
 from ...state.state import State
 from ...state.store import NoneStore, JSONFileStore
 from ...strategy.approval import ApprovalType

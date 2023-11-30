@@ -24,7 +24,7 @@ from tradeexecutor.utils.timer import timed_task
 
 from tradeexecutor.ethereum.uniswap_v2.uniswap_v2_execution import UniswapV2ExecutionModel
 from tradeexecutor.ethereum.uniswap_v2.uniswap_v2_live_pricing import UniswapV2LivePricing
-from tradeexecutor.ethereum.uniswap_v2.uniswap_v2_routing import UniswapV2SimpleRoutingModel
+from tradeexecutor.ethereum.uniswap_v2.uniswap_v2_routing import UniswapV2Routing
 from tradeexecutor.ethereum.uniswap_v2.uniswap_v2_valuation import UniswapV2PoolRevaluator
 
 from tradeexecutor.ethereum.uniswap_v3.uniswap_v3_execution import UniswapV3ExecutionModel
@@ -43,7 +43,7 @@ def set_up_simulated_execution_loop_uniswap_v2(
         web3: Web3,
         decide_trades: DecideTradesProtocol,
         universe: StrategyExecutionUniverse,
-        routing_model: UniswapV2SimpleRoutingModel,
+        routing_model: UniswapV2Routing,
         state: State,
         wallet_account: LocalAccount,
 ) -> ExecutionLoop:
@@ -69,7 +69,7 @@ def set_up_simulated_execution_loop_uniswap_v2(
         raise TypeError("Only keyword arguments accepted")
 
     assert isinstance(wallet_account, LocalAccount)
-    assert isinstance(routing_model, UniswapV2SimpleRoutingModel)
+    assert isinstance(routing_model, UniswapV2Routing)
 
     execution_context = ExecutionContext(
         mode=ExecutionMode.simulated_trading,
