@@ -13,7 +13,7 @@ from eth_defi.token import fetch_erc20_details
 from eth_defi.trade import TradeSuccess, TradeFail
 
 #from tradeexecutor.strategy.execution_model import ExecutionModel
-from tradeexecutor.ethereum.execution import EthereumExecutionModel
+from tradeexecutor.ethereum.execution import EthereumExecution
 
 
 import logging
@@ -37,7 +37,7 @@ from tradeexecutor.utils.blockchain import get_block_timestamp
 logger = logging.getLogger(__name__)
 
 
-class UniswapV2ExecutionModel(EthereumExecutionModel):
+class UniswapV2Execution(EthereumExecution):
     """Run order execution on a single Uniswap v2 style exchanges."""
 
     def __init__(self,

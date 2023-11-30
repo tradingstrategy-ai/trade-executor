@@ -20,7 +20,7 @@ from eth_defi.uniswap_v2.swap import swap_with_slippage_protection
 from eth_defi.event_reader.reorganisation_monitor import create_reorganisation_monitor
 from tradingstrategy.pair import PandasPairUniverse
 from tradeexecutor.ethereum.uniswap_v2.uniswap_v2_live_pricing import UniswapV2LivePricing
-from tradeexecutor.ethereum.uniswap_v2.uniswap_v2_routing import UniswapV2SimpleRoutingModel
+from tradeexecutor.ethereum.uniswap_v2.uniswap_v2_routing import UniswapV2Routing
 from tradeexecutor.ethereum.uniswap_v2.uniswap_v2_valuation import UniswapV2PoolRevaluator
 from tradeexecutor.ethereum.enzyme.tx import EnzymeTransactionBuilder
 from tradeexecutor.ethereum.enzyme.vault import EnzymeVaultSyncModel
@@ -55,7 +55,7 @@ def routing_model(
         uniswap_v2,
         usdc_asset,
         weth_asset,
-        weth_usdc_trading_pair) -> UniswapV2SimpleRoutingModel:
+        weth_usdc_trading_pair) -> UniswapV2Routing:
 
     # Allowed exchanges as factory -> router pairs
     factory_router_map = {
@@ -67,7 +67,7 @@ def routing_model(
         weth_asset.address: weth_usdc_trading_pair.pool_address
     }
 
-    return UniswapV2SimpleRoutingModel(
+    return UniswapV2Routing(
         factory_router_map,
         allowed_intermediary_pairs,
         reserve_token_address=usdc_asset.address,

@@ -16,7 +16,7 @@ from eth_defi.uniswap_v2.deployment import UniswapV2Deployment
 from eth_typing import HexAddress
 
 from tradeexecutor.ethereum.uniswap_v2.uniswap_v2_live_pricing import UniswapV2LivePricing
-from tradeexecutor.ethereum.uniswap_v2.uniswap_v2_routing import UniswapV2SimpleRoutingModel
+from tradeexecutor.ethereum.uniswap_v2.uniswap_v2_routing import UniswapV2Routing
 from tradeexecutor.state.blockhain_transaction import BlockchainTransactionType
 from tradingstrategy.pair import PandasPairUniverse
 from web3 import Web3
@@ -56,7 +56,7 @@ def routing_model(
         uniswap_v2,
         usdc_asset,
         weth_asset,
-        weth_usdc_trading_pair) -> UniswapV2SimpleRoutingModel:
+        weth_usdc_trading_pair) -> UniswapV2Routing:
 
     # Allowed exchanges as factory -> router pairs
     factory_router_map = {
@@ -68,7 +68,7 @@ def routing_model(
         weth_asset.address: weth_usdc_trading_pair.pool_address
     }
 
-    return UniswapV2SimpleRoutingModel(
+    return UniswapV2Routing(
         factory_router_map,
         allowed_intermediary_pairs,
         reserve_token_address=usdc_asset.address,
@@ -311,7 +311,7 @@ def test_enzyme_lp_fees(
     weth_usdc_trading_pair: TradingPairIdentifier,
     pair_universe: PandasPairUniverse,
     hot_wallet: HotWallet,
-    routing_model: UniswapV2SimpleRoutingModel,
+    routing_model: UniswapV2Routing,
     pricing_model: UniswapV2LivePricing,
 ):
     """See LP fees are correctly estimated and realised."""

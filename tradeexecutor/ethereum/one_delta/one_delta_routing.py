@@ -292,7 +292,7 @@ class OneDeltaRoutingState(EthereumRoutingState):
         return [tx]
 
 
-class OneDeltaSimpleRoutingModel(EthereumRoutingModel):
+class OneDeltaRouting(EthereumRoutingModel):
     """A simple router that does not optimise the trade execution cost.
 
     - Able to trade on multiple exchanges

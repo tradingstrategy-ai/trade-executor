@@ -12,7 +12,7 @@ from eth_defi.gas import GasPriceMethod
 from eth_defi.hotwallet import HotWallet
 from web3 import Web3
 
-from tradeexecutor.backtest.backtest_execution import BacktestExecutionModel
+from tradeexecutor.backtest.backtest_execution import BacktestExecution
 from tradeexecutor.backtest.backtest_pricing import backtest_pricing_factory
 from tradeexecutor.backtest.backtest_sync import BacktestSyncModel
 from tradeexecutor.backtest.backtest_valuation import backtest_valuation_factory
@@ -21,14 +21,14 @@ from tradeexecutor.cli.approval import CLIApprovalModel
 from tradeexecutor.ethereum.enzyme.vault import EnzymeVaultSyncModel
 from tradeexecutor.ethereum.hot_wallet_sync_model import HotWalletSyncModel
 from tradeexecutor.ethereum.tx import TransactionBuilder
-from tradeexecutor.ethereum.one_delta.one_delta_execution import OneDeltaExecutionModel
+from tradeexecutor.ethereum.one_delta.one_delta_execution import OneDeltaExecution
 from tradeexecutor.ethereum.one_delta.one_delta_live_pricing import one_delta_live_pricing_factory
 from tradeexecutor.ethereum.one_delta.one_delta_valuation import one_delta_valuation_factory
-from tradeexecutor.ethereum.uniswap_v2.uniswap_v2_execution import UniswapV2ExecutionModel
+from tradeexecutor.ethereum.uniswap_v2.uniswap_v2_execution import UniswapV2Execution
 from tradeexecutor.ethereum.uniswap_v2.uniswap_v2_live_pricing import uniswap_v2_live_pricing_factory
-from tradeexecutor.ethereum.uniswap_v2.uniswap_v2_routing import UniswapV2SimpleRoutingModel
+from tradeexecutor.ethereum.uniswap_v2.uniswap_v2_routing import UniswapV2Routing
 from tradeexecutor.ethereum.uniswap_v2.uniswap_v2_valuation import uniswap_v2_sell_valuation_factory
-from tradeexecutor.ethereum.uniswap_v3.uniswap_v3_execution import UniswapV3ExecutionModel
+from tradeexecutor.ethereum.uniswap_v3.uniswap_v3_execution import UniswapV3Execution
 from tradeexecutor.ethereum.uniswap_v3.uniswap_v3_live_pricing import uniswap_v3_live_pricing_factory
 from tradeexecutor.ethereum.uniswap_v3.uniswap_v3_valuation import uniswap_v3_sell_valuation_factory
 from tradeexecutor.ethereum.web3config import Web3Config
@@ -116,7 +116,7 @@ def create_execution_model(
     # TODO: user_supplied_routing_model can be uni v3 as well
     if routing_hint is None or routing_hint.is_uniswap_v2() or routing_hint == TradeRouting.user_supplied_routing_model:
         logger.info("Uniswap v2 like exchange. Routing hint is %s", routing_hint)
-        execution_model = UniswapV2ExecutionModel(
+        execution_model = UniswapV2Execution(
             tx_builder,
             confirmation_timeout=confirmation_timeout,
             confirmation_block_count=confirmation_block_count,
@@ -128,7 +128,7 @@ def create_execution_model(
         pricing_model_factory = uniswap_v2_live_pricing_factory
     elif routing_hint.is_uniswap_v3():
         logger.info("Uniswap v3 like exchange. Routing hint is %s", routing_hint)
-        execution_model = UniswapV3ExecutionModel(
+        execution_model = UniswapV3Execution(
             tx_builder,
             confirmation_timeout=confirmation_timeout,
             confirmation_block_count=confirmation_block_count,
@@ -140,7 +140,7 @@ def create_execution_model(
         pricing_model_factory = uniswap_v3_live_pricing_factory
     elif routing_hint.is_one_delta():
         logger.info("1delta routing. Routing hint is %s", routing_hint)
-        execution_model = OneDeltaExecutionModel(
+        execution_model = OneDeltaExecution(
             tx_builder,
             confirmation_timeout=confirmation_timeout,
             confirmation_block_count=confirmation_block_count,
@@ -210,7 +210,7 @@ def create_execution_and_sync_model(
     elif asset_management_mode == AssetManagementMode.backtest:
         logger.info("TODO: Command line backtests are always executed with initial deposit of $10,000")
         wallet = SimulatedWallet()
-        execution_model = BacktestExecutionModel(wallet, max_slippage=0.01, stop_loss_data_available=True)
+        execution_model = BacktestExecution(wallet, max_slippage=0.01, stop_loss_data_available=True)
         sync_model = BacktestSyncModel(wallet, Decimal(10_000))
         pricing_model_factory = backtest_pricing_factory
         valuation_model_factory = backtest_valuation_factory
@@ -426,7 +426,7 @@ def create_client(
         client.initialise_mock_data()
 
         if mod.trade_routing == TradeRouting.user_supplied_routing_model:
-            routing_model = UniswapV2SimpleRoutingModel(
+            routing_model = UniswapV2Routing(
                 factory_router_map={
                     test_evm_uniswap_v2_factory: (test_evm_uniswap_v2_router, test_evm_uniswap_v2_init_code_hash)},
                 allowed_intermediary_pairs={},

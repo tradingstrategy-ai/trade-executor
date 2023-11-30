@@ -5,7 +5,7 @@ from typing import Dict, Any
 
 import pandas as pd
 
-from tradeexecutor.ethereum.uniswap_v2.uniswap_v2_routing import UniswapV2SimpleRoutingModel
+from tradeexecutor.ethereum.uniswap_v2.uniswap_v2_routing import UniswapV2Routing
 from tradeexecutor.strategy.execution_context import ExecutionContext, ExecutionMode
 from tradeexecutor.strategy.trading_strategy_universe import translate_trading_pair
 
@@ -112,7 +112,7 @@ def strategy_factory(
         sync_model=sync_model,
         pricing_model_factory=pricing_model_factory,
         cash_buffer=cash_buffer,
-        routing_model=UniswapV2SimpleRoutingModel(
+        routing_model=UniswapV2Routing(
             factory_router_map,
             allowed_intermediary_pairs,
             reserve_token_address,

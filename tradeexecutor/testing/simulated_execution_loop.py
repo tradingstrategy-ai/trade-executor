@@ -22,19 +22,19 @@ from tradeexecutor.strategy.universe_model import StaticUniverseModel, StrategyE
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
 from tradeexecutor.utils.timer import timed_task
 
-from tradeexecutor.ethereum.uniswap_v2.uniswap_v2_execution import UniswapV2ExecutionModel
+from tradeexecutor.ethereum.uniswap_v2.uniswap_v2_execution import UniswapV2Execution
 from tradeexecutor.ethereum.uniswap_v2.uniswap_v2_live_pricing import UniswapV2LivePricing
-from tradeexecutor.ethereum.uniswap_v2.uniswap_v2_routing import UniswapV2SimpleRoutingModel
+from tradeexecutor.ethereum.uniswap_v2.uniswap_v2_routing import UniswapV2Routing
 from tradeexecutor.ethereum.uniswap_v2.uniswap_v2_valuation import UniswapV2PoolRevaluator
 
-from tradeexecutor.ethereum.uniswap_v3.uniswap_v3_execution import UniswapV3ExecutionModel
+from tradeexecutor.ethereum.uniswap_v3.uniswap_v3_execution import UniswapV3Execution
 from tradeexecutor.ethereum.uniswap_v3.uniswap_v3_live_pricing import UniswapV3LivePricing
-from tradeexecutor.ethereum.uniswap_v3.uniswap_v3_routing import UniswapV3SimpleRoutingModel
+from tradeexecutor.ethereum.uniswap_v3.uniswap_v3_routing import UniswapV3Routing
 from tradeexecutor.ethereum.uniswap_v3.uniswap_v3_valuation import UniswapV3PoolRevaluator
 
-from tradeexecutor.ethereum.one_delta.one_delta_execution import OneDeltaExecutionModel
+from tradeexecutor.ethereum.one_delta.one_delta_execution import OneDeltaExecution
 from tradeexecutor.ethereum.one_delta.one_delta_live_pricing import OneDeltaLivePricing
-from tradeexecutor.ethereum.one_delta.one_delta_routing import OneDeltaSimpleRoutingModel
+from tradeexecutor.ethereum.one_delta.one_delta_routing import OneDeltaRouting
 from tradeexecutor.ethereum.one_delta.one_delta_valuation import OneDeltaPoolRevaluator
 
 
@@ -43,7 +43,7 @@ def set_up_simulated_execution_loop_uniswap_v2(
         web3: Web3,
         decide_trades: DecideTradesProtocol,
         universe: StrategyExecutionUniverse,
-        routing_model: UniswapV2SimpleRoutingModel,
+        routing_model: UniswapV2Routing,
         state: State,
         wallet_account: LocalAccount,
 ) -> ExecutionLoop:
@@ -69,7 +69,7 @@ def set_up_simulated_execution_loop_uniswap_v2(
         raise TypeError("Only keyword arguments accepted")
 
     assert isinstance(wallet_account, LocalAccount)
-    assert isinstance(routing_model, UniswapV2SimpleRoutingModel)
+    assert isinstance(routing_model, UniswapV2Routing)
 
     execution_context = ExecutionContext(
         mode=ExecutionMode.simulated_trading,
@@ -90,7 +90,7 @@ def set_up_simulated_execution_loop_uniswap_v2(
 
     tx_builder = HotWalletTransactionBuilder(web3, hot_wallet)
 
-    execution_model = UniswapV2ExecutionModel(
+    execution_model = UniswapV2Execution(
         tx_builder,
         max_slippage=1.00,
         confirmation_block_count=0,  # Must be zero for the test chain
@@ -149,7 +149,7 @@ def set_up_simulated_execution_loop_uniswap_v3(
         web3: Web3,
         decide_trades: DecideTradesProtocol,
         universe: StrategyExecutionUniverse,
-        routing_model: UniswapV3SimpleRoutingModel,
+        routing_model: UniswapV3Routing,
         state: State,
         wallet_account: LocalAccount,
 ) -> ExecutionLoop:
@@ -172,7 +172,7 @@ def set_up_simulated_execution_loop_uniswap_v3(
         raise TypeError("Only keyword arguments accepted")
 
     assert isinstance(wallet_account, LocalAccount)
-    assert isinstance(routing_model, UniswapV3SimpleRoutingModel)
+    assert isinstance(routing_model, UniswapV3Routing)
 
     execution_context = ExecutionContext(
         mode=ExecutionMode.simulated_trading,
@@ -192,7 +192,7 @@ def set_up_simulated_execution_loop_uniswap_v3(
 
     tx_builder = HotWalletTransactionBuilder(web3, hot_wallet)
 
-    execution_model = UniswapV3ExecutionModel(
+    execution_model = UniswapV3Execution(
         tx_builder,
         max_slippage=1.00,
         confirmation_block_count=0,  # Must be zero for the test chain
@@ -251,7 +251,7 @@ def set_up_simulated_execution_loop_one_delta(
     web3: Web3,
     decide_trades: DecideTradesProtocol,
     universe: StrategyExecutionUniverse,
-    routing_model: OneDeltaSimpleRoutingModel,
+    routing_model: OneDeltaRouting,
     state: State,
     wallet_account = None,
 ) -> ExecutionLoop:
@@ -269,7 +269,7 @@ def set_up_simulated_execution_loop_one_delta(
         block by block.
     """
     # assert isinstance(wallet_account, LocalAccount)
-    assert isinstance(routing_model, OneDeltaSimpleRoutingModel)
+    assert isinstance(routing_model, OneDeltaRouting)
 
     execution_context = ExecutionContext(
         mode=ExecutionMode.simulated_trading,
@@ -292,7 +292,7 @@ def set_up_simulated_execution_loop_one_delta(
 
     tx_builder = HotWalletTransactionBuilder(web3, hot_wallet)
 
-    execution_model = OneDeltaExecutionModel(
+    execution_model = OneDeltaExecution(
         tx_builder,
         max_slippage=1.00,
         mainnet_fork=True,

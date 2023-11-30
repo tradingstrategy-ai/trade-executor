@@ -22,7 +22,7 @@ from typing import Dict
 
 import pandas as pd
 
-from tradeexecutor.ethereum.uniswap_v2.uniswap_v2_routing import UniswapV2SimpleRoutingModel
+from tradeexecutor.ethereum.uniswap_v2.uniswap_v2_routing import UniswapV2Routing
 from tradeexecutor.strategy.execution_context import ExecutionMode, ExecutionContext
 from tradingstrategy.client import Client
 from tradingstrategy.candle import GroupedCandleUniverse
@@ -391,7 +391,7 @@ def strategy_factory(
         pricing_model_factory=pricing_model_factory,
         cash_buffer=cash_buffer,
         execution_context=execution_context,
-        routing_model=UniswapV2SimpleRoutingModel(
+        routing_model=UniswapV2Routing(
             factory_router_map,
             allowed_intermediary_pairs,
             reserve_token_address=reserve_token_address,

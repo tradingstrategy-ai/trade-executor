@@ -10,13 +10,13 @@ from eth_defi.uniswap_v3.deployment import UniswapV3Deployment
 
 
 from tradeexecutor.ethereum.tx import TransactionBuilder
-from tradeexecutor.ethereum.execution import EthereumExecutionModel
+from tradeexecutor.ethereum.execution import EthereumExecution
 
 
 logger = logging.getLogger(__name__)
 
 
-class OneDeltaExecutionModel(EthereumExecutionModel):
+class OneDeltaExecution(EthereumExecution):
     """Run order execution on 1delta."""
 
     def __init__(

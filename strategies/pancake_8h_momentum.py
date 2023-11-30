@@ -13,7 +13,7 @@ from typing import Dict
 import pandas as pd
 
 from tradeexecutor.ethereum.uniswap_v2.uniswap_v2_execution_v0 import UniswapV2ExecutionModelVersion0
-from tradeexecutor.ethereum.uniswap_v2.uniswap_v2_routing import UniswapV2SimpleRoutingModel
+from tradeexecutor.ethereum.uniswap_v2.uniswap_v2_routing import UniswapV2Routing
 from tradeexecutor.state.state import State
 
 from tradeexecutor.strategy.sync_model import SyncMethodV0
@@ -376,7 +376,7 @@ def strategy_factory(
 
     universe_model = OurUniverseModel(client, timed_task_context_manager)
 
-    routing_model = UniswapV2SimpleRoutingModel(
+    routing_model = UniswapV2Routing(
         factory_router_map,
         allowed_intermediary_pairs,
         reserve_token_address,

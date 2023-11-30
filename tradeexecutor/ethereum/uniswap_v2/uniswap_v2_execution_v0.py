@@ -21,7 +21,7 @@ from eth_defi.trade import TradeSuccess
 from eth_defi.uniswap_v2.deployment import mock_partial_deployment_for_analysis
 from eth_defi.uniswap_v2.analysis import analyse_trade_by_receipt
 from tradeexecutor.ethereum.tx import HotWalletTransactionBuilder
-from tradeexecutor.ethereum.uniswap_v2.uniswap_v2_routing import UniswapV2RoutingState, UniswapV2SimpleRoutingModel
+from tradeexecutor.ethereum.uniswap_v2.uniswap_v2_routing import UniswapV2RoutingState, UniswapV2Routing
 from tradeexecutor.ethereum.execution import broadcast, wait_trades_to_complete, update_confirmation_status
 from tradeexecutor.ethereum.swap import report_failure, get_swap_transactions
 from tradeexecutor.state.freeze import freeze_position_on_failed_trade
@@ -140,7 +140,7 @@ class UniswapV2ExecutionModelVersion0(ExecutionModel):
         """
         assert isinstance(ts, datetime.datetime)
         assert isinstance(state, State), f"Received {state.__class__}"
-        assert isinstance(routing_model, UniswapV2SimpleRoutingModel), f"Received {routing_state.__class__}"
+        assert isinstance(routing_model, UniswapV2Routing), f"Received {routing_state.__class__}"
         assert isinstance(routing_state, UniswapV2RoutingState), f"Received {routing_state.__class__}"
 
         fees = estimate_gas_fees(self.web3)
@@ -153,7 +153,7 @@ class UniswapV2ExecutionModelVersion0(ExecutionModel):
         reserve_asset, rate = state.portfolio.get_default_reserve_asset()
 
         # We know only about one exchange
-        routing_model = UniswapV2SimpleRoutingModel(
+        routing_model = UniswapV2Routing(
             factory_router_map={
                 self.uniswap.factory.address: (self.uniswap.router.address, self.uniswap.init_code_hash),
             },

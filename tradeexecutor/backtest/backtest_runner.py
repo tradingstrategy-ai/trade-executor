@@ -11,8 +11,8 @@ import logging
 
 import pandas as pd
 
-from tradeexecutor.backtest.backtest_execution import BacktestExecutionModel
-from tradeexecutor.backtest.backtest_pricing import BacktestSimplePricingModel
+from tradeexecutor.backtest.backtest_execution import BacktestExecution
+from tradeexecutor.backtest.backtest_pricing import BacktestPricing
 from tradeexecutor.backtest.backtest_routing import BacktestRoutingModel
 from tradeexecutor.backtest.backtest_sync import BacktestSyncModel
 from tradeexecutor.backtest.legacy_backtest_sync import BacktestSyncer
@@ -70,9 +70,9 @@ class BacktestSetup:
     universe: Optional[TradingStrategyUniverse]
     wallet: SimulatedWallet
     state: State
-    pricing_model: Optional[BacktestSimplePricingModel]
+    pricing_model: Optional[BacktestPricing]
     routing_model: Optional[BacktestRoutingModel]
-    execution_model: BacktestExecutionModel
+    execution_model: BacktestExecution
     sync_model: BacktestSyncModel
 
     trading_strategy_engine_version: str
@@ -99,7 +99,7 @@ class BacktestSetup:
     def backtest_static_universe_strategy_factory(
             self,
             *ignore,
-            execution_model: BacktestExecutionModel,
+            execution_model: BacktestExecution,
             execution_context: ExecutionContext,
             sync_model: BacktestSyncModel,
             pricing_model_factory: Callable,
@@ -200,8 +200,8 @@ def setup_backtest_for_universe(
     assert state.portfolio.get_cash() == initial_deposit
 
     # Set up execution and pricing
-    pricing_model = BacktestSimplePricingModel(universe.data_universe.candles, routing_model, allow_missing_fees=allow_missing_fees)
-    execution_model = BacktestExecutionModel(wallet, max_slippage)
+    pricing_model = BacktestPricing(universe.data_universe.candles, routing_model, allow_missing_fees=allow_missing_fees)
+    execution_model = BacktestExecution(wallet, max_slippage)
 
     # Load strategy Python file
     strategy_mod_exports: dict = runpy.run_path(strategy_path)
@@ -314,7 +314,7 @@ def setup_backtest(
     # deposit_syncer = BacktestSyncer(wallet, Decimal(initial_deposit))
     sync_model = BacktestSyncModel(wallet, Decimal(initial_deposit))
 
-    execution_model = BacktestExecutionModel(wallet, max_slippage)
+    execution_model = BacktestExecution(wallet, max_slippage)
 
     if strategy_module.is_version_greater_or_equal_than(0, 2, 0):
         # Backtest variables were injected later in the development
@@ -387,7 +387,7 @@ def run_backtest(
             # Use pricing model given inline
             return setup.pricing_model
 
-        return BacktestSimplePricingModel(
+        return BacktestPricing(
             universe,
             routing_model,
             data_delay_tolerance=guess_data_delay_tolerance(universe),
@@ -603,7 +603,7 @@ def run_backtest_inline(
 
     stop_loss_data_available = universe.has_stop_loss_data() if universe else False
 
-    execution_model = BacktestExecutionModel(
+    execution_model = BacktestExecution(
         wallet,
         max_slippage,
         stop_loss_data_available=stop_loss_data_available,
@@ -618,7 +618,7 @@ def run_backtest_inline(
         if data_delay_tolerance is None:
             data_delay_tolerance = guess_data_delay_tolerance(universe)
 
-        pricing_model = BacktestSimplePricingModel(
+        pricing_model = BacktestPricing(
             universe.data_universe.candles,
             routing_model,
             data_delay_tolerance=data_delay_tolerance,

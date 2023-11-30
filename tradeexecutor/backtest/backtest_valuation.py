@@ -1,7 +1,7 @@
 import datetime
 from typing import Tuple
 
-from tradeexecutor.backtest.backtest_pricing import BacktestSimplePricingModel
+from tradeexecutor.backtest.backtest_pricing import BacktestPricing
 from tradeexecutor.state.position import TradingPosition
 from tradeexecutor.state.types import USDollarAmount
 from tradeexecutor.state.identifier import TradingPairKind
@@ -14,7 +14,7 @@ class BacktestValuationModel(ValuationModel):
     Each asset is valued at its market sell price estimation.
     """
 
-    def __init__(self, pricing_model: BacktestSimplePricingModel):
+    def __init__(self, pricing_model: BacktestPricing):
         assert pricing_model, "pricing_model missing"
         self.pricing_model = pricing_model
 

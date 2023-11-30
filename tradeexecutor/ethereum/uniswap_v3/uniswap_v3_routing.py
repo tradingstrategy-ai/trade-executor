@@ -165,7 +165,7 @@ class UniswapV3RoutingState(EthereumRoutingState):
         )
 
 
-class UniswapV3SimpleRoutingModel(EthereumRoutingModel):
+class UniswapV3Routing(EthereumRoutingModel):
     """A simple router that does not optimise the trade execution cost. Designed for uniswap-v2 forks.
 
     - Able to trade on multiple exchanges

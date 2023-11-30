@@ -13,7 +13,7 @@ from tradeexecutor.strategy.pricing_model import PricingModel
 from tradeexecutor.strategy.trade_pricing import TradePricing
 
 
-class GenericPricingModel(PricingModel):
+class GenericPricing(PricingModel):
     """Get a price for the asset from multiple protocols.
 
     - Each protocol has its own pricing model instance,
