@@ -52,12 +52,6 @@ def exchange_universe(web3, uniswap_v3_deployment: UniswapV3Deployment) -> Excha
 
 
 @pytest.fixture()
-def pair_universe(web3, exchange_universe: ExchangeUniverse, weth_usdc_spot_pair) -> PandasPairUniverse:
-    exchange = next(iter(exchange_universe.exchanges.values()))
-    return create_pair_universe(web3, exchange, [weth_usdc_spot_pair])
-
-
-@pytest.fixture()
 def strategy_universe(chain_id, exchange_universe, pair_universe, asset_usdc, persistent_test_client) -> TradingStrategyUniverse:
     """Universe that also contains data about our reserve assets."""
 

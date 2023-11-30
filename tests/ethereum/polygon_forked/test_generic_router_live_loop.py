@@ -1,4 +1,4 @@
-"""Test live short-only strategy on 1delta using forked Polygon"""
+"""Test live spot _ short-only strategy using Uniwwap v2 and 1delta using forked Polygon"""
 import datetime
 import os
 import shutil
@@ -68,6 +68,7 @@ def pair_universe(web3, exchange_universe: ExchangeUniverse, weth_usdc_spot_pair
 
 @pytest.fixture()
 def trading_strategy_universe(chain_id, exchange_universe, pair_universe, asset_usdc, persistent_test_client) -> TradingStrategyUniverse:
+    """Universe that also contains data about our reserve assets."""
 
     pairs = [
         (ChainId.polygon, "uniswap-v3", "WETH", "USDC", 0.0005),
@@ -93,7 +94,7 @@ def trading_strategy_universe(chain_id, exchange_universe, pair_universe, asset_
     return TradingStrategyUniverse.create_single_pair_universe(dataset)
 
 
-def test_one_delta_live_strategy_short_open_and_close(
+def test_generic_router_live_spot_short_loop(
     logger,
     web3: Web3,
     hot_wallet: HotWallet,
