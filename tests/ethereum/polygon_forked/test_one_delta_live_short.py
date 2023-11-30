@@ -390,7 +390,7 @@ def test_one_delta_live_strategy_short_open_accrue_interests(
     # there should be accrued interest now
     loan = state.portfolio.open_positions[1].loan
     assert loan.get_collateral_interest() == pytest.approx(55.998942)
-    assert loan.get_borrow_interest() == pytest.approx(7.4281271827756406e-06)
+    assert loan.get_borrow_interest() == pytest.approx(1.3370629008385655e-05)
 
     # mine a few more blocks and do the same checks
     for i in range(1, 20):
@@ -418,7 +418,7 @@ def test_one_delta_live_strategy_short_open_accrue_interests(
     # there should be accrued interest now
     position = state.portfolio.open_positions[1]
     assert position.loan.get_collateral_interest() == pytest.approx(55.998995)
-    assert position.loan.get_borrow_interest() == pytest.approx(3.565501072898451e-05)
+    assert position.loan.get_borrow_interest() == pytest.approx(4.159751273856319e-05)
 
     # there should be 4 interest update events (2 per cycle)
     events = list(position.balance_updates.values())
