@@ -11,7 +11,7 @@ from typing import Optional, Dict
 from eth_defi.provider.broken_provider import get_block_tip_latency
 from web3 import Web3
 
-from tradeexecutor.ethereum.uniswap_v3.uniswap_v3_execution import UniswapV3ExecutionModel
+from tradeexecutor.ethereum.uniswap_v3.uniswap_v3_execution import UniswapV3Execution
 from tradeexecutor.ethereum.uniswap_v3.uniswap_v3_routing import UniswapV3Routing, route_tokens, get_uniswap_for_pair
 from tradeexecutor.ethereum.eth_pricing_model import EthereumPricingModel, LP_FEE_VALIDATION_EPSILON
 from tradeexecutor.state.identifier import TradingPairIdentifier
@@ -318,7 +318,7 @@ def uniswap_v3_live_pricing_factory(
         ) -> UniswapV3LivePricing:
 
     assert isinstance(universe, TradingStrategyUniverse)
-    assert isinstance(execution_model, (UniswapV3ExecutionModel)), f"Execution model not compatible with this execution model. Received {execution_model}"
+    assert isinstance(execution_model, (UniswapV3Execution)), f"Execution model not compatible with this execution model. Received {execution_model}"
     assert isinstance(routing_model, UniswapV3Routing), f"This pricing method only works with Uniswap routing model, we received {routing_model}"
     web3 = execution_model.web3
     return UniswapV3LivePricing(

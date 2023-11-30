@@ -17,7 +17,7 @@ from tradingstrategy.timebucket import TimeBucket
 from tradingstrategy.candle import GroupedCandleUniverse
 from tradingstrategy.universe import Universe
 
-from tradeexecutor.backtest.backtest_pricing import BacktestSimplePricingModel
+from tradeexecutor.backtest.backtest_pricing import BacktestPricing
 from tradeexecutor.backtest.backtest_routing import BacktestRoutingModel
 from tradeexecutor.backtest.backtest_runner import run_backtest_inline
 from tradeexecutor.backtest.simulated_wallet import SimulatedWallet

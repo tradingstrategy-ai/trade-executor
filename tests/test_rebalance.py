@@ -13,8 +13,8 @@ from decimal import Decimal
 import pytest
 from hexbytes import HexBytes
 
-from tradeexecutor.backtest.backtest_execution import BacktestExecutionModel
-from tradeexecutor.backtest.backtest_pricing import BacktestSimplePricingModel
+from tradeexecutor.backtest.backtest_execution import BacktestExecution
+from tradeexecutor.backtest.backtest_pricing import BacktestPricing
 from tradeexecutor.backtest.backtest_routing import BacktestRoutingModel, BacktestRoutingState
 from tradeexecutor.backtest.simulated_wallet import SimulatedWallet
 from tradeexecutor.state.state import State, TradeType
@@ -195,8 +195,8 @@ def routing_model(universe) -> BacktestRoutingModel:
 
 
 @pytest.fixture()
-def pricing_model(routing_model, universe) -> BacktestSimplePricingModel:
-    return BacktestSimplePricingModel(universe.data_universe.candles, routing_model)
+def pricing_model(routing_model, universe) -> BacktestPricing:
+    return BacktestPricing(universe.data_universe.candles, routing_model)
 
 
 @pytest.fixture
@@ -266,9 +266,9 @@ def wallet(usdc, weth) -> SimulatedWallet:
 
 
 @pytest.fixture()
-def execution_model(wallet) -> BacktestExecutionModel:
+def execution_model(wallet) -> BacktestExecution:
     """Simulate trades using backtest execution model."""
-    execution_model = BacktestExecutionModel(wallet)
+    execution_model = BacktestExecution(wallet)
     return execution_model
 
 
@@ -794,7 +794,7 @@ def test_alpha_model_increase_short(
     weth_usdc: TradingPairIdentifier,
     aave_usdc: TradingPairIdentifier,
     start_ts,
-    execution_model: BacktestExecutionModel,
+    execution_model: BacktestExecution,
     routing_model: BacktestRoutingModel,
     wallet: SimulatedWallet,
 ):
@@ -958,7 +958,7 @@ def test_alpha_model_decrease_short(
     weth_usdc: TradingPairIdentifier,
     aave_usdc: TradingPairIdentifier,
     start_ts,
-    execution_model: BacktestExecutionModel,
+    execution_model: BacktestExecution,
     routing_model: BacktestRoutingModel,
     wallet: SimulatedWallet,
 ):

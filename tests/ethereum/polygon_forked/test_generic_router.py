@@ -7,7 +7,7 @@ from _decimal import Decimal
 import pandas as pd
 import pytest as pytest
 
-from tradeexecutor.ethereum.execution import EthereumExecutionModel
+from tradeexecutor.ethereum.execution import EthereumExecution
 from tradeexecutor.ethereum.tx import HotWalletTransactionBuilder
 from tradingstrategy.chain import ChainId
 from web3 import Web3
@@ -145,9 +145,9 @@ def execution_model(
         hot_wallet: HotWallet,
         exchange_universe: ExchangeUniverse,
         weth_usdc_spot_pair,
-) -> EthereumExecutionModel:
+) -> EthereumExecution:
     """Set EthereumExecutionModel in mainnet fork testing mode."""
-    execution_model = EthereumExecutionModel(
+    execution_model = EthereumExecution(
         HotWalletTransactionBuilder(web3, hot_wallet),
         mainnet_fork=True,
         confirmation_block_count=0,
@@ -165,7 +165,7 @@ def test_generic_routing_open_position_across_markets(
     wmatic_usdc_spot_pair: TradingPairIdentifier,
     weth_usdc_spot_pair: TradingPairIdentifier,
     weth_usdc_shorting_pair: TradingPairIdentifier,
-    execution_model: EthereumExecutionModel,
+    execution_model: EthereumExecution,
 ):
     """Open Uniswap v2, v3 and 1delta position in the same state."""
 

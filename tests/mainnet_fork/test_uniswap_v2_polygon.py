@@ -34,7 +34,7 @@ from tradeexecutor.ethereum.uniswap_v2.uniswap_v2_routing import (
     UniswapV2RoutingState,
     UniswapV2Routing,
 )
-from tradeexecutor.ethereum.uniswap_v2.uniswap_v2_execution import UniswapV2ExecutionModel
+from tradeexecutor.ethereum.uniswap_v2.uniswap_v2_execution import UniswapV2Execution
 from tradeexecutor.strategy.pandas_trader.position_manager import PositionManager
 from tradeexecutor.state.state import State
 from tradeexecutor.state.identifier import TradingPairIdentifier, AssetIdentifier
@@ -274,13 +274,13 @@ def pricing_model(web3, pair_universe, routing_model) -> UniswapV2LivePricing:
 
 
 @pytest.fixture()
-def execution_model(web3, hot_wallet) -> UniswapV2ExecutionModel:
+def execution_model(web3, hot_wallet) -> UniswapV2Execution:
     """Create an execution model that waits zero blocks for confirmation.
 
     Because we are using Anvil mainnet fork, there are not going to be any new blocks.
     """
     tx_builder = HotWalletTransactionBuilder(web3, hot_wallet)
-    return UniswapV2ExecutionModel(
+    return UniswapV2Execution(
         tx_builder,
         confirmation_timeout=datetime.timedelta(seconds=10.00),  # Anvil has total 10 seconds to mine all txs in a batch
         confirmation_block_count=0,
@@ -317,7 +317,7 @@ def test_simple_routing_three_leg_live(
     strategy_universe: TradingStrategyUniverse,
     state: State,
     sync_model: SyncModel,
-    execution_model: UniswapV2ExecutionModel,
+    execution_model: UniswapV2Execution,
     pricing_model: UniswapV2LivePricing,
     eth_matic_trading_pair: TradingPairIdentifier,
     matic_usdc_trading_pair: TradingPairIdentifier,

@@ -47,7 +47,7 @@ logger = logging.getLogger(__name__)
 
 
 # TODO check with tradeexuctor.strategy.execution ExecutionModel
-class EthereumExecutionModel(ExecutionModel):
+class EthereumExecution(ExecutionModel):
     """Run order execution on a single Uniswap v2 style exchanges."""
 
     def __init__(self,

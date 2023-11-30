@@ -17,7 +17,7 @@ from eth_defi.one_delta.deployment import OneDeltaDeployment
 
 from tradeexecutor.ethereum.tx import HotWalletTransactionBuilder, TransactionBuilder
 from tradeexecutor.ethereum.one_delta.one_delta_routing import OneDeltaRouting, OneDeltaRoutingState
-from tradeexecutor.ethereum.one_delta.one_delta_execution import OneDeltaExecutionModel
+from tradeexecutor.ethereum.one_delta.one_delta_execution import OneDeltaExecution
 from tradeexecutor.state.freeze import freeze_position_on_failed_trade
 from tradeexecutor.state.state import State, TradeType
 from tradeexecutor.state.position import TradingPosition
@@ -42,7 +42,7 @@ class OneDeltaTestTrader(EthereumTrader):
         self.one_delta = one_delta
         self.aave = aave
         self.uniswap = uniswap
-        self.execution_model = OneDeltaExecutionModel(tx_builder)
+        self.execution_model = OneDeltaExecution(tx_builder)
         # self.price_helper = UniswapV3PriceHelper(uniswap)
         self.tx_builder = tx_builder
 

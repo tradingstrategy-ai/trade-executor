@@ -24,7 +24,7 @@ from web3.contract import Contract
 from eth_defi.token import create_token
 from eth_defi.uniswap_v2.deployment import UniswapV2Deployment, deploy_trading_pair, deploy_uniswap_v2_like
 
-from tradeexecutor.ethereum.uniswap_v2.uniswap_v2_execution import UniswapV2ExecutionModel
+from tradeexecutor.ethereum.uniswap_v2.uniswap_v2_execution import UniswapV2Execution
 from tradeexecutor.ethereum.uniswap_v2.uniswap_v2_routing import UniswapV2Routing
 from tradeexecutor.state.state import State, UncleanState
 from tradeexecutor.state.trade import TradeExecution
@@ -536,7 +536,7 @@ def test_broadcast_failed_and_repair_state(
 
     # Make transaction confirmation step to skip,
     execution_model = loop.execution_model
-    assert isinstance(execution_model, UniswapV2ExecutionModel)
+    assert isinstance(execution_model, UniswapV2Execution)
 
     # Set confirmation timeout to negative
     # to signal we are testing broadcast problems

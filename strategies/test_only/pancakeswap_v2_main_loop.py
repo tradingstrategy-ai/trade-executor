@@ -11,7 +11,7 @@ from typing import Dict
 
 import pandas as pd
 
-from tradeexecutor.ethereum.uniswap_v2.uniswap_v2_execution import UniswapV2ExecutionModel
+from tradeexecutor.ethereum.uniswap_v2.uniswap_v2_execution import UniswapV2Execution
 from tradeexecutor.ethereum.uniswap_v2.uniswap_v2_execution_v0 import UniswapV2ExecutionModelVersion0
 from tradeexecutor.ethereum.uniswap_v2.uniswap_v2_routing import UniswapV2Routing
 from tradeexecutor.state.state import State
@@ -354,7 +354,7 @@ def strategy_factory(
         # https://www.python.org/dev/peps/pep-3102/
         raise TypeError("Only keyword arguments accepted")
 
-    assert isinstance(execution_model, (UniswapV2ExecutionModel, UniswapV2ExecutionModelVersion0)), f"This strategy is compatible only with UniswapV2ExecutionModel, got {execution_model}"
+    assert isinstance(execution_model, (UniswapV2Execution, UniswapV2ExecutionModelVersion0)), f"This strategy is compatible only with UniswapV2ExecutionModel, got {execution_model}"
 
     assert execution_model.chain_id in (56, 1337), f"This strategy is hardcoded to ganache-cli test chain, got chain {execution_model.chain_id}"
 

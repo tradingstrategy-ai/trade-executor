@@ -13,7 +13,7 @@ from web3 import Web3
 from eth_defi.uniswap_v2.deployment import UniswapV2Deployment
 from eth_defi.uniswap_v2.fees import estimate_buy_received_amount_raw, estimate_sell_received_amount_raw
 
-from tradeexecutor.ethereum.uniswap_v2.uniswap_v2_execution import UniswapV2ExecutionModel
+from tradeexecutor.ethereum.uniswap_v2.uniswap_v2_execution import UniswapV2Execution
 from tradeexecutor.ethereum.uniswap_v2.uniswap_v2_execution_v0 import UniswapV2ExecutionModelVersion0
 from tradeexecutor.ethereum.uniswap_v2.uniswap_v2_routing import UniswapV2Routing, route_tokens, get_uniswap_for_pair
 from tradeexecutor.ethereum.eth_pricing_model import EthereumPricingModel, LP_FEE_VALIDATION_EPSILON
@@ -255,7 +255,7 @@ def uniswap_v2_live_pricing_factory(
         routing_model: UniswapV2Routing) -> UniswapV2LivePricing:
 
     assert isinstance(universe, TradingStrategyUniverse)
-    assert isinstance(execution_model, (UniswapV2ExecutionModelVersion0, UniswapV2ExecutionModel, DummyExecutionModel)), f"Execution model not compatible with this execution model. Received {execution_model}"
+    assert isinstance(execution_model, (UniswapV2ExecutionModelVersion0, UniswapV2Execution, DummyExecutionModel)), f"Execution model not compatible with this execution model. Received {execution_model}"
     assert isinstance(routing_model, UniswapV2Routing), f"This pricing method only works with Uniswap routing model, we received {routing_model}"
 
     web3 = execution_model.web3

@@ -37,7 +37,7 @@ from tradeexecutor.ethereum.uniswap_v3.uniswap_v3_routing import (
     UniswapV3Routing,
     OutOfBalance,
 )
-from tradeexecutor.ethereum.uniswap_v3.uniswap_v3_execution import UniswapV3ExecutionModel
+from tradeexecutor.ethereum.uniswap_v3.uniswap_v3_execution import UniswapV3Execution
 from tradeexecutor.ethereum.wallet import sync_reserves
 from tradeexecutor.testing.dummy_wallet import apply_sync_events
 from tradeexecutor.state.portfolio import Portfolio
@@ -205,9 +205,9 @@ def routing_model(usdc_asset):
 
 
 @pytest.fixture()
-def execution_model(web3, hot_wallet) -> UniswapV3ExecutionModel:
+def execution_model(web3, hot_wallet) -> UniswapV3Execution:
     tx_builder = HotWalletTransactionBuilder(web3, hot_wallet)
-    return UniswapV3ExecutionModel(tx_builder)
+    return UniswapV3Execution(tx_builder)
 
 
 @pytest.fixture
@@ -688,7 +688,7 @@ def test_stateful_routing_three_legs(
     eth_matic_trading_pair,
     matic_usdc_trading_pair,
     state: State,
-    execution_model: UniswapV3ExecutionModel,
+    execution_model: UniswapV3Execution,
 ):
     """Perform 3-leg buy/sell using RoutingModel.execute_trades().
 
@@ -772,7 +772,7 @@ def test_stateful_routing_two_legs(
     routing_model,
     eth_usdc_trading_pair,
     state: State,
-    execution_model: UniswapV3ExecutionModel,
+    execution_model: UniswapV3Execution,
 ):
     """Perform 2-leg buy/sell using RoutingModel.execute_trades().
 
@@ -851,7 +851,7 @@ def test_stateful_routing_two_leg_multi_node_broadcast(
     routing_model,
     eth_usdc_trading_pair,
     state: State,
-    execution_model: UniswapV3ExecutionModel,
+    execution_model: UniswapV3Execution,
     anvil_polygon_chain_fork: str,
 ):
     """Broadcast txs using multi node logic.

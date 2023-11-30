@@ -26,7 +26,7 @@ from eth_defi.token import create_token
 from eth_defi.uniswap_v3.deployment import UniswapV3Deployment, deploy_pool, deploy_uniswap_v3, add_liquidity
 from eth_defi.uniswap_v3.utils import get_default_tick_range
 
-from tradeexecutor.ethereum.uniswap_v3.uniswap_v3_execution import UniswapV3ExecutionModel
+from tradeexecutor.ethereum.uniswap_v3.uniswap_v3_execution import UniswapV3Execution
 from tradeexecutor.ethereum.uniswap_v3.uniswap_v3_routing import UniswapV3Routing
 from tradeexecutor.ethereum.uniswap_v3.uniswap_v3_live_pricing import UniswapV3LivePricing
 from tradeexecutor.state.state import State, UncleanState
@@ -572,7 +572,7 @@ def test_broadcast_failed_and_repair_state(
 
     # Make transaction confirmation step to skip,
     execution_model = loop.execution_model
-    assert isinstance(execution_model, UniswapV3ExecutionModel)
+    assert isinstance(execution_model, UniswapV3Execution)
 
     # Set confirmation timeout to negative
     # to signal we are testing broadcast problems
@@ -643,7 +643,7 @@ def test_refresh_visualisations(
 
     # Make transaction confirmation step to skip,
     execution_model = loop.execution_model
-    assert isinstance(execution_model, UniswapV3ExecutionModel)
+    assert isinstance(execution_model, UniswapV3Execution)
 
     # Set confirmation timeout to negative
     # to signal we are testing broadcast problems

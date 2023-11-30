@@ -15,8 +15,8 @@ from tradeexecutor.testing.backtest_trader import BacktestTrader
 from tradingstrategy.chain import ChainId
 from tradingstrategy.timebucket import TimeBucket
 
-from tradeexecutor.backtest.backtest_execution import BacktestExecutionModel
-from tradeexecutor.backtest.backtest_pricing import BacktestSimplePricingModel
+from tradeexecutor.backtest.backtest_execution import BacktestExecution
+from tradeexecutor.backtest.backtest_pricing import BacktestPricing
 from tradeexecutor.backtest.backtest_routing import BacktestRoutingModel
 from tradeexecutor.backtest.legacy_backtest_sync import BacktestSyncer
 from tradeexecutor.backtest.backtest_valuation import BacktestValuationModel
@@ -116,8 +116,8 @@ def routing_model() -> BacktestRoutingModel:
 
 
 @pytest.fixture(scope="module")
-def pricing_model(routing_model, strategy_universe) -> BacktestSimplePricingModel:
-    return BacktestSimplePricingModel(strategy_universe, routing_model)
+def pricing_model(routing_model, strategy_universe) -> BacktestPricing:
+    return BacktestPricing(strategy_universe, routing_model)
 
 
 @pytest.fixture(scope="module")
@@ -154,13 +154,13 @@ def test_get_historical_price(
         state: State,
         wallet: SimulatedWallet,
         strategy_universe,
-        pricing_model: BacktestSimplePricingModel,
+        pricing_model: BacktestPricing,
         routing_model: BacktestRoutingModel,
     ):
     """Retrieve historical buy and sell price."""
 
     ts = datetime.datetime(2021, 6, 1)
-    execution_model = BacktestExecutionModel(wallet, max_slippage=0.01)
+    execution_model = BacktestExecution(wallet, max_slippage=0.01)
     trader = BacktestTrader(ts, state, strategy_universe, execution_model, routing_model, pricing_model)
     wbnb_busd = translate_trading_pair(strategy_universe.data_universe.pairs.get_single())
 
@@ -187,7 +187,7 @@ def test_create_and_execute_backtest_trade(
     wallet: SimulatedWallet,
         strategy_universe,
     routing_model: BacktestRoutingModel,
-    pricing_model: BacktestSimplePricingModel,
+    pricing_model: BacktestPricing,
     wbnb: AssetIdentifier,
     busd: AssetIdentifier,
     ):
@@ -196,7 +196,7 @@ def test_create_and_execute_backtest_trade(
     assert wallet.get_balance(busd.address) == 10_000
 
     ts = datetime.datetime(2021, 6, 1)
-    execution_model = BacktestExecutionModel(wallet, max_slippage=0.01)
+    execution_model = BacktestExecution(wallet, max_slippage=0.01)
     trader = BacktestTrader(ts, state, strategy_universe, execution_model, routing_model, pricing_model)
     wbnb_busd = translate_trading_pair(strategy_universe.data_universe.pairs.get_single())
 
@@ -222,14 +222,14 @@ def test_buy_sell_backtest(
     wallet: SimulatedWallet,
         strategy_universe,
     routing_model: BacktestRoutingModel,
-    pricing_model: BacktestSimplePricingModel,
+    pricing_model: BacktestPricing,
     wbnb: AssetIdentifier,
     busd: AssetIdentifier,
     ):
     """Buying and sell using backtest execution."""
 
     ts = datetime.datetime(2021, 6, 1)
-    execution_model = BacktestExecutionModel(wallet, max_slippage=0.01)
+    execution_model = BacktestExecution(wallet, max_slippage=0.01)
     trader = BacktestTrader(ts, state, strategy_universe, execution_model, routing_model, pricing_model)
     wbnb_busd = translate_trading_pair(strategy_universe.data_universe.pairs.get_single())
     wbnb_busd.fee = 0.0025
@@ -262,7 +262,7 @@ def test_buy_with_fee(
     wallet: SimulatedWallet,
         strategy_universe,
     routing_model: BacktestRoutingModel,
-    pricing_model: BacktestSimplePricingModel,
+    pricing_model: BacktestPricing,
     wbnb: AssetIdentifier,
     busd: AssetIdentifier,
     ):
@@ -273,7 +273,7 @@ def test_buy_with_fee(
     """
 
     ts = datetime.datetime(2021, 6, 1)
-    execution_model = BacktestExecutionModel(wallet, max_slippage=0.01)
+    execution_model = BacktestExecution(wallet, max_slippage=0.01)
     trader = BacktestTrader(ts, state, strategy_universe, execution_model, routing_model, pricing_model)
     wbnb_busd = translate_trading_pair(strategy_universe.data_universe.pairs.get_single())
 
@@ -302,14 +302,14 @@ def test_buy_sell_backtest_with_fee(
     wallet: SimulatedWallet,
         strategy_universe,
     routing_model: BacktestRoutingModel,
-    pricing_model: BacktestSimplePricingModel,
+    pricing_model: BacktestPricing,
     wbnb: AssetIdentifier,
     busd: AssetIdentifier,
     ):
     """Buying and sell using backtest execution."""
 
     ts = datetime.datetime(2021, 6, 1)
-    execution_model = BacktestExecutionModel(wallet, max_slippage=0.01)
+    execution_model = BacktestExecution(wallet, max_slippage=0.01)
     trader = BacktestTrader(ts, state, strategy_universe, execution_model, routing_model, pricing_model)
     wbnb_busd = translate_trading_pair(strategy_universe.data_universe.pairs.get_single())
     wbnb_busd.fee = 0.0025

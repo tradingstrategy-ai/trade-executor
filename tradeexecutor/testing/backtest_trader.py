@@ -4,8 +4,8 @@ import datetime
 from decimal import Decimal
 from typing import Tuple, Optional
 
-from tradeexecutor.backtest.backtest_execution import BacktestExecutionModel
-from tradeexecutor.backtest.backtest_pricing import BacktestSimplePricingModel
+from tradeexecutor.backtest.backtest_execution import BacktestExecution
+from tradeexecutor.backtest.backtest_pricing import BacktestPricing
 from tradeexecutor.backtest.backtest_routing import BacktestRoutingModel, BacktestRoutingState
 from tradeexecutor.state.state import State, TradeType
 from tradeexecutor.state.position import TradingPosition
@@ -27,9 +27,9 @@ class BacktestTrader:
                  start_ts: datetime.datetime,
                  state: State,
                  universe: TradingStrategyUniverse,
-                 execution_model: BacktestExecutionModel,
+                 execution_model: BacktestExecution,
                  routing_model: BacktestRoutingModel,
-                 pricing_model: BacktestSimplePricingModel,
+                 pricing_model: BacktestPricing,
                  ):
         self.state = state
         self.ts = start_ts
