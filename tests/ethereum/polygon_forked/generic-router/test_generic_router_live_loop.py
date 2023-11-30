@@ -72,14 +72,14 @@ def test_generic_router_spot_and_shot_strategy(
         spot_eth = pairs.get_pair_by_human_description((ChainId.polygon, "uniswap-v3", "WETH", "USDC", 0.0005))
 
         if position_manager.is_any_open():
-            position_manager.close_all()
+            trades += position_manager.close_all()
 
         if cycle % 2 == 0:
             # Spot day
             trades += position_manager.open_spot(spot_eth, 100.0)
         else:
             # Short day
-            position_manager.open_short(spot_eth, 150.0)
+            trades += position_manager.open_short(spot_eth, 150.0)
 
         return trades
 

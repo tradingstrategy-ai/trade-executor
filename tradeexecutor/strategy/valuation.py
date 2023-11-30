@@ -60,11 +60,16 @@ class ValuationModel(ABC):
             old_price = position.last_token_price
             ts, new_price = self(ts, position)
             position.revalue_base_asset(ts, new_price)
-            logger.info("Re-valued position base asset %s. Price movement: %f USD -> %f USD",
-                        position.pair.base.token_symbol,
-                        old_price,
-                        new_price,
-                        )
+            logger.info(
+                "Re-valued position #%d, kind %s, base asset %s.\nPrice movement: %f USD -> %f USD. Using model %s.\nLast valuation at: %s",
+                position.position_id,
+                position.pair.kind.value,
+                position.pair.base.token_symbol,
+                old_price,
+                new_price,
+                self.__class__.__name__,
+                ts,
+            )
             # TODO: Query price for the collateral asset and set it
         else:
             logger.info("No updates to credit supply position pricing: %s", position)
