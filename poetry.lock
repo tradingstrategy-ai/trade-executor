@@ -5577,29 +5577,31 @@ tester = ["eth-tester[py-evm] (==v0.9.1-b.1)", "py-geth (>=3.11.0)"]
 
 [[package]]
 name = "web3-ethereum-defi"
-version = "0.24.1"
+version = "0.24.2"
 description = "Python library for Uniswap, Aave, ChainLink, Enzyme and other protocols on BNB Chain, Polygon, Ethereum and other blockchains"
 optional = false
 python-versions = ">=3.10,<=3.12"
-files = []
-develop = true
+files = [
+    {file = "web3_ethereum_defi-0.24.2-py3-none-any.whl", hash = "sha256:63bebeb8fe89f809fe6eb94ae4a0b45b9e362864f6a412d0ab439156ec0ee79a"},
+    {file = "web3_ethereum_defi-0.24.2.tar.gz", hash = "sha256:5b04a575365beae7d6fe468664cbd22c49dffaec9e97f1115bbc439c6a963a15"},
+]
 
 [package.dependencies]
-cachetools = "^5.3.2"
-eth-bloom = "^2.0.0"
-evm-trace = "^0.1.0a17"
-futureproof = "^0.3.1"
-gql = {version = "^3.3.0", extras = ["requests"], optional = true}
-jupyter = {version = "^1.0.0", optional = true}
-matplotlib = {version = "^3.5.2", optional = true}
-pandas = {version = "<2.2", optional = true}
-plotly = {version = "^5.8.2", optional = true}
-psutil = "^5.9.0"
-pyarrow = {version = "*", optional = true}
-pytest-xdist = {version = "^3.3.1", optional = true}
-setuptools = "^69.0.2"
-sigfig = "^1.3.2"
-tqdm = {version = ">=4.66.1", optional = true}
+cachetools = ">=5.3.2,<6.0.0"
+eth-bloom = ">=2.0.0,<3.0.0"
+evm-trace = ">=0.1.0a17,<0.2.0"
+futureproof = ">=0.3.1,<0.4.0"
+gql = {version = ">=3.3.0,<4.0.0", extras = ["requests"], optional = true, markers = "extra == \"data\""}
+jupyter = {version = ">=1.0.0,<2.0.0", optional = true, markers = "extra == \"data\""}
+matplotlib = {version = ">=3.5.2,<4.0.0", optional = true, markers = "extra == \"data\""}
+pandas = {version = "<2.2", optional = true, markers = "extra == \"data\""}
+plotly = {version = ">=5.8.2,<6.0.0", optional = true, markers = "extra == \"data\""}
+psutil = ">=5.9.0,<6.0.0"
+pyarrow = {version = "*", optional = true, markers = "extra == \"data\""}
+pytest-xdist = {version = ">=3.3.1,<4.0.0", optional = true, markers = "extra == \"test\""}
+setuptools = ">=69.0.2,<70.0.0"
+sigfig = ">=1.3.2,<2.0.0"
+tqdm = {version = ">=4.66.1", optional = true, markers = "extra == \"data\""}
 tqdm-loggable = ">=0.1.3"
 ujson = ">=5.8.0"
 urllib3 = "<2"
@@ -5609,10 +5611,6 @@ web3 = {version = "6.11.3", extras = ["tester"]}
 data = ["gql[requests] (>=3.3.0,<4.0.0)", "jupyter (>=1.0.0,<2.0.0)", "matplotlib (>=3.5.2,<4.0.0)", "pandas (<2.2)", "plotly (>=5.8.2,<6.0.0)", "pyarrow", "tqdm (>=4.66.1)"]
 docs = ["Sphinx (>=4.5.0,<5.0.0)", "furo (>=2022.6.4.1,<2023.0.0.0)", "nbsphinx (>=0.8.9,<0.9.0)", "sphinx-autodoc-typehints (>=1.16.0,<2.0.0)", "sphinx-rtd-theme (>=1.0.0,<2.0.0)", "sphinx-sitemap (>=2.2.0,<3.0.0)", "zope-dottedname (>=6.0,<7.0)"]
 test = ["pytest-xdist (>=3.3.1,<4.0.0)"]
-
-[package.source]
-type = "directory"
-url = "deps/web3-ethereum-defi"
 
 [[package]]
 name = "webcolors"
@@ -6007,4 +6005,4 @@ web-server = ["WebTest", "openapi-core", "pyramid", "pyramid-openapi3", "waitres
 [metadata]
 lock-version = "2.0"
 python-versions = ">=3.10,<=3.12"
-content-hash = "8a0100cab9e581911ab2e08bb74bc1fe76d79d66222d2b868e81529ef8ad6901"
+content-hash = "337e515111f19b203899112032de1b5f31af896af43f286cd5e96eb771692fec"
