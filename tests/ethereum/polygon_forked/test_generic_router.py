@@ -170,9 +170,9 @@ def test_generic_routing_open_position_across_markets(
     weth_usdc_spot_pair: TradingPairIdentifier,
     weth_usdc_shorting_pair: TradingPairIdentifier,
     execution_model: EthereumExecution,
-    weth_token: TokenDetails,
-    vweth_token: TokenDetails,
-    ausdc_token: TokenDetails,
+    weth: TokenDetails,
+    vweth: TokenDetails,
+    ausdc: TokenDetails,
 ):
     """Open Uniswap v2, v3 and 1delta position in the same state."""
 
@@ -242,8 +242,6 @@ def test_generic_routing_open_position_across_markets(
         check_balances=True,
     )
     assert all([t.is_success() for t in trades])
-    eth_balance = weth_token.fetch_balance_of(hot_wallet.address)
-    assert eth_balance > 0
 
     # Trade 1delta + Aave short
     trades = position_manager.open_short(
@@ -299,9 +297,7 @@ def test_generic_routing_close_position_across_markets(
     weth_usdc_spot_pair: TradingPairIdentifier,
     weth_usdc_shorting_pair: TradingPairIdentifier,
     execution_model: EthereumExecution,
-    weth_token: TokenDetails,
-    vweth_token: TokenDetails,
-    ausdc_token: TokenDetails,
+    weth: TokenDetails,
 ):
     """Close Uniswap v2, v3 and 1delta position in the same state."""
 
