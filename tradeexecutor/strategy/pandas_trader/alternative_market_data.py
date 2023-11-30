@@ -176,7 +176,9 @@ def load_candles_from_dataframe(column_map: Dict[str, str], df: pd.DataFrame, re
 
     assert isinstance(df.index, pd.DatetimeIndex), f"Parquet did not have DateTime index: {df.index}"
 
-    orig = df = df.rename(columns=column_map)
+    df = df.rename(columns=column_map)
+
+    orig = df.copy()
 
     # What's the spacing of candles
     granularity = df.index[1] - df.index[0]

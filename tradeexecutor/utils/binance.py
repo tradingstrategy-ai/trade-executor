@@ -296,7 +296,7 @@ def load_binance_dataset(
         pairs=pairs_df,
         candles=candle_universe.df,
         backtest_stop_loss_time_bucket=stop_loss_time_bucket,
-        backtest_stop_loss_candles=candle_universe.df,
+        backtest_stop_loss_candles=stop_loss_candle_universe.df,
         lending_candles=lending_candle_universe,
         lending_reserves=lending_reserve_universe,
     )
