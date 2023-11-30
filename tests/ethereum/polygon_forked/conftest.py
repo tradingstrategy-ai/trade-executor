@@ -242,6 +242,12 @@ def wmatic_token(web3) -> TokenDetails:
     return details
 
 
+@pytest.fixture
+def weth_token(web3, asset_weth) -> TokenDetails:
+    details = fetch_erc20_details(web3, asset_weth.address)
+    return details
+
+
 @pytest.fixture()
 def asset_wmatic(wmatic_token: TokenDetails) -> AssetIdentifier:
     """WETH as a persistent id.
@@ -282,6 +288,18 @@ def weth_usdc_shorting_pair(uniswap_v3_deployment, asset_ausdc, asset_vweth, wet
         kind=TradingPairKind.lending_protocol_short,
         underlying_spot_pair=weth_usdc_spot_pair,
     )
+
+
+@pytest.fixture
+def vweth_token(web3, weth_usdc_shorting_pair) -> TokenDetails:
+    details = fetch_erc20_details(web3, weth_usdc_shorting_pair.base.address)
+    return details
+
+
+@pytest.fixture
+def ausdc_token(web3, weth_usdc_shorting_pair) -> TokenDetails:
+    details = fetch_erc20_details(web3, weth_usdc_shorting_pair.quote.address)
+    return details
 
 
 @pytest.fixture()

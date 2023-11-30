@@ -8,6 +8,7 @@ import pandas as pd
 import pytest as pytest
 
 from eth_defi.balances import fetch_erc20_balances_by_token_list, convert_balances_to_decimal
+from eth_defi.token import TokenDetails
 from tradeexecutor.ethereum.execution import EthereumExecution
 from tradeexecutor.ethereum.tx import HotWalletTransactionBuilder
 from tradingstrategy.chain import ChainId
@@ -169,6 +170,9 @@ def test_generic_routing_open_position_across_markets(
     weth_usdc_spot_pair: TradingPairIdentifier,
     weth_usdc_shorting_pair: TradingPairIdentifier,
     execution_model: EthereumExecution,
+    weth_token: TokenDetails,
+    vweth_token: TokenDetails,
+    ausdc_token: TokenDetails,
 ):
     """Open Uniswap v2, v3 and 1delta position in the same state."""
 
@@ -224,7 +228,7 @@ def test_generic_routing_open_position_across_markets(
     )
     assert all([t.is_success() for t in trades])
 
-    # Trade on Uniswap spot
+    # Trade on Uniswap v3 spot
     trades = position_manager.open_spot(
         weth_usdc_spot_pair,
         100.0,
@@ -238,6 +242,8 @@ def test_generic_routing_open_position_across_markets(
         check_balances=True,
     )
     assert all([t.is_success() for t in trades])
+    eth_balance = weth_token.fetch_balance_of(hot_wallet.address)
+    assert eth_balance > 0
 
     # Trade 1delta + Aave short
     trades = position_manager.open_short(
@@ -259,9 +265,8 @@ def test_generic_routing_open_position_across_markets(
     # Check our wallet holds all tokens we expect.
     # Note that these are live prices from mainnet,
     # so we do a ranged check.
-    vweth = weth_usdc_shorting_pair.base
-    ausdc = weth_usdc_shorting_pair.quote
-
+    asset_vweth = weth_usdc_shorting_pair.base
+    asset_ausdc = weth_usdc_shorting_pair.quote
     balances = fetch_erc20_balances_by_token_list(
         web3,
         hot_wallet.address,
@@ -269,12 +274,13 @@ def test_generic_routing_open_position_across_markets(
             asset_usdc.address,
             asset_weth.address,
             asset_wmatic.address,
-            vweth.address,
-            ausdc.address,
+            asset_vweth.address,
+            asset_ausdc.address,
         },
         decimalise=True,
     )
-
-    assert balances[asset_usdc.address] == pytest.approx(9_500)
-    assert 0 < balances[asset_wmatic.address] < 1000
-    assert 0 < balances[asset_weth.address] < 1000
+    assert 0 < balances[asset_wmatic.address] < 1000, f"Got balance: {balances}"
+    assert 0 < balances[asset_weth.address] < 1000, f"Got balance: {balances}"
+    assert 0 < balances[asset_vweth.address] < 1000, f"Got balance: {balances}"
+    assert 0 < balances[asset_ausdc.address] < 10_000, f"Got balance: {balances}"
+    assert balances[asset_usdc.address] == pytest.approx(9_500), f"Got balance: {balances}"
