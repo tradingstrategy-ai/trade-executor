@@ -1,6 +1,7 @@
 """Sync model for strategies using a single hot wallet."""
 import datetime
 import logging
+from decimal import Decimal
 from types import NoneType
 from typing import List, Optional, Iterable
 
@@ -16,11 +17,17 @@ from web3 import Web3
 from tradeexecutor.ethereum.tx import HotWalletTransactionBuilder
 from tradeexecutor.ethereum.wallet import sync_reserves
 from tradeexecutor.state.identifier import AssetIdentifier
-
 from tradeexecutor.state.state import State
 from tradeexecutor.state.types import BlockNumber
 from tradeexecutor.strategy.sync_model import SyncModel, OnChainBalance
+from tradeexecutor.strategy.interest import (
+    prepare_interest_distribution,
+    accrue_interest,
+)
+from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
+from tradeexecutor.strategy.pricing_model import PricingModel
 from tradeexecutor.testing.dummy_wallet import apply_sync_events
+from tradingstrategy.utils.time import ZERO_TIMEDELTA
 
 
 logger = logging.getLogger(__name__)
@@ -119,6 +126,67 @@ class HotWalletSyncModel(SyncModel):
             filter_zero=filter_zero,
             block_number=block_identifier,
         )
+
+    def sync_interests(
+        self,
+        timestamp: datetime.datetime,
+        state: State,
+        universe: TradingStrategyUniverse,
+        pricing_model: PricingModel,
+    ) -> List[BalanceUpdate]:
+
+        assert isinstance(timestamp, datetime.datetime), f"got {type(timestamp)}"
+        if not universe.has_lending_data():
+            # sync_interests() is not needed if the strategy isn't dealing with leverage
+            return []
+
+        previous_update_at = state.sync.interest.last_sync_at
+        if not previous_update_at:
+            # No interest based positions yet?
+            logger.info(f"Interest sync checkpoint not set at {timestamp}, nothing to sync/cannot sync interest.")
+            return []
+
+        duration = 0
+        if duration == ZERO_TIMEDELTA:
+            logger.error(f"Sync time span must be positive:{previous_update_at} - {timestamp}")
+            return []
+
+        logger.info(
+            "Starting hot wallet interest distribution operation at: %s, previous update %s, syncing %s",
+            timestamp,
+            previous_update_at,
+            duration,
+        )
+
+        interest_distribution = prepare_interest_distribution(
+            state.sync.interest.last_sync_at,
+            timestamp,
+            state.portfolio,
+            pricing_model
+        )
+
+        # Then sync interest back from the chain
+        block_identifier = get_almost_latest_block_number(self.web3)
+        balances = {}
+        onchain_balances = fetch_address_balances(
+            self.web3,
+            self.hot_wallet.address,
+            interest_distribution.assets,
+            filter_zero=True,
+            block_number=block_identifier,
+        )
+
+        balances = {
+            b.asset: b.amount
+            for b in onchain_balances
+        }
+
+        # Then distribute gained interest (new atokens/vtokens) among positions
+        events_iter = accrue_interest(state, balances, interest_distribution, timestamp, None)
+
+        events = list(events_iter)
+
+        return events
 
 
 def EthereumHotWalletReserveSyncer(

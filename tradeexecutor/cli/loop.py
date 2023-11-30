@@ -449,7 +449,7 @@ class ExecutionLoop:
         routing_state, pricing_model, valuation_model = self.runner.setup_routing(universe)
 
         interest_events = self.sync_model.sync_interests(
-            strategy_cycle_timestamp,
+            ts,
             state,
             cast(TradingStrategyUniverse, universe),
             pricing_model,
