@@ -261,20 +261,20 @@ def test_generic_routing_open_position_across_markets(
     # so we do a ranged check.
     vweth = weth_usdc_shorting_pair.base
     ausdc = weth_usdc_shorting_pair.quote
-    #
-    # balances = fetch_erc20_balances_by_token_list(
-    #     web3,
-    #     hot_wallet.address,
-    #     {
-    #         asset_usdc.address,
-    #         asset_weth.address,
-    #         asset_wmatic.address,
-    #         vweth.address,
-    #         ausdc.address,
-    #     },
-    #     decimalise=True,
-    # )
-    #
-    # assert balances[asset_usdc.address] == pytest.approx(9_500)
-    # assert 0 < balances[asset_wmatic.address] < 1000
-    # assert 0 < balances[asset_weth.address] < 1000
+
+    balances = fetch_erc20_balances_by_token_list(
+        web3,
+        hot_wallet.address,
+        {
+            asset_usdc.address,
+            asset_weth.address,
+            asset_wmatic.address,
+            vweth.address,
+            ausdc.address,
+        },
+        decimalise=True,
+    )
+
+    assert balances[asset_usdc.address] == pytest.approx(9_500)
+    assert 0 < balances[asset_wmatic.address] < 1000
+    assert 0 < balances[asset_weth.address] < 1000

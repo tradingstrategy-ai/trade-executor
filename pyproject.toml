@@ -16,7 +16,7 @@ packages = [
 python = ">=3.10,<=3.12"
 
 # Use these during development
-trading-strategy = {path = "deps/trading-strategy", develop = true}
+#rading-strategy = {path = "deps/trading-strategy", develop = true}
 # trading-strategy = "^0.21.1"
 requests = "^2.27.1"
 matplotlib = "^3.6.0"
@@ -25,8 +25,8 @@ pandas = "^1.5.1"
 pandas-ta = "^0.3.14b"  # Unmaintained, still stick to old Pandas
 tqdm-loggable = "^0.2"
 
-#web3-ethereum-defi = {path = "deps/web3-ethereum-defi", develop = true, extras=["data", "test"]}
-web3-ethereum-defi = {version="0.24.1", extras=["data", "test"]}
+web3-ethereum-defi = {path = "deps/web3-ethereum-defi", develop = true, extras=["data", "test"]}
+# web3-ethereum-defi = {version="0.24.1", extras=["data", "test"]}
 
 # tqdm progress bar doesn't show up in VScode Jupyter with ipywidgets>=8
 # https://github.com/microsoft/vscode-jupyter/issues/11014
