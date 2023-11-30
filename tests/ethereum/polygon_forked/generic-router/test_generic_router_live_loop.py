@@ -2,6 +2,7 @@
 import datetime
 import os
 import shutil
+from logging import Logger
 from typing import List
 
 import pytest
@@ -15,6 +16,7 @@ from eth_defi.hotwallet import HotWallet
 from tradeexecutor.ethereum.one_delta.one_delta_routing import OneDeltaRouting
 from tradeexecutor.state.state import State
 from tradeexecutor.state.trade import TradeExecution
+from tradeexecutor.strategy.generic.generic_pricing_model import GenericPricing
 from tradeexecutor.strategy.generic.generic_router import GenericRouting
 from tradeexecutor.strategy.pandas_trader.position_manager import PositionManager
 from tradeexecutor.strategy.pricing_model import PricingModel
@@ -33,6 +35,7 @@ pytestmark = pytest.mark.skipif(
 
 
 def test_generic_router_spot_and_shot_strategy(
+    logger: Logger,
     web3: Web3,
     hot_wallet: HotWallet,
     strategy_universe: TradingStrategyUniverse,
@@ -42,8 +45,15 @@ def test_generic_router_spot_and_shot_strategy(
     weth: Contract,
     weth_usdc_spot_pair,
     generic_routing_model: GenericRouting,
+    generic_pricing_model: GenericPricing,
 ):
-    """See generic manager goes through backtesting loop correctly."""
+    """See generic manager goes through backtesting loop correctly.
+
+    - Uses Polygon mainnet fork
+
+    - We do not care PnL because we are just hitting simulated buy/sell
+      against the current live prices at the time of runnign the test
+    """
 
     def decide_trades(
         timestamp: pd.Timestamp,
@@ -81,9 +91,9 @@ def test_generic_router_spot_and_shot_strategy(
         universe=strategy_universe,
         state=state,
         routing_model=generic_routing_model,
+        pricing_model=generic_pricing_model,
         hot_wallet=hot_wallet,
     )
-    loop.runner.run_state = RunState()  # Needed for visualisations
 
     ts = get_latest_block_timestamp(web3)
     for cycle in range(10):

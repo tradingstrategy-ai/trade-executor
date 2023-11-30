@@ -21,6 +21,7 @@ from tradeexecutor.strategy.generic.generic_pricing_model import GenericPricing
 from tradeexecutor.strategy.generic.generic_router import GenericRouting
 from tradeexecutor.strategy.generic.generic_valuation import generic_valuation_factory
 from tradeexecutor.strategy.pandas_trader.runner import PandasTraderRunner
+from tradeexecutor.strategy.run_state import RunState
 from tradeexecutor.strategy.strategy_module import DecideTradesProtocol
 from tradeexecutor.strategy.universe_model import StaticUniverseModel, StrategyExecutionUniverse
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
@@ -404,6 +405,7 @@ def set_up_simulated_ethereum_generic_execution(
         decide_trades=decide_trades,
         execution_context=execution_context,
         unit_testing=True,
+        run_state=RunState(),
     )
 
     loop = ExecutionLoop(
