@@ -160,27 +160,33 @@ def one_delta_deployment(web3) -> OneDeltaDeployment:
 
 
 @pytest.fixture
-def usdc(web3):
+def usdc(web3) -> TokenDetails:
     """Get USDC on Polygon."""
     return fetch_erc20_details(web3, "0x2791bca1f2de4661ed88a30c99a7a9449aa84174")
 
 
 @pytest.fixture
-def ausdc(web3):
+def ausdc(web3) -> TokenDetails:
     """Get aPolUSDC on Polygon."""
     return fetch_erc20_details(web3, "0x625E7708f30cA75bfd92586e17077590C60eb4cD", contract_name="aave_v3/AToken.json")
 
 
 @pytest.fixture
-def weth(web3):
+def weth(web3) -> TokenDetails:
     """Get WETH on Polygon."""
     return fetch_erc20_details(web3, "0x7ceB23fD6bC0adD59E62ac25578270cFf1b9f619")
 
 
 @pytest.fixture
-def vweth(web3):
+def vweth(web3) -> TokenDetails:
     """Get vPolWETH on Polygon."""
     return fetch_erc20_details(web3, "0x0c84331e39d6658Cd6e6b9ba04736cC4c4734351", contract_name="aave_v3/VariableDebtToken.json")
+
+
+@pytest.fixture
+def wmatic(web3) -> TokenDetails:
+    details = fetch_erc20_details(web3, "0x0d500b1d8e8ef31e21c99d1db9a6444d3adf1270")
+    return details
 
 
 @pytest.fixture
@@ -236,17 +242,12 @@ def asset_vweth(vweth, asset_weth, chain_id) -> AssetIdentifier:
         type=AssetType.borrowed,
     )
 
-@pytest.fixture
-def wmatic_token(web3) -> TokenDetails:
-    details = fetch_erc20_details(web3, "0x0d500b1d8e8ef31e21c99d1db9a6444d3adf1270")
-    return details
-
 
 @pytest.fixture()
-def asset_wmatic(wmatic_token: TokenDetails) -> AssetIdentifier:
+def asset_wmatic(wmatic: TokenDetails) -> AssetIdentifier:
     """WETH as a persistent id.
     """
-    return translate_token_details(wmatic_token)
+    return translate_token_details(wmatic)
 
 
 @pytest.fixture
