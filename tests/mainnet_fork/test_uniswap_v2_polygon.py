@@ -137,8 +137,9 @@ def hot_wallet(
     Start with 10,000 USDC cash and 2 polygon.
     """
     account = Account.create()
+    matic_amount = 15
     web3.eth.send_transaction(
-        {"from": large_usdc_holder, "to": account.address, "value": 2 * 10**18}
+        {"from": large_usdc_holder, "to": account.address, "value": matic_amount = 15 * 10**18}
     )
     tx_hash = usdc_token.functions.transfer(account.address, 1_000_000 * 10**6).transact(
         {"from": large_usdc_holder}

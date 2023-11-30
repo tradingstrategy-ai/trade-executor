@@ -174,8 +174,9 @@ def hot_wallet(web3: Web3, busd_token: Contract, large_busd_holder: HexAddress) 
 
     Start with 10,000 USDC cash and 2 BNB.
     """
+    matic_amount = 15
     account = Account.create()
-    web3.eth.send_transaction({"from": large_busd_holder, "to": account.address, "value": 2 * 10 ** 18})
+    web3.eth.send_transaction({"from": large_busd_holder, "to": account.address, "value": matic_amount * 10 ** 18})
     tx_hash = busd_token.functions.transfer(account.address, 10_000 * 10 ** 18).transact({"from": large_busd_holder})
     wait_transactions_to_complete(web3, [tx_hash])
     wallet = HotWallet(account)
