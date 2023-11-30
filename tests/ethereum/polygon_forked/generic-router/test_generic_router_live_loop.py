@@ -2,7 +2,6 @@
 import datetime
 import os
 import shutil
-from decimal import Decimal
 from typing import List
 
 import pytest
@@ -12,21 +11,19 @@ from web3.contract import Contract
 
 from eth_defi.uniswap_v3.deployment import UniswapV3Deployment
 from eth_defi.hotwallet import HotWallet
-from eth_defi.provider.anvil import mine
 
-
-from tradeexecutor.ethereum.one_delta.one_delta_live_pricing import OneDeltaLivePricing
 from tradeexecutor.ethereum.one_delta.one_delta_routing import OneDeltaRouting
 from tradeexecutor.state.state import State
 from tradeexecutor.state.trade import TradeExecution
-from tradeexecutor.strategy.cycle import snap_to_next_tick
+from tradeexecutor.strategy.generic.generic_router import GenericRouting
 from tradeexecutor.strategy.pandas_trader.position_manager import PositionManager
 from tradeexecutor.strategy.pricing_model import PricingModel
-from tradeexecutor.strategy.trading_strategy_universe import translate_trading_pair, TradingStrategyUniverse
+from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
 from tradeexecutor.strategy.execution_context import ExecutionMode
 from tradeexecutor.strategy.run_state import RunState
-from tradeexecutor.testing.simulated_execution_loop import set_up_simulated_execution_loop_one_delta
+from tradeexecutor.testing.simulated_execution_loop import set_up_simulated_execution_loop_one_delta, set_up_simulated_ethereum_generic_execution
 from tradeexecutor.utils.blockchain import get_latest_block_timestamp
+from tradingstrategy.chain import ChainId
 
 
 pytestmark = pytest.mark.skipif(
@@ -38,25 +35,15 @@ pytestmark = pytest.mark.skipif(
 def test_generic_router_spot_and_shot_strategy(
     web3: Web3,
     hot_wallet: HotWallet,
-    trading_strategy_universe: TradingStrategyUniverse,
+    strategy_universe: TradingStrategyUniverse,
     uniswap_v3_deployment: UniswapV3Deployment,
     one_delta_routing_model: OneDeltaRouting,
     usdc: Contract,
     weth: Contract,
     weth_usdc_spot_pair,
+    generic_routing_model: GenericRouting,
 ):
-    """Live 1delta trade.
-
-    - Trade ETH/USDC 0.3% pool
-
-    - Sets up a simple strategy that open a 2x short position, and keep it running in next cycles
-
-    - Start the strategy, check that the trading account is funded
-
-    - Advance to cycle 1 and make sure the short position on ETH is opened
-
-    - Advance to cycle 2-3 cycle and check the interest
-    """
+    """See generic manager goes through backtesting loop correctly."""
 
     def decide_trades(
         timestamp: pd.Timestamp,
@@ -65,155 +52,53 @@ def test_generic_router_spot_and_shot_strategy(
         pricing_model: PricingModel,
         cycle_debug_data: dict
     ) -> List[TradeExecution]:
-        """Opens a 2x short position and keep it opened"""
-        
-        pair = strategy_universe.universe.pairs.get_single()
-
-        # Open for 1,000 USD
-        position_size = 1000.00
+        # Every second day buy spot,
+        # every second day short
 
         trades = []
         position_manager = PositionManager(timestamp, strategy_universe, state, pricing_model)
+        cycle = cycle_debug_data["cycle"]
+        pairs = strategy_universe.data_universe.pairs
+        spot_eth = pairs.get_pair_by_human_description((ChainId.polygon, "uniswap-v3", "WETH", "USDC", 0.0005))
 
-        if not position_manager.is_any_short_position_open():
-            trades += position_manager.open_short(
-                pair,
-                position_size,
-                leverage=2,
-            )
+        if position_manager.is_any_open():
+            position_manager.close_all()
+
+        if cycle % 2 == 0:
+            # Spot day
+            trades += position_manager.open_spot(spot_eth, 100.0)
+        else:
+            # Short day
+            position_manager.open_short(spot_eth, 150.0)
 
         return trades
 
-    routing_model = one_delta_routing_model
-
-    # Sanity check for the trading universe
-    # that we start with 1631 USD/ETH price
-    pair_universe = trading_strategy_universe.data_universe.pairs
-    pricing_method = OneDeltaLivePricing(web3, pair_universe, routing_model)
-
-    weth_usdc = pair_universe.get_single()
-    pair = translate_trading_pair(weth_usdc)
-
-    # Check that our preflight checks pass
-    routing_model.perform_preflight_checks_and_logging(pair_universe)
-
-    price_structure = pricing_method.get_buy_price(datetime.datetime.utcnow(), pair, None)
-    assert price_structure.price == pytest.approx(1631.0085715155444, rel=APPROX_REL)
-
     # Set up an execution loop we can step through
     state = State()
-    loop = set_up_simulated_execution_loop_one_delta(
+    loop = set_up_simulated_ethereum_generic_execution(
         web3=web3,
         decide_trades=decide_trades,
-        universe=trading_strategy_universe,
+        universe=strategy_universe,
         state=state,
-        wallet_account=hot_wallet.account,
-        routing_model=routing_model,
+        routing_model=generic_routing_model,
+        hot_wallet=hot_wallet,
     )
     loop.runner.run_state = RunState()  # Needed for visualisations
 
     ts = get_latest_block_timestamp(web3)
+    for cycle in range(10):
+        loop.tick(
+            ts,
+            loop.cycle_duration,
+            state,
+            cycle=1,
+            live=True,
+        )
 
-    loop.tick(
-        ts,
-        loop.cycle_duration,
-        state,
-        cycle=1,
-        live=True,
-    )
-
-    loop.update_position_valuations(
-        ts,
-        state,
-        trading_strategy_universe,
-        ExecutionMode.real_trading
-    )
-
-    assert len(state.portfolio.open_positions) == 1
-
-    # After the first tick, we should have synced our reserves and opened the first position
-    mid_price = pricing_method.get_mid_price(ts, pair)
-    assert mid_price == pytest.approx(1630.1912407577722, rel=APPROX_REL)
-
-    usdc_id = f"{web3.eth.chain_id}-{usdc.address.lower()}"
-    assert state.portfolio.reserves[usdc_id].quantity == 9000
-    assert state.portfolio.open_positions[1].get_quantity() == Decimal('1.261256429210282326')
-    assert state.portfolio.open_positions[1].get_value() == pytest.approx(944.0010729999999, rel=APPROX_REL)
-
-    # sync time should be initialized
-    first_sync_at = state.sync.interest.last_sync_at
-    assert first_sync_at
-
-    # there shouldn't be any accrued interest yet
-    loan = state.portfolio.open_positions[1].loan
-    assert loan.get_collateral_interest() == pytest.approx(0)
-    assert loan.get_borrow_interest() == pytest.approx(0)
-
-    # mine a few block before running next tick
-    for i in range(1, 10):
-        mine(web3)
-
-    # trade another cycle to close the short position
-    ts = get_latest_block_timestamp(web3)
-    strategy_cycle_timestamp = snap_to_next_tick(ts, loop.cycle_duration)
-
-    loop.tick(
-        ts,
-        loop.cycle_duration,
-        state,
-        cycle=2,
-        live=True,
-        strategy_cycle_timestamp=strategy_cycle_timestamp,
-    )
-
-    loop.update_position_valuations(
-        ts,
-        state,
-        trading_strategy_universe,
-        ExecutionMode.real_trading
-    )
-
-    # position should still be open
-    assert len(state.portfolio.open_positions) == 1
-
-    # sync time should be updated
-    assert state.sync.interest.last_sync_at > first_sync_at
-
-    # there should be accrued interest now
-    loan = state.portfolio.open_positions[1].loan
-    assert loan.get_collateral_interest() == pytest.approx(55.998942)
-    assert loan.get_borrow_interest() == pytest.approx(1.3370629008385655e-05)
-
-    # mine a few more blocks and do the same checks
-    for i in range(1, 20):
-        mine(web3)
-
-    ts = get_latest_block_timestamp(web3)
-    strategy_cycle_timestamp = snap_to_next_tick(ts, loop.cycle_duration)
-
-    loop.tick(
-        ts,
-        loop.cycle_duration,
-        state,
-        cycle=2,
-        live=True,
-        strategy_cycle_timestamp=strategy_cycle_timestamp,
-    )
-
-    loop.update_position_valuations(
-        ts,
-        state,
-        trading_strategy_universe,
-        ExecutionMode.real_trading
-    )
-
-    # there should be accrued interest now
-    position = state.portfolio.open_positions[1]
-    assert position.loan.get_collateral_interest() == pytest.approx(55.998995)
-    assert position.loan.get_borrow_interest() == pytest.approx(4.159751273856319e-05)
-
-    # there should be 4 interest update events (2 per cycle)
-    events = list(position.balance_updates.values())
-    assert len(events) == 4
-    assert len([event for event in events if event.asset.token_symbol == "variableDebtPolWETH"]) == 2
-    assert len([event for event in events if event.asset.token_symbol == "aPolUSDC"]) == 2
+        loop.update_position_valuations(
+            ts,
+            state,
+            strategy_universe,
+            ExecutionMode.real_trading
+        )
+        ts += datetime.timedelta(days=1)

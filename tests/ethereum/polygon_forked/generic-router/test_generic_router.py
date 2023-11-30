@@ -2,41 +2,24 @@
 import datetime
 import os
 import shutil
-from _decimal import Decimal
+from decimal import Decimal
 
-import pandas as pd
 import pytest as pytest
 
-from eth_defi.balances import fetch_erc20_balances_by_token_list, convert_balances_to_decimal
+from eth_defi.balances import fetch_erc20_balances_by_token_list
 from eth_defi.token import TokenDetails
 from tradeexecutor.ethereum.execution import EthereumExecution
-from tradeexecutor.ethereum.tx import HotWalletTransactionBuilder
 from tradingstrategy.chain import ChainId
 from web3 import Web3
 
 from eth_defi.hotwallet import HotWallet
-from eth_defi.uniswap_v2.deployment import UniswapV2Deployment
-from eth_defi.uniswap_v3.deployment import UniswapV3Deployment
 from tradeexecutor.strategy.pandas_trader.position_manager import PositionManager
-from tradingstrategy.exchange import ExchangeUniverse
-from tradingstrategy.lending import LendingProtocolType
-from tradingstrategy.pair import PandasPairUniverse
-from tradingstrategy.timebucket import TimeBucket
 from tradeexecutor.ethereum.hot_wallet_sync_model import HotWalletSyncModel
-from tradeexecutor.ethereum.one_delta.one_delta_live_pricing import OneDeltaLivePricing
-from tradeexecutor.ethereum.one_delta.one_delta_routing import OneDeltaRouting
-from tradeexecutor.ethereum.uniswap_v2.uniswap_v2_live_pricing import UniswapV2LivePricing
-from tradeexecutor.ethereum.uniswap_v2.uniswap_v2_routing import UniswapV2Routing
-from tradeexecutor.ethereum.uniswap_v3.uniswap_v3_live_pricing import UniswapV3LivePricing
-from tradeexecutor.ethereum.uniswap_v3.uniswap_v3_routing import UniswapV3Routing
-from tradeexecutor.ethereum.universe import create_exchange_universe, create_pair_universe
 from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier
 from tradeexecutor.state.state import State
-from tradeexecutor.strategy.execution_context import unit_test_execution_context
 from tradeexecutor.strategy.generic.generic_router import GenericRouting
 from tradeexecutor.strategy.generic.generic_pricing_model import GenericPricing
-from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse, load_partial_data
-from tradeexecutor.strategy.universe_model import default_universe_options
+from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
 
 
 pytestmark = pytest.mark.skipif(
