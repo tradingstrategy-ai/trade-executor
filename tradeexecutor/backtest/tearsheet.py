@@ -231,12 +231,17 @@ def export_backtest_report(
         }} """
 
         # Run the notebook
+        state_size = os.path.getsize(state_path)
+        universe_size = os.path.getsize(universe_path)
+        logger.info(f"Starting backtest tearsheet notebook execution, state size is {state_size:,}b, universe size is {universe_size:,}b")
         ep = ExecutePreprocessor(timeout=600, kernel_name='python3')
 
         try:
             ep.preprocess(nb, {'metadata': {'path': '.'}})
         except CellExecutionError as e:
             raise BacktestReportRunFailed(f"Could not run backtest reporter for {name}") from e
+
+        logger.info("Notebook executed")
 
         # Write ipynb file that contains output cells created in place
         if output_notebook is not None:

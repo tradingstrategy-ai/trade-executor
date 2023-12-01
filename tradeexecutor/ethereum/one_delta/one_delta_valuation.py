@@ -30,7 +30,8 @@ class OneDeltaPoolRevaluator(EthereumPoolRevaluator):
         position: TradingPosition,
     ) -> ValuationUpdate:
 
-        pair = position.pair.get_pricing_pair()
+        pair = position.pair
+
         assert pair.is_leverage()
 
         loan = position.loan
@@ -41,7 +42,7 @@ class OneDeltaPoolRevaluator(EthereumPoolRevaluator):
 
         evt = ValuationUpdate(
             created_at=ts,
-            position_id=position.id,
+            position_id=position.position_id,
             valued_at=valued_at,
             new_value=new_value,
             new_price=new_price,
