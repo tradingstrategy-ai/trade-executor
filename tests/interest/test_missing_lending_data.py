@@ -138,9 +138,18 @@ def decide_trades(
     current_rsi = rsi(close_prices, length=RSI_LENGTH)[-1]
 
     # Calculate Stochastic
-    stoch_series = stoch(
-        candles["high"], candles["low"], candles["close"], k=14, d=3, smooth_k=1
-    )
+    try:
+        stoch_series = stoch(
+            candles["high"], candles["low"], candles["close"], k=14, d=3, smooth_k=1
+        )
+    except Exception as e:
+        # TALib issue
+        # TA_SMA function failed with error code 2: Bad Parameter (TA_BAD_PARAM)
+        # Raises ugly C exception
+        if len(e.args) == 1:
+            msg = e.args[0]
+            if "TA_SMA function failed with error code" in msg:
+                return []
 
     # Calculate MFI (Money Flow Index)
     mfi_series = mfi(
