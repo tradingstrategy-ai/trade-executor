@@ -16,6 +16,7 @@ from tradeexecutor.state.position import TradingPosition
 from tradeexecutor.state.state import State
 from tradeexecutor.state.types import USDollarPrice, Percent, BlockNumber
 from tradeexecutor.strategy.pricing_model import PricingModel
+from tradeexecutor.utils.accuracy import QUANTITY_EPSILON
 from tradingstrategy.utils.time import ZERO_TIMEDELTA
 
 logger = logging.getLogger(__name__)
@@ -360,6 +361,10 @@ def distribute_interest_for_assets(
     asset_total = operation.asset_interest_data[asset.get_identifier()].total
 
     interest_accrued = new_amount - asset_total
+
+    if abs(interest_accrued) < QUANTITY_EPSILON:
+        interest_accrued = 0
+
     assert interest_accrued >= 0, f"Interest cannot go negative: {interest_accrued}"
     interest_accrued_relative = interest_accrued / asset_total
 

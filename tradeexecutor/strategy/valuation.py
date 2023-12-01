@@ -104,7 +104,7 @@ class ValuationModel(ABC):
             try:
                 self.revalue_position(ts, p)
             except Exception as e:
-                raise InvalidValuationOutput(f"Valuation model failed to output proper price: {self}: {p} -> {e}") from e
+                raise InvalidValuationOutput(f"Valuation model failed {self.__class__.__name__}to output proper price: {self}: {p} -> {e}") from e
 
     @abstractmethod
     def __call__(self,

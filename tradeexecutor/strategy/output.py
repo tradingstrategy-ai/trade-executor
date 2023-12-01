@@ -71,9 +71,10 @@ def format_position(position: TradingPosition, up_symbol="ðŸŒ²", down_symbol="ðŸ
         link = ""
 
     base_token_ticker = position.pair.base.token_symbol
+    position_kind = position.pair.kind.value
 
     lines =[
-        f"{symbol} #{position.position_id} {position.pair.get_human_description()} value: ${position.get_value():,.2f}, size: {position.get_quantity():,.4f}, {base_token_ticker} profit: {(position.get_total_profit_percent()*100):.2f}% ({position.get_total_profit_usd():,.4f} USD)"
+        f"{symbol} #{position.position_id} {position.pair.get_human_description()} {position_kind} value: ${position.get_value():,.2f}, size: {abs(position.get_quantity()):,.4f}, {base_token_ticker} profit: {(position.get_total_profit_percent()*100):.2f}% ({position.get_total_profit_usd():,.4f} USD)"
     ]
 
     if position.has_executed_trades():

@@ -28,7 +28,7 @@ class GenericValuation(ValuationModel):
             position: TradingPosition,
     ) -> tuple[datetime.datetime, USDollarAmount]:
 
-        pair = position.pair.get_pricing_pair()
+        pair = position.pair
 
         if pair.is_leverage():
             # Get the latest NAV of the loan based position
