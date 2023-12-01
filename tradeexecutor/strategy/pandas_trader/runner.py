@@ -176,6 +176,12 @@ class PandasTraderRunner(StrategyRunner):
             large_image_png,
         )
 
+        # Workaround: Kaleido backend is crashing
+        # https://github.com/tradingstrategy-ai/trade-executor/issues/699
+        import plotly.io as pio
+        scope = pio.kaleido.scope
+        scope._shutdown_kaleido()
+
     def get_small_images(self, small_figure):
         """Gets the png image of the figure and the dark theme png image. Images are 512 x 512."""
         return self.get_image_and_dark_image(small_figure, width=512, height=512)
