@@ -415,6 +415,10 @@ def start(
         logger.exception(e)
         raise
 
+    # Allow to do Python thread dump using a signal with
+    # docker-compose kill command
+    faulthandler.enable()
+
     loop = ExecutionLoop(
         name=name,
         command_queue=command_queue,
