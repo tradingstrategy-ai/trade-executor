@@ -30,27 +30,31 @@ class BacktestValuationModel(ValuationModel):
 
         pair = position.pair
 
-        if position.is_long():
+        if position.is_credit_supply():
+            # TODO: Assumes stable USD stablecoins
+            price = 1.0
+        elif position.is_long():
             pricing_pair = pair.get_pricing_pair()
             quantity = position.get_quantity()
             trade_price = self.pricing_model.get_sell_price(ts, pricing_pair, quantity)
+            price = trade_price.price
         else:
-
             # TODO: Use position net asset pricing for leveraged positions
             assert pair.kind == TradingPairKind.lending_protocol_short
             quantity = -position.get_quantity()
             trade_price = self.pricing_model.get_sell_price(ts, pair.underlying_spot_pair, quantity)
+            price = trade_price.price
 
         old_price = position.last_token_price
         old_value = position.get_value()
-        position.revalue_base_asset(ts, trade_price.price)
+        position.revalue_base_asset(ts, price)
         new_value = position.get_value()
 
         return ValuationUpdate(
             position_id=position.position_id,
             created_at=ts,
             valued_at=ts,
-            new_price=trade_price.price,
+            new_price=price,
             new_value=new_value,
             old_value=old_value,
             old_price=old_price,

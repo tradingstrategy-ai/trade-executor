@@ -1269,9 +1269,10 @@ loca
         self.last_pricing_at = last_pricing_at
         self.last_token_price = last_token_price
 
+        # TODO: Move this logic to ValuationModel
         if self.loan:
-            assert self.is_short()
-            self.loan.borrowed.revalue(last_token_price, last_pricing_at)
+            if self.is_short():
+                self.loan.borrowed.revalue(last_token_price, last_pricing_at)
 
         return self.get_value()
 

@@ -548,11 +548,14 @@ class TradingPairIdentifier:
         """
         if self.is_spot():
             return self
+        elif self.is_credit_supply():
+            # Credit supply does not have a real trading pair,
+            # but any position price is simply the amount of collateral
+            return self
         elif self.is_leverage():
             assert self.underlying_spot_pair is not None, f"For a leveraged pair, we lack the price feed for the underlying spot: {self}"
             return self.underlying_spot_pair
         raise AssertionError(f"Cannot figure out how to get the underlying pricing pair for: {self}")
-        #return None
 
 
 @dataclass_json
