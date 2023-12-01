@@ -354,12 +354,12 @@ def test_simple_routing_three_leg_live(
     )
 
     # Buy 100,000 USD worth of ETH, going thru ETH->MATIC
-    trades = position_manager.open_1x_long(
+    trades = position_manager.open_spot(
         matic_usdc_trading_pair,
         Decimal(100),
     )
 
-    trades += position_manager.open_1x_long(
+    trades += position_manager.open_spot(
         sand_matic_trading_pair,
         Decimal(100_000),
     )

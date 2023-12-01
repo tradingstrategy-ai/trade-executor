@@ -181,7 +181,7 @@ def decide_trades(
         # We buy if the price on the daily chart closes above the upper Bollinger Band.
         if price_latest > bb_upper.iloc[-1] and rsi_series[-1] >= RSI_THRESHOLD:
             buy_amount = cash * POSITION_SIZE
-            new_trades = position_manager.open_1x_long(pair, buy_amount, stop_loss_pct=STOP_LOSS_PCT)
+            new_trades = position_manager.open_spot(pair, buy_amount, stop_loss_pct=STOP_LOSS_PCT)
             trades.extend(new_trades)
 
     else:

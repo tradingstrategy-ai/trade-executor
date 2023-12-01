@@ -224,6 +224,7 @@ def set_up_simulated_execution_loop_uniswap_v3(
         routing_model=routing_model,
         decide_trades=decide_trades,
         execution_context=execution_context,
+        trade_settle_wait=datetime.timedelta(seconds=1),
     )
 
     loop = ExecutionLoop(

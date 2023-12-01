@@ -53,7 +53,7 @@ class EthereumPoolRevaluator(ValuationModel):
 
         quantity = position.get_quantity()
         # Cannot do pricing for zero quantity
-        assert quantity > 0
+        assert quantity > 0, f"Trying to value position with zero quantity: {position}, {ts}, {self.__class__.__name__}"
 
         old_price = position.last_token_price
         price_structure = self.pricing_model.get_sell_price(ts, pair, quantity)

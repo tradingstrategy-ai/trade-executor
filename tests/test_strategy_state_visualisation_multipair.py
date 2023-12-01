@@ -236,7 +236,7 @@ def decide_trades(
             if price_latest > bb_upper.iloc[-1] and current_rsi >= RSI_THRESHOLD:
                 # We are dividing our bets 1/3 equally among all three pairs
                 buy_amount = cash * POSITION_SIZE #* 0.33 
-                trades += position_manager.open_1x_long(pair, buy_amount, stop_loss_pct=STOP_LOSS_PCT)
+                trades += position_manager.open_spot(pair, buy_amount, stop_loss_pct=STOP_LOSS_PCT)
 
         else:
         # We have an open position, decide if SELL in this cycle.

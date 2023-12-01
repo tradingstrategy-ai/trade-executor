@@ -200,7 +200,7 @@ def decide_trades(
             and mfi_latest < 45
         ):
             amount = cash * POSITION_SIZE
-            new_trades = position_manager.open_1x_long(
+            new_trades = position_manager.open_spot(
                 pair,
                 amount,
                 stop_loss_pct=STOP_LOSS_PCT,

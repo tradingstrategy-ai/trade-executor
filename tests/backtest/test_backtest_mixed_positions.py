@@ -144,7 +144,7 @@ def test_backtest_open_both_long_short(
 
             trades += position_manager.open_short(trade_pair, amount, leverage=leverage)
             
-            trades += position_manager.open_1x_long(trade_pair, amount)
+            trades += position_manager.open_spot(trade_pair, amount)
 
         return trades
 

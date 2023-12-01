@@ -300,6 +300,9 @@ class UniswapV3Routing(EthereumRoutingModel):
             receipts: Dict[str, dict],
             stop_on_execution_failure=False,
     ):
+
+        logger.info(f"Settling Uniswap v3 trade: #{trade.trade_id}")
+
         base_token_details = fetch_erc20_details(web3, trade.pair.base.checksum_address)
         quote_token_details = fetch_erc20_details(web3, trade.pair.quote.checksum_address)
         reserve = trade.reserve_currency
@@ -349,6 +352,8 @@ class UniswapV3Routing(EthereumRoutingModel):
                 lp_fee_paid = result.lp_fee_paid * float(price) if result.lp_fee_paid else None
 
             assert (executed_reserve > 0) and (executed_amount != 0) and (price > 0), f"Executed amount {executed_amount}, executed_reserve: {executed_reserve}, price: {price}, tx info {trade.tx_info}"
+
+            logger.info(f"Executed: {executed_amount} {trade.pair.base.token_symbol}, {executed_reserve} {trade.pair.quote.token_symbol}")
 
             # Mark as success
             state.mark_trade_success(

@@ -111,6 +111,8 @@ def revalue_portfolio(
         Revalue frozen positions as well
     """
 
+    logger.info("Portfolio revaluation, timestamp %s, %d open positions", ts, len(portfolio.open_positions))
+
     positions = portfolio.get_open_and_frozen_positions() if revalue_frozen else portfolio.open_positions.values()
 
     for position in positions:

@@ -149,7 +149,7 @@ def grid_search_worker(
         if current_price >= slow_ema:
             if not position_manager.is_any_open():
                 buy_amount = cash * position_size
-                trades += position_manager.open_1x_long(pair, buy_amount, stop_loss_pct=stop_loss_pct)
+                trades += position_manager.open_spot(pair, buy_amount, stop_loss_pct=stop_loss_pct)
         elif fast_ema >= slow_ema:
             if position_manager.is_any_open():
                 trades += position_manager.close_all()

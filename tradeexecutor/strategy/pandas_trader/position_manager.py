@@ -8,6 +8,7 @@ import logging
 
 import pandas as pd
 
+from tradeexecutor.utils.accuracy import QUANTITY_EPSILON
 from tradingstrategy.candle import CandleSampleUnavailable
 from tradingstrategy.pair import DEXPair
 from tradingstrategy.universe import Universe
@@ -622,6 +623,9 @@ class PositionManager:
         self.state.visualisation.add_message(
             self.timestamp,
             f"Opened 1x long on {pair}, position value {value} USD")
+
+        if trade.is_buy():
+            assert trade.planned_quantity > QUANTITY_EPSILON, f"Bad buy quantity: {trade}"
 
         return [trade]
 

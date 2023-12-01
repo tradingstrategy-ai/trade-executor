@@ -119,7 +119,7 @@ def decide_trades(
         # Close price is higher than the slow EMA
         if not position_manager.is_any_open():
             buy_amount = cash * position_size
-            trades += position_manager.open_1x_long(pair, buy_amount)
+            trades += position_manager.open_spot(pair, buy_amount)
     elif fast_ema >= slow_ema:
         # Exit condition:
         # Fast EMA crosses slow EMA
