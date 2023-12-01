@@ -5,6 +5,7 @@ from tradeexecutor.backtest.backtest_pricing import BacktestPricing
 from tradeexecutor.state.position import TradingPosition
 from tradeexecutor.state.types import USDollarAmount
 from tradeexecutor.state.identifier import TradingPairKind
+from tradeexecutor.state.valuation import ValuationUpdate
 from tradeexecutor.strategy.valuation import ValuationModel
 
 
@@ -18,9 +19,11 @@ class BacktestValuationModel(ValuationModel):
         assert pricing_model, "pricing_model missing"
         self.pricing_model = pricing_model
 
-    def __call__(self,
-                 ts: datetime.datetime,
-                 position: TradingPosition) -> Tuple[datetime.datetime, USDollarAmount]:
+    def __call__(
+            self,
+            ts: datetime.datetime,
+            position: TradingPosition
+    ) -> ValuationUpdate:
 
         assert isinstance(ts, datetime.datetime)
         assert ts.second == 0, f"Timestamp sanity check failed, does not have even seconds: {ts}"
@@ -30,7 +33,6 @@ class BacktestValuationModel(ValuationModel):
         if position.is_long():
             quantity = position.get_quantity()
             trade_price = self.pricing_model.get_sell_price(ts, pair, quantity)
-            return ts, float(trade_price.price)
         else:
 
             # TODO: Use position net asset pricing for leveraged positions
@@ -38,7 +40,21 @@ class BacktestValuationModel(ValuationModel):
             quantity = -position.get_quantity()
             trade_price = self.pricing_model.get_sell_price(ts, pair.underlying_spot_pair, quantity)
 
-            return ts, float(trade_price.price)
+        old_price = position.last_token_price
+        old_value = position.get_value()
+        position.revalue_base_asset(ts, trade_price.price)
+        new_value = position.get_value()
+
+        return ValuationUpdate(
+            position_id=position.position_id,
+            created_at=ts,
+            valued_at=ts,
+            new_price=trade_price.price,
+            new_value=new_value,
+            old_value=old_value,
+        )
+
+
 
 
 def backtest_valuation_factory(pricing_model):

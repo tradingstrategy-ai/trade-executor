@@ -21,6 +21,7 @@ from tradeexecutor.state.loan import Loan
 from tradeexecutor.state.trade import TradeType
 from tradeexecutor.state.trade import TradeExecution
 from tradeexecutor.state.types import USDollarAmount, BPS, USDollarPrice, Percent, LeverageMultiplier
+from tradeexecutor.state.valuation import ValuationUpdate
 from tradeexecutor.strategy.dust import get_dust_epsilon_for_pair
 from tradeexecutor.strategy.lending_protocol_leverage import create_short_loan, plan_loan_update_for_short, create_credit_supply_loan, update_credit_supply_loan
 from tradeexecutor.strategy.trade_pricing import TradePricing
@@ -215,6 +216,18 @@ class TradingPosition(GenericPosition):
     #: Trigger updates are stored oldest first.
     #:
     trigger_updates: List[TriggerPriceUpdate] = field(default_factory=list)
+
+    #: Valuation updates.
+    #:
+    #: Every time a trigger price is moved e.g. for a trailing stop loss,
+    #  we make a record here for future analysis.
+    #:
+    #: Trigger updates are stored oldest first.
+    #:
+    #: See also :py:attr:`last_token_price` and :py:attr:`last_pricing_at`
+    #: legacy attributes.
+    #:
+    valuation_updates: List[ValuationUpdate] = field(default_factory=list)
 
     #: The loan underlying the position leverage or credit supply.
     #:
@@ -1242,7 +1255,10 @@ loca
         return t.blockchain_transactions[-1].tx_hash
 
     def revalue_base_asset(self, last_pricing_at: datetime.datetime, last_token_price: USDollarPrice):
-        """Update position token prices."""
+        """Update position token prices.
+
+        TODO: Legacy. See :py:attr:`valuation_updates`.
+        """
         assert isinstance(last_pricing_at, datetime.datetime)
         assert not isinstance(last_pricing_at, pd.Timestamp)
 
@@ -1256,6 +1272,8 @@ loca
         if self.loan:
             assert self.is_short()
             self.loan.borrowed.revalue(last_token_price, last_pricing_at)
+
+        return self.get_value()
 
     def get_value_at_open(self) -> USDollarAmount:
         """How much the position had value tied after its open.
