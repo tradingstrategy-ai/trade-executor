@@ -31,8 +31,9 @@ class BacktestValuationModel(ValuationModel):
         pair = position.pair
 
         if position.is_long():
+            pricing_pair = pair.get_pricing_pair()
             quantity = position.get_quantity()
-            trade_price = self.pricing_model.get_sell_price(ts, pair, quantity)
+            trade_price = self.pricing_model.get_sell_price(ts, pricing_pair, quantity)
         else:
 
             # TODO: Use position net asset pricing for leveraged positions
@@ -52,6 +53,7 @@ class BacktestValuationModel(ValuationModel):
             new_price=trade_price.price,
             new_value=new_value,
             old_value=old_value,
+            old_price=old_price,
         )
 
 
