@@ -122,6 +122,8 @@ def set_up_simulated_execution_loop_uniswap_v2(
         routing_model=routing_model,
         decide_trades=decide_trades,
         execution_context=execution_context,
+        trade_settle_wait=datetime.timedelta(seconds=1),
+        unit_testing=True,
     )
 
     loop = ExecutionLoop(
@@ -225,6 +227,7 @@ def set_up_simulated_execution_loop_uniswap_v3(
         decide_trades=decide_trades,
         execution_context=execution_context,
         trade_settle_wait=datetime.timedelta(seconds=1),
+        unit_testing=True,
     )
 
     loop = ExecutionLoop(
@@ -326,6 +329,7 @@ def set_up_simulated_execution_loop_one_delta(
         decide_trades=decide_trades,
         execution_context=execution_context,
         unit_testing=True,
+        trade_settle_wait=datetime.timedelta(seconds=1),
     )
 
     loop = ExecutionLoop(
@@ -407,6 +411,7 @@ def set_up_simulated_ethereum_generic_execution(
         execution_context=execution_context,
         unit_testing=True,
         run_state=RunState(),
+        trade_settle_wait=datetime.timedelta(seconds=1),
     )
 
     loop = ExecutionLoop(
