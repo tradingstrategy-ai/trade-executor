@@ -417,7 +417,7 @@ def start(
 
     # Allow to do Python thread dump using a signal with
     # docker-compose kill command
-    if not execution_context.mode.is_unit_testing():
+    if not unit_testing:
         faulthandler.enable()
 
     loop = ExecutionLoop(
