@@ -199,7 +199,7 @@ def test_one_delta_live_strategy_short_open_and_close(
 
     usdc_id = f"{web3.eth.chain_id}-{usdc.address.lower()}"
     assert state.portfolio.reserves[usdc_id].quantity == 9000
-    assert state.portfolio.open_positions[1].get_quantity() == Decimal('1.261256429210282326')
+    assert state.portfolio.open_positions[1].get_quantity() == Decimal('-1.261256429210282326')
     assert state.portfolio.open_positions[1].get_value() == pytest.approx(944.0010729999999, rel=APPROX_REL)
 
     # mine a few block before running next tick
