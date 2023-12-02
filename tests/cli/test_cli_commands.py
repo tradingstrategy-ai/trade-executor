@@ -280,7 +280,6 @@ def test_cli_console(
 
 
 @pytest.mark.slow_test_group
-@pytest.mark.skip(reason="Hangs on executing the notebook")
 def test_cli_backtest(
         logger,
         unit_test_cache_path: str,

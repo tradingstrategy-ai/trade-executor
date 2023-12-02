@@ -53,7 +53,7 @@ FAST_EMA_CANDLE_COUNT = 2
 
 BACKTEST_START = datetime.datetime(2022, 1, 1)
 
-BACKTEST_END = datetime.datetime(2022, 10, 18)
+BACKTEST_END = datetime.datetime(2022, 3, 1)
 
 INITIAL_CASH = 10_000
 
