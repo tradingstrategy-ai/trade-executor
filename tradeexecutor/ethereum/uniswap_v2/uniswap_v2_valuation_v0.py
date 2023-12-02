@@ -50,7 +50,7 @@ class UniswapV2PoolValuationMethodV0(ValuationModel):
 
         evt = ValuationUpdate(
             created_at=ts,
-            position_id=position.id,
+            position_id=position.position_id,
             valued_at=ts,
             old_value=old_value,
             new_value=new_value,
