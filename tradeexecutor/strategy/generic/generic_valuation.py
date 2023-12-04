@@ -35,8 +35,8 @@ class GenericValuation(ValuationModel):
             ts: datetime.datetime,
             position: TradingPosition,
     ) -> ValuationUpdate:
-        config = self.pair_configurator.get_pair_config(position.pair)
-        return config.valuation_model(ts, position)
+        valuation_model = self.pair_configurator.get_valuation(position.pair)
+        return valuation_model(ts, position)
 
 
 def generic_valuation_factory(pricing_model):

@@ -99,7 +99,7 @@ class RoutingModel(abc.ABC):
         """
 
         assert type(allowed_intermediary_pairs) == dict
-        assert type(reserve_token_address) == str
+        assert type(reserve_token_address) == str, f"Got {reserve_token_address}"
 
         assert reserve_token_address.lower() == reserve_token_address, f"reserve token address must be specified as lower case, got {reserve_token_address}"
 

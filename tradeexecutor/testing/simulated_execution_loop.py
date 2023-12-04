@@ -400,7 +400,7 @@ def set_up_simulated_ethereum_generic_execution(
     def pricing_model_factory(execution_model, universe: StrategyExecutionUniverse, routing_model):
         return pricing_model
 
-    def valuation_model_factory():
+    def valuation_model_factory(pricing_model):
         return valuation_model
 
     runner = PandasTraderRunner(

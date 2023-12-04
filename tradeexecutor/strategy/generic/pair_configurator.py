@@ -1,14 +1,45 @@
 from abc import abstractmethod, ABC
+from dataclasses import dataclass
 from typing import Set
 
 from web3 import Web3
 
-from tradeexecutor.state.identifier import TradingPairIdentifier
-from tradeexecutor.strategy.generic.routing_function import DeFiTradingPairConfig
+from tradeexecutor.state.identifier import TradingPairIdentifier, ExchangeType
 from tradeexecutor.strategy.pricing_model import PricingModel
 from tradeexecutor.strategy.routing import RoutingModel
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
 from tradeexecutor.strategy.valuation import ValuationModel
+
+
+@dataclass
+class ProtocolRoutingId:
+    router_name: str
+    exchange_slug: str
+    lending_protocol_slug: str | None = None
+
+    def __hash__(self):
+        return hash((self.router_name, self.exchange_slug, self.lending_protocol_slug))
+
+    def __eq__(self, other):
+        return other.router_name == self.router_name \
+            and other.exchange_slug == self.exchange_slug \
+            and other.lending_protocol_slug == self.lending_protocol_slug
+
+    def __str__(self):
+        return f"<ProtocolRoutingId {self.router_name} {self.exchange_slug} {self.lending_protocol_slug}>"
+
+
+@dataclass
+class ProtocolRoutingConfig:
+    """Different components we need to deal trading on a protocol.
+
+    - These are per-pair
+    """
+    routing_id: ProtocolRoutingId
+    routing_model: RoutingModel
+    valuation_model: ValuationModel
+    pricing_model: PricingModel
+
 
 
 class PairConfigurator(ABC):
@@ -30,50 +61,37 @@ class PairConfigurator(ABC):
     ):
         self.web3 = web3
         self.strategy_universe = strategy_universe
-        self.pair_configs = {}
-        self.router_configs = {}
+        self.configs = {}
 
     @abstractmethod
-    def create_pair_config(self, pair):
+    def create_config(self, routing_id: ProtocolRoutingId):
         pass
 
     @abstractmethod
-    def create_router(self, router_name: str):
+    def get_supported_routers(self) -> Set[ProtocolRoutingId]:
         pass
 
     @abstractmethod
-    def match_router(self, pair: TradingPairIdentifier) -> str:
+    def match_router(self, pair: TradingPairIdentifier) -> ProtocolRoutingId:
         pass
 
-    @abstractmethod
-    def get_supported_routers(self) -> Set[str]:
-        pass
+    def get_routing(self, pair: TradingPairIdentifier) -> RoutingModel:
+        router = self.match_router(pair)
+        return self.get_config(router).routing_model
 
     def get_valuation(self, pair: TradingPairIdentifier) -> ValuationModel:
-        return self.get_pair_config(pair).valuation_model
+        router = self.match_router(pair)
+        return self.get_config(router).valuation_model
 
     def get_pricing(self, pair: TradingPairIdentifier) -> PricingModel:
-        return self.get_pair_config(pair).pricing_model
+        router = self.match_router(pair)
+        return self.get_config(router).pricing_model
 
-    def get_pair_config(self, pair: TradingPairIdentifier) -> DeFiTradingPairConfig:
+    def get_config(self, router: ProtocolRoutingId) -> ProtocolRoutingConfig:
         """Get cached config."""
 
-        config = self.pair_configs.get(pair)
+        config = self.configs.get(router)
         if config is None:
-            config = self.pair_configs[pair] = self.create_pair_config(pair)
+            config = self.configs[router] = self.create_config(router)
 
         return config
-
-    def get_router(self, router_name: str) -> RoutingModel:
-        """Get cached config."""
-
-        config = self.router_configs.get(router_name)
-        if config is None:
-            config = self.router_configs[router_name] = self.create_router(router_name)
-
-        return config
-
-
-
-
-

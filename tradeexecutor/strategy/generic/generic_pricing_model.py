@@ -33,8 +33,7 @@ class GenericPricing(PricingModel):
         self.pair_configurator = pair_configurator
 
     def route(self, pair: TradingPairIdentifier) -> PricingModel:
-        config = self.pair_configurator.get_pair_config(pair)
-        return config.pricing_model
+        return self.pair_configurator.get_pricing(pair)
 
     def get_sell_price(self,
                        ts: datetime.datetime,

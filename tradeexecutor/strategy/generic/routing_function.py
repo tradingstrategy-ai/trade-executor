@@ -24,18 +24,6 @@ class UnroutableTrade(Exception):
     """Trade cannot be routed, as we could not find a matching route."""
 
 
-@dataclass
-class DeFiTradingPairConfig:
-    """Different components we need to deal trading on a protocol.
-
-    - These are per-pair
-    """
-    router_name: str
-    pair: TradingPairIdentifier
-    valuation_model: ValuationModel
-    pricing_model: PricingModel
-
-
 class RoutingFunction(Protocol):
     """A function protocol definition for router choose.
 
@@ -46,36 +34,6 @@ class RoutingFunction(Protocol):
             pair_universe: PandasPairUniverse,
             pair: TradingPairIdentifier,
     ) -> str | None:
-        """For each trade, return the name of the route that should be used.
-
-        :param pair_univerwse:
-            Give us loaded exchange and pair data to route the trade.
-
-        :param pair:
-            The trading pair for which we need to find the backend.
-
-        :return:
-            The route name that should be taken.
-
-            If we do not know how to route the trade, return ``None``.
-        """
-
-
-
-class LiveProtocolAdapter(Protocol):
-    """A function protocol definition for router choose.
-
-    - We create adapters per trading pair
-
-    - These adapters are for live trading only -
-      we bind Web3 connection for the adapter
-    """
-
-    def __call__(
-            web3: Web3,
-            strategy_universe: TradingStrategyUniverse,
-            pair: TradingPairIdentifier,
-    ) -> DeFiTradingPairConfig:
         """For each trade, return the name of the route that should be used.
 
         :param pair_univerwse:

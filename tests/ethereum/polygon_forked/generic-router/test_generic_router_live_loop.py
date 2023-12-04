@@ -94,6 +94,7 @@ def test_generic_router_spot_and_shot_strategy(
         state=state,
         routing_model=generic_routing_model,
         pricing_model=generic_pricing_model,
+        valuation_model=generic_valuation_model,
         hot_wallet=hot_wallet,
     )
 

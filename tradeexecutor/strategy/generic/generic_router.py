@@ -70,9 +70,9 @@ class GenericRouting(RoutingModel):
         """
         assert isinstance(universe, TradingStrategyUniverse)
         substates = {}
-        for router_name in self.pair_configurator.get_supported_routers():
-            router = self.pair_configurator.get_router(router_name)
-            substates[router_name] = router.create_routing_state(universe, execution_details)
+        for routing_id in self.pair_configurator.get_supported_routers():
+            router = self.pair_configurator.get_config(routing_id).routing_model
+            substates[routing_id.router_name] = router.create_routing_state(universe, execution_details)
 
         return GenericRoutingState(universe, substates)
 
@@ -97,14 +97,15 @@ class GenericRouting(RoutingModel):
         strategy_universe = state.strategy_universe
 
         for t in trades:
-            router_name = self.pair_configurator.match_router(t.pair)
-            router = self.pair_configurator.get_router(router_name)
+            routing_id = self.pair_configurator.match_router(t.pair)
+            protocol_config = self.pair_configurator.get_config(routing_id)
 
+            router = protocol_config.routing_model
             # Set the router, so we know
             # in the post-trade analysis which route this trade took
-            t.route = router_name
+            t.route = protocol_config.routing_id.router_name
 
-            router_state = state.state_map[router_name]
+            router_state = state.state_map[protocol_config.routing_id.router_name]
             router.setup_trades(
                 router_state,
                 [t],
@@ -125,8 +126,7 @@ class GenericRouting(RoutingModel):
         assert type(receipts) == dict
         assert trade.route is not None, f"TradeExecution lacks TradeExecution.route, it was not executed with GenericRouter?\n{t}"
 
-        router_name = self.pair_configurator.match_router(trade.pair)
-        router = self.pair_configurator.get_router(router_name)
+        router = self.pair_configurator.get_routing(trade.pair)
 
         return router.settle_trade(
             web3,
