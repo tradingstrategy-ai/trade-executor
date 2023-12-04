@@ -53,6 +53,24 @@ class AssetType:
 
 @dataclass_json
 @dataclass
+class ExchangeType:
+    """What kind of a DEX we use for this pair.
+
+    Note that a trading pair can have several protocols associated with it,
+    DEX is just one of them.
+    """
+
+    #: El Classico
+    uniswap_v2 = "uniswap_v2"
+
+    #: ERC-20 aToken with dynamic balance()
+    uniswap_v3 = "uniswap_v3"
+
+
+
+
+@dataclass_json
+@dataclass
 class AssetIdentifier:
     """Identify a blockchain asset for trade execution.
 

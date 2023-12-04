@@ -2,9 +2,12 @@
 
 import pandas as pd
 import pytest as pytest
+from web3 import Web3
 
+from tradeexecutor.ethereum.ethereum_protocol_adapters import EthereumPairConfigurator
 from tradeexecutor.ethereum.execution import EthereumExecution
 from tradeexecutor.ethereum.tx import HotWalletTransactionBuilder
+from tradeexecutor.strategy.generic.generic_valuation import GenericValuation
 from tradingstrategy.chain import ChainId
 
 from eth_defi.hotwallet import HotWallet
@@ -69,14 +72,19 @@ def strategy_universe(
 
 
 @pytest.fixture()
+def pair_configurator(
+    web3: Web3,
+    strategy_universe: TradingStrategyUniverse,
+) -> EthereumPairConfigurator:
+    return EthereumPairConfigurator(
+        web3,
+        strategy_universe,
+    )
+
+
+@pytest.fixture()
 def generic_routing_model(
-    quickswap_deployment: UniswapV2Deployment,
-    wmatic_usdc_spot_pair: TradingPairIdentifier,
-    quickswap_routing_model: UniswapV2Routing,
-    one_delta_routing_model: OneDeltaRouting,
-    uniswap_v3_routing_model: UniswapV3Routing,
-    asset_usdc: AssetIdentifier,
-    asset_wmatic: AssetIdentifier,
+    pair_configurator
 ) -> GenericRouting:
     """Create a routing model that trades Uniswap v2, v3 and 1delta + Aave.
 
@@ -84,42 +92,29 @@ def generic_routing_model(
     """
 
     # Uses default router choose function
-    return GenericRouting(
-        routers={
-            "quickswap": quickswap_routing_model,
-            "uniswap-v3": uniswap_v3_routing_model,
-            "1delta": one_delta_routing_model,
-        }
-    )
+    return GenericRouting(pair_configurator)
 
 
 @pytest.fixture()
 def generic_pricing_model(
-    web3,
-    strategy_universe: TradingStrategyUniverse,
-    quickswap_routing_model: UniswapV2Routing,
-    one_delta_routing_model: OneDeltaRouting,
-    uniswap_v3_routing_model: UniswapV3Routing,
+    pair_configurator
 ) -> GenericPricing:
     """Create a routing model that trades Uniswap v2, v3 and 1delta + Aave.
 
     Live Polygon deployment addresses.
     """
-
-    pair_universe = strategy_universe.data_universe.pairs
-
-    quickswap_pricing_model = UniswapV2LivePricing(web3, pair_universe, quickswap_routing_model)
-    uniswap_v3_pricing_model = UniswapV3LivePricing(web3, pair_universe, uniswap_v3_routing_model)
-    one_delta_pricing = OneDeltaLivePricing(web3, pair_universe, one_delta_routing_model)
-
     # Uses default router choose function
     return GenericPricing(
-        pair_universe,
-        routes = {
-            "quickswap": quickswap_pricing_model,
-            "uniswap-v3": uniswap_v3_pricing_model,
-            "1delta": one_delta_pricing,
-        }
+        pair_configurator,
+    )
+
+
+@pytest.fixture()
+def generic_valuation_model(
+    pair_configurator
+) -> GenericValuation:
+    return GenericValuation(
+        pair_configurator,
     )
 
 

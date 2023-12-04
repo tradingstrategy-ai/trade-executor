@@ -19,7 +19,7 @@ from tradeexecutor.strategy.cycle import CycleDuration
 from tradeexecutor.strategy.execution_context import ExecutionContext, ExecutionMode
 from tradeexecutor.strategy.generic.generic_pricing_model import GenericPricing
 from tradeexecutor.strategy.generic.generic_router import GenericRouting
-from tradeexecutor.strategy.generic.generic_valuation import generic_valuation_factory
+from tradeexecutor.strategy.generic.generic_valuation import generic_valuation_factory, GenericValuation
 from tradeexecutor.strategy.pandas_trader.runner import PandasTraderRunner
 from tradeexecutor.strategy.run_state import RunState
 from tradeexecutor.strategy.strategy_module import DecideTradesProtocol
@@ -361,6 +361,7 @@ def set_up_simulated_ethereum_generic_execution(
     universe: StrategyExecutionUniverse,
     routing_model: GenericRouting,
     pricing_model: GenericPricing,
+    valuation_model: GenericValuation,
     state: State,
     hot_wallet: HotWallet,
 ) -> ExecutionLoop:
@@ -399,11 +400,14 @@ def set_up_simulated_ethereum_generic_execution(
     def pricing_model_factory(execution_model, universe: StrategyExecutionUniverse, routing_model):
         return pricing_model
 
+    def valuation_model_factory():
+        return valuation_model
+
     runner = PandasTraderRunner(
         timed_task_context_manager=timed_task,
         execution_model=execution_model,
         approval_model=UncheckedApprovalModel(),
-        valuation_model_factory=generic_valuation_factory,
+        valuation_model_factory=valuation_model_factory,
         sync_model=sync_model,
         pricing_model_factory=pricing_model_factory,
         routing_model=routing_model,

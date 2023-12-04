@@ -18,6 +18,7 @@ from tradeexecutor.state.state import State
 from tradeexecutor.state.trade import TradeExecution
 from tradeexecutor.strategy.generic.generic_pricing_model import GenericPricing
 from tradeexecutor.strategy.generic.generic_router import GenericRouting
+from tradeexecutor.strategy.generic.generic_valuation import GenericValuation
 from tradeexecutor.strategy.pandas_trader.position_manager import PositionManager
 from tradeexecutor.strategy.pricing_model import PricingModel
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
@@ -46,6 +47,7 @@ def test_generic_router_spot_and_shot_strategy(
     weth_usdc_spot_pair,
     generic_routing_model: GenericRouting,
     generic_pricing_model: GenericPricing,
+    generic_valuation_model: GenericValuation,
 ):
     """See generic manager goes through backtesting loop correctly.
 

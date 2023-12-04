@@ -1,10 +1,16 @@
 """Value model based on their selling price on generic routing"""
 import datetime
+from typing import Dict
 
+from tradeexecutor.state.identifier import TradingPairIdentifier
 from tradeexecutor.state.position import TradingPosition
 from tradeexecutor.state.types import USDollarAmount
+from tradeexecutor.state.valuation import ValuationUpdate
 from tradeexecutor.strategy.generic.generic_pricing_model import GenericPricing
+from tradeexecutor.strategy.generic.pair_configurator import PairConfigurator
+from tradeexecutor.strategy.generic.routing_function import RoutingFunction, default_route_chooser, UnroutableTrade
 from tradeexecutor.strategy.valuation import ValuationModel
+from tradingstrategy.pair import PandasPairUniverse
 
 
 class GenericValuation(ValuationModel):
@@ -18,33 +24,19 @@ class GenericValuation(ValuationModel):
       but don't ask anything from the chain here
     """
 
-    def __init__(self, pricing_model: GenericPricing):
-        assert isinstance(pricing_model, GenericPricing)
-        self.pricing_model = pricing_model
+    def __init__(
+            self,
+            pair_configurator: PairConfigurator,
+    ):
+        self.pair_configurator = pair_configurator
 
     def __call__(
             self,
             ts: datetime.datetime,
             position: TradingPosition,
-    ) -> tuple[datetime.datetime, USDollarAmount]:
-
-        pair = position.pair
-
-        if pair.is_leverage():
-            # Get the latest NAV of the loan based position
-            loan = position.loan
-            nav = loan.get_net_asset_value(include_interest=True)
-            ts = loan.collateral.last_pricing_at
-            return ts, nav
-        elif pair.is_spot():
-            # Cannot do pricing for zero quantity
-            quantity = position.get_quantity()
-            if quantity == 0:
-                return ts, 0.0
-            price_structure = self.pricing_model.get_sell_price(ts, pair, quantity)
-            return ts, price_structure.price
-        else:
-            raise NotImplementedError(f"Does not know how to value position {position}")
+    ) -> ValuationUpdate:
+        config = self.pair_configurator.get_pair_config(position.pair)
+        return config.valuation_model(ts, position)
 
 
 def generic_valuation_factory(pricing_model):
