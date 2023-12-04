@@ -476,7 +476,6 @@ class PositionManager:
 
         Use :py:meth:`open_spot` instead.
         """
-        warnings.warn('This function is deprecated. Use PositionManager.close_short() instead', DeprecationWarning, stacklevel=2)
         return self.open_spot(
             pair=pair,
             value=value,
