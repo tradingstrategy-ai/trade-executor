@@ -1,8 +1,5 @@
 import datetime
-import pandas as pd
-from eth_typing import HexAddress
 
-from tradeexecutor.state.identifier import TradingPairIdentifier, AssetIdentifier
 from tradeexecutor.strategy.trading_strategy_universe import (
     Dataset,
     TradingStrategyUniverse,
@@ -14,188 +11,18 @@ from tradingstrategy.timebucket import TimeBucket
 
 from tradingstrategy.binance.constants import (
     BINANCE_CHAIN_ID,
-    BINANCE_CHAIN_SLUG,
-    BINANCE_EXCHANGE_ID,
     BINANCE_EXCHANGE_SLUG,
-    BINANCE_EXCHANGE_ADDRESS,
-    BINANCE_EXCHANGE_TYPE,
-    BINANCE_FEE,
-    BINANCE_SUPPORTED_QUOTE_TOKENS,
-    split_binance_symbol,
 )
-from tradingstrategy.exchange import Exchange, ExchangeUniverse
-from tradingstrategy.chain import ChainId
-from tradingstrategy.utils.format import string_to_eth_address
-from tradingstrategy.lending import (
-    LendingReserve,
-    LendingProtocolType,
-    LendingReserveAdditionalDetails,
+from tradingstrategy.binance.utils import (
+    generate_pairs_for_binance,
+    generate_exchange_universe_for_binance,
+    add_info_columns_to_ohlc,
+    generate_lending_reserve_for_binance,
 )
+
 from tradingstrategy.binance.downloader import BinanceDownloader
 from tradingstrategy.lending import LendingReserveUniverse, LendingCandleUniverse
-
-
-def generate_pairs_for_binance(
-    symbols: list[str],
-) -> list[TradingPairIdentifier]:
-    """Generate trading pair identifiers for Binance data.
-
-    :param symbols: List of symbols to generate pairs for
-    :return: List of trading pair identifiers
-    """
-    return [
-        generate_pair_for_binance(symbol, i + 1) for i, symbol in enumerate(symbols)
-    ]
-
-
-def generate_pair_for_binance(
-    symbol: str,
-    internal_id: int,
-    fee: float = BINANCE_FEE,
-    base_token_decimals: int = 18,
-    quote_token_decimals: int = 18,
-) -> TradingPairIdentifier:
-    """Generate a trading pair identifier for Binance data.
-
-    Binance data is not on-chain, so we need to generate the identifiers
-    for the trading pairs.
-
-    .. note:: Internal exchange id is hardcoded to 129875571 and internal id to 134093847
-
-
-    :param symbol: E.g. `ETHUSDT`
-    :return: Trading pair identifier
-    """
-    assert 0 < fee < 1, f"Bad fee {fee}. Must be 0..1"
-
-    assert symbol.endswith(BINANCE_SUPPORTED_QUOTE_TOKENS), f"Bad symbol {symbol}"
-
-    base_token_symbol, quote_token_symbol = split_binance_symbol(symbol)
-
-    base = AssetIdentifier(
-        int(BINANCE_CHAIN_ID.value),
-        string_to_eth_address(base_token_symbol),
-        base_token_symbol,
-        base_token_decimals,
-    )
-
-    quote = AssetIdentifier(
-        int(BINANCE_CHAIN_ID.value),
-        string_to_eth_address(quote_token_symbol),
-        quote_token_symbol,
-        quote_token_decimals,
-    )
-
-    return TradingPairIdentifier(
-        base=base,
-        quote=quote,
-        pool_address=string_to_eth_address(f"{base_token_symbol}{quote_token_symbol}"),
-        exchange_address=BINANCE_EXCHANGE_ADDRESS,
-        fee=BINANCE_FEE,
-        internal_exchange_id=BINANCE_EXCHANGE_ID,
-        internal_id=int(internal_id),
-    )
-
-
-def generate_exchange_for_binance(pair_count: int) -> Exchange:
-    """Generate an exchange identifier for Binance data."""
-    return Exchange(
-        chain_id=BINANCE_CHAIN_ID,
-        chain_slug=ChainId(BINANCE_CHAIN_SLUG),
-        exchange_id=BINANCE_EXCHANGE_ID,
-        exchange_slug=BINANCE_EXCHANGE_SLUG,
-        address=BINANCE_EXCHANGE_ADDRESS,
-        exchange_type=BINANCE_EXCHANGE_TYPE,
-        pair_count=pair_count,
-    )
-
-
-def generate_exchange_universe_for_binance(pair_count: int) -> Exchange:
-    """Generate an exchange universe for Binance data."""
-    return ExchangeUniverse.from_collection([generate_exchange_for_binance(pair_count)])
-
-
-@staticmethod
-def add_info_columns_to_ohlc(df: pd.DataFrame, pairs: dict[str, TradingPairIdentifier]):
-    """Add single pair informational columns to an OHLC dataframe.
-
-    :param *args: Each argument is a dict with the format {symbol: pair}
-        E.g. {'ETHUSDT': TradingPairIdentifier(...)}
-
-    :return: The same dataframe with added columns
-    """
-
-    for symbol, pair in pairs.items():
-        if symbol not in df["symbol"].values:
-            raise ValueError(f"Symbol {symbol} not found in DataFrame")
-
-        # Update the DataFrame only for the rows where 'symbol' matches
-        mask = df["symbol"] == symbol
-        df.loc[mask, "base_token_symbol"] = pair.base.token_symbol
-        df.loc[mask, "quote_token_symbol"] = pair.quote.token_symbol
-        df.loc[mask, "exchange_slug"] = "binance"
-        df.loc[mask, "chain_id"] = int(pair.base.chain_id)
-        df.loc[mask, "fee"] = pair.fee * 10_000
-        df.loc[mask, "pair_id"] = pair.internal_id
-        df.loc[mask, "buy_volume_all_time"] = 0
-        df.loc[mask, "address"] = pair.pool_address
-        df.loc[mask, "exchange_id"] = pair.internal_exchange_id
-        df.loc[mask, "token0_address"] = pair.base.address
-        df.loc[mask, "token1_address"] = pair.quote.address
-        df.loc[mask, "token0_symbol"] = pair.base.token_symbol
-        df.loc[mask, "token1_symbol"] = pair.quote.token_symbol
-        df.loc[mask, "token0_decimals"] = pair.base.decimals
-        df.loc[mask, "token1_decimals"] = pair.quote.decimals
-
-    return df
-
-
-def generate_lending_reserve_for_binance(
-    asset_symbol: str,
-    address: HexAddress,
-    reserve_id: int,
-    asset_decimals=18,
-) -> LendingReserve:
-    """Generate a lending reserve for Binance data.
-
-    Binance data is not on-chain, so we need to generate the identifiers
-    for the trading pairs.
-
-    :param asset_symbol: E.g. `ETH`
-    :param address: address of the reserve
-    :param reserve_id: id of the reserve
-    :return: LendingReserve
-    """
-
-    assert isinstance(reserve_id, int), f"Bad reserve_id {reserve_id}"
-
-    atoken_symbol = f"a{asset_symbol.upper()}"
-    vtoken_symbol = f"v{asset_symbol.upper()}"
-
-    return LendingReserve(
-        reserve_id=reserve_id,
-        reserve_slug=asset_symbol.lower(),
-        protocol_slug=LendingProtocolType.aave_v3,
-        chain_id=BINANCE_CHAIN_ID,
-        chain_slug=BINANCE_CHAIN_SLUG,
-        asset_id=1,
-        asset_symbol=asset_symbol,
-        asset_address=address,
-        asset_decimals=asset_decimals,
-        atoken_id=1,
-        asset_name=asset_symbol,
-        atoken_symbol=atoken_symbol,
-        atoken_address=string_to_eth_address(atoken_symbol),
-        atoken_decimals=18,
-        vtoken_id=1,
-        vtoken_symbol=vtoken_symbol,
-        vtoken_address=string_to_eth_address(vtoken_symbol),
-        vtoken_decimals=18,
-        additional_details=LendingReserveAdditionalDetails(
-            ltv=0.825,
-            liquidation_threshold=0.85,
-        ),
-    )
+from tradingstrategy.pair import DEXPair
 
 
 def load_binance_dataset(
@@ -240,11 +67,14 @@ def load_binance_dataset(
         force_download=force_download,
     )
 
+    spot_symbol_map = {symbol: i + 1 for i, symbol in enumerate(symbols)}
+
     candle_df = add_info_columns_to_ohlc(
         df, {symbol: pair for symbol, pair in zip(symbols, pairs)}
     )
 
-    # TODO use stop_loss_candle_universe (have to fix it)
+    candle_df["pair_id"].replace(spot_symbol_map, inplace=True)
+
     candle_universe, stop_loss_candle_universe = load_candle_universe_from_dataframe(
         df=candle_df,
         include_as_trigger_signal=True,
@@ -253,7 +83,17 @@ def load_binance_dataset(
 
     exchange_universe = generate_exchange_universe_for_binance(pair_count=len(pairs))
 
-    pairs_df = candle_universe.get_pairs_df()
+    pairs_df = DEXPair.convert_to_dataframe(pairs)
+    pairs_df["pair_id"].replace(spot_symbol_map, inplace=True)
+
+    # pairs_df = candle_universe.pairs.first().reset_index()
+    # pairs_df['fee'] = pairs_df['fee'] * 10_000
+    # del pairs_df["timestamp"]
+    # del pairs_df["open"]
+    # del pairs_df["high"]
+    # del pairs_df["low"]
+    # del pairs_df["close"]
+    # del pairs_df["volume"]
 
     if include_lending:
         reserves = []
@@ -261,12 +101,12 @@ def load_binance_dataset(
         for pair in pairs:
             reserves.append(
                 generate_lending_reserve_for_binance(
-                    pair.base.token_symbol, pair.base.address, reserve_id
+                    pair.base_token_symbol, pair.token0_address, reserve_id
                 )
             )
             reserves.append(
                 generate_lending_reserve_for_binance(
-                    pair.quote.token_symbol, pair.quote.address, reserve_id + 1
+                    pair.quote_token_symbol, pair.token1_address, reserve_id + 1
                 )
             )
             reserve_id += 2
