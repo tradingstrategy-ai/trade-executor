@@ -4,34 +4,23 @@ How executor internally knows how to connect trading pairs in data and in execut
 """
 import datetime
 import enum
-import pandas as pd
 from dataclasses import dataclass, field
 from decimal import Decimal
 from typing import Optional, Literal, TypeAlias
-from web3 import Web3
 
 from dataclasses_json import dataclass_json
 from eth_typing import HexAddress
 
 from eth_defi.uniswap_v2.utils import sort_tokens
 from tradeexecutor.utils.accuracy import sum_decimal, ensure_exact_zero
-from tradingstrategy.exchange import Exchange
-from tradingstrategy.exchange import ExchangeUniverse
 from tradingstrategy.chain import ChainId
-from tradingstrategy.utils.format import string_to_eth_address
-from tradingstrategy.binance.constants import BINANCE_CHAIN_ID, BINANCE_EXCHANGE_ADDRESS, BINANCE_EXCHANGE_ID, BINANCE_FEE, BINANCE_EXCHANGE_SLUG, BINANCE_CHAIN_SLUG, BINANCE_EXCHANGE_TYPE
+from web3 import Web3
 
-from tradeexecutor.state.types import (
-    JSONHexAddress,
-    USDollarAmount,
-    LeverageMultiplier,
-    USDollarPrice,
-    Percent,
-)
+from tradeexecutor.state.types import JSONHexAddress, USDollarAmount, LeverageMultiplier, USDollarPrice, Percent
 from tradingstrategy.lending import LendingProtocolType
 from tradingstrategy.stablecoin import is_stablecoin_like
 from tradingstrategy.types import PrimaryKey
-from tradingstrategy.pair import HumanReadableTradingPairDescription
+
 
 #: Asset unique id as a human-readable string.
 #:
@@ -119,7 +108,7 @@ class AssetIdentifier:
             return f"<{self.token_symbol} at {self.address}>"
 
     def __hash__(self):
-        assert self.chain_id is not None, "chain_id needs to be set to be hashable"
+        assert self.chain_id, "chain_id needs to be set to be hashable"
         assert self.address, "address needs to be set to be hashable"
         return hash((self.chain_id, self.address))
 
@@ -128,11 +117,9 @@ class AssetIdentifier:
         return self.chain_id == other.chain_id and self.address == other.address
 
     def __post_init__(self):
-        assert (
-            type(self.address) == str
-        ), f"Got address {self.address} as {type(self.address)}"
+        assert type(self.address) == str, f"Got address {self.address} as {type(self.address)}"
         assert self.address.startswith("0x")
-        self.address = self.address.lower()
+        self.address= self.address.lower()
         assert type(self.chain_id) == int
         assert type(self.decimals) == int, f"Bad decimals {self.decimals}"
         assert self.decimals >= 0
@@ -155,9 +142,7 @@ class AssetIdentifier:
 
     def __eq__(self, other: "AssetIdentifier") -> bool:
         """Assets are considered be identical if they share the same smart contract address."""
-        assert isinstance(
-            other, AssetIdentifier
-        ), f"Compared to wrong class: {other} {other.__class__}"
+        assert isinstance(other, AssetIdentifier), f"Compared to wrong class: {other} {other.__class__}"
         return self.address.lower() == other.address.lower()
 
     def convert_to_raw_amount(self, amount: Decimal) -> int:
@@ -165,18 +150,12 @@ class AssetIdentifier:
 
         Convert decimal to fixed point integer.
         """
-        assert isinstance(
-            amount, Decimal
-        ), "Input only exact numbers for the conversion, not fuzzy ones like floats"
-        assert (
-            self.decimals is not None
-        ), f"Cannot perform human to raw token amount conversion, because no decimals given: {self}"
+        assert isinstance(amount, Decimal), "Input only exact numbers for the conversion, not fuzzy ones like floats"
+        assert self.decimals is not None, f"Cannot perform human to raw token amount conversion, because no decimals given: {self}"
         return int(amount * Decimal(10**self.decimals))
 
     def convert_to_decimal(self, raw_amount: int) -> Decimal:
-        assert (
-            self.decimals is not None
-        ), f"Cannot perform human to raw token amount conversion, because no decimals given: {self}"
+        assert self.decimals is not None, f"Cannot perform human to raw token amount conversion, because no decimals given: {self}"
         return Decimal(raw_amount) / Decimal(10**self.decimals)
 
     def is_stablecoin(self) -> bool:
@@ -243,11 +222,7 @@ class TradingPairKind(enum.Enum):
 
     def is_interest_accruing(self) -> bool:
         """Do base or quote or both gain interest during when the position is open."""
-        return self in (
-            TradingPairKind.lending_protocol_short,
-            TradingPairKind.lending_protocol_long,
-            TradingPairKind.credit_supply,
-        )
+        return self in (TradingPairKind.lending_protocol_short, TradingPairKind.lending_protocol_long, TradingPairKind.credit_supply)
 
     def is_credit_based(self) -> bool:
         return self.is_interest_accruing()
@@ -270,10 +245,7 @@ class TradingPairKind(enum.Enum):
 
     def is_spot(self) -> bool:
         """This is a spot market pair."""
-        return (
-            self == TradingPairKind.spot_market_hold
-            or self == TradingPairKind.spot_market_hold_rebalancing_token
-        )
+        return self == TradingPairKind.spot_market_hold or self == TradingPairKind.spot_market_hold_rebalancing_token
 
 
 @dataclass_json
@@ -380,16 +352,14 @@ class TradingPairIdentifier:
     kind: TradingPairKind = TradingPairKind.spot_market_hold
 
     #: Underlying spot trading pair
-    #:
+    #: 
     #: This is used e.g. by alpha models to track the underlying pairs
     #: when doing leveraged positions.
     #:
     underlying_spot_pair: Optional["TradingPairIdentifier"] = None
 
     def __post_init__(self):
-        assert (
-            self.base.chain_id == self.quote.chain_id
-        ), "Cross-chain trading pairs are not possible"
+        assert self.base.chain_id == self.quote.chain_id, "Cross-chain trading pairs are not possible"
 
         # float/int zero fix
         # TODO: Can be carefully removed later
@@ -415,6 +385,7 @@ class TradingPairIdentifier:
         return hash((self.base.address, self.quote.address, self.fee))
 
     def __eq__(self, other: "TradingPairIdentifier | None"):
+
         if other is None:
             return False
 
@@ -449,10 +420,7 @@ class TradingPairIdentifier:
 
     def get_lending_protocol(self) -> LendingProtocolType | None:
         """Is this pair on a particular lending protocol."""
-        if self.kind in (
-            TradingPairKind.lending_protocol_short,
-            TradingPairKind.lending_protocol_long,
-        ):
+        if self.kind in (TradingPairKind.lending_protocol_short, TradingPairKind.lending_protocol_long):
             return LendingProtocolType.aave_v3
         return None
 
@@ -491,12 +459,10 @@ class TradingPairIdentifier:
         This check is mainly useful to filter out crap tokens
         from the trading decisions.
         """
-        return (
-            self.base.decimals > 0
-            and self.base.token_symbol
-            and self.quote.decimals > 0
-            and self.quote.token_symbol
-        )
+        return (self.base.decimals > 0 and
+                self.base.token_symbol and
+                self.quote.decimals > 0 and
+                self.quote.token_symbol)
 
     def has_reverse_token_order(self) -> bool:
         """Has Uniswap smart contract a flipped token order.
@@ -528,10 +494,7 @@ class TradingPairIdentifier:
         :param side:
             Order side: long or short
         """
-        assert self.kind in (
-            TradingPairKind.lending_protocol_short,
-            TradingPairKind.lending_protocol_long,
-        )
+        assert self.kind in (TradingPairKind.lending_protocol_short, TradingPairKind.lending_protocol_long)
 
         max_long_leverage = 1 / (1 - self.get_collateral_factor())
         max_short_leverage = max_long_leverage - 1
@@ -586,19 +549,9 @@ class TradingPairIdentifier:
         if self.is_spot():
             return self
         elif self.is_leverage():
-            assert (
-                self.underlying_spot_pair is not None
-            ), f"For a leveraged pair, we lack the price feed for the underlying spot: {self}"
+            assert self.underlying_spot_pair is not None, f"For a leveraged pair, we lack the price feed for the underlying spot: {self}"
             return self.underlying_spot_pair
         return None
-    
-    def identifier_to_pair_ticker(self, exchange_slug) -> HumanReadableTradingPairDescription:
-        """Convert a trading pair to a human readable ticker.
-
-        :return:
-            Human readable ticker
-        """
-        return (ChainId(self.chain_id), exchange_slug, self.base.token_symbol, self.quote.token_symbol, self.fee)
 
 
 @dataclass_json
@@ -648,12 +601,8 @@ class AssetWithTrackedValue:
 
     def __post_init__(self):
         assert isinstance(self.quantity, Decimal), f"Got {self.quantity.__class__}"
-        assert (
-            self.quantity > 0
-        ), f"Any tracked asset must have positive quantity, received {self.asset} = {self.quantity}"
-        assert (
-            self.last_usd_price is not None
-        ), "Price is None - asset price must set during initialisation"
+        assert self.quantity > 0, f"Any tracked asset must have positive quantity, received {self.asset} = {self.quantity}"
+        assert self.last_usd_price is not None, "Price is None - asset price must set during initialisation"
         assert self.last_usd_price > 0
 
     def get_usd_value(self) -> USDollarAmount:
@@ -696,15 +645,7 @@ class AssetWithTrackedValue:
 
         if not allow_negative:
             total_available = self.quantity + available_accrued_interest
-            assert (
-                sum_decimal(
-                    (
-                        total_available,
-                        delta,
-                    )
-                )
-                >= 0
-            ), f"Tracked asset cannot go negative: {self}. delta: {delta}, total available: {total_available}, quantity: {self.quantity}, interest: {available_accrued_interest}"
+            assert sum_decimal((total_available, delta,)) >= 0, f"Tracked asset cannot go negative: {self}. delta: {delta}, total available: {total_available}, quantity: {self.quantity}, interest: {available_accrued_interest}"
 
         self.quantity += delta
 
@@ -714,3 +655,7 @@ class AssetWithTrackedValue:
         # TODO: this is a temp hack for testing to make sure the borrowed quantity can be minimum 0
         if self.quantity < 0:
             self.quantity = Decimal(0)
+
+
+
+
