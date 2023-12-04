@@ -108,7 +108,7 @@ class AssetIdentifier:
             return f"<{self.token_symbol} at {self.address}>"
 
     def __hash__(self):
-        assert self.chain_id, "chain_id needs to be set to be hashable"
+        assert self.chain_id is not None, "chain_id needs to be set to be hashable"
         assert self.address, "address needs to be set to be hashable"
         return hash((self.chain_id, self.address))
 
