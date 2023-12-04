@@ -18,11 +18,11 @@ from eth_defi.one_delta.deployment import fetch_deployment as fetch_1delta_deplo
 from eth_defi.provider.multi_provider import create_multi_provider_web3
 from eth_defi.provider.anvil import fork_network_anvil, mine
 from eth_defi.uniswap_v3.price import UniswapV3PriceHelper
-from tradeexecutor.ethereum.one_delta.one_delta_routing import OneDeltaSimpleRoutingModel
+from tradeexecutor.ethereum.one_delta.one_delta_routing import OneDeltaRouting
 from tradeexecutor.ethereum.routing_data import get_quickswap_default_routing_parameters
 from tradeexecutor.ethereum.token import translate_token_details
-from tradeexecutor.ethereum.uniswap_v2.uniswap_v2_routing import UniswapV2SimpleRoutingModel
-from tradeexecutor.ethereum.uniswap_v3.uniswap_v3_routing import UniswapV3SimpleRoutingModel
+from tradeexecutor.ethereum.uniswap_v2.uniswap_v2_routing import UniswapV2Routing
+from tradeexecutor.ethereum.uniswap_v3.uniswap_v3_routing import UniswapV3Routing
 
 from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier, TradingPairKind, AssetType
 from tradeexecutor.strategy.reserve_currency import ReserveCurrency
@@ -160,27 +160,33 @@ def one_delta_deployment(web3) -> OneDeltaDeployment:
 
 
 @pytest.fixture
-def usdc(web3):
+def usdc(web3) -> TokenDetails:
     """Get USDC on Polygon."""
     return fetch_erc20_details(web3, "0x2791bca1f2de4661ed88a30c99a7a9449aa84174")
 
 
 @pytest.fixture
-def ausdc(web3):
+def ausdc(web3) -> TokenDetails:
     """Get aPolUSDC on Polygon."""
     return fetch_erc20_details(web3, "0x625E7708f30cA75bfd92586e17077590C60eb4cD", contract_name="aave_v3/AToken.json")
 
 
 @pytest.fixture
-def weth(web3):
+def weth(web3) -> TokenDetails:
     """Get WETH on Polygon."""
     return fetch_erc20_details(web3, "0x7ceB23fD6bC0adD59E62ac25578270cFf1b9f619")
 
 
 @pytest.fixture
-def vweth(web3):
+def vweth(web3) -> TokenDetails:
     """Get vPolWETH on Polygon."""
     return fetch_erc20_details(web3, "0x0c84331e39d6658Cd6e6b9ba04736cC4c4734351", contract_name="aave_v3/VariableDebtToken.json")
+
+
+@pytest.fixture
+def wmatic(web3) -> TokenDetails:
+    details = fetch_erc20_details(web3, "0x0d500b1d8e8ef31e21c99d1db9a6444d3adf1270")
+    return details
 
 
 @pytest.fixture
@@ -236,17 +242,12 @@ def asset_vweth(vweth, asset_weth, chain_id) -> AssetIdentifier:
         type=AssetType.borrowed,
     )
 
-@pytest.fixture
-def wmatic_token(web3) -> TokenDetails:
-    details = fetch_erc20_details(web3, "0x0d500b1d8e8ef31e21c99d1db9a6444d3adf1270")
-    return details
-
 
 @pytest.fixture()
-def asset_wmatic(wmatic_token: TokenDetails) -> AssetIdentifier:
+def asset_wmatic(wmatic: TokenDetails) -> AssetIdentifier:
     """WETH as a persistent id.
     """
-    return translate_token_details(wmatic_token)
+    return translate_token_details(wmatic)
 
 
 @pytest.fixture
@@ -291,8 +292,8 @@ def one_delta_routing_model(
     uniswap_v3_deployment,
     asset_usdc,
     asset_weth,
-) -> OneDeltaSimpleRoutingModel:
-    return OneDeltaSimpleRoutingModel(
+) -> OneDeltaRouting:
+    return OneDeltaRouting(
         address_map={
             "one_delta_broker_proxy": one_delta_deployment.broker_proxy.address,
             "aave_v3_pool": aave_v3_deployment.pool.address,
@@ -309,7 +310,7 @@ def one_delta_routing_model(
 
 
 @pytest.fixture()
-def uniswap_v3_routing_model(asset_usdc) -> UniswapV3SimpleRoutingModel:
+def uniswap_v3_routing_model(asset_usdc) -> UniswapV3Routing:
 
     # for uniswap v3
     # same addresses for Mainnet, Polygon, Optimism, Arbitrum, Testnets Address
@@ -332,7 +333,7 @@ def uniswap_v3_routing_model(asset_usdc) -> UniswapV3SimpleRoutingModel:
         "0x7ceb23fd6bc0add59e62ac25578270cff1b9f619": "0x45dda9cb7c25131df268515131f647d726f50608",
     }
 
-    return UniswapV3SimpleRoutingModel(
+    return UniswapV3Routing(
         address_map,
         allowed_intermediary_pairs,
         reserve_token_address=asset_usdc.address,
@@ -344,9 +345,9 @@ def quickswap_routing_model(
         quickswap_deployment,
         wmatic_usdc_spot_pair,
         asset_usdc,
-) -> UniswapV2SimpleRoutingModel:
+) -> UniswapV2Routing:
     # Route WMATIC and USDC quoted pairs on Quickswap
-    uniswap_v2_router = UniswapV2SimpleRoutingModel(
+    uniswap_v2_router = UniswapV2Routing(
         factory_router_map={quickswap_deployment.factory.address: (quickswap_deployment.router.address, quickswap_deployment.init_code_hash)},
         allowed_intermediary_pairs={wmatic_usdc_spot_pair.base.address: wmatic_usdc_spot_pair.pool_address},
         reserve_token_address=asset_usdc.address,

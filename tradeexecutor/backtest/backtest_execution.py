@@ -62,7 +62,7 @@ def fix_sell_token_amount(
     return order_quantity, False
 
 
-class BacktestExecutionModel(ExecutionModel):
+class BacktestExecution(ExecutionModel):
     """Simulate trades against historical data."""
 
     def __init__(self,

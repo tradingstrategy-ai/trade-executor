@@ -138,7 +138,7 @@ class Loan:
         return self.collateral_interest.last_token_amount
 
     def get_borrowed_quantity(self) -> Decimal:
-        """Get abs number of atokens we have."""
+        """Get abs number of vtokens we have."""
         return self.borrowed_interest.last_token_amount
 
     def get_borrow_value(self, include_interest=True) -> USDollarAmount:

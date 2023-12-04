@@ -8,8 +8,8 @@ from typing import List
 import pytest
 from hexbytes import HexBytes
 
-from tradeexecutor.backtest.backtest_execution import BacktestExecutionModel
-from tradeexecutor.backtest.backtest_pricing import BacktestSimplePricingModel
+from tradeexecutor.backtest.backtest_execution import BacktestExecution
+from tradeexecutor.backtest.backtest_pricing import BacktestPricing
 from tradeexecutor.backtest.backtest_routing import BacktestRoutingModel, BacktestRoutingState
 from tradeexecutor.backtest.backtest_sync import BacktestSyncModel
 from tradeexecutor.backtest.simulated_wallet import SimulatedWallet
@@ -190,8 +190,8 @@ def routing_model(strategy_universe) -> BacktestRoutingModel:
 
 
 @pytest.fixture()
-def pricing_model(routing_model, strategy_universe) -> BacktestSimplePricingModel:
-    return BacktestSimplePricingModel(strategy_universe.data_universe.candles, routing_model)
+def pricing_model(routing_model, strategy_universe) -> BacktestPricing:
+    return BacktestPricing(strategy_universe.data_universe.candles, routing_model)
 
 
 @pytest.fixture()
@@ -203,9 +203,9 @@ def wallet(usdc, weth) -> SimulatedWallet:
 
 
 @pytest.fixture()
-def execution_model(wallet) -> BacktestExecutionModel:
+def execution_model(wallet) -> BacktestExecution:
     """Simulate trades using backtest execution model."""
-    execution_model = BacktestExecutionModel(wallet)
+    execution_model = BacktestExecution(wallet)
     return execution_model
 
 
@@ -250,7 +250,7 @@ def test_open_and_close_one_short(
     weth: AssetIdentifier,
     usdc: AssetIdentifier,
     start_timestamp,
-    execution_model: BacktestExecutionModel,
+    execution_model: BacktestExecution,
     routing_model: BacktestRoutingModel,
     wallet: SimulatedWallet,
 ):
@@ -330,7 +330,7 @@ def test_open_and_close_two_shorts(
     weth: AssetIdentifier,
     aave: AssetIdentifier,
     start_timestamp,
-    execution_model: BacktestExecutionModel,
+    execution_model: BacktestExecution,
     routing_model: BacktestRoutingModel,
     wallet: SimulatedWallet,
 ):
@@ -424,7 +424,7 @@ def test_open_and_close_one_short_with_interest(
     weth: AssetIdentifier,
     usdc: AssetIdentifier,
     start_timestamp,
-    execution_model: BacktestExecutionModel,
+    execution_model: BacktestExecution,
     routing_model: BacktestRoutingModel,
     sync_model: BacktestSyncModel,
     wallet: SimulatedWallet,
@@ -536,7 +536,7 @@ def test_open_and_close_two_shorts_with_interest(
     weth: AssetIdentifier,
     usdc: AssetIdentifier,
     start_timestamp,
-    execution_model: BacktestExecutionModel,
+    execution_model: BacktestExecution,
     routing_model: BacktestRoutingModel,
     sync_model: BacktestSyncModel,
     wallet: SimulatedWallet,
@@ -669,7 +669,7 @@ def test_open_and_reduce_one_short_with_interest(
     weth: AssetIdentifier,
     usdc: AssetIdentifier,
     start_timestamp,
-    execution_model: BacktestExecutionModel,
+    execution_model: BacktestExecution,
     routing_model: BacktestRoutingModel,
     sync_model: BacktestSyncModel,
     wallet: SimulatedWallet,
@@ -790,7 +790,7 @@ def test_open_and_increase_one_short_with_interest(
     weth: AssetIdentifier,
     usdc: AssetIdentifier,
     start_timestamp,
-    execution_model: BacktestExecutionModel,
+    execution_model: BacktestExecution,
     routing_model: BacktestRoutingModel,
     sync_model: BacktestSyncModel,
     wallet: SimulatedWallet,

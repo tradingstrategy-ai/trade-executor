@@ -32,9 +32,9 @@ from tradeexecutor.ethereum.tx import HotWalletTransactionBuilder
 from tradeexecutor.ethereum.uniswap_v2.uniswap_v2_live_pricing import UniswapV2LivePricing
 from tradeexecutor.ethereum.uniswap_v2.uniswap_v2_routing import (
     UniswapV2RoutingState,
-    UniswapV2SimpleRoutingModel,
+    UniswapV2Routing,
 )
-from tradeexecutor.ethereum.uniswap_v2.uniswap_v2_execution import UniswapV2ExecutionModel
+from tradeexecutor.ethereum.uniswap_v2.uniswap_v2_execution import UniswapV2Execution
 from tradeexecutor.strategy.pandas_trader.position_manager import PositionManager
 from tradeexecutor.state.state import State
 from tradeexecutor.state.identifier import TradingPairIdentifier, AssetIdentifier
@@ -137,8 +137,9 @@ def hot_wallet(
     Start with 10,000 USDC cash and 2 polygon.
     """
     account = Account.create()
+    matic_amount = 15
     web3.eth.send_transaction(
-        {"from": large_usdc_holder, "to": account.address, "value": 2 * 10**18}
+        {"from": large_usdc_holder, "to": account.address, "value": matic_amount * 10**18}
     )
     tx_hash = usdc_token.functions.transfer(account.address, 1_000_000 * 10**6).transact(
         {"from": large_usdc_holder}
@@ -207,7 +208,7 @@ def pair_universe(
 
 
 @pytest.fixture()
-def routing_model(usdc_asset) -> UniswapV2SimpleRoutingModel:
+def routing_model(usdc_asset) -> UniswapV2Routing:
 
     # Allowed exchanges as factory -> router pairs
     factory_router_map = {
@@ -224,7 +225,7 @@ def routing_model(usdc_asset) -> UniswapV2SimpleRoutingModel:
         "0x7ceb23fd6bc0add59e62ac25578270cff1b9f619": "0x853ee4b2a13f8a742d64c8f088be7ba2131f670d",
     }
 
-    return UniswapV2SimpleRoutingModel(
+    return UniswapV2Routing(
         factory_router_map,
         allowed_intermediary_pairs,
         reserve_token_address=usdc_asset.address,
@@ -274,13 +275,13 @@ def pricing_model(web3, pair_universe, routing_model) -> UniswapV2LivePricing:
 
 
 @pytest.fixture()
-def execution_model(web3, hot_wallet) -> UniswapV2ExecutionModel:
+def execution_model(web3, hot_wallet) -> UniswapV2Execution:
     """Create an execution model that waits zero blocks for confirmation.
 
     Because we are using Anvil mainnet fork, there are not going to be any new blocks.
     """
     tx_builder = HotWalletTransactionBuilder(web3, hot_wallet)
-    return UniswapV2ExecutionModel(
+    return UniswapV2Execution(
         tx_builder,
         confirmation_timeout=datetime.timedelta(seconds=10.00),  # Anvil has total 10 seconds to mine all txs in a batch
         confirmation_block_count=0,
@@ -317,12 +318,12 @@ def test_simple_routing_three_leg_live(
     strategy_universe: TradingStrategyUniverse,
     state: State,
     sync_model: SyncModel,
-    execution_model: UniswapV2ExecutionModel,
+    execution_model: UniswapV2Execution,
     pricing_model: UniswapV2LivePricing,
     eth_matic_trading_pair: TradingPairIdentifier,
     matic_usdc_trading_pair: TradingPairIdentifier,
     sand_matic_trading_pair: TradingPairIdentifier,
-    routing_model:  UniswapV2SimpleRoutingModel,
+    routing_model:  UniswapV2Routing,
     sand_token: TokenDetails,
     usdc_asset: AssetIdentifier,
     usdc_token: Contract,

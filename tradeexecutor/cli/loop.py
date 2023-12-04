@@ -46,7 +46,7 @@ except ImportError:
     # but fallback to normal TQDM auto mode
     from tqdm.auto import tqdm
 
-from tradeexecutor.backtest.backtest_pricing import BacktestSimplePricingModel
+from tradeexecutor.backtest.backtest_pricing import BacktestPricing
 from tradeexecutor.state.state import State, BacktestData
 from tradeexecutor.state.store import StateStore
 from tradeexecutor.strategy.sync_model import SyncMethodV0, SyncModel
@@ -449,7 +449,7 @@ class ExecutionLoop:
         routing_state, pricing_model, valuation_model = self.runner.setup_routing(universe)
 
         interest_events = self.sync_model.sync_interests(
-            strategy_cycle_timestamp,
+            ts,
             state,
             cast(TradingStrategyUniverse, universe),
             pricing_model,
@@ -669,9 +669,9 @@ class ExecutionLoop:
         routing_state, pricing_model, valuation_model = self.runner.setup_routing(universe)
         assert pricing_model, "Routing did not provide pricing_model"
 
-        assert isinstance(pricing_model, BacktestSimplePricingModel)
+        assert isinstance(pricing_model, BacktestPricing)
 
-        stop_loss_pricing_model = BacktestSimplePricingModel(
+        stop_loss_pricing_model = BacktestPricing(
             universe.backtest_stop_loss_candles,
             self.runner.routing_model,
             time_bucket=universe.backtest_stop_loss_time_bucket,

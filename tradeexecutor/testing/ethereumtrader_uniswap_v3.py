@@ -14,8 +14,8 @@ from eth_defi.uniswap_v3.deployment import UniswapV3Deployment
 from eth_defi.uniswap_v3.price import UniswapV3PriceHelper
 
 from tradeexecutor.ethereum.tx import HotWalletTransactionBuilder, TransactionBuilder
-from tradeexecutor.ethereum.uniswap_v3.uniswap_v3_routing import UniswapV3SimpleRoutingModel, UniswapV3RoutingState
-from tradeexecutor.ethereum.uniswap_v3.uniswap_v3_execution import UniswapV3ExecutionModel
+from tradeexecutor.ethereum.uniswap_v3.uniswap_v3_routing import UniswapV3Routing, UniswapV3RoutingState
+from tradeexecutor.ethereum.uniswap_v3.uniswap_v3_execution import UniswapV3Execution
 from tradeexecutor.state.freeze import freeze_position_on_failed_trade
 from tradeexecutor.state.state import State, TradeType
 from tradeexecutor.state.position import TradingPosition
@@ -37,7 +37,7 @@ class UniswapV3TestTrader(EthereumTrader):
         super().__init__(tx_builder, state, pair_universe)
         self.uniswap = uniswap
 
-        self.execution_model = UniswapV3ExecutionModel(tx_builder)
+        self.execution_model = UniswapV3Execution(tx_builder)
         self.price_helper = UniswapV3PriceHelper(uniswap)
         self.tx_builder = tx_builder
 
@@ -148,7 +148,7 @@ class UniswapV3TestTrader(EthereumTrader):
         reserve_asset, rate = state.portfolio.get_default_reserve_asset()
 
         # We know only about one exchange
-        routing_model = UniswapV3SimpleRoutingModel(
+        routing_model = UniswapV3Routing(
             address_map={
                 "factory": uniswap.factory.address,
                 "router": uniswap.swap_router.address,
@@ -163,7 +163,7 @@ class UniswapV3TestTrader(EthereumTrader):
         routing_state = UniswapV3RoutingState(pair_universe, tx_builder)
         routing_model.execute_trades_internal(pair_universe, routing_state, trades)
         
-        execution_model = UniswapV3ExecutionModel(self.tx_builder)
+        execution_model = UniswapV3Execution(self.tx_builder)
         execution_model.broadcast_and_resolve_old(state, trades, routing_model, stop_on_execution_failure=stop_on_execution_failure)
 
         # Clean up failed trades

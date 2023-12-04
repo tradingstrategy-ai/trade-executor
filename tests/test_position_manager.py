@@ -8,7 +8,7 @@ from decimal import Decimal
 
 import pytest
 
-from tradeexecutor.backtest.backtest_pricing import BacktestSimplePricingModel
+from tradeexecutor.backtest.backtest_pricing import BacktestPricing
 from tradeexecutor.backtest.backtest_routing import BacktestRoutingModel
 from tradeexecutor.state.identifier import TradingPairIdentifier, AssetIdentifier
 from tradeexecutor.state.reserve import ReservePosition
@@ -74,7 +74,7 @@ def routing_model(synthetic_universe) -> BacktestRoutingModel:
 
 @pytest.fixture()
 def pricing_model(synthetic_universe, routing_model) -> BacktestRoutingModel:
-    pricing_model = BacktestSimplePricingModel(
+    pricing_model = BacktestPricing(
         synthetic_universe.data_universe.candles,
         routing_model,
         allow_missing_fees=True,
@@ -175,7 +175,7 @@ def test_estimate_fee_from_router(state, synthetic_universe, position_manager):
     """"Estimate the trading fee based on router data."""
 
     routing_model = generate_simple_routing_model(synthetic_universe, trading_fee=0.0025)
-    pricing_model = BacktestSimplePricingModel(
+    pricing_model = BacktestPricing(
         synthetic_universe.data_universe.candles,
         routing_model
     )

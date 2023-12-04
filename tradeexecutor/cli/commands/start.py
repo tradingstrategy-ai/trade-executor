@@ -32,7 +32,7 @@ from ..result import display_backtesting_results
 from ..version_info import VersionInfo
 from ..watchdog import stop_watchdog
 from ...ethereum.enzyme.vault import EnzymeVaultSyncModel
-from ...ethereum.uniswap_v2.uniswap_v2_routing import UniswapV2SimpleRoutingModel
+from ...ethereum.uniswap_v2.uniswap_v2_routing import UniswapV2Routing
 from ...state.state import State
 from ...state.store import NoneStore, JSONFileStore
 from ...strategy.approval import ApprovalType
@@ -414,6 +414,11 @@ def start(
         logger.critical("Startup failed: %s", e)
         logger.exception(e)
         raise
+
+    # Allow to do Python thread dump using a signal with
+    # docker-compose kill command
+    if not unit_testing:
+        faulthandler.enable()
 
     loop = ExecutionLoop(
         name=name,

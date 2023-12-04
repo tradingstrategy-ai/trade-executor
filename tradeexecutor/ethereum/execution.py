@@ -35,8 +35,8 @@ from tradeexecutor.state.trade import TradeExecution, TradeStatus
 from tradeexecutor.state.blockhain_transaction import BlockchainTransaction
 from tradeexecutor.state.freeze import freeze_position_on_failed_trade
 from tradeexecutor.state.identifier import AssetIdentifier
-from tradeexecutor.ethereum.uniswap_v2.uniswap_v2_routing import UniswapV2SimpleRoutingModel, UniswapV2RoutingState
-from tradeexecutor.ethereum.uniswap_v3.uniswap_v3_routing import UniswapV3SimpleRoutingModel, UniswapV3RoutingState
+from tradeexecutor.ethereum.uniswap_v2.uniswap_v2_routing import UniswapV2Routing, UniswapV2RoutingState
+from tradeexecutor.ethereum.uniswap_v3.uniswap_v3_routing import UniswapV3Routing, UniswapV3RoutingState
 from tradeexecutor.state.types import BlockNumber
 from tradeexecutor.strategy.execution_model import ExecutionModel, RoutingStateDetails
 from tradeexecutor.strategy.routing import RoutingModel, RoutingState
@@ -47,7 +47,7 @@ logger = logging.getLogger(__name__)
 
 
 # TODO check with tradeexuctor.strategy.execution ExecutionModel
-class EthereumExecutionModel(ExecutionModel):
+class EthereumExecution(ExecutionModel):
     """Run order execution on a single Uniswap v2 style exchanges."""
 
     def __init__(self,
@@ -115,14 +115,14 @@ class EthereumExecutionModel(ExecutionModel):
     @staticmethod
     def pre_execute_assertions(
         ts: datetime.datetime, 
-        routing_model: UniswapV2SimpleRoutingModel | UniswapV3SimpleRoutingModel,
+        routing_model: UniswapV2Routing | UniswapV3Routing,
         routing_state: UniswapV2RoutingState | UniswapV3RoutingState
     ):
         assert isinstance(ts, datetime.datetime)
 
-        if isinstance(routing_model, UniswapV2SimpleRoutingModel):
+        if isinstance(routing_model, UniswapV2Routing):
             assert isinstance(routing_state, UniswapV2RoutingState), "Incorrect routing_state specified"
-        elif isinstance(routing_model, UniswapV3SimpleRoutingModel):
+        elif isinstance(routing_model, UniswapV3Routing):
             assert isinstance(routing_state, UniswapV3RoutingState), "Incorrect routing_state specified"
         else:
             raise ValueError("Incorrect routing model specified")

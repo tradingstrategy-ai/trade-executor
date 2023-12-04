@@ -5,8 +5,8 @@ import pytest
 from tradeexecutor.strategy.reserve_currency import ReserveCurrency
 from tradeexecutor.strategy.execution_context import ExecutionContext, ExecutionMode
 from tradeexecutor.strategy.default_routing_options import TradeRouting
-from tradeexecutor.ethereum.uniswap_v2.uniswap_v2_routing import UniswapV2SimpleRoutingModel
-from tradeexecutor.ethereum.uniswap_v3.uniswap_v3_routing import UniswapV3SimpleRoutingModel
+from tradeexecutor.ethereum.uniswap_v2.uniswap_v2_routing import UniswapV2Routing
+from tradeexecutor.ethereum.uniswap_v3.uniswap_v3_routing import UniswapV3Routing
 from tradeexecutor.ethereum.routing_data import get_routing_model
 
 from tradingstrategy.chain import ChainId
@@ -93,7 +93,7 @@ def test_pancake_routing_models(
         EXECUTION_CONTEXT, trade_routing, reserve_currency
     )
 
-    expected_model = UniswapV2SimpleRoutingModel(
+    expected_model = UniswapV2Routing(
         PANCAKE_FACTORY_ROUTER_MAP,
         allowed_intermediary_pairs,
         reserve_token_address,
@@ -147,7 +147,7 @@ def test_quickswap_routing_models(
         EXECUTION_CONTEXT, trade_routing, reserve_currency
     )
 
-    expected_model = UniswapV2SimpleRoutingModel(
+    expected_model = UniswapV2Routing(
         QUICKSWAP_FACTORY_ROUTER_MAP,
         allowed_intermediary_pairs,
         reserve_token_address,
@@ -193,7 +193,7 @@ def test_trader_joe_routing_models(
         EXECUTION_CONTEXT, trade_routing, reserve_currency
     )
 
-    expected_model = UniswapV2SimpleRoutingModel(
+    expected_model = UniswapV2Routing(
         TRADER_JOE_FACTORY_ROUTER_MAP,
         allowed_intermediary_pairs,
         reserve_token_address,
@@ -247,7 +247,7 @@ def test_uniswap_v2_routing_models(
         EXECUTION_CONTEXT, trade_routing, reserve_currency
     )
 
-    expected_model = UniswapV2SimpleRoutingModel(
+    expected_model = UniswapV2Routing(
         UNISWAP_V2_FACTORY_MAP,
         allowed_intermediary_pairs,
         reserve_token_address,
@@ -364,7 +364,7 @@ def test_uniswap_v3_routing_models(
         EXECUTION_CONTEXT, trade_routing, reserve_currency
     )
 
-    expected_model = UniswapV3SimpleRoutingModel(
+    expected_model = UniswapV3Routing(
         UNISWAP_V3_ADDRESS_MAP,
         allowed_intermediary_pairs,
         reserve_token_address,

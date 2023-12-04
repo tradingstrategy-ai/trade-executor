@@ -196,7 +196,7 @@ def visualise_trades(
     if advanced_trades:
         buys_df = trades_df.loc[trades_df["type"] == "buy"]
         sells_df = trades_df.loc[trades_df["type"] == "sell"]
-        stop_loss_df = trades_df.loc[trades_df["type"] == "stop-loss"]
+        stop_loss_df = trades_df.loc[trades_df["type"] == "stop-loss"].copy()
         take_profit_df = trades_df.loc[trades_df["type"] == "take-profit"]
     else:
         buys_df = trades_df.loc[trades_df["type"] == "buy"]

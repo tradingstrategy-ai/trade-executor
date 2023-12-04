@@ -16,12 +16,12 @@ from tradeexecutor.ethereum.tx import TransactionBuilder
 
 from tradeexecutor.state.identifier import TradingPairIdentifier
 #from tradeexecutor.strategy.execution_model import ExecutionModel
-from tradeexecutor.ethereum.execution import EthereumExecutionModel
+from tradeexecutor.ethereum.execution import EthereumExecution
 
 logger = logging.getLogger(__name__)
 
 
-class UniswapV3ExecutionModel(EthereumExecutionModel):
+class UniswapV3Execution(EthereumExecution):
     """Run order execution on a single Uniswap v3 style exchanges."""
 
     def __init__(self,
