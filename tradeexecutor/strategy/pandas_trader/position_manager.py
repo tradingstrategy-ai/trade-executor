@@ -1178,24 +1178,6 @@ class PositionManager:
             fee=executor_pair.fee,
         )
 
-        # logger.info("Opening a short position at timestamp %s\n"
-        #             "Shorting pair is %s\n"
-        #             "Execution pair is %s\n"
-        #             "Collateral amount: %s USD\n"
-        #             "Borrow amount: %s USD (%s %s)\n"
-        #             "Collateral asset price: %s %s/USD\n"
-        #             "Borrowed asset price: %s %s/USD (assumed execution)\n",
-        #             "Liquidation price: %s %s/USD\n",
-        #             self.timestamp,
-        #             shorting_pair,
-        #             executor_pair,
-        #             estimation.total_collateral_quantity,
-        #             estimation.borrowed_value, estimation.total_borrowed_quantity, executor_pair.base.token_symbol,
-        #             collateral_price, executor_pair.quote.token_symbol,
-        #             borrowed_asset_price, executor_pair.base.token_symbol,
-        #             estimation.liquidation_price, executor_pair.base.token_symbol,
-        #             )
-
         logger.info("Opening a short position at timestamp %s\n"
                     "Shorting pair is %s\n"
                     "Execution pair is %s\n"
@@ -1225,6 +1207,8 @@ class PositionManager:
             planned_mid_price=price_structure.mid_price,
             collateral_asset_price=collateral_price,
             planned_collateral_consumption=estimation.additional_collateral_quantity,  # This is amount how much aToken is leverated besides our starting collateral
+            # TODO: planned_reserve-planned_collateral_allocation refactor later
+            planned_collateral_allocation=0,
             lp_fees_estimated=estimation.lp_fees,
             notes=notes,
         )

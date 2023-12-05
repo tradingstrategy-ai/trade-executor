@@ -935,6 +935,13 @@ class TradeExecution:
         """Return the amount of USD token for the buy as raw token units."""
         return self.reserve_currency.convert_to_raw_amount(self.planned_reserve)
 
+    def get_planned_collateral_allocation(self) -> Decimal | None:
+        return self.planned_collateral_allocation
+
+    def get_raw_planned_collateral_allocation(self) -> int:
+        """Return the amount of allocated collteraal for the buy as raw token units."""
+        return self.reserve_currency.convert_to_raw_amount(self.planned_collateral_allocation)
+
     def get_raw_planned_quantity(self) -> int:
         """Return the amount of USD token for the buy as raw token units."""
         return self.pair.base.convert_to_raw_amount(self.planned_quantity)

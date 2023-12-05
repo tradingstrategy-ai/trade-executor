@@ -101,6 +101,7 @@ class OneDeltaRoutingState(EthereumRoutingState):
         target_pair: TradingPairIdentifier,
         collateral_amount: int,
         borrow_amount: int,
+        reserve_amount: int,
         max_slippage: Percent,
         check_balances: False,
         asset_deltas: Optional[List[AssetDelta]] = None,
@@ -125,16 +126,22 @@ class OneDeltaRoutingState(EthereumRoutingState):
         pool_fee_raw = int(target_pair.get_pricing_pair().fee * 1_000_000)
 
         if borrow_amount < 0:
+            # TODO: planned_reserve-planned_collateral_allocation refactor later
+            assert collateral_amount == 0
+            assert reserve_amount > 0
             bound_func = open_short_position(
                 one_delta_deployment=one_delta,
                 collateral_token=quote_token,
                 borrow_token=base_token,
                 pool_fee=pool_fee_raw,
-                collateral_amount=collateral_amount,
+                collateral_amount=reserve_amount,
                 borrow_amount=-borrow_amount,
                 wallet_address=self.tx_builder.get_token_delivery_address(),
             )
         else:
+            # TODO: planned_reserve-planned_collateral_allocation refactor later
+            assert collateral_amount < 0
+            assert reserve_amount == 0
             # TODO: this is currently fully close the position
             # we should support reducing the position later
             bound_func = close_short_position(
@@ -144,6 +151,8 @@ class OneDeltaRoutingState(EthereumRoutingState):
                 atoken=atoken,
                 pool_fee=pool_fee_raw,
                 wallet_address=self.tx_builder.get_token_delivery_address(),
+                # TODO: this amount isn't correct since it might be less than what's left after paying for the debt
+                # withdraw_collateral_amount=-collateral_amount,
             )
 
         return self.create_signed_transaction(
@@ -379,6 +388,7 @@ class OneDeltaRouting(EthereumRoutingModel):
         *,
         borrow_amount: int,
         collateral_amount: int,
+        reserve_amount: int,
         max_slippage: float,
         check_balances=False,
         asset_deltas: Optional[List[AssetDelta]] = None,
@@ -390,6 +400,7 @@ class OneDeltaRouting(EthereumRoutingModel):
             target_pair,
             borrow_amount=borrow_amount,
             collateral_amount=collateral_amount,
+            reserve_amount=reserve_amount,
             max_slippage=max_slippage,
             address_map=self.address_map,
             check_balances=check_balances,
