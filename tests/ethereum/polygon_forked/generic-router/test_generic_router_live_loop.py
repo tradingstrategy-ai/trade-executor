@@ -36,6 +36,35 @@ pytestmark = pytest.mark.skipif(
 )
 
 
+def decide_trades(
+        timestamp: pd.Timestamp,
+        strategy_universe: TradingStrategyUniverse,
+        state: State,
+        pricing_model: PricingModel,
+        cycle_debug_data: dict
+) -> List[TradeExecution]:
+    # Every second day buy spot,
+    # every second day short
+
+    trades = []
+    position_manager = PositionManager(timestamp, strategy_universe, state, pricing_model)
+    cycle = cycle_debug_data["cycle"]
+    pairs = strategy_universe.data_universe.pairs
+    spot_eth = pairs.get_pair_by_human_description((ChainId.polygon, "uniswap-v3", "WETH", "USDC", 0.0005))
+
+    if position_manager.is_any_open():
+        trades += position_manager.close_all()
+
+    if cycle % 2 == 0:
+        # Spot day
+        trades += position_manager.open_spot(spot_eth, 100.0)
+    else:
+        # Short day
+        trades += position_manager.open_short(spot_eth, 150.0)
+
+    return trades
+
+
 def test_generic_router_spot_and_shot_strategy(
     logger: Logger,
     web3: Web3,
@@ -58,34 +87,6 @@ def test_generic_router_spot_and_shot_strategy(
       against the current live prices at the time of runnign the test
     """
 
-    def decide_trades(
-        timestamp: pd.Timestamp,
-        strategy_universe: TradingStrategyUniverse,
-        state: State,
-        pricing_model: PricingModel,
-        cycle_debug_data: dict
-    ) -> List[TradeExecution]:
-        # Every second day buy spot,
-        # every second day short
-
-        trades = []
-        position_manager = PositionManager(timestamp, strategy_universe, state, pricing_model)
-        cycle = cycle_debug_data["cycle"]
-        pairs = strategy_universe.data_universe.pairs
-        spot_eth = pairs.get_pair_by_human_description((ChainId.polygon, "uniswap-v3", "WETH", "USDC", 0.0005))
-
-        if position_manager.is_any_open():
-            trades += position_manager.close_all()
-
-        if cycle % 2 == 0:
-            # Spot day
-            trades += position_manager.open_spot(spot_eth, 100.0)
-        else:
-            # Short day
-            trades += position_manager.open_short(spot_eth, 150.0)
-
-        return trades
-
     # Set up an execution loop we can step through
     state = State()
     loop = set_up_simulated_ethereum_generic_execution(
@@ -105,7 +106,7 @@ def test_generic_router_spot_and_shot_strategy(
             ts,
             loop.cycle_duration,
             state,
-            cycle=1,
+            cycle=cycle,
             live=True,
         )
 
@@ -116,6 +117,7 @@ def test_generic_router_spot_and_shot_strategy(
             ExecutionMode.real_trading
         )
         ts += datetime.timedelta(days=1)
+        mine(web3, to_int_unix_timestamp(ts))
 
 
 def test_generic_router_spot_and_shot_strategy_manual_tick(
@@ -143,34 +145,6 @@ def test_generic_router_spot_and_shot_strategy_manual_tick(
 
     - Anvil is forked at Polygon block 49_000_000
     """
-
-    def decide_trades(
-        timestamp: pd.Timestamp,
-        strategy_universe: TradingStrategyUniverse,
-        state: State,
-        pricing_model: PricingModel,
-        cycle_debug_data: dict
-    ) -> List[TradeExecution]:
-        # Every second day buy spot,
-        # every second day short
-
-        trades = []
-        position_manager = PositionManager(timestamp, strategy_universe, state, pricing_model)
-        cycle = cycle_debug_data["cycle"]
-        pairs = strategy_universe.data_universe.pairs
-        spot_eth = pairs.get_pair_by_human_description((ChainId.polygon, "uniswap-v3", "WETH", "USDC", 0.0005))
-
-        if position_manager.is_any_open():
-            trades += position_manager.close_all()
-
-        if cycle % 2 == 0:
-            # Spot day
-            trades += position_manager.open_spot(spot_eth, 100.0)
-        else:
-            # Short day
-            trades += position_manager.open_short(spot_eth, 150.0)
-
-        return trades
 
     # Set up an execution loop we can step through
     state = State()

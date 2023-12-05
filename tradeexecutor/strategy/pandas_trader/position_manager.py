@@ -1215,7 +1215,7 @@ class PositionManager:
                     estimation.liquidation_price, executor_pair.base.token_symbol,
                     )
 
-        position, trade, _ = self.state.trade_short(
+        position, trade, created = self.state.trade_short(
             self.timestamp,
             pair=shorting_pair,
             borrowed_quantity=-estimation.total_borrowed_quantity,
@@ -1229,6 +1229,7 @@ class PositionManager:
             lp_fees_estimated=estimation.lp_fees,
             notes=notes,
         )
+        assert created, f"open_short() was called, but there was an existing position for pair: {executor_pair}"
 
         # record liquidation price into the position
         position.liquidation_price = estimation.liquidation_price
