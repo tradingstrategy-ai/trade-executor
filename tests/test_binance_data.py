@@ -59,7 +59,7 @@ def test_fetch_binance_dataset(correct_df_candles, correct_df_lending):
         with patch(
             "tradingstrategy.binance.downloader.BinanceDownloader.fetch_candlestick_data"
         ) as mock_fetch_candlestick_data, patch(
-            "tradingstrategy.binance.downloader.BinanceDownloader.fetch_candlestick_data"
+            "tradingstrategy.binance.downloader.BinanceDownloader.fetch_lending_rates"
         ) as mock_fetch_lending_data:
             mock_fetch_candlestick_data.return_value = correct_df_candles
             mock_fetch_lending_data.return_value = correct_df_lending
@@ -80,6 +80,7 @@ def test_fetch_binance_dataset(correct_df_candles, correct_df_lending):
             START_AT,
             END_AT,
             include_lending=True,
+            force_download=True,
         )
 
     assert len(dataset.candles) == 2
@@ -98,7 +99,7 @@ def test_create_binance_universe(correct_df_candles, correct_df_lending):
         with patch(
             "tradingstrategy.binance.downloader.BinanceDownloader.fetch_candlestick_data"
         ) as mock_fetch_candlestick_data, patch(
-            "tradingstrategy.binance.downloader.BinanceDownloader.fetch_candlestick_data"
+            "tradingstrategy.binance.downloader.BinanceDownloader.fetch_lending_rates"
         ) as mock_fetch_lending_data:
             mock_fetch_candlestick_data.return_value = correct_df_candles
             mock_fetch_lending_data.return_value = correct_df_lending
@@ -196,7 +197,7 @@ def test_create_binance_universe_multipair(correct_df_candles, correct_df_lendin
         with patch(
             "tradingstrategy.binance.downloader.BinanceDownloader.fetch_candlestick_data"
         ) as mock_fetch_candlestick_data, patch(
-            "tradingstrategy.binance.downloader.BinanceDownloader.fetch_candlestick_data"
+            "tradingstrategy.binance.downloader.BinanceDownloader.fetch_lending_rates"
         ) as mock_fetch_lending_data:
             mock_fetch_candlestick_data.return_value = candles_df
             mock_fetch_lending_data.return_value = lending_rates_df
