@@ -166,10 +166,10 @@ def test_replace_candles_resample_no_stop_loss(
     assert synthetic_universe.data_universe.candles.time_bucket == TimeBucket.h1
 
     new_candles, stop_loss_candles = load_candle_universe_from_parquet(
-        wbtc_usdc,
         sample_file,
         resample=TimeBucket.h4,
         include_as_trigger_signal=False,
+        pair=wbtc_usdc,
     )
 
     assert stop_loss_candles is None

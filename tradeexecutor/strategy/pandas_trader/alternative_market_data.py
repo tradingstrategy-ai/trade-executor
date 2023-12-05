@@ -151,7 +151,7 @@ def load_candle_universe_from_parquet(
     )
 
     candles, stop_loss_candles = load_candle_universe_from_dataframe(
-        df,
+        orig,
         column_map,
         resample,
         include_as_trigger_signal,
