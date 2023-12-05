@@ -34,23 +34,14 @@ def correct_df_candles():
 @pytest.fixture(scope="module")
 def correct_df_lending():
     """Return a correct dataframe for the lending."""
-    correct_df_lending = pd.DataFrame(
-        {
-            "open": [736.9, 731.19, 28964.54, 29393.99],
-            "high": [750.39, 788.89, 29680.0, 33500.0],
-            "low": [714.86, 716.71, 28608.73, 29027.03],
-            "close": [730.79, 774.73, 29407.93, 32215.18],
-            "volume": [15151.39095, 26362.64832, 1736.62048, 4227.234681],
-            "pair_id": ["ETHUSDT", "ETHUSDT", "BTCUSDC", "BTCUSDC"],
-        },
-        index=[
-            pd.Timestamp("2021-01-01 00:00:00"),
-            pd.Timestamp("2021-01-02 00:00:00"),
-            pd.Timestamp("2021-01-01 00:00:00"),
-            pd.Timestamp("2021-01-02 00:00:00"),
-        ],
-    )
-    return correct_df_lending
+
+    data = {
+        'lending_rates': [0.000250, 0.000250, 0.001045, 0.001045],
+        'pair_id': ['ETH', 'ETH', 'USDT', 'USDT']
+    }
+    df = pd.DataFrame(data, index=['2020-12-31', '2021-01-01', '2020-12-31', '2021-01-01'])
+    return df
+
 
 
 def test_fetch_binance_dataset(correct_df_candles, correct_df_lending):
@@ -141,7 +132,7 @@ def test_create_binance_universe(correct_df_candles, correct_df_lending):
     assert data_universe.lending_candles.supply_apr.df.isna().sum().sum() == 0
 
 
-def test_create_binance_universe_multipair(correct_df_candles, correct_df_lending):
+def test_create_binance_universe_multipair():
     """Test that the create_binance_universe function works as expected for multipair."""
     candles_data = {
         "open": [
