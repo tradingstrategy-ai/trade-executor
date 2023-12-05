@@ -288,7 +288,7 @@ class ExecutionLoop:
         if self.run_state:
             self.run_state.source_code = run_description.source_code
 
-    def refresh_live_run_state(
+    def     refresh_live_run_state(
             self,
             state: State,
             visualisation=False,

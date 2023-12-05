@@ -96,10 +96,10 @@ def stop_loss_decide_trades_factory(stop_loss_pct=None):
                 if is_candle_green(last_candle) and is_candle_green(second_last_candle):
                     if stop_loss_pct:
                         # Stop loss activated
-                        trades += position_manager.open_1x_long(pair, cash * 0.1, stop_loss_pct=stop_loss_pct)
+                        trades += position_manager.open_spot(pair, cash * 0.1, stop_loss_pct=stop_loss_pct)
                     else:
                         # Stop loss inactive
-                        trades += position_manager.open_1x_long(pair, cash * 0.1)
+                        trades += position_manager.open_spot(pair, cash * 0.1)
 
         return trades
 
@@ -153,10 +153,10 @@ def take_profit_decide_trades_factory(take_profit_pct=None):
                     if take_profit_pct:
                         # Stop loss activated
                         price = last_candle["close"]
-                        trades += position_manager.open_1x_long(pair, cash * 0.1, take_profit_pct=take_profit_pct)
+                        trades += position_manager.open_spot(pair, cash * 0.1, take_profit_pct=take_profit_pct)
                     else:
                         # Stop loss inactive
-                        trades += position_manager.open_1x_long(pair, cash * 0.1)
+                        trades += position_manager.open_spot(pair, cash * 0.1)
 
         return trades
 
@@ -207,7 +207,7 @@ def trailing_stop_loss_decide_trades_factory(trailing_stop_loss_pct=None):
                 last_candle = tail.iloc[-1]
                 second_last_candle = tail.iloc[-2]
                 if is_candle_green(last_candle) and is_candle_green(second_last_candle):
-                    trades += position_manager.open_1x_long(pair, cash * 0.1, trailing_stop_loss_pct=trailing_stop_loss_pct)
+                    trades += position_manager.open_spot(pair, cash * 0.1, trailing_stop_loss_pct=trailing_stop_loss_pct)
 
         return trades
 
@@ -260,10 +260,10 @@ def stop_loss_usd_decide_trades_factory(stop_loss_pct=None):
                 if is_candle_green(last_candle) and is_candle_green(second_last_candle):
                     if stop_loss_pct:
                         # Stop loss activated
-                        trades += position_manager.open_1x_long(pair, cash * 0.1, stop_loss_usd=pricing_model.get_mid_price() * stop_loss_pct)
+                        trades += position_manager.open_spot(pair, cash * 0.1, stop_loss_usd=pricing_model.get_mid_price() * stop_loss_pct)
                     else:
                         # Stop loss inactive
-                        trades += position_manager.open_1x_long(pair, cash * 0.1)
+                        trades += position_manager.open_spot(pair, cash * 0.1)
 
         return trades
 

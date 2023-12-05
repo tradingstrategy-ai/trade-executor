@@ -16,6 +16,7 @@ import datetime
 from abc import abstractmethod, ABC
 from typing import Protocol, Tuple, Callable
 
+from tradeexecutor.state.valuation import ValuationUpdate
 from tradingstrategy.types import USDollarAmount
 
 from tradeexecutor.state.portfolio import Portfolio
@@ -31,83 +32,33 @@ class InvalidValuationOutput(Exception):
     """Valuation model did not generate proper price value."""
 
 
-
 class ValuationModel(ABC):
-    """Revalue a current position.
+    """Revalue an open position.
 
-    TODO: See if this should be moved inside state module, as it is referred by state.revalue_positions.
-    
-    Used by EthereumPoolRevaluator model (which, in turn, is used by UniswapV2PoolRevaluator and UniswapV3PoolRevaluator)
+    Each protocol has its own way to value the position:
+    how much free cash we will receive if we close the position.
+
+    - Spot positions are valued at their sell price - fees
+
+    - Loan based positions are valued at the loan NAV
+
     """
 
-    def revalue_position(
-        self,
-        ts: datetime.datetime,
-        position: TradingPosition,
-    ):
-        """Re-value a trading position.
-
-        - Read the spot, collateral and loan values from the pricing model
-
-        - Write the new position valuation data to the state
-
-        - For spot pairs, refresh :py:attr:`TradingPosition.last_token_price` through
-          :py:meth:`TradingPosition.revalue_base_asset`.
-
-        - For leveraged positions, refresh both collateral and borrowed asset
-        """
-        if not position.is_credit_supply():
-            old_price = position.last_token_price
-            ts, new_price = self(ts, position)
-            position.revalue_base_asset(ts, new_price)
-            logger.info("Re-valued position base asset %s. Price movement: %f USD -> %f USD",
-                        position.pair.base.token_symbol,
-                        old_price,
-                        new_price,
-                        )
-            # TODO: Query price for the collateral asset and set it
-        else:
-            logger.info("No updates to credit supply position pricing: %s", position)
-
-    def revalue_portfolio(
-        self,
-        ts: datetime.datetime,
-        portfolio: Portfolio,
-        revalue_frozen=True,
-    ):
-        """Revalue all open positions in the portfolio.
-
-        - Reserves are not revalued
-        - Credit supply positions are not revalued
-
-        :param ts:
-            Timestamp.
-
-            Strategy cycle time if valuation performed in pre-tick.
-            otherwise wall clock time.
-
-        :param valuation_model:
-            The model we use to reassign values to the positions
-
-        :param revalue_frozen:
-            Revalue frozen positions as well
-        """
-
-        positions = portfolio.get_open_and_frozen_positions() if revalue_frozen else portfolio.open_positions.values()
-
-        for p in positions:
-            try:
-                self.revalue_position(ts, p)
-            except Exception as e:
-                raise InvalidValuationOutput(f"Valuation model failed to output proper price: {self}: {p} -> {e}") from e
-
     @abstractmethod
-    def __call__(self,
-                 ts: datetime.datetime,
-                 position: TradingPosition) -> Tuple[datetime.datetime, USDollarAmount]:
-        """Calculate a new price to an asset.
+    def __call__(
+            self,
+            ts: datetime.datetime,
+            position: TradingPosition
+        ) -> ValuationUpdate:
+        """Set the new position value and reference price for an asset.
 
-        TODO: Legacy. Use :py:meth:`revalue_position`
+        - The implementation must check if the position protocol is correct
+          for this valuation model.
+
+        - The implementation must update :py:attr:`~tradeexecutor.state.position.TradingPosition.valuation_updates`
+
+        - The implementation must set legacy :py:attr:`~tradeexecutor.state.position.TradingPosition.last_token_price`
+          and :py:attr:`~tradeexecutor.state.position.TradingPosition.last_pricing_at` variables.
 
         :param ts:
             When to revalue. Used in backesting. Live strategies may ignore.
@@ -120,7 +71,6 @@ class ValuationModel(ABC):
             Note that revaluation date may differ from the wantead timestamp if
             there is no data available.
         """
-        raise NotImplementedError()
 
 
 class ValuationModelFactory(Protocol):
@@ -135,6 +85,56 @@ class ValuationModelFactory(Protocol):
 
     def __call__(self, pricing_model: PricingModel) -> ValuationModel:
         pass
+
+
+def revalue_portfolio(
+    valuation_model: ValuationModel,
+    ts: datetime.datetime,
+    portfolio: Portfolio,
+    revalue_frozen=True,
+):
+    """Revalue all open positions in the portfolio.
+
+    - Reserves are not revalued
+    - Credit supply positions are not revalued
+
+    :param ts:
+        Timestamp.
+
+        Strategy cycle time if valuation performed in pre-tick.
+        otherwise wall clock time.
+
+    :param valuation_model:
+        The model we use to reassign values to the positions
+
+    :param revalue_frozen:
+        Revalue frozen positions as well
+    """
+
+    logger.info("Portfolio revaluation, timestamp %s, %d open positions", ts, len(portfolio.open_positions))
+
+    positions = portfolio.get_open_and_frozen_positions() if revalue_frozen else portfolio.open_positions.values()
+
+    for position in positions:
+        try:
+            value_update = valuation_model(ts, position)
+            assert isinstance(value_update, ValuationUpdate), f"Expected ValuationUpdate, received {value_update.__class__} from {valuation_model.__class__.__name__}"
+
+            logger.info(
+                "Re-valued position #%d, kind %s, base asset %s.\nValue movement: %s USD -> %s USD.\nPrice movement: %s USD -> %s USD.\nUsing model %s.\nValuation done for the timestamp: %s",
+                position.position_id,
+                position.pair.kind.value,
+                position.pair.base.token_symbol,
+                value_update.old_value,
+                value_update.new_value,
+                value_update.old_price,
+                value_update.new_price,
+                valuation_model.__class__.__name__,
+                ts,
+            )
+        except Exception as e:
+            raise InvalidValuationOutput(f"Valuation model failed {valuation_model.__class__.__name__} failed for position {position}") from e
+
 
 
 def revalue_state(
@@ -156,15 +156,5 @@ def revalue_state(
         For legacy tests, this is a callable.
     """
 
-    if not isinstance(valuation_model, ValuationModel):
-        # Legacy call only valuation.
-        # Used in legacy tests only.
-        for p in state.portfolio.get_open_and_frozen_positions():
-            if not p.is_credit_supply():
-                ts, price = valuation_model(ts, p.pair)
-                p.revalue_base_asset(ts, price)
-        return
+    revalue_portfolio(valuation_model, ts, state.portfolio)
 
-    valuation_model.revalue_portfolio(
-        ts,
-        state.portfolio)

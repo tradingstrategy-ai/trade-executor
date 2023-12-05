@@ -265,22 +265,21 @@ class EthereumExecution(ExecutionModel):
 
         broadcasted = broadcast(web3, datetime.datetime.utcnow(), trades)
 
-        if confirmation_timeout > datetime.timedelta(0):
+        # if confirmation_timeout > datetime.timedelta(0):
+        receipts = wait_trades_to_complete(
+            web3,
+            trades,
+            max_timeout=confirmation_timeout,
+            confirmation_block_count=confirmation_block_count,
+        )
 
-            receipts = wait_trades_to_complete(
-                web3,
-                trades,
-                max_timeout=confirmation_timeout,
-                confirmation_block_count=confirmation_block_count,
-            )
-
-            self.resolve_trades(
-                datetime.datetime.now(),
-                routing_model,
-                state,
-                broadcasted,
-                receipts,
-                stop_on_execution_failure=stop_on_execution_failure)
+        self.resolve_trades(
+            datetime.datetime.now(),
+            routing_model,
+            state,
+            broadcasted,
+            receipts,
+            stop_on_execution_failure=stop_on_execution_failure)
 
     def broadcast_and_resolve_multiple_nodes(
         self,

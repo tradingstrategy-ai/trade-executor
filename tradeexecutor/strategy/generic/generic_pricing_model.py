@@ -4,11 +4,10 @@ import datetime
 from _decimal import Decimal
 from typing import Dict, Optional
 
-from tradingstrategy.pair import PandasPairUniverse
+from tradeexecutor.strategy.generic.pair_configurator import PairConfigurator
 
 from tradeexecutor.state.identifier import TradingPairIdentifier
 from tradeexecutor.state.types import USDollarPrice
-from tradeexecutor.strategy.generic.routing_function import RoutingFunction, default_route_chooser, UnroutableTrade
 from tradeexecutor.strategy.pricing_model import PricingModel
 from tradeexecutor.strategy.trade_pricing import TradePricing
 
@@ -24,34 +23,15 @@ class GenericPricing(PricingModel):
     - Ask the protocol-specific pricing model the trade price
     """
 
+
     def __init__(
             self,
-            pair_universe: PandasPairUniverse,
-            routes: Dict[str, PricingModel],
-            routing_function: RoutingFunction = default_route_chooser,
+            pair_configurator: PairConfigurator,
     ):
-        self.pair_universe = pair_universe
-        self.routes = routes
-        self.routing_function = routing_function
+        self.pair_configurator = pair_configurator
 
     def route(self, pair: TradingPairIdentifier) -> PricingModel:
-        router_name = self.routing_function(self.pair_universe, pair)
-        if router_name is None:
-            raise UnroutableTrade(
-                f"Cannot route: {pair}\n"
-                f"Using routing function: {self.routing_function}"
-                f"Available routes: {list(self.routes.keys())}"
-            )
-
-        route = self.routes.get(router_name)
-        if route is None:
-            raise UnroutableTrade(
-                f"Router not available: {pair}\n"
-                f"Trade routing function give us a route: {router_name}, but it is not configured\n"
-                f"Available routes: {list(self.routes.keys())}"
-            )
-
-        return route
+        return self.pair_configurator.get_pricing(pair)
 
     def get_sell_price(self,
                        ts: datetime.datetime,

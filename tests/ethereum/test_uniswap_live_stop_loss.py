@@ -257,7 +257,7 @@ def decide_trades(
 
     if not position_manager.is_any_open():
         buy_amount = position_size
-        trades += position_manager.open_1x_long(
+        trades += position_manager.open_spot(
             pair,
             buy_amount,
             stop_loss_pct=0.95,  # Use 5% stop loss
@@ -285,7 +285,7 @@ def decide_trades_no_stop_loss(
 
     if not position_manager.is_any_open():
         buy_amount = position_size
-        trades += position_manager.open_1x_long(
+        trades += position_manager.open_spot(
             pair,
             buy_amount,
         )

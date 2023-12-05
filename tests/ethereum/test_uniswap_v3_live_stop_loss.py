@@ -266,7 +266,7 @@ def decide_trades(
 
     if not position_manager.is_any_open():
         buy_amount = position_size
-        trades += position_manager.open_1x_long(
+        trades += position_manager.open_spot(
             pair,
             buy_amount,
             stop_loss_pct=0.95,  # Use 5% stop loss
@@ -296,7 +296,7 @@ def decide_trades_no_stop_loss(
 
     if not position_manager.is_any_open():
         buy_amount = position_size
-        trades += position_manager.open_1x_long(
+        trades += position_manager.open_spot(
             pair,
             buy_amount,
         )
@@ -347,15 +347,15 @@ def trading_strategy_universe(core_universe: Universe, asset_usdc) -> TradingStr
 
 
 def test_live_stop_loss(
-        logger,
-        web3: Web3,
-        deployer: HexAddress,
-        trader: LocalAccount,
-        trading_strategy_universe: TradingStrategyUniverse,
-        routing_model: UniswapV3Routing,
-        uniswap_v3: UniswapV3Deployment,
-        usdc_token: Contract,
-        weth_token: Contract,
+    logger,
+    web3: Web3,
+    deployer: HexAddress,
+    trader: LocalAccount,
+    trading_strategy_universe: TradingStrategyUniverse,
+    routing_model: UniswapV3Routing,
+    uniswap_v3: UniswapV3Deployment,
+    usdc_token: Contract,
+    weth_token: Contract,
 
 ):
     """Live uniswap v3 stop loss trigger.

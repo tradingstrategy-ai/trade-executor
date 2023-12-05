@@ -16,6 +16,7 @@ from tradeexecutor.state.position import TradingPosition
 from tradeexecutor.state.state import State
 from tradeexecutor.state.types import USDollarPrice, Percent, BlockNumber
 from tradeexecutor.strategy.pricing_model import PricingModel
+from tradeexecutor.utils.accuracy import QUANTITY_EPSILON
 from tradingstrategy.utils.time import ZERO_TIMEDELTA
 
 logger = logging.getLogger(__name__)
@@ -359,22 +360,36 @@ def distribute_interest_for_assets(
 
     asset_total = operation.asset_interest_data[asset.get_identifier()].total
 
+    # Either there has not bee really any change over time (too fast refresh rate)
+    # or this is unit test against mainnet fork where we cannot speed up the time.
+    # In both cases we cannot generate any BalanceUpdate events,
+    # because balance update can not be zero.
+    # We also may encounter negative updates < epsilon due to the rounding
+    # errors.
     interest_accrued = new_amount - asset_total
-    assert interest_accrued >= 0, f"Interest cannot go negative: {interest_accrued}"
-    interest_accrued_relative = interest_accrued / asset_total
+    if abs(interest_accrued) >= QUANTITY_EPSILON:
 
-    assert interest_accrued_relative <= max_interest_gain, f"Interest gain safety check tripwired.\nAsset: {asset} at {timestamp}\nAccrued: {interest_accrued_relative * 100}%, check threshold: {max_interest_gain}, increase: {interest_accrued}, new amount: {new_amount}, asset total: {asset_total}"
+        assert interest_accrued >= 0, f"Interest cannot go negative: {interest_accrued}, our epsilon is {QUANTITY_EPSILON}"
+        interest_accrued_relative = interest_accrued / asset_total
 
-    for entry in operation.entries:
-        if entry.asset == asset:
-            evt = distribute_to_entry(
-                entry,
-                state,
-                timestamp,
-                block_number,
-                interest_accrued
-            )
-            yield evt
+        assert interest_accrued_relative <= max_interest_gain, \
+            f"Interest gain safety check tripwired, too much interest gained.\n" \
+            f"Safety check threshold: {max_interest_gain * 100} %\n" \
+            f"Asset: {asset} at {timestamp}\n" \
+            f"Accrued: {interest_accrued_relative * 100} %\n" \
+            f"increase: {interest_accrued}, new amount: {new_amount}\n" \
+            f"Current asset total across all positions: {asset_total}"
+
+        for entry in operation.entries:
+            if entry.asset == asset:
+                evt = distribute_to_entry(
+                    entry,
+                    state,
+                    timestamp,
+                    block_number,
+                    interest_accrued
+                )
+                yield evt
 
 
 def accrue_interest(

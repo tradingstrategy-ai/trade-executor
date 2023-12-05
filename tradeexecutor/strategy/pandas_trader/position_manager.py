@@ -8,6 +8,7 @@ import logging
 
 import pandas as pd
 
+from tradeexecutor.utils.accuracy import QUANTITY_EPSILON
 from tradingstrategy.candle import CandleSampleUnavailable
 from tradingstrategy.pair import DEXPair
 from tradingstrategy.universe import Universe
@@ -623,6 +624,9 @@ class PositionManager:
             self.timestamp,
             f"Opened 1x long on {pair}, position value {value} USD")
 
+        if trade.is_buy():
+            assert trade.planned_quantity > QUANTITY_EPSILON, f"Bad buy quantity: {trade}"
+
         return [trade]
 
     def adjust_position(self,
@@ -1211,7 +1215,7 @@ class PositionManager:
                     estimation.liquidation_price, executor_pair.base.token_symbol,
                     )
 
-        position, trade, _ = self.state.trade_short(
+        position, trade, created = self.state.trade_short(
             self.timestamp,
             pair=shorting_pair,
             borrowed_quantity=-estimation.total_borrowed_quantity,
@@ -1225,6 +1229,7 @@ class PositionManager:
             lp_fees_estimated=estimation.lp_fees,
             notes=notes,
         )
+        assert created, f"open_short() was called, but there was an existing position for pair: {executor_pair}"
 
         # record liquidation price into the position
         position.liquidation_price = estimation.liquidation_price

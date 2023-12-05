@@ -127,6 +127,8 @@ class BacktestPricing(PricingModel):
             quantity: Optional[Decimal]
     ) -> TradePricing:
 
+        assert pair is not None, "Pair missing"
+
         if quantity:
             assert quantity > 0, f"Cannot sell negative amounts: {quantity} {pair}"
 
