@@ -1,6 +1,8 @@
+"""Match trading pairs to their supported DeFI protocols."""
+
 from abc import abstractmethod, ABC
 from dataclasses import dataclass
-from typing import Set
+from typing import Set, Dict
 
 from web3 import Web3
 
@@ -13,8 +15,19 @@ from tradeexecutor.strategy.valuation import ValuationModel
 
 @dataclass
 class ProtocolRoutingId:
+    """Identify supported protocol for routing.
+
+    Because we use composable :term:`DeFi` we need identify
+    any combination of supported elements.
+    """
+
+    #: "uniswap-v2", "uniswap-v3" or "1delta"
     router_name: str
+
+    #: "quickswap" or "uniswap-v3"
     exchange_slug: str
+
+    #: "aave"
     lending_protocol_slug: str | None = None
 
     def __hash__(self):
@@ -33,25 +46,37 @@ class ProtocolRoutingId:
 class ProtocolRoutingConfig:
     """Different components we need to deal trading on a protocol.
 
-    - These are per-pair
+    - These are a per supported protocol
+
+    - This is initialised once in :py:meth`PairConfigurator.create_config`
     """
+
+    #: Which protocol this is
     routing_id: ProtocolRoutingId
+
+    #: Routing model to transform trades to blockchain transactions
     routing_model: RoutingModel
+
+    #: Valuation model get the PnL of a position
     valuation_model: ValuationModel
+
+    #: Estimate buy/sell price of an asset
     pricing_model: PricingModel
 
 
 
 class PairConfigurator(ABC):
-    """
+    """Match trading pairs to their routes.
 
-    - Pricing and valuation models are per price
+    - Only applicable to live trading
 
-    - Routing model is per supported DeFi protocol
+    - Create routing configurations based on the loaded
+      trading universe :py:meth:`get_supported_routers`.
 
-    - Routing state is per cycle
+    - Can read data and check smart contracts directly on a blockchain
 
-
+    - See :py:class:tradeexecutor.ethereum.ethereum_protocol_adapters.EthereumPairConfigurator`
+      for an implementation
     """
 
     def __init__(
@@ -59,36 +84,108 @@ class PairConfigurator(ABC):
         web3: Web3,
         strategy_universe: TradingStrategyUniverse,
     ):
+        """Initialise pair configuration.
+
+        :param web3:
+            Web3 connection to the active blockchain.
+
+        :param strategy_universe:
+            The initial strategy universe.
+
+            TODO: Currently only reserve currency, exchange and pair data is used.
+            Candle data is discarded.
+        """
         self.web3 = web3
         self.strategy_universe = strategy_universe
-        self.configs = {}
+
+        #: Our cached configs
+        self.configs: Dict[ProtocolRoutingId, ProtocolRoutingConfig] = {}
 
     @abstractmethod
-    def create_config(self, routing_id: ProtocolRoutingId):
+    def create_config(self, routing_id: ProtocolRoutingId) -> ProtocolRoutingConfig:
+        """Create a protocol configuraiton
+
+        - Initialise pricing, valuation and router models
+          for a particular protocol
+
+        - Called only once per process life cycle,
+          created models are cached
+
+        :param routing_id:
+            The protocol we are initialising
+        """
         pass
 
     @abstractmethod
     def get_supported_routers(self) -> Set[ProtocolRoutingId]:
-        pass
+        """Create supported routing options based on the loaded trading universe.
+
+        :return:
+            List of protocols we can handle in this trading universe
+        """
 
     @abstractmethod
     def match_router(self, pair: TradingPairIdentifier) -> ProtocolRoutingId:
-        pass
+        """Map a trading pair to a supported protocol.
+
+        :param pair:
+            The trading pair.
+
+            For spot, return `uniswap-v2` or `uniswap-v3` routing id.
+
+            For leverage, return `1delta` routing id.
+
+        :raise UnroutableTrade:
+            In the case we do not have exchange data loaded in the trading universe to route the pair.
+        """
 
     def get_routing(self, pair: TradingPairIdentifier) -> RoutingModel:
+        """Get routing model for a pair.
+
+        :return:
+            Lazily created cached result.
+
+        :raise UnroutableTrade:
+            In the case we do not have exchange data loaded in the trading universe to route the pair.
+
+        """
         router = self.match_router(pair)
         return self.get_config(router).routing_model
 
     def get_valuation(self, pair: TradingPairIdentifier) -> ValuationModel:
+        """Get valuation model for a pair.
+
+        :return:
+            Lazily created cached result.
+
+        :raise UnroutableTrade:
+            In the case we do not have exchange data loaded in the trading universe to route the pair.
+
+        """
         router = self.match_router(pair)
         return self.get_config(router).valuation_model
 
     def get_pricing(self, pair: TradingPairIdentifier) -> PricingModel:
+        """Get pricing model for a pair.
+
+        :return:
+            Lazily created cached result.
+
+        :raise UnroutableTrade:
+            In the case we do not have exchange data loaded in the trading universe to route the pair.
+
+        """
         router = self.match_router(pair)
         return self.get_config(router).pricing_model
 
     def get_config(self, router: ProtocolRoutingId) -> ProtocolRoutingConfig:
-        """Get cached config."""
+        """Get cached config for a specific protocol.
+
+        Lazily create the config if not yet available.
+
+        :raise Exception:
+            Various errors in the protocol set up code.
+        """
 
         config = self.configs.get(router)
         if config is None:

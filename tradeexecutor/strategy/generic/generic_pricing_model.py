@@ -5,11 +5,9 @@ from _decimal import Decimal
 from typing import Dict, Optional
 
 from tradeexecutor.strategy.generic.pair_configurator import PairConfigurator
-from tradingstrategy.pair import PandasPairUniverse
 
 from tradeexecutor.state.identifier import TradingPairIdentifier
 from tradeexecutor.state.types import USDollarPrice
-from tradeexecutor.strategy.generic.routing_function import RoutingFunction, default_route_chooser, UnroutableTrade
 from tradeexecutor.strategy.pricing_model import PricingModel
 from tradeexecutor.strategy.trade_pricing import TradePricing
 

@@ -33,5 +33,3 @@ class GenericValuation(ValuationModel):
         return valuation_model(ts, position)
 
 
-def generic_valuation_factory(pricing_model):
-    return GenericValuation(pricing_model)

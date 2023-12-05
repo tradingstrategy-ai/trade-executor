@@ -1,3 +1,8 @@
+"""Default protocols support for EVM blockchains.
+
+See :py:mod:`tradeexecutor.strategy.generic.pair_configurator`.
+"""
+
 from typing import Set
 
 from web3 import Web3
@@ -217,38 +222,6 @@ class EthereumPairConfigurator(PairConfigurator):
             return create_uniswap_v3_adapter(self.web3, self.strategy_universe, routing_id)
         else:
             raise NotImplementedError(f"Cannot route exchange {routing_id}")
-
-    # def create_router(self, router: ProtocolRoutingId):
-    #     strategy_universe = self.strategy_universe
-    #     chain_id = strategy_universe.get_single_chain()
-    #     reserve_asset = strategy_universe.get_reserve_asset()
-    #
-    #     if router.router_name == "1delta":
-    #         # TODO: Add intermediate tokens
-    #         return OneDeltaRouting(
-    #             address_map=uniswap_v3_address_map,
-    #             chain_id=chain_id,
-    #             allowed_intermediary_pairs={},
-    #             reserve_token_address=reserve_asset.address,
-    #         )
-    #     else:
-    #         if router.router_name == "uniswap-v2":
-    #             if router.exchange_slug == "quickswap":
-    #                 return create_uniswap_v2_compatible_routing(
-    #                     TradeRouting.quickswap_usdc,
-    #                     ReserveCurrency.usdc,
-    #                 )
-    #             else:
-    #                 raise NotImplementedError(f"Exchange not yet supported: {router.exchange_slug}")
-    #         elif router.router_name == "uniswap-v3":
-    #             return  UniswapV3Routing(
-    #                 address_map=uniswap_v3_address_map,
-    #                 allowed_intermediary_pairs={},
-    #                 chain_id=chain_id,
-    #                 reserve_token_address=reserve_asset.address,
-    #             )
-    #
-    #     raise NotImplementedError(f"Does not know how to create a router for {router}")
 
     def match_router(self, pair: TradingPairIdentifier) -> ProtocolRoutingId:
 
