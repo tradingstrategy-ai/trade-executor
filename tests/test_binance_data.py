@@ -26,7 +26,7 @@ def correct_df_candles():
         "low": [714.86, 716.71],
         "close": [730.79, 774.73],
         "volume": [15151.39095, 26362.64832],
-        "pair_id": ["ETHUSDC", "ETHUSDC"],
+        "pair_id": ["ETHUSDT", "ETHUSDT"],
     }
     return pd.DataFrame(data, index=dates)
 
@@ -41,7 +41,7 @@ def correct_df_lending():
             "low": [714.86, 716.71, 28608.73, 29027.03],
             "close": [730.79, 774.73, 29407.93, 32215.18],
             "volume": [15151.39095, 26362.64832, 1736.62048, 4227.234681],
-            "pair_id": ["ETHUSDC", "ETHUSDC", "BTCUSDC", "BTCUSDC"],
+            "pair_id": ["ETHUSDT", "ETHUSDT", "BTCUSDC", "BTCUSDC"],
         },
         index=[
             pd.Timestamp("2021-01-01 00:00:00"),
