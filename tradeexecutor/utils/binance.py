@@ -25,7 +25,7 @@ from tradingstrategy.lending import LendingReserveUniverse, LendingCandleUnivers
 from tradingstrategy.pair import DEXPair
 
 
-def load_binance_dataset(
+def fetch_binance_dataset(
     symbols: list[str] | str,
     candle_time_bucket: TimeBucket,
     stop_loss_time_bucket: TimeBucket,
@@ -156,7 +156,7 @@ def create_binance_universe(
 ) -> TradingStrategyUniverse:
     """Create a Binance universe that can be used for backtesting.
 
-    Similarly to `load_binance_dataset`, this function loads all the data needed for backtesting,
+    Similarly to `fetch_binance_dataset`, this function loads all the data needed for backtesting,
     including candlestick, stop loss, lending and supply data for all valid symbols.
 
     :param symbols: List of symbols to load
@@ -169,7 +169,7 @@ def create_binance_universe(
     :param force_download: Whether to force download of data or get it from cache
     :return: Trading strategy universe
     """
-    dataset = load_binance_dataset(
+    dataset = fetch_binance_dataset(
         symbols,
         candle_time_bucket,
         stop_loss_time_bucket,
