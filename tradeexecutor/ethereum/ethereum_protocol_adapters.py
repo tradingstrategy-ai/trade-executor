@@ -191,6 +191,16 @@ def create_1delta_adapter(
 
 
 class EthereumPairConfigurator(PairConfigurator):
+    """Set up routes for EVM trading pairs.
+
+    Supported protocols
+
+    - 1delta
+
+    - Uniswap v2 likes
+
+    - Uniswap v3 likes
+    """
 
     def get_supported_routers(self) -> Set[ProtocolRoutingId]:
         exchanges = self.strategy_universe.data_universe.exchange_universe

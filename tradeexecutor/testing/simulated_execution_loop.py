@@ -19,7 +19,7 @@ from tradeexecutor.strategy.cycle import CycleDuration
 from tradeexecutor.strategy.execution_context import ExecutionContext, ExecutionMode
 from tradeexecutor.strategy.generic.generic_pricing_model import GenericPricing
 from tradeexecutor.strategy.generic.generic_router import GenericRouting
-from tradeexecutor.strategy.generic.generic_valuation import generic_valuation_factory, GenericValuation
+from tradeexecutor.strategy.generic.generic_valuation import GenericValuation
 from tradeexecutor.strategy.pandas_trader.runner import PandasTraderRunner
 from tradeexecutor.strategy.run_state import RunState
 from tradeexecutor.strategy.strategy_module import DecideTradesProtocol
@@ -425,7 +425,7 @@ def set_up_simulated_ethereum_generic_execution(
         execution_model=execution_model,
         sync_model=sync_model,
         pricing_model_factory=pricing_model_factory,
-        valuation_model_factory=generic_valuation_factory,
+        valuation_model_factory=valuation_model_factory,
         strategy_factory=None,
         store=store,
         cycle_duration=cycle_duration,

@@ -21,10 +21,14 @@ class ProtocolRoutingId:
     any combination of supported elements.
     """
 
+    #: The type of routing.
+    #:
+    #: The major protocol used for trades.
+    #:
     #: "uniswap-v2", "uniswap-v3" or "1delta"
     router_name: str
 
-    #: "quickswap" or "uniswap-v3"
+    #: "quickswap" or "uniswap-v3" or "trader-joe"
     exchange_slug: str
 
     #: "aave"
@@ -51,7 +55,7 @@ class ProtocolRoutingConfig:
     - This is initialised once in :py:meth`PairConfigurator.create_config`
     """
 
-    #: Which protocol this is
+    #: Which protocol this config is for
     routing_id: ProtocolRoutingId
 
     #: Routing model to transform trades to blockchain transactions

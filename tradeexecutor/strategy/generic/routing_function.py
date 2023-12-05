@@ -9,6 +9,7 @@
 class UnroutableTrade(Exception):
     """Trade cannot be routed, as we could not find a matching route.
 
+    TODO: Refactor this exception to another module and remove the stub module.
     """
 
 
