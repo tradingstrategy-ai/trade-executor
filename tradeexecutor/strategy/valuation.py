@@ -121,7 +121,7 @@ def revalue_portfolio(
             assert isinstance(value_update, ValuationUpdate), f"Expected ValuationUpdate, received {value_update.__class__} from {valuation_model.__class__.__name__}"
 
             logger.info(
-                "Re-valued position #%d, kind %s, base asset %s.\nValue movement: %f USD -> %f USD.\nPrice movement: %f USD -> %f USD.\nUsing model %s.\nValuation done for the timestamp: %s",
+                "Re-valued position #%d, kind %s, base asset %s.\nValue movement: %s USD -> %s USD.\nPrice movement: %s USD -> %s USD.\nUsing model %s.\nValuation done for the timestamp: %s",
                 position.position_id,
                 position.pair.kind.value,
                 position.pair.base.token_symbol,

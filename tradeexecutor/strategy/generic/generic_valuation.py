@@ -1,16 +1,10 @@
 """Value model based on their selling price on generic routing"""
 import datetime
-from typing import Dict
 
-from tradeexecutor.state.identifier import TradingPairIdentifier
 from tradeexecutor.state.position import TradingPosition
-from tradeexecutor.state.types import USDollarAmount
 from tradeexecutor.state.valuation import ValuationUpdate
-from tradeexecutor.strategy.generic.generic_pricing_model import GenericPricing
 from tradeexecutor.strategy.generic.pair_configurator import PairConfigurator
-from tradeexecutor.strategy.generic.routing_function import RoutingFunction, default_route_chooser, UnroutableTrade
 from tradeexecutor.strategy.valuation import ValuationModel
-from tradingstrategy.pair import PandasPairUniverse
 
 
 class GenericValuation(ValuationModel):
