@@ -80,7 +80,6 @@ def test_fetch_binance_dataset(correct_df_candles, correct_df_lending):
             START_AT,
             END_AT,
             include_lending=True,
-            force_download=True,
         )
 
     assert len(dataset.candles) == 2
