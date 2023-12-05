@@ -19,16 +19,26 @@ STOP_LOSS_TIME_BUCKET = TimeBucket.h4
 @pytest.fixture(scope="module")
 def correct_df_candles():
     """Return a correct dataframe for the candles."""
-    dates = [pd.Timestamp("2021-01-01"), pd.Timestamp("2021-01-02")]
+    import pandas as pd
+
     data = {
-        "open": [736.9, 731.19],
-        "high": [750.39, 788.89],
-        "low": [714.86, 716.71],
-        "close": [730.79, 774.73],
-        "volume": [15151.39095, 26362.64832],
-        "pair_id": ["ETHUSDT", "ETHUSDT"],
+        'open': [736.42, 744.87, 737.37, 738.85, 735.39, 725.34, 728.91, 730.39, 735.12, 729.70, 768.45, 784.79],
+        'high': [749.00, 747.09, 741.76, 743.33, 737.73, 731.97, 734.40, 740.49, 738.35, 772.80, 787.69, 785.48],
+        'low': [729.33, 734.40, 725.10, 732.12, 714.29, 722.50, 714.91, 726.26, 723.01, 728.25, 764.50, 750.12],
+        'close': [744.82, 737.38, 738.85, 735.39, 725.34, 728.91, 730.39, 735.12, 729.70, 768.43, 784.79, 774.56],
+        'volume': [130893.19622, 72474.10311, 128108.21447, 121504.02184, 156457.71927, 65676.83838, 119184.44960, 97938.27713, 120264.73109, 428448.45842, 334396.99240, 252385.66804],
+        'pair_id': ['ETHUSDT'] * 12
     }
-    return pd.DataFrame(data, index=dates)
+
+    df = pd.DataFrame(data, index=pd.to_datetime([
+        '2021-01-01 00:00:00', '2021-01-01 04:00:00', '2021-01-01 08:00:00', 
+        '2021-01-01 12:00:00', '2021-01-01 16:00:00', '2021-01-01 20:00:00', 
+        '2021-01-02 00:00:00', '2021-01-02 04:00:00', '2021-01-02 08:00:00', 
+        '2021-01-02 12:00:00', '2021-01-02 16:00:00', '2021-01-02 20:00:00'
+    ]))
+
+    return df
+
 
 
 @pytest.fixture(scope="module")
@@ -39,9 +49,8 @@ def correct_df_lending():
         'lending_rates': [0.000250, 0.000250, 0.001045, 0.001045],
         'pair_id': ['ETH', 'ETH', 'USDT', 'USDT']
     }
-    df = pd.DataFrame(data, index=['2020-12-31', '2021-01-01', '2020-12-31', '2021-01-01'])
+    df = pd.DataFrame(data, index=pd.to_datetime(['2020-12-31', '2021-01-01', '2020-12-31', '2021-01-01']))
     return df
-
 
 
 def test_fetch_binance_dataset(correct_df_candles, correct_df_lending):
@@ -85,24 +94,15 @@ def test_fetch_binance_dataset(correct_df_candles, correct_df_lending):
 
 def test_create_binance_universe(correct_df_candles, correct_df_lending):
     """Test that the create_binance_universe function works as expected."""
-    if os.environ.get("GITHUB_ACTIONS", None) == "true":
-        with patch(
-            "tradingstrategy.binance.downloader.BinanceDownloader.fetch_candlestick_data"
-        ) as mock_fetch_candlestick_data, patch(
-            "tradingstrategy.binance.downloader.BinanceDownloader.fetch_lending_rates"
-        ) as mock_fetch_lending_data:
-            mock_fetch_candlestick_data.return_value = correct_df_candles
-            mock_fetch_lending_data.return_value = correct_df_lending
+    # if os.environ.get("GITHUB_ACTIONS", None) == "true":
+    with patch(
+        "tradingstrategy.binance.downloader.BinanceDownloader.fetch_candlestick_data"
+    ) as mock_fetch_candlestick_data, patch(
+        "tradingstrategy.binance.downloader.BinanceDownloader.fetch_lending_rates"
+    ) as mock_fetch_lending_data:
+        mock_fetch_candlestick_data.return_value = correct_df_candles
+        mock_fetch_lending_data.return_value = correct_df_lending
 
-            universe = create_binance_universe(
-                ["ETHUSDT"],
-                TIME_BUCKET,
-                STOP_LOSS_TIME_BUCKET,
-                START_AT,
-                END_AT,
-                include_lending=True,
-            )
-    else:
         universe = create_binance_universe(
             ["ETHUSDT"],
             TIME_BUCKET,
@@ -111,6 +111,15 @@ def test_create_binance_universe(correct_df_candles, correct_df_lending):
             END_AT,
             include_lending=True,
         )
+    # else:
+    #     universe = create_binance_universe(
+    #         ["ETHUSDT"],
+    #         TIME_BUCKET,
+    #         STOP_LOSS_TIME_BUCKET,
+    #         START_AT,
+    #         END_AT,
+    #         include_lending=True,
+    #     )
 
     assert universe.backtest_stop_loss_time_bucket == TimeBucket.h4
     assert len(universe.backtest_stop_loss_candles.df) == 12
