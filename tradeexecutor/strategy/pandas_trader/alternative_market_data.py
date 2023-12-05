@@ -75,6 +75,7 @@ def load_candles_from_parquet(
     column_map: Dict[str, str] = DEFAULT_COLUMN_MAP,
     resample: TimeBucket | None = None,
     identifier_column: str = "pair_id",
+    pair_id: int | None = None,  # legacy
 ) -> Tuple[pd.DataFrame, pd.DataFrame, TimeBucket, TimeBucket]:
     """Loads OHLCV candle data from a Parquest file.
 
@@ -89,6 +90,9 @@ def load_candles_from_parquet(
 
     df = pd.read_parquet(file)
 
+    if pair_id:
+        df[identifier_column] = pair_id
+
     df, orig, bucket, original_bucket = load_candles_from_dataframe(column_map, df, resample, identifier_column)
 
     return df, orig, bucket, original_bucket
@@ -100,6 +104,7 @@ def load_candle_universe_from_parquet(
     resample: TimeBucket | None = None,
     include_as_trigger_signal=True,
     identifier_column: str = "pair_id",
+    pair: TradingPairIdentifier | None = None,  # legacy
 ) -> Tuple[GroupedCandleUniverse, GroupedCandleUniverse | None]:
     """Load a single pair price feed from an alternative file.
 
@@ -123,6 +128,9 @@ def load_candle_universe_from_parquet(
 
         For this, any upsampling is not used.
 
+    :param pair:
+        Trading pair identifier. Legacy option for backwards compatibility, no need for this anymore.
+
     :raise NoMatchingBucket:
         Could not match candle time frame to any of our timeframes.
 
@@ -139,6 +147,7 @@ def load_candle_universe_from_parquet(
         column_map,
         resample,
         identifier_column,
+        pair_id=pair.internal_id if pair else None,
     )
 
     candles, stop_loss_candles = load_candle_universe_from_dataframe(
@@ -268,7 +277,8 @@ def load_candle_universe_from_dataframe(
 
     if include_as_trigger_signal:
         orig.index.name = "timestamp"
-        orig = orig.reset_index()
+        if "timestamp" not in orig.columns:
+            orig = orig.reset_index()
         stop_loss_candles = GroupedCandleUniverse(
             orig,
             time_bucket=original_bucket,
