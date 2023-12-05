@@ -438,21 +438,28 @@ class OneDeltaRouting(EthereumRoutingModel):
             assert result.path[-1].lower() == reserve.address.lower()
 
             price = result.get_human_price(quote_token_details.address == result.token0.address)
-
-            # TODO: verify these numbers
+            
             if trade.is_buy():
                 executed_amount = -result.amount_out / Decimal(10 ** base_token_details.decimals)
-                executed_reserve = result.amount_in / Decimal(10 ** reserve.decimals)
+                executed_collateral_consumption = result.amount_in / Decimal(10 ** reserve.decimals)
+                # TODO
+                executed_collateral_allocation = 0
+                # TODO: double check
+                executed_reserve = 0
             else:
                 executed_amount = result.amount_in / Decimal(10 ** base_token_details.decimals)
-                executed_reserve = result.amount_out / Decimal(10 ** reserve.decimals)
+                executed_collateral_consumption = result.amount_out / Decimal(10 ** reserve.decimals)
+                # TODO
+                executed_collateral_allocation = 0
+                # TODO: get from supply() maybe?
+                executed_reserve = trade.planned_reserve
 
             if trade.is_short():
                 executed_amount = -executed_amount
 
             lp_fee_paid = result.lp_fee_paid
 
-            assert (executed_reserve > 0) and (executed_amount != 0) and (price > 0), f"Executed amount {executed_amount}, executed_reserve: {executed_reserve}, price: {price}, tx info {trade.tx_info}"
+            assert (executed_collateral_consumption > 0) and (executed_amount != 0) and (price > 0), f"Executed amount {executed_amount}, executed collateral consumption: {executed_collateral_consumption},  executed_reserve: {executed_reserve}, price: {price}, tx info {trade.tx_info}"
 
             # update the executed loan
             # TODO: check if this is the right spot for this
@@ -465,6 +472,8 @@ class OneDeltaRouting(EthereumRoutingModel):
                 executed_price=float(price),
                 executed_amount=executed_amount,
                 executed_reserve=executed_reserve,
+                executed_collateral_consumption=executed_collateral_consumption,
+                executed_collateral_allocation=executed_collateral_allocation,
                 lp_fees=lp_fee_paid,
                 native_token_price=0,  # won't fix
                 cost_of_gas=result.get_cost_of_gas(),
