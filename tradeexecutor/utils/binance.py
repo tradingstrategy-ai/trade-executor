@@ -86,15 +86,6 @@ def fetch_binance_dataset(
     pairs_df = DEXPair.convert_to_dataframe(pairs)
     pairs_df["pair_id"].replace(spot_symbol_map, inplace=True)
 
-    # pairs_df = candle_universe.pairs.first().reset_index()
-    # pairs_df['fee'] = pairs_df['fee'] * 10_000
-    # del pairs_df["timestamp"]
-    # del pairs_df["open"]
-    # del pairs_df["high"]
-    # del pairs_df["low"]
-    # del pairs_df["close"]
-    # del pairs_df["volume"]
-
     if include_lending:
         reserves = []
         reserve_id = 1
