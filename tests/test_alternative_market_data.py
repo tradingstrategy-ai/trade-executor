@@ -108,7 +108,7 @@ def sample_file() -> Path:
 
 def test_replace_candles(
     synthetic_universe: TradingStrategyUniverse,
-    wbtc_usdc,
+    wbtc_usdc: TradingPairIdentifier,
     sample_file
 ):
     """Replace candles for WBTC-USDC from the Binance hourly feed."""
@@ -116,8 +116,8 @@ def test_replace_candles(
     assert synthetic_universe.data_universe.candles.time_bucket == TimeBucket.h1
 
     new_candles, _ = load_candle_universe_from_parquet(
-        wbtc_usdc,
-        sample_file
+        sample_file,
+        pair=wbtc_usdc,
     )
 
     replace_candles(synthetic_universe, new_candles)
@@ -139,9 +139,9 @@ def test_replace_candles_resample(
     assert synthetic_universe.data_universe.candles.time_bucket == TimeBucket.h1
 
     new_candles, stop_loss_candles = load_candle_universe_from_parquet(
-        wbtc_usdc,
         sample_file,
         resample=TimeBucket.h4,
+        pair=wbtc_usdc,
     )
 
     assert new_candles.time_bucket == TimeBucket.h4
