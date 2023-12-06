@@ -49,3 +49,4 @@ def get_block_timestamp(web3: Web3, block_identifier: BlockIdentifier) -> dateti
         ts = ts_str
 
     return datetime.datetime.utcfromtimestamp(ts)
+

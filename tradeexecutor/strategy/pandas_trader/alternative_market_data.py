@@ -45,11 +45,24 @@ def resample_single_pair(df, bucket: TimeBucket) -> pd.DataFrame:
     # may case NaN to appear as price
     resampled = df.resample(bucket.to_frequency()).agg(ohlc_dict)
     filled = resampled.ffill()
+
+    # Remove rows that appear before first row in df
+    filled = filled[filled.index >= df.index[0]]
+
     return filled
 
 
 def _fix_nans(df: pd.DataFrame) -> pd.DataFrame:
-    """External data sources might have NaN values for prices."""
+    """External data sources might have NaN values for prices.
+    
+    Apply forward fill to columns not in [ 'open', 'high', 'low', 'close', 'volume']. This is fine if used for single pair data only where values are simply repeated down all rows.
+    """
+    
+    exclude_columns= [ 'open', 'high', 'low', 'close', 'volume']
+    
+    for column in df.columns:
+        if column not in exclude_columns:
+            df[column].fillna(method='ffill', inplace=True)
 
     # TODO: Add NaN fixing logic here
     # https://stackoverflow.com/a/29530303/315168
@@ -59,9 +72,10 @@ def _fix_nans(df: pd.DataFrame) -> pd.DataFrame:
 
 def load_candles_from_parquet(
     file: Path,
-    pair_id=int | None,
     column_map: Dict[str, str] = DEFAULT_COLUMN_MAP,
     resample: TimeBucket | None = None,
+    identifier_column: str = "pair_id",
+    pair_id: int | None = None,  # legacy
 ) -> Tuple[pd.DataFrame, pd.DataFrame, TimeBucket, TimeBucket]:
     """Loads OHLCV candle data from a Parquest file.
 
@@ -76,38 +90,21 @@ def load_candles_from_parquet(
 
     df = pd.read_parquet(file)
 
-    assert isinstance(df.index, pd.DatetimeIndex), f"Parquet did not have DateTime index: {df.index}"
+    if pair_id:
+        df[identifier_column] = pair_id
 
-    orig = df = df.rename(columns=column_map)
-
-    # What's the spacing of candles
-    granularity = df.index[1] - df.index[0]
-    original_bucket = TimeBucket.from_pandas_timedelta(granularity)
-
-    if resample:
-        df = resample_single_pair(df, resample)
-        bucket = resample
-    else:
-        bucket = TimeBucket.from_pandas_timedelta(granularity)
-
-    df = _fix_nans(df)
-
-    df["pair_id"] = pair_id
-
-    # Because we assume multipair data from now on,
-    # with group index instead of timestamp index,
-    # we make timestamp a column
-    df["timestamp"] = df.index.to_series()
+    df, orig, bucket, original_bucket = load_candles_from_dataframe(column_map, df, resample, identifier_column)
 
     return df, orig, bucket, original_bucket
 
 
 def load_candle_universe_from_parquet(
-    pair: TradingPairIdentifier,
     file: Path,
     column_map: Dict[str, str] = DEFAULT_COLUMN_MAP,
     resample: TimeBucket | None = None,
     include_as_trigger_signal=True,
+    identifier_column: str = "pair_id",
+    pair: TradingPairIdentifier | None = None,  # legacy
 ) -> Tuple[GroupedCandleUniverse, GroupedCandleUniverse | None]:
     """Load a single pair price feed from an alternative file.
 
@@ -131,6 +128,9 @@ def load_candle_universe_from_parquet(
 
         For this, any upsampling is not used.
 
+    :param pair:
+        Trading pair identifier. Legacy option for backwards compatibility, no need for this anymore.
+
     :raise NoMatchingBucket:
         Could not match candle time frame to any of our timeframes.
 
@@ -142,16 +142,130 @@ def load_candle_universe_from_parquet(
 
     """
 
-    assert isinstance(pair, TradingPairIdentifier)
-
-    # Add pair column
-    assert pair.internal_id, f"Internal id missing"
-
     df, orig, bucket, original_bucket = load_candles_from_parquet(
         file,
-        pair.internal_id,
         column_map,
         resample,
+        identifier_column,
+        pair_id=pair.internal_id if pair else None,
+    )
+
+    candles, stop_loss_candles = load_candle_universe_from_dataframe(
+        orig,
+        column_map,
+        resample,
+        include_as_trigger_signal,
+        identifier_column,
+    )
+
+    return candles, stop_loss_candles
+
+
+def load_candles_from_dataframe(column_map: Dict[str, str], df: pd.DataFrame, resample: TimeBucket | None, identifier_column: str = "pair_id"):
+    """Load OHLCV candle data from a DataFrame.
+    
+    :param column_map:
+        Column name mapping from the DataFrame to our internal format.
+
+        E.g. { "open": "open", "high": "high", ... }
+
+    :param df:
+        DataFrame to load from
+
+    :param pair_id:
+        Pair id to set for the DataFrame
+
+    :param resample:
+        Resample OHLCV data to a higher timeframe
+
+    :return:
+        Tuple (Original dataframe, processed candles dataframe, resampled time bucket, original time bucket) tuple
+    """
+    assert identifier_column in df.columns, f"DataFrame does not have {identifier_column} column"
+
+    assert isinstance(df.index, pd.DatetimeIndex), f"Parquet did not have DateTime index: {df.index}"
+
+    df = df.rename(columns=column_map)
+
+    orig = df.copy()
+
+    # What's the spacing of candles
+    granularity = df.index[1] - df.index[0]
+    original_bucket = TimeBucket.from_pandas_timedelta(granularity)
+
+    if resample:
+        _df = resample_single_pair(df, resample)
+        bucket = resample
+
+        # to preserve addtional columns beyond OHLCV, we need to left join
+        if len(df.columns) > 5:
+            del df['open']
+            del df['high']
+            del df['low']
+            del df['close']
+            del df['volume']
+
+            df = _df.join(df, how='left')
+    else:
+        bucket = TimeBucket.from_pandas_timedelta(granularity)
+
+    df = _fix_nans(df)
+
+    # Because we assume multipair data from now on,
+    # with group index instead of timestamp index,
+    # we make timestamp a column
+    df["timestamp"] = df.index.to_series()
+
+    return df, orig, bucket, original_bucket
+
+
+def load_candle_universe_from_dataframe(
+    df: pd.DataFrame,
+    column_map: Dict[str, str] = DEFAULT_COLUMN_MAP,
+    resample: TimeBucket | None = None,
+    include_as_trigger_signal=True,
+    identifier_column: str = "pair_id",
+) -> Tuple[GroupedCandleUniverse, GroupedCandleUniverse | None]:
+    """Load a single pair price feed from a DataFrame.
+    
+    Same as :py:func:`load_candle_universe_from_parquet` but from a DataFrame.
+
+    Overrides the current price candle feed with an alternative version,
+    usually from a centralised exchange. This allows
+    strategy testing to see there is no price feed data issues
+    or specificity with it.
+    
+    :param pair:
+        The trading pair data this Parquet file contains.
+
+        E.g. ticker symbols and trading fee are read from this argument.
+
+    :param df:
+        DataFrame to load from
+
+    :param resample:
+        Resample OHLCV data to a higher timeframe
+
+    :param include_as_trigger_signal:
+        Create take profit/stop loss signal from the data.
+
+        For this, any upsampling is not used.
+
+    :raise NoMatchingBucket:
+        Could not match candle time frame to any of our timeframes.
+
+    :return:
+        (Price feed universe, stop loss trigger candls universe) tuple.
+
+        Stop loss data is only generated if `include_as_trigger_signal` is True.
+        Stop loss data is never resampled and is in the most accurate available resolution.
+    """
+
+    df, orig, bucket, original_bucket = load_candles_from_dataframe(
+        column_map,
+        df,
+        resample,
+        identifier_column=identifier_column,
     )
 
     candles = GroupedCandleUniverse(
@@ -162,8 +276,9 @@ def load_candle_universe_from_parquet(
     )
 
     if include_as_trigger_signal:
-        orig["pair_id"] = pair.internal_id
-        orig["timestamp"] = df.index.to_series()
+        orig.index.name = "timestamp"
+        if "timestamp" not in orig.columns:
+            orig = orig.reset_index()
         stop_loss_candles = GroupedCandleUniverse(
             orig,
             time_bucket=original_bucket,

@@ -16,8 +16,8 @@ packages = [
 python = ">=3.10,<=3.12"
 
 # Use these during development
-#rading-strategy = {path = "deps/trading-strategy", develop = true}
-trading-strategy = "^0.22.1"
+# trading-strategy = {path = "deps/trading-strategy", develop = true}
+trading-strategy = "^0.22.4"
 requests = "^2.27.1"
 matplotlib = "^3.6.0"
 jupyterlab = "^4.0.7"
