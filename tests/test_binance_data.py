@@ -20,7 +20,6 @@ TIME_BUCKET = TimeBucket.d1
 STOP_LOSS_TIME_BUCKET = TimeBucket.h4
 
 
-@pytest.fixture(scope="module")
 def correct_df_candles():
     """Return a correct dataframe for the candles."""
     data = {
@@ -96,15 +95,24 @@ def test_fetch_binance_dataset(correct_df_candles, correct_df_lending):
 
 def test_create_binance_universe(correct_df_candles, correct_df_lending):
     """Test that the create_binance_universe function works as expected."""
-    # if os.environ.get("GITHUB_ACTIONS", None) == "true":
-    with patch(
-        "tradingstrategy.binance.downloader.BinanceDownloader.fetch_candlestick_data"
-    ) as mock_fetch_candlestick_data, patch(
-        "tradingstrategy.binance.downloader.BinanceDownloader.fetch_lending_rates"
-    ) as mock_fetch_lending_data:
-        mock_fetch_candlestick_data.return_value = correct_df_candles
-        mock_fetch_lending_data.return_value = correct_df_lending
-        logger.warn(correct_df_candles['pair_id'])
+    if os.environ.get("GITHUB_ACTIONS", None) == "true":
+        with patch(
+            "tradingstrategy.binance.downloader.BinanceDownloader.fetch_candlestick_data"
+        ) as mock_fetch_candlestick_data, patch(
+            "tradingstrategy.binance.downloader.BinanceDownloader.fetch_lending_rates"
+        ) as mock_fetch_lending_data:
+            mock_fetch_candlestick_data.return_value = correct_df_candles
+            mock_fetch_lending_data.return_value = correct_df_lending
+            logger.warn(correct_df_candles['pair_id'])
+            universe = create_binance_universe(
+                ["ETHUSDT"],
+                TIME_BUCKET,
+                STOP_LOSS_TIME_BUCKET,
+                START_AT,
+                END_AT,
+                include_lending=True,
+            )
+    else:
         universe = create_binance_universe(
             ["ETHUSDT"],
             TIME_BUCKET,
@@ -113,34 +121,25 @@ def test_create_binance_universe(correct_df_candles, correct_df_lending):
             END_AT,
             include_lending=True,
         )
-    # else:
-    #     universe = create_binance_universe(
-    #         ["ETHUSDT"],
-    #         TIME_BUCKET,
-    #         STOP_LOSS_TIME_BUCKET,
-    #         START_AT,
-    #         END_AT,
-    #         include_lending=True,
-    #     )
 
-        assert universe.backtest_stop_loss_time_bucket == TimeBucket.h4
-        assert len(universe.backtest_stop_loss_candles.df) == 12
-        assert universe.backtest_stop_loss_candles.df.isna().sum().sum() == 0
+    assert universe.backtest_stop_loss_time_bucket == TimeBucket.h4
+    assert len(universe.backtest_stop_loss_candles.df) == 12
+    assert universe.backtest_stop_loss_candles.df.isna().sum().sum() == 0
 
-        data_universe = universe.data_universe
-        assert data_universe.time_bucket == TimeBucket.d1
-        assert len(data_universe.candles.df) == 2
-        assert data_universe.candles.df.isna().sum().sum() == 0
-        assert len(data_universe.lending_reserves.reserves) == 2
-        assert data_universe.chains == {BINANCE_CHAIN_ID}
-        assert len(data_universe.pairs.df) == 1
-        assert len(data_universe.pairs.df.columns) == 36
-        # pairs df can have nans
+    data_universe = universe.data_universe
+    assert data_universe.time_bucket == TimeBucket.d1
+    assert len(data_universe.candles.df) == 2
+    assert data_universe.candles.df.isna().sum().sum() == 0
+    assert len(data_universe.lending_reserves.reserves) == 2
+    assert data_universe.chains == {BINANCE_CHAIN_ID}
+    assert len(data_universe.pairs.df) == 1
+    assert len(data_universe.pairs.df.columns) == 36
+    # pairs df can have nans
 
-        assert len(data_universe.lending_candles.variable_borrow_apr.df) == 4
-        assert data_universe.lending_candles.variable_borrow_apr.df.isna().sum().sum() == 0
-        assert len(data_universe.lending_candles.supply_apr.df) == 4
-        assert data_universe.lending_candles.supply_apr.df.isna().sum().sum() == 0
+    assert len(data_universe.lending_candles.variable_borrow_apr.df) == 4
+    assert data_universe.lending_candles.variable_borrow_apr.df.isna().sum().sum() == 0
+    assert len(data_universe.lending_candles.supply_apr.df) == 4
+    assert data_universe.lending_candles.supply_apr.df.isna().sum().sum() == 0
 
 
 def test_create_binance_universe_multipair():
