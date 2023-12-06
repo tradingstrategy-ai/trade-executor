@@ -23,12 +23,13 @@ from eth_defi.tx import AssetDelta
 from eth_defi.gas import estimate_gas_fees
 from eth_defi.uniswap_v3.deployment import UniswapV3Deployment, mock_partial_deployment_for_analysis
 from eth_defi.aave_v3.deployment import AaveV3Deployment, fetch_deployment as fetch_aave_v3_deployment
-from eth_defi.one_delta.deployment import OneDeltaDeployment, fetch_deployment
+from eth_defi.one_delta.deployment import OneDeltaDeployment, fetch_deployment as fetch_one_delta_deployment
 from eth_defi.one_delta.position import (
     approve,
     close_short_position,
     open_short_position,
 )
+from eth_defi.utils import ZERO_ADDRESS_STR
 
 from tradeexecutor.state.types import Percent
 from tradeexecutor.ethereum.tx import HotWalletTransactionBuilder
@@ -84,7 +85,7 @@ class OneDeltaRoutingState(EthereumRoutingState):
         broker_proxy_address = Web3.to_checksum_address(address_map["one_delta_broker_proxy"])
 
         try:
-            return fetch_deployment(
+            return fetch_one_delta_deployment(
                 self.web3,
                 broker_proxy_address,
                 broker_proxy_address,
@@ -421,9 +422,9 @@ class OneDeltaRouting(EthereumRoutingModel):
         quote_token_details = fetch_erc20_details(web3, pricing_pair.quote.checksum_address)
         reserve = trade.reserve_currency
         tx = get_swap_transactions(trade)
-        one_delta = fetch_deployment(web3, tx.contract_address, tx.contract_address)
-        # TODO: this router address is wrong, but it doesn't matter since we don't use it here
-        uniswap = mock_partial_deployment_for_analysis(web3, tx.contract_address)
+        one_delta = fetch_one_delta_deployment(web3, tx.contract_address, tx.contract_address)
+        uniswap = mock_partial_deployment_for_analysis(web3, ZERO_ADDRESS_STR)
+        aave = fetch_aave_v3_deployment(web3, ZERO_ADDRESS_STR, ZERO_ADDRESS_STR, ZERO_ADDRESS_STR)
 
         tx_dict = tx.get_transaction()
         receipt = receipts[HexBytes(tx.tx_hash)]
@@ -432,10 +433,11 @@ class OneDeltaRouting(EthereumRoutingModel):
 
         ts = get_block_timestamp(web3, receipt["blockNumber"])
 
-        result = analyse_trade_by_receipt(
+        result, collateral_amount = analyse_trade_by_receipt(
             web3,
             one_delta=one_delta,
             uniswap=uniswap,
+            aave=aave,
             tx=tx_dict,
             tx_hash=tx.tx_hash,
             tx_receipt=receipt,
@@ -454,16 +456,15 @@ class OneDeltaRouting(EthereumRoutingModel):
                 executed_amount = -result.amount_out / Decimal(10 ** base_token_details.decimals)
                 executed_collateral_consumption = result.amount_in / Decimal(10 ** reserve.decimals)
                 # TODO
-                executed_collateral_allocation = 0
+                executed_collateral_allocation = -Decimal(collateral_amount) / Decimal(10 ** reserve.decimals)
                 # TODO: double check
                 executed_reserve = 0
             else:
                 executed_amount = result.amount_in / Decimal(10 ** base_token_details.decimals)
                 executed_collateral_consumption = result.amount_out / Decimal(10 ** reserve.decimals)
-                # TODO
                 executed_collateral_allocation = 0
                 # TODO: get from supply() maybe?
-                executed_reserve = trade.planned_reserve
+                executed_reserve = Decimal(collateral_amount) / Decimal(10 ** reserve.decimals)
 
             if trade.is_short():
                 executed_amount = -executed_amount
@@ -473,8 +474,11 @@ class OneDeltaRouting(EthereumRoutingModel):
             assert (executed_collateral_consumption > 0) and (executed_amount != 0) and (price > 0), f"Executed amount {executed_amount}, executed collateral consumption: {executed_collateral_consumption},  executed_reserve: {executed_reserve}, price: {price}, tx info {trade.tx_info}"
 
             # update the executed loan
-            # TODO: check if this is the right spot for this
             trade.executed_loan_update = trade.planned_loan_update
+            trade.executed_loan_update.collateral.quantity = executed_collateral_consumption + executed_collateral_allocation + executed_reserve
+
+            trade.executed_loan_update.borrowed.quantity = -executed_amount
+            trade.executed_loan_update.borrowed.last_usd_price = float(price)
 
             # Mark as success
             state.mark_trade_success(
