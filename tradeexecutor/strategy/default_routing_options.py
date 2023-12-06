@@ -204,6 +204,15 @@ class TradeRouting(enum.Enum):
     #: fees and assume all pairs are tradeable.
     ignore = "ignore"
 
+    #: Use any generic USDC routing
+    #:
+    #: - Support Uniswap v2, Uniswap v3, Aave and 1delta
+    #:   based on the default configurations
+    #:
+    #: - Use USDC as a reserve currency
+    #:
+    default = "default"
+
     def is_uniswap_v2(self) -> bool:
         """Do we need Uniswap v2 routing model"""
 
