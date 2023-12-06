@@ -70,7 +70,7 @@ def fetch_binance_dataset(
         end_at,
         force_download=force_download,
     )
-    logger.warn(df.head())
+    logger.warn(df['pair_id'])
     spot_symbol_map = {symbol: i + 1 for i, symbol in enumerate(symbols)}
 
     candle_df = add_info_columns_to_ohlc(
