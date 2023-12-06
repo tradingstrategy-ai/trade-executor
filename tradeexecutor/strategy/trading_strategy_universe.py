@@ -828,8 +828,8 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
 
     @staticmethod
     def create_from_dataset(
-            dataset: Dataset,
-            reserve_asset_desc: JSONHexAddress=None,
+        dataset: Dataset,
+        reserve_asset: JSONHexAddress | TokenSymbol=None,
     ):
         """Create a universe from loaded dataset.
 
@@ -859,12 +859,15 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
 
         pairs = PandasPairUniverse(dataset.pairs, exchange_universe=dataset.exchanges)
 
-        if not reserve_asset_desc:
+        if not reserve_asset:
             quote_token = pairs.get_single_quote_token()
             reserve_asset = translate_token(quote_token)
+        elif reserve_asset.startswith("0x"):
+            reserve_asset_token = pairs.get_token(reserve_asset)
+            assert reserve_asset_token, f"Pairs dataset does not contain data for token: {reserve_asset}"
+            reserve_asset = translate_token(reserve_asset_token)
         else:
-            reserve_asset_token = pairs.get_token(reserve_asset_desc)
-            assert reserve_asset_token, f"Pairs dataset does not contain data for token: {reserve_asset_desc}"
+            reserve_asset_token = pairs.get_token_by_symbol(reserve_asset)
             reserve_asset = translate_token(reserve_asset_token)
 
         candle_universe = GroupedCandleUniverse(dataset.candles)

@@ -298,7 +298,7 @@ def test_can_open_short(persistent_test_client: Client):
 
     strategy_universe = TradingStrategyUniverse.create_from_dataset(
         dataset,
-        reserve_asset_desc=usdc_address,
+        reserve_asset=usdc_address,
     )
 
     data_universe = strategy_universe.data_universe
@@ -366,7 +366,7 @@ def test_analyse_long_short_universe(persistent_test_client: Client):
 
     strategy_universe = TradingStrategyUniverse.create_from_dataset(
         dataset,
-        reserve_asset_desc=usdc_address,
+        reserve_asset=usdc_address,
     )
 
     df = analyse_long_short_universe(

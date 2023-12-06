@@ -28,6 +28,7 @@ from eth_typing import HexAddress
 from eth_defi.enzyme.deployment import EnzymeDeployment
 from eth_defi.enzyme.vault import Vault
 from eth_defi.hotwallet import HotWallet
+from eth_defi.token import TokenDetails
 from eth_defi.trace import assert_transaction_success_with_explanation
 from eth_defi.uniswap_v2.deployment import UniswapV2Deployment
 
@@ -45,7 +46,11 @@ logger = logging.getLogger(__name__)
 
 
 @pytest.fixture
-def hot_wallet(web3, deployer, user_1, usdc: Contract, vault: Vault) -> HotWallet:
+def hot_wallet(
+    web3,
+    large_usdc_holder,
+    usdc: TokenDetails,
+) -> HotWallet:
     """Create hot wallet for the signing tests.
 
     Top is up with some gas money and 500 USDC.
@@ -54,22 +59,20 @@ def hot_wallet(web3, deployer, user_1, usdc: Contract, vault: Vault) -> HotWalle
     account = Account.from_key(private_key)
     wallet = HotWallet(account)
     wallet.sync_nonce(web3)
-    tx_hash = web3.eth.send_transaction({"to": wallet.address, "from": user_1, "value": 15 * 10**18})
+    tx_hash = web3.eth.send_transaction({"to": wallet.address, "from": large_usdc_holder, "value": 15 * 10**18})
     assert_transaction_success_with_explanation(web3, tx_hash)
-    tx_hash = usdc.functions.transfer(wallet.address, 500 * 10**6).transact({"from": deployer})
+    tx_hash = usdc.contract.functions.transfer(wallet.address, 500 * 10**6).transact({"from": large_usdc_holder})
     assert_transaction_success_with_explanation(web3, tx_hash)
-
-    # Promote the hot wallet to the asset manager
-    tx_hash = vault.vault.functions.addAssetManagers([account.address]).transact({"from": user_1})
-    assert_transaction_success_with_explanation(web3, tx_hash)
-
     return wallet
 
 
 @pytest.fixture()
 def strategy_file() -> Path:
     """Where do we load our strategy file."""
-    return Path(os.path.dirname(__file__)) / "../../strategies/test_only" / "generic_routing_end_to_end.py"
+    strat = Path(os.path.dirname(__file__)) / ".." / ".." / ".." / ".." / "strategies" / "test_only" / "generic_routing_end_to_end.py"
+    strat = strat.resolve()
+    assert strat.exists(), f"Does not exist: {strat}"
+    return strat
 
 
 @pytest.fixture()
@@ -86,17 +89,7 @@ def state_file() -> Path:
 
 @pytest.fixture()
 def environment(
-    anvil: AnvilLaunch,
-    deployer: HexAddress,
-    vault: Vault,
-    usdc: Contract,
-    weth: Contract,
-    usdc_asset: AssetIdentifier,
-    weth_asset: AssetIdentifier,
-    user_1: HexAddress,
-    uniswap_v2: UniswapV2Deployment,
-    weth_usdc_trading_pair: TradingPairIdentifier,
-    pair_universe: PandasPairUniverse,
+    anvil_polygon_chain_fork: AnvilLaunch,
     hot_wallet: HotWallet,
     state_file: Path,
     strategy_file: Path,
@@ -104,18 +97,18 @@ def environment(
     """Passed to init and start commands as environment variables"""
     # Set up the configuration for the live trader
     environment = {
-        "EXECUTOR_ID": "test_enzyme_live_trading_init",
-        "NAME": "test_enzyme_live_trading_init",
+        "EXECUTOR_ID": "test_generic_router_end_to_end",
+        "NAME": "test_generic_router_end_to_end",
         "STRATEGY_FILE": strategy_file.as_posix(),
         "PRIVATE_KEY": hot_wallet.account.key.hex(),
-        "JSON_RPC_ANVIL": anvil.json_rpc_url,
+        "JSON_RPC_ANVIL": anvil_polygon_chain_fork,
         "STATE_FILE": state_file.as_posix(),
-        "ASSET_MANAGEMENT_MODE": "enzyme",
+        "ASSET_MANAGEMENT_MODE": "hot_wallet",
         "UNIT_TESTING": "true",
         # "LOG_LEVEL": "info",  # Set to info to get debug data for the test run
         "LOG_LEVEL": "disabled",
         "CONFIRMATION_BLOCK_COUNT": "0",  # Needed for test backend, Anvil
-        "MAX_CYCLES": "5",  # Run decide_trades() 5 times
+        "MAX_CYCLES": "10",  # Run decide_trades() 5 times
     }
     return environment
 
@@ -140,10 +133,7 @@ def test_generic_routing_live_trading_init(
     environment: dict,
     state_file: Path,
 ):
-    """Initialize Enzyme vault for live trading.
-
-    Provide faux chain using Anvil with one pool that a sample strategy is trading.
-    """
+    """Initialize execution for generic routing strategy."""
 
     result = run_init(environment)
     assert result.exit_code == 0
@@ -151,46 +141,23 @@ def test_generic_routing_live_trading_init(
     # Check the initial state sync set some of the variables
     with state_file.open("rt") as inp:
         state = State.from_json(inp.read())
-        assert state.sync.deployment.vault_token_name is not None
-        assert state.sync.deployment.vault_token_symbol is not None
+        assert state.sync.deployment.initialised_at is not None
         assert state.sync.deployment.block_number > 1
 
 
 def test_generic_routing_live_trading_start(
     environment: dict,
     state_file: Path,
-    usdc: Contract,
-    weth: Contract,
-    vault: Vault,
-    deployer: HexAddress,
 ):
-    """Run Enzyme vaulted strategy for few cycles.
+    """Run generic routing based executor live.
 
-    - Set up local Anvil testnet with Uniswap v2 and Enzyme
-
-    - Create a strategy that trade ETH-USDC pair and does few buys and sells
-
-    - Run cycles of this strategy
-
-    - Check that the state file output looks good
-
-    - Check that the chain output looks good
-
-    At the end of 5th cycle we should have
-
-    - 1 open position, id 2
-
-    - 1 closed position, id 1
+    - Use a forked polygon
     """
 
 
     # Need to be initialised first
     result = run_init(environment)
     assert result.exit_code == 0
-
-    # Deposit some money in the vault
-    usdc.functions.approve(vault.comptroller.address, 500 * 10**6).transact({"from": deployer})
-    vault.comptroller.functions.buyShares(500 * 10**6, 1).transact({"from": deployer})
 
     # Run strategy for few cycles.
     # Manually call the main() function so that Typer's CliRunner.invoke() does not steal
@@ -205,45 +172,14 @@ def test_generic_routing_live_trading_start(
     # Check that trades completed
     with state_file.open("rt") as inp:
         state = State.from_json(inp.read())
-
-        # Show tx revert reason if possible
-        if len(state.portfolio.frozen_positions) > 0:
-            for p in state.portfolio.frozen_positions.values():
-                raise AssertionError(f"Frozen position {p}: {p.get_freeze_reason()}")
-
         assert len(state.portfolio.closed_positions) == 1
-        assert len(state.portfolio.open_positions) == 1
-
-        # Pick an example trade to examine
-        p = state.portfolio.open_positions[2]
-        t = p.trades[3]
-        assert t.is_success()
-        assert t.lp_fees_estimated == pytest.approx(0.14991015720000014)
-        assert t.lp_fees_paid == pytest.approx(0.14991015600000002)
-        assert t.trade_type == TradeType.rebalance
-        assert t.slippage_tolerance == 0.02  # Set in enzyme_end_to_end.py strategy module
-
-        tx = t.blockchain_transactions[0]
-        assert tx.type == BlockchainTransactionType.enzyme_vault
-
-    # Check on-chain balances
-    usdc_balance = usdc.functions.balanceOf(vault.vault.address).call()
-    weth_balance = weth.functions.balanceOf(vault.vault.address).call()
-
-    assert usdc_balance == pytest.approx(10**6 * 449.730472)
-    assert weth_balance == pytest.approx(10**18 * 0.03112978758721282)
+        assert len(state.portfolio.open_pos**18 * 0.03112978758721282)
 
 
 def test_generic_routing_test_trade(
     environment: dict,
     web3: Web3,
     state_file: Path,
-    usdc: Contract,
-    weth: Contract,
-    vault: Vault,
-    deployer: HexAddress,
-    enzyme_deployment: EnzymeDeployment,
-    weth_usdc_trading_pair: TradingPairIdentifier,
 ):
     """Perform a test trade on Enzymy vault via CLI.
 
@@ -253,10 +189,6 @@ def test_generic_routing_test_trade(
 
     - Perform a test trade on this fault
     """
-
-    env = environment.copy()
-    env["VAULT_ADDRESS"] = vault.address
-    env["VAULT_ADAPTER_ADDRESS"] = vault.generic_adapter.address
 
     cli = get_command(app)
 
