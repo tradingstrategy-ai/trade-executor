@@ -665,9 +665,22 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
         return translate_trading_pair(pair)
 
     def get_single_pair(self) -> TradingPairIdentifier:
-        """Get the single trading pair in this universe."""
+        """Get the single trading pair in this universe.
+
+        :raise Exception:
+            If we have more than one trading pair
+        """
         pair = self.data_universe.pairs.get_single()
         return translate_trading_pair(pair)
+
+    def get_single_chain(self) -> ChainId:
+        """Get the single trading pair in this universe.
+
+        :raise Exception:
+            If we have more than one chain
+        """
+        assert len(self.data_universe.chains) == 1
+        return next(iter(self.data_universe.chains))
 
     @staticmethod
     def create_multipair_universe(

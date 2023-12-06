@@ -99,10 +99,13 @@ class StrategyRunner(abc.ABC):
         # We need 60 seconds wait to read balances
         # after trades only on a real trading,
         # Anvil and test nodes are immune for this AFAIK
-        if unit_testing or not execution_context.mode.is_live_trading():
-            self.trade_settle_wait = datetime.timedelta(0)
+        if not trade_settle_wait:
+            if unit_testing or not execution_context.mode.is_live_trading():
+                self.trade_settle_wait = datetime.timedelta(0)
+            else:
+                self.trade_settle_wait = datetime.timedelta(seconds=60)
         else:
-            self.trade_settle_wait = datetime.timedelta(seconds=60)
+            self.trade_settle_wait = trade_settle_wait
 
         logger.info(
             "Created strategy runner %s, engine version %s, running mode %s",

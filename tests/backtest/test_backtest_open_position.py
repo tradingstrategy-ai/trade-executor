@@ -86,7 +86,7 @@ def decide_trades(
     # Can only ever execute 1 trade with this logic
     if not position_manager.is_any_open():
         buy_amount = cash * position_size
-        trades += position_manager.open_1x_long(pair, buy_amount)
+        trades += position_manager.open_spot(pair, buy_amount)
 
     return trades
 

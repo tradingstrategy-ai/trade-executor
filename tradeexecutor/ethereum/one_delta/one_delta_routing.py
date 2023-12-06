@@ -447,6 +447,9 @@ class OneDeltaRouting(EthereumRoutingModel):
                 executed_amount = result.amount_in / Decimal(10 ** base_token_details.decimals)
                 executed_reserve = result.amount_out / Decimal(10 ** reserve.decimals)
 
+            if trade.is_short():
+                executed_amount = -executed_amount
+
             lp_fee_paid = result.lp_fee_paid
 
             assert (executed_reserve > 0) and (executed_amount != 0) and (price > 0), f"Executed amount {executed_amount}, executed_reserve: {executed_reserve}, price: {price}, tx info {trade.tx_info}"

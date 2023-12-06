@@ -53,6 +53,24 @@ class AssetType:
 
 @dataclass_json
 @dataclass
+class ExchangeType:
+    """What kind of a DEX we use for this pair.
+
+    Note that a trading pair can have several protocols associated with it,
+    DEX is just one of them.
+    """
+
+    #: El Classico
+    uniswap_v2 = "uniswap_v2"
+
+    #: ERC-20 aToken with dynamic balance()
+    uniswap_v3 = "uniswap_v3"
+
+
+
+
+@dataclass_json
+@dataclass
 class AssetIdentifier:
     """Identify a blockchain asset for trade execution.
 
@@ -548,10 +566,14 @@ class TradingPairIdentifier:
         """
         if self.is_spot():
             return self
+        elif self.is_credit_supply():
+            # Credit supply does not have a real trading pair,
+            # but any position price is simply the amount of collateral
+            return self
         elif self.is_leverage():
             assert self.underlying_spot_pair is not None, f"For a leveraged pair, we lack the price feed for the underlying spot: {self}"
             return self.underlying_spot_pair
-        return None
+        raise AssertionError(f"Cannot figure out how to get the underlying pricing pair for: {self}")
 
 
 @dataclass_json

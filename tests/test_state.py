@@ -11,6 +11,7 @@ import pandas as pd
 import pytest
 from hexbytes import HexBytes
 
+from tradeexecutor.state.valuation import ValuationUpdate
 from tradeexecutor.strategy.trade_pricing import TradePricing
 from tradeexecutor.monkeypatch.dataclasses_json import patch_dataclasses_json
 from tradeexecutor.state.state import State, TradeType
@@ -564,35 +565,6 @@ def test_buy_sell_buy(usdc, weth, weth_usdc, start_ts):
     assert len(state.portfolio.open_positions) == 1
 
 
-def test_revalue(usdc, weth_usdc, start_ts: datetime.datetime):
-    """Value the portfolio based on the market."""
-
-    state = State()
-    state.update_reserves([ReservePosition(usdc, Decimal(1000), start_ts, 1.0, start_ts)])
-    trader = UnitTestTrader(state)
-
-    # 0: start
-    assert state.portfolio.get_total_equity() == 1000.0
-
-    # 1: buy 1
-    position, trade = trader.buy(weth_usdc, Decimal(0.1), 1700)
-    assert state.portfolio.get_total_equity() == 998.3
-    assert position.get_value() == pytest.approx(168.3)
-
-    revalue_date = datetime.datetime(2020, 1, 2, tzinfo=None)
-
-    def value_asset(ts, pair: TradingPairIdentifier) -> Tuple[datetime.datetime, USDollarAmount]:
-        # ETH drops 50%
-        return revalue_date, 850.0
-
-    revalue_state(state, revalue_date, value_asset)
-
-    assert position.last_pricing_at == revalue_date
-    assert position.last_token_price == 850.0
-    assert position.get_value() == 84.15
-    assert state.portfolio.get_total_equity() == pytest.approx(914.15)
-
-
 def test_realised_profit_calculation(usdc, weth_usdc, start_ts: datetime.datetime):
     """Calculate realised profits correctly."""
 
@@ -685,8 +657,15 @@ def test_unrealised_profit_calculation(usdc, weth_usdc, start_ts: datetime.datet
         def __init__(self, price):
             self.price = price
 
-        def __call__(self, ts, pair: TradingPairIdentifier):
-            return ts, float(self.price)
+        def __call__(self, ts, position: TradingPosition):
+            position.revalue_base_asset(ts, float(self.price))
+            return ValuationUpdate(
+                position_id=position.position_id,
+                created_at=ts,
+                valued_at=ts,
+                new_price=self.price,
+                new_value=position.get_value()
+            )
 
     # Revalue ETH to 1500 USD
     revalue_state(state, start_ts, EthValuator(1500))

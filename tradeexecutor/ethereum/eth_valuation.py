@@ -9,11 +9,12 @@ from typing import Tuple
 from tradeexecutor.ethereum.eth_pricing_model import EthereumPricingModel
 from tradeexecutor.state.position import TradingPosition
 from tradeexecutor.state.types import USDollarAmount
+from tradeexecutor.state.valuation import ValuationUpdate
 from tradeexecutor.strategy.valuation import ValuationModel
 
 
 class EthereumPoolRevaluator(ValuationModel):
-    """Re-value assets based on their on-chain price.
+    """Re-value spot assets based on their on-chain price.
 
     Does directly JSON-RPC call to get the latest price in the Uniswap pools.
 
@@ -32,7 +33,7 @@ class EthereumPoolRevaluator(ValuationModel):
 
     def __call__(self,
                  ts: datetime.datetime,
-                 position: TradingPosition) -> Tuple[datetime.datetime, USDollarAmount]:
+                 position: TradingPosition) -> ValuationUpdate:
         """
 
         :param ts:
@@ -52,9 +53,26 @@ class EthereumPoolRevaluator(ValuationModel):
 
         quantity = position.get_quantity()
         # Cannot do pricing for zero quantity
-        if quantity == 0:
-            return ts, 0.0
+        assert quantity > 0, f"Trying to value position with zero quantity: {position}, {ts}, {self.__class__.__name__}"
 
+        old_price = position.last_token_price
         price_structure = self.pricing_model.get_sell_price(ts, pair, quantity)
 
-        return ts, price_structure.price
+        new_price = price_structure.price
+
+        old_value = position.get_value()
+        new_value = position.revalue_base_asset(ts, float(new_price))
+
+        evt = ValuationUpdate(
+            created_at=ts,
+            position_id=position.position_id,
+            valued_at=ts,
+            old_value=old_value,
+            new_value=new_value,
+            old_price=old_price,
+            new_price=new_price,
+        )
+
+        position.valuation_updates.append(evt)
+
+        return evt

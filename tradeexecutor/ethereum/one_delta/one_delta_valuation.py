@@ -6,20 +6,18 @@ from tradeexecutor.ethereum.one_delta.one_delta_live_pricing import OneDeltaLive
 from tradeexecutor.state.position import TradingPosition
 from tradeexecutor.state.types import USDollarAmount
 from tradeexecutor.ethereum.eth_valuation import EthereumPoolRevaluator
+from tradeexecutor.state.valuation import ValuationUpdate
 
 
 class OneDeltaPoolRevaluator(EthereumPoolRevaluator):
-    """Re-value assets based on their on-chain price.
+    """1delta position valuation..
 
-    Does directly JSON-RPC call to get the latest price in the Uniswap pools.
+    The position is valued in `sync_interests`
+    and we just return the latest synced data
+    here.
 
-    Only uses direct route - mostly useful for testing, may not give a realistic price in real
-    world with multiple order routing options.
-
-    .. warning ::
-
-        This valuation method always uses the latest price. It
-        cannot be used for backtesting.
+    In backtests, we do this differently, so this
+    valuation methd concerns live strategies only.
     """
 
     def __init__(self, pricing_model: OneDeltaLivePricing):
@@ -30,18 +28,30 @@ class OneDeltaPoolRevaluator(EthereumPoolRevaluator):
         self,
         ts: datetime.datetime,
         position: TradingPosition,
-    ) -> tuple[datetime.datetime, USDollarAmount]:
-        pair = position.pair.get_pricing_pair()
+    ) -> ValuationUpdate:
 
-        quantity = position.get_quantity()
-        
-        # Cannot do pricing for zero quantity
-        if quantity == 0:
-            return ts, 0.0
+        pair = position.pair
 
-        price_structure = self.pricing_model.get_sell_price(ts, pair, quantity)
+        assert pair.is_leverage()
 
-        return ts, price_structure.price
+        loan = position.loan
+        new_price = loan.borrowed.last_usd_price
+        valued_at = loan.borrowed.last_pricing_at
+        new_value = loan.get_net_asset_value()
+        block_number = loan.borrowed_interest.last_updated_block_number
+
+        evt = ValuationUpdate(
+            created_at=ts,
+            position_id=position.position_id,
+            valued_at=valued_at,
+            new_value=new_value,
+            new_price=new_price,
+            block_number=block_number,
+        )
+
+        position.valuation_updates.append(evt)
+
+        return evt
 
 
 def one_delta_valuation_factory(pricing_model):

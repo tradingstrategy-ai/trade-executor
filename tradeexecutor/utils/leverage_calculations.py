@@ -241,6 +241,9 @@ class LeverageEstimate:
         if type(starting_reserve) == float:
             starting_reserve = Decimal(starting_reserve)
 
+        assert leverage > 0
+        assert starting_reserve > 0
+
         # Assume collateral is USDC
         total_collateral_quantity = starting_reserve * (Decimal(leverage) + 1)
         borrow_value_usdc = total_collateral_quantity - starting_reserve
