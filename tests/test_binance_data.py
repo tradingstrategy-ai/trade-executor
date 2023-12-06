@@ -16,6 +16,7 @@ TIME_BUCKET = TimeBucket.d1
 STOP_LOSS_TIME_BUCKET = TimeBucket.h4
 
 
+@pytest.fixture()
 def correct_df_candles():
     """Return a correct dataframe for the candles."""
     data = {
@@ -37,6 +38,7 @@ def correct_df_candles():
     return df
 
 
+@pytest.fixture()
 def correct_df_lending():
     """Return a correct dataframe for the lending."""
 
