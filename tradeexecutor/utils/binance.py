@@ -1,5 +1,4 @@
 import datetime
-import logging
 
 from tradeexecutor.strategy.trading_strategy_universe import (
     Dataset,
@@ -24,9 +23,6 @@ from tradingstrategy.binance.utils import (
 from tradingstrategy.binance.downloader import BinanceDownloader
 from tradingstrategy.lending import LendingReserveUniverse, LendingCandleUniverse
 from tradingstrategy.pair import DEXPair
-
-
-logger = logging.getLogger(__name__)
 
 
 def fetch_binance_dataset(
@@ -56,11 +52,11 @@ def fetch_binance_dataset(
     """
     if isinstance(symbols, str):
         symbols = [symbols]
-    logger.warn(symbols)
+
     downloader = BinanceDownloader()
 
     pairs = generate_pairs_for_binance(symbols)
-    logger.warn(pairs)
+
     # use stop_loss_time_bucket since, in this case, it's more granular data than the candle_time_bucket
     # we later resample to the higher time bucket for the backtest candles
     df = downloader.fetch_candlestick_data(
@@ -70,7 +66,7 @@ def fetch_binance_dataset(
         end_at,
         force_download=force_download,
     )
-    logger.warn(df['pair_id'])
+
     spot_symbol_map = {symbol: i + 1 for i, symbol in enumerate(symbols)}
 
     candle_df = add_info_columns_to_ohlc(

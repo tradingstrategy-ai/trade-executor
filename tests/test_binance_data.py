@@ -1,4 +1,3 @@
-import logging
 import datetime
 import os
 import pytest
@@ -9,9 +8,6 @@ from tradeexecutor.utils.binance import create_binance_universe, fetch_binance_d
 from tradeexecutor.strategy.trading_strategy_universe import Dataset
 from tradingstrategy.timebucket import TimeBucket
 from tradingstrategy.binance.constants import BINANCE_EXCHANGE_ID, BINANCE_CHAIN_ID
-
-
-logger = logging.getLogger(__name__)
 
 
 START_AT = datetime.datetime(2021, 1, 1)
@@ -41,8 +37,6 @@ def correct_df_candles():
     return df
 
 
-
-@pytest.fixture(scope="module")
 def correct_df_lending():
     """Return a correct dataframe for the lending."""
 
@@ -103,7 +97,6 @@ def test_create_binance_universe(correct_df_candles, correct_df_lending):
         ) as mock_fetch_lending_data:
             mock_fetch_candlestick_data.return_value = correct_df_candles
             mock_fetch_lending_data.return_value = correct_df_lending
-            logger.warn(correct_df_candles['pair_id'])
             universe = create_binance_universe(
                 ["ETHUSDT"],
                 TIME_BUCKET,
