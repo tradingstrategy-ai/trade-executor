@@ -19,8 +19,6 @@ STOP_LOSS_TIME_BUCKET = TimeBucket.h4
 @pytest.fixture(scope="module")
 def correct_df_candles():
     """Return a correct dataframe for the candles."""
-    import pandas as pd
-
     data = {
         'open': [736.42, 744.87, 737.37, 738.85, 735.39, 725.34, 728.91, 730.39, 735.12, 729.70, 768.45, 784.79],
         'high': [749.00, 747.09, 741.76, 743.33, 737.73, 731.97, 734.40, 740.49, 738.35, 772.80, 787.69, 785.48],
