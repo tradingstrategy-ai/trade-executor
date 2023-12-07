@@ -119,6 +119,8 @@ def test_generic_router_spot_and_shot_strategy(
         ts += datetime.timedelta(days=1)
         mine(web3, to_int_unix_timestamp(ts))
 
+        loop.runner.check_accounts(strategy_universe, state)  # Check that on-chain balances reflect what we expect
+
 
 def test_generic_router_spot_and_shot_strategy_manual_tick(
     logger: Logger,
@@ -224,6 +226,8 @@ def test_generic_router_spot_and_shot_strategy_manual_tick(
     assert position.pair.is_spot()
     assert position.get_value() == pytest.approx(99.99953982323916)
 
+    loop.runner.check_accounts(strategy_universe, state)  # Check that on-chain balances reflect what we expect
+
     # Update valuations
     ts += datetime.timedelta(days=1)
     loop.update_position_valuations(
@@ -233,6 +237,8 @@ def test_generic_router_spot_and_shot_strategy_manual_tick(
         ExecutionMode.real_trading
     )
     assert len(portfolio.open_positions) == 1
+
+    loop.runner.check_accounts(strategy_universe, state)  # Check that on-chain balances reflect what we expect
 
     #
     # Cycle #3, close spot, open short
@@ -252,6 +258,8 @@ def test_generic_router_spot_and_shot_strategy_manual_tick(
     assert position.pair.is_short()
     assert position.get_value() == pytest.approx(149.925)
 
+    loop.runner.check_accounts(strategy_universe, state)  # Check that on-chain balances reflect what we expect
+
     # Update valuations
     ts += datetime.timedelta(days=1)
     loop.update_position_valuations(
@@ -261,5 +269,7 @@ def test_generic_router_spot_and_shot_strategy_manual_tick(
         ExecutionMode.real_trading
     )
     assert len(portfolio.open_positions) == 1
+
+    loop.runner.check_accounts(strategy_universe, state)  # Check that on-chain balances reflect what we expect
 
 
