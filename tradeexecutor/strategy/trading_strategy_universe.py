@@ -1162,7 +1162,12 @@ class TradingStrategyUniverseModel(UniverseModel):
                 backtest_stop_loss_candles=backtest_stop_loss_candles,
             )
 
-    def check_data_age(self, ts: datetime.datetime, universe: TradingStrategyUniverse, best_before_duration: datetime.timedelta) -> datetime.datetime:
+    def check_data_age(
+            self,
+            ts: datetime.datetime,
+            universe: TradingStrategyUniverse,
+            best_before_duration: datetime.timedelta
+    ) -> datetime.datetime:
         """Check if our data is up-to-date and we do not have issues with feeds.
 
         Ensure we do not try to execute live trades with stale data.
@@ -1185,7 +1190,7 @@ class TradingStrategyUniverseModel(UniverseModel):
 
             if candle_end < max_age:
                 diff = max_age - candle_end
-                raise DataTooOld(f"Candle data {candle_start} - {candle_end} is too old to work with, we require threshold {max_age}, diff is {diff}")
+                raise DataTooOld(f"Candle data {candle_start} - {candle_end} is too old to work with, we require threshold {max_age}, diff is {diff}, asked best before duration is {best_before_duration}")
 
         if universe.liquidity is not None:
             liquidity_start, liquidity_end = universe.liquidity.get_timestamp_range()

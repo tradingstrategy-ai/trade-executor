@@ -96,6 +96,7 @@ def environment(
         "CONFIRMATION_BLOCK_COUNT": "0",  # Needed for test backend, Anvil
         "MAX_CYCLES": "10",  # Run decide_trades() N times
         "TRADING_STRATEGY_API_KEY": os.environ["TRADING_STRATEGY_API_KEY"],
+        "MAX_DATA_DELAYS_MINUTES": "1440",
     }
     return environment
 
@@ -145,9 +146,6 @@ def test_generic_routing_live_trading_start(
     result = run_init(environment)
     assert result.exit_code == 0
 
-    # Run strategy for few cycles.
-    # Manually call the main() function so that Typer's CliRunner.invoke() does not steal
-    # stdin and we can still set breakpoints
     cli = get_command(app)
 
     with patch.dict(os.environ, environment, clear=True):
