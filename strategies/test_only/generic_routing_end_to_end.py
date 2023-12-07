@@ -78,9 +78,8 @@ def create_trading_universe(
         time_bucket=TimeBucket.d1,
         pairs=pairs,
         universe_options=universe_options,
-        start_at=pd.Timestamp("2023-10-01"),
-        end_at=pd.Timestamp("2023-10-30"),
         lending_reserves=reverses,
+        required_history_period=datetime.timedelta(days=7),
     )
 
     strategy_universe = TradingStrategyUniverse.create_from_dataset(

@@ -2,43 +2,29 @@
 
 All tests use forked polygon mainnet.
 """
-import json
 import os
 import secrets
-import tempfile
 import logging
-from _decimal import Decimal
 
 from pathlib import Path
 from unittest.mock import patch
 
 import pytest
 from click.testing import Result
-from eth_account import Account
 from typer.main import get_command
-from web3 import Web3
-
-from eth_defi.abi import get_deployed_contract
-from eth_defi.provider.anvil import AnvilLaunch
-from hexbytes import HexBytes
 from typer.testing import CliRunner
-from web3.contract import Contract
-from eth_typing import HexAddress
 
-from eth_defi.enzyme.deployment import EnzymeDeployment
-from eth_defi.enzyme.vault import Vault
+from web3 import Web3
+from eth_account import Account
+from hexbytes import HexBytes
+
+
+from eth_defi.provider.anvil import AnvilLaunch
 from eth_defi.hotwallet import HotWallet
 from eth_defi.token import TokenDetails
 from eth_defi.trace import assert_transaction_success_with_explanation
-from eth_defi.uniswap_v2.deployment import UniswapV2Deployment
-
-from tradingstrategy.pair import PandasPairUniverse
-
 
 from tradeexecutor.cli.main import app
-from tradeexecutor.state.blockhain_transaction import BlockchainTransactionType
-from tradeexecutor.state.trade import TradeType
-from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier
 from tradeexecutor.state.state import State
 
 
@@ -108,7 +94,8 @@ def environment(
         # "LOG_LEVEL": "info",  # Set to info to get debug data for the test run
         "LOG_LEVEL": "disabled",
         "CONFIRMATION_BLOCK_COUNT": "0",  # Needed for test backend, Anvil
-        "MAX_CYCLES": "10",  # Run decide_trades() 5 times
+        "MAX_CYCLES": "10",  # Run decide_trades() N times
+        "TRADING_STRATEGY_API_KEY": os.environ["TRADING_STRATEGY_API_KEY"],
     }
     return environment
 
@@ -154,7 +141,6 @@ def test_generic_routing_live_trading_start(
     - Use a forked polygon
     """
 
-
     # Need to be initialised first
     result = run_init(environment)
     assert result.exit_code == 0
@@ -163,6 +149,7 @@ def test_generic_routing_live_trading_start(
     # Manually call the main() function so that Typer's CliRunner.invoke() does not steal
     # stdin and we can still set breakpoints
     cli = get_command(app)
+
     with patch.dict(os.environ, environment, clear=True):
         with pytest.raises(SystemExit) as e:
             cli.main(args=["start"])
