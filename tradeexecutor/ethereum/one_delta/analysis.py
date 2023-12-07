@@ -152,7 +152,7 @@ def analyse_trade_by_receipt(
     else:
         # last withdraw event
         withdraw_event = aave.pool.events.Withdraw().process_receipt(tx_receipt, errors=DISCARD)[-1]
-        collateral_amount = supply_event["args"]["amount"]
+        collateral_amount = withdraw_event["args"]["amount"]
     
     return TradeSuccess(
         gas_used,
