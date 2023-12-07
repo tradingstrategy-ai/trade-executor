@@ -75,7 +75,7 @@ def create_trading_universe(
     dataset = load_partial_data(
         client,
         execution_context=execution_context,
-        time_bucket=TimeBucket.d1,
+        time_bucket=TimeBucket.h1,
         pairs=pairs,
         universe_options=universe_options,
         lending_reserves=reverses,

@@ -37,6 +37,7 @@ from tradeexecutor.state.metadata import Metadata, OnChainData
 from tradeexecutor.state.state import State
 from tradeexecutor.state.store import JSONFileStore, StateStore
 from tradeexecutor.strategy.default_routing_options import TradeRouting
+from tradeexecutor.strategy.generic.generic_router import GenericRouting
 from tradeexecutor.strategy.pricing_model import PricingModelFactory
 from tradeexecutor.strategy.routing import RoutingModel
 from tradeexecutor.strategy.strategy_module import StrategyModuleInformation
@@ -425,6 +426,7 @@ def create_client(
 
         client.initialise_mock_data()
 
+        # For test strategies, running against a locally deployed Uniswap v2
         if mod.trade_routing == TradeRouting.user_supplied_routing_model:
             routing_model = UniswapV2Routing(
                 factory_router_map={
@@ -445,5 +447,10 @@ def create_client(
     else:
         # This run does not need to download any data
         pass
+
+    if mod.trade_routing == TradeRouting.default:
+        # We eill call GenericRouting.initialise() later with pair universe data loaded
+        logger.info("Using GenericRouting for Ethereum chains")
+        routing_model = GenericRouting(pair_configurator=None)
 
     return client, routing_model

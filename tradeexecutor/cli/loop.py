@@ -398,14 +398,16 @@ class ExecutionLoop:
             "strategy_cycle_trigger": self.strategy_cycle_trigger.value,
         }
 
-        logger.trade("Performing strategy tick #%d for timestamp %s, cycle length is %s, trigger time was %s, live trading is %s, trading univese is %s",
-                     cycle,
-                     ts,
-                     cycle_duration.value,
-                     unrounded_timestamp,
-                     live,
-                     existing_universe,
-                     )
+        logger.trade(
+            "Performing strategy tick #%d for timestamp %s, cycle length is %s, trigger time was %s, live trading is %s, trading univese is %s, version %s",
+             cycle,
+             ts,
+             cycle_duration.value,
+             unrounded_timestamp,
+             live,
+             existing_universe,
+            self.execution_context.engine_version,
+        )
 
         if existing_universe is None:
 
@@ -940,6 +942,7 @@ class ExecutionLoop:
         # Store summary statistics in memory before doing anything else
         self.refresh_live_run_state(state, visualisation=True, universe=universe)
 
+        # A test path: do not wait until making the first trade
         # The first trade will be execute immediately, despite the time offset or tick
         if self.trade_immediately:
             ts = datetime.datetime.now()

@@ -12,16 +12,23 @@ from io import StringIO
 from pprint import pformat
 from types import NoneType
 
-from typing import List, Optional, Tuple
+from typing import List, Optional, Tuple, cast
 
+from tradeexecutor.ethereum.ethereum_protocol_adapters import EthereumPairConfigurator
+from tradeexecutor.ethereum.execution import EthereumExecution
+from tradeexecutor.ethereum.tx import TransactionBuilder
 from tradeexecutor.state.types import BlockNumber
 from tradeexecutor.statistics.core import update_statistics
 from tradeexecutor.strategy.account_correction import check_accounts, UnexpectedAccountingCorrectionIssue
 from tradeexecutor.strategy.approval import ApprovalModel
 from tradeexecutor.strategy.cycle import CycleDuration
+from tradeexecutor.strategy.default_routing_options import TradeRouting
 from tradeexecutor.strategy.engine_version import TradingStrategyEngineVersion
 from tradeexecutor.strategy.execution_context import ExecutionContext
 from tradeexecutor.strategy.execution_model import ExecutionModel
+from tradeexecutor.strategy.generic.generic_pricing_model import GenericPricing
+from tradeexecutor.strategy.generic.generic_router import GenericRouting
+from tradeexecutor.strategy.generic.generic_valuation import GenericValuation
 from tradeexecutor.strategy.sync_model import SyncMethodV0, SyncModel
 from tradeexecutor.strategy.run_state import RunState
 from tradeexecutor.strategy.output import output_positions, DISCORD_BREAK_CHAR, output_trades
@@ -109,7 +116,7 @@ class StrategyRunner(abc.ABC):
 
         logger.info(
             "Created strategy runner %s, engine version %s, running mode %s",
-            self,
+            self.__class__.__name__,
             self.execution_context.engine_version,
             self.execution_context.mode.name,
         )
@@ -461,7 +468,10 @@ class StrategyRunner(abc.ABC):
             Dict of random debug stuff
         """
 
-    def setup_routing(self, universe: StrategyExecutionUniverse) -> Tuple[RoutingState, PricingModel, ValuationModel]:
+    def setup_routing(
+            self,
+            universe: StrategyExecutionUniverse,
+    ) -> Tuple[RoutingState, PricingModel, ValuationModel]:
         """Setups routing state for this cycle.
 
         :param universe:
@@ -471,35 +481,54 @@ class StrategyRunner(abc.ABC):
             Tuple(routing state, pricing model, valuation model)
         """
 
-        assert self.routing_model, "Routing model not set"
+        routing_model = self.routing_model
+
+        assert routing_model, "Routing model not set"
 
         # Get web3 connection, hot wallet
         routing_state_details = self.execution_model.get_routing_state_details()
 
-        # Initialise the current routing state with execution details
-        # logger.info("Setting up routing.\n"
-        #            "Routing model is %s\n"
-        #            "Details are %s\n"
-        #            "Universe is %s",
-        #            self.routing_model,
-        #            routing_state_details,
-        #            universe,
-        #            )
+        # Lazily initialised routing model
+        # TODO: Add a specific app startup step that downloads
+        # the universe for the first time and initialises here
+        if isinstance(routing_model, GenericRouting):
+            assert self.execution_context.is_version_greater_or_equal_than(0, 3, 0), f"Strategy modules need to be at least 0.3 to support GenericRouting {self.execution_context.engine_version}"
+            if not routing_model.is_initialised():
+                tx_builder = cast(TransactionBuilder, routing_state_details["tx_builder"])
+                web3 = tx_builder.web3
+                pair_configurator = EthereumPairConfigurator(
+                    web3,
+                    cast(TradingStrategyUniverse, universe)
+                )
+                routing_model.initialise(pair_configurator)
+
+            # Update the pair configuration universe to the latest.
+            # This will be referred when creating
+            # pricing_model and valuation model
+            routing_model.pair_configurator.strategy_universe = universe
+
         routing_state = self.routing_model.create_routing_state(universe, routing_state_details)
 
-        # Create a pricing model for assets
-        pricing_model = self.pricing_model_factory(self.execution_model, universe, self.routing_model)
+        if isinstance(routing_model, GenericRouting):
+            pricing_model = GenericPricing(routing_model.pair_configurator)
+            valuation_model = GenericValuation(routing_model.pair_configurator)
+        else:
+            # Legacy routing logic
 
-        assert pricing_model, "pricing_model_factory did not return a value"
+            # Create a pricing model for assets
+            pricing_model = self.pricing_model_factory(self.execution_model, universe, self.routing_model)
 
-        # Create a valuation model for positions
-        valuation_model = self.valuation_model_factory(pricing_model)
+            assert pricing_model, "pricing_model_factory did not return a value"
 
-        logger.debug("setup_routing(): routing_state: %s, pricing_model: %s, valuation_model: %s",
-                     routing_state,
-                     pricing_model,
-                     valuation_model
-                     )
+            # Create a valuation model for positions
+            valuation_model = self.valuation_model_factory(pricing_model)
+
+        logger.debug(
+            "setup_routing(): routing_state: %s, pricing_model: %s, valuation_model: %s",
+             routing_state,
+             pricing_model,
+             valuation_model
+        )
 
         return routing_state, pricing_model, valuation_model
 
