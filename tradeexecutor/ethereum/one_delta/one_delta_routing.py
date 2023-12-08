@@ -143,8 +143,8 @@ class OneDeltaRoutingState(EthereumRoutingState):
             # TODO: planned_reserve-planned_collateral_allocation refactor later
             assert collateral_amount < 0
             assert reserve_amount == 0
-            # TODO: this is currently fully close the position
-            # we should support reducing the position later
+            # TODO: this might not be a good place to use the slippage
+            withdraw_collateral_amount = -int(collateral_amount * (1 - max_slippage))
             bound_func = close_short_position(
                 one_delta_deployment=one_delta,
                 collateral_token=quote_token,
@@ -152,8 +152,7 @@ class OneDeltaRoutingState(EthereumRoutingState):
                 atoken=atoken,
                 pool_fee=pool_fee_raw,
                 wallet_address=self.tx_builder.get_token_delivery_address(),
-                # TODO: this amount isn't correct since it might be less than what's left after paying for the debt
-                # withdraw_collateral_amount=-collateral_amount,
+                withdraw_collateral_amount=withdraw_collateral_amount,
             )
 
         return self.create_signed_transaction(
