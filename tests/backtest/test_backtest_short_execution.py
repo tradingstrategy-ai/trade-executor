@@ -484,10 +484,10 @@ def test_open_and_close_one_short_with_interest(
     )
     assert len(balance_updates) == 2
     assert eth_short_position.loan.get_collateral_interest() == pytest.approx(6.839041095890411)
-    assert eth_short_position.loan.get_borrow_interest() == pytest.approx(13.698630136986301)
+    assert eth_short_position.loan.get_borrow_interest() == pytest.approx(13.657534246575342)
 
-    assert eth_short_position.get_loan_based_nav(include_interest=False) == pytest.approx(498.5)
-    assert eth_short_position.get_loan_based_nav(include_interest=True) == pytest.approx(491.6404109589041)
+    assert eth_short_position.get_loan_based_nav(include_interest=False) == pytest.approx(500)
+    assert eth_short_position.get_loan_based_nav(include_interest=True) == pytest.approx(493.18150684931504)
     assert portfolio.get_cash() == pytest.approx(9500.0)
 
     # assert eth_short_position.get_accrued_interest() == pytest.approx(0)
@@ -623,7 +623,7 @@ def test_open_and_close_two_shorts_with_interest(
     assert interest_distribution.asset_interest_data[ausdc.get_identifier()].effective_rate == pytest.approx(2.5)  # Around ~250% interest, minus few days + rounding errors
 
     assert eth_short_position.loan.get_collateral_interest() == pytest.approx(6.839041095890411)
-    assert eth_short_position.loan.get_borrow_interest() == pytest.approx(13.698630136986301)
+    assert eth_short_position.loan.get_borrow_interest() == pytest.approx(13.657534246575342)
     assert aave_short_position.loan.get_collateral_interest() == pytest.approx(3.4195205479452055)  # Should be 50% of ETH
 
     # Recreate position manager with changed timestamp
@@ -725,12 +725,12 @@ def test_open_and_reduce_one_short_with_interest(
     )
     assert len(balance_updates) == 2
     assert eth_short_position.loan.get_collateral_interest() == pytest.approx(6.839041095890411)
-    assert eth_short_position.loan.get_borrow_interest() == pytest.approx(13.698630136986301)
-    assert eth_short_position.loan.get_leverage() == pytest.approx(1.0170034619912371)
-    assert eth_short_position.loan.get_net_asset_value() == pytest.approx(491.6404109589041)
+    assert eth_short_position.loan.get_borrow_interest() == pytest.approx(13.657534246575342)
+    assert eth_short_position.loan.get_leverage() == pytest.approx(1.0107840482192085)
+    assert eth_short_position.loan.get_net_asset_value() == pytest.approx(493.18150684931504)
 
-    assert eth_short_position.get_loan_based_nav(include_interest=False) == pytest.approx(498.5)
-    assert eth_short_position.get_loan_based_nav(include_interest=True) == pytest.approx(491.6404109589041)
+    assert eth_short_position.get_loan_based_nav(include_interest=False) == pytest.approx(500)
+    assert eth_short_position.get_loan_based_nav(include_interest=True) == pytest.approx(493.18150684931504)
     assert portfolio.get_cash() == pytest.approx(9500.0)
 
     # assert eth_short_position.get_accrued_interest() == pytest.approx(0)
@@ -752,12 +752,12 @@ def test_open_and_reduce_one_short_with_interest(
     # vWETH down
     t = trades[0]
     # assert t.planned_loan_update.last_token_amount =
-    assert t.planned_loan_update.get_net_asset_value() == pytest.approx(243.90316355539755)
-    assert t.planned_loan_update.get_leverage() == pytest.approx(1.0392981755800033)
-    assert t.planned_loan_update.collateral.quantity == pytest.approx(Decimal(504.2508654978092863530036992))
-    assert t.planned_loan_update.borrowed.quantity == pytest.approx(Decimal(0.1522460272441971774568884426))
-    assert t.planned_loan_update.get_borrowed_quantity() == pytest.approx(Decimal(0.1604734821460201921867275089))  # Includes 0.1 ETH interest
-    assert t.planned_loan_update.get_collateral_quantity() == pytest.approx(Decimal(511.0899065936996973116939388))
+    assert t.planned_loan_update.get_net_asset_value() == pytest.approx(243.9395948854795)
+    assert t.planned_loan_update.get_leverage() == pytest.approx(1.0327881545302768)
+    assert t.planned_loan_update.collateral.quantity == pytest.approx(Decimal(502.6960120548021326847276668))
+    assert t.planned_loan_update.borrowed.quantity == pytest.approx(Decimal(0.1513149772783246303501363274))
+    assert t.planned_loan_update.get_borrowed_quantity() == pytest.approx(Decimal(0.1595177498154421760805932217))  # Includes 0.1 ETH interest
+    assert t.planned_loan_update.get_collateral_quantity() == pytest.approx(Decimal(509.5350531506925436434179064))
 
     execution_model.execute_trades(
         simulated_time,
@@ -773,12 +773,12 @@ def test_open_and_reduce_one_short_with_interest(
 
     # Check that we have cleared the wallet, including dust
     assert wallet.get_balance(weth) == 0
-    assert wallet.get_balance(eth_shorting_pair.base) == pytest.approx(Decimal(0.1604734821460201921867275089))
-    assert wallet.get_balance(eth_shorting_pair.quote) == pytest.approx(Decimal('511.0899065936996973116939388'))
-    assert wallet.get_balance(usdc) == pytest.approx(Decimal(9741.640410958904112703748979))
+    assert wallet.get_balance(eth_shorting_pair.base) == pytest.approx(Decimal(0.1595177498154421760805932217))
+    assert wallet.get_balance(eth_shorting_pair.quote) == pytest.approx(Decimal(509.5350531506925436434179064))
+    assert wallet.get_balance(usdc) == pytest.approx(Decimal(9743.181506849315042018133681))
 
-    assert portfolio.get_cash() == pytest.approx(9741.640410958904112703748979)
-    assert portfolio.get_net_asset_value() == pytest.approx(9985.543574514302)
+    assert portfolio.get_cash() == pytest.approx(9743.181506849315042018133681)
+    assert portfolio.get_net_asset_value() == pytest.approx(9987.121101734794)
 
 
 def test_open_and_increase_one_short_with_interest(
@@ -845,8 +845,8 @@ def test_open_and_increase_one_short_with_interest(
     )
     assert len(balance_updates) == 2
     assert portfolio.get_cash() == pytest.approx(9500.0)
-    assert eth_short_position.loan.get_leverage() == pytest.approx(1.0170034619912371)
-    assert eth_short_position.loan.get_net_asset_value() == pytest.approx(491.6404109589041)
+    assert eth_short_position.loan.get_leverage() == pytest.approx(1.0107840482192085)
+    assert eth_short_position.loan.get_net_asset_value() == pytest.approx(493.18150684931504)
     assert eth_short_position.loan.get_collateral_quantity() == pytest.approx(Decimal(1005.339041095890410927465217))
 
     # assert eth_short_position.get_accrued_interest() == pytest.approx(0)
@@ -868,14 +868,14 @@ def test_open_and_increase_one_short_with_interest(
     # vWETH down
     t = trades[0]
     # assert t.planned_loan_update.last_token_amount =
-    assert t.planned_reserve == pytest.approx(258.359589041095887296251021325588226318359375)
-    assert t.planned_loan_update.get_net_asset_value() == pytest.approx(743.1404109589043)
-    assert t.planned_loan_update.get_leverage() == pytest.approx(1.0263909555251034)
-    assert t.planned_loan_update.collateral.quantity == pytest.approx(Decimal(1512.752596493427859059011098))
-    assert t.planned_loan_update.borrowed.quantity == pytest.approx(Decimal(0.4581124189895601811287528398))
-    assert t.planned_loan_update.get_borrowed_quantity() == pytest.approx(Decimal(0.4663398738913831958585919061))  # Includes 0.01 ETH interest
-    assert t.planned_loan_update.get_collateral_quantity() == pytest.approx(Decimal(1519.591637589318270017701338))  # Includes $5 interest
-    assert t.planned_loan_update.get_leverage() == pytest.approx(1.0263909555251034)
+    assert t.planned_reserve == pytest.approx(Decimal(256.8184931506849579818663187325000762939453125))
+    assert t.planned_loan_update.get_net_asset_value() == pytest.approx(743.1815068493153)
+    assert t.planned_loan_update.get_leverage() == pytest.approx(1.0200577236889097)
+    assert t.planned_loan_update.collateral.quantity == pytest.approx(Decimal(1508.088036164406398054183000))
+    assert t.planned_loan_update.borrowed.quantity == pytest.approx(Decimal(0.4553108644282586795919334237))
+    assert t.planned_loan_update.get_borrowed_quantity() == pytest.approx(Decimal(0.4635136369653762253223903180))  # Includes 0.01 ETH interest
+    assert t.planned_loan_update.get_collateral_quantity() == pytest.approx(Decimal(1514.927077260296809012873240))  # Includes $5 interest
+    assert t.planned_loan_update.get_leverage() == pytest.approx(1.0200577236889097)
 
     execution_model.execute_trades(
         simulated_time,
@@ -891,9 +891,9 @@ def test_open_and_increase_one_short_with_interest(
 
     # Check that we have cleared the wallet, including dust
     assert wallet.get_balance(weth) == 0
-    assert wallet.get_balance(eth_shorting_pair.base) == pytest.approx(Decimal(0.4663398738913831958585919061))
-    assert wallet.get_balance(eth_shorting_pair.quote) == pytest.approx(Decimal('1519.591637589318270017701337'))
-    assert wallet.get_balance(usdc) == pytest.approx(Decimal(9241.640410958904112703748979))
+    assert wallet.get_balance(eth_shorting_pair.base) == pytest.approx(Decimal(0.4635136369653762253223903180))
+    assert wallet.get_balance(eth_shorting_pair.quote) == pytest.approx(Decimal(1514.927077260296809012873240))
+    assert wallet.get_balance(usdc) == pytest.approx(Decimal(9243.181506849315042018133681))
 
-    assert portfolio.get_cash() == pytest.approx(9241.640410958904)
-    assert portfolio.get_net_asset_value() == pytest.approx(9984.780821917808)
+    assert portfolio.get_cash() == pytest.approx(9243.181506849314)
+    assert portfolio.get_net_asset_value() == pytest.approx(9986.36301369863)

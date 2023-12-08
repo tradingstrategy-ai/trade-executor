@@ -775,7 +775,7 @@ def test_alpha_model_open_short(
     assert t.is_planned(), f"{t}"
     assert t.pair == weth_usdc_short_pair
     assert t.planned_price == pytest.approx(1664.99)
-    assert t.planned_quantity == pytest.approx(Decimal("-0.04735764178763836052165050297"))
+    assert t.planned_quantity == pytest.approx(Decimal(-0.04721556886227544569799887059))
 
     # Spot buy comes next,
     # buy 50% of AAVE
@@ -896,9 +896,9 @@ def test_alpha_model_increase_short(
     p3 = portfolio.open_positions[3]
     assert p3.pair == vweth_ausdc
     assert p3.pair.is_short()
-    assert p3.get_value() == pytest.approx(78.61345)
+    assert p3.get_value() == pytest.approx(78.85)
 
-    assert portfolio.get_net_asset_value() == pytest.approx(657.9375)
+    assert portfolio.get_net_asset_value() == pytest.approx(658.17405)
 
     # Increase short
     balance_1_ts = start_ts + datetime.timedelta(days=1)
@@ -942,13 +942,13 @@ def test_alpha_model_increase_short(
 
     assert p2.pair == aave_usdc
     assert p2.is_spot()
-    assert p2.get_value() == pytest.approx(47.144202105)  # Down in value
+    assert p2.get_value() == pytest.approx(47.21538)  # Down in value
 
     assert p3.pair == vweth_ausdc
     assert p3.is_short()
-    assert p3.get_value() == pytest.approx(110.22441500000001)  # Up in value
+    assert p3.get_value() == pytest.approx(110.39)  # Up in value
 
-    assert portfolio.get_net_asset_value() == pytest.approx(657.747834210000)
+    assert portfolio.get_net_asset_value() == pytest.approx(657.98481)
 
 
 def test_alpha_model_decrease_short(
@@ -1059,10 +1059,10 @@ def test_alpha_model_decrease_short(
     p3 = portfolio.open_positions[3]
     assert p3.pair == vweth_ausdc
     assert p3.pair.is_short()
-    assert p3.get_value() == pytest.approx(78.61345)
-    assert p3.loan.get_leverage() == pytest.approx(1.0030090270812437)
+    assert p3.get_value() == pytest.approx(78.85)
+    assert p3.loan.get_leverage() == pytest.approx(0.997)
 
-    assert portfolio.get_net_asset_value() == pytest.approx(657.9375)
+    assert portfolio.get_net_asset_value() == pytest.approx(658.17405)
     assert portfolio.get_cash() == pytest.approx(500.47405000000003)
 
     # Increase short
@@ -1106,11 +1106,11 @@ def test_alpha_model_decrease_short(
 
     assert p2.pair == aave_usdc
     assert p2.is_spot()
-    assert p2.get_value() == pytest.approx(118.0975875)  # Up in value
+    assert p2.get_value() == pytest.approx(118.275)  # Up in value
 
     assert p3.pair == vweth_ausdc
     assert p3.is_short()
-    assert p3.loan.get_leverage() == pytest.approx(0.997)
-    assert p3.get_value() == pytest.approx(39.48431544633902)  # Down in value
+    assert p3.loan.get_leverage() == pytest.approx(0.991044785047922)
+    assert p3.get_value() == pytest.approx(39.542920175)  # Down in value
 
-    assert portfolio.get_net_asset_value() == pytest.approx(658.0559529463391)
+    assert portfolio.get_net_asset_value() == pytest.approx(658.291970175)

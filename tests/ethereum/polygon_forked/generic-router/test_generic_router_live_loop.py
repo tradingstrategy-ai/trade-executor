@@ -177,7 +177,7 @@ def test_generic_router_spot_and_shot_strategy_manual_tick(
     assert len(portfolio.open_positions) == 1
     position = portfolio.open_positions[1]
     assert position.pair.is_short()
-    assert position.get_value() == pytest.approx(149.925)
+    assert position.get_value() == pytest.approx(149.9128)
 
     loop.runner.check_accounts(strategy_universe, state)  # Check that on-chain balances reflect what we expect
 
@@ -204,7 +204,7 @@ def test_generic_router_spot_and_shot_strategy_manual_tick(
     )
     assert len(portfolio.open_positions) == 1
     assert position.loan.get_borrow_interest() == pytest.approx(1.695878549577238)
-    assert position.loan.get_collateral_interest() == pytest.approx(4.948808)
+    assert position.loan.get_collateral_interest() == pytest.approx(4.301575)
 
     loop.runner.check_accounts(strategy_universe, state)  # Check that on-chain balances reflect what we expect
 
@@ -256,7 +256,7 @@ def test_generic_router_spot_and_shot_strategy_manual_tick(
     assert len(portfolio.closed_positions) == 2
     position = portfolio.open_positions[3]
     assert position.pair.is_short()
-    assert position.get_value() == pytest.approx(149.925)
+    assert position.get_value() == pytest.approx(149.9128)
 
     loop.runner.check_accounts(strategy_universe, state)  # Check that on-chain balances reflect what we expect
 

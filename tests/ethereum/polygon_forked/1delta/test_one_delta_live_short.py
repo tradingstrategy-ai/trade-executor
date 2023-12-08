@@ -34,6 +34,7 @@ from tradeexecutor.strategy.run_state import RunState
 from tradeexecutor.ethereum.universe import create_exchange_universe, create_pair_universe
 from tradeexecutor.testing.simulated_execution_loop import set_up_simulated_execution_loop_one_delta
 from tradeexecutor.utils.blockchain import get_latest_block_timestamp
+from tradeexecutor.strategy.account_correction import check_accounts
 
 
 pytestmark = pytest.mark.skipif(
@@ -191,6 +192,8 @@ def test_one_delta_live_strategy_short_open_and_close(
         ExecutionMode.real_trading
     )
 
+    loop.runner.check_accounts(trading_strategy_universe, state)
+
     assert len(state.portfolio.open_positions) == 1
 
     # After the first tick, we should have synced our reserves and opened the first position
@@ -226,12 +229,13 @@ def test_one_delta_live_strategy_short_open_and_close(
         ExecutionMode.real_trading
     )
 
+    loop.runner.check_accounts(trading_strategy_universe, state)
+
     assert len(state.portfolio.open_positions) == 0
     assert len(state.portfolio.closed_positions) == 1
     # assert state.portfolio.reserves[usdc_id].quantity == 10000
 
 
-@pytest.mark.skip(reason="Currently failing due to unknown reason")
 def test_one_delta_live_strategy_short_open_accrue_interests(
     logger,
     web3: Web3,
@@ -383,7 +387,7 @@ def test_one_delta_live_strategy_short_open_accrue_interests(
     # there should be accrued interest now
     loan = state.portfolio.open_positions[1].loan
     assert loan.get_collateral_interest() == pytest.approx(-0.219103, APPROX_REL)   # TODO: how come this is negative?
-    assert loan.get_borrow_interest() == pytest.approx(1.3012262974877492e-05, APPROX_REL)
+    assert loan.get_borrow_interest() == pytest.approx(1.5903876974402392e-05, APPROX_REL)
 
     # mine a few more blocks and do the same checks
     for i in range(1, 20):
@@ -411,7 +415,7 @@ def test_one_delta_live_strategy_short_open_accrue_interests(
     # there should be accrued interest now
     position = state.portfolio.open_positions[1]
     assert position.loan.get_collateral_interest() == pytest.approx(-0.219051, APPROX_REL)  # TODO: this shouldn't be negative either
-    assert position.loan.get_borrow_interest() == pytest.approx(4.048676023049335e-05, APPROX_REL)
+    assert position.loan.get_borrow_interest() == pytest.approx(4.337421023152948e-05, APPROX_REL)
 
     # there should be 4 interest update events (2 per cycle)
     events = list(position.balance_updates.values())
