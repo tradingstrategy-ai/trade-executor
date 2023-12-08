@@ -169,7 +169,7 @@ def get_onchain_assets(pair: TradingPairIdentifier) -> List[AssetIdentifier]:
         raise NotImplementedError()
 
 
-def build_expected_assets_map(
+def build_expected_asset_map(
     portfolio: Portfolio,
     pair_universe: PandasPairUniverse = None,
     universe_enumaration_threshold=20,

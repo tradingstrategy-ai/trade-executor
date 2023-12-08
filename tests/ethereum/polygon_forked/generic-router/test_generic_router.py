@@ -10,7 +10,7 @@ from eth_defi.balances import fetch_erc20_balances_by_token_list
 from eth_defi.token import TokenDetails
 from tradeexecutor.ethereum.execution import EthereumExecution
 from tradeexecutor.strategy.account_correction import calculate_account_corrections
-from tradeexecutor.strategy.asset import get_relevant_assets, build_expected_assets_map
+from tradeexecutor.strategy.asset import get_relevant_assets, build_expected_asset_map
 from tradingstrategy.chain import ChainId
 from web3 import Web3
 
@@ -344,7 +344,7 @@ def test_generic_routing_check_accounts(
     assert all([t.is_success() for t in trades])
     assert len(state.portfolio.open_positions) == 2
 
-    asset_to_position_mapping = build_expected_assets_map(state.portfolio)
+    asset_to_position_mapping = build_expected_asset_map(state.portfolio)
 
     # for a in asset_to_position_mapping.values(): print(a.asset.token_symbol, a.quantity)
     # USDC 9600

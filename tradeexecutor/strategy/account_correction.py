@@ -41,7 +41,7 @@ from tradeexecutor.state.reserve import ReservePosition
 from tradeexecutor.state.state import State
 from tradeexecutor.state.sync import BalanceEventRef
 from tradeexecutor.state.types import USDollarAmount
-from tradeexecutor.strategy.asset import get_relevant_assets, map_onchain_asset_to_position, build_expected_assets_map
+from tradeexecutor.strategy.asset import get_relevant_assets, map_onchain_asset_to_position, build_expected_asset_map
 from tradeexecutor.strategy.sync_model import SyncModel
 
 
@@ -271,7 +271,7 @@ def calculate_account_corrections(
         logger.warning("Be careful when doing check-accounts for frozen positions, as you should run repair first.")
 
     # assets = get_relevant_assets(pair_universe, reserve_assets, state)
-    asset_to_position = build_expected_assets_map(state.portfolio, pair_universe=pair_universe)
+    asset_to_position = build_expected_asset_map(state.portfolio, pair_universe=pair_universe)
 
     asset_balances = sync_model.fetch_onchain_balances(
         asset_to_position.keys(),
