@@ -1168,7 +1168,7 @@ class PositionManager:
         pricing_pair = shorting_pair.get_pricing_pair()  # should be effectively the same as executor_pair
         price_structure = self.pricing_model.get_sell_price(self.timestamp, pricing_pair, value)
         collateral_price = self.reserve_price
-        borrowed_asset_price = price_structure.price
+        borrowed_asset_price = price_structure.mid_price
 
         estimation: LeverageEstimate = LeverageEstimate.open_short(
             starting_reserve=value,
@@ -1201,7 +1201,7 @@ class PositionManager:
             pair=shorting_pair,
             borrowed_quantity=-estimation.total_borrowed_quantity,
             collateral_quantity=value,
-            borrowed_asset_price=price_structure.price,
+            borrowed_asset_price=borrowed_asset_price,
             trade_type=TradeType.rebalance,
             reserve_currency=self.reserve_currency,
             planned_mid_price=price_structure.mid_price,

@@ -885,11 +885,9 @@ class TradingPosition(GenericPosition):
 
                         accured_interest = self.loan.collateral_interest.last_accrued_interest
 
-                        # Any leftover USD from the collateral is released to the reserves
-                        # planned_collateral_allocation = -leverage_estimate.total_collateral_quantity - accured_interest
-
                         # TODO: pass a flag to the function to decide if we want to withdraw all the interest or not
-                        planned_collateral_allocation = -leverage_estimate.total_collateral_quantity
+                        # Any leftover USD from the collateral is released to the reserves
+                        planned_collateral_allocation = -leverage_estimate.total_collateral_quantity - accured_interest
 
                         lp_fees_estimated = leverage_estimate.lp_fees
 

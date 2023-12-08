@@ -456,7 +456,7 @@ class OneDeltaRouting(EthereumRoutingModel):
                 executed_amount = -result.amount_out / Decimal(10 ** base_token_details.decimals)
                 executed_collateral_consumption = result.amount_in / Decimal(10 ** reserve.decimals)
                 # TODO
-                executed_collateral_allocation = -Decimal(collateral_amount) / Decimal(10 ** reserve.decimals)
+                executed_collateral_allocation = Decimal(collateral_amount) / Decimal(10 ** reserve.decimals)
                 # TODO: double check
                 executed_reserve = 0
             else:

@@ -88,6 +88,10 @@ def analyse_trade_by_receipt(
         If not given automatically decode from `tx`.
         You need to pass this for Enzyme transactions, because transaction payload 
         is too complex to decode.
+
+    :return:
+        Tuple of trade result and collateral amount which get supplied or withdrawn to Aave reserve
+        Negative for withdraw, positive for supply
     """
     effective_gas_price = tx_receipt.get("effectiveGasPrice", 0)
     gas_used = tx_receipt["gasUsed"]
@@ -152,7 +156,7 @@ def analyse_trade_by_receipt(
     else:
         # last withdraw event
         withdraw_event = aave.pool.events.Withdraw().process_receipt(tx_receipt, errors=DISCARD)[-1]
-        collateral_amount = withdraw_event["args"]["amount"]
+        collateral_amount = -withdraw_event["args"]["amount"]
     
     return TradeSuccess(
         gas_used,
