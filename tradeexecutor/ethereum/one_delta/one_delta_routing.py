@@ -126,6 +126,7 @@ class OneDeltaRoutingState(EthereumRoutingState):
 
         pool_fee_raw = int(target_pair.get_pricing_pair().fee * 1_000_000)
 
+        # TODO: factor in the slippage
         if borrow_amount < 0:
             # TODO: planned_reserve-planned_collateral_allocation refactor later
             assert collateral_amount == 0
@@ -144,6 +145,7 @@ class OneDeltaRoutingState(EthereumRoutingState):
             assert collateral_amount < 0
             assert reserve_amount == 0
             # TODO: this might not be a good place to use the slippage
+            # withdraw_collateral_amount = -collateral_amount
             withdraw_collateral_amount = -int(collateral_amount * (1 - max_slippage))
             bound_func = close_short_position(
                 one_delta_deployment=one_delta,

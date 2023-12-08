@@ -1168,12 +1168,12 @@ class PositionManager:
         pricing_pair = shorting_pair.get_pricing_pair()  # should be effectively the same as executor_pair
         price_structure = self.pricing_model.get_sell_price(self.timestamp, pricing_pair, value)
         collateral_price = self.reserve_price
-        borrowed_asset_price = price_structure.mid_price
+        borrowed_asset_price = price_structure.price
 
         estimation: LeverageEstimate = LeverageEstimate.open_short(
             starting_reserve=value,
             leverage=leverage,
-            borrowed_asset_price=borrowed_asset_price,
+            borrowed_asset_price=price_structure.mid_price,
             shorting_pair=shorting_pair,
             fee=executor_pair.fee,
         )
@@ -1305,7 +1305,7 @@ class PositionManager:
             quantity = Decimal(quantity)
 
         # TODO: Hardcoded USD exchange rate
-        price_structure = self.pricing_model.get_sell_price(self.timestamp, pair.underlying_spot_pair, Decimal(1))
+        price_structure = self.pricing_model.get_buy_price(self.timestamp, pair.underlying_spot_pair, Decimal(1))
 
         position2, trade, _ = self.state.trade_short(
             self.timestamp,

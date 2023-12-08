@@ -864,7 +864,7 @@ class TradingPosition(GenericPosition):
                             start_collateral=self.loan.collateral.quantity,
                             start_borrowed=self.loan.borrowed.quantity,
                             close_size=quantity,
-                            borrowed_asset_price=assumed_price,
+                            borrowed_asset_price=planned_mid_price,
                             fee=self.pair.get_pricing_pair().fee,
                         )
 
