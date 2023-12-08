@@ -145,9 +145,14 @@ class AccountingBalanceCheck:
         return self.actual_amount - self.expected_amount
 
     @property
-    def position(self) -> GenericPosition:
-        """Backwards compatibility."""
-        return next(iter(self.positions))
+    def position(self) -> GenericPosition | None:
+        """Backwards compatibility.
+
+        TODO: Remove code paths touching this
+        """
+        if len(self.positions) >= 1:
+            return next(iter(self.positions))
+        return None
 
     def has_extra_tokens(self) -> bool:
         """We have extra"""
@@ -266,7 +271,7 @@ def calculate_account_corrections(
         logger.warning("Be careful when doing check-accounts for frozen positions, as you should run repair first.")
 
     # assets = get_relevant_assets(pair_universe, reserve_assets, state)
-    asset_to_position = get_expected_assets(state.portfolio)
+    asset_to_position = get_expected_assets(state.portfolio, pair_universe=pair_universe)
 
     asset_balances = sync_model.fetch_onchain_balances(
         asset_to_position.keys(),
@@ -303,7 +308,13 @@ def calculate_account_corrections(
 
         reserve = mapping.is_for_reserve()
 
-        if mapping.is_one_to_one_asset_to_position():
+
+        if len(mapping.positions) == 0:
+            # This asset does not have open our closed positions,
+            # but is present in the trading universe
+            position = None
+            usd_value = None
+        elif mapping.is_one_to_one_asset_to_position():
             position = mapping.get_only_position()
 
             if isinstance(position, TradingPosition):

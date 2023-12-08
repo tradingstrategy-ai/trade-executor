@@ -2,6 +2,7 @@
 
 Figure how to map different tokens related to their trading positions.
 """
+import logging
 from dataclasses import field, dataclass
 from decimal import Decimal
 from typing import List, Collection, Set, Dict, Tuple
@@ -15,6 +16,9 @@ from tradeexecutor.state.position import TradingPosition
 from tradeexecutor.state.reserve import ReservePosition
 from tradeexecutor.state.state import State
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse, translate_trading_pair
+
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -156,8 +160,39 @@ def get_asset_amounts(p: TradingPosition) -> List[Tuple[AssetIdentifier, Decimal
         raise NotImplementedError()
 
 
-def get_expected_assets(portfolio: Portfolio) -> Dict[AssetIdentifier, AssetToPositionsMapping]:
+def get_onchain_assets(pair: TradingPairIdentifier) -> List[AssetIdentifier]:
+    if pair.is_spot():
+        return [pair.base]
+    elif pair.is_short():
+        return [pair.base, pair.quote]
+    else:
+        raise NotImplementedError()
+
+
+def get_expected_assets(
+    portfolio: Portfolio,
+    pair_universe: PandasPairUniverse = None,
+    universe_enumaration_threshold=20,
+) -> Dict[AssetIdentifier, AssetToPositionsMapping]:
     """Get list of tokens that the portfolio should hold.
+
+    - Open and frozen positions have :py:class:`AssetToPositionsMapping` set to the executed balance
+
+    - Closed positions have :py:class:`AssetToPositionsMapping` set to zero balance
+
+    :param portfolio:
+        Current portfolio
+
+    :param pair_universe:
+        If given, enumerate all pairs here as well.
+
+        We might have balance on an asset we have not traded yet,
+        causing accounting incorrectness.
+
+    :param universe_enumaration_threshold:
+        Max pairs per universe before we do auto enumation.
+
+        Prevent denial of service on open-ended universes > 100 pairs.
 
     :return:
         Token -> (Amount, positions hold across mappings)
@@ -180,5 +215,29 @@ def get_expected_assets(portfolio: Portfolio) -> Dict[AssetIdentifier, AssetToPo
 
             mappings[asset].positions.add(p)
             mappings[asset].quantity += amount
+
+    # Map closed positions as expected 0 asset amount
+    for p in portfolio.closed_positions.values():
+        for asset, amount in get_asset_amounts(p):
+            if asset not in mappings:
+                mappings[asset] = AssetToPositionsMapping(asset=asset)
+
+            mappings[asset].positions.add(p)
+
+    if pair_universe is not None:
+        assert isinstance(pair_universe, PandasPairUniverse)
+        if pair_universe.get_count() < universe_enumaration_threshold:
+            for dex_pair in pair_universe.iterate_pairs():
+                p = translate_trading_pair(dex_pair)
+                for asset in get_onchain_assets(p):
+                    if asset not in mappings:
+                        mappings[asset] = AssetToPositionsMapping(asset=asset)
+
+        else:
+            logger.info(
+                "Universe is not added to the accounting checks, because it is %d pairs and threshold is %d pairs",
+                pair_universe.get_count(),
+                universe_enumaration_threshold,
+            )
 
     return mappings

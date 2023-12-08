@@ -33,7 +33,7 @@ from tradeexecutor.state.position import TradingPosition
 from tradeexecutor.state.reserve import ReservePosition
 from tradeexecutor.state.state import State
 from tradeexecutor.statistics.core import calculate_statistics
-from tradeexecutor.strategy.asset import get_relevant_assets
+from tradeexecutor.strategy.asset import get_relevant_assets, get_expected_assets
 from tradeexecutor.strategy.account_correction import calculate_account_corrections, AccountingCorrectionCause, correct_accounts
 from tradeexecutor.strategy.execution_context import ExecutionMode
 from tradeexecutor.testing.ethereumtrader_uniswap_v2 import UniswapV2TestTrader
@@ -459,7 +459,10 @@ def test_enzyme_correct_accounting_no_open_position(
     # Send in some WETH
     weth.functions.transfer(vault.vault.address, 2*10**18).transact({"from": deployer})
 
-    # Now both USDC and WETH balances should be out of sync
+    asset_to_position_mapping = get_expected_assets(state.portfolio, pair_universe=pair_universe)
+    assert len(asset_to_position_mapping) == 2   # USDC, WETH
+
+    # Now the strategy WETH balances should be out of sync
     corrections = list(calculate_account_corrections(
         pair_universe,
         state.portfolio.get_reserve_assets(),
