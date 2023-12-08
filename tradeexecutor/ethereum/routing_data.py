@@ -596,6 +596,9 @@ def validate_reserve_currency(
         # Unit tests.
         # Do nothing
         pass
+    elif routing_type == TradeRouting.default:
+        # Reserve currency set in create_trading_strategy()
+        pass
     # else
     else:
         raise NotImplementedError(f"Unknown routing type: {routing_type}")

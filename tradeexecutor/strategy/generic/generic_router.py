@@ -53,8 +53,18 @@ class GenericRouting(RoutingModel):
 
     def __init__(
         self,
-        pair_configurator: PairConfigurator,
+        pair_configurator: PairConfigurator | None,
     ):
+        self.pair_configurator = pair_configurator
+
+    def is_initialised(self) -> bool:
+        return self.pair_configurator is not None
+
+    def initialise(self, pair_configurator: PairConfigurator):
+        """On a live trading loop GenericRouting gets instiated early, but does not yet have trading universe available.
+
+        This methods allows us to initialise after we have loaded the universe data for the first time.
+        """
         self.pair_configurator = pair_configurator
 
     def create_routing_state(

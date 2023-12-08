@@ -828,8 +828,8 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
 
     @staticmethod
     def create_from_dataset(
-            dataset: Dataset,
-            reserve_asset_desc: JSONHexAddress=None,
+        dataset: Dataset,
+        reserve_asset: JSONHexAddress | TokenSymbol=None,
     ):
         """Create a universe from loaded dataset.
 
@@ -859,12 +859,15 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
 
         pairs = PandasPairUniverse(dataset.pairs, exchange_universe=dataset.exchanges)
 
-        if not reserve_asset_desc:
+        if not reserve_asset:
             quote_token = pairs.get_single_quote_token()
             reserve_asset = translate_token(quote_token)
+        elif reserve_asset.startswith("0x"):
+            reserve_asset_token = pairs.get_token(reserve_asset)
+            assert reserve_asset_token, f"Pairs dataset does not contain data for token: {reserve_asset}"
+            reserve_asset = translate_token(reserve_asset_token)
         else:
-            reserve_asset_token = pairs.get_token(reserve_asset_desc)
-            assert reserve_asset_token, f"Pairs dataset does not contain data for token: {reserve_asset_desc}"
+            reserve_asset_token = pairs.get_token_by_symbol(reserve_asset)
             reserve_asset = translate_token(reserve_asset_token)
 
         candle_universe = GroupedCandleUniverse(dataset.candles)
@@ -1159,7 +1162,12 @@ class TradingStrategyUniverseModel(UniverseModel):
                 backtest_stop_loss_candles=backtest_stop_loss_candles,
             )
 
-    def check_data_age(self, ts: datetime.datetime, universe: TradingStrategyUniverse, best_before_duration: datetime.timedelta) -> datetime.datetime:
+    def check_data_age(
+            self,
+            ts: datetime.datetime,
+            universe: TradingStrategyUniverse,
+            best_before_duration: datetime.timedelta
+    ) -> datetime.datetime:
         """Check if our data is up-to-date and we do not have issues with feeds.
 
         Ensure we do not try to execute live trades with stale data.
@@ -1182,7 +1190,7 @@ class TradingStrategyUniverseModel(UniverseModel):
 
             if candle_end < max_age:
                 diff = max_age - candle_end
-                raise DataTooOld(f"Candle data {candle_start} - {candle_end} is too old to work with, we require threshold {max_age}, diff is {diff}")
+                raise DataTooOld(f"Candle data {candle_start} - {candle_end} is too old to work with, we require threshold {max_age}, diff is {diff}, asked best before duration is {best_before_duration}")
 
         if universe.liquidity is not None:
             liquidity_start, liquidity_end = universe.liquidity.get_timestamp_range()

@@ -15,7 +15,7 @@ import enum
 from _decimal import Decimal
 from collections import Counter
 from dataclasses import dataclass
-from typing import List, Iterable, Collection, Tuple, Dict
+from typing import List, Iterable, Collection, Tuple, Dict, Set
 
 import pandas as pd
 from web3 import Web3
@@ -28,6 +28,7 @@ from eth_typing import HexAddress
 
 from eth_defi.tx import AssetDelta
 from tradeexecutor.ethereum.tx import TransactionBuilder
+from tradeexecutor.state.generic_position import GenericPosition
 from tradeexecutor.state.portfolio import Portfolio
 from tradeexecutor.state.repair import close_position_with_empty_trade
 from tradeexecutor.strategy.dust import DEFAULT_DUST_EPSILON, get_dust_epsilon_for_pair, get_dust_epsilon_for_asset
@@ -40,7 +41,7 @@ from tradeexecutor.state.reserve import ReservePosition
 from tradeexecutor.state.state import State
 from tradeexecutor.state.sync import BalanceEventRef
 from tradeexecutor.state.types import USDollarAmount
-from tradeexecutor.strategy.asset import get_relevant_assets, map_onchain_asset_to_position
+from tradeexecutor.strategy.asset import get_relevant_assets, map_onchain_asset_to_position, build_expected_asset_map
 from tradeexecutor.strategy.sync_model import SyncModel
 
 
@@ -90,10 +91,11 @@ class AccountingBalanceCheck:
     #: Related on-chain asset
     asset: AssetIdentifier
 
-    #: Related position
+    #: Related positions
     #:
     #: Set none if no open position was found
-    position: TradingPosition | ReservePosition | None
+    #:
+    positions: Set[GenericPosition] | None
 
     expected_amount: Decimal
 
@@ -115,7 +117,8 @@ class AccountingBalanceCheck:
     #:
     #: Negative for negative corrections
     #:
-    #: `None` if the the tokens are for a new position and we do not have pricing information yet availble.
+    #: `None` if the the tokens are for a new position and we do not have pricing information yet available,
+    #: or if the position is not a spot position.
     #:
     usd_value: USDollarAmount | None
 
@@ -134,12 +137,22 @@ class AccountingBalanceCheck:
         else:
             position_name = "unknown trading position"
 
-        return f"<Accounting correction type {self.type.value} for {position_name}, expected {self.expected_amount}, actual {self.actual_amount} at {self.timestamp}>"
+        return f"<Accounting correction type {self.type.value} for {position_name} asset {self.asset.token_symbol}, expected {self.expected_amount}, actual {self.actual_amount} at {self.timestamp}>"
 
     @property
     def quantity(self):
         """How many tokens we corrected"""
         return self.actual_amount - self.expected_amount
+
+    @property
+    def position(self) -> GenericPosition | None:
+        """Backwards compatibility.
+
+        TODO: Remove code paths touching this
+        """
+        if len(self.positions) >= 1:
+            return next(iter(self.positions))
+        return None
 
     def has_extra_tokens(self) -> bool:
         """We have extra"""
@@ -217,7 +230,6 @@ def calculate_account_corrections(
     :param pair_universe:
         Needed to know what asses we are looking for
 
-
     :param reserve_assets:
         Needed to know what asses we are looking for
 
@@ -241,6 +253,8 @@ def calculate_account_corrections(
 
     :return:
         Difference in balances or all balances if `all_balances` is true.
+
+        Yield one entry per token in positions.
     """
 
     assert isinstance(pair_universe, PandasPairUniverse)
@@ -256,44 +270,70 @@ def calculate_account_corrections(
     if len(state.portfolio.frozen_positions) > 0:
         logger.warning("Be careful when doing check-accounts for frozen positions, as you should run repair first.")
 
-    assets = get_relevant_assets(pair_universe, reserve_assets, state)
-    asset_balances = list(sync_model.fetch_onchain_balances(assets, filter_zero=False, block_identifier=block_identifier))
+    # assets = get_relevant_assets(pair_universe, reserve_assets, state)
+    asset_to_position = build_expected_asset_map(state.portfolio, pair_universe=pair_universe)
+
+    asset_balances = sync_model.fetch_onchain_balances(
+        asset_to_position.keys(),
+        filter_zero=False,
+        block_identifier=block_identifier
+    )
+    asset_balances = list(asset_balances)
 
     logger.info("Found %d on-chain tokens", len(asset_balances))
 
     for ab in asset_balances:
 
-        reserve = ab.asset in reserve_assets
-
-        position = map_onchain_asset_to_position(ab.asset, state)
-
-        if isinstance(position, TradingPosition):
-            if position.is_closed():
-                raise UnexpectedAccountingCorrectionIssue(f"Mapped found tokens to already closed position:\n"
-                                                          f"{ab}\n"
-                                                          f"{position}")
+        asset = ab.asset
+        mapping = asset_to_position[asset]
 
         actual_amount = ab.amount
-        expected_amount = position.get_quantity() if position else 0
+        expected_amount = mapping.quantity
 
-        if isinstance(position, TradingPosition):
-            # We might have balances tied up in frozen positions for the same pair
-            for frozen_position in state.portfolio.frozen_positions.values():
-                if frozen_position.pair == position.pair:
-                    expected_amount += frozen_position.get_quantity()
+        # position = map_onchain_asset_to_position(ab.asset, state)
+
+        # if isinstance(position, TradingPosition):
+        #    if position.is_closed():
+        #        raise UnexpectedAccountingCorrectionIssue(f"Mapped found tokens to already closed position:\n"
+        #                                                  f"{ab}\n"
+        #                                                  f"{position}")
+
+        # if isinstance(position, TradingPosition):
+        #    # We might have balances tied up in frozen positions for the same pair
+        #    for frozen_position in state.portfolio.frozen_positions.values():
+        #        if frozen_position.pair == position.pair:
+        #            expected_amount += frozen_position.get_quantity()
 
         diff = actual_amount - expected_amount
 
-        if isinstance(position, TradingPosition):
-            dust_epsilon = get_dust_epsilon_for_pair(position.pair)
-        elif isinstance(position, ReservePosition):
-            dust_epsilon = get_dust_epsilon_for_asset(position.asset)
-        elif position is None:
-            dust_epsilon = DEFAULT_DUST_EPSILON
-        else:
-            raise NotImplementedError(f"Could not figure out position: {position}")
+        reserve = mapping.is_for_reserve()
 
-        usd_value = position.calculate_quantity_usd_value(diff) if position else None
+        if len(mapping.positions) == 0:
+            # This asset does not have open our closed positions,
+            # but is present in the trading universe
+            position = None
+            usd_value = None
+            dust_epsilon = 0
+        elif mapping.is_one_to_one_asset_to_position():
+            position = mapping.get_only_position()
+
+            if isinstance(position, TradingPosition):
+                dust_epsilon = get_dust_epsilon_for_pair(position.pair)
+            elif isinstance(position, ReservePosition):
+                dust_epsilon = get_dust_epsilon_for_asset(position.asset)
+            elif position is None:
+                dust_epsilon = DEFAULT_DUST_EPSILON
+            else:
+                raise NotImplementedError(f"Could not figure out position: {position}")
+
+            usd_value = position.calculate_quantity_usd_value(diff) if position else None
+        else:
+            # Loan based positions have multiple assets, both in base and quote.
+            # We use some values from the first position (across multiple) to
+            # estimate values.
+            first_position = mapping.get_first_position()
+            dust_epsilon = get_dust_epsilon_for_asset(asset)
+            usd_value = None
 
         logger.debug("Correction check worth of %s worth of %f USD, actual amount %s, expected amount %s", ab.asset, usd_value or 0, actual_amount, expected_amount)
 
@@ -304,7 +344,7 @@ def calculate_account_corrections(
                 AccountingCorrectionCause.unknown_cause,
                 sync_model.get_token_storage_address(),
                 ab.asset,
-                position,
+                mapping.positions,
                 expected_amount,
                 actual_amount,
                 dust_epsilon,
@@ -339,26 +379,22 @@ def apply_accounting_correction(
     event_id = portfolio.next_balance_update_id
     portfolio.next_balance_update_id += 1
 
-    logger.info("Corrected %s", position)
-
     if isinstance(position, TradingPosition):
         position_type = BalanceUpdatePositionType.open_position
         position_id = correction.position.position_id
-
-        assert position.is_spot_market(), f"Correction not yet implemented for leveraged positions"
-
+        assert position.is_spot(), f"Correction not yet implemented for leveraged positions"
+        logger.info("Correcting spot %s, asset %s, %f -> %f", position.get_human_readable_name(), asset, correction.expected_amount, correction.actual_amount)
+        assert position.is_open(), f"Cannot correct already closed positions, got {position}"
     elif isinstance(position, ReservePosition):
         position_type = BalanceUpdatePositionType.reserve
         position_id = None
+        logger.info("Correcting reserve %s, asset %s, %f -> %f", position, asset, correction.expected_amount, correction.actual_amount)
     elif position is None:
         # Tokens were for a trading position, but no position was open.
         # Open a new position
-        portfolio.create_trade(
-            strategy_cycle_at=strategy_cycle_included_at,
-        )
+        raise NotImplementedError()
     else:
         raise NotImplementedError()
-
 
     notes = f"Accounting correction based on the actual on-chain balances.\n" \
         f"The internal ledger balance was  {correction.expected_amount} {asset.token_symbol}\n" \
@@ -408,7 +444,9 @@ def apply_accounting_correction(
             logger.info("Position %s closed with a trade %s", position, t)
             assert position.is_closed()
         else:
-            assert position.get_quantity() > 0, "Position should have quantity"
+            assert position.get_quantity() > 0, \
+                f"Spoit position should have positive quantity, got {position} with {position.get_quantity()}\n" \
+                f"Accounting correction is: {correction}"
 
     elif isinstance(position, ReservePosition):
         # No fancy method to correct reserves

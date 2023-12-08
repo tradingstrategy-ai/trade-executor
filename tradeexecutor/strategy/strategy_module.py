@@ -312,10 +312,14 @@ class StrategyModuleInformation:
     #:
     trading_strategy_engine_version: TradingStrategyEngineVersion
 
+    #: Enable different strategy scripts.
+    #:
+    #: If not set default to ``StrategyType.managed_positions``.
+    #:
     trading_strategy_type: StrategyType
+
     trading_strategy_cycle: CycleDuration
-    trade_routing: TradeRouting
-    reserve_currency: ReserveCurrency
+
     decide_trades: DecideTradesProtocol | DecideTradesProtocol2
 
     #: If `execution_context.live_trading` is true then this function is called for
@@ -324,11 +328,24 @@ class StrategyModuleInformation:
     #: need to deal with new and deprecated trading pairs.
     create_trading_universe: CreateTradingUniverseProtocol
 
+    #: Routing hinting.
+    #:
+    #: Legacy option: most strategies can set this in
+    #: ``create_trading_universe()``. Default to ``TradeRouting.default``.
+    #:
+    trade_routing: Optional[TradeRouting] = None
+
     #: Blockchain id on which this strategy operates
     #:
     #: Valid for single chain strategies only
     chain_id: Optional[ChainId] = None
 
+    #: What currency we use for the strategy.
+    #:
+    #: Can be left out in new versions
+    #: and is set in ``create_trading_universe()``
+    #:
+    reserve_currency: Optional[ReserveCurrency] = None
 
     #: Only needed for backtests
     backtest_start: Optional[datetime.datetime] = None
@@ -425,17 +442,17 @@ def parse_strategy_module(
     return StrategyModuleInformation(
         path,
         source_code,
-        python_module_exports.get("trading_strategy_engine_version"),
-        python_module_exports.get("trading_strategy_type"),
-        python_module_exports.get("trading_strategy_cycle"),
-        python_module_exports.get("trade_routing"),
-        python_module_exports.get("reserve_currency"),
-        python_module_exports.get("decide_trades"),
-        python_module_exports.get("create_trading_universe"),
-        python_module_exports.get("chain_id"),
-        _ensure_dt(python_module_exports.get("backtest_start")),
-        _ensure_dt(python_module_exports.get("backtest_end")),
-        python_module_exports.get("initial_cash"),
+        trading_strategy_engine_version=python_module_exports.get("trading_strategy_engine_version"),
+        trading_strategy_type=python_module_exports.get("trading_strategy_type", StrategyType.managed_positions),
+        trading_strategy_cycle=python_module_exports.get("trading_strategy_cycle"),
+        trade_routing=python_module_exports.get("trade_routing", TradeRouting.default),
+        reserve_currency=python_module_exports.get("reserve_currency"),
+        decide_trades=python_module_exports.get("decide_trades"),
+        create_trading_universe=python_module_exports.get("create_trading_universe"),
+        chain_id=python_module_exports.get("chain_id"),
+        backtest_start=_ensure_dt(python_module_exports.get("backtest_start")),
+        backtest_end=_ensure_dt(python_module_exports.get("backtest_end")),
+        initial_cash=python_module_exports.get("initial_cash"),
     )
 
 

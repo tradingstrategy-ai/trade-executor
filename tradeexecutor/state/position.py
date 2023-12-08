@@ -402,9 +402,9 @@ class TradingPosition(GenericPosition):
         """This is a trading position for gaining interest by lending out reserve currency."""
         return self.pair.kind == TradingPairKind.credit_supply
 
-    def is_spot_market(self):
-        """This is a spot market position."""
-        return self.pair.kind == TradingPairKind.spot_market_hold
+    def is_spot_market(self) -> bool:
+        """Alias for :py:meth:`is_spot`."""
+        return self.is_spot()
 
     def is_take_profit(self) -> bool:
         """Was this position ended with take profit trade"""

@@ -371,7 +371,9 @@ def start(
 
         if max_data_delay_minutes:
             max_data_delay = datetime.timedelta(minutes=max_data_delay_minutes)
+            logger.info(f"Maximum price feed delay is {max_data_delay}")
         else:
+            logger.info(f"Maximum price feed delay is not set")
             max_data_delay = None
 
         stats_refresh_frequency = datetime.timedelta(minutes=stats_refresh_minutes)
@@ -393,20 +395,28 @@ def start(
             execution_context = ExecutionContext(
                 mode=ExecutionMode.backtesting,
                 timed_task_context_manager=timed_task,
+                engine_version=mod.trading_strategy_engine_version,
             )
         else:
             if unit_testing:
                 execution_context = ExecutionContext(
                     mode=ExecutionMode.unit_testing_trading,
                     timed_task_context_manager=timed_task,
+                    engine_version=mod.trading_strategy_engine_version,
                 )
             else:
                 execution_context = ExecutionContext(
                     mode=ExecutionMode.real_trading,
                     timed_task_context_manager=timed_task,
+                    engine_version=mod.trading_strategy_engine_version,
                 )
 
-        logger.info("Starting with execution mode: %s, unit testing is %s", execution_context.mode.name, unit_testing)
+        logger.info(
+            "Starting with execution mode: %s, unit testing is %s, version is %s",
+            execution_context.mode.name,
+            unit_testing,
+            execution_context.engine_version,
+        )
 
     except Exception as e:
         # Logging is set up is in this point, so we can log this exception that

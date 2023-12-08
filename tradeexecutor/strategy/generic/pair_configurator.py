@@ -99,6 +99,10 @@ class PairConfigurator(ABC):
             TODO: Currently only reserve currency, exchange and pair data is used.
             Candle data is discarded.
         """
+
+        assert isinstance(web3, Web3)
+        assert isinstance(strategy_universe, TradingStrategyUniverse)
+
         self.web3 = web3
         self.strategy_universe = strategy_universe
 
