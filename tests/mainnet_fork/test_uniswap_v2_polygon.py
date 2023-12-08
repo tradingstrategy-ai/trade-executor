@@ -142,6 +142,7 @@ def hot_wallet(
         {"from": large_usdc_holder, "to": account.address, "value": matic_amount * 10**18}
     )
 
+    # Let's hope Binance hot wallet has 200k
     tx_hash = usdc_token.functions.transfer(account.address, 200_000 * 10**6).transact(
         {"from": large_usdc_holder}
     )
