@@ -141,7 +141,8 @@ def hot_wallet(
     web3.eth.send_transaction(
         {"from": large_usdc_holder, "to": account.address, "value": matic_amount * 10**18}
     )
-    tx_hash = usdc_token.functions.transfer(account.address, 1_000_000 * 10**6).transact(
+
+    tx_hash = usdc_token.functions.transfer(account.address, 200_000 * 10**6).transact(
         {"from": large_usdc_holder}
     )
     wait_transactions_to_complete(web3, [tx_hash])
@@ -298,7 +299,7 @@ def state(web3, hot_wallet, usdc_asset, sync_model) -> State:
     state = State()
     sync_model.sync_initial(state)
     sync_model.sync_treasury(datetime.datetime.utcnow(), state, supported_reserves=[usdc_asset])
-    assert state.portfolio.get_default_reserve_position().get_value() == 1_000_000.0  # We are Anvil rich
+    assert state.portfolio.get_default_reserve_position().get_value() == 200_000.0  # We are Anvil rich
     return state
 
 
