@@ -145,7 +145,7 @@ def make_factory_from_strategy_mod(mod: StrategyModuleInformation) -> StrategyFa
             unit_testing=execution_context.mode.is_unit_testing(),
         )
 
-        logger.info("Starting strategy runner in execution mode %s:\n%s", execution_context.mode.name, runner)
+        logger.info("Starting strategy runner in execution mode %s:\n%s", execution_context.mode.name, runner.__class__.__name__)
 
         return StrategyExecutionDescription(
             universe_model=universe_model,

@@ -500,10 +500,11 @@ class ExecutionLoop:
                 try:
                     self.runner.check_balances_post_execution(
                         universe,
-                        state
+                        state,
+                        cycle
                     )
                 except UnexpectedAccountingCorrectionIssue as e:
-                    raise RuntimeError(f"Execution aborted at cycle {ts} #{cycle} because on-chain balances were different what exepcted after executing the trades") from e
+                    raise RuntimeError(f"Execution aborted at cycle {ts} #{cycle} because on-chain balances were different what expected after executing the trades") from e
 
             update_statistics(
                 datetime.datetime.utcnow(),

@@ -15,7 +15,7 @@ import enum
 from _decimal import Decimal
 from collections import Counter
 from dataclasses import dataclass
-from typing import List, Iterable, Collection, Tuple, Dict
+from typing import List, Iterable, Collection, Tuple, Dict, Set
 
 import pandas as pd
 from web3 import Web3
@@ -28,6 +28,7 @@ from eth_typing import HexAddress
 
 from eth_defi.tx import AssetDelta
 from tradeexecutor.ethereum.tx import TransactionBuilder
+from tradeexecutor.state.generic_position import GenericPosition
 from tradeexecutor.state.portfolio import Portfolio
 from tradeexecutor.state.repair import close_position_with_empty_trade
 from tradeexecutor.strategy.dust import DEFAULT_DUST_EPSILON, get_dust_epsilon_for_pair, get_dust_epsilon_for_asset
@@ -40,7 +41,7 @@ from tradeexecutor.state.reserve import ReservePosition
 from tradeexecutor.state.state import State
 from tradeexecutor.state.sync import BalanceEventRef
 from tradeexecutor.state.types import USDollarAmount
-from tradeexecutor.strategy.asset import get_relevant_assets, map_onchain_asset_to_position
+from tradeexecutor.strategy.asset import get_relevant_assets, map_onchain_asset_to_position, get_expected_assets
 from tradeexecutor.strategy.sync_model import SyncModel
 
 
@@ -90,10 +91,11 @@ class AccountingBalanceCheck:
     #: Related on-chain asset
     asset: AssetIdentifier
 
-    #: Related position
+    #: Related positions
     #:
     #: Set none if no open position was found
-    position: TradingPosition | ReservePosition | None
+    #:
+    positions: Set[GenericPosition] | None
 
     expected_amount: Decimal
 
@@ -115,7 +117,8 @@ class AccountingBalanceCheck:
     #:
     #: Negative for negative corrections
     #:
-    #: `None` if the the tokens are for a new position and we do not have pricing information yet availble.
+    #: `None` if the the tokens are for a new position and we do not have pricing information yet available,
+    #: or if the position is not a spot position.
     #:
     usd_value: USDollarAmount | None
 
@@ -134,12 +137,17 @@ class AccountingBalanceCheck:
         else:
             position_name = "unknown trading position"
 
-        return f"<Accounting correction type {self.type.value} for {position_name}, expected {self.expected_amount}, actual {self.actual_amount} at {self.timestamp}>"
+        return f"<Accounting correction type {self.type.value} for {position_name} asset {self.asset.token_symbol}, expected {self.expected_amount}, actual {self.actual_amount} at {self.timestamp}>"
 
     @property
     def quantity(self):
         """How many tokens we corrected"""
         return self.actual_amount - self.expected_amount
+
+    @property
+    def position(self) -> GenericPosition:
+        """Backwards compatibility."""
+        return next(iter(self.positions))
 
     def has_extra_tokens(self) -> bool:
         """We have extra"""
@@ -217,7 +225,6 @@ def calculate_account_corrections(
     :param pair_universe:
         Needed to know what asses we are looking for
 
-
     :param reserve_assets:
         Needed to know what asses we are looking for
 
@@ -241,6 +248,8 @@ def calculate_account_corrections(
 
     :return:
         Difference in balances or all balances if `all_balances` is true.
+
+        Yield one entry per token in positions.
     """
 
     assert isinstance(pair_universe, PandasPairUniverse)
@@ -256,44 +265,64 @@ def calculate_account_corrections(
     if len(state.portfolio.frozen_positions) > 0:
         logger.warning("Be careful when doing check-accounts for frozen positions, as you should run repair first.")
 
-    assets = get_relevant_assets(pair_universe, reserve_assets, state)
-    asset_balances = list(sync_model.fetch_onchain_balances(assets, filter_zero=False, block_identifier=block_identifier))
+    # assets = get_relevant_assets(pair_universe, reserve_assets, state)
+    asset_to_position = get_expected_assets(state.portfolio)
+
+    asset_balances = sync_model.fetch_onchain_balances(
+        asset_to_position.keys(),
+        filter_zero=False,
+        block_identifier=block_identifier
+    )
+    asset_balances = list(asset_balances)
 
     logger.info("Found %d on-chain tokens", len(asset_balances))
 
     for ab in asset_balances:
 
-        reserve = ab.asset in reserve_assets
-
-        position = map_onchain_asset_to_position(ab.asset, state)
-
-        if isinstance(position, TradingPosition):
-            if position.is_closed():
-                raise UnexpectedAccountingCorrectionIssue(f"Mapped found tokens to already closed position:\n"
-                                                          f"{ab}\n"
-                                                          f"{position}")
+        asset = ab.asset
+        mapping = asset_to_position[asset]
 
         actual_amount = ab.amount
-        expected_amount = position.get_quantity() if position else 0
+        expected_amount = mapping.quantity
 
-        if isinstance(position, TradingPosition):
-            # We might have balances tied up in frozen positions for the same pair
-            for frozen_position in state.portfolio.frozen_positions.values():
-                if frozen_position.pair == position.pair:
-                    expected_amount += frozen_position.get_quantity()
+        # position = map_onchain_asset_to_position(ab.asset, state)
+
+        # if isinstance(position, TradingPosition):
+        #    if position.is_closed():
+        #        raise UnexpectedAccountingCorrectionIssue(f"Mapped found tokens to already closed position:\n"
+        #                                                  f"{ab}\n"
+        #                                                  f"{position}")
+
+        # if isinstance(position, TradingPosition):
+        #    # We might have balances tied up in frozen positions for the same pair
+        #    for frozen_position in state.portfolio.frozen_positions.values():
+        #        if frozen_position.pair == position.pair:
+        #            expected_amount += frozen_position.get_quantity()
 
         diff = actual_amount - expected_amount
 
-        if isinstance(position, TradingPosition):
-            dust_epsilon = get_dust_epsilon_for_pair(position.pair)
-        elif isinstance(position, ReservePosition):
-            dust_epsilon = get_dust_epsilon_for_asset(position.asset)
-        elif position is None:
-            dust_epsilon = DEFAULT_DUST_EPSILON
-        else:
-            raise NotImplementedError(f"Could not figure out position: {position}")
+        reserve = mapping.is_for_reserve()
 
-        usd_value = position.calculate_quantity_usd_value(diff) if position else None
+        if mapping.is_one_to_one_asset_to_position():
+            position = mapping.get_only_position()
+
+            if isinstance(position, TradingPosition):
+                dust_epsilon = get_dust_epsilon_for_pair(position.pair)
+            elif isinstance(position, ReservePosition):
+                dust_epsilon = get_dust_epsilon_for_asset(position.asset)
+            elif position is None:
+                dust_epsilon = DEFAULT_DUST_EPSILON
+            else:
+                raise NotImplementedError(f"Could not figure out position: {position}")
+
+            usd_value = position.calculate_quantity_usd_value(diff) if position else None
+        else:
+            # Loan based positions have multiple assets, both in base and quote.
+            # We use some values from the first position (across multiple) to
+            # estimate values.
+            first_position = mapping.get_first_position()
+            dust_epsilon = get_dust_epsilon_for_asset(asset)
+            usd_value = None
 
         logger.debug("Correction check worth of %s worth of %f USD, actual amount %s, expected amount %s", ab.asset, usd_value or 0, actual_amount, expected_amount)
 
@@ -304,7 +333,7 @@ def calculate_account_corrections(
                 AccountingCorrectionCause.unknown_cause,
                 sync_model.get_token_storage_address(),
                 ab.asset,
-                position,
+                mapping.positions,
                 expected_amount,
                 actual_amount,
                 dust_epsilon,

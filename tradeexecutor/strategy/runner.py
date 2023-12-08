@@ -14,6 +14,7 @@ from types import NoneType
 
 from typing import List, Optional, Tuple, cast
 
+from eth_defi.provider.anvil import is_anvil, mine
 from tradeexecutor.ethereum.ethereum_protocol_adapters import EthereumPairConfigurator
 from tradeexecutor.ethereum.execution import EthereumExecution
 from tradeexecutor.ethereum.tx import TransactionBuilder
@@ -536,6 +537,7 @@ class StrategyRunner(abc.ABC):
         self,
         universe: StrategyExecutionUniverse,
         state: State,
+        cycle: int,
     ):
         """Check that on-chain balances matches our internal accounting after executing trades.
 
@@ -552,8 +554,16 @@ class StrategyRunner(abc.ABC):
 
         # Double check we handled incoming trade balances correctly
         with self.timed_task_context_manager("check_accounts_post_trade"):
-            end_block = self.execution_model.get_safe_latest_block()
-            logger.info("Post-trade accounts balance check for block %s", end_block)
+            # end_block = self.execution_model.get_safe_latest_block()
+            # Always use the latest block here, not safe block,
+            # to work around anvil + mainnet fork issues
+            web3 = self.execution_model.web3
+            if is_anvil(web3):
+                mine(web3)
+                end_block = self.execution_model.web3.eth.block_number
+            else:
+                end_block = self.execution_model.get_safe_latest_block()
+            logger.info("Post-trade accounts balance check for block %s, cycle %d", end_block, cycle)
             self.check_accounts(universe, state, end_block=end_block)
 
     def tick(self,

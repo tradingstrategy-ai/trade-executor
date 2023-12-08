@@ -96,7 +96,7 @@ def environment(
         "CONFIRMATION_BLOCK_COUNT": "0",  # Needed for test backend, Anvil
         "MAX_CYCLES": "10",  # Run decide_trades() N times
         "TRADING_STRATEGY_API_KEY": os.environ["TRADING_STRATEGY_API_KEY"],
-        "MAX_DATA_DELAYS_MINUTES": "1440",
+        "MAX_DATA_DELAY_MINUTES": "1440",  # Don't crash on not doing candle refresh properly
     }
     return environment
 

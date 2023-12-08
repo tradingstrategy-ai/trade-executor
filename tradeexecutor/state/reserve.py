@@ -75,6 +75,14 @@ class ReservePosition(GenericPosition):
     def __repr__(self) -> str:
         return f"<ReservePosition {self.asset} at {self.quantity}>"
 
+    def __hash__(self):
+        return hash(("reserve", self.asset))
+
+    def __eq__(self, other):
+        """Note that we do not support comparison across different portfolios ATM."""
+        assert isinstance(other, ReservePosition)
+        return self.asset == other.asset
+
     def __post_init__(self):
         assert self.asset.decimals > 0, f"Looks like we have improper reserve asset: {self.asset}"
 

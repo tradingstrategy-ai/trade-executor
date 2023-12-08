@@ -495,8 +495,9 @@ def update_confirmation_status(
             trade, tx = tx_map[tx_hash.hex()]
             # Update the transaction confirmation status
             status = receipt["status"] == 1
+            block_number = receipt["blockNumber"]
             logger.info(
-                "Resolved tx %s as %s for trade %s",
+                f"Resolved tx %s as %s at block {block_number:,} for trade %s",
                 tx_hash.hex(),
                 "success" if status else "reverted",
                 trade)

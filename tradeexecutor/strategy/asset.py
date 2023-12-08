@@ -2,17 +2,49 @@
 
 Figure how to map different tokens related to their trading positions.
 """
+from dataclasses import field, dataclass
+from decimal import Decimal
+from typing import List, Collection, Set, Dict, Tuple
 
-from typing import List, Collection, Set
-
+from tradeexecutor.state.generic_position import GenericPosition
+from tradeexecutor.state.portfolio import Portfolio
 from tradingstrategy.pair import PandasPairUniverse
 
-from tradeexecutor.state.identifier import AssetIdentifier
+from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier
 from tradeexecutor.state.position import TradingPosition
 from tradeexecutor.state.reserve import ReservePosition
 from tradeexecutor.state.state import State
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse, translate_trading_pair
 
+
+@dataclass
+class AssetToPositionsMapping:
+    """Tell us which positions hold the asset in a portfolio."""
+
+    #: Token we are checking
+    asset: AssetIdentifier
+
+    #: Positions using this token
+    positions: Set[GenericPosition] = field(default_factory=set)
+
+    #: Expected amount of tokens we will find on chain
+    #:
+    #: This is the quantity across all positions.
+    #:
+    quantity: Decimal = Decimal(0)
+
+    def is_one_to_one_asset_to_position(self) -> bool:
+        return len(self.positions) == 1
+
+    def is_for_reserve(self) -> bool:
+        return len(self.positions) == 1 and isinstance(self.get_only_position(), ReservePosition)
+
+    def get_only_position(self) -> GenericPosition:
+        assert len(self.positions) == 1
+        return next(iter(self.positions))
+
+    def get_first_position(self) -> GenericPosition:
+        return next(iter(self.positions))
 
 
 def _is_open_ended_universe(pair_universe: PandasPairUniverse):
@@ -66,8 +98,8 @@ def get_relevant_assets(
 
 
 def map_onchain_asset_to_position(
-        asset: AssetIdentifier,
-        state: State,
+    asset: AssetIdentifier,
+    state: State,
 ) -> TradingPosition | ReservePosition | None:
     """Map an on-chain found asset to a trading position.
 
@@ -78,6 +110,11 @@ def map_onchain_asset_to_position(
 
     - If there are trading position assets and no position is open,
       then panic
+
+    - Always check reserve first
+
+    - If multiple positions are sharing the asset e.g. collateral
+      return the firs position
 
     :param asset:
         On-chain read token we should make
@@ -92,19 +129,56 @@ def map_onchain_asset_to_position(
         positions we know of.
     """
 
-    for p in state.portfolio.open_positions.values():
-        if asset == p.pair.base:
-            return p
-
-    # Frozen position should be considered open positions,
-    # when trying to assign tokens to a position they need to be in
-    for p in state.portfolio.frozen_positions.values():
-        if asset == p.pair.base:
-            return p
-
     r: ReservePosition
     for r in state.portfolio.reserves.values():
         if asset == r.asset:
             return r
 
+    for p in state.portfolio.get_open_and_frozen_positions():
+        if asset == p.pair.base:
+            return p
+        if asset == p.pair.quote:
+            return p
+
     return None
+
+
+def get_asset_amounts(p: TradingPosition) -> List[Tuple[AssetIdentifier, Decimal]]:
+    """What tokens this position should hold in a wallet."""
+    if p.is_spot():
+        return [(p.pair.base, p.get_quantity())]
+    elif p.is_short():
+        return [
+            (p.pair.base, p.loan.get_borrowed_quantity()),
+            (p.pair.quote, p.loan.get_collateral_quantity()),
+        ]
+    else:
+        raise NotImplementedError()
+
+
+def get_expected_assets(portfolio: Portfolio) -> Dict[AssetIdentifier, AssetToPositionsMapping]:
+    """Get list of tokens that the portfolio should hold.
+
+    :return:
+        Token -> (Amount, positions hold across mappings)
+    """
+
+    mappings: Dict[AssetIdentifier, AssetToPositionsMapping] = {}
+
+    r: ReservePosition
+    for r in portfolio.reserves.values():
+        if r.asset not in mappings:
+            mappings[r.asset] = AssetToPositionsMapping(asset=r.asset)
+
+        mappings[r.asset].positions.add(r)
+        mappings[r.asset].quantity += r.quantity
+
+    for p in portfolio.get_open_and_frozen_positions():
+        for asset, amount in get_asset_amounts(p):
+            if asset not in mappings:
+                mappings[asset] = AssetToPositionsMapping(asset=asset)
+
+            mappings[asset].positions.add(p)
+            mappings[asset].quantity += amount
+
+    return mappings

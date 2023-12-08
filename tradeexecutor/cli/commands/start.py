@@ -371,7 +371,9 @@ def start(
 
         if max_data_delay_minutes:
             max_data_delay = datetime.timedelta(minutes=max_data_delay_minutes)
+            logger.info(f"Maximum price feed delay is {max_data_delay}")
         else:
+            logger.info(f"Maximum price feed delay is not set")
             max_data_delay = None
 
         stats_refresh_frequency = datetime.timedelta(minutes=stats_refresh_minutes)
