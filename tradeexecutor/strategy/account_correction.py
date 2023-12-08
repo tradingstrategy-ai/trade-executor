@@ -41,7 +41,7 @@ from tradeexecutor.state.reserve import ReservePosition
 from tradeexecutor.state.state import State
 from tradeexecutor.state.sync import BalanceEventRef
 from tradeexecutor.state.types import USDollarAmount
-from tradeexecutor.strategy.asset import get_relevant_assets, map_onchain_asset_to_position, get_expected_assets
+from tradeexecutor.strategy.asset import get_relevant_assets, map_onchain_asset_to_position, build_expected_assets_map
 from tradeexecutor.strategy.sync_model import SyncModel
 
 
@@ -271,7 +271,7 @@ def calculate_account_corrections(
         logger.warning("Be careful when doing check-accounts for frozen positions, as you should run repair first.")
 
     # assets = get_relevant_assets(pair_universe, reserve_assets, state)
-    asset_to_position = get_expected_assets(state.portfolio, pair_universe=pair_universe)
+    asset_to_position = build_expected_assets_map(state.portfolio, pair_universe=pair_universe)
 
     asset_balances = sync_model.fetch_onchain_balances(
         asset_to_position.keys(),
@@ -308,12 +308,12 @@ def calculate_account_corrections(
 
         reserve = mapping.is_for_reserve()
 
-
         if len(mapping.positions) == 0:
             # This asset does not have open our closed positions,
             # but is present in the trading universe
             position = None
             usd_value = None
+            dust_epsilon = 0
         elif mapping.is_one_to_one_asset_to_position():
             position = mapping.get_only_position()
 
@@ -379,26 +379,22 @@ def apply_accounting_correction(
     event_id = portfolio.next_balance_update_id
     portfolio.next_balance_update_id += 1
 
-    logger.info("Corrected %s", position)
-
     if isinstance(position, TradingPosition):
         position_type = BalanceUpdatePositionType.open_position
         position_id = correction.position.position_id
-
-        assert position.is_spot_market(), f"Correction not yet implemented for leveraged positions"
-
+        assert position.is_spot(), f"Correction not yet implemented for leveraged positions"
+        logger.info("Correcting spot %s, asset %s, %f -> %f", position.get_human_readable_name(), asset, correction.expected_amount, correction.actual_amount)
+        assert position.is_open(), f"Cannot correct already closed positions, got {position}"
     elif isinstance(position, ReservePosition):
         position_type = BalanceUpdatePositionType.reserve
         position_id = None
+        logger.info("Correcting reserve %s, asset %s, %f -> %f", position, asset, correction.expected_amount, correction.actual_amount)
     elif position is None:
         # Tokens were for a trading position, but no position was open.
         # Open a new position
-        portfolio.create_trade(
-            strategy_cycle_at=strategy_cycle_included_at,
-        )
+        raise NotImplementedError()
     else:
         raise NotImplementedError()
-
 
     notes = f"Accounting correction based on the actual on-chain balances.\n" \
         f"The internal ledger balance was  {correction.expected_amount} {asset.token_symbol}\n" \
@@ -448,7 +444,9 @@ def apply_accounting_correction(
             logger.info("Position %s closed with a trade %s", position, t)
             assert position.is_closed()
         else:
-            assert position.get_quantity() > 0, "Position should have quantity"
+            assert position.get_quantity() > 0, \
+                f"Spoit position should have positive quantity, got {position} with {position.get_quantity()}\n" \
+                f"Accounting correction is: {correction}"
 
     elif isinstance(position, ReservePosition):
         # No fancy method to correct reserves

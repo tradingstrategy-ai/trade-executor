@@ -475,9 +475,10 @@ def test_enzyme_live_trading_reset_deposits(
 
     - End up with 449 USDC, and open position
 
-    - Do unsynced redemption and mess up the open position balance
+    - Do unsynced redemption and mess up the open position balance,
+      this will remove WETH from the strategy
 
-    - Get rid of unprocessed redemption with reset-deposits
+    - Get rid of unhandled redemption with reset-deposits
 
     - Correct wrong balance with correct-accounts
 
@@ -508,8 +509,10 @@ def test_enzyme_live_trading_reset_deposits(
         state: State = State.from_json(inp.read())
         reserve_position = state.portfolio.get_default_reserve_position()
         assert reserve_position.quantity == pytest.approx(Decimal('449.7304715999999998521161615'))
+        assert len(state.portfolio.open_positions) == 1
 
-    # Mess up by doing unsynced redemption
+    # Mess up by doing unsynced redemption,
+    # this will remove half of ETH
     tx_hash = vault.comptroller.functions.redeemSharesInKind(deployer, 250 * 10**18, [], []).transact({"from": deployer})
     assert_transaction_success_with_explanation(web3, tx_hash)
 
@@ -522,7 +525,7 @@ def test_enzyme_live_trading_reset_deposits(
 
     assert os.path.exists("/tmp/test_enzyme_end_to_end.reinit-backup-1.json")
 
-    # Reset deposits from the on-chain state
+    # Correct wrong WETH balance
     with patch.dict(os.environ, environment, clear=True):
         with pytest.raises(SystemExit) as e:
             cli = get_command(app)

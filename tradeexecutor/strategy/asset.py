@@ -169,7 +169,7 @@ def get_onchain_assets(pair: TradingPairIdentifier) -> List[AssetIdentifier]:
         raise NotImplementedError()
 
 
-def get_expected_assets(
+def build_expected_assets_map(
     portfolio: Portfolio,
     pair_universe: PandasPairUniverse = None,
     universe_enumaration_threshold=20,
@@ -215,14 +215,19 @@ def get_expected_assets(
 
             mappings[asset].positions.add(p)
             mappings[asset].quantity += amount
+            logger.info("Open/frozen position #%d has asset %s for %f", p.position_id, asset.token_symbol, amount)
 
     # Map closed positions as expected 0 asset amount
+    #
+    # Closed positions appear in the position list only if there is not existing position,
+    # otherwise all closed positions would get enumerated one by one
+    #
     for p in portfolio.closed_positions.values():
         for asset, amount in get_asset_amounts(p):
             if asset not in mappings:
                 mappings[asset] = AssetToPositionsMapping(asset=asset)
-
-            mappings[asset].positions.add(p)
+                mappings[asset].positions.add(p)
+                logger.info("Closed position #%d touched asset %s", p.position_id, asset.token_symbol)
 
     if pair_universe is not None:
         assert isinstance(pair_universe, PandasPairUniverse)
@@ -232,6 +237,7 @@ def get_expected_assets(
                 for asset in get_onchain_assets(p):
                     if asset not in mappings:
                         mappings[asset] = AssetToPositionsMapping(asset=asset)
+                        logger.info("Discovered asset %s in the pair universe", asset.token_symbol)
 
         else:
             logger.info(
