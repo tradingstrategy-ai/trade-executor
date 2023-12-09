@@ -22,7 +22,7 @@ from .portfolio import Portfolio
 from .position import TradingPosition
 from .reserve import ReservePosition
 from .statistics import Statistics
-from .trade import TradeExecution, TradeStatus, TradeType
+from .trade import TradeExecution, TradeStatus, TradeType, TradeFlag
 from .types import USDollarAmount, BPS, USDollarPrice
 from .uptime import Uptime
 from .visualisation import Visualisation
@@ -171,27 +171,29 @@ class State:
         else:
             return self.created_at, self.last_updated_at
 
-    def create_trade(self,
-                     strategy_cycle_at: datetime.datetime,
-                     pair: TradingPairIdentifier,
-                     quantity: Optional[Decimal],
-                     reserve: Optional[Decimal],
-                     assumed_price: USDollarPrice,
-                     trade_type: TradeType,
-                     reserve_currency: AssetIdentifier,
-                     reserve_currency_price: USDollarPrice,
-                     notes: Optional[str] = None,
-                     pair_fee: Optional[float] = None,
-                     lp_fees_estimated: Optional[USDollarAmount] = None,
-                     planned_mid_price: Optional[USDollarPrice] = None,
-                     price_structure: Optional[TradePricing] = None,
-                     position: Optional[TradingPosition] = None,
-                     slippage_tolerance: Optional[float] = None,
-                     leverage: Optional[float] = None,
-                     closing: Optional[bool] = False,
-                     planned_collateral_consumption: Optional[Decimal] = None,
-                     planned_collateral_allocation: Optional[Decimal] = None,
-                     ) -> Tuple[TradingPosition, TradeExecution, bool]:
+    def create_trade(
+        self,
+        strategy_cycle_at: datetime.datetime,
+        pair: TradingPairIdentifier,
+        quantity: Optional[Decimal],
+        reserve: Optional[Decimal],
+        assumed_price: USDollarPrice,
+        trade_type: TradeType,
+        reserve_currency: AssetIdentifier,
+        reserve_currency_price: USDollarPrice,
+        notes: Optional[str] = None,
+        pair_fee: Optional[float] = None,
+        lp_fees_estimated: Optional[USDollarAmount] = None,
+        planned_mid_price: Optional[USDollarPrice] = None,
+        price_structure: Optional[TradePricing] = None,
+        position: Optional[TradingPosition] = None,
+        slippage_tolerance: Optional[float] = None,
+        leverage: Optional[float] = None,
+        closing: Optional[bool] = False,
+        planned_collateral_consumption: Optional[Decimal] = None,
+        planned_collateral_allocation: Optional[Decimal] = None,
+        flags: Optional[Set[TradeFlag]] = None,
+    ) -> Tuple[TradingPosition, TradeExecution, bool]:
         """Creates a request for a new trade.
 
         If there is no open position, marks a position open.
@@ -330,30 +332,33 @@ class State:
             closing=closing,
             planned_collateral_consumption=planned_collateral_consumption,
             planned_collateral_allocation=planned_collateral_allocation,
+            flags=flags,
         )
 
         return position, trade, created
 
-    def trade_short(self,
-                    strategy_cycle_at: datetime.datetime,
-                    pair: TradingPairIdentifier,
-                    borrowed_asset_price: USDollarPrice,
-                    trade_type: TradeType,
-                    reserve_currency: AssetIdentifier,
-                    collateral_asset_price: USDollarPrice,
-                    borrowed_quantity: Optional[Decimal] = None,
-                    collateral_quantity: Optional[Decimal] = None,
-                    notes: Optional[str] = None,
-                    pair_fee: Optional[float] = None,
-                    lp_fees_estimated: Optional[USDollarAmount] = None,
-                    planned_mid_price: Optional[USDollarPrice] = None,
-                    price_structure: Optional[TradePricing] = None,
-                    position: Optional[TradingPosition] = None,
-                    slippage_tolerance: Optional[float] = None,
-                    closing: Optional[bool] = False,
-                    planned_collateral_consumption: Optional[Decimal] = None,
-                    planned_collateral_allocation: Optional[Decimal] = None,
-                    ) -> Tuple[TradingPosition, TradeExecution, bool]:
+    def trade_short(
+            self,
+            strategy_cycle_at: datetime.datetime,
+            pair: TradingPairIdentifier,
+            borrowed_asset_price: USDollarPrice,
+            trade_type: TradeType,
+            reserve_currency: AssetIdentifier,
+            collateral_asset_price: USDollarPrice,
+            borrowed_quantity: Optional[Decimal] = None,
+            collateral_quantity: Optional[Decimal] = None,
+            notes: Optional[str] = None,
+            pair_fee: Optional[float] = None,
+            lp_fees_estimated: Optional[USDollarAmount] = None,
+            planned_mid_price: Optional[USDollarPrice] = None,
+            price_structure: Optional[TradePricing] = None,
+            position: Optional[TradingPosition] = None,
+            slippage_tolerance: Optional[float] = None,
+            closing: Optional[bool] = False,
+            planned_collateral_consumption: Optional[Decimal] = None,
+            planned_collateral_allocation: Optional[Decimal] = None,
+            flags: Optional[Set[TradeFlag]] = None,
+        ) -> Tuple[TradingPosition, TradeExecution, bool]:
         """Creates a trade for a short position.
 
         - Opens, increases or decreases short position size.
@@ -445,6 +450,7 @@ class State:
             closing=closing,
             planned_collateral_consumption=planned_collateral_consumption,
             planned_collateral_allocation=planned_collateral_allocation,
+            flags=flags,
         )
 
     def supply_credit(

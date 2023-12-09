@@ -472,3 +472,84 @@ def test_execute_trade_instructions_open_and_close_short(
     portfolio = state.portfolio
     assert len(portfolio.open_positions) == 0
     assert len(portfolio.closed_positions) == 1
+
+
+
+def test_short_flags(
+    web3: Web3,
+    state: State,
+    pair_universe: PandasPairUniverse,
+    uniswap_v3_deployment: UniswapV3Deployment,
+    hot_wallet: HotWallet,
+    usdc: AssetIdentifier,
+    weth: AssetIdentifier,
+    weth_usdc_shorting_pair: TradingPairIdentifier,
+    start_ts: datetime.datetime,
+    price_helper: UniswapV3PriceHelper,
+    ethereum_trader: OneDeltaTestTrader
+):
+    """Check that short flags.
+
+    - Open and close two parallel positions
+
+    - See that the trades are correctly flagged
+    """
+
+    portfolio = state.portfolio
+
+    # We have everything in cash
+    assert portfolio.get_total_equity() == 10_000
+    assert portfolio.get_cash() == 10_000
+
+    position
+    # Buy 500 USDC worth of WETH
+    trader = UnitTestTrader(state)
+
+    # swap from quote to base (usdc to weth)
+    path = [usdc.contract.address, weth.contract.address]
+    fees = [WETH_USDC_FEE_RAW]
+    eth_price = price_helper.get_amount_in(1 * 10 ** 18, path, fees) / 10 ** 6
+
+    assert eth_price == pytest.approx(1636.46574)
+
+    reserve_amount = Decimal(5000)
+    leverage = 2
+
+    position1, trade1 = trader.open_short(
+        weth_usdc_shorting_pair,
+        reserve_amount,
+        eth_price,
+        leverage,
+    )
+    assert trade1.is_leverage()
+    assert state.portfolio.get_total_equity() == pytest.approx(10000.0)
+    assert trade1.get_status() == TradeStatus.planned
+
+    ethereum_trader.execute_trades_simple(ethereum_trader.create_routing_model(), [trade1])
+
+    assert len(state.portfolio.open_positions) == 1
+    assert trade1.get_status() == TradeStatus.success
+    assert trade1.executed_price == pytest.approx(1624.626136536907)
+    assert abs(trade1.executed_quantity) == pytest.approx(Decimal(6.110729821939321144))
+    assert trade1.native_token_price == 0.0
+
+    position2, trade2 = trader.close_short(
+        weth_usdc_shorting_pair,
+        reserve_amount, # TODO
+        eth_price,
+        leverage,
+    )
+
+    assert trade2.is_leverage()
+    assert trade2.get_status() == TradeStatus.planned
+
+    ethereum_trader.execute_trades_simple(ethereum_trader.create_routing_model(), [trade2])
+
+    assert trade2.get_status() == TradeStatus.success
+    assert trade2.executed_price == pytest.approx(1631.137329233084)
+    assert abs(trade2.executed_quantity) == pytest.approx(Decimal(6.110729821939321144))
+
+    # position should be closed successfully
+    portfolio = state.portfolio
+    assert len(portfolio.open_positions) == 0
+    assert len(portfolio.closed_positions) == 1

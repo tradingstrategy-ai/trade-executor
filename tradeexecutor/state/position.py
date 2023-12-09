@@ -18,7 +18,7 @@ from tradeexecutor.state.generic_position import GenericPosition, BalanceUpdateE
 from tradeexecutor.state.identifier import TradingPairIdentifier, AssetIdentifier, TradingPairKind
 from tradeexecutor.state.interest import Interest
 from tradeexecutor.state.loan import Loan
-from tradeexecutor.state.trade import TradeType
+from tradeexecutor.state.trade import TradeType, TradeFlag
 from tradeexecutor.state.trade import TradeExecution
 from tradeexecutor.state.types import USDollarAmount, BPS, USDollarPrice, Percent, LeverageMultiplier
 from tradeexecutor.state.valuation import ValuationUpdate
@@ -728,27 +728,29 @@ class TradingPosition(GenericPosition):
         open_trade = self.get_first_trade()
         return open_trade.is_success()
 
-    def open_trade(self,
-                   strategy_cycle_at: datetime.datetime | None,
-                   trade_id: int,
-                   quantity: Optional[Decimal],
-                   reserve: Optional[Decimal],
-                   assumed_price: USDollarPrice,
-                   trade_type: TradeType,
-                   reserve_currency: AssetIdentifier,
-                   reserve_currency_price: USDollarPrice,
-                   pair_fee: Optional[BPS] = None,
-                   lp_fees_estimated: Optional[USDollarAmount] = None,
-                   planned_mid_price: Optional[USDollarPrice] = None,
-                   price_structure: Optional[TradePricing] = None,
-                   slippage_tolerance: Optional[float] = None,
-                   portfolio_value_at_creation: Optional[USDollarAmount] = None,
-                   leverage: Optional[LeverageMultiplier]=None,
-                   closing: Optional[bool] = False,
-                   planned_collateral_consumption: Optional[Decimal] = None,
-                   planned_collateral_allocation: Optional[Decimal] = None,
-                   exchange_name: Optional[str] = None,
-                   ) -> TradeExecution:
+    def open_trade(
+            self,
+           strategy_cycle_at: datetime.datetime | None,
+           trade_id: int,
+           quantity: Optional[Decimal],
+           reserve: Optional[Decimal],
+           assumed_price: USDollarPrice,
+           trade_type: TradeType,
+           reserve_currency: AssetIdentifier,
+           reserve_currency_price: USDollarPrice,
+           pair_fee: Optional[BPS] = None,
+           lp_fees_estimated: Optional[USDollarAmount] = None,
+           planned_mid_price: Optional[USDollarPrice] = None,
+           price_structure: Optional[TradePricing] = None,
+           slippage_tolerance: Optional[float] = None,
+           portfolio_value_at_creation: Optional[USDollarAmount] = None,
+           leverage: Optional[LeverageMultiplier]=None,
+           closing: Optional[bool] = False,
+           planned_collateral_consumption: Optional[Decimal] = None,
+           planned_collateral_allocation: Optional[Decimal] = None,
+           exchange_name: Optional[str] = None,
+           flags: Optional[TradeFlag] = None,
+        ) -> TradeExecution:
         """Open a new trade on position.
 
         Trade can be opened by knowing how much you want to buy (quantity) or how much cash you have to buy (reserve).
@@ -812,6 +814,9 @@ class TradingPosition(GenericPosition):
             Record the portfolio's value when this posistion was opened.
 
             Will be later used for risk metrics calculations and such.
+
+        :param flags:
+            Flags set on the trade.
         """
 
         # Done in State.create_trade()
@@ -822,9 +827,14 @@ class TradingPosition(GenericPosition):
 
         if price_structure is not None:
             assert isinstance(price_structure, TradePricing)
-        
+
         assert self.reserve_currency.get_identifier() == reserve_currency.get_identifier(), "New trade is using different reserve currency than the position has"
         assert isinstance(trade_id, int)
+
+        if flags is None:
+            flags = set()
+        assert isinstance(flags, set), f"Got: {flags}"
+        assert all([isinstance(f, TradeFlag) for f in flags])
 
         if strategy_cycle_at is not None:
             assert isinstance(strategy_cycle_at, datetime.datetime)
@@ -929,6 +939,11 @@ class TradingPosition(GenericPosition):
             case _:
                 raise NotImplementedError(f"Does not know how to calculate quantities for open a trade on: {pair}")
 
+        # TODO: Legacy compatibility.
+        # Rmeove when ready.
+        if closing:
+            flags.add(TradeFlag.close)
+
         trade = TradeExecution(
             trade_id=trade_id,
             position_id=self.position_id,
@@ -951,6 +966,7 @@ class TradingPosition(GenericPosition):
             planned_collateral_consumption=planned_collateral_consumption,
             exchange_name=exchange_name,
             closing=closing,
+            flags=flags,
         )
 
         self.trades[trade.trade_id] = trade

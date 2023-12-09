@@ -54,6 +54,7 @@ def strategy_universe(
     reverses = [
         (ChainId.polygon, LendingProtocolType.aave_v3, "WETH"),
         (ChainId.polygon, LendingProtocolType.aave_v3, "USDC"),
+        (ChainId.polygon, LendingProtocolType.aave_v3, "WMATIC"),
     ]
 
     dataset = load_partial_data(
