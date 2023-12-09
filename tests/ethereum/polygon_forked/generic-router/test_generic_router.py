@@ -224,6 +224,21 @@ def test_generic_routing_close_position_across_markets(
     )
     assert all([t.is_success() for t in trades])
 
+    # Check collateral amounts for the short position
+    short_pos = position_manager.get_current_position_for_pair(weth_usdc_shorting_pair)
+    assert short_pos.loan.get_collateral_quantity() == pytest.approx(Decimal("898.109609"))  # aUSDC
+
+    # Check that on-chain balances are good after opening the positions
+    corrections = calculate_account_corrections(
+        pair_universe=strategy_universe.data_universe.pairs,
+        reserve_assets=state.portfolio.get_reserve_assets(),
+        state=state,
+        sync_model=sync_model,
+        all_balances=False,
+    )
+    corrections = list(corrections)
+    assert len(corrections) == 0, f"Got corrections: {corrections}"
+
     # Close all positions
     position_manager = PositionManager(
         datetime.datetime.utcnow(),
@@ -232,6 +247,16 @@ def test_generic_routing_close_position_across_markets(
         generic_pricing_model
     )
     trades = position_manager.close_all()
+    short_close = trades[-1]
+    assert short_close.is_short()
+    assert short_close.closing
+    assert short_close.is_buy()
+
+    # After we close the short, these the loan should not have any collateral or borrowed assets left
+    assert short_close.planned_loan_update.get_collateral_quantity() == 0
+    assert short_close.planned_loan_update.get_borrowed_quantity() == 0
+    assert short_close.executed_loan_update is None
+
     execution_model.execute_trades(
         datetime.datetime.utcnow(),
         state,
@@ -241,6 +266,12 @@ def test_generic_routing_close_position_across_markets(
         check_balances=True,
     )
     assert all([t.is_success() for t in trades])
+
+    # After we close the short, these the loan should not have any collateral or borrowed assets left
+    executed_loan_update = short_close.executed_loan_update
+    assert executed_loan_update is not None
+    assert executed_loan_update.get_collateral_quantity() == 0, f"Got executed loan update: {executed_loan_update}"
+    assert executed_loan_update.get_borrowed_quantity() == 0, f"Got executed loan update: {executed_loan_update}"
 
     # Check our wallet holds all tokens we expect.
     # Note that these are live prices from mainnet,
