@@ -269,7 +269,6 @@ def test_generic_routing_close_position_across_markets(
     assert balances[asset_usdc.address] == pytest.approx(Decimal(9992.900326), rel=Decimal(0.03)), f"Got balance: {balances}"
 
 
-@pytest.mark.skip(reason="This test has still calculation errors")
 def test_generic_routing_check_accounts(
     web3: Web3,
     hot_wallet: HotWallet,
