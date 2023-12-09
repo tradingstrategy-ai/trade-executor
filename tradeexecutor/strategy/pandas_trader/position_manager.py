@@ -1327,9 +1327,6 @@ class PositionManager:
                                       f"Trade's position: {position2}.\n" \
                                       f"Trade: {trade}\n"
 
-        # Check if this is the last trade closing short on this protocol
-
-
         assert trade.closing
         return [trade]
 

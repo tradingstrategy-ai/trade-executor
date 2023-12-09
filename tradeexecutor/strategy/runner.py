@@ -42,7 +42,7 @@ from tradeexecutor.strategy.universe_model import StrategyExecutionUniverse
 
 from tradeexecutor.state.state import State
 from tradeexecutor.state.position import TradingPosition
-from tradeexecutor.state.trade import TradeExecution
+from tradeexecutor.state.trade import TradeExecution, TradeFlag
 from tradeexecutor.state.reserve import ReservePosition
 from tradeexecutor.strategy.valuation import ValuationModelFactory, ValuationModel, revalue_state
 
@@ -676,6 +676,8 @@ class StrategyRunner(abc.ABC):
                         assert t not in trade_set, f"decide_trades() returned a duplicate trade: {t}"
                         trade_set.add(t)
 
+                rebalance_trades = post_process_trade_decision(state, rebalance_trades)
+
                 # Log what our strategy decided
                 if self.is_progress_report_needed():
                     self.report_strategy_thinking(
@@ -904,3 +906,21 @@ class StrategyRunner(abc.ABC):
         else:
             # Path taken by some legacy tests
             logger.info("Accounting checks disabled - skipping")
+
+
+def post_process_trade_decision(state: State, trades: List[TradeExecution]):
+    """Set any extra flags on trades needed.
+
+    - Mainly to deal with the fact that if trades close a final position on lending
+
+    TODO: Currently we do not pass enough information in :py:class:`TradingPairIdentifier`
+    so here we take a hack shortcut to set close_protocol_all. W
+    """
+
+    # TODO: Write a full logic here, only supports closing shorts now,
+    # assuming everything lending is short
+    lending_positions_open = [p for p in state.portfolio.open_positions.values() if p.is_leverage()]
+    lending_position_closing_trades = [t for t in trades if t.pair.is_leverage()]
+    assert len(lending_positions_open) >= len(lending_position_closing_trades), "We cannot close more than we have open"
+    if len(lending_position_closing_trades) == len(lending_positions_open):
+        lending_position_closing_trades[-1].flags.add(TradeFlag.close_protocol_last)

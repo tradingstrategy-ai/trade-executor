@@ -23,6 +23,7 @@ from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifie
 from tradeexecutor.state.state import State
 from tradeexecutor.strategy.generic.generic_router import GenericRouting
 from tradeexecutor.strategy.generic.generic_pricing_model import GenericPricing
+from tradeexecutor.strategy.runner import post_process_trade_decision
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse, load_partial_data
 from tradeexecutor.strategy.universe_model import default_universe_options
 
@@ -159,6 +160,8 @@ def test_short_flags(
         generic_pricing_model
     )
     trades = position_manager.close_all()
+
+    post_process_trade_decision(state, trades)
 
     # Only last trade has close_protocol_last
     assert TradeFlag.close in trades[0].flags
