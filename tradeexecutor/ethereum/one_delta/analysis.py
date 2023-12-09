@@ -9,7 +9,9 @@ from eth_defi.one_delta.constants import TradeOperation
 from eth_defi.revert_reason import fetch_transaction_revert_reason
 from eth_defi.token import fetch_erc20_details
 from eth_defi.trade import TradeFail, TradeSuccess
+from eth_defi.uniswap_v3.deployment import UniswapV3Deployment
 from eth_defi.uniswap_v3.pool import fetch_pool_details
+from eth_defi.aave_v3.deployment import AaveV3Deployment
 
 
 def decode_path(encoded_path: bytes) -> list:
@@ -62,13 +64,14 @@ def decode_path(encoded_path: bytes) -> list:
 def analyse_trade_by_receipt(
     web3: Web3,
     one_delta: OneDeltaDeployment,
-    uniswap: OneDeltaDeployment,
+    uniswap: UniswapV3Deployment,
+    aave: AaveV3Deployment,
     tx: dict,
     tx_hash: str | bytes,
     tx_receipt: dict,
     input_args: tuple | None = None,
     trade_operation: TradeOperation = TradeOperation.OPEN,
-) -> TradeSuccess | TradeFail:
+) -> tuple[TradeSuccess | TradeFail, int | None]:
     """Analyse a 1delta trade.
 
     Figure out
@@ -85,6 +88,10 @@ def analyse_trade_by_receipt(
         If not given automatically decode from `tx`.
         You need to pass this for Enzyme transactions, because transaction payload 
         is too complex to decode.
+
+    :return:
+        Tuple of trade result and collateral amount which get supplied or withdrawn to Aave reserve
+        Negative for withdraw, positive for supply
     """
     effective_gas_price = tx_receipt.get("effectiveGasPrice", 0)
     gas_used = tx_receipt["gasUsed"]
@@ -92,7 +99,7 @@ def analyse_trade_by_receipt(
     # tx reverted
     if tx_receipt["status"] != 1:
         reason = fetch_transaction_revert_reason(web3, tx_hash)
-        return TradeFail(gas_used, effective_gas_price, revert_reason=reason)
+        return TradeFail(gas_used, effective_gas_price, revert_reason=reason), None
 
     input_args = input_args[0]
     if len(input_args) == 3:
@@ -140,6 +147,16 @@ def analyse_trade_by_receipt(
 
     # TODO: this doesn't look quite correct
     lp_fee_paid = float(amount_in * pool.fee / 10**in_token_details.decimals)
+
+    # analyse collateral amount
+    if trade_operation == TradeOperation.OPEN:
+        # first supply event
+        supply_event = aave.pool.events.Supply().process_receipt(tx_receipt, errors=DISCARD)[0]
+        collateral_amount = supply_event["args"]["amount"]
+    else:
+        # last withdraw event
+        withdraw_event = aave.pool.events.Withdraw().process_receipt(tx_receipt, errors=DISCARD)[-1]
+        collateral_amount = -withdraw_event["args"]["amount"]
     
     return TradeSuccess(
         gas_used,
@@ -154,4 +171,4 @@ def analyse_trade_by_receipt(
         token0=pool.token0,
         token1=pool.token1,
         lp_fee_paid=lp_fee_paid,
-    )
+    ), collateral_amount

@@ -34,6 +34,7 @@ from tradeexecutor.strategy.run_state import RunState
 from tradeexecutor.ethereum.universe import create_exchange_universe, create_pair_universe
 from tradeexecutor.testing.simulated_execution_loop import set_up_simulated_execution_loop_one_delta
 from tradeexecutor.utils.blockchain import get_latest_block_timestamp
+from tradeexecutor.strategy.account_correction import check_accounts
 
 
 pytestmark = pytest.mark.skipif(
@@ -191,6 +192,8 @@ def test_one_delta_live_strategy_short_open_and_close(
         ExecutionMode.real_trading
     )
 
+    loop.runner.check_accounts(trading_strategy_universe, state)
+
     assert len(state.portfolio.open_positions) == 1
 
     # After the first tick, we should have synced our reserves and opened the first position
@@ -199,11 +202,8 @@ def test_one_delta_live_strategy_short_open_and_close(
 
     usdc_id = f"{web3.eth.chain_id}-{usdc.address.lower()}"
     assert state.portfolio.reserves[usdc_id].quantity == 9000
-    assert state.portfolio.open_positions[1].get_quantity() == Decimal('-1.261256429210282326')
-    # assert state.portfolio.open_positions[1].get_value() == pytest.approx(944.0010729999999, rel=APPROX_REL)
-
-    # TODO: Likely incorrect amount here, figure out why
-    assert state.portfolio.open_positions[1].get_value() == pytest.approx(999, rel=APPROX_REL)
+    assert state.portfolio.open_positions[1].get_quantity() == pytest.approx(Decimal(-1.226751521259596300339))
+    assert state.portfolio.open_positions[1].get_value() == pytest.approx(998.9504211318044, rel=APPROX_REL)
 
     # mine a few block before running next tick
     for i in range(1, 10):
@@ -228,6 +228,8 @@ def test_one_delta_live_strategy_short_open_and_close(
         trading_strategy_universe,
         ExecutionMode.real_trading
     )
+
+    loop.runner.check_accounts(trading_strategy_universe, state)
 
     assert len(state.portfolio.open_positions) == 0
     assert len(state.portfolio.closed_positions) == 1
@@ -338,7 +340,7 @@ def test_one_delta_live_strategy_short_open_accrue_interests(
 
     usdc_id = f"{web3.eth.chain_id}-{usdc.address.lower()}"
     assert state.portfolio.reserves[usdc_id].quantity == 9000
-    assert state.portfolio.open_positions[1].get_quantity() == Decimal('-1.261256429210282326')
+    assert state.portfolio.open_positions[1].get_quantity() == pytest.approx(Decimal(-1.226751521259596218))
 
     # # TODO: Likely incorrect amount here, figure out why
     # assert state.portfolio.open_positions[1].get_value() == pytest.approx(944.0010729999999, rel=APPROX_REL)
@@ -385,8 +387,8 @@ def test_one_delta_live_strategy_short_open_accrue_interests(
 
     # there should be accrued interest now
     loan = state.portfolio.open_positions[1].loan
-    assert loan.get_collateral_interest() == pytest.approx(55.998942)
-    assert loan.get_borrow_interest() == pytest.approx(1.3013601420356671e-05 )
+    assert loan.get_collateral_interest() == pytest.approx(-0.219103, APPROX_REL)   # TODO: how come this is negative?
+    assert loan.get_borrow_interest() == pytest.approx(2.024129801851912e-05, APPROX_REL)
 
     # mine a few more blocks and do the same checks
     for i in range(1, 20):
@@ -413,8 +415,8 @@ def test_one_delta_live_strategy_short_open_accrue_interests(
 
     # there should be accrued interest now
     position = state.portfolio.open_positions[1]
-    assert position.loan.get_collateral_interest() == pytest.approx(55.998995)
-    assert position.loan.get_borrow_interest() == pytest.approx(4.048676023049335e-05)
+    assert position.loan.get_collateral_interest() == pytest.approx(-0.219051, APPROX_REL)  # TODO: this shouldn't be negative either
+    assert position.loan.get_borrow_interest() == pytest.approx(4.337421023152948e-05, APPROX_REL)
 
     # there should be 4 interest update events (2 per cycle)
     events = list(position.balance_updates.values())

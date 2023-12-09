@@ -864,7 +864,7 @@ class TradingPosition(GenericPosition):
                             start_collateral=self.loan.collateral.quantity,
                             start_borrowed=self.loan.borrowed.quantity,
                             close_size=quantity,
-                            borrowed_asset_price=assumed_price,
+                            borrowed_asset_price=planned_mid_price,
                             fee=self.pair.get_pricing_pair().fee,
                         )
 
@@ -885,6 +885,7 @@ class TradingPosition(GenericPosition):
 
                         accured_interest = self.loan.collateral_interest.last_accrued_interest
 
+                        # TODO: pass a flag to the function to decide if we want to withdraw all the interest or not
                         # Any leftover USD from the collateral is released to the reserves
                         planned_collateral_allocation = -leverage_estimate.total_collateral_quantity - accured_interest
 

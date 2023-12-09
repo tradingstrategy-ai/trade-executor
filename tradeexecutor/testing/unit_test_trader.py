@@ -202,6 +202,7 @@ class UnitTestTrader:
             closing=True,
             pair=pair,
             borrowed_asset_price=price,
+            planned_mid_price=price,
             trade_type=TradeType.rebalance,
             reserve_currency=pair.get_pricing_pair().quote,
             collateral_asset_price=1.0,
