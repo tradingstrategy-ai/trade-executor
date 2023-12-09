@@ -133,7 +133,6 @@ def test_generic_routing_live_trading_init(
         assert state.sync.deployment.block_number > 1
 
 
-@pytest.mark.skip(reason="This test is not yet finished")
 def test_generic_routing_live_trading_start(
     environment: dict,
     state_file: Path,

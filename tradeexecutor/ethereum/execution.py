@@ -356,6 +356,7 @@ class EthereumExecution(ExecutionModel):
             node_switch_timeout=datetime.timedelta(minutes=1),  # Rebroadcast every 1 minute
             check_nonce_validity=not rebroadcast,
             mine_blocks=True,
+
         )
 
         self.resolve_trades(

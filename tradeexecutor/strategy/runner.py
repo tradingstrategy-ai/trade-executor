@@ -564,7 +564,12 @@ class StrategyRunner(abc.ABC):
             else:
                 end_block = self.execution_model.get_safe_latest_block()
             logger.info("Post-trade accounts balance check for block %s, cycle %d", end_block, cycle)
-            self.check_accounts(universe, state, end_block=end_block)
+            self.check_accounts(
+                universe,
+                state,
+                end_block=end_block,
+                cycle=cycle,
+            )
 
     def tick(self,
              strategy_cycle_timestamp: datetime.datetime,
@@ -846,11 +851,12 @@ class StrategyRunner(abc.ABC):
         """
 
     def check_accounts(
-            self,
-            universe: TradingStrategyUniverse,
-            state: State,
-            report_only=False,
-            end_block: BlockNumber | NoneType = None
+        self,
+        universe: TradingStrategyUniverse,
+        state: State,
+        report_only=False,
+        end_block: BlockNumber | NoneType = None,
+        cycle: int | None = None,
     ):
         """Perform extra accounting checks on live trading startup.
 
@@ -893,7 +899,7 @@ class StrategyRunner(abc.ABC):
                 block_message = f"{end_block:,}" if end_block else "<latest>"
                 logger.log(
                     log_level,
-                    f"Accounting differences detected for: %s at block {block_message}\n"                    
+                    f"Accounting differences detected for: %s at block {block_message}, cycle {cycle}\n"                    
                     "Differences are:\n"
                     "%s",
                     address,
