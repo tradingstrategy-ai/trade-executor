@@ -84,6 +84,9 @@ class TradeFlag(enum.Enum):
 
     Added on :py:attr:`TradeExecution.flags` to give the execution
     more context about this trade.
+
+    A trade can have multiple flags. E.g. ``open`` and ``increase`` should be always
+    set together.
     """
 
     #: This trade opens a position
@@ -91,6 +94,12 @@ class TradeFlag(enum.Enum):
 
     #: This trade closes a position
     close = "close"
+
+    #: Increase existing position exposure
+    increase = "increase"
+
+    #: Reduce existing position exposure
+    reduce = "reduce"
 
     #: This trade closes a last position in the protocol.
     #:
