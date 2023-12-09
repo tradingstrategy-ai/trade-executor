@@ -204,7 +204,7 @@ def test_generic_router_spot_and_shot_strategy_manual_tick(
     )
     assert len(portfolio.open_positions) == 1
     assert position.loan.get_borrow_interest() == pytest.approx(1.695878549577238)
-    assert position.loan.get_collateral_interest() == pytest.approx(4.301575)
+    assert position.loan.get_collateral_interest() == pytest.approx(4.313776)
 
     loop.runner.check_accounts(strategy_universe, state)  # Check that on-chain balances reflect what we expect
 

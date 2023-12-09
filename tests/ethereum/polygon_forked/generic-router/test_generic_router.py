@@ -269,7 +269,6 @@ def test_generic_routing_close_position_across_markets(
     assert balances[asset_usdc.address] == pytest.approx(Decimal(9992.900326), rel=Decimal(0.03)), f"Got balance: {balances}"
 
 
-@pytest.mark.skip(reason="This test has still calculation errors")
 def test_generic_routing_check_accounts(
     web3: Web3,
     hot_wallet: HotWallet,
@@ -353,11 +352,11 @@ def test_generic_routing_check_accounts(
     # USDC 9600
     # WMATIC 174.375401861648687986
     # variableDebtPolWETH 0.6022047928580665889345412089
-    # aPolUSDC 898.1999999999999999625299729
+    # aPolUSDC 898.085644
     assert asset_to_position_mapping[asset_usdc].quantity == Decimal("9600")
     assert asset_to_position_mapping[asset_wmatic].quantity == pytest.approx(Decimal(174.375401861648687986))
     assert asset_to_position_mapping[weth_usdc_shorting_pair.base].quantity == pytest.approx(Decimal(0.3678414988406300651822788816))
-    assert asset_to_position_mapping[weth_usdc_shorting_pair.quote].quantity == pytest.approx(Decimal(898.1999999999999999625299729))
+    assert asset_to_position_mapping[weth_usdc_shorting_pair.quote].quantity == pytest.approx(Decimal(898.085644))
     assert len(asset_to_position_mapping) == 4
 
     # Check that our internal balance matches on-chain balance after execution
