@@ -268,6 +268,18 @@ def test_generic_routing_close_position_across_markets(
     # assert balances[asset_ausdc.address] == 0, f"Got balance: {balances}"
     assert balances[asset_usdc.address] == pytest.approx(Decimal(9992.900326), rel=Decimal(0.03)), f"Got balance: {balances}"
 
+    # Check that our internal balance matches on-chain balance after
+    # closing all the trades
+    corrections = calculate_account_corrections(
+        pair_universe=strategy_universe.data_universe.pairs,
+        reserve_assets=state.portfolio.get_reserve_assets(),
+        state=state,
+        sync_model=sync_model,
+        all_balances=False,
+    )
+    corrections = list(corrections)
+    assert len(corrections) == 0, f"Got corrections: {corrections}"
+
 
 def test_generic_routing_check_accounts(
     web3: Web3,
