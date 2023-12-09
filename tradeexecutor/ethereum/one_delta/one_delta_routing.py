@@ -475,11 +475,19 @@ class OneDeltaRouting(EthereumRoutingModel):
             assert (executed_collateral_consumption > 0) and (executed_amount != 0) and (price > 0), f"Executed amount {executed_amount}, executed collateral consumption: {executed_collateral_consumption},  executed_reserve: {executed_reserve}, price: {price}, tx info {trade.tx_info}"
 
             # update the executed loan
-            trade.executed_loan_update = trade.planned_loan_update
-            trade.executed_loan_update.collateral.quantity = executed_collateral_consumption + executed_collateral_allocation + executed_reserve
+            loan = trade.planned_loan_update.clone()
 
-            trade.executed_loan_update.borrowed.quantity = -executed_amount
-            trade.executed_loan_update.borrowed.last_usd_price = float(price)
+            # TODO: hack the loan number directly here, refactor
+            collateral_quantity = executed_collateral_consumption + executed_collateral_allocation + executed_reserve
+            borrowed_quantity = -executed_amount
+
+            loan.collateral.quantity = collateral_quantity
+            loan.collateral_interest.last_token_amount = collateral_quantity
+            loan.borrowed.quantity = borrowed_quantity
+            loan.borrowed_interest.last_token_amount = borrowed_quantity
+            loan.borrowed.last_usd_price = float(price)
+
+            trade.executed_loan_update = loan
 
             # Mark as success
             state.mark_trade_success(
