@@ -1211,7 +1211,7 @@ class PositionManager:
             planned_collateral_allocation=0,
             lp_fees_estimated=estimation.lp_fees,
             notes=notes,
-            flags=TradeFlag.open,
+            flags={TradeFlag.open},
         )
         assert created, f"open_short() was called, but there was an existing position for pair: {executor_pair}"
 
