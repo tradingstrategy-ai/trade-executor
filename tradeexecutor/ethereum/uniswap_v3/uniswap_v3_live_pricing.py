@@ -152,6 +152,7 @@ class UniswapV3LivePricing(EthereumPricingModel):
                     block_identifier=block_number,
                 )
             except Exception as e:
+                # Add more helpful debug context
                 raise RuntimeError(f"Could not get valid price for {target_pair}\n{base_addr}-{quote_addr} with intermediate {intermediate_addr}, quantity:{quantity} fee:{target_pair_fee}") from e
         
         if intermediate_pair:

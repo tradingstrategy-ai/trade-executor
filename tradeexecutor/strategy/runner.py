@@ -922,5 +922,6 @@ def post_process_trade_decision(state: State, trades: List[TradeExecution]):
     lending_positions_open = [p for p in state.portfolio.open_positions.values() if p.is_leverage()]
     lending_position_closing_trades = [t for t in trades if t.pair.is_leverage()]
     assert len(lending_positions_open) >= len(lending_position_closing_trades), "We cannot close more than we have open"
-    if len(lending_position_closing_trades) == len(lending_positions_open):
+    if len(lending_position_closing_trades) == len(lending_positions_open) and len(lending_positions_open) > 0:
         lending_position_closing_trades[-1].flags.add(TradeFlag.close_protocol_last)
+    return trades

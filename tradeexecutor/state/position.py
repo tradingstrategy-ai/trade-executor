@@ -7,7 +7,7 @@ import warnings
 from dataclasses import dataclass, field, asdict
 from decimal import Decimal
 
-from typing import Dict, Optional, List, Iterable, Tuple
+from typing import Dict, Optional, List, Iterable, Tuple, Set
 
 import numpy as np
 import pandas as pd
@@ -749,7 +749,7 @@ class TradingPosition(GenericPosition):
            planned_collateral_consumption: Optional[Decimal] = None,
            planned_collateral_allocation: Optional[Decimal] = None,
            exchange_name: Optional[str] = None,
-           flags: Optional[TradeFlag] = None,
+           flags: Optional[Set[TradeFlag]] = None,
         ) -> TradeExecution:
         """Open a new trade on position.
 
@@ -940,7 +940,7 @@ class TradingPosition(GenericPosition):
                 raise NotImplementedError(f"Does not know how to calculate quantities for open a trade on: {pair}")
 
         # TODO: Legacy compatibility.
-        # Rmeove when ready.
+        # Remove boolean when adding flags to the codebase is complete.
         if closing:
             flags.add(TradeFlag.close)
 

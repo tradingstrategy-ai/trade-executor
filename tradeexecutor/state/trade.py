@@ -232,6 +232,9 @@ class TradeExecution:
 
     #: Execution specific flags.
     #:
+    #: See :py:class:`TradeFlag` for info.
+    #: Not available on legacy data.
+    #:
     flags: Set[TradeFlag] = field(default=set)
 
     #: Planned amount of reserve currency that goes in or out to collateral.
