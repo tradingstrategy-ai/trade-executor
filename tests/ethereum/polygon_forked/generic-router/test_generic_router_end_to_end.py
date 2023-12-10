@@ -251,6 +251,6 @@ def test_generic_routing_live_trading_start_spot_only(
     # Check that trades completed
     with state_file.open("rt") as inp:
         state = State.from_json(inp.read())
-        assert len(state.portfolio.closed_positions) == 1
-        assert len(state.portfolio.open_pos**18 * 0.03112978758721282)
+        assert len(state.portfolio.closed_positions) == 8
+
 

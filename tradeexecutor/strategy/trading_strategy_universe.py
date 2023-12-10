@@ -1362,7 +1362,7 @@ def translate_token(
         token.symbol,
         token.decimals,
         underlying=underlying,
-        type=type,
+        type=AssetType.token,
         liquidation_threshold=liquidation_threshold,
     )
 
