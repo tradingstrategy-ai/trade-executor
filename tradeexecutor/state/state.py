@@ -30,6 +30,7 @@ from .visualisation import Visualisation
 from tradeexecutor.strategy.trade_pricing import TradePricing
 from ..strategy.cycle import CycleDuration
 from ..utils.accuracy import ZERO_DECIMAL
+from tradeexecutor.strategy.lending_protocol_leverage import create_short_loan, update_short_loan
 
 logger = logging.getLogger(__name__)
 
@@ -641,7 +642,25 @@ class State:
         # The loan status of the position is reflected back to be
         # whatever is on chain after the execution
         if trade.planned_loan_update:
-            assert trade.executed_loan_update, "TradeExecution.executed_loan_update structure not filled"
+            if not trade.executed_loan_update:
+                if position.is_short():
+                    if not position.loan:
+                        trade.executed_loan_update = create_short_loan(
+                            position,
+                            trade,
+                            executed_at,
+                            mode="execute",
+                        )
+                    else:
+                        trade.executed_loan_update = update_short_loan(
+                            position.loan.clone(),
+                            position,
+                            trade,
+                            mode="execute",
+                        )
+                else:
+                    raise NotImplementedError()
+
             position.loan = trade.executed_loan_update
 
         if trade.is_spot() and trade.is_sell():

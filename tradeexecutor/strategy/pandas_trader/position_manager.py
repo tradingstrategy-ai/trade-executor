@@ -1478,7 +1478,7 @@ class PositionManager:
                     reserve_currency=reserve_currency,
                     collateral_asset_price=1.0,
                     planned_collateral_allocation=reserves_released,
-                    # See comments in plan_loan_update_for_short()
+                    # See comments in update_short_loan()
                     planned_collateral_consumption=target_params.total_collateral_quantity - loan.collateral.quantity - reserves_released,
                     notes=notes,
                 )
