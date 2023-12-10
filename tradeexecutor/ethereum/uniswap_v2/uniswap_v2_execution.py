@@ -1,16 +1,6 @@
 """Execution model where trade happens directly on Uniswap v2 style exchange."""
 
-import datetime
-from decimal import Decimal
-import logging
-from typing import Dict
-
-from ethpm_types import HexBytes
-from web3 import Web3
-
-from eth_defi.hotwallet import HotWallet
-from eth_defi.token import fetch_erc20_details
-from eth_defi.trade import TradeSuccess, TradeFail
+from eth_defi.trade import TradeFail
 
 #from tradeexecutor.strategy.execution_model import ExecutionModel
 from tradeexecutor.ethereum.execution import EthereumExecution
