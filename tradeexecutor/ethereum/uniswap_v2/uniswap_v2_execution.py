@@ -1,28 +1,19 @@
 """Execution model where trade happens directly on Uniswap v2 style exchange."""
 
-from eth_defi.trade import TradeFail
-
-#from tradeexecutor.strategy.execution_model import ExecutionModel
-from tradeexecutor.ethereum.execution import EthereumExecution
-
-
 import logging
 import datetime
 from decimal import Decimal
 
 from web3 import Web3
 
-
-from eth_defi.hotwallet import HotWallet
+from eth_defi.trade import TradeFail
 from eth_defi.uniswap_v2.fees import estimate_sell_price_decimals
 from eth_defi.uniswap_v2.analysis import TradeSuccess, analyse_trade_by_receipt
 from eth_defi.uniswap_v2.deployment import UniswapV2Deployment, mock_partial_deployment_for_analysis
-from tradeexecutor.ethereum.swap import get_swap_transactions, report_failure
+
+from tradeexecutor.ethereum.execution import EthereumExecution
 from tradeexecutor.ethereum.tx import TransactionBuilder
 from tradeexecutor.state.identifier import TradingPairIdentifier
-from tradeexecutor.state.state import State
-from tradeexecutor.state.trade import TradeExecution
-from tradeexecutor.utils.blockchain import get_block_timestamp
 
 logger = logging.getLogger(__name__)
 
