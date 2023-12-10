@@ -62,6 +62,15 @@ def strategy_file() -> Path:
 
 
 @pytest.fixture()
+def spot_strategy_file() -> Path:
+    """Where do we load our strategy file."""
+    strat = Path(os.path.dirname(__file__)) / ".." / ".." / ".." / ".." / "strategies" / "test_only" / "generic_routing_end_to_end_spot.py"
+    strat = strat.resolve()
+    assert strat.exists(), f"Does not exist: {strat}"
+    return strat
+
+
+@pytest.fixture()
 def state_file() -> Path:
     """The state file for the tests.
 
@@ -213,3 +222,64 @@ def test_generic_routing_test_trade(
         assert reserve_value == pytest.approx(499.994009)
 
 
+def test_generic_routing_live_trading_start_spot_only(
+    environment: dict,
+    state_file: Path,
+    spot_strategy_file,
+):
+    """Run generic routing based executor live.
+
+    - Use a forked polygon
+
+    - Use a spot only stragegy (so we avoid issues with short brokeness)
+    """
+
+    environment["STRATEGY_FILE"] = spot_strategy_file.as_posix()
+
+    # Need to be initialised first
+    result = run_init(environment)
+    assert result.exit_code == 0
+
+    cli = get_command(app)
+
+    with patch.dict(os.environ, environment, clear=True):
+        with pytest.raises(SystemExit) as e:
+            cli.main(args=["start"])
+
+        assert e.value.code == 0
+
+    # Check that trades completed
+    with state_file.open("rt") as inp:
+        state = State.from_json(inp.read())
+        assert len(state.portfolio.closed_positions) == 8
+
+
+def test_generic_routing_test_trade_spot_only(
+    environment: dict,
+    web3: Web3,
+    state_file: Path,
+):
+    """Perform a test trade using a spot only generic routing strategy
+
+    - Forked Polygon mainnet
+
+    """
+
+    cli = get_command(app)
+
+    with patch.dict(os.environ, environment, clear=True):
+        with pytest.raises(SystemExit) as e:
+            cli.main(args=["init"])
+        assert e.value.code == 0
+
+    with patch.dict(os.environ, environment, clear=True):
+        with pytest.raises(SystemExit) as e:
+            cli.main(args=["perform-test-trade", "--all-pairs"])
+        assert e.value.code == 0
+
+    # Check the resulting state and see we made some trade for trading fee losses
+    with state_file.open("rt") as inp:
+        state: State = State.from_json(inp.read())
+        assert len(list(state.portfolio.get_all_trades())) == 4
+        reserve_value = state.portfolio.get_default_reserve_position().get_value()
+        assert reserve_value == pytest.approx(499.993009)

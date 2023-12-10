@@ -32,9 +32,7 @@ from tradingstrategy.types import PrimaryKey
 AssetFriendlyId: TypeAlias = str
 
 
-@dataclass_json
-@dataclass
-class AssetType:
+class AssetType(enum.Enum):
     """What kind of asset is this.
 
     We mark special tokens that are dynamically created
@@ -111,7 +109,7 @@ class AssetIdentifier:
     #:
     #: Legacy data will default to ``None``.
     #:
-    type: AssetType | None = None
+    type: Optional[AssetType] = None
 
     #: Aave liquidation threhold for this asset
     #:
@@ -135,12 +133,16 @@ class AssetIdentifier:
         return self.chain_id == other.chain_id and self.address == other.address
 
     def __post_init__(self):
+        """Validate asset description initialisation."""
         assert type(self.address) == str, f"Got address {self.address} as {type(self.address)}"
         assert self.address.startswith("0x")
         self.address= self.address.lower()
         assert type(self.chain_id) == int
         assert type(self.decimals) == int, f"Bad decimals {self.decimals}"
         assert self.decimals >= 0
+
+        if self.type:
+            assert isinstance(self.type, AssetType), f"Got {self.type.__class__}: {self.type}"
 
     def get_identifier(self) -> AssetFriendlyId:
         """Assets are identified by their smart contract address.

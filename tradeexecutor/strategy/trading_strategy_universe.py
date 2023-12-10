@@ -885,7 +885,7 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
             liquidity=dataset.liquidity,
             resampled_liquidity=dataset,
             exchange_universe=dataset.exchanges,
-            exchanges={e for e in dataset.exchanges.exchanges},
+            exchanges={e for e in dataset.exchanges.exchanges.values()},
             lending_candles=dataset.lending_candles,
         )
 
