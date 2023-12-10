@@ -139,17 +139,21 @@ class UniswapV3LivePricing(EthereumPricingModel):
 
             web3 = self.web3
             block_number = max(1, web3.eth.block_number - get_block_tip_latency(web3))
-
-            received_raw = estimate_sell_received_amount(
-                uniswap=self.get_uniswap(target_pair),
-                base_token_address=base_addr,
-                quote_token_address=quote_addr,
-                quantity=quantity_raw,
-                target_pair_fee=int(target_pair.fee * 1_000_000),
-                intermediate_token_address=intermediate_addr,
-                intermediate_pair_fee=int(intermediate_pair.fee * 1_000_000) if intermediate_pair else None,
-                block_identifier=block_number,
-            )
+            target_pair_fee = int(target_pair.fee * 1_000_000)
+            try:
+                received_raw = estimate_sell_received_amount(
+                    uniswap=self.get_uniswap(target_pair),
+                    base_token_address=base_addr,
+                    quote_token_address=quote_addr,
+                    quantity=quantity_raw,
+                    target_pair_fee=target_pair_fee,
+                    intermediate_token_address=intermediate_addr,
+                    intermediate_pair_fee=int(intermediate_pair.fee * 1_000_000) if intermediate_pair else None,
+                    block_identifier=block_number,
+                )
+            except Exception as e:
+                # Add more helpful debug context
+                raise RuntimeError(f"Could not get valid price for {target_pair}\n{base_addr}-{quote_addr} with intermediate {intermediate_addr}, quantity:{quantity} fee:{target_pair_fee}") from e
         
         if intermediate_pair:
             received = intermediate_pair.quote.convert_to_decimal(received_raw)

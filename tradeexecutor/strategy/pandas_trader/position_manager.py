@@ -18,7 +18,7 @@ from tradeexecutor.state.loan import LiquidationRisked
 from tradeexecutor.state.portfolio import Portfolio
 from tradeexecutor.state.position import TradingPosition, TriggerPriceUpdate
 from tradeexecutor.state.state import State
-from tradeexecutor.state.trade import TradeType, TradeExecution
+from tradeexecutor.state.trade import TradeType, TradeExecution, TradeFlag
 from tradeexecutor.state.types import USDollarAmount, Percent, LeverageMultiplier
 from tradeexecutor.strategy.pricing_model import PricingModel
 from tradeexecutor.strategy.trading_strategy_universe import translate_trading_pair, TradingStrategyUniverse
@@ -1211,6 +1211,7 @@ class PositionManager:
             planned_collateral_allocation=0,
             lp_fees_estimated=estimation.lp_fees,
             notes=notes,
+            flags={TradeFlag.open},
         )
         assert created, f"open_short() was called, but there was an existing position for pair: {executor_pair}"
 
@@ -1318,15 +1319,13 @@ class PositionManager:
             collateral_asset_price=1.0,
             notes=notes,
             position=position,
+            flags={TradeFlag.close},
         )
 
         assert position == position2, f"Somehow messed up the close_position() trade.\n" \
                                       f"Original position: {position}.\n" \
                                       f"Trade's position: {position2}.\n" \
-                                      f"Trade: {trade}\n" \
-                                      f"Quantity left: {quantity_left}\n" \
-                                      f"Price structure: {price_structure}\n" \
-                                      f"Reserve asset: {reserve_asset}\n"
+                                      f"Trade: {trade}\n"
 
         assert trade.closing
         return [trade]

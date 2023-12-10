@@ -6,7 +6,7 @@ import pprint
 import logging
 from dataclasses import dataclass, field, asdict
 from decimal import Decimal
-from typing import Optional, List
+from typing import Optional, List, Set
 from types import NoneType
 
 from dataclasses_json import dataclass_json
@@ -77,6 +77,35 @@ class TradeStatus(enum.Enum):
     #: A virtual trade to reverse any balances of a repaired trade.
     #:
     repair_entry = "repair_entry"
+
+
+class TradeFlag(enum.Enum):
+    """Trade execution flags.
+
+    Added on :py:attr:`TradeExecution.flags` to give the execution
+    more context about this trade.
+
+    A trade can have multiple flags. E.g. ``open`` and ``increase`` should be always
+    set together.
+    """
+
+    #: This trade opens a position
+    open = "open"
+
+    #: This trade closes a position
+    close = "close"
+
+    #: Increase existing position exposure
+    increase = "increase"
+
+    #: Reduce existing position exposure
+    reduce = "reduce"
+
+    #: This trade closes a last position in the protocol.
+    #:
+    #: Used to release collateral interest from Aave.
+    #:
+    close_protocol_last = "close_protocol_last"
 
 
 @dataclass_json
@@ -200,6 +229,13 @@ class TradeExecution:
     #: For single executer configuration, this value is left ``None``.
     #:
     route: str | None = None
+
+    #: Execution specific flags.
+    #:
+    #: See :py:class:`TradeFlag` for info.
+    #: Not available on legacy data.
+    #:
+    flags: Set[TradeFlag] | None = None
 
     #: Planned amount of reserve currency that goes in or out to collateral.
     #:
@@ -455,6 +491,8 @@ class TradeExecution:
     #:
     #: After this trade is executed, any position
     #: collateral should return to the cash reserves.
+    #:
+    #: TODO: Remove. Moved to :py:attr:`flags`.
     #:
     closing: Optional[bool] = None
 

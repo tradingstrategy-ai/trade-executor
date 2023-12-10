@@ -472,3 +472,6 @@ def test_execute_trade_instructions_open_and_close_short(
     portfolio = state.portfolio
     assert len(portfolio.open_positions) == 0
     assert len(portfolio.closed_positions) == 1
+
+
+
