@@ -254,3 +254,32 @@ def test_generic_routing_live_trading_start_spot_only(
         assert len(state.portfolio.closed_positions) == 8
 
 
+def test_generic_routing_test_trade_spot_only(
+    environment: dict,
+    web3: Web3,
+    state_file: Path,
+):
+    """Perform a test trade using a spot only generic routing strategy
+
+    - Forked Polygon mainnet
+
+    """
+
+    cli = get_command(app)
+
+    with patch.dict(os.environ, environment, clear=True):
+        with pytest.raises(SystemExit) as e:
+            cli.main(args=["init"])
+        assert e.value.code == 0
+
+    with patch.dict(os.environ, environment, clear=True):
+        with pytest.raises(SystemExit) as e:
+            cli.main(args=["perform-test-trade", "--all-pairs"])
+        assert e.value.code == 0
+
+    # Check the resulting state and see we made some trade for trading fee losses
+    with state_file.open("rt") as inp:
+        state: State = State.from_json(inp.read())
+        assert len(list(state.portfolio.get_all_trades())) == 4
+        reserve_value = state.portfolio.get_default_reserve_position().get_value()
+        assert reserve_value == pytest.approx(499.993009)
