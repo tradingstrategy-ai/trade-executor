@@ -121,8 +121,8 @@ def create_short_loan(
     assert pair.base.underlying, "Base token lacks underlying asset"
     assert pair.quote.underlying, "Quote token lacks underlying asset"
 
-    assert pair.base.type == AssetType.borrowed, f"Trading pair base asset is not borrowed: {pair.base}"
-    assert pair.quote.type == AssetType.collateral, f"Trading pair quote asset is not collateral: {pair.quote}"
+    assert pair.base.type == AssetType.borrowed, f"Trading pair base asset is not borrowed: {pair.base}, {pair.base.type}"
+    assert pair.quote.type == AssetType.collateral, f"Trading pair quote asset is not collateral: {pair.quote}, {pair.quote.type}"
 
     assert pair.quote.underlying.is_stablecoin(), f"Only stablecoin collateral supported for shorts: {pair.quote}"
 
