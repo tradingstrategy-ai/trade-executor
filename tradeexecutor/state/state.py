@@ -657,6 +657,7 @@ class State:
                             position,
                             trade,
                             mode="execute",
+                            close_position=TradeFlag.close in trade.flags,
                         )
                 else:
                     raise NotImplementedError()

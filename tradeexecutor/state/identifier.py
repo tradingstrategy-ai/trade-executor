@@ -651,6 +651,7 @@ class AssetWithTrackedValue:
         allow_negative: bool = False,
         available_accrued_interest: Decimal = Decimal(0),
         epsilon: Decimal = SUM_EPSILON,
+        close_position=False,
     ):
         """The tracked asset amount is changing due to position increase/reduce.
 
@@ -670,7 +671,15 @@ class AssetWithTrackedValue:
         if not allow_negative:
             total_available = self.quantity + available_accrued_interest
             s = sum_decimal((total_available, delta,), epsilon=epsilon)
-            assert s >= 0, f"Tracked asset cannot go negative: {self}. delta: {delta}, total available: {total_available}, sum: {s}, quantity: {self.quantity}, interest: {available_accrued_interest}"
+
+            # See close_position=True
+            #
+            # Round loan value to zero
+            #
+            if close_position and (abs(s) < abs(delta * epsilon)) and s != 0:
+                delta = -self.quantity
+            else:
+                assert s >= 0, f"Tracked asset cannot go negative: {self}. delta: {delta}, total available: {total_available}, sum: {s}, quantity: {self.quantity}, interest: {available_accrued_interest}"
 
         self.quantity += delta
 

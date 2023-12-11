@@ -15,7 +15,7 @@ from tradeexecutor.state.interest import Interest
 from tradeexecutor.state.loan import Loan, LiquidationRisked
 from tradeexecutor.state.trade import TradeExecution
 from tradeexecutor.state.types import USDollarAmount, LeverageMultiplier
-from tradeexecutor.utils.accuracy import COLLATERAL_EPSILON
+from tradeexecutor.utils.accuracy import COLLATERAL_EPSILON, CLOSE_POSITION_COLLATERAL_EPSILON
 
 
 def create_credit_supply_loan(
@@ -189,6 +189,7 @@ def update_short_loan(
     position: "tradeexecutor.state.position.TradingPosition",
     trade: TradeExecution,
     mode: Literal["plan", "execute"] = "plan",
+    close_position=False,
 ):
     """Update the loan data tracking for short position.
 
@@ -205,7 +206,13 @@ def update_short_loan(
     :param trade:
         The trade that is changing this loan
 
+    :param close_position:
+        Is this loan update for a position close.
 
+        For closing position, we hack a special tolerance for the collateral epsilon.
+
+        This is due to slippage collateral spilling to the next position
+        with the same collateral in Aave.
     """
     assert trade.is_short()
     assert len(position.trades) > 1, "Can be only called when closing/reducing/increasing/position"
@@ -236,7 +243,8 @@ def update_short_loan(
         trade.reserve_currency_exchange_rate,
         trade.opened_at,
         available_accrued_interest=available_collateral_interest,
-        epsilon=COLLATERAL_EPSILON,
+        epsilon=CLOSE_POSITION_COLLATERAL_EPSILON if close_position else COLLATERAL_EPSILON,
+        close_position=close_position,
     )
 
     # In short position, positive value reduces the borrowed amount
@@ -254,7 +262,7 @@ def update_short_loan(
     # Interest object has the cached last_token_amount decimal
     # which we also need to fxi
     loan.borrowed_interest.adjust(borrow_change)
-    loan.collateral_interest.adjust(collateral_change, epsilon=COLLATERAL_EPSILON)
+    loan.collateral_interest.adjust(collateral_change, epsilon=abs(CLOSE_POSITION_COLLATERAL_EPSILON * collateral_change) if close_position else COLLATERAL_EPSILON)
 
     # Sanity check
     if loan.borrowed.quantity > 0:

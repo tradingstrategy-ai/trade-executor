@@ -34,6 +34,14 @@ QUANTITY_EPSILON = Decimal(10**-18)
 COLLATERAL_EPSILON = Decimal(10**-5)
 
 
+#: When closing a position
+#:
+#: Any slippage we get spills to the next position with the same collateral
+#: and this is a short term hack to check for it.
+#:
+CLOSE_POSITION_COLLATERAL_EPSILON = Decimal(0.02)
+
+
 def setup_decimal_accuracy():
     """Make sure we can handle Decimals up to 18 digits.
 

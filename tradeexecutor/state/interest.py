@@ -124,7 +124,7 @@ class Interest:
         if abs(self.last_token_amount) < epsilon:
             self.last_token_amount = ZERO_DECIMAL
 
-        assert self.last_token_amount >= 0, f"last_token_amount cannot go negative on {self}: {delta}"
+        assert self.last_token_amount >= 0, f"last_token_amount cannot go negative. Got {self.last_token_amount} on {self}, delta was {delta}, epsilon was {epsilon}"
 
 
 
