@@ -151,9 +151,7 @@ class OneDeltaRoutingState(EthereumRoutingState):
             if TradeFlag.close_protocol_last in trade_flags:
                 withdraw_collateral_amount = MAX_AMOUNT
             else:
-                # TODO: this might not be a good place to use the slippage
-                # withdraw_collateral_amount = -collateral_amount
-                withdraw_collateral_amount = -int(collateral_amount * (1 - max_slippage))
+                withdraw_collateral_amount = -collateral_amount
 
             bound_func = close_short_position(
                 one_delta_deployment=one_delta,
