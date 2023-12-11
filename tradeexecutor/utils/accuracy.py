@@ -30,6 +30,10 @@ ZERO_DECIMAL = Decimal(0)
 QUANTITY_EPSILON = Decimal(10**-18)
 
 
+#: Dust quantity of collateral resulted from our calculations that can be considered zero
+COLLATERAL_EPSILON = Decimal(10**-5)
+
+
 def setup_decimal_accuracy():
     """Make sure we can handle Decimals up to 18 digits.
 
@@ -50,7 +54,10 @@ def setup_decimal_accuracy():
     #decimal.getcontext().prec = 78
 
 
-def sum_decimal(numbers: Iterable[Decimal]) -> Decimal:
+def sum_decimal(
+    numbers: Iterable[Decimal], 
+    epsilon=SUM_EPSILON,
+) -> Decimal:
     """Decimal safe sum().
 
     Looks like Python will fail to sum plus and minus decimals together even if they cancel each out:
@@ -71,7 +78,7 @@ def sum_decimal(numbers: Iterable[Decimal]) -> Decimal:
 
     """
     total = sum(numbers)
-    if abs(total) < SUM_EPSILON:
+    if abs(total) < epsilon:
         return ZERO_DECIMAL
     return total
 

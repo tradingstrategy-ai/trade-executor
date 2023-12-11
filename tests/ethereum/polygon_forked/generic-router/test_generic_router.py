@@ -297,9 +297,7 @@ def test_generic_routing_close_position_across_markets(
     assert balances[asset_weth.address] == 0, f"Got balance: {balances}"
     assert balances[asset_vweth.address] == 0, f"Got balance: {balances}"
 
-    # TODO: still have dust left in Aave, fix this later
-    assert balances[asset_ausdc.address] == pytest.approx(Decimal(2.95866)), f"Got balance: {balances}"
-    # assert balances[asset_ausdc.address] == 0, f"Got balance: {balances}"
+    assert balances[asset_ausdc.address] == 0, f"Got balance: {balances}"
     assert balances[asset_usdc.address] == pytest.approx(Decimal(9992.900326), rel=Decimal(0.03)), f"Got balance: {balances}"
 
     # Check that our internal balance matches on-chain balance after

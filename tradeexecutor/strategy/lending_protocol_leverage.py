@@ -15,6 +15,7 @@ from tradeexecutor.state.interest import Interest
 from tradeexecutor.state.loan import Loan, LiquidationRisked
 from tradeexecutor.state.trade import TradeExecution
 from tradeexecutor.state.types import USDollarAmount, LeverageMultiplier
+from tradeexecutor.utils.accuracy import COLLATERAL_EPSILON
 
 
 def create_credit_supply_loan(
@@ -235,6 +236,7 @@ def update_short_loan(
         trade.reserve_currency_exchange_rate,
         trade.opened_at,
         available_accrued_interest=available_collateral_interest,
+        epsilon=COLLATERAL_EPSILON,
     )
 
     # In short position, positive value reduces the borrowed amount
@@ -252,7 +254,7 @@ def update_short_loan(
     # Interest object has the cached last_token_amount decimal
     # which we also need to fxi
     loan.borrowed_interest.adjust(borrow_change)
-    loan.collateral_interest.adjust(collateral_change)
+    loan.collateral_interest.adjust(collateral_change, epsilon=COLLATERAL_EPSILON)
 
     # Sanity check
     if loan.borrowed.quantity > 0:

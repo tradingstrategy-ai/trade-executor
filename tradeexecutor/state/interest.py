@@ -110,7 +110,7 @@ class Interest:
         """Update interest payments needed to maintain the borrowed debt."""
         self.interest_payments += quantity
 
-    def adjust(self, delta: Decimal):
+    def adjust(self, delta: Decimal, epsilon: Decimal = QUANTITY_EPSILON):
         """Adjust the quantity on this loan.
 
         Used when doing increase/reduce shorts to get a new amount.
@@ -121,7 +121,7 @@ class Interest:
         """
         self.last_token_amount += delta
 
-        if abs(self.last_token_amount) < QUANTITY_EPSILON:
+        if abs(self.last_token_amount) < epsilon:
             self.last_token_amount = ZERO_DECIMAL
 
         assert self.last_token_amount >= 0, f"last_token_amount cannot go negative on {self}: {delta}"
