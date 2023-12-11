@@ -8,19 +8,18 @@ from dataclasses import dataclass, field
 from decimal import Decimal
 from typing import Optional, Literal, TypeAlias
 
+from web3 import Web3
 from dataclasses_json import dataclass_json
 from eth_typing import HexAddress
 
 from eth_defi.uniswap_v2.utils import sort_tokens
-from tradeexecutor.utils.accuracy import sum_decimal, ensure_exact_zero
 from tradingstrategy.chain import ChainId
-from web3 import Web3
-
-from tradeexecutor.state.types import JSONHexAddress, USDollarAmount, LeverageMultiplier, USDollarPrice, Percent
 from tradingstrategy.lending import LendingProtocolType
 from tradingstrategy.stablecoin import is_stablecoin_like
 from tradingstrategy.types import PrimaryKey
 
+from tradeexecutor.utils.accuracy import sum_decimal, ensure_exact_zero, SUM_EPSILON
+from tradeexecutor.state.types import JSONHexAddress, USDollarAmount, LeverageMultiplier, USDollarPrice, Percent
 
 #: Asset unique id as a human-readable string.
 #:
@@ -649,8 +648,10 @@ class AssetWithTrackedValue:
         delta: Decimal,
         price: USDollarPrice,
         when: datetime.datetime,
-        allow_negative=False,
+        allow_negative: bool = False,
         available_accrued_interest: Decimal = Decimal(0),
+        epsilon: Decimal = SUM_EPSILON,
+        close_position=False,
     ):
         """The tracked asset amount is changing due to position increase/reduce.
 
@@ -669,12 +670,21 @@ class AssetWithTrackedValue:
 
         if not allow_negative:
             total_available = self.quantity + available_accrued_interest
-            assert sum_decimal((total_available, delta,)) >= 0, f"Tracked asset cannot go negative: {self}. delta: {delta}, total available: {total_available}, quantity: {self.quantity}, interest: {available_accrued_interest}"
+            s = sum_decimal((total_available, delta,), epsilon=epsilon)
+
+            # See close_position=True
+            #
+            # Round loan value to zero
+            #
+            if close_position and (abs(s) < abs(delta * epsilon)) and s != 0:
+                delta = -self.quantity
+            else:
+                assert s >= 0, f"Tracked asset cannot go negative: {self}. delta: {delta}, total available: {total_available}, sum: {s}, quantity: {self.quantity}, interest: {available_accrued_interest}"
 
         self.quantity += delta
 
         # Fix decimal math issues
-        self.quantity = ensure_exact_zero(self.quantity)
+        self.quantity = ensure_exact_zero(self.quantity, epsilon=epsilon)
 
         # TODO: this is a temp hack for testing to make sure the borrowed quantity can be minimum 0
         if self.quantity < 0:

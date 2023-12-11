@@ -15,6 +15,7 @@ from tradeexecutor.state.interest import Interest
 from tradeexecutor.state.loan import Loan, LiquidationRisked
 from tradeexecutor.state.trade import TradeExecution
 from tradeexecutor.state.types import USDollarAmount, LeverageMultiplier
+from tradeexecutor.utils.accuracy import COLLATERAL_EPSILON, CLOSE_POSITION_COLLATERAL_EPSILON
 
 
 def create_credit_supply_loan(
@@ -100,6 +101,7 @@ def create_short_loan(
     position: "tradeexecutor.state.position.TradingPosition",
     trade: TradeExecution,
     timestamp: datetime.datetime,
+    mode: Literal["plan", "execute"] = "plan",
 ) -> Loan:
     """Create the loan data tracking for short position.
 
@@ -126,23 +128,35 @@ def create_short_loan(
 
     assert pair.quote.underlying.is_stablecoin(), f"Only stablecoin collateral supported for shorts: {pair.quote}"
 
-    # Extra checks when position is opened
-    assert trade.planned_quantity < 0, f"Short position must open with a sell with negative quantity, got: {trade.planned_quantity}"
+    if mode == "plan":
+        # Extra checks when position is opened
+        assert trade.planned_quantity < 0, f"Short position must open with a sell with negative quantity, got: {trade.planned_quantity}"
 
-    if not trade.planned_collateral_allocation:
-        assert trade.planned_reserve > 0, f"Collateral must be positive: {trade.planned_reserve}"
+        if not trade.planned_collateral_allocation:
+            assert trade.planned_reserve > 0, f"Collateral must be positive: {trade.planned_reserve}"
+    
+        borrowed_quantity = abs(trade.planned_quantity)
+        collateral_quantity = trade.planned_reserve + trade.planned_collateral_allocation + trade.planned_collateral_consumption
+    else:
+        # Extra checks when position is closed
+        assert trade.executed_quantity < 0, f"Short position open with a sell with negative quantity, got: {trade.executed_quantity}"
+
+        if not trade.executed_collateral_allocation:
+            assert trade.executed_reserve > 0, f"Collateral must be positive: {trade.executed_reserve}"
+
+        borrowed_quantity = abs(trade.executed_quantity)
+        collateral_quantity = trade.executed_reserve + trade.executed_collateral_allocation + trade.executed_collateral_consumption
 
     # vToken
     borrowed = AssetWithTrackedValue(
         asset=pair.base,
         last_usd_price=trade.planned_price,
         last_pricing_at=datetime.datetime.utcnow(),
-        quantity=abs(trade.planned_quantity),
+        quantity=borrowed_quantity,
         created_strategy_cycle_at=trade.strategy_cycle_at,
     )
 
     # aToken
-
     #
     # The expected collateral
     # is our collateral allocation (reserve)
@@ -153,7 +167,7 @@ def create_short_loan(
         asset=pair.quote,
         last_usd_price=trade.reserve_currency_exchange_rate,
         last_pricing_at=datetime.datetime.utcnow(),
-        quantity=trade.planned_reserve + trade.planned_collateral_allocation + trade.planned_collateral_consumption,
+        quantity=collateral_quantity,
     )
 
     loan = Loan(
@@ -170,10 +184,12 @@ def create_short_loan(
     return loan
 
 
-def plan_loan_update_for_short(
+def update_short_loan(
     loan: Loan,
     position: "tradeexecutor.state.position.TradingPosition",
     trade: TradeExecution,
+    mode: Literal["plan", "execute"] = "plan",
+    close_position=False,
 ):
     """Update the loan data tracking for short position.
 
@@ -190,28 +206,45 @@ def plan_loan_update_for_short(
     :param trade:
         The trade that is changing this loan
 
+    :param close_position:
+        Is this loan update for a position close.
 
+        For closing position, we hack a special tolerance for the collateral epsilon.
+
+        This is due to slippage collateral spilling to the next position
+        with the same collateral in Aave.
     """
     assert trade.is_short()
     assert len(position.trades) > 1, "Can be only called when closing/reducing/increasing/position"
 
-    planned_collateral_consumption = trade.planned_collateral_consumption or Decimal(0)
-    planned_collateral_allocation = trade.planned_collateral_allocation or Decimal(0)
-    reserve_adjust = trade.planned_reserve or Decimal(0)
-
     # TODO: How planned_collateral_consumption + planned_collateral_allocation
     # might not be the best way to do this, see test_short_decrease_size
 
-    available_collateral_interest = loan.collateral_interest.get_remaining_interest()
+    if mode == "plan":
+        collateral_consumption = trade.planned_collateral_consumption or Decimal(0)
+        collateral_allocation = trade.planned_collateral_allocation or Decimal(0)
+        reserve_adjust = trade.planned_reserve or Decimal(0)
 
-    collateral_change = planned_collateral_consumption + planned_collateral_allocation + reserve_adjust
+        borrow_change = -trade.planned_quantity
+    else:
+        collateral_consumption = trade.executed_collateral_consumption or Decimal(0)
+        collateral_allocation = trade.executed_collateral_allocation or Decimal(0)
+        reserve_adjust = trade.executed_reserve or Decimal(0)
+
+        borrow_change = -trade.executed_quantity
+
+    collateral_change = collateral_consumption + collateral_allocation + reserve_adjust
     borrow_change = -trade.planned_quantity
+
+    available_collateral_interest = loan.collateral_interest.get_remaining_interest()
 
     loan.collateral.change_quantity_and_value(
         collateral_change,
         trade.reserve_currency_exchange_rate,
         trade.opened_at,
         available_accrued_interest=available_collateral_interest,
+        epsilon=CLOSE_POSITION_COLLATERAL_EPSILON if close_position else COLLATERAL_EPSILON,
+        close_position=close_position,
     )
 
     # In short position, positive value reduces the borrowed amount
@@ -229,7 +262,7 @@ def plan_loan_update_for_short(
     # Interest object has the cached last_token_amount decimal
     # which we also need to fxi
     loan.borrowed_interest.adjust(borrow_change)
-    loan.collateral_interest.adjust(collateral_change)
+    loan.collateral_interest.adjust(collateral_change, epsilon=abs(CLOSE_POSITION_COLLATERAL_EPSILON * collateral_change) if close_position else COLLATERAL_EPSILON)
 
     # Sanity check
     if loan.borrowed.quantity > 0:

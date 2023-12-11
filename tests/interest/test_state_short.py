@@ -2066,7 +2066,7 @@ def test_short_decrease_size(
         reserve_currency=usdc,
         collateral_asset_price=1.0,
         planned_collateral_allocation=-reserves_released,
-        # See comments in plan_loan_update_for_short()
+        # See comments in update_short_loan()
         planned_collateral_consumption=target_params.total_collateral_quantity - loan.collateral.quantity + reserves_released,
     )
 
@@ -2078,7 +2078,7 @@ def test_short_decrease_size(
     assert trade_2.planned_loan_update.collateral.quantity == pytest.approx(Decimal(928.571427857142816440573790))
     assert trade_2.planned_loan_update.get_leverage() == pytest.approx(1.1428571428571423)
 
-    # See comments in plan_loan_update_for_short()
+    # See comments in update_short_loan()
     assert trade_2.planned_collateral_consumption == pytest.approx(Decimal('-571.428572142857128048274979'))
     assert trade_2.planned_collateral_allocation == pytest.approx(Decimal('-500'))
 

@@ -13,7 +13,7 @@ from eth_defi.gas import estimate_gas_fees
 from tradeexecutor.ethereum.tx import HotWalletTransactionBuilder
 from tradeexecutor.state.blockhain_transaction import BlockchainTransaction
 from tradeexecutor.state.identifier import TradingPairIdentifier, AssetIdentifier
-from tradeexecutor.state.trade import TradeExecution
+from tradeexecutor.state.trade import TradeExecution, TradeFlag
 from tradeexecutor.strategy.routing import RoutingModel, CannotRouteTrade
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse, translate_trading_pair, \
     translate_token
@@ -212,7 +212,8 @@ class EthereumRoutingModel(RoutingModel):
         reserve_amount: int,
         max_slippage: Percent,
         address_map: Dict,
-        check_balances=False,
+        trade_flags: set[TradeFlag],
+        check_balances: bool = False,
         asset_deltas: Optional[List[AssetDelta]] = None,
         notes="",
     ) -> List[BlockchainTransaction]:
@@ -267,6 +268,7 @@ class EthereumRoutingModel(RoutingModel):
             borrow_amount=borrow_amount,
             reserve_amount=reserve_amount,
             max_slippage=max_slippage,
+            trade_flags=trade_flags,
             check_balances=check_balances,
             asset_deltas=asset_deltas,
             notes=notes,
@@ -423,6 +425,7 @@ class EthereumRoutingModel(RoutingModel):
                     collateral_amount=t.get_raw_planned_collateral_allocation(),
                     reserve_amount=t.get_raw_planned_reserve(),
                     max_slippage=max_slippage,
+                    trade_flags=t.flags,
                     check_balances=check_balances,
                     asset_deltas=asset_deltas,
                     notes=notes,

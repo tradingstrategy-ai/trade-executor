@@ -30,11 +30,13 @@ from eth_defi.one_delta.position import (
     open_short_position,
 )
 from eth_defi.utils import ZERO_ADDRESS_STR
+from eth_defi.aave_v3.constants import MAX_AMOUNT
 
 from tradeexecutor.state.types import Percent
 from tradeexecutor.ethereum.tx import HotWalletTransactionBuilder
 from tradeexecutor.state.identifier import TradingPairIdentifier, AssetIdentifier
 from tradeexecutor.state.blockhain_transaction import BlockchainTransaction
+from tradeexecutor.state.trade import TradeFlag
 from tradeexecutor.strategy.universe_model import StrategyExecutionUniverse
 from tradeexecutor.strategy.interest import set_interest_checkpoint
 from tradeexecutor.ethereum.routing_state import (
@@ -104,7 +106,8 @@ class OneDeltaRoutingState(EthereumRoutingState):
         borrow_amount: int,
         reserve_amount: int,
         max_slippage: Percent,
-        check_balances: False,
+        trade_flags: set[TradeFlag],
+        check_balances: bool = False,
         asset_deltas: Optional[List[AssetDelta]] = None,
         notes="",
     ):
@@ -144,9 +147,12 @@ class OneDeltaRoutingState(EthereumRoutingState):
             # TODO: planned_reserve-planned_collateral_allocation refactor later
             assert collateral_amount < 0
             assert reserve_amount == 0
-            # TODO: this might not be a good place to use the slippage
-            # withdraw_collateral_amount = -collateral_amount
-            withdraw_collateral_amount = -int(collateral_amount * (1 - max_slippage))
+
+            if TradeFlag.close_protocol_last in trade_flags:
+                withdraw_collateral_amount = MAX_AMOUNT
+            else:
+                withdraw_collateral_amount = -collateral_amount
+
             bound_func = close_short_position(
                 one_delta_deployment=one_delta,
                 collateral_token=quote_token,
@@ -392,7 +398,8 @@ class OneDeltaRouting(EthereumRoutingModel):
         collateral_amount: int,
         reserve_amount: int,
         max_slippage: float,
-        check_balances=False,
+        trade_flags: set[TradeFlag],
+        check_balances: bool = False,
         asset_deltas: Optional[List[AssetDelta]] = None,
         notes="",
     ) -> list[BlockchainTransaction]:
@@ -405,6 +412,7 @@ class OneDeltaRouting(EthereumRoutingModel):
             reserve_amount=reserve_amount,
             max_slippage=max_slippage,
             address_map=self.address_map,
+            trade_flags=trade_flags,
             check_balances=check_balances,
             asset_deltas=asset_deltas,
             notes=notes,
@@ -459,16 +467,14 @@ class OneDeltaRouting(EthereumRoutingModel):
             
             if trade.is_buy():
                 executed_amount = -result.amount_out / Decimal(10 ** base_token_details.decimals)
-                executed_collateral_consumption = result.amount_in / Decimal(10 ** reserve.decimals)
-                # TODO
+                executed_collateral_consumption = -result.amount_in / Decimal(10 ** reserve.decimals)
+                # TODO: planned_reserve-planned_collateral_allocation refactor later
                 executed_collateral_allocation = Decimal(collateral_amount) / Decimal(10 ** reserve.decimals)
-                # TODO: double check
                 executed_reserve = 0
             else:
                 executed_amount = result.amount_in / Decimal(10 ** base_token_details.decimals)
                 executed_collateral_consumption = result.amount_out / Decimal(10 ** reserve.decimals)
                 executed_collateral_allocation = 0
-                # TODO: get from supply() maybe?
                 executed_reserve = Decimal(collateral_amount) / Decimal(10 ** reserve.decimals)
 
             if trade.is_short():
@@ -476,22 +482,7 @@ class OneDeltaRouting(EthereumRoutingModel):
 
             lp_fee_paid = result.lp_fee_paid
 
-            assert (executed_collateral_consumption > 0) and (executed_amount != 0) and (price > 0), f"Executed amount {executed_amount}, executed collateral consumption: {executed_collateral_consumption},  executed_reserve: {executed_reserve}, price: {price}, tx info {trade.tx_info}"
-
-            # update the executed loan
-            loan = trade.planned_loan_update.clone()
-
-            # TODO: hack the loan number directly here, refactor
-            collateral_quantity = executed_collateral_consumption + executed_collateral_allocation + executed_reserve
-            borrowed_quantity = -executed_amount
-
-            loan.collateral.quantity = collateral_quantity
-            loan.collateral_interest.last_token_amount = collateral_quantity
-            loan.borrowed.quantity = borrowed_quantity
-            loan.borrowed_interest.last_token_amount = borrowed_quantity
-            loan.borrowed.last_usd_price = float(price)
-
-            trade.executed_loan_update = loan
+            assert (executed_amount != 0) and (price > 0), f"Executed amount {executed_amount}, executed collateral consumption: {executed_collateral_consumption},  executed_reserve: {executed_reserve}, price: {price}"
 
             # Mark as success
             state.mark_trade_success(
