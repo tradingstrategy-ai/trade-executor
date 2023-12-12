@@ -93,7 +93,7 @@ def test_hot_wallet_gas_level_warning_set(
 
     # Warning level 1000 ETH
     run_state = RunState()
-    run_state.hot_wallet_gas_warning_level = 1000 * 10**18
+    run_state.hot_wallet_gas_warning_level = 1000
 
     flag = perform_gas_level_checks(
         web3,
@@ -102,7 +102,7 @@ def test_hot_wallet_gas_level_warning_set(
     )
 
     assert flag
-    assert run_state.hot_wallet_gas_warning_message
+    assert run_state.hot_wallet_gas_warning_message == f"Hot wallet address 0x084258cCef54100E18277ce188a665bd53AD27D1, gas is 15.0 tokens, warning level is 1000"
 
 
 def test_hot_wallet_gas_level_warning_not_set(
