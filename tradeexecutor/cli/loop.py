@@ -335,13 +335,14 @@ class ExecutionLoop:
         # Set gas level warning
         sync_model = self.sync_model
         hot_wallet = sync_model.get_hot_wallet()
-        web3 = sync_model.web3  # TODO: Typing
+        web3 = getattr(sync_model, "web3", None)  # TODO: Typing
 
-        perform_gas_level_checks(
-            web3,
-            run_state,
-            hot_wallet,
-        )
+        if web3 is not None:
+            perform_gas_level_checks(
+                web3,
+                run_state,
+                hot_wallet,
+            )
 
         # Mark last refreshed
         run_state.bumb_refreshed()
