@@ -22,6 +22,8 @@ from tradeexecutor.backtest.backtest_sync import BacktestSyncModel
 from tradeexecutor.cli.watchdog import create_watchdog_registry, register_worker, mark_alive, start_background_watchdog, \
     WatchdogMode
 from tradeexecutor.ethereum.enzyme.vault import EnzymeVaultSyncModel
+from tradeexecutor.ethereum.tx import TransactionBuilder
+from tradeexecutor.ethereum.wallet import perform_gas_level_checks
 from tradeexecutor.state.metadata import Metadata
 from tradeexecutor.statistics.summary import calculate_summary_statistics
 from tradeexecutor.strategy.account_correction import check_accounts, UnexpectedAccountingCorrectionIssue
@@ -288,11 +290,11 @@ class ExecutionLoop:
         if self.run_state:
             self.run_state.source_code = run_description.source_code
 
-    def     refresh_live_run_state(
-            self,
-            state: State,
-            visualisation=False,
-            universe: TradingStrategyUniverse=None,
+    def  refresh_live_run_state(
+        self,
+        state: State,
+        visualisation=False,
+        universe: TradingStrategyUniverse=None,
     ):
         """Update the in-process strategy context which we serve over the webhook.
 
@@ -329,6 +331,18 @@ class ExecutionLoop:
         if visualisation:
             assert universe, "Candle data must be available to update visualisations"
             self.runner.refresh_visualisations(state, universe)
+
+        # Set gas level warning
+        sync_model = self.sync_model
+        hot_wallet = sync_model.get_hot_wallet()
+        web3 = getattr(sync_model, "web3", None)  # TODO: Typing
+
+        if web3 is not None:
+            perform_gas_level_checks(
+                web3,
+                run_state,
+                hot_wallet,
+            )
 
         # Mark last refreshed
         run_state.bumb_refreshed()
