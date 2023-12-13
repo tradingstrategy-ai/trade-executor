@@ -160,7 +160,7 @@ def perform_gas_level_checks(
 
     if hot_wallet_gas_warning_level is not None:
         if gas < hot_wallet_gas_warning_level:
-            gas_warn_message = f"Hot wallet address {hot_wallet.address}, gas is {gas} tokens, warning level is {hot_wallet_gas_warning_level}"
+            gas_warn_message = f"Hot wallet running low on gas money.\nHot wallet address {hot_wallet.address}, gas is {gas} tokens, warning level is {hot_wallet_gas_warning_level} native tokens."
             logger.warning(gas_warn_message)
             run_state.hot_wallet_gas_warning_message = gas_warn_message
             return True

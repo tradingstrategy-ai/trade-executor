@@ -102,7 +102,7 @@ def test_hot_wallet_gas_level_warning_set(
     )
 
     assert flag
-    assert run_state.hot_wallet_gas_warning_message == f"Hot wallet address {hot_wallet.address}, gas is 15.0 tokens, warning level is 1000"
+    assert run_state.hot_wallet_gas_warning_message == f"Hot wallet running low on gas money.\nHot wallet address {hot_wallet.address}, gas is 15.0 tokens, warning level is 1000 native tokens."
 
 
 def test_hot_wallet_gas_level_warning_not_set(
