@@ -144,6 +144,8 @@ def perform_gas_level_checks(
 
     - Does not do anything if warning gas level is not set
 
+    - Clear the existing warning, if the gas warning light is on
+
     :param hot_wallet_gas_warning_level:
         Set this or one in ``RunState.hot_wallet_gas_warning_level``.
 
