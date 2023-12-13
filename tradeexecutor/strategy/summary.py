@@ -41,6 +41,141 @@ class KeyMetricKind(enum.Enum):
     #: Trades last week
     trades_last_week = "trades_last_week"
 
+    #: Duration of the trading period
+    trading_period_length = "trading_period_length"
+
+    #: Percentage return over the trading period
+    return_percent = "return_percent"
+
+    #: Annualized percentage return, adjusted for the length of the trading period
+    annualised_return_percent = "annualised_return_percent"
+
+    #: Initial cash amount at the start of the trading period
+    cash_at_start = "cash_at_start"
+
+    #: Portfolio value at the end of the trading period
+    value_at_end = "value_at_end"
+
+    #: Total value of all trades conducted
+    trade_volume = "trade_volume"
+
+    #: Percentage of positions that were profitable
+    position_win_percent = "position_win_percent"
+
+    #: Total number of trading positions taken
+    total_positions = "total_positions"
+
+    #: Number of positions that resulted in a profit
+    won_positions = "won_positions"
+
+    #: Number of positions that resulted in a loss
+    lost_positions = "lost_positions"
+
+    #: Number of times stop losses were triggered
+    stop_losses_triggered = "stop_losses_triggered"
+
+    #: Percentage of all positions where stop losses were triggered
+    stop_loss_percent_of_all = "stop_loss_percent_of_all"
+
+    #: Percentage of losing positions where stop losses were triggered
+    stop_loss_percent_of_lost = "stop_loss_percent_of_lost"
+
+    #: Number of winning positions where stop losses were set
+    winning_stop_losses = "winning_stop_losses"
+
+    #: Percentage of winning positions where stop losses were set
+    winning_stop_losses_percent = "winning_stop_losses_percent"
+
+    #: Number of losing positions where stop losses were triggered
+    losing_stop_losses = "losing_stop_losses"
+
+    #: Percentage of losing positions where stop losses were triggered
+    losing_stop_losses_percent = "losing_stop_losses_percent"
+
+    #: Number of times take profits were triggered
+    take_profits_triggered = "take_profits_triggered"
+
+    #: Percentage of all positions where take profits were triggered
+    take_profit_percent_of_all = "take_profit_percent_of_all"
+
+    #: Percentage of winning positions where take profits were triggered
+    take_profit_percent_of_won = "take_profit_percent_of_won"
+
+    #: Number of positions closed with zero profit or loss
+    zero_profit_positions = "zero_profit_positions"
+
+    #: Number of positions still open at the end of the trading period
+    positions_open_at_the_end = "positions_open_at_the_end"
+
+    #: Total realized profit and loss from all closed positions
+    realised_profit_and_loss = "realised_profit_and_loss"
+
+    #: Unrealized profit and loss from positions still open
+    unrealised_profit_and_loss = "unrealised_profit_and_loss"
+
+    #: Unrealized value of the portfolio
+    portfolio_unrealised_value = "portfolio_unrealised_value"
+
+    #: Extra returns earned from lending pool interest
+    extra_returns_on_lending_pool_interest = "extra_returns_on_lending_pool_interest"
+
+    #: Cash amount remaining at the end of the trading period
+    cash_left_at_the_end = "cash_left_at_the_end"
+
+    #: Average profit percentage for winning positions
+    average_winning_position_profit_percent = "average_winning_position_profit_percent"
+
+    #: Average loss percentage for losing positions
+    average_losing_position_loss_percent = "average_losing_position_loss_percent"
+
+    #: Largest percentage profit for a single position
+    biggest_winning_position_percent = "biggest_winning_position_percent"
+
+    #: Largest percentage loss for a single position
+    biggest_losing_position_percent = "biggest_losing_position_percent"
+
+    #: Average duration for positions that ended in profit
+    average_duration_of_winning_positions = "average_duration_of_winning_positions"
+
+    #: Average duration for positions that ended in loss
+    average_duration_of_losing_positions = "average_duration_of_losing_positions"
+
+    #: Average number of price bars for winning positions
+    average_bars_of_winning_positions = "average_bars_of_winning_positions"
+
+    #: Average number of price bars for losing positions
+    average_bars_of_losing_positions = "average_bars_of_losing_positions"
+
+    #: Total liquidity provider fees paid
+    lp_fees_paid = "lp_fees_paid"
+
+    #: Percentage of trade volume spent on liquidity provider fees
+    lp_fees_paid_percent_of_volume = "lp_fees_paid_percent_of_volume"
+
+    #: Average profit or loss for all positions
+    average_position = "average_position"
+
+    #: Median profit or loss for all positions
+    median_position = "median_position"
+
+    #: Highest number of consecutive winning trades
+    most_consecutive_wins = "most_consecutive_wins"
+
+    #: Highest number of consecutive losing trades
+    most_consecutive_losses = "most_consecutive_losses"
+
+    #: Largest risk realized in a single trade
+    biggest_realised_risk = "biggest_realised_risk"
+
+    #: Average risk realized across all trades
+    avg_realised_risk = "avg_realised_risk"
+
+    #: Maximum percentage pullback from peak capital
+    max_pullback_of_total_capital = "max_pullback_of_total_capital"
+
+    #: Maximum loss risked at the opening of a position
+    max_loss_risk_at_opening_of_position = "max_loss_risk_at_opening_of_position"
+
     def get_help_link(self) -> Optional[str]:
         return _KEY_METRIC_HELP[self]
 
