@@ -298,6 +298,9 @@ def calculate_key_metrics(
         help_link=KeyMetricKind.trades_last_week.get_help_link(),
     )
 
+    long_short_table = calculate_long_short_metrics(source_state, source)
+    yield from (row for row in long_short_table.rows.values())
+
 
 class StatisticsTable:
       
@@ -329,7 +332,8 @@ class StatisticsTable:
 
 
 def calculate_long_short_metrics(
-    source_state: State
+    source_state: State,
+    source: KeyMetricSource,
 ) -> StatisticsTable:
     """Calculate long/short statistics for the summary tile.
 
@@ -338,7 +342,7 @@ def calculate_long_short_metrics(
     :param time_window: How long we look back for the summary statistics
     :param now_: Override current time for unit testing.
     :param legacy_workarounds: Skip some calculations on old data, because data is missing.
-
+    :return: Summary statistics for all, long, and short positions
     """
 
     analysis = build_trade_analysis(source_state.portfolio)
@@ -377,8 +381,6 @@ def calculate_long_short_metrics(
     biggest_losing_position_percent = summary.loc['Biggest losing position %']
     average_duration_of_winning_positions = summary.loc['Average duration of winning positions']
     average_duration_of_losing_positions = summary.loc['Average duration of losing positions']
-    average_bars_of_winning_positions = summary.loc['Average bars of winning positions']
-    average_bars_of_losing_positions = summary.loc['Average bars of losing positions']
     lp_fees_paid = summary.loc['LP fees paid']
     lp_fees_paid_percent_of_volume = summary.loc['LP fees paid % of volume']
     average_position = summary.loc['Average position']
@@ -391,246 +393,296 @@ def calculate_long_short_metrics(
     max_loss_risk_at_opening_of_position = summary.loc['Max loss risk at opening of position']
     max_drawdown = summary.loc['Max drawdown']
 
-    help_links = summary['help_links']
-
     table = StatisticsTable(
         columns=["All", "Long", "Short"],
+        created_at=source_state.created_at,
+        source=source,
         rows={
             KeyMetricKind.trading_period_length: KeyMetric(
                 kind=KeyMetricKind.trading_period_length,
                 value={"All": trading_period_length[0], "Long": trading_period_length[1], "Short": trading_period_length[2]},
                 help_link=trading_period_length[3],
+                source=source_state,
             ),
             KeyMetricKind.return_percent: KeyMetric(
                 kind=KeyMetricKind.return_percent,
                 value={"All": return_percent[0], "Long": return_percent[1], "Short": return_percent[2]},
                 help_link=return_percent[3],
+                source=source_state,
             ),
             KeyMetricKind.annualised_return_percent: KeyMetric(
                 kind=KeyMetricKind.annualised_return_percent,
                 value={"All": annualised_return_percent[0], "Long": annualised_return_percent[1], "Short": annualised_return_percent[2]},
                 help_link=annualised_return_percent[3],
+                source=source_state,
             ),
             KeyMetricKind.cash_at_start: KeyMetric(
                 kind=KeyMetricKind.cash_at_start,
                 value={"All": cash_at_start[0], "Long": cash_at_start[1], "Short": cash_at_start[2]},
                 help_link=cash_at_start[3],
+                source=source_state,
             ),
             KeyMetricKind.value_at_end: KeyMetric(
                 kind=KeyMetricKind.value_at_end,
                 value={"All": value_at_end[0], "Long": value_at_end[1], "Short": value_at_end[2]},
                 help_link=value_at_end[3],
+                source=source_state,
             ),
             KeyMetricKind.trade_volume: KeyMetric(
                 kind=KeyMetricKind.trade_volume,
                 value={"All": trade_volume[0], "Long": trade_volume[1], "Short": trade_volume[2]},
                 help_link=trade_volume[3],
+                source=source_state,
             ),
             KeyMetricKind.position_win_percent: KeyMetric(
                 kind=KeyMetricKind.position_win_percent,
                 value={"All": position_win_percent[0], "Long": position_win_percent[1], "Short": position_win_percent[2]},
                 help_link=position_win_percent[3],
+                source=source_state,
             ),
             KeyMetricKind.total_positions: KeyMetric(
                 kind=KeyMetricKind.total_positions,
                 value={"All": total_positions[0], "Long": total_positions[1], "Short": total_positions[2]},
                 help_link=total_positions[3],
+                source=source_state,
             ),
             KeyMetricKind.won_positions: KeyMetric(
                 kind=KeyMetricKind.won_positions,
                 value={"All": won_positions[0], "Long": won_positions[1], "Short": won_positions[2]},
                 help_link=won_positions[3],
+                source=source_state,
             ),
             KeyMetricKind.lost_positions: KeyMetric(
                 kind=KeyMetricKind.lost_positions,
                 value={"All": lost_positions[0], "Long": lost_positions[1], "Short": lost_positions[2]},
                 help_link=lost_positions[3],
+                source=source_state,
             ),
             KeyMetricKind.stop_losses_triggered: KeyMetric(
                 kind=KeyMetricKind.stop_losses_triggered,
                 value={"All": stop_losses_triggered[0], "Long": stop_losses_triggered[1], "Short": stop_losses_triggered[2]},
                 help_link=stop_losses_triggered[3],
+                source=source_state,
             ),
             KeyMetricKind.stop_loss_percent_of_all: KeyMetric(
                 kind=KeyMetricKind.stop_loss_percent_of_all,
                 value={"All": stop_loss_percent_of_all[0], "Long": stop_loss_percent_of_all[1], "Short": stop_loss_percent_of_all[2]},
                 help_link=stop_loss_percent_of_all[3],
+                source=source_state,
             ),
             KeyMetricKind.stop_loss_percent_of_lost: KeyMetric(
                 kind=KeyMetricKind.stop_loss_percent_of_lost,
                 value={"All": stop_loss_percent_of_lost[0], "Long": stop_loss_percent_of_lost[1], "Short": stop_loss_percent_of_lost[2]},
                 help_link=stop_loss_percent_of_lost[3],
+                source=source_state,
             ),
             KeyMetricKind.winning_stop_losses: KeyMetric(
                 kind=KeyMetricKind.winning_stop_losses,
                 value={"All": winning_stop_losses[0], "Long": winning_stop_losses[1], "Short": winning_stop_losses[2]},
                 help_link=winning_stop_losses[3],
+                source=source_state,
             ),
             KeyMetricKind.winning_stop_losses_percent: KeyMetric(
                 kind=KeyMetricKind.winning_stop_losses_percent,
                 value={"All": winning_stop_losses_percent[0], "Long": winning_stop_losses_percent[1], "Short": winning_stop_losses_percent[2]},
                 help_link=winning_stop_losses_percent[3],
+                source=source_state,
             ),
             KeyMetricKind.losing_stop_losses: KeyMetric(
                 kind=KeyMetricKind.losing_stop_losses,
                 value={"All": losing_stop_losses[0], "Long": losing_stop_losses[1], "Short": losing_stop_losses[2]},
                 help_link=losing_stop_losses[3],
+                source=source_state,
             ),
             KeyMetricKind.losing_stop_losses_percent: KeyMetric(
                 kind=KeyMetricKind.losing_stop_losses_percent,
                 value={"All": losing_stop_losses_percent[0], "Long": losing_stop_losses_percent[1], "Short": losing_stop_losses_percent[2]},
                 help_link=losing_stop_losses_percent[3],
+                source=source_state,
             ),
             KeyMetricKind.take_profits_triggered: KeyMetric(
                 kind=KeyMetricKind.take_profits_triggered,
                 value={"All": take_profits_triggered[0], "Long": take_profits_triggered[1], "Short": take_profits_triggered[2]},
                 help_link=take_profits_triggered[3],
+                source=source_state,
             ),
             KeyMetricKind.take_profit_percent_of_all: KeyMetric(
                 kind=KeyMetricKind.take_profit_percent_of_all,
                 value={"All": take_profit_percent_of_all[0], "Long": take_profit_percent_of_all[1], "Short": take_profit_percent_of_all[2]},
                 help_link=take_profit_percent_of_all[3],
+                source=source_state,
             ),
             KeyMetricKind.take_profit_percent_of_won: KeyMetric(
                 kind=KeyMetricKind.take_profit_percent_of_won,
                 value={"All": take_profit_percent_of_won[0], "Long": take_profit_percent_of_won[1], "Short": take_profit_percent_of_won[2]},
                 help_link=take_profit_percent_of_won[3],
+                source=source_state,
             ),
             KeyMetricKind.zero_profit_positions: KeyMetric(
                 kind=KeyMetricKind.zero_profit_positions,
                 value={"All": zero_profit_positions[0], "Long": zero_profit_positions[1], "Short": zero_profit_positions[2]},
                 help_link=zero_profit_positions[3],
+                source=source_state,
             ),
             KeyMetricKind.positions_open_at_the_end: KeyMetric(
                 kind=KeyMetricKind.positions_open_at_the_end,
                 value={"All": positions_open_at_the_end[0], "Long": positions_open_at_the_end[1], "Short": positions_open_at_the_end[2]},
                 help_link=positions_open_at_the_end[3],
+                source=source_state,
             ),
             KeyMetricKind.realised_profit_and_loss: KeyMetric(
                 kind=KeyMetricKind.realised_profit_and_loss,
                 value={"All": realised_profit_and_loss[0], "Long": realised_profit_and_loss[1], "Short": realised_profit_and_loss[2]},
                 help_link=realised_profit_and_loss[3],
+                source=source_state,
             ),
             KeyMetricKind.unrealised_profit_and_loss: KeyMetric(
                 kind=KeyMetricKind.unrealised_profit_and_loss,
                 value={"All": unrealised_profit_and_loss[0], "Long": unrealised_profit_and_loss[1], "Short": unrealised_profit_and_loss[2]},
                 help_link=unrealised_profit_and_loss[3],
+                source=source_state,
             ),
             KeyMetricKind.portfolio_unrealised_value: KeyMetric(
                 kind=KeyMetricKind.portfolio_unrealised_value,
                 value={"All": portfolio_unrealised_value[0], "Long": portfolio_unrealised_value[1], "Short": portfolio_unrealised_value[2]},
                 help_link=portfolio_unrealised_value[3],
+                source=source_state,
             ),
             KeyMetricKind.extra_returns_on_lending_pool_interest: KeyMetric(
                 kind=KeyMetricKind.extra_returns_on_lending_pool_interest,
                 value={"All": extra_returns_on_lending_pool_interest[0], "Long": extra_returns_on_lending_pool_interest[1], "Short": extra_returns_on_lending_pool_interest[2]},
                 help_link=extra_returns_on_lending_pool_interest[3],
+                source=source_state,
             ),
             KeyMetricKind.cash_left_at_the_end: KeyMetric(
                 kind=KeyMetricKind.cash_left_at_the_end,
                 value={"All": cash_left_at_the_end[0], "Long": cash_left_at_the_end[1], "Short": cash_left_at_the_end[2]},
                 help_link=cash_left_at_the_end[3],
+                source=source_state,
             ),
             KeyMetricKind.average_winning_position_profit_percent: KeyMetric(
                 kind=KeyMetricKind.average_winning_position_profit_percent,
                 value={"All": average_winning_position_profit_percent[0], "Long": average_winning_position_profit_percent[1], "Short": average_winning_position_profit_percent[2]},
                 help_link=average_winning_position_profit_percent[3],
+                source=source_state,
             ),
             KeyMetricKind.average_losing_position_loss_percent: KeyMetric(
                 kind=KeyMetricKind.average_losing_position_loss_percent,
                 value={"All": average_losing_position_loss_percent[0], "Long": average_losing_position_loss_percent[1], "Short": average_losing_position_loss_percent[2]},
                 help_link=average_losing_position_loss_percent[3],
+                source=source_state,
             ),
             KeyMetricKind.biggest_winning_position_percent: KeyMetric(
                 kind=KeyMetricKind.biggest_winning_position_percent,
                 value={"All": biggest_winning_position_percent[0], "Long": biggest_winning_position_percent[1], "Short": biggest_winning_position_percent[2]},
                 help_link=biggest_winning_position_percent[3],
+                source=source_state,
             ),
             KeyMetricKind.biggest_losing_position_percent: KeyMetric(
                 kind=KeyMetricKind.biggest_losing_position_percent,
                 value={"All": biggest_losing_position_percent[0], "Long": biggest_losing_position_percent[1], "Short": biggest_losing_position_percent[2]},
                 help_link=biggest_losing_position_percent[3],
+                source=source_state,
             ),
             KeyMetricKind.average_duration_of_winning_positions: KeyMetric(
                 kind=KeyMetricKind.average_duration_of_winning_positions,
                 value={"All": average_duration_of_winning_positions[0], "Long": average_duration_of_winning_positions[1], "Short": average_duration_of_winning_positions[2]},
                 help_link=average_duration_of_winning_positions[3],
+                source=source_state,
             ),
             KeyMetricKind.average_duration_of_losing_positions: KeyMetric(
                 kind=KeyMetricKind.average_duration_of_losing_positions,
                 value={"All": average_duration_of_losing_positions[0], "Long": average_duration_of_losing_positions[1], "Short": average_duration_of_losing_positions[2]},
                 help_link=average_duration_of_losing_positions[3],
-            ),
-            KeyMetricKind.average_bars_of_winning_positions: KeyMetric(
-                kind=KeyMetricKind.average_bars_of_winning_positions,
-                value={"All": average_bars_of_winning_positions[0], "Long": average_bars_of_winning_positions[1], "Short": average_bars_of_winning_positions[2]},
-                help_link=average_bars_of_winning_positions[3],
-            ),
-            KeyMetricKind.average_bars_of_losing_positions: KeyMetric(
-                kind=KeyMetricKind.average_bars_of_losing_positions,
-                value={"All": average_bars_of_losing_positions[0], "Long": average_bars_of_losing_positions[1], "Short": average_bars_of_losing_positions[2]},
-                help_link=average_bars_of_losing_positions[3],
+                source=source_state,
             ),
             KeyMetricKind.lp_fees_paid: KeyMetric(
                 kind=KeyMetricKind.lp_fees_paid,
                 value={"All": lp_fees_paid[0], "Long": lp_fees_paid[1], "Short": lp_fees_paid[2]},
                 help_link=lp_fees_paid[3],
+                source=source_state,
             ),
             KeyMetricKind.lp_fees_paid_percent_of_volume: KeyMetric(
                 kind=KeyMetricKind.lp_fees_paid_percent_of_volume,
                 value={"All": lp_fees_paid_percent_of_volume[0], "Long": lp_fees_paid_percent_of_volume[1], "Short": lp_fees_paid_percent_of_volume[2]},
                 help_link=lp_fees_paid_percent_of_volume[3],
+                source=source_state,
             ),
             KeyMetricKind.average_position: KeyMetric(
                 kind=KeyMetricKind.average_position,
                 value={"All": average_position[0], "Long": average_position[1], "Short": average_position[2]},
                 help_link=average_position[3],
+                source=source_state,
             ),
             KeyMetricKind.median_position: KeyMetric(
                 kind=KeyMetricKind.median_position,
                 value={"All": median_position[0], "Long": median_position[1], "Short": median_position[2]},
                 help_link=median_position[3],
+                source=source_state,
             ),
             KeyMetricKind.most_consecutive_wins: KeyMetric(
                 kind=KeyMetricKind.most_consecutive_wins,
                 value={"All": most_consecutive_wins[0], "Long": most_consecutive_wins[1], "Short": most_consecutive_wins[2]},
                 help_link=most_consecutive_wins[3],
+                source=source_state,
             ),
             KeyMetricKind.most_consecutive_losses: KeyMetric(
                 kind=KeyMetricKind.most_consecutive_losses,
                 value={"All": most_consecutive_losses[0], "Long": most_consecutive_losses[1], "Short": most_consecutive_losses[2]},
                 help_link=most_consecutive_losses[3],
+                source=source_state,
             ),
             KeyMetricKind.biggest_realised_risk: KeyMetric(
                 kind=KeyMetricKind.biggest_realised_risk,
                 value={"All": biggest_realised_risk[0], "Long": biggest_realised_risk[1], "Short": biggest_realised_risk[2]},
                 help_link=biggest_realised_risk[3],
+                source=source_state,
             ),
             KeyMetricKind.avg_realised_risk: KeyMetric(
                 kind=KeyMetricKind.avg_realised_risk,
                 value={"All": avg_realised_risk[0], "Long": avg_realised_risk[1], "Short": avg_realised_risk[2]},
                 help_link=avg_realised_risk[3],
+                source=source_state,
             ),
             KeyMetricKind.max_pullback_of_total_capital: KeyMetric(
                 kind=KeyMetricKind.max_pullback_of_total_capital,
                 value={"All": max_pullback_of_total_capital[0], "Long": max_pullback_of_total_capital[1], "Short": max_pullback_of_total_capital[2]},
                 help_link=max_pullback_of_total_capital[3],
+                source=source_state,
             ),
             KeyMetricKind.max_loss_risk_at_opening_of_position: KeyMetric(
                 kind=KeyMetricKind.max_loss_risk_at_opening_of_position,
                 value={"All": max_loss_risk_at_opening_of_position[0], "Long": max_loss_risk_at_opening_of_position[1], "Short": max_loss_risk_at_opening_of_position[2]},
                 help_link=max_loss_risk_at_opening_of_position[3],
+                source=source_state,
             ),
             KeyMetricKind.max_drawdown: KeyMetric(
                 kind=KeyMetricKind.max_drawdown,
                 value={"All": max_drawdown[0], "Long": max_drawdown[1], "Short": max_drawdown[2]},
                 help_link=max_drawdown[3],
+                source=source_state,
             ),
         }
     )
 
-    # add state to each row
+    if 'Average bars of winning positions' in summary.index:
+        average_bars_of_winning_positions = summary.loc['Average bars of winning positions']
+        average_bars_of_losing_positions = summary.loc['Average bars of losing positions']
+
+        table.rows[KeyMetricKind.average_bars_of_winning_positions] = KeyMetric(
+            kind=KeyMetricKind.average_bars_of_winning_positions,
+            value={"All": average_bars_of_winning_positions[0], "Long": average_bars_of_winning_positions[1], "Short": average_bars_of_winning_positions[2]},
+            help_link=average_bars_of_winning_positions[3],
+        )
+        table.rows[KeyMetricKind.average_bars_of_losing_positions] = KeyMetric(
+            kind=KeyMetricKind.average_bars_of_losing_positions,
+            value={"All": average_bars_of_losing_positions[0], "Long": average_bars_of_losing_positions[1], "Short": average_bars_of_losing_positions[2]},
+            help_link=average_bars_of_losing_positions[3],
+        )
+
     for row in table.rows:
         row.source = source_state
         row.calculation_window_start_at = source_state.created_at
         row.calculation_window_end_at = datetime.datetime.utcnow()
+
+    return table
