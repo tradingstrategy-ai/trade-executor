@@ -124,3 +124,35 @@ def test_hot_wallet_gas_level_warning_not_set(
 
     assert not flag
     assert run_state.hot_wallet_gas_warning_message is None
+
+
+def test_hot_wallet_gas_level_warning_clear(
+    web3: Web3,
+    hot_wallet: HotWallet,
+    deployer: HexAddress,
+):
+    """Clear existing warning."""
+
+    # Warning level 1000 ETH
+    run_state = RunState()
+    run_state.hot_wallet_gas_warning_level = 1000
+
+    flag = perform_gas_level_checks(
+        web3,
+        run_state,
+        hot_wallet,
+    )
+
+    assert flag
+    assert run_state.hot_wallet_gas_warning_message is not None
+
+    run_state.hot_wallet_gas_warning_level = 1
+
+    flag = perform_gas_level_checks(
+        web3,
+        run_state,
+        hot_wallet,
+    )
+
+    assert not flag
+    assert run_state.hot_wallet_gas_warning_message is None

@@ -164,6 +164,10 @@ def perform_gas_level_checks(
             logger.warning(gas_warn_message)
             run_state.hot_wallet_gas_warning_message = gas_warn_message
             return True
+        elif gas >= hot_wallet_gas_warning_level:
+            if run_state.hot_wallet_gas_warning_message is not None:
+                logger.warning(f"Hot wallet {hot_wallet.address} received top up - gas is now {gas}")
+                run_state.hot_wallet_gas_warning_message = None
 
     return False
 
