@@ -88,7 +88,10 @@ def sync_reserves(
         block_identifier=block_identifier,
     )
 
-    reserves_per_token = {r.asset.address: r for r in current_reserves}
+    # Make sure we avoid checksummed string addresses from now on
+    balances = {k.lower(): v for k,v in balances.items()}
+
+    reserves_per_token = {r.asset.address.lower(): r for r in current_reserves}
 
     events: List[ReserveUpdateEvent] = []
 
@@ -106,7 +109,7 @@ def sync_reserves(
         else:
             current_value = Decimal(0)
 
-        decimal_holding = balances.get(Web3.to_checksum_address(address))
+        decimal_holding = balances.get(address)
 
         # We get decimals = None if Ganache is acting
         assert decimal_holding.decimals, f"Token did not have decimals: token:{currency} holding:{decimal_holding}"
