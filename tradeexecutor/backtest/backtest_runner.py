@@ -304,7 +304,7 @@ def setup_backtest(
     if not initial_deposit:
         initial_deposit = strategy_module.initial_cash
 
-    assert initial_deposit, "Initial cash not given as argument or strategy module"
+    assert initial_deposit, "Initial cash not given as argument or strategy module. Set initial_cash variable or pass the initial_cash argument."
     assert initial_deposit > 0, "Must have money"
 
     # Just in case we have not done this yet

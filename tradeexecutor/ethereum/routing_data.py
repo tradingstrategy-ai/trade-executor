@@ -605,7 +605,7 @@ def validate_reserve_currency(
 
 
 def get_backtest_routing_model(
-    routing_type: TradeRouting,
+    routing_type: TradeRouting | None,
     reserve_currency: ReserveCurrency
 ) -> BacktestRoutingModel | BacktestRoutingIgnoredModel:
     """Get routing options for backtests.
@@ -613,7 +613,7 @@ def get_backtest_routing_model(
     At the moment, just create a real router and copy parameters from there.
     """
 
-    if routing_type == TradeRouting.ignore:
+    if routing_type == TradeRouting.ignore or routing_type == TradeRouting.default:
         params = get_uniswap_v2_default_routing_parameters(reserve_currency)
         return BacktestRoutingIgnoredModel(params["reserve_token_address"])
 
