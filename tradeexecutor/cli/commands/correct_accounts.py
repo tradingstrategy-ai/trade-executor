@@ -13,6 +13,7 @@ from tabulate import tabulate
 from typer import Option
 
 from eth_defi.hotwallet import HotWallet
+from eth_defi.provider.anvil import mine
 from eth_defi.provider.broken_provider import get_almost_latest_block_number
 
 from tradeexecutor.strategy.account_correction import correct_accounts as _correct_accounts, check_accounts
@@ -268,14 +269,20 @@ def correct_accounts(
         block_timestamp=block_timestamp,
     )
     balance_updates = list(balance_updates)
-    logger.info(f"Applied {len(balance_updates)} balance updates, new block height is {block_number:,} at {block_timestamp}")
+    logger.info(f"We did {len(corrections)} accounting corrections, of which {len(balance_updates)} internal state balance updates, new block height is {block_number:,} at {block_timestamp}")
 
     store.sync(state)
     web3config.close()
 
-    if balance_updates and chain_settle_wait_seconds and (not unit_testing):
+    # Shortcut here
+    if unit_testing:
+        chain_settle_wait_seconds = 0
+
+    if len(corrections) > 0 and chain_settle_wait_seconds:
         logger.info("Waiting %f seconds to see before reading back new results from on-chain", chain_settle_wait_seconds)
         time.sleep(chain_settle_wait_seconds)
+
+    block_number = get_almost_latest_block_number(web3)
 
     clean, df = check_accounts(
         universe.data_universe.pairs,
@@ -288,7 +295,7 @@ def correct_accounts(
     output = tabulate(df, headers='keys', tablefmt='rounded_outline')
 
     if clean:
-        logger.info("Accounts after the correction match:\n%s", output)
+        logger.info(f"Accounts after the correction match for block {block_number:,}:\n%s", output)
         sys.exit(0)
     else:
         logger.error("Accounts still broken after the correction")

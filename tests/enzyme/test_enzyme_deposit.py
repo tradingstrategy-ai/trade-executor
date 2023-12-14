@@ -1,6 +1,7 @@
 """Test Enzyme vault deposits are correctly read."""
 import datetime
 from _decimal import Decimal
+from logging import Logger
 
 import pytest
 import flaky
@@ -9,6 +10,7 @@ from web3 import Web3
 from web3.contract import Contract
 
 from eth_defi.event_reader.reorganisation_monitor import create_reorganisation_monitor
+from eth_defi.provider.anvil import mine
 from eth_defi.trace import assert_transaction_success_with_explanation
 from tradeexecutor.ethereum.enzyme.vault import EnzymeVaultSyncModel
 from tradeexecutor.monkeypatch.dataclasses_json import patch_dataclasses_json
@@ -145,8 +147,9 @@ def test_enzyme_single_deposit(
     state2: State = State.from_json(dump)
     assert len(state2.sync.treasury.balance_update_refs) == 1
 
-@flaky.flaky()
+
 def test_enzyme_two_deposits(
+    logger: Logger,
     web3: Web3,
     deployer: HexAddress,
     enzyme_vault_contract: Contract,
@@ -166,16 +169,27 @@ def test_enzyme_two_deposits(
         reorg_mon,
     )
 
+    logger.info("Initial scan")
+
     state = State()
     sync_model.sync_initial(state)
 
+    logger.info("Broadcast")
+
     # Make two deposits from separate parties
-    usdc.functions.transfer(user_1, 500 * 10**6).transact({"from": deployer})
-    usdc.functions.transfer(user_2, 700 * 10**6).transact({"from": deployer})
-    usdc.functions.approve(vault_comptroller_contract.address, 500 * 10**6).transact({"from": user_1})
-    usdc.functions.approve(vault_comptroller_contract.address, 700 * 10**6).transact({"from": user_2})
-    vault_comptroller_contract.functions.buyShares(500 * 10**6, 1).transact({"from": user_1})
-    vault_comptroller_contract.functions.buyShares(700 * 10**6, 1).transact({"from": user_2})
+    txs = set()
+    txs.add(usdc.functions.transfer(user_1, 500 * 10**6).transact({"from": deployer}))
+    txs.add(usdc.functions.transfer(user_2, 700 * 10**6).transact({"from": deployer}))
+    txs.add(usdc.functions.approve(vault_comptroller_contract.address, 500 * 10**6).transact({"from": user_1}))
+    txs.add(usdc.functions.approve(vault_comptroller_contract.address, 700 * 10**6).transact({"from": user_2}))
+    txs.add(vault_comptroller_contract.functions.buyShares(500 * 10**6, 1).transact({"from": user_1}))
+    txs.add(vault_comptroller_contract.functions.buyShares(700 * 10**6, 1).transact({"from": user_2}))
+
+    for tx_hash in txs:
+        logger.info("Confirming tx %s", tx_hash)
+        assert_transaction_success_with_explanation(web3, tx_hash)
+
+    logger.info("Deposit scan")
 
     # One deposit detected
     cycle = datetime.datetime.utcnow()
