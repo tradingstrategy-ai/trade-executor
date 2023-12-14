@@ -237,12 +237,12 @@ def start(
         # and ignore legacy env config
         if mod.name:
             name = mod.name
-
         if mod.short_description:
             short_description = mod.short_description
-
         if mod.long_description:
             long_description = mod.long_description
+        if mod.icon:
+            icon_url = mod.icon
 
         if web3config is not None:
 

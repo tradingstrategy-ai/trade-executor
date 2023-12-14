@@ -5,6 +5,8 @@ import runpy
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, Dict, Protocol, List, Optional, Union
+from urllib.parse import urlparse
+
 from packaging import version
 
 import pandas
@@ -376,6 +378,12 @@ class StrategyModuleInformation:
     #:
     long_description: Optional[str] = None
 
+    #: Strategy icon
+    #:
+    #: Two paragraph description, may contain HTML.
+    #:
+    icon: Optional[str] = None
+
     def is_version_greater_or_equal_than(self, major: int, minor: int, patch: int) -> bool:
         """Check strategy module for its version compatibility."""
         assert self.trading_strategy_engine_version, f"Strategy module does not contain trading_strategy_engine_version varible: {self.path}"
@@ -442,6 +450,10 @@ class StrategyModuleInformation:
 
         if self.long_description:
             assert type(self.long_description) == str
+
+        if self.icon:
+            result = urlparse(self.icon)
+            assert all([result.scheme, result.netloc]), f"Bad icon URL: {self.icon}"
 
     def validate_backtest(self):
         """Validate that the module is backtest runnable."""
