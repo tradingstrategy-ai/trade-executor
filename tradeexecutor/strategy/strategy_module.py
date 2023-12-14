@@ -434,6 +434,15 @@ class StrategyModuleInformation:
         if self.initial_cash:
             assert type(self.initial_cash) in (int, float), f"Strategy module initial_cash variable, expected float instance, got {self.initial_cash.__class__}"
 
+        if self.name:
+            assert type(self.name) == str
+
+        if self.short_description:
+            assert type(self.short_description) == str
+
+        if self.long_description:
+            assert type(self.long_description) == str
+
     def validate_backtest(self):
         """Validate that the module is backtest runnable."""
         self.validate()
