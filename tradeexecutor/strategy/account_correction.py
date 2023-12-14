@@ -384,7 +384,7 @@ def apply_accounting_correction(
         position_id = correction.position.position_id
         assert position.is_spot(), f"Correction not yet implemented for leveraged positions"
         logger.info("Correcting spot %s, asset %s, %f -> %f", position.get_human_readable_name(), asset, correction.expected_amount, correction.actual_amount)
-        assert position.is_open(), f"Cannot correct already closed positions, got {position}"
+        # assert position.is_open(), f"Cannot correct already closed positions, got {position}"
     elif isinstance(position, ReservePosition):
         position_type = BalanceUpdatePositionType.reserve
         position_id = None
@@ -486,7 +486,7 @@ def correct_accounts(
         You need to iterate the returend iterator to have any of the corrections applied.
 
     :return:
-        Iterator of corrections.
+        Tuple (corrected anythimg, iterator of corrections).
     """
 
     if interactive:
@@ -501,16 +501,33 @@ def correct_accounts(
 
     for correction in corrections:
 
+        position = correction.position
+
         # Could not map to open position,
         # but we do not have code to open new positions yet.
         # Just deal with it by transferring away.
-        if correction.position is None:
+        if position is None:
+            logger.info("Asset transfer without position: %s", correction)
             transfer_away_assets_without_position(
                 correction,
                 unknown_token_receiver,
                 tx_builder,
             )
+        elif isinstance(position, TradingPosition):
+            if position.is_closed():
+                logger.info("Asset transfer with closed position: %s", correction)
+                # We have tokens on a closed position.
+                # Likely we have a failure, we closed position internally,
+                # but the selling trade failed to execute.
+                # Alternatively we reopenend a position,
+                # but the buying trade failed to execute.
+                transfer_away_assets_without_position(
+                    correction,
+                    unknown_token_receiver,
+                    tx_builder,
+                )
         else:
+            logger.info("Internal state balance fix: %s", correction)
             # Change open position balance to match the on-chain balance
             yield apply_accounting_correction(state, correction, strategy_cycle_included_at)
 
@@ -539,7 +556,15 @@ def transfer_away_assets_without_position(
     :param unknown_token_receiver:
     """
 
-    assert correction.position is None
+    position = correction.position
+
+    if isinstance(position, TradingPosition):
+        # Don't move tokens away from open position
+        assert position.is_closed()
+    else:
+        # No closed or open position
+        assert correction.position is None
+
     assert not correction.reserve_asset
 
     web3 = tx_builder.web3
@@ -558,7 +583,7 @@ def transfer_away_assets_without_position(
         -tokens_to_transfer_raw,
     )
 
-    logger.info(f"Transfering %s %s to %s as we could not map it to open position",
+    logger.info(f"Transfering %s %s to the clean up wallet %s as we could not map the token to any open position",
                 correction.quantity,
                 asset.token_symbol,
                 unknown_token_receiver)
@@ -579,6 +604,7 @@ def transfer_away_assets_without_position(
     tx_hash = web3.eth.send_raw_transaction(blockchain_data.get_prepared_raw_transaction())
     logger.info("Broadcasted %s", tx_hash.hex())
     assert_transaction_success_with_explanation(web3, tx_hash)
+    logger.info("Fix tx %s complete", tx_hash.hex())
 
 
 def check_accounts(
