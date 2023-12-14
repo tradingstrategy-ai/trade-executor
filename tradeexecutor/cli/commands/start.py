@@ -233,6 +233,17 @@ def start(
         # Clean this up in the future versions, by changing the order of initialzation.
         mod = read_strategy_module(strategy_file)
 
+        # Overwrite name, short and long descriptions from the strategy file
+        # and ignore legacy env config
+        if mod.name:
+            name = mod.name
+
+        if mod.short_description:
+            short_description = mod.short_description
+
+        if mod.long_description:
+            long_description = mod.long_description
+
         if web3config is not None:
 
             if isinstance(mod, StrategyModuleInformation):

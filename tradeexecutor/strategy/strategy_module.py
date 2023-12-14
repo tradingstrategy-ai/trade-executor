@@ -356,6 +356,26 @@ class StrategyModuleInformation:
     #: Only needed for backtests
     initial_cash: Optional[float] = None
 
+    #: Strategy name
+    #:
+    #: Note that this must be also separately configured in the
+    #: frontend user interface, as name
+    #: is used before the strategy metadata is loaded.
+    #:
+    name: Optional[str] = None
+
+    #: Strategy short description
+    #:
+    #: 1 sentence description
+    #:
+    short_description: Optional[str] = None
+
+    #: Strategy long description
+    #:
+    #: Two paragraph description, may contain HTML.
+    #:
+    long_description: Optional[str] = None
+
     def is_version_greater_or_equal_than(self, major: int, minor: int, patch: int) -> bool:
         """Check strategy module for its version compatibility."""
         assert self.trading_strategy_engine_version, f"Strategy module does not contain trading_strategy_engine_version varible: {self.path}"
@@ -453,6 +473,9 @@ def parse_strategy_module(
         backtest_start=_ensure_dt(python_module_exports.get("backtest_start")),
         backtest_end=_ensure_dt(python_module_exports.get("backtest_end")),
         initial_cash=python_module_exports.get("initial_cash"),
+        name=python_module_exports.get("name"),
+        short_description=python_module_exports.get("short_description"),
+        long_description=python_module_exports.get("long_description"),
     )
 
 
