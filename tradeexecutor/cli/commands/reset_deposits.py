@@ -48,6 +48,8 @@ def reset_deposits(
 
     logger = setup_logging(log_level)
 
+    logger.warning("This command is deprecated - please use correct-accounts")
+
     web3config = create_web3_config(
         gas_price_method=None,
         json_rpc_binance=json_rpc_binance,

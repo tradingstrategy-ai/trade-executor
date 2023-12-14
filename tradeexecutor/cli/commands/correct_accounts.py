@@ -269,7 +269,7 @@ def correct_accounts(
         block_timestamp=block_timestamp,
     )
     balance_updates = list(balance_updates)
-    logger.info(f"Has {len(corrections)}, did {len(balance_updates)} internal state balance updates, new block height is {block_number:,} at {block_timestamp}")
+    logger.info(f"We did {len(corrections)} accounting corrections, of which {len(balance_updates)} internal state balance updates, new block height is {block_number:,} at {block_timestamp}")
 
     store.sync(state)
     web3config.close()

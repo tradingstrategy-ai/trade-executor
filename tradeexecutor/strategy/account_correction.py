@@ -502,6 +502,10 @@ def correct_accounts(
     for correction in corrections:
 
         position = correction.position
+        closed = False
+        if isinstance(position, TradingPosition):
+            if position.is_closed():
+                closed = True
 
         # Could not map to open position,
         # but we do not have code to open new positions yet.
@@ -513,19 +517,18 @@ def correct_accounts(
                 unknown_token_receiver,
                 tx_builder,
             )
-        elif isinstance(position, TradingPosition):
-            if position.is_closed():
-                logger.info("Asset transfer with closed position: %s", correction)
-                # We have tokens on a closed position.
-                # Likely we have a failure, we closed position internally,
-                # but the selling trade failed to execute.
-                # Alternatively we reopenend a position,
-                # but the buying trade failed to execute.
-                transfer_away_assets_without_position(
-                    correction,
-                    unknown_token_receiver,
-                    tx_builder,
-                )
+        elif closed:
+            logger.info("Asset transfer with closed position: %s", correction)
+            # We have tokens on a closed position.
+            # Likely we have a failure, we closed position internally,
+            # but the selling trade failed to execute.
+            # Alternatively we reopenend a position,
+            # but the buying trade failed to execute.
+            transfer_away_assets_without_position(
+                correction,
+                unknown_token_receiver,
+                tx_builder,
+            )
         else:
             logger.info("Internal state balance fix: %s", correction)
             # Change open position balance to match the on-chain balance
