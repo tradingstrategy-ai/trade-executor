@@ -174,6 +174,7 @@ class ExecutionLoop:
         self.execution_context = execution_context
         self.sync_treasury_on_startup = sync_treasury_on_startup
         self.store = store
+        self.name = name
 
         self.backtest_start = backtest_start
         self.backtest_end = backtest_end
@@ -731,6 +732,9 @@ class ExecutionLoop:
 
     def run_backtest(self, state: State) -> dict:
         """Backtest loop."""
+
+        if not state.name:
+            state.name = self.name
 
         if self.backtest_end or self.backtest_start:
             assert self.backtest_start and self.backtest_end, f"If backtesting both start and end must be given, we have {self.backtest_start} - {self.backtest_end}"

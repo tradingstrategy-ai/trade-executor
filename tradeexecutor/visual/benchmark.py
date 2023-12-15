@@ -83,7 +83,7 @@ def visualise_buy_and_hold(
         y=series,
         mode="lines",
         name=f"Buy and hold {buy_and_hold_asset_name}",
-        # line=dict(color=colour),
+        line=dict(color=colour),
     )
 
 
