@@ -167,6 +167,10 @@ class EnzymeTransactionBuilder(TransactionBuilder):
         signed_tx, execute_calls_bound_func = self.vault_controlled_wallet.sign_transaction_with_new_nonce(enzyme_tx, gas_data)
         signed_bytes = signed_tx.rawTransaction.hex()
 
+        # Capture gas data for gas troublshooting
+        tx_data = enzyme_tx.as_json_friendly_dict()
+        tx_data.update(gas_data)
+
         return BlockchainTransaction(
             type=BlockchainTransactionType.enzyme_vault,
             chain_id=self.chain_id,
@@ -181,7 +185,7 @@ class EnzymeTransactionBuilder(TransactionBuilder):
             signed_tx_object=encode_pickle_over_json(signed_tx),
             tx_hash=signed_tx.hash.hex(),
             nonce=signed_tx.nonce,
-            details=enzyme_tx.as_json_friendly_dict(),
+            details=tx_data,
             asset_deltas=[JSONAssetDelta.from_asset_delta(a) for a in vault_asset_deltas],
             other={"vault_slippage_tolerance": self.vault_slippage_tolerance},
             notes=notes,

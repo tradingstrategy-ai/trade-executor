@@ -18,7 +18,7 @@ from eth_defi.provider.broken_provider import get_almost_latest_block_number
 
 from tradeexecutor.strategy.account_correction import correct_accounts as _correct_accounts, check_accounts
 from .app import app
-from ..bootstrap import prepare_executor_id, create_web3_config, create_sync_model, create_state_store, create_client
+from ..bootstrap import prepare_executor_id, create_web3_config, create_sync_model, create_state_store, create_client, backup_state
 from ..log import setup_logging
 from ...ethereum.enzyme.tx import EnzymeTransactionBuilder
 from ...ethereum.enzyme.vault import EnzymeVaultSyncModel
@@ -148,26 +148,7 @@ def correct_accounts(
     if not state_file:
         state_file = f"state/{id}.json"
 
-    state_file = Path(state_file)
-    store = create_state_store(state_file)
-    assert not store.is_pristine(), f"State does not exists yet: {state_file}"
-
-    # Make a backup
-    # https://stackoverflow.com/a/47528275/315168
-    backup_file = None
-    for i in range(1, 99):  # Try 99 different iterateive backup filenames
-        backup_file = state_file.with_suffix(f".correct-accounts-backup-{i}.json")
-        if os.path.exists(backup_file):
-            continue
-
-        shutil.copy(state_file, backup_file)
-        break
-    else:
-        raise RuntimeError(f"Could not create backup {backup_file}")
-
-    logger.info("Old state backed up as %s", backup_file)
-
-    state = store.load()
+    store, state = backup_state(state_file)
 
     mod: StrategyModuleInformation = read_strategy_module(strategy_file)
 

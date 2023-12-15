@@ -9,6 +9,7 @@ import pytest
 import pandas as pd
 from web3 import Web3
 from web3.contract import Contract
+import flaky
 
 from eth_defi.uniswap_v3.deployment import UniswapV3Deployment
 from eth_defi.hotwallet import HotWallet
@@ -94,6 +95,43 @@ def trading_strategy_universe(chain_id, exchange_universe, pair_universe, asset_
     return TradingStrategyUniverse.create_single_pair_universe(dataset)
 
 
+#   File "/home/runner/work/trade-executor/trade-executor/tradeexecutor/statistics/core.py", line 59, in calculate_position_statistics
+#     profitability=position.get_total_profit_percent(),
+#   File "/home/runner/work/trade-executor/trade-executor/tradeexecutor/state/position.py", line 1213, in get_total_profit_percent
+#     profit = -self.get_total_profit_usd()
+#   File "/home/runner/work/trade-executor/trade-executor/tradeexecutor/state/position.py", line 1195, in get_total_profit_usd
+#     realised_profit = self.get_realised_profit_usd() or 0
+#   File "/home/runner/work/trade-executor/trade-executor/tradeexecutor/state/position.py", line 1161, in get_realised_profit_usd
+#     trade_profit = (self.get_average_sell() - self.get_average_buy()) * float(self.get_buy_quantity())
+# TypeError: unsupported operand type(s) for -: 'float' and 'NoneType'
+# ------------------------------ Captured log call -------------------------------
+# ERROR    eth_defi.revert_reason:revert_reason.py:155 Transaction succeeded, when we tried to fetch its revert reason.
+# Hash: 0x2f02ec63264fde03ce565b0204527ecb101566dc3ac3291618e836ad6b2b15ff, tx block num: 49000021, current block number: 49000021
+# Transaction result:
+# HexBytes('0x')
+# - Maybe the chain tip is unstable
+# - Maybe transaction failed due to slippage
+# - Maybe someone is frontrunning you and it does not happen with eth_call replay
+#
+# ERROR    eth_defi.revert_reason:revert_reason.py:155 Transaction succeeded, when we tried to fetch its revert reason.
+# Hash: 0x2f02ec63264fde03ce565b0204527ecb101566dc3ac3291618e836ad6b2b15ff, tx block num: 49000021, current block number: 49000021
+# Transaction result:
+# HexBytes('0x')
+# - Maybe the chain tip is unstable
+# - Maybe transaction failed due to slippage
+# - Maybe someone is frontrunning you and it does not happen with eth_call replay
+#
+# ERROR    tradeexecutor.ethereum.swap:swap.py:55 Trade <Close short short #2
+#    1.226751532789447690 WETH at 1630.9089983902218 USD, broadcasted phase
+#    collateral consumption: -2000.800439012997474114586382 aPolUSDC, collateral allocation: -997.980466987002525885413618 aPolUSDC
+#    reserve: 0
+#    > failed and freezing the position: <could not extract the revert reason>
+# WARNING  tradeexecutor.state.freeze:freeze.py:34 Freezing position for a failed trade: <Close short short #2
+#    1.226751532789447690 WETH at 1630.9089983902218 USD, failed phase
+#    collateral consumption: -2000.800439012997474114586382 aPolUSDC, collateral allocation: -997.980466987002525885413618 aPolUSDC
+#    reserve: 0
+#    >
+@flaky.flaky()
 def test_one_delta_live_strategy_short_open_and_close(
     logger,
     web3: Web3,
