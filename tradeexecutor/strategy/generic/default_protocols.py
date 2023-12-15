@@ -31,6 +31,8 @@ def default_match_router(
 
     pair_universe = strategy_universe.data_universe.pairs
 
+    assert pair_universe.exchange_universe, "exchange_universe attr not set in pair_universe"
+
     try:
         exchange = pair_universe.exchange_universe.get_by_chain_and_factory(
             ChainId(pair.chain_id),
