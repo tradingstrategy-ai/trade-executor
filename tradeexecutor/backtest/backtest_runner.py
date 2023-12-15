@@ -221,7 +221,7 @@ def setup_backtest_for_universe(
         if universe.backtest_stop_loss_candles is not None:
             stop_loss_data_available = True
 
-    if trade_routing == TradeRouting.default:
+    if trade_routing == TradeRouting.default and strategy_module.is_version_greater_or_equal_than(0, 3, 0):
         pair_configurator = EthereumBacktestPairConfigurator(universe)
         routing_model = GenericRouting(pair_configurator)
         pricing_model = GenericPricing(pair_configurator)
