@@ -175,55 +175,34 @@ def test_generic_routing_live_trading_start_spot_and_short(
         assert len(state.portfolio.closed_positions) == 8
 
 
-@pytest.mark.skip(reason="This test is not yet finished")
-def test_generic_routing_test_trade(
+def test_generic_routing_test_trade_spot_and_short(
     environment: dict,
     web3: Web3,
     state_file: Path,
 ):
-    """Perform a test trade on Enzymy vault via CLI.
+    """Perform a test trade on short and spot strategy
 
-    - Use a vault deployed by the test fixtures
-
-    - Initialise the strategy to use this vault
-
-    - Perform a test trade on this fault
+    - Perform-test-trade should try both spot and short position
     """
 
     cli = get_command(app)
 
-    # Deposit some USDC to start
-    deposit_amount = 500 * 10**6
-    tx_hash = usdc.functions.approve(vault.comptroller.address, deposit_amount).transact({"from": deployer})
-    assert_transaction_success_with_explanation(web3, tx_hash)
-    tx_hash = vault.comptroller.functions.buyShares(deposit_amount, 1).transact({"from": deployer})
-    assert_transaction_success_with_explanation(web3, tx_hash)
-    assert usdc.functions.balanceOf(vault.address).call() == deposit_amount
-    logger.info("Deposited %d %s at block %d", deposit_amount, usdc.address, web3.eth.block_number)
-
-    # Check we have a deposit event
-    logs = vault.comptroller.events.SharesBought.get_logs()
-    logger.info("Got logs %s", logs)
-    assert len(logs) == 1
-
-    with patch.dict(os.environ, env, clear=True):
+    with patch.dict(os.environ, environment, clear=True):
         with pytest.raises(SystemExit) as e:
             cli.main(args=["init"])
         assert e.value.code == 0
 
-    with patch.dict(os.environ, env, clear=True):
+    with patch.dict(os.environ, environment, clear=True):
         with pytest.raises(SystemExit) as e:
-            cli.main(args=["perform-test-trade"])
+            cli.main(args=["perform-test-trade", "--all-pairs"])
         assert e.value.code == 0
-
-    assert usdc.functions.balanceOf(vault.address).call() < deposit_amount, "No deposits where spent; trades likely did not happen"
 
     # Check the resulting state and see we made some trade for trading fee losses
     with state_file.open("rt") as inp:
         state: State = State.from_json(inp.read())
-        assert len(list(state.portfolio.get_all_trades())) == 2
+        assert len(list(state.portfolio.get_all_trades())) == 6
         reserve_value = state.portfolio.get_default_reserve_position().get_value()
-        assert reserve_value == pytest.approx(499.994009)
+        assert reserve_value == pytest.approx(499.990849)
 
 
 def test_generic_routing_live_trading_start_spot_only(

@@ -1155,6 +1155,8 @@ class PositionManager:
 
         assert executor_pair.is_spot(), f"Give a spot pair as input and we will figure out shorting pair for you. Got {executor_pair}"
 
+        assert self.strategy_universe is not None, f"PositionManager.strategy_universe not set, data_universe is {self.data_universe}"
+
         shorting_pair = self.strategy_universe.get_shorting_pair(executor_pair)
 
         # Check that pair data looks good
