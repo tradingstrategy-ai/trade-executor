@@ -5,11 +5,11 @@ import shutil
 from decimal import Decimal
 from typing import List
 
-import flaky
 import pytest
 import pandas as pd
 from web3 import Web3
 from web3.contract import Contract
+import flaky
 
 from eth_defi.uniswap_v3.deployment import UniswapV3Deployment
 from eth_defi.hotwallet import HotWallet
@@ -252,7 +252,7 @@ def test_one_delta_live_strategy_short_open_and_close(
     strategy_cycle_timestamp = snap_to_next_tick(ts, loop.cycle_duration)
 
     loop.tick(
-    test_one_delta_live_strategy_short_open_and_close    ts,
+        ts,
         loop.cycle_duration,
         state,
         cycle=2,
