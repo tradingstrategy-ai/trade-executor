@@ -222,7 +222,8 @@ def build_expected_asset_map(
     # Closed positions appear in the position list only if there is not existing position,
     # otherwise all closed positions would get enumerated one by one
     #
-    closed_positions_lifo = list(portfolio.closed_positions.values()).reverse()
+    closed_positions_lifo = list(portfolio.closed_positions.values())
+    closed_positions_lifo.reverse()
     for p in closed_positions_lifo:
         for asset, amount in get_asset_amounts(p):
             if asset not in mappings:
