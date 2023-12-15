@@ -120,8 +120,6 @@ def reconfirm(
     logger.info(f"  Chain id is {web3.eth.chain_id:,}")
     logger.info(f"  Latest block is {web3.eth.block_number:,}")
 
-    import ipdb ; ipdb.set_trace()
-
     sync_model = create_sync_model(
         asset_management_mode,
         web3,

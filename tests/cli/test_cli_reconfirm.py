@@ -12,12 +12,7 @@ import pytest
 from typer.main import get_command
 
 from eth_defi.provider.anvil import AnvilLaunch, fork_network_anvil
-from eth_typing import HexAddress
-
 from eth_defi.hotwallet import HotWallet
-from eth_defi.uniswap_v2.deployment import UniswapV2Deployment
-
-from tradingstrategy.pair import PandasPairUniverse
 
 from tradeexecutor.cli.main import app
 from tradeexecutor.state.state import State
@@ -40,11 +35,11 @@ def anvil_polygon_chain_fork() -> str:
         fork_block_number=51_156_615
     )
     try:
-        yield launch.json_rpc_url
+        yield launch
     finally:
         # Wind down Anvil process after the test is complete
         # launch.close(log_level=logging.ERROR)
-        launch.close(log_level=logging.ERROR)
+        pass
 
 
 @pytest.fixture()
@@ -56,7 +51,7 @@ def strategy_file() -> Path:
 @pytest.fixture()
 def state_file() -> Path:
     """Return mutable test state copy."""
-    path =  Path(tempfile.mkdtemp()) / "test-reconfirm.json"
+    path = Path(tempfile.mkdtemp()) / "test-reconfirm.json"
     source = os.path.join(os.path.dirname(__file__), "reconfirm-test-state.json")
     shutil.copy(source, path)
     return path
@@ -64,7 +59,7 @@ def state_file() -> Path:
 
 @pytest.fixture()
 def environment(
-    anvil: AnvilLaunch,
+    anvil_polygon_chain_fork: AnvilLaunch,
     hot_wallet: HotWallet,
     state_file: Path,
     strategy_file: Path,
@@ -72,13 +67,14 @@ def environment(
     """Set up environment vars for all CLI commands."""
 
     environment = {
-        "EXECUTOR_ID": "test_close_all",
+        "EXECUTOR_ID": "test_cli_reconfirm",
         "STRATEGY_FILE": strategy_file.as_posix(),
         # "PRIVATE_KEY": hot_wallet.account.key.hex(),  # Irrelevant
-        "JSON_RPC_ANVIL": anvil.json_rpc_url,
+        "JSON_RPC_ANVIL": anvil_polygon_chain_fork.json_rpc_url,
         "STATE_FILE": state_file.as_posix(),
         "ASSET_MANAGEMENT_MODE": "enzyme",
         "UNIT_TESTING": "true",
+        "TRADING_STRATEGY_API_KEY": os.environ["TRADING_STRATEGY_API_KEY"],
         # Set parameters from Enzyme vault deployment
         "VAULT_ADDRESS": "0xDD06559A12d99a5301602213FBcB3c40Dcc71F4E",
         "VAULT_ADAPTER_ADDRESS": "0x58FDa1d623e54B0d2f27f1D7fB38c3aB5eCcbd3b",
@@ -89,6 +85,7 @@ def environment(
 
 
 def test_cli_reconfirm(
+    logger: logging.Logger,
     environment: dict,
     state_file: Path,
 ):
@@ -100,11 +97,15 @@ def test_cli_reconfirm(
       taken from at a specific Polygon mainnet fork
     """
 
+    state = State.read_json_file(state_file)
+    assert len(state.portfolio.open_positions) == 0
+
     cli = get_command(app)
     with patch.dict(os.environ, environment, clear=True):
         with pytest.raises(SystemExit) as e:
             cli.main(args=["reconfirm"])
         assert e.value.code == 0
 
+    # After reconfirm, ETH-USDC spot position should be open
     state = State.read_json_file(state_file)
     assert len(state.portfolio.open_positions) == 1
