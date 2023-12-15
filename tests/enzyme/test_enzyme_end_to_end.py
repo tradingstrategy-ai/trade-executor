@@ -410,6 +410,10 @@ def test_enzyme_correct_accounts(
 
     """
 
+    # Avoid dirty fs
+    if os.path.exists("/tmp/test_enzyme_end_to_end.correct-accounts-backup-1.json"):
+        os.remove("/tmp/test_enzyme_end_to_end.correct-accounts-backup-1.json")
+
     # Deposit some money in the vault which should be picked up by correct accounts
     usdc.functions.approve(vault.comptroller.address, 500 * 10**6).transact({"from": deployer})
     vault.comptroller.functions.buyShares(500 * 10**6, 1).transact({"from": deployer})
