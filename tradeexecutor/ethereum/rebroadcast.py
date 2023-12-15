@@ -38,8 +38,10 @@ def rebroadcast_all(
     """
     txs = []
     trades = []
+    all_trades = list(state.portfolio.get_all_trades())
 
-    for t in state.portfolio.get_all_trades():
+    for t in all_trades:
+
         if t.is_unfinished():
             logger.info("Marking trade %s for rebroadcast", t)
             assert t.blockchain_transactions, f"Trade marked unfinished, did not have any txs: {t}"
@@ -58,6 +60,9 @@ def rebroadcast_all(
 
                 txs.append(tx)
                 trades.append(t)
+
+    logger.info("%d unfinished trades, %d total trades", len(trades), len(all_trades))
+    import ipdb ; ipdb.set_trace()
 
     execution_model.execute_trades(
         datetime.datetime.utcnow(),

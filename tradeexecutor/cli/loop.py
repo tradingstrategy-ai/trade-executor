@@ -172,6 +172,7 @@ class ExecutionLoop:
         self.check_accounts = check_accounts
         self.execution_context = execution_context
         self.sync_treasury_on_startup = sync_treasury_on_startup
+        self.store = store
 
         self.backtest_start = backtest_start
         self.backtest_end = backtest_end
@@ -480,6 +481,7 @@ class ExecutionLoop:
             debug_details=debug_details,
             cycle_duration=cycle_duration,
             cycle=cycle,
+            store=self.store,
         )
 
         # Update portfolio and position historical data tracking.

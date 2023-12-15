@@ -154,6 +154,22 @@ class Portfolio:
 
         return None
 
+    def get_trade_by_tx_hash(self, tx_hash: str) -> TradeExecution | None:
+        """Find a trade that contains a particular transaction.
+
+        :param tx_hash:
+            Ethereum transaction hash
+
+        :return:
+            None if the portfolio does not contain such a trade
+        """
+        for t in self.get_all_trades():
+            for b in t.blockchain_transactions:
+                if b.tx_hash == tx_hash:
+                    return t
+
+        return None
+
     def get_all_positions(self) -> Iterable[TradingPosition]:
         """Get open, closed and frozen, positions."""
         return chain(self.open_positions.values(), self.closed_positions.values(), self.frozen_positions.values())

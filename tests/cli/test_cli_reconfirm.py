@@ -69,7 +69,7 @@ def environment(
     environment = {
         "EXECUTOR_ID": "test_cli_reconfirm",
         "STRATEGY_FILE": strategy_file.as_posix(),
-        # "PRIVATE_KEY": hot_wallet.account.key.hex(),  # Irrelevant
+        "PRIVATE_KEY": hot_wallet.account.key.hex(),  # Irrelevant
         "JSON_RPC_ANVIL": anvil_polygon_chain_fork.json_rpc_url,
         "STATE_FILE": state_file.as_posix(),
         "ASSET_MANAGEMENT_MODE": "enzyme",
@@ -84,6 +84,7 @@ def environment(
     return environment
 
 
+@pytest.mark.skip(reason="We do not have currently a good state trace to finish this test. Placeholder left so we can later poke this.")
 def test_cli_reconfirm(
     logger: logging.Logger,
     environment: dict,
@@ -103,7 +104,7 @@ def test_cli_reconfirm(
     cli = get_command(app)
     with patch.dict(os.environ, environment, clear=True):
         with pytest.raises(SystemExit) as e:
-            cli.main(args=["reconfirm"])
+            cli.main(args=["repair"])
         assert e.value.code == 0
 
     # After reconfirm, ETH-USDC spot position should be open

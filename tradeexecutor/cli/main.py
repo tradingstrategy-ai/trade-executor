@@ -11,7 +11,6 @@ from .commands.correct_accounts import correct_accounts
 from .commands.enzyme_asset_list import enzyme_asset_list
 from .commands.export import export
 from .commands.hello import hello
-from .commands.reconfirm import reconfirm
 from .commands.reset import reset
 from .commands.reset_deposits import reset_deposits
 from .commands.show_positions import show_positions
@@ -24,4 +23,4 @@ from .commands.init import init
 # Dummy export commands even though they are already registered
 # to make the linter happy
 __all__ = [app, check_wallet, check_universe, hello, start, perform_test_trade, version, repair, console, init, reset, enzyme_asset_list, enzyme_deploy_vault,
-           close_all, show_positions, backtest, correct_accounts, check_accounts, reset_deposits, export, reconfirm]
+           close_all, show_positions, backtest, correct_accounts, check_accounts, reset_deposits, export]

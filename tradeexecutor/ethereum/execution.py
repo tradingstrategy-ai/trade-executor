@@ -97,6 +97,7 @@ class EthereumExecution(ExecutionModel):
         self.mainnet_fork = mainnet_fork
         logger.info(
             "Execution model %s created.\n confirmation_block_count: %s, confirmation_timeout: %s, mainnet_fork: %s",
+            self.__class__.__name__,
             self.confirmation_block_count,
             self.confirmation_timeout,
             self.mainnet_fork

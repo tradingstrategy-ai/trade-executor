@@ -18,6 +18,7 @@ from eth_defi.provider.anvil import is_anvil, mine
 from tradeexecutor.ethereum.ethereum_protocol_adapters import EthereumPairConfigurator
 from tradeexecutor.ethereum.execution import EthereumExecution
 from tradeexecutor.ethereum.tx import TransactionBuilder
+from tradeexecutor.state.store import StateStore
 from tradeexecutor.state.types import BlockNumber
 from tradeexecutor.statistics.core import update_statistics
 from tradeexecutor.strategy.account_correction import check_accounts, UnexpectedAccountingCorrectionIssue
@@ -571,14 +572,16 @@ class StrategyRunner(abc.ABC):
                 cycle=cycle,
             )
 
-    def tick(self,
-             strategy_cycle_timestamp: datetime.datetime,
-             universe: StrategyExecutionUniverse,
-             state: State,
-             debug_details: dict,
-             cycle_duration: Optional[CycleDuration] = None,
-             cycle: Optional[int] = None,
-             ) -> dict:
+    def tick(
+        self,
+        strategy_cycle_timestamp: datetime.datetime,
+        universe: StrategyExecutionUniverse,
+        state: State,
+        debug_details: dict,
+        cycle_duration: Optional[CycleDuration] = None,
+        cycle: Optional[int] = None,
+        store: Optional[StateStore] = None,
+    ) -> dict:
         """Execute the core functions of a strategy.
 
         TODO: This function is vulnerable to balance changes in the middle of execution.
@@ -717,6 +720,16 @@ class StrategyRunner(abc.ABC):
 
                     # Make sure our hot wallet nonce is up to date
                     self.sync_model.resync_nonce()
+
+                    # Sync state before broadcasting,
+                    # so we have generated tx hashes on the disk
+                    # and trades flagged with broadcasting/broadcasted status.
+                    # This allows us to recover and rebroadcast,
+                    # if the execution crashes e.g. due to blockchain being down,
+                    # node issues, or gas fee spikes
+                    if self.execution_context.mode.is_live_trading():
+                        logger.info("Syncing state before teh trade execution")
+                        store.sync(state)
 
                     self.execution_model.execute_trades(
                         strategy_cycle_timestamp,
