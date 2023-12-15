@@ -172,11 +172,15 @@ def backtest(
     )
 
     assert backtest_setup.trading_strategy_engine_version
+    assert backtest_setup.name
 
     state, universe, debug_data = run_backtest(
         backtest_setup,
         client=client,
     )
+
+    # We should not be able let unnamed backtests through
+    assert state.name
 
     display_backtesting_results(state)
 

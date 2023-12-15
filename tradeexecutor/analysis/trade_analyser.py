@@ -196,7 +196,7 @@ class TradeSummary:
         self.winning_take_profits_percent = calculate_percentage(self.winning_take_profits, self.take_profits)
         self.losing_take_profits_percent = calculate_percentage(self.losing_take_profits, self.take_profits)
 
-    def to_dataframe(self, format_headings = True) -> pd.DataFrame:
+    def to_dataframe(self, format_headings=True) -> pd.DataFrame:
         """Creates a human-readable Pandas dataframe summary table from the object."""
 
         human_data = {

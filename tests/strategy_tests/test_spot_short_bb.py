@@ -9,6 +9,7 @@ import pytest
 
 from tradeexecutor.analysis.trade_analyser import build_trade_analysis
 from tradeexecutor.backtest.backtest_runner import run_backtest, setup_backtest
+from tradeexecutor.backtest.tearsheet import export_backtest_report
 from tradeexecutor.cli.log import setup_pytest_logging
 from tradeexecutor.state.state import State
 from tradeexecutor.strategy.universe_model import UniverseOptions
@@ -72,3 +73,12 @@ def test_sport_short_strategy(
     summary = analysis.calculate_summary_statistics(universe.data_universe.time_bucket, state)
     df = summary.to_dataframe()
     str(df)
+
+    # See reporter does not crash
+    export_backtest_report(
+        state,
+        universe,
+        output_notebook=Path("/dev/null"),
+        output_html=Path("/dev/null"),
+    )
+
