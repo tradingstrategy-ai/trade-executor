@@ -62,7 +62,6 @@ def rebroadcast_all(
                 trades.append(t)
 
     logger.info("%d unfinished trades, %d total trades", len(trades), len(all_trades))
-    import ipdb ; ipdb.set_trace()
 
     execution_model.execute_trades(
         datetime.datetime.utcnow(),
