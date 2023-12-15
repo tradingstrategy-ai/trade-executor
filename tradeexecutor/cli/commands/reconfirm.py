@@ -114,6 +114,13 @@ def reconfirm(
         hot_wallet = None
 
     web3 = web3config.get_default()
+    logger.info("RPC details")
+
+    # Check the chain is online
+    logger.info(f"  Chain id is {web3.eth.chain_id:,}")
+    logger.info(f"  Latest block is {web3.eth.block_number:,}")
+
+    import ipdb ; ipdb.set_trace()
 
     sync_model = create_sync_model(
         asset_management_mode,
@@ -122,16 +129,6 @@ def reconfirm(
         vault_address,
         vault_adapter_address,
     )
-
-    logger.info("RPC details")
-
-    # Check the chain is online
-    logger.info(f"  Chain id is {web3.eth.chain_id:,}")
-    logger.info(f"  Latest block is {web3.eth.block_number:,}")
-
-    # Check balances
-    logger.info("Balance details")
-    logger.info("  Hot wallet is %s", hot_wallet.address)
 
     vault_address =  sync_model.get_vault_address()
     if vault_address:
@@ -185,67 +182,6 @@ def reconfirm(
 
     logger.info("Universe contains %d pairs", universe.data_universe.pairs.get_count())
     logger.info("Reserve assets are: %s", universe.reserve_assets)
-
-    assert len(universe.reserve_assets) == 1, "Need exactly one reserve asset"
-
-    # Set initial reserves,
-    # in order to run the tests
-    # TODO: Have this / treasury sync as a separate CLI command later
-    if unit_testing:
-        if len(state.portfolio.reserves) == 0:
-            logger.info("Initialising reserves for the unit test: %s", universe.reserve_assets[0])
-            state.portfolio.initialise_reserves(universe.reserve_assets[0])
-
-    block_number = get_almost_latest_block_number(web3)
-    logger.info(f"Correcting accounts at block {block_number:,}")
-
-    block_timestamp = get_block_timestamp(web3, block_number)
-
-    corrections = calculate_account_corrections(
-        universe.data_universe.pairs,
-        universe.reserve_assets,
-        state,
-        sync_model,
-        block_identifier=block_number,
-    )
-    corrections = list(corrections)
-
-    if len(corrections) == 0:
-        logger.info("No account corrections found")
-
-    if isinstance(sync_model, EnzymeVaultSyncModel):
-        vault = sync_model.vault
-        tx_builder = EnzymeTransactionBuilder(hot_wallet, vault)
-    elif isinstance(sync_model, HotWalletSyncModel):
-        vault = None
-        tx_builder = HotWalletTransactionBuilder(web3, hot_wallet)
-    else:
-        raise NotImplementedError()
-
-    # Set the default token dump address
-    if not unknown_token_receiver:
-        if isinstance(sync_model, EnzymeVaultSyncModel):
-            unknown_token_receiver = sync_model.get_hot_wallet().address
-
-    if not unknown_token_receiver:
-        raise RuntimeError(f"unknown_token_receiver missing and cannot deduct from the config. Please give one on the command line.")
-
-    assert hot_wallet is not None
-    hot_wallet.sync_nonce(web3)
-    logger.info("Hot wallet nonce is %d", hot_wallet.current_nonce)
-
-    balance_updates = _correct_accounts(
-        state,
-        corrections,
-        strategy_cycle_included_at=None,
-        interactive=not unit_testing,
-        tx_builder=tx_builder,
-        unknown_token_receiver=unknown_token_receiver,  # Send any unknown tokens to the hot wallet of the trade-executor
-        block_identifier=block_number,
-        block_timestamp=block_timestamp,
-    )
-    balance_updates = list(balance_updates)
-    logger.info(f"We did {len(corrections)} accounting corrections, of which {len(balance_updates)} internal state balance updates, new block height is {block_number:,} at {block_timestamp}")
 
     block_number = get_almost_latest_block_number(web3)
 

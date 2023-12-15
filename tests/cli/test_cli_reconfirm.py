@@ -25,6 +25,8 @@ from tradeexecutor.state.state import State
 
 logger = logging.getLogger(__name__)
 
+pytestmark = pytest.mark.skipif(not os.environ.get("JSON_RPC_POLYGON_ARCHIVE"), reason="Set JSON_RPC_POLYGON_ARCHIVE environment variable to run this test")
+
 
 @pytest.fixture
 def anvil_polygon_chain_fork() -> str:
@@ -32,7 +34,7 @@ def anvil_polygon_chain_fork() -> str:
 
     :return: JSON-RPC URL for Web3
     """
-    mainnet_rpc = os.environ["JSON_RPC_POLYGON"]
+    mainnet_rpc = os.environ["JSON_RPC_POLYGON_ARCHIVE"]
     launch = fork_network_anvil(
         mainnet_rpc,
         fork_block_number=51_156_615
@@ -42,7 +44,7 @@ def anvil_polygon_chain_fork() -> str:
     finally:
         # Wind down Anvil process after the test is complete
         # launch.close(log_level=logging.ERROR)
-        launch.close()
+        launch.close(log_level=logging.ERROR)
 
 
 @pytest.fixture()
@@ -56,17 +58,13 @@ def state_file() -> Path:
     """Return mutable test state copy."""
     path =  Path(tempfile.mkdtemp()) / "test-reconfirm.json"
     source = os.path.join(os.path.dirname(__file__), "reconfirm-test-state.json")
-    shutil.cp(source, path)
+    shutil.copy(source, path)
     return path
 
 
 @pytest.fixture()
 def environment(
     anvil: AnvilLaunch,
-    deployer: HexAddress,
-    user_1: HexAddress,
-    uniswap_v2: UniswapV2Deployment,
-    pair_universe: PandasPairUniverse,
     hot_wallet: HotWallet,
     state_file: Path,
     strategy_file: Path,
@@ -81,6 +79,11 @@ def environment(
         "STATE_FILE": state_file.as_posix(),
         "ASSET_MANAGEMENT_MODE": "enzyme",
         "UNIT_TESTING": "true",
+        # Set parameters from Enzyme vault deployment
+        "VAULT_ADDRESS": "0xDD06559A12d99a5301602213FBcB3c40Dcc71F4E",
+        "VAULT_ADAPTER_ADDRESS": "0x58FDa1d623e54B0d2f27f1D7fB38c3aB5eCcbd3b",
+        "VAULT_PAYMENT_FORWARDER_ADDRESS": "0x6D1A63C9679afa68Dc61AB88F16542D6F1bFA3A3",
+        "VAULT_DEPLOYMENT_BLOCK_NUMBER": "43828921",
     }
     return environment
 
