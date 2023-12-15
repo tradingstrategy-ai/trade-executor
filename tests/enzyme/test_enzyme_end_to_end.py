@@ -411,8 +411,8 @@ def test_enzyme_correct_accounts(
     """
 
     # Avoid dirty fs
-    if os.path.exists("/tmp/test_enzyme_end_to_end.correct-accounts-backup-1.json"):
-        os.remove("/tmp/test_enzyme_end_to_end.correct-accounts-backup-1.json")
+    if os.path.exists("/tmp/test_enzyme_end_to_end.backup-1.json"):
+        os.remove("/tmp/test_enzyme_end_to_end.backup-1.json")
 
     # Deposit some money in the vault which should be picked up by correct accounts
     usdc.functions.approve(vault.comptroller.address, 500 * 10**6).transact({"from": deployer})
@@ -429,7 +429,7 @@ def test_enzyme_correct_accounts(
         assert e.value.code == 0
 
     # We created a backup of the old state
-    assert os.path.exists("/tmp/test_enzyme_end_to_end.correct-accounts-backup-1.json")
+    assert os.path.exists("/tmp/test_enzyme_end_to_end.backup-1.json")
 
     # See that the corrected reverse balance looks ok
     state: State = State.read_json_file(state_file)
