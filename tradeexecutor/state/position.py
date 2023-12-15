@@ -1503,12 +1503,39 @@ loca
         # Static stop loss
         return self.stop_loss
 
+    def get_original_planned_price(self) -> USDollarPrice:
+        """Get the US-dollar price for a position that does not have any executed price.
+
+        - The position was left in a broken state after the first trade failed to execute
+
+        - We will still have the price from the first trade we thought
+          we were going to get
+
+        - Always use :py:attr:`TradingPosition.last_token_price` if available.
+
+        - Applies to spot positions only
+
+        :return:
+            PlannedUS dollar spot price of the first trade
+        """
+        assert self.is_spot()
+        first_trade = self.get_first_trade()
+        return first_trade.planned_price
+
     def calculate_quantity_usd_value(self, quantity: Decimal) -> USDollarAmount:
-        """Calculate value of asset amount using the latest known price."""
+        """Calculate value of asset amount using the latest known price.
+
+        - If we do not have price data, use the first planned trade
+        """
         if quantity == 0:
             return 0
-        assert self.last_token_price, f"Asset price not available when calculating price for quantity: {quantity}"
-        return float(quantity) * self.last_token_price
+
+        price = self.last_token_price
+        if price is None:
+            # See test_cli_correct_account_price_missing
+            price = self.get_original_planned_price()
+
+        return float(quantity) * price
 
     def add_notes_message(self, msg: str):
         """Add a new message to the notes field.
