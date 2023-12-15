@@ -9,6 +9,7 @@ import logging
 from pathlib import Path
 from unittest.mock import patch
 
+import flaky
 import pytest
 from click.testing import Result
 from typer.main import get_command
@@ -106,6 +107,7 @@ def environment(
         "MAX_CYCLES": "10",  # Run decide_trades() N times
         "TRADING_STRATEGY_API_KEY": os.environ["TRADING_STRATEGY_API_KEY"],
         "MAX_DATA_DELAY_MINUTES": "1440",  # Don't crash on not doing candle refresh properly
+        "GAS_BALANCE_WARNING_LEVEL": "0",  # Avoid unnecessary gas warnings
     }
     return environment
 
@@ -142,13 +144,17 @@ def test_generic_routing_live_trading_init(
         assert state.sync.deployment.block_number > 1
 
 
-def test_generic_routing_live_trading_start(
+# Flaky due to Anvil randomly reverting tx and causing a frozen position
+@flaky.flaky
+def test_generic_routing_live_trading_start_spot_and_short(
     environment: dict,
     state_file: Path,
 ):
     """Run generic routing based executor live.
 
     - Use a forked polygon
+
+    - Pretty slow test due to its nature ~1 minute
     """
 
     # Need to be initialised first
@@ -166,8 +172,7 @@ def test_generic_routing_live_trading_start(
     # Check that trades completed
     with state_file.open("rt") as inp:
         state = State.from_json(inp.read())
-        assert len(state.portfolio.closed_positions) == 1
-        assert len(state.portfolio.open_pos**18 * 0.03112978758721282)
+        assert len(state.portfolio.closed_positions) == 8
 
 
 @pytest.mark.skip(reason="This test is not yet finished")

@@ -42,6 +42,16 @@ COLLATERAL_EPSILON = Decimal(10**-5)
 CLOSE_POSITION_COLLATERAL_EPSILON = Decimal(0.02)
 
 
+
+#: What is the lower threshold check for zero interest
+#:
+#: Spotted from test_generic_routing_live_trading_start
+#: that does mainnet fork trading.
+#:
+INTEREST_EPSILON = Decimal(0.000002)
+
+
+
 def setup_decimal_accuracy():
     """Make sure we can handle Decimals up to 18 digits.
 

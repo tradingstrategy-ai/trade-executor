@@ -1129,11 +1129,13 @@ class TradingPosition(GenericPosition):
 
         - See also :py:meth:`get_realised_profit_percent`.
 
+        - Always returns zero for frozen positions
+
         .. note ::
 
             This function does not account for in-kind redemptions or any other account corrections.
             Please use :py:meth:`get_realised_profit_percent` if possible.
-loca
+
         :param include_interest:
             Include any accrued interest in PnL.
 
@@ -1142,6 +1144,9 @@ loca
 
             `None` if the position lacks any realised profit (contains only unrealised).
         """
+
+        if self.is_frozen():
+            return 0
 
         if not self.is_reduced():
             return None
@@ -1158,6 +1163,10 @@ loca
                     # realised profit is zero
                     trade_profit = 0
             else:
+
+                # Need to fix for frozen positions
+                #  trade_profit = (self.get_average_sell() - self.get_average_buy()) * float(self.get_buy_quantity())
+                # TypeError: unsupported operand type(s) for -: 'float' and 'NoneType'
                 trade_profit = (self.get_average_sell() - self.get_average_buy()) * float(self.get_buy_quantity())
         else:
             # No closes yet, only unrealised PnL

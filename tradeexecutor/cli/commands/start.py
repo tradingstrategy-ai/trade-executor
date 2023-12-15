@@ -93,6 +93,7 @@ def start(
     confirmation_block_count: int = shared_options.confirmation_block_count,
     private_key: Optional[str] = shared_options.private_key,
     min_gas_balance: Optional[float] = shared_options.min_gas_balance,
+    gas_balance_warning_level: Optional[float] = typer.Option(25.0, envvar="GAS_BALANCE_WARNING_LEVEL", help="If hot wallet gas level falls below this amount of tokens, issue a low gas warning."),
 
     # Logging
     discord_webhook_url: Optional[str] = typer.Option(None, envvar="DISCORD_WEBHOOK_URL", help="Discord webhook URL for notifications"),
@@ -341,8 +342,7 @@ def start(
         run_state.version = VersionInfo.read_docker_version()
         run_state.executor_id = id
 
-        # TODO: Gas warning level hard coded now
-        run_state.hot_wallet_gas_warning_level = 25
+        run_state.hot_wallet_gas_warning_level = Decimal(gas_balance_warning_level)
 
         # Create our webhook server
         if http_enabled:
