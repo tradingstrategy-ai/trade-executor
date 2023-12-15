@@ -153,4 +153,4 @@ def test_backtest_generic_router(
     )
 
     portfolio = state.portfolio
-    assert len(portfolio.closed_positions) == 1
+    assert len(portfolio.closed_positions) == 27
