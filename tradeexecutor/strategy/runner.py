@@ -494,7 +494,7 @@ class StrategyRunner(abc.ABC):
         # TODO: Add a specific app startup step that downloads
         # the universe for the first time and initialises here
         if isinstance(routing_model, GenericRouting):
-            assert self.execution_context.is_version_greater_or_equal_than(0, 3, 0), f"Strategy modules need to be at least 0.3 to support GenericRouting {self.execution_context.engine_version}"
+            assert self.execution_context.is_version_greater_or_equal_than(0, 3, 0), f"Strategy modules need to be at least 0.3 to support GenericRouting, we got version {self.execution_context.engine_version}"
             if not routing_model.is_initialised():
                 tx_builder = cast(TransactionBuilder, routing_state_details["tx_builder"])
                 web3 = tx_builder.web3

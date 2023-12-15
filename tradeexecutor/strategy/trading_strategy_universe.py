@@ -527,6 +527,9 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
             trading_pair_identifier.quote
         ]
 
+        # Legacy code fix
+        pair_universe.exchange_universe = exchange_universe
+
         universe = Universe(
             time_bucket=dataset.time_bucket,
             chains={chain_id},

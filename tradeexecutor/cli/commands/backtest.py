@@ -11,6 +11,7 @@ from pathlib import Path
 from queue import Queue
 from typing import Optional
 
+import pandas as pd
 import typer
 
 from eth_defi.gas import GasPriceMethod
@@ -31,7 +32,7 @@ from ..loop import ExecutionLoop
 from ..result import display_backtesting_results
 from ..version_info import VersionInfo
 from ..watchdog import stop_watchdog
-from ...backtest.backtest_runner import setup_backtest, run_backtest
+from ...backtest.backtest_runner import setup_backtest, run_backtest, setup_backtest_for_universe
 from ...backtest.tearsheet import export_backtest_report
 from ...ethereum.enzyme.vault import EnzymeVaultSyncModel
 from ...ethereum.uniswap_v2.uniswap_v2_routing import UniswapV2Routing
@@ -41,7 +42,7 @@ from ...strategy.approval import ApprovalType
 from ...strategy.bootstrap import import_strategy_file
 from ...strategy.cycle import CycleDuration
 from ...strategy.default_routing_options import TradeRouting
-from ...strategy.execution_context import ExecutionContext, ExecutionMode
+from ...strategy.execution_context import ExecutionContext, ExecutionMode, standalone_backtest_execution_context
 from ...strategy.execution_model import AssetManagementMode
 from ...strategy.routing import RoutingModel
 from ...strategy.run_state import RunState
@@ -137,14 +138,40 @@ def backtest(
         settings_path=None,  # Disable settings file on backtest
     )
 
-    backtest_setup = setup_backtest(
-        strategy_file,
-        start_at=mod.backtest_start,
-        end_at=mod.backtest_end,
-        initial_deposit=mod.initial_cash,
-        strategy_module=mod,
-        name=name,
+    if mod.name:
+        # Overwrite from the module
+        name = mod.name
+
+    universe_options = mod.get_universe_options()
+
+    logger.info("Loading backtesting universe data for %s", universe_options)
+
+    universe = mod.create_trading_universe(
+        pd.Timestamp.utcnow(),
+        client,
+        standalone_backtest_execution_context,
+        universe_options,
     )
+
+    initial_cash = mod.initial_cash
+    assert initial_cash is not None, f"Strategy module does not set initial_cash needed to backtest"
+
+    # Don't start at T+0 because we have not any data for that day yet
+    backtest_start_at = universe_options.start_at + mod.trading_strategy_cycle.to_timedelta()
+    logger.info("Backtest starts at %s", backtest_start_at)
+
+    backtest_setup = setup_backtest_for_universe(
+        mod,
+        start_at=backtest_start_at,
+        end_at=mod.backtest_end,
+        cycle_duration=mod.trading_strategy_cycle,
+        initial_deposit=initial_cash,
+        name=name,
+        universe=universe,
+        universe_options=universe_options,
+    )
+
+    assert backtest_setup.trading_strategy_engine_version
 
     state, universe, debug_data = run_backtest(
         backtest_setup,
@@ -155,6 +182,8 @@ def backtest(
 
     print(f"Writing backtest data the state file: {backtest_result}")
     state.write_json_file(backtest_result)
+    state2 = State.read_json_file(backtest_result)
+    assert state.name == state2.name  # Early prototype serialisation checks
 
     print(f"Exporting report, notebook: {notebook_report}, HTML: {html_report}")
     export_backtest_report(

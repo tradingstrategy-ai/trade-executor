@@ -12,6 +12,7 @@ from tradeexecutor.state.trade import TradeExecution, TradeStatus
 from tradeexecutor.state.types import Percent
 from tradeexecutor.strategy.account_correction import calculate_total_assets
 from tradeexecutor.strategy.execution_model import ExecutionModel, AutoClosingOrderUnsupported
+from tradeexecutor.strategy.generic.generic_router import GenericRouting, GenericRoutingState
 from tradeexecutor.strategy.interest import set_interest_checkpoint
 
 logger = logging.getLogger(__name__)
@@ -342,8 +343,8 @@ class BacktestExecution(ExecutionModel):
             Raise an error if we run out of balance to perform buys in some point.
         """
         assert isinstance(ts, datetime.datetime)
-        assert isinstance(routing_model, BacktestRoutingModel)
-        assert isinstance(routing_state, BacktestRoutingState)
+        assert isinstance(routing_model, (BacktestRoutingModel, GenericRouting))
+        assert isinstance(routing_state, (BacktestRoutingState, GenericRoutingState))
 
         state.start_execution_all(ts, trades, max_slippage=0)
 

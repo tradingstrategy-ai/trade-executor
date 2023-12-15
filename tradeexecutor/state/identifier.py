@@ -624,7 +624,9 @@ class AssetWithTrackedValue:
 
     def __post_init__(self):
         assert isinstance(self.quantity, Decimal), f"Got {self.quantity.__class__}"
-        assert self.quantity > 0, f"Any tracked asset must have positive quantity, received {self.asset} = {self.quantity}"
+        # __post_init__ is also called on de-serialisation
+        # Quantity si ze
+        assert self.quantity >= 0, f"Any tracked asset must have positive quantity, received {self.asset} = {self.quantity}"
         assert self.last_usd_price is not None, "Price is None - asset price must set during initialisation"
         assert self.last_usd_price > 0
 

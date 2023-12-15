@@ -27,6 +27,7 @@ from tradeexecutor.ethereum.wallet import perform_gas_level_checks
 from tradeexecutor.state.metadata import Metadata
 from tradeexecutor.statistics.summary import calculate_summary_statistics
 from tradeexecutor.strategy.account_correction import check_accounts, UnexpectedAccountingCorrectionIssue
+from tradeexecutor.strategy.generic.generic_pricing_model import GenericPricing
 from tradeexecutor.strategy.pandas_trader.decision_trigger import wait_for_universe_data_availability_jsonl
 from tradeexecutor.strategy.routing import RoutingModel
 from tradeexecutor.strategy.run_state import RunState
@@ -688,14 +689,23 @@ class ExecutionLoop:
         routing_state, pricing_model, valuation_model = self.runner.setup_routing(universe)
         assert pricing_model, "Routing did not provide pricing_model"
 
-        assert isinstance(pricing_model, BacktestPricing)
-
-        stop_loss_pricing_model = BacktestPricing(
-            universe.backtest_stop_loss_candles,
-            self.runner.routing_model,
-            time_bucket=universe.backtest_stop_loss_time_bucket,
-            allow_missing_fees=pricing_model.allow_missing_fees
-        )
+        if isinstance(pricing_model, BacktestPricing):
+            stop_loss_pricing_model = BacktestPricing(
+                universe.backtest_stop_loss_candles,
+                self.runner.routing_model,
+                time_bucket=universe.backtest_stop_loss_time_bucket,
+                allow_missing_fees=pricing_model.allow_missing_fees
+            )
+        elif isinstance(pricing_model, GenericPricing):
+            # TODO: This needs have a test coverage / figured out if correct
+            stop_loss_pricing_model = BacktestPricing(
+                universe.backtest_stop_loss_candles,
+                self.runner.routing_model,
+                time_bucket=universe.backtest_stop_loss_time_bucket,
+                allow_missing_fees=False
+            )
+        else:
+            raise AssertionError(f"Don't know how to deal with {pricing_model}")
 
         # Do stop loss checks for every time point between now and next strategy cycle
         tp = 0
@@ -765,7 +775,7 @@ class ExecutionLoop:
         assert backtest_step != CycleDuration.cycle_unknown
 
         assert isinstance(self.backtest_start, datetime.datetime)
-        assert not isinstance(self.backtest_start, pd.Timestamp)
+        assert not isinstance(self.backtest_start, pd.Timestamp), f"Expected pandas.Timestamp, got {self.backtest_start.__class__}: {self.backtest_start}"
         assert not isinstance(self.backtest_end, pd.Timestamp)
         assert isinstance(self.backtest_end, datetime.datetime)
         assert self.backtest_start < self.backtest_end
