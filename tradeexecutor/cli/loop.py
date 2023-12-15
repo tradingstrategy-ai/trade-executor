@@ -213,6 +213,10 @@ class ExecutionLoop:
 
         self.minimum_data_lookback_range = minimum_data_lookback_range
 
+        # We hide once-downloaded universe here for live loop
+        # tests that perform live trading against forked chain in a fast cycle (1s)
+        self.unit_testing_universe: StrategyExecutionUniverse | None = None
+
     def is_backtest(self) -> bool:
         """Are we doing a backtest execution."""
         return self.backtest_start is not None
@@ -1035,6 +1039,10 @@ class ExecutionLoop:
                     # Force universe recreation on every cycle
                     universe = None
 
+                # Shortcut universe downlado in forked mainnet test strategies
+                if self.execution_context.mode == ExecutionMode.unit_testing_trading:
+                    universe = self.unit_testing_universe
+
                 # Run the main strategy logic
                 universe = self.tick(
                     unrounded_timestamp,
@@ -1046,6 +1054,10 @@ class ExecutionLoop:
                     live=True,
                     extra_debug_data=extra_debug_data,
                 )
+
+                if self.execution_context.mode == ExecutionMode.unit_testing_trading:
+                    self.unit_testing_universe = universe
+
                 logger.info("run_live() tick complete, universe is now %s", universe)
 
                 # Post execution, update our statistics
