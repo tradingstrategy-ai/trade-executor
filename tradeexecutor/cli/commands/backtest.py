@@ -138,6 +138,10 @@ def backtest(
         settings_path=None,  # Disable settings file on backtest
     )
 
+    if mod.name:
+        # Overwrite from the module
+        name = mod.name
+
     universe_options = mod.get_universe_options()
 
     logger.info("Loading backtesting universe data for %s", universe_options)
@@ -178,6 +182,8 @@ def backtest(
 
     print(f"Writing backtest data the state file: {backtest_result}")
     state.write_json_file(backtest_result)
+    state2 = State.read_json_file(backtest_result)
+    assert state.name == state2.name  # Early prototype serialisation checks
 
     print(f"Exporting report, notebook: {notebook_report}, HTML: {html_report}")
     export_backtest_report(

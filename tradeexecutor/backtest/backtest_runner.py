@@ -28,12 +28,12 @@ from tradeexecutor.state.types import USDollarAmount
 from tradeexecutor.strategy.approval import UncheckedApprovalModel, ApprovalModel
 from tradeexecutor.strategy.cycle import CycleDuration
 from tradeexecutor.strategy.description import StrategyExecutionDescription
-from tradeexecutor.strategy.execution_context import ExecutionContext, ExecutionMode
+from tradeexecutor.strategy.execution_context import ExecutionContext, ExecutionMode, standalone_backtest_execution_context
 from tradeexecutor.strategy.generic.generic_pricing_model import GenericPricing
 from tradeexecutor.strategy.generic.generic_router import GenericRouting
 from tradeexecutor.strategy.pandas_trader.runner import PandasTraderRunner
 from tradeexecutor.strategy.strategy_module import parse_strategy_module, \
-    DecideTradesProtocol, CreateTradingUniverseProtocol, CURRENT_ENGINE_VERSION, StrategyModuleInformation, DecideTradesProtocol2
+    DecideTradesProtocol, CreateTradingUniverseProtocol, CURRENT_ENGINE_VERSION, StrategyModuleInformation, DecideTradesProtocol2, read_strategy_module
 from tradeexecutor.strategy.engine_version import TradingStrategyEngineVersion
 from tradeexecutor.strategy.reserve_currency import ReserveCurrency
 from tradeexecutor.strategy.default_routing_options import TradeRouting
@@ -220,6 +220,11 @@ def setup_backtest_for_universe(
 
     trade_routing = strategy_module.trade_routing
 
+    stop_loss_data_available = False
+    if universe:
+        if universe.backtest_stop_loss_candles is not None:
+            stop_loss_data_available = True
+
     if trade_routing == TradeRouting.default:
         pair_configurator = EthereumBacktestPairConfigurator(universe)
         routing_model = GenericRouting(pair_configurator)
@@ -228,7 +233,7 @@ def setup_backtest_for_universe(
         # Set up execution and pricing
         pricing_model = BacktestPricing(universe.data_universe.candles, routing_model, allow_missing_fees=allow_missing_fees)
 
-    execution_model = BacktestExecution(wallet, max_slippage)
+    execution_model = BacktestExecution(wallet, max_slippage, stop_loss_data_available=stop_loss_data_available)
 
     if universe_options is None:
         universe_options = UniverseOptions(candle_time_bucket_override=candle_time_frame)
@@ -255,18 +260,19 @@ def setup_backtest_for_universe(
 
 
 def setup_backtest(
-        strategy_path: Path,
-        start_at: Optional[datetime.datetime] = None,
-        end_at: Optional[datetime.datetime] = None,
-        initial_deposit: Optional[USDollarAmount] = None,
-        max_slippage: Optional[float] = 0.01,
-        cycle_duration: Optional[CycleDuration]=None,
-        candle_time_frame: Optional[TimeBucket]=None,
-        strategy_module: Optional[StrategyModuleInformation]=None,
-        name: Optional[str] = None,
-        minimum_data_lookback_range: Optional[datetime.timedelta] = None,
-        universe_options: Optional[UniverseOptions] = None,
-    ) -> BacktestSetup:
+    strategy_path: Path,
+    start_at: Optional[datetime.datetime] = None,
+    end_at: Optional[datetime.datetime] = None,
+    initial_deposit: Optional[USDollarAmount] = None,
+    max_slippage: Optional[float] = 0.01,
+    cycle_duration: Optional[CycleDuration]=None,
+    candle_time_frame: Optional[TimeBucket]=None,
+    strategy_module: Optional[StrategyModuleInformation]=None,
+    name: Optional[str] = None,
+    minimum_data_lookback_range: Optional[datetime.timedelta] = None,
+    universe_options: Optional[UniverseOptions] = None,
+    client: Optional[Client] = None,
+) -> BacktestSetup:
     """High-level entry point for setting up a backtest from a strategy module.
 
     - This function is useful for running backtests for strategies in
@@ -319,8 +325,9 @@ def setup_backtest(
 
     # Load strategy Python file
     if strategy_module is None:
-        strategy_mod_exports: dict = runpy.run_path(strategy_path)
-        strategy_module = parse_strategy_module(strategy_path, strategy_mod_exports)
+        # strategy_mod_exports: dict = runpy.run_path(strategy_path)
+        # strategy_module = parse_strategy_module(strategy_path, strategy_mod_exports)
+        strategy_module = read_strategy_module(strategy_path)
 
     if not initial_deposit:
         initial_deposit = strategy_module.initial_cash
@@ -351,7 +358,26 @@ def setup_backtest(
         )
 
     if not name:
-        name = f"Backtest for {strategy_module.path.stem}"
+        name = strategy_module.name or f"Backtest for {strategy_module.path.stem}"
+
+    if client is not None:
+        logger.info("Loading backtesting universe data for %s", universe_options)
+        universe = strategy_module.create_trading_universe(
+            pd.Timestamp.utcnow(),
+            client,
+            standalone_backtest_execution_context,
+            universe_options,
+        )
+    else:
+        universe = None
+
+    if universe is not None and strategy_module.trade_routing == TradeRouting.default:
+        pair_configurator = EthereumBacktestPairConfigurator(universe)
+        routing_model = GenericRouting(pair_configurator)
+        pricing_model = GenericPricing(pair_configurator)
+    else:
+        routing_model = None
+        pricing_model = None
 
     return BacktestSetup(
         universe_options.start_at,
@@ -360,10 +386,10 @@ def setup_backtest(
         universe_options=universe_options,
         wallet=wallet,
         state=State(name=name),
-        universe=None,
-        pricing_model=None,  # Will be set up later
+        universe=universe,
+        pricing_model=pricing_model,
         execution_model=execution_model,
-        routing_model=None, # Will be set up later
+        routing_model=routing_model,
         sync_model=sync_model,
         decide_trades=strategy_module.decide_trades,
         create_trading_universe=strategy_module.create_trading_universe,
@@ -372,15 +398,14 @@ def setup_backtest(
         trading_strategy_engine_version=strategy_module.trading_strategy_engine_version,
         name=name,
         minimum_data_lookback_range=minimum_data_lookback_range,
-        engine_version=strategy_module.trading_strategy_engine_version,
     )
 
 
 def run_backtest(
-        setup: BacktestSetup,
-        client: Optional[Client]=None,
-        allow_missing_fees=False,
-        execution_test_hook: Optional[ExecutionTestHook] = None,
+    setup: BacktestSetup,
+    client: Optional[Client]=None,
+    allow_missing_fees=False,
+    execution_test_hook: Optional[ExecutionTestHook] = None,
 ) -> Tuple[State, TradingStrategyUniverse, dict]:
     """Run a strategy backtest.
 
@@ -419,6 +444,7 @@ def run_backtest(
         return BacktestValuationModel(pricing_model)
 
     if not setup.universe:
+
         def backtest_setup(state: State, universe: TradingStrategyUniverse, sync_model: BacktestSyncModel):
             # Use strategy script create_trading_universe() hook to construct the universe
             # Called on the first cycle. Only if the universe is not predefined.
