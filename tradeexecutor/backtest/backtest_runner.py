@@ -94,10 +94,6 @@ class BacktestSetup:
     # strategy_module: StrategyModuleInformation
     pair_configurator: Optional[EthereumBacktestPairConfigurator] = None
 
-    def __post_init__(self):
-        assert self.trading_strategy_engine_version is not None
-        assert getattr(self, "engine_version", None) is None
-
     def backtest_static_universe_strategy_factory(
             self,
             *ignore,
@@ -112,7 +108,7 @@ class BacktestSetup:
             **kwargs) -> StrategyExecutionDescription:
         """Create a strategy description and runner based on backtest parameters in this setup."""
 
-        logger.info("backtest_static_universe_strategy_factory()")
+        logger.info("backtest_static_universe_strategy_factory(), engine version is %s", execution_context.engine_version)
 
         assert not execution_context.live_trading, f"This can be only used for backtesting strategies. execution context is {execution_context}"
 
@@ -715,11 +711,10 @@ def run_backtest_inline(
         create_trading_universe=create_trading_universe,
         reserve_currency=reserve_currency,
         trade_routing=trade_routing,
-        trading_strategy_engine_version=CURRENT_ENGINE_VERSION,
+        trading_strategy_engine_version=engine_version,
         name=name,
         data_preload=data_preload,
         minimum_data_lookback_range=minimum_data_lookback_range,
-        engine_version=engine_version,
     )
 
     state, universe, debug_dump = run_backtest(backtest_setup, client, allow_missing_fees=True)

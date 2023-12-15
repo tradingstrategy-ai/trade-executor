@@ -35,7 +35,16 @@ def test_sport_short_strategy(
     logger: logging.Logger,
     persistent_test_client,
     ):
-    """Check the strategy does not crash."""
+    """Check the strategy does not crash.
+
+    - Run spot + short strategy for few cycles
+
+    - Serialise output
+
+    - Write stats
+
+    See that any of the steps do not crash.
+    """
 
     client = persistent_test_client
 
