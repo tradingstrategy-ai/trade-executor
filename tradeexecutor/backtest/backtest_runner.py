@@ -12,6 +12,7 @@ import logging
 import pandas as pd
 
 from tradeexecutor.backtest.backtest_execution import BacktestExecution
+from tradeexecutor.backtest.backtest_generic_router import EthereumBacktestPairConfigurator
 from tradeexecutor.backtest.backtest_pricing import BacktestPricing
 from tradeexecutor.backtest.backtest_routing import BacktestRoutingModel
 from tradeexecutor.backtest.backtest_sync import BacktestSyncModel
@@ -28,6 +29,8 @@ from tradeexecutor.strategy.approval import UncheckedApprovalModel, ApprovalMode
 from tradeexecutor.strategy.cycle import CycleDuration
 from tradeexecutor.strategy.description import StrategyExecutionDescription
 from tradeexecutor.strategy.execution_context import ExecutionContext, ExecutionMode
+from tradeexecutor.strategy.generic.generic_pricing_model import GenericPricing
+from tradeexecutor.strategy.generic.generic_router import GenericRouting
 from tradeexecutor.strategy.pandas_trader.runner import PandasTraderRunner
 from tradeexecutor.strategy.strategy_module import parse_strategy_module, \
     DecideTradesProtocol, CreateTradingUniverseProtocol, CURRENT_ENGINE_VERSION, StrategyModuleInformation, DecideTradesProtocol2
@@ -95,6 +98,7 @@ class BacktestSetup:
     engine_version: Optional[str] = None
 
     # strategy_module: StrategyModuleInformation
+    pair_configurator: Optional[EthereumBacktestPairConfigurator] = None
 
     def backtest_static_universe_strategy_factory(
             self,
@@ -472,7 +476,7 @@ def run_backtest_inline(
     decide_trades: DecideTradesProtocol | DecideTradesProtocol2,
     cycle_duration: CycleDuration,
     initial_deposit: float,
-    reserve_currency: ReserveCurrency,
+    reserve_currency: ReserveCurrency | None = None,
     trade_routing: Optional[TradeRouting],
     create_trading_universe: Optional[CreateTradingUniverseProtocol] = None,
     universe: Optional[TradingStrategyUniverse] = None,
@@ -590,6 +594,9 @@ def run_backtest_inline(
     if universe:
         assert isinstance(universe, TradingStrategyUniverse)
 
+    if trade_routing == TradeRouting.default:
+        assert universe is not None, "Cannot do generic routing in backtesting without universe"
+
     # Setup our special logging level if not done yet.
     # (Not done when called from notebook)
     setup_notebook_logging(log_level)
@@ -610,20 +617,28 @@ def run_backtest_inline(
     )
 
     if universe:
-        if not routing_model:
+
+        pair_configurator = EthereumBacktestPairConfigurator(universe)
+
+        if trade_routing == TradeRouting.default:
+            routing_model = GenericRouting(pair_configurator)
+
+        elif not routing_model:
             assert trade_routing, "You just give either routing_mode or trade_routing"
-            assert reserve_currency, "Reserve current must be given to generate routing model"
             routing_model = get_backtest_routing_model(trade_routing, reserve_currency)
 
         if data_delay_tolerance is None:
             data_delay_tolerance = guess_data_delay_tolerance(universe)
 
-        pricing_model = BacktestPricing(
-            universe.data_universe.candles,
-            routing_model,
-            data_delay_tolerance=data_delay_tolerance,
-            allow_missing_fees=allow_missing_fees,
-        )
+        if trade_routing == TradeRouting.default:
+            pricing_model = GenericPricing(pair_configurator)
+        else:
+            pricing_model = BacktestPricing(
+                universe.data_universe.candles,
+                routing_model,
+                data_delay_tolerance=data_delay_tolerance,
+                allow_missing_fees=allow_missing_fees,
+            )
     else:
         assert create_trading_universe, "Must give create_trading_universe if no universe given"
         pricing_model = None

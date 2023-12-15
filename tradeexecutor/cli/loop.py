@@ -765,7 +765,7 @@ class ExecutionLoop:
         assert backtest_step != CycleDuration.cycle_unknown
 
         assert isinstance(self.backtest_start, datetime.datetime)
-        assert not isinstance(self.backtest_start, pd.Timestamp)
+        assert not isinstance(self.backtest_start, pd.Timestamp), f"Expected pandas.Timestamp, got {self.backtest_start.__class__}: {self.backtest_start}"
         assert not isinstance(self.backtest_end, pd.Timestamp)
         assert isinstance(self.backtest_end, datetime.datetime)
         assert self.backtest_start < self.backtest_end

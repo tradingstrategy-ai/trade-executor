@@ -10,11 +10,16 @@ from tradingstrategy.exchange import Exchange, ExchangeType
 from tradingstrategy.pair import DEXPair
 
 
-def generate_exchange(exchange_id: int, chain_id: ChainId, address="0x0000000000000000000000000000000000000000") -> Exchange:
+def generate_exchange(
+    exchange_id: int,
+    chain_id: ChainId,
+    address="0x0000000000000000000000000000000000000000",
+    exchange_slug="<exchange slug not filled>"
+) -> Exchange:
     exchange = Exchange(
         chain_id=chain_id,
         chain_slug=chain_id.get_slug(),
-        exchange_slug="null-swap",
+        exchange_slug=exchange_slug,
         exchange_id=exchange_id,
         address=address,
         exchange_type=ExchangeType.uniswap_v2,
