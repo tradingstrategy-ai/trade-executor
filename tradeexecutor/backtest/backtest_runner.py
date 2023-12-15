@@ -342,8 +342,6 @@ def setup_backtest(
     # deposit_syncer = BacktestSyncer(wallet, Decimal(initial_deposit))
     sync_model = BacktestSyncModel(wallet, Decimal(initial_deposit))
 
-    execution_model = BacktestExecution(wallet, max_slippage)
-
     if strategy_module.is_version_greater_or_equal_than(0, 2, 0):
         # Backtest variables were injected later in the development
         strategy_module.validate_backtest()
@@ -360,6 +358,8 @@ def setup_backtest(
     if not name:
         name = strategy_module.name or f"Backtest for {strategy_module.path.stem}"
 
+    stop_loss_data_available = False
+
     if client is not None:
         logger.info("Loading backtesting universe data for %s", universe_options)
         universe = strategy_module.create_trading_universe(
@@ -368,6 +368,7 @@ def setup_backtest(
             standalone_backtest_execution_context,
             universe_options,
         )
+        stop_loss_data_available = universe.has_stop_loss_data()
     else:
         universe = None
 
@@ -378,6 +379,12 @@ def setup_backtest(
     else:
         routing_model = None
         pricing_model = None
+
+    execution_model = BacktestExecution(
+        wallet,
+        max_slippage,
+        stop_loss_data_available=stop_loss_data_available,
+    )
 
     return BacktestSetup(
         universe_options.start_at,

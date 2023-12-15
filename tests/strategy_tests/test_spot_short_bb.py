@@ -62,4 +62,4 @@ def test_sport_short_strategy(
     analysis = build_trade_analysis(state.portfolio)
     summary = analysis.calculate_summary_statistics(universe.data_universe.time_bucket, state)
     df = summary.to_dataframe()
-    print(df)
+    str(df)
