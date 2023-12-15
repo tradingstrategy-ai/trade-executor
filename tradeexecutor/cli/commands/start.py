@@ -426,7 +426,8 @@ def start(
                 )
 
         logger.info(
-            "Starting with execution mode: %s, unit testing is %s, version is %s",
+            "Starting %s, with execution mode: %s, unit testing is %s, version is %s",
+            name,
             execution_context.mode.name,
             unit_testing,
             execution_context.engine_version,
@@ -542,12 +543,19 @@ def start(
         if (server is None) or (running_time < datetime.timedelta(seconds=http_wait_good_startup_seconds)):
             # Only terminate the process if the webhook server is not running,
             # otherwise the user can read the crash status from /status endpoint
-            logger.error("Raising the error and crashing away, running time was %s", running_time)
+            logger.error(
+                "Raising the error and crashing away, running time was %s Run-time version was:\n%s",
+                running_time,
+                run_state.version
+            )
             raise
         else:
             # Execution is dead.
             # Sleep forever, let the webhook still serve the requests.
-            logger.error("Main loop terminated. Entering to the web server wait mode.")
+            logger.error(
+                "Main loop terminated. Entering to the web server wait mode. Run-time version was:\n%s",
+                run_state.version,
+            )
             time.sleep(3600*24*365)
     finally:
         if server:

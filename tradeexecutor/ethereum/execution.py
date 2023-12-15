@@ -95,6 +95,12 @@ class EthereumExecution(ExecutionModel):
         self.swap_gas_fee_limit = swap_gas_fee_limit
         self.max_slippage = max_slippage
         self.mainnet_fork = mainnet_fork
+        logger.info(
+            "Execution model %s created.\n confirmation_block_count: %s, confirmation_timeout: %s, mainnet_fork: %s",
+            self.confirmation_block_count,
+            self.confirmation_timeout,
+            self.mainnet_fork
+        )
 
     @property
     def web3(self):
@@ -318,7 +324,11 @@ class EthereumExecution(ExecutionModel):
         assert isinstance(routing_model, RoutingModel)
 
         web3 = self.web3
-        logger.info("Using multi-node broadcast for %s", web3.provider)
+        logger.info(
+            "Using multi-node broadcast for %s, mainnet fork flag is %s",
+            web3.provider,
+            self.mainnet_fork,
+        )
 
         # Uncofirmed trade test, never confirm anything
         if confirmation_timeout == datetime.timedelta(0):
@@ -326,7 +336,7 @@ class EthereumExecution(ExecutionModel):
             return
 
         txs: Set[SignedTransactionWithNonce] = set()
-        tx_map: Dict[HexStr, tuple] = {}
+        tx_map: Dict[HexStr, tuple] = dict()
 
         for t in trades:
             assert len(t.blockchain_transactions) > 0, f"Trade {t} does not have any blockchain transactions prepared"
@@ -341,6 +351,7 @@ class EthereumExecution(ExecutionModel):
                     v=0,  # Not needed in this stage
                     address=tx.from_address,
                     nonce=tx.nonce,
+                    source=tx.details,
                 )
                 txs.add(signed_tx)
                 logger.info("Broadcasting transaction %s for trade\n:%s", signed_tx.hash.hex(), t)
