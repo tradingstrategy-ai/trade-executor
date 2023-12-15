@@ -728,8 +728,9 @@ class StrategyRunner(abc.ABC):
                     # if the execution crashes e.g. due to blockchain being down,
                     # node issues, or gas fee spikes
                     if self.execution_context.mode.is_live_trading():
-                        logger.info("Syncing state before teh trade execution")
-                        store.sync(state)
+                        if store is not None:
+                            logger.info("Syncing state before teh trade execution")
+                            store.sync(state)
 
                     self.execution_model.execute_trades(
                         strategy_cycle_timestamp,
