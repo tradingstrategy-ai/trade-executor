@@ -2,6 +2,7 @@
 import datetime
 import logging
 import os
+import shutil
 from decimal import Decimal
 from pathlib import Path
 from typing import Optional, Tuple
@@ -229,7 +230,7 @@ def create_approval_model(approval_type: ApprovalType) -> ApprovalModel:
         raise NotImplementedError()
 
 
-def create_state_store(state_file: Path) -> StateStore:
+def create_state_store(state_file: Path) -> JSONFileStore:
     store = JSONFileStore(state_file)
     return store
 
@@ -454,3 +455,31 @@ def create_client(
         routing_model = GenericRouting(pair_configurator=None)
 
     return client, routing_model
+
+
+def backup_state(state_file: Path | str, backup_suffix="backup") -> Tuple[JSONFileStore, State]:
+    """Take a copy of the state file, then read the original file."""
+
+    logger.info("Backing up %s", state_file)
+
+    state_file = Path(state_file)
+    store = create_state_store(state_file)
+    assert not store.is_pristine(), f"State does not exists yet: {state_file}"
+
+    # Make a backup
+    # https://stackoverflow.com/a/47528275/315168
+    backup_file = None
+    for i in range(1, 99):  # Try 99 different iterateive backup filenames
+        backup_file = state_file.with_suffix(f".{backup_suffix}-{i}.json")
+        if os.path.exists(backup_file):
+            continue
+
+        shutil.copy(state_file, backup_file)
+        break
+    else:
+        raise RuntimeError(f"Could not create backup {backup_file}")
+
+    logger.info("Old state backed up as %s", backup_file)
+
+    state = store.load()
+    return store, state
