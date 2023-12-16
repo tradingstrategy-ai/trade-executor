@@ -498,8 +498,10 @@ class OneDeltaRouting(EthereumRoutingModel):
                 cost_of_gas=result.get_cost_of_gas(),
             )
 
+            # TODO: This need to be properly accounted and currently there is no mechanism here
             # Set the check point interest balances for new positions
-            set_interest_checkpoint(state, ts, None)
+            last_block_number = trade.blockchain_transactions[-1].block_number
+            set_interest_checkpoint(state, ts, last_block_number)
         else:
             # Trade failed
             report_failure(ts, state, trade, stop_on_execution_failure)

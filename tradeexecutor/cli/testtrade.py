@@ -333,7 +333,7 @@ def make_test_trade(
         position_id = trade.position_id
         position = state.portfolio.get_position_by_id(position_id)
 
-        if not trade.is_success() or not position.is_open():
+        if not trade.is_success() or position.is_open():
             # Alot of diagnostics to debug Arbitrum / WBTC issues
             trades = sum_decimal([t.get_position_quantity() for t in position.trades.values() if t.is_success()])
             direct_balance_updates = position.get_base_token_balance_update_quantity()
@@ -347,7 +347,7 @@ def make_test_trade(
             logger.error("Position dump:\n%s", position.get_debug_dump())
 
         if not trade.is_success():
-            raise AssertionError("Short close failed.")
+            raise AssertionError(f"Short close failed, trade not marked as success: {trade.get_revert_reason()}")
 
         if not position.is_closed():
             raise AssertionError("Short close succeed, but the position was not opened\n"
@@ -364,10 +364,10 @@ def make_test_trade(
     logger.info("  Reserves currently: %s %s", reserve_currency_at_end, reserve_currency)
     logger.info("  Reserve currency spent: %s %s", reserve_currency_at_start - reserve_currency_at_end, reserve_currency)
     if buy_trade:
-        logger.info("  Buy trade price, expected: %s, actual: %s (%s)", buy_trade.planned_price, buy_trade.executed_price, position.pair.get_ticker())
+        logger.info("  Buy trade price, expected: %s, actual: %s (%s)", buy_trade.planned_price, buy_trade.executed_price, pair.get_ticker())
     if sell_trade:
-        logger.info("  Sell trade price, expected: %s, actual: %s (%s)", sell_trade.planned_price, sell_trade.executed_price, position.pair.get_ticker())
+        logger.info("  Sell trade price, expected: %s, actual: %s (%s)", sell_trade.planned_price, sell_trade.executed_price, pair.get_ticker())
     if open_short_trade:
-        logger.info("  Open short, expected: %s, actual: %s (%s)", buy_trade.planned_price, buy_trade.executed_price, position.pair.get_ticker())
+        logger.info("  Open short, expected: %s, actual: %s (%s)", buy_trade.planned_price, buy_trade.executed_price, short_pair.get_ticker())
     if close_short_trade:
-        logger.info("  Close short, expected: %s, actual: %s (%s)", buy_trade.planned_price, buy_trade.executed_price, position.pair.get_ticker())
+        logger.info("  Close short, expected: %s, actual: %s (%s)", buy_trade.planned_price, buy_trade.executed_price, short_pair.get_ticker())
