@@ -38,6 +38,7 @@ def make_test_trade(
     amount=Decimal("1.0"),
     pair: HumanReadableTradingPairDescription | None = None,
     buy_only: bool = False,
+    spot_only: bool = False,
 ):
     """Perform a test trade.
 
@@ -237,10 +238,7 @@ def make_test_trade(
     else:
         sell_trade = None
 
-    if universe.can_open_short(
-        datetime.datetime.utcnow(),
-        pair,
-    ):
+    if universe.has_any_lending_data() and universe.can_open_short(datetime.datetime.utcnow(), pair) and not spot_only:
         short_pair = universe.get_shorting_pair(pair)
         position = state.portfolio.get_position_by_trading_pair(short_pair)
 
