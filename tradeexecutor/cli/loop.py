@@ -647,8 +647,13 @@ class ExecutionLoop:
 
         Display progress bars for data downloads.
         """
-        logger.info("Warming up live trading universe, universe options are %s", self.universe_options)
-        universe = cast(TradingStrategyUniverse, self.universe_model.preload_universe(self.universe_options))
+        logger.info(
+            "Warming up live trading universe, universe options are %s, mode is %s",
+            self.universe_options,
+            self.execution_context,
+        )
+        universe = self.universe_model.preload_universe(self.universe_options, self.execution_context)
+        universe = cast(TradingStrategyUniverse, universe)
         logger.info("Warmed up universe %s", universe)
         return universe
 
