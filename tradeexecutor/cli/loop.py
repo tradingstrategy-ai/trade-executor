@@ -27,6 +27,7 @@ from tradeexecutor.ethereum.wallet import perform_gas_level_checks
 from tradeexecutor.state.metadata import Metadata
 from tradeexecutor.statistics.summary import calculate_summary_statistics
 from tradeexecutor.strategy.account_correction import check_accounts, UnexpectedAccountingCorrectionIssue
+from tradeexecutor.strategy.dummy import DummyExecutionModel
 from tradeexecutor.strategy.generic.generic_pricing_model import GenericPricing
 from tradeexecutor.strategy.pandas_trader.decision_trigger import wait_for_universe_data_availability_jsonl
 from tradeexecutor.strategy.routing import RoutingModel
@@ -1040,7 +1041,8 @@ class ExecutionLoop:
                     universe = None
 
                 # Shortcut universe downlado in forked mainnet test strategies
-                if self.execution_context.mode == ExecutionMode.unit_testing_trading:
+                if self.execution_context.mode == ExecutionMode.unit_testing_trading and not isinstance(self.execution_model, DummyExecutionModel):
+                    # Dummy execution marks special test_trading_data_availability_based_strategy_cycle_trigger
                     universe = self.unit_testing_universe
 
                 # Run the main strategy logic

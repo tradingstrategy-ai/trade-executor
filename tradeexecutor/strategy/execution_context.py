@@ -85,8 +85,12 @@ class ExecutionMode(enum.Enum):
     one_off = "one_off"
 
     def is_live_trading(self) -> bool:
-        """Are we trading  real time?"""
-        return self in (self.real_trading, self.paper_trading, self.unit_testing_trading, self.simulated_trading)
+        """Are we trading real time?
+
+        - Preflight check is considered live trading, because strategy modules
+          are not in backtesting when doing preflight checks
+        """
+        return self in (self.real_trading, self.paper_trading, self.unit_testing_trading, self.simulated_trading, self.preflight_check)
 
     def is_fresh_data_always_needed(self):
         """Should we purge caches for each trade cycle.
