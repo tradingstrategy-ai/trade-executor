@@ -239,6 +239,10 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
         """
         raise NotImplementedError("This function is still TBD")
 
+    def has_any_lending_data(self) -> bool:
+        """Does this trading universe has any lending data loaded"""
+        return self.data_universe.lending_reserves is not None
+
     def has_lending_market_available(
         self,
         timestamp: pd.Timestamp | datetime.datetime,

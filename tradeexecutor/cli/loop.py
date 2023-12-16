@@ -27,6 +27,7 @@ from tradeexecutor.ethereum.wallet import perform_gas_level_checks
 from tradeexecutor.state.metadata import Metadata
 from tradeexecutor.statistics.summary import calculate_summary_statistics
 from tradeexecutor.strategy.account_correction import check_accounts, UnexpectedAccountingCorrectionIssue
+from tradeexecutor.strategy.dummy import DummyExecutionModel
 from tradeexecutor.strategy.generic.generic_pricing_model import GenericPricing
 from tradeexecutor.strategy.pandas_trader.decision_trigger import wait_for_universe_data_availability_jsonl
 from tradeexecutor.strategy.routing import RoutingModel
@@ -212,6 +213,10 @@ class ExecutionLoop:
             )
 
         self.minimum_data_lookback_range = minimum_data_lookback_range
+
+        # We hide once-downloaded universe here for live loop
+        # tests that perform live trading against forked chain in a fast cycle (1s)
+        self.unit_testing_universe: StrategyExecutionUniverse | None = None
 
     def is_backtest(self) -> bool:
         """Are we doing a backtest execution."""
@@ -1035,6 +1040,11 @@ class ExecutionLoop:
                     # Force universe recreation on every cycle
                     universe = None
 
+                # Shortcut universe downlado in forked mainnet test strategies
+                if self.execution_context.mode == ExecutionMode.unit_testing_trading and not isinstance(self.execution_model, DummyExecutionModel):
+                    # Dummy execution marks special test_trading_data_availability_based_strategy_cycle_trigger
+                    universe = self.unit_testing_universe
+
                 # Run the main strategy logic
                 universe = self.tick(
                     unrounded_timestamp,
@@ -1046,6 +1056,10 @@ class ExecutionLoop:
                     live=True,
                     extra_debug_data=extra_debug_data,
                 )
+
+                if self.execution_context.mode == ExecutionMode.unit_testing_trading:
+                    self.unit_testing_universe = universe
+
                 logger.info("run_live() tick complete, universe is now %s", universe)
 
                 # Post execution, update our statistics

@@ -9,6 +9,7 @@ import logging
 from pathlib import Path
 from unittest.mock import patch
 
+import flaky
 import pytest
 from click.testing import Result
 from typer.main import get_command
@@ -106,6 +107,7 @@ def environment(
         "MAX_CYCLES": "10",  # Run decide_trades() N times
         "TRADING_STRATEGY_API_KEY": os.environ["TRADING_STRATEGY_API_KEY"],
         "MAX_DATA_DELAY_MINUTES": "1440",  # Don't crash on not doing candle refresh properly
+        "GAS_BALANCE_WARNING_LEVEL": "0",  # Avoid unnecessary gas warnings
     }
     return environment
 
@@ -142,14 +144,17 @@ def test_generic_routing_live_trading_init(
         assert state.sync.deployment.block_number > 1
 
 
-@pytest.mark.skip(reason="This test is not yet finished")
-def test_generic_routing_live_trading_start(
+# Flaky due to Anvil randomly reverting tx and causing a frozen position
+@flaky.flaky
+def test_generic_routing_live_trading_start_spot_and_short(
     environment: dict,
     state_file: Path,
 ):
     """Run generic routing based executor live.
 
     - Use a forked polygon
+
+    - Pretty slow test due to its nature ~1 minute
     """
 
     # Need to be initialised first
@@ -167,59 +172,37 @@ def test_generic_routing_live_trading_start(
     # Check that trades completed
     with state_file.open("rt") as inp:
         state = State.from_json(inp.read())
-        assert len(state.portfolio.closed_positions) == 1
-        assert len(state.portfolio.open_pos**18 * 0.03112978758721282)
+        assert len(state.portfolio.closed_positions) == 8
 
 
-@pytest.mark.skip(reason="This test is not yet finished")
-def test_generic_routing_test_trade(
+def test_generic_routing_test_trade_spot_and_short(
     environment: dict,
     web3: Web3,
     state_file: Path,
 ):
-    """Perform a test trade on Enzymy vault via CLI.
+    """Perform a test trade on short and spot strategy
 
-    - Use a vault deployed by the test fixtures
-
-    - Initialise the strategy to use this vault
-
-    - Perform a test trade on this fault
+    - Perform-test-trade should try both spot and short position
     """
 
     cli = get_command(app)
 
-    # Deposit some USDC to start
-    deposit_amount = 500 * 10**6
-    tx_hash = usdc.functions.approve(vault.comptroller.address, deposit_amount).transact({"from": deployer})
-    assert_transaction_success_with_explanation(web3, tx_hash)
-    tx_hash = vault.comptroller.functions.buyShares(deposit_amount, 1).transact({"from": deployer})
-    assert_transaction_success_with_explanation(web3, tx_hash)
-    assert usdc.functions.balanceOf(vault.address).call() == deposit_amount
-    logger.info("Deposited %d %s at block %d", deposit_amount, usdc.address, web3.eth.block_number)
-
-    # Check we have a deposit event
-    logs = vault.comptroller.events.SharesBought.get_logs()
-    logger.info("Got logs %s", logs)
-    assert len(logs) == 1
-
-    with patch.dict(os.environ, env, clear=True):
+    with patch.dict(os.environ, environment, clear=True):
         with pytest.raises(SystemExit) as e:
             cli.main(args=["init"])
         assert e.value.code == 0
 
-    with patch.dict(os.environ, env, clear=True):
+    with patch.dict(os.environ, environment, clear=True):
         with pytest.raises(SystemExit) as e:
-            cli.main(args=["perform-test-trade"])
+            cli.main(args=["perform-test-trade", "--all-pairs"])
         assert e.value.code == 0
-
-    assert usdc.functions.balanceOf(vault.address).call() < deposit_amount, "No deposits where spent; trades likely did not happen"
 
     # Check the resulting state and see we made some trade for trading fee losses
     with state_file.open("rt") as inp:
         state: State = State.from_json(inp.read())
-        assert len(list(state.portfolio.get_all_trades())) == 2
+        assert len(list(state.portfolio.get_all_trades())) == 6
         reserve_value = state.portfolio.get_default_reserve_position().get_value()
-        assert reserve_value == pytest.approx(499.994009)
+        assert reserve_value == pytest.approx(499.990849)
 
 
 def test_generic_routing_live_trading_start_spot_only(
@@ -274,7 +257,7 @@ def test_generic_routing_test_trade_spot_only(
 
     with patch.dict(os.environ, environment, clear=True):
         with pytest.raises(SystemExit) as e:
-            cli.main(args=["perform-test-trade", "--all-pairs"])
+            cli.main(args=["perform-test-trade", "--all-pairs", "--spot-only"])
         assert e.value.code == 0
 
     # Check the resulting state and see we made some trade for trading fee losses
