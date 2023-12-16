@@ -165,11 +165,14 @@ class ExecutionContext:
     def live_trading(self) -> bool:
         """Are we doing live trading.
 
+        This is a bit trickier, as live trading itself can have different phases
+        with different execution modes.
+
         :return:
             True if we doing live trading or paper trading.
              False if we are operating on backtesting data.
         """
-        return self.mode in (ExecutionMode.real_trading, ExecutionMode.paper_trading, ExecutionMode.simulated_trading)
+        return self.mode in (ExecutionMode.real_trading, ExecutionMode.paper_trading, ExecutionMode.simulated_trading, ExecutionMode.data_preload)
 
 
 #: Shorthand for unit testing
