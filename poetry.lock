@@ -747,7 +747,7 @@ files = [
 name = "coloredlogs"
 version = "15.0.1"
 description = "Colored terminal output for Python's logging module"
-optional = false
+optional = true
 python-versions = ">=2.7, !=3.0.*, !=3.1.*, !=3.2.*, !=3.3.*, !=3.4.*"
 files = [
     {file = "coloredlogs-15.0.1-py2.py3-none-any.whl", hash = "sha256:612ee75c546f53e92e70049c9dbfcc18c935a2b9a53b66085ce9ef6a6e5c0934"},
@@ -1718,7 +1718,7 @@ lxml = ["lxml"]
 name = "humanfriendly"
 version = "10.0"
 description = "Human friendly output for text interfaces using Python"
-optional = false
+optional = true
 python-versions = ">=2.7, !=3.0.*, !=3.1.*, !=3.2.*, !=3.3.*, !=3.4.*"
 files = [
     {file = "humanfriendly-10.0-py2.py3-none-any.whl", hash = "sha256:1697e1a8a8f550fd43c2865cd84542fc175a61dcb779b6fee18cf6b6ccba1477"},
@@ -4064,7 +4064,7 @@ pyramid = ">=1.10.7"
 name = "pyreadline3"
 version = "3.4.1"
 description = "A python implementation of GNU readline."
-optional = false
+optional = true
 python-versions = "*"
 files = [
     {file = "pyreadline3-3.4.1-py3-none-any.whl", hash = "sha256:b0efb6516fd4fb07b45949053826a62fa4cb353db5be2bbb4a7aa1fdd1e345fb"},
@@ -5121,31 +5121,32 @@ tqdm = ">4.64"
 
 [[package]]
 name = "trading-strategy"
-version = "0.22.6"
+version = "0.22.7"
 description = "Algorithmic trading, token and cryptocurrency DEX trading data, for Uniswap, Aave, PancakeSwap, Sushi, Trader Joe, others"
 optional = false
 python-versions = ">=3.10,<=3.12"
-files = [
-    {file = "trading_strategy-0.22.6-py3-none-any.whl", hash = "sha256:3fed65670b5079f656ff13944079ff6f23838ba767518b7cfb103c4ae33d2cb7"},
-    {file = "trading_strategy-0.22.6.tar.gz", hash = "sha256:26637581130eaa9f3cdfb644ce842a180a217b38fb0521f7e25f75882e1079ad"},
-]
+files = []
+develop = true
 
 [package.dependencies]
-coloredlogs = ">=15.0.1,<16.0.0"
-dataclasses-json = ">=0.5.4,<0.6.0"
-filelock = ">=3.12.4,<4.0.0"
-jsonlines = ">=3.1.0,<4.0.0"
+dataclasses-json = "^0.5.4"
+filelock = "^3.12.4"
+jsonlines = "^3.1.0"
 pandas = "<2.2"
-plotly = ">=5.1.0,<6.0.0"
-pyarrow = ">=14.0.1,<15.0.0"
-requests = ">=2.28.1,<3.0.0"
-tqdm = ">=4.61.2,<5.0.0"
+plotly = "^5.1.0"
+pyarrow = "^14.0.1"
+requests = "^2.28.1"
+tqdm = "^4.61.2"
 tqdm-loggable = ">=0.2"
 
 [package.extras]
 backtrader = ["trading-strategy-backtrader (>=0.1,<0.2)"]
 direct-feed = ["dash (>=2.7.1,<3.0.0)", "typer (>=0.7.0,<0.8.0)", "web3-ethereum-defi[data,test] (>=0.24.1)"]
 qstrader = ["scipy (>=1.6.1,<2.0.0)", "trading-strategy-qstrader (>=0.5.0,<0.6.0)"]
+
+[package.source]
+type = "directory"
+url = "deps/trading-strategy"
 
 [[package]]
 name = "trading-strategy-qstrader"
@@ -5916,4 +5917,4 @@ web-server = ["WebTest", "openapi-core", "pyramid", "pyramid-openapi3", "waitres
 [metadata]
 lock-version = "2.0"
 python-versions = ">=3.10,<=3.12"
-content-hash = "80d4669c137639ab9e86d455d92b45c306d2eccab71cd9e084024f7786e8848d"
+content-hash = "8ce81b813920e33ad64ddf254ead317bbdd5d8cfaa9947bc8a6e388ee5b2b004"
