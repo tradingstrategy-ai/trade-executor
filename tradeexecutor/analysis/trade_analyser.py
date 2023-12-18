@@ -319,8 +319,6 @@ class TradeSummary:
             "Max drawdown": "https://tradingstrategy.ai/glossary/maximum-drawdown",
         }
 
-    
-    @staticmethod
     def format_summary_dataframe(df: pd.DataFrame) -> pd.DataFrame:
         """Format the summary dataframe for display in Jupyter notebook with clickable links.
         
@@ -330,32 +328,12 @@ class TradeSummary:
         :return:
             Formatted dataframe with clickable links.
         """
-        
-        
-        if "Average bars of winning positions" in df.index:
-            assert "Average bars of losing positions" in df.index, "Average bars of losing positions not found in dataframe"
-            headings.extend([
-                ("Average bars of winning positions", None),
-                ("Average bars of losing positions", None),
-            ])
+        help_links = TradeSummary.help_links()
+        links = []
+        for h in df.index:
+                links.append(help_links.get(h, None))
 
-        headings.extend([
-            ("LP fees paid", "https://tradingstrategy.ai/glossary/liquidity-provider"),
-            ("LP fees paid % of volume", "https://tradingstrategy.ai/glossary/liquidity-provider"),
-            ("Average position", "https://tradingstrategy.ai/glossary/mean"),
-            ("Median position", "https://tradingstrategy.ai/glossary/median"),
-            ("Most consecutive wins", None),
-            ("Most consecutive losses", None),
-            ("Biggest realised risk", "https://tradingstrategy.ai/glossary/realised-risk"),
-            ("Avg realised risk", "https://tradingstrategy.ai/glossary/realised-risk"),
-            ("Max pullback of total capital", "https://tradingstrategy.ai/glossary/maximum-pullback"),
-            ("Max loss risk at opening of position", None),
-        ])
-
-        if "Max drawdown" in df.index:
-            headings.append(("Max drawdown", "https://tradingstrategy.ai/glossary/maximum-drawdown"))
-
-        df.index = [make_clickable(h, url) if url else h for h, url in headings]
+        df.index = [make_clickable(h, url) if url else h for h, url in zip(df.index, links)]
 
         return HTML(df.to_html(escape=False))
 
@@ -915,9 +893,8 @@ class TradeAnalysis:
         self,
         time_bucket: Optional[TimeBucket] = None,
         state = None,
-        format_headings = True,
-    ) -> pd.DataFrame | HTML:
-        """Calculate some statistics how our trades went. This returns a table with 3 separate columns for overall, long and short.
+    ) -> pd.DataFrame:
+        """Calculate some statistics how our trades went. This returns a DataFrame with 3 separate columns for overall, long and short.
         
         For just a single column table for overall statistics, use :py:meth:calculate_summary_statistics() instead.
 
@@ -926,11 +903,6 @@ class TradeAnalysis:
 
         :param state:
             Optional, should be specified if user would like to see advanced statistics such as sharpe ratio, sortino ratio, etc.
-
-        :param format_headings:
-            Optional, if True, make headings clickable, directing user to relevant glossary link.
-
-            In this case, return ``HTML`` object.
 
         :return:
             DataFrame with all the stats for overall, long and short.
@@ -970,9 +942,21 @@ class TradeAnalysis:
         all_stats.loc['Annualised return %', 'Long'] = format_value_for_summary_table(as_percent(calculate_annualised_return(profit_long_pct, duration)))
         all_stats.loc['Annualised return %', 'Short'] = format_value_for_summary_table(as_percent(calculate_annualised_return(profit_short_pct, duration)))
 
-        if format_headings:
-            return TradeSummary.format_summary_dataframe(all_stats)
+        return TradeSummary.format_summary_dataframe(all_stats)
 
+    def render_summary_statistics_side_by_side(self, time_bucket: Optional[TimeBucket] = None, state = None) -> HTML:
+        """Render summary statistics as a JSON table.
+
+        :param time_bucket:
+            Optional, used to display average duration as 'number of bars' in addition to 'number of days'.
+
+        :param state:
+            Optional, should be specified if user would like to see advanced statistics such as sharpe ratio, sortino ratio, etc.
+
+        :return:
+            Returns a similar table to `calcualate_all_summary_stats_by_side`, but make it makes row headings clickable, directing user to relevant glossary link and, in this case, returns ``HTML`` object instaed of a pandas DataFrame.
+        """
+        all_stats = self.calculate_summary_statistics(time_bucket, state)
         all_stats['help_links'] = [TradeSummary.help_links()[key] for key in all_stats.index]
 
         return all_stats
