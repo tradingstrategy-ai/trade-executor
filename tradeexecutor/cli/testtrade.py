@@ -177,6 +177,9 @@ def make_test_trade(
         position_id = trade.position_id
         position = state.portfolio.get_position_by_id(position_id)
 
+        assert trade.is_test()
+        assert position.is_test()
+
         if not trade.is_success() or not position.is_open():
             # Alot of diagnostics to debug Arbitrum / WBTC issues
             trades = sum_decimal([t.get_position_quantity() for t in position.trades.values() if t.is_success()])
@@ -231,6 +234,8 @@ def make_test_trade(
                 routing_state,
             )
 
+        assert sell_trade.is_test()
+
         if not sell_trade.is_success():
             logger.error("Test sell failed: %s", sell_trade)
             logger.error("Trade dump:\n%s", sell_trade.get_debug_dump())
@@ -283,6 +288,9 @@ def make_test_trade(
             position_id = trade.position_id
             position = state.portfolio.get_position_by_id(position_id)
 
+            assert position.is_test()
+            assert open_short_trade.is_test()
+
             if not trade.is_success() or not position.is_open():
                 # Alot of diagnostics to debug Arbitrum / WBTC issues
                 trades = sum_decimal([t.get_position_quantity() for t in position.trades.values() if t.is_success()])
@@ -325,6 +333,8 @@ def make_test_trade(
 
         trade = trades[0]
         close_short_trade = trade
+
+        assert close_short_trade.is_test()
 
         # Compose the trades as approve() + swapTokenExact(),
         # broadcast them to the blockchain network and
