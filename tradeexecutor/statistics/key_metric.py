@@ -411,7 +411,7 @@ def calculate_long_short_metrics(
     if 'Average bars of winning positions' in summary.index:
         average_bars_of_winning_positions = summary.loc['Average bars of winning positions']
         average_bars_of_losing_positions = summary.loc['Average bars of losing positions']
-        
+
         rows[KeyMetricKind.average_bars_of_winning_positions] = KeyMetric(
             kind=KeyMetricKind.average_bars_of_winning_positions,
             value={"All": average_bars_of_winning_positions[0], "Long": average_bars_of_winning_positions[1], "Short": average_bars_of_winning_positions[2]},
@@ -429,7 +429,5 @@ def calculate_long_short_metrics(
         source=source,
         rows=rows,
     )
-
-    
 
     return table
