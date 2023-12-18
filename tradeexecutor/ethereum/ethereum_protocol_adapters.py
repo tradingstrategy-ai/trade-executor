@@ -10,23 +10,15 @@ from eth_defi.aave_v3.deployment import fetch_deployment as fetch_aave_deploymen
 from eth_defi.uniswap_v3.deployment import fetch_deployment as fetch_uniswap_v3_deployment
 from eth_defi.one_delta.deployment import fetch_deployment as fetch_1delta_deployment
 
-from tradeexecutor.ethereum.one_delta.one_delta_live_pricing import OneDeltaLivePricing
-from tradeexecutor.ethereum.one_delta.one_delta_routing import OneDeltaRouting
-from tradeexecutor.ethereum.one_delta.one_delta_valuation import OneDeltaPoolRevaluator
-from tradeexecutor.ethereum.routing_data import uniswap_v3_address_map, create_uniswap_v2_compatible_routing
-from tradeexecutor.ethereum.uniswap_v2.uniswap_v2_live_pricing import UniswapV2LivePricing
-from tradeexecutor.ethereum.uniswap_v2.uniswap_v2_valuation import UniswapV2PoolRevaluator
-from tradeexecutor.ethereum.uniswap_v3.uniswap_v3_live_pricing import UniswapV3LivePricing
-from tradeexecutor.ethereum.uniswap_v3.uniswap_v3_routing import UniswapV3Routing
-from tradeexecutor.ethereum.uniswap_v3.uniswap_v3_valuation import UniswapV3PoolRevaluator
+from tradingstrategy.chain import ChainId
+from tradingstrategy.exchange import ExchangeUniverse, ExchangeType
+
 from tradeexecutor.state.identifier import TradingPairIdentifier
 from tradeexecutor.strategy.default_routing_options import TradeRouting
-from tradeexecutor.strategy.generic.pair_configurator import PairConfigurator, ProtocolRoutingId, ProtocolRoutingConfig, UnroutableTrade
+from tradeexecutor.strategy.generic.pair_configurator import PairConfigurator, ProtocolRoutingId, ProtocolRoutingConfig
 from tradeexecutor.strategy.generic.default_protocols import default_match_router, default_supported_routers
 from tradeexecutor.strategy.reserve_currency import ReserveCurrency
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
-from tradingstrategy.chain import ChainId
-from tradingstrategy.exchange import ExchangeUniverse, ExchangeType, ExchangeNotFoundError
 
 
 def get_exchange_type(
@@ -44,6 +36,12 @@ def create_uniswap_v2_adapter(
     strategy_universe: TradingStrategyUniverse,
     routing_id: ProtocolRoutingId,
 ) -> ProtocolRoutingConfig:
+
+    # TODO: Avoid circular imports for now
+    from tradeexecutor.ethereum.uniswap_v2.uniswap_v2_live_pricing import UniswapV2LivePricing
+    from tradeexecutor.ethereum.uniswap_v2.uniswap_v2_valuation import UniswapV2PoolRevaluator
+    from tradeexecutor.ethereum.routing_data import create_uniswap_v2_compatible_routing
+
     assert routing_id.router_name == "uniswap-v2"
     assert len(strategy_universe.data_universe.chains) == 1
     assert len(strategy_universe.reserve_assets) == 1
@@ -87,6 +85,12 @@ def create_uniswap_v3_adapter(
 ) -> ProtocolRoutingConfig:
     """Always the same."""
 
+    # TODO: Avoid circular imports for now
+    from tradeexecutor.ethereum.uniswap_v3.uniswap_v3_live_pricing import UniswapV3LivePricing
+    from tradeexecutor.ethereum.uniswap_v3.uniswap_v3_routing import UniswapV3Routing
+    from tradeexecutor.ethereum.uniswap_v3.uniswap_v3_valuation import UniswapV3PoolRevaluator
+    from tradeexecutor.ethereum.routing_data import uniswap_v3_address_map
+
     assert routing_id.router_name == "uniswap-v3"
     assert len(strategy_universe.data_universe.chains) == 1
     assert len(strategy_universe.reserve_assets) == 1
@@ -124,6 +128,12 @@ def create_1delta_adapter(
     strategy_universe: TradingStrategyUniverse,
     routing_id: ProtocolRoutingId,
 ) -> ProtocolRoutingConfig:
+
+    # TODO: Avoid circular imports for now
+    from tradeexecutor.ethereum.one_delta.one_delta_live_pricing import OneDeltaLivePricing
+    from tradeexecutor.ethereum.one_delta.one_delta_routing import OneDeltaRouting
+    from tradeexecutor.ethereum.one_delta.one_delta_valuation import OneDeltaPoolRevaluator
+
 
     assert routing_id.router_name == "1delta"
     assert routing_id.lending_protocol_slug == "aave"

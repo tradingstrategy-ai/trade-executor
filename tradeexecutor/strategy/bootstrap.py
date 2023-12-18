@@ -127,7 +127,9 @@ def make_factory_from_strategy_mod(mod: StrategyModuleInformation) -> StrategyFa
         # strategy module's trade_routing var.
         if routing_model is None:
             if mod_info.trade_routing == TradeRouting.default:
-
+                # Left for later until we have the trading strategy universe downloaded
+                # See EthereumExecutionModel.setup_routing()
+                routing_model = None
             else:
                 routing_model = get_routing_model(
                     execution_context,

@@ -88,11 +88,6 @@ def check_wallet(
         settings_path=None,
     )
 
-    execution_context = ExecutionContext(
-        mode=ExecutionMode.preflight_check,
-        timed_task_context_manager=timed_task
-    )
-
     web3config = create_web3_config(
         json_rpc_binance=json_rpc_binance,
         json_rpc_polygon=json_rpc_polygon,
@@ -108,6 +103,11 @@ def check_wallet(
         client,
         standalone_backtest_execution_context,
         mod.get_universe_options(),
+    )
+    execution_context = ExecutionContext(
+        mode=ExecutionMode.preflight_check,
+        timed_task_context_manager=timed_task,
+        engine_version=mod.trading_strategy_engine_version,
     )
 
     # Check that we are connected to the chain strategy assumes

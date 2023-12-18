@@ -7,7 +7,6 @@ from collections import Counter
 from decimal import Decimal
 from itertools import chain
 from typing import List, Dict, Set, Tuple
-from abc import abstractmethod
 
 from eth_account.datastructures import SignedTransaction
 from eth_defi.provider.broken_provider import get_almost_latest_block_number
@@ -25,10 +24,11 @@ from eth_defi.token import fetch_erc20_details, TokenDetails
 from eth_defi.confirmation import wait_transactions_to_complete, \
     broadcast_and_wait_transactions_to_complete, broadcast_transactions, wait_and_broadcast_multiple_nodes
 from eth_defi.trace import trace_evm_transaction, print_symbolic_trace
-from eth_defi.uniswap_v2.deployment import UniswapV2Deployment, FOREVER_DEADLINE 
-from eth_defi.trade import TradeSuccess, TradeFail
+from eth_defi.uniswap_v2.deployment import UniswapV2Deployment, FOREVER_DEADLINE
 from eth_defi.revert_reason import fetch_transaction_revert_reason
 
+
+from tradingstrategy.chain import ChainId
 from tradeexecutor.ethereum.tx import TransactionBuilder
 from tradeexecutor.state.state import State
 from tradeexecutor.state.trade import TradeExecution, TradeStatus
@@ -39,8 +39,10 @@ from tradeexecutor.ethereum.uniswap_v2.uniswap_v2_routing import UniswapV2Routin
 from tradeexecutor.ethereum.uniswap_v3.uniswap_v3_routing import UniswapV3Routing, UniswapV3RoutingState
 from tradeexecutor.state.types import BlockNumber
 from tradeexecutor.strategy.execution_model import ExecutionModel, RoutingStateDetails
+from tradeexecutor.strategy.generic.generic_router import GenericRouting
 from tradeexecutor.strategy.routing import RoutingModel, RoutingState
-from tradingstrategy.chain import ChainId
+from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
+from tradeexecutor.ethereum.ethereum_protocol_adapters import EthereumPairConfigurator
 
 
 logger = logging.getLogger(__name__)
@@ -490,6 +492,20 @@ class EthereumExecution(ExecutionModel):
                 stop_on_execution_failure=stop_on_execution_failure,
             )
 
+    def create_default_routing_model(
+        self,
+        strategy_universe: TradingStrategyUniverse,
+    ) -> RoutingModel:
+        """Get the default routing model for this executor.
+
+        :return:
+
+        """
+        web3 = self.web3
+        configurator = EthereumPairConfigurator(web3, strategy_universe)
+        return GenericRouting(configurator)
+
+
 # Only usage outside this module is UniswapV2ExecutionModelV0
 def update_confirmation_status(
         web3: Web3,
@@ -538,7 +554,8 @@ def update_confirmation_status(
             trades.add(trade)
         
         return trades                
-                
+
+
 # Only usage outside this module is UniswapV2ExecutionModelV0
 
 

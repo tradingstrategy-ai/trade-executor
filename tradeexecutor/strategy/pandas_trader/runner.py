@@ -18,7 +18,6 @@ from tradeexecutor.state.trade import TradeExecution
 from tradeexecutor.strategy.runner import StrategyRunner, PreflightCheckFailed
 from tradeexecutor.visual.image_output import render_plotly_figure_as_image_file
 from tradeexecutor.visual.strategy_state import draw_single_pair_strategy_state, draw_multi_pair_strategy_state
-from tradeexecutor.state.visualisation import Visualisation
 
 
 logger = logging.getLogger(__name__)
