@@ -4,6 +4,7 @@ import datetime
 from pathlib import Path
 from typing import Optional
 
+import pandas as pd
 import typer
 from web3 import Web3
 
@@ -11,6 +12,7 @@ from eth_defi.balances import fetch_erc20_balances_by_token_list
 from eth_defi.gas import GasPriceMethod
 from eth_defi.hotwallet import HotWallet
 from eth_defi.token import fetch_erc20_details
+from tradingstrategy.chain import ChainId
 from tradingstrategy.client import Client
 from . import shared_options
 from .app import app
@@ -20,7 +22,7 @@ from ...ethereum.enzyme.vault import EnzymeVaultSyncModel
 from ...strategy.approval import UncheckedApprovalModel
 from ...strategy.bootstrap import make_factory_from_strategy_mod
 from ...strategy.description import StrategyExecutionDescription
-from ...strategy.execution_context import ExecutionContext, ExecutionMode
+from ...strategy.execution_context import ExecutionContext, ExecutionMode, standalone_backtest_execution_context
 from ...strategy.execution_model import AssetManagementMode
 from ...strategy.run_state import RunState
 from ...strategy.strategy_module import read_strategy_module
@@ -57,6 +59,10 @@ def check_wallet(
     json_rpc_anvil: Optional[str] = shared_options.json_rpc_anvil,
 
     log_level: Optional[str] = shared_options.log_level,
+
+    # Debugging and unit testing
+    unit_testing: bool = shared_options.unit_testing,
+    unit_test_force_anvil: bool = typer.Option(bool, envvar="UNIT_TEST_FORCE_ANVIL", help="Use Anvil backend regardless of what chain strategy module suggests"),
 ):
     """Print out the token balances of the hot wallet.
 
@@ -82,11 +88,6 @@ def check_wallet(
         settings_path=None,
     )
 
-    execution_context = ExecutionContext(
-        mode=ExecutionMode.preflight_check,
-        timed_task_context_manager=timed_task
-    )
-
     web3config = create_web3_config(
         json_rpc_binance=json_rpc_binance,
         json_rpc_polygon=json_rpc_polygon,
@@ -97,10 +98,24 @@ def check_wallet(
     )
     assert web3config.has_chain_configured(), "No RPC endpoints given. A working JSON-RPC connection is needed for running this command. Check your JSON-RPC configuration."
 
-    assert mod.chain_id, f"The strategy module {strategy_file} does not have a chain configured where it is going to trade"
+    universe = mod.create_trading_universe(
+        pd.Timestamp.utcnow(),
+        client,
+        standalone_backtest_execution_context,
+        mod.get_universe_options(),
+    )
+    execution_context = ExecutionContext(
+        mode=ExecutionMode.preflight_check,
+        timed_task_context_manager=timed_task,
+        engine_version=mod.trading_strategy_engine_version,
+    )
 
     # Check that we are connected to the chain strategy assumes
-    web3config.set_default_chain(mod.chain_id)
+    if unit_test_force_anvil:
+        web3config.set_default_chain(ChainId.anvil)
+    else:
+        web3config.set_default_chain(universe.get_single_chain())
+
     web3config.check_default_chain_id()
 
     execution_model, sync_model, valuation_model_factory, pricing_model_factory = create_execution_and_sync_model(
@@ -136,14 +151,6 @@ def check_wallet(
         client=client,
         run_state=RunState(),
     )
-
-    # We construct the trading universe to know what's our reserve asset
-    universe_model: TradingStrategyUniverseModel = run_description.universe_model
-    ts = datetime.datetime.utcnow()
-    universe = universe_model.construct_universe(
-        ts,
-        ExecutionMode.preflight_check,
-        UniverseOptions())
 
     # Get all tokens from the universe
     reserve_assets = universe.reserve_assets
@@ -199,5 +206,3 @@ def check_wallet(
     web3config.close()
 
     logger.info("All ok")
-
-

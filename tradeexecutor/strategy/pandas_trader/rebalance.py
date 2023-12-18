@@ -118,14 +118,15 @@ def rebalance_portfolio_old(
         else:
             quantity_diff = None
 
-        logger.info("Rebalancing %s, old weight: %f, new weight: %f, diff: %f USD %f %s",
-                    pair,
-                    existing_weights.get(pair_id, 0),
-                    weight,
-                    dollar_diff,
-                    quantity_diff,
-                    pair.base.token_symbol,
-                    )
+        logger.info(
+            "Rebalancing %s, old weight: %s, new weight: %s, diff: %s USD %s %s",
+            pair,
+            existing_weights.get(pair_id, 0),
+            weight,
+            dollar_diff,
+            quantity_diff,
+            pair.base.token_symbol,
+        )
 
         if abs(dollar_diff) < min_trade_threshold:
             logger.info("Not doing anything, value %f below trade threshold %f", value, min_trade_threshold)

@@ -12,6 +12,7 @@ from contextlib import AbstractContextManager
 from pathlib import Path
 from typing import Optional
 
+from tradeexecutor.strategy.default_routing_options import TradeRouting
 from tradeexecutor.strategy.routing import RoutingModel
 from tradingstrategy.client import Client
 
@@ -125,10 +126,15 @@ def make_factory_from_strategy_mod(mod: StrategyModuleInformation) -> StrategyFa
         # If it is not dynamically generated, here set up one of the default routing models from
         # strategy module's trade_routing var.
         if routing_model is None:
-            routing_model = get_routing_model(
-                execution_context,
-                mod_info.trade_routing,
-                mod_info.reserve_currency)
+            if mod_info.trade_routing == TradeRouting.default:
+                # Left for later until we have the trading strategy universe downloaded
+                # See EthereumExecutionModel.setup_routing()
+                routing_model = None
+            else:
+                routing_model = get_routing_model(
+                    execution_context,
+                    mod_info.trade_routing,
+                    mod_info.reserve_currency)
 
         runner = PandasTraderRunner(
             timed_task_context_manager=timed_task_context_manager,

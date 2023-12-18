@@ -12,11 +12,10 @@ from io import StringIO
 from pprint import pformat
 from types import NoneType
 
-from typing import List, Optional, Tuple, cast
+from typing import List, Optional, Tuple, cast, Callable
 
 from eth_defi.provider.anvil import is_anvil, mine
 from tradeexecutor.ethereum.ethereum_protocol_adapters import EthereumPairConfigurator
-from tradeexecutor.ethereum.execution import EthereumExecution
 from tradeexecutor.ethereum.tx import TransactionBuilder
 from tradeexecutor.state.store import StateStore
 from tradeexecutor.state.types import BlockNumber
@@ -24,8 +23,6 @@ from tradeexecutor.statistics.core import update_statistics
 from tradeexecutor.strategy.account_correction import check_accounts, UnexpectedAccountingCorrectionIssue
 from tradeexecutor.strategy.approval import ApprovalModel
 from tradeexecutor.strategy.cycle import CycleDuration
-from tradeexecutor.strategy.default_routing_options import TradeRouting
-from tradeexecutor.strategy.engine_version import TradingStrategyEngineVersion
 from tradeexecutor.strategy.execution_context import ExecutionContext
 from tradeexecutor.strategy.execution_model import ExecutionModel
 from tradeexecutor.strategy.generic.generic_pricing_model import GenericPricing
@@ -76,6 +73,7 @@ class StrategyRunner(abc.ABC):
                  pricing_model_factory: PricingModelFactory,
                  execution_context: ExecutionContext,
                  routing_model: Optional[RoutingModel] = None,
+                 routing_model_factory: Callable[[], RoutingModel] = None,
                  run_state: Optional[RunState] = None,
                  accounting_checks=False,
                  unit_testing=False,
@@ -104,6 +102,7 @@ class StrategyRunner(abc.ABC):
         self.execution_context = execution_context
         self.accounting_checks = accounting_checks
         self.unit_testing = unit_testing
+        self.routing_model_factory = routing_model_factory
 
         # We need 60 seconds wait to read balances
         # after trades only on a real trading,
@@ -483,7 +482,16 @@ class StrategyRunner(abc.ABC):
             Tuple(routing state, pricing model, valuation model)
         """
 
+        #
+        # Todo: a bit of mess as we support legacy and new generic routing style routing here
+        #
+
         routing_model = self.routing_model
+
+        if routing_model is None:
+            # The new style routing initialisation
+            logger.info("Lazily initialised the default routing model, as routing model has not been set up earlier")
+            self.routing_model = routing_model = self.execution_model.create_default_routing_model(universe)
 
         assert routing_model, "Routing model not set"
 

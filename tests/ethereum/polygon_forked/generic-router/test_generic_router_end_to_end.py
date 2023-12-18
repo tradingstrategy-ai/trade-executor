@@ -108,6 +108,7 @@ def environment(
         "TRADING_STRATEGY_API_KEY": os.environ["TRADING_STRATEGY_API_KEY"],
         "MAX_DATA_DELAY_MINUTES": "1440",  # Don't crash on not doing candle refresh properly
         "GAS_BALANCE_WARNING_LEVEL": "0",  # Avoid unnecessary gas warnings
+        "UNIT_TEST_FORCE_ANVIL": "true",
     }
     return environment
 
@@ -266,3 +267,26 @@ def test_generic_routing_test_trade_spot_only(
         assert len(list(state.portfolio.get_all_trades())) == 4
         reserve_value = state.portfolio.get_default_reserve_position().get_value()
         assert reserve_value == pytest.approx(499.993009)
+
+
+def test_generic_routing_check_wallet(
+    environment: dict,
+    web3: Web3,
+    state_file: Path,
+):
+    """Perform check wallet command for generic rounting.
+
+    - Forked Polygon mainnet
+    """
+
+    cli = get_command(app)
+
+    with patch.dict(os.environ, environment, clear=True):
+        with pytest.raises(SystemExit) as e:
+            cli.main(args=["init"])
+        assert e.value.code == 0
+
+    with patch.dict(os.environ, environment, clear=True):
+        with pytest.raises(SystemExit) as e:
+            cli.main(args=["check-wallet"])
+        assert e.value.code == 0
