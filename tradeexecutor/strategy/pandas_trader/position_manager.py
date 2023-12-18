@@ -579,7 +579,7 @@ class PositionManager:
         slippage_tolerance = slippage_tolerance or self.default_slippage_tolerance
 
         if not flags:
-            flags = {}
+            flags = set()
 
         flags = {TradeFlag.open, TradeFlag.increase} | flags
 
@@ -853,7 +853,7 @@ class PositionManager:
         logger.info("Preparing to close position %s, quantity %s, pricing %s, slippage tolerance: %f %%", position, quantity, price_structure, slippage_tolerance * 100)
 
         if not flags:
-            flags = {}
+            flags = set()
 
         flags = {TradeFlag.close, TradeFlag.reduce} | flags
 
@@ -1220,7 +1220,7 @@ class PositionManager:
                     )
 
         if not flags:
-            flags = {}
+            flags = set()
 
         flags = {TradeFlag.open, TradeFlag.increase} | flags
 
@@ -1338,7 +1338,7 @@ class PositionManager:
         price_structure = self.pricing_model.get_buy_price(self.timestamp, pair.underlying_spot_pair, Decimal(1))
 
         if not flags:
-            flags = {}
+            flags = set()
 
         flags = {TradeFlag.close, TradeFlag.reduce} | flags
 
