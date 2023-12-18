@@ -62,7 +62,7 @@ def check_wallet(
 
     # Debugging and unit testing
     unit_testing: bool = shared_options.unit_testing,
-
+    unit_test_force_anvil: bool = typer.Option(bool, envvar="UNIT_TEST_FORCE_ANVIL", help="Use Anvil backend regardless of what chain strategy module suggests"),
 ):
     """Print out the token balances of the hot wallet.
 
@@ -111,7 +111,7 @@ def check_wallet(
     )
 
     # Check that we are connected to the chain strategy assumes
-    if unit_testing:
+    if unit_test_force_anvil:
         web3config.set_default_chain(ChainId.anvil)
     else:
         web3config.set_default_chain(universe.get_single_chain())

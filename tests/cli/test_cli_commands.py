@@ -68,9 +68,9 @@ def test_cli_check_universe(
 
 @pytest.mark.skipif(os.environ.get("BNB_CHAIN_JSON_RPC") is None, reason="Set BNB_CHAIN_JSON_RPC environment variable to Binance Smart Chain node to run this test")
 def test_cli_check_wallet(
-        logger,
-        strategy_path: str,
-        unit_test_cache_path: str,
+    logger,
+    strategy_path: str,
+    unit_test_cache_path: str,
     ):
     """check-wallet command works"""
 
@@ -95,7 +95,7 @@ def test_cli_check_wallet(
 
     # Dump any stdout to see why the command failed
     if result.exit_code != 0:
-        print("runner failed")
+        print("Runner failed")
         for line in result.stdout.split('\n'):
             print(line)
         raise AssertionError("runner launch failed")
