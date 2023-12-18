@@ -1546,9 +1546,9 @@ def load_all_data(
 
     live = execution_context.live_trading
     with execution_context.timed_task_context_manager("load_data", time_bucket=time_frame.value):
-        if live:
+        if live and not execution_context.mode.is_unit_testing():
             # This will force client to redownload the data
-            logger.info("Purging trading data caches for %s", client.__class__.__name__)
+            logger.info("Purging trading data caches for %s, mode is %s", client.__class__.__name__, execution_context.mode)
             client.clear_caches()
         else:
             logger.info("Using cached data if available")

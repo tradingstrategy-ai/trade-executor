@@ -7,6 +7,7 @@ from typing import Union
 from web3 import Web3
 
 from tradeexecutor.ethereum.enzyme.vault import EnzymeVaultSyncModel
+from tradeexecutor.state.trade import TradeFlag
 from tradeexecutor.statistics.core import update_statistics
 from tradeexecutor.strategy.execution_context import ExecutionMode
 from tradeexecutor.strategy.sync_model import SyncModel
@@ -156,6 +157,7 @@ def make_test_trade(
             pair,
             float(amount),
             notes=notes,
+            flags={TradeFlag.test_trade},
         )
 
         trade = trades[0]
@@ -216,6 +218,7 @@ def make_test_trade(
         trades = position_manager.close_position(
             position,
             notes=notes,
+            flags={TradeFlag.test_trade},
         )
         assert len(trades) == 1
         sell_trade = trades[0]
@@ -260,6 +263,7 @@ def make_test_trade(
                 float(amount),
                 notes=notes,
                 leverage=2,
+                flags={TradeFlag.test_trade},
             )
 
             trade = trades[0]
@@ -314,7 +318,10 @@ def make_test_trade(
         )
 
         # Create trades to open the position
-        trades = position_manager.close_short(position)
+        trades = position_manager.close_short(
+            position,
+            flags={TradeFlag.test_trade},
+        )
 
         trade = trades[0]
         close_short_trade = trade

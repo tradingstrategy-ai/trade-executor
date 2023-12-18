@@ -107,6 +107,16 @@ class TradeFlag(enum.Enum):
     #:
     close_protocol_last = "close_protocol_last"
 
+    #: This is a test trade made when testing out trade executor infrastructure.
+    #:
+    #: The trade was performed by `perform-test-trade` command line command,
+    #: not a strategy itself.
+    #:
+    #: Test trades should not count towards strategy success metrics.
+    #:
+    #:
+    test_trade = "test_trade"
+
 
 @dataclass_json
 @dataclass()
@@ -735,6 +745,13 @@ class TradeExecution:
     def is_success(self) -> bool:
         """This trade was succcessfully completed."""
         return self.executed_at is not None
+
+    def is_test(self) -> bool:
+        """The trade was performed by perform-test-trade command.
+
+        The trade and the position should not be counted in the statistics.
+        """
+        return TradeFlag.test_trade in self.flags
 
     def is_failed(self) -> bool:
         """This trade was succcessfully completed."""

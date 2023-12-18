@@ -3,7 +3,7 @@
 import datetime
 import warnings
 from decimal import Decimal
-from typing import List, Optional, Union, Literal
+from typing import List, Optional, Union, Literal, Set
 import logging
 
 import pandas as pd
@@ -490,14 +490,15 @@ class PositionManager:
 
     def open_spot(
         self,
-         pair: Union[DEXPair, TradingPairIdentifier],
-         value: USDollarAmount | Decimal,
-         take_profit_pct: Optional[float] = None,
-         stop_loss_pct: Optional[float] = None,
-         trailing_stop_loss_pct: Optional[float] = None,
-         stop_loss_usd: Optional[USDollarAmount] = None,
-         notes: Optional[str] = None,
-         slippage_tolerance: Optional[float] = None,
+        pair: Union[DEXPair, TradingPairIdentifier],
+        value: USDollarAmount | Decimal,
+        take_profit_pct: Optional[float] = None,
+        stop_loss_pct: Optional[float] = None,
+        trailing_stop_loss_pct: Optional[float] = None,
+        stop_loss_usd: Optional[USDollarAmount] = None,
+        notes: Optional[str] = None,
+        slippage_tolerance: Optional[float] = None,
+        flags: Set[TradeFlag] | None = None,
     ) -> List[TradeExecution]:
         """Open a spot position.
 
@@ -577,6 +578,11 @@ class PositionManager:
 
         slippage_tolerance = slippage_tolerance or self.default_slippage_tolerance
 
+        if not flags:
+            flags = {}
+
+        flags = {TradeFlag.open, TradeFlag.increase} | flags
+
         position, trade, created = self.state.create_trade(
             self.timestamp,
             pair=executor_pair,
@@ -591,6 +597,7 @@ class PositionManager:
             planned_mid_price=price_structure.mid_price,
             price_structure=price_structure,
             slippage_tolerance=slippage_tolerance,
+            flags=flags,
         )
 
         assert created, f"There was conflicting open position for pair: {executor_pair}"
@@ -818,12 +825,14 @@ class PositionManager:
 
         return [trade]
 
-    def close_spot_position(self,
-                       position: TradingPosition,
-                       trade_type: TradeType=TradeType.rebalance,
-                       notes: Optional[str] = None,
-                       slippage_tolerance: Optional[float] = None,
-                       ) -> List[TradeExecution]:
+    def close_spot_position(
+        self,
+        position: TradingPosition,
+        trade_type: TradeType=TradeType.rebalance,
+        notes: Optional[str] = None,
+        slippage_tolerance: Optional[float] = None,
+        flags: Set[TradeFlag] | None = None,
+    ) -> List[TradeExecution]:
         """Close a single spot market trading position.
 
         See :py:meth:`close_position` for usage.
@@ -843,6 +852,11 @@ class PositionManager:
 
         logger.info("Preparing to close position %s, quantity %s, pricing %s, slippage tolerance: %f %%", position, quantity, price_structure, slippage_tolerance * 100)
 
+        if not flags:
+            flags = {}
+
+        flags = {TradeFlag.close, TradeFlag.reduce} | flags
+
         position2, trade, created = self.state.create_trade(
             self.timestamp,
             pair,
@@ -860,6 +874,8 @@ class PositionManager:
             slippage_tolerance=slippage_tolerance,
             price_structure=price_structure,
             closing=True,
+            flags=flags,
+
         )
         assert position == position2, f"Somehow messed up the close_position() trade.\n" \
                                       f"Original position: {position}.\n" \
@@ -923,12 +939,14 @@ class PositionManager:
         )
         return [trade]
 
-    def close_position(self,
-                       position: TradingPosition,
-                       trade_type: TradeType | None = None,
-                       notes: Optional[str] = None,
-                       slippage_tolerance: Optional[float] = None,
-                       ) -> List[TradeExecution]:
+    def close_position(
+        self,
+        position: TradingPosition,
+        trade_type: TradeType | None = None,
+        notes: Optional[str] = None,
+        slippage_tolerance: Optional[float] = None,
+        flags: Set[TradeFlag] | None = None,
+    ) -> List[TradeExecution]:
         """Close a single position.
 
         The position may already have piled up selling trades.
@@ -976,7 +994,8 @@ class PositionManager:
                 position,
                 trade_type,
                 notes,
-                slippage_tolerance
+                slippage_tolerance,
+                flags=flags,
             )
         elif position.is_credit_supply():
 
@@ -996,6 +1015,7 @@ class PositionManager:
                 position,
                 trade_type=trade_type,
                 notes=notes,
+                flags=flags,
             )
         else:
             raise NotImplementedError(f"Does not know how to close: {position}")
@@ -1106,6 +1126,7 @@ class PositionManager:
         stop_loss_pct: float | None = None,
         trailing_stop_loss_pct: float | None = None,
         notes: str | None = None,
+        flags: Set[TradeFlag] | None = None,
     ) -> list[TradeExecution]:
         """Open a short position.
 
@@ -1198,6 +1219,11 @@ class PositionManager:
                     estimation.liquidation_price, executor_pair.base.token_symbol,
                     )
 
+        if not flags:
+            flags = {}
+
+        flags = {TradeFlag.open, TradeFlag.increase} | flags
+
         position, trade, created = self.state.trade_short(
             self.timestamp,
             pair=shorting_pair,
@@ -1213,7 +1239,7 @@ class PositionManager:
             planned_collateral_allocation=0,
             lp_fees_estimated=estimation.lp_fees,
             notes=notes,
-            flags={TradeFlag.open},
+            flags=flags,
         )
         assert created, f"open_short() was called, but there was an existing position for pair: {executor_pair}"
 
@@ -1269,6 +1295,7 @@ class PositionManager:
         quantity: float | Decimal | None = None,
         notes: Optional[str] = None,
         trade_type: TradeType = TradeType.rebalance,
+        flags: Set[TradeFlag] | None = None,
     ) -> List[TradeExecution]:
         """Close a short position
 
@@ -1310,6 +1337,11 @@ class PositionManager:
         # TODO: Hardcoded USD exchange rate
         price_structure = self.pricing_model.get_buy_price(self.timestamp, pair.underlying_spot_pair, Decimal(1))
 
+        if not flags:
+            flags = {}
+
+        flags = {TradeFlag.close, TradeFlag.reduce} | flags
+
         position2, trade, _ = self.state.trade_short(
             self.timestamp,
             closing=True,
@@ -1321,7 +1353,7 @@ class PositionManager:
             collateral_asset_price=1.0,
             notes=notes,
             position=position,
-            flags={TradeFlag.close},
+            flags=flags,
         )
 
         assert position == position2, f"Somehow messed up the close_position() trade.\n" \

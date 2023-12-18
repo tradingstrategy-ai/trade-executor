@@ -307,6 +307,13 @@ class TradingPosition(GenericPosition):
         """
         return not self.is_open()
 
+    def is_test(self) -> bool:
+        """The position was openedd and closed by perform-test-trade command.
+
+        The trade and the position should not be counted in the statistics.
+        """
+        return any(TradeFlag.test_trade in t.flags for t in self.trades.values())
+
     def is_frozen(self) -> bool:
         """This position has had a failed trade and can no longer be automatically moved around.
 
