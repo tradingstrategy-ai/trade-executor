@@ -893,6 +893,7 @@ class TradeAnalysis:
         self,
         time_bucket: Optional[TimeBucket] = None,
         state = None,
+        urls = False,
     ) -> pd.DataFrame:
         """Calculate some statistics how our trades went. This returns a DataFrame with 3 separate columns for overall, long and short.
         
@@ -903,6 +904,9 @@ class TradeAnalysis:
 
         :param state:
             Optional, should be specified if user would like to see advanced statistics such as sharpe ratio, sortino ratio, etc.
+
+        :param urls:
+            Optional, if True, include an extra column for the urls for each row that link to the relevant glorssary documentation.
 
         :return:
             DataFrame with all the stats for overall, long and short.
@@ -942,7 +946,10 @@ class TradeAnalysis:
         all_stats.loc['Annualised return %', 'Long'] = format_value_for_summary_table(as_percent(calculate_annualised_return(profit_long_pct, duration)))
         all_stats.loc['Annualised return %', 'Short'] = format_value_for_summary_table(as_percent(calculate_annualised_return(profit_short_pct, duration)))
 
-        return TradeSummary.format_summary_dataframe(all_stats)
+        if urls:
+            all_stats['help_links'] = [TradeSummary.help_links()[key] for key in all_stats.index]
+
+        return all_stats
 
     def render_summary_statistics_side_by_side(self, time_bucket: Optional[TimeBucket] = None, state = None) -> HTML:
         """Render summary statistics as a JSON table.
@@ -956,10 +963,9 @@ class TradeAnalysis:
         :return:
             Returns a similar table to `calcualate_all_summary_stats_by_side`, but make it makes row headings clickable, directing user to relevant glossary link and, in this case, returns ``HTML`` object instaed of a pandas DataFrame.
         """
-        all_stats = self.calculate_summary_statistics(time_bucket, state)
-        all_stats['help_links'] = [TradeSummary.help_links()[key] for key in all_stats.index]
+        all_stats = self.calculate_all_summary_stats_by_side(time_bucket, state)
 
-        return all_stats
+        return TradeSummary.format_summary_dataframe(all_stats)
 
     @staticmethod
     def get_capital_tied_at_open(position) -> Percent | None:

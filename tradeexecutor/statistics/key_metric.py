@@ -13,7 +13,7 @@ from tradeexecutor.state.state import State
 from tradeexecutor.state.types import Percent
 from tradeexecutor.strategy.summary import KeyMetric, KeyMetricKind, KeyMetricSource, KeyMetricCalculationMethod
 from tradeexecutor.visual.equity_curve import calculate_size_relative_realised_trading_returns
-from tradeexecutor.analysis.trade_analyser import build_trade_analysis
+from tradeexecutor.analysis.trade_analyser import build_trade_analysis, TradeSummary
 
 
 def calculate_sharpe(returns: pd.Series, periods=365) -> float:
@@ -298,7 +298,7 @@ def calculate_key_metrics(
         help_link=KeyMetricKind.trades_last_week.get_help_link(),
     )
 
-    long_short_table = calculate_long_short_metrics(source_state, source)
+    long_short_table = serialise_summary_statistics_as_json_table(source_state, source)
     yield from (row for row in long_short_table.rows.values())
 
 
@@ -331,7 +331,7 @@ class StatisticsTable:
         self.calculation_window_end_at = calculation_window_end_at        
 
 
-def calculate_long_short_metrics(
+def serialise_summary_statistics_as_json_table(
     source_state: State,
     source: KeyMetricSource,
 ) -> StatisticsTable:
@@ -346,7 +346,7 @@ def calculate_long_short_metrics(
     """
 
     analysis = build_trade_analysis(source_state.portfolio)
-    summary = analysis.calculate_all_summary_stats_by_side(state=source_state, format_headings=False)  # TODO timebucket
+    summary = analysis.calculate_all_summary_stats_by_side(state=source_state, urls=True)  # TODO timebucket
 
     key_metrics_map = {
         KeyMetricKind.trading_period_length: 'Trading period length',
@@ -399,6 +399,7 @@ def calculate_long_short_metrics(
     for key_metric_kind, summary_index in key_metrics_map.items():
         if summary_index in summary.index:
             metric_data = summary.loc[summary_index]
+
             rows[key_metric_kind] = KeyMetric(
                 kind=key_metric_kind,
                 value={"All": metric_data[0], "Long": metric_data[1], "Short": metric_data[2]},
