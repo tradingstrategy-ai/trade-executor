@@ -4,7 +4,7 @@ import logging
 import runpy
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable, Dict, Protocol, List, Optional, Union
+from typing import Callable, Dict, Protocol, List, Optional, Union, Set
 from urllib.parse import urlparse
 
 from packaging import version
@@ -13,6 +13,7 @@ import pandas
 import pandas as pd
 
 from tradeexecutor.strategy.engine_version import SUPPORTED_TRADING_STRATEGY_ENGINE_VERSIONS, TradingStrategyEngineVersion
+from tradeexecutor.strategy.tag import StrategyTag
 from tradingstrategy.chain import ChainId
 from tradeexecutor.state.state import State
 from tradeexecutor.state.trade import TradeExecution
@@ -25,7 +26,6 @@ from tradeexecutor.strategy.reserve_currency import ReserveCurrency
 from tradeexecutor.strategy.strategy_type import StrategyType
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
 from tradingstrategy.client import Client
-from tradingstrategy.timebucket import TimeBucket
 from tradingstrategy.universe import Universe
 
 from tradeexecutor.strategy.universe_model import UniverseOptions
@@ -273,18 +273,6 @@ class CreateTradingUniverseProtocol(Protocol):
             """
 
 
-def pregenerated_create_trading_universe(universe: TradingStrategyUniverse) -> CreateTradingUniverseProtocol:
-    """Wrap existing trading universe, so it can be passed around for universe generators."""
-
-    def _inner(timestamp: pandas.Timestamp,
-            client: Optional[Client],
-            execution_context: ExecutionContext,
-            candle_time_frame_override: Optional[TimeBucket]=None):
-        return universe
-
-    return _inner
-
-
 @dataclass
 class StrategyModuleInformation:
     """Describe elements that we need to have in a strategy module.
@@ -384,6 +372,12 @@ class StrategyModuleInformation:
     #:
     icon: Optional[str] = None
 
+    #: Any tags on the strategy.
+    #:
+    #: Set for ``tags`` attribute of a strategy module.
+    #:
+    tags: Optional[Set[StrategyTag]] = None
+
     def is_version_greater_or_equal_than(self, major: int, minor: int, patch: int) -> bool:
         """Check strategy module for its version compatibility."""
         assert self.trading_strategy_engine_version, f"Strategy module does not contain trading_strategy_engine_version varible: {self.path}"
@@ -451,6 +445,11 @@ class StrategyModuleInformation:
         if self.long_description:
             assert type(self.long_description) == str
 
+        if self.tags:
+            assert type(self.tags) == set
+            for t in self.tags:
+                assert isinstance(t, StrategyTag)
+
         if self.icon:
             result = urlparse(self.icon)
             assert all([result.scheme, result.netloc]), f"Bad icon URL: {self.icon}"
@@ -497,6 +496,7 @@ def parse_strategy_module(
         name=python_module_exports.get("name"),
         short_description=python_module_exports.get("short_description"),
         long_description=python_module_exports.get("long_description"),
+        tags=python_module_exports.get("tags"),
     )
 
 

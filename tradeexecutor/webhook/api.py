@@ -72,6 +72,7 @@ def web_metadata(request: Request):
         backtest_available=metadata.has_backtest_data(),
         crashed_at=run_state.crashed_at,
         badges=metadata.badges,
+        tags=metadata.tags,
     )
 
     # Catch NaN's and other data JavaScript cannot eat

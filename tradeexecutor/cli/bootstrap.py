@@ -5,7 +5,7 @@ import os
 import shutil
 from decimal import Decimal
 from pathlib import Path
-from typing import Optional, Tuple
+from typing import Optional, Tuple, Set
 
 from eth_defi.enzyme.vault import Vault
 from eth_defi.event_reader.reorganisation_monitor import create_reorganisation_monitor
@@ -42,6 +42,7 @@ from tradeexecutor.strategy.generic.generic_router import GenericRouting
 from tradeexecutor.strategy.pricing_model import PricingModelFactory
 from tradeexecutor.strategy.routing import RoutingModel
 from tradeexecutor.strategy.strategy_module import StrategyModuleInformation
+from tradeexecutor.strategy.tag import StrategyTag
 from tradeexecutor.strategy.sync_model import SyncModel, DummySyncModel
 from tradeexecutor.strategy.valuation import ValuationModelFactory
 from tradeexecutor.testing.dummy_wallet import DummyWalletSyncer
@@ -291,6 +292,7 @@ def create_metadata(
         backtest_html: Optional[Path] = None,
         key_metrics_backtest_cut_off_days: float = 90,
         badges: Optional[str] = None,
+        tags: Optional[Set[StrategyTag]] = None,
 ) -> Metadata:
     """Create metadata object from the configuration variables."""
 
@@ -331,6 +333,7 @@ def create_metadata(
         backtest_html=backtest_html,
         key_metrics_backtest_cut_off=datetime.timedelta(days=key_metrics_backtest_cut_off_days),
         badges=Metadata.parse_badges_configuration(badges),
+        tags=tags or set(),  # Always fill empty set
     )
 
     return metadata
