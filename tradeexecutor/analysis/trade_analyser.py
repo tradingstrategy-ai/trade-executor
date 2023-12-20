@@ -319,6 +319,7 @@ class TradeSummary:
             "Max drawdown": "https://tradingstrategy.ai/glossary/maximum-drawdown",
         }
 
+    @staticmethod
     def format_summary_dataframe(df: pd.DataFrame) -> pd.DataFrame:
         """Format the summary dataframe for display in Jupyter notebook with clickable links.
         
