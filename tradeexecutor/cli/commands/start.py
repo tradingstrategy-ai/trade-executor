@@ -333,6 +333,7 @@ def start(
             backtest_html=html_report,
             key_metrics_backtest_cut_off_days=key_metrics_backtest_cut_off_days,
             badges=badges,
+            tags=mod.tags,
         )
 
         # Start the queue that relays info from the web server to the strategy executor

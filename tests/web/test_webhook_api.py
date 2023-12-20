@@ -15,6 +15,7 @@ from tradeexecutor.state.state import State
 from tradeexecutor.state.portfolio import Portfolio
 from tradeexecutor.state.store import JSONFileStore
 from tradeexecutor.strategy.run_state import RunState
+from tradeexecutor.strategy.strategy_module import StrategyTag
 from tradeexecutor.webhook.server import create_webhook_server
 
 
@@ -49,6 +50,7 @@ def server_url(store):
         datetime.datetime.utcnow(),
         True,
         badges=Metadata.parse_badges_configuration("polygon, metamask, eth, usdc"),
+        tags={StrategyTag.beta},
     )
 
     # Inject some fake files for the backtest content
@@ -92,6 +94,7 @@ def test_metadata(logger, server_url):
     assert data["executor_running"] == True
     assert data["crashed_at"] is None
     assert data["badges"] == ["polygon", "metamask", "eth", "usdc"]
+    assert data["tags"] == ["beta"]
 
 
 def test_cors(logger, server_url):

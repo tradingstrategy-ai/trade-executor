@@ -6,9 +6,11 @@ on the executor start up.
 import datetime
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Optional, Dict, TypedDict, List
+from typing import Optional, Dict, TypedDict, List, Set
 
 from dataclasses_json import dataclass_json
+
+from tradeexecutor.strategy.strategy_module import StrategyTag
 from tradingstrategy.chain import ChainId
 
 from tradeexecutor.state.state import State
@@ -128,7 +130,9 @@ class Metadata:
     #:
     key_metrics_backtest_cut_off: datetime.timedelta = datetime.timedelta(days=90)
 
-    #: List of badges strategy tile can display
+    #: List of badges strategy tile can display.
+    #:
+    #: Used for the user to visualise context information about the strategy.
     #:
     #: E.g. "metamask", "polygon", "eth", "usdc"
     #:
@@ -136,8 +140,17 @@ class Metadata:
     #: - Chain badge e.g. Polygon does not need to be declared as it is part of the strategh
     #: - Vault type. e.g. Enzyme badge is the same
     #: - Can contain badges like USDC
+    #: - Some of badges are automatically derived, some are manually set.
+    #:
+    #: See also :py:attr:`tags`
     #:
     badges: List[str] = field(default_factory=list)
+
+    #: Tags on this strategy
+    #:
+    #: See also :py:attr:`badges`
+    #:
+    tags: Set[StrategyTag] = field(default_factory=set)
 
     @staticmethod
     def create_dummy() -> "Metadata":
