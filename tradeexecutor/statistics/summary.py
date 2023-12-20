@@ -8,6 +8,7 @@ import pandas as pd
 
 from tradeexecutor.state.state import State
 from tradeexecutor.statistics.key_metric import calculate_key_metrics
+from tradeexecutor.statistics.statistics_table import serialise_long_short_stats_as_json_table
 from tradeexecutor.strategy.execution_context import ExecutionMode
 from tradeexecutor.strategy.summary import StrategySummaryStatistics
 from tradeexecutor.visual.equity_curve import calculate_compounding_realised_trading_profitability
@@ -120,6 +121,8 @@ def calculate_summary_statistics(
 
     key_metrics = {m.kind.value: m for m in calculate_key_metrics(state, backtested_state, required_history=key_metrics_backtest_cut_off)}
 
+    long_short_table = serialise_long_short_stats_as_json_table(state, backtested_state, key_metrics_backtest_cut_off)
+
     logger.info("calculate_summary_statistics() finished, took %s seconds", perf_counter() - func_started_at)
 
     return StrategySummaryStatistics(
@@ -134,4 +137,5 @@ def calculate_summary_statistics(
         backtest_metrics_cut_off_period=key_metrics_backtest_cut_off,
         return_all_time=returns_all_time,
         return_annualised=returns_annualised,
+        long_short_table=long_short_table,
     )

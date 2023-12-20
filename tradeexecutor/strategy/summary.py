@@ -250,6 +250,11 @@ class KeyMetric:
     #:
     help_link: str | None = None
 
+    #: Name of the metric
+    #: 
+    #: Should be in human readable format
+    name: str | None = None
+
     @staticmethod
     def create_na(kind: KeyMetricKind, reason: str) -> "KeyMetric":
         """Create missing value placeholder."""
@@ -363,6 +368,12 @@ class StrategySummaryStatistics:
     #: This mostly affects strategy summary tiles.
     #:
     backtest_metrics_cut_off_period: Optional[datetime.timedelta] = None
+
+    #: Long/short statistics for the summary tile.
+    #:
+    #: It should have 3 columns: all, long, short.
+    #:
+    long_short_table: Optional['StatisticsTable'] = None
 
 
 @dataclass_json
