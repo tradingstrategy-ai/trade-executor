@@ -41,7 +41,8 @@ from tradeexecutor.strategy.default_routing_options import TradeRouting
 from tradeexecutor.strategy.generic.generic_router import GenericRouting
 from tradeexecutor.strategy.pricing_model import PricingModelFactory
 from tradeexecutor.strategy.routing import RoutingModel
-from tradeexecutor.strategy.strategy_module import StrategyModuleInformation, StrategyTag
+from tradeexecutor.strategy.strategy_module import StrategyModuleInformation
+from tradeexecutor.strategy.tag import StrategyTag
 from tradeexecutor.strategy.sync_model import SyncModel, DummySyncModel
 from tradeexecutor.strategy.valuation import ValuationModelFactory
 from tradeexecutor.testing.dummy_wallet import DummyWalletSyncer

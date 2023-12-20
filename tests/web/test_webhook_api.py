@@ -15,7 +15,7 @@ from tradeexecutor.state.state import State
 from tradeexecutor.state.portfolio import Portfolio
 from tradeexecutor.state.store import JSONFileStore
 from tradeexecutor.strategy.run_state import RunState
-from tradeexecutor.strategy.strategy_module import StrategyTag
+from tradeexecutor.strategy.tag import StrategyTag
 from tradeexecutor.webhook.server import create_webhook_server
 
 

@@ -10,7 +10,7 @@ from typing import Optional, Dict, TypedDict, List, Set
 
 from dataclasses_json import dataclass_json
 
-from tradeexecutor.strategy.strategy_module import StrategyTag
+from tradeexecutor.strategy.tag import StrategyTag
 from tradingstrategy.chain import ChainId
 
 from tradeexecutor.state.state import State

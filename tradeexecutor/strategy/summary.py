@@ -8,7 +8,7 @@ from dataclasses_json import dataclass_json
 
 from tradeexecutor.state.metadata import OnChainData
 from tradeexecutor.state.types import USDollarAmount, UnixTimestamp, Percent
-from tradeexecutor.strategy.strategy_module import StrategyTag
+from tradeexecutor.strategy.tag import StrategyTag
 
 
 class KeyMetricKind(enum.Enum):

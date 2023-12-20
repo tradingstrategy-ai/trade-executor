@@ -1,6 +1,5 @@
 """Describe strategy modules and their loading."""
 import datetime
-import enum
 import logging
 import runpy
 from dataclasses import dataclass
@@ -14,6 +13,7 @@ import pandas
 import pandas as pd
 
 from tradeexecutor.strategy.engine_version import SUPPORTED_TRADING_STRATEGY_ENGINE_VERSIONS, TradingStrategyEngineVersion
+from tradeexecutor.strategy.tag import StrategyTag
 from tradingstrategy.chain import ChainId
 from tradeexecutor.state.state import State
 from tradeexecutor.state.trade import TradeExecution
@@ -26,7 +26,6 @@ from tradeexecutor.strategy.reserve_currency import ReserveCurrency
 from tradeexecutor.strategy.strategy_type import StrategyType
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
 from tradingstrategy.client import Client
-from tradingstrategy.timebucket import TimeBucket
 from tradingstrategy.universe import Universe
 
 from tradeexecutor.strategy.universe_model import UniverseOptions
@@ -272,32 +271,6 @@ class CreateTradingUniverseProtocol(Protocol):
             The trading universe also contains information about the reserve asset,
             usually stablecoin, we use for the strategy.
             """
-
-class StrategyTag(enum.Enum):
-    """Tags we can for a strategy.
-
-    - Tags give the context of the strategy and its life cycle for the users
-      and the development team
-
-    - Tags are shown in the strategy explorer and are a sorting criteria
-      for displaying strategies to the user: live > beta > alpha > prototype
-
-    - Some strategy functionality e.g. displaying the risk metrics
-      and additional disclaimer depends on the tags
-    """
-
-    #: Testing strategy in forward-testing
-    alpha = "alpha"
-
-    #: Users can deposit
-    beta = "beta"
-
-    #: The strategy is expected to make profit and has enough history to show this
-    live = "live"
-
-    #: The strategy is not expected to make profit, but is only running as an infrastructure test
-    internal_testing = "internal_testing"
-
 
 
 @dataclass
