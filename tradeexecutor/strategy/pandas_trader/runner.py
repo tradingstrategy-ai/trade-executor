@@ -152,8 +152,8 @@ class PandasTraderRunner(StrategyRunner):
 
         except Exception as e:
             # Don't take trade executor down if visualisations fail
-            logger.error("Could not draw visualisations")
-            logger.exception(e)
+            logger.warning("Could not draw visualisations in refresh_visualisations()")
+            logger.warning("Visualisation exception %s", e, exc_info=e)
 
     def update_strategy_thinking_image_data(self, small_figure, large_figure):
         """Update the strategy thinking image data with small, small dark theme, large, and large dark theme images.
