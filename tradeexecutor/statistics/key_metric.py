@@ -13,6 +13,7 @@ from tradeexecutor.state.state import State
 from tradeexecutor.state.types import Percent
 from tradeexecutor.strategy.summary import KeyMetric, KeyMetricKind, KeyMetricSource, KeyMetricCalculationMethod
 from tradeexecutor.visual.equity_curve import calculate_size_relative_realised_trading_returns
+from tradeexecutor.statistics.statistics_table import get_data_source_and_calculation_window
 
 
 def calculate_sharpe(returns: pd.Series, periods=365) -> float:
@@ -186,26 +187,8 @@ def calculate_key_metrics(
 
     assert isinstance(live_state, State)
 
-    source_state = None
-    source = None
-    calculation_window_start_at = None
-    calculation_window_end_at = None
 
-    # Live history is calculated from the
-    live_history = live_state.portfolio.get_trading_history_duration()
-    if live_history is not None and live_history >= required_history:
-        source_state = live_state
-        source = KeyMetricSource.live_trading
-        calculation_window_start_at = source_state.created_at
-        calculation_window_end_at = datetime.datetime.utcnow()
-    else:
-        if backtested_state:
-            if backtested_state.portfolio.get_trading_history_duration():
-                source_state = backtested_state
-                source = KeyMetricSource.backtesting
-                first_trade, last_trade = source_state.portfolio.get_first_and_last_executed_trade()
-                calculation_window_start_at = first_trade.executed_at
-                calculation_window_end_at = last_trade.executed_at
+    source_state, source, calculation_window_start_at, calculation_window_end_at = get_data_source_and_calculation_window(live_state, backtested_state, required_history)
 
     if source_state:
 
@@ -296,4 +279,3 @@ def calculate_key_metrics(
         calculation_method=KeyMetricCalculationMethod.latest_value,
         help_link=KeyMetricKind.trades_last_week.get_help_link(),
     )
-
