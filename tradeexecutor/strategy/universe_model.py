@@ -122,7 +122,10 @@ class UniverseModel(abc.ABC):
     by refreshing the trading data from the server.
     """
 
-    def preload_universe(self, universe_options: UniverseOptions, execution_context: ExecutionContext | None=None) -> StrategyExecutionUniverse:
+    def preload_universe(
+            self,
+            universe_options: UniverseOptions,
+            execution_context: ExecutionContext | None=None) -> StrategyExecutionUniverse:
         """Triggered before backtesting execution.
 
         - Load all datasets with progress bar display

@@ -652,6 +652,7 @@ class ExecutionLoop:
             self.universe_options,
             self.execution_context,
         )
+        assert self.execution_context.mode.is_live_trading()
         universe = self.universe_model.preload_universe(self.universe_options, self.execution_context)
         universe = cast(TradingStrategyUniverse, universe)
         logger.info("Warmed up universe %s", universe)
