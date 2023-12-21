@@ -273,7 +273,10 @@ class PandasTraderRunner(StrategyRunner):
             logger.trade(buf.getvalue())
 
             small_image = self.run_state.visualisation.small_image_png
-            post_logging_discord_image(small_image)
+            if small_image is not None:
+                post_logging_discord_image(small_image)
+            else:
+                logger.warning("Chart visualisation missing")
 
         else:
             
