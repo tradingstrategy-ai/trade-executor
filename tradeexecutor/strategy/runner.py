@@ -12,16 +12,22 @@ from io import StringIO
 from pprint import pformat
 from types import NoneType
 
-from typing import List, Optional, Tuple
+from typing import List, Optional, Tuple, cast, Callable
 
+from eth_defi.provider.anvil import is_anvil, mine
+from tradeexecutor.ethereum.ethereum_protocol_adapters import EthereumPairConfigurator
+from tradeexecutor.ethereum.tx import TransactionBuilder
+from tradeexecutor.state.store import StateStore
 from tradeexecutor.state.types import BlockNumber
 from tradeexecutor.statistics.core import update_statistics
 from tradeexecutor.strategy.account_correction import check_accounts, UnexpectedAccountingCorrectionIssue
 from tradeexecutor.strategy.approval import ApprovalModel
 from tradeexecutor.strategy.cycle import CycleDuration
-from tradeexecutor.strategy.engine_version import TradingStrategyEngineVersion
 from tradeexecutor.strategy.execution_context import ExecutionContext
 from tradeexecutor.strategy.execution_model import ExecutionModel
+from tradeexecutor.strategy.generic.generic_pricing_model import GenericPricing
+from tradeexecutor.strategy.generic.generic_router import GenericRouting
+from tradeexecutor.strategy.generic.generic_valuation import GenericValuation
 from tradeexecutor.strategy.sync_model import SyncMethodV0, SyncModel
 from tradeexecutor.strategy.run_state import RunState
 from tradeexecutor.strategy.output import output_positions, DISCORD_BREAK_CHAR, output_trades
@@ -34,7 +40,7 @@ from tradeexecutor.strategy.universe_model import StrategyExecutionUniverse
 
 from tradeexecutor.state.state import State
 from tradeexecutor.state.position import TradingPosition
-from tradeexecutor.state.trade import TradeExecution
+from tradeexecutor.state.trade import TradeExecution, TradeFlag
 from tradeexecutor.state.reserve import ReservePosition
 from tradeexecutor.strategy.valuation import ValuationModelFactory, ValuationModel, revalue_state
 
@@ -67,6 +73,7 @@ class StrategyRunner(abc.ABC):
                  pricing_model_factory: PricingModelFactory,
                  execution_context: ExecutionContext,
                  routing_model: Optional[RoutingModel] = None,
+                 routing_model_factory: Callable[[], RoutingModel] = None,
                  run_state: Optional[RunState] = None,
                  accounting_checks=False,
                  unit_testing=False,
@@ -95,6 +102,7 @@ class StrategyRunner(abc.ABC):
         self.execution_context = execution_context
         self.accounting_checks = accounting_checks
         self.unit_testing = unit_testing
+        self.routing_model_factory = routing_model_factory
 
         # We need 60 seconds wait to read balances
         # after trades only on a real trading,
@@ -109,7 +117,7 @@ class StrategyRunner(abc.ABC):
 
         logger.info(
             "Created strategy runner %s, engine version %s, running mode %s",
-            self,
+            self.__class__.__name__,
             self.execution_context.engine_version,
             self.execution_context.mode.name,
         )
@@ -461,7 +469,10 @@ class StrategyRunner(abc.ABC):
             Dict of random debug stuff
         """
 
-    def setup_routing(self, universe: StrategyExecutionUniverse) -> Tuple[RoutingState, PricingModel, ValuationModel]:
+    def setup_routing(
+            self,
+            universe: StrategyExecutionUniverse,
+    ) -> Tuple[RoutingState, PricingModel, ValuationModel]:
         """Setups routing state for this cycle.
 
         :param universe:
@@ -471,35 +482,63 @@ class StrategyRunner(abc.ABC):
             Tuple(routing state, pricing model, valuation model)
         """
 
-        assert self.routing_model, "Routing model not set"
+        #
+        # Todo: a bit of mess as we support legacy and new generic routing style routing here
+        #
+
+        routing_model = self.routing_model
+
+        if routing_model is None:
+            # The new style routing initialisation
+            logger.info("Lazily initialised the default routing model, as routing model has not been set up earlier")
+            self.routing_model = routing_model = self.execution_model.create_default_routing_model(universe)
+
+        assert routing_model, "Routing model not set"
 
         # Get web3 connection, hot wallet
         routing_state_details = self.execution_model.get_routing_state_details()
 
-        # Initialise the current routing state with execution details
-        # logger.info("Setting up routing.\n"
-        #            "Routing model is %s\n"
-        #            "Details are %s\n"
-        #            "Universe is %s",
-        #            self.routing_model,
-        #            routing_state_details,
-        #            universe,
-        #            )
+        # Lazily initialised routing model
+        # TODO: Add a specific app startup step that downloads
+        # the universe for the first time and initialises here
+        if isinstance(routing_model, GenericRouting):
+            assert self.execution_context.is_version_greater_or_equal_than(0, 3, 0), f"Strategy modules need to be at least 0.3 to support GenericRouting, we got version {self.execution_context.engine_version}"
+            if not routing_model.is_initialised():
+                tx_builder = cast(TransactionBuilder, routing_state_details["tx_builder"])
+                web3 = tx_builder.web3
+                pair_configurator = EthereumPairConfigurator(
+                    web3,
+                    cast(TradingStrategyUniverse, universe)
+                )
+                routing_model.initialise(pair_configurator)
+
+            # Update the pair configuration universe to the latest.
+            # This will be referred when creating
+            # pricing_model and valuation model
+            routing_model.pair_configurator.strategy_universe = universe
+
         routing_state = self.routing_model.create_routing_state(universe, routing_state_details)
 
-        # Create a pricing model for assets
-        pricing_model = self.pricing_model_factory(self.execution_model, universe, self.routing_model)
+        if isinstance(routing_model, GenericRouting):
+            pricing_model = GenericPricing(routing_model.pair_configurator)
+            valuation_model = GenericValuation(routing_model.pair_configurator)
+        else:
+            # Legacy routing logic
 
-        assert pricing_model, "pricing_model_factory did not return a value"
+            # Create a pricing model for assets
+            pricing_model = self.pricing_model_factory(self.execution_model, universe, self.routing_model)
 
-        # Create a valuation model for positions
-        valuation_model = self.valuation_model_factory(pricing_model)
+            assert pricing_model, "pricing_model_factory did not return a value"
 
-        logger.debug("setup_routing(): routing_state: %s, pricing_model: %s, valuation_model: %s",
-                     routing_state,
-                     pricing_model,
-                     valuation_model
-                     )
+            # Create a valuation model for positions
+            valuation_model = self.valuation_model_factory(pricing_model)
+
+        logger.debug(
+            "setup_routing(): routing_state: %s, pricing_model: %s, valuation_model: %s",
+             routing_state,
+             pricing_model,
+             valuation_model
+        )
 
         return routing_state, pricing_model, valuation_model
 
@@ -507,6 +546,7 @@ class StrategyRunner(abc.ABC):
         self,
         universe: StrategyExecutionUniverse,
         state: State,
+        cycle: int,
     ):
         """Check that on-chain balances matches our internal accounting after executing trades.
 
@@ -523,18 +563,33 @@ class StrategyRunner(abc.ABC):
 
         # Double check we handled incoming trade balances correctly
         with self.timed_task_context_manager("check_accounts_post_trade"):
-            end_block = self.execution_model.get_safe_latest_block()
-            logger.info("Post-trade accounts balance check for block %s", end_block)
-            self.check_accounts(universe, state, end_block=end_block)
+            # end_block = self.execution_model.get_safe_latest_block()
+            # Always use the latest block here, not safe block,
+            # to work around anvil + mainnet fork issues
+            web3 = self.execution_model.web3
+            if is_anvil(web3):
+                mine(web3)
+                end_block = self.execution_model.web3.eth.block_number
+            else:
+                end_block = self.execution_model.get_safe_latest_block()
+            logger.info("Post-trade accounts balance check for block %s, cycle %d", end_block, cycle)
+            self.check_accounts(
+                universe,
+                state,
+                end_block=end_block,
+                cycle=cycle,
+            )
 
-    def tick(self,
-             strategy_cycle_timestamp: datetime.datetime,
-             universe: StrategyExecutionUniverse,
-             state: State,
-             debug_details: dict,
-             cycle_duration: Optional[CycleDuration] = None,
-             cycle: Optional[int] = None,
-             ) -> dict:
+    def tick(
+        self,
+        strategy_cycle_timestamp: datetime.datetime,
+        universe: StrategyExecutionUniverse,
+        state: State,
+        debug_details: dict,
+        cycle_duration: Optional[CycleDuration] = None,
+        cycle: Optional[int] = None,
+        store: Optional[StateStore] = None,
+    ) -> dict:
         """Execute the core functions of a strategy.
 
         TODO: This function is vulnerable to balance changes in the middle of execution.
@@ -637,6 +692,8 @@ class StrategyRunner(abc.ABC):
                         assert t not in trade_set, f"decide_trades() returned a duplicate trade: {t}"
                         trade_set.add(t)
 
+                rebalance_trades = post_process_trade_decision(state, rebalance_trades)
+
                 # Log what our strategy decided
                 if self.is_progress_report_needed():
                     self.report_strategy_thinking(
@@ -671,6 +728,17 @@ class StrategyRunner(abc.ABC):
 
                     # Make sure our hot wallet nonce is up to date
                     self.sync_model.resync_nonce()
+
+                    # Sync state before broadcasting,
+                    # so we have generated tx hashes on the disk
+                    # and trades flagged with broadcasting/broadcasted status.
+                    # This allows us to recover and rebroadcast,
+                    # if the execution crashes e.g. due to blockchain being down,
+                    # node issues, or gas fee spikes
+                    if self.execution_context.mode.is_live_trading():
+                        if store is not None:
+                            logger.info("Syncing state before teh trade execution")
+                            store.sync(state)
 
                     self.execution_model.execute_trades(
                         strategy_cycle_timestamp,
@@ -805,11 +873,12 @@ class StrategyRunner(abc.ABC):
         """
 
     def check_accounts(
-            self,
-            universe: TradingStrategyUniverse,
-            state: State,
-            report_only=False,
-            end_block: BlockNumber | NoneType = None
+        self,
+        universe: TradingStrategyUniverse,
+        state: State,
+        report_only=False,
+        end_block: BlockNumber | NoneType = None,
+        cycle: int | None = None,
     ):
         """Perform extra accounting checks on live trading startup.
 
@@ -852,7 +921,7 @@ class StrategyRunner(abc.ABC):
                 block_message = f"{end_block:,}" if end_block else "<latest>"
                 logger.log(
                     log_level,
-                    f"Accounting differences detected for: %s at block {block_message}\n"                    
+                    f"Accounting differences detected for: %s at block {block_message}, cycle {cycle}\n"                    
                     "Differences are:\n"
                     "%s",
                     address,
@@ -865,3 +934,22 @@ class StrategyRunner(abc.ABC):
         else:
             # Path taken by some legacy tests
             logger.info("Accounting checks disabled - skipping")
+
+
+def post_process_trade_decision(state: State, trades: List[TradeExecution]):
+    """Set any extra flags on trades needed.
+
+    - Mainly to deal with the fact that if trades close a final position on lending
+
+    TODO: Currently we do not pass enough information in :py:class:`TradingPairIdentifier`
+    so here we take a hack shortcut to set close_protocol_all. W
+    """
+
+    # TODO: Write a full logic here, only supports closing shorts now,
+    # assuming everything lending is short
+    lending_positions_open = [p for p in state.portfolio.open_positions.values() if p.is_leverage()]
+    lending_position_closing_trades = [t for t in trades if t.pair.is_leverage()]
+    assert len(lending_positions_open) >= len(lending_position_closing_trades), "We cannot close more than we have open"
+    if len(lending_position_closing_trades) == len(lending_positions_open) and len(lending_positions_open) > 0:
+        lending_position_closing_trades[-1].flags.add(TradeFlag.close_protocol_last)
+    return trades

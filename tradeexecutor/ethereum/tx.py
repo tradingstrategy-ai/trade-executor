@@ -305,7 +305,7 @@ class HotWalletTransactionBuilder(TransactionBuilder):
         logger.info(
             "Signed transactions using gas fee method %s for %s, tx's nonce is %d",
             gas_price_suggestion,
-            args_bound_func,
+            args_bound_func.fn_name,
             signed_tx.nonce,
         )
 

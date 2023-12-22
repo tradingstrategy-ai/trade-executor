@@ -6,7 +6,7 @@ import pprint
 import logging
 from dataclasses import dataclass, field, asdict
 from decimal import Decimal
-from typing import Optional, List
+from typing import Optional, List, Set
 from types import NoneType
 
 from dataclasses_json import dataclass_json
@@ -77,6 +77,45 @@ class TradeStatus(enum.Enum):
     #: A virtual trade to reverse any balances of a repaired trade.
     #:
     repair_entry = "repair_entry"
+
+
+class TradeFlag(enum.Enum):
+    """Trade execution flags.
+
+    Added on :py:attr:`TradeExecution.flags` to give the execution
+    more context about this trade.
+
+    A trade can have multiple flags. E.g. ``open`` and ``increase`` should be always
+    set together.
+    """
+
+    #: This trade opens a position
+    open = "open"
+
+    #: This trade closes a position
+    close = "close"
+
+    #: Increase existing position exposure
+    increase = "increase"
+
+    #: Reduce existing position exposure
+    reduce = "reduce"
+
+    #: This trade closes a last position in the protocol.
+    #:
+    #: Used to release collateral interest from Aave.
+    #:
+    close_protocol_last = "close_protocol_last"
+
+    #: This is a test trade made when testing out trade executor infrastructure.
+    #:
+    #: The trade was performed by `perform-test-trade` command line command,
+    #: not a strategy itself.
+    #:
+    #: Test trades should not count towards strategy success metrics.
+    #:
+    #:
+    test_trade = "test_trade"
 
 
 @dataclass_json
@@ -200,6 +239,13 @@ class TradeExecution:
     #: For single executer configuration, this value is left ``None``.
     #:
     route: str | None = None
+
+    #: Execution specific flags.
+    #:
+    #: See :py:class:`TradeFlag` for info.
+    #: Not available on legacy data.
+    #:
+    flags: Set[TradeFlag] | None = None
 
     #: Planned amount of reserve currency that goes in or out to collateral.
     #:
@@ -456,6 +502,8 @@ class TradeExecution:
     #: After this trade is executed, any position
     #: collateral should return to the cash reserves.
     #:
+    #: TODO: Remove. Moved to :py:attr:`flags`.
+    #:
     closing: Optional[bool] = None
 
     #: How much interest we have claimed from collateral for this position.
@@ -539,6 +587,56 @@ class TradeExecution:
                        f"   {self.planned_quantity} {self.pair.base.token_symbol} at {self.planned_price}, {self.get_status().name} phase\n" \
                        f"   >"
 
+    def __hash__(self):
+        # TODO: Hash better?
+        return hash(self.trade_id)
+
+    def __eq__(self, other):
+        """Note that we do not support comparison across different portfolios ATM."""
+        assert isinstance(other, TradeExecution)
+        return self.trade_id == other.trade_id
+
+    def __setattr__(self, key, value):
+        # Validator hack to locate some var set bugs
+        # TODO: Remove later
+        if key == "planned_loan_update":
+            assert isinstance(value, (Loan, NoneType))
+        self.__dict__[key] = value
+
+    def __post_init__(self):
+
+        assert self.trade_id > 0
+
+        if self.trade_type != TradeType.repair and not self.is_credit_based():
+            # Leveraged trade can have quantity in zero,
+            # if they just adjust the collateral amount
+            assert self.planned_quantity != 0
+
+            # TODO: We have additional check in open_position()
+            assert abs(self.planned_quantity) > QUANTITY_EPSILON, f"We got a planned quantity that does not look like a good number: {self.planned_quantity}, trade is: {self}"
+
+        assert self.planned_price > 0
+
+        if not self.is_credit_based():
+            assert self.planned_reserve >= 0, "Spot market trades must have planned reserve position"
+
+        assert type(self.planned_price) in {float, int}, f"Price was given as {self.planned_price.__class__}: {self.planned_price}"
+        assert self.opened_at.tzinfo is None, f"We got a datetime {self.opened_at} with tzinfo {self.opened_at.tzinfo}"
+
+        if self.slippage_tolerance:
+            # Sanity check
+            assert self.slippage_tolerance < 0.15, f"Cannot set slippage tolerance more than 15%, got {self.slippage_tolerance * 100}"
+        
+    @property
+    def strategy_cycle_at(self) -> datetime.datetime:
+        """Alias for :py:attr:`opened_at`.
+
+        - Get the timestamp of the strategy cycle this trade is related to
+
+        - If this trade is outside the strategy cycle, then it is wall clock time
+        """
+        return self.opened_at
+
     def get_action_verb(self) -> str:
         """What is the action verb for this trade.
 
@@ -605,100 +703,6 @@ class TradeExecution:
         """
         return pprint.pformat(asdict(self), width=160)
 
-    def __hash__(self):
-        # TODO: Hash better?
-        return hash(self.trade_id)
-
-    def __eq__(self, other):
-        """Note that we do not support comparison across different portfolios ATM."""
-        assert isinstance(other, TradeExecution)
-        return self.trade_id == other.trade_id
-
-    def __post_init__(self):
-
-        assert self.trade_id > 0
-
-        if self.trade_type != TradeType.repair and not self.is_credit_based():
-            # Leveraged trade can have quantity in zero,
-            # if they just adjust the collateral amount
-            assert self.planned_quantity != 0
-
-            # TODO: We have additional check in open_position()
-            assert abs(self.planned_quantity) > QUANTITY_EPSILON, f"We got a planned quantity that does not look like a good number: {self.planned_quantity}, trade is: {self}"
-
-        assert self.planned_price > 0
-
-        if not self.is_credit_based():
-            assert self.planned_reserve >= 0, "Spot market trades must have planned reserve position"
-
-        assert type(self.planned_price) in {float, int}, f"Price was given as {self.planned_price.__class__}: {self.planned_price}"
-        assert self.opened_at.tzinfo is None, f"We got a datetime {self.opened_at} with tzinfo {self.opened_at.tzinfo}"
-
-        if self.slippage_tolerance:
-            # Sanity check
-            assert self.slippage_tolerance < 0.15, f"Cannot set slippage tolerance more than 15%, got {self.slippage_tolerance * 100}"
-        
-    @property
-    def strategy_cycle_at(self) -> datetime.datetime:
-        """Alias for :py:attr:`opened_at`.
-
-        - Get the timestamp of the strategy cycle this trade is related to
-
-        - If this trade is outside the strategy cycle, then it is wall clock time
-        """
-        return self.opened_at
-    
-    @property
-    def fee_tier(self) -> (float | None):
-        """LP fee % recorded before the execution starts.
-        
-        :return:
-            float (fee multiplier) or None if no fee was provided.
-
-        """
-        return self._fee_tier
-
-    @fee_tier.setter
-    def fee_tier(self, value):
-        """Setter for fee_tier.
-        Ensures fee_tier is a float"""
-        
-        if type(value) is property:
-            # hack
-            # See comment on this post: https://florimond.dev/en/posts/2018/10/reconciling-dataclasses-and-properties-in-python/
-            value = None
-        
-        assert (type(value) in {float, NoneType}) or (value == 0), "If fee tier is specified, it must be provided as a float to trade execution"
-
-        if value is None and (self.pair.fee or self.pair.fee == 0):
-            assert type(self.pair.fee) == float, f"trading pair fee not in float format, got {self.pair.fee} ({type(self.pair.fee)}"
-            # Low verbosity as otherwise this message is filling test logs
-            logger.debug("No fee_tier provided but fee was found on associated trading pair, using trading pair fee")
-            self._fee_tier = self.pair.fee
-        else:
-            self._fee_tier = value
-
-    @property
-    def lp_fees_estimated(self) -> float:
-        """LP fees estimated in the USD.
-        This is set before the execution and is mostly useful
-        for backtesting.
-        """
-        return self._lp_fees_estimated
-
-    @lp_fees_estimated.setter
-    def lp_fees_estimated(self, value):
-        """Setter for lp_fees_estimated"""
-        
-        if type(value) is property:
-            # hack
-            # See comment on this post: https://florimond.dev/en/posts/2018/10/reconciling-dataclasses-and-properties-in-python/
-            value = None
-        
-        # TODO standardize
-        # assert type(value) == float, f"Received lp_fees_estimated: {value} - {type(value)}"
-        self._lp_fees_estimated = value
-    
     def get_human_description(self) -> str:
         """User friendly description for this trade"""
         if self.is_buy():
@@ -741,6 +745,13 @@ class TradeExecution:
     def is_success(self) -> bool:
         """This trade was succcessfully completed."""
         return self.executed_at is not None
+
+    def is_test(self) -> bool:
+        """The trade was performed by perform-test-trade command.
+
+        The trade and the position should not be counted in the statistics.
+        """
+        return TradeFlag.test_trade in self.flags
 
     def is_failed(self) -> bool:
         """This trade was succcessfully completed."""
@@ -934,6 +945,13 @@ class TradeExecution:
     def get_raw_planned_reserve(self) -> int:
         """Return the amount of USD token for the buy as raw token units."""
         return self.reserve_currency.convert_to_raw_amount(self.planned_reserve)
+
+    def get_planned_collateral_allocation(self) -> Decimal | None:
+        return self.planned_collateral_allocation
+
+    def get_raw_planned_collateral_allocation(self) -> int:
+        """Return the amount of allocated collteraal for the buy as raw token units."""
+        return self.reserve_currency.convert_to_raw_amount(self.planned_collateral_allocation)
 
     def get_raw_planned_quantity(self) -> int:
         """Return the amount of USD token for the buy as raw token units."""

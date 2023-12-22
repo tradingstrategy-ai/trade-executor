@@ -7,7 +7,7 @@ import warnings
 from dataclasses import dataclass, field, asdict
 from decimal import Decimal
 
-from typing import Dict, Optional, List, Iterable, Tuple
+from typing import Dict, Optional, List, Iterable, Tuple, Set
 
 import numpy as np
 import pandas as pd
@@ -18,12 +18,12 @@ from tradeexecutor.state.generic_position import GenericPosition, BalanceUpdateE
 from tradeexecutor.state.identifier import TradingPairIdentifier, AssetIdentifier, TradingPairKind
 from tradeexecutor.state.interest import Interest
 from tradeexecutor.state.loan import Loan
-from tradeexecutor.state.trade import TradeType
+from tradeexecutor.state.trade import TradeType, TradeFlag
 from tradeexecutor.state.trade import TradeExecution
 from tradeexecutor.state.types import USDollarAmount, BPS, USDollarPrice, Percent, LeverageMultiplier
 from tradeexecutor.state.valuation import ValuationUpdate
 from tradeexecutor.strategy.dust import get_dust_epsilon_for_pair
-from tradeexecutor.strategy.lending_protocol_leverage import create_short_loan, plan_loan_update_for_short, create_credit_supply_loan, update_credit_supply_loan
+from tradeexecutor.strategy.lending_protocol_leverage import create_short_loan, update_short_loan, create_credit_supply_loan, update_credit_supply_loan
 from tradeexecutor.strategy.trade_pricing import TradePricing
 from tradeexecutor.utils.accuracy import sum_decimal, QUANTITY_EPSILON
 from tradingstrategy.lending import LendingProtocolType
@@ -307,6 +307,13 @@ class TradingPosition(GenericPosition):
         """
         return not self.is_open()
 
+    def is_test(self) -> bool:
+        """The position was openedd and closed by perform-test-trade command.
+
+        The trade and the position should not be counted in the statistics.
+        """
+        return any(TradeFlag.test_trade in t.flags for t in self.trades.values())
+
     def is_frozen(self) -> bool:
         """This position has had a failed trade and can no longer be automatically moved around.
 
@@ -402,9 +409,9 @@ class TradingPosition(GenericPosition):
         """This is a trading position for gaining interest by lending out reserve currency."""
         return self.pair.kind == TradingPairKind.credit_supply
 
-    def is_spot_market(self):
-        """This is a spot market position."""
-        return self.pair.kind == TradingPairKind.spot_market_hold
+    def is_spot_market(self) -> bool:
+        """Alias for :py:meth:`is_spot`."""
+        return self.is_spot()
 
     def is_take_profit(self) -> bool:
         """Was this position ended with take profit trade"""
@@ -728,27 +735,29 @@ class TradingPosition(GenericPosition):
         open_trade = self.get_first_trade()
         return open_trade.is_success()
 
-    def open_trade(self,
-                   strategy_cycle_at: datetime.datetime | None,
-                   trade_id: int,
-                   quantity: Optional[Decimal],
-                   reserve: Optional[Decimal],
-                   assumed_price: USDollarPrice,
-                   trade_type: TradeType,
-                   reserve_currency: AssetIdentifier,
-                   reserve_currency_price: USDollarPrice,
-                   pair_fee: Optional[BPS] = None,
-                   lp_fees_estimated: Optional[USDollarAmount] = None,
-                   planned_mid_price: Optional[USDollarPrice] = None,
-                   price_structure: Optional[TradePricing] = None,
-                   slippage_tolerance: Optional[float] = None,
-                   portfolio_value_at_creation: Optional[USDollarAmount] = None,
-                   leverage: Optional[LeverageMultiplier]=None,
-                   closing: Optional[bool] = False,
-                   planned_collateral_consumption: Optional[Decimal] = None,
-                   planned_collateral_allocation: Optional[Decimal] = None,
-                   exchange_name: Optional[str] = None,
-                   ) -> TradeExecution:
+    def open_trade(
+            self,
+           strategy_cycle_at: datetime.datetime | None,
+           trade_id: int,
+           quantity: Optional[Decimal],
+           reserve: Optional[Decimal],
+           assumed_price: USDollarPrice,
+           trade_type: TradeType,
+           reserve_currency: AssetIdentifier,
+           reserve_currency_price: USDollarPrice,
+           pair_fee: Optional[BPS] = None,
+           lp_fees_estimated: Optional[USDollarAmount] = None,
+           planned_mid_price: Optional[USDollarPrice] = None,
+           price_structure: Optional[TradePricing] = None,
+           slippage_tolerance: Optional[float] = None,
+           portfolio_value_at_creation: Optional[USDollarAmount] = None,
+           leverage: Optional[LeverageMultiplier]=None,
+           closing: Optional[bool] = False,
+           planned_collateral_consumption: Optional[Decimal] = None,
+           planned_collateral_allocation: Optional[Decimal] = None,
+           exchange_name: Optional[str] = None,
+           flags: Optional[Set[TradeFlag]] = None,
+        ) -> TradeExecution:
         """Open a new trade on position.
 
         Trade can be opened by knowing how much you want to buy (quantity) or how much cash you have to buy (reserve).
@@ -812,6 +821,9 @@ class TradingPosition(GenericPosition):
             Record the portfolio's value when this posistion was opened.
 
             Will be later used for risk metrics calculations and such.
+
+        :param flags:
+            Flags set on the trade.
         """
 
         # Done in State.create_trade()
@@ -822,9 +834,14 @@ class TradingPosition(GenericPosition):
 
         if price_structure is not None:
             assert isinstance(price_structure, TradePricing)
-        
+
         assert self.reserve_currency.get_identifier() == reserve_currency.get_identifier(), "New trade is using different reserve currency than the position has"
         assert isinstance(trade_id, int)
+
+        if flags is None:
+            flags = set()
+        assert isinstance(flags, set), f"Got: {flags}"
+        assert all([isinstance(f, TradeFlag) for f in flags])
 
         if strategy_cycle_at is not None:
             assert isinstance(strategy_cycle_at, datetime.datetime)
@@ -864,7 +881,7 @@ class TradingPosition(GenericPosition):
                             start_collateral=self.loan.collateral.quantity,
                             start_borrowed=self.loan.borrowed.quantity,
                             close_size=quantity,
-                            borrowed_asset_price=assumed_price,
+                            borrowed_asset_price=planned_mid_price,
                             fee=self.pair.get_pricing_pair().fee,
                         )
 
@@ -885,6 +902,7 @@ class TradingPosition(GenericPosition):
 
                         accured_interest = self.loan.collateral_interest.last_accrued_interest
 
+                        # TODO: pass a flag to the function to decide if we want to withdraw all the interest or not
                         # Any leftover USD from the collateral is released to the reserves
                         planned_collateral_allocation = -leverage_estimate.total_collateral_quantity - accured_interest
 
@@ -928,6 +946,11 @@ class TradingPosition(GenericPosition):
             case _:
                 raise NotImplementedError(f"Does not know how to calculate quantities for open a trade on: {pair}")
 
+        # TODO: Legacy compatibility.
+        # Remove boolean when adding flags to the codebase is complete.
+        if closing:
+            flags.add(TradeFlag.close)
+
         trade = TradeExecution(
             trade_id=trade_id,
             position_id=self.position_id,
@@ -950,6 +973,7 @@ class TradingPosition(GenericPosition):
             planned_collateral_consumption=planned_collateral_consumption,
             exchange_name=exchange_name,
             closing=closing,
+            flags=flags,
         )
 
         self.trades[trade.trade_id] = trade
@@ -976,7 +1000,7 @@ class TradingPosition(GenericPosition):
                         )
                     else:
                         # Loan is being increased/reduced
-                        trade.planned_loan_update = plan_loan_update_for_short(
+                        trade.planned_loan_update = update_short_loan(
                             self.loan.clone(),
                             self,
                             trade,
@@ -1112,11 +1136,13 @@ class TradingPosition(GenericPosition):
 
         - See also :py:meth:`get_realised_profit_percent`.
 
+        - Always returns zero for frozen positions
+
         .. note ::
 
             This function does not account for in-kind redemptions or any other account corrections.
             Please use :py:meth:`get_realised_profit_percent` if possible.
-loca
+
         :param include_interest:
             Include any accrued interest in PnL.
 
@@ -1125,6 +1151,9 @@ loca
 
             `None` if the position lacks any realised profit (contains only unrealised).
         """
+
+        if self.is_frozen():
+            return 0
 
         if not self.is_reduced():
             return None
@@ -1141,6 +1170,10 @@ loca
                     # realised profit is zero
                     trade_profit = 0
             else:
+
+                # Need to fix for frozen positions
+                #  trade_profit = (self.get_average_sell() - self.get_average_buy()) * float(self.get_buy_quantity())
+                # TypeError: unsupported operand type(s) for -: 'float' and 'NoneType'
                 trade_profit = (self.get_average_sell() - self.get_average_buy()) * float(self.get_buy_quantity())
         else:
             # No closes yet, only unrealised PnL
@@ -1486,12 +1519,39 @@ loca
         # Static stop loss
         return self.stop_loss
 
+    def get_original_planned_price(self) -> USDollarPrice:
+        """Get the US-dollar price for a position that does not have any executed price.
+
+        - The position was left in a broken state after the first trade failed to execute
+
+        - We will still have the price from the first trade we thought
+          we were going to get
+
+        - Always use :py:attr:`TradingPosition.last_token_price` if available.
+
+        - Applies to spot positions only
+
+        :return:
+            PlannedUS dollar spot price of the first trade
+        """
+        assert self.is_spot()
+        first_trade = self.get_first_trade()
+        return first_trade.planned_price
+
     def calculate_quantity_usd_value(self, quantity: Decimal) -> USDollarAmount:
-        """Calculate value of asset amount using the latest known price."""
+        """Calculate value of asset amount using the latest known price.
+
+        - If we do not have price data, use the first planned trade
+        """
         if quantity == 0:
             return 0
-        assert self.last_token_price, f"Asset price not available when calculating price for quantity: {quantity}"
-        return float(quantity) * self.last_token_price
+
+        price = self.last_token_price
+        if price is None:
+            # See test_cli_correct_account_price_missing
+            price = self.get_original_planned_price()
+
+        return float(quantity) * price
 
     def add_notes_message(self, msg: str):
         """Add a new message to the notes field.

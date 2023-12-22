@@ -30,6 +30,28 @@ ZERO_DECIMAL = Decimal(0)
 QUANTITY_EPSILON = Decimal(10**-18)
 
 
+#: Dust quantity of collateral resulted from our calculations that can be considered zero
+COLLATERAL_EPSILON = Decimal(10**-5)
+
+
+#: When closing a position
+#:
+#: Any slippage we get spills to the next position with the same collateral
+#: and this is a short term hack to check for it.
+#:
+CLOSE_POSITION_COLLATERAL_EPSILON = Decimal(0.02)
+
+
+
+#: What is the lower threshold check for zero interest
+#:
+#: Spotted from test_generic_routing_live_trading_start
+#: that does mainnet fork trading.
+#:
+INTEREST_EPSILON = Decimal(0.000002)
+
+
+
 def setup_decimal_accuracy():
     """Make sure we can handle Decimals up to 18 digits.
 
@@ -50,7 +72,10 @@ def setup_decimal_accuracy():
     #decimal.getcontext().prec = 78
 
 
-def sum_decimal(numbers: Iterable[Decimal]) -> Decimal:
+def sum_decimal(
+    numbers: Iterable[Decimal], 
+    epsilon=SUM_EPSILON,
+) -> Decimal:
     """Decimal safe sum().
 
     Looks like Python will fail to sum plus and minus decimals together even if they cancel each out:
@@ -71,7 +96,7 @@ def sum_decimal(numbers: Iterable[Decimal]) -> Decimal:
 
     """
     total = sum(numbers)
-    if abs(total) < SUM_EPSILON:
+    if abs(total) < epsilon:
         return ZERO_DECIMAL
     return total
 

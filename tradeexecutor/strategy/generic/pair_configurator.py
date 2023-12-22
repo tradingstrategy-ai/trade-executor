@@ -85,13 +85,9 @@ class PairConfigurator(ABC):
 
     def __init__(
         self,
-        web3: Web3,
         strategy_universe: TradingStrategyUniverse,
     ):
         """Initialise pair configuration.
-
-        :param web3:
-            Web3 connection to the active blockchain.
 
         :param strategy_universe:
             The initial strategy universe.
@@ -99,7 +95,8 @@ class PairConfigurator(ABC):
             TODO: Currently only reserve currency, exchange and pair data is used.
             Candle data is discarded.
         """
-        self.web3 = web3
+
+        assert isinstance(strategy_universe, TradingStrategyUniverse)
         self.strategy_universe = strategy_universe
 
         #: Our cached configs
@@ -196,3 +193,10 @@ class PairConfigurator(ABC):
             config = self.configs[router] = self.create_config(router)
 
         return config
+
+
+class UnroutableTrade(Exception):
+    """Trade cannot be routed, as we could not find a matching route.
+
+    TODO: Refactor this exception to another module and remove the stub module.
+    """

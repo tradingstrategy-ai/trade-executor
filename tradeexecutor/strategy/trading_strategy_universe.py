@@ -239,6 +239,10 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
         """
         raise NotImplementedError("This function is still TBD")
 
+    def has_any_lending_data(self) -> bool:
+        """Does this trading universe has any lending data loaded"""
+        return self.data_universe.lending_reserves is not None
+
     def has_lending_market_available(
         self,
         timestamp: pd.Timestamp | datetime.datetime,
@@ -526,6 +530,9 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
         reserve_assets = [
             trading_pair_identifier.quote
         ]
+
+        # Legacy code fix
+        pair_universe.exchange_universe = exchange_universe
 
         universe = Universe(
             time_bucket=dataset.time_bucket,
@@ -828,8 +835,8 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
 
     @staticmethod
     def create_from_dataset(
-            dataset: Dataset,
-            reserve_asset_desc: JSONHexAddress=None,
+        dataset: Dataset,
+        reserve_asset: JSONHexAddress | TokenSymbol=None,
     ):
         """Create a universe from loaded dataset.
 
@@ -859,12 +866,15 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
 
         pairs = PandasPairUniverse(dataset.pairs, exchange_universe=dataset.exchanges)
 
-        if not reserve_asset_desc:
+        if not reserve_asset:
             quote_token = pairs.get_single_quote_token()
             reserve_asset = translate_token(quote_token)
+        elif reserve_asset.startswith("0x"):
+            reserve_asset_token = pairs.get_token(reserve_asset)
+            assert reserve_asset_token, f"Pairs dataset does not contain data for token: {reserve_asset}"
+            reserve_asset = translate_token(reserve_asset_token)
         else:
-            reserve_asset_token = pairs.get_token(reserve_asset_desc)
-            assert reserve_asset_token, f"Pairs dataset does not contain data for token: {reserve_asset_desc}"
+            reserve_asset_token = pairs.get_token_by_symbol(reserve_asset)
             reserve_asset = translate_token(reserve_asset_token)
 
         candle_universe = GroupedCandleUniverse(dataset.candles)
@@ -882,7 +892,7 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
             liquidity=dataset.liquidity,
             resampled_liquidity=dataset,
             exchange_universe=dataset.exchanges,
-            exchanges={e for e in dataset.exchanges.exchanges},
+            exchanges={e for e in dataset.exchanges.exchanges.values()},
             lending_candles=dataset.lending_candles,
         )
 
@@ -1159,7 +1169,12 @@ class TradingStrategyUniverseModel(UniverseModel):
                 backtest_stop_loss_candles=backtest_stop_loss_candles,
             )
 
-    def check_data_age(self, ts: datetime.datetime, universe: TradingStrategyUniverse, best_before_duration: datetime.timedelta) -> datetime.datetime:
+    def check_data_age(
+            self,
+            ts: datetime.datetime,
+            universe: TradingStrategyUniverse,
+            best_before_duration: datetime.timedelta
+    ) -> datetime.datetime:
         """Check if our data is up-to-date and we do not have issues with feeds.
 
         Ensure we do not try to execute live trades with stale data.
@@ -1182,7 +1197,7 @@ class TradingStrategyUniverseModel(UniverseModel):
 
             if candle_end < max_age:
                 diff = max_age - candle_end
-                raise DataTooOld(f"Candle data {candle_start} - {candle_end} is too old to work with, we require threshold {max_age}, diff is {diff}")
+                raise DataTooOld(f"Candle data {candle_start} - {candle_end} is too old to work with, we require threshold {max_age}, diff is {diff}, asked best before duration is {best_before_duration}")
 
         if universe.liquidity is not None:
             liquidity_start, liquidity_end = universe.liquidity.get_timestamp_range()
@@ -1531,9 +1546,9 @@ def load_all_data(
 
     live = execution_context.live_trading
     with execution_context.timed_task_context_manager("load_data", time_bucket=time_frame.value):
-        if live:
+        if live and not execution_context.mode.is_unit_testing():
             # This will force client to redownload the data
-            logger.info("Purging trading data caches")
+            logger.info("Purging trading data caches for %s, mode is %s", client.__class__.__name__, execution_context.mode)
             client.clear_caches()
         else:
             logger.info("Using cached data if available")
@@ -2000,7 +2015,7 @@ def load_pair_data_for_single_exchange(
             pair_tickers,
         )
 
-        assert len(our_pairs) > 0, f"Pair data not found chain: {chain_id}, exchange: {exchange_slug}, tickers: {pair_tickers}"
+        assert len(our_pairs) > 0, f"Pair data not found chain: {chain_id}, exchange: {exchange_slug}, tickers: {pair_tickers}, pair dataset len: {len(pairs_df):,}"
 
         assert len(our_pairs) == len(pair_tickers), f"Pair resolution failed. Wanted to have {len(pair_tickers)} pairs, but after pair id resolution ended up with {len(our_pairs)} pairs"
 

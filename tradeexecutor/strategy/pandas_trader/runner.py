@@ -18,7 +18,6 @@ from tradeexecutor.state.trade import TradeExecution
 from tradeexecutor.strategy.runner import StrategyRunner, PreflightCheckFailed
 from tradeexecutor.visual.image_output import render_plotly_figure_as_image_file
 from tradeexecutor.visual.strategy_state import draw_single_pair_strategy_state, draw_multi_pair_strategy_state
-from tradeexecutor.state.visualisation import Visualisation
 
 
 logger = logging.getLogger(__name__)
@@ -123,32 +122,39 @@ class PandasTraderRunner(StrategyRunner):
             logger.info("Strategy universe is empty - nothing to report")
             return
 
-        if pair_count == 1:
+        try:
 
-            small_figure = draw_single_pair_strategy_state(state, universe, height=512)
-            # Draw the inline plot and expose them tot he web server
-            # TODO: SVGs here are not very readable, have them as a stop gap solution
-            large_figure = draw_single_pair_strategy_state(state, universe, height=1024)
+            if pair_count == 1:
 
-            self.update_strategy_thinking_image_data(small_figure, large_figure)
+                small_figure = draw_single_pair_strategy_state(state, universe, height=512)
+                # Draw the inline plot and expose them tot he web server
+                # TODO: SVGs here are not very readable, have them as a stop gap solution
+                large_figure = draw_single_pair_strategy_state(state, universe, height=1024)
 
-        elif 1 < pair_count <= 3:
-            
-            small_figure_combined = draw_multi_pair_strategy_state(state, universe, height=1024)
-            large_figure_combined = draw_multi_pair_strategy_state(state, universe, height=2048)
+                self.update_strategy_thinking_image_data(small_figure, large_figure)
 
-            self.update_strategy_thinking_image_data(small_figure_combined, large_figure_combined)
+            elif 1 < pair_count <= 3:
 
-        elif 3 < pair_count <=5:
+                small_figure_combined = draw_multi_pair_strategy_state(state, universe, height=1024)
+                large_figure_combined = draw_multi_pair_strategy_state(state, universe, height=2048)
 
-            small_figure_combined = draw_multi_pair_strategy_state(state, universe, height=2048, detached_indicators = False)
-            large_figure_combined = draw_multi_pair_strategy_state(state, universe, height=3840, width = 2160, detached_indicators = False)
+                self.update_strategy_thinking_image_data(small_figure_combined, large_figure_combined)
 
-            self.update_strategy_thinking_image_data(small_figure_combined, large_figure_combined)
+            elif 3 < pair_count <=5:
 
-        else:
-            logger.warning("Charts not yet available for this strategy type. Pair count: %d", pair_count)
-    
+                small_figure_combined = draw_multi_pair_strategy_state(state, universe, height=2048, detached_indicators = False)
+                large_figure_combined = draw_multi_pair_strategy_state(state, universe, height=3840, width = 2160, detached_indicators = False)
+
+                self.update_strategy_thinking_image_data(small_figure_combined, large_figure_combined)
+
+            else:
+                logger.warning("Charts not yet available for this strategy type. Pair count: %d", pair_count)
+
+        except Exception as e:
+            # Don't take trade executor down if visualisations fail
+            logger.warning("Could not draw visualisations in refresh_visualisations()")
+            logger.warning("Visualisation exception %s", e, exc_info=e)
+
     def update_strategy_thinking_image_data(self, small_figure, large_figure):
         """Update the strategy thinking image data with small, small dark theme, large, and large dark theme images.
         
@@ -267,7 +273,10 @@ class PandasTraderRunner(StrategyRunner):
             logger.trade(buf.getvalue())
 
             small_image = self.run_state.visualisation.small_image_png
-            post_logging_discord_image(small_image)
+            if small_image is not None:
+                post_logging_discord_image(small_image)
+            else:
+                logger.warning("Chart visualisation missing")
 
         else:
             

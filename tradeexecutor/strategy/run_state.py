@@ -1,6 +1,7 @@
 """Execution state communicates the current trade execution loop state to the webhook."""
 import datetime
 import sys
+from _decimal import Decimal
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional, TypedDict
@@ -10,6 +11,7 @@ from dataclasses_json import dataclass_json
 from tblib import Traceback
 
 from tradeexecutor.cli.version_info import VersionInfo
+from tradeexecutor.state.types import JSONHexAddress
 from tradeexecutor.strategy.summary import StrategySummaryStatistics
 
 
@@ -143,6 +145,24 @@ class RunState:
     #:
     #: See :py:meth:`serialise_exception`
     exception: Optional[ExceptionData] = None
+
+    #: Current hot wallet address
+    #:
+    hot_wallet_address: Optional[JSONHexAddress] = None
+
+    #: How much gas we have in the hot wallet
+    #:
+    hot_wallet_gas: Optional[Decimal] = None
+
+    #: What's the balance level when we turn on the warning
+    #:
+    hot_wallet_gas_warning_level: Optional[Decimal] = None
+
+    #: Hot wallet gas warning for the remote monitors
+    #:
+    #: Pre-rendered for the convenience.
+    #:
+    hot_wallet_gas_warning_message: Optional[str] = None
 
     #: The strategy source code.
     #:

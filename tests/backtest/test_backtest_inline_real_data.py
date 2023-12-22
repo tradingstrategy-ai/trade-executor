@@ -3,6 +3,7 @@
 """
 import os
 import logging
+import datetime
 
 import pytest
 
@@ -13,9 +14,9 @@ from tradeexecutor.backtest.data_preload import preload_data
 from tradeexecutor.cli.log import setup_pytest_logging
 from tradeexecutor.state.visualisation import PlotKind
 from tradeexecutor.strategy.trading_strategy_universe import load_all_data, TradingStrategyUniverse
-from tradeexecutor.strategy.execution_context import ExecutionContext
+from tradeexecutor.strategy.execution_context import ExecutionContext, unit_test_execution_context
 from tradingstrategy.client import Client
-import datetime
+
 
 from tradingstrategy.chain import ChainId
 from tradingstrategy.timebucket import TimeBucket
@@ -193,6 +194,7 @@ def test_backtest_data_preload(
         client,
         create_trading_universe=create_trading_universe,
         universe_options=UniverseOptions(),
+        execution_context=unit_test_execution_context,
     )
 
 

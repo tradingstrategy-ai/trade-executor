@@ -85,8 +85,12 @@ class ExecutionMode(enum.Enum):
     one_off = "one_off"
 
     def is_live_trading(self) -> bool:
-        """Are we trading  real time?"""
-        return self in (self.real_trading, self.paper_trading, self.unit_testing_trading, self.simulated_trading)
+        """Are we trading real time?
+
+        - Preflight check is considered live trading, because strategy modules
+          are not in backtesting when doing preflight checks
+        """
+        return self in (self.real_trading, self.paper_trading, self.unit_testing_trading, self.simulated_trading, self.preflight_check)
 
     def is_fresh_data_always_needed(self):
         """Should we purge caches for each trade cycle.
@@ -161,11 +165,14 @@ class ExecutionContext:
     def live_trading(self) -> bool:
         """Are we doing live trading.
 
+        This is a bit trickier, as live trading itself can have different phases
+        with different execution modes.
+
         :return:
             True if we doing live trading or paper trading.
              False if we are operating on backtesting data.
         """
-        return self.mode in (ExecutionMode.real_trading, ExecutionMode.paper_trading, ExecutionMode.simulated_trading)
+        return self.mode in (ExecutionMode.real_trading, ExecutionMode.paper_trading, ExecutionMode.simulated_trading, ExecutionMode.data_preload)
 
 
 #: Shorthand for unit testing
@@ -176,6 +183,9 @@ notebook_execution_context = ExecutionContext(ExecutionMode.backtesting)
 
 #: Shorthand for Python scripts
 python_script_execution_context = ExecutionContext(ExecutionMode.backtesting)
+
+#: Standalone backtest (not within a notebook)
+standalone_backtest_execution_context = ExecutionContext(ExecutionMode.backtesting)
 
 
 #: Shorthand for unit testing

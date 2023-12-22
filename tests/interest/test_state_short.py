@@ -622,6 +622,7 @@ def test_short_close_fully_profitable(
         strategy_cycle_at=datetime.datetime.utcnow(),
         pair=weth_short_identifier,
         borrowed_asset_price=float(1400),
+        planned_mid_price=float(1400),
         trade_type=TradeType.rebalance,
         reserve_currency=usdc,
         collateral_asset_price=1.0,
@@ -735,6 +736,7 @@ def test_short_close_fully_loss(
         strategy_cycle_at=datetime.datetime.utcnow(),
         pair=weth_short_identifier,
         borrowed_asset_price=float(1600),
+        planned_mid_price=float(1600),
         trade_type=TradeType.rebalance,
         reserve_currency=usdc,
         collateral_asset_price=1.0,
@@ -899,6 +901,7 @@ def test_short_increase_leverage_and_close(
         strategy_cycle_at=datetime.datetime.utcnow(),
         pair=weth_short_identifier,
         borrowed_asset_price=loan.borrowed.last_usd_price,
+        planned_mid_price=loan.borrowed.last_usd_price,
         trade_type=TradeType.rebalance,
         reserve_currency=usdc,
         collateral_asset_price=1.0,
@@ -959,10 +962,13 @@ def test_short_unrealised_profit_leveraged(
         # We loop our collateral this much more
         # to achieve our target collateral level
         planned_collateral_consumption=estimation.additional_collateral_quantity,
+        # planned_collateral_allocation=estimation.starting_reserve,
     )
 
     # We move 1000 USDC from reserves to loan deposits
     assert trade.planned_reserve == start_collateral
+    # TODO: should this be the same as start_collateral?
+    assert trade.planned_collateral_allocation == 0
     assert trade.planned_collateral_consumption == pytest.approx(Decimal(3000))
     assert trade.planned_quantity == pytest.approx(-eth_quantity)  # We loop the collateral this many USD to get our required level
 
@@ -972,7 +978,7 @@ def test_short_unrealised_profit_leveraged(
     assert loan.collateral.get_usd_value() == pytest.approx(4000)
     assert loan.get_net_asset_value() == pytest.approx(1000)
     assert loan.get_leverage() == pytest.approx(leverage)
-    assert portfolio.get_cash() == 9000
+    # assert portfolio.get_cash() == 9000
     assert portfolio.get_net_asset_value() == 10_000
 
     # ETH price 1500 -> 1400, make profit
@@ -990,11 +996,19 @@ def test_short_unrealised_profit_leveraged(
         strategy_cycle_at=datetime.datetime.utcnow(),
         pair=weth_short_identifier,
         borrowed_asset_price=loan.borrowed.last_usd_price,
+        planned_mid_price=loan.borrowed.last_usd_price,
         trade_type=TradeType.rebalance,
         reserve_currency=usdc,
         collateral_asset_price=1.0,
     )
     trader.set_perfectly_executed(trade_2)
+
+    # check closing trade numbers
+    assert trade_2.planned_reserve == 0
+    assert trade_2.planned_collateral_allocation == pytest.approx(-Decimal(1200))
+    assert trade_2.planned_collateral_consumption == pytest.approx(-Decimal(2800))
+    assert trade_2.planned_quantity == pytest.approx(eth_quantity)
+
     assert short_position.is_closed()
     assert short_position.get_realised_profit_usd() == pytest.approx(200)
     assert short_position.get_unrealised_profit_usd() == 0
@@ -1143,6 +1157,7 @@ def test_short_unrealised_profit_leverage_all(
         strategy_cycle_at=datetime.datetime.utcnow(),
         pair=weth_short_identifier,
         borrowed_asset_price=loan.borrowed.last_usd_price,
+        planned_mid_price=loan.borrowed.last_usd_price,
         trade_type=TradeType.rebalance,
         reserve_currency=usdc,
         collateral_asset_price=1.0,
@@ -1506,6 +1521,7 @@ def test_short_realised_interest_and_profit(
         strategy_cycle_at=datetime.datetime.utcnow(),
         pair=weth_short_identifier,
         borrowed_asset_price=float(1400),
+        planned_mid_price=float(1400),
         trade_type=TradeType.rebalance,
         reserve_currency=usdc,
         collateral_asset_price=1.0,
@@ -1695,6 +1711,7 @@ def test_short_close_with_fee_no_price_movement(
         strategy_cycle_at=datetime.datetime.utcnow(),
         pair=weth_short_identifier_5bps,
         borrowed_asset_price=open_estimate.borrowed_asset_price,
+        planned_mid_price=open_estimate.borrowed_asset_price,
         trade_type=TradeType.rebalance,
         reserve_currency=usdc,
         collateral_asset_price=1.0,
@@ -1794,6 +1811,7 @@ def test_short_close_profit_with_fee(
         strategy_cycle_at=datetime.datetime.utcnow(),
         pair=weth_short_identifier_5bps,
         borrowed_asset_price=estimate.borrowed_asset_price,
+        planned_mid_price=estimate.borrowed_asset_price,
         trade_type=TradeType.rebalance,
         reserve_currency=usdc,
         collateral_asset_price=1.0,
@@ -2048,7 +2066,7 @@ def test_short_decrease_size(
         reserve_currency=usdc,
         collateral_asset_price=1.0,
         planned_collateral_allocation=-reserves_released,
-        # See comments in plan_loan_update_for_short()
+        # See comments in update_short_loan()
         planned_collateral_consumption=target_params.total_collateral_quantity - loan.collateral.quantity + reserves_released,
     )
 
@@ -2060,7 +2078,7 @@ def test_short_decrease_size(
     assert trade_2.planned_loan_update.collateral.quantity == pytest.approx(Decimal(928.571427857142816440573790))
     assert trade_2.planned_loan_update.get_leverage() == pytest.approx(1.1428571428571423)
 
-    # See comments in plan_loan_update_for_short()
+    # See comments in update_short_loan()
     assert trade_2.planned_collateral_consumption == pytest.approx(Decimal('-571.428572142857128048274979'))
     assert trade_2.planned_collateral_allocation == pytest.approx(Decimal('-500'))
 

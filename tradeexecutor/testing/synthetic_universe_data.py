@@ -71,6 +71,9 @@ def create_synthetic_single_pair_universe(
         lending_candles=lending_candles,
     )
 
+    # Backwards compatibility
+    pair_universe.exchange_universe = universe.exchange_universe
+
     return TradingStrategyUniverse(
         data_universe=universe,
         reserve_assets=[pair.quote],

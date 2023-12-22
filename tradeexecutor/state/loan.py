@@ -217,7 +217,13 @@ class Loan:
 
         Using formula ``(collateral / (collateral - borrow))``.
 
+        :return:
+            Zero if the loan has zero net asset value.
         """
+
+        if self.get_net_asset_value() == 0:
+            return 0
+
         return self.borrowed.get_usd_value() / self.get_net_asset_value()
 
     def get_free_margin(self) -> USDollarAmount:

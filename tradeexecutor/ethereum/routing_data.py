@@ -29,6 +29,7 @@ from typing import TypedDict, List
 
 from tradingstrategy.chain import ChainId
 
+from tradeexecutor.backtest.backtest_generic_router import EthereumBacktestPairConfigurator
 from tradeexecutor.backtest.backtest_routing import BacktestRoutingModel, BacktestRoutingIgnoredModel
 from tradeexecutor.ethereum.uniswap_v2.uniswap_v2_routing import UniswapV2Routing
 from tradeexecutor.ethereum.uniswap_v3.uniswap_v3_routing import UniswapV3Routing
@@ -596,6 +597,9 @@ def validate_reserve_currency(
         # Unit tests.
         # Do nothing
         pass
+    elif routing_type == TradeRouting.default:
+        # Reserve currency set in create_trading_strategy()
+        pass
     # else
     else:
         raise NotImplementedError(f"Unknown routing type: {routing_type}")
@@ -613,6 +617,8 @@ def get_backtest_routing_model(
     if routing_type == TradeRouting.ignore:
         params = get_uniswap_v2_default_routing_parameters(reserve_currency)
         return BacktestRoutingIgnoredModel(params["reserve_token_address"])
+    elif routing_type == TradeRouting.default:
+        raise AssertionError(f"Shoudl not be reached. If you use routing_type == TradeRouting.default GenericRouting should have been configured earlier in the stack.")
 
     real_routing_model = create_compatible_routing(routing_type, reserve_currency)
     

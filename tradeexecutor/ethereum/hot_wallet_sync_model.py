@@ -86,7 +86,14 @@ class HotWalletSyncModel(SyncModel):
         # TODO: This code is not production ready - use with care
         # Needs legacy cleanup
         logger.info("Hot wallet treasury sync starting for %s", self.hot_wallet.address)
-        events = sync_reserves(self.web3, strategy_cycle_ts, self.hot_wallet.address, [], supported_reserves)
+        current_reserves = list(state.portfolio.reserves.values())
+        events = sync_reserves(
+            self.web3,
+            strategy_cycle_ts,
+            self.hot_wallet.address,
+            current_reserves,
+            supported_reserves
+        )
         apply_sync_events(state, events)
         treasury = state.sync.treasury
         treasury.last_updated_at = datetime.datetime.utcnow()

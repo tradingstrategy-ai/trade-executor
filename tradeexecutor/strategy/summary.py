@@ -2,12 +2,13 @@
 import datetime
 import enum
 from dataclasses import dataclass, field
-from typing import Optional, List, Tuple, Dict, Any
+from typing import Optional, List, Tuple, Dict, Any, Set
 
 from dataclasses_json import dataclass_json
 
 from tradeexecutor.state.metadata import OnChainData
 from tradeexecutor.state.types import USDollarAmount, UnixTimestamp, Percent
+from tradeexecutor.strategy.tag import StrategyTag
 
 
 class KeyMetricKind(enum.Enum):
@@ -447,6 +448,12 @@ class StrategySummary:
     #: See `Metadata.badges` for description.
     #:
     badges: List[str] = field(default_factory=list)
+
+    #: List of strategy tile badges
+    #:
+    #: See `Metadata.tags` for description.
+    #:
+    tags: Set[StrategyTag] = field(default_factory=set)
 
 
 #: Help links for different metrics

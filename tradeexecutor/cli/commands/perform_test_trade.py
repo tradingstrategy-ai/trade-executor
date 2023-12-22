@@ -66,7 +66,8 @@ def perform_test_trade(
     pair: Optional[str] = shared_options.pair,
     all_pairs: bool = shared_options.all_pairs,
 
-    buy_only: bool = Option(None, "--buy-only", envvar="BUY_ONLY", help="Only perform the buy side of the test trade - leave position open.")
+    buy_only: bool = Option(None, "--buy-only", envvar="BUY_ONLY", help="Only perform the buy side of the test trade - leave position open."),
+    spot_only: bool = Option(None, "--spot-only", envvar="SPOT_ONLY", help="Perform spot trades only."),
 ):
     """Perform a small test swap.
 
@@ -90,7 +91,8 @@ def perform_test_trade(
 
     execution_context = ExecutionContext(
         mode=ExecutionMode.preflight_check,
-        timed_task_context_manager=timed_task
+        timed_task_context_manager=timed_task,
+        engine_version=mod.trading_strategy_engine_version,
     )
 
     web3config = create_web3_config(
@@ -189,6 +191,7 @@ def perform_test_trade(
                 routing_state,
                 pair=p,
                 buy_only=buy_only,
+                spot_only=spot_only,
             )
     else:
 

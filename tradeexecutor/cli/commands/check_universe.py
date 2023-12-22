@@ -22,12 +22,12 @@ from . import shared_options
 
 @app.command()
 def check_universe(
-    id: str = typer.Option(None, envvar="EXECUTOR_ID", help="Executor id used when programmatically referring to this instance. If not given, take the base of --strategy-file."),
-    strategy_file: Path = typer.Option(..., envvar="STRATEGY_FILE"),
+    id: str = shared_options.id,
+    strategy_file: Path = shared_options.strategy_file,
     trading_strategy_api_key: str = shared_options.trading_strategy_api_key,
     cache_path: Optional[Path] = shared_options.cache_path,
     max_data_delay_minutes: int = typer.Option(24*60, envvar="MAX_DATA_DELAY_MINUTES", help="How fresh the OHCLV data for our strategy must be before failing"),
-    log_level: str = typer.Option(None, envvar="LOG_LEVEL", help="The Python default logging level. The defaults are 'info' is live execution, 'warning' if backtesting. Set 'disabled' in testing."),
+    log_level: str = shared_options.log_level,
 ):
     """Checks that the trading universe is helthy for a given strategy."""
 

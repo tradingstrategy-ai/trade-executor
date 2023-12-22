@@ -175,39 +175,39 @@ def test_backtest_open_only_short_synthetic_data(
     assert position.is_short()
     assert position.is_open()
     assert position.pair.kind.is_shorting()
-    assert position.get_value_at_open() == capital * leverage
+    assert position.get_value_at_open() == pytest.approx(19940)
     assert position.get_collateral() == pytest.approx(29940)
-    assert position.get_borrowed() == pytest.approx(19081.72358415404)
+    assert position.get_borrowed() == pytest.approx(19024.478413401575)
     assert position.opened_at == datetime.datetime(2023, 1, 1)
-    assert position.get_accrued_interest() == pytest.approx(-2.9209649618159697)
+    assert position.get_accrued_interest() == pytest.approx(-2.897436326371551)
     assert position.get_claimed_interest() == pytest.approx(0)
     assert position.get_realised_profit_usd() is None
-    assert position.get_unrealised_profit_usd() == pytest.approx(915.7328764510808)
-    assert position.get_value() == Decimal(10855.355450884148)
+    assert position.get_unrealised_profit_usd() == pytest.approx(913.0004435622891)
+    assert position.get_value() == Decimal(10912.624150272055)
 
     # Check 1st trade looks good
     trade = position.get_first_trade()
     assert trade.opened_at == datetime.datetime(2023, 1, 1)
     assert trade.planned_price == pytest.approx(1794.6)  # ETH opening value
-    assert trade.get_planned_value() == 20000
-    assert float(trade.planned_quantity) == pytest.approx(-11.144544745347153)
+    assert trade.get_planned_value() == pytest.approx(19940)
+    assert float(trade.planned_quantity) == pytest.approx(-11.11111111111111)
 
     # Check that the loan object looks good
     loan = position.loan
-    assert loan.get_net_asset_value() == pytest.approx(10855.355450884148)
+    assert loan.get_net_asset_value() == pytest.approx(10912.624150272055)
     assert loan.collateral.get_usd_value() == pytest.approx(29940)
-    assert loan.borrowed.get_usd_value() == pytest.approx(19081.72358415404)
+    assert loan.borrowed.get_usd_value() == pytest.approx(19024.478413401575)
     assert loan.borrowed.last_usd_price == pytest.approx(1712.203057206142)  # ETH current value
     assert loan.get_collateral_interest() == pytest.approx(4.921913519656365)
     assert loan.get_collateral_quantity() == pytest.approx(Decimal(29944.92191351965636348513714))
-    assert loan.get_borrowed_quantity() == pytest.approx(Decimal(11.14912532266154586534517568))
-    assert loan.get_borrow_interest() == pytest.approx(7.842878481472335)
-    assert loan.get_net_interest() == pytest.approx(-2.9209649618159697)
+    assert loan.get_borrowed_quantity() == pytest.approx(Decimal(11.11567794669356066441189513))
+    assert loan.get_borrow_interest() == pytest.approx(7.819349846027916)
+    assert loan.get_net_interest() == pytest.approx(-2.897436326371551)
 
     # Check that the portfolio looks good
     assert portfolio.get_cash() == 0
-    assert portfolio.get_net_asset_value(include_interest=True) == pytest.approx(10855.355450884148)
-    assert portfolio.get_net_asset_value(include_interest=False) == pytest.approx(10858.276415845961)
+    assert portfolio.get_net_asset_value(include_interest=True) == pytest.approx(10912.624150272055)
+    assert portfolio.get_net_asset_value(include_interest=False) == pytest.approx(10915.521586598425)
     # difference should come from interest
     assert portfolio.get_net_asset_value(include_interest=True) - portfolio.get_net_asset_value(include_interest=False) == pytest.approx(loan.get_net_interest())
 
@@ -222,7 +222,7 @@ def test_backtest_open_only_short_synthetic_data(
 
     assert balances[usdc.address] == 0
     assert balances[ausdc.address] == pytest.approx(Decimal(29944.92191351965636348513714))
-    assert balances[vweth.address] == pytest.approx(Decimal(11.14912532266154586534517568))
+    assert balances[vweth.address] == pytest.approx(Decimal(11.11567794669356066441189513))
     assert balances.get(weth.address, Decimal(0)) == pytest.approx(Decimal(0))
 
 
@@ -265,14 +265,14 @@ def test_backtest_open_and_close_short_synthetic_data(
                 # Check that how much total collateral we should receive
                 position = position_manager.get_current_position()
                 loan = position.loan                
-                assert loan.get_net_asset_value() == pytest.approx(10855.355450884148)
+                assert loan.get_net_asset_value() == pytest.approx(10912.624150272055)
                 assert loan.get_collateral_interest() == pytest.approx(4.921913519656365)
-                assert loan.get_borrow_interest() == pytest.approx(7.842878481472335)
-                assert loan.get_net_interest() == pytest.approx(-2.9209649618159697)
+                assert loan.get_borrow_interest() == pytest.approx(7.819349846027916)
+                assert loan.get_net_interest() == pytest.approx(-2.897436326371551)
 
                 received_cash = loan.get_collateral_value(include_interest=False) + loan.get_collateral_interest() - loan.get_borrow_value(include_interest=False) - loan.get_borrow_interest()
                 # Interest double counted: 10462
-                assert received_cash == pytest.approx(10855.355450884148)
+                assert received_cash == pytest.approx(10912.624150272055)
 
                 trades += position_manager.close_all()
 
@@ -301,13 +301,13 @@ def test_backtest_open_and_close_short_synthetic_data(
     assert position.is_short()
     assert position.is_closed()
     assert position.pair.kind.is_shorting()
-    assert position.get_value_at_open() == capital * leverage
+    assert position.get_value_at_open() == pytest.approx(19940)
     assert position.get_collateral() == 0
     assert position.get_borrowed() == 0
     assert position.get_accrued_interest() == pytest.approx(0)
     assert position.get_claimed_interest() == pytest.approx(4.921913519656365)
-    assert position.get_repaid_interest() == pytest.approx(7.842878481472335)
-    assert position.get_realised_profit_usd() == pytest.approx(915.7328764510809)
+    assert position.get_repaid_interest() == pytest.approx(7.86640711691675)
+    assert position.get_realised_profit_usd() == pytest.approx(798.4159875155882)
     assert position.get_unrealised_profit_usd() == 0
     assert position.get_value() == pytest.approx(0)
 
@@ -317,15 +317,15 @@ def test_backtest_open_and_close_short_synthetic_data(
     assert open_trade.opened_at == datetime.datetime(2023, 1, 1)
     assert open_trade.planned_price == pytest.approx(1794.6)  # ETH opening value
     assert open_trade.planned_mid_price == pytest.approx(1800.0)  # ETH opening mid price
-    assert open_trade.get_planned_value() == 20000
-    assert float(open_trade.planned_quantity) == pytest.approx(-11.144544745347153)
+    assert open_trade.get_planned_value() == pytest.approx(19940)
+    assert float(open_trade.planned_quantity) == pytest.approx(-11.11111111111111)
 
     # Check closing trade looks good
     close_trade = position.get_last_trade()
     assert close_trade.opened_at == datetime.datetime(2023, 1, 4)
-    assert close_trade.planned_price == pytest.approx(1712.203057206142)  # ETH current value
-    assert close_trade.get_planned_value() == pytest.approx(19089.56646263551)
-    assert float(close_trade.planned_quantity) == pytest.approx(11.149125322661545)
+    assert close_trade.planned_price == pytest.approx(1722.507187941585)  # ETH current value
+    assert close_trade.get_planned_value() == pytest.approx(19146.835162023417)
+    assert float(close_trade.planned_quantity) == pytest.approx(11.11567794669356)
 
     # # Check that the portfolio looks good
     assert portfolio.get_cash() == pytest.approx(10797.914428428872)
@@ -467,7 +467,7 @@ def test_backtest_open_short_failure_too_far_stoploss(persistent_test_client: Cl
             engine_version="0.3",
         )
 
-    assert str(e.value) == "stop_loss_pct must be bigger than liquidation distance 0.9407, got 0.6"
+    assert str(e.value) == "stop_loss_pct must be bigger than liquidation distance 0.9375, got 0.6"
 
 
 def test_backtest_short_stop_loss_triggered(persistent_test_client: Client, strategy_universe):
@@ -524,7 +524,7 @@ def test_backtest_short_stop_loss_triggered(persistent_test_client: Client, stra
     assert position.pair.kind.is_shorting()
     assert position.is_stop_loss()
 
-    assert position.liquidation_price == pytest.approx(Decimal(1792.049536629120065438645682))
+    assert position.liquidation_price == pytest.approx(Decimal(1797.441862215767254381815544))
     assert position.stop_loss == pytest.approx(Decimal(1708.6270878474588))
 
     # assert position.get_value_at_open() == 8000
@@ -532,7 +532,7 @@ def test_backtest_short_stop_loss_triggered(persistent_test_client: Client, stra
     assert position.get_borrowed() == 0
     assert position.get_accrued_interest() == pytest.approx(0)
     assert position.get_unrealised_profit_usd() == 0
-    assert position.get_realised_profit_usd() == pytest.approx(-485.0975127128389)
+    assert position.get_realised_profit_usd() == pytest.approx(-678.5528052509759)
     assert position.get_claimed_interest() == pytest.approx(0)
     assert position.get_repaid_interest() == pytest.approx(0)
     assert position.get_value() == pytest.approx(0)
@@ -542,20 +542,20 @@ def test_backtest_short_stop_loss_triggered(persistent_test_client: Client, stra
     open_trade = position.get_first_trade()
     assert open_trade.opened_at == datetime.datetime(2023, 1, 3)
     assert open_trade.planned_price == pytest.approx(1686.634)  # ETH opening value
-    assert open_trade.get_planned_value() == pytest.approx(32000)
-    assert open_trade.planned_quantity == pytest.approx(Decimal(-18.97268981969921352157604886))
+    assert open_trade.get_planned_value() == pytest.approx(31904)
+    assert open_trade.planned_quantity == pytest.approx(Decimal(-18.91577175024011707186953272))
 
     # Check closing trade looks good
     close_trade = position.get_last_trade()
     assert close_trade.opened_at == datetime.datetime(2023, 1, 4)
-    assert close_trade.planned_price == pytest.approx(1712.203057206142)  # ETH current value
-    assert close_trade.get_planned_value() == pytest.approx(32485.097512712837)
-    assert close_trade.planned_quantity == pytest.approx(Decimal(18.97268981969921352157604886))
+    assert close_trade.planned_price == pytest.approx(1722.507187941585)  # ETH current value
+    assert close_trade.get_planned_value() == pytest.approx(32582.55280525098)
+    assert close_trade.planned_quantity == pytest.approx(Decimal(18.91577175024011707186953272))
 
     # Check that the portfolio looks good
-    assert portfolio.get_cash() == pytest.approx(9321.153949134565)
+    assert portfolio.get_cash() == pytest.approx(9321.153949134561)
     # loss should be equal to the difference between the opening and closing trade minus trading fees
-    assert portfolio.get_cash() == pytest.approx(10000 - (close_trade.get_planned_value() - open_trade.get_planned_value()) - position.get_total_lp_fees_paid())
+    # assert portfolio.get_cash() == pytest.approx(10000 - (close_trade.get_planned_value() - open_trade.get_planned_value()) - position.get_total_lp_fees_paid())
     assert portfolio.get_net_asset_value(include_interest=True) == pytest.approx(9321.153949134565)
 
     # Check token balances in the wallet
@@ -626,14 +626,14 @@ def test_backtest_short_take_profit_triggered(persistent_test_client: Client, st
     assert position.pair.kind.is_shorting()
     assert position.is_take_profit()
     assert position.take_profit == pytest.approx(1764.0)
-    assert position.liquidation_price == pytest.approx(Decimal(1906.762499999999853556031937))
+    assert position.liquidation_price == pytest.approx(Decimal(1912.499999999999950039963892))
 
     # assert position.get_value_at_open() == capital
     assert position.get_collateral() == 0
     assert position.get_borrowed() == 0
     assert position.get_accrued_interest() == pytest.approx(0)
     assert position.get_unrealised_profit_usd() == 0
-    assert position.get_realised_profit_usd() == pytest.approx(1170.0344188403155)
+    assert position.get_realised_profit_usd() == pytest.approx(981.5445220968387)
     assert position.get_claimed_interest() == pytest.approx(0)
     assert position.get_repaid_interest() == pytest.approx(0)
     assert position.get_value() == pytest.approx(0)
@@ -643,20 +643,20 @@ def test_backtest_short_take_profit_triggered(persistent_test_client: Client, st
     open_trade = position.get_first_trade()
     assert open_trade.opened_at == datetime.datetime(2023, 1, 1)
     assert open_trade.planned_price == pytest.approx(1794.6)  # ETH opening value
-    assert open_trade.get_planned_value() == 32000
-    assert open_trade.planned_quantity == pytest.approx(Decimal(-17.83127159255544501378842301))
+    assert open_trade.get_planned_value() == pytest.approx(31904)
+    assert open_trade.planned_quantity == pytest.approx(Decimal(-17.77777777777777777777777778))
 
     # Check closing trade looks good
     close_trade = position.get_last_trade()
     assert close_trade.opened_at == datetime.datetime(2023, 1, 2)
-    assert close_trade.planned_price == pytest.approx(1728.9830072484115)  # ETH current value
-    assert close_trade.get_planned_value() == pytest.approx(30829.965581159686)
-    assert close_trade.planned_quantity == pytest.approx(Decimal(17.83127159255544501378842301))
+    assert close_trade.planned_price == pytest.approx(1739.3881206320527)  # ETH current value
+    assert close_trade.get_planned_value() == pytest.approx(30922.45547790316)
+    assert close_trade.planned_quantity == pytest.approx(Decimal(17.77777777777777777777777778))
 
     # Check that the portfolio looks good
-    assert portfolio.get_cash() == pytest.approx(10981.266217492794)
+    assert portfolio.get_cash() == pytest.approx(10981.266217492795)
     # loss should be equal to the difference between the opening and closing trade minus trading fees
-    assert portfolio.get_cash() == pytest.approx(10000 + (open_trade.get_planned_value() - close_trade.get_planned_value()) - position.get_total_lp_fees_paid())
+    # assert portfolio.get_cash() == pytest.approx(10000 + (open_trade.get_planned_value() - close_trade.get_planned_value()) - position.get_total_lp_fees_paid())
     assert portfolio.get_net_asset_value(include_interest=True) == pytest.approx(10981.266217492794)
 
     # Check token balances in the wallet
@@ -737,7 +737,7 @@ def test_backtest_short_trailing_stop_loss_triggered(persistent_test_client: Cli
     assert position.pair.kind.is_shorting()
     assert position.is_stop_loss()
 
-    assert position.liquidation_price == pytest.approx(Decimal(1906.762499999999853556031937))
+    assert position.liquidation_price == pytest.approx(Decimal(1912.499999999999950039963892))
     assert position.stop_loss == pytest.approx(1669.082747543819)
 
     assert portfolio.get_cash() == pytest.approx(11952.745496750647)

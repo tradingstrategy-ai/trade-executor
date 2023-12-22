@@ -22,9 +22,13 @@ from tradeexecutor.backtest.backtest_sync import BacktestSyncModel
 from tradeexecutor.cli.watchdog import create_watchdog_registry, register_worker, mark_alive, start_background_watchdog, \
     WatchdogMode
 from tradeexecutor.ethereum.enzyme.vault import EnzymeVaultSyncModel
+from tradeexecutor.ethereum.tx import TransactionBuilder
+from tradeexecutor.ethereum.wallet import perform_gas_level_checks
 from tradeexecutor.state.metadata import Metadata
 from tradeexecutor.statistics.summary import calculate_summary_statistics
 from tradeexecutor.strategy.account_correction import check_accounts, UnexpectedAccountingCorrectionIssue
+from tradeexecutor.strategy.dummy import DummyExecutionModel
+from tradeexecutor.strategy.generic.generic_pricing_model import GenericPricing
 from tradeexecutor.strategy.pandas_trader.decision_trigger import wait_for_universe_data_availability_jsonl
 from tradeexecutor.strategy.routing import RoutingModel
 from tradeexecutor.strategy.run_state import RunState
@@ -170,6 +174,8 @@ class ExecutionLoop:
         self.check_accounts = check_accounts
         self.execution_context = execution_context
         self.sync_treasury_on_startup = sync_treasury_on_startup
+        self.store = store
+        self.name = name
 
         self.backtest_start = backtest_start
         self.backtest_end = backtest_end
@@ -207,6 +213,10 @@ class ExecutionLoop:
             )
 
         self.minimum_data_lookback_range = minimum_data_lookback_range
+
+        # We hide once-downloaded universe here for live loop
+        # tests that perform live trading against forked chain in a fast cycle (1s)
+        self.unit_testing_universe: StrategyExecutionUniverse | None = None
 
     def is_backtest(self) -> bool:
         """Are we doing a backtest execution."""
@@ -288,11 +298,11 @@ class ExecutionLoop:
         if self.run_state:
             self.run_state.source_code = run_description.source_code
 
-    def     refresh_live_run_state(
-            self,
-            state: State,
-            visualisation=False,
-            universe: TradingStrategyUniverse=None,
+    def  refresh_live_run_state(
+        self,
+        state: State,
+        visualisation=False,
+        universe: TradingStrategyUniverse=None,
     ):
         """Update the in-process strategy context which we serve over the webhook.
 
@@ -329,6 +339,18 @@ class ExecutionLoop:
         if visualisation:
             assert universe, "Candle data must be available to update visualisations"
             self.runner.refresh_visualisations(state, universe)
+
+        # Set gas level warning
+        sync_model = self.sync_model
+        hot_wallet = sync_model.get_hot_wallet()
+        web3 = getattr(sync_model, "web3", None)  # TODO: Typing
+
+        if web3 is not None:
+            perform_gas_level_checks(
+                web3,
+                run_state,
+                hot_wallet,
+            )
 
         # Mark last refreshed
         run_state.bumb_refreshed()
@@ -398,14 +420,16 @@ class ExecutionLoop:
             "strategy_cycle_trigger": self.strategy_cycle_trigger.value,
         }
 
-        logger.trade("Performing strategy tick #%d for timestamp %s, cycle length is %s, trigger time was %s, live trading is %s, trading univese is %s",
-                     cycle,
-                     ts,
-                     cycle_duration.value,
-                     unrounded_timestamp,
-                     live,
-                     existing_universe,
-                     )
+        logger.trade(
+            "Performing strategy tick #%d for timestamp %s, cycle length is %s, trigger time was %s, live trading is %s, trading univese is %s, version %s",
+             cycle,
+             ts,
+             cycle_duration.value,
+             unrounded_timestamp,
+             live,
+             existing_universe,
+            self.execution_context.engine_version,
+        )
 
         if existing_universe is None:
 
@@ -464,6 +488,7 @@ class ExecutionLoop:
             debug_details=debug_details,
             cycle_duration=cycle_duration,
             cycle=cycle,
+            store=self.store,
         )
 
         # Update portfolio and position historical data tracking.
@@ -498,10 +523,11 @@ class ExecutionLoop:
                 try:
                     self.runner.check_balances_post_execution(
                         universe,
-                        state
+                        state,
+                        cycle
                     )
                 except UnexpectedAccountingCorrectionIssue as e:
-                    raise RuntimeError(f"Execution aborted at cycle {ts} #{cycle} because on-chain balances were different what exepcted after executing the trades") from e
+                    raise RuntimeError(f"Execution aborted at cycle {ts} #{cycle} because on-chain balances were different what expected after executing the trades") from e
 
             update_statistics(
                 datetime.datetime.utcnow(),
@@ -621,8 +647,14 @@ class ExecutionLoop:
 
         Display progress bars for data downloads.
         """
-        logger.info("Warming up live trading universe, universe options are %s", self.universe_options)
-        universe = cast(TradingStrategyUniverse, self.universe_model.preload_universe(self.universe_options))
+        logger.info(
+            "Warming up live trading universe, universe options are %s, mode is %s",
+            self.universe_options,
+            self.execution_context,
+        )
+        assert self.execution_context.mode.is_live_trading()
+        universe = self.universe_model.preload_universe(self.universe_options, self.execution_context)
+        universe = cast(TradingStrategyUniverse, universe)
         logger.info("Warmed up universe %s", universe)
         return universe
 
@@ -669,14 +701,23 @@ class ExecutionLoop:
         routing_state, pricing_model, valuation_model = self.runner.setup_routing(universe)
         assert pricing_model, "Routing did not provide pricing_model"
 
-        assert isinstance(pricing_model, BacktestPricing)
-
-        stop_loss_pricing_model = BacktestPricing(
-            universe.backtest_stop_loss_candles,
-            self.runner.routing_model,
-            time_bucket=universe.backtest_stop_loss_time_bucket,
-            allow_missing_fees=pricing_model.allow_missing_fees
-        )
+        if isinstance(pricing_model, BacktestPricing):
+            stop_loss_pricing_model = BacktestPricing(
+                universe.backtest_stop_loss_candles,
+                self.runner.routing_model,
+                time_bucket=universe.backtest_stop_loss_time_bucket,
+                allow_missing_fees=pricing_model.allow_missing_fees
+            )
+        elif isinstance(pricing_model, GenericPricing):
+            # TODO: This needs have a test coverage / figured out if correct
+            stop_loss_pricing_model = BacktestPricing(
+                universe.backtest_stop_loss_candles,
+                self.runner.routing_model,
+                time_bucket=universe.backtest_stop_loss_time_bucket,
+                allow_missing_fees=False
+            )
+        else:
+            raise AssertionError(f"Don't know how to deal with {pricing_model}")
 
         # Do stop loss checks for every time point between now and next strategy cycle
         tp = 0
@@ -702,6 +743,9 @@ class ExecutionLoop:
 
     def run_backtest(self, state: State) -> dict:
         """Backtest loop."""
+
+        if not state.name:
+            state.name = self.name
 
         if self.backtest_end or self.backtest_start:
             assert self.backtest_start and self.backtest_end, f"If backtesting both start and end must be given, we have {self.backtest_start} - {self.backtest_end}"
@@ -746,7 +790,7 @@ class ExecutionLoop:
         assert backtest_step != CycleDuration.cycle_unknown
 
         assert isinstance(self.backtest_start, datetime.datetime)
-        assert not isinstance(self.backtest_start, pd.Timestamp)
+        assert not isinstance(self.backtest_start, pd.Timestamp), f"Expected pandas.Timestamp, got {self.backtest_start.__class__}: {self.backtest_start}"
         assert not isinstance(self.backtest_end, pd.Timestamp)
         assert isinstance(self.backtest_end, datetime.datetime)
         assert self.backtest_start < self.backtest_end
@@ -940,6 +984,7 @@ class ExecutionLoop:
         # Store summary statistics in memory before doing anything else
         self.refresh_live_run_state(state, visualisation=True, universe=universe)
 
+        # A test path: do not wait until making the first trade
         # The first trade will be execute immediately, despite the time offset or tick
         if self.trade_immediately:
             ts = datetime.datetime.now()
@@ -1001,6 +1046,11 @@ class ExecutionLoop:
                     # Force universe recreation on every cycle
                     universe = None
 
+                # Shortcut universe downlado in forked mainnet test strategies
+                if self.execution_context.mode == ExecutionMode.unit_testing_trading and not isinstance(self.execution_model, DummyExecutionModel):
+                    # Dummy execution marks special test_trading_data_availability_based_strategy_cycle_trigger
+                    universe = self.unit_testing_universe
+
                 # Run the main strategy logic
                 universe = self.tick(
                     unrounded_timestamp,
@@ -1012,6 +1062,10 @@ class ExecutionLoop:
                     live=True,
                     extra_debug_data=extra_debug_data,
                 )
+
+                if self.execution_context.mode == ExecutionMode.unit_testing_trading:
+                    self.unit_testing_universe = universe
+
                 logger.info("run_live() tick complete, universe is now %s", universe)
 
                 # Post execution, update our statistics

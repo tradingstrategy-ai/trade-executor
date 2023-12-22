@@ -13,11 +13,12 @@ from tabulate import tabulate
 from typer import Option
 
 from eth_defi.hotwallet import HotWallet
+from eth_defi.provider.anvil import mine
 from eth_defi.provider.broken_provider import get_almost_latest_block_number
 
 from tradeexecutor.strategy.account_correction import correct_accounts as _correct_accounts, check_accounts
 from .app import app
-from ..bootstrap import prepare_executor_id, create_web3_config, create_sync_model, create_state_store, create_client
+from ..bootstrap import prepare_executor_id, create_web3_config, create_sync_model, create_state_store, create_client, backup_state
 from ..log import setup_logging
 from ...ethereum.enzyme.tx import EnzymeTransactionBuilder
 from ...ethereum.enzyme.vault import EnzymeVaultSyncModel
@@ -147,26 +148,7 @@ def correct_accounts(
     if not state_file:
         state_file = f"state/{id}.json"
 
-    state_file = Path(state_file)
-    store = create_state_store(state_file)
-    assert not store.is_pristine(), f"State does not exists yet: {state_file}"
-
-    # Make a backup
-    # https://stackoverflow.com/a/47528275/315168
-    backup_file = None
-    for i in range(1, 99):  # Try 99 different iterateive backup filenames
-        backup_file = state_file.with_suffix(f".correct-accounts-backup-{i}.json")
-        if os.path.exists(backup_file):
-            continue
-
-        shutil.copy(state_file, backup_file)
-        break
-    else:
-        raise RuntimeError(f"Could not create backup {backup_file}")
-
-    logger.info("Old state backed up as %s", backup_file)
-
-    state = store.load()
+    store, state = backup_state(state_file)
 
     mod: StrategyModuleInformation = read_strategy_module(strategy_file)
 
@@ -268,14 +250,20 @@ def correct_accounts(
         block_timestamp=block_timestamp,
     )
     balance_updates = list(balance_updates)
-    logger.info(f"Applied {len(balance_updates)} balance updates, new block height is {block_number:,} at {block_timestamp}")
+    logger.info(f"We did {len(corrections)} accounting corrections, of which {len(balance_updates)} internal state balance updates, new block height is {block_number:,} at {block_timestamp}")
 
     store.sync(state)
     web3config.close()
 
-    if balance_updates and chain_settle_wait_seconds and (not unit_testing):
+    # Shortcut here
+    if unit_testing:
+        chain_settle_wait_seconds = 0
+
+    if len(corrections) > 0 and chain_settle_wait_seconds:
         logger.info("Waiting %f seconds to see before reading back new results from on-chain", chain_settle_wait_seconds)
         time.sleep(chain_settle_wait_seconds)
+
+    block_number = get_almost_latest_block_number(web3)
 
     clean, df = check_accounts(
         universe.data_universe.pairs,
@@ -288,7 +276,7 @@ def correct_accounts(
     output = tabulate(df, headers='keys', tablefmt='rounded_outline')
 
     if clean:
-        logger.info("Accounts after the correction match:\n%s", output)
+        logger.info(f"Accounts after the correction match for block {block_number:,}:\n%s", output)
         sys.exit(0)
     else:
         logger.error("Accounts still broken after the correction")

@@ -7,6 +7,7 @@ from typing import Union
 from web3 import Web3
 
 from tradeexecutor.ethereum.enzyme.vault import EnzymeVaultSyncModel
+from tradeexecutor.state.trade import TradeFlag
 from tradeexecutor.statistics.core import update_statistics
 from tradeexecutor.strategy.execution_context import ExecutionMode
 from tradeexecutor.strategy.sync_model import SyncModel
@@ -27,25 +28,29 @@ logger = logging.getLogger(__name__)
 
 
 def make_test_trade(
-        web3: Web3,
-        execution_model: ExecutionModel,
-        pricing_model: PricingModel,
-        sync_model: SyncModel,
-        state: State,
-        universe: TradingStrategyUniverse,
-        routing_model: RoutingModel,
-        routing_state: RoutingState,
-        amount=Decimal("1.0"),
-        pair: HumanReadableTradingPairDescription | None = None,
-        buy_only: bool = False,
+    web3: Web3,
+    execution_model: ExecutionModel,
+    pricing_model: PricingModel,
+    sync_model: SyncModel,
+    state: State,
+    universe: TradingStrategyUniverse,
+    routing_model: RoutingModel,
+    routing_state: RoutingState,
+    amount=Decimal("1.0"),
+    pair: HumanReadableTradingPairDescription | None = None,
+    buy_only: bool = False,
+    spot_only: bool = False,
 ):
     """Perform a test trade.
 
     Buy and sell 1 token worth for 1 USD to check that
     our trade routing works.
+
+    If the pair can be shorted, open and close short position for 1 USD.
     """
 
     assert isinstance(sync_model, SyncModel)
+    assert isinstance(universe, TradingStrategyUniverse)
 
     ts = datetime.datetime.utcnow()
 
@@ -80,14 +85,15 @@ def make_test_trade(
         amount,
     )
 
-    logger.info("Making a test trade on pair: %s, for %f %s price is %f %s/%s",
-                pair,
-                amount,
-                reserve_asset.token_symbol,
-                assumed_price_structure.mid_price,
-                pair.base.token_symbol,
-                reserve_asset.token_symbol,
-                )
+    logger.info(
+        "Making a test trade on pair: %s, for %f %s price is %f %s/%s",
+        pair,
+        amount,
+        reserve_asset.token_symbol,
+        assumed_price_structure.mid_price,
+        pair.base.token_symbol,
+        reserve_asset.token_symbol,
+    )
 
     logger.info("Sync model is %s", sync_model)
     logger.info("Trading university reserve asset is %s", universe.get_reserve_asset())
@@ -131,7 +137,7 @@ def make_test_trade(
     # that helps open and close positions
     position_manager = PositionManager(
         ts,
-        universe.data_universe,
+        universe,
         state,
         pricing_model,
     )
@@ -144,13 +150,14 @@ def make_test_trade(
 
     position = state.portfolio.get_position_by_trading_pair(pair)
 
-    buy_trade = None
+    buy_trade = open_short_trade = close_short_trade = None
     if position is None:
         # Create trades to open the position
-        trades = position_manager.open_1x_long(
+        trades = position_manager.open_spot(
             pair,
             float(amount),
             notes=notes,
+            flags={TradeFlag.test_trade},
         )
 
         trade = trades[0]
@@ -169,6 +176,9 @@ def make_test_trade(
 
         position_id = trade.position_id
         position = state.portfolio.get_position_by_id(position_id)
+
+        assert trade.is_test()
+        assert position.is_test()
 
         if not trade.is_success() or not position.is_open():
             # Alot of diagnostics to debug Arbitrum / WBTC issues
@@ -195,12 +205,15 @@ def make_test_trade(
     logger.info("Position %s is open. Now closing the position.", position)
 
     if not buy_only:
+
+        logger.info("Position %s is open. Now closing the position.", position)
+
         # Recreate the position manager for the new timestamp,
         # as time has passed
         ts = datetime.datetime.utcnow()
         position_manager = PositionManager(
             ts,
-            universe.data_universe,
+            universe,
             state,
             pricing_model,
         )
@@ -208,6 +221,7 @@ def make_test_trade(
         trades = position_manager.close_position(
             position,
             notes=notes,
+            flags={TradeFlag.test_trade},
         )
         assert len(trades) == 1
         sell_trade = trades[0]
@@ -220,6 +234,8 @@ def make_test_trade(
                 routing_state,
             )
 
+        assert sell_trade.is_test()
+
         if not sell_trade.is_success():
             logger.error("Test sell failed: %s", sell_trade)
             logger.error("Trade dump:\n%s", sell_trade.get_debug_dump())
@@ -230,6 +246,132 @@ def make_test_trade(
     else:
         sell_trade = None
 
+    if universe.has_any_lending_data() and universe.can_open_short(datetime.datetime.utcnow(), pair) and not spot_only:
+        short_pair = universe.get_shorting_pair(pair)
+        position = state.portfolio.get_position_by_trading_pair(short_pair)
+
+        if position is None:
+
+            # Recreate the position manager for the new timestamp,
+            # as time has passed
+            ts = datetime.datetime.utcnow()
+            position_manager = PositionManager(
+                ts,
+                universe,
+                state,
+                pricing_model,
+            )
+
+            # Create trades to open the position
+            trades = position_manager.open_short(
+                pair,
+                float(amount),
+                notes=notes,
+                leverage=2,
+                flags={TradeFlag.test_trade},
+            )
+
+            trade = trades[0]
+            open_short_trade = trade
+
+            # Compose the trades as approve() + swapTokenExact(),
+            # broadcast them to the blockchain network and
+            # wait for the confirmation
+            execution_model.execute_trades(
+                ts,
+                state,
+                trades,
+                routing_model,
+                routing_state,
+            )
+
+            position_id = trade.position_id
+            position = state.portfolio.get_position_by_id(position_id)
+
+            assert position.is_test()
+            assert open_short_trade.is_test()
+
+            if not trade.is_success() or not position.is_open():
+                # Alot of diagnostics to debug Arbitrum / WBTC issues
+                trades = sum_decimal([t.get_position_quantity() for t in position.trades.values() if t.is_success()])
+                direct_balance_updates = position.get_base_token_balance_update_quantity()
+
+                logger.error("Trade quantity: %s, direct balance updates: %s", trades, direct_balance_updates)
+
+                logger.error("Test open short failed: %s", trade)
+                logger.error("Tx hash: %s", trade.blockchain_transactions[-1].tx_hash)
+                logger.error("Revert reason: %s", trade.blockchain_transactions[-1].revert_reason)
+                logger.error("Trade dump:\n%s", trade.get_debug_dump())
+                logger.error("Position dump:\n%s", position.get_debug_dump())
+
+            if not trade.is_success():
+                raise AssertionError("Test buy failed.")
+
+            if not position.is_open():
+                raise AssertionError("Test buy succeed, but the position was not opened\n"
+                                     "Check for dust corrections.")
+
+            update_statistics(datetime.datetime.utcnow(), state.stats, state.portfolio, ExecutionMode.real_trading)
+
+        # Close the short
+
+        # Recreate the position manager for the new timestamp,
+        # as time has passed
+        ts = datetime.datetime.utcnow()
+        position_manager = PositionManager(
+            ts,
+            universe,
+            state,
+            pricing_model,
+        )
+
+        # Create trades to open the position
+        trades = position_manager.close_short(
+            position,
+            flags={TradeFlag.test_trade},
+        )
+
+        trade = trades[0]
+        close_short_trade = trade
+
+        assert close_short_trade.is_test()
+
+        # Compose the trades as approve() + swapTokenExact(),
+        # broadcast them to the blockchain network and
+        # wait for the confirmation
+        execution_model.execute_trades(
+            ts,
+            state,
+            trades,
+            routing_model,
+            routing_state,
+        )
+
+        position_id = trade.position_id
+        position = state.portfolio.get_position_by_id(position_id)
+
+        if not trade.is_success() or position.is_open():
+            # Alot of diagnostics to debug Arbitrum / WBTC issues
+            trades = sum_decimal([t.get_position_quantity() for t in position.trades.values() if t.is_success()])
+            direct_balance_updates = position.get_base_token_balance_update_quantity()
+
+            logger.error("Trade quantity: %s, direct balance updates: %s", trades, direct_balance_updates)
+
+            logger.error("Close short failed: %s", trade)
+            logger.error("Tx hash: %s", trade.blockchain_transactions[-1].tx_hash)
+            logger.error("Revert reason: %s", trade.blockchain_transactions[-1].revert_reason)
+            logger.error("Trade dump:\n%s", trade.get_debug_dump())
+            logger.error("Position dump:\n%s", position.get_debug_dump())
+
+        if not trade.is_success():
+            raise AssertionError(f"Short close failed, trade not marked as success: {trade.get_revert_reason()}")
+
+        if not position.is_closed():
+            raise AssertionError("Short close succeed, but the position was not opened\n"
+                                 "Check for dust corrections.")
+
+        update_statistics(datetime.datetime.utcnow(), state.stats, state.portfolio, ExecutionMode.real_trading)
+
     gas_at_end = hot_wallet.get_native_currency_balance(web3)
     reserve_currency_at_end = state.portfolio.get_default_reserve_position().get_value()
 
@@ -239,6 +381,10 @@ def make_test_trade(
     logger.info("  Reserves currently: %s %s", reserve_currency_at_end, reserve_currency)
     logger.info("  Reserve currency spent: %s %s", reserve_currency_at_start - reserve_currency_at_end, reserve_currency)
     if buy_trade:
-        logger.info("  Buy trade price, expected: %s, actual: %s (%s)", buy_trade.planned_price, buy_trade.executed_price, position.pair.get_ticker())
+        logger.info("  Buy trade price, expected: %s, actual: %s (%s)", buy_trade.planned_price, buy_trade.executed_price, pair.get_ticker())
     if sell_trade:
-        logger.info("  Sell trade price, expected: %s, actual: %s (%s)", sell_trade.planned_price, sell_trade.executed_price, position.pair.get_ticker())
+        logger.info("  Sell trade price, expected: %s, actual: %s (%s)", sell_trade.planned_price, sell_trade.executed_price, pair.get_ticker())
+    if open_short_trade:
+        logger.info("  Open short, expected: %s, actual: %s (%s)", buy_trade.planned_price, buy_trade.executed_price, short_pair.get_ticker())
+    if close_short_trade:
+        logger.info("  Close short, expected: %s, actual: %s (%s)", buy_trade.planned_price, buy_trade.executed_price, short_pair.get_ticker())

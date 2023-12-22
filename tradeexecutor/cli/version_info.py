@@ -27,7 +27,7 @@ class VersionInfo:
     commit_hash: Optional[str] = None
 
     def __repr__(self):
-        return f"Version: {self.tag}\nCommit hash: {self.commit_hash}\nCommit message: {self.commit_message}"
+        return f"Trade-executor Docker version: {self.tag}\nCommit hash: {self.commit_hash}\nCommit message: {self.commit_message}"
 
     @staticmethod
     def read_version_file(name: str) -> Optional[str]:

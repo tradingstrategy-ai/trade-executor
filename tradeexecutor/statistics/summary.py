@@ -104,17 +104,18 @@ def calculate_summary_statistics(
     if len(stats.portfolio) > 0 and not legacy_workarounds:
         profitability = calculate_compounding_realised_trading_profitability(state)
         enough_data = len(profitability.index) > 1 and profitability.index[0] <= start_at
-        profitability_time_windowed = profitability[start_at:]
-        if len(profitability_time_windowed) > 0:
-            profitability_daily = profitability_time_windowed.resample(pd.offsets.Day()).max()
-            # We do not generate entry for dates without trades so forward fill from the previous day
-            profitability_daily = profitability_daily.ffill()
-            profitability_90_days = profitability_daily.iloc[-1]
-            performance_chart_90_days = export_time_series(profitability_daily)
-            returns_all_time = profitability.iloc[-1]
-        else:
-            profitability_90_days = None
-            performance_chart_90_days = None
+        if len(profitability) >= 2:  # TypeError: cannot do slice indexing on RangeIndex with these indexers [2023-09-08 13:42:01.749186] of type Timestamp
+            profitability_time_windowed = profitability[start_at:]
+            if len(profitability_time_windowed) > 0:
+                profitability_daily = profitability_time_windowed.resample(pd.offsets.Day()).max()
+                # We do not generate entry for dates without trades so forward fill from the previous day
+                profitability_daily = profitability_daily.ffill()
+                profitability_90_days = profitability_daily.iloc[-1]
+                performance_chart_90_days = export_time_series(profitability_daily)
+                returns_all_time = profitability.iloc[-1]
+            else:
+                profitability_90_days = None
+                performance_chart_90_days = None
 
     if age and returns_all_time:
         returns_annualised = returns_all_time * datetime.timedelta(days=365) / age

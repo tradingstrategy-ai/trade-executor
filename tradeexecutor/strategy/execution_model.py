@@ -19,6 +19,7 @@ from tradeexecutor.ethereum.tx import TransactionBuilder
 from tradeexecutor.state.state import State
 from tradeexecutor.state.trade import TradeExecution
 from tradeexecutor.strategy.routing import RoutingModel, RoutingState
+from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
 
 
 class AutoClosingOrderUnsupported(Exception):
@@ -179,6 +180,16 @@ class ExecutionModel(abc.ABC):
             List of fixed trades
         """
 
+    def create_default_routing_model(
+        self,
+        strategy_universe: TradingStrategyUniverse,
+    ) -> RoutingModel:
+        """Get the default routing model for this executor.
+
+        :return:
+
+        """
+        raise NotImplementedError(f"create_default_routing_model() not avaiable for {self.__class__.__name__}")
 
 
 

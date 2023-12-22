@@ -6,7 +6,7 @@ import copy
 from dataclasses import dataclass, field
 from decimal import Decimal
 from itertools import chain
-from typing import Dict, Iterable, Optional, Tuple, List
+from typing import Dict, Iterable, Optional, Tuple, List, Set
 
 from dataclasses_json import dataclass_json
 
@@ -15,7 +15,7 @@ from tradeexecutor.state.identifier import TradingPairIdentifier, AssetIdentifie
 from tradeexecutor.state.loan import Loan
 from tradeexecutor.state.position import TradingPosition
 from tradeexecutor.state.reserve import ReservePosition
-from tradeexecutor.state.trade import TradeType
+from tradeexecutor.state.trade import TradeType, TradeFlag
 from tradeexecutor.state.trade import TradeExecution
 from tradeexecutor.state.types import USDollarAmount, BPS, USDollarPrice
 from tradeexecutor.strategy.dust import get_dust_epsilon_for_pair
@@ -151,6 +151,22 @@ class Portfolio:
             t = p.trades.get(trade_id)
             if t is not None:
                 return t
+
+        return None
+
+    def get_trade_by_tx_hash(self, tx_hash: str) -> TradeExecution | None:
+        """Find a trade that contains a particular transaction.
+
+        :param tx_hash:
+            Ethereum transaction hash
+
+        :return:
+            None if the portfolio does not contain such a trade
+        """
+        for t in self.get_all_trades():
+            for b in t.blockchain_transactions:
+                if b.tx_hash == tx_hash:
+                    return t
 
         return None
 
@@ -319,27 +335,29 @@ class Portfolio:
             if p.closed_at == ts:
                 yield p
 
-    def create_trade(self,
-                     strategy_cycle_at: datetime.datetime,
-                     pair: TradingPairIdentifier,
-                     quantity: Optional[Decimal],
-                     reserve: Optional[Decimal],
-                     assumed_price: USDollarPrice,
-                     trade_type: TradeType,
-                     reserve_currency: AssetIdentifier,
-                     reserve_currency_price: USDollarPrice,
-                     notes: Optional[str] = None,
-                     pair_fee: Optional[BPS] = None,
-                     lp_fees_estimated: Optional[USDollarAmount] = None,
-                     planned_mid_price: Optional[USDollarPrice] = None,
-                     price_structure: Optional[TradePricing] = None,
-                     position: Optional[TradingPosition] = None,
-                     slippage_tolerance: Optional[float] = None,
-                     leverage: Optional[float] = None,
-                     closing: Optional[bool] = False,
-                     planned_collateral_consumption: Optional[Decimal] = None,
-                     planned_collateral_allocation: Optional[Decimal] = None,
-                     ) -> Tuple[TradingPosition, TradeExecution, bool]:
+    def create_trade(
+        self,
+        strategy_cycle_at: datetime.datetime,
+        pair: TradingPairIdentifier,
+        quantity: Optional[Decimal],
+        reserve: Optional[Decimal],
+        assumed_price: USDollarPrice,
+        trade_type: TradeType,
+        reserve_currency: AssetIdentifier,
+        reserve_currency_price: USDollarPrice,
+        notes: Optional[str] = None,
+        pair_fee: Optional[BPS] = None,
+        lp_fees_estimated: Optional[USDollarAmount] = None,
+        planned_mid_price: Optional[USDollarPrice] = None,
+        price_structure: Optional[TradePricing] = None,
+        position: Optional[TradingPosition] = None,
+        slippage_tolerance: Optional[float] = None,
+        leverage: Optional[float] = None,
+        closing: Optional[bool] = False,
+        planned_collateral_consumption: Optional[Decimal] = None,
+        planned_collateral_allocation: Optional[Decimal] = None,
+        flags: Optional[Set[TradeFlag]] = None,
+    ) -> Tuple[TradingPosition, TradeExecution, bool]:
         """Create a trade.
 
         Trade can be opened by knowing how much you want to buy (quantity) or how much cash you have to buy (reserve).
@@ -465,6 +483,7 @@ class Portfolio:
             closing=closing,
             planned_collateral_consumption=planned_collateral_consumption,
             planned_collateral_allocation=planned_collateral_allocation,
+            flags=flags,
         )
 
         # Update notes

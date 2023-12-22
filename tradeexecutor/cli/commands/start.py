@@ -93,6 +93,7 @@ def start(
     confirmation_block_count: int = shared_options.confirmation_block_count,
     private_key: Optional[str] = shared_options.private_key,
     min_gas_balance: Optional[float] = shared_options.min_gas_balance,
+    gas_balance_warning_level: Optional[float] = typer.Option(25.0, envvar="GAS_BALANCE_WARNING_LEVEL", help="If hot wallet gas level falls below this amount of tokens, issue a low gas warning."),
 
     # Logging
     discord_webhook_url: Optional[str] = typer.Option(None, envvar="DISCORD_WEBHOOK_URL", help="Discord webhook URL for notifications"),
@@ -233,6 +234,17 @@ def start(
         # Clean this up in the future versions, by changing the order of initialzation.
         mod = read_strategy_module(strategy_file)
 
+        # Overwrite name, short and long descriptions from the strategy file
+        # and ignore legacy env config
+        if mod.name:
+            name = mod.name
+        if mod.short_description:
+            short_description = mod.short_description
+        if mod.long_description:
+            long_description = mod.long_description
+        if mod.icon:
+            icon_url = mod.icon
+
         if web3config is not None:
 
             if isinstance(mod, StrategyModuleInformation):
@@ -321,6 +333,7 @@ def start(
             backtest_html=html_report,
             key_metrics_backtest_cut_off_days=key_metrics_backtest_cut_off_days,
             badges=badges,
+            tags=mod.tags,
         )
 
         # Start the queue that relays info from the web server to the strategy executor
@@ -329,6 +342,8 @@ def start(
         run_state = RunState()
         run_state.version = VersionInfo.read_docker_version()
         run_state.executor_id = id
+
+        run_state.hot_wallet_gas_warning_level = Decimal(gas_balance_warning_level)
 
         # Create our webhook server
         if http_enabled:
@@ -371,7 +386,9 @@ def start(
 
         if max_data_delay_minutes:
             max_data_delay = datetime.timedelta(minutes=max_data_delay_minutes)
+            logger.info(f"Maximum price feed delay is {max_data_delay}")
         else:
+            logger.info(f"Maximum price feed delay is not set")
             max_data_delay = None
 
         stats_refresh_frequency = datetime.timedelta(minutes=stats_refresh_minutes)
@@ -393,20 +410,29 @@ def start(
             execution_context = ExecutionContext(
                 mode=ExecutionMode.backtesting,
                 timed_task_context_manager=timed_task,
+                engine_version=mod.trading_strategy_engine_version,
             )
         else:
             if unit_testing:
                 execution_context = ExecutionContext(
                     mode=ExecutionMode.unit_testing_trading,
                     timed_task_context_manager=timed_task,
+                    engine_version=mod.trading_strategy_engine_version,
                 )
             else:
                 execution_context = ExecutionContext(
                     mode=ExecutionMode.real_trading,
                     timed_task_context_manager=timed_task,
+                    engine_version=mod.trading_strategy_engine_version,
                 )
 
-        logger.info("Starting with execution mode: %s, unit testing is %s", execution_context.mode.name, unit_testing)
+        logger.info(
+            "Starting %s, with execution mode: %s, unit testing is %s, version is %s",
+            name,
+            execution_context.mode.name,
+            unit_testing,
+            execution_context.engine_version,
+        )
 
     except Exception as e:
         # Logging is set up is in this point, so we can log this exception that
@@ -518,12 +544,19 @@ def start(
         if (server is None) or (running_time < datetime.timedelta(seconds=http_wait_good_startup_seconds)):
             # Only terminate the process if the webhook server is not running,
             # otherwise the user can read the crash status from /status endpoint
-            logger.error("Raising the error and crashing away, running time was %s", running_time)
+            logger.error(
+                "Raising the error and crashing away, running time was %s Run-time version was:\n%s",
+                running_time,
+                run_state.version
+            )
             raise
         else:
             # Execution is dead.
             # Sleep forever, let the webhook still serve the requests.
-            logger.error("Main loop terminated. Entering to the web server wait mode.")
+            logger.error(
+                "Main loop terminated. Entering to the web server wait mode. Run-time version was:\n%s",
+                run_state.version,
+            )
             time.sleep(3600*24*365)
     finally:
         if server:

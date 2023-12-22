@@ -4,13 +4,16 @@ import logging
 import runpy
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable, Dict, Protocol, List, Optional, Union
+from typing import Callable, Dict, Protocol, List, Optional, Union, Set
+from urllib.parse import urlparse
+
 from packaging import version
 
 import pandas
 import pandas as pd
 
 from tradeexecutor.strategy.engine_version import SUPPORTED_TRADING_STRATEGY_ENGINE_VERSIONS, TradingStrategyEngineVersion
+from tradeexecutor.strategy.tag import StrategyTag
 from tradingstrategy.chain import ChainId
 from tradeexecutor.state.state import State
 from tradeexecutor.state.trade import TradeExecution
@@ -23,7 +26,6 @@ from tradeexecutor.strategy.reserve_currency import ReserveCurrency
 from tradeexecutor.strategy.strategy_type import StrategyType
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
 from tradingstrategy.client import Client
-from tradingstrategy.timebucket import TimeBucket
 from tradingstrategy.universe import Universe
 
 from tradeexecutor.strategy.universe_model import UniverseOptions
@@ -271,18 +273,6 @@ class CreateTradingUniverseProtocol(Protocol):
             """
 
 
-def pregenerated_create_trading_universe(universe: TradingStrategyUniverse) -> CreateTradingUniverseProtocol:
-    """Wrap existing trading universe, so it can be passed around for universe generators."""
-
-    def _inner(timestamp: pandas.Timestamp,
-            client: Optional[Client],
-            execution_context: ExecutionContext,
-            candle_time_frame_override: Optional[TimeBucket]=None):
-        return universe
-
-    return _inner
-
-
 @dataclass
 class StrategyModuleInformation:
     """Describe elements that we need to have in a strategy module.
@@ -312,10 +302,14 @@ class StrategyModuleInformation:
     #:
     trading_strategy_engine_version: TradingStrategyEngineVersion
 
+    #: Enable different strategy scripts.
+    #:
+    #: If not set default to ``StrategyType.managed_positions``.
+    #:
     trading_strategy_type: StrategyType
+
     trading_strategy_cycle: CycleDuration
-    trade_routing: TradeRouting
-    reserve_currency: ReserveCurrency
+
     decide_trades: DecideTradesProtocol | DecideTradesProtocol2
 
     #: If `execution_context.live_trading` is true then this function is called for
@@ -324,11 +318,24 @@ class StrategyModuleInformation:
     #: need to deal with new and deprecated trading pairs.
     create_trading_universe: CreateTradingUniverseProtocol
 
+    #: Routing hinting.
+    #:
+    #: Legacy option: most strategies can set this in
+    #: ``create_trading_universe()``. Default to ``TradeRouting.default``.
+    #:
+    trade_routing: Optional[TradeRouting] = None
+
     #: Blockchain id on which this strategy operates
     #:
     #: Valid for single chain strategies only
     chain_id: Optional[ChainId] = None
 
+    #: What currency we use for the strategy.
+    #:
+    #: Can be left out in new versions
+    #: and is set in ``create_trading_universe()``
+    #:
+    reserve_currency: Optional[ReserveCurrency] = None
 
     #: Only needed for backtests
     backtest_start: Optional[datetime.datetime] = None
@@ -338,6 +345,38 @@ class StrategyModuleInformation:
 
     #: Only needed for backtests
     initial_cash: Optional[float] = None
+
+    #: Strategy name
+    #:
+    #: Note that this must be also separately configured in the
+    #: frontend user interface, as name
+    #: is used before the strategy metadata is loaded.
+    #:
+    name: Optional[str] = None
+
+    #: Strategy short description
+    #:
+    #: 1 sentence description
+    #:
+    short_description: Optional[str] = None
+
+    #: Strategy long description
+    #:
+    #: Two paragraph description, may contain HTML.
+    #:
+    long_description: Optional[str] = None
+
+    #: Strategy icon
+    #:
+    #: Two paragraph description, may contain HTML.
+    #:
+    icon: Optional[str] = None
+
+    #: Any tags on the strategy.
+    #:
+    #: Set for ``tags`` attribute of a strategy module.
+    #:
+    tags: Optional[Set[StrategyTag]] = None
 
     def is_version_greater_or_equal_than(self, major: int, minor: int, patch: int) -> bool:
         """Check strategy module for its version compatibility."""
@@ -397,6 +436,24 @@ class StrategyModuleInformation:
         if self.initial_cash:
             assert type(self.initial_cash) in (int, float), f"Strategy module initial_cash variable, expected float instance, got {self.initial_cash.__class__}"
 
+        if self.name:
+            assert type(self.name) == str
+
+        if self.short_description:
+            assert type(self.short_description) == str
+
+        if self.long_description:
+            assert type(self.long_description) == str
+
+        if self.tags:
+            assert type(self.tags) == set
+            for t in self.tags:
+                assert isinstance(t, StrategyTag)
+
+        if self.icon:
+            result = urlparse(self.icon)
+            assert all([result.scheme, result.netloc]), f"Bad icon URL: {self.icon}"
+
     def validate_backtest(self):
         """Validate that the module is backtest runnable."""
         self.validate()
@@ -425,17 +482,21 @@ def parse_strategy_module(
     return StrategyModuleInformation(
         path,
         source_code,
-        python_module_exports.get("trading_strategy_engine_version"),
-        python_module_exports.get("trading_strategy_type"),
-        python_module_exports.get("trading_strategy_cycle"),
-        python_module_exports.get("trade_routing"),
-        python_module_exports.get("reserve_currency"),
-        python_module_exports.get("decide_trades"),
-        python_module_exports.get("create_trading_universe"),
-        python_module_exports.get("chain_id"),
-        _ensure_dt(python_module_exports.get("backtest_start")),
-        _ensure_dt(python_module_exports.get("backtest_end")),
-        python_module_exports.get("initial_cash"),
+        trading_strategy_engine_version=python_module_exports.get("trading_strategy_engine_version"),
+        trading_strategy_type=python_module_exports.get("trading_strategy_type", StrategyType.managed_positions),
+        trading_strategy_cycle=python_module_exports.get("trading_strategy_cycle"),
+        trade_routing=python_module_exports.get("trade_routing", TradeRouting.default),
+        reserve_currency=python_module_exports.get("reserve_currency"),
+        decide_trades=python_module_exports.get("decide_trades"),
+        create_trading_universe=python_module_exports.get("create_trading_universe"),
+        chain_id=python_module_exports.get("chain_id"),
+        backtest_start=_ensure_dt(python_module_exports.get("backtest_start")),
+        backtest_end=_ensure_dt(python_module_exports.get("backtest_end")),
+        initial_cash=python_module_exports.get("initial_cash"),
+        name=python_module_exports.get("name"),
+        short_description=python_module_exports.get("short_description"),
+        long_description=python_module_exports.get("long_description"),
+        tags=python_module_exports.get("tags"),
     )
 
 

@@ -383,7 +383,9 @@ def get_uniswap_for_pair(web3: Web3, address_map: dict, target_pair: TradingPair
     assert target_pair.exchange_address, f"Exchange address missing for {target_pair}"
     
     factory_address = Web3.to_checksum_address(target_pair.exchange_address)
-    assert factory_address == Web3.to_checksum_address(address_map["factory"]), "address_map[\"factory\"] and target_pair.exchange_address should be equal"
+    assert factory_address == Web3.to_checksum_address(address_map["factory"]), \
+        "address_map[\"factory\"] and target_pair.exchange_address should be equal\n" \
+        f"Got {factory_address} and {address_map['factory']} on pair {target_pair}"
     
     router_address = Web3.to_checksum_address(address_map["router"])
     position_manager_address = Web3.to_checksum_address(address_map["position_manager"])

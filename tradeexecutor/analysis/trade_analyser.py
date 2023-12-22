@@ -75,7 +75,11 @@ class TradeSummary:
     stop_losses: int
     undecided: int
     realised_profit: USDollarAmount
+
+    #: Value at the open positinos at the end
     open_value: USDollarAmount
+
+    #: Cash at hand at the end
     uninvested_cash: USDollarAmount
 
     initial_cash: USDollarAmount
@@ -168,6 +172,7 @@ class TradeSummary:
     average_duration_of_zero_loss_trades: Optional[datetime.timedelta] = None
     average_duration_of_all_trades: Optional[datetime.timedelta] = None
 
+    #: Profit in open positions at the end
     unrealised_profit: Optional[USDollarAmount] = None
 
 
@@ -185,14 +190,13 @@ class TradeSummary:
         initial_cash = self.initial_cash or 0
         self.return_percent = calculate_percentage(self.end_value - initial_cash, initial_cash)
         self.annualised_return_percent = calculate_annualised_return(self.return_percent, self.duration)
-
         self.winning_stop_losses_percent = calculate_percentage(self.winning_stop_losses, self.stop_losses)
         self.losing_stop_losses_percent = calculate_percentage(self.losing_stop_losses, self.stop_losses)
 
         self.winning_take_profits_percent = calculate_percentage(self.winning_take_profits, self.take_profits)
         self.losing_take_profits_percent = calculate_percentage(self.losing_take_profits, self.take_profits)
 
-    def to_dataframe(self, format_headings = True) -> pd.DataFrame:
+    def to_dataframe(self, format_headings=True) -> pd.DataFrame:
         """Creates a human-readable Pandas dataframe summary table from the object."""
 
         human_data = {
@@ -822,7 +826,7 @@ class TradeAnalysis:
             average_duration_of_all_trades = get_avg_trade_duration(all_durations)
 
         lp_fees_average_pc = lp_fees_paid / trade_volume if trade_volume else 0
-        
+
         return TradeSummary(
             won=won,
             lost=lost,
@@ -938,12 +942,25 @@ class TradeAnalysis:
 
         # get return % stats for long and short
         duration = all_stats_trade_summary.duration
-        
-        profit_long_pct = self.calculate_weighted_average_realised_profit(self.get_long_positions())
-        profit_short_pct = self.calculate_weighted_average_realised_profit(self.get_short_positions())
+
+        # Calculate TradingView like profit split
+        #
+        # We have total return % e.g. 74%. or 10,000 USD
+        # This is divided across long and short profits from all dollar profits.
+        # If long made 8000 USd then they get 74% * (8000/10000) profit %. = 59%
+        #
+        all_profit_usd = all_stats_trade_summary.unrealised_profit + all_stats_trade_summary.realised_profit
+        long_profit_usd = long_stats_trade_summary.realised_profit + long_stats_trade_summary.unrealised_profit
+        short_profit_usd = short_stats_trade_summary.realised_profit + short_stats_trade_summary.unrealised_profit
+        profit_long_pct = all_stats_trade_summary.return_percent * long_profit_usd / all_profit_usd
+        profit_short_pct = all_stats_trade_summary.return_percent * short_profit_usd / all_profit_usd
+
+        # profit_long_pct = self.calculate_weighted_average_realised_profit(self.get_long_positions())
+        # profit_short_pct = self.calculate_weighted_average_realised_profit(self.get_short_positions())
 
         all_stats.loc['Return %', 'Long'] = format_value_for_summary_table(as_percent(profit_long_pct))
         all_stats.loc['Return %', 'Short'] = format_value_for_summary_table(as_percent(profit_short_pct))
+
         all_stats.loc['Annualised return %', 'Long'] = format_value_for_summary_table(as_percent(calculate_annualised_return(profit_long_pct, duration)))
         all_stats.loc['Annualised return %', 'Short'] = format_value_for_summary_table(as_percent(calculate_annualised_return(profit_short_pct, duration)))
 

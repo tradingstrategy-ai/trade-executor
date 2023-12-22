@@ -210,10 +210,13 @@ class BacktestRoutingIgnoredModel(BacktestRoutingModel):
             )
         ]
 
-    def setup_trades(self,
-                     routing_state: BacktestRoutingState,
-                     trades: List[TradeExecution],
-                     check_balances=False):
+    def setup_trades(
+        self,
+        routing_state: BacktestRoutingState,
+        trades: List[TradeExecution],
+        check_balances=False,
+        rebroadcast=False,
+    ):
         """Strategy and live execution connection.
 
         Turns abstract strategy trades to real blockchain transactions.

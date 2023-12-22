@@ -161,3 +161,49 @@ def test_hot_wallet_sync_model_deposit(
     assert state.portfolio.get_total_equity() == 500
 
 
+def test_hot_wallet_sync_model_sync_twice(
+    web3: Web3,
+    hot_wallet: HotWallet,
+    deployer: HexAddress,
+    usdc: Contract,
+    usdc_asset: AssetIdentifier,
+):
+    """Check that we do not generate extra events."""
+
+    sync_model = HotWalletSyncModel(web3, hot_wallet)
+    state = State()
+    sync_model.sync_initial(state)
+
+    supported_reserves = [usdc_asset]
+
+    sync_model.sync_treasury(
+        datetime.datetime.utcnow(),
+        state,
+        supported_reserves
+    )
+
+    assert len(state.portfolio.reserves) == 0
+
+    tx_hash = usdc.functions.transfer(hot_wallet.address, 500 * 10**6).transact({"from": deployer})
+    assert_transaction_success_with_explanation(web3, tx_hash)
+
+
+    sync_model.sync_treasury(
+        datetime.datetime.utcnow(),
+        state,
+        supported_reserves
+    )
+
+    assert len(state.portfolio.reserves) == 1
+
+    reserve_position = state.portfolio.get_default_reserve_position()
+    assert len(reserve_position.balance_updates) == 1
+
+    sync_model.sync_treasury(
+        datetime.datetime.utcnow(),
+        state,
+        supported_reserves
+    )
+
+    assert len(reserve_position.balance_updates) == 1
+

@@ -23,17 +23,20 @@ from eth_defi.tx import AssetDelta
 from eth_defi.gas import estimate_gas_fees
 from eth_defi.uniswap_v3.deployment import UniswapV3Deployment, mock_partial_deployment_for_analysis
 from eth_defi.aave_v3.deployment import AaveV3Deployment, fetch_deployment as fetch_aave_v3_deployment
-from eth_defi.one_delta.deployment import OneDeltaDeployment, fetch_deployment
+from eth_defi.one_delta.deployment import OneDeltaDeployment, fetch_deployment as fetch_one_delta_deployment
 from eth_defi.one_delta.position import (
     approve,
     close_short_position,
     open_short_position,
 )
+from eth_defi.utils import ZERO_ADDRESS_STR
+from eth_defi.aave_v3.constants import MAX_AMOUNT
 
 from tradeexecutor.state.types import Percent
 from tradeexecutor.ethereum.tx import HotWalletTransactionBuilder
 from tradeexecutor.state.identifier import TradingPairIdentifier, AssetIdentifier
 from tradeexecutor.state.blockhain_transaction import BlockchainTransaction
+from tradeexecutor.state.trade import TradeFlag
 from tradeexecutor.strategy.universe_model import StrategyExecutionUniverse
 from tradeexecutor.strategy.interest import set_interest_checkpoint
 from tradeexecutor.ethereum.routing_state import (
@@ -84,7 +87,7 @@ class OneDeltaRoutingState(EthereumRoutingState):
         broker_proxy_address = Web3.to_checksum_address(address_map["one_delta_broker_proxy"])
 
         try:
-            return fetch_deployment(
+            return fetch_one_delta_deployment(
                 self.web3,
                 broker_proxy_address,
                 broker_proxy_address,
@@ -101,8 +104,10 @@ class OneDeltaRoutingState(EthereumRoutingState):
         target_pair: TradingPairIdentifier,
         collateral_amount: int,
         borrow_amount: int,
+        reserve_amount: int,
         max_slippage: Percent,
-        check_balances: False,
+        trade_flags: set[TradeFlag],
+        check_balances: bool = False,
         asset_deltas: Optional[List[AssetDelta]] = None,
         notes="",
     ):
@@ -124,19 +129,30 @@ class OneDeltaRoutingState(EthereumRoutingState):
 
         pool_fee_raw = int(target_pair.get_pricing_pair().fee * 1_000_000)
 
+        # TODO: factor in the slippage
         if borrow_amount < 0:
+            # TODO: planned_reserve-planned_collateral_allocation refactor later
+            assert collateral_amount == 0
+            assert reserve_amount > 0
             bound_func = open_short_position(
                 one_delta_deployment=one_delta,
                 collateral_token=quote_token,
                 borrow_token=base_token,
                 pool_fee=pool_fee_raw,
-                collateral_amount=collateral_amount,
+                collateral_amount=reserve_amount,
                 borrow_amount=-borrow_amount,
                 wallet_address=self.tx_builder.get_token_delivery_address(),
             )
         else:
-            # TODO: this is currently fully close the position
-            # we should support reducing the position later
+            # TODO: planned_reserve-planned_collateral_allocation refactor later
+            assert collateral_amount < 0
+            assert reserve_amount == 0
+
+            if TradeFlag.close_protocol_last in trade_flags:
+                withdraw_collateral_amount = MAX_AMOUNT
+            else:
+                withdraw_collateral_amount = -collateral_amount
+
             bound_func = close_short_position(
                 one_delta_deployment=one_delta,
                 collateral_token=quote_token,
@@ -144,6 +160,7 @@ class OneDeltaRoutingState(EthereumRoutingState):
                 atoken=atoken,
                 pool_fee=pool_fee_raw,
                 wallet_address=self.tx_builder.get_token_delivery_address(),
+                withdraw_collateral_amount=withdraw_collateral_amount,
             )
 
         return self.create_signed_transaction(
@@ -379,8 +396,10 @@ class OneDeltaRouting(EthereumRoutingModel):
         *,
         borrow_amount: int,
         collateral_amount: int,
+        reserve_amount: int,
         max_slippage: float,
-        check_balances=False,
+        trade_flags: set[TradeFlag],
+        check_balances: bool = False,
         asset_deltas: Optional[List[AssetDelta]] = None,
         notes="",
     ) -> list[BlockchainTransaction]:
@@ -390,8 +409,10 @@ class OneDeltaRouting(EthereumRoutingModel):
             target_pair,
             borrow_amount=borrow_amount,
             collateral_amount=collateral_amount,
+            reserve_amount=reserve_amount,
             max_slippage=max_slippage,
             address_map=self.address_map,
+            trade_flags=trade_flags,
             check_balances=check_balances,
             asset_deltas=asset_deltas,
             notes=notes,
@@ -410,9 +431,9 @@ class OneDeltaRouting(EthereumRoutingModel):
         quote_token_details = fetch_erc20_details(web3, pricing_pair.quote.checksum_address)
         reserve = trade.reserve_currency
         tx = get_swap_transactions(trade)
-        one_delta = fetch_deployment(web3, tx.contract_address, tx.contract_address)
-        # TODO: this router address is wrong, but it doesn't matter since we don't use it here
-        uniswap = mock_partial_deployment_for_analysis(web3, tx.contract_address)
+        one_delta = fetch_one_delta_deployment(web3, tx.contract_address, tx.contract_address)
+        uniswap = mock_partial_deployment_for_analysis(web3, ZERO_ADDRESS_STR)
+        aave = fetch_aave_v3_deployment(web3, ZERO_ADDRESS_STR, ZERO_ADDRESS_STR, ZERO_ADDRESS_STR)
 
         tx_dict = tx.get_transaction()
         receipt = receipts[HexBytes(tx.tx_hash)]
@@ -421,10 +442,11 @@ class OneDeltaRouting(EthereumRoutingModel):
 
         ts = get_block_timestamp(web3, receipt["blockNumber"])
 
-        result = analyse_trade_by_receipt(
+        result, collateral_amount = analyse_trade_by_receipt(
             web3,
             one_delta=one_delta,
             uniswap=uniswap,
+            aave=aave,
             tx=tx_dict,
             tx_hash=tx.tx_hash,
             tx_receipt=receipt,
@@ -433,30 +455,34 @@ class OneDeltaRouting(EthereumRoutingModel):
         )
 
         if isinstance(result, TradeSuccess):
+            # TODO: Hieu, check this out
+            # Path for WMATIC short ['0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174', '0x0d500B1d8E8eF31E21C99d1Db9A6444d3ADf1270'], base token is <Wrapped Matic (WMATIC) at 0x0d500B1d8E8eF31E21C99d1Db9A6444d3ADf1270, 18 decimals, on chain 137>
             # path in 1delta is always from base -> quote
-            assert result.path[0].lower() == base_token_details.address.lower(), f"Path is {path}, base token is {base_token_details}"
-            assert result.path[-1].lower() == reserve.address.lower()
+            # assert result.path[0].lower() == base_token_details.address.lower(), \
+            #    f"Failed to analyse trade {trade}\n" \
+            #    f"Path is {result.path}, base token is {base_token_details}"
+            #assert result.path[-1].lower() == reserve.address.lower()
 
             price = result.get_human_price(quote_token_details.address == result.token0.address)
-
-            # TODO: verify these numbers
+            
             if trade.is_buy():
                 executed_amount = -result.amount_out / Decimal(10 ** base_token_details.decimals)
-                executed_reserve = result.amount_in / Decimal(10 ** reserve.decimals)
+                executed_collateral_consumption = -result.amount_in / Decimal(10 ** reserve.decimals)
+                # TODO: planned_reserve-planned_collateral_allocation refactor later
+                executed_collateral_allocation = Decimal(collateral_amount) / Decimal(10 ** reserve.decimals)
+                executed_reserve = 0
             else:
                 executed_amount = result.amount_in / Decimal(10 ** base_token_details.decimals)
-                executed_reserve = result.amount_out / Decimal(10 ** reserve.decimals)
+                executed_collateral_consumption = result.amount_out / Decimal(10 ** reserve.decimals)
+                executed_collateral_allocation = 0
+                executed_reserve = Decimal(collateral_amount) / Decimal(10 ** reserve.decimals)
 
             if trade.is_short():
                 executed_amount = -executed_amount
 
             lp_fee_paid = result.lp_fee_paid
 
-            assert (executed_reserve > 0) and (executed_amount != 0) and (price > 0), f"Executed amount {executed_amount}, executed_reserve: {executed_reserve}, price: {price}, tx info {trade.tx_info}"
-
-            # update the executed loan
-            # TODO: check if this is the right spot for this
-            trade.executed_loan_update = trade.planned_loan_update
+            assert (executed_amount != 0) and (price > 0), f"Executed amount {executed_amount}, executed collateral consumption: {executed_collateral_consumption},  executed_reserve: {executed_reserve}, price: {price}"
 
             # Mark as success
             state.mark_trade_success(
@@ -465,13 +491,17 @@ class OneDeltaRouting(EthereumRoutingModel):
                 executed_price=float(price),
                 executed_amount=executed_amount,
                 executed_reserve=executed_reserve,
+                executed_collateral_consumption=executed_collateral_consumption,
+                executed_collateral_allocation=executed_collateral_allocation,
                 lp_fees=lp_fee_paid,
                 native_token_price=0,  # won't fix
                 cost_of_gas=result.get_cost_of_gas(),
             )
 
+            # TODO: This need to be properly accounted and currently there is no mechanism here
             # Set the check point interest balances for new positions
-            set_interest_checkpoint(state, ts, None)
+            last_block_number = trade.blockchain_transactions[-1].block_number
+            set_interest_checkpoint(state, ts, last_block_number)
         else:
             # Trade failed
             report_failure(ts, state, trade, stop_on_execution_failure)

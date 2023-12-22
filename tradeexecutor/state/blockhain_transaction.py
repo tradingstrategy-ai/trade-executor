@@ -223,7 +223,6 @@ class BlockchainTransaction:
     #:
     #: `{'value': 0, 'maxFeePerGas': 1844540158, 'maxPriorityFeePerGas': 1000000000, 'chainId': 61, 'from': '0x6B49598B34B9c7FbF7C57306d0b0578676D55ffA', 'gas': 100000, 'to': '0xF2E246BB76DF876Cef8b38ae84130F4F55De395b', 'data': '0x095ea7b30000000000000000000000006d411e0a54382ed43f02410ce1c7a7c122afa6e1ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff', 'nonce': 0}`
     #:
-
     details: Optional[Dict] = None
 
     #: Raw bytes of the signed transaction

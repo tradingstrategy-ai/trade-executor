@@ -2,9 +2,10 @@
 import datetime
 import logging
 import os
+import shutil
 from decimal import Decimal
 from pathlib import Path
-from typing import Optional, Tuple
+from typing import Optional, Tuple, Set
 
 from eth_defi.enzyme.vault import Vault
 from eth_defi.event_reader.reorganisation_monitor import create_reorganisation_monitor
@@ -37,9 +38,11 @@ from tradeexecutor.state.metadata import Metadata, OnChainData
 from tradeexecutor.state.state import State
 from tradeexecutor.state.store import JSONFileStore, StateStore
 from tradeexecutor.strategy.default_routing_options import TradeRouting
+from tradeexecutor.strategy.generic.generic_router import GenericRouting
 from tradeexecutor.strategy.pricing_model import PricingModelFactory
 from tradeexecutor.strategy.routing import RoutingModel
 from tradeexecutor.strategy.strategy_module import StrategyModuleInformation
+from tradeexecutor.strategy.tag import StrategyTag
 from tradeexecutor.strategy.sync_model import SyncModel, DummySyncModel
 from tradeexecutor.strategy.valuation import ValuationModelFactory
 from tradeexecutor.testing.dummy_wallet import DummyWalletSyncer
@@ -228,7 +231,7 @@ def create_approval_model(approval_type: ApprovalType) -> ApprovalModel:
         raise NotImplementedError()
 
 
-def create_state_store(state_file: Path) -> StateStore:
+def create_state_store(state_file: Path) -> JSONFileStore:
     store = JSONFileStore(state_file)
     return store
 
@@ -289,6 +292,7 @@ def create_metadata(
         backtest_html: Optional[Path] = None,
         key_metrics_backtest_cut_off_days: float = 90,
         badges: Optional[str] = None,
+        tags: Optional[Set[StrategyTag]] = None,
 ) -> Metadata:
     """Create metadata object from the configuration variables."""
 
@@ -329,6 +333,7 @@ def create_metadata(
         backtest_html=backtest_html,
         key_metrics_backtest_cut_off=datetime.timedelta(days=key_metrics_backtest_cut_off_days),
         badges=Metadata.parse_badges_configuration(badges),
+        tags=tags or set(),  # Always fill empty set
     )
 
     return metadata
@@ -425,6 +430,7 @@ def create_client(
 
         client.initialise_mock_data()
 
+        # For test strategies, running against a locally deployed Uniswap v2
         if mod.trade_routing == TradeRouting.user_supplied_routing_model:
             routing_model = UniswapV2Routing(
                 factory_router_map={
@@ -446,4 +452,37 @@ def create_client(
         # This run does not need to download any data
         pass
 
+    if mod.trade_routing == TradeRouting.default:
+        # We eill call GenericRouting.initialise() later with pair universe data loaded
+        logger.info("Using GenericRouting for Ethereum chains")
+        routing_model = GenericRouting(pair_configurator=None)
+
     return client, routing_model
+
+
+def backup_state(state_file: Path | str, backup_suffix="backup") -> Tuple[JSONFileStore, State]:
+    """Take a copy of the state file, then read the original file."""
+
+    logger.info("Backing up %s", state_file)
+
+    state_file = Path(state_file)
+    store = create_state_store(state_file)
+    assert not store.is_pristine(), f"State does not exists yet: {state_file}"
+
+    # Make a backup
+    # https://stackoverflow.com/a/47528275/315168
+    backup_file = None
+    for i in range(1, 99):  # Try 99 different iterateive backup filenames
+        backup_file = state_file.with_suffix(f".{backup_suffix}-{i}.json")
+        if os.path.exists(backup_file):
+            continue
+
+        shutil.copy(state_file, backup_file)
+        break
+    else:
+        raise RuntimeError(f"Could not create backup {backup_file}")
+
+    logger.info("Old state backed up as %s", backup_file)
+
+    state = store.load()
+    return store, state

@@ -8,19 +8,18 @@ from dataclasses import dataclass, field
 from decimal import Decimal
 from typing import Optional, Literal, TypeAlias
 
+from web3 import Web3
 from dataclasses_json import dataclass_json
 from eth_typing import HexAddress
 
 from eth_defi.uniswap_v2.utils import sort_tokens
-from tradeexecutor.utils.accuracy import sum_decimal, ensure_exact_zero
 from tradingstrategy.chain import ChainId
-from web3 import Web3
-
-from tradeexecutor.state.types import JSONHexAddress, USDollarAmount, LeverageMultiplier, USDollarPrice, Percent
 from tradingstrategy.lending import LendingProtocolType
 from tradingstrategy.stablecoin import is_stablecoin_like
 from tradingstrategy.types import PrimaryKey
 
+from tradeexecutor.utils.accuracy import sum_decimal, ensure_exact_zero, SUM_EPSILON
+from tradeexecutor.state.types import JSONHexAddress, USDollarAmount, LeverageMultiplier, USDollarPrice, Percent
 
 #: Asset unique id as a human-readable string.
 #:
@@ -32,9 +31,7 @@ from tradingstrategy.types import PrimaryKey
 AssetFriendlyId: TypeAlias = str
 
 
-@dataclass_json
-@dataclass
-class AssetType:
+class AssetType(enum.Enum):
     """What kind of asset is this.
 
     We mark special tokens that are dynamically created
@@ -111,7 +108,7 @@ class AssetIdentifier:
     #:
     #: Legacy data will default to ``None``.
     #:
-    type: AssetType | None = None
+    type: Optional[AssetType] = None
 
     #: Aave liquidation threhold for this asset
     #:
@@ -135,12 +132,16 @@ class AssetIdentifier:
         return self.chain_id == other.chain_id and self.address == other.address
 
     def __post_init__(self):
+        """Validate asset description initialisation."""
         assert type(self.address) == str, f"Got address {self.address} as {type(self.address)}"
         assert self.address.startswith("0x")
         self.address= self.address.lower()
         assert type(self.chain_id) == int
         assert type(self.decimals) == int, f"Bad decimals {self.decimals}"
         assert self.decimals >= 0
+
+        if self.type:
+            assert isinstance(self.type, AssetType), f"Got {self.type.__class__}: {self.type}"
 
     def get_identifier(self) -> AssetFriendlyId:
         """Assets are identified by their smart contract address.
@@ -623,7 +624,9 @@ class AssetWithTrackedValue:
 
     def __post_init__(self):
         assert isinstance(self.quantity, Decimal), f"Got {self.quantity.__class__}"
-        assert self.quantity > 0, f"Any tracked asset must have positive quantity, received {self.asset} = {self.quantity}"
+        # __post_init__ is also called on de-serialisation
+        # Quantity si ze
+        assert self.quantity >= 0, f"Any tracked asset must have positive quantity, received {self.asset} = {self.quantity}"
         assert self.last_usd_price is not None, "Price is None - asset price must set during initialisation"
         assert self.last_usd_price > 0
 
@@ -647,8 +650,10 @@ class AssetWithTrackedValue:
         delta: Decimal,
         price: USDollarPrice,
         when: datetime.datetime,
-        allow_negative=False,
+        allow_negative: bool = False,
         available_accrued_interest: Decimal = Decimal(0),
+        epsilon: Decimal = SUM_EPSILON,
+        close_position=False,
     ):
         """The tracked asset amount is changing due to position increase/reduce.
 
@@ -667,12 +672,21 @@ class AssetWithTrackedValue:
 
         if not allow_negative:
             total_available = self.quantity + available_accrued_interest
-            assert sum_decimal((total_available, delta,)) >= 0, f"Tracked asset cannot go negative: {self}. delta: {delta}, total available: {total_available}, quantity: {self.quantity}, interest: {available_accrued_interest}"
+            s = sum_decimal((total_available, delta,), epsilon=epsilon)
+
+            # See close_position=True
+            #
+            # Round loan value to zero
+            #
+            if close_position and (abs(s) < abs(delta * epsilon)) and s != 0:
+                delta = -self.quantity
+            else:
+                assert s >= 0, f"Tracked asset cannot go negative: {self}. delta: {delta}, total available: {total_available}, sum: {s}, quantity: {self.quantity}, interest: {available_accrued_interest}"
 
         self.quantity += delta
 
         # Fix decimal math issues
-        self.quantity = ensure_exact_zero(self.quantity)
+        self.quantity = ensure_exact_zero(self.quantity, epsilon=epsilon)
 
         # TODO: this is a temp hack for testing to make sure the borrowed quantity can be minimum 0
         if self.quantity < 0:

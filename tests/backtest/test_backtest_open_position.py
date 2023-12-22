@@ -36,7 +36,6 @@ from tradingstrategy.universe import Universe
 from tradingstrategy.chain import ChainId
 from tradingstrategy.timebucket import TimeBucket
 from tradeexecutor.strategy.cycle import CycleDuration
-from tradeexecutor.strategy.strategy_module import pregenerated_create_trading_universe
 from tradeexecutor.strategy.reserve_currency import ReserveCurrency
 from tradeexecutor.strategy.strategy_type import StrategyType
 from tradeexecutor.strategy.default_routing_options import TradeRouting
