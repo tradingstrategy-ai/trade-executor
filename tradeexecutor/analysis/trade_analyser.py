@@ -952,8 +952,12 @@ class TradeAnalysis:
         all_profit_usd = all_stats_trade_summary.unrealised_profit + all_stats_trade_summary.realised_profit
         long_profit_usd = long_stats_trade_summary.realised_profit + long_stats_trade_summary.unrealised_profit
         short_profit_usd = short_stats_trade_summary.realised_profit + short_stats_trade_summary.unrealised_profit
-        profit_long_pct = all_stats_trade_summary.return_percent * long_profit_usd / all_profit_usd
-        profit_short_pct = all_stats_trade_summary.return_percent * short_profit_usd / all_profit_usd
+        
+        profit_long_pct, profit_short_pct = 0, 0
+        
+        if all_stats_trade_summary.return_percent:
+            profit_long_pct = all_stats_trade_summary.return_percent * long_profit_usd / all_profit_usd
+            profit_short_pct = all_stats_trade_summary.return_percent * short_profit_usd / all_profit_usd
 
         # profit_long_pct = self.calculate_weighted_average_realised_profit(self.get_long_positions())
         # profit_short_pct = self.calculate_weighted_average_realised_profit(self.get_short_positions())
