@@ -147,6 +147,7 @@ def test_load_trading_and_lending_data_historical(persistent_test_client: Client
         universe_options=UniverseOptions(start_at=start_at, end_at=end_at),
         chain_id=ChainId.polygon,
         exchange_slugs="uniswap-v3",
+        reserve_assets={"0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174"},
     )
 
     strategy_universe = TradingStrategyUniverse.create_from_dataset(dataset)
@@ -185,7 +186,7 @@ def test_load_trading_and_lending_data_historical_certain_assets_only(persistent
         universe_options=UniverseOptions(start_at=start_at, end_at=end_at),
         chain_id=ChainId.polygon,
         exchange_slugs="uniswap-v3",
-        asset_symbols={"LINK", "WETH"},
+        asset_ids={"LINK", "WETH"},
         trading_fee=0.0005,
         reserve_assets={"0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174"}
     )

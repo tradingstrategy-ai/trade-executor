@@ -2080,7 +2080,7 @@ def load_trading_and_lending_data(
     exchange_slugs: Set[str] | str | None = None,
     liquidity=False,
     stop_loss_time_bucket: TimeBucket | None = None,
-    asset_symbols: Set[TokenSymbol] | None = None,
+    asset_ids: Set[TokenSymbol] | None = None,
     reserve_assets: Set[TokenSymbol | NonChecksummedAddress] = frozenset({"USDC"}),
     name: str | None = None,
     volatile_only=False,
@@ -2170,7 +2170,7 @@ def load_trading_and_lending_data(
         assert price_feed["open"][two_days_ago] > 0
         assert price_feed["open"][two_days_ago] < 10_000  # To the moon warning
 
-    :param asset_symbols:
+    :param asset_ids:
         Load only these lending reserves.
 
         If not given load all lending reserves available on a chain.
@@ -2206,7 +2206,7 @@ def load_trading_and_lending_data(
     assert isinstance(chain_id, ChainId)
 
     assert len(reserve_assets) == 1, f"Currently only one reserve asset is supported, got {reserve_assets}"
-    (reserve_asset_symbol,) = reserve_assets
+    (reserve_asset_id,) = reserve_assets
 
     if exchange_slugs is not None:
         if type(exchange_slugs) == str:
@@ -2217,26 +2217,29 @@ def load_trading_and_lending_data(
     lending_reserves = client.fetch_lending_reserve_universe()
     lending_reserves = lending_reserves.limit_to_chain(chain_id)
 
-    all_assets = asset_symbols | {reserve_asset_symbol}
+    if asset_ids is None:
+        asset_ids = set()
 
-    if asset_symbols:
+    all_assets = asset_ids | {reserve_asset_id}
+
+    if asset_ids:
         lending_reserves = lending_reserves.limit_to_assets(all_assets)
 
-    assert lending_reserves.get_count() > 0, f"No lending reserves found for {asset_symbols}"
+    assert lending_reserves.get_count() > 0, f"No lending reserves found for {asset_ids}"
 
     # Use addrress based lookups for certainty
-    if reserve_asset_symbol.startswith("0x"):
+    if reserve_asset_id.startswith("0x"):
         reserve_asset = lending_reserves.get_by_chain_and_address(
             chain_id,
-            reserve_asset_symbol
+            reserve_asset_id
         )
     else:
         reserve_asset = lending_reserves.get_by_chain_and_symbol(
             chain_id,
-            reserve_asset_symbol
+            reserve_asset_id
         )
 
-    assert reserve_asset, f"Reserve asset not in the lending reserve universe: {reserve_asset_symbol}"
+    assert reserve_asset, f"Reserve asset not in the lending reserve universe: {reserve_asset_id}"
 
     pairs_df = client.fetch_pair_universe().to_pandas()
 
@@ -2260,7 +2263,7 @@ def load_trading_and_lending_data(
     logger.info(
         "Setting up trading and lending universe on %s using %s as reserve asset, total %d pairs, range is %s",
         chain_id.get_name(),
-        reserve_asset_symbol,
+        reserve_asset_id,
         len(pairs_df),
         universe_options.get_range_description(),
         )

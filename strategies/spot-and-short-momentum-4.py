@@ -194,7 +194,7 @@ def create_trading_universe(
         chain_id=ChainId.polygon,
         exchange_slugs={"uniswap-v3"},
         reserve_assets={"USDC"},
-        asset_symbols={"LINK", "WMATIC", "WETH"},
+        asset_ids={"LINK", "WMATIC", "WETH"},
         trading_fee=0.0005,
         time_bucket=TimeBucket.d4,
         stop_loss_time_bucket=TimeBucket.h1,
