@@ -191,7 +191,7 @@ def create_trading_universe(
         # Ask for all Polygon data
         chain_id=ChainId.polygon,
         exchange_slugs={"uniswap-v3"},
-        reserve_assets={"USDC"},
+        reserve_assets={"0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174"},
         asset_ids={"LINK", "WMATIC", "WETH", "BAL"},
         trading_fee=0.0005,
         time_bucket=TimeBucket.d7,
