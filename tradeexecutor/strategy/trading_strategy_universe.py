@@ -1045,7 +1045,7 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
                 borrow_token.address,
             )
         except UnknownLendingReserve as e:
-            raise UnknownLendingReserve(f"Could not resolve {borrow_token}") from e
+            raise UnknownLendingReserve(f"Could not resolve borrowed token {borrow_token}") from e
 
         try:
             collateral_reserve = self.data_universe.lending_reserves.get_by_chain_and_address(
@@ -1053,7 +1053,7 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
                 collateral_token.address,
             )
         except UnknownLendingReserve as e:
-            raise UnknownLendingReserve(f"Could not resolve {collateral_token}") from e
+            raise UnknownLendingReserve(f"Could not resolve collateral token {collateral_token}") from e
 
         vtoken = translate_token(
             borrow_reserve.get_vtoken(),
