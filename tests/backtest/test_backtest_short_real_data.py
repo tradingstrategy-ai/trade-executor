@@ -49,7 +49,7 @@ def create_trading_universe(
 
     reverses = [
         (ChainId.polygon, LendingProtocolType.aave_v3, "WETH"),
-        (ChainId.polygon, LendingProtocolType.aave_v3, "USDC"),
+        (ChainId.polygon, LendingProtocolType.aave_v3, "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174"),
     ]
 
     dataset = load_partial_data(

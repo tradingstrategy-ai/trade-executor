@@ -53,7 +53,7 @@ TRADING_PAIR = (ChainId.polygon, "uniswap-v3", "WETH", "USDC", 0.0005)
 # NEW
 LENDING_RESERVES = [
     (ChainId.polygon, LendingProtocolType.aave_v3, "WETH"),
-    (ChainId.polygon, LendingProtocolType.aave_v3, "USDC"),
+    (ChainId.polygon, LendingProtocolType.aave_v3, "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174"),
 ]
 
 # How much % of the cash to put on a single trade

@@ -15,7 +15,7 @@ def test_get_aave_v3_candle_for_period(persistent_test_client):
 
     candles = get_aave_v3_candles_for_period(
         client,
-        "USDC",
+        "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174",
         137,
         datetime.datetime(2023, 1, 1),
         datetime.datetime(2023, 2, 1),
@@ -30,7 +30,7 @@ def test_get_aave_v3_raw_data_for_period(persistent_test_client):
 
     df = get_aave_v3_raw_data_for_period(
         client,
-        "USDC",
+        "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174",
         137,
         datetime.datetime(2023, 1, 1),
         datetime.datetime(2023, 2, 1),
@@ -43,7 +43,7 @@ def test_get_aave_v3_raw_data_for_period(persistent_test_client):
     "token, chain_id, amount, start_time, end_time",
     (
         (
-            "USDC",
+            "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174",
             137,
             10000 * 10**6,
             datetime.datetime(2023, 1, 1),
@@ -93,7 +93,6 @@ def test_estimate_loan_interests(persistent_test_client, token, chain_id, amount
     Compare interests calculated from "correct" method and estimation
     """
     client = persistent_test_client
-
 
     decimals = 18
     if token in ("USDC", "USDT"):
