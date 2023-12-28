@@ -230,6 +230,7 @@ def test_load_trading_and_lending_data_live(persistent_test_client: Client):
         universe_options=UniverseOptions(history_period=datetime.timedelta(days=7)),
         chain_id=ChainId.polygon,
         exchange_slugs="uniswap-v3",
+        reserve_assets={"0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174"},
     )
 
     assert dataset.history_period == datetime.timedelta(days=7)
