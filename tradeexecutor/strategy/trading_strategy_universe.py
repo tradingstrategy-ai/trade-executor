@@ -31,7 +31,7 @@ from tradingstrategy.pair import DEXPair, PandasPairUniverse, resolve_pairs_base
     filter_for_exchanges, filter_for_quote_tokens, StablecoinFilteringMode, filter_for_stablecoins, \
     HumanReadableTradingPairDescription, filter_for_chain, filter_for_base_tokens, filter_for_exchange, filter_for_trading_fee
 from tradingstrategy.timebucket import TimeBucket
-from tradingstrategy.types import TokenSymbol
+from tradingstrategy.types import TokenSymbol, NonChecksummedAddress
 from tradingstrategy.universe import Universe
 from tradingstrategy.utils.groupeduniverse import filter_for_pairs, NoDataAvailable
 
@@ -985,7 +985,7 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
             backtest_stop_loss_candles=stop_loss_candle_universe,
         )
 
-    def get_credit_supply_pair(self) -> TradingPairIdentifier:
+    def     get_credit_supply_pair(self) -> TradingPairIdentifier:
         """Get the credit supply trading pair.
 
         This trading pair identifies the trades where we move our strategy reserve
@@ -1760,6 +1760,8 @@ def load_partial_data(
 
         if isinstance(pairs, pd.DataFrame):
             # Prefiltered pairs
+            assert len(pairs) > 0, "The passed in pairs dataframe was empty"
+
             filtered_pairs_df = pairs
             our_pair_ids = pairs["pair_id"]
             exchange_ids = pairs["exchange_id"]
@@ -2079,7 +2081,7 @@ def load_trading_and_lending_data(
     liquidity=False,
     stop_loss_time_bucket: TimeBucket | None = None,
     asset_symbols: Set[TokenSymbol] | None = None,
-    reserve_asset_symbols: Set[TokenSymbol] = frozenset({"USDC",}),
+    reserve_assets: Set[TokenSymbol | NonChecksummedAddress] = frozenset({"USDC"}),
     name: str | None = None,
     volatile_only=False,
     trading_fee: Percent | None = None,
@@ -2178,7 +2180,7 @@ def load_trading_and_lending_data(
 
         For example set to ``0.0005`` to load only 5 BPS Uniswap pairs.
 
-    :param reserve_asset_symbols:
+    :param reserve_assets:
         In which currency, the trading pairs must be quoted for the lending pool.
 
         The reserve asset data is read from the lending reserve universe.
@@ -2203,8 +2205,8 @@ def load_trading_and_lending_data(
     assert isinstance(execution_context, ExecutionContext)
     assert isinstance(chain_id, ChainId)
 
-    assert len(reserve_asset_symbols) == 1, f"Currently only one reserve asset is supported, got {reserve_asset_symbols}"
-    (reserve_asset_symbol,) = reserve_asset_symbols
+    assert len(reserve_assets) == 1, f"Currently only one reserve asset is supported, got {reserve_assets}"
+    (reserve_asset_symbol,) = reserve_assets
 
     if exchange_slugs is not None:
         if type(exchange_slugs) == str:
@@ -2215,20 +2217,30 @@ def load_trading_and_lending_data(
     lending_reserves = client.fetch_lending_reserve_universe()
     lending_reserves = lending_reserves.limit_to_chain(chain_id)
 
-    if asset_symbols:
-        lending_reserves = lending_reserves.limit_to_assets(asset_symbols | {reserve_asset_symbol})
+    all_assets = asset_symbols | {reserve_asset_symbol}
 
-    reserve_asset = lending_reserves.get_by_chain_and_symbol(
-        chain_id,
-        reserve_asset_symbol
-    )
+    if asset_symbols:
+        lending_reserves = lending_reserves.limit_to_assets(all_assets)
+
+    assert lending_reserves.get_count() > 0, f"No lending reserves found for {asset_symbols}"
+
+    # Use addrress based lookups for certainty
+    if reserve_asset_symbol.startswith("0x"):
+        reserve_asset = lending_reserves.get_by_chain_and_address(
+            chain_id,
+            reserve_asset_symbol
+        )
+    else:
+        reserve_asset = lending_reserves.get_by_chain_and_symbol(
+            chain_id,
+            reserve_asset_symbol
+        )
 
     assert reserve_asset, f"Reserve asset not in the lending reserve universe: {reserve_asset_symbol}"
 
     pairs_df = client.fetch_pair_universe().to_pandas()
 
-    # Find out all volatile pairs traded against USDC and USDT on Polygon
-    pairs_df = filter_for_chain(pairs_df, ChainId.polygon)
+    pairs_df = filter_for_chain(pairs_df, chain_id)
     pairs_df = filter_for_stablecoins(pairs_df, StablecoinFilteringMode.only_volatile_pairs)
     pairs_df = filter_for_base_tokens(pairs_df, lending_reserves.get_asset_addresses())
 
@@ -2252,6 +2264,8 @@ def load_trading_and_lending_data(
         len(pairs_df),
         universe_options.get_range_description(),
         )
+
+    assert len(pairs_df) > 0, f"No trading pairs left after filtering"
 
     # We do not build the pair index here,
     # as we assume we filter out the pairs down a bit,

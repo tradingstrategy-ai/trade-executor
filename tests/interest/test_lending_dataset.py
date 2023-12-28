@@ -25,7 +25,7 @@ def test_load_lending_dataset(persistent_test_client: Client):
     ]
 
     reverses = [
-        (ChainId.polygon, LendingProtocolType.aave_v3, "USDC")
+        (ChainId.polygon, LendingProtocolType.aave_v3, "USDC.e")
     ]
 
     dataset = load_partial_data(
@@ -45,7 +45,7 @@ def test_load_lending_dataset(persistent_test_client: Client):
     # Lending reserves ok
     assert dataset.lending_reserves.get_count() == 1
     rates = dataset.lending_candles.supply_apr.get_rates_by_reserve(
-        (ChainId.polygon, LendingProtocolType.aave_v3, "USDC")
+        (ChainId.polygon, LendingProtocolType.aave_v3, "USDC.e")
     )
     assert rates["open"][pd.Timestamp("2023-01-01")] == pytest.approx(0.6998308843795215)
     assert rates["close"][pd.Timestamp("2023-01-01")] == pytest.approx(0.6589076823528996)
@@ -60,7 +60,7 @@ def test_construct_trading_universe_with_lending(persistent_test_client: Client)
     ]
 
     reverses = [
-        (ChainId.polygon, LendingProtocolType.aave_v3, "USDC")
+        (ChainId.polygon, LendingProtocolType.aave_v3, "USDC.e")
     ]
 
     dataset = load_partial_data(
@@ -83,7 +83,7 @@ def test_construct_trading_universe_with_lending(persistent_test_client: Client)
     # Lending reserves ok
     assert data_universe.lending_reserves.get_count() == 1
     rates = data_universe.lending_candles.supply_apr.get_rates_by_reserve(
-        (ChainId.polygon, LendingProtocolType.aave_v3, "USDC")
+        (ChainId.polygon, LendingProtocolType.aave_v3, "USDC.e")
     )
     assert rates["open"][pd.Timestamp("2023-01-01")] == pytest.approx(0.6998308843795215)
     assert rates["close"][pd.Timestamp("2023-01-01")] == pytest.approx(0.6589076823528996)
@@ -102,7 +102,7 @@ def test_get_credit_supply_trading_pair(persistent_test_client: Client):
     ]
 
     reverses = [
-        (ChainId.polygon, LendingProtocolType.aave_v3, "USDC")
+        (ChainId.polygon, LendingProtocolType.aave_v3, "USDC.e")
     ]
 
     dataset = load_partial_data(
@@ -121,7 +121,7 @@ def test_get_credit_supply_trading_pair(persistent_test_client: Client):
     # This trading pair identifies the trades where
     reserve_credit_supply_pair = strategy_universe.get_credit_supply_pair()
     assert reserve_credit_supply_pair.base.token_symbol == "aPolUSDC"
-    assert reserve_credit_supply_pair.quote.token_symbol == "USDC"
+    assert reserve_credit_supply_pair.quote.token_symbol == "USDC.e"
     assert reserve_credit_supply_pair.kind == TradingPairKind.credit_supply
 
     data_universe = strategy_universe.data_universe
@@ -158,7 +158,7 @@ def test_load_trading_and_lending_data_historical(persistent_test_client: Client
     assert data_universe.lending_reserves is not None
 
     # Check one loaded reserve metadata
-    usdc_reserve = data_universe.lending_reserves.get_by_chain_and_symbol(ChainId.polygon, "USDC")
+    usdc_reserve = data_universe.lending_reserves.get_by_chain_and_symbol(ChainId.polygon, "USDC.e")
     assert usdc_reserve.atoken_symbol == "aPolUSDC"
     assert usdc_reserve.vtoken_symbol == "variableDebtPolUSDC"
 
@@ -187,12 +187,13 @@ def test_load_trading_and_lending_data_historical_certain_assets_only(persistent
         exchange_slugs="uniswap-v3",
         asset_symbols={"LINK", "WETH"},
         trading_fee=0.0005,
+        reserve_assets={"0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174"}
     )
 
     strategy_universe = TradingStrategyUniverse.create_from_dataset(dataset)
     data_universe = strategy_universe.data_universe
 
-    usdc_reserve = data_universe.lending_reserves.get_by_chain_and_symbol(ChainId.polygon, "USDC")
+    usdc_reserve = data_universe.lending_reserves.get_by_chain_and_symbol(ChainId.polygon, "USDC.e")
     assert usdc_reserve.atoken_symbol == "aPolUSDC"
     assert usdc_reserve.vtoken_symbol == "variableDebtPolUSDC"
 
