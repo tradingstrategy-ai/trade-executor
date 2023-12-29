@@ -128,7 +128,8 @@ def console(
 
     execution_context = ExecutionContext(
         mode=ExecutionMode.preflight_check,
-        timed_task_context_manager=timed_task
+        timed_task_context_manager=timed_task,
+        engine_version=mod.trading_strategy_engine_version,
     )
 
     web3config = create_web3_config(
@@ -261,6 +262,7 @@ def console(
         "ExecutionMode": ExecutionMode,
         "ChainId": ChainId,
         "TimeBucket": TimeBucket,
+        "strategy_module": mod,
     }
 
     if not unit_testing:
