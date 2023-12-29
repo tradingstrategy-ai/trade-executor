@@ -378,6 +378,9 @@ class StrategyModuleInformation:
     #:
     tags: Optional[Set[StrategyTag]] = None
 
+    def __repr__(self):
+        return f"<StrategyModuleInformation {self.path}>"
+
     def is_version_greater_or_equal_than(self, major: int, minor: int, patch: int) -> bool:
         """Check strategy module for its version compatibility."""
         assert self.trading_strategy_engine_version, f"Strategy module does not contain trading_strategy_engine_version varible: {self.path}"
