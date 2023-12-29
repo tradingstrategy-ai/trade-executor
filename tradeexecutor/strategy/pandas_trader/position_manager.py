@@ -1479,8 +1479,6 @@ class PositionManager:
             pair
         )
 
-        logger.warning("Target params: %s", target_params)
-
         try:
             if delta > 0:
                 # Iincrease short
@@ -1510,8 +1508,6 @@ class PositionManager:
                 borrowed_quantity_delta = loan.borrowed.quantity - target_params.borrowed_quantity
 
                 reserves_released = Decimal(delta)
-
-                logger.warning("Decrease short %f %f", borrowed_quantity_delta, reserves_released)
 
                 _, adjust_trade, _ = state.trade_short(
                     strategy_cycle_at=self.timestamp,

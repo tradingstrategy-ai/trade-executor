@@ -191,6 +191,8 @@ class OneDeltaRoutingState(EthereumRoutingState):
                 withdraw_collateral_amount=-collateral_amount,
                 min_borrow_amount_out=0, # TODO: use borrow_amount and slippage?
             )
+        else:
+            raise ValueError(f"Wrong trade flags used: {trade_flags}")
 
         return self.create_signed_transaction(
             one_delta.broker_proxy,
