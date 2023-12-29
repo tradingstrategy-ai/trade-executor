@@ -855,7 +855,7 @@ class PositionManager:
         if not flags:
             flags = set()
 
-        flags = {TradeFlag.close, TradeFlag.reduce} | flags
+        flags = {TradeFlag.close} | flags
 
         position2, trade, created = self.state.create_trade(
             self.timestamp,
@@ -1222,7 +1222,7 @@ class PositionManager:
         if not flags:
             flags = set()
 
-        flags = {TradeFlag.open, TradeFlag.increase} | flags
+        flags = {TradeFlag.open} | flags
 
         position, trade, created = self.state.trade_short(
             self.timestamp,
@@ -1371,6 +1371,7 @@ class PositionManager:
         notes: Optional[str] = None,
         trade_type: TradeType = TradeType.rebalance,
         minimum_rebalance_trade_threshold: USDollarAmount = 0.0,
+        flags: Set[TradeFlag] | None = None,
     ) -> List[TradeExecution]:
         """Increase/decrease short based on the amount of collateral.
 
@@ -1442,6 +1443,11 @@ class PositionManager:
              )
             return []
 
+        if not flags:
+            flags = set()
+
+        flags = {TradeFlag.increase, TradeFlag.reduce} | flags
+
         state = self.state
 
         loan = position.loan
@@ -1492,6 +1498,7 @@ class PositionManager:
                     collateral_asset_price=1.0,
                     planned_collateral_consumption=target_params.total_collateral_quantity - loan.collateral.quantity - collateral_adjustment,
                     notes=notes,
+                    flags={TradeFlag.increase},
                 )
 
             else:
@@ -1515,6 +1522,7 @@ class PositionManager:
                     # See comments in update_short_loan()
                     planned_collateral_consumption=target_params.total_collateral_quantity - loan.collateral.quantity - reserves_released,
                     notes=notes,
+                    flags={TradeFlag.reduce},
                 )
         except LiquidationRisked as e:
             # Better error messag

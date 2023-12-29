@@ -461,3 +461,303 @@ def test_one_delta_live_strategy_short_open_accrue_interests(
     assert len(events) == 4
     assert len([event for event in events if event.asset.token_symbol == "variableDebtPolWETH"]) == 2
     assert len([event for event in events if event.asset.token_symbol == "aPolUSDC"]) == 2
+
+
+def test_one_delta_live_strategy_short_increase(
+    logger,
+    web3: Web3,
+    hot_wallet: HotWallet,
+    trading_strategy_universe: TradingStrategyUniverse,
+    one_delta_routing_model: OneDeltaRouting,
+    uniswap_v3_deployment: UniswapV3Deployment,
+    usdc: Contract,
+    weth: Contract,
+    asset_usdc,
+):
+    """Live 1delta trade.
+
+    - Trade ETH/USDC 0.3% pool
+
+    - Sets up a simple strategy that open a 2x short position then increase size in next cycle
+
+    - Start the strategy, check that the trading account is funded
+
+    - Advance to cycle 1 and make sure the short position on ETH is opened
+
+    - Advance to cycle 2 and make sure the short position is increased
+    """
+
+    def decide_trades(
+        timestamp: pd.Timestamp,
+        strategy_universe: TradingStrategyUniverse,
+        state: State,
+        pricing_model: PricingModel,
+        cycle_debug_data: dict
+    ) -> List[TradeExecution]:
+        """Opens a 2x short position and reduce to half in next trade cycle."""
+        
+        pair = strategy_universe.universe.pairs.get_single()
+
+        # Open for 1,000 USD
+        position_size = 1000.00
+
+        trades = []
+
+        position_manager = PositionManager(timestamp, strategy_universe, state, pricing_model)
+
+        if not position_manager.is_any_short_position_open():
+            trades += position_manager.open_short(
+                pair,
+                position_size,
+                leverage=2,
+            )
+        else:
+            position = position_manager.get_current_short_position()
+            trades += position_manager.adjust_short(
+                position,
+                position_size * 2,
+            )
+
+        return trades
+
+    routing_model = one_delta_routing_model
+
+    # Sanity check for the trading universe
+    # that we start with 1631 USD/ETH price
+    pair_universe = trading_strategy_universe.data_universe.pairs
+    pricing_method = OneDeltaLivePricing(web3, pair_universe, routing_model)
+
+    weth_usdc = pair_universe.get_single()
+    pair = translate_trading_pair(weth_usdc)
+
+    # Check that our preflight checks pass
+    routing_model.perform_preflight_checks_and_logging(pair_universe)
+
+    price_structure = pricing_method.get_buy_price(datetime.datetime.utcnow(), pair, None)
+    assert price_structure.price == pytest.approx(1631.0085715155444, rel=APPROX_REL)
+
+    # Set up an execution loop we can step through
+    state = State()
+    loop = set_up_simulated_execution_loop_one_delta(
+        web3=web3,
+        decide_trades=decide_trades,
+        universe=trading_strategy_universe,
+        state=state,
+        wallet_account=hot_wallet.account,
+        routing_model=routing_model,
+    )
+    loop.runner.run_state = RunState()  # Needed for visualisations
+
+    ts = get_latest_block_timestamp(web3)
+
+    loop.tick(
+        ts,
+        loop.cycle_duration,
+        state,
+        cycle=1,
+        live=True,
+    )
+
+    loop.update_position_valuations(
+        ts,
+        state,
+        trading_strategy_universe,
+        ExecutionMode.real_trading
+    )
+
+    loop.runner.check_accounts(trading_strategy_universe, state)
+
+    assert len(state.portfolio.open_positions) == 1
+
+    # After the first tick, we should have synced our reserves and opened the first position
+    mid_price = pricing_method.get_mid_price(ts, pair)
+    assert mid_price == pytest.approx(1630.1912407577722, rel=APPROX_REL)
+
+    usdc_id = f"{web3.eth.chain_id}-{usdc.address.lower()}"
+    assert state.portfolio.reserves[usdc_id].quantity == 9000
+    assert state.portfolio.open_positions[1].get_quantity() == pytest.approx(Decimal(-1.226751521259596300339))
+    assert state.portfolio.open_positions[1].get_value() == pytest.approx(1053.4960060852432, rel=APPROX_REL)
+
+    # mine a few block before running next tick
+    for i in range(1, 10):
+        mine(web3)
+
+    # trade another cycle to close the short position
+    ts = get_latest_block_timestamp(web3)
+    strategy_cycle_timestamp = snap_to_next_tick(ts, loop.cycle_duration)
+
+    loop.tick(
+        ts,
+        loop.cycle_duration,
+        state,
+        cycle=2,
+        live=True,
+        strategy_cycle_timestamp=strategy_cycle_timestamp,
+    )
+
+    loop.update_position_valuations(
+        ts,
+        state,
+        trading_strategy_universe,
+        ExecutionMode.real_trading
+    )
+
+    loop.runner.check_accounts(trading_strategy_universe, state)
+
+    # position should still be open
+    assert len(state.portfolio.open_positions) == 1
+
+    # check the position size get increased and reserve should be reduced
+    assert state.portfolio.reserves[usdc_id].quantity == pytest.approx(Decimal(8053.49603708524319))
+    assert state.portfolio.open_positions[1].get_quantity() == pytest.approx(Decimal(-2.32891530531))
+    assert state.portfolio.open_positions[1].get_value() == pytest.approx(2047.958913280439)
+
+
+def test_one_delta_live_strategy_short_reduce(
+    logger,
+    web3: Web3,
+    hot_wallet: HotWallet,
+    trading_strategy_universe: TradingStrategyUniverse,
+    one_delta_routing_model: OneDeltaRouting,
+    uniswap_v3_deployment: UniswapV3Deployment,
+    usdc: Contract,
+    weth: Contract,
+    asset_usdc,
+):
+    """Live 1delta trade.
+
+    - Trade ETH/USDC 0.3% pool
+
+    - Sets up a simple strategy that open a 2x short position then reduce size in next cycle
+
+    - Start the strategy, check that the trading account is funded
+
+    - Advance to cycle 1 and make sure the short position on ETH is opened
+
+    - Advance to cycle 2 and make sure the short position is reduced to half
+    """
+
+    def decide_trades(
+        timestamp: pd.Timestamp,
+        strategy_universe: TradingStrategyUniverse,
+        state: State,
+        pricing_model: PricingModel,
+        cycle_debug_data: dict
+    ) -> List[TradeExecution]:
+        """Opens a 2x short position and reduce to half in next trade cycle."""
+        
+        pair = strategy_universe.universe.pairs.get_single()
+
+        # Open for 1,000 USD
+        position_size = 1000.00
+
+        trades = []
+
+        position_manager = PositionManager(timestamp, strategy_universe, state, pricing_model)
+
+        if not position_manager.is_any_short_position_open():
+            trades += position_manager.open_short(
+                pair,
+                position_size,
+                leverage=2,
+            )
+        else:
+            position = position_manager.get_current_short_position()
+            trades += position_manager.adjust_short(
+                position,
+                position_size / 2,
+            )
+
+        return trades
+
+    routing_model = one_delta_routing_model
+
+    # Sanity check for the trading universe
+    # that we start with 1631 USD/ETH price
+    pair_universe = trading_strategy_universe.data_universe.pairs
+    pricing_method = OneDeltaLivePricing(web3, pair_universe, routing_model)
+
+    weth_usdc = pair_universe.get_single()
+    pair = translate_trading_pair(weth_usdc)
+
+    # Check that our preflight checks pass
+    routing_model.perform_preflight_checks_and_logging(pair_universe)
+
+    price_structure = pricing_method.get_buy_price(datetime.datetime.utcnow(), pair, None)
+    assert price_structure.price == pytest.approx(1631.0085715155444, rel=APPROX_REL)
+
+    # Set up an execution loop we can step through
+    state = State()
+    loop = set_up_simulated_execution_loop_one_delta(
+        web3=web3,
+        decide_trades=decide_trades,
+        universe=trading_strategy_universe,
+        state=state,
+        wallet_account=hot_wallet.account,
+        routing_model=routing_model,
+    )
+    loop.runner.run_state = RunState()  # Needed for visualisations
+
+    ts = get_latest_block_timestamp(web3)
+
+    loop.tick(
+        ts,
+        loop.cycle_duration,
+        state,
+        cycle=1,
+        live=True,
+    )
+
+    loop.update_position_valuations(
+        ts,
+        state,
+        trading_strategy_universe,
+        ExecutionMode.real_trading
+    )
+
+    loop.runner.check_accounts(trading_strategy_universe, state)
+
+    assert len(state.portfolio.open_positions) == 1
+
+    # After the first tick, we should have synced our reserves and opened the first position
+    mid_price = pricing_method.get_mid_price(ts, pair)
+    assert mid_price == pytest.approx(1630.1912407577722, rel=APPROX_REL)
+
+    usdc_id = f"{web3.eth.chain_id}-{usdc.address.lower()}"
+    assert state.portfolio.reserves[usdc_id].quantity == 9000
+    assert state.portfolio.open_positions[1].get_quantity() == pytest.approx(Decimal(-1.226751521259596300339))
+    assert state.portfolio.open_positions[1].get_value() == pytest.approx(1053.4960060852432, rel=APPROX_REL)
+
+    # mine a few block before running next tick
+    for i in range(1, 10):
+        mine(web3)
+
+    # trade another cycle to close the short position
+    ts = get_latest_block_timestamp(web3)
+    strategy_cycle_timestamp = snap_to_next_tick(ts, loop.cycle_duration)
+
+    loop.tick(
+        ts,
+        loop.cycle_duration,
+        state,
+        cycle=2,
+        live=True,
+        strategy_cycle_timestamp=strategy_cycle_timestamp,
+    )
+
+    loop.update_position_valuations(
+        ts,
+        state,
+        trading_strategy_universe,
+        ExecutionMode.real_trading
+    )
+
+    loop.runner.check_accounts(trading_strategy_universe, state)
+
+    # position should still be open
+    assert len(state.portfolio.open_positions) == 1
+
+    # check the position size get reduced and reserve should be increased
+    assert state.portfolio.reserves[usdc_id].quantity == pytest.approx(Decimal(9553.496036))
+    assert state.portfolio.open_positions[1].get_quantity() == pytest.approx(Decimal(-0.88737552451))
+    assert state.portfolio.open_positions[1].get_value() == pytest.approx(993.6677805639846)
