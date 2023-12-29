@@ -253,11 +253,11 @@ class TradeSummary:
                 else formatter(0)
             )
 
-        add_prop(self.average_trade, 'Average position:', as_percent)
-        add_prop(self.median_trade, 'Median position:', as_percent)
+        add_prop(self.average_trade, 'Average position', as_percent)
+        add_prop(self.median_trade, 'Median position', as_percent)
         add_prop(self.max_pos_cons, 'Most consecutive wins', as_integer)
         add_prop(self.max_neg_cons, 'Most consecutive losses', as_integer)
-        add_prop(self.max_realised_loss, 'Biggest realized risk', as_percent)
+        add_prop(self.max_realised_loss, 'Biggest realised risk', as_percent)
         add_prop(self.avg_realised_risk, 'Avg realised risk', as_percent)
         add_prop(self.max_pullback, 'Max pullback of total capital', as_percent)
         add_prop(self.max_loss_risk, 'Max loss risk at opening of position', as_percent)
@@ -273,6 +273,57 @@ class TradeSummary:
         return df
     
     @staticmethod
+    def help_links() -> dict[str, str]:
+        return {
+            "Trading period length": None,
+            "Return %": "https://tradingstrategy.ai/glossary/aggregate-return",
+            "Annualised return %": None,
+            "Cash at start": None,
+            "Value at end": None,
+            "Trade volume": "https://tradingstrategy.ai/glossary/volume",
+            "Position win percent": "https://tradingstrategy.ai/glossary/position",
+            "Total positions": "https://tradingstrategy.ai/glossary/position",
+            "Won positions": "https://tradingstrategy.ai/glossary/position",
+            "Lost positions": "https://tradingstrategy.ai/glossary/position",
+            "Stop losses triggered": "https://tradingstrategy.ai/glossary/stop-loss",
+            "Stop loss % of all": "https://tradingstrategy.ai/glossary/stop-loss",
+            "Stop loss % of lost": "https://tradingstrategy.ai/glossary/stop-loss",
+            "Winning stop losses": "https://tradingstrategy.ai/glossary/stop-loss",
+            "Winning stop losses percent": "https://tradingstrategy.ai/glossary/stop-loss",
+            "Losing stop losses": "https://tradingstrategy.ai/glossary/stop-loss",
+            "Losing stop losses percent": "https://tradingstrategy.ai/glossary/stop-loss",
+            "Take profits triggered": "https://tradingstrategy.ai/glossary/take-profit",
+            "Take profit % of all": "https://tradingstrategy.ai/glossary/take-profit",
+            "Take profit % of won": "https://tradingstrategy.ai/glossary/take-profit",
+            "Zero profit positions": "https://tradingstrategy.ai/glossary/position",
+            "Positions open at the end": "https://tradingstrategy.ai/glossary/open-position",
+            "Realised profit and loss": "https://tradingstrategy.ai/glossary/realised-profit-and-loss",
+            "Unrealised profit and loss": "https://tradingstrategy.ai/glossary/unrealised-profit-and-loss",
+            "Portfolio unrealised value": "https://tradingstrategy.ai/glossary/unrealised-profit-and-loss",
+            "Extra returns on lending pool interest": "https://tradingstrategy.ai/glossary/lending-pool",
+            "Cash left at the end": None,
+            "Average winning position profit %": None,
+            "Average losing position loss %": None,
+            "Biggest winning position %": None,
+            "Biggest losing position %": None,
+            "Average duration of winning positions": None,
+            "Average duration of losing positions": None,
+            "Average bars of winning positions": None,
+            "Average bars of losing positions": None,
+            "LP fees paid": "https://tradingstrategy.ai/glossary/liquidity-provider",
+            "LP fees paid % of volume": "https://tradingstrategy.ai/glossary/liquidity-provider",
+            "Average position": "https://tradingstrategy.ai/glossary/mean",
+            "Median position": "https://tradingstrategy.ai/glossary/median",
+            "Most consecutive wins": None,
+            "Most consecutive losses": None,
+            "Biggest realised risk": "https://tradingstrategy.ai/glossary/realised-risk",
+            "Avg realised risk": "https://tradingstrategy.ai/glossary/realised-risk",
+            "Max pullback of total capital": "https://tradingstrategy.ai/glossary/maximum-pullback",
+            "Max loss risk at opening of position": None,
+            "Max drawdown": "https://tradingstrategy.ai/glossary/maximum-drawdown",
+        }
+
+    @staticmethod
     def format_summary_dataframe(df: pd.DataFrame) -> pd.DataFrame:
         """Format the summary dataframe for display in Jupyter notebook with clickable links.
         
@@ -282,71 +333,12 @@ class TradeSummary:
         :return:
             Formatted dataframe with clickable links.
         """
-        headings = [
-            ("Trading period length", None),
-            ("Return %", "https://tradingstrategy.ai/glossary/aggregate-return"),
-            ("Annualised return %", None),
-            ("Cash at start", None),
-            ("Value at end", None),
-            ("Trade volume", "https://tradingstrategy.ai/glossary/volume"),
+        help_links = TradeSummary.help_links()
+        links = []
+        for h in df.index:
+                links.append(help_links.get(h, None))
 
-            ("Position win percent", "https://tradingstrategy.ai/glossary/position"),
-            ("Total positions", "https://tradingstrategy.ai/glossary/position"),
-            ("Won positions", "https://tradingstrategy.ai/glossary/position"),
-            ("Lost positions", "https://tradingstrategy.ai/glossary/position"),
-
-            ("Stop losses triggered", "https://tradingstrategy.ai/glossary/stop-loss"),
-            ("Stop loss % of all", "https://tradingstrategy.ai/glossary/stop-loss"),
-            ("Stop loss % of lost", "https://tradingstrategy.ai/glossary/stop-loss"),
-            ("Winning stop losses", "https://tradingstrategy.ai/glossary/stop-loss"),
-            ("Winning stop losses percent", "https://tradingstrategy.ai/glossary/stop-loss"),
-            ("Losing stop losses", "https://tradingstrategy.ai/glossary/stop-loss"),
-            ("Losing stop losses percent", "https://tradingstrategy.ai/glossary/stop-loss"),
-
-            ("Take profits triggered", "https://tradingstrategy.ai/glossary/take-profit"),
-            ("Take profit % of all", "https://tradingstrategy.ai/glossary/take-profit"),
-            ("Take profit % of won", "https://tradingstrategy.ai/glossary/take-profit"),
-
-            ("Zero profit positions", "https://tradingstrategy.ai/glossary/position"),
-            ("Positions open at the end", "https://tradingstrategy.ai/glossary/open-position"),
-            ("Realised profit and loss", "https://tradingstrategy.ai/glossary/realised-profit-and-loss"),
-            ("Unrealised profit and loss", "https://tradingstrategy.ai/glossary/unrealised-profit-and-loss"),
-            ("Portfolio unrealised value", "https://tradingstrategy.ai/glossary/unrealised-profit-and-loss"),
-            ("Extra returns on lending pool interest", "https://tradingstrategy.ai/glossary/lending-pool"),
-            ("Cash left at the end", None),
-
-            ("Average winning position profit %", None),
-            ("Average losing position loss %", None),
-            ("Biggest winning position %", None),
-            ("Biggest losing position %", None),
-            ("Average duration of winning positions", None),
-            ("Average duration of losing positions", None),
-        ]
-        
-        if "Average bars of winning positions" in df.index:
-            assert "Average bars of losing positions" in df.index, "Average bars of losing positions not found in dataframe"
-            headings.extend([
-                ("Average bars of winning positions", None),
-                ("Average bars of losing positions", None),
-            ])
-
-        headings.extend([
-            ("LP fees paid", "https://tradingstrategy.ai/glossary/liquidity-provider"),
-            ("LP fees paid % of volume", "https://tradingstrategy.ai/glossary/liquidity-provider"),
-            ("Average position", "https://tradingstrategy.ai/glossary/mean"),
-            ("Median position", "https://tradingstrategy.ai/glossary/median"),
-            ("Most consecutive wins", None),
-            ("Most consecutive losses", None),
-            ("Biggest realised risk", "https://tradingstrategy.ai/glossary/realised-risk"),
-            ("Avg realised risk", "https://tradingstrategy.ai/glossary/realised-risk"),
-            ("Max pullback of total capital", "https://tradingstrategy.ai/glossary/maximum-pullback"),
-            ("Max loss risk at opening of position", None),
-        ])
-
-        if "Max drawdown" in df.index:
-            headings.append(("Max drawdown", "https://tradingstrategy.ai/glossary/maximum-drawdown"))
-
-        df.index = [make_clickable(h, url) if url else h for h, url in headings]
+        df.index = [make_clickable(h, url) if url else h for h, url in zip(df.index, links)]
 
         return HTML(df.to_html(escape=False))
 
@@ -442,8 +434,8 @@ class TradeSummary:
         df4 = create_summary_table(data4, ["Stop losses", "Take profits"], "Position Exits")
         
         data5 = {
-            'Biggest realized risk': as_percent(self.max_loss_risk),
-            'Average realized risk': as_percent(self.avg_realised_risk),
+            'Biggest realised risk': as_percent(self.max_loss_risk),
+            'Average realised risk': as_percent(self.avg_realised_risk),
             'Max pullback of capital': as_percent(self.max_pullback),
             'Sharpe Ratio': as_decimal(self.sharpe_ratio),
             'Sortino Ratio': as_decimal(self.sortino_ratio),
@@ -906,9 +898,9 @@ class TradeAnalysis:
         self,
         time_bucket: Optional[TimeBucket] = None,
         state = None,
-        format_headings = True,
-    ) -> pd.DataFrame | HTML:
-        """Calculate some statistics how our trades went. This returns a table with 3 separate columns for overall, long and short.
+        urls = False,
+    ) -> pd.DataFrame:
+        """Calculate some statistics how our trades went. This returns a DataFrame with 3 separate columns for overall, long and short.
         
         For just a single column table for overall statistics, use :py:meth:calculate_summary_statistics() instead.
 
@@ -918,10 +910,8 @@ class TradeAnalysis:
         :param state:
             Optional, should be specified if user would like to see advanced statistics such as sharpe ratio, sortino ratio, etc.
 
-        :param format_headings:
-            Optional, if True, make headings clickable, directing user to relevant glossary link.
-
-            In this case, return ``HTML`` object.
+        :param urls:
+            Optional, if True, include an extra column for the urls for each row that link to the relevant glorssary documentation.
 
         :return:
             DataFrame with all the stats for overall, long and short.
@@ -962,8 +952,12 @@ class TradeAnalysis:
         all_profit_usd = all_stats_trade_summary.unrealised_profit + all_stats_trade_summary.realised_profit
         long_profit_usd = long_stats_trade_summary.realised_profit + long_stats_trade_summary.unrealised_profit
         short_profit_usd = short_stats_trade_summary.realised_profit + short_stats_trade_summary.unrealised_profit
-        profit_long_pct = all_stats_trade_summary.return_percent * long_profit_usd / all_profit_usd
-        profit_short_pct = all_stats_trade_summary.return_percent * short_profit_usd / all_profit_usd
+        
+        profit_long_pct, profit_short_pct = 0, 0
+        
+        if all_stats_trade_summary.return_percent:
+            profit_long_pct = all_stats_trade_summary.return_percent * long_profit_usd / all_profit_usd
+            profit_short_pct = all_stats_trade_summary.return_percent * short_profit_usd / all_profit_usd
 
         # profit_long_pct = self.calculate_weighted_average_realised_profit(self.get_long_positions())
         # profit_short_pct = self.calculate_weighted_average_realised_profit(self.get_short_positions())
@@ -974,10 +968,26 @@ class TradeAnalysis:
         all_stats.loc['Annualised return %', 'Long'] = format_value_for_summary_table(as_percent(calculate_annualised_return(profit_long_pct, duration)))
         all_stats.loc['Annualised return %', 'Short'] = format_value_for_summary_table(as_percent(calculate_annualised_return(profit_short_pct, duration)))
 
-        if format_headings:
-            return TradeSummary.format_summary_dataframe(all_stats)
+        if urls:
+            all_stats['help_links'] = [TradeSummary.help_links()[key] for key in all_stats.index]
 
         return all_stats
+
+    def render_summary_statistics_side_by_side(self, time_bucket: Optional[TimeBucket] = None, state = None) -> HTML:
+        """Render summary statistics as a JSON table.
+
+        :param time_bucket:
+            Optional, used to display average duration as 'number of bars' in addition to 'number of days'.
+
+        :param state:
+            Optional, should be specified if user would like to see advanced statistics such as sharpe ratio, sortino ratio, etc.
+
+        :return:
+            Returns a similar table to `calcualate_all_summary_stats_by_side`, but make it makes row headings clickable, directing user to relevant glossary link and, in this case, returns ``HTML`` object instaed of a pandas DataFrame.
+        """
+        all_stats = self.calculate_all_summary_stats_by_side(time_bucket, state)
+
+        return TradeSummary.format_summary_dataframe(all_stats)
 
     @staticmethod
     def get_capital_tied_at_open(position) -> Percent | None:
