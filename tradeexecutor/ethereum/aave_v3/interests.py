@@ -9,17 +9,22 @@ from tradingstrategy.chain import ChainId
 from tradingstrategy.lending import LendingReserve, LendingCandleType
 from tradingstrategy.client import Client
 from tradingstrategy.timebucket import TimeBucket
+from tradingstrategy.types import TokenSymbol, NonChecksummedAddress
 
 
 def get_aave_v3_candles_for_period(
     client: Client,
-    token: str,
+    asset_id: TokenSymbol | NonChecksummedAddress,
     chain_id: int,
     start_time: datetime.datetime,
     end_time: datetime.datetime = datetime.datetime.utcnow(),
 ):
     reserve_universe = client.fetch_lending_reserve_universe()
-    reserve: LendingReserve = reserve_universe.get_by_chain_and_symbol(ChainId(chain_id), token)
+
+    if asset_id.startswith("0x"):
+        reserve: LendingReserve = reserve_universe.get_by_chain_and_address(ChainId(chain_id), asset_id)
+    else:
+        reserve: LendingReserve = reserve_universe.get_by_chain_and_symbol(ChainId(chain_id), asset_id)
 
     lending_candles = client.fetch_lending_candles_by_reserve_id(
         reserve.reserve_id,
@@ -34,13 +39,17 @@ def get_aave_v3_candles_for_period(
 
 def get_aave_v3_raw_data_for_period(
     client: Client,
-    token: str,
+    asset_id: TokenSymbol | NonChecksummedAddress,
     chain_id: int,
     start_time: datetime.datetime,
     end_time: datetime.datetime = datetime.datetime.utcnow(),
 ):
     reserve_universe = client.fetch_lending_reserve_universe()
-    reserve: LendingReserve = reserve_universe.get_by_chain_and_symbol(ChainId(chain_id), token)
+
+    if asset_id.startswith("0x"):
+        reserve: LendingReserve = reserve_universe.get_by_chain_and_address(ChainId(chain_id), asset_id)
+    else:
+        reserve: LendingReserve = reserve_universe.get_by_chain_and_symbol(ChainId(chain_id), asset_id)
 
     # NOTE: This is very slow the 1st time
     pq_table = client.fetch_lending_reserves_all_time()
