@@ -34,8 +34,8 @@ def log_tween_factory(handler, registry: Registry):
             _req_id_country += 1  # Not atomic https://stackoverflow.com/questions/1717393/is-the-operator-thread-safe-in-python
             req_id = _req_id_country
 
-        country = request.headers.get("CF-IPCountry")
-        ip_addr = request.headers.get("CF-Connecting-IP")
+        country = request.headers.get("CF-IPCountry") or "<no country>"
+        ip_addr = request.headers.get("CF-Connecting-IP") or "<no CF IP>"
 
         logger.info("HTTP request #%d %s (%s): %s", req_id, ip_addr, country, request.url)
 
