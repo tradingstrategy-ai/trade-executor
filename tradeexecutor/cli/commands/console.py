@@ -153,6 +153,10 @@ def console(
         # Add to Python console singing
         web3config.add_hot_wallet_signing(hot_wallet)
 
+    run_state = RunState()
+    run_state.version = VersionInfo.read_docker_version()
+    run_state.executor_id = id
+
     client, routing_model = create_client(
         mod=mod,
         web3config=web3config,
@@ -195,6 +199,8 @@ def console(
         routing_model=routing_model,
         run_state=RunState(),
     )
+
+    run_state.source_code = run_description.source_code
 
     # We construct the trading universe to know what's our reserve asset
     universe_model: TradingStrategyUniverseModel = run_description.universe_model
@@ -263,6 +269,7 @@ def console(
         "ChainId": ChainId,
         "TimeBucket": TimeBucket,
         "strategy_module": mod,
+        "run_state": run_state,
     }
 
     if not unit_testing:

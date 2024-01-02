@@ -8,6 +8,7 @@ import logging
 import pandas as pd
 
 from tradeexecutor.cli.discord import post_logging_discord_image
+from tradeexecutor.statistics.in_memory_statistics import refresh_live_strategy_images
 from tradeexecutor.strategy.pricing_model import PricingModel
 from tradeexecutor.strategy.strategy_module import DecideTradesProtocol, DecideTradesProtocol2
 from tradeexecutor.strategy.sync_model import SyncModel
@@ -161,50 +162,7 @@ class PandasTraderRunner(StrategyRunner):
         :param small_image: 512 x 512 image
         :param large_image: 1920 x 1920 image
         """
-
-        small_image, small_image_dark = self.get_small_images(small_figure)
-        large_image, large_image_dark = self.get_large_images(large_figure)
-        
-        # uncomment if you want light mode for Discord
-        # small_figure.update_layout(template="plotly")
-        # large_figure.update_layout(template="plotly")
-
-        # don't need the dark images for png (only post light images to discord)
-        small_image_png, _ = self.get_image_and_dark_image(small_figure, format="png", width=512, height=512)
-        large_image_png, _ = self.get_image_and_dark_image(large_figure, format="png", width=1024, height=1024)
-
-        self.run_state.visualisation.update_image_data(
-            small_image,
-            large_image,
-            small_image_dark,
-            large_image_dark,
-            small_image_png,
-            large_image_png,
-        )
-
-        # Workaround: Kaleido backend is crashing
-        # https://github.com/tradingstrategy-ai/trade-executor/issues/699
-        import plotly.io as pio
-        scope = pio.kaleido.scope
-        scope._shutdown_kaleido()
-
-    def get_small_images(self, small_figure):
-        """Gets the png image of the figure and the dark theme png image. Images are 512 x 512."""
-        return self.get_image_and_dark_image(small_figure, width=512, height=512)
-    
-    def get_large_images(self, large_figure):
-        """Gets the png image of the figure and the dark theme png image. Images are 1024 x 1024."""
-        return self.get_image_and_dark_image(large_figure, width=1024, height=1024)
-    
-    def get_image_and_dark_image(self, figure, width, height, format="svg"):
-        """Renders the figure as a PNG image and a dark theme PNG image."""
-
-        image = render_plotly_figure_as_image_file(figure, width=width, height=height, format=format)
-        
-        figure.update_layout(template="plotly_dark")
-        image_dark = render_plotly_figure_as_image_file(figure, width=width, height=height, format=format)
-
-        return image, image_dark 
+        refresh_live_strategy_images(small_figure, large_figure)
 
     def report_strategy_thinking(self,
                                  strategy_cycle_timestamp: datetime.datetime,

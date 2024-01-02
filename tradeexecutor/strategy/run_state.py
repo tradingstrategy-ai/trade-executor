@@ -199,6 +199,9 @@ class RunState:
     #:
     version: VersionInfo = field(default_factory=VersionInfo)
 
+    def __repr__(self):
+        return f"<RunState for {self.executor_id}>"
+
     @staticmethod
     def serialise_exception() -> ExceptionData:
         """Serialised the latest raised Python exception.
