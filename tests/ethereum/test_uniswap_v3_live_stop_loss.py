@@ -302,7 +302,7 @@ def decide_trades_no_stop_loss(
             buy_amount,
         )
     else:
-        position_manager.close_all()
+        trades += position_manager.close_all()
 
     return trades
 
@@ -719,7 +719,7 @@ def test_long_short_table(
     loop.runner.run_state = RunState()  # needed for visualisations
 
     ts = get_latest_block_timestamp(web3)  # will not show trades due to the timestamp
-
+    
     # Make transaction confirmation step to skip,
     execution_model = loop.execution_model
     assert isinstance(execution_model, UniswapV3Execution)
@@ -767,7 +767,7 @@ def test_long_short_table(
     stats = calculate_summary_statistics(
         state,
         loop.execution_context.mode,
+        key_metrics_backtest_cut_off=datetime.timedelta(seconds=0)
     )
     loop.runner.run_state.summary_statistics = stats
-    loop.runner.run_state.summary_statistics.long_short_table.rows = {}
     loop.runner.run_state.make_exportable_copy().to_json()
