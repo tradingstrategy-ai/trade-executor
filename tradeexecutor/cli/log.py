@@ -104,6 +104,13 @@ def setup_file_logging(
     log_level: str | int = logging.INFO,
     http_logging=False,
 ):
+    """Create log file output.
+
+    - All log messages
+
+    - HTTP traffic only
+
+    """
     # https://stackoverflow.com/a/11111212/315168
 
     fmt = "%(asctime)s %(name)-50s %(levelname)-8s %(message)s"

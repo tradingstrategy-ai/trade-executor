@@ -11,7 +11,8 @@ from pathlib import Path
 from pyramid.registry import Registry
 from pyramid.request import Request
 
-logger = logging.getLogger(__name__)
+# Avoid logging.getLogger() here as we do not want this logger as the part of std logging system
+logger = logging.Logger(name="HTTP traffic")
 
 # Never propagate web logs as root logging output is assuemed to be public.
 # IP addresses and such are logged to their own file.
