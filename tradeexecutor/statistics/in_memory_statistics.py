@@ -59,7 +59,7 @@ def refresh_run_state(
     # Strategy charts
     if visualisation:
         assert universe, "Candle data must be available to update visualisations"
-        redraw_visualisations(state, universe)
+        redraw_visualisations(run_state, state, universe)
 
     # Set gas level warning
     if sync_model is not None:
