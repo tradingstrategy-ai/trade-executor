@@ -132,7 +132,7 @@ def setup_file_logging(
     if http_logging:
         # Delayed import, as we do not want to bring in web server machinery in backtesting
 
-        from tradeexecutor.webhook.web_log import configure_http_request_logging
+        from tradeexecutor.webhook.http_log import configure_http_request_logging
         # Create a logger for HTTP requests only
         configure_http_request_logging(Path(log_filename))
 
