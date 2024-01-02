@@ -20,6 +20,7 @@ from pyramid.view import forbidden_view_config
 
 from . import api
 from .error import exception_view
+from .web_log import log_tween_factory
 from ..state.metadata import Metadata
 from ..state.store import JSONFileStore
 from ..strategy.run_state import RunState
@@ -122,6 +123,7 @@ def create_pyramid_app(
         config.registry["run_state"] = run_state
 
         config.add_exception_view(exception_view)
+        config.add_tween("tradeexecutor.webhook.web_log.log_tween_factory")
 
         if production:
             # Because datadog import modifies the global process and messes up things,

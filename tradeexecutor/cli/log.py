@@ -7,6 +7,7 @@ import logging
 import sys
 from logging import Logger
 from os import PathLike
+from pathlib import Path
 from typing import Optional, List
 
 from tradeexecutor.utils.ring_buffer_logging_handler import RingBufferHandler
@@ -101,6 +102,7 @@ def setup_logging(
 def setup_file_logging(
     log_filename: str,
     log_level: str | int = logging.INFO,
+    http_logging=False,
 ):
     # https://stackoverflow.com/a/11111212/315168
 
@@ -119,6 +121,13 @@ def setup_file_logging(
     file_handler.setLevel(log_level)
 
     logging.getLogger().addHandler(file_handler)
+
+    if http_logging:
+        # Delayed import, as we do not want to bring in web server machinery in backtesting
+
+        from tradeexecutor.webhook.web_log import configure_http_request_logging
+        # Create a logger for HTTP requests only
+        configure_http_request_logging(Path(log_filename))
 
 
 def setup_in_memory_logging(logger):
