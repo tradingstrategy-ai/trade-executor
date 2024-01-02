@@ -7,6 +7,9 @@ from pyramid.events import NewResponse, subscriber
 def add_cors_headers(event):
     """Add CORS headers.
 
+    Trade executors run in a separate domain from the frontend, so these
+    are needed.
+
     See https://stackoverflow.com/a/47167858/315168.
     """
     event.response.headers.update({
