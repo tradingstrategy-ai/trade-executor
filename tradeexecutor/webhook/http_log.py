@@ -37,8 +37,9 @@ def log_tween_factory(handler, registry: Registry):
 
         country = request.headers.get("CF-IPCountry") or "<no country>"
         ip_addr = request.headers.get("CF-Connecting-IP") or "<no CF IP>"
+        user_agent = request.user_agent
 
-        http_logger.info("HTTP request #%d %s (%s): %s", req_id, ip_addr, country, request.url)
+        http_logger.info("HTTP request #%d %s (%s): %s by %s", req_id, ip_addr, country, request.url, user_agent)
 
         start = datetime.datetime.utcnow()
         try:
