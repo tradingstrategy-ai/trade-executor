@@ -3,6 +3,7 @@
 """
 import datetime
 import logging
+import threading
 from pathlib import Path
 
 from pyramid.registry import Registry
@@ -10,8 +11,14 @@ from pyramid.request import Request
 
 logger = logging.getLogger(__name__)
 
+# Never propagate web logs as root logging output is assuemed to be public.
+# IP addresses and such are logged to their own file.
+# https://stackoverflow.com/a/67364351/315168
+logger.propagate = False
+
 #: Unique id for every request - response pair
 _req_id_country = 0
+_req_lock = threading.Lock()
 
 
 def log_tween_factory(handler, registry: Registry):
@@ -20,8 +27,10 @@ def log_tween_factory(handler, registry: Registry):
 
         global _req_id_country
 
-        _req_id_country += 1
-        req_id = _req_id_country
+        with _req_lock:
+            # Should not timeout ever
+            _req_id_country += 1  # Not atomic https://stackoverflow.com/questions/1717393/is-the-operator-thread-safe-in-python
+            req_id = _req_id_country
 
         country = request.headers.get("CF-IPCountry")
         ip_addr = request.headers.get("CF-Connecting-IP")
