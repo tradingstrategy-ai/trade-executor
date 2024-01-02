@@ -229,7 +229,7 @@ def build_expected_asset_map(
             if asset not in mappings:
                 mappings[asset] = AssetToPositionsMapping(asset=asset)
                 mappings[asset].positions.add(p)
-                logger.info("Closed position #%d touched asset %s", p.position_id, asset.token_symbol)
+                logger.debug("Closed position #%d touched asset %s", p.position_id, asset.token_symbol)
 
     if pair_universe is not None:
         assert isinstance(pair_universe, PandasPairUniverse)

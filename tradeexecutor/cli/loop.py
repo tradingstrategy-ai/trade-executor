@@ -298,7 +298,7 @@ class ExecutionLoop:
         if self.run_state:
             self.run_state.source_code = run_description.source_code
 
-    def  refresh_live_run_state(
+    def refresh_live_run_state(
         self,
         state: State,
         visualisation=False,
@@ -1148,7 +1148,8 @@ class ExecutionLoop:
 
         # Set up live trading tasks using APScheduler
         executors = {
-            'default': ThreadPoolExecutor(1),
+            'default': ThreadPoolExecutor(1),  # Background executor for core tasks
+            'stats': ThreadPoolExecutor(1),  # Background executor for statistics calculations and visualisations
         }
         start_time = datetime.datetime(1970, 1, 1)
 
@@ -1157,6 +1158,8 @@ class ExecutionLoop:
         # Multithread support would need making the architecture more complex with various locks
         # that could then be additional source of bugs.
         scheduler = BlockingScheduler(executors=executors, timezone=datetime.timezone.utc)
+
+        # Core live trade execution loop
         scheduler.add_job(
             live_cycle,
             'interval',
