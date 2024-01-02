@@ -1,7 +1,7 @@
 from pathlib import Path
 
 from tradeexecutor.cli.log import setup_logging, setup_file_logging
-from tradeexecutor.webhook.web_log import http_logger
+from tradeexecutor.webhook.http_log import http_logger
 
 
 def test_http_log(tmpdir):
