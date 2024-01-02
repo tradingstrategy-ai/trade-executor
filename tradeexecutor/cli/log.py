@@ -11,7 +11,6 @@ from pathlib import Path
 from typing import Optional, List
 
 from tradeexecutor.utils.ring_buffer_logging_handler import RingBufferHandler
-from tradeexecutor.webhook.web_log import configure_http_request_logging
 
 try:
     import coloredlogs
@@ -124,6 +123,9 @@ def setup_file_logging(
     logging.getLogger().addHandler(file_handler)
 
     if http_logging:
+        # Delayed import, as we do not want to bring in web server machinery in backtesting
+
+        from tradeexecutor.webhook.web_log import configure_http_request_logging
         # Create a logger for HTTP requests only
         configure_http_request_logging(Path(log_filename))
 

@@ -1,5 +1,7 @@
 """Web server logging.
 
+- Output HTTP request and response metadata to a separate log file
+
 """
 import datetime
 import logging
