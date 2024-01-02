@@ -45,10 +45,10 @@ def log_tween_factory(handler, registry: Registry):
             response = handler(request)
             end = datetime.datetime.utcnow()
             duration = end - start
-            http_logger.info("HTTP response #%d duration:% %s", req_id, duration, request.url)
+            http_logger.info("HTTP response #%d duration:%s %s", req_id, duration, request.url)
             return response
         except Exception as e:
-            http_logger.info("HTTP response failed: %s", e)
+            http_logger.error("HTTP response #%d failed: %s", req_id, e)
             raise
 
     return log_tween
