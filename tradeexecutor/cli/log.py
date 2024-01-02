@@ -103,7 +103,7 @@ def setup_logging(
 def setup_file_logging(
     log_filename: str,
     log_level: str | int = logging.INFO,
-    web=False,
+    http_logging=False,
 ):
     # https://stackoverflow.com/a/11111212/315168
 
@@ -123,7 +123,7 @@ def setup_file_logging(
 
     logging.getLogger().addHandler(file_handler)
 
-    if web:
+    if http_logging:
         # Create a logger for HTTP requests only
         configure_http_request_logging(Path(log_filename))
 

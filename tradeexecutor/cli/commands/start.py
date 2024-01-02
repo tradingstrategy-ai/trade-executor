@@ -191,6 +191,7 @@ def start(
     setup_file_logging(
         f"logs/{id}.log",
         file_log_level,
+        http_logging=True,
     )
 
     try:

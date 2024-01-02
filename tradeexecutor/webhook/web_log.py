@@ -4,12 +4,13 @@
 import datetime
 import logging
 from pathlib import Path
-from urllib.request import Request
 
 from pyramid.registry import Registry
+from pyramid.request import Request
 
 logger = logging.getLogger(__name__)
 
+#: Unique id for every request - response pair
 _req_id_country = 0
 
 
@@ -25,14 +26,14 @@ def log_tween_factory(handler, registry: Registry):
         country = request.headers.get("CF-IPCountry")
         ip_addr = request.headers.get("CF-Connecting-IP")
 
-        logger.info("HTTP request #%d %s (%s): %s", req_id, ip_addr, country, request.full_url)
+        logger.info("HTTP request #%d %s (%s): %s", req_id, ip_addr, country, request.url)
 
         start = datetime.datetime.utcnow()
         try:
             response = handler(request)
             end = datetime.datetime.utcnow()
             duration = end - start
-            logger.info("HTTP response #%d duration:% %s", req_id, duration, request.full_url)
+            logger.info("HTTP response #%d duration:% %s", req_id, duration, request.url)
             return response
         except Exception as e:
             logger.info("HTTP response failed: %s", e)
