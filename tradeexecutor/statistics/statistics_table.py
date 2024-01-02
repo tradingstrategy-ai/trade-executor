@@ -121,7 +121,7 @@ def serialise_long_short_stats_as_json_table(
         if summary_index in summary.index:
             metric_data = summary.loc[summary_index]
 
-            rows[key_metric_kind] = KeyMetric(
+            rows[key_metric_kind.value] = KeyMetric(
                 kind=key_metric_kind,
                 value={"All": metric_data[0], "Long": metric_data[1], "Short": metric_data[2]},
                 help_link=metric_data[3],
@@ -135,12 +135,12 @@ def serialise_long_short_stats_as_json_table(
         average_bars_of_winning_positions = summary.loc['Average bars of winning positions']
         average_bars_of_losing_positions = summary.loc['Average bars of losing positions']
 
-        rows[KeyMetricKind.average_bars_of_winning_positions] = KeyMetric(
+        rows[KeyMetricKind.average_bars_of_winning_positions.value] = KeyMetric(
             kind=KeyMetricKind.average_bars_of_winning_positions,
             value={"All": average_bars_of_winning_positions[0], "Long": average_bars_of_winning_positions[1], "Short": average_bars_of_winning_positions[2]},
             help_link=average_bars_of_winning_positions[3],
         )
-        rows[KeyMetricKind.average_bars_of_losing_positions] = KeyMetric(
+        rows[KeyMetricKind.average_bars_of_losing_positions.value] = KeyMetric(
             kind=KeyMetricKind.average_bars_of_losing_positions,
             value={"All": average_bars_of_losing_positions[0], "Long": average_bars_of_losing_positions[1], "Short": average_bars_of_losing_positions[2]},
             help_link=average_bars_of_losing_positions[3],

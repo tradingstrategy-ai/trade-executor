@@ -122,7 +122,7 @@ def calculate_summary_statistics(
 
     key_metrics = {m.kind.value: m for m in calculate_key_metrics(state, backtested_state, required_history=key_metrics_backtest_cut_off)}
 
-    # long_short_table = serialise_long_short_stats_as_json_table(state, backtested_state, key_metrics_backtest_cut_off)
+    long_short_table = serialise_long_short_stats_as_json_table(state, backtested_state, key_metrics_backtest_cut_off)
 
     logger.info("calculate_summary_statistics() finished, took %s seconds", perf_counter() - func_started_at)
 
@@ -138,5 +138,5 @@ def calculate_summary_statistics(
         backtest_metrics_cut_off_period=key_metrics_backtest_cut_off,
         return_all_time=returns_all_time,
         return_annualised=returns_annualised,
-        # long_short_table=long_short_table,
+        long_short_table=long_short_table,
     )

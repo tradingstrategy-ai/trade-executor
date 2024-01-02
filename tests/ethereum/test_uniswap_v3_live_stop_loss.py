@@ -46,6 +46,7 @@ from tradeexecutor.testing.simulated_execution_loop import set_up_simulated_exec
 from tradeexecutor.testing.synthetic_price_data import generate_ohlcv_candles
 from tradeexecutor.utils.blockchain import get_latest_block_timestamp
 from tradeexecutor.visual.image_output import open_plotly_figure_in_browser, open_bytes_in_browser
+from tradeexecutor.statistics.summary import calculate_summary_statistics
 
 
 #: How much values we allow to drift.
@@ -301,7 +302,7 @@ def decide_trades_no_stop_loss(
             buy_amount,
         )
     else:
-        position_manager.close_all()
+        trades += position_manager.close_all()
 
     return trades
 
@@ -404,7 +405,7 @@ def test_live_stop_loss(
         routing_model=routing_model,
     )
     loop.runner.run_state = RunState()  # Needed for visualisations
-
+    
     ts = get_latest_block_timestamp(web3)
 
     loop.tick(
@@ -472,7 +473,6 @@ def test_live_stop_loss(
     assert state.portfolio.reserves[usdc_id].quantity == pytest.approx(Decimal('8588.907521'))
 
 
-
 def test_live_stop_loss_missing(
         logger,
         web3: Web3,
@@ -500,6 +500,8 @@ def test_live_stop_loss_missing(
     )
     loop.runner.run_state = RunState()
 
+    
+    
     ts = get_latest_block_timestamp(web3)
 
     loop.tick(
@@ -692,3 +694,80 @@ def test_refresh_visualisations(
         open_bytes_in_browser(large_image_png)
 
 
+def test_long_short_table(
+    logger,
+    web3: Web3,
+    deployer: HexAddress,
+    trader: LocalAccount,
+    trading_strategy_universe: TradingStrategyUniverse,
+    routing_model: UniswapV3Routing,
+    uniswap_v3: UniswapV3Deployment,
+    usdc_token: Contract,
+    weth_token: Contract,
+):
+    # Set up an execution loop we can step through
+    state = State()
+    loop = set_up_simulated_execution_loop_uniswap_v3(
+        web3=web3,
+        decide_trades=decide_trades_no_stop_loss,
+        universe=trading_strategy_universe,
+        state=state,
+        wallet_account=trader,
+        routing_model=routing_model,
+    )
+
+    loop.runner.run_state = RunState()  # needed for visualisations
+
+    ts = get_latest_block_timestamp(web3)  # will not show trades due to the timestamp
+    
+    # Make transaction confirmation step to skip,
+    execution_model = loop.execution_model
+    assert isinstance(execution_model, UniswapV3Execution)
+
+    # Set confirmation timeout to negative
+    # to signal we are testing broadcast problems
+    execution_model.confirmation_timeout = datetime.timedelta(seconds=-1)
+
+    strategy_cycle_timestamp = snap_to_previous_tick(ts, loop.cycle_duration)
+
+    loop.tick(
+        ts,
+        loop.cycle_duration,
+        state,
+        cycle=1,
+        live=True,
+        strategy_cycle_timestamp=strategy_cycle_timestamp,
+    )
+
+    strategy_cycle_timestamp = snap_to_next_tick(ts, loop.cycle_duration)
+
+    loop.tick(
+        ts,
+        loop.cycle_duration,
+        state,
+        cycle=2,
+        live=True,
+        strategy_cycle_timestamp=strategy_cycle_timestamp,
+    )
+    
+    ts = get_latest_block_timestamp(web3)
+    strategy_cycle_timestamp = snap_to_next_tick(ts, loop.cycle_duration)
+
+    loop.tick(
+        ts,
+        loop.cycle_duration,
+        state,
+        cycle=3,
+        live=True,
+        strategy_cycle_timestamp=strategy_cycle_timestamp,
+    )
+    
+    # now there should be 2 trades completed
+    # test long short table
+    stats = calculate_summary_statistics(
+        state,
+        loop.execution_context.mode,
+        key_metrics_backtest_cut_off=datetime.timedelta(seconds=0)
+    )
+    loop.runner.run_state.summary_statistics = stats
+    loop.runner.run_state.make_exportable_copy().to_json()
