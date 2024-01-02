@@ -343,7 +343,6 @@ def start(
         run_state = RunState()
         run_state.version = VersionInfo.read_docker_version()
         run_state.executor_id = id
-
         run_state.hot_wallet_gas_warning_level = Decimal(gas_balance_warning_level)
 
         # Create our webhook server

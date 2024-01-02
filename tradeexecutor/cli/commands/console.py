@@ -32,6 +32,7 @@ from ..bootstrap import prepare_executor_id, prepare_cache, create_web3_config, 
     create_state_store, create_client
 from ..log import setup_logging
 from ..version_info import VersionInfo
+from ...statistics.in_memory_statistics import refresh_run_state
 from ...strategy.approval import UncheckedApprovalModel
 from ...strategy.bootstrap import make_factory_from_strategy_mod
 from ...strategy.description import StrategyExecutionDescription
@@ -153,6 +154,10 @@ def console(
         # Add to Python console singing
         web3config.add_hot_wallet_signing(hot_wallet)
 
+    run_state = RunState()
+    run_state.version = VersionInfo.read_docker_version()
+    run_state.executor_id = id
+
     client, routing_model = create_client(
         mod=mod,
         web3config=web3config,
@@ -195,6 +200,8 @@ def console(
         routing_model=routing_model,
         run_state=RunState(),
     )
+
+    run_state.source_code = run_description.source_code
 
     # We construct the trading universe to know what's our reserve asset
     universe_model: TradingStrategyUniverseModel = run_description.universe_model
@@ -241,6 +248,15 @@ def console(
     if routing_model is None:
         routing_model = runner.routing_model
 
+    refresh_run_state(
+        run_state,
+        state,
+        execution_context,
+        visualisation=True,
+        universe=universe,
+        sync_model=sync_model,
+    )
+
     # Set up the default objects
     # availalbe in the interactive session
     bindings = {
@@ -263,6 +279,7 @@ def console(
         "ChainId": ChainId,
         "TimeBucket": TimeBucket,
         "strategy_module": mod,
+        "run_state": run_state,
     }
 
     if not unit_testing:

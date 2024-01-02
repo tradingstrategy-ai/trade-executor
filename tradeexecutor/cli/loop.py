@@ -25,6 +25,7 @@ from tradeexecutor.ethereum.enzyme.vault import EnzymeVaultSyncModel
 from tradeexecutor.ethereum.tx import TransactionBuilder
 from tradeexecutor.ethereum.wallet import perform_gas_level_checks
 from tradeexecutor.state.metadata import Metadata
+from tradeexecutor.statistics.in_memory_statistics import refresh_run_state
 from tradeexecutor.statistics.summary import calculate_summary_statistics
 from tradeexecutor.strategy.account_correction import check_accounts, UnexpectedAccountingCorrectionIssue
 from tradeexecutor.strategy.dummy import DummyExecutionModel
@@ -319,38 +320,16 @@ class ExecutionLoop:
 
         run_state = self.run_state
 
-        # Strategy statistics
-        # Even if the strategy has no action yet (deposits, trades)
-        # we need to calculate these statistics, as this will
-        # calculate the backtested metrics using in strategy summary tiles
-        logger.info("refresh_live_run_state() - calculating summary statistics")
-        stats = calculate_summary_statistics(
+        refresh_run_state(
+            run_state,
             state,
-            self.execution_context.mode,
-            backtested_state=self.metadata.backtested_state,
-            key_metrics_backtest_cut_off=self.metadata.key_metrics_backtest_cut_off,
+            self.execution_context,
+            visualisation,
+            universe,
+            self.sync_model,
+            self.metadata.backtested_state,
+            self.metadata.key_metrics_backtest_cut_off,
         )
-        self.run_state.summary_statistics = stats
-
-        # Frozen positions is needed for fault checking hooks
-        run_state.frozen_positions = len(state.portfolio.frozen_positions)
-
-        # Strategy charts
-        if visualisation:
-            assert universe, "Candle data must be available to update visualisations"
-            self.runner.refresh_visualisations(state, universe)
-
-        # Set gas level warning
-        sync_model = self.sync_model
-        hot_wallet = sync_model.get_hot_wallet()
-        web3 = getattr(sync_model, "web3", None)  # TODO: Typing
-
-        if web3 is not None:
-            perform_gas_level_checks(
-                web3,
-                run_state,
-                hot_wallet,
-            )
 
         # Mark last refreshed
         run_state.bumb_refreshed()
