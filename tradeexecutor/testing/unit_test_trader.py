@@ -8,7 +8,7 @@ from tradingstrategy.candle import GroupedCandleUniverse
 
 from tradeexecutor.state.state import State, TradeType
 from tradeexecutor.state.position import TradingPosition
-from tradeexecutor.state.trade import TradeExecution
+from tradeexecutor.state.trade import TradeExecution, TradeFlag 
 from tradeexecutor.state.identifier import TradingPairIdentifier
 from tradeexecutor.utils.leverage_calculations import LeverageEstimate
 
@@ -186,6 +186,7 @@ class UnitTestTrader:
             collateral_asset_price=1.0,
             planned_collateral_consumption=estimation.additional_collateral_quantity,
             lp_fees_estimated=estimation.lp_fees,
+            flags={TradeFlag.open},
         )
 
         if trade.planned_loan_update:
@@ -206,6 +207,7 @@ class UnitTestTrader:
             trade_type=TradeType.rebalance,
             reserve_currency=pair.get_pricing_pair().quote,
             collateral_asset_price=1.0,
+            flags={TradeFlag.close},
         )
 
         if trade.planned_loan_update:

@@ -28,6 +28,7 @@ from eth_defi.one_delta.position import (
     approve,
     close_short_position,
     open_short_position,
+    reduce_short_position,
 )
 from eth_defi.utils import ZERO_ADDRESS_STR
 from eth_defi.aave_v3.constants import MAX_AMOUNT
@@ -121,16 +122,18 @@ class OneDeltaRoutingState(EthereumRoutingState):
             self.check_has_enough_tokens(quote_token, collateral_amount)
 
         logger.info(
-            "Creating a trade for %s, slippage tolerance %f, borrow amount in %d",
+            "Creating a trade for %s, slippage tolerance %f, borrow amount in %d. Trade flags are %s",
             target_pair,
             max_slippage,
             borrow_amount,
+            trade_flags,
         )
 
         pool_fee_raw = int(target_pair.get_pricing_pair().fee * 1_000_000)
 
         # TODO: factor in the slippage
-        if borrow_amount < 0:
+        if TradeFlag.open in trade_flags:
+            assert  borrow_amount < 0
             # TODO: planned_reserve-planned_collateral_allocation refactor later
             assert collateral_amount == 0
             assert reserve_amount > 0
@@ -143,7 +146,7 @@ class OneDeltaRoutingState(EthereumRoutingState):
                 borrow_amount=-borrow_amount,
                 wallet_address=self.tx_builder.get_token_delivery_address(),
             )
-        else:
+        elif TradeFlag.close in trade_flags or TradeFlag.close_protocol_last in trade_flags:
             # TODO: planned_reserve-planned_collateral_allocation refactor later
             assert collateral_amount < 0
             assert reserve_amount == 0
@@ -162,6 +165,34 @@ class OneDeltaRoutingState(EthereumRoutingState):
                 wallet_address=self.tx_builder.get_token_delivery_address(),
                 withdraw_collateral_amount=withdraw_collateral_amount,
             )
+        elif TradeFlag.increase in trade_flags:
+            assert borrow_amount < 0
+
+            bound_func = open_short_position(
+                one_delta_deployment=one_delta,
+                collateral_token=quote_token,
+                borrow_token=base_token,
+                pool_fee=pool_fee_raw,
+                collateral_amount=reserve_amount,
+                borrow_amount=-borrow_amount,
+                wallet_address=self.tx_builder.get_token_delivery_address(),
+            )
+        elif TradeFlag.reduce in trade_flags:
+            assert borrow_amount > 0
+
+            bound_func = reduce_short_position(
+                one_delta_deployment=one_delta,
+                collateral_token=quote_token,
+                borrow_token=base_token,
+                atoken=atoken,
+                pool_fee=pool_fee_raw,
+                wallet_address=self.tx_builder.get_token_delivery_address(),
+                reduce_collateral_amount=-collateral_amount,
+                withdraw_collateral_amount=-collateral_amount,
+                min_borrow_amount_out=0, # TODO: use borrow_amount and slippage?
+            )
+        else:
+            raise ValueError(f"Wrong trade flags used: {trade_flags}")
 
         return self.create_signed_transaction(
             one_delta.broker_proxy,
@@ -483,6 +514,8 @@ class OneDeltaRouting(EthereumRoutingModel):
             lp_fee_paid = result.lp_fee_paid
 
             assert (executed_amount != 0) and (price > 0), f"Executed amount {executed_amount}, executed collateral consumption: {executed_collateral_consumption},  executed_reserve: {executed_reserve}, price: {price}"
+
+            logger.info("1delta routing\nPlanned: %f %f %f\nExecuted: %f %f %f", trade.planned_collateral_consumption, trade.planned_collateral_allocation, trade.planned_reserve, executed_collateral_consumption, executed_collateral_allocation, executed_reserve)
 
             # Mark as success
             state.mark_trade_success(
