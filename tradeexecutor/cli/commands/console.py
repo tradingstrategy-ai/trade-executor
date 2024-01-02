@@ -32,6 +32,7 @@ from ..bootstrap import prepare_executor_id, prepare_cache, create_web3_config, 
     create_state_store, create_client
 from ..log import setup_logging
 from ..version_info import VersionInfo
+from ...statistics.in_memory_statistics import refresh_run_state
 from ...strategy.approval import UncheckedApprovalModel
 from ...strategy.bootstrap import make_factory_from_strategy_mod
 from ...strategy.description import StrategyExecutionDescription
@@ -246,6 +247,15 @@ def console(
     # TODO: Make construction of routing model cleaner
     if routing_model is None:
         routing_model = runner.routing_model
+
+    refresh_run_state(
+        run_state,
+        state,
+        execution_context,
+        visualisation=True,
+        universe=universe,
+        sync_model=sync_model,
+    )
 
     # Set up the default objects
     # availalbe in the interactive session

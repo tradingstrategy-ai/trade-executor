@@ -162,7 +162,7 @@ class PandasTraderRunner(StrategyRunner):
         :param small_image: 512 x 512 image
         :param large_image: 1920 x 1920 image
         """
-        refresh_live_strategy_images(small_figure, large_figure)
+        refresh_live_strategy_images(self.run_state, small_figure, large_figure)
 
     def report_strategy_thinking(self,
                                  strategy_cycle_timestamp: datetime.datetime,

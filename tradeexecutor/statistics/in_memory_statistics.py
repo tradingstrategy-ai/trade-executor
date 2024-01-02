@@ -3,7 +3,6 @@
 - Regenerated on startup
 
 - Regenerated after trades
-
 """
 
 import datetime
@@ -33,7 +32,12 @@ def refresh_run_state(
     backtested_state: State | None = None,
     backtest_cut_off = datetime.timedelta(days=90),
 ):
-    """Update in-memory RunState structures."""
+    """Update in-memory RunState structures.
+
+    - Redraw all visualisations and recalculate in-memory statistics
+    """
+
+    assert isinstance(run_state, RunState)
 
     # Strategy statistics
     # Even if the strategy has no action yet (deposits, trades)
@@ -55,7 +59,7 @@ def refresh_run_state(
     # Strategy charts
     if visualisation:
         assert universe, "Candle data must be available to update visualisations"
-        refresh_visualisations(state, universe)
+        redraw_visualisations(state, universe)
 
     # Set gas level warning
     if sync_model is not None:
@@ -70,11 +74,14 @@ def refresh_run_state(
             )
 
 
-def refresh_visualisations(
+def redraw_visualisations(
     run_state: RunState | None,
     state: State,
     universe: TradingStrategyUniverse
 ):
+    """Redraw strategy thinking visualisations."""
+
+    assert isinstance(run_state, RunState)
 
     if not run_state:
         # This strategy is not maintaining a run-state
@@ -129,7 +136,7 @@ def refresh_visualisations(
 
 
 def refresh_live_strategy_images(
-    run_state: State,
+    run_state: RunState,
     small_figure,
     large_figure
 ):
@@ -138,6 +145,8 @@ def refresh_live_strategy_images(
     :param small_image: 512 x 512 image
     :param large_image: 1920 x 1920 image
     """
+
+    assert isinstance(run_state, RunState)
 
     small_image, small_image_dark = get_small_images(small_figure)
     large_image, large_image_dark = get_large_images(large_figure)
