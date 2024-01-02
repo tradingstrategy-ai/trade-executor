@@ -10,6 +10,7 @@ from pathlib import Path
 
 from pyramid.registry import Registry
 from pyramid.request import Request
+from pyramid.response import Response
 
 # Avoid logging.getLogger() here as we do not want this logger as the part of std logging system
 http_logger = logging.Logger(name="HTTP traffic")
@@ -36,17 +37,18 @@ def log_tween_factory(handler, registry: Registry):
             req_id = _req_id_country
 
         country = request.headers.get("CF-IPCountry") or "<no country>"
-        ip_addr = request.headers.get("CF-Connecting-IP") or "<no CF IP>"
+        ip_addr = request.headers.get("CF-Connecting-IP") or "<no CF IP>"  # IPv4 or IPv6
         user_agent = request.user_agent
 
         http_logger.info("HTTP request #%d %s (%s): %s by %s", req_id, ip_addr, country, request.url, user_agent)
 
         start = datetime.datetime.utcnow()
         try:
-            response = handler(request)
+            response: Response = handler(request)
+            code = response.status_code
             end = datetime.datetime.utcnow()
             duration = end - start
-            http_logger.info("HTTP response #%d duration:%s %s", req_id, duration, request.url)
+            http_logger.info("HTTP response #%d %s duration:%s %s", req_id, code, duration, request.url)
             return response
         except Exception as e:
             http_logger.error("HTTP response #%d failed: %s", req_id, e)
