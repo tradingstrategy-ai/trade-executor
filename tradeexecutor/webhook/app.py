@@ -123,7 +123,7 @@ def create_pyramid_app(
         config.registry["run_state"] = run_state
 
         config.add_exception_view(exception_view)
-        config.add_tween("tradeexecutor.webhook.web_log.log_tween_factory")
+        config.add_tween("tradeexecutor.webhook.http_log.log_tween_factory")
 
         if production:
             # Because datadog import modifies the global process and messes up things,
