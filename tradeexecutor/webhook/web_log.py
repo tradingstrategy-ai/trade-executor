@@ -12,12 +12,12 @@ from pyramid.registry import Registry
 from pyramid.request import Request
 
 # Avoid logging.getLogger() here as we do not want this logger as the part of std logging system
-logger = logging.Logger(name="HTTP traffic")
+http_logger = logging.Logger(name="HTTP traffic")
 
 # Never propagate web logs as root logging output is assuemed to be public.
 # IP addresses and such are logged to their own file.
 # https://stackoverflow.com/a/67364351/315168
-logger.propagate = False
+http_logger.propagate = False
 
 #: Unique id for every request - response pair
 _req_id_country = 0
@@ -38,17 +38,17 @@ def log_tween_factory(handler, registry: Registry):
         country = request.headers.get("CF-IPCountry") or "<no country>"
         ip_addr = request.headers.get("CF-Connecting-IP") or "<no CF IP>"
 
-        logger.info("HTTP request #%d %s (%s): %s", req_id, ip_addr, country, request.url)
+        http_logger.info("HTTP request #%d %s (%s): %s", req_id, ip_addr, country, request.url)
 
         start = datetime.datetime.utcnow()
         try:
             response = handler(request)
             end = datetime.datetime.utcnow()
             duration = end - start
-            logger.info("HTTP response #%d duration:% %s", req_id, duration, request.url)
+            http_logger.info("HTTP response #%d duration:% %s", req_id, duration, request.url)
             return response
         except Exception as e:
-            logger.info("HTTP response failed: %s", e)
+            http_logger.info("HTTP response failed: %s", e)
             raise
 
     return log_tween
@@ -66,7 +66,7 @@ def configure_http_request_logging(main_log_path: Path) -> logging.Logger:
     """
     assert isinstance(main_log_path, Path)
 
-    log_path = main_log_path.rename(main_log_path.with_suffix(".http.log"))
+    log_path = main_log_path.with_suffix(".http.log")
 
     fmt = "%(asctime)s %(message)s"
     formatter = logging.Formatter(fmt)
@@ -75,9 +75,9 @@ def configure_http_request_logging(main_log_path: Path) -> logging.Logger:
     file_handler.setFormatter(formatter)
     file_handler.setLevel(logging.INFO)
 
-    logger.handlers.clear()
-    logger.addHandler(file_handler)
+    http_logger.handlers.clear()
+    http_logger.addHandler(file_handler)
 
-    logger.info("Starting HTTP traffic log")
+    http_logger.info("Starting HTTP traffic log at %s", log_path)
 
-    return logger
+    return http_logger

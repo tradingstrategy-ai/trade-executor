@@ -100,7 +100,7 @@ def setup_logging(
 
 
 def setup_file_logging(
-    log_filename: str,
+    log_filename: str | Path,
     log_level: str | int = logging.INFO,
     http_logging=False,
 ):
