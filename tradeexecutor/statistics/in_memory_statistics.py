@@ -35,6 +35,14 @@ def refresh_run_state(
     """Update in-memory RunState structures.
 
     - Redraw all visualisations and recalculate in-memory statistics
+
+    - To be called
+
+        - On startup
+
+        - After trades have been executed
+
+        - After position valuations have been updated
     """
 
     assert isinstance(run_state, RunState)
@@ -175,11 +183,11 @@ def refresh_live_strategy_images(
     scope._shutdown_kaleido()
 
 
-def get_small_images(self, small_figure):
+def get_small_images(small_figure):
     """Gets the png image of the figure and the dark theme png image. Images are 512 x 512."""
     return get_image_and_dark_image(small_figure, width=512, height=512)
 
-def get_large_images(self, large_figure):
+def get_large_images(large_figure):
     """Gets the png image of the figure and the dark theme png image. Images are 1024 x 1024."""
     return get_image_and_dark_image(large_figure, width=1024, height=1024)
 
