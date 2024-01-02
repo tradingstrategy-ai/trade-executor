@@ -102,7 +102,7 @@ def test_main_loop_crash(
         "JSON_RPC_BINANCE": os.environ["BNB_CHAIN_JSON_RPC"],
         "PATH": os.environ["PATH"],
         "HTTP_WAIT_GOOD_STARTUP_SECONDS": "0",
-        "MAX_DATA_DELAY_MINUTES": str(10*60*24*365),  # 10 years or "disabled""
+        "MAX_DATA_DELAY_MINUTES": str(10*60*24*365),  # 10 years or "disabled"
         "UNIT_TESTING": "true",
     }
 
@@ -161,7 +161,10 @@ def test_main_loop_crash(
         got_right_exception = False
         while time.time() < deadline:
             try:
-                resp = requests.get(f"{server}/status", timeout=0.1)
+                resp = requests.get(f"{server}/status", timeout=1.0)
+            except requests.exceptions.ReadTimeout:
+                time.sleep(0.1)
+                continue
             except requests.exceptions.ConnectionError:
                 break
 
