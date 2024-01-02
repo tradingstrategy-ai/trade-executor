@@ -18,9 +18,7 @@ from pyramid.security import forget
 from pyramid.authorization import ALL_PERMISSIONS
 from pyramid.view import forbidden_view_config
 
-from . import api
 from .error import exception_view
-from .web_log import log_tween_factory
 from ..state.metadata import Metadata
 from ..state.store import JSONFileStore
 from ..strategy.run_state import RunState

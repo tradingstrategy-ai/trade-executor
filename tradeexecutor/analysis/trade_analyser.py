@@ -49,7 +49,6 @@ from tradingstrategy.utils.format import format_value, format_price, format_dura
 from tradingstrategy.utils.jupyter import make_clickable
 from tradeexecutor.utils.summarydataframe import as_dollar, as_integer, create_summary_table, as_percent, as_duration, as_bars, as_decimal
 
-
 try:
     #  DeprecationWarning: Importing display from IPython.core.display is deprecated since IPython 7.14, please import from IPython display
     with warnings.catch_warnings():
@@ -57,7 +56,6 @@ try:
     HAS_QUANTSTATS = True
 except Exception:
     HAS_QUANTSTATS = False
-
 
 logger = logging.getLogger(__name__)
 
@@ -89,19 +87,19 @@ class TradeSummary:
         decoder=json_decode_timedelta,
     ))
 
-    average_winning_trade_profit_pc: Optional[float] # position
-    average_losing_trade_loss_pc: Optional[float] # position
-    biggest_winning_trade_pc: Optional[float] # position
-    biggest_losing_trade_pc: Optional[float] # position
+    average_winning_trade_profit_pc: Optional[float]  # position
+    average_losing_trade_loss_pc: Optional[float]  # position
+    biggest_winning_trade_pc: Optional[float]  # position
+    biggest_losing_trade_pc: Optional[float]  # position
 
     average_duration_of_winning_trades: datetime.timedelta = field(metadata=config(
         encoder=json_encode_timedelta,
         decoder=json_decode_timedelta,
-    )) # position
+    ))  # position
     average_duration_of_losing_trades: datetime.timedelta = field(metadata=config(
         encoder=json_encode_timedelta,
         decoder=json_decode_timedelta,
-    )) # position
+    ))  # position
     time_bucket: Optional[TimeBucket] = None
 
     # these stats calculate in post-init, so init=False
@@ -128,8 +126,8 @@ class TradeSummary:
     average_net_profit: USDollarAmount = field(init=False)
     end_value: USDollarAmount = field(init=False)
 
-    average_trade: Optional[float] = None # position
-    median_trade: Optional[float] = None # position
+    average_trade: Optional[float] = None  # position
+    median_trade: Optional[float] = None  # position
     max_pos_cons: Optional[int] = None
     max_neg_cons: Optional[int] = None
     max_pullback: Optional[float] = None
@@ -147,16 +145,16 @@ class TradeSummary:
     #: advanced users can use this property instead of the
     #: provided quantstats helper methods
     daily_returns: Optional[pd.Series] = None
-    
+
     winning_stop_losses: Optional[int] = 0
     losing_stop_losses: Optional[int] = 0
 
     winning_take_profits: Optional[int] = 0
     losing_take_profits: Optional[int] = 0
-    
+
     winning_stop_losses_percent: Optional[float] = field(init=False)
     losing_stop_losses_percent: Optional[float] = field(init=False)
-    
+
     winning_take_profits_percent: Optional[float] = field(init=False)
     losing_take_profits_percent: Optional[float] = field(init=False)
 
@@ -174,7 +172,6 @@ class TradeSummary:
 
     #: Profit in open positions at the end
     unrealised_profit: Optional[USDollarAmount] = None
-
 
     def __post_init__(self):
 
@@ -269,9 +266,9 @@ class TradeSummary:
 
         if format_headings:
             return self.format_summary_dataframe(df)
-        
+
         return df
-    
+
     @staticmethod
     def help_links() -> dict[str, str]:
         return {
@@ -336,7 +333,7 @@ class TradeSummary:
         help_links = TradeSummary.help_links()
         links = []
         for h in df.index:
-                links.append(help_links.get(h, None))
+            links.append(help_links.get(h, None))
 
         df.index = [make_clickable(h, url) if url else h for h, url in zip(df.index, links)]
 
@@ -356,7 +353,7 @@ class TradeSummary:
             "Unrealised PnL": as_dollar(self.unrealised_profit) if self.unrealised_profit else as_dollar(0),
             'Trade period': as_duration(self.duration),
         }
-        
+
         df1 = create_summary_table(data1, "", "Returns")
 
         data2 = {
@@ -370,42 +367,42 @@ class TradeSummary:
 
         data3 = {
             'Number of positions': [
-                as_integer(self.won), 
-                as_integer(self.lost), 
+                as_integer(self.won),
+                as_integer(self.lost),
                 as_integer(self.total_positions)
             ],
             '% of total': [
-                as_percent(self.win_percent), 
-                as_percent(self.lost_percent), 
-                as_percent((self.won + self.lost)/self.total_positions) if self.total_positions else as_percent(0)
+                as_percent(self.win_percent),
+                as_percent(self.lost_percent),
+                as_percent((self.won + self.lost) / self.total_positions) if self.total_positions else as_percent(0)
             ],
             'Average PnL %': [
-                as_percent(self.average_winning_trade_profit_pc), 
+                as_percent(self.average_winning_trade_profit_pc),
                 as_percent(self.average_losing_trade_loss_pc),
                 as_percent(self.average_trade)
             ],
             'Median PnL %': [
-                as_percent(self.median_win), 
-                as_percent(self.median_loss), 
+                as_percent(self.median_win),
+                as_percent(self.median_loss),
                 as_percent(self.median_trade)],
             'Biggest PnL %': [
-                as_percent(self.biggest_winning_trade_pc), 
-                as_percent(self.biggest_losing_trade_pc), 
+                as_percent(self.biggest_winning_trade_pc),
+                as_percent(self.biggest_losing_trade_pc),
                 as_percent(None)
             ],
             'Average duration': [
-                self.format_duration(self.average_duration_of_winning_trades), 
-                self.format_duration(self.average_duration_of_losing_trades), 
+                self.format_duration(self.average_duration_of_winning_trades),
+                self.format_duration(self.average_duration_of_losing_trades),
                 self.format_duration(self.average_duration_of_all_trades)
             ],
             'Max consecutive streak': [
-                as_integer(self.max_pos_cons), 
-                as_integer(self.max_neg_cons), 
+                as_integer(self.max_pos_cons),
+                as_integer(self.max_neg_cons),
                 as_percent(None)
             ],
             'Max runup / drawdown': [
                 as_percent(self.max_runup),
-                as_percent(self.max_drawdown), 
+                as_percent(self.max_drawdown),
                 as_percent(None)
             ],
         }
@@ -414,36 +411,36 @@ class TradeSummary:
 
         data4 = {
             'Triggered exits': [
-                as_integer(self.stop_losses), 
+                as_integer(self.stop_losses),
                 as_integer(self.take_profits)
             ],
             'Percent winning': [
-                as_percent(self.winning_stop_losses_percent), 
+                as_percent(self.winning_stop_losses_percent),
                 as_percent(self.winning_take_profits_percent)
             ],
             'Percent losing': [
-                as_percent(self.losing_stop_losses_percent), 
+                as_percent(self.losing_stop_losses_percent),
                 as_percent(self.losing_take_profits_percent)
             ],
             'Percent of total': [
-                as_percent(self.all_stop_loss_percent), 
+                as_percent(self.all_stop_loss_percent),
                 as_percent(self.all_take_profit_percent)
             ],
         }
 
         df4 = create_summary_table(data4, ["Stop losses", "Take profits"], "Position Exits")
-        
+
         data5 = {
             'Biggest realised risk': as_percent(self.max_loss_risk),
             'Average realised risk': as_percent(self.avg_realised_risk),
             'Max pullback of capital': as_percent(self.max_pullback),
             'Sharpe Ratio': as_decimal(self.sharpe_ratio),
             'Sortino Ratio': as_decimal(self.sortino_ratio),
-            'Profit Factor':as_decimal(self.profit_factor),
+            'Profit Factor': as_decimal(self.profit_factor),
         }
 
         df5 = create_summary_table(data5, "", "Risk Analysis")
-        
+
         display(self.single_column_dfs(df1, df2, df3, df4, df5))
 
     def format_duration(self, duration_timedelta):
@@ -451,16 +448,15 @@ class TradeSummary:
             return as_duration(datetime.timedelta(0))
 
         return as_duration(duration_timedelta)
-        
+
     def format_bars(self, duration_timedelta):
         if not duration_timedelta:
             return as_bars(0)
 
         if self.time_bucket is not None:
-            return as_bars(duration_timedelta/self.time_bucket.to_timedelta())
+            return as_bars(duration_timedelta / self.time_bucket.to_timedelta())
         else:
             raise ValueError("Time bucket not specified")
-
 
     @staticmethod
     def single_column_dfs(*dfs):
@@ -496,7 +492,7 @@ class TradeAnalysis:
 
     def get_last_closed_at(self) -> Optional[pd.Timestamp]:
         """Get the closed_at timestamp of the last position in the portfolio."""
-        
+
         return max(
             position.closed_at for id, position in self.get_all_positions()
         )
@@ -505,7 +501,7 @@ class TradeAnalysis:
         """Return open and closed positions over all traded assets.
         
         Positions are sorted by position_id."""
-        
+
         for position in self.portfolio.get_all_positions():
             # pair_id, position
             yield position.pair.internal_id, position
@@ -514,7 +510,7 @@ class TradeAnalysis:
         """Return open positions over all traded assets.
         
         Positions are sorted by position_id."""
-        
+
         for id, position in self.get_all_positions():
             if position.is_open():
                 # pair_id, position
@@ -524,7 +520,7 @@ class TradeAnalysis:
         """Return short positions over all traded assets.
         
         Positions are sorted by position_id."""
-        
+
         for id, position in self.get_all_positions():
             if position.is_short():
                 # pair_id, position
@@ -534,16 +530,16 @@ class TradeAnalysis:
         """Return long positions over all traded assets.
         
         Positions are sorted by position_id."""
-        
+
         for id, position in self.get_all_positions():
             if position.is_long():
                 # pair_id, position
                 yield position.pair.internal_id, position
 
     def calculate_summary_statistics(
-        self,
-        time_bucket: Optional[TimeBucket] = None,
-        state = None,
+            self,
+            time_bucket: Optional[TimeBucket] = None,
+            state=None,
     ) -> TradeSummary:
         """Calculate some statistics how our trades went. This is just for overall statistics. For an analysis by overall, long, and short trades, use :py:meth:`calculate_all_summary_stats_by_side`
 
@@ -557,11 +553,11 @@ class TradeAnalysis:
             TradeSummary instance
         """
         return self.calculate_summary_statistics_for_positions(time_bucket, state, self.get_all_positions())
-    
+
     def calculate_short_summary_statistics(
-        self,
-        time_bucket,
-        state,
+            self,
+            time_bucket,
+            state,
     ) -> TradeSummary:
         """Calculate some statistics how our short trades went.
 
@@ -575,11 +571,11 @@ class TradeAnalysis:
             TradeSummary instance
         """
         return self.calculate_summary_statistics_for_positions(time_bucket, state, self.get_short_positions())
-    
+
     def calculate_long_summary_statistics(
-        self,
-        time_bucket,
-        state,
+            self,
+            time_bucket,
+            state,
     ) -> TradeSummary:
         """Calculate some statistics how our long trades went.
 
@@ -595,10 +591,10 @@ class TradeAnalysis:
         return self.calculate_summary_statistics_for_positions(time_bucket, state, self.get_long_positions())
 
     def calculate_summary_statistics_for_positions(
-        self, 
-        time_bucket: Optional[TimeBucket],
-        state,
-        positions: Iterable[Tuple[PrimaryKey, TradingPosition]]
+            self,
+            time_bucket: Optional[TimeBucket],
+            state,
+            positions: Iterable[Tuple[PrimaryKey, TradingPosition]]
     ) -> TradeSummary:
         """Calculate some statistics how our trades went.
 
@@ -614,7 +610,7 @@ class TradeAnalysis:
 
         if time_bucket is not None:
             assert isinstance(time_bucket, TimeBucket), "Not a valid time bucket"
-        
+
         if state is not None:
             # for advanced statistics
             # import here to avoid circular import error
@@ -629,7 +625,7 @@ class TradeAnalysis:
             sortino_ratio = calculate_sortino(daily_returns)
 
             # these stats not annualised, so better to calculate it on the original returns
-            profit_factor = calculate_profit_factor(original_returns)  
+            profit_factor = calculate_profit_factor(original_returns)
             max_drawdown = calculate_max_drawdown(original_returns)
             max_runup = calculate_max_runup(original_returns)
         else:
@@ -649,10 +645,10 @@ class TradeAnalysis:
                 return pd.Timedelta(np.mean(duration_list))
             else:
                 return pd.Timedelta(datetime.timedelta(0))
-            
+
         def func_check(lst, func):
             return func(lst) if lst else None
-        
+
         initial_cash = self.portfolio.get_initial_deposit()
 
         uninvested_cash = self.portfolio.get_cash()
@@ -684,25 +680,25 @@ class TradeAnalysis:
         unrealised_profit_usd: USDollarAmount = 0
         trade_volume = 0
         lp_fees_paid = 0
-        
+
         max_pos_cons = 0
         max_neg_cons = 0
         max_pullback_pct = 0
         pos_cons = 0
         neg_cons = 0
         pullback = 0
-        
+
         winning_stop_losses = 0
         losing_stop_losses = 0
         winning_take_profits = 0
         losing_take_profits = 0
 
         for pair_id, position in positions:
-            
+
             portfolio_value_at_open = position.portfolio_value_at_open
-            
+
             capital_tied_at_open_pct = self.get_capital_tied_at_open(position)
-            
+
             if position.stop_loss:
                 # TODO use maximum_risk
                 maximum_risk = position.get_loss_risk_at_open()
@@ -710,9 +706,9 @@ class TradeAnalysis:
             else:
                 maximum_risk = None
                 loss_risk_at_open_pc.append(capital_tied_at_open_pct)
-            
+
             lp_fees_paid += position.get_total_lp_fees_paid() or 0
-            
+
             for t in position.trades.values():
                 trade_volume += t.get_value()
 
@@ -721,7 +717,7 @@ class TradeAnalysis:
                 unrealised_profit_usd += position.get_unrealised_profit_usd()
                 undecided += 1
                 continue
-            
+
             is_stop_loss = position.is_stop_loss()
             is_take_profit = position.is_take_profit()
 
@@ -736,15 +732,15 @@ class TradeAnalysis:
             realised_profit_percent = position.get_realised_profit_percent()
 
             duration = position.get_duration()
-            
+
             if position.is_profitable():
                 won += 1
                 winning_trades.append(realised_profit_percent)
                 winning_trades_duration.append(duration)
-                
+
                 if is_stop_loss:
                     winning_stop_losses += 1
-                
+
                 if is_take_profit:
                     winning_take_profits += 1
 
@@ -759,7 +755,7 @@ class TradeAnalysis:
                     # Bad data
                     realised_loss = 0
                 realised_losses.append(realised_loss)
-                
+
                 if is_stop_loss:
                     losing_stop_losses += 1
 
@@ -775,26 +771,26 @@ class TradeAnalysis:
 
             # for getting max consecutive wins/losses and max pullback
             # don't do anything if profit = $0
-            
-            if(realised_profit_usd > 0):
-                    neg_cons = 0
-                    pullback = 0
-                    pos_cons += 1
-            elif(realised_profit_usd < 0):
-                    pos_cons = 0
-                    neg_cons += 1
-                    pullback += realised_profit_usd
 
-            if(neg_cons > max_neg_cons):
-                    max_neg_cons = neg_cons
-            if(pos_cons > max_pos_cons):
-                    max_pos_cons = pos_cons
+            if (realised_profit_usd > 0):
+                neg_cons = 0
+                pullback = 0
+                pos_cons += 1
+            elif (realised_profit_usd < 0):
+                pos_cons = 0
+                neg_cons += 1
+                pullback += realised_profit_usd
+
+            if (neg_cons > max_neg_cons):
+                max_neg_cons = neg_cons
+            if (pos_cons > max_pos_cons):
+                max_pos_cons = pos_cons
 
             if portfolio_value_at_open:
                 pullback_pct = pullback / (portfolio_value_at_open + realised_profit_usd)
-                if(pullback_pct < max_pullback_pct):
-                        # pull back is in the negative direction
-                        max_pullback_pct = pullback_pct
+                if (pullback_pct < max_pullback_pct):
+                    # pull back is in the negative direction
+                    max_pullback_pct = pullback_pct
             else:
                 # Bad input data / legacy data
                 max_pullback_pct = 0
@@ -874,7 +870,7 @@ class TradeAnalysis:
             sortino_ratio=sortino_ratio,
             profit_factor=profit_factor,
         )
-    
+
     @staticmethod
     def calculate_weighted_average_realised_profit(positions: Iterable[Tuple[PrimaryKey, TradingPosition]]):
         """Calculate profit % of all positions, weighted by position size.
@@ -893,12 +889,12 @@ class TradeAnalysis:
             total_value += position.get_price_at_open() * position.get_value_at_open()
 
         return total_profit / total_value if total_value else 0
-    
+
     def calculate_all_summary_stats_by_side(
-        self,
-        time_bucket: Optional[TimeBucket] = None,
-        state = None,
-        urls = False,
+            self,
+            time_bucket: Optional[TimeBucket] = None,
+            state=None,
+            urls=False,
     ) -> pd.DataFrame:
         """Calculate some statistics how our trades went. This returns a DataFrame with 3 separate columns for overall, long and short.
         
@@ -920,7 +916,7 @@ class TradeAnalysis:
         all_stats_trade_summary = self.calculate_summary_statistics(time_bucket, state)
         long_stats_trade_summary = self.calculate_long_summary_statistics(time_bucket, state)
         short_stats_trade_summary = self.calculate_short_summary_statistics(time_bucket, state)
-        
+
         all_stats = all_stats_trade_summary.to_dataframe(format_headings=False)
         long_stats = long_stats_trade_summary.to_dataframe(format_headings=False)
         short_stats = short_stats_trade_summary.to_dataframe(format_headings=False)
@@ -935,7 +931,7 @@ class TradeAnalysis:
             if row in all_stats.index:
                 all_stats.loc[row, 'Long'] = '-'
                 all_stats.loc[row, 'Short'] = '-'
-            
+
         new_columns = all_stats.columns.to_list()
         new_columns[0] = 'All'
         all_stats.columns = new_columns
@@ -952,9 +948,9 @@ class TradeAnalysis:
         all_profit_usd = all_stats_trade_summary.unrealised_profit + all_stats_trade_summary.realised_profit
         long_profit_usd = long_stats_trade_summary.realised_profit + long_stats_trade_summary.unrealised_profit
         short_profit_usd = short_stats_trade_summary.realised_profit + short_stats_trade_summary.unrealised_profit
-        
+
         profit_long_pct, profit_short_pct = 0, 0
-        
+
         if all_stats_trade_summary.return_percent:
             profit_long_pct = all_stats_trade_summary.return_percent * long_profit_usd / all_profit_usd
             profit_short_pct = all_stats_trade_summary.return_percent * short_profit_usd / all_profit_usd
@@ -973,7 +969,7 @@ class TradeAnalysis:
 
         return all_stats
 
-    def render_summary_statistics_side_by_side(self, time_bucket: Optional[TimeBucket] = None, state = None) -> HTML:
+    def render_summary_statistics_side_by_side(self, time_bucket: Optional[TimeBucket] = None, state=None) -> HTML:
         """Render summary statistics as a JSON table.
 
         :param time_bucket:
@@ -1160,7 +1156,7 @@ def expand_timeline(
         # Not an issue for new strategies.
         if position.has_bad_data_issues():
             remarks += "BAD"
-        
+
         duration = position.get_duration()
 
         r = {
@@ -1208,60 +1204,60 @@ def expand_timeline(
 def expand_timeline_raw(
         timeline: pd.DataFrame,
         timestamp_format="%Y-%m-%d"
-    ) -> pd.DataFrame:
-        """A simplified version of expand_timeline that does not care about
-        pair info, exchanges, or opening capital, and also provides raw figures.
-        
-        Unused in codebase, but can be useful for advanced users to use directly"""
+) -> pd.DataFrame:
+    """A simplified version of expand_timeline that does not care about
+    pair info, exchanges, or opening capital, and also provides raw figures.
 
-        # https://stackoverflow.com/a/52363890/315168
-        def expander(row):
-            position: TradingPosition = row["position"]
-            # timestamp = row.name  # ???
-            pair_id = position.pair.internal_id
+    Unused in codebase, but can be useful for advanced users to use directly"""
 
-            if position.is_stop_loss():
-                remarks = "SL"
-            elif position.is_take_profit():
-                remarks = "TP"
-            else:
-                remarks = ""
+    # https://stackoverflow.com/a/52363890/315168
+    def expander(row):
+        position: TradingPosition = row["position"]
+        # timestamp = row.name  # ???
+        pair_id = position.pair.internal_id
 
-            pnl_usd = position.get_realised_profit_usd() if position.is_closed() else np.nan
-            duration = position.get_duration()
-            
-            r = {
-                # "timestamp": timestamp,
-                "Id": position.position_id,
-                "Remarks": remarks,
-                "Opened at": position.opened_at.strftime(timestamp_format),
-                "Duration": format_duration_days_hours_mins(duration) if duration else np.nan,
-                "position_max_size": position.get_max_size(),
-                "pnl_usd": pnl_usd,
-                "pnl_pct_raw": position.get_realised_profit_percent() if position.is_closed() else 0,
-                "open_price_usd": position.get_opening_price(),
-                "close_price_usd": position.get_closing_price() if position.is_closed() else np.nan,
-                "trade_count": position.get_trade_count(),
-            }
+        if position.is_stop_loss():
+            remarks = "SL"
+        elif position.is_take_profit():
+            remarks = "TP"
+        else:
+            remarks = ""
 
-            return r
+        pnl_usd = position.get_realised_profit_usd() if position.is_closed() else np.nan
+        duration = position.get_duration()
 
-        applied_df = timeline.apply(expander, axis='columns', result_type='expand')
+        r = {
+            # "timestamp": timestamp,
+            "Id": position.position_id,
+            "Remarks": remarks,
+            "Opened at": position.opened_at.strftime(timestamp_format),
+            "Duration": format_duration_days_hours_mins(duration) if duration else np.nan,
+            "position_max_size": position.get_max_size(),
+            "pnl_usd": pnl_usd,
+            "pnl_pct_raw": position.get_realised_profit_percent() if position.is_closed() else 0,
+            "open_price_usd": position.get_opening_price(),
+            "close_price_usd": position.get_closing_price() if position.is_closed() else np.nan,
+            "trade_count": position.get_trade_count(),
+        }
 
-        if len(applied_df) > 0:
-            # https://stackoverflow.com/a/52720936/315168
-            applied_df \
-                .sort_values(by=['Id'], ascending=[True], inplace=True)
+        return r
 
-        # Get rid of NaN labels
-        # https://stackoverflow.com/a/28390992/315168
-        applied_df.fillna('', inplace=True)
+    applied_df = timeline.apply(expander, axis='columns', result_type='expand')
 
-        return applied_df
+    if len(applied_df) > 0:
+        # https://stackoverflow.com/a/52720936/315168
+        applied_df \
+            .sort_values(by=['Id'], ascending=[True], inplace=True)
+
+    # Get rid of NaN labels
+    # https://stackoverflow.com/a/28390992/315168
+    applied_df.fillna('', inplace=True)
+
+    return applied_df
 
 
 def build_trade_analysis(
-    portfolio: Portfolio
+        portfolio: Portfolio
 ) -> TradeAnalysis:
     """Build a trade analysis from list of positions.
 
@@ -1279,6 +1275,7 @@ def build_trade_analysis(
 
 def avg(lst: list[int]):
     return sum(lst) / len(lst)
+
 
 def avg_timedelta(lst: list[pd.Timedelta]):
     return pd.Series(lst).mean()

@@ -18,13 +18,13 @@ logger = logging.getLogger(__name__)
 
 
 def calculate_summary_statistics(
-        state: State,
-        execution_mode: ExecutionMode = ExecutionMode.one_off,
-        time_window = pd.Timedelta(days=90),
-        now_: Optional[pd.Timestamp | datetime.datetime] = None,
-        legacy_workarounds=False,
-        backtested_state: State | None = None,
-        key_metrics_backtest_cut_off = datetime.timedelta(days=90),
+    state: State,
+    execution_mode: ExecutionMode = ExecutionMode.one_off,
+    time_window = pd.Timedelta(days=90),
+    now_: Optional[pd.Timestamp | datetime.datetime] = None,
+    legacy_workarounds=False,
+    backtested_state: State | None = None,
+    key_metrics_backtest_cut_off = datetime.timedelta(days=90),
 ) -> StrategySummaryStatistics:
     """Preprocess the strategy statistics for the summary card in the web frontend.
 
@@ -122,6 +122,7 @@ def calculate_summary_statistics(
 
     key_metrics = {m.kind.value: m for m in calculate_key_metrics(state, backtested_state, required_history=key_metrics_backtest_cut_off)}
 
+    logger.info("Serialising serialise_long_short_stats_as_json_table()")
     long_short_table = serialise_long_short_stats_as_json_table(state, backtested_state, key_metrics_backtest_cut_off)
 
     logger.info("calculate_summary_statistics() finished, took %s seconds", perf_counter() - func_started_at)
