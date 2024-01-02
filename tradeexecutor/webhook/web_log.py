@@ -78,4 +78,6 @@ def configure_http_request_logging(main_log_path: Path) -> logging.Logger:
     logger.handlers.clear()
     logger.addHandler(file_handler)
 
+    logger.info("Starting HTTP traffic log")
+
     return logger
