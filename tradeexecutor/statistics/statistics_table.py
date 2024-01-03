@@ -26,19 +26,24 @@ class StatisticsTable:
     columns: list[str]
 
     #: The rows of the table.
-    rows: dict[KeyMetricKind, KeyMetric]
+    rows: dict[str, KeyMetric]
     
     #: The time at which the table was created.
     created_at: datetime.datetime
 
     #: The source of the table. Can either be live trading or backtesting.
-    source: KeyMetricSource
+    source: KeyMetricSource | None = None
 
     #: The start of the calculation window.
     calculation_window_start_at: datetime.datetime | None = None
     
     #: The end of the calculation window.
     calculation_window_end_at: datetime.timedelta | None = None
+
+    def __post_init__(self):
+        if self.source is not None:
+            assert isinstance(self.source, KeyMetricSource), f"Got {self.source}"
+        assert type(self.columns) == list
 
 
 def serialise_long_short_stats_as_json_table(
@@ -125,7 +130,7 @@ def serialise_long_short_stats_as_json_table(
                 kind=key_metric_kind,
                 value={"All": metric_data[0], "Long": metric_data[1], "Short": metric_data[2]},
                 help_link=metric_data[3],
-                source=source_state,
+                source=source,
                 calculation_window_start_at = calculation_window_start_at,
                 calculation_window_end_at = calculation_window_end_at,
                 name = metric_data.name,

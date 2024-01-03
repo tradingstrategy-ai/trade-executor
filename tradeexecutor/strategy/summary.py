@@ -256,6 +256,10 @@ class KeyMetric:
     #: Should be in human readable format
     name: str | None = None
 
+    def __post_init__(self):
+        assert isinstance(self.source, KeyMetricSource)
+        assert isinstance(self.kind, KeyMetricKind)
+
     @staticmethod
     def create_na(kind: KeyMetricKind, reason: str) -> "KeyMetric":
         """Create missing value placeholder."""
