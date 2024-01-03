@@ -32,7 +32,7 @@ class StatisticsTable:
     created_at: datetime.datetime
 
     #: The source of the table. Can either be live trading or backtesting.
-    source: KeyMetricSource
+    source: KeyMetricSource | None = None
 
     #: The start of the calculation window.
     calculation_window_start_at: datetime.datetime | None = None
@@ -41,7 +41,8 @@ class StatisticsTable:
     calculation_window_end_at: datetime.timedelta | None = None
 
     def __post_init__(self):
-        assert isinstance(self.source, KeyMetricSource)
+        if self.source is not None:
+            assert isinstance(self.source, KeyMetricSource), f"Got {self.source}"
         assert type(self.columns) == list
 
 
