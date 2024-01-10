@@ -98,7 +98,6 @@ def visualise_benchmark(
     height=1200,
     start_at: Optional[Union[pd.Timestamp, datetime.datetime]] = None,
     end_at: Optional[Union[pd.Timestamp, datetime.datetime]] = None,
-
 ) -> go.Figure:
     """Visualise strategy performance against benchmarks.
 
@@ -266,3 +265,18 @@ def visualise_benchmark(
     ))
 
     return fig
+
+
+def visualise_benchmark_by_side(
+    name: Optional[str] = None,
+    portfolio_statistics: Optional[List[PortfolioStatistics]] = None,
+    height=1200,
+):
+    """Visualise separate benchmarks for both longing and shorting"""
+    
+    daily_returns_long = portfolio_statistics[-1].long_summary.daily_returns
+    daily_returns_short = portfolio_statistics[-1].short_summary.daily_returns
+    
+    pass
+
+    return
