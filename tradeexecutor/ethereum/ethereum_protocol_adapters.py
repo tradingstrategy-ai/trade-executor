@@ -163,10 +163,12 @@ def create_1delta_adapter(
         web3,
         flash_aggregator_address="0x74E95F3Ec71372756a01eB9317864e3fdde1AC53",
         broker_proxy_address="0x74E95F3Ec71372756a01eB9317864e3fdde1AC53",
+        quoter_address="0x62CF92A2dBbc4436ee508f4923e6Aa8dfF2A5E0c",
     )
 
     address_map = {
         "one_delta_broker_proxy": one_delta_deployment.broker_proxy.address,
+        "one_delta_quoter": one_delta_deployment.quoter.address,
         "aave_v3_pool": aave_v3_deployment.pool.address,
         "aave_v3_data_provider": aave_v3_deployment.data_provider.address,
         "aave_v3_oracle": aave_v3_deployment.oracle.address,
