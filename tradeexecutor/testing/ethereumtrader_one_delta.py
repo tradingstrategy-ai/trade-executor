@@ -136,6 +136,7 @@ class OneDeltaTestTrader(EthereumTrader):
         routing_model = OneDeltaRouting(
             address_map={
                 "one_delta_broker_proxy": one_delta.broker_proxy.address,
+                "one_delta_quoter": one_delta.quoter.address,
                 "aave_v3_pool": aave.pool.address,
                 "aave_v3_data_provider": aave.data_provider.address,
                 "aave_v3_oracle": aave.oracle.address,

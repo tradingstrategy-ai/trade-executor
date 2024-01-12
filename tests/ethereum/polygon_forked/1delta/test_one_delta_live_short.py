@@ -213,7 +213,7 @@ def test_one_delta_live_strategy_short_open_and_close(
     routing_model.perform_preflight_checks_and_logging(pair_universe)
 
     price_structure = pricing_method.get_buy_price(datetime.datetime.utcnow(), pair, None)
-    assert price_structure.price == pytest.approx(1631.0085715155444, rel=APPROX_REL)
+    assert price_structure.price == pytest.approx(2239.420956551886, rel=APPROX_REL)
 
     # Set up an execution loop we can step through
     state = State()
@@ -250,12 +250,12 @@ def test_one_delta_live_strategy_short_open_and_close(
 
     # After the first tick, we should have synced our reserves and opened the first position
     mid_price = pricing_method.get_mid_price(ts, pair)
-    assert mid_price == pytest.approx(1630.1912407577722, rel=APPROX_REL)
+    assert mid_price == pytest.approx(2238.0298724242684, rel=APPROX_REL)
 
     usdc_id = f"{web3.eth.chain_id}-{usdc.address.lower()}"
     assert state.portfolio.reserves[usdc_id].quantity == 9000
-    assert state.portfolio.open_positions[1].get_quantity() == pytest.approx(Decimal(-1.226751521259596300339))
-    assert state.portfolio.open_positions[1].get_value() == pytest.approx(1053.4960060852432, rel=APPROX_REL)
+    assert state.portfolio.open_positions[1].get_quantity() == pytest.approx(Decimal(-0.893495022670441332))
+    assert state.portfolio.open_positions[1].get_value() == pytest.approx(1000.0140651703407, rel=APPROX_REL)
 
     # mine a few block before running next tick
     for i in range(1, 10):
@@ -353,7 +353,7 @@ def test_one_delta_live_strategy_short_open_accrue_interests(
     routing_model.perform_preflight_checks_and_logging(pair_universe)
 
     price_structure = pricing_method.get_buy_price(datetime.datetime.utcnow(), pair, None)
-    assert price_structure.price == pytest.approx(1631.0085715155444, rel=APPROX_REL)
+    assert price_structure.price == pytest.approx(2239.420956551886, rel=APPROX_REL)
 
     # Set up an execution loop we can step through
     state = State()
@@ -388,7 +388,7 @@ def test_one_delta_live_strategy_short_open_accrue_interests(
 
     # After the first tick, we should have synced our reserves and opened the first position
     mid_price = pricing_method.get_mid_price(ts, pair)
-    assert mid_price == pytest.approx(1630.1912407577722, rel=APPROX_REL)
+    assert mid_price == pytest.approx(2238.0298724242684, rel=APPROX_REL)
 
     usdc_id = f"{web3.eth.chain_id}-{usdc.address.lower()}"
     assert state.portfolio.reserves[usdc_id].quantity == 9000
@@ -548,7 +548,7 @@ def test_one_delta_live_strategy_short_increase(
     routing_model.perform_preflight_checks_and_logging(pair_universe)
 
     price_structure = pricing_method.get_buy_price(datetime.datetime.utcnow(), pair, None)
-    assert price_structure.price == pytest.approx(1631.0085715155444, rel=APPROX_REL)
+    assert price_structure.price == pytest.approx(2239.420956551886, rel=APPROX_REL)
 
     # Set up an execution loop we can step through
     state = State()
@@ -585,12 +585,12 @@ def test_one_delta_live_strategy_short_increase(
 
     # After the first tick, we should have synced our reserves and opened the first position
     mid_price = pricing_method.get_mid_price(ts, pair)
-    assert mid_price == pytest.approx(1630.1912407577722, rel=APPROX_REL)
+    assert mid_price == pytest.approx(2238.0298724242684, rel=APPROX_REL)
 
     usdc_id = f"{web3.eth.chain_id}-{usdc.address.lower()}"
     assert state.portfolio.reserves[usdc_id].quantity == 9000
-    assert state.portfolio.open_positions[1].get_quantity() == pytest.approx(Decimal(-1.226751521259596300339))
-    assert state.portfolio.open_positions[1].get_value() == pytest.approx(1053.4960060852432, rel=APPROX_REL)
+    assert state.portfolio.open_positions[1].get_quantity() == pytest.approx(Decimal(-0.893495022670441332))
+    assert state.portfolio.open_positions[1].get_value() == pytest.approx(1000.0140651703407, rel=APPROX_REL)
 
     # mine a few block before running next tick
     for i in range(1, 10):
@@ -622,9 +622,9 @@ def test_one_delta_live_strategy_short_increase(
     assert len(state.portfolio.open_positions) == 1
 
     # check the position size get increased and reserve should be reduced
-    assert state.portfolio.reserves[usdc_id].quantity == pytest.approx(Decimal(8053.49603708524319))
-    assert state.portfolio.open_positions[1].get_quantity() == pytest.approx(Decimal(-2.32891530531))
-    assert state.portfolio.open_positions[1].get_value() == pytest.approx(2047.958913280439)
+    assert state.portfolio.reserves[usdc_id].quantity == pytest.approx(Decimal(8000.014215170340548866079189))
+    assert state.portfolio.open_positions[1].get_quantity() == pytest.approx(Decimal(-1.786964643334085140))
+    assert state.portfolio.open_positions[1].get_value() == pytest.approx(1999.778098480197)
 
 
 def test_one_delta_live_strategy_short_reduce(
