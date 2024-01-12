@@ -116,6 +116,7 @@ class PortfolioStatistics:
 
     realised_profit_usd: Optional[USDollarAmount] = 0
     summary: Optional[TradeSummary] = None
+    long_short_table: Optional['StatisticsTable'] = None
 
     def get_value(self) -> USDollarAmount:
         if self.net_asset_value is not None:
