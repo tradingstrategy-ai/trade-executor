@@ -49,7 +49,8 @@ def decide_trades(
 
     assert timestamp.minute == 0
     assert timestamp.second == 0
-    assert timestamp.hour == 0
+    
+    # assert timestamp.hour == 0  # since this is also used to test hourly cycles now
 
     # Create a position manager helper class that allows us easily to create
     # opening/closing trades for different positions
@@ -70,11 +71,11 @@ def decide_trades(
     fast_ema = close.ewm(span=10).mean().iloc[-1]
 
     # https://stackoverflow.com/a/623312/315168
-    day_number = timestamp.to_pydatetime().timetuple().tm_yday
+    # day_number = timestamp.to_pydatetime().timetuple().tm_yday
 
     trades = []
 
-    if day_number % 2 == 0:
+    if (cycle_debug_data['cycle'] + 1) % 2 == 0:
         # buy on even days
         if not position_manager.is_any_open():
             buy_amount = cash * position_size
