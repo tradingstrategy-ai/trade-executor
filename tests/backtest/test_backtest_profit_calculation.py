@@ -20,6 +20,7 @@ from tradeexecutor.cli.log import setup_pytest_logging
 from tradeexecutor.cli.loop import ExecutionTestHook
 from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier
 from tradeexecutor.state.state import State
+from tradeexecutor.statistics.summary import calculate_summary_statistics
 from tradeexecutor.strategy.cycle import CycleDuration
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse, create_pair_universe_from_code
 from tradeexecutor.testing.synthetic_ethereum_data import generate_random_ethereum_address
@@ -199,6 +200,49 @@ def backtest_result(
     return state
 
 
+@pytest.fixture(scope="module")
+def backtest_result_hourly(
+        logger: logging.Logger,
+        strategy_path: Path,
+        synthetic_universe: TradingStrategyUniverse,
+        routing_model: BacktestRoutingModel,
+    ) -> State:
+    """Run the strategy backtest.
+
+    - Use synthetic data
+
+    - Run a strategy for 6 months
+    """
+
+    # Run the test
+    setup = setup_backtest_for_universe(
+        strategy_path,
+        start_at=datetime.datetime(2021, 6, 1),
+        end_at=datetime.datetime(2021, 7, 1),
+        cycle_duration=CycleDuration.cycle_1h,  # Override to use 1h cycles despite what strategy file says
+        candle_time_frame=TimeBucket.h1,  # Override to use 1h cycles despite what strategy file says
+        initial_deposit=0,
+        universe=synthetic_universe,
+        routing_model=routing_model,
+        allow_missing_fees=True,
+    )
+
+    deposit_simulator = DepositSimulator()
+    state, universe, debug_dump = run_backtest(
+        setup,
+        allow_missing_fees=True,
+        execution_test_hook=deposit_simulator,
+    )
+
+    # Some smoke checks we generated good data
+    assert deposit_simulator.deposit_callbacks_done > 10, "No deposit/redemption activity detected"
+
+    all_positions = list(state.portfolio.get_all_positions())
+    assert len(all_positions) == 360
+
+    return state
+
+
 def test_calculate_funding_flow(backtest_result: State):
     """Calculate funding flow for test deposits/redemptions."""
     state = backtest_result
@@ -245,7 +289,16 @@ def test_calculate_realised_trading_profitability_fill_gap(backtest_result: Stat
     last_val = compounded_profitability[last]
     second_last_val = compounded_profitability[second_last]
     assert last_val == second_last_val
+    
 
+def test_profitabilities_are_same(backtest_result_hourly: State):
+    """
+    Check that two methods of calculating profit yield the same result
+    """
+    summary_stats = calculate_summary_statistics(backtest_result_hourly, time_window=datetime.timedelta(days=2000), key_metrics_backtest_cut_off=datetime.timedelta(days=0))
+    
+    assert summary_stats.key_metrics['profitability'].value == summary_stats.return_all_time
+    
 
 def test_calculate_realised_trading_profitability_no_trades():
     """Do not crash when calculating realised trading profitability if there are no trades."""
