@@ -30,6 +30,11 @@ from eth_defi.one_delta.position import (
     open_short_position,
     reduce_short_position,
 )
+from eth_defi.one_delta.price import (
+    OneDeltaPriceHelper,
+    estimate_buy_received_amount, 
+    estimate_sell_received_amount,
+)
 from eth_defi.utils import ZERO_ADDRESS_STR
 from eth_defi.aave_v3.constants import MAX_AMOUNT
 
@@ -121,13 +126,22 @@ class OneDeltaRoutingState(EthereumRoutingState):
         )
 
         pool_fee_raw = int(target_pair.get_pricing_pair().fee * 1_000_000)
+        slippage_bps = max_slippage * 100
+        price_helper = OneDeltaPriceHelper(one_delta)
 
-        # TODO: factor in the slippage
         if TradeFlag.open in trade_flags:
             assert  borrow_amount < 0
             # TODO: planned_reserve-planned_collateral_allocation refactor later
             assert collateral_amount == 0
             assert reserve_amount > 0
+
+            min_collateral_amount_out = price_helper.get_amount_out(
+                -borrow_amount,
+                [base_token.address, quote_token.address],
+                [pool_fee_raw],
+                slippage=slippage_bps,
+            )
+
             bound_func = open_short_position(
                 one_delta_deployment=one_delta,
                 collateral_token=quote_token,
@@ -136,6 +150,7 @@ class OneDeltaRoutingState(EthereumRoutingState):
                 collateral_amount=reserve_amount,
                 borrow_amount=-borrow_amount,
                 wallet_address=self.tx_builder.get_token_delivery_address(),
+                min_collateral_amount_out=min_collateral_amount_out,
             )
         elif TradeFlag.close in trade_flags or TradeFlag.close_protocol_last in trade_flags:
             # TODO: planned_reserve-planned_collateral_allocation refactor later
@@ -159,6 +174,13 @@ class OneDeltaRoutingState(EthereumRoutingState):
         elif TradeFlag.increase in trade_flags:
             assert borrow_amount < 0
 
+            min_collateral_amount_out = price_helper.get_amount_out(
+                -borrow_amount,
+                [base_token.address, quote_token.address],
+                [pool_fee_raw],
+                slippage=slippage_bps,
+            )
+
             bound_func = open_short_position(
                 one_delta_deployment=one_delta,
                 collateral_token=quote_token,
@@ -167,9 +189,17 @@ class OneDeltaRoutingState(EthereumRoutingState):
                 collateral_amount=reserve_amount,
                 borrow_amount=-borrow_amount,
                 wallet_address=self.tx_builder.get_token_delivery_address(),
+                min_collateral_amount_out=min_collateral_amount_out,
             )
         elif TradeFlag.reduce in trade_flags:
             assert borrow_amount > 0
+
+            max_collateral_amount_in = price_helper.get_amount_in(
+                borrow_amount,
+                [base_token.address, quote_token.address],
+                [pool_fee_raw],
+                slippage=slippage_bps,
+            )
 
             bound_func = reduce_short_position(
                 one_delta_deployment=one_delta,
@@ -180,8 +210,7 @@ class OneDeltaRoutingState(EthereumRoutingState):
                 wallet_address=self.tx_builder.get_token_delivery_address(),
                 reduce_borrow_amount=borrow_amount,
                 withdraw_collateral_amount=-collateral_amount,
-                # min_borrow_amount_out=0, # TODO: use borrow_amount and slippage?
-                max_collateral_amount_in=MAX_AMOUNT,  # TODO
+                max_collateral_amount_in=max_collateral_amount_in,
             )
         else:
             raise ValueError(f"Wrong trade flags used: {trade_flags}")
