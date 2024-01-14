@@ -572,7 +572,7 @@ class TradeExecution:
                 pair = self.pair
                 underlying = self.pair.get_pricing_pair()
 
-                return f"<{label} short #{self.trade_id} \n" \
+                return f"<{label} #{self.trade_id} \n" \
                        f"   {self.planned_quantity} {underlying.base.token_symbol} at {self.planned_price} USD, {self.get_status().name} phase\n" \
                        f"   collateral consumption: {self.planned_collateral_consumption} {pair.quote.token_symbol}, collateral allocation: {self.planned_collateral_allocation} {pair.quote.token_symbol}\n" \
                        f"   reserve: {self.planned_reserve}\n" \

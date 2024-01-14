@@ -126,7 +126,7 @@ class OneDeltaRoutingState(EthereumRoutingState):
         )
 
         pool_fee_raw = int(target_pair.get_pricing_pair().fee * 1_000_000)
-        slippage_bps = max_slippage * 100
+        slippage_bps = max_slippage * 10_000
         price_helper = OneDeltaPriceHelper(one_delta)
 
         if TradeFlag.open in trade_flags:
