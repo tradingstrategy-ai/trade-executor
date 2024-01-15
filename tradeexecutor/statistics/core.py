@@ -115,7 +115,7 @@ def calculate_statistics(
         trade_analysis = build_trade_analysis(portfolio)
         
         logger.info("Serialising serialise_long_short_stats_as_json_table()")
-        long_short_table = serialise_long_short_stats_as_json_table(state, backtested_state, key_metrics_backtest_cut_off)
+        long_short_table = serialise_long_short_stats_as_json_table(portfolio)
 
         pf_stats = PortfolioStatistics(
             calculated_at=clock,
