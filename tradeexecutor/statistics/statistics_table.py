@@ -61,14 +61,14 @@ def serialise_long_short_stats_as_json_table(
     """
     source = KeyMetricSource.live_trading
     first, last = portfolio.get_first_and_last_executed_trade()
-    
+
     calculation_window_start_at = first.executed_at
     calculation_window_end_at = last.executed_at
-    
+
     if not calculation_window_start_at and calculation_window_end_at:
         return StatisticsTable(
             columns=["All", "Long", "Short"],
-            created_at=datetime.datetime.utcnow(),
+            created_at=datetime.datetime.now(datetime.timezone.utc),
             source=source,
             rows={},
         )
