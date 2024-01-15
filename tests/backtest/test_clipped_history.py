@@ -32,7 +32,10 @@ def test_clip_dataset(persistent_test_client):
         universe_options=universe_options,
         start_time=START_AT,
         end_time=END_AT,
+        stop_loss_time_bucket=CANDLE_TIME_BUCKET,
     )
 
+    assert dataset.backtest_stop_loss_candles is not None, "No stop loss candles provided"
+    assert dataset.backtest_stop_loss_time_bucket == CANDLE_TIME_BUCKET, "Stop loss time bucket is incorrect"
     assert dataset.candles.iloc[0]["timestamp"] >= START_AT
     assert dataset.candles.iloc[-1]["timestamp"] <= END_AT
