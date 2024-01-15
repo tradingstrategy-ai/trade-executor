@@ -59,7 +59,7 @@ def serialise_long_short_stats_as_json_table(
     :param legacy_workarounds: Skip some calculations on old data, because data is missing.
     :return: Summary statistics for all, long, and short positions
     """
-    
+    source = KeyMetricSource.live_trading
     first, last = portfolio.get_first_and_last_executed_trade()
     
     calculation_window_start_at = first.executed_at
@@ -69,12 +69,12 @@ def serialise_long_short_stats_as_json_table(
         return StatisticsTable(
             columns=["All", "Long", "Short"],
             created_at=datetime.datetime.utcnow(),
-            source=KeyMetricSource.live_trading,
+            source=source,
             rows={},
         )
 
     analysis = build_trade_analysis(portfolio)
-    summary = analysis.calculate_all_summary_stats_by_side(state=source_state, urls=True)  # TODO timebucket
+    summary = analysis.calculate_all_summary_stats_by_side(urls=True)  # TODO timebucket
 
     key_metrics_map = {
         KeyMetricKind.trading_period_length: 'Trading period length',
@@ -155,7 +155,7 @@ def serialise_long_short_stats_as_json_table(
 
     table = StatisticsTable(
         columns=["All", "Long", "Short"],
-        created_at=source_state.created_at,
+        created_at=calculation_window_start_at,
         source=source,
         rows=rows,
     )
