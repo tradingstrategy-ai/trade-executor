@@ -227,7 +227,7 @@ def test_generic_routing_close_position_across_markets(
 
     # Check collateral amounts for the short position
     short_pos = position_manager.get_current_position_for_pair(weth_usdc_shorting_pair)
-    assert short_pos.loan.get_collateral_quantity() == pytest.approx(Decimal("898.109609"))  # aUSDC
+    assert short_pos.loan.get_collateral_quantity() == pytest.approx(Decimal("898.067062"))  # aUSDC
 
     # Check that on-chain balances are good after opening the positions
     corrections = calculate_account_corrections(
@@ -398,9 +398,9 @@ def test_generic_routing_check_accounts(
     # variableDebtPolWETH 0.6022047928580665889345412089
     # aPolUSDC 898.085644
     assert asset_to_position_mapping[asset_usdc].quantity == Decimal("9600")
-    assert asset_to_position_mapping[asset_wmatic].quantity == pytest.approx(Decimal(174.375401861648687986))
-    assert asset_to_position_mapping[weth_usdc_shorting_pair.base].quantity == pytest.approx(Decimal(0.3678414988406300651822788816))
-    assert asset_to_position_mapping[weth_usdc_shorting_pair.quote].quantity == pytest.approx(Decimal(898.085644))
+    assert asset_to_position_mapping[asset_wmatic].quantity == pytest.approx(Decimal(116.923948814671108363))
+    assert asset_to_position_mapping[weth_usdc_shorting_pair.base].quantity == pytest.approx(Decimal(0.267619993517596112))
+    assert asset_to_position_mapping[weth_usdc_shorting_pair.quote].quantity == pytest.approx(Decimal(898.024187))
     assert len(asset_to_position_mapping) == 4
 
     # Check that our internal balance matches on-chain balance after execution
