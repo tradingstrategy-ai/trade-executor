@@ -62,16 +62,16 @@ def serialise_long_short_stats_as_json_table(
     source = KeyMetricSource.live_trading
     first, last = portfolio.get_first_and_last_executed_trade()
 
-    calculation_window_start_at = first.executed_at
-    calculation_window_end_at = last.executed_at
-
-    if not calculation_window_start_at and calculation_window_end_at:
+    if not first or not last or not first.executed_at or not last.executed_at:
         return StatisticsTable(
             columns=["All", "Long", "Short"],
-            created_at=datetime.datetime.now(datetime.timezone.utc),
+            created_at=datetime.datetime.utcnow(),
             source=source,
             rows={},
         )
+        
+    calculation_window_start_at = first.executed_at
+    calculation_window_end_at = last.executed_at
 
     analysis = build_trade_analysis(portfolio)
     summary = analysis.calculate_all_summary_stats_by_side(urls=True)  # TODO timebucket
