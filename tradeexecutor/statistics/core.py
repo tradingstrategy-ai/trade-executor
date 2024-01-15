@@ -6,7 +6,7 @@ from dataclasses import dataclass, field
 from typing import Dict, List
 from tradeexecutor.analysis.trade_analyser import build_trade_analysis
 
-from tradeexecutor.statistics.statistics_table import StatisticsTable
+from tradeexecutor.statistics.statistics_table import serialise_long_short_stats_as_json_table
 from tradeexecutor.state.portfolio import Portfolio
 from tradeexecutor.state.position import TradingPosition
 from tradeexecutor.state.statistics import Statistics, PortfolioStatistics, PositionStatistics, FinalPositionStatistics
