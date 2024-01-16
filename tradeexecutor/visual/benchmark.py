@@ -5,9 +5,10 @@ from typing import Optional, List, Union, Collection
 import plotly.graph_objects as go
 import pandas as pd
 
-
+from tradeexecutor.analysis.trade_analyser import build_trade_analysis
 from tradeexecutor.state.statistics import PortfolioStatistics
 from tradeexecutor.state.visualisation import Plot
+from tradeexecutor.state.state import State
 from tradeexecutor.visual.technical_indicator import visualise_technical_indicator
 
 
@@ -268,15 +269,21 @@ def visualise_benchmark(
 
 
 def visualise_benchmark_by_side(
+    state: State,
     name: Optional[str] = None,
-    portfolio_statistics: Optional[List[PortfolioStatistics]] = None,
+    #portfolio_statistics: Optional[List[PortfolioStatistics]] = None,
     height=1200,
 ):
     """Visualise separate benchmarks for both longing and shorting"""
     
-    daily_returns_long = portfolio_statistics[-1].long_summary.daily_returns
-    daily_returns_short = portfolio_statistics[-1].short_summary.daily_returns
+    analysis = build_trade_analysis(state.portfolio)
+
+    long_short_summary = analysis.calculate_all_summary_stats_by_side(state=state)
+    long_daily_returns = long_short_summary.daily_returns
+    short_daily_returns = long_short_summary.daily_returns
     
+    
+
     pass
 
     return
