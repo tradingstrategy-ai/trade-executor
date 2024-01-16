@@ -1189,7 +1189,7 @@ class PositionManager:
             value = Decimal(value)
 
         pricing_pair = shorting_pair.get_pricing_pair()  # should be effectively the same as executor_pair
-        price_structure = self.pricing_model.get_sell_price(self.timestamp, pricing_pair, value)
+        price_structure = self.pricing_model.get_sell_price(self.timestamp, pricing_pair, Decimal(1))
         collateral_price = self.reserve_price
         borrowed_asset_price = price_structure.price
 
@@ -1481,7 +1481,7 @@ class PositionManager:
 
         try:
             if delta > 0:
-                # Iincrease short
+                # Increase short
                 # See test_open_and_increase_one_short_with_interest
                 # import ipdb ; ipdb.set_trace()
 

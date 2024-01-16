@@ -56,7 +56,7 @@ def anvil_polygon_chain_fork(request, large_usdc_holder) -> str:
     launch = fork_network_anvil(
         mainnet_rpc,
         unlocked_addresses=[large_usdc_holder],
-        fork_block_number=49_000_000,
+        fork_block_number=51_000_000,
     )
     try:
         yield launch.json_rpc_url
@@ -156,6 +156,7 @@ def one_delta_deployment(web3) -> OneDeltaDeployment:
         web3,
         flash_aggregator_address="0x74E95F3Ec71372756a01eB9317864e3fdde1AC53",
         broker_proxy_address="0x74E95F3Ec71372756a01eB9317864e3fdde1AC53",
+        quoter_address="0x36de3876ad1ef477e8f6d98EE9a162926f00463A",
     )
 
 
@@ -296,6 +297,7 @@ def one_delta_routing_model(
     return OneDeltaRouting(
         address_map={
             "one_delta_broker_proxy": one_delta_deployment.broker_proxy.address,
+            "one_delta_quoter": one_delta_deployment.quoter.address,
             "aave_v3_pool": aave_v3_deployment.pool.address,
             "aave_v3_data_provider": aave_v3_deployment.data_provider.address,
             "aave_v3_oracle": aave_v3_deployment.oracle.address,

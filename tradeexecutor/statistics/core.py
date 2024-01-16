@@ -6,6 +6,7 @@ from dataclasses import dataclass, field
 from typing import Dict, List
 from tradeexecutor.analysis.trade_analyser import build_trade_analysis
 
+from tradeexecutor.statistics.statistics_table import serialise_long_short_stats_as_json_table
 from tradeexecutor.state.portfolio import Portfolio
 from tradeexecutor.state.position import TradingPosition
 from tradeexecutor.state.statistics import Statistics, PortfolioStatistics, PositionStatistics, FinalPositionStatistics
@@ -112,6 +113,9 @@ def calculate_statistics(
     if (execution_mode != ExecutionMode.backtesting):
 
         trade_analysis = build_trade_analysis(portfolio)
+        
+        logger.info("Serialising serialise_long_short_stats_as_json_table()")
+        long_short_table = serialise_long_short_stats_as_json_table(portfolio)
 
         pf_stats = PortfolioStatistics(
             calculated_at=clock,
@@ -128,8 +132,7 @@ def calculate_statistics(
             first_trade_at=first_trade and first_trade.executed_at or None,
             last_trade_at=last_trade and last_trade.executed_at or None,
             summary=trade_analysis.calculate_summary_statistics(),
-            long_summary=trade_analysis.calculate_long_summary_statistics(),
-            short_summary=trade_analysis.calculate_short_summary_statistics(),
+            long_short_table=long_short_table,
         )
     else:
         pf_stats = PortfolioStatistics(

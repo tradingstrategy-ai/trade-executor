@@ -374,12 +374,6 @@ class StrategySummaryStatistics:
     #:
     backtest_metrics_cut_off_period: Optional[datetime.timedelta] = None
 
-    #: Long/short statistics for the summary tile.
-    #:
-    #: It should have 3 columns: all, long, short.
-    #:
-    long_short_table: Optional['StatisticsTable'] = None
-
 
 @dataclass_json
 @dataclass(frozen=True)

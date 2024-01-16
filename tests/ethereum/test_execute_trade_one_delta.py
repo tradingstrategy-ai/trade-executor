@@ -79,7 +79,7 @@ def anvil_polygon_chain_fork(request, large_usdc_holder) -> str:
     launch = fork_network_anvil(
         mainnet_rpc,
         unlocked_addresses=[large_usdc_holder],
-        fork_block_number=49_000_000,
+        fork_block_number=51_000_000,
     )
     try:
         yield launch.json_rpc_url
@@ -165,6 +165,7 @@ def one_delta_deployment(web3) -> OneDeltaDeployment:
         web3,
         flash_aggregator_address="0x74E95F3Ec71372756a01eB9317864e3fdde1AC53",
         broker_proxy_address="0x74E95F3Ec71372756a01eB9317864e3fdde1AC53",
+        quoter_address="0x36de3876ad1ef477e8f6d98EE9a162926f00463A",
     )
 
 
@@ -368,7 +369,7 @@ def test_execute_trade_instructions_open_short(
     fees = [WETH_USDC_FEE_RAW]
     eth_price = price_helper.get_amount_in(1 * 10 ** 18, path, fees) / 10 ** 6
     
-    assert eth_price == pytest.approx(1636.46574)
+    assert eth_price == pytest.approx(2250.367818)
 
     reserve_amount = Decimal(5000)
     leverage = 2
@@ -386,10 +387,10 @@ def test_execute_trade_instructions_open_short(
     ethereum_trader.execute_trades_simple(ethereum_trader.create_routing_model(), [trade])
 
     assert trade.get_status() == TradeStatus.success
-    assert trade.executed_price == pytest.approx(1624.626136536907)
-    assert abs(trade.executed_quantity) == pytest.approx(Decimal(6.110729821939321144))
+    assert trade.executed_price == pytest.approx(2225.901440877395)
+    assert abs(trade.executed_quantity) == pytest.approx(Decimal(4.443718009124141875))
     # TODO:
-    assert trade.lp_fees_paid == pytest.approx(0.018332189465817963)
+    assert trade.lp_fees_paid == pytest.approx(0.013331154027372427)
     assert trade.native_token_price == 0.0
 
     portfolio = state.portfolio
@@ -429,7 +430,7 @@ def test_execute_trade_instructions_open_and_close_short(
     fees = [WETH_USDC_FEE_RAW]
     eth_price = price_helper.get_amount_in(1 * 10 ** 18, path, fees) / 10 ** 6
     
-    assert eth_price == pytest.approx(1636.46574)
+    assert eth_price == pytest.approx(2250.367818)
 
     reserve_amount = Decimal(5000)
     leverage = 2
@@ -448,8 +449,8 @@ def test_execute_trade_instructions_open_and_close_short(
 
     assert len(state.portfolio.open_positions) == 1
     assert trade1.get_status() == TradeStatus.success
-    assert trade1.executed_price == pytest.approx(1624.626136536907)
-    assert abs(trade1.executed_quantity) == pytest.approx(Decimal(6.110729821939321144))
+    assert trade1.executed_price == pytest.approx(2225.901440877395)
+    assert abs(trade1.executed_quantity) == pytest.approx(Decimal(4.443718009124141875))
     assert trade1.native_token_price == 0.0
 
     position2, trade2 = trader.close_short(
@@ -465,8 +466,8 @@ def test_execute_trade_instructions_open_and_close_short(
     ethereum_trader.execute_trades_simple(ethereum_trader.create_routing_model(), [trade2])
 
     assert trade2.get_status() == TradeStatus.success
-    assert trade2.executed_price == pytest.approx(1631.137329233084)
-    assert abs(trade2.executed_quantity) == pytest.approx(Decimal(6.110729821939321144))
+    assert trade2.executed_price == pytest.approx(2241.9849582746133)
+    assert abs(trade2.executed_quantity) == pytest.approx(Decimal(4.443718014763590029))
 
     # position should be closed successfully
     portfolio = state.portfolio

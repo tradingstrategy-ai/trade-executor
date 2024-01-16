@@ -30,6 +30,11 @@ from eth_defi.one_delta.position import (
     open_short_position,
     reduce_short_position,
 )
+from eth_defi.one_delta.price import (
+    OneDeltaPriceHelper,
+    estimate_buy_received_amount, 
+    estimate_sell_received_amount,
+)
 from eth_defi.utils import ZERO_ADDRESS_STR
 from eth_defi.aave_v3.constants import MAX_AMOUNT
 
@@ -85,17 +90,7 @@ class OneDeltaRoutingState(EthereumRoutingState):
             raise RuntimeError(f"Could not fetch deployment data for router address {router_address} (factory {factory_address}) - data is likely wrong") from e
 
     def get_one_delta_for_pair(self, address_map: dict, target_pair: TradingPairIdentifier) -> OneDeltaDeployment:
-        broker_proxy_address = Web3.to_checksum_address(address_map["one_delta_broker_proxy"])
-
-        try:
-            return fetch_one_delta_deployment(
-                self.web3,
-                broker_proxy_address,
-                broker_proxy_address,
-            )
-        except ContractLogicError as e:
-            raise RuntimeError(f"Could not fetch deployment data for router address {router_address} (factory {factory_address}) - data is likely wrong") from e
-
+        return get_one_delta(self.web3, address_map)
 
     def trade_on_one_delta(
         self,
@@ -122,21 +117,31 @@ class OneDeltaRoutingState(EthereumRoutingState):
             self.check_has_enough_tokens(quote_token, collateral_amount)
 
         logger.info(
-            "Creating a trade for %s, slippage tolerance %f, borrow amount in %d. Trade flags are %s",
+            "Creating a trade for %s, slippage tolerance %f, borrow amount %d, collateral amount %d. Trade flags are %s",
             target_pair,
             max_slippage,
             borrow_amount,
+            collateral_amount,
             trade_flags,
         )
 
         pool_fee_raw = int(target_pair.get_pricing_pair().fee * 1_000_000)
+        slippage_bps = max_slippage * 10_000
+        price_helper = OneDeltaPriceHelper(one_delta)
 
-        # TODO: factor in the slippage
         if TradeFlag.open in trade_flags:
             assert  borrow_amount < 0
             # TODO: planned_reserve-planned_collateral_allocation refactor later
             assert collateral_amount == 0
             assert reserve_amount > 0
+
+            min_collateral_amount_out = price_helper.get_amount_out(
+                -borrow_amount,
+                [base_token.address, quote_token.address],
+                [pool_fee_raw],
+                slippage=slippage_bps,
+            )
+
             bound_func = open_short_position(
                 one_delta_deployment=one_delta,
                 collateral_token=quote_token,
@@ -145,6 +150,7 @@ class OneDeltaRoutingState(EthereumRoutingState):
                 collateral_amount=reserve_amount,
                 borrow_amount=-borrow_amount,
                 wallet_address=self.tx_builder.get_token_delivery_address(),
+                min_collateral_amount_out=min_collateral_amount_out,
             )
         elif TradeFlag.close in trade_flags or TradeFlag.close_protocol_last in trade_flags:
             # TODO: planned_reserve-planned_collateral_allocation refactor later
@@ -168,6 +174,13 @@ class OneDeltaRoutingState(EthereumRoutingState):
         elif TradeFlag.increase in trade_flags:
             assert borrow_amount < 0
 
+            min_collateral_amount_out = price_helper.get_amount_out(
+                -borrow_amount,
+                [base_token.address, quote_token.address],
+                [pool_fee_raw],
+                slippage=slippage_bps,
+            )
+
             bound_func = open_short_position(
                 one_delta_deployment=one_delta,
                 collateral_token=quote_token,
@@ -176,9 +189,17 @@ class OneDeltaRoutingState(EthereumRoutingState):
                 collateral_amount=reserve_amount,
                 borrow_amount=-borrow_amount,
                 wallet_address=self.tx_builder.get_token_delivery_address(),
+                min_collateral_amount_out=min_collateral_amount_out,
             )
         elif TradeFlag.reduce in trade_flags:
             assert borrow_amount > 0
+
+            max_collateral_amount_in = price_helper.get_amount_in(
+                borrow_amount,
+                [base_token.address, quote_token.address],
+                [pool_fee_raw],
+                slippage=slippage_bps,
+            )
 
             bound_func = reduce_short_position(
                 one_delta_deployment=one_delta,
@@ -187,9 +208,9 @@ class OneDeltaRoutingState(EthereumRoutingState):
                 atoken=atoken,
                 pool_fee=pool_fee_raw,
                 wallet_address=self.tx_builder.get_token_delivery_address(),
-                reduce_collateral_amount=-collateral_amount,
+                reduce_borrow_amount=borrow_amount,
                 withdraw_collateral_amount=-collateral_amount,
-                min_borrow_amount_out=0, # TODO: use borrow_amount and slippage?
+                max_collateral_amount_in=max_collateral_amount_in,
             )
         else:
             raise ValueError(f"Wrong trade flags used: {trade_flags}")
@@ -462,7 +483,7 @@ class OneDeltaRouting(EthereumRoutingModel):
         quote_token_details = fetch_erc20_details(web3, pricing_pair.quote.checksum_address)
         reserve = trade.reserve_currency
         tx = get_swap_transactions(trade)
-        one_delta = fetch_one_delta_deployment(web3, tx.contract_address, tx.contract_address)
+        one_delta = fetch_one_delta_deployment(web3, tx.contract_address, tx.contract_address, tx.contract_address)
         uniswap = mock_partial_deployment_for_analysis(web3, ZERO_ADDRESS_STR)
         aave = fetch_aave_v3_deployment(web3, ZERO_ADDRESS_STR, ZERO_ADDRESS_STR, ZERO_ADDRESS_STR)
 
@@ -486,14 +507,6 @@ class OneDeltaRouting(EthereumRoutingModel):
         )
 
         if isinstance(result, TradeSuccess):
-            # TODO: Hieu, check this out
-            # Path for WMATIC short ['0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174', '0x0d500B1d8E8eF31E21C99d1Db9A6444d3ADf1270'], base token is <Wrapped Matic (WMATIC) at 0x0d500B1d8E8eF31E21C99d1Db9A6444d3ADf1270, 18 decimals, on chain 137>
-            # path in 1delta is always from base -> quote
-            # assert result.path[0].lower() == base_token_details.address.lower(), \
-            #    f"Failed to analyse trade {trade}\n" \
-            #    f"Path is {result.path}, base token is {base_token_details}"
-            #assert result.path[-1].lower() == reserve.address.lower()
-
             price = result.get_human_price(quote_token_details.address == result.token0.address)
             
             if trade.is_buy():
@@ -538,3 +551,18 @@ class OneDeltaRouting(EthereumRoutingModel):
         else:
             # Trade failed
             report_failure(ts, state, trade, stop_on_execution_failure)
+
+
+def get_one_delta(web3: Web3, address_map: dict) -> OneDeltaDeployment:
+    broker_proxy_address = Web3.to_checksum_address(address_map["one_delta_broker_proxy"])
+    quoter_address = Web3.to_checksum_address(address_map["one_delta_quoter"])
+
+    try:
+        return fetch_one_delta_deployment(
+            web3,
+            broker_proxy_address,
+            broker_proxy_address,
+            quoter_address,
+        )
+    except ContractLogicError as e:
+        raise RuntimeError(f"Could not fetch deployment data with address map {address_map} - data is likely wrong") from e

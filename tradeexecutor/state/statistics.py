@@ -17,7 +17,6 @@ from dataclasses_json import dataclass_json
 from pandas import DatetimeIndex
 
 from tradingstrategy.types import USDollarAmount
-
 from tradeexecutor.analysis.trade_analyser import TradeSummary
 
 
@@ -116,8 +115,7 @@ class PortfolioStatistics:
 
     realised_profit_usd: Optional[USDollarAmount] = 0
     summary: Optional[TradeSummary] = None
-    long_summary: Optional[TradeSummary] = None
-    short_summary: Optional[TradeSummary] = None
+    long_short_table: Optional[str] = None
 
     def get_value(self) -> USDollarAmount:
         if self.net_asset_value is not None:
