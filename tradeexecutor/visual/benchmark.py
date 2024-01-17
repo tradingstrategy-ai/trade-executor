@@ -10,6 +10,7 @@ from tradeexecutor.state.statistics import PortfolioStatistics
 from tradeexecutor.state.visualisation import Plot
 from tradeexecutor.state.state import State
 from tradeexecutor.visual.technical_indicator import visualise_technical_indicator
+from tradingstrategy.timebucket import TimeBucket
 
 
 def visualise_portfolio_equity_curve(
@@ -267,9 +268,9 @@ def visualise_benchmark(
 
     return fig
 
-
-def visualise_benchmark_by_side(
+def visualise_long_short_benchmark(
     state: State,
+    time_bucket: TimeBucket,
     name: Optional[str] = None,
     #portfolio_statistics: Optional[List[PortfolioStatistics]] = None,
     height=1200,
@@ -278,12 +279,43 @@ def visualise_benchmark_by_side(
     
     analysis = build_trade_analysis(state.portfolio)
 
-    long_short_summary = analysis.calculate_all_summary_stats_by_side(state=state)
-    long_daily_returns = long_short_summary.daily_returns
-    short_daily_returns = long_short_summary.daily_returns
+    long_stats = analysis.calculate_long_summary_statistics(state=state, time_bucket=time_bucket)
+    short_stats = analysis.calculate_short_summary_statistics(state=state, time_bucket=time_bucket)
+    overall_stats = analysis.calculate_summary_statistics(state=state, time_bucket=time_bucket)
     
+    long_compounding_returns = long_stats.compounding_returns
+    short_compounding_returns = short_stats.compounding_returns
+    overall_compounding_returns = overall_stats.compounding_returns
     
+    # visualise long equity curve
+    long_curve = get_plot_from_series("long", "#006400", long_compounding_returns)
+    short_curve = get_plot_from_series("short", "#8B0000", short_compounding_returns)
+    overall_curve = get_plot_from_series("overall", "rgba(0, 0, 255, 0.3)", overall_compounding_returns)
+    
+    fig = go.Figure()
+    fig.add_trace(long_curve)
+    fig.add_trace(short_curve)
+    fig.add_trace(overall_curve)
 
-    pass
+    return fig
 
-    return
+def get_plot_from_series(name, colour, compounded_daily):
+    plot = []
+    for index, daily_return in compounded_daily.items():
+        plot.append({
+            "timestamp": index,
+            "value": daily_return,
+        })
+
+    df = pd.DataFrame(plot)
+    df.set_index("timestamp", inplace=True)
+
+    fig = go.Scatter(
+        x=df.index,
+        y=df["value"],
+        mode="lines",
+        name=name,
+        line=dict(color=colour),
+    )
+    
+    return fig
