@@ -115,7 +115,6 @@ class PortfolioStatistics:
 
     realised_profit_usd: Optional[USDollarAmount] = 0
     summary: Optional[TradeSummary] = None
-    long_short_table: Optional[str] = None
 
     def get_value(self) -> USDollarAmount:
         if self.net_asset_value is not None:
@@ -160,6 +159,9 @@ class Statistics:
 
     #: Per position statistics for closed positions.
     closed_positions: Dict[int, FinalPositionStatistics] = field(default_factory=dict)
+    
+    #: 
+    long_short_metrics_latest: str = None
 
     def get_latest_portfolio_stats(self) -> PortfolioStatistics:
         return self.portfolio[-1]
