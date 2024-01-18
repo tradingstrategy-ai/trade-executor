@@ -195,8 +195,10 @@ def update_statistics(
     )
     
     logger.info("Serialising serialise_long_short_stats_as_json_table()")
-    long_short_table = serialise_long_short_stats_as_json_table(portfolio)
-    stats.long_short_metrics_latest = long_short_table
+    
+    if not execution_mode.backtesting:
+        long_short_table = serialise_long_short_stats_as_json_table(portfolio)
+        stats.long_short_metrics_latest = long_short_table
 
     new_stats = calculate_statistics(clock, portfolio, execution_mode)
     stats.portfolio.append(new_stats.portfolio)
