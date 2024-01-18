@@ -39,8 +39,8 @@ from tradeexecutor.state.types import USDollarPrice, Percent
 from tradeexecutor.utils.format import calculate_percentage
 from tradeexecutor.utils.timestamp import json_encode_timedelta, json_decode_timedelta
 from tradeexecutor.utils.summarydataframe import format_value as format_value_for_summary_table
-from tradingstrategy.timebucket import TimeBucket
 
+from tradingstrategy.timebucket import TimeBucket
 from tradingstrategy.exchange import Exchange
 from tradingstrategy.pair import PandasPairUniverse
 from tradingstrategy.types import PrimaryKey, USDollarAmount
@@ -145,6 +145,7 @@ class TradeSummary:
     #: advanced users can use this property instead of the
     #: provided quantstats helper methods
     daily_returns: Optional[pd.Series] = None
+    compounding_returns: Optional[pd.Series] = None
 
     winning_stop_losses: Optional[int] = 0
     losing_stop_losses: Optional[int] = 0
@@ -552,7 +553,45 @@ class TradeAnalysis:
         :return:
             TradeSummary instance
         """
-        return self.calculate_summary_statistics_for_positions(time_bucket, state, self.get_all_positions())
+        
+        if state is not None:
+            # for advanced statistics
+            # import here to avoid circular import error
+            from tradeexecutor.visual.equity_curve import calculate_daily_returns, calculate_returns, calculate_equity_curve, calculate_compounding_realised_trading_profitability
+            from tradeexecutor.statistics.key_metric import calculate_sharpe, calculate_sortino, calculate_profit_factor, calculate_max_drawdown, calculate_max_runup
+
+            daily_returns = calculate_daily_returns(state, freq="D")
+            equity_curve = calculate_equity_curve(state)
+            original_returns = calculate_returns(equity_curve)
+            compounding_returns = calculate_compounding_realised_trading_profitability(state)
+
+            sharpe_ratio = calculate_sharpe(daily_returns)
+            sortino_ratio = calculate_sortino(daily_returns)
+
+            # these stats not annualised, so better to calculate it on the original returns
+            profit_factor = calculate_profit_factor(original_returns)
+            max_drawdown = calculate_max_drawdown(original_returns)
+            max_runup = calculate_max_runup(original_returns)
+        else:
+            daily_returns = None
+            compounding_returns = None
+            sharpe_ratio = None
+            sortino_ratio = None
+            profit_factor = None
+            max_drawdown = None
+            max_runup = None
+        
+        trade_summary = self.calculate_summary_statistics_for_positions(time_bucket, state, self.get_all_positions())
+        
+        trade_summary.daily_returns = daily_returns
+        trade_summary.compounding_returns = compounding_returns
+        trade_summary.sharpe_ratio = sharpe_ratio
+        trade_summary.sortino_ratio = sortino_ratio
+        trade_summary.profit_factor = profit_factor
+        trade_summary.max_drawdown = max_drawdown
+        trade_summary.max_runup = max_runup
+        
+        return trade_summary
 
     def calculate_short_summary_statistics(
             self,
@@ -570,7 +609,16 @@ class TradeAnalysis:
         :return:
             TradeSummary instance
         """
-        return self.calculate_summary_statistics_for_positions(time_bucket, state, self.get_short_positions())
+        compounding_returns = None
+        if state is not None:
+            # import here to avoid circular import error
+            from tradeexecutor.visual.equity_curve import calculate_short_compounding_realised_trading_profitability
+            compounding_returns = calculate_short_compounding_realised_trading_profitability(state)
+        
+        short_summary = self.calculate_summary_statistics_for_positions(time_bucket, state, self.get_short_positions())
+        short_summary.compounding_returns = compounding_returns
+        
+        return short_summary
 
     def calculate_long_summary_statistics(
             self,
@@ -588,7 +636,16 @@ class TradeAnalysis:
         :return:
             TradeSummary instance
         """
-        return self.calculate_summary_statistics_for_positions(time_bucket, state, self.get_long_positions())
+        compounding_returns = None
+        if state is not None:
+            # import here to avoid circular import error
+            from tradeexecutor.visual.equity_curve import calculate_long_compounding_realised_trading_profitability
+            compounding_returns = calculate_long_compounding_realised_trading_profitability(state)
+
+        long_summary =  self.calculate_summary_statistics_for_positions(time_bucket, state, self.get_long_positions())
+        long_summary.compounding_returns = compounding_returns
+        
+        return long_summary
 
     def calculate_summary_statistics_for_positions(
             self,
@@ -610,32 +667,6 @@ class TradeAnalysis:
 
         if time_bucket is not None:
             assert isinstance(time_bucket, TimeBucket), "Not a valid time bucket"
-
-        if state is not None:
-            # for advanced statistics
-            # import here to avoid circular import error
-            from tradeexecutor.visual.equity_curve import calculate_daily_returns, calculate_returns, calculate_equity_curve
-            from tradeexecutor.statistics.key_metric import calculate_sharpe, calculate_sortino, calculate_profit_factor, calculate_max_drawdown, calculate_max_runup
-
-            daily_returns = calculate_daily_returns(state, freq="D")
-            equity_curve = calculate_equity_curve(state)
-            original_returns = calculate_returns(equity_curve)
-
-            sharpe_ratio = calculate_sharpe(daily_returns)
-            sortino_ratio = calculate_sortino(daily_returns)
-
-            # these stats not annualised, so better to calculate it on the original returns
-            profit_factor = calculate_profit_factor(original_returns)
-            max_drawdown = calculate_max_drawdown(original_returns)
-            max_runup = calculate_max_runup(original_returns)
-        else:
-            daily_returns = None
-            original_returns = None
-            sharpe_ratio = None
-            sortino_ratio = None
-            profit_factor = None
-            max_drawdown = None
-            max_runup = None
 
         def get_avg_profit_pct_check(trades: List | None):
             return float(np.mean(trades)) if trades else None
@@ -852,8 +883,8 @@ class TradeAnalysis:
             max_pos_cons=max_pos_cons,
             max_neg_cons=max_neg_cons,
             max_pullback=max_pullback_pct,
-            max_drawdown=max_drawdown,
-            max_runup=max_runup,
+            #max_drawdown=max_drawdown,
+            #max_runup=max_runup,
             max_loss_risk=max_loss_risk_at_open_pc,
             max_realised_loss=max_realised_loss,
             avg_realised_risk=avg_realised_risk,
@@ -861,14 +892,14 @@ class TradeAnalysis:
             trade_volume=trade_volume,
             lp_fees_paid=lp_fees_paid,
             lp_fees_average_pc=lp_fees_average_pc,
-            daily_returns=daily_returns,
+            #daily_returns=daily_returns,
             winning_stop_losses=winning_stop_losses,
             losing_stop_losses=losing_stop_losses,
             winning_take_profits=winning_take_profits,
             losing_take_profits=losing_take_profits,
-            sharpe_ratio=sharpe_ratio,
-            sortino_ratio=sortino_ratio,
-            profit_factor=profit_factor,
+            #sharpe_ratio=sharpe_ratio,
+            #sortino_ratio=sortino_ratio,
+            #profit_factor=profit_factor,
         )
 
     @staticmethod
