@@ -196,7 +196,7 @@ def update_statistics(
     
     logger.info("Serialising serialise_long_short_stats_as_json_table()")
     
-    if not execution_mode.backtesting:
+    if execution_mode.is_live_trading():
         long_short_table = serialise_long_short_stats_as_json_table(portfolio)
         stats.long_short_metrics_latest = long_short_table
 
