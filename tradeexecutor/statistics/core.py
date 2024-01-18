@@ -193,10 +193,9 @@ def update_statistics(
         clock,
         strategy_cycle_or_wall_clock
     )
-    
-    logger.info("Serialising serialise_long_short_stats_as_json_table()")
-    
+        
     if execution_mode.is_live_trading():
+        logger.info("Serialising serialise_long_short_stats_as_json_table()")
         long_short_table = serialise_long_short_stats_as_json_table(portfolio)
         stats.long_short_metrics_latest = long_short_table
 
