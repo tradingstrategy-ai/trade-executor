@@ -114,9 +114,6 @@ def calculate_statistics(
 
         trade_analysis = build_trade_analysis(portfolio)
         
-        logger.info("Serialising serialise_long_short_stats_as_json_table()")
-        long_short_table = serialise_long_short_stats_as_json_table(portfolio)
-
         pf_stats = PortfolioStatistics(
             calculated_at=clock,
             total_equity=portfolio.get_total_equity(),
@@ -132,7 +129,6 @@ def calculate_statistics(
             first_trade_at=first_trade and first_trade.executed_at or None,
             last_trade_at=last_trade and last_trade.executed_at or None,
             summary=trade_analysis.calculate_summary_statistics(),
-            long_short_table=long_short_table,
         )
     else:
         pf_stats = PortfolioStatistics(
@@ -192,12 +188,16 @@ def update_statistics(
         Only available when `update_statistics()` is run
         at the end of live trading cycle.
     """
-
     logger.info(
         "update_statistics(), real-time clock at %s, strategy cycle at %s",
         clock,
         strategy_cycle_or_wall_clock
     )
+        
+    if execution_mode.is_live_trading():
+        logger.info("Serialising serialise_long_short_stats_as_json_table()")
+        long_short_table = serialise_long_short_stats_as_json_table(portfolio)
+        stats.long_short_metrics_latest = long_short_table
 
     new_stats = calculate_statistics(clock, portfolio, execution_mode)
     stats.portfolio.append(new_stats.portfolio)
