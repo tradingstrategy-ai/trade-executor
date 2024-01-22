@@ -389,10 +389,11 @@ class ExecutionLoop:
         else:
             ts = snap_to_previous_tick(unrounded_timestamp, cycle_duration)
         
-        backtested_state = self.metadata.backtested_state if self.metadata else None
-        backtest_cutoff = self.metadata.key_metrics_backtest_cut_off if self.metadata else datetime.timedelta(days=90)
-        long_short_table = serialise_long_short_stats_as_json_table(state, backtested_state, backtest_cutoff)
-        state.stats.long_short_metrics_latest = long_short_table
+        if self.execution_context.live_trading:
+            backtested_state = self.metadata.backtested_state if self.metadata else None
+            backtest_cutoff = self.metadata.key_metrics_backtest_cut_off if self.metadata else datetime.timedelta(days=90)
+            long_short_table = serialise_long_short_stats_as_json_table(state, backtested_state, backtest_cutoff)
+            state.stats.long_short_metrics_latest = long_short_table
 
         # This Python dict collects internal debugging data through this cycle.
         # Any submodule of strategy execution can add internal information here for
