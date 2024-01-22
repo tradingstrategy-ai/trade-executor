@@ -26,6 +26,7 @@ from tradeexecutor.ethereum.tx import TransactionBuilder
 from tradeexecutor.ethereum.wallet import perform_gas_level_checks
 from tradeexecutor.state.metadata import Metadata
 from tradeexecutor.statistics.in_memory_statistics import refresh_run_state
+from tradeexecutor.statistics.statistics_table import serialise_long_short_stats_as_json_table
 from tradeexecutor.strategy.account_correction import check_accounts, UnexpectedAccountingCorrectionIssue
 from tradeexecutor.strategy.dummy import DummyExecutionModel
 from tradeexecutor.strategy.generic.generic_pricing_model import GenericPricing
@@ -387,6 +388,9 @@ class ExecutionLoop:
             ts = strategy_cycle_timestamp
         else:
             ts = snap_to_previous_tick(unrounded_timestamp, cycle_duration)
+            
+        long_short_table = serialise_long_short_stats_as_json_table(state, self.metadata.backtested_state, self.metadata.key_metrics_backtest_cut_off)
+        state.stats.long_short_metrics_latest = long_short_table
 
         # This Python dict collects internal debugging data through this cycle.
         # Any submodule of strategy execution can add internal information here for
