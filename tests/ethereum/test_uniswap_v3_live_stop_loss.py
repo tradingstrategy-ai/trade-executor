@@ -694,7 +694,7 @@ def test_refresh_visualisations(
         open_bytes_in_browser(large_image_png)
 
 
-def test_long_short_table(
+def test_metadata_stats(
     logger,
     web3: Web3,
     deployer: HexAddress,
@@ -705,6 +705,7 @@ def test_long_short_table(
     usdc_token: Contract,
     weth_token: Contract,
 ):
+    """This tests the calculation and json export of the stats that go in the metadata endpoint .i.e. StrategySummaryStatistics"""
     # Set up an execution loop we can step through
     state = State()
     loop = set_up_simulated_execution_loop_uniswap_v3(

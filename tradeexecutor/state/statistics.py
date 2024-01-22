@@ -17,7 +17,6 @@ from dataclasses_json import dataclass_json
 from pandas import DatetimeIndex
 
 from tradingstrategy.types import USDollarAmount
-
 from tradeexecutor.analysis.trade_analyser import TradeSummary
 
 
@@ -160,6 +159,9 @@ class Statistics:
 
     #: Per position statistics for closed positions.
     closed_positions: Dict[int, FinalPositionStatistics] = field(default_factory=dict)
+    
+    #: Latest long short metrics
+    long_short_metrics_latest: str = None
 
     def get_latest_portfolio_stats(self) -> PortfolioStatistics:
         return self.portfolio[-1]

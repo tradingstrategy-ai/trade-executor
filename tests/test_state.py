@@ -447,6 +447,9 @@ def test_statistics(usdc, weth_usdc, aave_usdc, start_ts):
     stats = state.stats
     portfolio_stats = stats.get_latest_portfolio_stats()
     summary = portfolio_stats.summary
+    
+    # no closed positions
+    assert stats.long_short_metrics_latest.rows['total_positions'].value['All'] == '0' 
 
     assert len(stats.positions) == 2
     assert len(stats.closed_positions) == 0
@@ -479,6 +482,13 @@ def test_statistics(usdc, weth_usdc, aave_usdc, start_ts):
     stats = state.stats
     portfolio_stats = stats.get_latest_portfolio_stats()
     summary = portfolio_stats.summary
+    
+    # 1 zero loss position
+    assert stats.long_short_metrics_latest.rows['total_positions'].value['All'] == '2' 
+    assert stats.long_short_metrics_latest.rows['won_positions'].value['Long'] == '1'
+    assert stats.long_short_metrics_latest.rows['won_positions'].value['Short'] == '0'
+    assert stats.long_short_metrics_latest.rows['average_position'].value['Long'] == '25.00%'
+
 
     assert len(stats.positions) == 2
     assert len(stats.closed_positions) == 2
