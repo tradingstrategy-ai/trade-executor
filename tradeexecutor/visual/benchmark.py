@@ -290,7 +290,7 @@ def visualise_long_short_benchmark(
     # visualise long equity curve
     long_curve = get_plot_from_series("long", "#006400", long_compounding_returns)
     short_curve = get_plot_from_series("short", "#8B0000", short_compounding_returns)
-    overall_curve = get_plot_from_series("overall", "rgba(0, 0, 255, 0.3)", overall_compounding_returns)
+    overall_curve = get_plot_from_series("overall", "rgba(0, 0, 255, 1)", overall_compounding_returns)
     
     fig = go.Figure()
     fig.add_trace(long_curve)
