@@ -988,6 +988,7 @@ class PositionManager:
             notes=notes,
             position=position,
             closing=True,
+            flags={TradeFlag.close},
         )
         return [trade]
 
@@ -1165,6 +1166,7 @@ class PositionManager:
             trade_type=TradeType.rebalance,
             reserve_currency=self.strategy_universe.get_reserve_asset(),
             collateral_asset_price=1.0,
+            flags={TradeFlag.open},
         )
 
         return [trade]

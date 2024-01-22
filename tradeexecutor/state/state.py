@@ -470,6 +470,7 @@ class State:
             position: Optional[TradingPosition] = None,
             slippage_tolerance: Optional[float] = None,
             closing: Optional[bool] = False,
+            flags: Optional[Set[TradeFlag]] = None,
     ) -> Tuple[TradingPosition, TradeExecution, bool]:
         """Create or adjust credit supply position.
 
@@ -520,6 +521,7 @@ class State:
             slippage_tolerance=slippage_tolerance,
             closing=closing,
             planned_collateral_allocation=planned_collateral_allocation,
+            flags=flags,
         )
         return position, trade, created
 
