@@ -24,6 +24,7 @@ from tradeexecutor.state.reserve import ReservePosition
 from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier
 from tradeexecutor.state.validator import validate_nested_state_dict, BadStateData
 from tradeexecutor.statistics.core import update_statistics
+from tradeexecutor.statistics.statistics_table import serialise_long_short_stats_as_json_table
 from tradeexecutor.strategy.valuation import revalue_state
 from tradeexecutor.testing.unit_test_trader import UnitTestTrader
 from tradingstrategy.chain import ChainId
@@ -442,8 +443,12 @@ def test_statistics(usdc, weth_usdc, aave_usdc, start_ts):
     trader.buy(weth_usdc, Decimal(0.1), 1700)
     trader.buy(aave_usdc, Decimal(0.5), 200)
 
-    update_statistics(datetime.datetime.utcnow(), state.stats, portfolio, ExecutionMode.real_trading)
-
+    long_short_metrics_latest = serialise_long_short_stats_as_json_table(
+        state, None, datetime.timedelta(days=0)
+    )
+    
+    update_statistics(datetime.datetime.utcnow(), state.stats, portfolio, ExecutionMode.real_trading, long_short_metrics_latest=long_short_metrics_latest)
+    
     stats = state.stats
     portfolio_stats = stats.get_latest_portfolio_stats()
     summary = portfolio_stats.summary
@@ -466,7 +471,11 @@ def test_statistics(usdc, weth_usdc, aave_usdc, start_ts):
     assert summary.uninvested_cash == portfolio_stats.free_cash
     assert summary.realised_profit == portfolio_stats.realised_profit_usd
 
-    update_statistics(datetime.datetime.utcnow(), state.stats, portfolio, ExecutionMode.real_trading)
+    long_short_metrics_latest = serialise_long_short_stats_as_json_table(
+        state, None, datetime.timedelta(days=0)
+    )
+    
+    update_statistics(datetime.datetime.utcnow(), state.stats, portfolio, ExecutionMode.real_trading, long_short_metrics_latest=long_short_metrics_latest)
 
     assert stats.get_latest_position_stats(1).value == pytest.approx(168.3)
     assert stats.get_latest_position_stats(2).value == pytest.approx(99.0)
@@ -477,7 +486,11 @@ def test_statistics(usdc, weth_usdc, aave_usdc, start_ts):
     assert len(state.portfolio.open_positions) == 0
     assert state.portfolio.get_total_equity() == pytest.approx(1043.632)
 
-    update_statistics(datetime.datetime.utcnow(), state.stats, portfolio, ExecutionMode.real_trading)
+    long_short_metrics_latest = serialise_long_short_stats_as_json_table(
+        state, None, datetime.timedelta(days=0)
+    )
+    
+    update_statistics(datetime.datetime.utcnow(), state.stats, portfolio, ExecutionMode.real_trading, long_short_metrics_latest=long_short_metrics_latest)
 
     stats = state.stats
     portfolio_stats = stats.get_latest_portfolio_stats()
@@ -529,6 +542,13 @@ def test_statistics(usdc, weth_usdc, aave_usdc, start_ts):
     assert summary.uninvested_cash == portfolio_stats.free_cash
     assert summary.average_net_profit == pytest.approx(24.50249)
 
+    long_short_metrics_latest = serialise_long_short_stats_as_json_table(
+        state, None, datetime.timedelta(days=90)
+    )
+    
+    update_statistics(datetime.datetime.utcnow(), state.stats, portfolio, ExecutionMode.real_trading, long_short_metrics_latest=long_short_metrics_latest)
+    
+    assert long_short_metrics_latest.rows == {}
 
 def test_not_enough_cash(usdc, weth_usdc, start_ts):
     """Try to buy too much at once."""
@@ -867,11 +887,11 @@ def test_state_summary_without_initial_cash(usdc, weth_usdc, start_ts: datetime.
 
     assert position.is_open()
     assert trade.is_success()
-    update_statistics(datetime.datetime.utcnow(), state.stats, state.portfolio, ExecutionMode.real_trading)
+    update_statistics(datetime.datetime.utcnow(), state.stats, state.portfolio, ExecutionMode.unit_testing_trading)
 
     trader.sell(weth_usdc, state.portfolio.get_equity_for_pair(weth_usdc), 1800)
 
-    update_statistics(datetime.datetime.utcnow(), state.stats, state.portfolio, ExecutionMode.real_trading)
+    update_statistics(datetime.datetime.utcnow(), state.stats, state.portfolio, ExecutionMode.unit_testing_trading)
 
     state.perform_integrity_check()
     summary = state.stats.get_latest_portfolio_stats().summary
@@ -974,7 +994,7 @@ def test_serialize_state(usdc, weth_usdc, start_ts: datetime.datetime):
     assert position.get_value() == pytest.approx(168.3)
     assert position.last_pricing_at == start_ts
 
-    update_statistics(datetime.datetime.utcnow(), state.stats, state.portfolio, ExecutionMode.real_trading)
+    update_statistics(datetime.datetime.utcnow(), state.stats, state.portfolio, ExecutionMode.unit_testing_trading)
 
     state.perform_integrity_check()
 
