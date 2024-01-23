@@ -24,6 +24,7 @@ from ...strategy.trading_strategy_universe import TradingStrategyUniverseModel
 from ...strategy.universe_model import UniverseOptions
 from ...utils.timer import timed_task
 from tradeexecutor.cli.commands import shared_options
+from tradeexecutor.statistics.statistics_table import serialise_long_short_stats_as_json_table
 from tradingstrategy.chain import ChainId
 from tradingstrategy.pair import DEXPair
 
@@ -173,6 +174,10 @@ def perform_test_trade(
     runner = run_description.runner
     routing_state, pricing_model, valuation_method = runner.setup_routing(universe)
 
+    long_short_metrics_latest = serialise_long_short_stats_as_json_table(
+        state, None, datetime.timedelta(days=90)
+    )
+    
     if all_pairs:
 
         for pair in universe.data_universe.pairs.iterate_pairs():
@@ -192,6 +197,7 @@ def perform_test_trade(
                 pair=p,
                 buy_only=buy_only,
                 spot_only=spot_only,
+                long_short_metrics_latest=long_short_metrics_latest,
             )
     else:
 
@@ -206,6 +212,7 @@ def perform_test_trade(
             routing_state,
             pair=pair,
             buy_only=buy_only,
+            long_short_metrics_latest=long_short_metrics_latest,
         )
 
     # Store the test trade data in the strategy history

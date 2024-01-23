@@ -23,6 +23,7 @@ from tradeexecutor.strategy.pandas_trader.position_manager import PositionManage
 from tradeexecutor.strategy.pricing_model import PricingModel
 from tradeexecutor.strategy.routing import RoutingModel, RoutingState
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse, translate_trading_pair
+from tradeexecutor.statistics.statistics_table import StatisticsTable
 
 logger = logging.getLogger(__name__)
 
@@ -40,6 +41,7 @@ def make_test_trade(
     pair: HumanReadableTradingPairDescription | None = None,
     buy_only: bool = False,
     spot_only: bool = False,
+    long_short_metrics_latest: StatisticsTable = None,
 ):
     """Perform a test trade.
 
@@ -200,7 +202,7 @@ def make_test_trade(
             raise AssertionError("Test buy succeed, but the position was not opened\n"
                                  "Check for dust corrections.")
 
-        update_statistics(datetime.datetime.utcnow(), state.stats, state.portfolio, ExecutionMode.real_trading)
+        update_statistics(datetime.datetime.utcnow(), state.stats, state.portfolio, ExecutionMode.real_trading, long_short_metrics_latest=long_short_metrics_latest)
 
     logger.info("Position %s is open. Now closing the position.", position)
 
@@ -241,7 +243,7 @@ def make_test_trade(
             logger.error("Trade dump:\n%s", sell_trade.get_debug_dump())
             raise AssertionError("Test sell failed")
 
-        update_statistics(datetime.datetime.utcnow(), state.stats, state.portfolio, ExecutionMode.real_trading)
+        update_statistics(datetime.datetime.utcnow(), state.stats, state.portfolio, ExecutionMode.real_trading, long_short_metrics_latest=long_short_metrics_latest)
 
     else:
         sell_trade = None
