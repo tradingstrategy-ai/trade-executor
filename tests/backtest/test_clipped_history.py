@@ -1,7 +1,7 @@
 """Check we clip history correctly."""
 import datetime
 
-from tradeexecutor.strategy.execution_context import ExecutionMode, ExecutionContext
+from tradeexecutor.strategy.execution_context import ExecutionMode, ExecutionContext, notebook_execution_context
 from tradeexecutor.strategy.trading_strategy_universe import load_pair_data_for_single_exchange
 from tradeexecutor.strategy.universe_model import UniverseOptions
 from tradingstrategy.chain import ChainId
@@ -20,7 +20,7 @@ def test_clip_dataset(persistent_test_client):
     # Backtest range
     END_AT = datetime.datetime(2023, 4, 1)
 
-    execution_context = ExecutionContext(mode=ExecutionMode.data_preload)
+    execution_context = notebook_execution_context
     universe_options = UniverseOptions()
 
     # Fetch backtesting datasets from the server
@@ -32,7 +32,10 @@ def test_clip_dataset(persistent_test_client):
         universe_options=universe_options,
         start_time=START_AT,
         end_time=END_AT,
+        stop_loss_time_bucket=CANDLE_TIME_BUCKET,
     )
 
+    assert dataset.backtest_stop_loss_candles is not None, "No stop loss candles provided"
+    assert dataset.backtest_stop_loss_time_bucket == CANDLE_TIME_BUCKET, "Stop loss time bucket is incorrect"
     assert dataset.candles.iloc[0]["timestamp"] >= START_AT
     assert dataset.candles.iloc[-1]["timestamp"] <= END_AT

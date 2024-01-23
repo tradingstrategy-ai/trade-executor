@@ -92,6 +92,12 @@ class ExecutionMode(enum.Enum):
         """
         return self in (self.real_trading, self.paper_trading, self.unit_testing_trading, self.simulated_trading, self.preflight_check)
 
+    def is_backtesting(self) -> bool:
+        """The strategy is running for backtesting.
+
+        """
+        return self in (self.backtesting,)
+
     def is_fresh_data_always_needed(self):
         """Should we purge caches for each trade cycle.
 
