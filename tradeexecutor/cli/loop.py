@@ -388,12 +388,6 @@ class ExecutionLoop:
             ts = strategy_cycle_timestamp
         else:
             ts = snap_to_previous_tick(unrounded_timestamp, cycle_duration)
-        
-        if self.execution_context.live_trading:
-            backtested_state = self.metadata.backtested_state if self.metadata else None
-            backtest_cutoff = self.metadata.key_metrics_backtest_cut_off if self.metadata else datetime.timedelta(days=90)
-            long_short_table = serialise_long_short_stats_as_json_table(state, backtested_state, backtest_cutoff)
-            state.stats.long_short_metrics_latest = long_short_table
 
         # This Python dict collects internal debugging data through this cycle.
         # Any submodule of strategy execution can add internal information here for
@@ -513,6 +507,10 @@ class ExecutionLoop:
                     )
                 except UnexpectedAccountingCorrectionIssue as e:
                     raise RuntimeError(f"Execution aborted at cycle {ts} #{cycle} because on-chain balances were different what expected after executing the trades") from e
+                
+            backtested_state = self.metadata.backtested_state
+            backtest_cutoff = self.metadata.key_metrics_backtest_cut_off
+            long_short_metrics_latest = serialise_long_short_stats_as_json_table(state, backtested_state, backtest_cutoff)
 
             update_statistics(
                 datetime.datetime.utcnow(),
@@ -520,6 +518,7 @@ class ExecutionLoop:
                 state.portfolio,
                 ExecutionMode.real_trading,
                 strategy_cycle_or_wall_clock=strategy_cycle_timestamp,
+                long_short_metrics_latest=long_short_metrics_latest,
             )
 
         state.uptime.record_cycle_complete(cycle)

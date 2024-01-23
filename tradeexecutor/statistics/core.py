@@ -10,6 +10,7 @@ from tradeexecutor.state.portfolio import Portfolio
 from tradeexecutor.state.position import TradingPosition
 from tradeexecutor.state.statistics import Statistics, PortfolioStatistics, PositionStatistics, FinalPositionStatistics
 from tradeexecutor.strategy.execution_context import ExecutionMode
+from tradeexecutor.statistics.statistics_table import StatisticsTable
 
 logger = logging.getLogger(__name__)
 
@@ -156,6 +157,7 @@ def update_statistics(
         portfolio: Portfolio,
         execution_mode: ExecutionMode,
         strategy_cycle_or_wall_clock: datetime.datetime | None = None,
+        long_short_metrics_latest: StatisticsTable | None = None,
 ):
     """Update statistics in a portfolio.
 
@@ -192,6 +194,13 @@ def update_statistics(
         clock,
         strategy_cycle_or_wall_clock
     )
+    
+    if execution_mode.is_live_trading():
+        assert long_short_metrics_latest, "long short metrics should be provided in live trading"
+    
+    if long_short_metrics_latest:
+        logger.info("Serialising serialise_long_short_stats_as_json_table()")
+        stats.long_short_metrics_latest = long_short_metrics_latest
         
     new_stats = calculate_statistics(clock, portfolio, execution_mode)
     stats.portfolio.append(new_stats.portfolio)
