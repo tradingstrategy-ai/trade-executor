@@ -24,7 +24,6 @@ from ...strategy.trading_strategy_universe import TradingStrategyUniverseModel
 from ...strategy.universe_model import UniverseOptions
 from ...utils.timer import timed_task
 from tradeexecutor.cli.commands import shared_options
-from tradeexecutor.statistics.statistics_table import serialise_long_short_stats_as_json_table
 from tradingstrategy.chain import ChainId
 from tradingstrategy.pair import DEXPair
 
@@ -173,7 +172,7 @@ def perform_test_trade(
 
     runner = run_description.runner
     routing_state, pricing_model, valuation_method = runner.setup_routing(universe)
-    
+
     if all_pairs:
 
         for pair in universe.data_universe.pairs.iterate_pairs():
