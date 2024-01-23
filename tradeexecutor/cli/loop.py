@@ -585,8 +585,8 @@ class ExecutionLoop:
         self.store.sync(state)
 
     def extract_long_short_stats_from_state(self, state):
-        backtested_state = self.metadata.backtested_state
-        backtest_cutoff = self.metadata.key_metrics_backtest_cut_off
+        backtested_state = self.metadata.backtested_state if self.metadata else None
+        backtest_cutoff = self.metadata.key_metrics_backtest_cut_off if self.metadata else datetime.timedelta(days=90)
         long_short_metrics_latest = serialise_long_short_stats_as_json_table(
             state, backtested_state, backtest_cutoff
         )
