@@ -170,6 +170,8 @@ def calculate_aggregate_returns(equity_curve: pd.Series, freq: str | pd.DateOffs
     """
     assert isinstance(equity_curve.index, pd.DatetimeIndex), f"Got {equity_curve.index}"
 
+    equity_curve.sort_index(inplace=True)
+    
     # Each equity curve sample is the last day of the period
     # https://stackoverflow.com/a/14039589/315168
     sampled = equity_curve.asfreq(freq, method='ffill')

@@ -48,9 +48,11 @@ class StatisticsTable:
 
 
 def serialise_long_short_stats_as_json_table(
-    portfolio: Portfolio,
+    live_state: State,
+    backtested_state: State | None,
+    required_history: datetime.timedelta,
 ) -> StatisticsTable:
-    """Calculate long/short statistics for the summary tile. This method is not needed for backtesting. 
+    """Calculate long/short statistics for the summary tile.
 
     :param state: Strategy state from which we calculate the summary
     :param execution_mode: If we need to skip calculations during backtesting.
@@ -59,22 +61,19 @@ def serialise_long_short_stats_as_json_table(
     :param legacy_workarounds: Skip some calculations on old data, because data is missing.
     :return: Summary statistics for all, long, and short positions
     """
-    source = KeyMetricSource.live_trading
-    first, last = portfolio.get_first_and_last_executed_trade()
 
-    if not first or not last or not first.executed_at or not last.executed_at:
+    source_state, source, calculation_window_start_at, calculation_window_end_at = get_data_source_and_calculation_window(live_state, backtested_state, required_history)
+
+    if source_state is None:
         return StatisticsTable(
             columns=["All", "Long", "Short"],
             created_at=datetime.datetime.utcnow(),
             source=source,
             rows={},
         )
-        
-    calculation_window_start_at = first.executed_at
-    calculation_window_end_at = last.executed_at
 
-    analysis = build_trade_analysis(portfolio)
-    summary = analysis.calculate_all_summary_stats_by_side(urls=True)  # TODO timebucket
+    analysis = build_trade_analysis(source_state.portfolio)
+    summary = analysis.calculate_all_summary_stats_by_side(state=source_state, urls=True)  # TODO timebucket
 
     key_metrics_map = {
         KeyMetricKind.trading_period_length: 'Trading period length',
@@ -155,7 +154,7 @@ def serialise_long_short_stats_as_json_table(
 
     table = StatisticsTable(
         columns=["All", "Long", "Short"],
-        created_at=calculation_window_start_at,
+        created_at=source_state.created_at,
         source=source,
         rows=rows,
     )

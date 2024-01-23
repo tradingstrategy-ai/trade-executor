@@ -20,6 +20,7 @@ from tradeexecutor.ethereum.tx import TransactionBuilder
 from tradeexecutor.state.store import StateStore
 from tradeexecutor.state.types import BlockNumber
 from tradeexecutor.statistics.core import update_statistics
+from tradeexecutor.statistics.statistics_table import StatisticsTable
 from tradeexecutor.strategy.account_correction import check_accounts, UnexpectedAccountingCorrectionIssue
 from tradeexecutor.strategy.approval import ApprovalModel
 from tradeexecutor.strategy.cycle import CycleDuration
@@ -168,6 +169,7 @@ class StrategyRunner(abc.ABC):
             state: State,
             debug_details: dict,
             end_block: BlockNumber | NoneType = None,
+            long_short_metrics_latest: StatisticsTable | None = None,
     ):
         """Adjust portfolio balances based on the external events.
 
@@ -246,6 +248,7 @@ class StrategyRunner(abc.ABC):
                     state.portfolio,
                     self.execution_context.mode,
                     strategy_cycle_or_wall_clock=timestamp,
+                    long_short_metrics_latest=long_short_metrics_latest
                 )
 
     def revalue_state(self, ts: datetime.datetime, state: State, valuation_model: ValuationModel):
@@ -589,6 +592,7 @@ class StrategyRunner(abc.ABC):
         cycle_duration: Optional[CycleDuration] = None,
         cycle: Optional[int] = None,
         store: Optional[StateStore] = None,
+        long_short_metrics_latest: StatisticsTable | None = None,
     ) -> dict:
         """Execute the core functions of a strategy.
 

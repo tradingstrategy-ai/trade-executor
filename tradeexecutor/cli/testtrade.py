@@ -9,6 +9,7 @@ from web3 import Web3
 from tradeexecutor.ethereum.enzyme.vault import EnzymeVaultSyncModel
 from tradeexecutor.state.trade import TradeFlag
 from tradeexecutor.statistics.core import update_statistics
+from tradeexecutor.statistics.statistics_table import serialise_long_short_stats_as_json_table
 from tradeexecutor.strategy.execution_context import ExecutionMode
 from tradeexecutor.strategy.sync_model import SyncModel
 from tradeexecutor.utils.accuracy import sum_decimal
@@ -23,6 +24,7 @@ from tradeexecutor.strategy.pandas_trader.position_manager import PositionManage
 from tradeexecutor.strategy.pricing_model import PricingModel
 from tradeexecutor.strategy.routing import RoutingModel, RoutingState
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse, translate_trading_pair
+from tradeexecutor.statistics.statistics_table import StatisticsTable
 
 logger = logging.getLogger(__name__)
 
@@ -200,7 +202,11 @@ def make_test_trade(
             raise AssertionError("Test buy succeed, but the position was not opened\n"
                                  "Check for dust corrections.")
 
-        update_statistics(datetime.datetime.utcnow(), state.stats, state.portfolio, ExecutionMode.real_trading)
+        long_short_metrics_latest = serialise_long_short_stats_as_json_table(
+            state, None, datetime.timedelta(days=90)
+        )
+        
+        update_statistics(datetime.datetime.utcnow(), state.stats, state.portfolio, ExecutionMode.real_trading, long_short_metrics_latest=long_short_metrics_latest)
 
     logger.info("Position %s is open. Now closing the position.", position)
 
@@ -241,7 +247,11 @@ def make_test_trade(
             logger.error("Trade dump:\n%s", sell_trade.get_debug_dump())
             raise AssertionError("Test sell failed")
 
-        update_statistics(datetime.datetime.utcnow(), state.stats, state.portfolio, ExecutionMode.real_trading)
+        long_short_metrics_latest = serialise_long_short_stats_as_json_table(
+            state, None, datetime.timedelta(days=90)
+        )
+        
+        update_statistics(datetime.datetime.utcnow(), state.stats, state.portfolio, ExecutionMode.real_trading, long_short_metrics_latest=long_short_metrics_latest)
 
     else:
         sell_trade = None
@@ -311,7 +321,11 @@ def make_test_trade(
                 raise AssertionError("Test buy succeed, but the position was not opened\n"
                                      "Check for dust corrections.")
 
-            update_statistics(datetime.datetime.utcnow(), state.stats, state.portfolio, ExecutionMode.real_trading)
+            long_short_metrics_latest = serialise_long_short_stats_as_json_table(
+                state, None, datetime.timedelta(days=90)
+            )
+
+            update_statistics(datetime.datetime.utcnow(), state.stats, state.portfolio, ExecutionMode.real_trading, long_short_metrics_latest=long_short_metrics_latest)
 
         # Close the short
 
@@ -370,7 +384,11 @@ def make_test_trade(
             raise AssertionError("Short close succeed, but the position was not opened\n"
                                  "Check for dust corrections.")
 
-        update_statistics(datetime.datetime.utcnow(), state.stats, state.portfolio, ExecutionMode.real_trading)
+        long_short_metrics_latest = serialise_long_short_stats_as_json_table(
+            state, None, datetime.timedelta(days=90)
+        )
+        
+        update_statistics(datetime.datetime.utcnow(), state.stats, state.portfolio, ExecutionMode.real_trading, long_short_metrics_latest=long_short_metrics_latest)
 
     gas_at_end = hot_wallet.get_native_currency_balance(web3)
     reserve_currency_at_end = state.portfolio.get_default_reserve_position().get_value()

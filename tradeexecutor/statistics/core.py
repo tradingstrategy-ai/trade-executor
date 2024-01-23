@@ -6,11 +6,11 @@ from dataclasses import dataclass, field
 from typing import Dict, List
 from tradeexecutor.analysis.trade_analyser import build_trade_analysis
 
-from tradeexecutor.statistics.statistics_table import serialise_long_short_stats_as_json_table
 from tradeexecutor.state.portfolio import Portfolio
 from tradeexecutor.state.position import TradingPosition
 from tradeexecutor.state.statistics import Statistics, PortfolioStatistics, PositionStatistics, FinalPositionStatistics
 from tradeexecutor.strategy.execution_context import ExecutionMode
+from tradeexecutor.statistics.statistics_table import StatisticsTable
 
 logger = logging.getLogger(__name__)
 
@@ -157,6 +157,7 @@ def update_statistics(
         portfolio: Portfolio,
         execution_mode: ExecutionMode,
         strategy_cycle_or_wall_clock: datetime.datetime | None = None,
+        long_short_metrics_latest: StatisticsTable | None = None,
 ):
     """Update statistics in a portfolio.
 
@@ -193,12 +194,15 @@ def update_statistics(
         clock,
         strategy_cycle_or_wall_clock
     )
+    
+    if execution_mode.is_live_trading() and execution_mode != ExecutionMode.unit_testing_trading:
+        assert long_short_metrics_latest, "long short metrics should be provided in live trading"
+    
+    if long_short_metrics_latest:
+        logger.info("Serialising long_short_metrics_latest")
+    
+    stats.long_short_metrics_latest = long_short_metrics_latest
         
-    if execution_mode.is_live_trading():
-        logger.info("Serialising serialise_long_short_stats_as_json_table()")
-        long_short_table = serialise_long_short_stats_as_json_table(portfolio)
-        stats.long_short_metrics_latest = long_short_table
-
     new_stats = calculate_statistics(clock, portfolio, execution_mode)
     stats.portfolio.append(new_stats.portfolio)
     for position_id, position_stats in new_stats.positions.items():
