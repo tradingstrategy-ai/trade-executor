@@ -58,6 +58,7 @@ from tradeexecutor.strategy.sync_model import SyncMethodV0, SyncModel
 from tradeexecutor.state.trade import TradeExecution
 from tradeexecutor.state.validator import validate_state_serialisation
 from tradeexecutor.statistics.core import update_statistics
+from tradeexecutor.statistics.statistics_table import StatisticsTable
 from tradeexecutor.strategy.approval import ApprovalModel
 from tradeexecutor.strategy.description import StrategyExecutionDescription
 from tradeexecutor.strategy.execution_model import ExecutionModel
@@ -584,7 +585,13 @@ class ExecutionLoop:
         # Store the current state to disk
         self.store.sync(state)
 
-    def extract_long_short_stats_from_state(self, state):
+    def extract_long_short_stats_from_state(self, state) -> StatisticsTable:
+        """Extracts the latest long short metrics from the state and execution loop
+        
+        :param state: Current state for the strategy
+        
+        :return: StatisticsTable of the latest long short metrics
+        """
         backtested_state = self.metadata.backtested_state if self.metadata else None
         backtest_cutoff = self.metadata.key_metrics_backtest_cut_off if self.metadata else datetime.timedelta(days=90)
         long_short_metrics_latest = serialise_long_short_stats_as_json_table(
