@@ -198,6 +198,7 @@ def calculate_key_metrics(
         returns = calculate_size_relative_realised_trading_returns(source_state)
         
         # use this method to avoid losing data points when resampling
+        # gives compounded returns for each day
         daily_returns = returns.add(1).resample('D').prod().sub(1)
         
         # alternate method
