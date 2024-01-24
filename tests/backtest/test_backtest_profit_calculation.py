@@ -309,8 +309,8 @@ def test_key_metrics(backtest_result_hourly: State):
     # correct since standard dev = 0
     assert summary_stats.key_metrics['sharpe'].value == float('-inf')
     assert summary_stats.key_metrics['sortino'].value == pytest.approx(-19.104973174542796)
-    assert summary_stats.key_metrics['max_drawdown'] == pytest.approx(0.18798605414266745)
-    assert summary_stats.key_metrics['profitability'] == pytest.approx(-0.1937959274935087)
+    assert summary_stats.key_metrics['max_drawdown'].value == pytest.approx(0.18798605414266745)
+    assert summary_stats.key_metrics['profitability'].value == pytest.approx(-0.1937959274935087)
 
 
 def test_calculate_realised_trading_profitability_no_trades():

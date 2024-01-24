@@ -202,7 +202,6 @@ def calculate_key_metrics(
         daily_returns = returns.add(1).resample(freq_base).prod().sub(1).fillna(0)
         
         # alternate method
-        # use log returns to avoid losing any data points when resampling
         # log_returns = np.log(returns.add(1))
         # daily_log_sum_returns = log_returns.resample('D').sum().fillna(0)
         # daily_returns = np.exp(daily_log_sum_returns) - 1
