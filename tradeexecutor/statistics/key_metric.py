@@ -197,10 +197,14 @@ def calculate_key_metrics(
         # sharpe/sortino/etc. stays compatible regardless of deposit flow
         returns = calculate_size_relative_realised_trading_returns(source_state)
         
+        # use this method to avoid losing data points when resampling
+        daily_returns = returns.add(1).resample('D').prod().sub(1)
+        
+        # alternate method
         # use log returns to avoid losing any data points when resampling
-        log_returns = np.log(returns.add(1))
-        daily_log_sum_returns = log_returns.resample('D').sum().fillna(0)
-        daily_returns = np.exp(daily_log_sum_returns) - 1
+        # log_returns = np.log(returns.add(1))
+        # daily_log_sum_returns = log_returns.resample('D').sum().fillna(0)
+        # daily_returns = np.exp(daily_log_sum_returns) - 1
         
         periods = pd.Timedelta(days=365) / freq_base
 
