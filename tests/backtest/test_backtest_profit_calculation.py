@@ -297,7 +297,9 @@ def test_profitabilities_are_same(backtest_result_hourly: State):
     """
     summary_stats = calculate_summary_statistics(backtest_result_hourly, time_window=datetime.timedelta(days=2000), key_metrics_backtest_cut_off=datetime.timedelta(days=0))
     
-    assert summary_stats.key_metrics['profitability'].value == summary_stats.return_all_time
+    assert summary_stats.return_all_time == -0.1937959274935105
+    
+    assert summary_stats.key_metrics['profitability'].value == pytest.approx(summary_stats.return_all_time, abs=1e-14)
     
 
 def test_calculate_realised_trading_profitability_no_trades():

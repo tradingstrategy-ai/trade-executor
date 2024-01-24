@@ -196,8 +196,12 @@ def calculate_key_metrics(
         # as the base for calculations to ensure
         # sharpe/sortino/etc. stays compatible regardless of deposit flow
         returns = calculate_size_relative_realised_trading_returns(source_state)
-        daily_returns = returns.resample(freq_base).max().fillna(0)
-
+        
+        # use log returns to avoid losing any data points when resampling
+        log_returns = np.log(returns.add(1))
+        daily_log_sum_returns = log_returns.resample('D').sum().fillna(0)
+        daily_returns = np.exp(daily_log_sum_returns) - 1
+        
         periods = pd.Timedelta(days=365) / freq_base
 
         sharpe = calculate_sharpe(daily_returns, periods=periods)
@@ -210,7 +214,7 @@ def calculate_key_metrics(
         max_drawdown = -calculate_max_drawdown(daily_returns)
         yield KeyMetric.create_metric(KeyMetricKind.max_drawdown, source, max_drawdown, calculation_window_start_at, calculation_window_end_at, KeyMetricCalculationMethod.historical_data)
 
-        profitability = calculate_profitability(returns)
+        profitability = calculate_profitability(daily_returns)
         yield KeyMetric.create_metric(KeyMetricKind.profitability, source, profitability, calculation_window_start_at, calculation_window_end_at, KeyMetricCalculationMethod.historical_data)
 
         if live_state:
