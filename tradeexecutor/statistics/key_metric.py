@@ -199,7 +199,7 @@ def calculate_key_metrics(
         
         # use this method to avoid losing data points when resampling
         # gives compounded returns for each day
-        daily_returns = returns.add(1).resample('D').prod().sub(1)
+        daily_returns = returns.add(1).resample(freq_base).prod().sub(1)
         
         # alternate method
         # use log returns to avoid losing any data points when resampling
