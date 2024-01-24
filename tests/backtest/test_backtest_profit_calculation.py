@@ -297,8 +297,21 @@ def test_profitabilities_are_same(backtest_result_hourly: State):
     """
     summary_stats = calculate_summary_statistics(backtest_result_hourly, time_window=datetime.timedelta(days=2000), key_metrics_backtest_cut_off=datetime.timedelta(days=0))
     
-    assert summary_stats.key_metrics['profitability'].value == summary_stats.return_all_time
+    assert summary_stats.return_all_time == -0.1937959274935105
     
+    assert summary_stats.key_metrics['profitability'].value == pytest.approx(summary_stats.return_all_time, abs=1e-14)
+    
+
+def test_key_metrics(backtest_result_hourly: State):
+    """Check that the all key metrics are correct"""
+    summary_stats = calculate_summary_statistics(backtest_result_hourly, time_window=datetime.timedelta(days=2000), key_metrics_backtest_cut_off=datetime.timedelta(days=0))
+    
+    # correct since standard dev = 0
+    assert summary_stats.key_metrics['sharpe'].value == float('-inf')
+    assert summary_stats.key_metrics['sortino'].value == pytest.approx(-19.104973174542796)
+    assert summary_stats.key_metrics['max_drawdown'].value == pytest.approx(0.18798605414266745)
+    assert summary_stats.key_metrics['profitability'].value == pytest.approx(-0.1937959274935087)
+
 
 def test_calculate_realised_trading_profitability_no_trades():
     """Do not crash when calculating realised trading profitability if there are no trades."""
