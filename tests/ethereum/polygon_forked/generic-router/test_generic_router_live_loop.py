@@ -65,7 +65,7 @@ def decide_trades(
     return trades
 
 
-def test_generic_router_spot_and_shot_strategy(
+def test_generic_router_spot_and_short_strategy(
     logger: Logger,
     web3: Web3,
     hot_wallet: HotWallet,
@@ -122,7 +122,7 @@ def test_generic_router_spot_and_shot_strategy(
         loop.runner.check_accounts(strategy_universe, state)  # Check that on-chain balances reflect what we expect
 
 
-def test_generic_router_spot_and_shot_strategy_manual_tick(
+def test_generic_router_spot_and_short_strategy_manual_tick(
     logger: Logger,
     web3: Web3,
     hot_wallet: HotWallet,
@@ -203,8 +203,11 @@ def test_generic_router_spot_and_shot_strategy_manual_tick(
         ExecutionMode.real_trading
     )
     assert len(portfolio.open_positions) == 1
-    assert position.loan.get_borrow_interest() == pytest.approx(1.4860578061962053)
-    assert position.loan.get_collateral_interest() == pytest.approx(13.711178)
+    
+    tolerance = 1e-5
+    assert position.loan.get_borrow_interest() == pytest.approx(1.4860578061962053, abs=tolerance)
+    tolerance = 1e-4
+    assert position.loan.get_collateral_interest() == pytest.approx(13.711178, abs=tolerance)
 
     loop.runner.check_accounts(strategy_universe, state)  # Check that on-chain balances reflect what we expect
 

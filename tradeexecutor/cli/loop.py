@@ -26,7 +26,7 @@ from tradeexecutor.ethereum.tx import TransactionBuilder
 from tradeexecutor.ethereum.wallet import perform_gas_level_checks
 from tradeexecutor.state.metadata import Metadata
 from tradeexecutor.statistics.in_memory_statistics import refresh_run_state
-from tradeexecutor.statistics.summary import calculate_summary_statistics
+from tradeexecutor.statistics.statistics_table import serialise_long_short_stats_as_json_table
 from tradeexecutor.strategy.account_correction import check_accounts, UnexpectedAccountingCorrectionIssue
 from tradeexecutor.strategy.dummy import DummyExecutionModel
 from tradeexecutor.strategy.generic.generic_pricing_model import GenericPricing
@@ -58,6 +58,7 @@ from tradeexecutor.strategy.sync_model import SyncMethodV0, SyncModel
 from tradeexecutor.state.trade import TradeExecution
 from tradeexecutor.state.validator import validate_state_serialisation
 from tradeexecutor.statistics.core import update_statistics
+from tradeexecutor.statistics.statistics_table import StatisticsTable
 from tradeexecutor.strategy.approval import ApprovalModel
 from tradeexecutor.strategy.description import StrategyExecutionDescription
 from tradeexecutor.strategy.execution_model import ExecutionModel
@@ -459,6 +460,13 @@ class ExecutionLoop:
         )
         logger.info("Generated %d sync interest events", len(interest_events))
 
+        if live:
+            long_short_metrics_latest = (
+                self.extract_long_short_stats_from_state(state)
+            )
+        else:
+            long_short_metrics_latest = None
+
         # Execute the strategy tick and trades
         self.runner.tick(
             strategy_cycle_timestamp=ts,
@@ -468,6 +476,7 @@ class ExecutionLoop:
             cycle_duration=cycle_duration,
             cycle=cycle,
             store=self.store,
+            long_short_metrics_latest=long_short_metrics_latest,
         )
 
         # Update portfolio and position historical data tracking.
@@ -508,12 +517,15 @@ class ExecutionLoop:
                 except UnexpectedAccountingCorrectionIssue as e:
                     raise RuntimeError(f"Execution aborted at cycle {ts} #{cycle} because on-chain balances were different what expected after executing the trades") from e
 
+            assert long_short_metrics_latest, "long_short_metrics_latest cannot be None during live trading"
+
             update_statistics(
                 datetime.datetime.utcnow(),
                 state.stats,
                 state.portfolio,
                 ExecutionMode.real_trading,
                 strategy_cycle_or_wall_clock=strategy_cycle_timestamp,
+                long_short_metrics_latest=long_short_metrics_latest,
             )
 
         state.uptime.record_cycle_complete(cycle)
@@ -561,13 +573,31 @@ class ExecutionLoop:
 
         with self.timed_task_context_manager("update_statistics"):
             logger.info("Updating position statistics after revaluation")
-            update_statistics(clock, state.stats, state.portfolio, execution_mode)
+
+            long_short_metrics_latest = (
+                self.extract_long_short_stats_from_state(state)
+            )
+            update_statistics(clock, state.stats, state.portfolio, execution_mode, long_short_metrics_latest=long_short_metrics_latest)
 
         # Check that state is good before writing it to the disk
         state.perform_integrity_check()
 
         # Store the current state to disk
         self.store.sync(state)
+
+    def extract_long_short_stats_from_state(self, state) -> StatisticsTable:
+        """Extracts the latest long short metrics from the state and execution loop
+        
+        :param state: Current state for the strategy
+        
+        :return: StatisticsTable of the latest long short metrics
+        """
+        backtested_state = self.metadata.backtested_state if self.metadata else None
+        backtest_cutoff = self.metadata.key_metrics_backtest_cut_off if self.metadata else datetime.timedelta(days=90)
+        long_short_metrics_latest = serialise_long_short_stats_as_json_table(
+            state, backtested_state, backtest_cutoff
+        )
+        return long_short_metrics_latest
 
     def check_position_triggers(self,
                           ts: datetime.datetime,
