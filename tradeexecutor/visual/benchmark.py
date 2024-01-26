@@ -299,15 +299,15 @@ def visualise_long_short_benchmark(
 
     return fig
 
-def get_plot_from_series(name, colour, compounded_daily):
+def get_plot_from_series(name, colour, series):
     plot = []
-    for index, daily_return in compounded_daily.items():
+    for index, daily_return in series.items():
         plot.append({
             "timestamp": index,
             "value": daily_return,
         })
 
-    df = pd.DataFrame(plot)
+    df = pd.DataFrame(plot, columns=["timestamp", "value"])
     df.set_index("timestamp", inplace=True)
 
     fig = go.Scatter(
