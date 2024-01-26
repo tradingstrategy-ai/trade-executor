@@ -10,7 +10,7 @@ from matplotlib.figure import Figure
 
 from tradeexecutor.state.state import State
 from tradeexecutor.state.statistics import Statistics, PortfolioStatistics
-
+from tradeexecutor.state.position import TradingPosition
 
 
 def calculate_equity_curve(
@@ -365,7 +365,11 @@ def calculate_size_relative_realised_trading_returns(
 
         Empty series if there are no trades.
     """
-    data = [(p.closed_at, p.get_size_relative_realised_profit_percent()) for p in state.portfolio.closed_positions.values() if p.is_closed()]
+    positions = [p for p in state.portfolio.closed_positions.values() if p.is_closed()]
+    return _calculate_size_relative_realised_trading_returns(positions)
+
+def _calculate_size_relative_realised_trading_returns(positions: list[TradingPosition]):
+    data = [(p.closed_at, p.get_size_relative_realised_profit_percent()) for p in positions]
 
     if len(data) == 0:
         return pd.Series(dtype='float64')
@@ -409,13 +413,25 @@ def calculate_compounding_realised_trading_profitability(
         The last value of the series is the total trading profitability
         of the strategy over its lifetime.
     """
-    realised_profitability = calculate_size_relative_realised_trading_returns(state)
+    started_at, last_ts = _get_strategy_time_range(state, fill_time_gaps)
+    positions = [p for p in state.portfolio.closed_positions.values() if p.is_closed()]
+    return _calculate_compounding_realised_trading_profitability(positions, fill_time_gaps, started_at, last_ts)
+
+
+def _calculate_compounding_realised_trading_profitability(
+    positions: list[TradingPosition], 
+    fill_time_gaps: bool,
+    started_at: pd.Timestamp = None,
+    last_ts: pd.Timestamp = None,
+):
+    realised_profitability = _calculate_size_relative_realised_trading_returns(positions)
     # https://stackoverflow.com/a/42672553/315168
     compounded = realised_profitability.add(1).cumprod().sub(1)
 
     if fill_time_gaps and len(compounded) > 0:
 
-        started_at, last_ts = state.get_strategy_time_range()
+        assert started_at
+        assert last_ts
         last_value = compounded.iloc[-1]
 
         # Strategy always starts at zero
@@ -430,6 +446,25 @@ def calculate_compounding_realised_trading_profitability(
 
     return compounded
 
+
+def calculate_long_compounding_realised_trading_profitability(state, fill_time_gaps=True):
+    started_at, last_ts = _get_strategy_time_range(state, fill_time_gaps)
+    positions = [p for p in state.portfolio.closed_positions.values() if (p.is_closed() and p.is_long())]
+    return _calculate_compounding_realised_trading_profitability(positions, fill_time_gaps, started_at, last_ts)
+
+
+def calculate_short_compounding_realised_trading_profitability(state, fill_time_gaps=True):
+    started_at, last_ts = _get_strategy_time_range(state, fill_time_gaps)
+    positions = [p for p in state.portfolio.closed_positions.values() if (p.is_closed() and p.is_short())]
+    return _calculate_compounding_realised_trading_profitability(positions, fill_time_gaps, started_at, last_ts)
+  
+
+def _get_strategy_time_range(state, fill_time_gaps):
+    started_at, last_ts = None, None
+    if fill_time_gaps:
+        started_at, last_ts = state.get_strategy_time_range()
+    return started_at,last_ts
+  
 
 def calculate_deposit_adjusted_returns(
     state: State,

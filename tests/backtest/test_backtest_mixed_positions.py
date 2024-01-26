@@ -39,13 +39,14 @@ from tradeexecutor.testing.synthetic_exchange_data import generate_exchange
 from tradeexecutor.testing.synthetic_price_data import generate_ohlcv_candles
 from tradeexecutor.testing.synthetic_universe_data import create_synthetic_single_pair_universe
 from tradeexecutor.testing.synthetic_lending_data import generate_lending_reserve, generate_lending_universe
+from tradeexecutor.visual.equity_curve import calculate_compounding_realised_trading_profitability, calculate_long_compounding_realised_trading_profitability, calculate_short_compounding_realised_trading_profitability
 
 
 # https://docs.pytest.org/en/latest/how-to/skipping.html#skip-all-test-functions-of-a-class-or-module
 pytestmark = pytest.mark.skipif(os.environ.get("TRADING_STRATEGY_API_KEY") is None, reason="Set TRADING_STRATEGY_API_KEY environment variable to run this test")
 
 start_at = datetime.datetime(2023, 1, 1)
-end_at = datetime.datetime(2023, 1, 5)
+end_at = datetime.datetime(2023, 1, 20)
 
 @pytest.fixture(scope="module")
 def universe() -> TradingStrategyUniverse:
@@ -150,7 +151,7 @@ def test_backtest_open_both_long_short(
 
     state, strategy_universe, debug_dump = run_backtest_inline(
         start_at=start_at,
-        end_at=end_at,
+        end_at=datetime.datetime(2023, 1, 5),
         client=persistent_test_client,
         cycle_duration=CycleDuration.cycle_1d,
         decide_trades=decide_trades,
@@ -166,3 +167,76 @@ def test_backtest_open_both_long_short(
     assert portfolio.get_cash() == 0
     assert portfolio.get_net_asset_value(include_interest=True) == pytest.approx(10198.205996721665)
     assert portfolio.get_total_equity() == pytest.approx(10198.205996721665)
+    
+
+def test_backtest_long_short_stats(
+    persistent_test_client: Client,
+        strategy_universe,
+):
+    """Run the strategy backtest using inline decide_trades function.
+
+    - Open both long and short in the same cycle
+    - Backtest shouldn't raise any exceptions
+    """
+
+    capital = 10000
+    leverage = 2
+
+    def decide_trades(
+        timestamp: pd.Timestamp,
+        strategy_universe: TradingStrategyUniverse,
+        state: State,
+        pricing_model: PricingModel,
+        cycle_debug_data: Dict
+    ) -> List[TradeExecution]:
+        trade_pair = strategy_universe.data_universe.pairs.get_single()
+
+        cash = state.portfolio.get_cash()
+        
+        position_manager = PositionManager(timestamp, strategy_universe, state, pricing_model)
+
+        trades = []
+
+        if not position_manager.is_any_open():
+            amount = cash * 0.1
+
+            trades += position_manager.open_short(trade_pair, amount, leverage=leverage)
+            
+            trades += position_manager.open_spot(trade_pair, amount)
+        else:
+            trades += position_manager.close_all()
+
+        return trades
+
+    state, strategy_universe, debug_dump = run_backtest_inline(
+        start_at=start_at,
+        end_at=end_at,
+        client=persistent_test_client,
+        cycle_duration=CycleDuration.cycle_1d,
+        decide_trades=decide_trades,
+        universe=strategy_universe,
+        initial_deposit=capital,
+        reserve_currency=ReserveCurrency.usdc,
+        trade_routing=TradeRouting.uniswap_v3_usdc_poly,
+        engine_version="0.3",
+    )
+
+    portfolio = state.portfolio
+    # assert len(portfolio.open_positions) == 2
+    # assert portfolio.get_cash() == 0
+    # assert portfolio.get_net_asset_value(include_interest=True) == pytest.approx(10198.205996721665)
+    # assert portfolio.get_total_equity() == pytest.approx(10198.205996721665)
+    
+    overall_compounding_profit = calculate_compounding_realised_trading_profitability(state)
+    long_compounding_profit = calculate_long_compounding_realised_trading_profitability(state)
+    short_compounding_profit = calculate_short_compounding_realised_trading_profitability(state)
+    
+    assert overall_compounding_profit.iloc[0] == 0
+    assert long_compounding_profit.iloc[0] == 0
+    assert short_compounding_profit.iloc[0] == 0
+    
+    assert overall_compounding_profit.iloc[-1] == -0.016521426180387766
+    assert long_compounding_profit.iloc[-1] == -0.003555468782310056
+    assert short_compounding_profit.iloc[-1] == -0.013012221946998581
+    
+    
