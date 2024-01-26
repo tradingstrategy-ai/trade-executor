@@ -299,7 +299,14 @@ def visualise_long_short_benchmark(
 
     return fig
 
-def get_plot_from_series(name, colour, series):
+def get_plot_from_series(name, colour, series) -> go.Scatter:
+    """Draw portfolio performance.
+    
+    :param name: name of the plot
+    :param colour: colour of the plot
+    :param series: series of daily returns
+    :return: plotly scatter plot
+    """
     plot = []
     for index, daily_return in series.items():
         plot.append({
