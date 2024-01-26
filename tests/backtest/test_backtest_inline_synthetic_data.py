@@ -21,7 +21,7 @@ from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniv
 from tradeexecutor.testing.synthetic_ethereum_data import generate_random_ethereum_address
 from tradeexecutor.testing.synthetic_exchange_data import generate_exchange, generate_simple_routing_model
 from tradeexecutor.testing.synthetic_price_data import generate_ohlcv_candles
-from tradeexecutor.visual.benchmark import visualise_benchmark, visualise_benchmark_by_side
+from tradeexecutor.visual.benchmark import visualise_benchmark, visualise_long_short_benchmark
 from tradingstrategy.candle import GroupedCandleUniverse
 from tradeexecutor.state.trade import TradeExecution
 from tradeexecutor.strategy.pricing_model import PricingModel
@@ -611,7 +611,7 @@ def test_benchmark_synthetic_trading_portfolio(
     # Check that the diagram has 3 plots
     assert len(fig.data) == 3
 
-    fig2 = visualise_benchmark_by_side(
+    fig2 = visualise_long_short_benchmark(
         state.name,
         state.stats.portfolio,
     )
