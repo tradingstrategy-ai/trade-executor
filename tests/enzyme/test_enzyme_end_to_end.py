@@ -237,6 +237,7 @@ def test_enzyme_live_trading_start(
     assert weth_balance == pytest.approx(10**18 * 0.03112978758721282)
 
 
+@pytest.mark.slow_test_group
 def test_enzyme_deploy_vault(
     environment: dict,
     web3: Web3,

@@ -38,6 +38,11 @@ jobs:
         # download too much data
         run: |          
           poetry install --all-extras
+      # Prepare .sol files for deploy_contract_with_forge() tests.
+      # As .sol building is needed when we test contracts with deploy with Etherscan verification
+      - name: Prepare .sol source files
+        run: |
+            (cd deps/web3-ethereum-defi && make guard in-house)
       # Run tests parallel by module
       - name: Run test scripts
         run: |
