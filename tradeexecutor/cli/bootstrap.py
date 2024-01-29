@@ -82,8 +82,12 @@ def create_web3_config(
         json_rpc_anvil,
         gas_price_method: Optional[GasPriceMethod] = None,
         unit_testing: bool=False,
+        simulate: bool=False,
 ) -> Web3Config:
     """Create Web3 connection to the live node we are executing against.
+
+    :param simulate:
+        Set up a mainnet fork with Anvil for transaction simulation.
 
     :return web3:
         Connect to any passed JSON RPC URL
@@ -98,6 +102,7 @@ def create_web3_config(
         json_rpc_arbitrum=json_rpc_arbitrum,
         json_rpc_anvil=json_rpc_anvil,
         unit_testing=unit_testing,
+        simulate=simulate,
     )
     return web3config
 

@@ -9,6 +9,7 @@ on:
 jobs:
   automated-test-suite:
     timeout-minutes: 40
+    # Use paid faster Github Actions runner
     runs-on:
       group: Beefy runners
     steps:
