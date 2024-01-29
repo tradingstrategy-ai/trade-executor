@@ -47,8 +47,8 @@ def enzyme_deploy_vault(
 
     unit_testing: bool = shared_options.unit_testing,
     production: bool = Option(False, envvar="PRODUCTION", help="Set production metadata flag true for the deployment."),
-    simulate: bool = Option(False, envvar="SIMULATE", help="Simulate deployment using Anvil mainnet work, when doing manual deployment teststing."),
-    etherscan_api_key: Optional[str] = Option(None, envvar="ETHERSCAN_API_KEY", help="Etherscan API key need to verify the contracts on a production deployemnt."),
+    simulate: bool = Option(False, envvar="SIMULATE", help="Simulate deployment using Anvil mainnet work, when doing manual deployment testing."),
+    etherscan_api_key: Optional[str] = Option(None, envvar="ETHERSCAN_API_KEY", help="Etherscan API key need to verify the contracts on a production deployment."),
 ):
     """Deploy a new Enzyme vault.
 
@@ -118,7 +118,7 @@ def enzyme_deploy_vault(
     logger.info(f"  Chain id is {web3.eth.chain_id:,}")
     logger.info(f"  Latest block is {web3.eth.block_number:,}")
 
-    if terms_of_service_address != None:
+    if terms_of_service_address is not None:
         terms_of_service = get_deployed_contract(
             web3,
             "terms-of-service/TermsOfService.json",
