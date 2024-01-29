@@ -1575,5 +1575,6 @@ def explain_open_position_failure(
     print("- Your strategy does not try to open and close the position in the same cycle", file=buf)
     print("- If you want to adjust the existing position size, use PositionManager.adjust_short(), ", file=buf)
     print("  adjust_position(), and such functions", file=buf)
+    print("- You can fill the notes field when opening the trade to diagnose where the trade was opened", file=buf)
 
     return buf.getvalue()
