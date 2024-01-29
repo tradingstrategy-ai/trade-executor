@@ -3,6 +3,7 @@
 import datetime
 import warnings
 from decimal import Decimal
+from io import StringIO
 from typing import List, Optional, Union, Literal, Set
 import logging
 
@@ -600,7 +601,13 @@ class PositionManager:
             flags=flags,
         )
 
-        assert created, f"There was conflicting open position for pair: {executor_pair}"
+        if not created:
+            msg = explain_open_position_failure(
+                self.state.portfolio,
+                executor_pair,
+                self.timestamp,
+                "opening new spot position")
+            assert created, f"Opening a new position failed:\n{msg}"
 
         if take_profit_pct:
             position.take_profit = price_structure.mid_price * take_profit_pct
@@ -1530,3 +1537,44 @@ class PositionManager:
             raise LiquidationRisked(f"The position value adjust to new value {new_value}, delta {delta:+f} USD, delta {borrowed_quantity_delta:+f} {base_token}, would liquidate the position,") from e
 
         return [adjust_trade]
+
+
+def explain_open_position_failure(
+    portfolio: Portfolio,
+    pair: TradingPairIdentifier,
+    timestamp: pd.Timestamp | datetime.datetime,
+    action_hint: str,
+) -> str:
+    """Display user friendly error message about conflicting open positions.
+
+    - The strategy tries to open a new position,
+      but there is already an existing position
+
+    - Create a user-friendly message so that the user
+      can diagnose their strategy
+
+    :return:
+        The error message
+    """
+
+    buf = StringIO()
+
+    for pos in portfolio.open_positions.values():
+        if pos.pair == pair:
+            print(f"There is already open osition #{pos.position_id} is already open for {pair.get_ticker()} and the trade would conflict", file=buf)
+            print(f"when strategy tried performing {action_hint} at the cycle {timestamp}.", file=buf)
+            print(file=buf)
+            print(f"   The trade was added to the planning list, but was cannot be executed due to the conflict.", file=buf)
+            print(f"   Existing trades created for position #{pos.position_id}:", file=buf)
+            for t in pos.trades.values():
+                notes = f", {t.notes}" if t.notes else ""
+                print(f"        {t}, opened at {t.opened_at}{notes}", file=buf)
+
+    print("What you should check:", file=buf)
+    print("- Your strategy does not have a logic error and does not try to open a position twice", file=buf)
+    print("- Your strategy does not try to open and close the position in the same cycle", file=buf)
+    print("- If you want to adjust the existing position size, use PositionManager.adjust_short(), ", file=buf)
+    print("  adjust_position(), and such functions", file=buf)
+    print("- You can fill the notes field when opening the trade to diagnose where the trade was opened", file=buf)
+
+    return buf.getvalue()
