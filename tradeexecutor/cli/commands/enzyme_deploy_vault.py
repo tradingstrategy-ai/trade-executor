@@ -111,7 +111,7 @@ def enzyme_deploy_vault(
         case _:
             assert comptroller_lib, f"You need to give Enzyme's ComptrollerLib address for a chain {chain_id}"
             assert denomination_asset, f"You need to give denomination_asset for a chain {chain_id}"
-            enzyme_deployment = EnzymeDeployment.fetch_deployment(web3, {"comptroller_lib": comptroller_lib})
+            enzyme_deployment = EnzymeDeployment.fetch_deployment(web3, {"comptroller_lib": comptroller_lib}, deployer=hot_wallet.address)
             denomination_token = fetch_erc20_details(web3, denomination_asset)
 
     # Check the chain is online
