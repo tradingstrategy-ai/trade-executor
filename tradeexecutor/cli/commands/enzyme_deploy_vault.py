@@ -45,7 +45,7 @@ def enzyme_deploy_vault(
     whitelisted_assets: Optional[str] = Option(None, envvar="WHITELISTED_ASSETS", help="Space separarted list of ERC-20 addresses this vault can trade. Denomination asset does not need to be whitelisted separately."),
 
     production: bool = Option(False, envvar="PRODUCTION", help="Set production metadata flag true for the deployment."),
-    simulation: bool = Option(False, envvar="SIMULATE", help="Simulate deployment using Anvil mainnet work."),
+    simulate: bool = Option(False, envvar="SIMULATE", help="Simulate deployment using Anvil mainnet work, when doing manual deployment teststing."),
     etherscan_api_key: Optional[str] = Option(None, envvar="ETHERSCAN_API_KEY", help="Etherscan API key need to verify the contracts on a production deployemnt."),
 ):
     """Deploy a new Enzyme vault.
@@ -64,6 +64,7 @@ def enzyme_deploy_vault(
         json_rpc_ethereum=json_rpc_ethereum,
         json_rpc_anvil=json_rpc_anvil,
         json_rpc_arbitrum=json_rpc_arbitrum,
+        simulate=True,
     )
 
     if not web3config.has_any_connection():
@@ -97,16 +98,6 @@ def enzyme_deploy_vault(
     logger.info(f"  Chain id is {web3.eth.chain_id:,}")
     logger.info(f"  Latest block is {web3.eth.block_number:,}")
 
-    # Check balances
-    logger.info("Balance details")
-    logger.info("  Hot wallet is %s", hot_wallet.address)
-    gas_balance = web3.eth.get_balance(hot_wallet.address) / 10**18
-    logger.info("  We have %f tokens for gas left", gas_balance)
-
-    logger.info("Enzyme details")
-    logger.info("  Integration manager deployed at %s", enzyme_deployment.contracts.integration_manager.address)
-    logger.info("  %s is %s", denomination_token.symbol, denomination_token.address)
-
     if terms_of_service_address != None:
         terms_of_service = get_deployed_contract(
             web3,
@@ -124,9 +115,35 @@ def enzyme_deploy_vault(
         if token_address:
             whitelisted_assets.append(fetch_erc20_details(web3, token_address))
 
-    logger.info("Deploying vault")
-    try:
+    assert len(whitelisted_assets) >= 1, "You need to whitelist at least one token as a trading pair"
 
+    asset_manager_address = hot_wallet.address
+
+    if simulate:
+        logger.info("Simulation deployment")
+    else:
+        logger.info("Ready to deploy")
+    logger.info("-" * 80)
+    logger.info("Deployer hot wallet: %s", hot_wallet.address)
+    logger.info("Deployer balance: %f, nonce %d", hot_wallet.get_native_currency_balance(web3), hot_wallet.current_nonce)
+    logger.info("Enzyme FundDeployer: %s", enzyme_deployment.contracts.fund_deployer.address)
+    logger.info("USDC: %s", enzyme_deployment.usdc.address)
+    logger.info("Terms of service: %s", terms_of_service.address)
+    logger.info("Fund: %s (%s)", fund_name, fund_symbol)
+    logger.info("Whitelisted assets: USDC and %s", ", ".join([a.symbol for a in whitelisted_assets]))
+    if owner_address != hot_wallet.address:
+        logger.info("Ownership will be transferred to %s", owner_address)
+    else:
+        logger.warning("Ownership will be retained at the deployer %d", hot_wallet.address)
+
+    if asset_manager_address != hot_wallet.address:
+        logger.info("Asset manager is %s", asset_manager_address)
+    else:
+        logger.warning("No separate asset manager role set")
+
+    logger.info("-" * 80)
+
+    try:
         # Currently assumes HotWallet = asset manager
         # as the trade-executor that deploys the vault is going to
         # the assset manager for this vault
@@ -141,6 +158,7 @@ def enzyme_deploy_vault(
             fund_symbol=fund_symbol,
             whitelisted_asset=whitelisted_assets,
             etherscan_api_key=etherscan_api_key,
+            production=production,
         )
 
     except Exception as e:
@@ -163,4 +181,6 @@ def enzyme_deploy_vault(
         logger.info("Wrote %s for vault details", os.path.abspath(vault_record_file))
 
     logger.info("Vault environment variables for trade-executor init command:\n%s", vault.get_deployment_info())
+
+    web3config.close()
 
