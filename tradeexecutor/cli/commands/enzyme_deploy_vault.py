@@ -2,6 +2,7 @@
 
 import json
 import os.path
+import sys
 from pathlib import Path
 from typing import Optional
 
@@ -44,6 +45,7 @@ def enzyme_deploy_vault(
     terms_of_service_address: Optional[str] = Option(None, envvar="TERMS_OF_SERVICE_ADDRESS", help="The address of the terms of service smart contract"),
     whitelisted_assets: Optional[str] = Option(None, envvar="WHITELISTED_ASSETS", help="Space separarted list of ERC-20 addresses this vault can trade. Denomination asset does not need to be whitelisted separately."),
 
+    unit_testing: bool = shared_options.unit_testing,
     production: bool = Option(False, envvar="PRODUCTION", help="Set production metadata flag true for the deployment."),
     simulate: bool = Option(False, envvar="SIMULATE", help="Simulate deployment using Anvil mainnet work, when doing manual deployment teststing."),
     etherscan_api_key: Optional[str] = Option(None, envvar="ETHERSCAN_API_KEY", help="Etherscan API key need to verify the contracts on a production deployemnt."),
@@ -64,7 +66,7 @@ def enzyme_deploy_vault(
         json_rpc_ethereum=json_rpc_ethereum,
         json_rpc_anvil=json_rpc_anvil,
         json_rpc_arbitrum=json_rpc_arbitrum,
-        simulate=True,
+        simulate=simulate,
     )
 
     if not web3config.has_any_connection():
@@ -78,7 +80,25 @@ def enzyme_deploy_vault(
     logger.info("Connected to chain %s", chain_id.name)
 
     hot_wallet = HotWallet.from_private_key(private_key)
+    hot_wallet.sync_nonce(web3)
     web3.middleware_onion.add(construct_sign_and_send_raw_middleware(hot_wallet.account))
+
+    # Build the list of whitelisted assets GuardV0 allows us to trade
+    whitelisted_asset_details = []
+    for token_address in whitelisted_assets.split():
+        token_address = token_address.strip()
+        if token_address:
+            whitelisted_asset_details.append(fetch_erc20_details(web3, token_address))
+
+    assert len(whitelisted_asset_details) >= 1, "You need to whitelist at least one token as a trading pair"
+
+    if whitelisted_asset_details[0].symbol == "USDC":
+        # Unit test path
+        usdc = whitelisted_asset_details[0].contract
+        whitelisted_asset_details = whitelisted_asset_details[1:]
+    else:
+        # Will read from the chain
+        usdc = None
 
     # No other supported Enzyme deployments
     match chain_id:
@@ -108,16 +128,10 @@ def enzyme_deploy_vault(
     else:
         terms_of_service = None
 
-    # Build the list of whitelisted assets GuardV0 allows us to trade
-    whitelisted_assets = []
-    for token_address in os.environ.get("WHITELISTED_TOKENS", "").split():
-        token_address = token_address.strip()
-        if token_address:
-            whitelisted_assets.append(fetch_erc20_details(web3, token_address))
-
-    assert len(whitelisted_assets) >= 1, "You need to whitelist at least one token as a trading pair"
-
     asset_manager_address = hot_wallet.address
+
+    if owner_address is None:
+        owner_address = hot_wallet.address
 
     if simulate:
         logger.info("Simulation deployment")
@@ -127,14 +141,15 @@ def enzyme_deploy_vault(
     logger.info("Deployer hot wallet: %s", hot_wallet.address)
     logger.info("Deployer balance: %f, nonce %d", hot_wallet.get_native_currency_balance(web3), hot_wallet.current_nonce)
     logger.info("Enzyme FundDeployer: %s", enzyme_deployment.contracts.fund_deployer.address)
-    logger.info("USDC: %s", enzyme_deployment.usdc.address)
-    logger.info("Terms of service: %s", terms_of_service.address)
+    if enzyme_deployment.usdc is not None:
+        logger.info("USDC: %s", enzyme_deployment.usdc.address)
+    logger.info("Terms of service: %s", terms_of_service.address if terms_of_service else "-")
     logger.info("Fund: %s (%s)", fund_name, fund_symbol)
-    logger.info("Whitelisted assets: USDC and %s", ", ".join([a.symbol for a in whitelisted_assets]))
+    logger.info("Whitelisted assets: %s", ", ".join([a.symbol for a in whitelisted_asset_details]))
     if owner_address != hot_wallet.address:
         logger.info("Ownership will be transferred to %s", owner_address)
     else:
-        logger.warning("Ownership will be retained at the deployer %d", hot_wallet.address)
+        logger.warning("Ownership will be retained at the deployer %s", hot_wallet.address)
 
     if asset_manager_address != hot_wallet.address:
         logger.info("Asset manager is %s", asset_manager_address)
@@ -143,6 +158,11 @@ def enzyme_deploy_vault(
 
     logger.info("-" * 80)
 
+    if not (simulate or unit_testing):
+        confirm = input("Ok [y/n]? ")
+        if not confirm.lower().startswith("y"):
+            print("Aborted")
+            sys.exit(1)
     try:
         # Currently assumes HotWallet = asset manager
         # as the trade-executor that deploys the vault is going to
@@ -156,7 +176,7 @@ def enzyme_deploy_vault(
             denomination_asset=denomination_token.contract,
             fund_name=fund_name,
             fund_symbol=fund_symbol,
-            whitelisted_asset=whitelisted_assets,
+            whitelisted_assets=whitelisted_asset_details,
             etherscan_api_key=etherscan_api_key,
             production=production,
         )

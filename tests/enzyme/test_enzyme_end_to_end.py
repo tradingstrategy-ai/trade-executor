@@ -118,6 +118,7 @@ def environment(
         "TEST_EVM_UNISWAP_V2_INIT_CODE_HASH": uniswap_v2.init_code_hash,
         "CONFIRMATION_BLOCK_COUNT": "0",  # Needed for test backend, Anvil
         "MAX_CYCLES": "5",  # Run decide_trades() 5 times
+        "PATH": os.environ["PATH"],
     }
     return environment
 
@@ -261,6 +262,7 @@ def test_enzyme_deploy_vault(
     env["VAULT_RECORD_FILE"] = vault_record_file
     env["COMPTROLLER_LIB"] = enzyme_deployment.contracts.comptroller_lib.address
     env["DENOMINATION_ASSET"] = usdc.address
+    env["WHITELISTED_ASSETS"] = " ".join([usdc.address, weth.address])
 
     # Run strategy for few cycles.
     # Manually call the main() function so that Typer's CliRunner.invoke() does not steal
