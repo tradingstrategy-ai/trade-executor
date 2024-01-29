@@ -1,9 +1,13 @@
+import os
 from pathlib import Path
+
+import pytest
 
 from tradeexecutor.cli.log import setup_logging, setup_file_logging
 from tradeexecutor.webhook.http_log import http_logger
 
 
+@pytest.mark.skipif(os.environ.get("CI") is not None, reason="This test messes output on Github Actions.")
 def test_http_log(tmpdir):
     """Inspect HTTP logging issues."""
 
