@@ -7,8 +7,10 @@ from typing import Optional
 
 from typer import Option
 
+from eth_defi.abi import get_deployed_contract
 from eth_defi.deploy import deploy_contract
 from eth_defi.enzyme.deployment import POLYGON_DEPLOYMENT, EnzymeDeployment
+from eth_defi.enzyme.generic_adapter_vault import deploy_vault_with_generic_adapter
 from eth_defi.hotwallet import HotWallet
 from eth_defi.token import fetch_erc20_details
 from tradeexecutor.monkeypatch.web3 import construct_sign_and_send_raw_middleware
@@ -30,11 +32,21 @@ def enzyme_deploy_vault(
     json_rpc_arbitrum: Optional[str] = shared_options.json_rpc_arbitrum,
     json_rpc_anvil: Optional[str] = shared_options.json_rpc_anvil,
     private_key: str = shared_options.private_key,
+
+    # Vault options
     vault_record_file: Optional[Path] = Option(..., envvar="VAULT_RECORD_FILE", help="Store vault and comptroller addresses in this JSON file. It's important to write down all contract addresses."),
     fund_name: Optional[str] = Option(..., envvar="FUND_NAME", help="On-chain name for the fund shares"),
     fund_symbol: Optional[str] = Option(..., envvar="FUND_SYMBOL", help="On-chain token symbol for the fund shares"),
     comptroller_lib: Optional[str] = Option(None, envvar="COMPTROLLER_LIB", help="Enzyme's ComptrollerLib address for custom deployments"),
     denomination_asset: Optional[str] = Option(None, envvar="DENOMINATION_ASSET", help="Stablecoin asset used for vault denomination"),
+
+    owner_address: Optional[str] = Option(None, envvar="OWNER_ADDRESS", help="The protocol or multisig address that is set as the owner of the vault"),
+    terms_of_service_address: Optional[str] = Option(None, envvar="TERMS_OF_SERVICE_ADDRESS", help="The address of the terms of service smart contract"),
+    whitelisted_assets: Optional[str] = Option(None, envvar="WHITELISTED_ASSETS", help="Space separarted list of ERC-20 addresses this vault can trade. Denomination asset does not need to be whitelisted separately."),
+
+    production: bool = Option(False, envvar="PRODUCTION", help="Set production metadata flag true for the deployment."),
+    simulation: bool = Option(False, envvar="SIMULATE", help="Simulate deployment using Anvil mainnet work."),
+    etherscan_api_key: Optional[str] = Option(None, envvar="ETHERSCAN_API_KEY", help="Etherscan API key need to verify the contracts on a production deployemnt."),
 ):
     """Deploy a new Enzyme vault.
 
@@ -73,7 +85,7 @@ def enzyme_deploy_vault(
             raise NotImplementedError("Not supported yet")
         case ChainId.polygon:
             deployment_info = POLYGON_DEPLOYMENT
-            enzyme_deployment = EnzymeDeployment.fetch_deployment(web3, POLYGON_DEPLOYMENT)
+            enzyme_deployment = EnzymeDeployment.fetch_deployment(web3, POLYGON_DEPLOYMENT, deployer=hot_wallet.address)
             denomination_token = fetch_erc20_details(web3, deployment_info["usdc"])
         case _:
             assert comptroller_lib, f"You need to give Enzyme's ComptrollerLib address for a chain {chain_id}"
@@ -95,57 +107,60 @@ def enzyme_deploy_vault(
     logger.info("  Integration manager deployed at %s", enzyme_deployment.contracts.integration_manager.address)
     logger.info("  %s is %s", denomination_token.symbol, denomination_token.address)
 
-    block_number = web3.eth.block_number
+    if terms_of_service_address != None:
+        terms_of_service = get_deployed_contract(
+            web3,
+            "terms-of-service/TermsOfService.json",
+            terms_of_service_address,
+        )
+        terms_of_service.functions.latestTermsOfServiceVersion().call()  # Check ABI matches or crash
+    else:
+        terms_of_service = None
+
+    # Build the list of whitelisted assets GuardV0 allows us to trade
+    whitelisted_assets = []
+    for token_address in os.environ.get("WHITELISTED_TOKENS", "").split():
+        token_address = token_address.strip()
+        if token_address:
+            whitelisted_assets.append(fetch_erc20_details(web3, token_address))
 
     logger.info("Deploying vault")
     try:
-        # TODO: Fix this later, use create_new_vault() argument
-        enzyme_deployment.deployer = hot_wallet.address
 
-        comptroller_contract, vault_contract = enzyme_deployment.create_new_vault(
-            hot_wallet.address,
+        # Currently assumes HotWallet = asset manager
+        # as the trade-executor that deploys the vault is going to
+        # the assset manager for this vault
+        vault = deploy_vault_with_generic_adapter(
+            enzyme_deployment,
+            hot_wallet,
+            asset_manager=hot_wallet.address,
+            owner=owner_address,
+            terms_of_service=terms_of_service,
             denomination_asset=denomination_token.contract,
             fund_name=fund_name,
             fund_symbol=fund_symbol,
+            whitelisted_asset=whitelisted_assets,
+            etherscan_api_key=etherscan_api_key,
         )
+
     except Exception as e:
         raise RuntimeError(f"Deployment failed. Hot wallet: {hot_wallet.address}, denomination asset: {denomination_token.address}") from e
-
-    logger.info("Deploying VaultSpecificGenericAdapter")
-    generic_adapter = deploy_contract(
-        web3,
-        f"VaultSpecificGenericAdapter.json",
-        hot_wallet.address,
-            enzyme_deployment.contracts.integration_manager.address,
-        vault_contract.address,
-    )
-
-    logger.info("Deploying VaultUSDCPaymentForwarder")
-    usdc_payment_forwarder = deploy_contract(
-        web3,
-        f"VaultUSDCPaymentForwarder.json",
-        hot_wallet.address,
-        denomination_token.address,
-        comptroller_contract.address,
-    )
 
     if vault_record_file:
         # Make a small file, mostly used to communicate with unit tests
         with open(vault_record_file, "wt") as out:
             vault_record = {
-                "vault": vault_contract.address,
-                "comptroller": comptroller_contract.address,
-                "generic_adapter": generic_adapter.address,
-                "block_number": block_number,
-                "usdc_payment_forwarder": usdc_payment_forwarder.address,
+                "vault": vault.address,
+                "comptroller": vault.comptroller.address,
+                "generic_adapter": vault.generic_adapter.address,
+                "block_number": vault.deployed_at_block,
+                "usdc_payment_forwarder": vault.payment_forwarder.address,
+                "guard": vault.guard_contract.address,
                 "deployer": hot_wallet.address,
                 "denomination_token": denomination_token.address,
             }
             json.dump(vault_record, out, indent=4)
         logger.info("Wrote %s for vault details", os.path.abspath(vault_record_file))
 
-    logger.info("Vault environment variables for trade-executor init command:")
-    logger.info("  VAULT_ADDRESS=%s", vault_contract.address)
-    logger.info("  VAULT_ADAPTER_ADDRESS=%s", generic_adapter.address)
-    logger.info("  VAULT_PAYMENT_FORWARDER_ADDRESS=%s", usdc_payment_forwarder.address)
-    logger.info("  VAULT_DEPLOYMENT_BLOCK_NUMBER=%d", block_number)
+    logger.info("Vault environment variables for trade-executor init command:\n%s", vault.get_deployment_info())
+
