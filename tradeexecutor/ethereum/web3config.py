@@ -234,6 +234,7 @@ class Web3Config:
                 if simulate:
                     # TODO: Clean up API
                     web3config.anvil = getattr(web3config.connections[chain_id], "anvil")
+                    simulation_already_created = True
 
         return web3config
 

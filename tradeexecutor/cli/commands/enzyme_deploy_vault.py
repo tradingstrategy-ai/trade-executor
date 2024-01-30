@@ -1,9 +1,42 @@
-"""enzyme-asset-list CLi command."""
+"""enzyme-deploy-vault CLI command.
+
+Example how to manually test:
+
+.. code-block:: shell
+
+    export SIMULATE=true
+    export FUND_NAME="Up only and then more"
+    export FUND_SYMBOL="UP"
+    export TERMS_OF_SERVICE_ADDRESS="0x24BB78E70bE0fC8e93Ce90cc8A586e48428Ff515"
+    export VAULT_RECORD_FILE="/tmp/sample-vault-deployment.json"
+    export OWNER_ADDRESS="0x238B0435F69355e623d99363d58F7ba49C408491"
+
+    #
+    # Asset configuration
+    #
+
+    # USDC
+    export DENOMINATION_ASSET="0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174"
+    # Whitelisted tokens for Polygon: WETH, WMATIC
+    export WHITELISTED_ASSETS="0x7ceb23fd6bc0add59e62ac25578270cff1b9f619 0x0d500B1d8E8eF31E21C99d1Db9A6444d3ADf1270"
+
+    #
+    # Secret configuration
+    #
+
+    export JSON_RPC_POLYGON=
+    export PRIVATE_KEY=
+    # Is Polygonscan.com API key, passed to Forge
+    export ETHERSCAN_API_KEY=
+
+    trade-executor enzyme-deploy-vault
+"""
 
 import json
 import os.path
 import sys
 from pathlib import Path
+from pprint import pformat
 from typing import Optional
 
 from typer import Option
@@ -43,7 +76,7 @@ def enzyme_deploy_vault(
 
     owner_address: Optional[str] = Option(None, envvar="OWNER_ADDRESS", help="The protocol or multisig address that is set as the owner of the vault"),
     terms_of_service_address: Optional[str] = Option(None, envvar="TERMS_OF_SERVICE_ADDRESS", help="The address of the terms of service smart contract"),
-    whitelisted_assets: Optional[str] = Option(None, envvar="WHITELISTED_ASSETS", help="Space separarted list of ERC-20 addresses this vault can trade. Denomination asset does not need to be whitelisted separately."),
+    whitelisted_assets: Optional[str] = Option(..., envvar="WHITELISTED_ASSETS", help="Space separarted list of ERC-20 addresses this vault can trade. Denomination asset does not need to be whitelisted separately."),
 
     unit_testing: bool = shared_options.unit_testing,
     production: bool = Option(False, envvar="PRODUCTION", help="Set production metadata flag true for the deployment."),
@@ -177,7 +210,7 @@ def enzyme_deploy_vault(
             fund_name=fund_name,
             fund_symbol=fund_symbol,
             whitelisted_assets=whitelisted_asset_details,
-            etherscan_api_key=etherscan_api_key,
+            etherscan_api_key=etherscan_api_key if not simulate else None,  # Only verify when not simulating
             production=production,
         )
 
@@ -200,7 +233,7 @@ def enzyme_deploy_vault(
             json.dump(vault_record, out, indent=4)
         logger.info("Wrote %s for vault details", os.path.abspath(vault_record_file))
 
-    logger.info("Vault environment variables for trade-executor init command:\n%s", vault.get_deployment_info())
+    logger.info("Vault environment variables for trade-executor init command:\n%s", pformat(vault.get_deployment_info()))
 
     web3config.close()
 
