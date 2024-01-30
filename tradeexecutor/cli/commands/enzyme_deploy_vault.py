@@ -1,4 +1,29 @@
-"""enzyme-asset-list CLi command."""
+"""enzyme-deploy-vault CLI command.
+
+Example how to manually test:
+
+.. code-block:: shell
+
+    export SIMULATE=true
+    export FUND_NAME="Up only and then more"
+    export FUND_SYMBOL="UP"
+    export TERMS_OF_SERVICE_ADDRESS="0x24BB78E70bE0fC8e93Ce90cc8A586e48428Ff515"
+    export VAULT_RECORD_FILE="/tmp/sample-vault-deployment.json"
+
+    # USDC
+    export DENOMINATION_ASSET="0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174"
+
+    # Whitelisted tokens for Polygon: WETH, WMATIC
+    export WHITELISTED_TOKENS="0x7ceb23fd6bc0add59e62ac25578270cff1b9f619 0x0d500B1d8E8eF31E21C99d1Db9A6444d3ADf1270"
+
+
+    export JSON_RPC_POLYGON=
+    export PRIVATE_KEY=
+    # Is Polygonscan.com API key, passed to Forge
+    export ETHERSCAN_API_KEY=
+
+    trade-executor enzyme-deploy-vault
+"""
 
 import json
 import os.path
