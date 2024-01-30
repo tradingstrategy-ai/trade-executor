@@ -63,10 +63,6 @@ class EnzymeSmartContracts(TypedDict):
     #:
     terms_of_service: ZeroExAddress
 
-    #: Trade executor hot wallet address
-    #:
-    asset_manager: ZeroExAddress
-
 
 @dataclass_json
 @dataclass
