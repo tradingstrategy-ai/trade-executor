@@ -2,6 +2,7 @@
 
 For more information see the narrative documentation on :ref:`profitability`.
 """
+import datetime
 import warnings
 from typing import List
 
@@ -463,6 +464,8 @@ def _get_strategy_time_range(state, fill_time_gaps):
     started_at, last_ts = None, None
     if fill_time_gaps:
         started_at, last_ts = state.get_strategy_time_range()
+    if not last_ts:
+        last_ts = datetime.datetime.utcnow()
     return started_at,last_ts
   
 
