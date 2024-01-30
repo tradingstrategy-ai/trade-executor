@@ -32,6 +32,14 @@ RUN echo $GIT_VERSION_HASH > GIT_VERSION_HASH.txt
 COPY . .
 
 # Install all Python dependencies using Poetry
+#
+# If you are getting an error "does not seem to be a Python package" here
+# the git clone you are working with is not recursive (missing submodules).
+#
+# To fix this you can run the command in your git checkout:
+#
+# git submodule update --init --recursive
+#
 RUN poetry config virtualenvs.create false
 RUN poetry install --no-dev --no-interaction --no-ansi -E web-server -E execution -E qstrader
 
