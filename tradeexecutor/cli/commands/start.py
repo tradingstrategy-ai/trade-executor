@@ -335,6 +335,7 @@ def start(
             key_metrics_backtest_cut_off_days=key_metrics_backtest_cut_off_days,
             badges=badges,
             tags=mod.tags,
+            hot_wallet=sync_model.hot_wallet,
         )
 
         # Start the queue that relays info from the web server to the strategy executor

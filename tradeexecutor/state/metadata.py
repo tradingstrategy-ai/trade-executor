@@ -55,6 +55,18 @@ class EnzymeSmartContracts(TypedDict):
     #:
     payment_forwarder: ZeroExAddress
 
+    #: GuardV0
+    #:
+    guard: ZeroExAddress
+
+    #: TermsOfService
+    #:
+    terms_of_service: ZeroExAddress
+
+    #: Trade executor hot wallet address
+    #:
+    asset_manager: ZeroExAddress
+
 
 @dataclass_json
 @dataclass
@@ -76,6 +88,16 @@ class OnChainData:
     #: Depend on the vault backend.
     #:
     smart_contracts: EnzymeSmartContracts = field(default_factory=dict)
+
+    #: Vault owner address
+    #:
+    #: Multisig or ProtoDAO.
+    #:
+    owner: ZeroExAddress = None
+
+    #: Asset manager address.
+    #:
+    trade_executor_hot_wallet: ZeroExAddress = None
 
 
 @dataclass_json

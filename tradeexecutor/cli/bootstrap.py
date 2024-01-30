@@ -285,25 +285,33 @@ def prepare_cache(
 
 
 def create_metadata(
-        name,
-        short_description,
-        long_description,
-        icon_url,
-        asset_management_mode: AssetManagementMode,
-        chain_id: ChainId,
-        vault: Optional[Vault],
-        backtest_result: Optional[Path] = None,
-        backtest_notebook: Optional[Path] = None,
-        backtest_html: Optional[Path] = None,
-        key_metrics_backtest_cut_off_days: float = 90,
-        badges: Optional[str] = None,
-        tags: Optional[Set[StrategyTag]] = None,
+    name,
+    short_description,
+    long_description,
+    icon_url,
+    asset_management_mode: AssetManagementMode,
+    chain_id: ChainId,
+    vault: Optional[Vault],
+    backtest_result: Optional[Path] = None,
+    backtest_notebook: Optional[Path] = None,
+    backtest_html: Optional[Path] = None,
+    key_metrics_backtest_cut_off_days: float = 90,
+    badges: Optional[str] = None,
+    tags: Optional[Set[StrategyTag]] = None,
+    hot_wallet: Optional[HotWallet] = None,
 ) -> Metadata:
     """Create metadata object from the configuration variables."""
 
-    on_chain_data = OnChainData(asset_management_mode=asset_management_mode, chain_id=chain_id)
+    on_chain_data = OnChainData(
+        asset_management_mode=asset_management_mode,
+        chain_id=chain_id,
+        trade_executor_hot_wallet=hot_wallet.address if hot_wallet else None,
+    )
 
     if vault:
+
+        on_chain_data.owner = vault.get_owner()
+
         on_chain_data.smart_contracts.update(vault.deployment.contracts.get_all_addresses())
 
         on_chain_data.smart_contracts.update({
@@ -311,6 +319,8 @@ def create_metadata(
             "comptroller": vault.comptroller.address,
             "generic_adapter": vault.generic_adapter.address,
             "payment_forwarder": vault.payment_forwarder.address if vault.payment_forwarder else None,
+            "terms_of_service": vault.terms_of_service_contract.address if vault.terms_of_service_contract else None,
+            "guard": vault.guard_contract.address if vault.guard_contract else None,
         })
 
         if vault.deployment.contracts.fund_value_calculator is None:
