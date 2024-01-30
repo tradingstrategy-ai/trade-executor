@@ -29,6 +29,7 @@ def fetch_binance_dataset(
     symbols: list[str] | str,
     candle_time_bucket: TimeBucket,
     stop_loss_time_bucket: TimeBucket,
+    fee: float,
     start_at: datetime.datetime | None = None,
     end_at: datetime.datetime | None = None,
     include_lending: bool = False,
@@ -55,7 +56,7 @@ def fetch_binance_dataset(
 
     downloader = BinanceDownloader()
 
-    pairs = generate_pairs_for_binance(symbols)
+    pairs = generate_pairs_for_binance(symbols, fee)
 
     # use stop_loss_time_bucket since, in this case, it's more granular data than the candle_time_bucket
     # we later resample to the higher time bucket for the backtest candles
@@ -139,6 +140,7 @@ def create_binance_universe(
     symbols: list[str] | str,
     candle_time_bucket: TimeBucket,
     stop_loss_time_bucket: TimeBucket,
+    fee: float,
     start_at: datetime.datetime | None = None,
     end_at: datetime.datetime | None = None,
     reserve_pair_ticker: str | None = None,
@@ -153,6 +155,7 @@ def create_binance_universe(
     :param symbols: List of symbols to load
     :param candle_time_bucket: Time bucket for candle data
     :param stop_loss_time_bucket: Time bucket for stop loss data
+    :param fee: fee for the trading pair. In raw float form i.e. 0 < fee < 1
     :param start_at: Start time for data
     :param end_at: End time for data
     :param reserve_pair_ticker: Pair ticker to use as the reserve asset
@@ -160,10 +163,13 @@ def create_binance_universe(
     :param force_download: Whether to force download of data or get it from cache
     :return: Trading strategy universe
     """
+    assert 0 < fee < 1, "fee must be provided as a raw float"
+    
     dataset = fetch_binance_dataset(
         symbols,
         candle_time_bucket,
         stop_loss_time_bucket,
+        fee,
         start_at,
         end_at,
         include_lending=include_lending,
