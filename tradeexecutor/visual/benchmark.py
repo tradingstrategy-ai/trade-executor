@@ -271,9 +271,8 @@ def visualise_benchmark(
 def visualise_long_short_benchmark(
     state: State,
     time_bucket: TimeBucket,
-    name: Optional[str] = None,
-    #portfolio_statistics: Optional[List[PortfolioStatistics]] = None,
-    height=1200,
+    name: str | None = None,
+    height: int | None = None,
 ):
     """Visualise separate benchmarks for both longing and shorting"""
     
@@ -282,20 +281,41 @@ def visualise_long_short_benchmark(
     long_stats = analysis.calculate_long_summary_statistics(state=state, time_bucket=time_bucket)
     short_stats = analysis.calculate_short_summary_statistics(state=state, time_bucket=time_bucket)
     overall_stats = analysis.calculate_summary_statistics(state=state, time_bucket=time_bucket)
-    
+
     long_compounding_returns = long_stats.compounding_returns
     short_compounding_returns = short_stats.compounding_returns
     overall_compounding_returns = overall_stats.compounding_returns
-    
+
     # visualise long equity curve
     long_curve = get_plot_from_series("long", "#006400", long_compounding_returns)
     short_curve = get_plot_from_series("short", "#8B0000", short_compounding_returns)
     overall_curve = get_plot_from_series("overall", "rgba(0, 0, 255, 1)", overall_compounding_returns)
-    
+
     fig = go.Figure()
     fig.add_trace(long_curve)
     fig.add_trace(short_curve)
     fig.add_trace(overall_curve)
+
+    fig.update_yaxes(title="compounding return %")
+    fig.update_xaxes(title="time")
+
+    if name:
+        fig.update_layout(title=f"{name}")
+    else:
+        fig.update_layout(title="Equity curve for longs and shorts")
+        
+    if height:
+        fig.update_layout(height=height)
+        
+    fig.update_layout(
+        legend=dict(
+            orientation="h",
+            yanchor="bottom",
+            y=1.02,
+            xanchor="right",
+            x=1
+        )
+    )
 
     return fig
 
