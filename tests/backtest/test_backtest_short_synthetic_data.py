@@ -19,6 +19,7 @@ from tradingstrategy.timebucket import TimeBucket
 from tradingstrategy.candle import GroupedCandleUniverse
 from tradingstrategy.universe import Universe
 
+from tradeexecutor.analysis.trade_analyser import build_trade_analysis
 from tradeexecutor.backtest.backtest_pricing import BacktestPricing
 from tradeexecutor.backtest.backtest_routing import BacktestRoutingModel
 from tradeexecutor.backtest.backtest_runner import run_backtest_inline
@@ -744,7 +745,6 @@ def test_backtest_short_trailing_stop_loss_triggered(persistent_test_client: Cli
 
     assert portfolio.get_cash() == pytest.approx(11952.745496750647)
     
-    from tradeexecutor.analysis.trade_analyser import build_trade_analysis
     analysis = build_trade_analysis(state.portfolio)
     summary = analysis.calculate_summary_statistics(state=state, time_bucket=TimeBucket.d1)
     
