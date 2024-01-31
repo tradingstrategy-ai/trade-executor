@@ -1405,9 +1405,15 @@ class TradingPosition(GenericPosition):
             e.g. due to broken trades.
         """
         if self.is_long():
-            return self.get_realised_profit_usd()/(self.get_total_bought_usd())
+            total_bought = self.get_total_bought_usd()
+            if total_bought == 0:
+                return 0
+            return self.get_realised_profit_usd()/total_bought
         else:
-            return self.get_realised_profit_usd()/(self.get_total_sold_usd())
+            total_sold = self.get_total_bought_usd()
+            if total_sold == 0:
+                return 0
+            return self.get_realised_profit_usd()/total_sold
         
         # assert not self.is_open(), "Cannot calculate realised profit for open positions"
 
