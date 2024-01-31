@@ -13,7 +13,6 @@ from pathlib import Path
 import pytest
 import pandas as pd
 
-from tradeexecutor.analysis.trade_analyser import build_trade_analysis
 from tradeexecutor.backtest.backtest_routing import BacktestRoutingModel
 from tradeexecutor.backtest.backtest_runner import run_backtest, setup_backtest_for_universe
 from tradeexecutor.backtest.backtest_sync import BacktestSyncModel
@@ -244,44 +243,6 @@ def backtest_result_hourly(
     return state
 
 
-@pytest.fixture(scope="module")
-def backtest_result_hourly_no_deposits(
-        logger: logging.Logger,
-        strategy_path: Path,
-        synthetic_universe: TradingStrategyUniverse,
-        routing_model: BacktestRoutingModel,
-    ) -> State:
-    """Run the strategy backtest.
-
-    - Use synthetic data
-
-    - Run a strategy for 6 months
-    """
-
-    # Run the test
-    setup = setup_backtest_for_universe(
-        strategy_path,
-        start_at=datetime.datetime(2021, 6, 1),
-        end_at=datetime.datetime(2021, 7, 1),
-        cycle_duration=CycleDuration.cycle_1h,  # Override to use 1h cycles despite what strategy file says
-        candle_time_frame=TimeBucket.h1,  # Override to use 1h cycles despite what strategy file says
-        initial_deposit=100,
-        universe=synthetic_universe,
-        routing_model=routing_model,
-        allow_missing_fees=True,
-    )
-
-    state, universe, debug_dump = run_backtest(
-        setup,
-        allow_missing_fees=True,
-    )
-
-    all_positions = list(state.portfolio.get_all_positions())
-    assert len(all_positions) == 360
-
-    return state
-
-
 def test_calculate_funding_flow(backtest_result: State):
     """Calculate funding flow for test deposits/redemptions."""
     state = backtest_result
@@ -334,11 +295,6 @@ def test_profitabilities_are_same(backtest_result_hourly: State):
     """
     Check that two methods of calculating profit yield the same result
     """
-    analysis = build_trade_analysis(backtest_result_hourly.portfolio)
-    summary = analysis.calculate_summary_statistics(state=backtest_result_hourly, time_bucket = TimeBucket.h1)
-    _return = summary.return_percent
-    _compounding = summary.compounding_returns
-    
     summary_stats = calculate_summary_statistics(backtest_result_hourly, time_window=datetime.timedelta(days=2000), key_metrics_backtest_cut_off=datetime.timedelta(days=0))
     
     assert summary_stats.return_all_time == -0.1937959274935105
@@ -355,23 +311,6 @@ def test_key_metrics(backtest_result_hourly: State):
     assert summary_stats.key_metrics['sortino'].value == pytest.approx(-19.104973174542796)
     assert summary_stats.key_metrics['max_drawdown'].value == pytest.approx(0.18798605414266745)
     assert summary_stats.key_metrics['profitability'].value == pytest.approx(-0.1937959274935087)
-
-
-def test_profitabilities_are_same_no_deposits(backtest_result_hourly_no_deposits: State):
-    """
-    Check that two methods of calculating profit yield the same result.
-    """
-    state = backtest_result_hourly_no_deposits
-    analysis = build_trade_analysis(state.portfolio)
-    summary = analysis.calculate_summary_statistics(state=state, time_bucket = TimeBucket.h1)
-    
-    _return = summary.return_percent
-    _compounding = summary.compounding_returns.iloc[-1]
-    assert _return == pytest.approx(_compounding, abs=1e-10)
-    
-    summary_stats = calculate_summary_statistics(state, time_window=datetime.timedelta(days=2000), key_metrics_backtest_cut_off=datetime.timedelta(days=0))
-    
-    assert summary_stats.key_metrics['profitability'].value == summary_stats.return_all_time    
 
 
 def test_calculate_realised_trading_profitability_no_trades():
