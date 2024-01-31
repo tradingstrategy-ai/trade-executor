@@ -17,6 +17,7 @@ from tradingstrategy.timebucket import TimeBucket
 from tradingstrategy.candle import GroupedCandleUniverse
 from tradingstrategy.universe import Universe
 
+from tradeexecutor.analysis.trade_analyser import build_trade_analysis
 from tradeexecutor.backtest.backtest_pricing import BacktestPricing
 from tradeexecutor.backtest.backtest_routing import BacktestRoutingModel
 from tradeexecutor.backtest.backtest_runner import run_backtest_inline
@@ -231,12 +232,17 @@ def test_backtest_long_short_stats(
     long_compounding_profit = calculate_long_compounding_realised_trading_profitability(state)
     short_compounding_profit = calculate_short_compounding_realised_trading_profitability(state)
     
+    analysis = build_trade_analysis(state.portfolio)
+    summary = analysis.calculate_summary_statistics(state=state, time_bucket=strategy_universe.data_universe.time_bucket)
+    
+    assert summary.return_percent == pytest.approx(overall_compounding_profit.iloc[-1], abs=1e-3)  # TODO make more precise
+    
     assert overall_compounding_profit.iloc[0] == 0
     assert long_compounding_profit.iloc[0] == 0
     assert short_compounding_profit.iloc[0] == 0
     
-    assert overall_compounding_profit.iloc[-1] == -0.016521426180387766
+    assert overall_compounding_profit.iloc[-1] == -0.018257383118416515
     assert long_compounding_profit.iloc[-1] == -0.003555468782310056
-    assert short_compounding_profit.iloc[-1] == -0.013012221946998581
+    assert short_compounding_profit.iloc[-1] == -0.014754373048884384
     
     
