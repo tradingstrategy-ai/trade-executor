@@ -169,7 +169,6 @@ class StrategyRunner(abc.ABC):
             state: State,
             debug_details: dict,
             end_block: BlockNumber | NoneType = None,
-            long_short_metrics_latest: StatisticsTable | None = None,
     ):
         """Adjust portfolio balances based on the external events.
 
@@ -241,6 +240,13 @@ class StrategyRunner(abc.ABC):
                     state,
                     valuation_model,
                 )
+                
+                if self.execution_context.live_trading:
+                    long_short_metrics_latest = (
+                        self.extract_long_short_stats_from_state(state)
+                    )
+                else:
+                    long_short_metrics_latest = None
 
                 update_statistics(
                     timestamp,
@@ -592,7 +598,6 @@ class StrategyRunner(abc.ABC):
         cycle_duration: Optional[CycleDuration] = None,
         cycle: Optional[int] = None,
         store: Optional[StateStore] = None,
-        long_short_metrics_latest: StatisticsTable | None = None,
     ) -> dict:
         """Execute the core functions of a strategy.
 

@@ -476,7 +476,6 @@ class ExecutionLoop:
             cycle_duration=cycle_duration,
             cycle=cycle,
             store=self.store,
-            long_short_metrics_latest=long_short_metrics_latest,
         )
 
         # Update portfolio and position historical data tracking.
@@ -574,9 +573,13 @@ class ExecutionLoop:
         with self.timed_task_context_manager("update_statistics"):
             logger.info("Updating position statistics after revaluation")
 
-            long_short_metrics_latest = (
-                self.extract_long_short_stats_from_state(state)
-            )
+            if self.execution_context.live_trading:
+                long_short_metrics_latest = (
+                    self.extract_long_short_stats_from_state(state)
+                )
+            else:
+                long_short_metrics_latest = None
+                
             update_statistics(clock, state.stats, state.portfolio, execution_mode, long_short_metrics_latest=long_short_metrics_latest)
 
         # Check that state is good before writing it to the disk
