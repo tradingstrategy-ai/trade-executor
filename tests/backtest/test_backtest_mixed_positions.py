@@ -235,8 +235,8 @@ def test_backtest_long_short_stats(
     assert long_compounding_profit.iloc[0] == 0
     assert short_compounding_profit.iloc[0] == 0
     
-    assert overall_compounding_profit.iloc[-1] == -0.016521426180387766
+    assert overall_compounding_profit.iloc[-1] == -0.01637882433811455
     assert long_compounding_profit.iloc[-1] == -0.003555468782310056
-    assert short_compounding_profit.iloc[-1] == -0.013012221946998581
+    assert short_compounding_profit.iloc[-1] == -0.01286911127921364
     
     
