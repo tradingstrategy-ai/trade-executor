@@ -1410,7 +1410,7 @@ class TradingPosition(GenericPosition):
                 return 0
             return self.get_realised_profit_usd()/total_bought
         else:
-            total_sold = self.get_total_bought_usd()
+            total_sold = self.get_total_sold_usd()
             if total_sold == 0:
                 return 0
             return self.get_realised_profit_usd()/total_sold
