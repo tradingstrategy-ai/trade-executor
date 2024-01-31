@@ -38,6 +38,21 @@ jobs:
         # download too much data
         run: |          
           poetry install --all-extras
+
+      # pnpm needed to compile Enzyme
+      # We need version 7 to be exact.
+      - name: Install pnpm
+        run: |
+          curl -fsSL https://get.pnpm.io/install.sh | env PNPM_VERSION=7.27.1 sh -
+          PNPM_HOME="/home/runner/.local/share/pnpm"
+          # https://docs.github.com/en/actions/using-workflows/workflow-commands-for-github-actions#adding-a-system-path
+          echo $PNPM_HOME >> $GITHUB_PATH
+
+      # Prepare .sol files for deploy_contract_with_forge() tests.
+      # As .sol building is needed when we test contracts with deploy with Etherscan verification
+      - name: Prepare .sol source files
+        run: |
+            (cd deps/web3-ethereum-defi && make guard in-house)
       # Run tests parallel by module
       - name: Run test scripts
         run: |

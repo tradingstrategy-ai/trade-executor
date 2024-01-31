@@ -7,6 +7,7 @@ from typing import Dict, Optional, List
 from eth_defi.gas import GasPriceMethod, node_default_gas_price_strategy
 from eth_defi.hotwallet import HotWallet
 from eth_defi.middleware import http_retry_request_with_sleep_middleware
+from eth_defi.provider.anvil import AnvilLaunch, launch_anvil
 from eth_defi.provider.broken_provider import set_block_tip_latency
 from eth_defi.provider.multi_provider import MultiProviderWeb3, create_multi_provider_web3
 from tradeexecutor.monkeypatch.web3 import construct_sign_and_send_raw_middleware
@@ -51,11 +52,15 @@ class Web3Config:
     #: Chain id for single chain strategies
     default_chain_id: Optional[ChainId] = None
 
+    #: Anvil backend we use for the transaction simuation
+    anvil: Optional[AnvilLaunch] = None
+
     @staticmethod
     def create_web3(
             configuration_line: str,
             gas_price_method: Optional[GasPriceMethod] = None,
             unit_testing: bool=False,
+            simulate: bool=False,
     ) -> MultiProviderWeb3:
         """Create a new Web3.py connection.
 
@@ -68,14 +73,25 @@ class Web3Config:
             How do we estimate gas for a transaction
             If not given autodetect the method.
 
-        :parma unit_testing:
+        :param unit_testing:
             Are we executing against unit testing JSON-RPC endpoints.
 
             If so set latency to zero.
+
+        :param simulate:
+            Set up Anvil mainnet fork for transaction simulation.
+
         """
 
         assert type(configuration_line) == str, f"Got: {configuration_line.__class__}"
-        web3 = create_multi_provider_web3(configuration_line)
+
+        if simulate:
+            logger.info(f"Simulating transactions with Anvil for {configuration_line}")
+            anvil = launch_anvil(configuration_line)
+            web3 = create_multi_provider_web3(anvil.json_rpc_url)
+            web3.anvil = anvil
+        else:
+            web3 = create_multi_provider_web3(configuration_line)
 
         # Read numeric chain id from JSON-RPC
         chain_id = web3.eth.chain_id
@@ -127,8 +143,8 @@ class Web3Config:
 
     def close(self):
         """Close all connections."""
-        # Web3.py does not offer close
-        pass
+        if self.anvil is not None:
+            self.anvil.close()
 
     def has_chain_configured(self) -> bool:
         """Do we have one or more chains configured."""
@@ -184,6 +200,7 @@ class Web3Config:
     def setup_from_environment(cls,
                                gas_price_method: Optional[GasPriceMethod],
                                unit_testing: bool=False,
+                               simulate: bool=False,
                                **kwargs) -> "Web3Config":
         """Setup connections based on given RPC URLs.
 
@@ -202,12 +219,22 @@ class Web3Config:
         # Lowercase all key names
         kwargs = {k.lower(): v for k, v in kwargs.items()}
 
+        simulation_already_created = False
+
         for chain_id in SUPPORTED_CHAINS:
             key = f"json_rpc_{chain_id.get_slug()}"
             configuration_line = kwargs.get(key)
             if configuration_line:
-                web3config.connections[chain_id] = Web3Config.create_web3(configuration_line, gas_price_method, unit_testing=unit_testing)
 
+                if simulate and simulation_already_created:
+                    raise AssertionError(f"Simulation can be used only with one chain, got {kwargs}")
+
+                web3config.connections[chain_id] = Web3Config.create_web3(configuration_line, gas_price_method, unit_testing=unit_testing, simulate=simulate)
+
+                if simulate:
+                    # TODO: Clean up API
+                    web3config.anvil = getattr(web3config.connections[chain_id], "anvil")
+                    simulation_already_created = True
 
         return web3config
 

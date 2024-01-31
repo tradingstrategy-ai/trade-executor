@@ -109,6 +109,7 @@ def environment(
         "MAX_DATA_DELAY_MINUTES": "1440",  # Don't crash on not doing candle refresh properly
         "GAS_BALANCE_WARNING_LEVEL": "0",  # Avoid unnecessary gas warnings
         "UNIT_TEST_FORCE_ANVIL": "true",
+        "PATH": os.environ["PATH"],
     }
     return environment
 
