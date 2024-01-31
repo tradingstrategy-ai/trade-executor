@@ -19,6 +19,7 @@ from tradingstrategy.timebucket import TimeBucket
 from tradingstrategy.candle import GroupedCandleUniverse
 from tradingstrategy.universe import Universe
 
+from tradeexecutor.analysis.trade_analyser import build_trade_analysis
 from tradeexecutor.backtest.backtest_pricing import BacktestPricing
 from tradeexecutor.backtest.backtest_routing import BacktestRoutingModel
 from tradeexecutor.backtest.backtest_runner import run_backtest_inline
@@ -739,5 +740,13 @@ def test_backtest_short_trailing_stop_loss_triggered(persistent_test_client: Cli
 
     assert position.liquidation_price == pytest.approx(Decimal(1912.499999999999950039963892))
     assert position.stop_loss == pytest.approx(1669.082747543819)
+    assert position.get_realised_profit_percent() == pytest.approx(0.06124905034476604)
+    assert position.get_realised_profit_percent() == position.get_total_profit_percent()
 
     assert portfolio.get_cash() == pytest.approx(11952.745496750647)
+    
+    analysis = build_trade_analysis(state.portfolio)
+    summary = analysis.calculate_summary_statistics(state=state, time_bucket=TimeBucket.d1)
+    
+    assert summary.return_percent == pytest.approx(0.1952745496750649)
+    assert summary.compounding_returns.iloc[-1] == pytest.approx(summary.return_percent, abs=1e-3)  # TODO make match more precisely

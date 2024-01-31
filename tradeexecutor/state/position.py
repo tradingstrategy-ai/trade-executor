@@ -1226,11 +1226,11 @@ class TradingPosition(GenericPosition):
             return profit / bought
         else:
             # TODO: this is not correct yet since it doesn't factor in interest
-            profit = -self.get_total_profit_usd()
-            bought = self.get_total_bought_usd()
-            if bought == 0:
+            profit = self.get_total_profit_usd()
+            sold = self.get_total_sold_usd()
+            if sold == 0:
                 return 0
-            return profit / bought
+            return profit / sold
 
     def get_total_profit_at_timestamp(self, timestamp: datetime.datetime) -> USDollarAmount:
         """Get the profit of the position what it was at a certain point of time.
@@ -1404,30 +1404,40 @@ class TradingPosition(GenericPosition):
             Return ``0`` if the position profitability cannot be calculated,
             e.g. due to broken trades.
         """
-        
-        assert not self.is_open(), "Cannot calculate realised profit for open positions"
-
-        buy_value = self.get_buy_value()
-        sell_value = self.get_sell_value()
-
-        # We only need to handle in-kind redemptions,
-        # because deposits are never applied to an open position
-        redemptions = [r for r in self.balance_updates.values() if r.cause == BalanceUpdateCause.redemption]
-        if redemptions:
-            assert self.is_spot(), "Does not know how to handle redemptions for credit positions"
-            redemptions_value = sum(r.usd_value for r in redemptions)
+        if self.is_long():
+            total_bought = self.get_total_bought_usd()
+            if total_bought == 0:
+                return 0
+            return self.get_realised_profit_usd()/total_bought
         else:
-            redemptions_value = 0
-
-        if buy_value == 0:
-            # Repaired trade
-            return 0
+            total_sold = self.get_total_sold_usd()
+            if total_sold == 0:
+                return 0
+            return self.get_realised_profit_usd()/total_sold
         
-        if sell_value == 0:
-            # Another way of damaged/repaired trade
-            return 0
+        # assert not self.is_open(), "Cannot calculate realised profit for open positions"
 
-        return sell_value / (buy_value - redemptions_value) - 1
+        # buy_value = self.get_buy_value()
+        # sell_value = self.get_sell_value()
+
+        # # We only need to handle in-kind redemptions,
+        # # because deposits are never applied to an open position
+        # redemptions = [r for r in self.balance_updates.values() if r.cause == BalanceUpdateCause.redemption]
+        # if redemptions:
+        #     assert self.is_spot(), "Does not know how to handle redemptions for credit positions"
+        #     redemptions_value = sum(r.usd_value for r in redemptions)
+        # else:
+        #     redemptions_value = 0
+
+        # if buy_value == 0:
+        #     # Repaired trade
+        #     return 0
+        
+        # if sell_value == 0:
+        #     # Another way of damaged/repaired trade
+        #     return 0
+
+        # return (sell_value + self.get_claimed_interest() - self.get_repaid_interest()) / (buy_value) - 1
 
     def get_size_relative_realised_profit_percent(self) -> Percent:
         """Calculated life-time profit over this position.
