@@ -746,7 +746,7 @@ class ExecutionLoop:
         )
         
         assert long_short_metrics_latest == None, "long_short_metrics_latest must be None during backtesting"
-x
+
         while ts < end_ts:
             logger.debug("Backtesting take profit/stop loss at %s", ts)
             trades = self.runner.check_position_triggers(
