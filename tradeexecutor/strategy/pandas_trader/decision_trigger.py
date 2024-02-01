@@ -15,6 +15,7 @@ import pandas as pd
 from tradingstrategy.candle import GroupedCandleUniverse, TradingPairDataAvailability
 
 from tradingstrategy.client import Client
+from tradingstrategy.lending import LendingReserve, LendingReserveUniverse, LendingCandleType, LendingCandleResult, LendingCandleUniverse
 from tradingstrategy.pair import DEXPair
 from tradingstrategy.timebucket import TimeBucket
 
@@ -55,12 +56,12 @@ class UpdatedUniverseResult:
     max_diff: Optional[datetime.datetime]
 
 
-def fetch_data(
-        client: Client,
-        bucket: TimeBucket,
-        timestamp: datetime.datetime,
-        pairs: Set[DEXPair],
-        required_history_period: datetime.timedelta,
+def fetch_price_data(
+    client: Client,
+    bucket: TimeBucket,
+    timestamp: datetime.datetime,
+    pairs: Set[DEXPair],
+    required_history_period: datetime.timedelta,
 ) -> pd.DataFrame:
     """Download the pair data.
 
@@ -85,6 +86,33 @@ def fetch_data(
     )
 
 
+def fetch_lending_data(
+    client: Client,
+    bucket: TimeBucket,
+    timestamp: datetime.datetime,
+    lending_reserve_universe: LendingReserveUniverse,
+    required_history_period: datetime.timedelta,
+) -> LendingCandleResult:
+    """Download the new lending candles.
+
+    :param client:
+    :param bucket:
+    :param timestamp:
+    :param pairs:
+    :param required_history_period:
+
+    :return:
+        DataFrame containing updated lending reserves.
+    """
+    start_time = timestamp - required_history_period - datetime.timedelta(seconds=1)
+    return client.fetch_lending_candles_for_universe(
+        lending_reserve_universe,
+        bucket=bucket,
+        start_time=start_time,
+        end_time=timestamp,
+    )
+
+
 def fetch_availability(
         client: Client,
         bucket: TimeBucket,
@@ -103,23 +131,36 @@ def fetch_availability(
 
 
 def update_universe(
-        universe: TradingStrategyUniverse,
-        df: pd.DataFrame
+    universe: TradingStrategyUniverse,
+    price_df: pd.DataFrame,
+    lending_candles: LendingCandleResult | None = None,
 ) -> TradingStrategyUniverse:
     """Update a Trading Universe with a new candle data.
 
-    :param df:
+    :param price_df:
         Unsorted DataFrame containing data for all trading pairs we are interested in.
+
+    :param lending_candles:
+        New lending candles fetches from the server
+
     """
     updated_universe = universe.clone()
-    updated_universe.data_universe.candles = GroupedCandleUniverse(df)
+    updated_universe.data_universe.candles = GroupedCandleUniverse(price_df)
+
+    if universe.has_lending_data():
+        assert lending_candles is not None
+        updated_universe.data_universe.lending_candles = LendingCandleUniverse(
+            lending_candles,
+            lending_reserve_universe=universe.data_universe.lending_reserves
+        )
+
     return updated_universe
 
 
 def validate_latest_candles(
-        pairs: Set[DEXPair],
-        df: pd.DataFrame,
-        timestamp: datetime.datetime,
+    pairs: Set[DEXPair],
+    df: pd.DataFrame,
+    timestamp: datetime.datetime,
 ):
     """Ensure that the oracle served us correct up-to-date candles.
 
@@ -271,15 +312,34 @@ def wait_for_universe_data_availability_jsonl(
         if not incompleted_pairs or poll_cycle >= max_poll_cycles:
             # We have latest data for all pairs and can now update the universe
             logger.info("Fetching candle data for the history period of %s", required_history_period)
-            df = fetch_data(
+
+            df = fetch_price_data(
                 client,
                 bucket,
                 wanted_timestamp,
                 completed_pairs,
                 required_history_period,
             )
-            updated_universe = update_universe(current_universe, df)
+
+            if current_universe.has_lending_data():
+                lending_data = fetch_lending_data(
+                    client,
+                    bucket,
+                    wanted_timestamp,
+                    current_universe.data_universe.lending_reserves,
+                    required_history_period
+                )
+            else:
+                lending_data = None
+
+            updated_universe = update_universe(
+                current_universe,
+                df,
+                lending_data
+            )
+
             time_waited = datetime.datetime.utcnow() - started_at
+
             return UpdatedUniverseResult(
                 updated_universe=updated_universe,
                 ready_at=datetime.datetime.utcnow(),
