@@ -149,15 +149,18 @@ def update_universe(
 
     if universe.has_lending_data():
         assert lending_candles is not None
-        updated_universe.data_universe.lending_candles = LendingCandleUniverse(lending_candles)
+        updated_universe.data_universe.lending_candles = LendingCandleUniverse(
+            lending_candles,
+            lending_reserve_universe=universe.data_universe.lending_reserves
+        )
 
     return updated_universe
 
 
 def validate_latest_candles(
-        pairs: Set[DEXPair],
-        df: pd.DataFrame,
-        timestamp: datetime.datetime,
+    pairs: Set[DEXPair],
+    df: pd.DataFrame,
+    timestamp: datetime.datetime,
 ):
     """Ensure that the oracle served us correct up-to-date candles.
 

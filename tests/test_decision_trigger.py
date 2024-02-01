@@ -2,6 +2,7 @@
 import datetime
 import os
 
+import pandas as pd
 import pytest
 
 from tradeexecutor.strategy.execution_context import ExecutionContext, ExecutionMode, unit_test_execution_context
@@ -11,6 +12,7 @@ from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniv
 from tradeexecutor.strategy.universe_model import UniverseOptions
 from tradeexecutor.utils.timer import timed_task
 from tradingstrategy.chain import ChainId
+from tradingstrategy.lending import LendingProtocolType
 from tradingstrategy.timebucket import TimeBucket
 
 pytestmark = pytest.mark.skipif(os.environ.get("TRADING_STRATEGY_API_KEY") is None, reason="Set TRADING_STRATEGY_API_KEY environment variable to run this test")
@@ -146,4 +148,66 @@ def test_decision_trigger_multipair(persistent_test_client):
             candles,
             last_possible_timestamp
         )
+
+
+@pytest.mark.slow_test_group
+def test_decision_trigger_lending(persistent_test_client):
+    """Test for the decision that needs lending data availability.
+
+    - Make sure lending data is not lost in the data patch cycle
+
+    - Set the universe to random period in the past
+
+    - Patch to the latest (mock timestamped data)
+
+    - See that lending candles were updated
+    """
+
+    client = persistent_test_client
+
+    # Moved here to avoid pytest memory leaks
+    def _create_trading_universe():
+
+        universe_options = UniverseOptions(
+            start_at=datetime.datetime(2022, 9, 1),
+            end_at=datetime.datetime(2022, 10, 1),
+        )
+
+        dataset = load_partial_data(
+            client,
+            execution_context=unit_test_execution_context,
+            time_bucket=TimeBucket.d1,
+            pairs=[(ChainId.polygon, "uniswap-v3", "WETH", "USDC")],
+            universe_options=universe_options,
+            lending_reserves=[
+                (ChainId.polygon, LendingProtocolType.aave_v3, "WETH"),
+                (ChainId.polygon, LendingProtocolType.aave_v3, "USDC.e"),
+            ],
+        )
+
+        # Filter down to the single pair we are interested in
+        strategy_universe = TradingStrategyUniverse.create_single_pair_universe(dataset)
+
+        return strategy_universe
+
+    # Memory leak hack
+    universe = _create_trading_universe()
+
+    timestamp = datetime.datetime(2023, 1, 1)
+    updated_universe_result = wait_for_universe_data_availability_jsonl(
+        timestamp,
+        client,
+        universe,
+    )
+
+    assert updated_universe_result.ready_at <=  datetime.datetime.utcnow()
+    assert updated_universe_result.poll_cycles == 1
+
+    universe = updated_universe_result.updated_universe.data_universe
+    assert universe.lending_reserves.get_count() == 2
+    var = universe.lending_candles.variable_borrow_apr
+    assert var.get_pair_count() == 2
+    rates = var.get_rates_by_reserve((ChainId.polygon, LendingProtocolType.aave_v3, "USDC.e"))
+    assert rates.index[-1] == pd.Timestamp('2022-12-31 00:00:00')  # Up to the date
+
 
