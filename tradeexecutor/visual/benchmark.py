@@ -5,12 +5,10 @@ from typing import Optional, List, Union, Collection
 import plotly.graph_objects as go
 import pandas as pd
 
-from tradeexecutor.analysis.trade_analyser import build_trade_analysis
+
 from tradeexecutor.state.statistics import PortfolioStatistics
 from tradeexecutor.state.visualisation import Plot
-from tradeexecutor.state.state import State
 from tradeexecutor.visual.technical_indicator import visualise_technical_indicator
-from tradingstrategy.timebucket import TimeBucket
 
 
 def visualise_portfolio_equity_curve(
@@ -100,6 +98,7 @@ def visualise_benchmark(
     height=1200,
     start_at: Optional[Union[pd.Timestamp, datetime.datetime]] = None,
     end_at: Optional[Union[pd.Timestamp, datetime.datetime]] = None,
+
 ) -> go.Figure:
     """Visualise strategy performance against benchmarks.
 
@@ -266,83 +265,4 @@ def visualise_benchmark(
         x=1
     ))
 
-    return fig
-
-def visualise_long_short_benchmark(
-    state: State,
-    time_bucket: TimeBucket,
-    name: str | None = None,
-    height: int | None = None,
-):
-    """Visualise separate benchmarks for both longing and shorting"""
-    
-    analysis = build_trade_analysis(state.portfolio)
-
-    long_stats = analysis.calculate_long_summary_statistics(state=state, time_bucket=time_bucket)
-    short_stats = analysis.calculate_short_summary_statistics(state=state, time_bucket=time_bucket)
-    overall_stats = analysis.calculate_summary_statistics(state=state, time_bucket=time_bucket)
-
-    long_compounding_returns = long_stats.compounding_returns
-    short_compounding_returns = short_stats.compounding_returns
-    overall_compounding_returns = overall_stats.compounding_returns
-
-    # visualise long equity curve
-    long_curve = get_plot_from_series("long", "#006400", long_compounding_returns)
-    short_curve = get_plot_from_series("short", "#8B0000", short_compounding_returns)
-    overall_curve = get_plot_from_series("overall", "rgba(0, 0, 255, 1)", overall_compounding_returns)
-
-    fig = go.Figure()
-    fig.add_trace(long_curve)
-    fig.add_trace(short_curve)
-    fig.add_trace(overall_curve)
-
-    fig.update_yaxes(title="compounding return %")
-    fig.update_xaxes(title="time")
-
-    if name:
-        fig.update_layout(title=f"{name}")
-    else:
-        fig.update_layout(title="Equity curve for longs and shorts")
-        
-    if height:
-        fig.update_layout(height=height)
-        
-    fig.update_layout(
-        legend=dict(
-            orientation="h",
-            yanchor="bottom",
-            y=1.02,
-            xanchor="right",
-            x=1
-        )
-    )
-
-    return fig
-
-def get_plot_from_series(name, colour, series) -> go.Scatter:
-    """Draw portfolio performance.
-    
-    :param name: name of the plot
-    :param colour: colour of the plot
-    :param series: series of daily returns
-    :return: plotly scatter plot
-    """
-    plot = []
-    for index, daily_return in series.items():
-        plot.append({
-            "timestamp": index,
-            "value": daily_return,
-        })
-
-    df = pd.DataFrame(plot, columns=["timestamp", "value"])
-    df.set_index("timestamp", inplace=True)
-
-    fig = go.Scatter(
-        x=df.index,
-        y=df["value"],
-        mode="lines",
-        name=name,
-        line=dict(color=colour),
-    )
-    
     return fig
