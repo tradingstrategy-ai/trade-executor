@@ -330,7 +330,7 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
         """Create a copy of this universe.
 
         Any dataframes are now copied,
-        but set by reference.
+        but set by reference, so do not mutate in place.
         """
         u = self.data_universe
         new_universe = Universe(
@@ -340,6 +340,8 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
             pairs=u.pairs,
             candles=u.candles,
             liquidity=u.liquidity,
+            resampled_liquidity=u.resampled_liquidity,
+            lending_candles=u.lending_candles,
         )
         return TradingStrategyUniverse(
             data_universe=new_universe,
