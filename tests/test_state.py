@@ -455,7 +455,7 @@ def test_statistics(usdc, weth_usdc, aave_usdc, start_ts):
     
     # no closed positions
     assert stats.long_short_metrics_latest["live_stats"].rows['total_positions'].value['All'] == '0' 
-    assert stats.long_short_metrics_latest["backtested_stats"] is None
+    assert stats.long_short_metrics_latest["backtested_stats"].rows == {}
     
 
     assert len(stats.positions) == 2
@@ -503,7 +503,7 @@ def test_statistics(usdc, weth_usdc, aave_usdc, start_ts):
     assert stats.long_short_metrics_latest["live_stats"].rows['won_positions'].value['Long'] == '1'
     assert stats.long_short_metrics_latest["live_stats"].rows['won_positions'].value['Short'] == '0'
     assert stats.long_short_metrics_latest["live_stats"].rows['average_position'].value['Long'] == '25.00%'
-    assert stats.long_short_metrics_latest["backtested_stats"] is None
+    assert stats.long_short_metrics_latest["backtested_stats"].rows == {}
 
     assert len(stats.positions) == 2
     assert len(stats.closed_positions) == 2
