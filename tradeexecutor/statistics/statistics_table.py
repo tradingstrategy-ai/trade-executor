@@ -51,27 +51,67 @@ def serialise_long_short_stats_as_json_table(
     live_state: State,
     backtested_state: State | None,
     required_history: datetime.timedelta,
-) -> StatisticsTable:
+) -> dict[StatisticsTable | None]:
     """Calculate long/short statistics for the summary tile.
 
-    :param state: Strategy state from which we calculate the summary
-    :param execution_mode: If we need to skip calculations during backtesting.
-    :param time_window: How long we look back for the summary statistics
-    :param now_: Override current time for unit testing.
-    :param legacy_workarounds: Skip some calculations on old data, because data is missing.
-    :return: Summary statistics for all, long, and short positions
+    :param live_state: Live trading strategy state
+    :param backtested_state: Backtested strategy state
+    :param required_history: How long history we need before using live execution as the basis for the key metric calculations
+    :return: Dict with keys "live_stats" and "backtested_stats" containing the statistics tables for live and backtested trading.
     """
-
-    source_state, source, calculation_window_start_at, calculation_window_end_at = get_data_source_and_calculation_window(live_state, backtested_state, required_history)
-
-    if source_state is None:
-        return StatisticsTable(
+    live_stats, backtested_stats = None, None
+    
+    if live_state:
+        live_start_at = live_state.created_at
+        live_end_at = datetime.datetime.utcnow()
+        
+        live_stats = _serialise_long_short_stats_as_json_table(
+            source_state=live_state,
+            source=KeyMetricSource.live_trading,
+            calculation_window_start_at=live_start_at,
+            calculation_window_end_at=live_end_at,
+        )
+    else:
+        live_stats = StatisticsTable(
             columns=["All", "Long", "Short"],
             created_at=datetime.datetime.utcnow(),
-            source=source,
+            source=KeyMetricSource.live_trading,
             rows={},
         )
+    
+    if backtested_state:
+        first_trade, last_trade = backtested_state.portfolio.get_first_and_last_executed_trade()
+        backtested_start_at = first_trade.executed_at
+        backtested_end_at = last_trade.executed_at
+        
+        backtested_stats = _serialise_long_short_stats_as_json_table(
+            source_state=backtested_state,
+            source=KeyMetricSource.backtesting,
+            calculation_window_start_at=backtested_start_at,
+            calculation_window_end_at=backtested_end_at,
+        )
+    else:
+        backtested_stats = StatisticsTable(
+            columns=["All", "Long", "Short"],
+            created_at=datetime.datetime.utcnow(),
+            source=KeyMetricSource.backtesting,
+            rows={},
+        )
+    
+    return dict(
+        live_stats=live_stats, 
+        backtested_stats=backtested_stats
+    )
+    
 
+def _serialise_long_short_stats_as_json_table(
+    source_state: State,
+    source,
+    calculation_window_start_at: datetime.datetime,
+    calculation_window_end_at: datetime.datetime,
+) -> dict[StatisticsTable | None]:
+    """Calculate long/short statistics for the summary tile."""
+    
     analysis = build_trade_analysis(source_state.portfolio)
     summary = analysis.calculate_all_summary_stats_by_side(state=source_state, urls=True)  # TODO timebucket
 
