@@ -216,6 +216,7 @@ def test_create_binance_universe_multipair():
         )
 
 
+@pytest.mark.skipif(os.environ.get("GITHUB_ACTIONS", None) == "true", reason="Github US servers are blocked by Binance with HTTP 451")
 def test_binance_multi_pair():
     """Check multipair resampling works."""
     dataset = fetch_binance_dataset(
