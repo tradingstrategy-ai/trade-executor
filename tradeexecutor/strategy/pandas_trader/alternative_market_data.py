@@ -24,11 +24,16 @@ DEFAULT_COLUMN_MAP: Final = {
 }
 
 
-def resample_single_pair(df, bucket: TimeBucket) -> pd.DataFrame:
+def resample_single_pair(df: pd.DataFrame, bucket: TimeBucket) -> pd.DataFrame:
     """Upsample a single pair DataFrame to a lower time bucket.
 
     - Resample in OHLCV manner
     - Forward fill any gaps in data
+
+    .. warning ::
+
+        Calling this function for a multipair data will corrupt the data.
+        Use :py:func:`resample_multi_pair` instead.
     """
 
     # https://stackoverflow.com/a/68487354/315168
@@ -50,6 +55,26 @@ def resample_single_pair(df, bucket: TimeBucket) -> pd.DataFrame:
     filled = filled[filled.index >= df.index[0]]
 
     return filled
+
+
+def resample_multi_pair(
+    df: pd.DataFrame,
+    bucket: TimeBucket,
+    pair_id_column="pair_id",
+) -> pd.DataFrame:
+    """Upsample a OHLCV trading pair data to a lower time bucket.
+
+    - Slower than :py:func:`resample_single_pair`
+    - Resample in OHLCV manner
+    - Forward fill any gaps in data
+
+    :param pair_id_column:
+        DataFrame column to group the data by pair
+
+    """
+    by_pair = df.groupby(pair_id_column)
+    segments = [resample_single_pair(by_pair.get_group(group_id), bucket) for group_id in by_pair.groups]
+    return pd.concat(segments)
 
 
 def _fix_nans(df: pd.DataFrame) -> pd.DataFrame:
@@ -161,8 +186,15 @@ def load_candle_universe_from_parquet(
     return candles, stop_loss_candles
 
 
-def load_candles_from_dataframe(column_map: Dict[str, str], df: pd.DataFrame, resample: TimeBucket | None, identifier_column: str = "pair_id"):
+def load_candles_from_dataframe(
+    column_map: Dict[str, str],
+    df: pd.DataFrame,
+    resample: TimeBucket | None,
+    identifier_column: str = "pair_id"
+) -> Tuple[pd.DataFrame, pd.DataFrame, TimeBucket, TimeBucket]:
     """Load OHLCV candle data from a DataFrame.
+
+    Remap and resample data when loading.
     
     :param column_map:
         Column name mapping from the DataFrame to our internal format.
@@ -194,7 +226,13 @@ def load_candles_from_dataframe(column_map: Dict[str, str], df: pd.DataFrame, re
     original_bucket = TimeBucket.from_pandas_timedelta(granularity)
 
     if resample:
-        _df = resample_single_pair(df, resample)
+
+        uniq = df["pair_id"].unique()
+        if len(uniq) == 1:
+            _df = resample_single_pair(df, resample)
+        else:
+            _df = resample_multi_pair(df, resample)
+
         bucket = resample
 
         # to preserve addtional columns beyond OHLCV, we need to left join

@@ -6,6 +6,7 @@ from unittest.mock import patch
 
 from tradeexecutor.utils.binance import create_binance_universe, fetch_binance_dataset
 from tradeexecutor.strategy.trading_strategy_universe import Dataset
+from tradingstrategy.binance.downloader import BinanceDownloader
 from tradingstrategy.timebucket import TimeBucket
 from tradingstrategy.binance.constants import BINANCE_EXCHANGE_ID, BINANCE_CHAIN_ID
 
@@ -187,7 +188,6 @@ def test_create_binance_universe_multipair():
     lending_dates = ["2020-12-31", "2021-01-01", "2020-12-31", "2021-01-01", "2020-12-31", "2021-01-01", "2020-12-31", "2021-01-01"]
     lending_rates_df = pd.DataFrame(lending_data, index=pd.to_datetime(lending_dates))
 
-
     if os.environ.get("GITHUB_ACTIONS", None) == "true":
         with patch(
             "tradingstrategy.binance.downloader.BinanceDownloader.fetch_candlestick_data"
@@ -214,3 +214,23 @@ def test_create_binance_universe_multipair():
             END_AT,
             include_lending=True,
         )
+
+
+def test_binance_multi_pair():
+    """Check multipair resampling works."""
+    dataset = fetch_binance_dataset(
+        ["ETHUSDT", "BTCUSDT"],
+        candle_time_bucket=TimeBucket.d1,
+        stop_loss_time_bucket=TimeBucket.h4,
+        start_at=datetime.datetime(2020, 1, 1),
+        end_at=datetime.datetime(2020, 2, 1),
+        include_lending=False,
+    )
+
+    eth_row = dataset.candles.iloc[0]
+    assert eth_row["pair_id"] == 1
+    assert eth_row.to_json() == '{"open":129.16,"high":133.05,"low":128.68,"close":130.77,"volume":144770.52197,"pair_id":1,"base_token_symbol":"ETH","quote_token_symbol":"USDT","exchange_slug":"binance","chain_id":-1.0,"fee":0.0005,"buy_volume_all_time":0.0,"address":"0xe82ac67166a910f4092c23f781cd39e46582ec9c","exchange_id":129875571.0,"token0_address":"0x4b2d72c1cb89c0b2b320c43bb67ff79f562f5ff4","token1_address":"0x5b1a1833b16b6594f92daa9f6d9b7a6024bce9d0","token0_symbol":"ETH","token1_symbol":"USDT","token0_decimals":18.0,"token1_decimals":18.0,"timestamp":1577836800000}'
+
+    btc_row = dataset.candles.iloc[-1]
+    assert btc_row["pair_id"] == 2
+    assert btc_row.to_json() == '{"open":9351.71,"high":9464.53,"low":9281.0,"close":9384.61,"volume":28578.067354,"pair_id":2,"base_token_symbol":"BTC","quote_token_symbol":"USDT","exchange_slug":"binance","chain_id":-1.0,"fee":0.0005,"buy_volume_all_time":0.0,"address":"0x1d06ef1d6470d25f8e3d6f04f5acc111f176939c","exchange_id":129875571.0,"token0_address":"0x505e65d08c67660dc618072422e9c78053c261e9","token1_address":"0x5b1a1833b16b6594f92daa9f6d9b7a6024bce9d0","token0_symbol":"BTC","token1_symbol":"USDT","token0_decimals":18.0,"token1_decimals":18.0,"timestamp":1580515200000}'

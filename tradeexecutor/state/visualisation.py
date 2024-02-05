@@ -34,10 +34,14 @@ class PlotKind(enum.Enum):
     #: This plot is drawn on the top of the price graph
     technical_indicator_on_price = "technical_indicator_on_price"
     
-    #: This plot is drawn below the price graph
+    #: This plot is drawn below the price graph as a separate chart.
+    #:
+    #:
     technical_indicator_detached = "technical_indicator_detached"
     
-    #: This plot is overlaid on a detached indicator plot
+    #: This plot is overlaid on a detached indicator plot.
+    #:
+    #:
     technical_indicator_overlay_on_detached = "technical_indicator_overlay"
 
 
@@ -310,6 +314,38 @@ class Visualisation:
         """Add a value to the output data and diagram.
         
         Plots are stored by their name.
+
+        Example how to draw a detached RSI indicator and top/bottom indicator line for it:
+
+        .. code-block:: python
+
+            # Current daily
+            visualisation.plot_indicator(
+                timestamp,
+                f"RSI {token}",
+                PlotKind.technical_indicator_detached,
+                current_rsi_values[pair],
+            )
+
+            # Low (vertical line)
+            visualisation.plot_indicator(
+                timestamp,
+                f"RSI {token} low trigger",
+                PlotKind.technical_indicator_overlay_on_detached,
+                rsi_low,
+                detached_overlay_name=f"RSI {token}",
+                plot_shape=PlotShape.horizontal_vertical,
+            )
+
+            # High (vertical line)
+            visualisation.plot_indicator(
+                timestamp,
+                f"RSI {token} high trigger",
+                PlotKind.technical_indicator_overlay_on_detached,
+                rsi_high,
+                detached_overlay_name=f"RSI {token}",
+                plot_shape=PlotShape.horizontal_vertical,
+            )
 
         :param timestamp:
             The current strategy cycle timestamp
