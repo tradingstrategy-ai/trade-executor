@@ -149,7 +149,12 @@ addopts = "-s --tb=native"
 testpaths = [
     "tests",
 ]
+
+# Do not let pytest to crawl into deps/ subprojects
+# that contain tests and are independent from us
+# https://stackoverflow.com/a/58306308/315168
 norecursedirs="deps/*"
+
 markers = [
     "slow_test_group: manually separated group of tests that take individually long time to run"
 ]
