@@ -129,7 +129,7 @@ def test_create_binance_universe(correct_df_candles, correct_df_lending):
     assert len(data_universe.lending_reserves.reserves) == 2
     assert data_universe.chains == {BINANCE_CHAIN_ID}
     assert len(data_universe.pairs.df) == 1
-    assert len(data_universe.pairs.df.columns) == 36
+    assert len(data_universe.pairs.df.columns) == 37
     # pairs df can have nans
 
     assert len(data_universe.lending_candles.variable_borrow_apr.df) == 4
