@@ -524,7 +524,7 @@ def run_backtest_inline(
     cycle_duration: CycleDuration,
     initial_deposit: float,
     reserve_currency: ReserveCurrency | None = None,
-    trade_routing: Optional[TradeRouting],
+    trade_routing: Optional[TradeRouting] | None = None,
     create_trading_universe: Optional[CreateTradingUniverseProtocol] = None,
     universe: Optional[TradingStrategyUniverse] = None,
     routing_model: Optional[BacktestRoutingModel] = None,
@@ -546,10 +546,14 @@ def run_backtest_inline(
         Name for this backtest. If not set default to "backtest".
 
     :param start_at:
-        When backtesting starts
+        When backtesting starts.
+
+        If not given take the date of the first candle.
 
     :param end_at:
-        When backtesting ends
+        When backtesting ends.
+
+        If not given take the date of the last candle.
 
     :param minimum_data_lookback_range:
         If start_at and end_at are not given, use this range to determine the backtesting period. Cannot be used with start_at and end_at. Automatically ends at the current time.
@@ -628,6 +632,11 @@ def run_backtest_inline(
         # https://www.python.org/dev/peps/pep-3102/
         raise TypeError("Only keyword arguments accepted")
 
+    if start_at is None and end_at is None:
+        start_at, end_at = universe.data_universe.candles.get_timestamp_range()
+        start_at = start_at.to_pydatetime()
+        end_at = end_at.to_pydatetime()
+
     if start_at:
         assert isinstance(start_at, datetime.datetime)
         assert end_at, "You must give end_at if you give start_at"
@@ -640,6 +649,9 @@ def run_backtest_inline(
 
     if universe:
         assert isinstance(universe, TradingStrategyUniverse)
+
+    if trade_routing is None:
+        trade_routing = TradeRouting.default
 
     if trade_routing == TradeRouting.default:
         assert universe is not None, "Cannot do generic routing in backtesting without universe"
