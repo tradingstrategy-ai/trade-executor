@@ -37,6 +37,7 @@ def logger(request):
 
 
 @pytest.mark.skipif(os.environ.get("SKIP_SLOW_TEST"), reason="Slow tests skipping enabled")
+@pytest.mark.slow_test_group
 def test_trading_data_availability_based_strategy_cycle_trigger(
         logger,
         strategy_path: Path,
