@@ -51,7 +51,7 @@ def serialise_long_short_stats_as_json_table(
     live_state: State,
     backtested_state: State | None,
     required_history: datetime.timedelta,
-) -> dict[StatisticsTable | None]:
+) -> dict[StatisticsTable]:
     """Calculate long/short statistics for the summary tile.
 
     :param live_state: Live trading strategy state
@@ -96,7 +96,7 @@ def _serialise_long_short_stats_as_json_table(
     source,
     calculation_window_start_at: datetime.datetime,
     calculation_window_end_at: datetime.datetime,
-) -> dict[StatisticsTable | None]:
+) -> dict[StatisticsTable]:
     """Calculate long/short statistics for the summary tile."""
     
     if not source_state:
