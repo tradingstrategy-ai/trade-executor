@@ -23,6 +23,9 @@ DEFAULT_COLUMN_MAP: Final = {
     "volume": "volume",
 }
 
+# Every trading pair has the same value for these columns
+PAIR_STATIC_COLUMNS = ('pair_id', 'base_token_symbol', 'quote_token_symbol', 'exchange_slug', 'chain_id', 'fee','token0_address', 'token1_address', 'token0_symbol', 'token1_symbol', 'token0_decimals', 'token1_decimals')
+
 
 def resample_single_pair(df: pd.DataFrame, bucket: TimeBucket) -> pd.DataFrame:
     """Upsample a single pair DataFrame to a lower time bucket.
@@ -61,6 +64,7 @@ def resample_multi_pair(
     df: pd.DataFrame,
     bucket: TimeBucket,
     pair_id_column="pair_id",
+    copy_columns=PAIR_STATIC_COLUMNS,
 ) -> pd.DataFrame:
     """Upsample a OHLCV trading pair data to a lower time bucket.
 
@@ -71,9 +75,22 @@ def resample_multi_pair(
     :param pair_id_column:
         DataFrame column to group the data by pair
 
+    :param copy_columns:
+        Columns we simply copy over.
+
+        We assume every pair has the same value for these columns.
     """
     by_pair = df.groupby(pair_id_column)
-    segments = [resample_single_pair(by_pair.get_group(group_id), bucket) for group_id in by_pair.groups]
+    segments = []
+    for group_id in by_pair.groups:
+        pair_df = by_pair.get_group(group_id)
+        if len(pair_df) > 0:
+            segment = resample_single_pair(pair_df, bucket)
+            for c in copy_columns:
+                first_row = pair_df.iloc[0]
+                segment[c] = first_row[c]
+            segments.append(segment)
+
     return pd.concat(segments)
 
 
@@ -195,6 +212,10 @@ def load_candles_from_dataframe(
     """Load OHLCV candle data from a DataFrame.
 
     Remap and resample data when loading.
+
+    .. warning::
+
+        Outside supported columns, any other columns are destroyed in the resampling.
     
     :param column_map:
         Column name mapping from the DataFrame to our internal format.
@@ -230,20 +251,21 @@ def load_candles_from_dataframe(
         uniq = df["pair_id"].unique()
         if len(uniq) == 1:
             _df = resample_single_pair(df, resample)
+
+            # to preserve addtional columns beyond OHLCV, we need to left join
+            if len(df.columns) > 5:
+                del df['open']
+                del df['high']
+                del df['low']
+                del df['close']
+                del df['volume']
+
+                df = _df.join(df, how='left')
         else:
             _df = resample_multi_pair(df, resample)
 
         bucket = resample
 
-        # to preserve addtional columns beyond OHLCV, we need to left join
-        if len(df.columns) > 5:
-            del df['open']
-            del df['high']
-            del df['low']
-            del df['close']
-            del df['volume']
-
-            df = _df.join(df, how='left')
     else:
         bucket = TimeBucket.from_pandas_timedelta(granularity)
 
