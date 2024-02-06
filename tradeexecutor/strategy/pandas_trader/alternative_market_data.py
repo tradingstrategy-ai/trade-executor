@@ -79,6 +79,9 @@ def resample_multi_pair(
         Columns we simply copy over.
 
         We assume every pair has the same value for these columns.
+
+    :return:
+        Concatenated DataFrame of individually resampled pair data
     """
     by_pair = df.groupby(pair_id_column)
     segments = []
