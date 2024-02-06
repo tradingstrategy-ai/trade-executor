@@ -1,3 +1,11 @@
+"""Binance data loading.
+
+- Load data from Binance centralised exchange for backtesting
+
+- See :py:func:`fetch_binance_dataset` for an example
+
+"""
+
 import datetime
 
 from tradeexecutor.strategy.trading_strategy_universe import (
@@ -41,6 +49,25 @@ def fetch_binance_dataset(
 
     If start_at and end_at are not provided, the entire dataset will be loaded.
 
+    Example:
+
+    .. code-block:: python
+
+        from tradingstrategy.timebucket import TimeBucket
+        from tradingstrategy.binance.downloader import BinanceDownloader
+
+        downloader = BinanceDownloader()
+        df = downloader.fetch_candlestick_data(
+            ["BTCUSDT", "ETHUSDT"],
+            TimeBucket.d1,
+            datetime.datetime(2020, 1, 1),
+            datetime.datetime(2021, 1, 1),
+        )
+
+        # Show a candle for both BTC and ETH
+        assert df.iloc[0].to_json() == '{"open":7195.24,"high":7255.0,"low":7175.15,"close":7200.85,"volume":16792.388165,"pair_id":"BTCUSDT"}'
+        assert df.iloc[-1].to_json() == '{"open":2281.87,"high":2352.37,"low":2265.24,"close":2352.04,"volume":216702.6914,"pair_id":"ETHUSDT"}'
+
     :param symbols: List of symbols to load
     :param candle_time_bucket: Time bucket for candle data
     :param stop_loss_time_bucket: Time bucket for stop loss data
@@ -48,7 +75,8 @@ def fetch_binance_dataset(
     :param end_at: End time for data
     :param include_lending: Whether to include lending data or not
     :param force_download: Force download of data
-    :return: Dataset
+    :return:
+        Dataset object with exchange, pairs, candles and lending candles data populated.
     """
     if isinstance(symbols, str):
         symbols = [symbols]

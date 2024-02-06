@@ -437,7 +437,7 @@ def _get_subplot_names(
             ]
             assert (
                 plot.detached_overlay_name in detached_plots
-            ), f"Overlay name {plot.detached_overlay_name} not in available detached plots {detached_plots}"
+            ), f"Overlay name {plot.detached_overlay_name} not in available detached plots {detached_plots}. Make sure there is a matching plot with the same name and kind PlotKind.technical_indicator_detached in the visualisation data."
 
             # check if another overlay exists
             if plot.detached_overlay_name in already_overlaid_names:
