@@ -129,16 +129,15 @@ def decide_trades(
                 take_profit=take_profit,
             )
         elif momentum <= negative_mometum_threshold:
-            pass
-            # if strategy_universe.can_open_short(timestamp, pair):
-            #     # Only open a short if we have lending markets available at this point
-            #     alpha_model.set_signal(
-            #         pair,
-            #         momentum,
-            #         stop_loss=stop_loss,
-            #         take_profit=take_profit,
-            #         leverage=1.0,
-            #     )
+            if strategy_universe.can_open_short(timestamp, pair):
+                # Only open a short if we have lending markets available at this point
+                alpha_model.set_signal(
+                    pair,
+                    momentum,
+                    stop_loss=stop_loss,
+                    take_profit=take_profit,
+                    leverage=1.0,
+                )
         else:
             # Momentum is ~0,
             # not worth of a signal
