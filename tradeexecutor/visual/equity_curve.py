@@ -12,6 +12,7 @@ from matplotlib.figure import Figure
 from tradeexecutor.state.state import State
 from tradeexecutor.state.statistics import Statistics, PortfolioStatistics
 from tradeexecutor.state.position import TradingPosition
+from tradeexecutor.state.types import USDollarAmount
 
 
 def calculate_equity_curve(
@@ -107,6 +108,26 @@ def calculate_returns(equity_curve: pd.Series) -> pd.Series:
 
     """
     return equity_curve.pct_change().fillna(0.0)
+
+
+def generate_buy_and_hold_returns(
+    buy_and_hold_price_series: pd.Series,
+):
+    """Create a benchmark series based on price action.
+
+    - Create a returns series that can be used as a benchmark in :py:func:`tradeexecutor.analysis.advanced_metrics.visualise_advanced_metrics`
+
+    Example:
+
+    .. code-block:: python
+
+        eth_index = strategy_universe.data_universe.candles.get_candles_by_pair(eth_pair)["close"]
+        benchmark_returns = generate_buy_and_hold_returns(eth_index)
+
+    """
+    assert isinstance(buy_and_hold_price_series, pd.Series)
+    returns = calculate_returns(buy_and_hold_price_series)
+    return returns
 
 
 def calculate_cumulative_return(returns: pd.Series) -> pd.Series:

@@ -11,6 +11,8 @@ class OutputMode(enum.Enum):
 
     Interactive visualisations work only on the HTML pages
     that are able to load Plotly.js JavaScripts.
+
+    For examples see :py:func:`setup_charting_and_output`.
     """
 
     #: Output charts as static images
@@ -37,13 +39,19 @@ def setup_charting_and_output(
 
     - `Plotly discussion <https://github.com/plotly/plotly.py/issues/931>`__
 
-    Example:
+    Example how to set up default interactive output settings. Add early of your notebook do:
 
     .. code-block:: python
 
         # Set Jupyter Notebook output mode parameters
         from tradeexecutor.backtest.notebook import setup_charting_and_output
         setup_charting_and_output()
+
+    Example how to set up static image rendering:
+
+        # Set charts to static image output, 1500 x 1000 pixels
+        from tradeexecutor.backtest.notebook import setup_charting_and_output, OutputMode
+        setup_charting_and_output(OutputMode.static, image_format="png", width=1500, height=1000)
 
     :param mode:
         What kind of viewing context we have for this notebook output

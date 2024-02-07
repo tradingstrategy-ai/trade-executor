@@ -377,6 +377,12 @@ class TradingPairIdentifier:
     #:
     underlying_spot_pair: Optional["TradingPairIdentifier"] = None
 
+    #: Exchange name where this pair trades on.
+    #:
+    #: May or may not be filled.
+    #:
+    exchange_name: Optional[str] = None
+
     def __post_init__(self):
         assert self.base.chain_id == self.quote.chain_id, "Cross-chain trading pairs are not possible"
 
@@ -394,7 +400,13 @@ class TradingPairIdentifier:
     def __repr__(self):
         fee = self.fee or 0
         type_name = self.kind.name if self.kind else "spot"
-        return f"<Pair {self.base.token_symbol}-{self.quote.token_symbol} {type_name} at {self.pool_address} ({fee * 100:.4f}% fee) on exchange {self.exchange_address}>"
+        exchange_name = self.exchange_name if self.exchange_name else f"{self.exchange_address}"
+        if self.chain_id not in (ChainId.unknown, ChainId.centralised_exchange):
+            # DEX pair
+            return f"<Pair {self.base.token_symbol}-{self.quote.token_symbol} {type_name} at {self.pool_address} ({fee * 100:.4f}% fee) on exchange {exchange_name}>"
+        else:
+            # Backtesting with CEX data
+            return f"<Pair {self.base.token_symbol}-{self.quote.token_symbol} {type_name} at {exchange_name}>"
 
     def __hash__(self):
         """Trading pair hash is hash(base, quote, fee).
