@@ -1026,6 +1026,7 @@ class PositionManager:
 
         """
 
+        assert position is not None, f"close_position() called with position == None"
         # assert position.is_long(), "Only long supported for now"
         assert position.is_open(), f"Tried to close already closed position {position}"
 
