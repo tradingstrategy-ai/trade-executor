@@ -13,7 +13,7 @@ from plotly import graph_objects as go
 
 
 from tradeexecutor.state.visualisation import (
-    Visualisation, Plot, PlotKind, PlotShape, RecordingTime
+    Visualisation, Plot, PlotKind, PlotShape, RecordingTime, PlotLabel
 )
 
 from tradingstrategy.charting.candle_chart import VolumeBarMode
@@ -83,7 +83,7 @@ def overlay_all_technical_indicators(
 
         if trace is None:
             # Likely zero data points
-            logger.info("Did not receive trace for %s", plot)
+            logger.info("Did not receive trace for plot %s. Maybe this plot had zero data points?", plot)
             return
         
         # add trace to plot
@@ -195,14 +195,18 @@ def _get_initial_row(volume_bar_mode: VolumeBarMode):
         raise ValueError("Unknown volume bar mode: %s" % volume_bar_mode)
     return cur_row
 
-def _get_plot(df: pd.DataFrame, plot: Plot):
+
+def _get_plot(df: pd.DataFrame, plot: Plot) -> go.Scatter:
     """Get plot based on plot shape and plot size."""
     if plot.plot_shape == PlotShape.markers:
-        return _get_marker_plot(df, plot)
+        scatter = _get_marker_plot(df, plot)
     elif plot.plot_shape in {PlotShape.linear, PlotShape.horizontal_vertical}:
-        return _get_linear_plot(df, plot)
+        scatter = _get_linear_plot(df, plot)
     else:
         raise ValueError(f"Unknown plot shape: {plot.plot_shape}")
+
+    return scatter
+
 
 def _get_marker_plot(df: pd.DataFrame, plot: Plot) -> go.Scatter:
     """Get marker plot for event indicators i.e. individual points."""

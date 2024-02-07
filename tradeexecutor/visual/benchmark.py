@@ -108,7 +108,38 @@ def visualise_benchmark(
 
     - Benchmark against hold all cash
 
-    Example:
+    Example how to benchmark a strategy against buy-and-hold BTC and ETH:
+
+    .. code-block:: python
+
+        from tradeexecutor.visual.benchmark import visualise_benchmark
+
+        # List of pair descriptions we used to look up pair metadata
+        our_pairs = [
+            (ChainId.centralised_exchange, "binance", "BTC", "USDT"),
+            (ChainId.centralised_exchange, "binance", "ETH", "USDT"),
+        ]
+
+        btc_pair = strategy_universe.data_universe.pairs.get_pair_by_human_description(our_pairs[0])
+        eth_pair = strategy_universe.data_universe.pairs.get_pair_by_human_description(our_pairs[1])
+
+        benchmark_indexes = pd.DataFrame({
+            "BTC": strategy_universe.data_universe.candles.get_candles_by_pair(btc_pair)["close"],
+            "ETH": strategy_universe.data_universe.candles.get_candles_by_pair(eth_pair)["close"],
+        })
+        benchmark_indexes["BTC"].attrs = {"colour": "orange"}
+        benchmark_indexes["ETH"].attrs = {"colour": "blue"}
+
+        fig = visualise_benchmark(
+            name=state.name,
+            portfolio_statistics=state.stats.portfolio,
+            all_cash=state.portfolio.get_initial_deposit(),
+            benchmark_indexes=benchmark_indexes,
+        )
+
+        fig.show()
+
+    Another example:
 
     .. code-block:: python
 
@@ -171,7 +202,8 @@ def visualise_benchmark(
 
         DataFrame containing multiple series.
 
-        Asset name is the series name.
+        - Asset name is the series name.
+        - Setting `colour` for `pd.Series.attrs` allows you to override the colour of the index
 
     :param height:
         Chart height in pixels
@@ -237,7 +269,13 @@ def visualise_benchmark(
         buy_and_hold_price_series = benchmark_indexes[benchmark_name]
         # Clip to the backtest time frame
         buy_and_hold_price_series = buy_and_hold_price_series[start_at:end_at]
-        scatter = visualise_buy_and_hold(benchmark_name, buy_and_hold_price_series, all_cash)
+        colour = buy_and_hold_price_series.attrs.get("colour")
+        scatter = visualise_buy_and_hold(
+            benchmark_name,
+            buy_and_hold_price_series,
+            all_cash,
+            colour=colour,
+        )
         fig.add_trace(scatter)
 
     if additional_indicators:

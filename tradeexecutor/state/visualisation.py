@@ -29,7 +29,10 @@ logger = logging.getLogger(__name__)
 
 
 class PlotKind(enum.Enum):
-    """What different plots a strategy can output."""
+    """What different plots a strategy can output.
+
+    See :py:meth:`Visualisation.plot_indicator`.
+    """
 
     #: This plot is drawn on the top of the price graph
     technical_indicator_on_price = "technical_indicator_on_price"
@@ -45,9 +48,78 @@ class PlotKind(enum.Enum):
     technical_indicator_overlay_on_detached = "technical_indicator_overlay"
 
 
-class PlotShape(enum.Enum):
+class PlotLabel(enum.Enum):
+    """How do we render the plot label.
+
+    See :py:meth:`Visualisation.plot_indicator`.
+
+    Example:
+
+    .. code-block:: python
+
+        # Draw BTC + ETH RSI between its trigger zones for this pair of we got a valid value for RSI for this pair
+
+        # BTC RSI daily
+        visualisation.plot_indicator(
+            timestamp,
+            f"RSI",
+            PlotKind.technical_indicator_detached,
+            current_rsi_values[btc_pair],
+            colour="orange",
+        )
+
+        # ETH RSI daily
+        visualisation.plot_indicator(
+            timestamp,
+            f"RSI ETH",
+            PlotKind.technical_indicator_overlay_on_detached,
+            current_rsi_values[eth_pair],
+            colour="blue",
+            label=PlotLabel.hidden,
+            detached_overlay_name=f"RSI",
+        )
+
+        # Low (vertical line)
+        visualisation.plot_indicator(
+            timestamp,
+            f"RSI low trigger",
+            PlotKind.technical_indicator_overlay_on_detached,
+            rsi_low,
+            detached_overlay_name=f"RSI",
+            plot_shape=PlotShape.horizontal_vertical,
+            colour="red",
+            label=PlotLabel.hidden,
+        )
+
+        # High (vertical line)
+        visualisation.plot_indicator(
+            timestamp,
+            f"RSI high trigger",
+            PlotKind.technical_indicator_overlay_on_detached,
+            rsi_high,
+            detached_overlay_name=f"RSI",
+            plot_shape=PlotShape.horizontal_vertical,
+            colour="red",
+            label=PlotLabel.hidden,
+        )
     """
+
+    #: Render the plot label as the axis description left or right.
+    axis = "axis"
+
+    #: This plot label is hidden on the axis.
+    #:
+    #: Plot names etc. will still appear in mouse hovers.
+    #:
+    hidden = "hidden"
+
+
+class PlotShape(enum.Enum):
+    """What kind of shape is this plot.
+
     Describes the various shapes that a line can take in a plot. See discussion: https://github.com/tradingstrategy-ai/trade-executor/pull/156#discussion_r1058819823
+
+    See :py:meth:`Visualisation.plot_indicator`.
     """
 
     #: Standard linear line. Used in most cases. 
@@ -62,6 +134,26 @@ class PlotShape(enum.Enum):
     #: 
     #: Typically used for event indicators e.g. cross over of two lines.
     markers = "markers"
+
+
+class PlotKind(enum.Enum):
+    """What different plots a strategy can output.
+
+    See :py:meth:`Visualisation.plot_indicator`.
+    """
+
+    #: This plot is drawn on the top of the price graph
+    technical_indicator_on_price = "technical_indicator_on_price"
+
+    #: This plot is drawn below the price graph as a separate chart.
+    #:
+    #:
+    technical_indicator_detached = "technical_indicator_detached"
+
+    #: This plot is overlaid on a detached indicator plot.
+    #:
+    #:
+    technical_indicator_overlay_on_detached = "technical_indicator_overlay"
 
 
 class RecordingTime(enum.Enum):
@@ -87,6 +179,8 @@ class RecordingTime(enum.Enum):
     Because decision making visualisation is uncommon and causes confusion,
     we will later correct this in :py:mod:`tradeexecutor.visual.techical_indicator`,
     so that plots are shifted to match their market occurence timestamps.
+
+    See :py:meth:`Visualisation.plot_indicator`.
     """
 
     #: The plot value was recorded for decision making.
@@ -103,7 +197,7 @@ class RecordingTime(enum.Enum):
 
 
 @dataclass_json
-@dataclass
+@dataclass(slots=True)
 class Plot:
     """Descibe singe plot on a strategy.
 
@@ -157,6 +251,16 @@ class Plot:
     #: Plots are not necessarily restricted to a single trading pair, so this is optional.
     #:
     pair: Optional[TradingPairIdentifier] = None
+
+    #: How do we render label for this plot
+    #:
+    label: Optional[PlotLabel] = None
+
+    #: Height hint for the rendering.
+    #:
+    #: Currently not supported. See :py:meth:`Visualisation.plot_indicator` for comments.
+    #:
+    height: Optional[int] = None
 
     def __repr__(self):
         return f"<Plot name:{self.name} kind:{self.kind.name} with {len(self.points)} points>"
@@ -219,11 +323,14 @@ class Plot:
 @dataclass_json
 @dataclass
 class Visualisation:
-    """
+    """Strategy visualisation helper.
+
     This object is returned from the strategy execution cycle.
     It allows you to plot values, add debug messages, etc.
     It is not used in any trading, but can help and visualize
     trade backtesting and execution.
+
+    See :py:meth:`plot_indicator` for usage.
     """
 
     #: Messages for each strategy cycle.
@@ -299,17 +406,20 @@ class Visualisation:
         timestamp = convert_and_validate_timestamp_as_int(timestamp)
         self.calculations[timestamp] = cycle_calculations
 
-    def plot_indicator(self,
-             timestamp: Union[datetime.datetime, pd.Timestamp],
-             name: str,
-             kind: PlotKind,
-             value: float,
-             colour: Optional[str] = None,
-             plot_shape: Optional[PlotShape] = PlotShape.linear,
-             detached_overlay_name: Optional[str] = None,
-             indicator_size: Optional[float] = None,
-             recording_time: Optional[RecordingTime] = RecordingTime.decision_making_time,
-             pair: Optional[TradingPairIdentifier] = None,
+    def plot_indicator(
+        self,
+        timestamp: Union[datetime.datetime, pd.Timestamp],
+        name: str,
+        kind: PlotKind,
+        value: float,
+        colour: Optional[str] = None,
+        plot_shape: Optional[PlotShape] = PlotShape.linear,
+        detached_overlay_name: Optional[str] = None,
+        indicator_size: Optional[float] = None,
+        recording_time: Optional[RecordingTime] = RecordingTime.decision_making_time,
+        pair: Optional[TradingPairIdentifier] = None,
+        label: PlotLabel = PlotLabel.axis,
+        height: Optional[int]=None,
         ):
         """Add a value to the output data and diagram.
         
@@ -373,6 +483,18 @@ class Visualisation:
 
         :param recording_time:
             Optional recording time to determine when the plot should be recorded. For example, if you want to record the plot at the decision making time, you can set this to RecordingTime.decision_making_time. Default is RecordingTime.decision_making_time.
+
+        :param label:
+            How to render the label for this plot.
+
+            The last set value is effective.
+
+        :param height:
+            Currently not supported.
+
+            Plotly does not support setting heights of individual subplots.
+            Instead, you can adjust the overall :py:class:`plotly.Figure` size in pixels
+            and then % of subplot height in them.
         """
         
         def _get_helper_message(variable_name: str = None):
@@ -416,12 +538,16 @@ class Visualisation:
 
         plot.indicator_size = indicator_size
 
+        plot.label = label
+
         if colour:
             plot.colour = colour
 
         plot.recording_time = recording_time
 
         plot.pair = pair
+
+        plot.height = height
 
         self.plots[name] = plot
 

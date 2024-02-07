@@ -19,7 +19,7 @@ from tradeexecutor.backtest.backtest_sync import BacktestSyncModel
 from tradeexecutor.backtest.legacy_backtest_sync import BacktestSyncer
 from tradeexecutor.backtest.backtest_valuation import BacktestValuationModel
 from tradeexecutor.backtest.simulated_wallet import SimulatedWallet
-from tradeexecutor.cli.log import setup_notebook_logging, setup_custom_log_levels
+from tradeexecutor.cli.log import setup_notebook_logging, setup_custom_log_levels, setup_strategy_logging
 from tradeexecutor.cli.loop import ExecutionLoop, ExecutionTestHook
 from tradeexecutor.ethereum.routing_data import get_routing_model, get_backtest_routing_model
 from tradeexecutor.state.state import State
@@ -536,6 +536,7 @@ def run_backtest_inline(
     name: str="backtest",
     allow_missing_fees=False,
     engine_version: Optional[TradingStrategyEngineVersion] = None,
+    strategy_logging=False,
 ) -> Tuple[State, TradingStrategyUniverse, dict]:
     """Run backtests for given decide_trades and create_trading_universe functions.
 
@@ -624,6 +625,11 @@ def run_backtest_inline(
 
         See :py:mod:`tradeexecutor.strategy.engine_version`.
 
+    :param strategy_logging:
+        Enable PositionManager log output.
+
+        See :py:meth:`tradeexecutor.strategy.pandas_trading.position_manager.PositionManager.log` for usage.
+
     :return:
         tuple (State of a completely executed strategy, trading strategy universe, debug dump dict)
     """
@@ -658,7 +664,10 @@ def run_backtest_inline(
 
     # Setup our special logging level if not done yet.
     # (Not done when called from notebook)
-    setup_notebook_logging(log_level)
+    if strategy_logging:
+        setup_strategy_logging()
+    else:
+        setup_notebook_logging(log_level)
 
     # Make sure no rounding bugs
     setup_decimal_accuracy()

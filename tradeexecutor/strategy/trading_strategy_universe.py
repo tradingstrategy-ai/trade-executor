@@ -1445,6 +1445,7 @@ def translate_trading_pair(pair: DEXPair) -> TradingPairIdentifier:
         exchange_address=pair.exchange_address,
         fee=fee,
         reverse_token_order=pair.token0_symbol != pair.base_token_symbol,
+        exchange_name=pair.exchange_name,
     )
 
 
