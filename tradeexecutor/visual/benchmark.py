@@ -98,7 +98,6 @@ def visualise_benchmark(
     height=1200,
     start_at: Optional[Union[pd.Timestamp, datetime.datetime]] = None,
     end_at: Optional[Union[pd.Timestamp, datetime.datetime]] = None,
-
 ) -> go.Figure:
     """Visualise strategy performance against benchmarks.
 
@@ -107,6 +106,25 @@ def visualise_benchmark(
     - Benchmark against buy and hold of various assets
 
     - Benchmark against hold all cash
+
+    Example for a single trading pair strategy:
+
+    .. code-block:: python
+
+        from tradeexecutor.visual.benchmark import visualise_benchmark
+
+        traded_pair = universe.universe.pairs.get_single()
+
+        fig = visualise_benchmark(
+            state.name,
+            portfolio_statistics=state.stats.portfolio,
+            all_cash=state.portfolio.get_initial_deposit(),
+            buy_and_hold_asset_name=traded_pair.base_token_symbol,
+            buy_and_hold_price_series=universe.universe.candles.get_single_pair_data()["close"],
+            height=800
+        )
+
+        fig.show()
 
     Example how to benchmark a strategy against buy-and-hold BTC and ETH:
 
