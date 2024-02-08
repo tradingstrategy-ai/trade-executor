@@ -371,6 +371,9 @@ def run_grid_combination_multiprocess(
 
     Universe is passed as process global.
     """
+
+    from tradeexecutor.monkeypatch import cloudpickle_patch  # Enable pickle patch that allows multiprocessing in notebooks
+
     global _universe
 
     universe = _universe
