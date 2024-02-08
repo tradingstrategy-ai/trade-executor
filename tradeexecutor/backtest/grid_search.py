@@ -298,21 +298,7 @@ def prepare_grid_combinations(
     return combinations
 
 
-def run_grid_combination(
-    grid_search_worker: GridSearchWorker,
-    universe: TradingStrategyUniverse,
-    combination: GridCombination,
-):
-    if GridSearchResult.has_result(combination):
-        result = GridSearchResult.load(combination)
-        return result
 
-    result = grid_search_worker(universe, combination)
-
-    # Cache result for the future runs
-    result.save()
-
-    return result
 
 def _run_v04(
     decide_trades: DecideTradesProtocol3,
@@ -348,11 +334,43 @@ def _run_v04(
     )
 
 
+def run_grid_combination_threaded(
+    grid_search_worker: GridSearchWorker | DecideTradesProtocol3,
+    universe: TradingStrategyUniverse,
+    combination: GridCombination,
+    trading_strategy_engine_version: TradingStrategyEngineVersion,
+):
+    """Threared runner.
+
+    Universe is passed as argument.
+    """
+    if GridSearchResult.has_result(combination):
+        result = GridSearchResult.load(combination)
+        return result
+
+    if version.parse(trading_strategy_engine_version) >= version.parse("0.4"):
+        # New style runner
+        result = _run_v04(grid_search_worker, universe, combination, trading_strategy_engine_version)
+    else:
+        # Legacy path
+        result = grid_search_worker(universe, combination)
+
+
+    # Cache result for the future runs
+    result.save()
+
+    return result
+
+
 def run_grid_combination_multiprocess(
     grid_search_worker: GridSearchWorker | DecideTradesProtocol3,
     combination: GridCombination,
     trading_strategy_engine_version: TradingStrategyEngineVersion,
 ):
+    """Mutltiproecss runner.
+
+    Universe is passed as process global.
+    """
     global _universe
 
     universe = _universe
@@ -423,6 +441,8 @@ def perform_grid_search(
 
     """
 
+    from tradeexecutor.monkeypatch import cloudpickle_patch  # Enable pickle patch that allows multiprocessing in notebooks
+
     global _process_pool_executor
 
     start = datetime.datetime.utcnow()
@@ -483,7 +503,7 @@ def perform_grid_search(
             tm = futureproof.TaskManager(executor, error_policy=futureproof.ErrorPolicyEnum.RAISE)
 
             # Run the checks parallel using the thread pool
-            tm.map(run_grid_combination, task_args)
+            tm.map(run_grid_combination_threaded, task_args)
 
             # Extract results from the parallel task queue
             results = [task.result for task in tm.as_completed()]
@@ -494,7 +514,7 @@ def perform_grid_search(
 
         logger.info("Doing a single thread grid search")
         task_args = [(grid_search_worker, universe, c) for c in combinations]
-        iter = itertools.starmap(run_grid_combination, task_args)
+        iter = itertools.starmap(run_grid_combination_threaded, task_args)
 
         # Force workers to finish
         results = list(iter)

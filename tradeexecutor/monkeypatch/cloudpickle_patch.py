@@ -1,4 +1,7 @@
-"""Make it possible to work """
+"""Make it possible to work.
+
+See https://stackoverflow.com/questions/77453594/parallelising-functions-using-multiprocessing-in-jupyter-notebook
+"""
 
 import sys
 from multiprocessing import Pool
