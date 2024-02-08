@@ -76,7 +76,7 @@ def analyse_combination(
     return row
 
 
-def analyse_grid_search_result(
+def canalyse_grid_search_result(
         results: List[GridSearchResult],
         min_positions_threshold: int = 5,
 ) -> pd.DataFrame:
