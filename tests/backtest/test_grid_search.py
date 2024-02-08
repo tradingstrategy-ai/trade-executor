@@ -380,7 +380,7 @@ def test_perform_grid_search_engine_v4(
     assert cycle_duration.name == "cycle_duration"
     assert cycle_duration.single
 
-    fast_ema_candle_count: GridParameter = combinations[0].parameters[0]
+    fast_ema_candle_count: GridParameter = combinations[0].parameters[1]
     assert fast_ema_candle_count.name == "fast_ema_candle_count"
     assert not fast_ema_candle_count.single
 

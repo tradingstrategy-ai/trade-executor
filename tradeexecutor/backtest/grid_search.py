@@ -539,7 +539,7 @@ def perform_grid_search(
         #
 
         logger.info("Doing a single thread grid search")
-        task_args = [(grid_search_worker, universe, c) for c in combinations]
+        task_args = [(grid_search_worker, universe, c, trading_strategy_engine_version) for c in combinations]
         iter = itertools.starmap(run_grid_combination_threaded, task_args)
 
         # Force workers to finish
