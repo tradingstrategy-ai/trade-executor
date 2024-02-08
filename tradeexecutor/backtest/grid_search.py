@@ -79,8 +79,18 @@ def _hide_warnings(func):
 @dataclass
 class GridParameter:
     """One value in grid search matrix."""
+
+    #: Name e.g. `rsi_low`
     name: str
+
+    #: Value e.g 0.8
     value: Any
+
+    #: Was this parameter part of the grid search space, or is it a single parameter.
+    #:
+    #: Also true for empty lists
+    #:
+    single: bool
 
     def __post_init__(self):
         pass
@@ -119,6 +129,10 @@ class GridCombination:
     result_path: Path
 
     #: Alphabetically sorted list of parameters
+    #:
+    #: Each parameter can have 0...n values.]
+    #: If parameter is not "single", i.e. single value, then it is searchable.
+    #:
     parameters: Tuple[GridParameter]
 
     def __post_init__(self):
@@ -132,12 +146,20 @@ class GridCombination:
     def __eq__(self, other):
         return self.parameters == other.parameters
 
+    @property
+    def searchable_parameters(self) -> List[GridParameter]:
+        """Get all parameters that are searchable.
+
+        Searchable parameters have two or more values.
+        """
+        return [p for p in self.parameters if not p.single]
+
     def get_relative_result_path(self) -> Path:
         """Get the path where the resulting state file is stored.
 
         Try to avoid messing with 256 character limit on filenames, thus break down as folders.
         """
-        path_parts = [p.to_path() for p in self.parameters]
+        path_parts = [p.to_path() for p in self.searchable_parameters]
         return Path(os.path.join(*path_parts))
 
     def get_full_result_path(self) -> Path:
@@ -154,7 +176,7 @@ class GridCombination:
 
     def get_label(self) -> str:
         """Human readable label for this combination"""
-        return f"#{self.index}, " + ", ".join([f"{p.name}={p.value}" for p in self.parameters])
+        return f"#{self.index}, " + ", ".join([f"{p.name}={p.value}" for p in self.searchable_parameters])
 
     def destructure(self) -> List[Any]:
         """Open parameters dict.
@@ -281,7 +303,8 @@ def prepare_grid_combinations(
     args_lists: List[list] = []
     for name, values in parameters.items():
         assert isinstance(values, Collection), f"Expected list, got: {values}"
-        args = [GridParameter(name, v) for v in values]
+        single = len(values) <= 1
+        args = [GridParameter(name, v, single) for v in values]
         args_lists.append(args)
 
     combinations = itertools.product(*args_lists)
@@ -488,7 +511,7 @@ def perform_grid_search(
 
             # Track the child process completion using tqdm progress bar
             results = []
-            label = ", ".join(p.name for p in combinations[0].parameters)
+            label = ", ".join(p.name for p in combinations[0].searchable_parameters)
             with tqdm(total=len(task_args), desc=f"Grid searching using {max_workers} processes: {label}") as progress_bar:
                 # Extract results from the parallel task queue
                 for task in tm.as_completed():

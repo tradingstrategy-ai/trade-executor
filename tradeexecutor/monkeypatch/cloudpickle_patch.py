@@ -1,6 +1,9 @@
-"""Make it possible to work.
+"""Enable using multiprocess in Jupyter Notebooks.
 
 See https://stackoverflow.com/questions/77453594/parallelising-functions-using-multiprocessing-in-jupyter-notebook
+
+- Monkey patches the standard library `pickle` implementation with one that fully pickles
+  functions, instead of passing them by a dotted name reference, between multiprocesses
 """
 
 import sys
@@ -19,17 +22,7 @@ def reducer_override(obj):
 
 # Monkeypatch our function reducer into the pickler for multiprocessing.
 # Without this line, the main block will not work on windows or macOS.
-# Alterntively, moving the defintionn of foo outside of the if statement
+# Alternatively, moving the definition of foo outside of the if statement
 # would make the main block work on windows or macOS (when run from
 # the command line).
 ForkingPickler.reducer_override = staticmethod(reducer_override)
-
-if __name__ == '__main__':
-    def foo(x, y):
-        return x * y
-
-    with Pool() as pool:
-        res = pool.apply(foo, (10, 3))
-
-    print(res)
-    assert res == 30

@@ -18,7 +18,7 @@ from tradingstrategy.universe import Universe
 
 from tradeexecutor.analysis.grid_search import analyse_grid_search_result, visualise_table, visualise_heatmap_2d
 from tradeexecutor.backtest.grid_search import prepare_grid_combinations, run_grid_search_backtest, perform_grid_search, GridCombination, GridSearchResult, \
-    pick_grid_search_result, pick_best_grid_search_result
+    pick_grid_search_result, pick_best_grid_search_result, GridParameter
 from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier
 from tradeexecutor.state.state import State
 from tradeexecutor.state.visualisation import PlotKind
@@ -374,6 +374,18 @@ def test_perform_grid_search_engine_v4(
         cycle_duration = CycleDuration.cycle_1d
 
     combinations = prepare_grid_combinations(InputParameters, tmp_path)
+
+    # Sanity check for searchable parameters
+    cycle_duration: GridParameter = combinations[0].parameters[0]
+    assert cycle_duration.name == "cycle_duration"
+    assert cycle_duration.single
+
+    fast_ema_candle_count: GridParameter = combinations[0].parameters[0]
+    assert fast_ema_candle_count.name == "fast_ema_candle_count"
+    assert not fast_ema_candle_count.single
+
+    assert len(combinations[0].searchable_parameters) == 2
+    assert len(combinations[0].parameters) == 4
 
     results = perform_grid_search(
         _decide_trades_v3,
