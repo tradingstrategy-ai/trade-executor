@@ -11,14 +11,17 @@ import sys
 import warnings
 from collections import Counter
 from dataclasses import dataclass
+from inspect import isclass
 from multiprocessing import Process
 from pathlib import Path
-from typing import Protocol, Dict, List, Tuple, Any, Optional, Iterable, Collection, Callable
+from typing import Protocol, Dict, List, Tuple, Any, Optional, Collection, Callable
 import concurrent.futures.process
+from packaging import version
 
 import numpy as np
 import pandas as pd
 import futureproof
+from web3.datastructures import ReadableAttributeDict
 
 from tradeexecutor.strategy.engine_version import TradingStrategyEngineVersion
 
@@ -38,7 +41,7 @@ from tradeexecutor.state.types import USDollarAmount
 from tradeexecutor.strategy.cycle import CycleDuration
 from tradeexecutor.strategy.default_routing_options import TradeRouting
 from tradeexecutor.strategy.routing import RoutingModel
-from tradeexecutor.strategy.strategy_module import DecideTradesProtocol, DecideTradesProtocol2
+from tradeexecutor.strategy.strategy_module import DecideTradesProtocol, DecideTradesProtocol2, StrategyParameters
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
 from tradeexecutor.visual.equity_curve import calculate_equity_curve, calculate_returns
 
@@ -156,6 +159,8 @@ class GridCombination:
         """
         return [p.value for p in self.parameters]
 
+    def to_strategy_parameters(self) -> StrategyParameters:
+        return StrategyParameters(self.as_dict())
 
 
 @dataclass(slots=True, frozen=False)
@@ -218,12 +223,11 @@ class GridSearchWorker(Protocol):
         :return:
         """
 
-
 def prepare_grid_combinations(
-        parameters: Dict[str, List[Any]],
-        result_path: Path,
-        clear_cached_results=False,
-        marker_file="README-GRID-SEARCH.md",
+    parameters: Dict[str, List[Any]] | type,
+    result_path: Path,
+    clear_cached_results=False,
+    marker_file="README-GRID-SEARCH.md",
 ) -> List[GridCombination]:
     """Get iterable search matrix of all parameter combinations.
 
@@ -233,6 +237,8 @@ def prepare_grid_combinations(
 
     :param parameters:
         A grid of parameters we will search.
+
+        Can be a dict or a class of which all members will be enumerated.
 
     :param result_path:
         A folder where resulting state files will be stored.
@@ -252,6 +258,9 @@ def prepare_grid_combinations(
     """
 
     assert isinstance(result_path, Path)
+
+    if isclass(parameters):
+        parameters = StrategyParameters.from_class(parameters, grid_search=True)
 
     logger.info("Preparing %d grid combinations, caching results in %s", len(parameters), result_path)
 
@@ -301,10 +310,44 @@ def run_grid_combination(
 
     return result
 
+def _run_v04(
+    decide_trades: Callable,
+    universe: TradingStrategyUniverse,
+    combination: GridCombination,
+    trading_strategy_engine_version: TradingStrategyEngineVersion,
+):
+    """Run decide_trades() with input parameteter.
+
+    - v2 style grid search, combination and argument passing
+    """
+
+    parameters = combination.to_decide_trades_input_object()
+
+    backtest_start = parameters.get("backtest_start")
+    # assert backtest_start, f"Strategy parameters lack backtest_start, we have {list(input_object.keys())}"
+
+    backtest_end = parameters.get("backtest_end")
+    # assert backtest_end, f"Strategy parameters lack backtest_end, we have {list(input_object.keys())}"
+
+    cycle_duration = parameters.get("cycle_duration")
+    assert cycle_duration, f"Strategy parameters lack cycle_duration, we have {list(parameters.keys())}"
+
+    return run_grid_search_backtest(
+        combination,
+        decide_trades,
+        universe,
+        start_at=backtest_start,
+        end_at=backtest_end,
+        cycle_duration=cycle_duration,
+        trading_strategy_engine_version=trading_strategy_engine_version,
+        parameters=parameters,
+    )
+
 
 def run_grid_combination_multiprocess(
-        grid_search_worker: GridSearchWorker,
-        combination: GridCombination,
+    grid_search_worker: GridSearchWorker,
+    combination: GridCombination,
+    trading_strategy_engine_version: TradingStrategyEngineVersion,
 ):
     global _universe
 
@@ -314,7 +357,12 @@ def run_grid_combination_multiprocess(
         result = GridSearchResult.load(combination)
         return result
 
-    result = grid_search_worker(universe, combination)
+    if version.parse(trading_strategy_engine_version) >= version.parse("0.4"):
+        # New style runner
+        _run_v04(universe, combination, trading_strategy_engine_version)
+    else:
+        # Legacy path
+        result = grid_search_worker(universe, combination)
 
     result.process_id = os.getpid()
 
@@ -326,13 +374,14 @@ def run_grid_combination_multiprocess(
 
 @_hide_warnings
 def perform_grid_search(
-    grid_search_worker: GridSearchWorker,
+    grid_search_worker: GridSearchWorker | DecideTradesProtocol2,
     universe: TradingStrategyUniverse,
     combinations: List[GridCombination],
     max_workers=16,
     clear_cached_results=False,
     stats: Optional[Counter] = None,
     multiprocess=False,
+    trading_strategy_engine_version: TradingStrategyEngineVersion="0.3",
 ) -> List[GridSearchResult]:
     """Search different strategy parameters over a grid.
 
@@ -361,6 +410,9 @@ def perform_grid_search(
         If not set, use threaded approach.
 
         Scales much better, but disabled by default, as it does not work with Jupyter Notebooks very well.
+
+    :param trading_strategy_engine_version:
+        Which version of engine we are using.
 
     :return:
         Grid search results for different combinations.
@@ -398,7 +450,7 @@ def perform_grid_search(
             # Set up a process pool executing structure
             executor = futureproof.ProcessPoolExecutor(max_workers=max_workers, initializer=_process_init, initargs=(pickled_universe,))
             tm = futureproof.TaskManager(executor, error_policy=futureproof.ErrorPolicyEnum.RAISE)
-            task_args = [(grid_search_worker, c) for c in combinations]
+            task_args = [(grid_search_worker, c, trading_strategy_engine_version) for c in combinations]
 
             # Set up a signal handler to stop child processes on quit
             _process_pool_executor = executor._executor
@@ -421,7 +473,7 @@ def perform_grid_search(
             # Run individual searchers threads
             #
 
-            task_args = [(grid_search_worker, universe, c) for c in combinations]
+            task_args = [(grid_search_worker, universe, c, trading_strategy_engine_version) for c in combinations]
             logger.info("Doing a multithread grid search")
             executor = futureproof.ThreadPoolExecutor(max_workers=max_workers)
             tm = futureproof.TaskManager(executor, error_policy=futureproof.ErrorPolicyEnum.RAISE)
@@ -462,11 +514,16 @@ def run_grid_search_backtest(
     name: Optional[str] = None,
     routing_model: Optional[TradingStrategyEngineVersion] = None,
     trading_strategy_engine_version: Optional[str] = None,
+    cycle_debug_data: dict | None = None,
+    parameters: StrategyParameters | None = None,
 ) -> GridSearchResult:
     assert isinstance(universe, TradingStrategyUniverse)
 
     if name is None:
         name = combination.get_label()
+
+    if cycle_debug_data is None:
+        cycle_debug_data = {}
 
     universe_range = universe.data_universe.candles.get_timestamp_range()
     if not start_at:
@@ -506,6 +563,7 @@ def run_grid_search_backtest(
         allow_missing_fees=True,
         data_delay_tolerance=data_delay_tolerance,
         engine_version=trading_strategy_engine_version,
+        parameters=parameters,
     )
 
     analysis = build_trade_analysis(state.portfolio)

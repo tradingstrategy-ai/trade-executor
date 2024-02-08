@@ -10,6 +10,7 @@ from typing import Callable
 from packaging import version
 
 from tradeexecutor.strategy.engine_version import TradingStrategyEngineVersion
+from tradeexecutor.strategy.parameters import StrategyParameters
 from tradeexecutor.utils.timer import timed_task
 
 
@@ -156,6 +157,14 @@ class ExecutionContext:
     #: See :py:mod:`tradeexecutor.strategy.engine_version`.
     #:
     engine_version: TradingStrategyEngineVersion = None
+
+    #: Strategy parameters
+    #:
+    #: For backtesting/grid search cycle.
+    #:
+    #: v0.4 only
+    #:
+    parameters: StrategyParameters | None = None
 
     def __repr__(self):
         version_str = f"v{self.engine_version}" if self.engine_version else "unspecified engine version"
