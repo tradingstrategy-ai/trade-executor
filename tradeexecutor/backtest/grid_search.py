@@ -11,6 +11,7 @@ import sys
 import warnings
 from collections import Counter
 from dataclasses import dataclass
+from enum import Enum
 from inspect import isclass
 from multiprocessing import Process
 from pathlib import Path
@@ -41,7 +42,7 @@ from tradeexecutor.state.types import USDollarAmount
 from tradeexecutor.strategy.cycle import CycleDuration
 from tradeexecutor.strategy.default_routing_options import TradeRouting
 from tradeexecutor.strategy.routing import RoutingModel
-from tradeexecutor.strategy.strategy_module import DecideTradesProtocol, DecideTradesProtocol2, StrategyParameters
+from tradeexecutor.strategy.strategy_module import DecideTradesProtocol, DecideTradesProtocol2, StrategyParameters, DecideTradesProtocol3
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
 from tradeexecutor.visual.equity_curve import calculate_equity_curve, calculate_returns
 
@@ -93,7 +94,10 @@ class GridParameter:
     def to_path(self) -> str:
         """"""
         value = self.value
-        if type(value) in (float, int, str):
+
+        if isinstance(value, Enum):
+            return f"{self.name}={self.value.value}"
+        elif type(value) in (float, int, str):
             return f"{self.name}={self.value}"
         if value is None:
             return f"{self.name}=none"
@@ -311,7 +315,7 @@ def run_grid_combination(
     return result
 
 def _run_v04(
-    decide_trades: Callable,
+    decide_trades: DecideTradesProtocol3,
     universe: TradingStrategyUniverse,
     combination: GridCombination,
     trading_strategy_engine_version: TradingStrategyEngineVersion,
@@ -321,7 +325,7 @@ def _run_v04(
     - v2 style grid search, combination and argument passing
     """
 
-    parameters = combination.to_decide_trades_input_object()
+    parameters = combination.to_strategy_parameters()
 
     backtest_start = parameters.get("backtest_start")
     # assert backtest_start, f"Strategy parameters lack backtest_start, we have {list(input_object.keys())}"
@@ -345,7 +349,7 @@ def _run_v04(
 
 
 def run_grid_combination_multiprocess(
-    grid_search_worker: GridSearchWorker,
+    grid_search_worker: GridSearchWorker | DecideTradesProtocol3,
     combination: GridCombination,
     trading_strategy_engine_version: TradingStrategyEngineVersion,
 ):
@@ -359,7 +363,7 @@ def run_grid_combination_multiprocess(
 
     if version.parse(trading_strategy_engine_version) >= version.parse("0.4"):
         # New style runner
-        _run_v04(universe, combination, trading_strategy_engine_version)
+        result = _run_v04(grid_search_worker, universe, combination, trading_strategy_engine_version)
     else:
         # Legacy path
         result = grid_search_worker(universe, combination)
@@ -374,7 +378,7 @@ def run_grid_combination_multiprocess(
 
 @_hide_warnings
 def perform_grid_search(
-    grid_search_worker: GridSearchWorker | DecideTradesProtocol2,
+    grid_search_worker: GridSearchWorker | DecideTradesProtocol3,
     universe: TradingStrategyUniverse,
     combinations: List[GridCombination],
     max_workers=16,
@@ -517,7 +521,7 @@ def run_grid_search_backtest(
     cycle_debug_data: dict | None = None,
     parameters: StrategyParameters | None = None,
 ) -> GridSearchResult:
-    assert isinstance(universe, TradingStrategyUniverse)
+    assert isinstance(universe, TradingStrategyUniverse), f"Received {universe}"
 
     if name is None:
         name = combination.get_label()

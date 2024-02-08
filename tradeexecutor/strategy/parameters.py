@@ -53,7 +53,7 @@ class StrategyParameters(ReadableAttributeDict):
 
         # Convert single variable declarations to a list
         output = {}
-        for k, v in params:
+        for k, v in params.items():
             if not type(v) in (list, tuple):
                 v = [v]
             output[k] = v
