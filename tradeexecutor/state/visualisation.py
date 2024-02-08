@@ -17,6 +17,8 @@ import enum
 from dataclasses import dataclass, field
 from types import NoneType
 from typing import List, Dict, Optional, Any, Union, Tuple
+
+import numpy as np
 import pandas as pd
 import logging
 
@@ -496,7 +498,7 @@ class Visualisation:
             Instead, you can adjust the overall :py:class:`plotly.Figure` size in pixels
             and then % of subplot height in them.
         """
-        
+
         def _get_helper_message(variable_name: str = None):
             """Get a helper message to help the user fix the error. 
             
@@ -519,6 +521,8 @@ class Visualisation:
             except TypeError as e:
                 raise RuntimeError(f"Could not convert value {value} {value.__class__} to float" + _get_helper_message("value") + ". Make sure you provide a float or int, not a series, to plot_indicator.") from e
 
+            assert not pd.isna(value), f"Cannot plot NaN (not a number) values. {name} received {value} at timestamp {timestamp}. Please convert to None or do not call plot_indicator() for NaN values."
+
         if detached_overlay_name:
             assert type(detached_overlay_name) is str, "Detached overlay must be a string" + _get_helper_message("detached_overlay_name")
             assert kind == PlotKind.technical_indicator_overlay_on_detached, "Detached overlay must be a PlotKind.technical_indicator_overlay_on_detached" + _get_helper_message("kind")
@@ -529,26 +533,16 @@ class Visualisation:
         plot = self.plots.get(name, Plot(name=name, kind=kind))
 
         plot.add_point(timestamp, value)
-
         plot.kind = kind
-
         plot.plot_shape = plot_shape
-
         plot.detached_overlay_name = detached_overlay_name
-
         plot.indicator_size = indicator_size
-
         plot.label = label
-
         if colour:
             plot.colour = colour
-
         plot.recording_time = recording_time
-
         plot.pair = pair
-
         plot.height = height
-
         self.plots[name] = plot
 
     def get_timestamp_range(self, plot_name: Optional[str]=None) -> Tuple[Optional[datetime.datetime], Optional[datetime.datetime]]:

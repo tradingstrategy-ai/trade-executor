@@ -33,7 +33,8 @@ from tradeexecutor.strategy.generic.generic_pricing_model import GenericPricing
 from tradeexecutor.strategy.generic.generic_router import GenericRouting
 from tradeexecutor.strategy.pandas_trader.runner import PandasTraderRunner
 from tradeexecutor.strategy.strategy_module import parse_strategy_module, \
-    DecideTradesProtocol, CreateTradingUniverseProtocol, CURRENT_ENGINE_VERSION, StrategyModuleInformation, DecideTradesProtocol2, read_strategy_module
+    DecideTradesProtocol, CreateTradingUniverseProtocol, CURRENT_ENGINE_VERSION, StrategyModuleInformation, DecideTradesProtocol2, read_strategy_module, \
+    StrategyParameters, DecideTradesProtocol3
 from tradeexecutor.strategy.engine_version import TradingStrategyEngineVersion
 from tradeexecutor.strategy.reserve_currency import ReserveCurrency
 from tradeexecutor.strategy.default_routing_options import TradeRouting
@@ -93,6 +94,12 @@ class BacktestSetup:
 
     # strategy_module: StrategyModuleInformation
     pair_configurator: Optional[EthereumBacktestPairConfigurator] = None
+
+    #: Backtest/grid parameters
+    #:
+    #: When trading_strategy_engine_version >= 0.4
+    #:
+    parameters: StrategyParameters | None = None
 
     def backtest_static_universe_strategy_factory(
             self,
@@ -479,6 +486,7 @@ def run_backtest(
         mode=ExecutionMode.backtesting,
         timed_task_context_manager=timed_task,
         engine_version=setup.trading_strategy_engine_version,
+        parameters=setup.parameters,
     )
 
     main_loop = ExecutionLoop(
@@ -520,7 +528,7 @@ def run_backtest_inline(
     end_at: Optional[datetime.datetime] = None,
     minimum_data_lookback_range: Optional[datetime.timedelta] = None,
     client: Optional[Client],
-    decide_trades: DecideTradesProtocol | DecideTradesProtocol2,
+    decide_trades: DecideTradesProtocol | DecideTradesProtocol2 | DecideTradesProtocol3,
     cycle_duration: CycleDuration,
     initial_deposit: float,
     reserve_currency: ReserveCurrency | None = None,
@@ -537,6 +545,7 @@ def run_backtest_inline(
     allow_missing_fees=False,
     engine_version: Optional[TradingStrategyEngineVersion] = None,
     strategy_logging=False,
+    parameters: StrategyParameters | None = None,
 ) -> Tuple[State, TradingStrategyUniverse, dict]:
     """Run backtests for given decide_trades and create_trading_universe functions.
 
@@ -737,6 +746,7 @@ def run_backtest_inline(
         name=name,
         data_preload=data_preload,
         minimum_data_lookback_range=minimum_data_lookback_range,
+        parameters=parameters,
     )
 
     state, universe, debug_dump = run_backtest(backtest_setup, client, allow_missing_fees=True)

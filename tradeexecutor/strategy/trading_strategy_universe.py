@@ -168,6 +168,26 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
             assert isinstance(self.backtest_stop_loss_time_bucket, TimeBucket)
 
     @property
+    def start_at(self) -> datetime.datetime:
+        """Start timestamp of the data.
+
+        - Valid for backtesting only
+        - Based on OHLCV candles
+        """
+        start, end = self.data_universe.candles.get_timestamp_range()
+        return start.to_pydatetime()
+
+    @property
+    def end_at(self) -> datetime.datetime:
+        """End timestamp of the data.
+
+        - Valid for backtesting only
+        - Based on OHLCV candles
+        """
+        start, end = self.data_universe.candles.get_timestamp_range()
+        return end.to_pydatetime()
+
+    @property
     def universe(self):
         """Backwards compatibility method.
 

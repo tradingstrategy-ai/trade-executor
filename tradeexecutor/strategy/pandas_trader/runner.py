@@ -10,7 +10,7 @@ import pandas as pd
 from tradeexecutor.cli.discord import post_logging_discord_image
 from tradeexecutor.statistics.in_memory_statistics import refresh_live_strategy_images
 from tradeexecutor.strategy.pricing_model import PricingModel
-from tradeexecutor.strategy.strategy_module import DecideTradesProtocol, DecideTradesProtocol2
+from tradeexecutor.strategy.strategy_module import DecideTradesProtocol, DecideTradesProtocol2, DecideTradesProtocol3
 from tradeexecutor.strategy.sync_model import SyncModel
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse, translate_trading_pair
 
@@ -29,7 +29,7 @@ class PandasTraderRunner(StrategyRunner):
 
     def __init__(self,
                  *args,
-                 decide_trades: DecideTradesProtocol | DecideTradesProtocol2,
+                 decide_trades: DecideTradesProtocol | DecideTradesProtocol2 | DecideTradesProtocol3,
                  max_data_age: Optional[datetime.timedelta] = None,
                  **kwargs):
         super().__init__(*args, **kwargs)
@@ -63,7 +63,15 @@ class PandasTraderRunner(StrategyRunner):
 
         # Call the strategy script decide_trades()
         # callback
-        if self.execution_context.is_version_greater_or_equal_than(0, 3, 0):
+        if self.execution_context.is_version_greater_or_equal_than(0, 4, 0):
+            return self.decide_trades(
+                timestamp=pd_timestamp,
+                parameters=self.execution_context.parameters,
+                strategy_universe=strategy_universe,
+                state=state,
+                pricing_model=pricing_model,
+            )
+        elif self.execution_context.is_version_greater_or_equal_than(0, 3, 0):
             return self.decide_trades(
                 timestamp=pd_timestamp,
                 strategy_universe=strategy_universe,

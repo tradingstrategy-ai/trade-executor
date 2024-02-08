@@ -227,6 +227,9 @@ def setup_notebook_logging(log_level: str | int=logging.WARNING) -> logging.Logg
     # maplotlib burps a lot on startup
     logging.getLogger("matplotlib").setLevel(logging.WARNING)
 
+    # Performance metrics, irrelevant for backtesting
+    logging.getLogger("tradeexecutor.utils.timer").setLevel(logging.WARNING)
+
     return logger
 
 

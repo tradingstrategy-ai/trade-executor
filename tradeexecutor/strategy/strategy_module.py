@@ -11,8 +11,10 @@ from packaging import version
 
 import pandas
 import pandas as pd
+from web3.datastructures import AttributeDict, ReadableAttributeDict
 
 from tradeexecutor.strategy.engine_version import SUPPORTED_TRADING_STRATEGY_ENGINE_VERSIONS, TradingStrategyEngineVersion
+from tradeexecutor.strategy.parameters import StrategyParameters
 from tradeexecutor.strategy.tag import StrategyTag
 from tradingstrategy.chain import ChainId
 from tradeexecutor.state.state import State
@@ -189,6 +191,29 @@ class DecideTradesProtocol2(Protocol):
             cycle_debug_data: Dict) -> List[TradeExecution]:
         """The brain function to decide the trades on each"""
         raise NotImplementedError()
+
+
+class DecideTradesProtocol3(Protocol):
+    """New decide_trades() function signature.
+
+    - For `trading_strategy_engine_version == "0.4"`
+
+    - Add `parameters` call signature
+
+    See :py:class:`DecideTradesProtocol`
+    """
+
+    def __call__(self,
+        timestamp: pandas.Timestamp,
+        parameters: StrategyParameters,
+        strategy_universe: TradingStrategyUniverse,
+        state: State,
+        pricing_model: PricingModel,
+        other_data: dict,
+    ) -> List[TradeExecution]:
+        """The brain function to decide the trades on each"""
+        raise NotImplementedError()
+
 
 
 class CreateTradingUniverseProtocol(Protocol):
