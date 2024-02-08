@@ -117,7 +117,7 @@ def _serialise_long_short_stats_as_json_table(
     # correct erroneous values if live
     compounding_returns = None
     if source == KeyMetricSource.live_trading:
-        compounding_returns = calculate_compounding_realised_trading_profitability(source_state).iloc[-1]
+        compounding_returns = calculate_compounding_realised_trading_profitability(source_state)
     
     if compounding_returns:
         summary.loc['Return %'] = compounding_returns.iloc[-1]
