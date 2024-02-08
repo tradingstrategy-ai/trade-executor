@@ -116,13 +116,13 @@ def _serialise_long_short_stats_as_json_table(
 
     # correct erroneous values if live
     compounding_returns = None
-    if source == KeyMetricSource.live_trading:
+    if source == KeyMetricSource.live_trading and source_state:
         compounding_returns = calculate_compounding_realised_trading_profitability(source_state)
     
     if len(compounding_returns) > 0:
         portfolio_return = compounding_returns.iloc[-1]
         summary.loc['Return %'] = portfolio_return
-        summary.loc['Annualised return %'] = portfolio_return * 365 / (calculation_window_end_at - calculation_window_start_at).days
+        summary.loc['Annualised return %'] = portfolio_return * 365 * 24 * 60 * 60 / (calculation_window_end_at - calculation_window_start_at).seconds
 
     key_metrics_map = {
         KeyMetricKind.trading_period_length: 'Trading period length',
