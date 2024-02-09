@@ -43,14 +43,15 @@ def setup_charting_and_output(
 
     .. code-block:: python
 
-        # Set Jupyter Notebook output mode parameters
-        from tradeexecutor.backtest.notebook import setup_charting_and_output
+        # Set Jupyter Notebook output mode parameters.
+        # For example, table max output rows is lifted from 20 to unlimited.
+        from tradeexecutor.utils.notebook import setup_charting_and_output
         setup_charting_and_output()
 
     Example how to set up static image rendering:
 
         # Set charts to static image output, 1500 x 1000 pixels
-        from tradeexecutor.backtest.notebook import setup_charting_and_output, OutputMode
+        from tradeexecutor.utils.notebook import setup_charting_and_output, OutputMode
         setup_charting_and_output(OutputMode.static, image_format="png", width=1500, height=1000)
 
     :param mode:
