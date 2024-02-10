@@ -155,12 +155,12 @@ def visualise_table(df: pd.DataFrame):
 
 
 def visualise_heatmap_2d(
-        result: pd.DataFrame,
-        parameter_1: str,
-        parameter_2: str,
-        metric: str,
-        color_continuous_scale='Bluered_r',
-        continuous_scale: bool | None = None,
+    result: pd.DataFrame,
+    parameter_1: str,
+    parameter_2: str,
+    metric: str,
+    color_continuous_scale='Bluered_r',
+    continuous_scale: bool | None = None,
 ) -> Figure:
     """Draw a heatmap square comparing two different parameters.
 
@@ -233,3 +233,235 @@ def visualise_heatmap_2d(
     return fig
 
 
+def visualise_3d_scatter(
+    flattened_result: pd.DataFrame,
+    parameter_x: str,
+    parameter_y: str,
+    parameter_z: str,
+    measured_metric: str,
+    color_continuous_scale="Bluered_r",  # Reversed, blue = best
+    height=600,
+) -> Figure:
+    """Draw a 3D scatter plot for grid search results.
+
+    Create an interactive 3d chart to explore three different parameters and one performance measurement
+    of the grid search results.
+
+    Example:
+
+    .. code-block:: python
+
+        from tradeexecutor.analysis.grid_search import analyse_grid_search_result
+        table = analyse_grid_search_result(grid_search_results)
+        flattened_results = table.reset_index()
+        flattened_results["Annualised return %"] = flattened_results["Annualised return"] * 100
+        fig = visualise_3d_scatter(
+            flattened_results,
+            parameter_x="rsi_days",
+            parameter_y="rsi_high",
+            parameter_z="rsi_low",
+            measured_metric="Annualised return %"
+        )
+        fig.show()
+
+    :param flattened_result:
+        Grid search results as a DataFrame.
+
+        Created by :py:func:`analyse_grid_search_result`.
+
+    :param parameter_x:
+        X axis
+
+    :param parameter_y:
+        Y axis
+
+    :param parameter_z:
+        Z axis
+
+    :param parameter_colour:
+        Output we compare.
+
+        E.g. `Annualised return`
+
+    :param color_continuous_scale:
+        The name of Plotly gradient used for the colour scale.
+
+        `See the Plotly continuos scale color gradient options <https://plotly.com/python/builtin-colorscales/>`__.
+
+    :return:
+        Plotly figure to display
+    """
+
+    assert isinstance(flattened_result, pd.DataFrame)
+    assert type(parameter_x) == str
+    assert type(parameter_y) == str
+    assert type(parameter_z) == str
+    assert type(measured_metric) == str
+
+    fig = px.scatter_3d(
+        flattened_result,
+        x=parameter_x,
+        y=parameter_y,
+        z=parameter_z,
+        color=measured_metric,
+        color_continuous_scale=color_continuous_scale,
+        height=height,
+    )
+
+    return fig
+
+
+def visualise_grid_search_equity_curves(
+    results: pd.DataFrame,
+    name: str | None,
+    all_cash: str | None = None,
+    benchmark_indexes: pd.DataFrame = None,
+    height=1200,
+) -> Figure:
+    """Draw multiple equity curves in the same chart.
+
+    - See how all grid searched strategies work
+
+    - Benchmark against buy and hold of various assets
+
+    - Benchmark against hold all cash
+
+    Example for a single trading pair strategy:
+
+    .. code-block:: python
+
+        TODO
+
+    :param portfolio_statistics:
+        Portfolio performance record.
+
+    :param all_cash:
+        Set a linear line of just holding X amount
+
+    :param buy_and_hold_asset_name:
+
+        Visualise holding all_cash amount in the asset,
+        bought at the start.
+        This is basically price * all_cash.
+
+        .. note ::
+
+            This is a legacy argument. Use `benchmark_indexes` instead.
+
+    :param buy_and_hold_price_series:
+
+        Visualise holding all_cash amount in the asset,
+        bought at the start.
+        This is basically price * all_cash.
+
+        .. note ::
+
+            This is a legacy argument. Use `benchmark_indexes` instead.
+
+    :param benchmark_indexes:
+        List of other asset price series displayed on the timeline besides equity curve.
+
+        DataFrame containing multiple series.
+
+        - Asset name is the series name.
+        - Setting `colour` for `pd.Series.attrs` allows you to override the colour of the index
+
+    :param height:
+        Chart height in pixels
+
+    :param start_at:
+        When the backtest started
+
+    :param end_at:
+        When the backtest ended
+
+    :param additional_indicators:
+        Additional technical indicators drawn on this chart.
+
+        List of indicator names.
+
+        The indicators must be plotted earlier using `state.visualisation.plot_indicator()`.
+
+        **Note**: Currently not very useful due to Y axis scale
+
+    """
+
+    fig = Figure()
+
+    assert portfolio_statistics
+
+    if isinstance(start_at, datetime.datetime):
+        start_at = pd.Timestamp(start_at)
+
+    if isinstance(end_at, datetime.datetime):
+        end_at = pd.Timestamp(end_at)
+
+    if start_at is not None:
+        assert isinstance(start_at, pd.Timestamp)
+
+    if end_at is not None:
+        assert isinstance(end_at, pd.Timestamp)
+
+    first_portfolio_timestamp = pd.Timestamp(portfolio_statistics[0].calculated_at)
+    last_portfolio_timestamp = pd.Timestamp(portfolio_statistics[-1].calculated_at)
+
+    if not start_at or start_at < first_portfolio_timestamp:
+        start_at = first_portfolio_timestamp
+
+    if not end_at or end_at > last_portfolio_timestamp:
+        end_at = last_portfolio_timestamp
+
+    scatter = visualise_portfolio_equity_curve(name, portfolio_statistics)
+    fig.add_trace(scatter)
+
+    if all_cash:
+        scatter = visualise_all_cash(start_at, end_at, all_cash)
+        fig.add_trace(scatter)
+
+    if benchmark_indexes is None:
+        benchmark_indexes = pd.DataFrame()
+
+    # Backwards compatible arguments
+    if buy_and_hold_price_series is not None:
+        benchmark_indexes[buy_and_hold_asset_name] = buy_and_hold_price_series
+
+    # Plot all benchmark series
+    for benchmark_name in benchmark_indexes:
+        buy_and_hold_price_series = benchmark_indexes[benchmark_name]
+        # Clip to the backtest time frame
+        buy_and_hold_price_series = buy_and_hold_price_series[start_at:end_at]
+        colour = buy_and_hold_price_series.attrs.get("colour")
+        scatter = visualise_buy_and_hold(
+            benchmark_name,
+            buy_and_hold_price_series,
+            all_cash,
+            colour=colour,
+        )
+        fig.add_trace(scatter)
+
+    if additional_indicators:
+        for plot in additional_indicators:
+            scatter = visualise_technical_indicator(plot, start_at, end_at)
+            fig.add_trace(scatter)
+
+    if name:
+        fig.update_layout(title=f"{name}", height=height)
+    else:
+        fig.update_layout(title=f"Portfolio value", height=height)
+
+    fig.update_yaxes(title="Value $", showgrid=False)
+
+    fig.update_xaxes(rangeslider={"visible": False})
+
+    # Move legend to the bottom so we have more space for
+    # time axis in narrow notebook views
+    # https://plotly.com/python/legend/
+    fig.update_layout(legend=dict(
+        orientation="h",
+        yanchor="bottom",
+        y=1.02,
+        xanchor="right",
+        x=1
+    ))
+
+    return fig

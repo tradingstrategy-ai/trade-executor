@@ -1,5 +1,6 @@
 """Compare portfolio performance against other strategies."""
 import datetime
+import warnings
 from typing import Optional, List, Union, Collection
 
 import plotly.graph_objects as go
@@ -87,7 +88,7 @@ def visualise_buy_and_hold(
     )
 
 
-def visualise_benchmark(
+def visualise_equity_curve_benchmark(
     name: Optional[str] = None,
     portfolio_statistics: Optional[List[PortfolioStatistics]] = None,
     all_cash: Optional[float] = None,
@@ -322,3 +323,9 @@ def visualise_benchmark(
     ))
 
     return fig
+
+
+def visualise_benchmark(*args, **kwargs) -> go.Figure:
+    warnings.warn('This function is deprecated. Use visualise_equity_curve_benchmark instead', DeprecationWarning, stacklevel=2)
+    return visualise_equity_curve_benchmark(*args, **kwargs)
+
