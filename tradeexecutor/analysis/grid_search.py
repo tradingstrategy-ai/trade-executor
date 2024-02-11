@@ -16,7 +16,8 @@ import plotly.express as px
 from plotly.graph_objs import Figure
 
 from tradeexecutor.backtest.grid_search import GridSearchResult
-
+from tradeexecutor.state.types import USDollarAmount
+from tradeexecutor.visual.benchmark import visualise_all_cash, visualise_portfolio_equity_curve
 
 VALUE_COLS = ["Annualised return", "Max drawdown", "Sharpe", "Sortino", "Average position", "Median position"]
 
@@ -312,10 +313,9 @@ def visualise_3d_scatter(
 
 
 def visualise_grid_search_equity_curves(
-    results: pd.DataFrame,
     name: str | None,
-    all_cash: str | None = None,
-    benchmark_indexes: pd.DataFrame = None,
+    results: List[GridSearchResult],
+    benchmark_indexes: pd.DataFrame | None = None,
     height=1200,
 ) -> Figure:
     """Draw multiple equity curves in the same chart.
@@ -388,69 +388,23 @@ def visualise_grid_search_equity_curves(
 
     fig = Figure()
 
-    assert portfolio_statistics
+    first_result = results[0]
+    start_at = first_result.universe_options.start_at
+    end_at = first_result.universe_options.end_at
 
-    if isinstance(start_at, datetime.datetime):
-        start_at = pd.Timestamp(start_at)
-
-    if isinstance(end_at, datetime.datetime):
-        end_at = pd.Timestamp(end_at)
-
-    if start_at is not None:
-        assert isinstance(start_at, pd.Timestamp)
-
-    if end_at is not None:
-        assert isinstance(end_at, pd.Timestamp)
-
-    first_portfolio_timestamp = pd.Timestamp(portfolio_statistics[0].calculated_at)
-    last_portfolio_timestamp = pd.Timestamp(portfolio_statistics[-1].calculated_at)
-
-    if not start_at or start_at < first_portfolio_timestamp:
-        start_at = first_portfolio_timestamp
-
-    if not end_at or end_at > last_portfolio_timestamp:
-        end_at = last_portfolio_timestamp
-
-    scatter = visualise_portfolio_equity_curve(name, portfolio_statistics)
-    fig.add_trace(scatter)
-
-    if all_cash:
-        scatter = visualise_all_cash(start_at, end_at, all_cash)
+    for result in results:
+        scatter = visualise_portfolio_equity_curve(name, portfolio_statistics)
         fig.add_trace(scatter)
 
     if benchmark_indexes is None:
         benchmark_indexes = pd.DataFrame()
 
-    # Backwards compatible arguments
-    if buy_and_hold_price_series is not None:
-        benchmark_indexes[buy_and_hold_asset_name] = buy_and_hold_price_series
-
-    # Plot all benchmark series
-    for benchmark_name in benchmark_indexes:
-        buy_and_hold_price_series = benchmark_indexes[benchmark_name]
-        # Clip to the backtest time frame
-        buy_and_hold_price_series = buy_and_hold_price_series[start_at:end_at]
-        colour = buy_and_hold_price_series.attrs.get("colour")
-        scatter = visualise_buy_and_hold(
-            benchmark_name,
-            buy_and_hold_price_series,
-            all_cash,
-            colour=colour,
-        )
-        fig.add_trace(scatter)
-
-    if additional_indicators:
-        for plot in additional_indicators:
-            scatter = visualise_technical_indicator(plot, start_at, end_at)
-            fig.add_trace(scatter)
-
     if name:
         fig.update_layout(title=f"{name}", height=height)
     else:
-        fig.update_layout(title=f"Portfolio value", height=height)
+        fig.update_layout(title=f"Grid search equity curve benchmark", height=height)
 
     fig.update_yaxes(title="Value $", showgrid=False)
-
     fig.update_xaxes(rangeslider={"visible": False})
 
     # Move legend to the bottom so we have more space for

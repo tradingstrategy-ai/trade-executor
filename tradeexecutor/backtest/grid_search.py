@@ -25,6 +25,7 @@ import futureproof
 from web3.datastructures import ReadableAttributeDict
 
 from tradeexecutor.strategy.engine_version import TradingStrategyEngineVersion
+from tradeexecutor.strategy.universe_model import UniverseOptions
 
 try:
     from tqdm_loggable.auto import tqdm
@@ -204,6 +205,10 @@ class GridSearchResult:
 
     #: Performance metrics
     metrics: pd.DataFrame
+
+    #: What backtest data range we used
+    #:
+    universe_options: UniverseOptions
 
     #: Was this result read from the earlier run save
     cached: bool = False
@@ -631,6 +636,7 @@ def run_grid_search_backtest(
         state=state,
         summary=summary,
         metrics=metrics,
+        universe_options=universe.options,
     )
 
 

@@ -753,6 +753,10 @@ def run_backtest_inline(
 
     debug_dump["wallet"] = wallet
 
+    #: TODO: Hack to pass the backtest data range to the grid search
+    #:
+    universe.options = universe_options
+
     return state, universe, debug_dump
 
 
