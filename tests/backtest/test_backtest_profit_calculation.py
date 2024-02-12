@@ -292,6 +292,9 @@ def test_calculate_realised_trading_profitability_fill_gap(backtest_result: Stat
 
 
 def test_daily_returns(backtest_result_hourly: State):
+    """Test daily returns calculation by using two different methods
+    and comparing the results.
+    """
     cum_profit = calculate_cumulative_daily_returns(backtest_result_hourly)
     assert isinstance(cum_profit, pd.Series)
 
