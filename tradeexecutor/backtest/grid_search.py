@@ -521,8 +521,18 @@ def _read_cached_results(
     # Run the checks parallel using the thread pool
     tm.map(_read_combination_result, task_args)
 
-    # Extract results from the parallel task queue
-    results = {task.args[0]: task.result for task in tm.as_completed()}
+    if len(task_args) == 0:
+        return {}
+
+    results = {}
+
+    label = ", ".join(p.name for p in combinations[0].searchable_parameters)
+    with tqdm(total=len(task_args), desc=f"Reading cached grid search results using {reader_pool_size} threads: {label}") as progress_bar:
+        # Extract results from the parallel task queue
+        for task in tm.as_completed():
+            results[task.args[0]] = task.result
+            progress_bar.update()
+
     return results
 
 
@@ -587,6 +597,10 @@ def perform_grid_search(
 
     cached_results = _read_cached_results(combinations, reader_pool_size)
     logger.info("Read %d cached results", len(cached_results))
+
+    if len(cached_results) == len(combinations):
+        logger.info("All results were cached, grid search skipped")
+        return list(cached_results.values())
 
     if max_workers > 1:
 
