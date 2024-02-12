@@ -192,7 +192,14 @@ class GridCombination:
 
 @dataclass(slots=True, frozen=False)
 class GridSearchResult:
-    """Result for one grid combination."""
+    """Result for one grid combination.
+
+    - Result for one grid search combination
+
+    - Calculate various statistics and curves ready in a multiprocess worker
+
+    - Results can be cached on a disk, as a pickle
+    """
 
     #: For which grid combination this result is
     combination: GridCombination
@@ -231,6 +238,12 @@ class GridSearchResult:
     #:
     #: Only applicable to multiprocessing
     process_id: int = None
+
+    def __hash__(self):
+        return self.combination.__hash__()
+
+    def __eq__(self, other):
+        return self.combination == other.combination
 
     def get_label(self) -> str:
         """Get name for this result for charts."""
@@ -478,12 +491,48 @@ def run_grid_combination_multiprocess(
     return result
 
 
+def _read_combination_result(c: GridCombination) -> GridSearchResult:
+    assert GridSearchResult.has_result(c), f"Did not have cached result for {c}, but was added to the cache read queue"
+    result = GridSearchResult.load(c)
+    assert result.cached
+    return result
+
+
+def _read_cached_results(
+    combinations: List[GridCombination],
+    reader_pool_size=16,
+) -> Dict[GridCombination, GridSearchResult]:
+    """Read grid search results that are available on a disk from previous run.
+
+    - Picked results
+
+    - Multiprocess worker would read, unpickle, pickle, send, unpickle
+
+    - Instead, we do a threaded reader
+
+    - cPickle is C code, does not lock GIL
+    """
+
+    # Set up a process pool executing structure
+    executor = futureproof.ThreadPoolExecutor(max_workers=reader_pool_size)
+    tm = futureproof.TaskManager(executor, error_policy=futureproof.ErrorPolicyEnum.RAISE)
+    task_args = [(c,) for c in combinations if GridSearchResult.has_result(c)]
+
+    # Run the checks parallel using the thread pool
+    tm.map(_read_combination_result, task_args)
+
+    # Extract results from the parallel task queue
+    results = {task.args[0]: task.result for task in tm.as_completed()}
+    return results
+
+
 @_hide_warnings
 def perform_grid_search(
     grid_search_worker: GridSearchWorker | DecideTradesProtocol3,
     universe: TradingStrategyUniverse,
     combinations: List[GridCombination],
     max_workers=16,
+    reader_pool_size=16,
     clear_cached_results=False,
     stats: Optional[Counter] = None,
     multiprocess=False,
@@ -536,6 +585,9 @@ def perform_grid_search(
                 max_workers,
                 )
 
+    cached_results = _read_cached_results(combinations, reader_pool_size)
+    logger.info("Read %d cached results", len(cached_results))
+
     if max_workers > 1:
 
         # Do a parallel scan for the maximum speed
@@ -558,7 +610,7 @@ def perform_grid_search(
             # Set up a process pool executing structure
             executor = futureproof.ProcessPoolExecutor(max_workers=max_workers, initializer=_process_init, initargs=(pickled_universe,))
             tm = futureproof.TaskManager(executor, error_policy=futureproof.ErrorPolicyEnum.RAISE)
-            task_args = [(grid_search_worker, c, trading_strategy_engine_version) for c in combinations]
+            task_args = [(grid_search_worker, c, trading_strategy_engine_version) for c in combinations if c not in cached_results]
 
             # Set up a signal handler to stop child processes on quit
             _process_pool_executor = executor._executor
@@ -581,7 +633,7 @@ def perform_grid_search(
             # Run individual searchers threads
             #
 
-            task_args = [(grid_search_worker, universe, c, trading_strategy_engine_version) for c in combinations]
+            task_args = [(grid_search_worker, universe, c, trading_strategy_engine_version) for c in combinations if c not in cached_results]
             logger.info("Doing a multithread grid search")
             executor = futureproof.ThreadPoolExecutor(max_workers=max_workers)
             tm = futureproof.TaskManager(executor, error_policy=futureproof.ErrorPolicyEnum.RAISE)
@@ -604,7 +656,10 @@ def perform_grid_search(
         results = list(iter)
 
     duration = datetime.datetime.utcnow() - start
-    logger.info("Grid search finished in %s", duration)
+    logger.info("Grid search finished in %s, calculated %d new results", duration, len(results))
+
+    results = list(cached_results.values()) + results
+    logger.info("Total %d results", len(results))
 
     return results
 
