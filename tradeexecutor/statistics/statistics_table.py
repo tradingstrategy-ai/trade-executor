@@ -12,6 +12,7 @@ from tradeexecutor.analysis.trade_analyser import build_trade_analysis
 from tradeexecutor.strategy.summary import KeyMetricKind, KeyMetricSource, KeyMetric
 from tradeexecutor.state.state import State
 from tradeexecutor.state.portfolio import Portfolio
+from tradeexecutor.visual.equity_curve import calculate_compounding_realised_trading_profitability
 
 
 @dataclass_json
@@ -112,6 +113,16 @@ def _serialise_long_short_stats_as_json_table(
     
     analysis = build_trade_analysis(source_state.portfolio)
     summary = analysis.calculate_all_summary_stats_by_side(state=source_state, urls=True)  # TODO timebucket
+
+    # correct erroneous values if live
+    compounding_returns = None
+    if source == KeyMetricSource.live_trading and source_state:
+        compounding_returns = calculate_compounding_realised_trading_profitability(source_state)
+    
+    if len(compounding_returns) > 0:
+        portfolio_return = compounding_returns.iloc[-1]
+        summary.loc['Return %'] = portfolio_return
+        summary.loc['Annualised return %'] = portfolio_return * 365 * 24 * 60 * 60 / (calculation_window_end_at - calculation_window_start_at).seconds
 
     key_metrics_map = {
         KeyMetricKind.trading_period_length: 'Trading period length',
