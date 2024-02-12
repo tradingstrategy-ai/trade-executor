@@ -522,3 +522,41 @@ z
     flow_delta = flow.resample(freq).sum()
 
     return equity_delta - flow_delta
+
+
+def calculate_non_cumulative_daily_returns(state: State, freq_base: pd.offsets.DateOffset | None = pd.offsets.Day()) -> pd.Series:
+    """Calculates the the non cumulative daily returns for the strategy over time. 
+
+    - Accounts for multiple positions in the same day
+    - If no positions/trades are made on a day, it will be filled with 0
+
+    .. note:: 
+        Forward fill cannot be used with this method since the stat for each day represents the realised profit for that day only.
+        So we fill na values with 0 
+
+    :param state: Strategy state
+    :param freq_base: Time frequency to resample to
+    :return: Pandas series
+    """
+    returns = calculate_size_relative_realised_trading_returns(state)
+        
+    # use this method to avoid losing data points when resampling
+    # gives compounded returns for each day
+    non_cumulative_daily_returns = returns.add(1).resample(freq_base).prod().sub(1).fillna(0)
+
+    return non_cumulative_daily_returns
+
+def calculate_cumulative_daily_returns(state: State, freq_base: pd.offsets.DateOffset | None = pd.offsets.Day()) -> pd.Series:
+    """Calculates the cumulative daily returns for the strategy over time
+
+    - Accounts for multiple positions in the same day
+    - If no positions/trades are made on a day, that day will use latest non-zero profit value (forward fill)
+
+    :param state: Strategy state
+    :param freq_base: Time frequency to resample to
+    :return: Pandas series
+    """
+    returns = calculate_compounding_realised_trading_profitability(state)
+    cumulative_daily_returns = returns.add(1).resample(freq_base).prod().sub(1)
+    cumulative_daily_returns.ffill(inplace=True)
+    return cumulative_daily_returns
