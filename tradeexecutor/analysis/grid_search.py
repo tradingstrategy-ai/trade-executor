@@ -5,7 +5,7 @@
 - Heatmap and other comparison methods
 
 """
-
+import textwrap
 from typing import List
 
 import numpy as np
@@ -312,6 +312,29 @@ def visualise_3d_scatter(
     return fig
 
 
+def _get_hover_template(
+    result: GridSearchResult,
+    key_metrics = ("CAGR﹪", "Max Drawdown", "Time in Market", "Sharpe", "Sortino"),  # See quantstats
+    percent_metrics = ("CAGR﹪", "Max Drawdown", "Time in Market"),
+):
+
+    data = result.metrics["Strategy"]
+    metrics = {}
+    for name in key_metrics:
+        metrics[name] = data[name]
+
+    template = textwrap.dedent(f"""<b>{result.get_label()}</b><br><br>""")
+
+    for k, v in metrics.items():
+        if k in percent_metrics:
+            v *= 100
+            template += f"{k}: {v:.2f}%<br>"
+        else:
+            template += f"{k}: {v:.2f}<br>"
+
+    return template
+
+
 def visualise_grid_search_equity_curves(
     results: List[GridSearchResult],
     name: str | None = None,
@@ -369,29 +392,36 @@ def visualise_grid_search_equity_curves(
 
     fig = Figure()
 
-    first_result = results[0]
-    start_at = first_result.universe_options.start_at
-    end_at = first_result.universe_options.end_at
-
     for result in results:
         curve = result.equity_curve
+        label = result.get_label()
+        template =_get_hover_template(result)
         scatter = Scatter(
             x=curve.index,
             y=curve,
             mode="lines",
-            name=name,
+            name="",  # Hides hover legend, use hovertext only
             line=dict(color=colour),
+            showlegend=False,
+            hovertemplate=template,
+            hovertext=None,
         )
         fig.add_trace(scatter)
 
-    if benchmark_indexes is None:
-        benchmark_indexes = pd.DataFrame()
+    if benchmark_indexes is not None:
+        for name, curve in benchmark_indexes.items():
+            benchmark_colour = curve.attrs.get("colour", "black")
+            scatter = Scatter(
+                x=curve.index,
+                y=curve,
+                mode="lines",
+                name=name,
+                line=dict(color=benchmark_colour),
+                showlegend=True,
+            )
+            fig.add_trace(scatter)
 
-    if name:
-        fig.update_layout(title=f"{name}", height=height)
-    else:
-        fig.update_layout(title=f"Grid search equity curve benchmark", height=height)
-
+    fig.update_layout(title=f"{name}", height=height)
     fig.update_yaxes(title="Value $", showgrid=False)
     fig.update_xaxes(rangeslider={"visible": False})
 

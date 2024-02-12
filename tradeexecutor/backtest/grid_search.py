@@ -232,6 +232,10 @@ class GridSearchResult:
     #: Only applicable to multiprocessing
     process_id: int = None
 
+    def get_label(self) -> str:
+        """Get name for this result for charts."""
+        return self.combination.get_label()
+
     @staticmethod
     def has_result(combination: GridCombination):
         base_path = combination.result_path
@@ -364,6 +368,9 @@ def _run_v04(
     cycle_duration = parameters.get("cycle_duration")
     assert cycle_duration, f"Strategy parameters lack cycle_duration, we have {list(parameters.keys())}"
 
+    initial_cash = parameters.get("initial_cash")
+    assert initial_cash, f"Strategy parameters lack initial_deposit, we have {list(parameters.keys())}"
+
     return run_grid_search_backtest(
         combination,
         decide_trades,
@@ -373,6 +380,7 @@ def _run_v04(
         cycle_duration=cycle_duration,
         trading_strategy_engine_version=trading_strategy_engine_version,
         parameters=parameters,
+        initial_deposit=initial_cash,
     )
 
 

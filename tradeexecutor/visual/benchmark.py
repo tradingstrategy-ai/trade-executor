@@ -79,7 +79,6 @@ def visualise_buy_and_hold(
 
     # Whatever we bought at the start
     initial_inventory = all_cash / float(price_series.iloc[0])
-
     series = price_series * initial_inventory
 
     return go.Scatter(
@@ -337,7 +336,8 @@ def visualise_benchmark(*args, **kwargs) -> go.Figure:
 def create_benchmark_equity_curves(
     strategy_universe: TradingStrategyUniverse,
     pairs: Dict[str, HumanReadableTradingPairDescription],
-    all_cash: USDollarAmount | None = None,
+    initial_cash: USDollarAmount,
+    custom_colours={"BTC": "orange", "ETH": "blue", "All cash": "black"}
 ) -> pd.DataFrame:
     """Create data series of different buy-and-hold benchmarks.
 
@@ -357,11 +357,14 @@ def create_benchmark_equity_curves(
 
         In a format `short label` : `pair description`.
 
-    :param all_cash:
-        The value for all cash benchmark.
+    :param initial_cash:
+        The value for all cash benchmark and the initial backtest deposit.
 
         All cash is that you would just sit on the top of the cash pile
         since start of the backtest.
+
+    :param custom_colours:
+        Apply these colours on the benchmark series
 
     :return:
         Pandas DataFrame.
@@ -370,35 +373,37 @@ def create_benchmark_equity_curves(
 
         DataFrame and its series' `attrs` contains colour information for well-known pairs.
 
-
     """
 
-    close_data = {}
+    returns = {}
 
+    # Get close prices for all pairs
     for key, value in pairs.items():
-        close_data[key] = strategy_universe.data_universe.pairs.get_pair_by_human_description(value)
+        pair = strategy_universe.data_universe.pairs.get_pair_by_human_description(value)
+        close_data = strategy_universe.data_universe.candles.get_candles_by_pair(pair)["close"]
+        initial_inventory = initial_cash / float(close_data.iloc[0])
+        series = close_data * initial_inventory
+        returns[key] = series
 
-    if all_cash is not None:
-        assert len(close_data) > 0
-        assert type(all_cash) in (int, float)
-        first_close = next(iter(close_data.items()))
+    # Form all cash line
+    if initial_cash is not None:
+        assert len(returns) > 0
+        assert type(initial_cash) in (int, float)
+        first_close = next(iter(returns.values()))
         start_at = first_close.index[0]
         end_at = first_close.index[-1]
-        all_cash_series = pd.Series(
-            [(start_at, all_cash)],
-            [(end_at, all_cash)],
-        )
+        idx = [start_at, end_at]
+        values = [initial_cash, initial_cash]
+        all_cash_series = pd.Series(values, idx)
+        returns["All cash"] = all_cash_series
 
-        close_data["All cash"] = all_cash_series
-        close_data["All cash"].attrs = {"colour": "black"}
+    # Wrap it up in a DataFrame
+    benchmark_indexes = pd.DataFrame(returns)
 
-    benchmark_indexes = pd.DataFrame(close_data)
-
-    if "BTC" in benchmark_indexes.colums:
-        benchmark_indexes["BTC"].attrs = {"colour": "orange"}
-
-    if "ETH" in benchmark_indexes.columns:
-        benchmark_indexes["ETH"].attrs = {"colour": "blue"}
+    # Apply custom colors
+    for symbol, colour in custom_colours.items():
+        if symbol in benchmark_indexes.columns:
+            benchmark_indexes[symbol].attrs = {"colour": colour}
 
     return benchmark_indexes
 
