@@ -21,7 +21,7 @@ from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniv
 from tradeexecutor.testing.synthetic_ethereum_data import generate_random_ethereum_address
 from tradeexecutor.testing.synthetic_exchange_data import generate_exchange, generate_simple_routing_model
 from tradeexecutor.testing.synthetic_price_data import generate_ohlcv_candles
-from tradeexecutor.visual.benchmark import visualise_benchmark
+from tradeexecutor.visual.benchmark import visualise_equity_curve_benchmark
 from tradingstrategy.candle import GroupedCandleUniverse
 from tradeexecutor.state.trade import TradeExecution
 from tradeexecutor.strategy.pricing_model import PricingModel
@@ -600,7 +600,7 @@ def test_benchmark_synthetic_trading_portfolio(
     )
 
     # Visualise performance
-    fig = visualise_benchmark(
+    fig = visualise_equity_curve_benchmark(
         state.name,
         portfolio_statistics=state.stats.portfolio,
         all_cash=100_000,

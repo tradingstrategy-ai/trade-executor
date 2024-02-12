@@ -149,6 +149,20 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
     #: E.g. for 90 days you can use `datetime.timedelta(days=90)`
     required_history_period: Optional[datetime.timedelta] = None
 
+    #: What options were applied to this universe
+    #:
+    #: Could be e.g.
+    #:
+    #: - Loaded data range
+    #: - Backtested data range
+    #:
+    #: Not set in legacy code paths.
+    #: Currently the life cycle of this variable is not well-defined,
+    #: mostly used to pass the backtest data range around,
+    #: and set before backtest run, not during the universe construction.
+    #:
+    options: UniverseOptions | None = None
+
     def __repr__(self):
         pair_count = self.data_universe.pairs.get_count()
         if pair_count <= 3:

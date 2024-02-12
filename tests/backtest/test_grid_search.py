@@ -372,6 +372,7 @@ def test_perform_grid_search_engine_v4(
         slow_ema_candle_count = 7
         fast_ema_candle_count = [1, 2]
         cycle_duration = CycleDuration.cycle_1d
+        initial_cash = 10_000
 
     combinations = prepare_grid_combinations(InputParameters, tmp_path)
 
@@ -385,7 +386,7 @@ def test_perform_grid_search_engine_v4(
     assert not fast_ema_candle_count.single
 
     assert len(combinations[0].searchable_parameters) == 2
-    assert len(combinations[0].parameters) == 4
+    assert len(combinations[0].parameters) == 5
 
     results = perform_grid_search(
         _decide_trades_v3,

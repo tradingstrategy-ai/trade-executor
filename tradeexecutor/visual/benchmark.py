@@ -1,6 +1,7 @@
 """Compare portfolio performance against other strategies."""
 import datetime
-from typing import Optional, List, Union, Collection
+import warnings
+from typing import Optional, List, Union, Collection, Dict
 
 import plotly.graph_objects as go
 import pandas as pd
@@ -8,7 +9,10 @@ import pandas as pd
 
 from tradeexecutor.state.statistics import PortfolioStatistics
 from tradeexecutor.state.visualisation import Plot
+from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
 from tradeexecutor.visual.technical_indicator import visualise_technical_indicator
+from tradingstrategy.pair import HumanReadableTradingPairDescription
+from tradingstrategy.types import USDollarAmount
 
 
 def visualise_portfolio_equity_curve(
@@ -75,7 +79,6 @@ def visualise_buy_and_hold(
 
     # Whatever we bought at the start
     initial_inventory = all_cash / float(price_series.iloc[0])
-
     series = price_series * initial_inventory
 
     return go.Scatter(
@@ -87,7 +90,7 @@ def visualise_buy_and_hold(
     )
 
 
-def visualise_benchmark(
+def visualise_equity_curve_benchmark(
     name: Optional[str] = None,
     portfolio_statistics: Optional[List[PortfolioStatistics]] = None,
     all_cash: Optional[float] = None,
@@ -322,3 +325,110 @@ def visualise_benchmark(
     ))
 
     return fig
+
+
+def visualise_benchmark(*args, **kwargs) -> go.Figure:
+    warnings.warn('This function is deprecated. Use visualise_equity_curve_benchmark instead', DeprecationWarning, stacklevel=2)
+    return visualise_equity_curve_benchmark(*args, **kwargs)
+
+
+
+def create_benchmark_equity_curves(
+    strategy_universe: TradingStrategyUniverse,
+    pairs: Dict[str, HumanReadableTradingPairDescription],
+    initial_cash: USDollarAmount,
+    custom_colours={"BTC": "orange", "ETH": "blue", "All cash": "black"}
+) -> pd.DataFrame:
+    """Create data series of different buy-and-hold benchmarks.
+
+    - Create different benchmark indexes to compare y our backtest results against
+
+    - Has default colours set for `BTC` and `ETH` pair labels
+
+    See also
+
+    - Output be given e.g. to :py:func:`tradeexecutor.analysis.grid_search.visualise_grid_search_equity_curves`
+
+    Example:
+
+    .. code-block:: python
+
+        from tradeexecutor.analysis.grid_search import visualise_grid_search_equity_curves
+        from tradeexecutor.visual.benchmark import create_benchmark_equity_curves
+
+        # List of pair descriptions we used to look up pair metadata
+        our_pairs = [
+            (ChainId.centralised_exchange, "binance", "BTC", "USDT"),
+            (ChainId.centralised_exchange, "binance", "ETH", "USDT"),
+        ]
+
+        benchmark_indexes = create_benchmark_equity_curves(
+            strategy_universe,
+            {"BTC": our_pairs[0], "ETH": our_pairs[1]},
+            initial_cash=StrategyParameters.initial_cash,
+        )
+
+        fig = visualise_grid_search_equity_curves(
+            grid_search_results,
+            benchmark_indexes=benchmark_indexes,
+        )
+        fig.show()
+
+    :param strategy_universe:
+        Strategy universe from where we
+
+    :param pairs:
+        Trading pairs benchmarked.
+
+        In a format `short label` : `pair description`.
+
+    :param initial_cash:
+        The value for all cash benchmark and the initial backtest deposit.
+
+        All cash is that you would just sit on the top of the cash pile
+        since start of the backtest.
+
+    :param custom_colours:
+        Apply these colours on the benchmark series
+
+    :return:
+        Pandas DataFrame.
+
+        DataFrame has series labelled "BTC", "ETH", "All cash", etc.
+
+        DataFrame and its series' `attrs` contains colour information for well-known pairs.
+
+    """
+
+    returns = {}
+
+    # Get close prices for all pairs
+    for key, value in pairs.items():
+        pair = strategy_universe.data_universe.pairs.get_pair_by_human_description(value)
+        close_data = strategy_universe.data_universe.candles.get_candles_by_pair(pair)["close"]
+        initial_inventory = initial_cash / float(close_data.iloc[0])
+        series = close_data * initial_inventory
+        returns[key] = series
+
+    # Form all cash line
+    if initial_cash is not None:
+        assert len(returns) > 0
+        assert type(initial_cash) in (int, float)
+        first_close = next(iter(returns.values()))
+        start_at = first_close.index[0]
+        end_at = first_close.index[-1]
+        idx = [start_at, end_at]
+        values = [initial_cash, initial_cash]
+        all_cash_series = pd.Series(values, idx)
+        returns["All cash"] = all_cash_series
+
+    # Wrap it up in a DataFrame
+    benchmark_indexes = pd.DataFrame(returns)
+
+    # Apply custom colors
+    for symbol, colour in custom_colours.items():
+        if symbol in benchmark_indexes.columns:
+            benchmark_indexes[symbol].attrs = {"colour": colour}
+
+    return benchmark_indexes
+
