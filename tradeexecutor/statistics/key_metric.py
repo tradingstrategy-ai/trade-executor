@@ -12,7 +12,7 @@ from tradeexecutor.state.portfolio import Portfolio
 from tradeexecutor.state.state import State
 from tradeexecutor.state.types import Percent
 from tradeexecutor.strategy.summary import KeyMetric, KeyMetricKind, KeyMetricSource, KeyMetricCalculationMethod
-from tradeexecutor.visual.equity_curve import calculate_size_relative_realised_trading_returns
+from tradeexecutor.visual.equity_curve import calculate_size_relative_realised_trading_returns, calculate_non_cumulative_daily_returns
 from tradeexecutor.statistics.statistics_table import get_data_source_and_calculation_window
 
 
@@ -196,10 +196,7 @@ def calculate_key_metrics(
         # as the base for calculations to ensure
         # sharpe/sortino/etc. stays compatible regardless of deposit flow
         returns = calculate_size_relative_realised_trading_returns(source_state)
-        
-        # use this method to avoid losing data points when resampling
-        # gives compounded returns for each day
-        daily_returns = returns.add(1).resample(freq_base).prod().sub(1).fillna(0)
+        daily_returns = calculate_non_cumulative_daily_returns(source_state)
         
         # alternate method
         # log_returns = np.log(returns.add(1))
