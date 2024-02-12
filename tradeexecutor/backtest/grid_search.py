@@ -543,8 +543,6 @@ def perform_grid_search(
     combinations: List[GridCombination],
     max_workers=16,
     reader_pool_size=16,
-    clear_cached_results=False,
-    stats: Optional[Counter] = None,
     multiprocess=False,
     trading_strategy_engine_version: TradingStrategyEngineVersion="0.3",
 ) -> List[GridSearchResult]:
