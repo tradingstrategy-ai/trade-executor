@@ -27,7 +27,7 @@ from tradeexecutor.testing.synthetic_ethereum_data import generate_random_ethere
 from tradeexecutor.testing.synthetic_exchange_data import generate_exchange, generate_simple_routing_model
 from tradeexecutor.testing.synthetic_price_data import generate_ohlcv_candles
 from tradeexecutor.visual.equity_curve import calculate_investment_flow, calculate_realised_profitability, calculate_deposit_adjusted_returns, \
-    calculate_compounding_realised_trading_profitability, calculate_size_relative_realised_trading_returns
+    calculate_compounding_realised_trading_profitability, calculate_size_relative_realised_trading_returns, calculate_cumulative_daily_returns, calculate_non_cumulative_daily_returns
 from tradingstrategy.candle import GroupedCandleUniverse
 from tradingstrategy.chain import ChainId
 from tradingstrategy.exchange import Exchange
@@ -289,6 +289,19 @@ def test_calculate_realised_trading_profitability_fill_gap(backtest_result: Stat
     last_val = compounded_profitability[last]
     second_last_val = compounded_profitability[second_last]
     assert last_val == second_last_val
+
+
+def test_daily_returns(backtest_result_hourly: State):
+    """Test daily returns calculation by using two different methods
+    and comparing the results.
+    """
+    cum_profit = calculate_cumulative_daily_returns(backtest_result_hourly)
+    assert isinstance(cum_profit, pd.Series)
+
+    non_cum_profit = calculate_non_cumulative_daily_returns(backtest_result_hourly)
+    assert isinstance(non_cum_profit, pd.Series)
+
+    non_cum_profit.add(1).cumprod().sub(1).iloc[-1] == pytest.approx(cum_profit.iloc[-1], abs=1e-10)
     
 
 def test_profitabilities_are_same(backtest_result_hourly: State):
