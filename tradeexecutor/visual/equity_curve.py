@@ -539,11 +539,7 @@ def calculate_non_cumulative_daily_returns(state: State, freq_base: pd.offsets.D
     :return: Pandas series
     """
     returns = calculate_size_relative_realised_trading_returns(state)
-        
-    # use this method to avoid losing data points when resampling
-    # gives compounded returns for each day
     non_cumulative_daily_returns = returns.add(1).resample(freq_base).prod().sub(1).fillna(0)
-
     return non_cumulative_daily_returns
 
 def calculate_cumulative_daily_returns(state: State, freq_base: pd.offsets.DateOffset | None = pd.offsets.Day()) -> pd.Series:
@@ -557,6 +553,5 @@ def calculate_cumulative_daily_returns(state: State, freq_base: pd.offsets.DateO
     :return: Pandas series
     """
     returns = calculate_compounding_realised_trading_profitability(state)
-    cumulative_daily_returns = returns.add(1).resample(freq_base).prod().sub(1)
-    cumulative_daily_returns.ffill(inplace=True)
+    cumulative_daily_returns = returns.add(1).resample(freq_base).prod().sub(1).ffill()
     return cumulative_daily_returns
