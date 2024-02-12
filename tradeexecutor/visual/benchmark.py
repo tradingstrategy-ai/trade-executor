@@ -349,6 +349,31 @@ def create_benchmark_equity_curves(
 
     - Output be given e.g. to :py:func:`tradeexecutor.analysis.grid_search.visualise_grid_search_equity_curves`
 
+    Example:
+
+    .. code-block:: python
+
+        from tradeexecutor.analysis.grid_search import visualise_grid_search_equity_curves
+        from tradeexecutor.visual.benchmark import create_benchmark_equity_curves
+
+        # List of pair descriptions we used to look up pair metadata
+        our_pairs = [
+            (ChainId.centralised_exchange, "binance", "BTC", "USDT"),
+            (ChainId.centralised_exchange, "binance", "ETH", "USDT"),
+        ]
+
+        benchmark_indexes = create_benchmark_equity_curves(
+            strategy_universe,
+            {"BTC": our_pairs[0], "ETH": our_pairs[1]},
+            initial_cash=StrategyParameters.initial_cash,
+        )
+
+        fig = visualise_grid_search_equity_curves(
+            grid_search_results,
+            benchmark_indexes=benchmark_indexes,
+        )
+        fig.show()
+
     :param strategy_universe:
         Strategy universe from where we
 
