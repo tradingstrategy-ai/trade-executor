@@ -156,6 +156,9 @@ def backtest(
     initial_cash = mod.initial_cash
     assert initial_cash is not None, f"Strategy module does not set initial_cash needed to backtest"
 
+    assert mod.backtest_start, f"Strategy module does not set backtest_start"
+    assert mod.backtest_end, f"Strategy module does not set backtest_end"
+
     # Don't start at T+0 because we have not any data for that day yet
     backtest_start_at = universe_options.start_at + mod.trading_strategy_cycle.to_timedelta()
     logger.info("Backtest starts at %s", backtest_start_at)
