@@ -42,6 +42,12 @@ def analyse_combination(
     row = {}
     param_names = []
     for param in r.combination.parameters:
+
+        # Skip parameters that are single fixed value
+        # and do not affect the grid search results
+        if param.single:
+            continue
+
         row[param.name] = param.value
         param_names.append(param.name)
 

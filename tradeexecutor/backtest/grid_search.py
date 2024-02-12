@@ -236,6 +236,37 @@ class GridSearchResult:
         """Get name for this result for charts."""
         return self.combination.get_label()
 
+    def get_metric(self, name: str) -> float:
+        """Get a performance metric from quantstats.
+
+        A shortcut method.
+
+        Example:
+
+        .. code-block:: python
+
+            grid_search_results = perform_grid_search(
+                decide_trades,
+                strategy_universe,
+                combinations,
+                max_workers=8,
+                trading_strategy_engine_version="0.4",
+                multiprocess=True,
+            )
+
+            print("Sharpe of the first result", grid_search_results[0].get_metric("Sharpe")
+
+        :param name:
+            See quantstats for examples
+
+        :return:
+            Performance metrics value
+        """
+
+        series = self.metrics["Strategy"]
+        assert name in self.metrics.index, f"Metric {name} not available. We have: {series.index}"
+        return series[name]
+
     @staticmethod
     def has_result(combination: GridCombination):
         base_path = combination.result_path
