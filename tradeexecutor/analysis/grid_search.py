@@ -13,7 +13,7 @@ import pandas as pd
 from IPython.core.display_functions import display
 
 import plotly.express as px
-from plotly.graph_objs import Figure
+from plotly.graph_objs import Figure, Scatter
 
 from tradeexecutor.backtest.grid_search import GridSearchResult
 from tradeexecutor.state.types import USDollarAmount
@@ -313,10 +313,11 @@ def visualise_3d_scatter(
 
 
 def visualise_grid_search_equity_curves(
-    name: str | None,
     results: List[GridSearchResult],
+    name: str | None = None,
     benchmark_indexes: pd.DataFrame | None = None,
     height=1200,
+    colour="rgba(160, 160, 160, 0.5)",
 ) -> Figure:
     """Draw multiple equity curves in the same chart.
 
@@ -332,31 +333,8 @@ def visualise_grid_search_equity_curves(
 
         TODO
 
-    :param portfolio_statistics:
-        Portfolio performance record.
-
-    :param all_cash:
-        Set a linear line of just holding X amount
-
-    :param buy_and_hold_asset_name:
-
-        Visualise holding all_cash amount in the asset,
-        bought at the start.
-        This is basically price * all_cash.
-
-        .. note ::
-
-            This is a legacy argument. Use `benchmark_indexes` instead.
-
-    :param buy_and_hold_price_series:
-
-        Visualise holding all_cash amount in the asset,
-        bought at the start.
-        This is basically price * all_cash.
-
-        .. note ::
-
-            This is a legacy argument. Use `benchmark_indexes` instead.
+    :param results:
+        Results from the grid search.
 
     :param benchmark_indexes:
         List of other asset price series displayed on the timeline besides equity curve.
@@ -386,6 +364,9 @@ def visualise_grid_search_equity_curves(
 
     """
 
+    if name is None:
+        name = "Grid search equity curve comparison"
+
     fig = Figure()
 
     first_result = results[0]
@@ -393,7 +374,14 @@ def visualise_grid_search_equity_curves(
     end_at = first_result.universe_options.end_at
 
     for result in results:
-        scatter = visualise_portfolio_equity_curve(name, portfolio_statistics)
+        curve = result.equity_curve
+        scatter = Scatter(
+            x=curve.index,
+            y=curve,
+            mode="lines",
+            name=name,
+            line=dict(color=colour),
+        )
         fig.add_trace(scatter)
 
     if benchmark_indexes is None:

@@ -1,7 +1,7 @@
 """Compare portfolio performance against other strategies."""
 import datetime
 import warnings
-from typing import Optional, List, Union, Collection
+from typing import Optional, List, Union, Collection, Dict
 
 import plotly.graph_objects as go
 import pandas as pd
@@ -9,7 +9,10 @@ import pandas as pd
 
 from tradeexecutor.state.statistics import PortfolioStatistics
 from tradeexecutor.state.visualisation import Plot
+from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
 from tradeexecutor.visual.technical_indicator import visualise_technical_indicator
+from tradingstrategy.pair import HumanReadableTradingPairDescription
+from tradingstrategy.types import USDollarAmount
 
 
 def visualise_portfolio_equity_curve(
@@ -328,4 +331,74 @@ def visualise_equity_curve_benchmark(
 def visualise_benchmark(*args, **kwargs) -> go.Figure:
     warnings.warn('This function is deprecated. Use visualise_equity_curve_benchmark instead', DeprecationWarning, stacklevel=2)
     return visualise_equity_curve_benchmark(*args, **kwargs)
+
+
+
+def create_benchmark_equity_curves(
+    strategy_universe: TradingStrategyUniverse,
+    pairs: Dict[str, HumanReadableTradingPairDescription],
+    all_cash: USDollarAmount | None = None,
+) -> pd.DataFrame:
+    """Create data series of different buy-and-hold benchmarks.
+
+    - Create different benchmark indexes to compare y our backtest results against
+
+    - Has default colours set for `BTC` and `ETH` pair labels
+
+    See also
+
+    - Output be given e.g. to :py:func:`tradeexecutor.analysis.grid_search.visualise_grid_search_equity_curves`
+
+    :param strategy_universe:
+        Strategy universe from where we
+
+    :param pairs:
+        Trading pairs benchmarked.
+
+        In a format `short label` : `pair description`.
+
+    :param all_cash:
+        The value for all cash benchmark.
+
+        All cash is that you would just sit on the top of the cash pile
+        since start of the backtest.
+
+    :return:
+        Pandas DataFrame.
+
+        DataFrame has series labelled "BTC", "ETH", "All cash", etc.
+
+        DataFrame and its series' `attrs` contains colour information for well-known pairs.
+
+
+    """
+
+    close_data = {}
+
+    for key, value in pairs.items():
+        close_data[key] = strategy_universe.data_universe.pairs.get_pair_by_human_description(value)
+
+    if all_cash is not None:
+        assert len(close_data) > 0
+        assert type(all_cash) in (int, float)
+        first_close = next(iter(close_data.items()))
+        start_at = first_close.index[0]
+        end_at = first_close.index[-1]
+        all_cash_series = pd.Series(
+            [(start_at, all_cash)],
+            [(end_at, all_cash)],
+        )
+
+        close_data["All cash"] = all_cash_series
+        close_data["All cash"].attrs = {"colour": "black"}
+
+    benchmark_indexes = pd.DataFrame(close_data)
+
+    if "BTC" in benchmark_indexes.colums:
+        benchmark_indexes["BTC"].attrs = {"colour": "orange"}
+
+    if "ETH" in benchmark_indexes.columns:
+        benchmark_indexes["ETH"].attrs = {"colour": "blue"}
+
+    return benchmark_indexes
 

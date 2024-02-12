@@ -201,10 +201,24 @@ class GridSearchResult:
     state: State
 
     #: Calculated trade summary
+    #:
+    #: Internal stats calculated about trades
+    #:
     summary: TradeSummary
 
     #: Performance metrics
+    #:
+    #: Use QuantStats lib to calculate these stats.
+    #:
     metrics: pd.DataFrame
+
+    #: Needed for visualisations
+    #:
+    equity_curve: pd.Series
+
+    #: Needed for visualisations
+    #:
+    returns: pd.Series
 
     #: What backtest data range we used
     #:
@@ -637,6 +651,8 @@ def run_grid_search_backtest(
         summary=summary,
         metrics=metrics,
         universe_options=universe.options,
+        equity_curve=equity,
+        returns=returns,
     )
 
 
