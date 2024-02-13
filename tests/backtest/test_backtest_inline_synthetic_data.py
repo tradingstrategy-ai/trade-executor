@@ -368,7 +368,7 @@ def test_core_stats(analysis: TradeAnalysis):
     summary = analysis.calculate_summary_statistics(time_bucket)
     core_stats = summary.get_trading_core_metrics()
     assert core_stats["Positions taken"] == "11"
-    assert core_stats["Position win %"] == "36.36%"
+    assert core_stats["Positions won"] == "36.36%"
 
 
 def test_advanced_summary_statistics(
