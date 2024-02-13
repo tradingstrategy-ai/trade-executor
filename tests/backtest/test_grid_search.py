@@ -16,7 +16,7 @@ from tradingstrategy.exchange import Exchange
 from tradingstrategy.timebucket import TimeBucket
 from tradingstrategy.universe import Universe
 
-from tradeexecutor.analysis.grid_search import analyse_grid_search_result, visualise_table, visualise_heatmap_2d
+from tradeexecutor.analysis.grid_search import analyse_grid_search_result, visualise_table, visualise_heatmap_2d, visualise_grid_search_equity_curves
 from tradeexecutor.backtest.grid_search import prepare_grid_combinations, run_grid_search_backtest, perform_grid_search, GridCombination, GridSearchResult, \
     pick_grid_search_result, pick_best_grid_search_result, GridParameter
 from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier
@@ -403,3 +403,54 @@ def test_perform_grid_search_engine_v4(
     for r in results:
         assert r.metrics.loc["Sharpe"][0] != 0
         assert r.process_id > 1
+
+    # See we can render the results
+    fig = visualise_grid_search_equity_curves(
+        results,
+    )
+    assert fig is not None
+
+
+def test_perform_grid_search_engine_v4_cached(
+    strategy_universe,
+    tmp_path,
+):
+    """Read cached grid serach results.
+
+    - Check that grid search result caching works
+    """
+    class InputParameters:
+        stop_loss_pct = [0.9, 0.95]
+        slow_ema_candle_count = 7
+        fast_ema_candle_count = [1, 2]
+        cycle_duration = CycleDuration.cycle_1d
+        initial_cash = 10_000
+
+    combinations = prepare_grid_combinations(InputParameters, tmp_path)
+
+    results = perform_grid_search(
+        _decide_trades_v3,
+        strategy_universe,
+        combinations,
+        max_workers=4,
+        multiprocess=True,
+        trading_strategy_engine_version="0.4",
+    )
+
+    already_run_results = perform_grid_search(
+        _decide_trades_v3,
+        strategy_universe,
+        combinations,
+        max_workers=4,
+        multiprocess=True,
+        trading_strategy_engine_version="0.4",
+    )
+
+    assert len(results) == 4
+    assert len(already_run_results) == 4
+
+    for r in results:
+        assert not r.cached
+
+    for r in already_run_results:
+        assert r.cached
