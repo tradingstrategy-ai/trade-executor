@@ -611,7 +611,10 @@ def test_benchmark_synthetic_trading_portfolio(
     # Check that the diagram has 3 plots
     assert len(fig.data) == 3
 
+    # Visualise long/short benchmark
     fig2 = visualise_long_short_benchmark(
-        state.name,
-        state.stats.portfolio,
+        state,
+        time_bucket,
     )
+
+    assert len(fig.data) == 3
