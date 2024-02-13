@@ -427,13 +427,13 @@ def visualise_grid_search_equity_curves(
         fig.add_trace(scatter)
 
     if benchmark_indexes is not None:
-        for name, curve in benchmark_indexes.items():
+        for benchmark_name, curve in benchmark_indexes.items():
             benchmark_colour = curve.attrs.get("colour", "black")
             scatter = Scatter(
                 x=curve.index,
                 y=curve,
                 mode="lines",
-                name=name,
+                name=benchmark_name,
                 line=dict(color=benchmark_colour),
                 showlegend=True,
             )
