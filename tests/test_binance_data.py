@@ -8,9 +8,10 @@ from unittest.mock import patch
 from tradeexecutor.utils.binance import create_binance_universe, fetch_binance_dataset
 from tradeexecutor.strategy.trading_strategy_universe import Dataset
 from tradingstrategy.binance.downloader import BinanceDownloader
+from tradingstrategy.chain import ChainId
 from tradingstrategy.timebucket import TimeBucket
 from tradingstrategy.binance.constants import BINANCE_EXCHANGE_ID, BINANCE_CHAIN_ID
-
+from tradingstrategy.utils.groupeduniverse import resample_candles
 
 START_AT = datetime.datetime(2021, 1, 1)
 END_AT = datetime.datetime(2021, 1, 2)
@@ -241,4 +242,65 @@ def test_binance_multi_pair():
     assert btc_row["pair_id"] == 2
     assert btc_row.to_dict() == {'open': 9367.76, 'high': 9409.99, 'low': 9350.0, 'close': 9384.61, 'volume': 3397.370382, 'pair_id': 2, 'base_token_symbol': 'BTC', 'quote_token_symbol': 'USDT', 'exchange_slug': 'binance', 'chain_id': -1.0, 'fee': 0.0005, 'buy_volume_all_time': 0.0, 'address': '0x1d06ef1d6470d25f8e3d6f04f5acc111f176939c', 'exchange_id': 129875571.0, 'token0_address': '0x505e65d08c67660dc618072422e9c78053c261e9', 'token1_address': '0x5b1a1833b16b6594f92daa9f6d9b7a6024bce9d0', 'token0_symbol': 'BTC', 'token1_symbol': 'USDT', 'token0_decimals': 18.0, 'token1_decimals': 18.0, 'timestamp': Timestamp('2020-02-01 20:00:00')}
 
+
+@pytest.mark.skipif(os.environ.get("GITHUB_ACTIONS", None) == "true", reason="Github US servers are blocked by Binance with HTTP 451")
+def test_binance_timezone():
+    """See timezone data is correct.
+
+    - Check for UTC issues
+    """
+
+    strategy_universe = create_binance_universe(
+        ["BTCUSDT", "ETHUSDT"],   # Binance internal tickers later mapped to Trading strategy DEXPair metadata class
+        candle_time_bucket=TimeBucket.h1,
+        stop_loss_time_bucket=None,
+        start_at=datetime.datetime(2019, 1, 1),  # Backtest for 5 years data
+        end_at=datetime.datetime(2019, 2, 1),
+        include_lending=False
+    )
+
+    pair_desc = (ChainId.centralised_exchange, "binance", "BTC", "USDT")
+    pair = strategy_universe.data_universe.pairs.get_pair_by_human_description(pair_desc)
+    btc = strategy_universe.data_universe.candles.get_last_entries_by_pair_and_timestamp(pair, strategy_universe.end_at)
+    assert btc.index[0] == pd.Timestamp("2019-01-01 00:00:00")
+
+
+@pytest.mark.skipif(os.environ.get("GITHUB_ACTIONS", None) == "true", reason="Github US servers are blocked by Binance with HTTP 451")
+def test_binance_resample_no_change():
+    """The candle data should not change if the resample input and output frequencies are the same.
+
+    - Load 1h stop loss base data
+
+    - Resample to 1d
+
+    - Resample to 1d again
+
+    - The result should be the samme
+    """
+
+    strategy_universe = create_binance_universe(
+        ["BTCUSDT", "ETHUSDT"],   # Binance internal tickers later mapped to Trading strategy DEXPair metadata class
+        candle_time_bucket=TimeBucket.d1,
+        stop_loss_time_bucket=TimeBucket.h1,
+        start_at=datetime.datetime(2019, 1, 1),  # Backtest for 5 years data
+        end_at=datetime.datetime(2019, 2, 1),
+        include_lending=False
+    )
+
+    pair_desc = (ChainId.centralised_exchange, "binance", "BTC", "USDT")
+    pair = strategy_universe.data_universe.pairs.get_pair_by_human_description(pair_desc)
+    btc = strategy_universe.data_universe.candles.get_last_entries_by_pair_and_timestamp(pair, strategy_universe.end_at)
+
+    assert btc.index[0] == pd.Timestamp('2019-01-01')
+    assert btc.index[1] == pd.Timestamp('2019-01-02')
+    btc_resampled_again = resample_candles(btc, TimeBucket.d1.to_pandas_timedelta())
+
+    assert btc_resampled_again.index[0] == pd.Timestamp('2019-01-01')
+    assert btc_resampled_again.index[1] == pd.Timestamp('2019-01-02')
+
+    for i in range(0, 4):
+        assert btc.iloc[i]["open"] == btc_resampled_again.iloc[i]["open"]
+        assert btc.iloc[i]["close"] == btc_resampled_again.iloc[i]["close"]
+        assert btc.iloc[i]["high"] == btc_resampled_again.iloc[i]["high"]
+        assert btc.iloc[i]["low"] == btc_resampled_again.iloc[i]["low"]
 

@@ -36,7 +36,7 @@ from tradingstrategy.pair import DEXPair
 def fetch_binance_dataset(
     symbols: list[str] | str,
     candle_time_bucket: TimeBucket,
-    stop_loss_time_bucket: TimeBucket,
+    stop_loss_time_bucket: TimeBucket | None = None,
     start_at: datetime.datetime | None = None,
     end_at: datetime.datetime | None = None,
     include_lending: bool = False,
@@ -84,6 +84,9 @@ def fetch_binance_dataset(
     downloader = BinanceDownloader()
 
     pairs = generate_pairs_for_binance(symbols)
+
+    if stop_loss_time_bucket is None:
+        stop_loss_time_bucket = candle_time_bucket
 
     # use stop_loss_time_bucket since, in this case, it's more granular data than the candle_time_bucket
     # we later resample to the higher time bucket for the backtest candles
@@ -166,7 +169,7 @@ def fetch_binance_dataset(
 def create_binance_universe(
     symbols: list[str] | str,
     candle_time_bucket: TimeBucket,
-    stop_loss_time_bucket: TimeBucket,
+    stop_loss_time_bucket: TimeBucket | None = None,
     start_at: datetime.datetime | None = None,
     end_at: datetime.datetime | None = None,
     reserve_pair_ticker: str | None = None,

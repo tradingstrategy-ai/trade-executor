@@ -188,6 +188,7 @@ class GridCombination:
 
     def validate(self):
         """Check arguments can be serialised as fs path."""
+        assert len(self.searchable_parameters) > 0, f"Grid search combination does not have any parameters that would have multiple values to search: {self.parameters}"
         assert isinstance(self.get_relative_result_path(), Path)
 
     def as_dict(self) -> dict:
