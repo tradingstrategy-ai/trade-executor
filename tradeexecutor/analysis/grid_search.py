@@ -321,9 +321,11 @@ def visualise_3d_scatter(
 def _get_hover_template(
     result: GridSearchResult,
     key_metrics = ("CAGR﹪", "Max Drawdown", "Time in Market", "Sharpe", "Sortino"),  # See quantstats
+    trade_metrics=("Annualised return %", ""),
     percent_metrics = ("CAGR﹪", "Max Drawdown", "Time in Market"),
 ):
 
+    # Get metrics calculated with QuantStats
     data = result.metrics["Strategy"]
     metrics = {}
     for name in key_metrics:
@@ -337,6 +339,10 @@ def _get_hover_template(
             template += f"{k}: {v:.2f}%<br>"
         else:
             template += f"{k}: {v:.2f}<br>"
+
+    # Get trade metrics
+    for k, v in result.summary.get_trading_core_metrics():
+        template += f"{k}: {v:.2f}<br>"
 
     return template
 

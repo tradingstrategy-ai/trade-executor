@@ -194,6 +194,23 @@ class TradeSummary:
         self.winning_take_profits_percent = calculate_percentage(self.winning_take_profits, self.take_profits)
         self.losing_take_profits_percent = calculate_percentage(self.losing_take_profits, self.take_profits)
 
+    def get_trading_core_metrics(self) -> Dict[str, str]:
+        """Get metrics displayed on a equity curve benchmark tooltip.
+
+        See :py:func:``tradeexecutor.analysis.grid_search._get_hover_template`.
+
+        :return:
+            Preformatted dictionary
+        """
+        return {
+            "Positions taken": str(self.total_positions),
+            "Position win %": as_percent(self.win_percent),
+            "Annualised trade return %": as_percent(self.return_percent),
+            "Median win %": as_percent(self.median_win),
+            "Most consequence wins": str(self.max_pos_cons),
+            "Most consequence losses": str(self.max_neg_cons),
+        }
+
     def to_dataframe(self, format_headings=True) -> pd.DataFrame:
         """Creates a human-readable Pandas dataframe summary table from the object."""
 

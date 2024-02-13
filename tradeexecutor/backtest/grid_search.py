@@ -56,6 +56,8 @@ class GridSearchDataRetention(enum.Enum):
     """What grid search data we generate and load.
 
     - We want to discard unneeded data to save memory
+
+    See :py:class:`GridSearchResult`.
     """
 
     #: Pass all grid search data to the parent notebook process
@@ -216,6 +218,8 @@ class GridSearchResult:
     - Calculate various statistics and curves ready in a multiprocess worker
 
     - Results can be cached on a disk, as a pickle
+
+    - Some of the data might not be available or discarded as per :py:class:`GridSearchDataRetention`
     """
 
     #: For which grid combination this result is
@@ -630,8 +634,11 @@ def perform_grid_search(
     logger.info("Read %d cached results", len(cached_results))
 
     if len(cached_results) == len(combinations):
-        logger.info("All results were cached, grid search skipped")
+        print("All results were cached, grid search skipped")
         return list(cached_results.values())
+    
+    if len(cached_results) == 0:
+        print("No cached grid search results found from previous runs")
 
     if max_workers > 1:
 
