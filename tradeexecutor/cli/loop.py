@@ -592,11 +592,15 @@ class ExecutionLoop:
         
         :return: StatisticsTable of the latest long short metrics
         """
-        backtested_state = self.metadata.backtested_state if self.metadata else None
-        backtest_cutoff = self.metadata.key_metrics_backtest_cut_off if self.metadata else datetime.timedelta(days=90)
-        long_short_metrics_latest = serialise_long_short_stats_as_json_table(
-            state, backtested_state, backtest_cutoff
-        )
+        long_short_metrics_latest = None
+        
+        if self.execution_context.mode.is_live_trading():
+            backtested_state = self.metadata.backtested_state if self.metadata else None
+            backtest_cutoff = self.metadata.key_metrics_backtest_cut_off if self.metadata else datetime.timedelta(days=90)
+            long_short_metrics_latest = serialise_long_short_stats_as_json_table(
+                state, backtested_state, backtest_cutoff
+            )
+            
         return long_short_metrics_latest
 
     def check_position_triggers(self,
@@ -625,6 +629,10 @@ class ExecutionLoop:
             return []
 
         routing_state, pricing_model, valuation_method = self.runner.setup_routing(universe)
+        
+        long_short_metrics_latest = (
+            self.extract_long_short_stats_from_state(state)
+        )
 
         # Do stop loss checks for every time point between now and next strategy cycle
         trades = self.runner.check_position_triggers(
@@ -632,7 +640,8 @@ class ExecutionLoop:
             state,
             universe,
             pricing_model,
-            routing_state
+            routing_state,
+            long_short_metrics_latest=long_short_metrics_latest,
         )
 
         # Check that state is good before writing it to the disk
@@ -731,6 +740,12 @@ class ExecutionLoop:
         # Do stop loss checks for every time point between now and next strategy cycle
         tp = 0
         sl = 0
+        
+        long_short_metrics_latest = (
+            self.extract_long_short_stats_from_state(state)
+        )
+        
+        assert long_short_metrics_latest == None, "long_short_metrics_latest must be None during backtesting"
 
         while ts < end_ts:
             logger.debug("Backtesting take profit/stop loss at %s", ts)
@@ -739,7 +754,8 @@ class ExecutionLoop:
                 state,
                 universe,
                 stop_loss_pricing_model,
-                routing_state
+                routing_state,
+                long_short_metrics_latest=long_short_metrics_latest,
             )
             for t in trades:
                 if t.is_stop_loss():

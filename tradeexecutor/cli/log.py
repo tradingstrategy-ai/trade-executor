@@ -187,7 +187,11 @@ def setup_pytest_logging(request=None, mute_requests=True) -> logging.Logger:
 
 
 def setup_notebook_logging(log_level: str | int=logging.WARNING) -> logging.Logger:
-    """Setup logger in notebook / backtesting environments."""
+    """Setup logger in notebook / backtesting environments.
+
+    This will enable logging for all loggeres and the output is too verbose
+    for backtesting.
+    """
 
     logger = logging.getLogger()
 
@@ -223,6 +227,35 @@ def setup_notebook_logging(log_level: str | int=logging.WARNING) -> logging.Logg
     # maplotlib burps a lot on startup
     logging.getLogger("matplotlib").setLevel(logging.WARNING)
 
+    # Performance metrics, irrelevant for backtesting
+    logging.getLogger("tradeexecutor.utils.timer").setLevel(logging.WARNING)
+
+    return logger
+
+
+def setup_strategy_logging(default_log_level: str | int=logging.WARNING) -> logging.Logger:
+    """Setup logging for backtesting.
+
+    This will enable logging :py:class:`~tradeexecutor.strategy.pandas_trading.PositionManager` only.
+
+    See also :py:meth:`tradeexecutor.strategy.pandas_trading.position_manager.PositionManager.log`
+    for examples.
+    """
+
+    # TODO: coloredlogs disabled for notebook -
+    # see https://stackoverflow.com/a/68930736/315168
+    # how to add native HTML log output
+    # Use colored logging output for console
+    # coloredlogs.install(level=log_level, fmt=fmt, logger=logger)
+
+    if isinstance(default_log_level, str):
+        default_log_level = default_log_level.upper()
+
+    # See https://stackoverflow.com/a/56532290/315168
+    logger = logging.getLogger()
+    logging.basicConfig(stream=sys.stdout, level=default_log_level)
+    setup_custom_log_levels()
+    logging.getLogger("tradeexecutor.strategy.pandas_trader.position_manager").setLevel(logging.INFO)
     return logger
 
 

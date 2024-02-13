@@ -11,7 +11,7 @@ import pandas as pd
 
 from tradeexecutor.utils.accuracy import QUANTITY_EPSILON
 from tradingstrategy.candle import CandleSampleUnavailable
-from tradingstrategy.pair import DEXPair
+from tradingstrategy.pair import DEXPair, HumanReadableTradingPairDescription
 from tradingstrategy.universe import Universe
 
 from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier, TradingPairKind
@@ -137,13 +137,14 @@ class PositionManager:
 
     """
 
-    def __init__(self,
-                 timestamp: Union[datetime.datetime, pd.Timestamp],
-                 universe: Universe | TradingStrategyUniverse,
-                 state: State,
-                 pricing_model: PricingModel,
-                 default_slippage_tolerance=0.017,
-                 ):
+    def __init__(
+        self,
+        timestamp: Union[datetime.datetime, pd.Timestamp],
+        universe: Universe | TradingStrategyUniverse,
+        state: State,
+        pricing_model: PricingModel,
+        default_slippage_tolerance=0.017,
+    ):
 
         """Create a new PositionManager instance.
         
@@ -254,6 +255,21 @@ class PositionManager:
             p for p in self.state.portfolio.open_positions.values()
             if p.is_credit_supply()
         ]) > 0
+
+    def get_current_cash(self) -> USDollarAmount:
+        """Get the available cash in hand.
+
+        - Cash that sits in the strategy treasury
+
+        - Cash not in the open trading positions
+
+        - Cash not allocated to the trading positions that are going to be opened on this cycle
+
+        :return:
+            US Dollar amount
+        """
+        cash = self.state.portfolio.get_current_cash()  # How much cash we have in a hand
+        return cash
 
     def get_current_position(self) -> TradingPosition:
         """Get the current single position.
@@ -424,8 +440,25 @@ class PositionManager:
         """Return the active portfolio of the strategy."""
         return self.state.portfolio
 
-    def get_trading_pair(self, pair_id: int) -> TradingPairIdentifier:
-        """Get a trading pair identifier by its internal id.
+    def get_trading_pair(self, pair: int | DEXPair | HumanReadableTradingPairDescription) -> TradingPairIdentifier:
+        """Get a trading pair identifier by its internal id, description or `DEXPair` data object.
+
+        Example:
+
+        .. code-block:: python
+
+            # List of pair descriptions we used to look up pair metadata
+            our_pairs = [
+                (ChainId.centralised_exchange, "binance", "BTC", "USDT"),
+                (ChainId.centralised_exchange, "binance", "ETH", "USDT"),
+            ]
+
+            # Resolve our pair metadata for our two pair strategy
+            position_manager = PositionManager(timestamp, strategy_universe, state, pricing_model)
+            btc_pair = position_manager.get_trading_pair(our_pairs[0])
+            eth_pair = position_manager.get_trading_pair(our_pairs[1])
+
+            position_manager.log(f"BTC pair data is: {btc_pair}")
 
         Note that internal integer ids are not stable over
         multiple trade cycles and might be reset.
@@ -433,9 +466,21 @@ class PositionManager:
         pair identifier.
 
         :return:
-            Trading pair information
+            Trading pair identifier.
+
+            The identifier is a pass-by-copy reference used in the strategy state internally.
         """
-        dex_pair = self.data_universe.pairs.get_pair_by_id(pair_id)
+
+        if type(pair) == int:
+            pair_id = pair
+            dex_pair = self.data_universe.pairs.get_pair_by_id(pair_id)
+        elif type(pair) == tuple:
+            dex_pair = self.data_universe.pairs.get_pair_by_human_description(pair)
+        elif isinstance(pair, DEXPair):
+            dex_pair = pair
+        else:
+            raise RuntimeError(f"Unknown trading pair reference type: {pair}")
+
         return translate_trading_pair(dex_pair)
 
     def get_pair_fee(self,
@@ -981,6 +1026,7 @@ class PositionManager:
 
         """
 
+        assert position is not None, f"close_position() called with position == None"
         # assert position.is_long(), "Only long supported for now"
         assert position.is_open(), f"Tried to close already closed position {position}"
 
@@ -1537,6 +1583,71 @@ class PositionManager:
             raise LiquidationRisked(f"The position value adjust to new value {new_value}, delta {delta:+f} USD, delta {borrowed_quantity_delta:+f} {base_token}, would liquidate the position,") from e
 
         return [adjust_trade]
+
+    def log(self, msg: str, level=logging.INFO, prefix="{self.timestamp}: "):
+        """Log debug info.
+
+        Useful to debug the backtesting when it is not making trades.
+
+        To log a message from your `decide_trade` functions:
+
+        .. code-block:: python
+
+            position_manager = PositionManager(timestamp, strategy_universe, state, pricing_model)
+            # ... some indicator calculation code goes here...
+            position_manager.log(f"RSI current: {current_rsi_values[btc_pair]}, previous: {previous_rsi_values[btc_pair]}")
+
+        This will create output like:
+
+        .. code-block:: text
+
+            INFO:tradeexecutor.strategy.pandas_trader.position_manager:2019-08-20 00:00:00: RSI current: 65.0149379533956, previous: 65.0149379533956
+            INFO:tradeexecutor.strategy.pandas_trader.position_manager:2019-08-21 00:00:00: RSI current: 57.38598755909552, previous: 57.38598755909552
+
+        To make notebook logging visible you need to pass `strategy_logging=True` to :py:func:`tradeexecutor.backtest.backtest_runner.run_backtest_inline`:
+
+        .. code-block:: python
+
+            from tradeexecutor.strategy.cycle import CycleDuration
+            from tradeexecutor.backtest.backtest_runner import run_backtest_inline
+
+            state, universe, debug_dump = run_backtest_inline(
+                name="RSI multipair",
+                engine_version="0.3",
+                decide_trades=decide_trades,
+                client=client,
+                cycle_duration=CycleDuration.cycle_1d,
+                universe=strategy_universe,
+                initial_deposit=10_000,
+                strategy_logging=True,
+            )
+
+        .. note::
+
+            Any logging output will likely mess up the rendering of the backtest progress bar.
+
+        :param msg:
+            Message to log
+
+        :param level:
+            Python logging level.
+
+            Defaults to info.
+
+        :param prefix:
+            String prefix added to each logged message.
+
+            By default shows the strategy timestamp.
+            Can use Python string formatting within PositionManager context.
+        """
+
+        if prefix:
+            msg = prefix.format(self=self) + msg
+
+        logger.log(
+            level,
+            msg,
+        )
 
 
 def explain_open_position_failure(

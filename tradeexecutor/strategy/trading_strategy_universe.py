@@ -149,6 +149,20 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
     #: E.g. for 90 days you can use `datetime.timedelta(days=90)`
     required_history_period: Optional[datetime.timedelta] = None
 
+    #: What options were applied to this universe
+    #:
+    #: Could be e.g.
+    #:
+    #: - Loaded data range
+    #: - Backtested data range
+    #:
+    #: Not set in legacy code paths.
+    #: Currently the life cycle of this variable is not well-defined,
+    #: mostly used to pass the backtest data range around,
+    #: and set before backtest run, not during the universe construction.
+    #:
+    options: UniverseOptions | None = None
+
     def __repr__(self):
         pair_count = self.data_universe.pairs.get_count()
         if pair_count <= 3:
@@ -166,6 +180,26 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
         if self.backtest_stop_loss_candles is not None:
             assert isinstance(self.backtest_stop_loss_candles, GroupedCandleUniverse), f"Expected GroupedCandleUniverse, got {self.backtest_stop_loss_candles.__class__}"
             assert isinstance(self.backtest_stop_loss_time_bucket, TimeBucket)
+
+    @property
+    def start_at(self) -> datetime.datetime:
+        """Start timestamp of the data.
+
+        - Valid for backtesting only
+        - Based on OHLCV candles
+        """
+        start, end = self.data_universe.candles.get_timestamp_range()
+        return start.to_pydatetime()
+
+    @property
+    def end_at(self) -> datetime.datetime:
+        """End timestamp of the data.
+
+        - Valid for backtesting only
+        - Based on OHLCV candles
+        """
+        start, end = self.data_universe.candles.get_timestamp_range()
+        return end.to_pydatetime()
 
     @property
     def universe(self):
@@ -330,7 +364,7 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
         """Create a copy of this universe.
 
         Any dataframes are now copied,
-        but set by reference.
+        but set by reference, so do not mutate in place.
         """
         u = self.data_universe
         new_universe = Universe(
@@ -340,6 +374,8 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
             pairs=u.pairs,
             candles=u.candles,
             liquidity=u.liquidity,
+            resampled_liquidity=u.resampled_liquidity,
+            lending_candles=u.lending_candles,
         )
         return TradingStrategyUniverse(
             data_universe=new_universe,
@@ -1443,6 +1479,7 @@ def translate_trading_pair(pair: DEXPair) -> TradingPairIdentifier:
         exchange_address=pair.exchange_address,
         fee=fee,
         reverse_token_order=pair.token0_symbol != pair.base_token_symbol,
+        exchange_name=pair.exchange_name,
     )
 
 

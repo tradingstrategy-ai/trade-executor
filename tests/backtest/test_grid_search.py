@@ -1,11 +1,15 @@
 """Grid search tests."""
 import datetime
 from pathlib import Path
+from typing import List
 
 import pandas as pd
 import pytest
 from plotly.graph_objs import Figure
 
+from tradeexecutor.state.trade import TradeExecution
+from tradeexecutor.strategy.cycle import CycleDuration
+from tradeexecutor.strategy.parameters import StrategyParameters
 from tradingstrategy.candle import GroupedCandleUniverse
 from tradingstrategy.chain import ChainId
 from tradingstrategy.exchange import Exchange
@@ -14,7 +18,7 @@ from tradingstrategy.universe import Universe
 
 from tradeexecutor.analysis.grid_search import analyse_grid_search_result, visualise_table, visualise_heatmap_2d
 from tradeexecutor.backtest.grid_search import prepare_grid_combinations, run_grid_search_backtest, perform_grid_search, GridCombination, GridSearchResult, \
-    pick_grid_search_result, pick_best_grid_search_result
+    pick_grid_search_result, pick_best_grid_search_result, GridParameter
 from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier
 from tradeexecutor.state.state import State
 from tradeexecutor.state.visualisation import PlotKind
@@ -329,6 +333,68 @@ def test_perform_grid_search_multiprocess(
         combinations,
         max_workers=4,
         multiprocess=True,
+    )
+
+    assert len(results) == 4
+
+    # Check we got results back
+    for r in results:
+        assert r.metrics.loc["Sharpe"][0] != 0
+        assert r.process_id > 1
+
+
+def _decide_trades_v3(
+    timestamp: pd.Timestamp,
+    parameters: StrategyParameters,
+    strategy_universe: TradingStrategyUniverse,
+    state: State,
+    pricing_model: PricingModel) -> List[TradeExecution]:
+    """A simple strategy that puts all in to our lending reserve."""
+    assert "stop_loss_pct" in parameters
+    assert "slow_ema_candle_count" in parameters
+    assert "fast_ema_candle_count" in parameters
+    assert type(parameters.stop_loss_pct) == float
+    assert type(parameters.slow_ema_candle_count) == int, f"Got {type(parameters.slow_ema_candle_count)}"
+    assert type(parameters.fast_ema_candle_count) == int
+    return []
+
+
+def test_perform_grid_search_engine_v4(
+    strategy_universe,
+    tmp_path,
+):
+    """Run a grid search using multiple threads, engine version 0.4.
+
+    - Uses a new style paramaeter passing
+    """
+    class InputParameters:
+        stop_loss_pct = [0.9, 0.95]
+        slow_ema_candle_count = 7
+        fast_ema_candle_count = [1, 2]
+        cycle_duration = CycleDuration.cycle_1d
+        initial_cash = 10_000
+
+    combinations = prepare_grid_combinations(InputParameters, tmp_path)
+
+    # Sanity check for searchable parameters
+    cycle_duration: GridParameter = combinations[0].parameters[0]
+    assert cycle_duration.name == "cycle_duration"
+    assert cycle_duration.single
+
+    fast_ema_candle_count: GridParameter = combinations[0].parameters[1]
+    assert fast_ema_candle_count.name == "fast_ema_candle_count"
+    assert not fast_ema_candle_count.single
+
+    assert len(combinations[0].searchable_parameters) == 2
+    assert len(combinations[0].parameters) == 5
+
+    results = perform_grid_search(
+        _decide_trades_v3,
+        strategy_universe,
+        combinations,
+        max_workers=4,
+        multiprocess=True,
+        trading_strategy_engine_version="0.4",
     )
 
     assert len(results) == 4

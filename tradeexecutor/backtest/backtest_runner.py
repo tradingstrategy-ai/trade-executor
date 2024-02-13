@@ -19,7 +19,7 @@ from tradeexecutor.backtest.backtest_sync import BacktestSyncModel
 from tradeexecutor.backtest.legacy_backtest_sync import BacktestSyncer
 from tradeexecutor.backtest.backtest_valuation import BacktestValuationModel
 from tradeexecutor.backtest.simulated_wallet import SimulatedWallet
-from tradeexecutor.cli.log import setup_notebook_logging, setup_custom_log_levels
+from tradeexecutor.cli.log import setup_notebook_logging, setup_custom_log_levels, setup_strategy_logging
 from tradeexecutor.cli.loop import ExecutionLoop, ExecutionTestHook
 from tradeexecutor.ethereum.routing_data import get_routing_model, get_backtest_routing_model
 from tradeexecutor.state.state import State
@@ -33,7 +33,8 @@ from tradeexecutor.strategy.generic.generic_pricing_model import GenericPricing
 from tradeexecutor.strategy.generic.generic_router import GenericRouting
 from tradeexecutor.strategy.pandas_trader.runner import PandasTraderRunner
 from tradeexecutor.strategy.strategy_module import parse_strategy_module, \
-    DecideTradesProtocol, CreateTradingUniverseProtocol, CURRENT_ENGINE_VERSION, StrategyModuleInformation, DecideTradesProtocol2, read_strategy_module
+    DecideTradesProtocol, CreateTradingUniverseProtocol, CURRENT_ENGINE_VERSION, StrategyModuleInformation, DecideTradesProtocol2, read_strategy_module, \
+    StrategyParameters, DecideTradesProtocol3
 from tradeexecutor.strategy.engine_version import TradingStrategyEngineVersion
 from tradeexecutor.strategy.reserve_currency import ReserveCurrency
 from tradeexecutor.strategy.default_routing_options import TradeRouting
@@ -93,6 +94,12 @@ class BacktestSetup:
 
     # strategy_module: StrategyModuleInformation
     pair_configurator: Optional[EthereumBacktestPairConfigurator] = None
+
+    #: Backtest/grid parameters
+    #:
+    #: When trading_strategy_engine_version >= 0.4
+    #:
+    parameters: StrategyParameters | None = None
 
     def backtest_static_universe_strategy_factory(
             self,
@@ -479,6 +486,7 @@ def run_backtest(
         mode=ExecutionMode.backtesting,
         timed_task_context_manager=timed_task,
         engine_version=setup.trading_strategy_engine_version,
+        parameters=setup.parameters,
     )
 
     main_loop = ExecutionLoop(
@@ -520,11 +528,11 @@ def run_backtest_inline(
     end_at: Optional[datetime.datetime] = None,
     minimum_data_lookback_range: Optional[datetime.timedelta] = None,
     client: Optional[Client],
-    decide_trades: DecideTradesProtocol | DecideTradesProtocol2,
+    decide_trades: DecideTradesProtocol | DecideTradesProtocol2 | DecideTradesProtocol3,
     cycle_duration: CycleDuration,
     initial_deposit: float,
     reserve_currency: ReserveCurrency | None = None,
-    trade_routing: Optional[TradeRouting],
+    trade_routing: Optional[TradeRouting] | None = None,
     create_trading_universe: Optional[CreateTradingUniverseProtocol] = None,
     universe: Optional[TradingStrategyUniverse] = None,
     routing_model: Optional[BacktestRoutingModel] = None,
@@ -536,6 +544,8 @@ def run_backtest_inline(
     name: str="backtest",
     allow_missing_fees=False,
     engine_version: Optional[TradingStrategyEngineVersion] = None,
+    strategy_logging=False,
+    parameters: StrategyParameters | None = None,
 ) -> Tuple[State, TradingStrategyUniverse, dict]:
     """Run backtests for given decide_trades and create_trading_universe functions.
 
@@ -546,10 +556,14 @@ def run_backtest_inline(
         Name for this backtest. If not set default to "backtest".
 
     :param start_at:
-        When backtesting starts
+        When backtesting starts.
+
+        If not given take the date of the first candle.
 
     :param end_at:
-        When backtesting ends
+        When backtesting ends.
+
+        If not given take the date of the last candle.
 
     :param minimum_data_lookback_range:
         If start_at and end_at are not given, use this range to determine the backtesting period. Cannot be used with start_at and end_at. Automatically ends at the current time.
@@ -620,6 +634,11 @@ def run_backtest_inline(
 
         See :py:mod:`tradeexecutor.strategy.engine_version`.
 
+    :param strategy_logging:
+        Enable PositionManager log output.
+
+        See :py:meth:`tradeexecutor.strategy.pandas_trading.position_manager.PositionManager.log` for usage.
+
     :return:
         tuple (State of a completely executed strategy, trading strategy universe, debug dump dict)
     """
@@ -627,6 +646,11 @@ def run_backtest_inline(
     if ignore:
         # https://www.python.org/dev/peps/pep-3102/
         raise TypeError("Only keyword arguments accepted")
+
+    if start_at is None and end_at is None:
+        start_at, end_at = universe.data_universe.candles.get_timestamp_range()
+        start_at = start_at.to_pydatetime()
+        end_at = end_at.to_pydatetime()
 
     if start_at:
         assert isinstance(start_at, datetime.datetime)
@@ -641,12 +665,18 @@ def run_backtest_inline(
     if universe:
         assert isinstance(universe, TradingStrategyUniverse)
 
+    if trade_routing is None:
+        trade_routing = TradeRouting.default
+
     if trade_routing == TradeRouting.default:
         assert universe is not None, "Cannot do generic routing in backtesting without universe"
 
     # Setup our special logging level if not done yet.
     # (Not done when called from notebook)
-    setup_notebook_logging(log_level)
+    if strategy_logging:
+        setup_strategy_logging()
+    else:
+        setup_notebook_logging(log_level)
 
     # Make sure no rounding bugs
     setup_decimal_accuracy()
@@ -716,11 +746,16 @@ def run_backtest_inline(
         name=name,
         data_preload=data_preload,
         minimum_data_lookback_range=minimum_data_lookback_range,
+        parameters=parameters,
     )
 
     state, universe, debug_dump = run_backtest(backtest_setup, client, allow_missing_fees=True)
 
     debug_dump["wallet"] = wallet
+
+    #: TODO: Hack to pass the backtest data range to the grid search
+    #:
+    universe.options = universe_options
 
     return state, universe, debug_dump
 

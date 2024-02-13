@@ -94,7 +94,11 @@ def calculate_advanced_metrics(
     return result
 
 
-def visualise_advanced_metrics(returns: pd.Series, mode: AdvancedMetricsMode=AdvancedMetricsMode.basic) -> pd.DataFrame:
+def visualise_advanced_metrics(
+    returns: pd.Series,
+    mode: AdvancedMetricsMode=AdvancedMetricsMode.basic,
+    benchmark: pd.Series | None = None,
+) -> pd.DataFrame:
     """Calculate advanced strategy performance statistics using Quantstats.
 
     Calculates multiple metrics used to benchmark strategies for :term:`risk-adjusted returns`
@@ -114,6 +118,25 @@ def visualise_advanced_metrics(returns: pd.Series, mode: AdvancedMetricsMode=Adv
         df = visualise_advanced_metrics(returns)
         display(df)
 
+    Example with benchmarking against buy and hold ETH:
+
+    .. code-block:: python
+
+        from tradeexecutor.visual.equity_curve import calculate_equity_curve, calculate_returns, generate_buy_and_hold_returns
+        from tradeexecutor.analysis.advanced_metrics import visualise_advanced_metrics, AdvancedMetricsMode
+
+        equity = calculate_equity_curve(state)
+        returns = calculate_returns(equity)
+        benchmark_returns = generate_buy_and_hold_returns(benchmark_indexes["ETH"])
+
+        metrics = visualise_advanced_metrics(
+            returns,
+            mode=AdvancedMetricsMode.full,
+            benchmark=benchmark_returns,
+        )
+
+        display(metrics)
+
     See also :py:func:`calculate_advanced_metrics`.
 
     :param returns:
@@ -124,6 +147,9 @@ def visualise_advanced_metrics(returns: pd.Series, mode: AdvancedMetricsMode=Adv
     :param mode:
         Full or basic stats
 
+    :param benchmark:
+        Benchmark portfolio or buy and hold asset.
+
     :return:
         A DataFrame ready to display
 
@@ -132,5 +158,11 @@ def visualise_advanced_metrics(returns: pd.Series, mode: AdvancedMetricsMode=Adv
     with warnings.catch_warnings():
         from quantstats.reports import metrics
     # Internal sets the flag for percent output
-    df = metrics(returns, periods_per_year=365, mode=mode.value, internal=True, display=False)
+    df = metrics(
+        returns,
+        benchmark=benchmark,
+        periods_per_year=365,
+        mode=mode.value,
+        internal=True,
+        display=False)
     return df

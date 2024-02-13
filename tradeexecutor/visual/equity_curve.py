@@ -12,6 +12,7 @@ from matplotlib.figure import Figure
 from tradeexecutor.state.state import State
 from tradeexecutor.state.statistics import Statistics, PortfolioStatistics
 from tradeexecutor.state.position import TradingPosition
+from tradeexecutor.state.types import USDollarAmount
 
 
 def calculate_equity_curve(
@@ -107,6 +108,26 @@ def calculate_returns(equity_curve: pd.Series) -> pd.Series:
 
     """
     return equity_curve.pct_change().fillna(0.0)
+
+
+def generate_buy_and_hold_returns(
+    buy_and_hold_price_series: pd.Series,
+):
+    """Create a benchmark series based on price action.
+
+    - Create a returns series that can be used as a benchmark in :py:func:`tradeexecutor.analysis.advanced_metrics.visualise_advanced_metrics`
+
+    Example:
+
+    .. code-block:: python
+
+        eth_index = strategy_universe.data_universe.candles.get_candles_by_pair(eth_pair)["close"]
+        benchmark_returns = generate_buy_and_hold_returns(eth_index)
+
+    """
+    assert isinstance(buy_and_hold_price_series, pd.Series)
+    returns = calculate_returns(buy_and_hold_price_series)
+    return returns
 
 
 def calculate_cumulative_return(returns: pd.Series) -> pd.Series:
@@ -501,3 +522,36 @@ z
     flow_delta = flow.resample(freq).sum()
 
     return equity_delta - flow_delta
+
+
+def calculate_non_cumulative_daily_returns(state: State, freq_base: pd.offsets.DateOffset | None = pd.offsets.Day()) -> pd.Series:
+    """Calculates the the non cumulative daily returns for the strategy over time. 
+
+    - Accounts for multiple positions in the same day
+    - If no positions/trades are made on a day, it will be filled with 0
+
+    .. note:: 
+        Forward fill cannot be used with this method since the stat for each day represents the realised profit for that day only.
+        So we fill na values with 0 
+
+    :param state: Strategy state
+    :param freq_base: Time frequency to resample to
+    :return: Pandas series
+    """
+    returns = calculate_size_relative_realised_trading_returns(state)
+    non_cumulative_daily_returns = returns.add(1).resample(freq_base).prod().sub(1).fillna(0)
+    return non_cumulative_daily_returns
+
+def calculate_cumulative_daily_returns(state: State, freq_base: pd.offsets.DateOffset | None = pd.offsets.Day()) -> pd.Series:
+    """Calculates the cumulative daily returns for the strategy over time
+
+    - Accounts for multiple positions in the same day
+    - If no positions/trades are made on a day, that day will use latest non-zero profit value (forward fill)
+
+    :param state: Strategy state
+    :param freq_base: Time frequency to resample to
+    :return: Pandas series
+    """
+    returns = calculate_compounding_realised_trading_profitability(state)
+    cumulative_daily_returns = returns.add(1).resample(freq_base).prod().sub(1).ffill()
+    return cumulative_daily_returns

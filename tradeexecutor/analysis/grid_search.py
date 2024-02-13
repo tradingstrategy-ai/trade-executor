@@ -5,7 +5,7 @@
 - Heatmap and other comparison methods
 
 """
-
+import textwrap
 from typing import List
 
 import numpy as np
@@ -13,10 +13,11 @@ import pandas as pd
 from IPython.core.display_functions import display
 
 import plotly.express as px
-from plotly.graph_objs import Figure
+from plotly.graph_objs import Figure, Scatter
 
 from tradeexecutor.backtest.grid_search import GridSearchResult
-
+from tradeexecutor.state.types import USDollarAmount
+from tradeexecutor.visual.benchmark import visualise_all_cash, visualise_portfolio_equity_curve
 
 VALUE_COLS = ["Annualised return", "Max drawdown", "Sharpe", "Sortino", "Average position", "Median position"]
 
@@ -103,7 +104,7 @@ def analyse_grid_search_result(
     rows = [analyse_combination(r, min_positions_threshold) for r in results]
     df = pd.DataFrame(rows)
     r = results[0]
-    param_names = [p.name for p in r.combination.parameters]
+    param_names = [p.name for p in r.combination.searchable_parameters]
     df = df.set_index(param_names)
     df = df.sort_index()
     return df
@@ -155,12 +156,12 @@ def visualise_table(df: pd.DataFrame):
 
 
 def visualise_heatmap_2d(
-        result: pd.DataFrame,
-        parameter_1: str,
-        parameter_2: str,
-        metric: str,
-        color_continuous_scale='Bluered_r',
-        continuous_scale: bool | None = None,
+    result: pd.DataFrame,
+    parameter_1: str,
+    parameter_2: str,
+    metric: str,
+    color_continuous_scale='Bluered_r',
+    continuous_scale: bool | None = None,
 ) -> Figure:
     """Draw a heatmap square comparing two different parameters.
 
@@ -233,3 +234,206 @@ def visualise_heatmap_2d(
     return fig
 
 
+def visualise_3d_scatter(
+    flattened_result: pd.DataFrame,
+    parameter_x: str,
+    parameter_y: str,
+    parameter_z: str,
+    measured_metric: str,
+    color_continuous_scale="Bluered_r",  # Reversed, blue = best
+    height=600,
+) -> Figure:
+    """Draw a 3D scatter plot for grid search results.
+
+    Create an interactive 3d chart to explore three different parameters and one performance measurement
+    of the grid search results.
+
+    Example:
+
+    .. code-block:: python
+
+        from tradeexecutor.analysis.grid_search import analyse_grid_search_result
+        table = analyse_grid_search_result(grid_search_results)
+        flattened_results = table.reset_index()
+        flattened_results["Annualised return %"] = flattened_results["Annualised return"] * 100
+        fig = visualise_3d_scatter(
+            flattened_results,
+            parameter_x="rsi_days",
+            parameter_y="rsi_high",
+            parameter_z="rsi_low",
+            measured_metric="Annualised return %"
+        )
+        fig.show()
+
+    :param flattened_result:
+        Grid search results as a DataFrame.
+
+        Created by :py:func:`analyse_grid_search_result`.
+
+    :param parameter_x:
+        X axis
+
+    :param parameter_y:
+        Y axis
+
+    :param parameter_z:
+        Z axis
+
+    :param parameter_colour:
+        Output we compare.
+
+        E.g. `Annualised return`
+
+    :param color_continuous_scale:
+        The name of Plotly gradient used for the colour scale.
+
+        `See the Plotly continuos scale color gradient options <https://plotly.com/python/builtin-colorscales/>`__.
+
+    :return:
+        Plotly figure to display
+    """
+
+    assert isinstance(flattened_result, pd.DataFrame)
+    assert type(parameter_x) == str
+    assert type(parameter_y) == str
+    assert type(parameter_z) == str
+    assert type(measured_metric) == str
+
+    fig = px.scatter_3d(
+        flattened_result,
+        x=parameter_x,
+        y=parameter_y,
+        z=parameter_z,
+        color=measured_metric,
+        color_continuous_scale=color_continuous_scale,
+        height=height,
+    )
+
+    return fig
+
+
+def _get_hover_template(
+    result: GridSearchResult,
+    key_metrics = ("CAGR﹪", "Max Drawdown", "Time in Market", "Sharpe", "Sortino"),  # See quantstats
+    percent_metrics = ("CAGR﹪", "Max Drawdown", "Time in Market"),
+):
+
+    data = result.metrics["Strategy"]
+    metrics = {}
+    for name in key_metrics:
+        metrics[name] = data[name]
+
+    template = textwrap.dedent(f"""<b>{result.get_label()}</b><br><br>""")
+
+    for k, v in metrics.items():
+        if k in percent_metrics:
+            v *= 100
+            template += f"{k}: {v:.2f}%<br>"
+        else:
+            template += f"{k}: {v:.2f}<br>"
+
+    return template
+
+
+def visualise_grid_search_equity_curves(
+    results: List[GridSearchResult],
+    name: str | None = None,
+    benchmark_indexes: pd.DataFrame | None = None,
+    height=1200,
+    colour="rgba(160, 160, 160, 0.5)",
+) -> Figure:
+    """Draw multiple equity curves in the same chart.
+
+    - See how all grid searched strategies work
+
+    - Benchmark against buy and hold of various assets
+
+    - Benchmark against hold all cash
+
+    Example for a single trading pair strategy:
+
+    .. code-block:: python
+
+        TODO
+
+    :param results:
+        Results from the grid search.
+
+    :param benchmark_indexes:
+        List of other asset price series displayed on the timeline besides equity curve.
+
+        DataFrame containing multiple series.
+
+        - Asset name is the series name.
+        - Setting `colour` for `pd.Series.attrs` allows you to override the colour of the index
+
+    :param height:
+        Chart height in pixels
+
+    :param start_at:
+        When the backtest started
+
+    :param end_at:
+        When the backtest ended
+
+    :param additional_indicators:
+        Additional technical indicators drawn on this chart.
+
+        List of indicator names.
+
+        The indicators must be plotted earlier using `state.visualisation.plot_indicator()`.
+
+        **Note**: Currently not very useful due to Y axis scale
+
+    """
+
+    if name is None:
+        name = "Grid search equity curve comparison"
+
+    fig = Figure()
+
+    for result in results:
+        curve = result.equity_curve
+        label = result.get_label()
+        template =_get_hover_template(result)
+        scatter = Scatter(
+            x=curve.index,
+            y=curve,
+            mode="lines",
+            name="",  # Hides hover legend, use hovertext only
+            line=dict(color=colour),
+            showlegend=False,
+            hovertemplate=template,
+            hovertext=None,
+        )
+        fig.add_trace(scatter)
+
+    if benchmark_indexes is not None:
+        for name, curve in benchmark_indexes.items():
+            benchmark_colour = curve.attrs.get("colour", "black")
+            scatter = Scatter(
+                x=curve.index,
+                y=curve,
+                mode="lines",
+                name=name,
+                line=dict(color=benchmark_colour),
+                showlegend=True,
+            )
+            fig.add_trace(scatter)
+
+    fig.update_layout(title=f"{name}", height=height)
+    fig.update_yaxes(title="Value $", showgrid=False)
+    fig.update_xaxes(rangeslider={"visible": False})
+
+    # Move legend to the bottom so we have more space for
+    # time axis in narrow notebook views
+    # https://plotly.com/python/legend/
+    fig.update_layout(legend=dict(
+        orientation="h",
+        yanchor="bottom",
+        y=1.02,
+        xanchor="right",
+        x=1
+    ))
+
+    return fig

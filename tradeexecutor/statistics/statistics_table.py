@@ -12,6 +12,7 @@ from tradeexecutor.analysis.trade_analyser import build_trade_analysis
 from tradeexecutor.strategy.summary import KeyMetricKind, KeyMetricSource, KeyMetric
 from tradeexecutor.state.state import State
 from tradeexecutor.state.portfolio import Portfolio
+from tradeexecutor.visual.equity_curve import calculate_compounding_realised_trading_profitability
 
 
 @dataclass_json
@@ -51,29 +52,77 @@ def serialise_long_short_stats_as_json_table(
     live_state: State,
     backtested_state: State | None,
     required_history: datetime.timedelta,
-) -> StatisticsTable:
+) -> dict[StatisticsTable]:
     """Calculate long/short statistics for the summary tile.
 
-    :param state: Strategy state from which we calculate the summary
-    :param execution_mode: If we need to skip calculations during backtesting.
-    :param time_window: How long we look back for the summary statistics
-    :param now_: Override current time for unit testing.
-    :param legacy_workarounds: Skip some calculations on old data, because data is missing.
-    :return: Summary statistics for all, long, and short positions
+    :param live_state: Live trading strategy state
+    :param backtested_state: Backtested strategy state
+    :param required_history: How long history we need before using live execution as the basis for the key metric calculations
+    :return: Dict with keys "live_stats" and "backtested_stats" containing the statistics tables for live and backtested trading.
     """
+    
+    live_start_at, live_end_at = None, None
+    if live_state:
+        live_start_at = live_state.created_at
+        live_end_at = datetime.datetime.utcnow()
+        
+    live_stats = _serialise_long_short_stats_as_json_table(
+        source_state=live_state,
+        source=KeyMetricSource.live_trading,
+        calculation_window_start_at=live_start_at,
+        calculation_window_end_at=live_end_at,
+    )
+    
+    backtested_start_at, backtested_end_at = None, None
+    if backtested_state:
+        first_trade, last_trade = backtested_state.portfolio.get_first_and_last_executed_trade()
+        backtested_start_at = first_trade.executed_at
+        backtested_end_at = last_trade.executed_at
+        
+    backtested_stats = _serialise_long_short_stats_as_json_table(
+        source_state=backtested_state,
+        source=KeyMetricSource.backtesting,
+        calculation_window_start_at=backtested_start_at,
+        calculation_window_end_at=backtested_end_at,
+    )
+    
+    return dict(
+        live_stats=live_stats, 
+        backtested_stats=backtested_stats
+    )
+    
 
-    source_state, source, calculation_window_start_at, calculation_window_end_at = get_data_source_and_calculation_window(live_state, backtested_state, required_history)
-
-    if source_state is None:
+def _serialise_long_short_stats_as_json_table(
+    source_state: State,
+    source,
+    calculation_window_start_at: datetime.datetime,
+    calculation_window_end_at: datetime.datetime,
+) -> dict[StatisticsTable]:
+    """Calculate long/short statistics for the summary tile."""
+    
+    if not source_state:
         return StatisticsTable(
             columns=["All", "Long", "Short"],
             created_at=datetime.datetime.utcnow(),
             source=source,
             rows={},
         )
-
+        
+    assert isinstance(calculation_window_start_at, datetime.datetime), "calculation_window_start_at is not a datetime"
+    assert isinstance(calculation_window_end_at, datetime.datetime), "calculation_window_end_at is not a datetime"
+    
     analysis = build_trade_analysis(source_state.portfolio)
     summary = analysis.calculate_all_summary_stats_by_side(state=source_state, urls=True)  # TODO timebucket
+
+    # correct erroneous values if live
+    compounding_returns = None
+    if source == KeyMetricSource.live_trading and source_state:
+        compounding_returns = calculate_compounding_realised_trading_profitability(source_state)
+    
+    if len(compounding_returns) > 0:
+        portfolio_return = compounding_returns.iloc[-1]
+        summary.loc['Return %'] = portfolio_return
+        summary.loc['Annualised return %'] = portfolio_return * 365 * 24 * 60 * 60 / (calculation_window_end_at - calculation_window_start_at).seconds
 
     key_metrics_map = {
         KeyMetricKind.trading_period_length: 'Trading period length',

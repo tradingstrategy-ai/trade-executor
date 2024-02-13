@@ -11,7 +11,7 @@ from tradeexecutor.state.portfolio import Portfolio
 from tradeexecutor.state.state import State
 from tradeexecutor.state.trade import TradeExecution
 from tradeexecutor.state.types import PairInternalId
-from tradeexecutor.state.visualisation import Plot, PlotKind
+from tradeexecutor.state.visualisation import Plot, PlotKind, PlotLabel
 from tradeexecutor.strategy.trade_pricing import format_fees_dollars
 
 
@@ -394,6 +394,12 @@ def _get_num_detached_indicators(plots: list[Plot], volume_bar_mode: VolumeBarMo
     return num_detached_indicators
 
 
+def _get_plot_name_and_separator(plot: Plot) -> str:
+    if plot.label == PlotLabel.hidden:
+        return ""
+    return f"<br> + {plot.name}"
+
+
 def _get_subplot_names(
     plots: list[Plot],
     volume_bar_mode: VolumeBarMode,
@@ -415,6 +421,7 @@ def _get_subplot_names(
     already_overlaid_names = []
 
     for plot in plots:
+
         # get subplot names for detached technical indicators without any overlay
         if (plot.kind == PlotKind.technical_indicator_detached) and (
             plot.name
@@ -435,9 +442,10 @@ def _get_subplot_names(
                 for plot in plots
                 if plot.kind == PlotKind.technical_indicator_detached
             ]
+
             assert (
                 plot.detached_overlay_name in detached_plots
-            ), f"Overlay name {plot.detached_overlay_name} not in available detached plots {detached_plots}"
+            ), f"Overlay name {plot.detached_overlay_name} not in available detached plots {detached_plots}. Make sure there is a matching plot with the same name and kind PlotKind.technical_indicator_detached in the visualisation data."
 
             # check if another overlay exists
             if plot.detached_overlay_name in already_overlaid_names:
@@ -445,10 +453,10 @@ def _get_subplot_names(
                 subplot_names[
                     detached_without_overlay_count
                     + already_overlaid_names.index(plot.detached_overlay_name)
-                ] += f"<br> + {plot.name}"
+                ] += _get_plot_name_and_separator(plot)
             else:
                 # add to list
-                subplot_names.append(plot.detached_overlay_name + f"<br> + {plot.name}")
+                subplot_names.append(plot.detached_overlay_name + _get_plot_name_and_separator(plot))
                 already_overlaid_names.append(plot.detached_overlay_name)
 
     # Insert blank name for main candle chart

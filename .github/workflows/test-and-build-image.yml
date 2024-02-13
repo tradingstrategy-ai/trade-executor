@@ -59,9 +59,10 @@ jobs:
       # Note that we limit concurrency to 2 workers as 4 workers crashed without an error message on Github CI.
       # I suspect out of memory situation that is not reported to the user.
       # Print 20 slowest tests when done.
+      # tests/**/test*.py -> workaround issues by scanning tests folder in git submodules and importing them (even if not running)
       - name: Run test scripts
         run: |
-            poetry run pytest --tb=native --dist loadscope -n 6 --durations=20 -m "not slow_test_group"
+            poetry run pytest --tb=native --dist loadscope -n 6 --durations=20 -m "not slow_test_group" tests/**/test*.py
         env:
           TRADING_STRATEGY_API_KEY: ${{ secrets.TRADING_STRATEGY_API_KEY }}
           BNB_CHAIN_JSON_RPC: ${{ secrets.BNB_CHAIN_JSON_RPC }}
@@ -108,7 +109,7 @@ jobs:
       - name: Scrape build info
         run: echo "RELEASE_VERSION=${GITHUB_REF#refs/*/}" >> $GITHUB_ENV
       - name: Build and push
-        uses: docker/build-push-action@v3
+        uses: docker/build-push-action@v5
         with:
           context: .
           push: true

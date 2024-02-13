@@ -87,7 +87,8 @@ def repair(
 
     execution_context = ExecutionContext(
         mode=ExecutionMode.one_off,
-        timed_task_context_manager=timed_task
+        timed_task_context_manager=timed_task,
+        engine_version=mod.trading_strategy_engine_version,
     )
 
     web3config = create_web3_config(
@@ -124,7 +125,7 @@ def repair(
         routing_hint=mod.trade_routing,
     )
 
-    client, _ = create_client(
+    client, routing_model = create_client(
         mod=mod,
         web3config=web3config,
         trading_strategy_api_key=trading_strategy_api_key,
@@ -155,7 +156,7 @@ def repair(
         pricing_model_factory=pricing_model_factory,
         approval_model=UncheckedApprovalModel(),
         client=client,
-        routing_model=None,
+        routing_model=routing_model,
         run_state=RunState(),
     )
 

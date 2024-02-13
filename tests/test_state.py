@@ -454,7 +454,9 @@ def test_statistics(usdc, weth_usdc, aave_usdc, start_ts):
     summary = portfolio_stats.summary
     
     # no closed positions
-    assert stats.long_short_metrics_latest.rows['total_positions'].value['All'] == '0' 
+    assert stats.long_short_metrics_latest["live_stats"].rows['total_positions'].value['All'] == '0' 
+    assert stats.long_short_metrics_latest["backtested_stats"].rows == {}
+    
 
     assert len(stats.positions) == 2
     assert len(stats.closed_positions) == 0
@@ -497,11 +499,11 @@ def test_statistics(usdc, weth_usdc, aave_usdc, start_ts):
     summary = portfolio_stats.summary
     
     # 1 zero loss position
-    assert stats.long_short_metrics_latest.rows['total_positions'].value['All'] == '2' 
-    assert stats.long_short_metrics_latest.rows['won_positions'].value['Long'] == '1'
-    assert stats.long_short_metrics_latest.rows['won_positions'].value['Short'] == '0'
-    assert stats.long_short_metrics_latest.rows['average_position'].value['Long'] == '25.00%'
-
+    assert stats.long_short_metrics_latest["live_stats"].rows['total_positions'].value['All'] == '2' 
+    assert stats.long_short_metrics_latest["live_stats"].rows['won_positions'].value['Long'] == '1'
+    assert stats.long_short_metrics_latest["live_stats"].rows['won_positions'].value['Short'] == '0'
+    assert stats.long_short_metrics_latest["live_stats"].rows['average_position'].value['Long'] == '25.00%'
+    assert stats.long_short_metrics_latest["backtested_stats"].rows == {}
 
     assert len(stats.positions) == 2
     assert len(stats.closed_positions) == 2
@@ -548,7 +550,6 @@ def test_statistics(usdc, weth_usdc, aave_usdc, start_ts):
     
     update_statistics(datetime.datetime.utcnow(), state.stats, portfolio, ExecutionMode.real_trading, long_short_metrics_latest=long_short_metrics_latest)
     
-    assert long_short_metrics_latest.rows == {}
 
 def test_not_enough_cash(usdc, weth_usdc, start_ts):
     """Try to buy too much at once."""

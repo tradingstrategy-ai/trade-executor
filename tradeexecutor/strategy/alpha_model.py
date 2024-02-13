@@ -25,6 +25,15 @@ from tradeexecutor.strategy.weighting import weight_by_1_slash_n, check_normalis
 logger = logging.getLogger(__name__)
 
 
+#: Use in-process running counter id to debug signal
+_signal_id_counter = 0
+
+def _get_next_id():
+    global _signal_id_counter
+    _signal_id_counter += 1
+    return _signal_id_counter
+
+
 @dataclass_json
 @dataclass(slots=True)
 class TradingPairSignal:
@@ -72,6 +81,13 @@ class TradingPairSignal:
     #: Set zero for pairs that are discarded, e.g. due to risk assessment.
     #:
     signal: Signal
+
+    #: Running counter signal ids
+    #:
+    #: - Useful for internal debugging onyl
+    #: - Signal ids are not stable - only for single process debugging
+    #:
+    signal_id: int = field(default_factory=_get_next_id)
 
     #: Stop loss for this position.
     #:
@@ -229,7 +245,7 @@ class TradingPairSignal:
             assert self.leverage > 0
 
     def __repr__(self):
-        return f"Pair: {self.pair.get_ticker()} old weight: {self.old_weight:.4f} old value: {self.old_value:,} raw signal:{self.signal:.4f} normalised weight: {self.normalised_weight:.4f} new value: {self.position_target:,} adjust: {self.position_adjust_usd:,}"
+        return f"Signal #{self.signal_id} pair:{self.pair.get_ticker()} old weight:{self.old_weight:.4f} old value:{self.old_value:,} raw signal:{self.signal:.4f} normalised weight:{self.normalised_weight:.4f} new value:{self.position_target:,} adjust:{self.position_adjust_usd:,}"
 
     def has_trades(self) -> bool:
         """Did/should this signal cause any trades to be executed.
@@ -743,6 +759,12 @@ class AlphaModel:
         # Generate trades
         trades: List[TradeExecution] = []
 
+        logger.info(
+            "Generating alpha model rebalances. Before rebalance we have %d positions open. We got %d signals.",
+            len(position_manager.state.portfolio.open_positions),
+            len(self.signals),
+        )
+
         #  TODO: Break this massive for if spagetti to sub-functions
         for signal in self.iterate_signals():
 
@@ -771,9 +793,10 @@ class AlphaModel:
                 else:
                     signal.profit_before_trades = 0
 
-            logger.info("Rebalancing %s, trading as %s, old position %s, old weight: %f, new weight: %f, size diff: %f USD",
+            logger.info("Rebalancing %s, trading as %s, signal #%d, old position %s, old weight: %f, new weight: %f, size diff: %f USD",
                         underlying.base.token_symbol,
                         synthetic.base.token_symbol,
+                        signal.signal_id,
                         current_position and current_position.pair or "-",
                         signal.old_weight,
                         signal.normalised_weight,
@@ -789,11 +812,15 @@ class AlphaModel:
                     # Signal too weak, get rid of any open position
                     # Explicit close to avoid rounding issues
                     if current_position:
+                        logger.info("Closing the position fully: %s", current_position)
                         position_rebalance_trades += position_manager.close_position(
                             current_position,
                             TradeType.rebalance,
                             notes=f"Closing position, because the signal weight is below close position weight threshold: {signal}"
                         )
+                        signal.position_id = current_position.position_id
+                    else:
+                        logger.info("Zero signal, but no position to close")
                 else:
                     # Signal is switching between short/long,
                     # so close any old position
@@ -865,7 +892,7 @@ class AlphaModel:
 
             if position_rebalance_trades:
                 trade_str = ", ".join(t.get_short_label() for t in position_rebalance_trades)
-                logger.info("Adjusting holdings for %s: %s", underlying.get_ticker(), trade_str)
+                logger.info("Rebalance trades generated for signal #%d for %s: %s", signal.signal_id, underlying.get_ticker(), trade_str)
             else:
                 logger.info("No trades generated for: %s", underlying.get_ticker())
 

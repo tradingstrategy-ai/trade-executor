@@ -199,6 +199,9 @@ class StrategyRunner(abc.ABC):
 
         :param debug_details:
             Dictionary of debug data that will be passed down to the callers
+            
+        :param long_short_metrics_latest:
+            Latest long/short statistics table, if available
 
         """
         assert isinstance(universe, StrategyExecutionUniverse), f"Universe was {universe}"
@@ -645,7 +648,7 @@ class StrategyRunner(abc.ABC):
 
             # Watch incoming deposits
             with self.timed_task_context_manager("sync_portfolio"):
-                self.sync_portfolio(strategy_cycle_timestamp, universe, state, debug_details, end_block)
+                self.sync_portfolio(strategy_cycle_timestamp, universe, state, debug_details, end_block, long_short_metrics_latest=long_short_metrics_latest)
 
             # Double check we handled deposits correctly
             with self.timed_task_context_manager("check_accounts_pre_trade"):
@@ -775,6 +778,7 @@ class StrategyRunner(abc.ABC):
         universe: StrategyExecutionUniverse,
         stop_loss_pricing_model: PricingModel,
         routing_state: RoutingState,
+        long_short_metrics_latest: StatisticsTable | None = None,
         ) -> List[TradeExecution]:
         """Check stop loss/take profit for positions.
 
@@ -810,7 +814,7 @@ class StrategyRunner(abc.ABC):
             # Sync treasure before the trigger checks
             with self.timed_task_context_manager("sync_portfolio_before_triggers"):
                 self.check_accounts(universe, state, report_only=True, end_block=end_block)
-                self.sync_portfolio(clock, universe, state, debug_details, end_block=end_block)
+                self.sync_portfolio(clock, universe, state, debug_details, end_block=end_block, long_short_metrics_latest=long_short_metrics_latest)
 
             # Check that our on-chain balances are good
             with self.timed_task_context_manager("check_accounts_position_triggers"):
