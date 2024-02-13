@@ -1,6 +1,7 @@
 """Perform a grid search ove strategy parameters to find optimal parameters."""
 import concurrent
 import datetime
+import enum
 import itertools
 import logging
 import os
@@ -49,6 +50,22 @@ from tradeexecutor.visual.equity_curve import calculate_equity_curve, calculate_
 
 
 logger = logging.getLogger(__name__)
+
+
+class GridSearchDataRetention(enum.Enum):
+    """What grid search data we generate and load.
+
+    - We want to discard unneeded data to save memory
+    """
+
+    #: Pass all grid search data to the parent notebook process
+    #:
+    #: Includes full state of the backtest results
+    #:
+    all = "all"
+
+    #: Discard state
+    metrics_only = "metrics_only"
 
 
 def _hide_warnings(func):
@@ -205,7 +222,7 @@ class GridSearchResult:
     combination: GridCombination
 
     #: The full back test state
-    state: State
+    state: State | None
 
     #: Calculated trade summary
     #:
@@ -433,6 +450,7 @@ def run_grid_combination_threaded(
     universe: TradingStrategyUniverse,
     combination: GridCombination,
     trading_strategy_engine_version: TradingStrategyEngineVersion,
+    data_retention: GridSearchDataRetention
 ):
     """Threared runner.
 
@@ -450,6 +468,9 @@ def run_grid_combination_threaded(
         result = grid_search_worker(universe, combination)
 
 
+    if data_retention != GridSearchDataRetention.all:
+        result.state = None
+
     # Cache result for the future runs
     result.save()
 
@@ -460,6 +481,7 @@ def run_grid_combination_multiprocess(
     grid_search_worker: GridSearchWorker | DecideTradesProtocol3,
     combination: GridCombination,
     trading_strategy_engine_version: TradingStrategyEngineVersion,
+    data_retention: GridSearchDataRetention
 ):
     """Mutltiproecss runner.
 
@@ -485,21 +507,29 @@ def run_grid_combination_multiprocess(
 
     result.process_id = os.getpid()
 
+    if data_retention != GridSearchDataRetention.all:
+        result.state = None
+
     # Cache result for the future runs
     result.save()
 
     return result
 
 
-def _read_combination_result(c: GridCombination) -> GridSearchResult:
+def _read_combination_result(c: GridCombination, data_retention: GridSearchDataRetention) -> GridSearchResult:
     assert GridSearchResult.has_result(c), f"Did not have cached result for {c}, but was added to the cache read queue"
     result = GridSearchResult.load(c)
     assert result.cached
+
+    if data_retention != GridSearchDataRetention.all:
+        result.state = None
+
     return result
 
 
 def _read_cached_results(
     combinations: List[GridCombination],
+    data_retention: GridSearchDataRetention,
     reader_pool_size=16,
 ) -> Dict[GridCombination, GridSearchResult]:
     """Read grid search results that are available on a disk from previous run.
@@ -516,7 +546,7 @@ def _read_cached_results(
     # Set up a process pool executing structure
     executor = futureproof.ThreadPoolExecutor(max_workers=reader_pool_size)
     tm = futureproof.TaskManager(executor, error_policy=futureproof.ErrorPolicyEnum.RAISE)
-    task_args = [(c,) for c in combinations if GridSearchResult.has_result(c)]
+    task_args = [(c, data_retention) for c in combinations if GridSearchResult.has_result(c)]
 
     # Run the checks parallel using the thread pool
     tm.map(_read_combination_result, task_args)
@@ -545,6 +575,7 @@ def perform_grid_search(
     reader_pool_size=16,
     multiprocess=False,
     trading_strategy_engine_version: TradingStrategyEngineVersion="0.3",
+    data_retention: GridSearchDataRetention = GridSearchDataRetention.metrics_only,
 ) -> List[GridSearchResult]:
     """Search different strategy parameters over a grid.
 
@@ -588,12 +619,14 @@ def perform_grid_search(
 
     start = datetime.datetime.utcnow()
 
-    logger.info("Performing a grid search over %s combinations, with %d threads",
-                len(combinations),
-                max_workers,
-                )
+    logger.info(
+        "Performing a grid search over %s combinations, with %d threads, data retention policy is %s",
+        len(combinations),
+        max_workers,
+        data_retention.name,
+    )
 
-    cached_results = _read_cached_results(combinations, reader_pool_size)
+    cached_results = _read_cached_results(combinations, data_retention, reader_pool_size)
     logger.info("Read %d cached results", len(cached_results))
 
     if len(cached_results) == len(combinations):
@@ -622,7 +655,7 @@ def perform_grid_search(
             # Set up a process pool executing structure
             executor = futureproof.ProcessPoolExecutor(max_workers=max_workers, initializer=_process_init, initargs=(pickled_universe,))
             tm = futureproof.TaskManager(executor, error_policy=futureproof.ErrorPolicyEnum.RAISE)
-            task_args = [(grid_search_worker, c, trading_strategy_engine_version) for c in combinations if c not in cached_results]
+            task_args = [(grid_search_worker, c, trading_strategy_engine_version, data_retention) for c in combinations if c not in cached_results]
 
             # Set up a signal handler to stop child processes on quit
             _process_pool_executor = executor._executor
@@ -645,7 +678,7 @@ def perform_grid_search(
             # Run individual searchers threads
             #
 
-            task_args = [(grid_search_worker, universe, c, trading_strategy_engine_version) for c in combinations if c not in cached_results]
+            task_args = [(grid_search_worker, universe, c, trading_strategy_engine_version, data_retention) for c in combinations if c not in cached_results]
             logger.info("Doing a multithread grid search")
             executor = futureproof.ThreadPoolExecutor(max_workers=max_workers)
             tm = futureproof.TaskManager(executor, error_policy=futureproof.ErrorPolicyEnum.RAISE)
@@ -661,7 +694,7 @@ def perform_grid_search(
         #
 
         logger.info("Doing a single thread grid search")
-        task_args = [(grid_search_worker, universe, c, trading_strategy_engine_version) for c in combinations]
+        task_args = [(grid_search_worker, universe, c, trading_strategy_engine_version, data_retention) for c in combinations]
         iter = itertools.starmap(run_grid_combination_threaded, task_args)
 
         # Force workers to finish
