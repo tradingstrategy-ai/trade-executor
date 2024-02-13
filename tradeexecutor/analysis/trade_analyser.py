@@ -204,9 +204,9 @@ class TradeSummary:
         """
         return {
             "Positions taken": str(self.total_positions),
-            "Position win %": as_percent(self.win_percent),
-            "Annualised trade return %": as_percent(self.return_percent),
-            "Median win %": as_percent(self.median_win),
+            "Position win %": str(as_percent(self.win_percent)),
+            "Annualised trade return %": str(as_percent(self.return_percent)),
+            "Median win %": str(as_percent(self.median_win)),
             "Most consequence wins": str(self.max_pos_cons),
             "Most consequence losses": str(self.max_neg_cons),
         }
