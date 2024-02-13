@@ -321,7 +321,6 @@ def visualise_3d_scatter(
 def _get_hover_template(
     result: GridSearchResult,
     key_metrics = ("CAGR﹪", "Max Drawdown", "Time in Market", "Sharpe", "Sortino"),  # See quantstats
-    trade_metrics=("Annualised return %", ""),
     percent_metrics = ("CAGR﹪", "Max Drawdown", "Time in Market"),
 ):
 
@@ -334,15 +333,22 @@ def _get_hover_template(
     template = textwrap.dedent(f"""<b>{result.get_label()}</b><br><br>""")
 
     for k, v in metrics.items():
-        if k in percent_metrics:
+        if type(v) == int:
+            v = float(v)
+
+        if v in ("", None, "-"):  # Messy third party code does not know how to mark no value
+            template += f"{k}: -<br>"
+        elif k in percent_metrics:
+            assert type(v) == float, f"Got unknown type: {k}: {v} ({type(v)}"
             v *= 100
             template += f"{k}: {v:.2f}%<br>"
         else:
+            assert type(v) == float, f"Got unknown type: {k}: {v} ({type(v)}"
             template += f"{k}: {v:.2f}<br>"
 
     # Get trade metrics
-    for k, v in result.summary.get_trading_core_metrics():
-        template += f"{k}: {v:.2f}<br>"
+    for k, v in result.summary.get_trading_core_metrics().items():
+        template += f"{k}: {v}<br>"
 
     return template
 
