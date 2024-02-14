@@ -352,9 +352,9 @@ def test_compounding_formulas(
     """Test compounding formulas for long and overall."""
     state, universe, debug_dump = backtest_result
     profitability = calculate_compounding_realised_trading_profitability(state)
+    assert profitability.iloc[-1] == pytest.approx(-0.004717044385644686, rel=APPROX_REL)
     assert profitability.equals(calculate_long_compounding_realised_trading_profitability(state))
     assert profitability.equals(summary.compounding_returns)
-    assert profitability.iloc[-1] == pytest.approx(-0.004717044385644686, rel=APPROX_REL)
     assert profitability.iloc[-1] == pytest.approx(summary.return_percent, rel=1e-9)
 
 
