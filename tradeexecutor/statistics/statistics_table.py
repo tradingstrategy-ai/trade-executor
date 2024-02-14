@@ -49,8 +49,8 @@ class StatisticsTable:
 
 
 def serialise_long_short_stats_as_json_table(
-    live_state: State | None,
-    backtested_state: State | None,
+    live_state: State | None = None,
+    backtested_state: State | None = None,
 ) -> dict[StatisticsTable]:
     """Calculate long/short statistics for the summary tile.
 
@@ -136,7 +136,7 @@ def _serialise_long_short_stats_as_json_table(
     if source == KeyMetricSource.live_trading and source_state:
         compounding_returns = calculate_compounding_realised_trading_profitability(source_state)
     
-    if len(compounding_returns) > 0:
+    if compounding_returns is not None and len(compounding_returns) > 0:
         portfolio_return = compounding_returns.iloc[-1]
         summary.loc['Return %'] = portfolio_return
         summary.loc['Annualised return %'] = portfolio_return * 365 * 24 * 60 * 60 / (calculation_window_end_at - calculation_window_start_at).seconds
