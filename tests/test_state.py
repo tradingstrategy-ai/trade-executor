@@ -444,7 +444,7 @@ def test_statistics(usdc, weth_usdc, aave_usdc, start_ts):
     trader.buy(aave_usdc, Decimal(0.5), 200)
 
     long_short_metrics_latest = serialise_long_short_stats_as_json_table(
-        state, None, datetime.timedelta(days=0)
+        state, None
     )
     
     update_statistics(datetime.datetime.utcnow(), state.stats, portfolio, ExecutionMode.real_trading, long_short_metrics_latest=long_short_metrics_latest)
@@ -474,7 +474,7 @@ def test_statistics(usdc, weth_usdc, aave_usdc, start_ts):
     assert summary.realised_profit == portfolio_stats.realised_profit_usd
 
     long_short_metrics_latest = serialise_long_short_stats_as_json_table(
-        state, None, datetime.timedelta(days=0)
+        state, None
     )
     
     update_statistics(datetime.datetime.utcnow(), state.stats, portfolio, ExecutionMode.real_trading, long_short_metrics_latest=long_short_metrics_latest)
@@ -489,7 +489,7 @@ def test_statistics(usdc, weth_usdc, aave_usdc, start_ts):
     assert state.portfolio.get_total_equity() == pytest.approx(1043.632)
 
     long_short_metrics_latest = serialise_long_short_stats_as_json_table(
-        state, None, datetime.timedelta(days=0)
+        state, None
     )
     
     update_statistics(datetime.datetime.utcnow(), state.stats, portfolio, ExecutionMode.real_trading, long_short_metrics_latest=long_short_metrics_latest)
@@ -545,7 +545,7 @@ def test_statistics(usdc, weth_usdc, aave_usdc, start_ts):
     assert summary.average_net_profit == pytest.approx(24.50249)
 
     long_short_metrics_latest = serialise_long_short_stats_as_json_table(
-        state, None, datetime.timedelta(days=90)
+        state, None
     )
     
     update_statistics(datetime.datetime.utcnow(), state.stats, portfolio, ExecutionMode.real_trading, long_short_metrics_latest=long_short_metrics_latest)

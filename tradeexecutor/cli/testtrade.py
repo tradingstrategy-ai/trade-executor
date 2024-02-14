@@ -203,7 +203,7 @@ def make_test_trade(
                                  "Check for dust corrections.")
 
         long_short_metrics_latest = serialise_long_short_stats_as_json_table(
-            state, None, datetime.timedelta(days=90)
+            state, None
         )
         
         update_statistics(datetime.datetime.utcnow(), state.stats, state.portfolio, ExecutionMode.real_trading, long_short_metrics_latest=long_short_metrics_latest)
@@ -248,7 +248,7 @@ def make_test_trade(
             raise AssertionError("Test sell failed")
 
         long_short_metrics_latest = serialise_long_short_stats_as_json_table(
-            state, None, datetime.timedelta(days=90)
+            state, None
         )
         
         update_statistics(datetime.datetime.utcnow(), state.stats, state.portfolio, ExecutionMode.real_trading, long_short_metrics_latest=long_short_metrics_latest)
@@ -322,7 +322,7 @@ def make_test_trade(
                                      "Check for dust corrections.")
 
             long_short_metrics_latest = serialise_long_short_stats_as_json_table(
-                state, None, datetime.timedelta(days=90)
+                state, None
             )
 
             update_statistics(datetime.datetime.utcnow(), state.stats, state.portfolio, ExecutionMode.real_trading, long_short_metrics_latest=long_short_metrics_latest)
@@ -385,7 +385,7 @@ def make_test_trade(
                                  "Check for dust corrections.")
 
         long_short_metrics_latest = serialise_long_short_stats_as_json_table(
-            state, None, datetime.timedelta(days=90)
+            state, None
         )
         
         update_statistics(datetime.datetime.utcnow(), state.stats, state.portfolio, ExecutionMode.real_trading, long_short_metrics_latest=long_short_metrics_latest)
