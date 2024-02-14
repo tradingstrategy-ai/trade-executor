@@ -234,7 +234,13 @@ def test_backtest_long_short_stats(
     
     analysis = build_trade_analysis(state.portfolio)
     summary = analysis.calculate_summary_statistics(state=state, time_bucket=strategy_universe.data_universe.time_bucket)
+    long_summary = analysis.calculate_long_summary_statistics(state=state, time_bucket=strategy_universe.data_universe.time_bucket)
+    short_summary = analysis.calculate_short_summary_statistics(state=state, time_bucket=strategy_universe.data_universe.time_bucket)
     summary_by_side = analysis.calculate_all_summary_stats_by_side(state=state, time_bucket=strategy_universe.data_universe.time_bucket)
+
+    assert summary.compounding_returns.equals(overall_compounding_profit)
+    assert long_summary.compounding_returns.equals(long_compounding_profit)
+    assert short_summary.compounding_returns.equals(short_compounding_profit)
     
     assert summary.return_percent == pytest.approx(overall_compounding_profit.iloc[-1], abs=1e-3)  # TODO make more precise
     
