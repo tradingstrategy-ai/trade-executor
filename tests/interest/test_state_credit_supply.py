@@ -281,3 +281,43 @@ def test_close_credit_position(
     portfolio = state.portfolio
     assert portfolio.get_cash() == pytest.approx(10000.50)
     assert portfolio.get_net_asset_value() == pytest.approx(10000.50)
+
+
+def test_accrue_unrealistic_interest(
+    state: State,
+    lending_pool_identifier: TradingPairIdentifier,
+    usdc: AssetIdentifier,
+    ausdc: AssetIdentifier,
+):
+    """See that the credit supply position gains unrealistic interest should raise error
+    """
+    opened_at = datetime.datetime(2020, 1, 1)
+
+    trader = UnitTestTrader(state)
+
+    # Open credit supply position
+    credit_supply_position, trade, _ = state.supply_credit(
+        opened_at,
+        lending_pool_identifier,
+        collateral_quantity=Decimal(9000),
+        collateral_asset_price=1.0,
+        trade_type=TradeType.rebalance,
+        reserve_currency=usdc,
+    )
+    trader.set_perfectly_executed(trade)
+
+    assert credit_supply_position.get_value() == pytest.approx(9000)
+
+    # Generate first interest accruing event
+    interest_event_1_at = datetime.datetime(2020, 1, 2)
+
+    with pytest.raises(AssertionError) as e:
+        update_interest(
+            state,
+            credit_supply_position,
+            ausdc,
+            new_token_amount=Decimal(100_000),
+            event_at=interest_event_1_at,
+            asset_price=1.0,
+        )
+
