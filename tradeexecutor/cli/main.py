@@ -18,9 +18,14 @@ from .commands.start import start
 from .commands.perform_test_trade import perform_test_trade
 from .commands.version import version
 from .commands.repair import repair
+from .commands.retry import retry
 from .commands.init import init
 
 # Dummy export commands even though they are already registered
 # to make the linter happy
-__all__ = [app, check_wallet, check_universe, hello, start, perform_test_trade, version, repair, console, init, reset, enzyme_asset_list, enzyme_deploy_vault,
-           close_all, show_positions, backtest, correct_accounts, check_accounts, reset_deposits, export]
+__all__ = [
+    app, check_wallet, check_universe, hello, start, perform_test_trade, 
+    version, repair, console, init, reset, enzyme_asset_list, enzyme_deploy_vault,
+    close_all, show_positions, backtest, correct_accounts, check_accounts, 
+    reset_deposits, export, retry,
+]

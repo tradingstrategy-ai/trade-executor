@@ -1,11 +1,15 @@
-from typing import TypedDict
-
 from web3 import Web3
 from web3.logs import DISCARD
+from eth_abi import decode
 
-from eth_defi.abi import get_transaction_data_field
+from eth_defi.abi import (
+    get_transaction_data_field,
+    decode_function_args,
+    humanise_decoded_arg_data,
+    get_deployed_contract,
+)
 from eth_defi.one_delta.deployment import OneDeltaDeployment
-from eth_defi.one_delta.constants import TradeOperation
+from eth_defi.one_delta.constants import TradeOperation, Exchange
 from eth_defi.revert_reason import fetch_transaction_revert_reason
 from eth_defi.token import fetch_erc20_details
 from eth_defi.trade import TradeFail, TradeSuccess
@@ -172,3 +176,82 @@ def analyse_trade_by_receipt(
         token1=pool.token1,
         lp_fee_paid=lp_fee_paid,
     ), collateral_amount
+
+
+def analyse_one_delta_trade(
+    web3: Web3,
+    *,
+    tx_hash: str,
+) -> None:
+    """Analyse a 1delta trade.
+    """
+    flash_aggregator = get_deployed_contract(
+        web3,
+        "1delta/FlashAggregator.json",
+        "0x74E95F3Ec71372756a01eB9317864e3fdde1AC53",
+    )
+
+    tx = web3.eth.get_transaction(tx_hash)
+    # print(tx)
+    input_args = get_transaction_data_field(tx)
+
+    if isinstance(input_args, str) and input_args.startswith("0x"):
+        data = bytes.fromhex(input_args[2:])
+    else:
+        data = input_args
+    (multicall_payload,) = decode(("bytes[]",), data[4:])
+
+    print("------- Trade details -------")
+    for call in multicall_payload:
+        selector, params = call[:4], call[4:]
+
+        function = flash_aggregator.get_function_by_selector(selector)
+        args = decode_function_args(function, params)
+        human_args = humanise_decoded_arg_data(args)
+        symbolic_args = []
+        for k, v in human_args.items():
+            if k == "path":
+                path = decode_path(bytes.fromhex(v))
+                symbolic_args.append(f"    {k} = {v}")
+                symbolic_args.append(f"    decoded path =")
+                for i, part in enumerate(path):
+                    if i in (0, len(path) - 1):
+                        token = fetch_erc20_details(web3, part)
+                        symbolic_args.append(f"        {part} ({token.symbol})")
+                    elif i == 1:
+                        symbolic_args.append(f"        {part} (pool fee: {part/10000}%)")
+                    elif i == 2:
+                        symbolic_args.append(f"        {part} (exchange: {Exchange(part).name})")
+                    elif i == 3:
+                        symbolic_args.append(f"        {part} (trade operation)")
+            elif k == "asset":
+                token = fetch_erc20_details(web3, v)
+                symbolic_args.append(f"    {k} = {v} ({token.symbol})")
+            else:
+                symbolic_args.append(f"    {k} = {v}")
+            
+        symbolic_args = "\n".join(symbolic_args)
+        
+        print(f"\n{function.fn_name}:\n{symbolic_args}")
+
+    tx_receipt = web3.eth.get_transaction_receipt(tx_hash)
+    if tx_receipt["status"] != 0:
+        print("\nThis transaction didn't fail so only debug info is printed")
+        return
+
+    # build a new transaction to replay:
+    print("\n------- Trying to replay the tx -------")
+    replay_tx = {
+        "to": tx["to"],
+        "from": tx["from"],
+        "value": tx["value"],
+        "data": input_args,
+    }
+
+    try:
+        result = web3.eth.call(replay_tx)
+        print(f"Replayed result: {result}")
+    except Exception as e:
+        print(f"Possible reason: {type(e)} {e.args[0]}")
+
+    

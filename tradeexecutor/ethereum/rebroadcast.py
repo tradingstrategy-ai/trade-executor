@@ -41,8 +41,8 @@ def rebroadcast_all(
     all_trades = list(state.portfolio.get_all_trades())
 
     for t in all_trades:
-
-        if t.is_unfinished():
+        # only rebroadcast trades that are not failed and unfinished
+        if t.is_unfinished() and not t.is_failed():
             logger.info("Marking trade %s for rebroadcast", t)
             assert t.blockchain_transactions, f"Trade marked unfinished, did not have any txs: {t}"
             for tx in t.blockchain_transactions:
