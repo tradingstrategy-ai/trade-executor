@@ -392,7 +392,9 @@ def create_benchmark_equity_curves(
         since start of the backtest.
 
     :param custom_colours:
-        Apply these colours on the benchmark series
+        Apply these colours on the benchmark series.
+
+        Label -> color mappings.
 
     :return:
         Pandas DataFrame.

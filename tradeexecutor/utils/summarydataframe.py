@@ -36,10 +36,13 @@ FORMATTERS = {
 }
 
 
-@dataclass
+@dataclass(slots=True)
 class Value:
     v: object
     format: Format
+
+    def __str__(self):
+        return format_value(self)
 
 
 def as_dollar(v) -> Value:
@@ -70,13 +73,16 @@ def as_bars(v: float) -> Value:
     v = int(v)
     return Value(v, Format.num_bars)
 
+
 def as_missing() -> Value:
     """Format a missing value e.g. because of division by zero"""
     return Value(None, Format.missing)
 
+
 def as_decimal(v: float) -> Value:
     """Format a decimal value"""
     return Value(v, Format.decimal)
+
 
 def format_value(v_instance: Value) -> str:
     """Format a single value
@@ -99,7 +105,8 @@ def format_value(v_instance: Value) -> str:
     else:
         # missing values
         return FORMATTERS[Format.missing].format(v=v_instance.v)
-    
+
+
 def format_values(values: list[Value]) -> list[str]:
     """Format a list of values
     
