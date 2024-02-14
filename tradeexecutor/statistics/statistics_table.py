@@ -49,18 +49,31 @@ class StatisticsTable:
 
 
 def serialise_long_short_stats_as_json_table(
-    live_state: State,
+    live_state: State | None,
     backtested_state: State | None,
-    required_history: datetime.timedelta,
 ) -> dict[StatisticsTable]:
     """Calculate long/short statistics for the summary tile.
 
     :param live_state: Live trading strategy state
     :param backtested_state: Backtested strategy state
-    :param required_history: How long history we need before using live execution as the basis for the key metric calculations
     :return: Dict with keys "live_stats" and "backtested_stats" containing the statistics tables for live and backtested trading.
     """
     
+    live_stats = serialise_live_long_short_stats(live_state)
+    backtested_stats = serialise_backtested_long_short_stats(backtested_state)
+    
+    return dict(
+        live_stats=live_stats, 
+        backtested_stats=backtested_stats
+    )
+
+
+def serialise_live_long_short_stats(live_state: State) -> StatisticsTable:
+    """Serialise live long/short statistics as a JSON table.
+    
+    :param live_state: The current live execution state
+    :return: The live long/short statistics as a JSON table.
+    """
     live_start_at, live_end_at = None, None
     if live_state:
         live_start_at = live_state.created_at
@@ -72,7 +85,15 @@ def serialise_long_short_stats_as_json_table(
         calculation_window_start_at=live_start_at,
         calculation_window_end_at=live_end_at,
     )
+    return live_stats
+
+
+def serialise_backtested_long_short_stats(backtested_state: State) -> StatisticsTable:
+    """Serialise backtested long/short statistics as a JSON table.
     
+    :param backtested_state: The backtested state
+    :return: The backtested long/short statistics as a JSON table.
+    """
     backtested_start_at, backtested_end_at = None, None
     if backtested_state:
         first_trade, last_trade = backtested_state.portfolio.get_first_and_last_executed_trade()
@@ -85,11 +106,7 @@ def serialise_long_short_stats_as_json_table(
         calculation_window_start_at=backtested_start_at,
         calculation_window_end_at=backtested_end_at,
     )
-    
-    return dict(
-        live_stats=live_stats, 
-        backtested_stats=backtested_stats
-    )
+    return backtested_stats
     
 
 def _serialise_long_short_stats_as_json_table(
