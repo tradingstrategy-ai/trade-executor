@@ -34,7 +34,7 @@ from tradeexecutor.strategy.cycle import CycleDuration
 from tradeexecutor.strategy.reserve_currency import ReserveCurrency
 from tradeexecutor.strategy.strategy_type import StrategyType
 from tradeexecutor.strategy.default_routing_options import TradeRouting
-from tradeexecutor.visual.equity_curve import calculate_equity_curve, calculate_returns
+from tradeexecutor.visual.equity_curve import calculate_equity_curve, calculate_returns, calculate_compounding_realised_trading_profitability, calculate_long_compounding_realised_trading_profitability
 from tradeexecutor.analysis.advanced_metrics import visualise_advanced_metrics, AdvancedMetricsMode
 
 
@@ -343,6 +343,19 @@ def test_basic_summary_statistics(
     assert summary.sharpe_ratio == pytest.approx(-0.16440603545590504, rel=APPROX_REL)
     assert summary.sortino_ratio == pytest.approx(-0.23988078508533023, rel=APPROX_REL)
     assert summary.profit_factor == pytest.approx(0.9754583954173234, rel=APPROX_REL)
+
+
+def test_compounding_formulas(
+        backtest_result: tuple[State, TradingStrategyUniverse, dict],
+        summary: TradeSummary
+):
+    """Test compounding formulas for long and overall."""
+    state, universe, debug_dump = backtest_result
+    profitability = calculate_compounding_realised_trading_profitability(state)
+    assert profitability.equals(calculate_long_compounding_realised_trading_profitability(state))
+    assert profitability.equals(summary.compounding_returns)
+    assert profitability.iloc[-1] == pytest.approx(-0.004717044385644686, rel=APPROX_REL)
+    assert profitability.iloc[-1] == pytest.approx(summary.return_percent, rel=1e-9)
 
 
 def test_bars_display(backtest_result: tuple[State, TradingStrategyUniverse, dict],
