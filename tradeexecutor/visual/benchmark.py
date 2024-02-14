@@ -12,6 +12,7 @@ from tradeexecutor.state.visualisation import Plot
 from tradeexecutor.state.state import State
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
 from tradeexecutor.visual.technical_indicator import visualise_technical_indicator
+from tradeexecutor.visual.equity_curve import calculate_long_compounding_realised_trading_profitability, calculate_short_compounding_realised_trading_profitability, calculate_compounding_realised_trading_profitability
 from tradingstrategy.timebucket import TimeBucket
 from tradingstrategy.pair import HumanReadableTradingPairDescription
 from tradingstrategy.types import USDollarAmount
@@ -544,21 +545,14 @@ def create_benchmark_equity_curves(
 
 def visualise_long_short_benchmark(
     state: State,
-    time_bucket: TimeBucket,
     name: str | None = None,
     height: int | None = None,
 ):
     """Visualise separate benchmarks for both longing and shorting"""
     
-    analysis = build_trade_analysis(state.portfolio)
-
-    long_stats = analysis.calculate_long_summary_statistics(state=state, time_bucket=time_bucket)
-    short_stats = analysis.calculate_short_summary_statistics(state=state, time_bucket=time_bucket)
-    overall_stats = analysis.calculate_summary_statistics(state=state, time_bucket=time_bucket)
-
-    long_compounding_returns = long_stats.compounding_returns
-    short_compounding_returns = short_stats.compounding_returns
-    overall_compounding_returns = overall_stats.compounding_returns
+    long_compounding_returns = calculate_long_compounding_realised_trading_profitability(state)
+    short_compounding_returns = calculate_short_compounding_realised_trading_profitability(state)
+    overall_compounding_returns = calculate_compounding_realised_trading_profitability(state)
 
     # visualise long equity curve
     long_curve = get_plot_from_series("long", "#006400", long_compounding_returns)
