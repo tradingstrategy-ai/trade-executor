@@ -26,6 +26,7 @@ from tradeexecutor.ethereum.routing_data import get_backtest_routing_model
 from tradeexecutor.state.trade import TradeExecution
 from tradeexecutor.state.state import State
 from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier, TradingPairKind
+from tradeexecutor.statistics.statistics_table import serialise_long_short_stats_as_json_table
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse, load_partial_data
 from tradeexecutor.strategy.execution_context import ExecutionContext, unit_test_execution_context
 from tradeexecutor.strategy.cycle import CycleDuration
@@ -251,7 +252,6 @@ def test_backtest_long_short_stats(
     assert overall_compounding_profit.iloc[-1] == -0.018257383118416515
     assert long_compounding_profit.iloc[-1] == -0.003555468782310056
     assert short_compounding_profit.iloc[-1] == -0.014754373048884384
-
     overall = float(summary_by_side.loc['Return %']['All'][:-1])
     long = float(summary_by_side.loc['Return %']['Long'][:-1])
     short = float(summary_by_side.loc['Return %']['Short'][:-1])
@@ -261,5 +261,6 @@ def test_backtest_long_short_stats(
     assert long == pytest.approx(long_compounding_profit.iloc[-1] * 100, abs=1e-1)
     assert short == pytest.approx(short_compounding_profit.iloc[-1] * 100, abs=1e-1)
 
+    serialise_long_short_stats_as_json_table(backtested_state=state)
     
     

@@ -107,6 +107,10 @@ def calculate_returns(equity_curve: pd.Series) -> pd.Series:
 
 
     """
+
+    if len(equity_curve) == 0:
+        return pd.Series([], index=pd.to_datetime([]), dtype='float64')
+
     return equity_curve.pct_change().fillna(0.0)
 
 
@@ -192,8 +196,11 @@ def calculate_aggregate_returns(equity_curve: pd.Series, freq: str | pd.DateOffs
     """
     assert isinstance(equity_curve.index, pd.DatetimeIndex), f"Got {equity_curve.index}"
 
+    if len(equity_curve) == 0:
+        return pd.Series([], index=pd.to_datetime([]), dtype='float64')
+
     equity_curve.sort_index(inplace=True)
-    
+
     # Each equity curve sample is the last day of the period
     # https://stackoverflow.com/a/14039589/315168
     sampled = equity_curve.asfreq(freq, method='ffill')

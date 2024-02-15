@@ -265,7 +265,7 @@ def load_candles_from_dataframe(
 
                 df = _df.join(df, how='left')
         else:
-            _df = resample_multi_pair(df, resample)
+            df = resample_multi_pair(df, resample)
 
         bucket = resample
 

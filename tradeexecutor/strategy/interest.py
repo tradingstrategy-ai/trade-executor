@@ -32,7 +32,7 @@ def update_interest(
     block_number: int | None = None,
     tx_hash: int | None = None,
     log_index: int | None = None,
-    sane_interest_update_threshold: Percent=999,
+    sane_interest_update_threshold: Percent = 10,
 ) -> BalanceUpdate:
     """Poke credit supply position to increase its interest amount.
 
@@ -99,7 +99,9 @@ def update_interest(
     gained_interest = new_token_amount - old_balance
     usd_value = float(new_token_amount) * asset_price
 
-    assert 0 <= abs(gained_interest) < sane_interest_update_threshold, f"Unlikely gained_interest for {asset}: {gained_interest}, old quantity: {old_balance}, new quantity: {new_token_amount}"
+    gained_interest_percent = gained_interest / old_balance
+
+    assert 0 <= abs(gained_interest_percent) < sane_interest_update_threshold, f"Unlikely gained_interest for {asset}: {gained_interest} ({gained_interest_percent * 100:.2f}%), old quantity: {old_balance}, new quantity: {new_token_amount}"
 
     evt = BalanceUpdate(
         balance_update_id=event_id,
