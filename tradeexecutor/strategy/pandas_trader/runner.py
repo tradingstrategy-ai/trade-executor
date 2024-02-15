@@ -64,9 +64,11 @@ class PandasTraderRunner(StrategyRunner):
         # Call the strategy script decide_trades()
         # callback
         if self.execution_context.is_version_greater_or_equal_than(0, 4, 0):
+            parameters = self.execution_context.parameters
+            parameters["cycle"] = debug_details["cycle"]
             return self.decide_trades(
                 timestamp=pd_timestamp,
-                parameters=self.execution_context.parameters,
+                parameters=parameters,
                 strategy_universe=strategy_universe,
                 state=state,
                 pricing_model=pricing_model,

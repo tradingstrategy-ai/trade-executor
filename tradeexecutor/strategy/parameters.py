@@ -2,16 +2,39 @@
 
 - Handle input parameters in single-run and grid search cases
 """
-from typing import Tuple, Iterable
+import datetime
+from typing import Tuple, Iterable, TypedDict
 
-from web3.datastructures import ReadableAttributeDict
+from web3.datastructures import ReadableAttributeDict, AttributeDict, MutableAttributeDict
+
+from tradeexecutor.state.types import USDollarAmount
+from tradeexecutor.strategy.cycle import CycleDuration
 
 
 class StrategyParametersMissing(Exception):
     """Strategy parameters are not well defined."""
 
 
-class StrategyParameters(ReadableAttributeDict):
+
+class CoreStrategyParameters(TypedDict):
+    """Describe strategy parameters that are always available.
+
+    """
+
+    #: US dollars at the start of the backtesting
+    initial_cash: USDollarAmount | None = None
+
+    backtest_start: datetime.datetime | None = None
+
+    backtest_end: datetime.datetime | None = None
+
+    cycle_duration: CycleDuration
+
+    #: Current strategy decision cycle
+    cycle: int
+
+
+class StrategyParameters(MutableAttributeDict):
     """Strategy parameters.
 
     These parameters may present
@@ -22,6 +45,9 @@ class StrategyParameters(ReadableAttributeDict):
     - Parameters about the backtesting itself: `backtest_start`, `backtest_end`
 
     - Parameters about strategy execution: `cycle_duration`.
+
+    - See :py:class:`CoreStrategyParameters` for the always present parameters.
+      Due to Python limitations these cannot be automatically type hinted.
 
     The parameters are presented as attributed dict and
     are accessible using both dotted attribe access and dict access:
