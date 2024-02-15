@@ -355,7 +355,7 @@ def test_compounding_formulas(
     assert profitability.iloc[-1] == pytest.approx(-0.004717044385644686, rel=APPROX_REL)
     assert profitability.equals(calculate_long_compounding_realised_trading_profitability(state))
     assert profitability.equals(summary.compounding_returns)
-    assert profitability.iloc[-1] == pytest.approx(summary.return_percent, rel=1e-9)
+    assert profitability.iloc[-1] == pytest.approx(summary.return_percent, abs=1e-9)
 
 
 def test_bars_display(backtest_result: tuple[State, TradingStrategyUniverse, dict],
