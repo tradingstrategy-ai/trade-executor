@@ -435,7 +435,7 @@ def _run_v04(
     assert cycle_duration, f"Strategy parameters lack cycle_duration, we have {list(parameters.keys())}"
 
     initial_cash = parameters.get("initial_cash")
-    assert initial_cash, f"Strategy parameters lack initial_deposit, we have {list(parameters.keys())}"
+    assert initial_cash, f"Strategy parameters lack initial_cash, we have {list(parameters.keys())}"
 
     return run_grid_search_backtest(
         combination,
