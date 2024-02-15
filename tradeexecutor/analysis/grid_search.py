@@ -23,6 +23,8 @@ VALUE_COLS = ["Annualised return", "Max drawdown", "Sharpe", "Sortino", "Average
 
 PERCENT_COLS = ["Annualised return", "Max drawdown", "Average position", "Median position"]
 
+DATA_COLS = ["Positions", "Trades"]
+
 
 def analyse_combination(
         r: GridSearchResult,
@@ -63,6 +65,7 @@ def analyse_combination(
     row.update({
         # "Combination": r.combination.get_label(),
         "Positions": r.summary.total_positions,
+        "Trades": r.summary.total_trades,
         # "Return": r.summary.return_percent,
         # "Return2": r.summary.annualised_return_percent,
         #"Annualised profit": clean(r.metrics.loc["Expected Yearly"][0]),
@@ -113,6 +116,7 @@ def analyse_grid_search_result(
     param_names = [p.name for p in r.combination.searchable_parameters]
     df = df.set_index(param_names)
     df = df.sort_index()
+
     return df
 
 
@@ -121,6 +125,9 @@ def visualise_table(df: pd.DataFrame):
 
     - Highlight winners and losers
 
+    - Gradient based on the performance of a metric
+
+    - Stripes for the input
     """
 
     # https://stackoverflow.com/a/57152529/315168
@@ -143,6 +150,9 @@ def visualise_table(df: pd.DataFrame):
     ).format(
         formatter="{:.2%}",
         subset = PERCENT_COLS,
+    ).set_properties(
+        subset=DATA_COLS, 
+        **{'background-color': '#333'}
     )
 
     # formatted = df.style.highlight_max(
