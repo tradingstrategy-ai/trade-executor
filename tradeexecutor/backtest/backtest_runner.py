@@ -545,7 +545,7 @@ def run_backtest_inline(
     allow_missing_fees=False,
     engine_version: Optional[TradingStrategyEngineVersion] = None,
     strategy_logging=False,
-    parameters: Type[StrategyParameters] | None = None,
+    parameters: Type | StrategyParameters | None = None,
 ) -> Tuple[State, TradingStrategyUniverse, dict]:
     """Run backtests for given decide_trades and create_trading_universe functions.
 
@@ -654,6 +654,15 @@ def run_backtest_inline(
         # https://www.python.org/dev/peps/pep-3102/
         raise TypeError("Only keyword arguments accepted")
 
+    if parameters is not None:
+        if type(parameters) == type:
+            # Class like definition
+            parameters = StrategyParameters.from_class(parameters, grid_search=False)
+        else:
+            assert isinstance(parameters, StrategyParameters)
+
+        parameters.validate_backtest()
+
     if start_at is None and end_at is None:
         start_at, end_at = universe.data_universe.candles.get_timestamp_range()
         start_at = start_at.to_pydatetime()
@@ -666,8 +675,6 @@ def run_backtest_inline(
     if end_at:
         assert isinstance(end_at, datetime.datetime)
         assert start_at, "You must give start_at if you give end_at"
-
-    assert initial_deposit > 0
 
     if universe:
         assert isinstance(universe, TradingStrategyUniverse)
@@ -685,6 +692,8 @@ def run_backtest_inline(
     if initial_deposit is None:
         assert parameters, f"You need to give either initial_deposit or parameters argument"
         initial_deposit = parameters.initial_cash
+
+    assert initial_deposit > 0
 
     # Setup our special logging level if not done yet.
     # (Not done when called from notebook)
