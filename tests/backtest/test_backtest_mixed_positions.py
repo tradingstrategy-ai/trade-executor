@@ -255,12 +255,14 @@ def test_backtest_long_short_stats(
     overall = float(summary_by_side.loc['Return %']['All'][:-1])
     long = float(summary_by_side.loc['Return %']['Long'][:-1])
     short = float(summary_by_side.loc['Return %']['Short'][:-1])
-
-    # Not really supposed to match up
+    
+    assert summary.return_percent * 100 == pytest.approx(overall, abs=1e-2)
+    
+    # TODO make more precise
     assert overall == pytest.approx(overall_compounding_profit.iloc[-1] * 100, abs=1e-1)
+
+    # Not really supposed to match up currently
     assert long == pytest.approx(long_compounding_profit.iloc[-1] * 100, abs=1e-1)
     assert short == pytest.approx(short_compounding_profit.iloc[-1] * 100, abs=1e-1)
 
     serialise_long_short_stats_as_json_table(backtested_state=state)
-    
-    
