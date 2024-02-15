@@ -259,7 +259,7 @@ def test_backtest_long_short_stats(
     assert summary.return_percent * 100 == pytest.approx(overall, abs=1e-2)
     
     # TODO make more precise
-    assert overall == pytest.approx(overall_compounding_profit.iloc[-1] * 100, abs=1e-1)
+    assert overall/100 == pytest.approx(overall_compounding_profit.iloc[-1], abs=1e-3)
 
     # Not really supposed to match up currently
     assert long == pytest.approx(long_compounding_profit.iloc[-1] * 100, abs=1e-1)
