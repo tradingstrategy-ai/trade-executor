@@ -304,3 +304,49 @@ def test_binance_resample_no_change():
         assert btc.iloc[i]["high"] == btc_resampled_again.iloc[i]["high"]
         assert btc.iloc[i]["low"] == btc_resampled_again.iloc[i]["low"]
 
+
+@pytest.mark.skipif(os.environ.get("GITHUB_ACTIONS", None) == "true", reason="Github US servers are blocked by Binance with HTTP 451")
+def test_binance_upsample_again():
+    """Check that we can arrive to the same daily candles in two days
+
+    - Load 1h, upsample 1d
+
+    - Load 1h, upsample 8h, upsample 1d
+    ."""
+
+    start_at = datetime.datetime(2019, 1, 1)
+    end_at = datetime.datetime(2019, 2, 1)
+
+    strategy_universe_daily = create_binance_universe(
+        ["BTCUSDT", "ETHUSDT"],   # Binance internal tickers later mapped to Trading strategy DEXPair metadata class
+        candle_time_bucket=TimeBucket.d1,
+        stop_loss_time_bucket=TimeBucket.h1,
+        start_at=start_at,  # Backtest for 5 years data
+        end_at=end_at,
+        include_lending=False
+    )
+
+    strategy_universe_8h = create_binance_universe(
+        ["ETHUSDT", "BTCUSDT"],
+        candle_time_bucket=TimeBucket.h8,
+        stop_loss_time_bucket=TimeBucket.h1,
+        start_at=start_at,
+        end_at=end_at,
+        include_lending=False,
+    )
+
+    pair_desc = (ChainId.centralised_exchange, "binance", "BTC", "USDT")
+    pair = strategy_universe_daily.data_universe.pairs.get_pair_by_human_description(pair_desc)
+    btc_daily = strategy_universe_daily.data_universe.candles.get_last_entries_by_pair_and_timestamp(pair, end_at)
+
+    pair_desc = (ChainId.centralised_exchange, "binance", "BTC", "USDT")
+    pair = strategy_universe_8h.data_universe.pairs.get_pair_by_human_description(pair_desc)
+    btc_8h = strategy_universe_8h.data_universe.candles.get_last_entries_by_pair_and_timestamp(pair, end_at)
+
+    btc_resampled = resample_candles(btc_8h, pd.Timedelta(days=1))
+
+    for i in btc_daily.index:
+        assert btc_daily["open"][i] == btc_resampled["open"][i]
+        assert btc_daily["close"][i] == btc_resampled["close"][i]
+        assert btc_daily["high"][i] == btc_resampled["high"][i]
+        assert btc_daily["low"][i] == btc_resampled["low"][i]
