@@ -549,8 +549,17 @@ def visualise_long_short_benchmark(
     state: State,
     name: str | None = None,
     height: int | None = None,
-):
-    """Visualise separate benchmarks for both longing and shorting"""
+) -> go.Figure:
+    """Visualise separate benchmarks for both longing and shorting
+
+    .. note ::
+        This chart is inaccurate for strategies that can have multiple positions open at the same time.
+    
+    :param state: state of the strategy
+    :param name: name of the plot
+    :param height: height of the plot
+    :return: plotly figure
+    """
     
     long_compounding_returns = calculate_long_compounding_realised_trading_profitability(state)
     short_compounding_returns = calculate_short_compounding_realised_trading_profitability(state)
