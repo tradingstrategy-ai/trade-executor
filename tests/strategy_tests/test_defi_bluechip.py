@@ -21,6 +21,7 @@ from tradeexecutor.statistics.summary import calculate_summary_statistics
 from tradeexecutor.strategy.execution_context import ExecutionMode
 from tradeexecutor.analysis.trade_analyser import build_trade_analysis
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
+from tradeexecutor.visual.equity_curve import calculate_compounding_realised_trading_profitability
 from tradeexecutor.visual.single_pair import visualise_single_pair, visualise_single_pair_positions_with_duration_and_slippage
 from tradingstrategy.chain import ChainId
 
@@ -158,6 +159,11 @@ def test_trade_analysis(
         pair_id=crv_usd.internal_id,
     )
     assert isinstance(fig, go.Figure)
+
+    profit1 = calculate_compounding_realised_trading_profitability(state).iloc[-1]
+    profit2 = summary.return_percent
+    # TODO: This is don't match in alpha model strategies, need to investigate
+    # assert profit1 == pytest.approx(profit2)
 
 
 def test_alpha_model_weight_analysis(

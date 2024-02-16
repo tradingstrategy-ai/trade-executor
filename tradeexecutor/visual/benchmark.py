@@ -6,11 +6,14 @@ from typing import Optional, List, Union, Collection, Dict
 import plotly.graph_objects as go
 import pandas as pd
 
-
+from tradeexecutor.analysis.trade_analyser import build_trade_analysis
 from tradeexecutor.state.statistics import PortfolioStatistics
 from tradeexecutor.state.visualisation import Plot
+from tradeexecutor.state.state import State
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
 from tradeexecutor.visual.technical_indicator import visualise_technical_indicator
+from tradeexecutor.visual.equity_curve import calculate_long_compounding_realised_trading_profitability, calculate_short_compounding_realised_trading_profitability, calculate_compounding_realised_trading_profitability
+from tradingstrategy.timebucket import TimeBucket
 from tradingstrategy.pair import HumanReadableTradingPairDescription
 from tradingstrategy.types import USDollarAmount
 
@@ -434,3 +437,190 @@ def create_benchmark_equity_curves(
 
     return benchmark_indexes
 
+
+
+def visualise_benchmark(*args, **kwargs) -> go.Figure:
+    warnings.warn('This function is deprecated. Use visualise_equity_curve_benchmark instead', DeprecationWarning, stacklevel=2)
+    return visualise_equity_curve_benchmark(*args, **kwargs)
+
+
+
+def create_benchmark_equity_curves(
+    strategy_universe: TradingStrategyUniverse,
+    pairs: Dict[str, HumanReadableTradingPairDescription],
+    initial_cash: USDollarAmount,
+    custom_colours={"BTC": "orange", "ETH": "blue", "All cash": "black"}
+) -> pd.DataFrame:
+    """Create data series of different buy-and-hold benchmarks.
+
+    - Create different benchmark indexes to compare y our backtest results against
+
+    - Has default colours set for `BTC` and `ETH` pair labels
+
+    See also
+
+    - Output be given e.g. to :py:func:`tradeexecutor.analysis.grid_search.visualise_grid_search_equity_curves`
+
+    Example:
+
+    .. code-block:: python
+
+        from tradeexecutor.analysis.grid_search import visualise_grid_search_equity_curves
+        from tradeexecutor.visual.benchmark import create_benchmark_equity_curves
+
+        # List of pair descriptions we used to look up pair metadata
+        our_pairs = [
+            (ChainId.centralised_exchange, "binance", "BTC", "USDT"),
+            (ChainId.centralised_exchange, "binance", "ETH", "USDT"),
+        ]
+
+        benchmark_indexes = create_benchmark_equity_curves(
+            strategy_universe,
+            {"BTC": our_pairs[0], "ETH": our_pairs[1]},
+            initial_cash=StrategyParameters.initial_cash,
+        )
+
+        fig = visualise_grid_search_equity_curves(
+            grid_search_results,
+            benchmark_indexes=benchmark_indexes,
+        )
+        fig.show()
+
+    :param strategy_universe:
+        Strategy universe from where we
+
+    :param pairs:
+        Trading pairs benchmarked.
+
+        In a format `short label` : `pair description`.
+
+    :param initial_cash:
+        The value for all cash benchmark and the initial backtest deposit.
+
+        All cash is that you would just sit on the top of the cash pile
+        since start of the backtest.
+
+    :param custom_colours:
+        Apply these colours on the benchmark series
+
+    :return:
+        Pandas DataFrame.
+
+        DataFrame has series labelled "BTC", "ETH", "All cash", etc.
+
+        DataFrame and its series' `attrs` contains colour information for well-known pairs.
+
+    """
+
+    returns = {}
+
+    # Get close prices for all pairs
+    for key, value in pairs.items():
+        pair = strategy_universe.data_universe.pairs.get_pair_by_human_description(value)
+        close_data = strategy_universe.data_universe.candles.get_candles_by_pair(pair)["close"]
+        initial_inventory = initial_cash / float(close_data.iloc[0])
+        series = close_data * initial_inventory
+        returns[key] = series
+
+    # Form all cash line
+    if initial_cash is not None:
+        assert len(returns) > 0
+        assert type(initial_cash) in (int, float)
+        first_close = next(iter(returns.values()))
+        start_at = first_close.index[0]
+        end_at = first_close.index[-1]
+        idx = [start_at, end_at]
+        values = [initial_cash, initial_cash]
+        all_cash_series = pd.Series(values, idx)
+        returns["All cash"] = all_cash_series
+
+    # Wrap it up in a DataFrame
+    benchmark_indexes = pd.DataFrame(returns)
+
+    # Apply custom colors
+    for symbol, colour in custom_colours.items():
+        if symbol in benchmark_indexes.columns:
+            benchmark_indexes[symbol].attrs = {"colour": colour}
+
+    return benchmark_indexes
+
+
+def visualise_long_short_benchmark(
+    state: State,
+    name: str | None = None,
+    height: int | None = None,
+) -> go.Figure:
+    """Visualise separate benchmarks for both longing and shorting
+
+    .. note ::
+        This chart is inaccurate for strategies that can have multiple positions open at the same time.
+    
+    :param state: state of the strategy
+    :param name: name of the plot
+    :param height: height of the plot
+    :return: plotly figure
+    """
+    
+    long_compounding_returns = calculate_long_compounding_realised_trading_profitability(state)
+    short_compounding_returns = calculate_short_compounding_realised_trading_profitability(state)
+    overall_compounding_returns = calculate_compounding_realised_trading_profitability(state)
+
+    # visualise long equity curve
+    long_curve = get_plot_from_series("long", "#006400", long_compounding_returns)
+    short_curve = get_plot_from_series("short", "#8B0000", short_compounding_returns)
+    overall_curve = get_plot_from_series("overall", "rgba(0, 0, 255, 1)", overall_compounding_returns)
+
+    fig = go.Figure()
+    fig.add_trace(long_curve)
+    fig.add_trace(short_curve)
+    fig.add_trace(overall_curve)
+
+    fig.update_yaxes(title="compounding return %")
+
+    if name:
+        fig.update_layout(title=f"{name}")
+    else:
+        fig.update_layout(title="Equity curve for longs and shorts")
+        
+    if height:
+        fig.update_layout(height=height)
+        
+    fig.update_layout(
+        legend=dict(
+            orientation="h",
+            yanchor="bottom",
+            y=1.02,
+            xanchor="right",
+            x=1
+        )
+    )
+
+    return fig
+
+def get_plot_from_series(name, colour, series) -> go.Scatter:
+    """Draw portfolio performance.
+    
+    :param name: name of the plot
+    :param colour: colour of the plot
+    :param series: series of daily returns
+    :return: plotly scatter plot
+    """
+    plot = []
+    for index, daily_return in series.items():
+        plot.append({
+            "timestamp": index,
+            "value": daily_return,
+        })
+
+    df = pd.DataFrame(plot, columns=["timestamp", "value"])
+    df.set_index("timestamp", inplace=True)
+
+    fig = go.Scatter(
+        x=df.index,
+        y=df["value"],
+        mode="lines",
+        name=name,
+        line=dict(color=colour),
+    )
+    
+    return fig

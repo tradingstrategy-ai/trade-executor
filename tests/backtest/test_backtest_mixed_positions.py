@@ -235,6 +235,13 @@ def test_backtest_long_short_stats(
     
     analysis = build_trade_analysis(state.portfolio)
     summary = analysis.calculate_summary_statistics(state=state, time_bucket=strategy_universe.data_universe.time_bucket)
+    long_summary = analysis.calculate_long_summary_statistics(state=state, time_bucket=strategy_universe.data_universe.time_bucket)
+    short_summary = analysis.calculate_short_summary_statistics(state=state, time_bucket=strategy_universe.data_universe.time_bucket)
+    summary_by_side = analysis.calculate_all_summary_stats_by_side(state=state, time_bucket=strategy_universe.data_universe.time_bucket)
+
+    assert summary.compounding_returns.equals(overall_compounding_profit)
+    assert long_summary.compounding_returns.equals(long_compounding_profit)
+    assert short_summary.compounding_returns.equals(short_compounding_profit)
     
     assert summary.return_percent == pytest.approx(overall_compounding_profit.iloc[-1], abs=1e-3)  # TODO make more precise
     
@@ -245,7 +252,17 @@ def test_backtest_long_short_stats(
     assert overall_compounding_profit.iloc[-1] == -0.018257383118416515
     assert long_compounding_profit.iloc[-1] == -0.003555468782310056
     assert short_compounding_profit.iloc[-1] == -0.014754373048884384
+    overall = float(summary_by_side.loc['Return %']['All'][:-1])
+    long = float(summary_by_side.loc['Return %']['Long'][:-1])
+    short = float(summary_by_side.loc['Return %']['Short'][:-1])
+    
+    assert summary.return_percent * 100 == pytest.approx(overall, abs=1e-2)
+    
+    # TODO make more precise
+    assert overall/100 == pytest.approx(overall_compounding_profit.iloc[-1], abs=1e-3)
+
+    # Not really supposed to match up currently
+    assert long == pytest.approx(long_compounding_profit.iloc[-1] * 100, abs=1e-1)
+    assert short == pytest.approx(short_compounding_profit.iloc[-1] * 100, abs=1e-1)
 
     serialise_long_short_stats_as_json_table(backtested_state=state)
-    
-    

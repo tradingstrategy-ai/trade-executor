@@ -21,7 +21,7 @@ from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniv
 from tradeexecutor.testing.synthetic_ethereum_data import generate_random_ethereum_address
 from tradeexecutor.testing.synthetic_exchange_data import generate_exchange, generate_simple_routing_model
 from tradeexecutor.testing.synthetic_price_data import generate_ohlcv_candles
-from tradeexecutor.visual.benchmark import visualise_equity_curve_benchmark
+from tradeexecutor.visual.benchmark import visualise_equity_curve_benchmark, visualise_long_short_benchmark
 from tradingstrategy.candle import GroupedCandleUniverse
 from tradeexecutor.state.trade import TradeExecution
 from tradeexecutor.strategy.pricing_model import PricingModel
@@ -34,7 +34,7 @@ from tradeexecutor.strategy.cycle import CycleDuration
 from tradeexecutor.strategy.reserve_currency import ReserveCurrency
 from tradeexecutor.strategy.strategy_type import StrategyType
 from tradeexecutor.strategy.default_routing_options import TradeRouting
-from tradeexecutor.visual.equity_curve import calculate_equity_curve, calculate_returns
+from tradeexecutor.visual.equity_curve import calculate_equity_curve, calculate_returns, calculate_compounding_realised_trading_profitability, calculate_long_compounding_realised_trading_profitability
 from tradeexecutor.analysis.advanced_metrics import visualise_advanced_metrics, AdvancedMetricsMode
 
 
@@ -345,6 +345,19 @@ def test_basic_summary_statistics(
     assert summary.profit_factor == pytest.approx(0.9754583954173234, rel=APPROX_REL)
 
 
+def test_compounding_formulas(
+        backtest_result: tuple[State, TradingStrategyUniverse, dict],
+        summary: TradeSummary
+):
+    """Test compounding formulas for long and overall."""
+    state, universe, debug_dump = backtest_result
+    profitability = calculate_compounding_realised_trading_profitability(state)
+    assert profitability.iloc[-1] == pytest.approx(-0.004717044385644686, rel=APPROX_REL)
+    assert profitability.equals(calculate_long_compounding_realised_trading_profitability(state))
+    assert profitability.equals(summary.compounding_returns)
+    assert profitability.iloc[-1] == pytest.approx(summary.return_percent, abs=1e-9)
+
+
 def test_bars_display(backtest_result: tuple[State, TradingStrategyUniverse, dict],
     analysis: TradeAnalysis):
 
@@ -616,4 +629,12 @@ def test_benchmark_synthetic_trading_portfolio(
     )
 
     # Check that the diagram has 3 plots
+    assert len(fig.data) == 3
+
+    # Visualise long/short benchmark
+    fig2 = visualise_long_short_benchmark(
+        state,
+        time_bucket,
+    )
+
     assert len(fig.data) == 3

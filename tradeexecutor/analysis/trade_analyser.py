@@ -635,6 +635,8 @@ class TradeAnalysis:
         
         short_summary = self.calculate_summary_statistics_for_positions(time_bucket, state, self.get_short_positions())
         short_summary.compounding_returns = compounding_returns
+
+        short_summary.return_percent = compounding_returns.iloc[-1] if len(compounding_returns) > 0 else None
         
         return short_summary
 
@@ -662,6 +664,8 @@ class TradeAnalysis:
 
         long_summary =  self.calculate_summary_statistics_for_positions(time_bucket, state, self.get_long_positions())
         long_summary.compounding_returns = compounding_returns
+
+        long_summary.return_percent = compounding_returns.iloc[-1] if len(compounding_returns) > 0 else None
         
         return long_summary
 
