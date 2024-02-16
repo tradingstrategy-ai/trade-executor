@@ -567,7 +567,6 @@ def visualise_long_short_benchmark(
     fig.add_trace(overall_curve)
 
     fig.update_yaxes(title="compounding return %")
-    fig.update_xaxes(title="time")
 
     if name:
         fig.update_layout(title=f"{name}")
