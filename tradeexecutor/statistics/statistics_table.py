@@ -14,7 +14,7 @@ from tradeexecutor.state.state import State
 from tradeexecutor.state.portfolio import Portfolio
 from tradeexecutor.statistics.key_metric import calculate_max_drawdown
 from tradeexecutor.visual.equity_curve import calculate_compounding_realised_trading_profitability, calculate_non_cumulative_daily_returns
-from tradeexecutor.utils.summarydataframe import as_percent
+from tradeexecutor.utils.summarydataframe import as_percent, format_value
 
 
 @dataclass_json
@@ -142,11 +142,11 @@ def _serialise_long_short_stats_as_json_table(
         daily_returns = calculate_non_cumulative_daily_returns(source_state)
         portfolio_return = compounding_returns.iloc[-1]
         annualised_return_percent = portfolio_return * 365 * 24 * 60 * 60 / (calculation_window_end_at - calculation_window_start_at).seconds
-        summary.loc['Return %']['All'] = as_percent(portfolio_return)
-        summary.loc['Annualised return %']['All'] = as_percent(annualised_return_percent)
+        summary.loc['Return %']['All'] = format_value(as_percent(portfolio_return))
+        summary.loc['Annualised return %']['All'] = format_value(as_percent(annualised_return_percent))
 
         max_drawdown = -calculate_max_drawdown(daily_returns)
-        summary.loc['Max drawdown']['All'] = as_percent(max_drawdown)
+        summary.loc['Max drawdown']['All'] = format_value(as_percent(max_drawdown))
 
     key_metrics_map = {
         KeyMetricKind.trading_period_length: 'Trading period length',
