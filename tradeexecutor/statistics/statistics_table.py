@@ -140,8 +140,9 @@ def _serialise_long_short_stats_as_json_table(
     
     if compounding_returns is not None and len(compounding_returns) > 0:
         portfolio_return = compounding_returns.iloc[-1]
-        summary.loc['Return %']['All'] = portfolio_return
-        summary.loc['Annualised return %']['All'] = portfolio_return * 365 * 24 * 60 * 60 / (calculation_window_end_at - calculation_window_start_at).seconds
+        annualised_return_percent = portfolio_return * 365 * 24 * 60 * 60 / (calculation_window_end_at - calculation_window_start_at).seconds
+        summary.loc['Return %']['All'] = f"{round(portfolio_return, 2)}%"
+        summary.loc['Annualised return %']['All'] = f"{round(annualised_return_percent, 2)}%"
 
         max_drawdown = -calculate_max_drawdown(daily_returns)
         summary.loc['Max drawdown']['All'] = max_drawdown
