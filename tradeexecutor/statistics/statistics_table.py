@@ -12,7 +12,9 @@ from tradeexecutor.analysis.trade_analyser import build_trade_analysis
 from tradeexecutor.strategy.summary import KeyMetricKind, KeyMetricSource, KeyMetric
 from tradeexecutor.state.state import State
 from tradeexecutor.state.portfolio import Portfolio
-from tradeexecutor.visual.equity_curve import calculate_compounding_realised_trading_profitability
+from tradeexecutor.statistics.key_metric import calculate_max_drawdown
+from tradeexecutor.visual.equity_curve import calculate_compounding_realised_trading_profitability, calculate_non_cumulative_daily_returns
+from tradeexecutor.utils.summarydataframe import as_percent
 
 
 @dataclass_json
@@ -137,9 +139,14 @@ def _serialise_long_short_stats_as_json_table(
         compounding_returns = calculate_compounding_realised_trading_profitability(source_state)
     
     if compounding_returns is not None and len(compounding_returns) > 0:
+        daily_returns = calculate_non_cumulative_daily_returns(source_state)
         portfolio_return = compounding_returns.iloc[-1]
-        summary.loc['Return %'] = portfolio_return
-        summary.loc['Annualised return %'] = portfolio_return * 365 * 24 * 60 * 60 / (calculation_window_end_at - calculation_window_start_at).seconds
+        annualised_return_percent = portfolio_return * 365 * 24 * 60 * 60 / (calculation_window_end_at - calculation_window_start_at).seconds
+        summary.loc['Return %']['All'] = as_percent(portfolio_return)
+        summary.loc['Annualised return %']['All'] = as_percent(annualised_return_percent)
+
+        max_drawdown = -calculate_max_drawdown(daily_returns)
+        summary.loc['Max drawdown']['All'] = as_percent(max_drawdown)
 
     key_metrics_map = {
         KeyMetricKind.trading_period_length: 'Trading period length',
@@ -226,33 +233,3 @@ def _serialise_long_short_stats_as_json_table(
     )
 
     return table
-
-
-def get_data_source_and_calculation_window(
-    live_state: State, 
-    backtested_state: State | None, 
-    required_history: datetime.timedelta,
-)-> tuple[State | None, Literal[KeyMetricSource.live_trading, KeyMetricSource.backtesting] | None, datetime.datetime | None, datetime.datetime | None]:
-    """Get the data source and calculation window for the key metrics.
-    
-    :param live_state: The current live execution state
-    :param backtested_state: The backtested state
-    :param required_history: How long history we need before using live execution as the basis for the key metric calculations
-    :return: The data source and calculation window for the key metrics.
-    """
-    source_state, source, calculation_window_start_at, calculation_window_end_at = None, None, None, None
-    live_history = live_state.portfolio.get_trading_history_duration()
-
-    if live_history is not None and live_history >= required_history:
-        source_state = live_state
-        source = KeyMetricSource.live_trading
-        calculation_window_start_at = source_state.created_at
-        calculation_window_end_at = datetime.datetime.utcnow()
-    elif backtested_state and backtested_state.portfolio.get_trading_history_duration():
-        source_state = backtested_state
-        source = KeyMetricSource.backtesting
-        first_trade, last_trade = source_state.portfolio.get_first_and_last_executed_trade()
-        calculation_window_start_at = first_trade.executed_at
-        calculation_window_end_at = last_trade.executed_at
-
-    return source_state, source, calculation_window_start_at, calculation_window_end_at

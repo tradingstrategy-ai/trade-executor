@@ -3,7 +3,7 @@
 Calculate key metrics used in the web frontend summary cards.
 """
 import datetime
-from typing import List, Iterable
+from typing import List, Iterable, Literal
 
 import pandas as pd
 import numpy as np
@@ -13,7 +13,6 @@ from tradeexecutor.state.state import State
 from tradeexecutor.state.types import Percent
 from tradeexecutor.strategy.summary import KeyMetric, KeyMetricKind, KeyMetricSource, KeyMetricCalculationMethod
 from tradeexecutor.visual.equity_curve import calculate_size_relative_realised_trading_returns, calculate_non_cumulative_daily_returns
-from tradeexecutor.statistics.statistics_table import get_data_source_and_calculation_window
 
 
 def calculate_sharpe(returns: pd.Series, periods=365) -> float:
@@ -284,3 +283,33 @@ def calculate_key_metrics(
         calculation_method=KeyMetricCalculationMethod.latest_value,
         help_link=KeyMetricKind.trades_last_week.get_help_link(),
     )
+
+
+def get_data_source_and_calculation_window(
+    live_state: State, 
+    backtested_state: State | None, 
+    required_history: datetime.timedelta,
+)-> tuple[State | None, Literal[KeyMetricSource.live_trading, KeyMetricSource.backtesting] | None, datetime.datetime | None, datetime.datetime | None]:
+    """Get the data source and calculation window for the key metrics.
+    
+    :param live_state: The current live execution state
+    :param backtested_state: The backtested state
+    :param required_history: How long history we need before using live execution as the basis for the key metric calculations
+    :return: The data source and calculation window for the key metrics.
+    """
+    source_state, source, calculation_window_start_at, calculation_window_end_at = None, None, None, None
+    live_history = live_state.portfolio.get_trading_history_duration()
+
+    if live_history is not None and live_history >= required_history:
+        source_state = live_state
+        source = KeyMetricSource.live_trading
+        calculation_window_start_at = source_state.created_at
+        calculation_window_end_at = datetime.datetime.utcnow()
+    elif backtested_state and backtested_state.portfolio.get_trading_history_duration():
+        source_state = backtested_state
+        source = KeyMetricSource.backtesting
+        first_trade, last_trade = source_state.portfolio.get_first_and_last_executed_trade()
+        calculation_window_start_at = first_trade.executed_at
+        calculation_window_end_at = last_trade.executed_at
+
+    return source_state, source, calculation_window_start_at, calculation_window_end_at
