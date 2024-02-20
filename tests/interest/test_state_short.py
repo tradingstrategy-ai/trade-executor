@@ -1347,7 +1347,7 @@ def test_short_unrealised_interest_and_losses(
     )
 
     atoken_interest = 1.02  # Receive 2% on USD collateral
-    vtoken_interest = 1.50  # Pay 10% on ETH loan
+    vtoken_interest = 1.50  # Pay 50% on ETH loan
 
     # Calculate simulated interest gains
     new_atoken = estimate_interest(
@@ -1380,6 +1380,7 @@ def test_short_unrealised_interest_and_losses(
         now_at,
         vtoken_price=1600.0,
         atoken_price=1.0,
+        max_interest_gain=0.6,
     )
 
     # We gain around 15 USDC in half a year
