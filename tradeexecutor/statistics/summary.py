@@ -107,6 +107,7 @@ def calculate_summary_statistics(
             profitability_time_windowed = profitability[start_at:]
             if len(profitability_time_windowed) > 0:
                 profitability_daily = calculate_cumulative_daily_returns(state)
+                profitability_daily = profitability_daily[start_at:]
                 # We do not generate entry for dates without trades so forward fill from the previous day
                 profitability_daily = profitability_daily.ffill()
                 profitability_90_days = profitability_daily.iloc[-1]
