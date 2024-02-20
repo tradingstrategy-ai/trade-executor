@@ -90,6 +90,9 @@ def calculate_advanced_metrics(
     result = metrics(returns, display=False, periods_per_year=periods_per_year, mode=mode.value)
 
     # Hack - see analyse_combination()
+    # Communicative annualized growth return,
+    # as compounded
+    # Should say CAGR (raw), but is what it is for the legacy reasons
     result.loc["Annualised return (raw)"] = [stats.cagr(returns, 0., compounded=True)]
     return result
 

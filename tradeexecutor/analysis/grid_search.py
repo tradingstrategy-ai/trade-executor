@@ -19,9 +19,9 @@ from tradeexecutor.backtest.grid_search import GridSearchResult
 from tradeexecutor.state.types import USDollarAmount
 from tradeexecutor.visual.benchmark import visualise_all_cash, visualise_portfolio_equity_curve
 
-VALUE_COLS = ["Annualised return", "Max drawdown", "Sharpe", "Sortino", "Average position", "Median position"]
+VALUE_COLS = ["CAGR", "Max drawdown", "Sharpe", "Sortino", "Average position", "Median position"]
 
-PERCENT_COLS = ["Annualised return", "Max drawdown", "Average position", "Median position"]
+PERCENT_COLS = ["CAGR", "Max drawdown", "Average position", "Median position"]
 
 DATA_COLS = ["Positions", "Trades"]
 
@@ -69,7 +69,7 @@ def analyse_combination(
         # "Return": r.summary.return_percent,
         # "Return2": r.summary.annualised_return_percent,
         #"Annualised profit": clean(r.metrics.loc["Expected Yearly"][0]),
-        "Annualised return": clean(r.metrics.loc["Annualised return (raw)"][0]),
+        "CAGR": clean(r.metrics.loc["Annualised return (raw)"][0]),
         "Max drawdown": clean(r.metrics.loc["Max Drawdown"][0]),
         "Sharpe": clean(r.metrics.loc["Sharpe"][0]),
         "Sortino": clean(r.metrics.loc["Sortino"][0]),
@@ -96,6 +96,15 @@ def analyse_grid_search_result(
 
     - Each row has some metrics extracted from the results by :py:func:`analyse_combination`
 
+    The output has the following row for each parameter combination:
+
+    - Combination parameters
+    - Positions and trade counts
+    - CAGR (Communicative annualized growth return, compounding)
+    - Max drawdown
+    - Sharpe
+    - Sortino
+
     See also :py:func:`analyse_combination`.
 
     :param results:
@@ -116,7 +125,6 @@ def analyse_grid_search_result(
     param_names = [p.name for p in r.combination.searchable_parameters]
     df = df.set_index(param_names)
     df = df.sort_index()
-
     return df
 
 
@@ -214,6 +222,10 @@ def visualise_heatmap_2d(
 
     # Reset multi-index so we can work with parameter 1 and 2 as series
     df = result.reset_index()
+
+    # Backwards compatibiltiy
+    if metric == "Annualised return" and ("Annualised return" not in df.columns) and "CAGR" in df.columns:
+        metric = "CAGR"
 
     # Detect any non-number values on axes
     if continuous_scale is None:
