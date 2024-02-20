@@ -32,7 +32,7 @@ def update_interest(
     block_number: int | None = None,
     tx_hash: int | None = None,
     log_index: int | None = None,
-    sane_interest_update_threshold: Percent = 10,
+    max_interest_gain: Percent = 0.05,
 ) -> BalanceUpdate:
     """Poke credit supply position to increase its interest amount.
 
@@ -55,7 +55,7 @@ def update_interest(
     :param event_at:
         Block mined timestamp
 
-    :param sane_interest_update_threshold:
+    :param max_interest_gain:
         Safety threshold to check that any interest gains are below this value.
 
         Terminate execution if bad math detected.
@@ -101,7 +101,8 @@ def update_interest(
 
     gained_interest_percent = gained_interest / old_balance
 
-    assert 0 <= abs(gained_interest_percent) < sane_interest_update_threshold, f"Unlikely gained_interest for {asset}: {gained_interest} ({gained_interest_percent * 100:.2f}%), old quantity: {old_balance}, new quantity: {new_token_amount}"
+    assert gained_interest_percent > 0, f"Negative interest for {asset}: {gained_interest} (diff {gained_interest_percent * 100:.2f}%), old quantity: {old_balance}, new quantity: {new_token_amount}"
+    assert gained_interest_percent < max_interest_gain, f"Unlikely gained_interest for {asset}: {gained_interest} (diff {gained_interest_percent * 100:.2f}%, threshold {max_interest_gain * 100}%), old quantity: {old_balance}, new quantity: {new_token_amount}"
 
     evt = BalanceUpdate(
         balance_update_id=event_id,
@@ -326,13 +327,22 @@ def prepare_interest_distribution(
     )
 
 
-def distribute_to_entry(entry: InterestDistributionEntry, state: State, timestamp: datetime.datetime, block_number: BlockNumber, total_accrued: Decimal) -> BalanceUpdate:
+def distribute_to_entry(
+    entry: InterestDistributionEntry,
+    state: State,
+    timestamp: datetime.datetime,
+    block_number: BlockNumber,
+    total_accrued: Decimal,
+    max_interest_gain: Percent,
+) -> BalanceUpdate:
     """Update interest one position, one side of loan."""
+
     position_accrued = total_accrued * entry.weight  # Calculate per-position portion of new tokens
     new_token_amount = entry.tracker.quantity + position_accrued
     assert entry.price is not None, f"Asset lacks updated price: {entry.asset}"
     assert new_token_amount > 0
     assert new_token_amount >= entry.tracker.quantity
+
     evt = update_interest(
         state,
         entry.position,
@@ -341,6 +351,7 @@ def distribute_to_entry(entry: InterestDistributionEntry, state: State, timestam
         event_at=timestamp,
         asset_price=entry.price,
         block_number=block_number,
+        max_interest_gain=max_interest_gain,
     )
     return evt
 
@@ -362,7 +373,7 @@ def distribute_interest_for_assets(
 
     asset_total = operation.asset_interest_data[asset.get_identifier()].total
 
-    # Either there has not bee really any change over time (too fast refresh rate)
+    # Either there has not be really any change over time (too fast refresh rate)
     # or this is unit test against mainnet fork where we cannot speed up the time.
     # In both cases we cannot generate any BalanceUpdate events,
     # because balance update can not be zero.
@@ -372,15 +383,6 @@ def distribute_interest_for_assets(
     if abs(interest_accrued) >= INTEREST_EPSILON:
 
         assert interest_accrued >= 0, f"Interest cannot go negative: {interest_accrued}, our epsilon is {INTEREST_EPSILON}"
-        interest_accrued_relative = interest_accrued / asset_total
-
-        assert interest_accrued_relative <= max_interest_gain, \
-            f"Interest gain safety check tripwired, too much interest gained.\n" \
-            f"Safety check threshold: {max_interest_gain * 100} %\n" \
-            f"Asset: {asset} at {timestamp}\n" \
-            f"Accrued: {interest_accrued_relative * 100} %\n" \
-            f"increase: {interest_accrued}, new amount: {new_amount}\n" \
-            f"Current asset total across all positions: {asset_total}"
 
         for entry in operation.entries:
             if entry.asset == asset:
@@ -389,7 +391,8 @@ def distribute_interest_for_assets(
                     state,
                     timestamp,
                     block_number,
-                    interest_accrued
+                    interest_accrued,
+                    max_interest_gain=max_interest_gain,
                 )
                 yield evt
 
