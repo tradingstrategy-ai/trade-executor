@@ -178,12 +178,14 @@ def analyse_trade_by_receipt(
     ), collateral_amount
 
 
-def analyse_one_delta_trade(
-    web3: Web3,
-    *,
-    tx_hash: str,
-) -> None:
-    """Analyse a 1delta trade.
+def decode_multicall_args(web3: Web3, args: tuple[bytes | str]):
+    """Decode multicall args.
+
+    :param payload:
+        Multicall payload
+
+    :return:
+        Decoded multicall args
     """
     flash_aggregator = get_deployed_contract(
         web3,
@@ -191,18 +193,10 @@ def analyse_one_delta_trade(
         "0x74E95F3Ec71372756a01eB9317864e3fdde1AC53",
     )
 
-    tx = web3.eth.get_transaction(tx_hash)
-    # print(tx)
-    input_args = get_transaction_data_field(tx)
+    for call in args:
+        if isinstance(call, str) and call.startswith("0x"):
+            call = bytes.fromhex(call[2:])
 
-    if isinstance(input_args, str) and input_args.startswith("0x"):
-        data = bytes.fromhex(input_args[2:])
-    else:
-        data = input_args
-    (multicall_payload,) = decode(("bytes[]",), data[4:])
-
-    print("------- Trade details -------")
-    for call in multicall_payload:
         selector, params = call[:4], call[4:]
 
         function = flash_aggregator.get_function_by_selector(selector)
@@ -233,6 +227,27 @@ def analyse_one_delta_trade(
         symbolic_args = "\n".join(symbolic_args)
         
         print(f"\n{function.fn_name}:\n{symbolic_args}")
+
+
+def analyse_one_delta_trade(
+    web3: Web3,
+    *,
+    tx_hash: str,
+) -> None:
+    """Analyse a 1delta trade.
+    """
+    tx = web3.eth.get_transaction(tx_hash)
+    # print(tx)
+    input_args = get_transaction_data_field(tx)
+
+    if isinstance(input_args, str) and input_args.startswith("0x"):
+        data = bytes.fromhex(input_args[2:])
+    else:
+        data = input_args
+    (multicall_payload,) = decode(("bytes[]",), data[4:])
+
+    print("------- Trade details -------")
+    decode_multicall_args(web3, multicall_payload)
 
     tx_receipt = web3.eth.get_transaction_receipt(tx_hash)
     if tx_receipt["status"] != 0:
