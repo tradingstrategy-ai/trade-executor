@@ -146,6 +146,7 @@ def update_leveraged_position_interest(
     block_number: int | None = None,
     tx_hash: int | None = None,
     log_index: int | None = None,
+    max_interest_gain: Percent = 0.05,
 ) -> Tuple[BalanceUpdate, BalanceUpdate]:
     """Updates accrued interest on lending protocol leveraged positions.
 
@@ -180,6 +181,7 @@ def update_leveraged_position_interest(
         block_number,
         tx_hash,
         log_index,
+        max_interest_gain=max_interest_gain,
     )
 
     logger.info("Updated leveraged interest %s for %s", pair.base, vevt)
@@ -195,6 +197,7 @@ def update_leveraged_position_interest(
         block_number,
         tx_hash,
         log_index,
+        max_interest_gain=max_interest_gain,
     )
 
     logger.info("Updated leveraged interest %s for %s", pair.quote, aevt)
