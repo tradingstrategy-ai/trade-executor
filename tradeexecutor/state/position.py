@@ -1394,12 +1394,16 @@ class TradingPosition(GenericPosition):
         Calculate how many percent profit this position made,
         relative to all trades taken over the life time of the position.
 
-        See also :py:meth:`get_realised_profit_usd`.
+        See also
+
+        - :py:meth:`get_realised_profit_usd`
+
+        - :py:meth:`get_unrealised_profit_usd`
 
         See :ref:`profitability` for more details.
 
         :return:
-            If the position made 1% profit returns 1.01.
+            If the position made 1% profit returns 0.01.
 
             Return ``0`` if the position profitability cannot be calculated,
             e.g. due to broken trades.

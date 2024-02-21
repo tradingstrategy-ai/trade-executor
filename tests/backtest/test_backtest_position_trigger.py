@@ -23,6 +23,7 @@ import pytest
 
 import pandas as pd
 
+from tradeexecutor.analysis.stop_loss import analyse_stop_losses
 from tradeexecutor.analysis.trade_analyser import build_trade_analysis
 from tradeexecutor.backtest.backtest_routing import BacktestRoutingModel
 from tradeexecutor.backtest.backtest_runner import run_backtest, setup_backtest_for_universe, run_backtest_inline
@@ -670,6 +671,7 @@ def test_synthetic_data_backtest_trailing_stop_loss(
     state2: State = State.from_json(dump)
     assert len(state2.portfolio.closed_positions) > 0
 
+
 def test_synthetic_data_backtest_stop_loss_usd(
         logger: logging.Logger,
         strategy_path: Path,
@@ -762,3 +764,40 @@ def test_synthetic_data_backtest_stop_loss_usd(
     stop_loss_positions = [p for p in state.portfolio.get_all_positions() if p.is_stop_loss()]
     for p in stop_loss_positions:
         assert p.is_loss()
+
+
+def test_synthetic_data_backtest_stop_loss_data_export(
+        logger: logging.Logger,
+        strategy_path: Path,
+        synthetic_universe: TradingStrategyUniverse,
+        routing_model: BacktestRoutingModel,
+    ):
+    """Export the trailing stop loss analytics data frame."""
+
+    assert synthetic_universe.has_stop_loss_data()
+
+    start_at, end_at = synthetic_universe.data_universe.candles.get_timestamp_range()
+
+    routing_model = generate_simple_routing_model(synthetic_universe)
+
+    stop_loss_decide_trades = trailing_stop_loss_decide_trades_factory(trailing_stop_loss_pct=0.98)
+
+    # Run the test
+    state, universe, debug_dump = run_backtest_inline(
+        name="No stop loss",
+        start_at=start_at.to_pydatetime(),
+        end_at=end_at.to_pydatetime(),
+        client=None,
+        cycle_duration=CycleDuration.cycle_1d,
+        decide_trades=stop_loss_decide_trades,
+        create_trading_universe=None,
+        universe=synthetic_universe,
+        initial_deposit=10_000,
+        reserve_currency=ReserveCurrency.busd,
+        trade_routing=TradeRouting.user_supplied_routing_model,
+        routing_model=routing_model,
+        allow_missing_fees=True,
+    )
+
+    df = analyse_stop_losses(state)
+    assert len(df) == 46
