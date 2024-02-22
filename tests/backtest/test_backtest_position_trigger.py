@@ -23,7 +23,7 @@ import pytest
 
 import pandas as pd
 
-from tradeexecutor.analysis.stop_loss import analyse_stop_losses
+from tradeexecutor.analysis.stop_loss import analyse_stop_losses, analyse_trigger_updates
 from tradeexecutor.analysis.trade_analyser import build_trade_analysis
 from tradeexecutor.backtest.backtest_routing import BacktestRoutingModel
 from tradeexecutor.backtest.backtest_runner import run_backtest, setup_backtest_for_universe, run_backtest_inline
@@ -801,3 +801,7 @@ def test_synthetic_data_backtest_stop_loss_data_export(
 
     df = analyse_stop_losses(state)
     assert len(df) == 46
+
+    p = state.portfolio.get_position_by_id(1)
+    df = analyse_trigger_updates(p)
+    assert len(df) == 2
