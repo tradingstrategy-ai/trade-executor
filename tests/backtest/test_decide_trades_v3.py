@@ -106,6 +106,8 @@ def test_decide_trades_v03(
 
     parameters = StrategyParameters({
         "test_val": 111,
+        "initial_cash": 10_000,
+        "cycle_duration": CycleDuration.cycle_1d,
     })
 
     # Run the test
@@ -113,10 +115,8 @@ def test_decide_trades_v03(
         start_at=datetime.datetime(2023, 1, 1),
         end_at=datetime.datetime(2023, 2, 1),
         client=persistent_test_client,
-        cycle_duration=CycleDuration.cycle_1d,
         decide_trades=decide_trades,
         create_trading_universe=create_trading_universe,
-        initial_deposit=10_000,
         reserve_currency=ReserveCurrency.usdc,
         trade_routing=TradeRouting.uniswap_v3_usdc_poly,
         engine_version="0.4",
