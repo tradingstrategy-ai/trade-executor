@@ -297,11 +297,22 @@ def test_daily_returns(backtest_result_hourly: State):
     """
     cum_profit = calculate_cumulative_daily_returns(backtest_result_hourly)
     assert isinstance(cum_profit, pd.Series)
+    
+    # remove last entry, since it was added to fill the gap
+    cum_profit = cum_profit[:-1]
 
     non_cum_profit = calculate_non_cumulative_daily_returns(backtest_result_hourly)
     assert isinstance(non_cum_profit, pd.Series)
 
-    non_cum_profit.add(1).cumprod().sub(1).iloc[-1] == pytest.approx(cum_profit.iloc[-1], abs=1e-10)
+    cum_profit_2 = non_cum_profit.add(1).cumprod().sub(1)
+    
+    assert cum_profit.index.equals(cum_profit_2.index)
+    
+    assert all(cum_profit - cum_profit_2 < 1e-10)
+    
+    assert cum_profit_2.iloc[-3] == pytest.approx(cum_profit.iloc[-3], abs=1e-10)
+    assert cum_profit_2.iloc[-2] == pytest.approx(cum_profit.iloc[-2], abs=1e-10)
+    assert cum_profit_2.iloc[-1] == pytest.approx(cum_profit.iloc[-1], abs=1e-10)
     
 
 def test_profitabilities_are_same(backtest_result_hourly: State):
