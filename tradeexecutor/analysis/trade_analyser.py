@@ -91,7 +91,7 @@ class TradeSummary:
     average_losing_trade_loss_pc: Optional[float]  # position
     biggest_winning_trade_pc: Optional[float]  # position
     biggest_losing_trade_pc: Optional[float]  # position
-    total_trades: int
+    total_trades: Optional[int]
 
     average_duration_of_winning_trades: datetime.timedelta = field(metadata=config(
         encoder=json_encode_timedelta,
