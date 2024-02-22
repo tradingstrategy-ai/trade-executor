@@ -561,5 +561,5 @@ def calculate_cumulative_daily_returns(state: State, freq_base: pd.offsets.DateO
     """
     returns = calculate_compounding_realised_trading_profitability(state)
     _returns = returns.copy()
-    cumulative_daily_returns = _returns.add(1).resample(freq_base).prod(min_count=1).sub(1).ffill()
+    cumulative_daily_returns = _returns.resample(freq_base).last().ffill()
     return cumulative_daily_returns
