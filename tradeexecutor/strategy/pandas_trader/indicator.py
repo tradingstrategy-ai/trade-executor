@@ -1,13 +1,16 @@
 """Indicator definitions."""
+import os
+import shutil
+import tempfile
 from collections.abc import Iterable
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, Protocol, Any
 
 import pandas as pd
 
 from tradeexecutor.strategy.parameters import StrategyParameters
-from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
-from tradeexecutor.utils import dataclass
+from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse, UniverseCacheKey
 
 
 class Indicators:
@@ -87,6 +90,7 @@ class CreateIndicators(Protocol):
             Call :py:meth:`IndicatorBuilder.create` to add new indicators to the strategy.
         """
 
+@dataclass
 class IndicatorResult:
     """One result of an indicator calculation we can store on a disk.
 
@@ -95,27 +99,65 @@ class IndicatorResult:
     - Parameters is a single combination of parameters
     """
 
-    universe_key: str
+    #: The universe for which we calculated the result
+    #:
+    #:
+    universe_key: UniverseCacheKey
 
+    #: For which indicator this result is
+    #:
     definition: IndicatorDefinition
 
-    parameters: dict[str, Any]
-
-    data: pd.Series
+    #: Indicator output is one time series, but in some cases can be multiple as well.
+    #:
+    #: For example BB indicator calculates multiple series from one close price value.
+    #:
+    #:
+    data: pd.DataFrame
 
 
 
 class IndicatorStorage:
+    """Store calculated indicator results on disk."""
 
-    def __init__(self, path: Path, universe_key: str):
+    def __init__(self, path: Path, universe_key: UniverseCacheKey):
+        assert isinstance(path, Path)
+        assert type(universe_key) == str
         self.path = path
-        self.universe_key = universe_ky
-
-    def get_cache_key(self) -> str:
-        return f"{self.universe_key}-{self.definition.name}-{_serialise_parameters_for_cache_key(self.parameters)}"
+        self.universe_key = universe_key
 
     def get_indicator_path(self, ind: IndicatorDefinition) -> Path:
-        return self.path / Path(self.universe_key) / Path(f"{}")
+        """Get the Parquet file where the indicator data is stored."""
+        return self.path / Path(self.universe_key) / Path(f"{ind.get_cache_key()}.parquet")
+
+    def is_available(self, ind: IndicatorDefinition) -> bool:
+        return self.get_indicator_path(ind).exists()
+
+    def load(self, ind: IndicatorDefinition) -> IndicatorResult:
+        """Load cached indicator data from the disk."""
+        assert self.is_available(ind)
+        path = self.get_indicator_path(ind)
+        df = pd.read_parquet(path)
+        return IndicatorResult(
+            self.universe_key,
+            ind,
+            df,
+        )
+
+    def save(self, ind: IndicatorDefinition, df: pd.DataFrame):
+        """Atomic replacement of the existing data.
+
+        - Avoid leaving partially written files
+        """
+        assert isinstance(ind, IndicatorDefinition)
+        assert isinstance(df, pd.DataFrame)
+        path = self.get_indicator_path(ind)
+        dirname, basename = os.path.split(path)
+        temp = tempfile.NamedTemporaryFile(mode='wb', delete=False, dir=dirname)
+        df.to_parquet(temp)
+        temp.close()
+        # https://stackoverflow.com/a/3716361/315168
+        shutil.move(temp, path)
 
 
 def _serialise_parameters_for_cache_key(parameters: dict) -> str:
