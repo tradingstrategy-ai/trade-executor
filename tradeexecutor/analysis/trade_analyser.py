@@ -1062,8 +1062,16 @@ class TradeAnalysis:
         return df
 
 
-def calculate_annualised_return(profit_pct, duration) -> float | None:
-    return calculate_percentage(profit_pct * datetime.timedelta(days=365), duration) if profit_pct else None
+def calculate_annualised_return(profit_pct: float, duration: datetime.timedelta) -> float | None:
+    """Calculate annualised return %. Uses days as the base unit for duration.
+    
+    :param profit_pct: Profit % over the duration
+    :param duration: Duration of the trade as a datetime object
+    :return: Annualised return % if profit_pct is not None
+    """
+    assert isinstance(profit_pct, float | int | None), "Profit % should be a float or int or None"
+    assert isinstance(duration, datetime.timedelta), "Duration should be a datetime.timedelta object"
+    return calculate_percentage(profit_pct * 365 * 24 * 60 * 60, duration.total_seconds()) if profit_pct else None
 
 
 class TimelineRowStylingMode(enum.Enum):

@@ -8,7 +8,7 @@ from dataclasses_json import dataclass_json
 import datetime
 from typing import Literal
 
-from tradeexecutor.analysis.trade_analyser import build_trade_analysis
+from tradeexecutor.analysis.trade_analyser import build_trade_analysis, calculate_annualised_return
 from tradeexecutor.strategy.summary import KeyMetricKind, KeyMetricSource, KeyMetric
 from tradeexecutor.state.state import State
 from tradeexecutor.state.portfolio import Portfolio
@@ -141,7 +141,7 @@ def _serialise_long_short_stats_as_json_table(
     if compounding_returns is not None and len(compounding_returns) > 0:
         daily_returns = calculate_non_cumulative_daily_returns(source_state)
         portfolio_return = compounding_returns.iloc[-1]
-        annualised_return_percent = portfolio_return * 365 * 24 * 60 * 60 / (calculation_window_end_at - calculation_window_start_at).total_seconds()
+        annualised_return_percent = calculate_annualised_return(portfolio_return, calculation_window_end_at - calculation_window_start_at)
         summary.loc['Return %']['All'] = format_value(as_percent(portfolio_return))
         summary.loc['Annualised return %']['All'] = format_value(as_percent(annualised_return_percent))
 
