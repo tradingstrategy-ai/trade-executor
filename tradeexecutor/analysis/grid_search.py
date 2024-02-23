@@ -472,7 +472,7 @@ def visualise_grid_search_equity_curves(
 
     fig.update_layout(title=f"{name}", height=height)
     if log_y:
-        fig.update_yaxes(title="Value $ (log)", showgrid=False, log_y=True)
+        fig.update_yaxes(title="Value $ (logarithmic)", showgrid=False, type="log")
     else:
         fig.update_yaxes(title="Value $", showgrid=False)
     fig.update_xaxes(rangeslider={"visible": False})

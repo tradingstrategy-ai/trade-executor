@@ -15,7 +15,7 @@ from dataclasses import dataclass
 import logging
 from math import isnan
 from pathlib import Path
-from typing import List, Optional, Callable, Tuple, Set, Dict, Iterable, Collection
+from typing import List, Optional, Callable, Tuple, Set, Dict, Iterable, Collection, TypeAlias
 
 import pandas as pd
 
@@ -43,8 +43,16 @@ from tradeexecutor.strategy.universe_model import StrategyExecutionUniverse, Uni
 logger = logging.getLogger(__name__)
 
 
+#: Unique hash string for each universe.
+#:
+#: Semi-human readable, is used for filenames on a disk.
+#:
+UniverseCacheKey: TypeAlias = str
+
+
 class TradingUniverseIssue(Exception):
     """Raised in the case trading universe has some bad data etc. issues."""
+
 
 
 @dataclass
@@ -180,6 +188,29 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
         if self.backtest_stop_loss_candles is not None:
             assert isinstance(self.backtest_stop_loss_candles, GroupedCandleUniverse), f"Expected GroupedCandleUniverse, got {self.backtest_stop_loss_candles.__class__}"
             assert isinstance(self.backtest_stop_loss_time_bucket, TimeBucket)
+
+    def get_cache_key(self) -> UniverseCacheKey:
+        """Get semi-human-readable filename id for this universe.
+
+        .. note::
+
+            Currently does not capture all the nuances of the data.
+            Must be defined later to produce an accurate hash on Universe.
+
+        """
+
+        assert len(self.data_universe.chains) == 1
+
+        time_str = f"{self.start_at}-{self.end_at}"
+        if self.get_pair_count() < 5:
+            pair_str = "-".join([p.get_ticker() for p in self.data_universe.pairs.iterate_pairs()])
+        else:
+            pair_str = str(self.get_pair_count())
+
+        chain_str = self.data_universe.chains[0].slug
+        time_bucket_str = self.data_universe.time_bucket.value
+
+        return f"{chain_str}-{time_bucket_str}-{pair_str}-{time_str}"
 
     @property
     def start_at(self) -> datetime.datetime:
