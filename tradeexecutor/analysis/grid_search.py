@@ -381,6 +381,7 @@ def visualise_grid_search_equity_curves(
     benchmark_indexes: pd.DataFrame | None = None,
     height=1200,
     colour="rgba(160, 160, 160, 0.5)",
+    log_y=False,
 ) -> Figure:
     """Draw multiple equity curves in the same chart.
 
@@ -425,6 +426,14 @@ def visualise_grid_search_equity_curves(
 
         **Note**: Currently not very useful due to Y axis scale
 
+    :param log_y:
+        Use logarithmic Y-axis.
+
+        Because we accumulate larger treasury over time,
+        the swings in the value will be higher later.
+        We need to use a logarithmic Y axis so that we can compare the performance
+        early in the strateg and late in the strategy.
+
     """
 
     if name is None:
@@ -462,7 +471,10 @@ def visualise_grid_search_equity_curves(
             fig.add_trace(scatter)
 
     fig.update_layout(title=f"{name}", height=height)
-    fig.update_yaxes(title="Value $", showgrid=False)
+    if log_y:
+        fig.update_yaxes(title="Value $ (log)", showgrid=False, log_y=True)
+    else:
+        fig.update_yaxes(title="Value $", showgrid=False)
     fig.update_xaxes(rangeslider={"visible": False})
 
     # Move legend to the bottom so we have more space for
