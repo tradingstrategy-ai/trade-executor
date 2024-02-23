@@ -1063,7 +1063,9 @@ class TradeAnalysis:
 
 
 def calculate_annualised_return(profit_pct: float, duration: datetime.timedelta) -> float | None:
-    """Calculate annualised return %. Uses days as the base unit for duration.
+    """Calculate annualised return %. 
+    
+    Uses seconds as the base unit for duration to accomodate for strategies that have been live for less than a day.
     
     :param profit_pct: Profit % over the duration
     :param duration: Duration of the trade as a datetime object
