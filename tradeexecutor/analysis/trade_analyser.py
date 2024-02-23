@@ -728,8 +728,11 @@ class TradeAnalysis:
         average_duration_of_zero_loss_trades = None
         average_duration_of_all_trades = None
 
-        # strategy_duration = self.portfolio.get_trading_history_duration()
-        strategy_duration = state.get_strategy_duration()
+        if state is None:
+            # legacy
+            strategy_duration = self.portfolio.get_trading_history_duration()
+        else:
+            strategy_duration = state.get_strategy_duration()
         
         won = lost = zero_loss = stop_losses = take_profits = undecided = 0
         open_value: USDollarAmount = 0
