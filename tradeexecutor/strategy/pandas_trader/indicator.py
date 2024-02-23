@@ -54,6 +54,12 @@ class IndicatorDefinition:
 
 
 class IndicatorSet:
+    """Define the indicators that are needed by a trading strategy.
+
+    - For backtesting, indicators are precalculated
+
+    - For live trading, these indicators are recalculated for the each decision cycle
+    """
 
     def __init__(self):
         self.indicators: dict[str, IndicatorDefinition] = {}
@@ -167,3 +173,19 @@ def _serialise_parameters_for_cache_key(parameters: dict) -> str:
         assert type(v) not in (list, tuple)  # Don't leak test ranges here - must be a single value
 
     return "".join([f"{k}={v}" for k, v in parameters.items()])
+
+
+def calculate_or_load_indicators(
+    universe: TradingStrategyUniverse,
+    indicators: IndicatorSet,
+    max_workers=8,
+) -> dict[IndicatorDefinition, IndicatorResult]:
+    """Precalculate all indicators.
+
+    - Calculate indicators using multiprocessing
+
+    - Display TQDM progress bar
+
+    - Use cached indicators if available
+    """
+
