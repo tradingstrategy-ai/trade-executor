@@ -19,9 +19,11 @@ from tradeexecutor.backtest.grid_search import GridSearchResult
 from tradeexecutor.state.types import USDollarAmount
 from tradeexecutor.visual.benchmark import visualise_all_cash, visualise_portfolio_equity_curve
 
-VALUE_COLS = ["Annualised return", "Max drawdown", "Sharpe", "Sortino", "Average position", "Median position"]
+VALUE_COLS = ["CAGR", "Max drawdown", "Sharpe", "Sortino", "Average position", "Median position"]
 
-PERCENT_COLS = ["Annualised return", "Max drawdown", "Average position", "Median position"]
+PERCENT_COLS = ["CAGR", "Max drawdown", "Average position", "Median position"]
+
+DATA_COLS = ["Positions", "Trades"]
 
 
 def analyse_combination(
@@ -63,10 +65,11 @@ def analyse_combination(
     row.update({
         # "Combination": r.combination.get_label(),
         "Positions": r.summary.total_positions,
+        "Trades": r.summary.total_trades,
         # "Return": r.summary.return_percent,
         # "Return2": r.summary.annualised_return_percent,
         #"Annualised profit": clean(r.metrics.loc["Expected Yearly"][0]),
-        "Annualised return": clean(r.metrics.loc["Annualised return (raw)"][0]),
+        "CAGR": clean(r.metrics.loc["Annualised return (raw)"][0]),
         "Max drawdown": clean(r.metrics.loc["Max Drawdown"][0]),
         "Sharpe": clean(r.metrics.loc["Sharpe"][0]),
         "Sortino": clean(r.metrics.loc["Sortino"][0]),
@@ -92,6 +95,15 @@ def analyse_grid_search_result(
     - Each row have labeled parameters of its combination
 
     - Each row has some metrics extracted from the results by :py:func:`analyse_combination`
+
+    The output has the following row for each parameter combination:
+
+    - Combination parameters
+    - Positions and trade counts
+    - CAGR (Communicative annualized growth return, compounding)
+    - Max drawdown
+    - Sharpe
+    - Sortino
 
     See also :py:func:`analyse_combination`.
 
@@ -121,6 +133,9 @@ def visualise_table(df: pd.DataFrame):
 
     - Highlight winners and losers
 
+    - Gradient based on the performance of a metric
+
+    - Stripes for the input
     """
 
     # https://stackoverflow.com/a/57152529/315168
@@ -143,6 +158,9 @@ def visualise_table(df: pd.DataFrame):
     ).format(
         formatter="{:.2%}",
         subset = PERCENT_COLS,
+    ).set_properties(
+        subset=DATA_COLS, 
+        **{'background-color': '#333'}
     )
 
     # formatted = df.style.highlight_max(
@@ -204,6 +222,10 @@ def visualise_heatmap_2d(
 
     # Reset multi-index so we can work with parameter 1 and 2 as series
     df = result.reset_index()
+
+    # Backwards compatibiltiy
+    if metric == "Annualised return" and ("Annualised return" not in df.columns) and "CAGR" in df.columns:
+        metric = "CAGR"
 
     # Detect any non-number values on axes
     if continuous_scale is None:
@@ -359,6 +381,7 @@ def visualise_grid_search_equity_curves(
     benchmark_indexes: pd.DataFrame | None = None,
     height=1200,
     colour="rgba(160, 160, 160, 0.5)",
+    log_y=False,
 ) -> Figure:
     """Draw multiple equity curves in the same chart.
 
@@ -403,6 +426,14 @@ def visualise_grid_search_equity_curves(
 
         **Note**: Currently not very useful due to Y axis scale
 
+    :param log_y:
+        Use logarithmic Y-axis.
+
+        Because we accumulate larger treasury over time,
+        the swings in the value will be higher later.
+        We need to use a logarithmic Y axis so that we can compare the performance
+        early in the strateg and late in the strategy.
+
     """
 
     if name is None:
@@ -440,7 +471,10 @@ def visualise_grid_search_equity_curves(
             fig.add_trace(scatter)
 
     fig.update_layout(title=f"{name}", height=height)
-    fig.update_yaxes(title="Value $", showgrid=False)
+    if log_y:
+        fig.update_yaxes(title="Value $ (log)", showgrid=False, log_y=True)
+    else:
+        fig.update_yaxes(title="Value $", showgrid=False)
     fig.update_xaxes(rangeslider={"visible": False})
 
     # Move legend to the bottom so we have more space for

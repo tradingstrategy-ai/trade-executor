@@ -53,6 +53,7 @@ def correct_df_lending():
     return df
 
 
+@pytest.mark.skipif(os.environ.get("BINANCE_LENDING_DATA") == "false", reason="Binance lending API not available in the country")
 def test_fetch_binance_dataset(correct_df_candles, correct_df_lending):
     """Test that the fetch_binance_dataset function works as expected."""
     if os.environ.get("GITHUB_ACTIONS", None) == "true":
@@ -92,6 +93,7 @@ def test_fetch_binance_dataset(correct_df_candles, correct_df_lending):
     assert dataset.exchanges.exchanges[BINANCE_EXCHANGE_ID]
 
 
+@pytest.mark.skipif(os.environ.get("BINANCE_LENDING_DATA") == "false", reason="Binance lending API not available in the country")
 def test_create_binance_universe(correct_df_candles, correct_df_lending):
     """Test that the create_binance_universe function works as expected."""
     if os.environ.get("GITHUB_ACTIONS", None) == "true":
@@ -140,6 +142,7 @@ def test_create_binance_universe(correct_df_candles, correct_df_lending):
     assert data_universe.lending_candles.supply_apr.df.isna().sum().sum() == 0
 
 
+@pytest.mark.skipif(os.environ.get("BINANCE_LENDING_DATA") == "false", reason="Binance lending API not available in the country")
 def test_create_binance_universe_multipair():
     """Test that the create_binance_universe function works as expected for multipair."""
     candles_data = {
@@ -218,7 +221,7 @@ def test_create_binance_universe_multipair():
         )
 
 
-@pytest.mark.skipif(os.environ.get("GITHUB_ACTIONS", None) == "true", reason="Github US servers are blocked by Binance with HTTP 451")
+@pytest.mark.skipif(os.environ.get("GITHUB_ACTIONS", None) == "true" or os.environ.get("BINANCE_LENDING_DATA") == "false", reason="Github US servers are blocked by Binance with HTTP 451")
 def test_binance_multi_pair():
     """Check multipair resampling works."""
     dataset = fetch_binance_dataset(

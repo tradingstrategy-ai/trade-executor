@@ -16,7 +16,7 @@ packages = [
 python = ">=3.10,<=3.12"
 
 # Use these during development
-# TODO: FileLock, Parquet None issues
+# TODO: FileLock, Parquet None issueset
 trading-strategy = {path = "deps/trading-strategy", develop = true}
 # trading-strategy = "^0.22.6"
 requests = "^2.27.1"

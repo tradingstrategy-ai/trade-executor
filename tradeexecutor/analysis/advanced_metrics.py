@@ -90,6 +90,9 @@ def calculate_advanced_metrics(
     result = metrics(returns, display=False, periods_per_year=periods_per_year, mode=mode.value)
 
     # Hack - see analyse_combination()
+    # Communicative annualized growth return,
+    # as compounded
+    # Should say CAGR (raw), but is what it is for the legacy reasons
     result.loc["Annualised return (raw)"] = [stats.cagr(returns, 0., compounded=True)]
     return result
 
@@ -128,6 +131,7 @@ def visualise_advanced_metrics(
         equity = calculate_equity_curve(state)
         returns = calculate_returns(equity)
         benchmark_returns = generate_buy_and_hold_returns(benchmark_indexes["ETH"])
+        benchmark_returns.attrs["name"] = "Buy and hold ETH"
 
         metrics = visualise_advanced_metrics(
             returns,
@@ -142,13 +146,15 @@ def visualise_advanced_metrics(
     :param returns:
         Returns series of the strategy.
 
-        See :py:`tradeeexecutor.visual.equity_curve.calculate_returns`.
+        See :py:`tradeeexecutor.visual.equity_curve.calculate_returns`.        
 
     :param mode:
         Full or basic stats
 
     :param benchmark:
         Benchmark portfolio or buy and hold asset.
+
+        If this series as `series.attrs["name"]` name set, it is used as a title instead of "Benchmark".
 
     :return:
         A DataFrame ready to display
@@ -165,4 +171,11 @@ def visualise_advanced_metrics(
         mode=mode.value,
         internal=True,
         display=False)
+    
+    # Set the label
+    if benchmark is not None:
+        benchmark_name = benchmark.attrs.get("name")
+        if benchmark_name:
+            df = df.rename({"Benchmark": benchmark_name}, axis="columns")
+    
     return df

@@ -73,11 +73,12 @@ def visualise_all_cash(
     )
 
 
-def visualise_buy_and_hold(
-        buy_and_hold_asset_name: str,
-        price_series: pd.Series,
-        all_cash: float,
-        colour="#880000") -> go.Scatter:
+def visualise_equity_curve_comparison(
+    benchmark_name: str,
+    price_series: pd.Series,
+    all_cash: float,
+    colour="#880000"
+) -> go.Scatter:
     """Draw portfolio performance."""
 
     # Whatever we bought at the start
@@ -88,7 +89,7 @@ def visualise_buy_and_hold(
         x=series.index,
         y=series,
         mode="lines",
-        name=f"Buy and hold {buy_and_hold_asset_name}",
+        name=benchmark_name,
         line=dict(color=colour),
     )
 
@@ -294,7 +295,7 @@ def visualise_equity_curve_benchmark(
         # Clip to the backtest time frame
         buy_and_hold_price_series = buy_and_hold_price_series[start_at:end_at]
         colour = buy_and_hold_price_series.attrs.get("colour")
-        scatter = visualise_buy_and_hold(
+        scatter = visualise_equity_curve_comparison(
             benchmark_name,
             buy_and_hold_price_series,
             all_cash,

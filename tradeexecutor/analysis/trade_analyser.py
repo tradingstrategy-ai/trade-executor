@@ -92,6 +92,7 @@ class TradeSummary:
     biggest_winning_trade_pc: Optional[float]  # position
     biggest_losing_trade_pc: Optional[float]  # position
 
+
     average_duration_of_winning_trades: datetime.timedelta = field(metadata=config(
         encoder=json_encode_timedelta,
         decoder=json_decode_timedelta,
@@ -126,6 +127,7 @@ class TradeSummary:
     average_net_profit: USDollarAmount = field(init=False)
     end_value: USDollarAmount = field(init=False)
 
+    total_trades: Optional[int] = None
     average_trade: Optional[float] = None  # position
     median_trade: Optional[float] = None  # position
     max_pos_cons: Optional[int] = None
@@ -204,6 +206,7 @@ class TradeSummary:
         """
         return {
             "Positions taken": str(self.total_positions),
+            "Trades taken": str(self.total_trades),
             "Positions won": str(as_percent(self.win_percent)),
             "Return all time": str(as_percent(self.return_percent)),
             "Return annualised": str(as_percent(self.annualised_return_percent)),
@@ -740,6 +743,7 @@ class TradeAnalysis:
         pos_cons = 0
         neg_cons = 0
         pullback = 0
+        total_trades = 0
 
         winning_stop_losses = 0
         losing_stop_losses = 0
@@ -748,6 +752,7 @@ class TradeAnalysis:
 
         for pair_id, position in positions:
 
+            total_trades += len(position.trades)
             portfolio_value_at_open = position.portfolio_value_at_open
 
             capital_tied_at_open_pct = self.get_capital_tied_at_open(position)
@@ -882,6 +887,7 @@ class TradeAnalysis:
             zero_loss=zero_loss,
             stop_losses=stop_losses,
             take_profits=take_profits,
+            total_trades=total_trades,
             undecided=undecided,
             realised_profit=profit + extra_return,
             unrealised_profit=unrealised_profit_usd,

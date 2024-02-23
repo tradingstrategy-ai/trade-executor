@@ -241,14 +241,14 @@ def test_perform_grid_search_single_thread(
     assert len(table) == 2 * 2 * 2
     row = table.iloc[0]
     # assert row["stop_loss_pct"] == 0.9
-    assert row["Annualised return"] == pytest.approx(0.06771955893113946)
+    assert row["CAGR"] == pytest.approx(0.06771955893113946)
     assert row["Positions"] == 2
 
     visualise_table(table)
 
     # Remove extra axis by focusing only stop_loss_pct=0.9
     heatmap_data = table.xs(0.9, level="stop_loss_pct")
-    fig = visualise_heatmap_2d(heatmap_data, "fast_ema_candle_count", "slow_ema_candle_count", "Annualised return")
+    fig = visualise_heatmap_2d(heatmap_data, "fast_ema_candle_count", "slow_ema_candle_count", "CAGR")
     assert isinstance(fig, Figure)
 
 

@@ -2,10 +2,39 @@
 
 - Handle input parameters in single-run and grid search cases
 """
-from web3.datastructures import ReadableAttributeDict
+import datetime
+from typing import Tuple, Iterable, TypedDict
+
+from web3.datastructures import ReadableAttributeDict, AttributeDict, MutableAttributeDict
+
+from tradeexecutor.state.types import USDollarAmount
+from tradeexecutor.strategy.cycle import CycleDuration
 
 
-class StrategyParameters(ReadableAttributeDict):
+class StrategyParametersMissing(Exception):
+    """Strategy parameters are not well defined."""
+
+
+
+class CoreStrategyParameters(TypedDict):
+    """Describe strategy parameters that are always available.
+
+    """
+
+    #: US dollars at the start of the backtesting
+    initial_cash: USDollarAmount | None = None
+
+    backtest_start: datetime.datetime | None = None
+
+    backtest_end: datetime.datetime | None = None
+
+    cycle_duration: CycleDuration
+
+    #: Current strategy decision cycle
+    cycle: int
+
+
+class StrategyParameters(MutableAttributeDict):
     """Strategy parameters.
 
     These parameters may present
@@ -17,6 +46,9 @@ class StrategyParameters(ReadableAttributeDict):
 
     - Parameters about strategy execution: `cycle_duration`.
 
+    - See :py:class:`CoreStrategyParameters` for the always present parameters.
+      Due to Python limitations these cannot be automatically type hinted.
+
     The parameters are presented as attributed dict and
     are accessible using both dotted attribe access and dict access:
 
@@ -24,7 +56,40 @@ class StrategyParameters(ReadableAttributeDict):
 
         assert parameters.rsi_low == parameters["rsi_low"]
 
-    You can use `StrategyParameters` with inline backtest:
+    Example parameter definition:
+
+    .. code-block:: python
+
+        from tradeexecutor.strategy.cycle import CycleDuration
+        from tradeexecutor.backtest.backtest_runner import run_backtest_inline
+
+        class Parameters:
+            cycle_duration = CycleDuration.cycle_1d
+            rsi_bars = 5  # 5 days = 15 8 hour bars
+            eth_btc_rsi_bars = 20  # The length of ETH/BTC RSI
+            rsi_high = 77 # RSI trigger threshold for decision making
+            rsi_low = 60  # RSI trigger threshold for decision making
+            allocation = 0.85 # Allocate 90% of cash to each position
+            lookback_candles = 140
+            minimum_rebalance_trade_threshold = 500.00  # Don't do trades that would have less than 500 USD value change
+            initial_cash = 10_000 # Start with 10k USD
+            trailing_stop_loss = 0.875
+            shift = 0
+
+        state, universe, debug_dump = run_backtest_inline(
+            name="RSI multipair",
+            engine_version="0.4",
+            decide_trades=decide_trades,
+            client=client,
+            universe=strategy_universe,
+            parameters=Parameters,
+            strategy_logging=False,
+        )
+
+        trade_count = len(list(state.portfolio.get_all_trades()))
+        print(f"Backtesting completed, backtested strategy made {trade_count} trades")
+
+    You can use `StrategyParameters` with inline backtest as a dict:
 
     .. code-block:: python
 
@@ -85,7 +150,6 @@ class StrategyParameters(ReadableAttributeDict):
         )
     """
 
-
     @staticmethod
     def from_class(c: type, grid_search=False) -> "StrategyParameters":
         """Create parameter dict out from a class object.
@@ -111,3 +175,31 @@ class StrategyParameters(ReadableAttributeDict):
                 v = [v]
             output[k] = v
         return StrategyParameters(output)
+
+    def iterate_parameters(self) -> Iterable[Tuple[str, any]]:
+        """Iterate over parameter definitions."""
+        return self.items()
+
+    def is_single_run(self) -> bool:
+        """Are these parameters for a single backtest run.
+
+        As opposite to the grid search.
+        """
+        for key, value in self.iterate_parameters():
+            if type(value) == list:
+                return True
+
+    def is_grid_search(self) -> bool:
+        """Are these parameters for a grid search.
+
+        Search over multiple values.
+        """
+        return not self.is_single_run()
+
+    def validate_backtest(self):
+        """Do a basic validation for backtesting parameters."""
+        if "initial_cash" not in self:
+            raise StrategyParametersMissing("initial_cash parameter missing")
+
+        if "cycle_duration" not in self:
+            raise StrategyParametersMissing("cycle_duration parameter missing")

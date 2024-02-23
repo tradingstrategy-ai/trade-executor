@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from decimal import Decimal
 from pathlib import Path
 from queue import Queue
-from typing import Optional, Callable, Tuple
+from typing import Optional, Callable, Tuple, Type
 import logging
 
 import pandas as pd
@@ -529,8 +529,8 @@ def run_backtest_inline(
     minimum_data_lookback_range: Optional[datetime.timedelta] = None,
     client: Optional[Client],
     decide_trades: DecideTradesProtocol | DecideTradesProtocol2 | DecideTradesProtocol3,
-    cycle_duration: CycleDuration,
-    initial_deposit: float,
+    cycle_duration: CycleDuration | None = None,
+    initial_deposit: float | None = None,
     reserve_currency: ReserveCurrency | None = None,
     trade_routing: Optional[TradeRouting] | None = None,
     create_trading_universe: Optional[CreateTradingUniverseProtocol] = None,
@@ -545,7 +545,7 @@ def run_backtest_inline(
     allow_missing_fees=False,
     engine_version: Optional[TradingStrategyEngineVersion] = None,
     strategy_logging=False,
-    parameters: StrategyParameters | None = None,
+    parameters: Type | StrategyParameters | None = None,
 ) -> Tuple[State, TradingStrategyUniverse, dict]:
     """Run backtests for given decide_trades and create_trading_universe functions.
 
@@ -639,6 +639,13 @@ def run_backtest_inline(
 
         See :py:meth:`tradeexecutor.strategy.pandas_trading.position_manager.PositionManager.log` for usage.
 
+    :param parameters:
+        Strategy parameters as a singleton class.
+
+        Allows using the same parameter structure for single backtest runs and gridtesting.
+
+        See :py:class:`tradeexecutor.strategy.parameters.StrategyParameters`.
+
     :return:
         tuple (State of a completely executed strategy, trading strategy universe, debug dump dict)
     """
@@ -646,6 +653,15 @@ def run_backtest_inline(
     if ignore:
         # https://www.python.org/dev/peps/pep-3102/
         raise TypeError("Only keyword arguments accepted")
+
+    if parameters is not None:
+        if type(parameters) == type:
+            # Class like definition
+            parameters = StrategyParameters.from_class(parameters, grid_search=False)
+        else:
+            assert isinstance(parameters, StrategyParameters)
+
+        parameters.validate_backtest()
 
     if start_at is None and end_at is None:
         start_at, end_at = universe.data_universe.candles.get_timestamp_range()
@@ -660,8 +676,6 @@ def run_backtest_inline(
         assert isinstance(end_at, datetime.datetime)
         assert start_at, "You must give start_at if you give end_at"
 
-    assert initial_deposit > 0
-
     if universe:
         assert isinstance(universe, TradingStrategyUniverse)
 
@@ -670,6 +684,16 @@ def run_backtest_inline(
 
     if trade_routing == TradeRouting.default:
         assert universe is not None, "Cannot do generic routing in backtesting without universe"
+
+    if cycle_duration is None:
+        assert parameters, f"You need to give either cycle_duration or parameters argument"
+        cycle_duration = parameters.cycle_duration
+
+    if initial_deposit is None:
+        assert parameters, f"You need to give either initial_deposit or parameters argument"
+        initial_deposit = parameters.initial_cash
+
+    assert initial_deposit > 0
 
     # Setup our special logging level if not done yet.
     # (Not done when called from notebook)
