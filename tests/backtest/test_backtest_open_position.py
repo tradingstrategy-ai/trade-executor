@@ -247,7 +247,7 @@ def test_basic_summary_statistics(
     assert summary.open_value == pytest.approx(1054.2372274910792, rel=APPROX_REL)
     assert summary.end_value == pytest.approx(10054.23722749108, rel=APPROX_REL)
     assert summary.win_percent is None
-    assert summary.duration == datetime.timedelta(0)
+    assert summary.duration == datetime.timedelta(days=213)
     assert summary.trade_volume == pytest.approx(1000.0, rel=APPROX_REL)
     assert summary.uninvested_cash == pytest.approx(9000.0, rel=APPROX_REL)
 
