@@ -196,7 +196,7 @@ class TradingPosition(GenericPosition):
     #:
     #: - Used to mark test trades from command line.
     #:
-    #: - Used to add log information abotu frozen and unfrozen positions
+    #: - Used to add log information about frozen and unfrozen positions
     #:
     notes: Optional[str] = None
 
@@ -214,6 +214,10 @@ class TradingPosition(GenericPosition):
     #  we make a record here for future analysis.
     #:
     #: Trigger updates are stored oldest first.
+    #:
+    #: There is no record made if there are no trigger updates change.
+    #: For example, for trailing stop loss, there is no record added,
+    #: if the price did not move upwards, causing the stop loss level to move.
     #:
     trigger_updates: List[TriggerPriceUpdate] = field(default_factory=list)
 
