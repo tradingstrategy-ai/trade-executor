@@ -199,6 +199,9 @@ def _serialise_long_short_stats_as_json_table(
     for key_metric_kind, summary_index in key_metrics_map.items():
         if summary_index in summary.index:
             metric_data = summary.loc[summary_index]
+            
+            for i in metric_data:
+                assert isinstance(i, str | None), f"Should be string. Got {i}"
 
             rows[key_metric_kind.value] = KeyMetric(
                 kind=key_metric_kind,

@@ -457,7 +457,15 @@ def test_statistics(usdc, weth_usdc, aave_usdc, start_ts):
     assert stats.long_short_metrics_latest["live_stats"].rows['total_positions'].value['All'] == '0' 
     assert stats.long_short_metrics_latest["backtested_stats"].rows == {}
     
-
+    for key, value in stats.long_short_metrics_latest["live_stats"].rows.items():
+        all_value = value.value['All']
+        short_value = value.value['Short']
+        long_value = value.value['Long']
+        assert isinstance(all_value, str | None), f"Should be string. Got {type(all_value)} for key: {key}"
+        assert isinstance(short_value, str | None), f"Should be string. Got {type(short_value)} for key: {key}"
+        assert isinstance(long_value, str | None), f"Should be string. Got {type(long_value)} for key: {key}"
+    
+    
     assert len(stats.positions) == 2
     assert len(stats.closed_positions) == 0
     assert stats.get_latest_position_stats(1).quantity == pytest.approx(0.099)
