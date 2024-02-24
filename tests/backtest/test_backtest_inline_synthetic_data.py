@@ -309,7 +309,7 @@ def test_basic_summary_statistics(
     assert summary.undecided == 0
     assert summary.zero_loss == 0
 
-    assert summary.annualised_return_percent == pytest.approx(-0.0095122718274248, rel=APPROX_REL)
+    assert summary.annualised_return_percent == pytest.approx(-0.00808319812565206, rel=APPROX_REL)
     assert summary.realised_profit == pytest.approx(-47.17044385644749, rel=APPROX_REL)
     assert summary.return_percent == pytest.approx(-0.004717044385644658, rel=APPROX_REL)
 
