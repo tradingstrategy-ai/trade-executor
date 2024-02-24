@@ -185,7 +185,7 @@ class State:
             return strategy_end - strategy_start
         return None
     
-    def get_formatted_age(self) -> str:
+    def get_formatted_strategy_duration(self) -> str:
         """Get the age of the strategy execution in human-readable format.
         
         See :py:meth:`get_strategy_duration` for details.

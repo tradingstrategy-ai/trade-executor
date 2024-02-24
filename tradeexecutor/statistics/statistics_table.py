@@ -137,7 +137,7 @@ def _serialise_long_short_stats_as_json_table(
     compounding_returns = None
     if source == KeyMetricSource.live_trading and source_state:
         compounding_returns = calculate_compounding_realised_trading_profitability(source_state)
-        summary.loc['Trading period length']['All'] = source_state.get_formatted_age()
+        summary.loc['Trading period length']['All'] = source_state.get_formatted_strategy_duration()
     
     if compounding_returns is not None and len(compounding_returns) > 0:
         daily_returns = calculate_non_cumulative_daily_returns(source_state)
