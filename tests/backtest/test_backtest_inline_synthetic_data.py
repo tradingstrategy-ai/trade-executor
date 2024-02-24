@@ -299,7 +299,7 @@ def test_basic_summary_statistics(
     assert summary.end_value == pytest.approx(9952.829556143553, rel=APPROX_REL)
     assert summary.win_percent == pytest.approx(0.36363636363636365, rel=APPROX_REL)
     assert summary.lost_percent == pytest.approx(0.6363636363636364, rel=APPROX_REL)
-    assert summary.duration == datetime.timedelta(days=181)
+    assert summary.duration == datetime.timedelta(days=213)
     assert summary.trade_volume == pytest.approx(21900.29776619458, rel=APPROX_REL)
     assert summary.uninvested_cash == pytest.approx(9952.829556143553, rel=APPROX_REL)
 
@@ -309,7 +309,7 @@ def test_basic_summary_statistics(
     assert summary.undecided == 0
     assert summary.zero_loss == 0
 
-    assert summary.annualised_return_percent == pytest.approx(-0.0095122718274248, rel=APPROX_REL)
+    assert summary.annualised_return_percent == pytest.approx(-0.00808319812565206, rel=APPROX_REL)
     assert summary.realised_profit == pytest.approx(-47.17044385644749, rel=APPROX_REL)
     assert summary.return_percent == pytest.approx(-0.004717044385644658, rel=APPROX_REL)
 

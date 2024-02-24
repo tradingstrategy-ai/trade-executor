@@ -27,6 +27,7 @@ from .types import USDollarAmount, BPS, USDollarPrice
 from .uptime import Uptime
 from .visualisation import Visualisation
 
+from tradeexecutor.utils.summarydataframe import as_duration, format_value
 from tradeexecutor.strategy.trade_pricing import TradePricing
 from ..strategy.cycle import CycleDuration
 from ..utils.accuracy import ZERO_DECIMAL
@@ -171,6 +172,28 @@ class State:
             return self.backtest_data.start_at, self.backtest_data.end_at
         else:
             return self.created_at, self.last_updated_at
+        
+    def get_strategy_duration(self) -> datetime.timedelta | None:
+        """Get the age of the strategy execution. If backtest, return backtest range, if live, return created - last updated
+        
+        See :py:meth:`get_strategy_time_range` for details.
+        
+        :returns: Age of the strategy execution, or None if the age cannot be calculated.
+        """
+        strategy_start, strategy_end  = self.get_strategy_time_range()
+        if strategy_start and strategy_end:
+            return strategy_end - strategy_start
+        return None
+    
+    def get_formatted_strategy_duration(self) -> str:
+        """Get the age of the strategy execution in human-readable format.
+        
+        See :py:meth:`get_strategy_duration` for details.
+        
+        :returns: Age of the strategy execution in human-readable format.
+        """
+        age = self.get_strategy_duration()
+        return "Unknown" if age is None else format_value(as_duration(age))
 
     def create_trade(
         self,

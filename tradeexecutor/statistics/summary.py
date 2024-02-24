@@ -78,8 +78,6 @@ def calculate_summary_statistics(
     # We can alway get the current value even if there are no trades
     current_value = portfolio.get_total_equity()
 
-    strategy_start, strategy_end  = state.get_strategy_time_range()
-
     first_trade, last_trade = portfolio.get_first_and_last_executed_trade()
 
     first_trade_at = first_trade.executed_at if first_trade else None
@@ -89,10 +87,7 @@ def calculate_summary_statistics(
         now_ = pd.Timestamp.utcnow().tz_localize(None)
 
     start_at = now_ - time_window
-    if strategy_start and strategy_end:
-        age = strategy_end - strategy_start
-    else:
-        age = None
+    age = state.get_strategy_duration()
 
     stats = state.stats
 
