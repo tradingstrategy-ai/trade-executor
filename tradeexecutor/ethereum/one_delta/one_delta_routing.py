@@ -239,7 +239,7 @@ class OneDeltaRoutingState(EthereumRoutingState):
         notes="",
     ):
         base_token, quote_token = get_base_quote(self.web3, target_pair.get_pricing_pair(), target_pair.get_pricing_pair().quote)
-        atoken = get_token_for_asset(self.web3, target_pair.quote)
+        atoken = get_token_for_asset(self.web3, target_pair.base)
 
         if check_balances:
             self.check_has_enough_tokens(quote_token, reserve_amount)
@@ -266,7 +266,8 @@ class OneDeltaRoutingState(EthereumRoutingState):
             bound_func = withdraw(
                 one_delta_deployment=one_delta,
                 token=quote_token,
-                amount=reserve_amount,
+                atoken=atoken,
+                amount=MAX_AMOUNT,
                 wallet_address=self.tx_builder.get_token_delivery_address(),
             )
         else:
@@ -622,8 +623,8 @@ class OneDeltaRouting(EthereumRoutingModel):
                 last_block_number = trade.blockchain_transactions[-1].block_number
                 set_interest_checkpoint(state, ts, last_block_number)
             else:
-                # Trade failed
                 report_failure(ts, state, trade, stop_on_execution_failure)
+
         elif trade.is_credit_supply():
             result = analyse_credit_trade_by_receipt(
                 web3,
@@ -634,36 +635,30 @@ class OneDeltaRouting(EthereumRoutingModel):
                 tx_hash=tx.tx_hash,
                 tx_receipt=receipt,
                 input_args=input_args,
+                trade_operation=TradeOperation.OPEN if trade.is_buy() else TradeOperation.CLOSE,
             )
 
             if isinstance(result, TradeSuccess):
-                # price = result.get_human_price(quote_token_details.address == result.token0.address)
+                price = 1
                 
                 if trade.is_buy():
                     executed_amount = result.amount_in / Decimal(10 ** base_token_details.decimals)
-                    executed_collateral_consumption = -executed_amount
-                    # TODO: planned_reserve-planned_collateral_allocation refactor later
-                    executed_collateral_allocation = executed_amount
-                    executed_reserve = 0
+                    executed_reserve = executed_amount
                 else:
-                    executed_amount = result.amount_in / Decimal(10 ** base_token_details.decimals)
-                    executed_collateral_consumption = result.amount_out / Decimal(10 ** reserve.decimals)
-                    executed_collateral_allocation = 0
-                    executed_reserve = Decimal(collateral_amount) / Decimal(10 ** reserve.decimals)
+                    executed_amount = -result.amount_out / Decimal(10 ** base_token_details.decimals)
+                    executed_reserve = -executed_amount
 
-                # assert (executed_amount != 0) and (price > 0), f"Executed amount {executed_amount}, executed collateral consumption: {executed_collateral_consumption},  executed_reserve: {executed_reserve}, price: {price}"
+                assert executed_amount != 0, f"Executed amount {executed_amount}, executed_reserve: {executed_reserve}"
 
-                logger.info("1delta routing\nPlanned: %f %f %f\nExecuted: %f %f %f", trade.planned_collateral_consumption, trade.planned_collateral_allocation, trade.planned_reserve, executed_collateral_consumption, executed_collateral_allocation, executed_reserve)
+                logger.info("1delta routing\nPlanned: %f\nExecuted: %f", trade.planned_reserve, executed_reserve)
 
                 # Mark as success
                 state.mark_trade_success(
                     ts,
                     trade,
-                    executed_price=float(0),
+                    executed_price=float(1),
                     executed_amount=executed_amount,
                     executed_reserve=executed_reserve,
-                    executed_collateral_consumption=executed_collateral_consumption,
-                    executed_collateral_allocation=executed_collateral_allocation,
                     lp_fees=0,
                     native_token_price=0,  # won't fix
                     cost_of_gas=result.get_cost_of_gas(),
@@ -674,7 +669,6 @@ class OneDeltaRouting(EthereumRoutingModel):
                 last_block_number = trade.blockchain_transactions[-1].block_number
                 set_interest_checkpoint(state, ts, last_block_number)
             else:
-                # Trade failed
                 report_failure(ts, state, trade, stop_on_execution_failure)
         else:
             raise ValueError(f"Unknown trade type {trade}")

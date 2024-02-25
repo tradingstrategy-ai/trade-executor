@@ -675,9 +675,9 @@ class State:
                         )
                     else:
                         trade.executed_loan_update = update_credit_supply_loan(
-                            position.loan.clone(),
                             position,
                             trade,
+                            executed_at,
                         )
 
             position.loan = trade.executed_loan_update
