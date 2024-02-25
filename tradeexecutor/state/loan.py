@@ -87,7 +87,7 @@ class Loan:
 
     def __repr__(self):
         asset_symbol = self.borrowed.asset.token_symbol if self.borrowed else ""
-        return f"<Loan, borrowed {self.get_borrowed_quantity()} {asset_symbol} ${self.get_borrow_value()} for collateral ${self.get_collateral_value()}, at leverage {self.get_leverage()}, borrow price: {self.borrowed.last_usd_price}, collateral price: {self.collateral.last_usd_price}>"
+        return f"<Loan, borrowed {self.get_borrowed_quantity()} {asset_symbol} ${self.get_borrow_value()} for collateral ${self.get_collateral_value()}, at leverage {self.get_leverage()}, borrow price: {self.borrowed.last_usd_price if self.borrowed else 0}, collateral price: {self.collateral.last_usd_price}>"
 
     def clone(self) -> "Loan":
         """Clone this data structure for mutating.
@@ -139,6 +139,8 @@ class Loan:
 
     def get_borrowed_quantity(self) -> Decimal:
         """Get abs number of vtokens we have."""
+        if not self.borrowed:
+            return 0
         return self.borrowed_interest.last_token_amount
 
     def get_borrow_value(self, include_interest=True) -> USDollarAmount:
@@ -221,7 +223,7 @@ class Loan:
             Zero if the loan has zero net asset value.
         """
 
-        if self.get_net_asset_value() == 0:
+        if self.get_net_asset_value() == 0 or not self.borrowed:
             return 0
 
         return self.borrowed.get_usd_value() / self.get_net_asset_value()

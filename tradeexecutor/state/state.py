@@ -30,7 +30,12 @@ from .visualisation import Visualisation
 from tradeexecutor.strategy.trade_pricing import TradePricing
 from ..strategy.cycle import CycleDuration
 from ..utils.accuracy import ZERO_DECIMAL
-from tradeexecutor.strategy.lending_protocol_leverage import create_short_loan, update_short_loan
+from tradeexecutor.strategy.lending_protocol_leverage import (
+    create_short_loan,
+    update_short_loan,
+    create_credit_supply_loan,
+    update_credit_supply_loan,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -661,8 +666,19 @@ class State:
                             mode="execute",
                             close_position=TradeFlag.close in trade.flags,
                         )
-                else:
-                    raise NotImplementedError()
+                elif position.is_credit_supply():
+                    if not position.loan:
+                        trade.executed_loan_update = create_credit_supply_loan(
+                            position,
+                            trade,
+                            executed_at,
+                        )
+                    else:
+                        trade.executed_loan_update = update_credit_supply_loan(
+                            position.loan.clone(),
+                            position,
+                            trade,
+                        )
 
             position.loan = trade.executed_loan_update
 

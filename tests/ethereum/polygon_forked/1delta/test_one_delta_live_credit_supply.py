@@ -1,4 +1,4 @@
-"""Test live short-only strategy on 1delta using forked Polygon"""
+"""Test live credit supply only strategy on 1delta using forked Polygon"""
 import datetime
 import os
 import shutil
@@ -63,15 +63,13 @@ def test_one_delta_live_credit_supply(
 ):
     """Live 1delta trade.
 
-    - Trade ETH/USDC 0.3% pool
-
-    - Sets up a simple strategy that open a 2x short position then close in next cycle
+    - Sets up a simple strategy that open a credit supply position
 
     - Start the strategy, check that the trading account is funded
 
-    - Advance to cycle 1 and make sure the short position on ETH is opened
+    - Advance to cycle 1 and make sure the credit supply position is opened
 
-    - Advance to cycle 2 and make sure the short position is closed
+    - Advance to cycle 2 and make sure the credit supply position is still open and interest is accured
     """
 
     def decide_trades(
@@ -81,7 +79,7 @@ def test_one_delta_live_credit_supply(
         pricing_model: PricingModel,
         cycle_debug_data: dict
     ) -> List[TradeExecution]:
-        """Opens a 2x short position and closes in next trade cycle."""
+        """Opens a credit supply."""
         
         pair = strategy_universe.universe.pairs.get_single()
 
@@ -102,18 +100,8 @@ def test_one_delta_live_credit_supply(
     routing_model = one_delta_routing_model
 
     # Sanity check for the trading universe
-    # that we start with 1631 USD/ETH price
     pair_universe = trading_strategy_universe.data_universe.pairs
-    pricing_method = OneDeltaLivePricing(web3, pair_universe, routing_model)
-
-    weth_usdc = pair_universe.get_single()
-    pair = translate_trading_pair(weth_usdc)
-
-    # Check that our preflight checks pass
     routing_model.perform_preflight_checks_and_logging(pair_universe)
-
-    price_structure = pricing_method.get_buy_price(datetime.datetime.utcnow(), pair, None)
-    assert price_structure.price == pytest.approx(2239.420956551886, rel=APPROX_REL)
 
     # Set up an execution loop we can step through
     state = State()
@@ -149,42 +137,45 @@ def test_one_delta_live_credit_supply(
     assert len(state.portfolio.open_positions) == 1
 
     # After the first tick, we should have synced our reserves and opened the first position
-    mid_price = pricing_method.get_mid_price(ts, pair)
-    assert mid_price == pytest.approx(2238.0298724242684, rel=APPROX_REL)
-
     usdc_id = f"{web3.eth.chain_id}-{usdc.address.lower()}"
     assert state.portfolio.reserves[usdc_id].quantity == 9000
-    assert state.portfolio.open_positions[1].get_quantity() == pytest.approx(Decimal(-0.893495022670441332))
-    assert state.portfolio.open_positions[1].get_value() == pytest.approx(1000.0140651703407, rel=APPROX_REL)
 
-    # mine a few block before running next tick
-    # for i in range(1, 10):
-    #     mine(web3)
+    position = state.portfolio.open_positions[1]
+    assert position.get_quantity() == pytest.approx(Decimal(1000))
+    assert position.get_value() == pytest.approx(1000)
+    old_col_value = position.loan.get_collateral_value()
+    assert old_col_value == pytest.approx(1000)
+    assert position.loan.get_collateral_interest() == 0
+    
+    for i in range(100):
+        mine(web3)
 
-    # # trade another cycle to close the short position
-    # ts = get_latest_block_timestamp(web3)
-    # strategy_cycle_timestamp = snap_to_next_tick(ts, loop.cycle_duration)
+    # trade another cycle to accure interest
+    ts = get_latest_block_timestamp(web3)
+    strategy_cycle_timestamp = snap_to_next_tick(ts, loop.cycle_duration)
 
-    # loop.tick(
-    #     ts,
-    #     loop.cycle_duration,
-    #     state,
-    #     cycle=2,
-    #     live=True,
-    #     strategy_cycle_timestamp=strategy_cycle_timestamp,
-    # )
+    loop.tick(
+        ts,
+        loop.cycle_duration,
+        state,
+        cycle=2,
+        live=True,
+        strategy_cycle_timestamp=strategy_cycle_timestamp,
+    )
 
-    # loop.update_position_valuations(
-    #     ts,
-    #     state,
-    #     trading_strategy_universe,
-    #     ExecutionMode.real_trading
-    # )
+    loop.update_position_valuations(
+        ts,
+        state,
+        trading_strategy_universe,
+        ExecutionMode.real_trading
+    )
 
-    # loop.runner.check_accounts(trading_strategy_universe, state)
+    loop.runner.check_accounts(trading_strategy_universe, state)
 
-    # assert len(state.portfolio.open_positions) == 0
-    # assert len(state.portfolio.closed_positions) == 1
-    # assert state.portfolio.reserves[usdc_id].quantity == 10000
-
-
+    assert len(state.portfolio.open_positions) == 1
+    position = state.portfolio.open_positions[1]
+    assert position.get_quantity() == pytest.approx(Decimal(1000))
+    assert position.get_value() == pytest.approx(1000)
+    assert position.loan.get_collateral_value() == pytest.approx(1000.000308)
+    assert position.loan.get_collateral_value() > old_col_value
+    assert position.loan.get_collateral_interest() > 0
