@@ -17,7 +17,7 @@ def generate_ohlcv_candles(
     bucket: TimeBucket,
     start: datetime.datetime,
     end: datetime.datetime,
-    start_price=1800,
+    start_price: int | float=1800,
     daily_drift=(0.95, 1.05),
     high_drift=1.05,
     low_drift=0.90,
@@ -104,6 +104,7 @@ def generate_multi_pair_candles(
     start: datetime.datetime,
     end: datetime.datetime,
     pairs: Dict[TradingPairIdentifier, USDollarPrice],
+    random_seed=1,
 ) -> pd.DataFrame:
     """Generate synthetic tarding data for multiple trading pairs.
 
@@ -118,7 +119,10 @@ def generate_multi_pair_candles(
             time_bucket,
             start,
             end,
-            price
+            start_price=price,
+            pair_id=pair.internal_id,
+            exchange_id=pair.internal_exchange_id,
+            random_seed=random_seed,
         )
         segments.append(df)
 

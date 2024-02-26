@@ -516,6 +516,14 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
         pair = self.data_universe.pairs.get_pair_by_human_description(self.data_universe.exchange_universe, desc)
         return translate_trading_pair(pair)
 
+    def iterate_pairs(self) -> Iterable[TradingPairIdentifier]:
+        """Iterate over all available trading pairs.
+
+        - Different from :py:meth:`tradingstrategy.pair.PandasPairUniverse.iterate_pairs` as this yields `TradingPairIdentifier` instances
+        """
+        for p in self.data_universe.pairs.iterate_pairs():
+            yield translate_trading_pair(p)
+
     def create_single_pair_universe(
             dataset: Dataset,
             chain_id: Optional[ChainId] = None,
