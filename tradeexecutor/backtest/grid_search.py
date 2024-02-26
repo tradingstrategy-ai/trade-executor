@@ -120,6 +120,9 @@ class GridParameter:
 
     def __eq__(self, other):
         return self.name == other.name and self.value == other.value
+    
+    def __repr__(self) -> str:
+        return f"{self.name}={self.value}"
 
     def to_path(self) -> str:
         """"""
@@ -562,7 +565,7 @@ def _read_cached_results(
     results = {}
 
     label = ", ".join(p.name for p in combinations[0].searchable_parameters)
-    with tqdm(total=len(task_args), desc=f"Reading cached grid search results using {reader_pool_size} threads: {label}") as progress_bar:
+    with tqdm(total=len(task_args), desc=f"Reading cached indicator results using {reader_pool_size} threads: {label}") as progress_bar:
         # Extract results from the parallel task queue
         for task in tm.as_completed():
             results[task.args[0]] = task.result

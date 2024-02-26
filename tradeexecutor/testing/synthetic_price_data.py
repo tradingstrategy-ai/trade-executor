@@ -2,11 +2,12 @@
 import datetime
 import random
 from pathlib import Path
-from typing import Dict
+from typing import Dict, Iterable
 
 import pandas as pd
 
 from tradeexecutor.state.identifier import TradingPairIdentifier
+from tradeexecutor.state.types import USDollarPrice
 from tradingstrategy.chain import ChainId
 from tradingstrategy.timebucket import TimeBucket
 from tradingstrategy.types import USDollarAmount
@@ -96,6 +97,32 @@ def generate_ohlcv_candles(
     df.set_index("timestamp", drop=False, inplace=True)
     df["volume"] = df["buy_volume"] + df["sell_volume"]   # Convert from Uni v2 style volume
     return df
+
+
+def generate_multi_pair_candles(
+    time_bucket: TimeBucket,
+    start: datetime.datetime,
+    end: datetime.datetime,
+    pairs: Dict[TradingPairIdentifier, USDollarPrice],
+) -> pd.DataFrame:
+    """Generate synthetic tarding data for multiple trading pairs.
+
+    :param pairs:
+        Map of trading pairs and their starting prices
+    """
+
+    segments = []
+
+    for pair, price in pairs.items():
+        df = generate_ohlcv_candles(
+            time_bucket,
+            start,
+            end,
+            price
+        )
+        segments.append(df)
+
+    return pd.concat(segments)
 
 
 def generate_fixed_price_candles(
