@@ -203,13 +203,15 @@ class PandasTraderRunner(StrategyRunner):
         """
         refresh_live_strategy_images(self.run_state, small_figure, large_figure)
 
-    def report_strategy_thinking(self,
-                                 strategy_cycle_timestamp: datetime.datetime,
-                                 cycle: int,
-                                 universe: TradingStrategyUniverse,
-                                 state: State,
-                                 trades: List[TradeExecution],
-                                 debug_details: dict):
+    def report_strategy_thinking(
+        self,
+        strategy_cycle_timestamp: datetime.datetime,
+        cycle: int,
+        universe: TradingStrategyUniverse,
+        state: State,
+        trades: List[TradeExecution],
+        debug_details: dict
+    ):
         """Strategy admin helpers to understand a live running strategy.
 
         - Post latest variables

@@ -99,10 +99,15 @@ def test_decide_trades_v04(strategy_universe):
 
         trades = []
 
-        price_value= input.indicators.get_price()
-        assert 0 < price_value < 10_000
+        # Check price accessor
+        price_value = input.indicators.get_price()
+        if price_value is not None:
+            assert 0 < price_value < 100_000
+
+        # Check indicator accessor
         indicator_value = input.indicators.get_indicator_value("rsi")
-        assert 0 < indicator_value < 100
+        if indicator_value is not None:
+            assert 0 < indicator_value < 100
 
         # Switch between full spot open and close between cycles
         if not position_manager.is_any_open():
@@ -112,13 +117,14 @@ def test_decide_trades_v04(strategy_universe):
 
         return trades
 
-    def create_indicators(parameters: StrategyParameters, indicators: IndicatorSet):
+    def create_indicators(parameters: StrategyParameters, indicators: IndicatorSet, strategy_universe: TradingStrategyUniverse, execution_context: ExecutionContext):
         indicators.add("rsi", pandas_ta.rsi, {"length": parameters.rsi_length})
 
     class MyParameters:
         test_val = 111
         initial_cash = 10_000
         cycle_duration =CycleDuration.cycle_1d
+        rsi_length = 21
 
     # Run the test
     state, universe, debug_dump = run_backtest_inline(
@@ -129,6 +135,7 @@ def test_decide_trades_v04(strategy_universe):
         reserve_currency=ReserveCurrency.usdc,
         engine_version="0.5",
         parameters=StrategyParameters.from_class(MyParameters),
-        mode=ExecutionMode.unit_testing_trading,
+        mode=ExecutionMode.unit_testing,
     )
 
+    assert len(state.portfolio.closed_positions) == 15

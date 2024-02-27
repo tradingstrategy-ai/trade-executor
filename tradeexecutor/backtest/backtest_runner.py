@@ -177,7 +177,7 @@ class BacktestSetup:
 
         - Display TQDM progress bar about reading cached results and calculating new indicators
         """
-        if self.create_indicators is not None:
+        if self.create_indicators is None:
             # Legacy - create_indicators() not defined
             # Empty indicator set
             return StrategyInputIndicators(
@@ -201,6 +201,7 @@ class BacktestSetup:
         indicator_results = calculate_and_load_indicators(
             self.universe,
             storage,
+            execution_context,
             indicators,
             self.parameters,
         )

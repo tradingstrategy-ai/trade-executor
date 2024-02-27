@@ -17,7 +17,7 @@ from tradeexecutor.strategy.pandas_trader.position_manager import PositionManage
 from tradeexecutor.strategy.parameters import StrategyParameters
 from tradeexecutor.strategy.pricing_model import PricingModel
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
-
+from tradingstrategy.utils.time import get_prior_timestamp
 
 logger = logging.getLogger(__name__)
 
@@ -72,14 +72,19 @@ class StrategyInputIndicators:
     def get_price(
         self,
         pair: TradingPairIdentifier | None = None,
-        data_lag_tolerance: pd.Timedelta = pd.Timedelta(days=5),
-    ) -> USDollarPrice:
+        data_lag_tolerance=None,
+    ) -> USDollarPrice | None:
         """Read the available close price of a trading pair.
 
         - Returns the latest available close price
 
         - **Does not** return the current price in the decision_cycle,
           because any decision must be made based on the previous price
+
+        :return:
+            The latest available price.
+
+            ``None`` if no price information is yet available at this point of time for the strategy.
         """
         assert self.timestamp, f"prepare_decision_cycle() not called - framework missing something somewhere"
 
@@ -88,20 +93,20 @@ class StrategyInputIndicators:
         assert isinstance(pair, TradingPairIdentifier)
         assert pair.internal_id, "pair.internal_id missing - bad unit test data?"
 
-        ts = self.strategy_universe.data_universe.candles.get_prior_timestamp(self.timestamp)
-        price, close_at = self.strategy_universe.data_universe.candles.get_single_value(
-            asset_id=pair.internal_id,
-            when=ts,
-            data_lag_tolerance=data_lag_tolerance,
-            asset_name=pair.get_ticker(),
-        )
-        return price
+        series = self.strategy_universe.data_universe.candles.get_samples_by_pair(pair.internal_id)["close"]
+
+        ts = get_prior_timestamp(series, self.timestamp)
+        if not ts:
+            return None
+
+        return series[ts]
 
     def get_indicator_value(
         self,
         name: str,
+        column: str | None = None,
         pair: TradingPairIdentifier | None = None
-    ) -> float:
+    ) -> float | None:
         """Read the available value of an indicator.
 
         - Returns the latest available indicator value
@@ -109,8 +114,21 @@ class StrategyInputIndicators:
         - **Does not** return the current indicator in the decision_cycle,
           because any decision must be made based on the previous price
 
+        Single pair example:
+
+        .. code-block:: python
+
+            # Read the RSI value of our only trading pair
+            indicator_value = input.indicators.get_indicator_value("rsi")
+
         :param name:
             Indicator name as defined in `create_indicators`.
+
+        :param column:
+            The name of the sub-column to read.
+
+            For multicolumn indicators like Bollinger Bands,
+            which produce multiple series of data from one column of price data.
 
         :param pair:
             Trading pair.
@@ -118,18 +136,45 @@ class StrategyInputIndicators:
             Must be given if the working with a multipair strategy.
 
         :return:
-            The latest available indicator value
+            The latest available indicator value.
+
+            Any NaN, NA or not a number value in the indicator data is translated to Python ``None``.
+
+            Return ``None`` if value not yet available when asked at the current decision moment.
         """
         assert self.timestamp, f"prepare_decision_cycle() not called"
-        assert self.available_indicators.has_indicator(name), f"Indicator with name {name} not defined in create_indicators. Available indicators are: {self.available_indicators.get_label()}"
+
+        indicator = self.available_indicators.get_indicator(name)
+        assert indicator is not None, f"Indicator with name {name} not defined in create_indicators. Available indicators are: {self.available_indicators.get_label()}"
 
         if pair is None:
             pair = self.strategy_universe.get_single_pair()
         assert isinstance(pair, TradingPairIdentifier)
         assert pair.internal_id, "pair.internal_id missing - bad unit test data?"
 
-        key = (pair, )
-        return self
+        key = (pair, indicator)
+        indicator_result = self.indicator_results.get(key)
+        data = indicator_result.data
+        assert data is not None, f"Indicator pre-calculated values missing for {name} - lookup key {key}"
+
+        if isinstance(data, pd.DataFrame):
+            assert column is not None, f"Indicator {name} has multiple available columns to choose from: {data.columns}"
+            series = data[column]
+        elif isinstance(data, pd.Series):
+            series = data
+        else:
+            raise NotImplementedError(f"Unknown indicator data type {type(data)}")
+
+        ts = get_prior_timestamp(series, self.timestamp)
+        if ts is None:
+            return None
+
+        value = series[ts]
+
+        if pd.isna(value):
+            return None
+
+        return None
 
     def prepare_decision_cycle(self, cycle: int, timestamp: pd.Timestamp):
         logger.info("Strategy indicators moved to the cycle: %d: %s", cycle, timestamp)

@@ -54,6 +54,10 @@ class ExecutionMode(enum.Enum):
     #: data in a Jupyter notebook.
     data_preload = "data_preload"
 
+    #: Internal unit testing of modules
+    #:
+    unit_testing = "unit_Testing"
+
     #: We are operating on real datasets like :py:data:`real_trading`
     #: but we do not want to purge caches.
     #:
@@ -108,7 +112,7 @@ class ExecutionMode(enum.Enum):
 
     def is_unit_testing(self) -> bool:
         """Are we executing unit tests."""
-        return self in (self.unit_testing_trading, self.simulated_trading,)
+        return self in (self.unit_testing_trading, self.simulated_trading, self.unit_testing,)
 
 
 @dataclass
@@ -195,7 +199,9 @@ class ExecutionContext:
 
 
 #: Shorthand for unit testing
-unit_test_execution_context = ExecutionContext(ExecutionMode.unit_testing_trading)
+unit_test_execution_context = ExecutionContext(ExecutionMode.unit_testing)
+
+unit_test_trading_execution_context = ExecutionContext(ExecutionMode.unit_testing_trading)
 
 #: Shorthand for notebooks
 notebook_execution_context = ExecutionContext(ExecutionMode.backtesting)

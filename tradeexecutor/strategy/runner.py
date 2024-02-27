@@ -24,7 +24,7 @@ from tradeexecutor.statistics.statistics_table import StatisticsTable
 from tradeexecutor.strategy.account_correction import check_accounts, UnexpectedAccountingCorrectionIssue
 from tradeexecutor.strategy.approval import ApprovalModel
 from tradeexecutor.strategy.cycle import CycleDuration
-from tradeexecutor.strategy.execution_context import ExecutionContext
+from tradeexecutor.strategy.execution_context import ExecutionContext, ExecutionMode
 from tradeexecutor.strategy.execution_model import ExecutionModel
 from tradeexecutor.strategy.generic.generic_pricing_model import GenericPricing
 from tradeexecutor.strategy.generic.generic_router import GenericRouting
@@ -165,7 +165,8 @@ class StrategyRunner(abc.ABC):
 
         - Can be enabled by hacking this function if backtesting needs debugging
         """
-        return self.execution_context.mode.is_live_trading() or self.execution_context.mode.is_unit_testing()
+        # return self.execution_context.mode.is_live_trading() or self.execution_context.mode.is_unit_testing()
+        return self.execution_context.mode.is_live_trading() or self.execution_context.mode == ExecutionMode.unit_testing_trading
 
     def sync_portfolio(
             self,
