@@ -11,7 +11,7 @@ import pytest
 from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier
 from tradeexecutor.strategy.execution_context import ExecutionContext, unit_test_execution_context
 from tradeexecutor.strategy.pandas_trader.indicator import IndicatorSet, IndicatorStorage, IndicatorDefinition, IndicatorFunctionSignatureMismatch, \
-    calculate_and_load_indicators
+    calculate_and_load_indicators, IndicatorKey
 from tradeexecutor.strategy.parameters import StrategyParameters
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse, create_pair_universe_from_code
 from tradeexecutor.testing.synthetic_ethereum_data import generate_random_ethereum_address
@@ -91,8 +91,8 @@ def indicator_storage(tmp_path, strategy_universe):
 
 
 
-def test_setup_up_indicator_storage(tmp_path, strategy_universe):
-    """Create an indicator storage for test universe."""
+def test_setup_up_indicator_storage_per_pair(tmp_path, strategy_universe):
+    """Create an indicator storage for a trading pair indicator combo."""
 
     storage = IndicatorStorage(Path(tmp_path), universe_key=strategy_universe.get_cache_key())
     assert storage.path == Path(tmp_path)
@@ -106,8 +106,27 @@ def test_setup_up_indicator_storage(tmp_path, strategy_universe):
         parameters={"length": 21},
     )
 
-    ind_path = storage.get_indicator_path(ind, pair)
+    key = IndicatorKey(pair, ind)
+
+    ind_path = storage.get_indicator_path(key)
     assert ind_path == Path(tmp_path) / storage.universe_key / "sma(length=21)-WETH-USDC.parquet"
+
+
+def test_setup_up_indicator_universe(tmp_path, strategy_universe):
+    """Create an indicator storage for a universe indicator."""
+
+    storage = IndicatorStorage(Path(tmp_path), universe_key=strategy_universe.get_cache_key())
+    
+    ind = IndicatorDefinition(
+        name="foobar",
+        func=lambda length: pd.Series(),
+        parameters={"length": 21},
+    )
+
+    key = IndicatorKey(None, ind)
+
+    ind_path = storage.get_indicator_path(key)
+    assert ind_path == Path(tmp_path) / storage.universe_key / "foobar(length=21)-universe.parquet"
 
 
 def test_setup_up_indicator_storage_two_parameters(tmp_path, strategy_universe):
@@ -125,7 +144,9 @@ def test_setup_up_indicator_storage_two_parameters(tmp_path, strategy_universe):
         parameters={"length": 21, "offset": 1},
     )
 
-    ind_path = storage.get_indicator_path(ind, pair)
+    key = IndicatorKey(pair, ind)
+
+    ind_path = storage.get_indicator_path(key)
     assert ind_path == Path(tmp_path) / storage.universe_key / "sma(length=21,offset=1)-WETH-USDC.parquet"
 
 
@@ -179,20 +200,20 @@ def test_indicators_single_backtest_single_thread(strategy_universe, indicator_s
     wbtc_usdc = strategy_universe.get_pair_by_human_description((ChainId.ethereum, exchange.exchange_slug, "WBTC", "USDC"))
 
     keys = list(indicator_result.keys())
-    keys = sorted(keys, key=lambda k: (k[0].internal_id, k[1].name))  # Ensure we read set in deterministic order
+    keys = sorted(keys, key=lambda k: (k.pair.internal_id, k.definition.name))  # Ensure we read set in deterministic order
 
     # Check our pair x indicator matrix
-    assert keys[0][0]== weth_usdc
-    assert keys[0][1].name == "rsi"
-    assert keys[0][1].parameters == {"length": 20}
+    assert keys[0].pair== weth_usdc
+    assert keys[0].definition.name == "rsi"
+    assert keys[0].definition.parameters == {"length": 20}
 
-    assert keys[1][0]== weth_usdc
-    assert keys[1][1].name == "sma_long"
-    assert keys[1][1].parameters == {"length": 200}
+    assert keys[1].pair== weth_usdc
+    assert keys[1].definition.name == "sma_long"
+    assert keys[1].definition.parameters == {"length": 200}
 
-    assert keys[3][0]== wbtc_usdc
-    assert keys[3][1].name == "rsi"
-    assert keys[3][1].parameters == {"length": 20}
+    assert keys[3].pair== wbtc_usdc
+    assert keys[3].definition.name == "rsi"
+    assert keys[3].definition.parameters == {"length": 20}
 
     for result in indicator_result.values():
         assert not result.cached
@@ -247,20 +268,20 @@ def test_indicators_single_backtest_multiprocess(strategy_universe, indicator_st
     wbtc_usdc = strategy_universe.get_pair_by_human_description((ChainId.ethereum, exchange.exchange_slug, "WBTC", "USDC"))
 
     keys = list(indicator_result.keys())
-    keys = sorted(keys, key=lambda k: (k[0].internal_id, k[1].name))  # Ensure we read set in deterministic order
+    keys = sorted(keys, key=lambda k: (k.pair.internal_id, k.definition.name))  # Ensure we read set in deterministic order
 
     # Check our pair x indicator matrix
-    assert keys[0][0]== weth_usdc
-    assert keys[0][1].name == "rsi"
-    assert keys[0][1].parameters == {"length": 20}
+    assert keys[0].pair== weth_usdc
+    assert keys[0].definition.name == "rsi"
+    assert keys[0].definition.parameters == {"length": 20}
 
-    assert keys[1][0]== weth_usdc
-    assert keys[1][1].name == "sma_long"
-    assert keys[1][1].parameters == {"length": 200}
+    assert keys[1].pair== weth_usdc
+    assert keys[1].definition.name == "sma_long"
+    assert keys[1].definition.parameters == {"length": 200}
 
-    assert keys[3][0]== wbtc_usdc
-    assert keys[3][1].name == "rsi"
-    assert keys[3][1].parameters == {"length": 20}
+    assert keys[3].pair == wbtc_usdc
+    assert keys[3].definition.name == "rsi"
+    assert keys[3].definition.parameters == {"length": 20}
 
     for result in indicator_result.values():
         assert not result.cached
@@ -317,16 +338,86 @@ def test_complex_indicator(strategy_universe, indicator_storage):
     wbtc_usdc = strategy_universe.get_pair_by_human_description((ChainId.ethereum, exchange.exchange_slug, "WBTC", "USDC"))
 
     keys = list(indicator_result.keys())
+    keys = sorted(keys, key=lambda k: (k.pair.internal_id, k.definition.name))  # Ensure we read set in deterministic order
+
+    # Check our pair x indicator matrix
+    assert keys[0].pair== weth_usdc
+    assert keys[0].definition.name == "bb"
+    assert keys[0].definition.parameters == {"length": 20}
+
+    assert keys[1].pair== wbtc_usdc
+    assert keys[1].definition.name == "bb"
+    assert keys[1].definition.parameters == {"length": 20}
+
+    for result in indicator_result.values():
+        assert not result.cached
+        assert isinstance(result.data, pd.DataFrame)
+        assert len(result.data) > 0
+        assert result.data.columns.to_list() == ['BBL_20_2.0', 'BBM_20_2.0', 'BBU_20_2.0', 'BBB_20_2.0', 'BBP_20_2.0']
+
+    # Rerun, now everything should be cached and loaded
+    indicator_result = calculate_and_load_indicators(
+        strategy_universe,
+        indicator_storage,
+        create_indicators=create_indicators,
+        execution_context=unit_test_execution_context,
+        parameters=StrategyParameters.from_class(MyParameters),
+        max_workers=1,
+        max_readers=1,
+    )
+    for result in indicator_result.values():
+        assert result.cached
+        assert isinstance(result.data, pd.DataFrame)
+        assert len(result.data) > 0
+
+
+def xxx_test_custom_indicator(strategy_universe, indicator_storage):
+    """Create a custom indicator.
+
+    """
+
+    assert strategy_universe.get_pair_count() == 2
+
+    def eth_btc(strategy_universe: TradingStrategyUniverse, indicator_results):
+        pass
+
+    def eth_btc_rsi(strategy_universe: TradingStrategyUniverse):
+        pass
+
+    def create_indicators(parameters: StrategyParameters, indicators: IndicatorSet, strategy_universe: TradingStrategyUniverse, execution_context: ExecutionContext):
+        pass
+
+    class MyParameters:
+        bb_length=20
+
+    indicator_result = calculate_and_load_indicators(
+        strategy_universe,
+        indicator_storage,
+        create_indicators=create_indicators,
+        execution_context=unit_test_execution_context,
+        parameters=StrategyParameters.from_class(MyParameters),
+        max_workers=1,
+        max_readers=1,
+    )
+
+    # 2 pairs, 3 indicators
+    assert len(indicator_result) == 2
+
+    exchange = strategy_universe.data_universe.exchange_universe.get_single()
+    weth_usdc = strategy_universe.get_pair_by_human_description((ChainId.ethereum, exchange.exchange_slug, "WETH", "USDC"))
+    wbtc_usdc = strategy_universe.get_pair_by_human_description((ChainId.ethereum, exchange.exchange_slug, "WBTC", "USDC"))
+
+    keys = list(indicator_result.keys())
     keys = sorted(keys, key=lambda k: (k[0].internal_id, k[1].name))  # Ensure we read set in deterministic order
 
     # Check our pair x indicator matrix
-    assert keys[0][0]== weth_usdc
-    assert keys[0][1].name == "bb"
-    assert keys[0][1].parameters == {"length": 20}
+    assert keys[0].pair== weth_usdc
+    assert keys[0].definition.name == "bb"
+    assert keys[0].definition.parameters == {"length": 20}
 
-    assert keys[1][0]== wbtc_usdc
-    assert keys[1][1].name == "bb"
-    assert keys[1][1].parameters == {"length": 20}
+    assert keys[1].pair == wbtc_usdc
+    assert keys[1].definition.name == "bb"
+    assert keys[1].definition.parameters == {"length": 20}
 
     for result in indicator_result.values():
         assert not result.cached

@@ -50,17 +50,31 @@ class IndicatorSource(enum.Enum):
     #: Calculate this indicator based on candle open price
     open_price = "open_price"
 
+    #: This indicator is calculated once per the strategy universe
+    #:
+    #: These indicators are custom and do not have trading pair set
+    #:
+    strategy_universe = "strategy_universe"
+
+    def is_per_pair(self) -> bool:
+        """This indicator is calculated to all trading pairs."""
+        return self in (IndicatorSource.open_price, IndicatorSource.close_price)
+
 
 
 @dataclass(slots=True, frozen=True)
 class IndicatorDefinition:
     """A definition for a single indicator.
 
-    - Indicator defintions are static - they do not change between the strategy runs
+    - Indicator definitions are static - they do not change between the strategy runs
 
     - Used as id for the caching the indicator results
 
-    - Definitions are used to calculate indicators for all trading pairs
+    - Definitions are used to calculate indicators for all trading pairs,
+      or once over the whole trading universe
+
+    - Indicators are calcualted independently from each other -
+      a calculation cannot access cached values of other calculation
     """
 
     #: Name of this indicator.
@@ -79,6 +93,8 @@ class IndicatorDefinition:
     #:
     #: - Each key is a function argument name for :py:attr:`func`.
     #: - Each value is a single value
+    #:
+    #: - Grid search multiple parameter ranges are handled outside indicator definition
     #:
     parameters: dict
 
@@ -103,15 +119,32 @@ class IndicatorDefinition:
 
         validate_function_kwargs(self.func, self.parameters)
 
-    def get_cache_key(self) -> str:
-        parameters = ",".join([f"{k}={v}" for k, v in self.parameters.items()])
-        return f"{self.name}({parameters})"
-
     def is_needed_for_pair(self, pair: TradingPairIdentifier) -> bool:
         """Currently indicators are calculated for spont pairs only."""
         return pair.is_spot()
 
-    def calculate(self, input: pd.Series) -> pd.DataFrame | pd.Series:
+    def is_per_pair(self) -> bool:
+        return self.source.is_per_pair()
+
+    def calculate_by_pair(self, input: pd.Series) -> pd.DataFrame | pd.Series:
+        """Calculate the underlying indicator value.
+
+        :param input:
+            Price series used as input.
+
+        :return:
+            Single or multi series data.
+
+            - Multi-value indicators return DataFrame with multiple columns (BB).
+            - Single-value indicators return Series (RSI, SMA).
+
+        """
+        try:
+            return self.func(input, **self.parameters)
+        except Exception as e:
+            raise IndicatorCalculationFailed(f"Could not calculate indicator {self.name} ({self.func}) for parameters {self.parameters}, input data is {len(input)} rows") from e
+
+    def calculate_universe(self, input: TradingStrategyUniverse) -> pd.DataFrame | pd.Series:
         """Calculate the underlying indicator value.
 
         :param input:
@@ -130,6 +163,51 @@ class IndicatorDefinition:
             raise IndicatorCalculationFailed(f"Could not calculate indicator {self.name} ({self.func}) for parameters {self.parameters}, input data is {len(input)} rows") from e
 
 
+@dataclass(slots=True, frozen=True)
+class IndicatorKey:
+    """Cache key used to read indicator results.
+
+    - Used to describe all indicator combinations we need to create
+
+    - Used as the key in the indicator result caching
+
+    """
+
+    #: Trading pair if this indicator is specific to a pair
+    #:
+    #: Note if this indicator is for the whole strategy
+    #:
+    pair: TradingPairIdentifier | None
+
+    #: The definition of this indicator
+    definition: IndicatorDefinition
+
+    def __repr__(self):
+        return f"<IndicatorKey {self.get_cache_key()}>"
+
+    def get_cache_id(self) -> str:
+        if self.pair is not None:
+            return self.pair.get_ticker()
+        else:
+            # Indicator calculated over the universe
+            assert self.definition.source == IndicatorSource.strategy_universe
+            return "universe"
+
+    def __eq__(self, other):
+        return self.pair == other.pair and self.definition == other.definition
+
+    def __hash__(self):
+        return hash((self.pair, self.definition))
+
+    def get_cache_key(self) -> str:
+        if self.pair:
+            slug = self.pair.get_ticker()
+        else:
+            slug = "universe"
+        parameters = ",".join([f"{k}={v}" for k, v in self.definition.parameters.items()])
+        return f"{self.definition.name}({parameters})-{slug}"
+
+
 class IndicatorSet:
     """Define the indicators that are needed by a trading strategy.
 
@@ -141,8 +219,7 @@ class IndicatorSet:
     """
 
     def __init__(self):
-        #: Map indicators by their keys
-        #:
+        #: Map indicators by the indicator name to their definition
         self.indicators: dict[str, IndicatorDefinition] = {}
 
     def has_indicator(self, name: str) -> bool:
@@ -179,6 +256,14 @@ class IndicatorSet:
     def iterate(self) -> Iterable[IndicatorDefinition]:
         yield from self.indicators.values()
 
+    def generate_combinations(self, strategy_universe: TradingStrategyUniverse) -> Iterable[IndicatorKey]:
+        """Create all indiviual indicator (per pair) we need to calculate for this trading universe."""
+        for name, indicator in self.indicators.items():
+            if indicator.is_per_pair():
+                for pair in strategy_universe.iterate_pairs():
+                    yield IndicatorKey(pair, indicator)
+            else:
+                yield IndicatorKey(None, indicator)
 
 
 class CreateIndicatorsProtocol(Protocol):
@@ -259,14 +344,12 @@ class IndicatorResult:
     #:
     universe_key: UniverseCacheKey
 
-    #: For which indicator this result is
-    #:
-    definition: IndicatorDefinition
-
     #: The pair for which this result was calculated
     #:
+    #: Set to ``None`` for indicators without a trading pair, using
+    #: :py:attr:`IndicatorSource.strategy_universe`
     #:
-    pair: TradingPairIdentifier
+    indicator_key: IndicatorKey
 
     #: Indicator output is one time series, but in some cases can be multiple as well.
     #:
@@ -275,15 +358,22 @@ class IndicatorResult:
     #:
     data: pd.DataFrame | pd.Series
 
-    #: Was this indicator result cached or calculated on this run
+    #: Was this indicator result cached or calculated on this run.
+    #:
+    #: Always cached in a grid search, as indicators are precalculated.
     #:
     cached: bool
 
+    @property
+    def pair(self) -> TradingPairIdentifier:
+        return self.indicator_key.pair
+
+    @property
+    def definition(self) -> IndicatorDefinition:
+        return self.indicator_key.definition
 
 
-IndicatorResultKey: TypeAlias = tuple[TradingPairIdentifier, IndicatorDefinition]
-
-IndicatorResultMap: TypeAlias = dict[IndicatorResultKey, IndicatorResult]
+IndicatorResultMap: TypeAlias = dict[IndicatorKey, IndicatorResult]
 
 
 class IndicatorStorage:
@@ -301,21 +391,21 @@ class IndicatorStorage:
     def __repr__(self):
         return f"<IndicatorStorage at {self.path}>"
 
-    def get_indicator_path(self, ind: IndicatorDefinition, pair: TradingPairIdentifier) -> Path:
+    def get_indicator_path(self, key: IndicatorKey) -> Path:
         """Get the Parquet file where the indicator data is stored.
 
         :return:
             Example `/tmp/.../test_indicators_single_backtes0/ethereum,1d,WETH-USDC-WBTC-USDC,2021-06-01-2021-12-31/sma(length=21).parquet`
         """
-        return self.path / Path(self.universe_key) / Path(f"{ind.get_cache_key()}-{pair.get_ticker()}.parquet")
+        return self.path / Path(self.universe_key) / Path(f"{key.get_cache_key()}.parquet")
 
-    def is_available(self, ind: IndicatorDefinition, pair: TradingPairIdentifier) -> bool:
-        return self.get_indicator_path(ind, pair).exists()
+    def is_available(self, key: IndicatorKey) -> bool:
+        return self.get_indicator_path(key).exists()
 
-    def load(self, ind: IndicatorDefinition, pair: TradingPairIdentifier) -> IndicatorResult:
+    def load(self, key: IndicatorKey) -> IndicatorResult:
         """Load cached indicator data from the disk."""
-        assert self.is_available(ind, pair)
-        path = self.get_indicator_path(ind, pair)
+        assert self.is_available(key), f"Data does not exist: {key}"
+        path = self.get_indicator_path(key)
         df = pd.read_parquet(path)
 
         if len(df.columns) == 1:
@@ -324,19 +414,17 @@ class IndicatorStorage:
 
         return IndicatorResult(
             self.universe_key,
-            ind,
-            pair,
+            key,
             df,
             cached=True,
         )
 
-    def save(self, ind: IndicatorDefinition, pair: TradingPairIdentifier, df: pd.DataFrame | pd.Series) -> IndicatorResult:
+    def save(self, key: IndicatorKey, df: pd.DataFrame | pd.Series) -> IndicatorResult:
         """Atomic replacement of the existing data.
 
         - Avoid leaving partially written files
         """
-        assert isinstance(ind, IndicatorDefinition)
-        assert isinstance(pair, TradingPairIdentifier)
+        assert isinstance(key, IndicatorKey)
 
         if isinstance(df, pd.Series):
             # For saving, create a DataFrame with a single column "value"
@@ -345,7 +433,7 @@ class IndicatorStorage:
             save_df = df
 
         assert isinstance(save_df, pd.DataFrame), f"Expected DataFrame, got: {type(df)}"
-        path = self.get_indicator_path(ind, pair)
+        path = self.get_indicator_path(key)
         dirname, basename = os.path.split(path)
 
         os.makedirs(dirname, exist_ok=True)
@@ -359,8 +447,7 @@ class IndicatorStorage:
 
         return IndicatorResult(
             universe_key=self.universe_key,
-            definition=ind,
-            pair=pair,
+            indicator_key=key,
             data=df,
             cached=False,
         )
@@ -384,33 +471,40 @@ def _serialise_parameters_for_cache_key(parameters: dict) -> str:
 
 
 
-def _load_indicator_result(storage: IndicatorStorage, indicator: IndicatorDefinition, pair: TradingPairIdentifier) -> IndicatorResult:
-    logger.info("Loading %s %s", pair, indicator)
-    assert storage.is_available(indicator, pair), f"Tried to load indicator that is not in the cache {indicator} - {pair}"
-    return storage.load(indicator, pair)
+def _load_indicator_result(storage: IndicatorStorage, key: IndicatorKey) -> IndicatorResult:
+    logger.info("Loading %s %s", key)
+    assert storage.is_available(key), f"Tried to load indicator that is not in the cache: {key}"
+    return storage.load(key)
 
 
 def _calculate_and_save_indicator_result(
     strategy_universe: TradingStrategyUniverse,
     storage: IndicatorStorage,
-    indicator: IndicatorDefinition,
-    pair: TradingPairIdentifier,
+    key: IndicatorKey,
 ) -> IndicatorResult:
 
-    match indicator.source:
-        case IndicatorSource.open_price:
-            column = "open"
-        case IndicatorSource.close_price:
-            column = "close"
-        case _:
-            raise AssertionError(f"Unsupported input source {pair} {indicator} {indicator.source}")
+    indicator = key.definition
 
-    input = strategy_universe.data_universe.candles.get_samples_by_pair(pair.internal_id)[column]
-    data = indicator.calculate(input)
+    if indicator.is_per_pair():
+        match indicator.source:
+            case IndicatorSource.open_price:
+                column = "open"
+            case IndicatorSource.close_price:
+                column = "close"
+            case _:
+                raise AssertionError(f"Unsupported input source {key.pair} {key.definition} {indicator.source}")
+
+        assert key.pair.internal_id
+
+        input = strategy_universe.data_universe.candles.get_samples_by_pair(key.pair.internal_id)[column]
+        data = indicator.calculate_by_pair(input)
+
+    else:
+        data = indicator.calculate_universe(strategy_universe)
 
     assert data is not None, f"Indicator function {indicator.name} ({indicator.func}) did not return any result, received Python None instead"
 
-    result = storage.save(indicator, pair, data)
+    result = storage.save(key, data)
     return result
 
 
@@ -418,7 +512,7 @@ def load_indicators(
     strategy_universe: TradingStrategyUniverse,
     storage: IndicatorStorage,
     indicator_set: IndicatorSet,
-    all_combinations: set[IndicatorResultKey],
+    all_combinations: set[IndicatorKey],
     max_readers=8,
 ) -> IndicatorResultMap:
     """Load cached indicators.
@@ -436,9 +530,9 @@ def load_indicators(
     """
 
     task_args = []
-    for pair, ind in all_combinations:
-        if storage.is_available(ind, pair):
-            task_args.append((storage, ind, pair))
+    for key in all_combinations:
+        if storage.is_available(key):
+            task_args.append((storage, key))
 
     logger.info("Loading cached indicators indicators, we have %d combinations available in the cache %s", len(task_args), storage.path)
 
@@ -447,7 +541,7 @@ def load_indicators(
 
     results = {}
     label = indicator_set.get_label()
-    key: IndicatorResultKey
+    key: IndicatorKey
 
     with tqdm(total=len(task_args), desc=f"Reading cached indicators {label} for {strategy_universe.get_pair_count()} pairs, {indicator_set.get_count()} indicators, using {max_readers} threads, total {len(task_args)} cached available") as progress_bar:
 
@@ -463,13 +557,15 @@ def load_indicators(
             # Extract results from the parallel task queue
             for task in tm.as_completed():
                 result = task.result
-                key = (result.pair, result.definition)
+                key = result.indicator_key
+                assert key not in results
                 results[key] = result
                 progress_bar.update()
         else:
             logger.info("Single-thread reading")
             for result in itertools.starmap(_load_indicator_result, task_args):
-                key = (result.pair, result.definition)
+                key = result.indicator_key
+                assert key not in results
                 results[key] = result
 
     return results
@@ -480,7 +576,7 @@ def calculate_indicators(
     storage: IndicatorStorage,
     indicators: IndicatorSet | None,
     execution_context: ExecutionContext,
-    remaining: set[IndicatorResultKey],
+    remaining: set[IndicatorKey],
     max_workers=8,
     label: str | None = None,
 ) -> IndicatorResultMap:
@@ -514,8 +610,8 @@ def calculate_indicators(
         return {}
 
     task_args = []
-    for pair, ind in remaining:
-        task_args.append((strategy_universe, storage, ind, pair))
+    for key in remaining:
+        task_args.append((strategy_universe, storage, key))
 
     results = {}
 
@@ -553,7 +649,7 @@ def calculate_indicators(
             # Extract results from the parallel task queue
             for task in tm.as_completed():
                 result = task.result
-                results[(result.pair, result.definition)] = result
+                results[result.indicator_key] = result
                 progress_bar.update()
 
     else:
@@ -568,7 +664,7 @@ def calculate_indicators(
         # Force workers to finish
         result: IndicatorResult
         for result in iter:
-            results[(result.pair, result.definition)] = result
+            results[result.indicator_key] = result
 
     logger.info("Total %d indicator results calculated", len(results))
 
@@ -624,10 +720,7 @@ def calculate_and_load_indicators(
 
     assert isinstance(indicators, IndicatorSet), f"Got {type(indicators)}"
 
-    all_combinations: set[IndicatorResultKey] = set()
-    for pair in strategy_universe.iterate_pairs():
-        for ind in indicators.iterate():
-            all_combinations.add((pair, ind))
+    all_combinations = set(indicators.generate_combinations(strategy_universe))
 
     logger.info("Loading indicators %s for the universe %s, storage is %s", indicators.get_label(), strategy_universe.get_cache_key(), storage.path)
     cached = load_indicators(strategy_universe, storage, indicators, all_combinations, max_readers=max_readers)
@@ -651,8 +744,8 @@ def calculate_and_load_indicators(
     for key in result.keys():
         # Check we keyed this right
         assert key in all_combinations
-        assert isinstance(key[0], TradingPairIdentifier)
-        assert isinstance(key[1], IndicatorDefinition)
+        assert isinstance(key.pair, TradingPairIdentifier)
+        assert isinstance(key.definition, IndicatorDefinition)
 
     return result
 
@@ -663,7 +756,7 @@ def warm_up_indicator_cache(
     execution_context: ExecutionContext,
     indicators: set[IndicatorDefinition],
     max_workers=8,
-) -> tuple[set[IndicatorResultKey], set[IndicatorResultKey]]:
+) -> tuple[set[IndicatorKey], set[IndicatorKey]]:
     """Precalculate all indicators.
 
     - Used for grid search
@@ -675,7 +768,7 @@ def warm_up_indicator_cache(
     - Use cached indicators if available
 
     :return:
-        Cached indicators, calculated indicators
+        Tuple (Cached indicators, calculated indicators)
     """
 
     cached = set()
