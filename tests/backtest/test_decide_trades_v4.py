@@ -105,9 +105,13 @@ def test_decide_trades_v04(strategy_universe):
             assert 0 < price_value < 100_000
 
         # Check indicator accessor
-        indicator_value = input.indicators.get_indicator_value("rsi")
-        if indicator_value is not None:
-            assert 0 < indicator_value < 100
+        rsi_value = input.indicators.get_indicator_value("rsi")
+        if rsi_value is not None:
+            assert 0 < rsi_value < 100
+
+        bb_value = input.indicators.get_indicator_value("bb", "BBL_20_2.0")
+        if bb_value is not None:
+            assert 0 < bb_value < 100
 
         # Switch between full spot open and close between cycles
         if not position_manager.is_any_open():
@@ -119,12 +123,14 @@ def test_decide_trades_v04(strategy_universe):
 
     def create_indicators(parameters: StrategyParameters, indicators: IndicatorSet, strategy_universe: TradingStrategyUniverse, execution_context: ExecutionContext):
         indicators.add("rsi", pandas_ta.rsi, {"length": parameters.rsi_length})
+        indicators.add("bb", pandas_ta.bbands, {"length": parameters.bb_length})
 
     class MyParameters:
         test_val = 111
         initial_cash = 10_000
-        cycle_duration =CycleDuration.cycle_1d
+        cycle_duration = CycleDuration.cycle_1d
         rsi_length = 21
+        bb_length = 20
 
     # Run the test
     state, universe, debug_dump = run_backtest_inline(

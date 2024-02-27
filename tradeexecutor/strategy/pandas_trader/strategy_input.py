@@ -114,12 +114,34 @@ class StrategyInputIndicators:
         - **Does not** return the current indicator in the decision_cycle,
           because any decision must be made based on the previous price
 
-        Single pair example:
+         Single pair example with a single series indicator (RSI):
 
         .. code-block:: python
 
+            def create_indicators(parameters: StrategyParameters, indicators: IndicatorSet, strategy_universe: TradingStrategyUniverse, execution_context: ExecutionContext):
+                indicators.add("rsi", pandas_ta.rsi, {"length": parameters.rsi_length})
+
+            #
+            # Then in decide_traces()
+            #
+
             # Read the RSI value of our only trading pair
             indicator_value = input.indicators.get_indicator_value("rsi")
+
+        Single pair example with a multi-series indicator (Bollinger band):
+
+        .. code-block:: python
+
+            def create_indicators(parameters: StrategyParameters, indicators: IndicatorSet, strategy_universe: TradingStrategyUniverse, execution_context: ExecutionContext):
+                indicators.add("bb", pandas_ta.bbands, {"length": parameters.bb_length})
+
+            #
+            # Then in decide_traces()
+            #
+
+            # Read bollinger band value for the current trading pair.
+            # Bollinger band look up length was 20 and standard deviation 2.0.
+            bb_value = input.indicators.get_indicator_value("bb", "BBL_20_2.0")
 
         :param name:
             Indicator name as defined in `create_indicators`.
@@ -159,6 +181,7 @@ class StrategyInputIndicators:
 
         if isinstance(data, pd.DataFrame):
             assert column is not None, f"Indicator {name} has multiple available columns to choose from: {data.columns}"
+            assert column in data.columns, f"Indicator {name} subcolumn {column} not in the available columns: {data.columns}"
             series = data[column]
         elif isinstance(data, pd.Series):
             series = data
@@ -177,9 +200,13 @@ class StrategyInputIndicators:
         return None
 
     def prepare_decision_cycle(self, cycle: int, timestamp: pd.Timestamp):
+        """Called for each decision cycle by the framework..
+
+        - Instead of making a copy of this data structure each time,
+          we just bump the timestamp
+        """
         logger.info("Strategy indicators moved to the cycle: %d: %s", cycle, timestamp)
         self.timestamp = timestamp
-
 
 
 @dataclass
