@@ -166,6 +166,10 @@ class ExecutionContext:
     #:
     parameters: StrategyParameters | None = None
 
+    #: Is this backtest run part of a grid search group
+    #:
+    grid_search: bool = False
+
     def __repr__(self):
         version_str = f"v{self.engine_version}" if self.engine_version else "unspecified engine version"
         return f"<ExecutionContext {self.mode.name}, {version_str}>"

@@ -907,7 +907,7 @@ def pick_best_grid_search_result(
 #: Process global stored universe for multiprocess workers
 _universe: Optional[TradingStrategyUniverse] = None
 
-_process_pool: concurrent.futures.process.ProcessPoolExecutor | None = None
+_process_pool: concurrent.futures.ProcessPoolExecutor | None = None
 
 def _process_init(pickled_universe):
     """Child worker process initialiser."""

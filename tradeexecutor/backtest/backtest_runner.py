@@ -31,10 +31,12 @@ from tradeexecutor.strategy.description import StrategyExecutionDescription
 from tradeexecutor.strategy.execution_context import ExecutionContext, ExecutionMode, standalone_backtest_execution_context
 from tradeexecutor.strategy.generic.generic_pricing_model import GenericPricing
 from tradeexecutor.strategy.generic.generic_router import GenericRouting
+from tradeexecutor.strategy.pandas_trader.indicator import CreateIndicatorsProtocol, calculate_and_load_indicators, IndicatorStorage, IndicatorSet
 from tradeexecutor.strategy.pandas_trader.runner import PandasTraderRunner
+from tradeexecutor.strategy.pandas_trader.strategy_input import StrategyInputIndicators
 from tradeexecutor.strategy.strategy_module import parse_strategy_module, \
     DecideTradesProtocol, CreateTradingUniverseProtocol, CURRENT_ENGINE_VERSION, StrategyModuleInformation, DecideTradesProtocol2, read_strategy_module, \
-    StrategyParameters, DecideTradesProtocol3
+    StrategyParameters, DecideTradesProtocol3, DecideTradesProtocol4
 from tradeexecutor.strategy.engine_version import TradingStrategyEngineVersion
 from tradeexecutor.strategy.reserve_currency import ReserveCurrency
 from tradeexecutor.strategy.default_routing_options import TradeRouting
@@ -84,6 +86,7 @@ class BacktestSetup:
     reserve_currency: ReserveCurrency
     decide_trades: DecideTradesProtocol
     create_trading_universe: Optional[CreateTradingUniverseProtocol]
+    create_indicators: Optional[CreateIndicatorsProtocol] = None
 
     data_preload: bool = True
 
@@ -100,6 +103,14 @@ class BacktestSetup:
     #: When trading_strategy_engine_version >= 0.4
     #:
     parameters: StrategyParameters | None = None
+
+    #: Is this backtest part a grid saerch
+    #:
+    grid_search = False
+
+    #: What's the execution mode of this backtest run
+    #:
+    mode: ExecutionMode = ExecutionMode.backtesting
 
     def backtest_static_universe_strategy_factory(
             self,
@@ -149,6 +160,7 @@ class BacktestSetup:
             routing_model=routing_model,
             decide_trades=self.decide_trades,
             execution_context=execution_context,
+            parameters=self.parameters,
         )
 
         return StrategyExecutionDescription(
@@ -157,6 +169,48 @@ class BacktestSetup:
             trading_strategy_engine_version=self.trading_strategy_engine_version,
             cycle_duration=self.cycle_duration,
         )
+
+    def prepare_indicators(self, execution_context: ExecutionContext) -> StrategyInputIndicators:
+        """Prepare indicators for this backtest run.
+
+        - Calculate and cache the indicator results
+
+        - Display TQDM progress bar about reading cached results and calculating new indicators
+        """
+        if self.create_indicators is not None:
+            # Legacy - create_indicators() not defined
+            # Empty indicator set
+            return StrategyInputIndicators(
+                self.universe,
+                IndicatorSet(),
+                {}
+            )
+
+        assert self.universe is not None, "You need to pass backtest_universe if you want to use create_indicators"
+        assert self.parameters is not None, "You need to pass backtest parameters if you want to use create_indicators"
+        storage = IndicatorStorage.create_default(self.universe)
+        indicators = IndicatorSet()
+
+        self.create_indicators(
+            parameters=self.parameters,
+            indicators=indicators,
+            strategy_universe=self.universe,
+            execution_context=execution_context,
+        )
+
+        indicator_results = calculate_and_load_indicators(
+            self.universe,
+            storage,
+            indicators,
+            self.parameters,
+        )
+        strategy_input_indicators = StrategyInputIndicators(
+            self.universe,
+            indicators,
+            indicator_results
+        )
+        return strategy_input_indicators
+
 
 
 def setup_backtest_for_universe(
@@ -483,11 +537,14 @@ def run_backtest(
             pass
 
     execution_context = ExecutionContext(
-        mode=ExecutionMode.backtesting,
+        mode=setup.mode,
         timed_task_context_manager=timed_task,
         engine_version=setup.trading_strategy_engine_version,
         parameters=setup.parameters,
+        grid_search=setup.grid_search,
     )
+
+    backtest_strategy_indicators = setup.prepare_indicators(execution_context)
 
     main_loop = ExecutionLoop(
         name=setup.name,
@@ -515,6 +572,7 @@ def run_backtest(
         execution_test_hook=execution_test_hook,
         minimum_data_lookback_range=setup.minimum_data_lookback_range,
         universe_options=setup.universe_options,
+        backtest_strategy_indicators=backtest_strategy_indicators,
     )
 
     debug_dump = main_loop.run_and_setup_backtest()
@@ -528,12 +586,13 @@ def run_backtest_inline(
     end_at: Optional[datetime.datetime] = None,
     minimum_data_lookback_range: Optional[datetime.timedelta] = None,
     client: Optional[Client],
-    decide_trades: DecideTradesProtocol | DecideTradesProtocol2 | DecideTradesProtocol3,
+    decide_trades: DecideTradesProtocol | DecideTradesProtocol2 | DecideTradesProtocol3 | DecideTradesProtocol4,
+    create_trading_universe: CreateTradingUniverseProtocol = None,
+    create_indicators: CreateIndicatorsProtocol = None,
     cycle_duration: CycleDuration | None = None,
     initial_deposit: float | None = None,
     reserve_currency: ReserveCurrency | None = None,
     trade_routing: Optional[TradeRouting] | None = None,
-    create_trading_universe: Optional[CreateTradingUniverseProtocol] = None,
     universe: Optional[TradingStrategyUniverse] = None,
     routing_model: Optional[BacktestRoutingModel] = None,
     max_slippage=0.01,
@@ -546,6 +605,7 @@ def run_backtest_inline(
     engine_version: Optional[TradingStrategyEngineVersion] = None,
     strategy_logging=False,
     parameters: Type | StrategyParameters | None = None,
+    mode: ExecutionMode = ExecutionMode.backtesting,
 ) -> Tuple[State, TradingStrategyUniverse, dict]:
     """Run backtests for given decide_trades and create_trading_universe functions.
 
@@ -764,6 +824,7 @@ def run_backtest_inline(
         sync_model=sync_model,
         decide_trades=decide_trades,
         create_trading_universe=create_trading_universe,
+        create_indicators=create_indicators,
         reserve_currency=reserve_currency,
         trade_routing=trade_routing,
         trading_strategy_engine_version=engine_version,
@@ -771,6 +832,7 @@ def run_backtest_inline(
         data_preload=data_preload,
         minimum_data_lookback_range=minimum_data_lookback_range,
         parameters=parameters,
+        mode=mode,
     )
 
     state, universe, debug_dump = run_backtest(backtest_setup, client, allow_missing_fees=True)

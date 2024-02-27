@@ -9,8 +9,10 @@ import pandas as pd
 
 from tradeexecutor.cli.discord import post_logging_discord_image
 from tradeexecutor.statistics.in_memory_statistics import refresh_live_strategy_images
+from tradeexecutor.strategy.pandas_trader.strategy_input import StrategyInput, StrategyInputIndicators
+from tradeexecutor.strategy.parameters import StrategyParameters
 from tradeexecutor.strategy.pricing_model import PricingModel
-from tradeexecutor.strategy.strategy_module import DecideTradesProtocol, DecideTradesProtocol2, DecideTradesProtocol3
+from tradeexecutor.strategy.strategy_module import DecideTradesProtocol, DecideTradesProtocol2, DecideTradesProtocol3, DecideTradesProtocol4
 from tradeexecutor.strategy.sync_model import SyncModel
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse, translate_trading_pair
 
@@ -27,11 +29,13 @@ logger = logging.getLogger(__name__)
 class PandasTraderRunner(StrategyRunner):
     """A trading executor for Pandas math based algorithm."""
 
-    def __init__(self,
-                 *args,
-                 decide_trades: DecideTradesProtocol | DecideTradesProtocol2 | DecideTradesProtocol3,
-                 max_data_age: Optional[datetime.timedelta] = None,
-                 **kwargs):
+    def __init__(
+            self,
+            *args,
+            decide_trades: DecideTradesProtocol | DecideTradesProtocol2 | DecideTradesProtocol3 | DecideTradesProtocol4,
+            max_data_age: datetime.timedelta = None,
+            **kwargs
+    ):
         super().__init__(*args, **kwargs)
         self.decide_trades = decide_trades
         self.max_data_age = max_data_age
@@ -44,12 +48,15 @@ class PandasTraderRunner(StrategyRunner):
     def on_data_signal(self):
         pass
 
-    def on_clock(self,
-                 clock: datetime.datetime,
-                 strategy_universe: TradingStrategyUniverse,
-                 pricing_model: PricingModel,
-                 state: State,
-                 debug_details: dict) -> List[TradeExecution]:
+    def on_clock(
+        self,
+        clock: datetime.datetime,
+        strategy_universe: TradingStrategyUniverse,
+        pricing_model: PricingModel,
+        state: State,
+        debug_details: dict,
+        indicators:StrategyInputIndicators | None = None,
+        ) -> List[TradeExecution]:
         """Run one strategy tick."""
 
         assert isinstance(strategy_universe, TradingStrategyUniverse)
@@ -63,8 +70,30 @@ class PandasTraderRunner(StrategyRunner):
 
         # Call the strategy script decide_trades()
         # callback
-        if self.execution_context.is_version_greater_or_equal_than(0, 4, 0):
+        if self.execution_context.is_version_greater_or_equal_than(0, 5, 0):
+
+            assert indicators is not None, "indicators not created when running trading_strategy_engine_version=0.5"
+
+            indicators.prepare_decision_cycle(debug_details["cycle"], pd_timestamp)
+
+            # DecideTradesProtocolV4
+            input = StrategyInput(
+                cycle=debug_details["cycle"],
+                timestamp=pd_timestamp,
+                strategy_universe=strategy_universe,
+                state=state,
+                pricing_model=pricing_model,
+                other_data=debug_details,
+                indicators=indicators,
+                parameters=self.parameters,
+                execution_context=self.execution_context,
+            )
+            return self.decide_trades(
+                input
+            )
+        elif self.execution_context.is_version_greater_or_equal_than(0, 4, 0):
             parameters = self.execution_context.parameters
+            # DecideTradesProtocolV3
             parameters["cycle"] = debug_details["cycle"]
             return self.decide_trades(
                 timestamp=pd_timestamp,
