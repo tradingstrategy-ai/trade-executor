@@ -374,23 +374,23 @@ def test_complex_indicator(strategy_universe, indicator_storage):
 def test_custom_indicator(strategy_universe, indicator_storage):
     """Create a custom indicator.
 
+    - Create an ETC/BTC price and ETC/BTC RSI indicators
     """
-
-    assert strategy_universe.get_pair_count() == 2
 
     def calculate_eth_btc(strategy_universe: TradingStrategyUniverse):
         weth_usdc = strategy_universe.get_pair_by_human_description((ChainId.ethereum, "test-dex", "WETH", "USDC"))
         wbtc_usdc = strategy_universe.get_pair_by_human_description((ChainId.ethereum, "test-dex", "WBTC", "USDC"))
         btc_price = strategy_universe.data_universe.candles.get_candles_by_pair(wbtc_usdc.internal_id)
         eth_price = strategy_universe.data_universe.candles.get_candles_by_pair(weth_usdc.internal_id)
-        return eth_price / btc_price  # Divide two series
+        series = eth_price["close"] / btc_price["close"]  # Divide two series
+        return series
 
     def calculate_eth_btc_rsi(strategy_universe: TradingStrategyUniverse, length: int):
         weth_usdc = strategy_universe.get_pair_by_human_description((ChainId.ethereum, "test-dex", "WETH", "USDC"))
         wbtc_usdc = strategy_universe.get_pair_by_human_description((ChainId.ethereum, "test-dex", "WBTC", "USDC"))
         btc_price = strategy_universe.data_universe.candles.get_candles_by_pair(wbtc_usdc.internal_id)
         eth_price = strategy_universe.data_universe.candles.get_candles_by_pair(weth_usdc.internal_id)
-        eth_btc = eth_price / btc_price  # Divide two series
+        eth_btc = eth_price["close"] / btc_price["close"]
         return pandas_ta.rsi(eth_btc, length=length)
 
     def create_indicators(parameters: StrategyParameters, indicators: IndicatorSet, strategy_universe: TradingStrategyUniverse, execution_context: ExecutionContext):
@@ -412,28 +412,10 @@ def test_custom_indicator(strategy_universe, indicator_storage):
 
     # 2 pairs, 3 indicators
     assert len(indicator_result) == 2
-
-    exchange = strategy_universe.data_universe.exchange_universe.get_single()
-    weth_usdc = strategy_universe.get_pair_by_human_description((ChainId.ethereum, exchange.exchange_slug, "WETH", "USDC"))
-    wbtc_usdc = strategy_universe.get_pair_by_human_description((ChainId.ethereum, exchange.exchange_slug, "WBTC", "USDC"))
-
-    keys = list(indicator_result.keys())
-    keys = sorted(keys, key=lambda k: (k[0].internal_id, k[1].name))  # Ensure we read set in deterministic order
-
-    # Check our pair x indicator matrix
-    assert keys[0].pair== weth_usdc
-    assert keys[0].definition.name == "bb"
-    assert keys[0].definition.parameters == {"length": 20}
-
-    assert keys[1].pair == wbtc_usdc
-    assert keys[1].definition.name == "bb"
-    assert keys[1].definition.parameters == {"length": 20}
-
     for result in indicator_result.values():
         assert not result.cached
-        assert isinstance(result.data, pd.DataFrame)
+        assert isinstance(result.data, pd.Series)
         assert len(result.data) > 0
-        assert result.data.columns.to_list() == ['BBL_20_2.0', 'BBM_20_2.0', 'BBU_20_2.0', 'BBB_20_2.0', 'BBP_20_2.0']
 
     # Rerun, now everything should be cached and loaded
     indicator_result = calculate_and_load_indicators(
@@ -447,6 +429,6 @@ def test_custom_indicator(strategy_universe, indicator_storage):
     )
     for result in indicator_result.values():
         assert result.cached
-        assert isinstance(result.data, pd.DataFrame)
+        assert isinstance(result.data, pd.Series)
         assert len(result.data) > 0
 

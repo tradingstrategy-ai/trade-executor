@@ -140,7 +140,8 @@ class IndicatorDefinition:
 
         """
         try:
-            return self.func(input, **self.parameters)
+            ret = self.func(input, **self.parameters)
+            return self._check_good_return_value(ret)
         except Exception as e:
             raise IndicatorCalculationFailed(f"Could not calculate indicator {self.name} ({self.func}) for parameters {self.parameters}, input data is {len(input)} rows") from e
 
@@ -158,9 +159,14 @@ class IndicatorDefinition:
 
         """
         try:
-            return self.func(input, **self.parameters)
+            ret = self.func(input, **self.parameters)
+            return self._check_good_return_value(ret)
         except Exception as e:
-            raise IndicatorCalculationFailed(f"Could not calculate indicator {self.name} ({self.func}) for parameters {self.parameters}, input data is {len(input)} rows") from e
+            raise IndicatorCalculationFailed(f"Could not calculate indicator {self.name} ({self.func}) for parameters {self.parameters}, input universe is {input}") from e
+
+    def _check_good_return_value(self, df):
+        assert isinstance(df, (pd.Series, pd.DataFrame)), f"Indicator did not return pd.DataFrame or pd.Series: {self.name}"
+        return df
 
 
 @dataclass(slots=True, frozen=True)
@@ -216,6 +222,8 @@ class IndicatorSet:
     - For live trading, these indicators are recalculated for the each decision cycle
 
     - Indicators are calculated for each given trading pair, unless specified otherwise
+
+    See :py:class:`CreateIndicatorsProtocol` for usage.
     """
 
     def __init__(self):
@@ -244,11 +252,45 @@ class IndicatorSet:
         self,
         name: str,
         func: Callable,
-        parameters: dict,
+        parameters: dict | None = None,
         source: IndicatorSource=IndicatorSource.close_price,
     ):
+        """Add a new indicator to this indicator set.
+
+        Builds an indicator set for the trading strategy,
+        called from `create_indicators`.
+
+        See :py:class:`CreateIndicatorsProtocol` for usage.
+
+        :param name:
+            Name of the indicator.
+
+            Human-readable name. If the same function is calculated multiple times, e.g. EMA,
+            you can have names like `ema_short` and `ema_long`.
+
+        :param func:
+            Python function to be called.
+
+            Function takes arguments from `parameters` dict.
+            It must return either :py:class:`pd.DataFrame` or :py:class:`pd.Series`.
+
+        :param parameters:
+            Parameters to be passed to the Python function.
+
+            Raw `func` Python arguments.
+
+            You can pass parameters as is from `StrategyParameters`.
+
+        :param source:
+            Data source on this indicator is calculated.
+
+            Defaults to the close price for each trading pair.
+            To calculate universal indicators set to :py:attr:`IndicatorSource.strategy_universe`.
+        """
         assert type(name) == str
         assert callable(func), f"{func} is not callable"
+        if parameters is None:
+            parameters = {}
         assert type(parameters) == dict, f"parameters must be dictionary, we got {parameters.__class__}"
         assert isinstance(source, IndicatorSource), f"Expected IndicatorSource, got {type(source)}"
         self.indicators[name] = IndicatorDefinition(name, func, parameters, source)
@@ -744,8 +786,6 @@ def calculate_and_load_indicators(
     for key in result.keys():
         # Check we keyed this right
         assert key in all_combinations
-        assert isinstance(key.pair, TradingPairIdentifier)
-        assert isinstance(key.definition, IndicatorDefinition)
 
     return result
 
