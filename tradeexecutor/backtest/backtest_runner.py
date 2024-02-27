@@ -31,7 +31,8 @@ from tradeexecutor.strategy.description import StrategyExecutionDescription
 from tradeexecutor.strategy.execution_context import ExecutionContext, ExecutionMode, standalone_backtest_execution_context
 from tradeexecutor.strategy.generic.generic_pricing_model import GenericPricing
 from tradeexecutor.strategy.generic.generic_router import GenericRouting
-from tradeexecutor.strategy.pandas_trader.indicator import CreateIndicatorsProtocol, calculate_and_load_indicators, IndicatorStorage, IndicatorSet
+from tradeexecutor.strategy.pandas_trader.indicator import CreateIndicatorsProtocol, calculate_and_load_indicators, IndicatorStorage, IndicatorSet, \
+    IndicatorKey, load_indicators
 from tradeexecutor.strategy.pandas_trader.runner import PandasTraderRunner
 from tradeexecutor.strategy.pandas_trader.strategy_input import StrategyInputIndicators
 from tradeexecutor.strategy.strategy_module import parse_strategy_module, \
@@ -86,7 +87,14 @@ class BacktestSetup:
     reserve_currency: ReserveCurrency
     decide_trades: DecideTradesProtocol
     create_trading_universe: Optional[CreateTradingUniverseProtocol]
+
+    #
+    # Indicators needed for this backtest
+    # - create_indicators() used with a single backtest
+    # - indicators used by grid search as indicators have been defined and calculated in a prior step
+    #
     create_indicators: Optional[CreateIndicatorsProtocol] = None
+    indicator_combinations: Optional[set[IndicatorKey]] = None
 
     data_preload: bool = True
 
@@ -189,29 +197,60 @@ class BacktestSetup:
         assert self.universe is not None, "You need to pass backtest_universe if you want to use create_indicators"
         assert self.parameters is not None, "You need to pass backtest parameters if you want to use create_indicators"
         storage = IndicatorStorage.create_default(self.universe)
-        indicators = IndicatorSet()
+        indicator_builder = IndicatorSet()
+
 
         self.create_indicators(
             parameters=self.parameters,
-            indicators=indicators,
+            indicators=indicator_builder,
             strategy_universe=self.universe,
             execution_context=execution_context,
         )
+
+        available_indicators = indicator_builder
 
         indicator_results = calculate_and_load_indicators(
             self.universe,
             storage,
             execution_context,
-            indicators,
+            indicator_builder,
             self.parameters,
         )
+
         strategy_input_indicators = StrategyInputIndicators(
             self.universe,
-            indicators,
-            indicator_results
+            indicator_results=indicator_results,
+            available_indicators=available_indicators,
         )
+
         return strategy_input_indicators
 
+    def load_indicators(self) -> StrategyInputIndicators:
+        """Load indicators for this backtest.
+
+        - Applies for grid search execution path
+
+        - All indicators must be precalculated in cache warm up
+        """
+        assert self.indicator_combinations is not None
+        assert type(self.indicator_combinations) == set
+        storage = IndicatorStorage.create_default(self.universe)
+        available_indicators = IndicatorSet.from_indicator_keys(self.indicator_combinations)
+
+        indicator_results = load_indicators(
+            self.universe,
+            storage,
+            available_indicators,
+            self.indicator_combinations,
+        )
+
+        strategy_input_indicators = StrategyInputIndicators(
+            self.universe,
+            indicator_results=indicator_results,
+            available_indicators=available_indicators,
+        )
+
+        return strategy_input_indicators
 
 
 def setup_backtest_for_universe(
@@ -547,7 +586,13 @@ def run_backtest(
 
     if execution_context.is_version_greater_or_equal_than(0, 5, 0):
         # Needed for DecideTradesProtocolV4
-        backtest_strategy_indicators = setup.prepare_indicators(execution_context)
+        if setup.create_indicators is not None:
+            backtest_strategy_indicators = setup.prepare_indicators(execution_context)
+        elif setup.indicator_combinations is not None:
+            # Grid search
+            backtest_strategy_indicators = setup.load_indicators()
+        else:
+            raise AssertionError(f"You must give either create_indicators or indicator_combinations argument")
     else:
         # Legacy
         backtest_strategy_indicators = None
@@ -595,6 +640,7 @@ def run_backtest_inline(
     decide_trades: DecideTradesProtocol | DecideTradesProtocol2 | DecideTradesProtocol3 | DecideTradesProtocol4,
     create_trading_universe: CreateTradingUniverseProtocol = None,
     create_indicators: CreateIndicatorsProtocol = None,
+    indicator_combinations: set[IndicatorKey] | None = None,
     cycle_duration: CycleDuration | None = None,
     initial_deposit: float | None = None,
     reserve_currency: ReserveCurrency | None = None,
@@ -830,6 +876,7 @@ def run_backtest_inline(
         sync_model=sync_model,
         decide_trades=decide_trades,
         create_trading_universe=create_trading_universe,
+        indicator_combinations=indicator_combinations,
         create_indicators=create_indicators,
         reserve_currency=reserve_currency,
         trade_routing=trade_routing,

@@ -16,7 +16,7 @@ from enum import Enum
 from inspect import isclass
 from multiprocessing import Process
 from pathlib import Path
-from typing import Protocol, Dict, List, Tuple, Any, Optional, Collection, Callable
+from typing import Protocol, Dict, List, Tuple, Any, Optional, Collection, Callable, Iterable
 import concurrent.futures.process
 from packaging import version
 
@@ -221,6 +221,19 @@ class GridCombination:
 
     def to_strategy_parameters(self) -> StrategyParameters:
         return StrategyParameters(self.as_dict())
+
+    @staticmethod
+    def get_all_indicators(combinations: Iterable["GridCombination"]) -> set[IndicatorKey]:
+        """Get all defined indicators that need to be calculated, across all grid search combinatios.
+
+        Duplications are merged.
+        """
+        indicators = set()
+        for c in combinations:
+            if c.indicators:
+                for i in c.indicators:
+                    indicators.add(i)
+        return indicators
 
 
 @dataclass(slots=True, frozen=False)
@@ -449,7 +462,7 @@ def prepare_grid_combinations(
 
 
 def _run_v04(
-    decide_trades: DecideTradesProtocol3,
+    decide_trades: DecideTradesProtocol3 | DecideTradesProtocol4,
     universe: TradingStrategyUniverse,
     combination: GridCombination,
     trading_strategy_engine_version: TradingStrategyEngineVersion,
@@ -864,6 +877,7 @@ def run_grid_search_backtest(
         decide_trades=decide_trades,
         create_trading_universe=None,
         create_indicators=create_indicators,
+        indicator_combinations=combination.indicators,
         universe=universe,
         initial_deposit=initial_deposit,
         reserve_currency=None,

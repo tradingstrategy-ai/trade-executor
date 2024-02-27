@@ -476,6 +476,8 @@ def _decide_trades_v4(input: StrategyInput) -> List[TradeExecution]:
     assert type(parameters.stop_loss_pct) == float
     assert type(parameters.slow_ema_candle_count) == int, f"Got {type(parameters.slow_ema_candle_count)}"
     assert type(parameters.fast_ema_candle_count) == int
+    if input.indicators.get_indicator_value("slow_ema") is not None:
+        assert input.indicators.get_indicator_value("slow_ema") > 0
     return []
 
 

@@ -48,9 +48,7 @@ class StrategyInputIndicators:
     #:
     strategy_universe: TradingStrategyUniverse
 
-    #: The indicator definitions.
-    #:
-    #: Indicators set up in `create_indicators()`.
+    #: Available indicators as defined in create_indicators()
     #:
     available_indicators: IndicatorSet
 

@@ -312,6 +312,16 @@ class IndicatorSet:
             else:
                 yield IndicatorKey(None, indicator)
 
+    @staticmethod
+    def from_indicator_keys(indicator_keys: set["IndicatorKey"]) -> "IndicatorSet":
+        """Reconstruct the original indicator set from keys.
+
+        - Used when grid search passes data around processes
+        """
+        indicator_set = IndicatorSet()
+        indicator_set.indicators = {key.definition.name: key.definition for key in indicator_keys}
+        return indicator_set
+
 
 class CreateIndicatorsProtocol(Protocol):
     """Call signature for create_indicators function.
@@ -763,8 +773,8 @@ def calculate_and_load_indicators(
     strategy_universe: TradingStrategyUniverse,
     storage: IndicatorStorage,
     execution_context: ExecutionContext,
-    indicators: IndicatorSet | None = None,
     parameters: StrategyParameters | None = None,
+    indicators: IndicatorSet | None = None,
     create_indicators: CreateIndicatorsProtocol | None = None,
     max_workers=8,
     max_readers=8,
