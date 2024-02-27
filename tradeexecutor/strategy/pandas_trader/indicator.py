@@ -547,6 +547,7 @@ def prepare_indicators(
     if indicators.get_count() == 0:
         # TODO: Might have legit use cases?
         logger.warning(f"create_indicators() did not create a single indicator")
+    import ipdb ; ipdb.set_trace()
     return indicators
 
 

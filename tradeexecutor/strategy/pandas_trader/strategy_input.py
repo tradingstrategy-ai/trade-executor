@@ -38,6 +38,8 @@ class StrategyInputIndicators:
     - The framework takes care of recalculating indicators when needed,
       for backtest and live access
     - For backtests, this class is instiated only once
+
+    For simple strategies calling :py:meth:`get_indicator_value` should be only required here.
     """
 
     #: Trading universe
