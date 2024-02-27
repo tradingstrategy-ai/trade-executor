@@ -28,7 +28,7 @@ from web3.datastructures import ReadableAttributeDict
 from tradeexecutor.strategy.engine_version import TradingStrategyEngineVersion
 from tradeexecutor.strategy.execution_context import ExecutionContext, notebook_execution_context, grid_search_execution_context
 from tradeexecutor.strategy.pandas_trader.indicator import IndicatorSet, CreateIndicatorsProtocol, IndicatorStorage, calculate_and_load_indicators, \
-    IndicatorDefinition, warm_up_indicator_cache
+    IndicatorDefinition, warm_up_indicator_cache, IndicatorKey
 from tradeexecutor.strategy.universe_model import UniverseOptions
 
 try:
@@ -164,7 +164,9 @@ class GridCombination:
     #: yields the result of indicators we need to calculate for this grid combination.
     #: Only avaiable if trading_strategy_engine_version > 0.5.
     #:
-    indicators: IndicatorSet | None = None
+    #: - One key entry for each trading pair if pair specific indicators are used
+    #:
+    indicators: set[IndicatorKey] | None = None
 
     def __post_init__(self):
         assert len(self.parameters) > 0
@@ -441,7 +443,7 @@ def prepare_grid_combinations(
         if create_indicators is not None:
             indicators = IndicatorSet()
             create_indicators(c.to_strategy_parameters(), indicators, strategy_universe, execution_context)
-            c.indicators = indicators
+            c.indicators = set(indicators.generate_combinations(strategy_universe))
 
     return combinations
 
@@ -588,9 +590,9 @@ def warm_up_grid_search_indicator_cache(
     """
 
     # Build an indicator set of all possible indicators needed
-    indicators: set[IndicatorDefinition] = set()
+    indicators: set[IndicatorKey] = set()
     for c in combinations:
-        for ind in c.indicators.iterate():
+        for ind in c.indicators:
             indicators.add(ind)
 
     # Will display TQDM progress bar for filling the cache

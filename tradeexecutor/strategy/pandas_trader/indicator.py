@@ -337,6 +337,30 @@ class CreateIndicatorsProtocol(Protocol):
             indicators.add("slow_ema", pandas_ta.ema, {"length": parameters.slow_ema_candle_count})
             indicators.add("fast_ema", pandas_ta.ema, {"length": parameters.fast_ema_candle_count})
 
+    Indicators can be custom, and do not need to be calculated per trading pair.
+    Here is an example of creating indicators "ETH/BTC price" and "ETC/BTC price RSI with length of 20 bars":
+
+    .. code-block:: python
+
+        def calculate_eth_btc(strategy_universe: TradingStrategyUniverse):
+            weth_usdc = strategy_universe.get_pair_by_human_description((ChainId.ethereum, "test-dex", "WETH", "USDC"))
+            wbtc_usdc = strategy_universe.get_pair_by_human_description((ChainId.ethereum, "test-dex", "WBTC", "USDC"))
+            btc_price = strategy_universe.data_universe.candles.get_candles_by_pair(wbtc_usdc.internal_id)
+            eth_price = strategy_universe.data_universe.candles.get_candles_by_pair(weth_usdc.internal_id)
+            series = eth_price["close"] / btc_price["close"]  # Divide two series
+            return series
+
+        def calculate_eth_btc_rsi(strategy_universe: TradingStrategyUniverse, length: int):
+            weth_usdc = strategy_universe.get_pair_by_human_description((ChainId.ethereum, "test-dex", "WETH", "USDC"))
+            wbtc_usdc = strategy_universe.get_pair_by_human_description((ChainId.ethereum, "test-dex", "WBTC", "USDC"))
+            btc_price = strategy_universe.data_universe.candles.get_candles_by_pair(wbtc_usdc.internal_id)
+            eth_price = strategy_universe.data_universe.candles.get_candles_by_pair(weth_usdc.internal_id)
+            eth_btc = eth_price["close"] / btc_price["close"]
+            return pandas_ta.rsi(eth_btc, length=length)
+
+        def create_indicators(parameters: StrategyParameters, indicators: IndicatorSet, strategy_universe: TradingStrategyUniverse, execution_context: ExecutionContext):
+            indicators.add("eth_btc", calculate_eth_btc, source=IndicatorSource.strategy_universe)
+            indicators.add("eth_btc_rsi", calculate_eth_btc_rsi, parameters={"length": parameters.eth_btc_rsi_length}, source=IndicatorSource.strategy_universe)
     """
 
     def __call__(
@@ -439,6 +463,7 @@ class IndicatorStorage:
         :return:
             Example `/tmp/.../test_indicators_single_backtes0/ethereum,1d,WETH-USDC-WBTC-USDC,2021-06-01-2021-12-31/sma(length=21).parquet`
         """
+        assert isinstance(key, IndicatorKey)
         return self.path / Path(self.universe_key) / Path(f"{key.get_cache_key()}.parquet")
 
     def is_available(self, key: IndicatorKey) -> bool:
@@ -794,7 +819,7 @@ def warm_up_indicator_cache(
     strategy_universe: TradingStrategyUniverse,
     storage: IndicatorStorage,
     execution_context: ExecutionContext,
-    indicators: set[IndicatorDefinition],
+    indicators: set[IndicatorKey],
     max_workers=8,
 ) -> tuple[set[IndicatorKey], set[IndicatorKey]]:
     """Precalculate all indicators.
@@ -814,12 +839,11 @@ def warm_up_indicator_cache(
     cached = set()
     needed = set()
 
-    for pair in strategy_universe.iterate_pairs():
-        for ind in indicators:
-            if storage.is_available(ind, pair):
-                cached.add((pair, ind))
-            else:
-                needed.add((pair, ind))
+    for key in indicators:
+        if storage.is_available(key):
+            cached.add(key)
+        else:
+            needed.add(key)
 
     logger.info(
         "warm_up_indicator_cache(), we have %d cached pair-indicators and need to calculate %d pair-indicator",
