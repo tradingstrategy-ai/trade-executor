@@ -44,7 +44,7 @@ from tradeexecutor.state.types import USDollarAmount
 from tradeexecutor.strategy.cycle import CycleDuration
 from tradeexecutor.strategy.default_routing_options import TradeRouting
 from tradeexecutor.strategy.routing import RoutingModel
-from tradeexecutor.strategy.strategy_module import DecideTradesProtocol, DecideTradesProtocol2, StrategyParameters, DecideTradesProtocol3
+from tradeexecutor.strategy.strategy_module import DecideTradesProtocol, DecideTradesProtocol2, StrategyParameters, DecideTradesProtocol3, DecideTradesProtocol4
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
 from tradeexecutor.visual.equity_curve import calculate_equity_curve, calculate_returns
 
@@ -120,9 +120,6 @@ class GridParameter:
 
     def __eq__(self, other):
         return self.name == other.name and self.value == other.value
-    
-    def __repr__(self) -> str:
-        return f"{self.name}={self.value}"
 
     def to_path(self) -> str:
         """"""
@@ -191,7 +188,7 @@ class GridCombination:
 
     def validate(self):
         """Check arguments can be serialised as fs path."""
-        assert len(self.searchable_parameters) > 0, f"Grid search combination does not have any parameters that would have multiple values to search: {self.parameters}"
+        assert len(self.searchable_parameters) > 0, f"Grid search combination does not have any parameters that would have multiple values to search: {self.parameters}. Add parameters to search or use normal backtesting instead."
         assert isinstance(self.get_relative_result_path(), Path)
 
     def as_dict(self) -> dict:
@@ -565,7 +562,7 @@ def _read_cached_results(
     results = {}
 
     label = ", ".join(p.name for p in combinations[0].searchable_parameters)
-    with tqdm(total=len(task_args), desc=f"Reading cached indicator results using {reader_pool_size} threads: {label}") as progress_bar:
+    with tqdm(total=len(task_args), desc=f"Reading cached grid search results using {reader_pool_size} threads: {label}") as progress_bar:
         # Extract results from the parallel task queue
         for task in tm.as_completed():
             results[task.args[0]] = task.result
@@ -576,7 +573,7 @@ def _read_cached_results(
 
 @_hide_warnings
 def perform_grid_search(
-    grid_search_worker: GridSearchWorker | DecideTradesProtocol3,
+    grid_search_worker: GridSearchWorker | DecideTradesProtocol3 | DecideTradesProtocol4,
     universe: TradingStrategyUniverse,
     combinations: List[GridCombination],
     max_workers=16,
@@ -907,7 +904,7 @@ def pick_best_grid_search_result(
 #: Process global stored universe for multiprocess workers
 _universe: Optional[TradingStrategyUniverse] = None
 
-_process_pool: concurrent.futures.ProcessPoolExecutor | None = None
+_process_pool: concurrent.futures.process.ProcessPoolExecutor | None = None
 
 def _process_init(pickled_universe):
     """Child worker process initialiser."""
