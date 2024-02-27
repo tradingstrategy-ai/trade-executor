@@ -49,66 +49,6 @@ pytestmark = pytest.mark.skipif(
 APPROX_REL = 0.001
 APPROX_REL_DECIMAL = Decimal("0.001")
 
-
-@pytest.fixture
-def anvil_polygon_chain_fork(request, large_usdc_holder) -> str:
-    """Create a testable fork of live Polygon.
-
-    :return: JSON-RPC URL for Web3
-    """
-    mainnet_rpc = os.environ["JSON_RPC_POLYGON"]
-    launch = fork_network_anvil(
-        mainnet_rpc,
-        unlocked_addresses=[large_usdc_holder],
-        fork_block_number=51_000_000,
-    )
-    try:
-        yield launch.json_rpc_url
-    finally:
-        # Wind down Anvil process after the test is complete
-        # launch.close(log_level=logging.ERROR)
-        launch.close()
-
-
-@pytest.fixture()
-def exchange_universe(web3, uniswap_v3_deployment: UniswapV3Deployment) -> ExchangeUniverse:
-    """We trade on one uniswap v3 deployment on tester."""
-    return create_exchange_universe(web3, [uniswap_v3_deployment])
-
-
-@pytest.fixture()
-def pair_universe(web3, exchange_universe: ExchangeUniverse, weth_usdc_spot_pair) -> PandasPairUniverse:
-    exchange = next(iter(exchange_universe.exchanges.values()))
-    return create_pair_universe(web3, exchange, [weth_usdc_spot_pair])
-
-
-@pytest.fixture()
-def trading_strategy_universe(chain_id, exchange_universe, pair_universe, asset_usdc, persistent_test_client) -> TradingStrategyUniverse:
-
-    pairs = [
-        (ChainId.polygon, "uniswap-v3", "WETH", "USDC", 0.0005),
-    ]
-
-    reverses = [
-        (ChainId.polygon, LendingProtocolType.aave_v3, "WETH"),
-        (ChainId.polygon, LendingProtocolType.aave_v3, "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174"),
-    ]
-
-    dataset = load_partial_data(
-        persistent_test_client,
-        execution_context=unit_test_execution_context,
-        time_bucket=TimeBucket.d1,
-        pairs=pairs,
-        universe_options=default_universe_options,
-        start_at=pd.Timestamp("2023-12-01"),
-        end_at=pd.Timestamp("2023-12-30"),
-        lending_reserves=reverses,
-    )
-
-    # Convert loaded data to a trading pair universe
-    return TradingStrategyUniverse.create_single_pair_universe(dataset)
-
-
 #   File "/home/runner/work/trade-executor/trade-executor/tradeexecutor/statistics/core.py", line 59, in calculate_position_statistics
 #     profitability=position.get_total_profit_percent(),
 #   File "/home/runner/work/trade-executor/trade-executor/tradeexecutor/state/position.py", line 1213, in get_total_profit_percent
