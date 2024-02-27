@@ -545,7 +545,12 @@ def run_backtest(
         grid_search=setup.grid_search,
     )
 
-    backtest_strategy_indicators = setup.prepare_indicators(execution_context)
+    if execution_context.is_version_greater_or_equal_than(0, 5, 0):
+        # Needed for DecideTradesProtocolV4
+        backtest_strategy_indicators = setup.prepare_indicators(execution_context)
+    else:
+        # Legacy
+        backtest_strategy_indicators = None
 
     main_loop = ExecutionLoop(
         name=setup.name,

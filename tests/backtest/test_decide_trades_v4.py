@@ -80,9 +80,9 @@ def strategy_universe(persistent_test_client: Client):
 
 
 def test_decide_trades_v04(strategy_universe):
-    """Run the strategy backtest using inline decide_trades function.
+    """Test DecideTradesProtocolV4
 
-    - How much interest we can get on USDC on Polygon in one month
+    - Check that StrategyInput is passed correctly in backtesting (only backtesting, not live trading)
     """
 
     def decide_trades(input: StrategyInput) -> List[TradeExecution]:

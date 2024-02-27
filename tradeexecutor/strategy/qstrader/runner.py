@@ -9,6 +9,7 @@ import pandas as pd
 from qstrader.portcon.optimiser.fixed_weight import FixedWeightPortfolioOptimiser
 
 from tradeexecutor.strategy.execution_context import unit_test_execution_context
+from tradeexecutor.strategy.pandas_trader.strategy_input import StrategyInputIndicators
 from tradeexecutor.strategy.pricing_model import PricingModel
 from tradeexecutor.strategy.qstrader.alpha_model import AlphaModel
 from tradeexecutor.strategy.qstrader.order_sizer import CashBufferedOrderSizer
@@ -123,7 +124,9 @@ class QSTraderRunner(StrategyRunner):
                  executor_universe: TradingStrategyUniverse,
                  pricing_model: PricingModel,
                  state: State,
-                 debug_details: dict) -> List[TradeExecution]:
+                 debug_details: dict,
+                 indicators: StrategyInputIndicators | None = None,
+                 ) -> List[TradeExecution]:
         """Run one strategy cycle.
 
         - Takes universe, pricing model and state as an input
