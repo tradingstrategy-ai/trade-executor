@@ -811,7 +811,7 @@ def calculate_and_load_indicators(
         assert parameters is not None, f"parameters argument must be given if you give create_indicators"
         indicators = prepare_indicators(create_indicators, parameters, strategy_universe, execution_context)
 
-    assert isinstance(indicators, IndicatorSet), f"Got {type(indicators)}"
+    assert isinstance(indicators, IndicatorSet), f"Got class {type(indicators)} when IndicatorSet expected"
 
     all_combinations = set(indicators.generate_combinations(strategy_universe))
 

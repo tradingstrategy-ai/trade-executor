@@ -212,11 +212,11 @@ class BacktestSetup:
         available_indicators = indicator_builder
 
         indicator_results = calculate_and_load_indicators(
-            self.universe,
-            storage,
-            execution_context,
-            indicator_builder,
-            self.parameters,
+            strategy_universe=self.universe,
+            storage=storage,
+            execution_context=execution_context,
+            indicators=indicator_builder,
+            parameters=self.parameters,
         )
 
         strategy_input_indicators = StrategyInputIndicators(
@@ -878,6 +878,10 @@ def run_backtest_inline(
         start_at=start_at,
         end_at=end_at,
     )
+
+    # Create default storage
+    if indicator_storage is None and universe is not None:
+        indicator_storage = IndicatorStorage.create_default(universe)
 
     backtest_setup = BacktestSetup(
         start_at,
