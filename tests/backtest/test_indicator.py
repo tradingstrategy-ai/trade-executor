@@ -11,7 +11,7 @@ import pytest
 from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier
 from tradeexecutor.strategy.execution_context import ExecutionContext, unit_test_execution_context
 from tradeexecutor.strategy.pandas_trader.indicator import IndicatorSet, IndicatorStorage, IndicatorDefinition, IndicatorFunctionSignatureMismatch, \
-    calculate_and_load_indicators, IndicatorKey
+    calculate_and_load_indicators, IndicatorKey, IndicatorSource
 from tradeexecutor.strategy.parameters import StrategyParameters
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse, create_pair_universe_from_code
 from tradeexecutor.testing.synthetic_ethereum_data import generate_random_ethereum_address
@@ -371,24 +371,34 @@ def test_complex_indicator(strategy_universe, indicator_storage):
         assert len(result.data) > 0
 
 
-def xxx_test_custom_indicator(strategy_universe, indicator_storage):
+def test_custom_indicator(strategy_universe, indicator_storage):
     """Create a custom indicator.
 
     """
 
     assert strategy_universe.get_pair_count() == 2
 
-    def eth_btc(strategy_universe: TradingStrategyUniverse, indicator_results):
-        pass
+    def calculate_eth_btc(strategy_universe: TradingStrategyUniverse):
+        weth_usdc = strategy_universe.get_pair_by_human_description((ChainId.ethereum, "test-dex", "WETH", "USDC"))
+        wbtc_usdc = strategy_universe.get_pair_by_human_description((ChainId.ethereum, "test-dex", "WBTC", "USDC"))
+        btc_price = strategy_universe.data_universe.candles.get_candles_by_pair(wbtc_usdc.internal_id)
+        eth_price = strategy_universe.data_universe.candles.get_candles_by_pair(weth_usdc.internal_id)
+        return eth_price / btc_price  # Divide two series
 
-    def eth_btc_rsi(strategy_universe: TradingStrategyUniverse):
-        pass
+    def calculate_eth_btc_rsi(strategy_universe: TradingStrategyUniverse, length: int):
+        weth_usdc = strategy_universe.get_pair_by_human_description((ChainId.ethereum, "test-dex", "WETH", "USDC"))
+        wbtc_usdc = strategy_universe.get_pair_by_human_description((ChainId.ethereum, "test-dex", "WBTC", "USDC"))
+        btc_price = strategy_universe.data_universe.candles.get_candles_by_pair(wbtc_usdc.internal_id)
+        eth_price = strategy_universe.data_universe.candles.get_candles_by_pair(weth_usdc.internal_id)
+        eth_btc = eth_price / btc_price  # Divide two series
+        return pandas_ta.rsi(eth_btc, length=length)
 
     def create_indicators(parameters: StrategyParameters, indicators: IndicatorSet, strategy_universe: TradingStrategyUniverse, execution_context: ExecutionContext):
-        pass
+        indicators.add("eth_btc", calculate_eth_btc, source=IndicatorSource.strategy_universe)
+        indicators.add("eth_btc_rsi", calculate_eth_btc_rsi, parameters={"length": parameters.eth_btc_rsi_length}, source=IndicatorSource.strategy_universe)
 
     class MyParameters:
-        bb_length=20
+        eth_btc_rsi_length = 20
 
     indicator_result = calculate_and_load_indicators(
         strategy_universe,
