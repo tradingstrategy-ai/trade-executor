@@ -10,8 +10,8 @@ from plotly.graph_objs import Figure
 
 from tradeexecutor.state.trade import TradeExecution
 from tradeexecutor.strategy.cycle import CycleDuration
-from tradeexecutor.strategy.execution_context import ExecutionContext
-from tradeexecutor.strategy.pandas_trader.indicator import IndicatorSet
+from tradeexecutor.strategy.execution_context import ExecutionContext, ExecutionMode
+from tradeexecutor.strategy.pandas_trader.indicator import IndicatorSet, IndicatorStorage
 from tradeexecutor.strategy.pandas_trader.strategy_input import StrategyInput
 from tradeexecutor.strategy.parameters import StrategyParameters
 from tradingstrategy.candle import GroupedCandleUniverse
@@ -125,6 +125,12 @@ def universe(mock_chain_id, mock_exchange, weth_usdc) -> TradingStrategyUniverse
 @pytest.fixture()
 def strategy_universe(universe) -> TradingStrategyUniverse:
     return universe
+
+
+@pytest.fixture
+def indicator_storage(strategy_universe, tmp_path) -> IndicatorStorage:
+    """Mock some assets"""
+    return IndicatorStorage(Path(tmp_path), strategy_universe.get_cache_key())
 
 
 def grid_search_worker(
@@ -475,6 +481,7 @@ def _decide_trades_v4(input: StrategyInput) -> List[TradeExecution]:
 
 def test_perform_grid_search_engine_v5(
     strategy_universe,
+    indicator_storage,
     tmp_path,
 ):
     """Run a grid search using multiple threads, engine version 0.5.
@@ -486,18 +493,31 @@ def test_perform_grid_search_engine_v5(
     - The actual grid search loads cached indicator values from the disk
 
     """
-    class InputParameters:
+    class MyParameters:
         stop_loss_pct = [0.9, 0.95]
-        slow_ema_candle_count = 7
-        fast_ema_candle_count = [1, 2]
         cycle_duration = CycleDuration.cycle_1d
         initial_cash = 10_000
 
-    def create_indicators(parameters: StrategyParameters, indicators: IndicatorSet, strategy_universe: TradingStrategyUniverse, execution_context: ExecutionContext):
-        indicators.add("slow_ema", pandas_ta.rsi, {"length": parameters.slow_ema_candle_count})
-        indicators.add("fast_ema", pandas_ta.rsi, {"length": parameters.fast_ema_candle_count})
+        # Indicator values that are searched in the grid search
+        slow_ema_candle_count = 7
+        fast_ema_candle_count = [1, 2]
 
-    combinations = prepare_grid_combinations(InputParameters, tmp_path)
+
+    def create_indicators(parameters: StrategyParameters, indicators: IndicatorSet, strategy_universe: TradingStrategyUniverse, execution_context: ExecutionContext):
+        indicators.add("slow_ema", pandas_ta.ema, {"length": parameters.slow_ema_candle_count})
+        indicators.add("fast_ema", pandas_ta.ema, {"length": parameters.fast_ema_candle_count})
+
+    combinations = prepare_grid_combinations(
+        MyParameters,
+        tmp_path,
+        strategy_universe=strategy_universe,
+        create_indicators=create_indicators,
+        execution_context=ExecutionContext(mode=ExecutionMode.unit_testing, grid_search=True),
+    )
+
+    # Indicators were properly created
+    for c in combinations:
+        assert c.indicators is not None
 
     # Sanity check for searchable parameters
     cycle_duration: GridParameter = combinations[0].parameters[0]
@@ -518,6 +538,7 @@ def test_perform_grid_search_engine_v5(
         max_workers=4,
         multiprocess=True,
         trading_strategy_engine_version="0.5",
+        indicator_storage=indicator_storage,
     )
 
     assert len(results) == 4

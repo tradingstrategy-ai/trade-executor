@@ -206,6 +206,10 @@ unit_test_trading_execution_context = ExecutionContext(ExecutionMode.unit_testin
 #: Shorthand for notebooks
 notebook_execution_context = ExecutionContext(ExecutionMode.backtesting)
 
+
+#: Shorthand for doing a grid search within Jupyter
+grid_search_execution_context = ExecutionContext(ExecutionMode.backtesting, grid_search=True)
+
 #: Shorthand for Python scripts
 python_script_execution_context = ExecutionContext(ExecutionMode.backtesting)
 

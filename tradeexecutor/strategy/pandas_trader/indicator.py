@@ -141,6 +141,8 @@ class IndicatorSet:
     """
 
     def __init__(self):
+        #: Map indicators by their keys
+        #:
         self.indicators: dict[str, IndicatorDefinition] = {}
 
     def has_indicator(self, name: str) -> bool:
@@ -180,7 +182,35 @@ class IndicatorSet:
 
 
 class CreateIndicatorsProtocol(Protocol):
-    """Call signature for create_indicators function"""
+    """Call signature for create_indicators function.
+
+    This Protocol class defines `create_indicators()` function call signature.
+    Strategy modules and backtests can provide on `create_indicators` function
+    to define what indicators a strategy needs.
+    Used with :py:class`IndicatorSet` to define the indicators
+    the strategy can use.
+
+    These indicators are precalculated and cached for fast performance.
+
+    Example for a grid search:
+
+    .. code-block:: python
+
+        class MyParameters:
+            stop_loss_pct = [0.9, 0.95]
+            cycle_duration = CycleDuration.cycle_1d
+            initial_cash = 10_000
+
+            # Indicator values that are searched in the grid search
+            slow_ema_candle_count = 7
+            fast_ema_candle_count = [1, 2]
+
+
+        def create_indicators(parameters: StrategyParameters, indicators: IndicatorSet, strategy_universe: TradingStrategyUniverse, execution_context: ExecutionContext):
+            indicators.add("slow_ema", pandas_ta.ema, {"length": parameters.slow_ema_candle_count})
+            indicators.add("fast_ema", pandas_ta.ema, {"length": parameters.fast_ema_candle_count})
+
+    """
 
     def __call__(
         self,
@@ -448,14 +478,20 @@ def load_indicators(
 def calculate_indicators(
     strategy_universe: TradingStrategyUniverse,
     storage: IndicatorStorage,
-    indicators: IndicatorSet,
+    indicators: IndicatorSet | None,
     execution_context: ExecutionContext,
     remaining: set[IndicatorResultKey],
     max_workers=8,
+    label: str | None = None,
 ) -> IndicatorResultMap:
     """Calculate indicators for which we do not have cached data yet.
 
     - Use a thread pool to speed up IO
+
+    :param indicators:
+        Indicator set we calculate for.
+
+        Can be ``None`` for a grid search, as each individual combination may has its own set.
 
     :param remaining:
         Remaining indicator combinations for which we do not have a cached rresult
@@ -465,8 +501,13 @@ def calculate_indicators(
 
     results: IndicatorResultMap
 
-    label = indicators.get_label()
-    logger.info("Calculating indicators %s", label)
+    if label is None:
+        if indicators is not None:
+            label = indicators.get_label()
+        else:
+            label = "Indicator calculation"
+
+    logger.info("Calculating indicators: %s", label)
 
     if len(remaining) == 0:
         logger.info("Nothing to calculate")
@@ -559,6 +600,7 @@ def calculate_and_load_indicators(
     create_indicators: CreateIndicatorsProtocol | None = None,
     max_workers=8,
     max_readers=8,
+    cache_warmup_only=False,
 ) -> IndicatorResultMap:
     """Precalculate all indicators.
 
@@ -567,6 +609,10 @@ def calculate_and_load_indicators(
     - Display TQDM progress bars for loading cached indicators and calculating new ones
 
     - Use cached indicators if available
+
+    :param cache_warmup_only:
+        Only fill the disk cache, do not load results in the memory.
+
     """
 
     assert create_indicators or indicators, "You must give either create_indicators or indicators argument"
@@ -609,6 +655,61 @@ def calculate_and_load_indicators(
         assert isinstance(key[1], IndicatorDefinition)
 
     return result
+
+
+def warm_up_indicator_cache(
+    strategy_universe: TradingStrategyUniverse,
+    storage: IndicatorStorage,
+    execution_context: ExecutionContext,
+    indicators: set[IndicatorDefinition],
+    max_workers=8,
+) -> tuple[set[IndicatorResultKey], set[IndicatorResultKey]]:
+    """Precalculate all indicators.
+
+    - Used for grid search
+
+    - Calculate indicators using multiprocessing
+
+    - Display TQDM progress bars for loading cached indicators and calculating new ones
+
+    - Use cached indicators if available
+
+    :return:
+        Cached indicators, calculated indicators
+    """
+
+    cached = set()
+    needed = set()
+
+    for pair in strategy_universe.iterate_pairs():
+        for ind in indicators:
+            if storage.is_available(ind, pair):
+                cached.add((pair, ind))
+            else:
+                needed.add((pair, ind))
+
+    logger.info(
+        "warm_up_indicator_cache(), we have %d cached pair-indicators and need to calculate %d pair-indicator",
+        len(cached),
+        len(needed)
+    )
+
+    calculated = calculate_indicators(
+        strategy_universe,
+        storage,
+        None,
+        execution_context,
+        needed,
+        max_workers=max_workers,
+        label=f"Calculating {len(needed)} indicators for the grid search"
+    )
+
+    logger.info(
+        "Calculated %d indicator results",
+        len(calculated),
+    )
+
+    return cached, needed
 
 
 #: Process global stored universe for multiprocess workers
