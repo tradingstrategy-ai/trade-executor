@@ -95,6 +95,7 @@ class BacktestSetup:
     #
     create_indicators: Optional[CreateIndicatorsProtocol] = None
     indicator_combinations: Optional[set[IndicatorKey]] = None
+    indicator_storage: Optional[IndicatorStorage] = None
 
     data_preload: bool = True
 
@@ -196,9 +197,10 @@ class BacktestSetup:
 
         assert self.universe is not None, "You need to pass backtest_universe if you want to use create_indicators"
         assert self.parameters is not None, "You need to pass backtest parameters if you want to use create_indicators"
-        storage = IndicatorStorage.create_default(self.universe)
-        indicator_builder = IndicatorSet()
+        assert self.indicator_storage, f"indicator_storage missing"
 
+        storage = self.indicator_storage
+        indicator_builder = IndicatorSet()
 
         self.create_indicators(
             parameters=self.parameters,
@@ -234,7 +236,8 @@ class BacktestSetup:
         """
         assert self.indicator_combinations is not None
         assert type(self.indicator_combinations) == set
-        storage = IndicatorStorage.create_default(self.universe)
+        assert self.indicator_storage, f"indicator_storage missing"
+        storage = self.indicator_storage
         available_indicators = IndicatorSet.from_indicator_keys(self.indicator_combinations)
 
         indicator_results = load_indicators(
@@ -243,6 +246,19 @@ class BacktestSetup:
             available_indicators,
             self.indicator_combinations,
         )
+
+        logger.info(
+            "BacktestSetup.load_indicators() - loaded %d indicator result out of %d total results, %d indicators defined",
+            len(indicator_results),
+            len(self.indicator_combinations),
+            available_indicators.get_count(),
+        )
+
+        if len(indicator_results) != len(self.indicator_combinations):
+            for key in self.indicator_combinations:
+                if key not in indicator_results:
+                    cache_path = storage.get_indicator_path(key)
+                    raise RuntimeError(f"Indicator key {key} could not be loaded - but is assumed to be on available. Cache path is {cache_path}")
 
         strategy_input_indicators = StrategyInputIndicators(
             self.universe,
@@ -641,6 +657,7 @@ def run_backtest_inline(
     create_trading_universe: CreateTradingUniverseProtocol = None,
     create_indicators: CreateIndicatorsProtocol = None,
     indicator_combinations: set[IndicatorKey] | None = None,
+    indicator_storage: IndicatorStorage | None = None,
     cycle_duration: CycleDuration | None = None,
     initial_deposit: float | None = None,
     reserve_currency: ReserveCurrency | None = None,
@@ -877,6 +894,7 @@ def run_backtest_inline(
         decide_trades=decide_trades,
         create_trading_universe=create_trading_universe,
         indicator_combinations=indicator_combinations,
+        indicator_storage=indicator_storage,
         create_indicators=create_indicators,
         reserve_currency=reserve_currency,
         trade_routing=trade_routing,

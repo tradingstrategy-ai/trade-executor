@@ -162,18 +162,102 @@ class StrategyInputIndicators:
 
             Return ``None`` if value not yet available when asked at the current decision moment.
         """
+
+        series = self.resolve_indicator_data(name, column, pair)
+
+        ts = get_prior_timestamp(series, self.timestamp)
+        if ts is None:
+            return None
+
+        value = series[ts]
+
+        if pd.isna(value):
+            return None
+
+        return None
+
+    def get_indicator_series(
+        self,
+        name: str,
+        column: str | None = None,
+        pair: TradingPairIdentifier | None = None,
+        unlimited=False,
+    ) -> pd.Series | None:
+        """Get the whole indicator data series.
+
+        By default, return data that is only available before the current timestamp.
+
+        :param unlimited:
+            Get all calculated data, even future one, in backtesting.
+
+        :return:
+            Indicator data.
+
+            Data may contain NaN values.
+
+            Return ``None`` if any data is not yet available before this stamp.
+        """
+
+        series = self.resolve_indicator_data(name, column, pair)
+
+        if unlimited:
+            return series
+
+        ts = get_prior_timestamp(series, self.timestamp)
+        if ts is None:
+            return None
+
+        return series.loc[:ts]
+
+    def resolve_indicator_data(
+        self,
+        name: str,
+        column: str | None = None,
+        pair: TradingPairIdentifier | None = None
+    ) -> pd.Series | pd.DataFrame:
+        """Get access to indicator data series/frame.
+
+        Throw friendly error messages for pitfalls.
+
+        :param pair:
+            Needed when universe contains multiple trading pairs.
+
+            Can be omitted from non-pair indicators.
+        """
+        assert type(name) == str
+        if column is not None:
+            assert type(column) == str
+
         assert self.timestamp, f"prepare_decision_cycle() not called"
 
         indicator = self.available_indicators.get_indicator(name)
         assert indicator is not None, f"Indicator with name {name} not defined in create_indicators. Available indicators are: {self.available_indicators.get_label()}"
 
-        if pair is None:
-            pair = self.strategy_universe.get_single_pair()
-        assert isinstance(pair, TradingPairIdentifier)
-        assert pair.internal_id, "pair.internal_id missing - bad unit test data?"
+        if indicator.source.is_per_pair():
 
-        key = IndicatorKey(pair, indicator)
+            if pair is None:
+                assert self.strategy_universe.get_pair_count() == 1, f"The strategy universe contains multiple pairs. You need to pass pair argument to the function to determine which trading pair you are manipulating."
+                pair = self.strategy_universe.get_single_pair()
+
+            assert isinstance(pair, TradingPairIdentifier)
+            assert pair.internal_id, "pair.internal_id missing - bad unit test data?"
+
+            key = IndicatorKey(pair, indicator)
+        else:
+            # Whole universe/custom indicators
+            key = IndicatorKey(None, indicator)
+
         indicator_result = self.indicator_results.get(key)
+
+        if indicator_result is None:
+            all_keys = set(self.indicator_results.keys())
+            all_indicators = set(self.available_indicators.indicators.keys())
+            raise AssertionError(
+                f"Indicator results did not contain key {key} for indicator {name}.\n"
+                f"Available indicators: {all_indicators}\n"
+                f"Available data series: {all_keys}\n"
+            )
+
         data = indicator_result.data
         assert data is not None, f"Indicator pre-calculated values missing for {name} - lookup key {key}"
 
@@ -186,16 +270,7 @@ class StrategyInputIndicators:
         else:
             raise NotImplementedError(f"Unknown indicator data type {type(data)}")
 
-        ts = get_prior_timestamp(series, self.timestamp)
-        if ts is None:
-            return None
-
-        value = series[ts]
-
-        if pd.isna(value):
-            return None
-
-        return None
+        return series
 
     def prepare_decision_cycle(self, cycle: int, timestamp: pd.Timestamp):
         """Called for each decision cycle by the framework..
