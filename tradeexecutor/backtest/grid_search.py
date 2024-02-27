@@ -706,7 +706,8 @@ def perform_grid_search(
         data_retention.name,
     )
 
-    # First calculate indicators if needed
+    # First calculate indicators if create_indicators() protocol is used
+    # (engine version = 0.5, DecideTradesProtocolV4)
     if any(c for c in combinations if c.indicators is not None):
 
         if indicator_storage is None:
@@ -720,6 +721,7 @@ def perform_grid_search(
             execution_context=execution_context,
         )
 
+    # Load grid search results we have already completed before crash / break / previous strategy parameters
     cached_results = _read_cached_results(combinations, data_retention, reader_pool_size)
     logger.info("Read %d cached results", len(cached_results))
 

@@ -12,7 +12,7 @@ from tradeexecutor.state.identifier import TradingPairIdentifier
 from tradeexecutor.state.state import State
 from tradeexecutor.state.types import USDollarPrice
 from tradeexecutor.strategy.execution_context import ExecutionContext
-from tradeexecutor.strategy.pandas_trader.indicator import IndicatorResultMap, IndicatorSet
+from tradeexecutor.strategy.pandas_trader.indicator import IndicatorResultMap, IndicatorSet, IndicatorKey
 from tradeexecutor.strategy.pandas_trader.position_manager import PositionManager
 from tradeexecutor.strategy.parameters import StrategyParameters
 from tradeexecutor.strategy.pricing_model import PricingModel
@@ -174,7 +174,7 @@ class StrategyInputIndicators:
         assert isinstance(pair, TradingPairIdentifier)
         assert pair.internal_id, "pair.internal_id missing - bad unit test data?"
 
-        key = (pair, indicator)
+        key = IndicatorKey(pair, indicator)
         indicator_result = self.indicator_results.get(key)
         data = indicator_result.data
         assert data is not None, f"Indicator pre-calculated values missing for {name} - lookup key {key}"

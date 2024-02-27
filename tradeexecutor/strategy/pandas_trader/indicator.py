@@ -13,6 +13,7 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 from multiprocessing import Process
 from pathlib import Path
+from types import NoneType
 from typing import Callable, Protocol, Any, TypeAlias
 import logging
 
@@ -187,6 +188,10 @@ class IndicatorKey:
 
     #: The definition of this indicator
     definition: IndicatorDefinition
+
+    def __post_init__(self):
+        assert isinstance(self.pair, (TradingPairIdentifier, NoneType))
+        assert isinstance(self.definition, IndicatorDefinition)
 
     def __repr__(self):
         return f"<IndicatorKey {self.get_cache_key()}>"
