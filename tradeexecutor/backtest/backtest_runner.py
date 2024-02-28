@@ -642,9 +642,12 @@ def run_backtest(
         backtest_strategy_indicators=backtest_strategy_indicators,
     )
 
-    debug_dump = main_loop.run_and_setup_backtest()
+    diagnostics_data = main_loop.run_and_setup_backtest()
 
-    return setup.state, backtest_universe, debug_dump
+    # Expose to the caller through non-API
+    diagnostics_data["indicators"] = backtest_strategy_indicators
+
+    return setup.state, backtest_universe, diagnostics_data
 
 
 def run_backtest_inline(

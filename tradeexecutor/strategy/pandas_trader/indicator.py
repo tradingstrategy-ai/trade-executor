@@ -31,6 +31,11 @@ from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniv
 logger = logging.getLogger(__name__)
 
 
+#: Where do we keep precalculated indicator Parquet files
+#:
+DEFAULT_INDICATOR_STORAGE_PATH = Path(os.path.expanduser("~/.cache/indicators"))
+
+
 class IndicatorCalculationFailed(Exception):
     """We could not calculate the given indicator.
 
@@ -543,18 +548,16 @@ class IndicatorStorage:
     @staticmethod
     def create_default(
         universe: TradingStrategyUniverse,
-        default_path=Path(os.path.expanduser("~/.cache/indicators"))
+        default_path=DEFAULT_INDICATOR_STORAGE_PATH,
     ) -> "IndicatorStorage":
         """Get the indicator storage with the default cache path."""
         return IndicatorStorage(default_path, universe.get_cache_key())
 
 
 def _serialise_parameters_for_cache_key(parameters: dict) -> str:
-
     for k, v in parameters.items():
         assert type(k) == str
         assert type(v) not in (list, tuple)  # Don't leak test ranges here - must be a single value
-
     return "".join([f"{k}={v}" for k, v in parameters.items()])
 
 
@@ -636,7 +639,7 @@ def load_indicators(
     label = indicator_set.get_label()
     key: IndicatorKey
 
-    with tqdm(total=len(task_args), desc=f"Reading cached indicators {label} for {strategy_universe.get_pair_count()} pairs, {indicator_set.get_count()} indicators, using {max_readers} threads, total {len(task_args)} cached available") as progress_bar:
+    with tqdm(total=len(task_args), desc=f"Reading cached indicators {label} for {strategy_universe.get_pair_count()} pairs, using {max_readers} threads") as progress_bar:
 
         if max_readers > 1:
             logger.info("Multi-thread reading")

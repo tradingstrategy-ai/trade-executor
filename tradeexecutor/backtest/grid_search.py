@@ -34,7 +34,7 @@ except ImportError:
 from tradeexecutor.strategy.engine_version import TradingStrategyEngineVersion
 from tradeexecutor.strategy.execution_context import ExecutionContext, notebook_execution_context, grid_search_execution_context
 from tradeexecutor.strategy.pandas_trader.indicator import IndicatorSet, CreateIndicatorsProtocol, IndicatorStorage, calculate_and_load_indicators, \
-    IndicatorDefinition, warm_up_indicator_cache, IndicatorKey
+    IndicatorDefinition, warm_up_indicator_cache, IndicatorKey, DEFAULT_INDICATOR_STORAGE_PATH
 from tradeexecutor.strategy.universe_model import UniverseOptions
 
 
@@ -551,14 +551,20 @@ def run_grid_combination_multiprocess(
     combination: GridCombination,
     trading_strategy_engine_version: TradingStrategyEngineVersion,
     data_retention: GridSearchDataRetention,
-    indicator_storage_path: Path,
+    indicator_storage_path = DEFAULT_INDICATOR_STORAGE_PATH,
 ):
     """Mutltiproecss runner.
 
     Universe is passed as process global.
+
+    :param indicator_storage_path:
+        Override for unit testing
     """
 
     from tradeexecutor.monkeypatch import cloudpickle_patch  # Enable pickle patch that allows multiprocessing in notebooks
+
+    assert isinstance(combination, GridCombination)
+    assert isinstance(indicator_storage_path, Path)
 
     global _universe
 
