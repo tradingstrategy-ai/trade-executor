@@ -103,7 +103,8 @@ class StrategyInputIndicators:
         self,
         name: str,
         column: str | None = None,
-        pair: TradingPairIdentifier | None = None
+        pair: TradingPairIdentifier | None = None,
+        index: int | None = None,
     ) -> float | None:
         """Read the available value of an indicator.
 
@@ -155,6 +156,15 @@ class StrategyInputIndicators:
 
             Must be given if the working with a multipair strategy.
 
+        :param index:
+            Access a specific previous timeframe item.
+
+            If not given, always return the previous available value.
+
+            Uses Python list access notation.
+            `-1` is the last item (previous time frame value, yesterday).
+            `-2` is the item before previous time frame (the day before yesterday).
+
         :return:
             The latest available indicator value.
 
@@ -169,7 +179,18 @@ class StrategyInputIndicators:
         if ts is None:
             return None
 
-        value = series[ts]
+        if index is None:
+            value = series[ts]
+
+        else:
+            assert type(index) == int, f"You must use integer index to access values. Got {type(index)}"
+            import ipdb ; ipdb.set_trace()
+            iloc = series.index[ts]
+
+            try:
+                value = series.iloc[iloc]
+            except KeyError:
+                value = None
 
         if pd.isna(value):
             return None

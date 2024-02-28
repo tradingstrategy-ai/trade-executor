@@ -782,6 +782,8 @@ def run_backtest_inline(
         tuple (State of a completely executed strategy, trading strategy universe, debug dump dict)
     """
 
+    from tradeexecutor.monkeypatch import cloudpickle_patch  # Enable pickle patch that allows multiprocessing in notebooks 
+
     if ignore:
         # https://www.python.org/dev/peps/pep-3102/
         raise TypeError("Only keyword arguments accepted")

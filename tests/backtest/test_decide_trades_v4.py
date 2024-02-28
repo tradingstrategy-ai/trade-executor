@@ -113,6 +113,9 @@ def test_decide_trades_v04(strategy_universe):
         if bb_value is not None:
             assert 0 < bb_value < 100
 
+        rsi_last = input.indicators.get_indicator_value("rsi", index=-1)
+        rsi_previous = input.indicators.get_indicator_value("rsi", index=-2)
+
         # Switch between full spot open and close between cycles
         if not position_manager.is_any_open():
             trades += position_manager.open_spot(pair, cash * 0.99)
