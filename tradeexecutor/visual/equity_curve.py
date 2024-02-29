@@ -3,7 +3,6 @@
 For more information see the narrative documentation on :ref:`profitability`.
 """
 import datetime
-import warnings
 from typing import List
 
 import pandas as pd
@@ -12,7 +11,7 @@ from matplotlib.figure import Figure
 from tradeexecutor.state.state import State
 from tradeexecutor.state.statistics import Statistics, PortfolioStatistics
 from tradeexecutor.state.position import TradingPosition
-from tradeexecutor.state.types import USDollarAmount
+from tradeexecutor.visual.qs_wrapper import import_quantstats_wrapped
 
 
 def calculate_equity_curve(
@@ -253,7 +252,7 @@ def visualise_equity_curve(
         Matplotlit figure
 
     """
-    import quantstats as qs  # Optional dependency
+    qs = import_quantstats_wrapped()
     fig = qs.plots.snapshot(
         returns,
         title=title,
@@ -292,13 +291,11 @@ def visualise_returns_over_time(
     #
     # In a future version of pandas all arguments of DataFrame.pivot will be keyword-only.
 
-    with warnings.catch_warnings():
-        warnings.filterwarnings("ignore")
-        import quantstats as qs  # Optional dependency
-        fig = qs.plots.monthly_returns(
-            returns,
-            show=False)
-        return fig
+    qs = import_quantstats_wrapped()
+    fig = qs.plots.monthly_returns(
+        returns,
+        show=False)
+    return fig
 
 
 def visualise_returns_distribution(
@@ -324,13 +321,12 @@ def visualise_returns_distribution(
         Matplotlit figure
 
     """
-    with warnings.catch_warnings():
-        warnings.filterwarnings("ignore")
-        import quantstats as qs  # Optional dependency
-        fig = qs.plots.distribution(
-            returns,
-            show=False)
-        return fig
+
+    qs = import_quantstats_wrapped()
+    fig = qs.plots.distribution(
+        returns,
+        show=False)
+    return fig
 
 
 def calculate_investment_flow(
@@ -563,3 +559,5 @@ def calculate_cumulative_daily_returns(state: State, freq_base: pd.offsets.DateO
     _returns = returns.copy()
     cumulative_daily_returns = _returns.resample(freq_base).last().ffill()
     return cumulative_daily_returns
+
+
