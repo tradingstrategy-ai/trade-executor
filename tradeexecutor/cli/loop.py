@@ -31,6 +31,7 @@ from tradeexecutor.strategy.account_correction import check_accounts, Unexpected
 from tradeexecutor.strategy.dummy import DummyExecutionModel
 from tradeexecutor.strategy.generic.generic_pricing_model import GenericPricing
 from tradeexecutor.strategy.pandas_trader.decision_trigger import wait_for_universe_data_availability_jsonl
+from tradeexecutor.strategy.pandas_trader.strategy_input import StrategyInputIndicators
 from tradeexecutor.strategy.routing import RoutingModel
 from tradeexecutor.strategy.run_state import RunState
 from tradeexecutor.strategy.strategy_cycle_trigger import StrategyCycleTrigger
@@ -139,6 +140,7 @@ class ExecutionLoop:
             backtest_setup: Optional[Callable[[State], None]] = None,
             backtest_candle_time_frame_override: Optional[TimeBucket] = None,
             backtest_stop_loss_time_frame_override: Optional[TimeBucket] = None,
+            backtest_strategy_indicators: Optional[StrategyInputIndicators] = None,
             stop_loss_check_frequency: Optional[TimeBucket] = None,
             tick_offset: datetime.timedelta=datetime.timedelta(minutes=0),
             trade_immediately=False,
@@ -181,6 +183,7 @@ class ExecutionLoop:
 
         self.backtest_start = backtest_start
         self.backtest_end = backtest_end
+        self.backtest_strategy_indicators = backtest_strategy_indicators
 
         args = locals().copy()
         args.pop("self")
@@ -335,16 +338,18 @@ class ExecutionLoop:
         # Mark last refreshed
         run_state.bumb_refreshed()
 
-    def tick(self,
-             unrounded_timestamp: datetime.datetime,
-             cycle_duration: CycleDuration,
-             state: State,
-             cycle: int,
-             live: bool,
-             existing_universe: Optional[StrategyExecutionUniverse]=None,
-             strategy_cycle_timestamp: Optional[datetime.datetime] = None,
-             extra_debug_data: Optional[dict] = None,
-             ) -> StrategyExecutionUniverse:
+    def tick(
+        self,
+        unrounded_timestamp: datetime.datetime,
+        cycle_duration: CycleDuration,
+        state: State,
+        cycle: int,
+        live: bool,
+        existing_universe: Optional[StrategyExecutionUniverse]=None,
+        strategy_cycle_timestamp: Optional[datetime.datetime] = None,
+        extra_debug_data: Optional[dict] = None,
+        indicators: StrategyInputIndicators | None = None,
+        ) -> StrategyExecutionUniverse:
         """Run one trade execution tick.
 
         :param unrounded_timestamp:
@@ -477,6 +482,7 @@ class ExecutionLoop:
             cycle=cycle,
             store=self.store,
             long_short_metrics_latest=long_short_metrics_latest,
+            indicators=indicators,
         )
 
         # Update portfolio and position historical data tracking.
@@ -883,7 +889,9 @@ class ExecutionLoop:
                     cycle,
                     live=False,
                     strategy_cycle_timestamp=ts,
-                    existing_universe=universe)
+                    existing_universe=universe,
+                    indicators=self.backtest_strategy_indicators,
+                )
 
                 # Revalue our portfolio
                 self.update_position_valuations(ts, state, universe, self.execution_context.mode)

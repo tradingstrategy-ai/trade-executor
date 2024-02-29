@@ -201,16 +201,27 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
 
         assert len(self.data_universe.chains) == 1
 
-        time_str = f"{self.start_at}-{self.end_at}"
+        # Currently supports only full date ranges,
+        # to keep filenames clean.
+        # Easy to support any other range, just add tests.
+        assert self.start_at.hour == 0
+        assert self.end_at.hour == 0
+        assert self.start_at.minute == 0
+        assert self.end_at.minute == 0
+
+        time_str = f"{self.start_at.strftime('%Y-%m-%d')}-{self.end_at.strftime('%Y-%m-%d')}"
         if self.get_pair_count() < 5:
             pair_str = "-".join([p.get_ticker() for p in self.data_universe.pairs.iterate_pairs()])
         else:
             pair_str = str(self.get_pair_count())
 
-        chain_str = self.data_universe.chains[0].slug
+        chain_str = self.data_universe.get_default_chain().get_slug()
         time_bucket_str = self.data_universe.time_bucket.value
 
-        return f"{chain_str}-{time_bucket_str}-{pair_str}-{time_str}"
+        separator = "_"
+        key = f"{chain_str}{separator}{time_bucket_str}{separator}{pair_str}{separator}{time_str}"
+        assert len(key) < 256, f"Generated very long fname cache key, check the generation logic: {key}"
+        return key
 
     @property
     def start_at(self) -> datetime.datetime:
@@ -505,6 +516,14 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
         assert self.data_universe.exchange_universe, "You must set universe.exchange_universe to be able to use this method"
         pair = self.data_universe.pairs.get_pair_by_human_description(self.data_universe.exchange_universe, desc)
         return translate_trading_pair(pair)
+
+    def iterate_pairs(self) -> Iterable[TradingPairIdentifier]:
+        """Iterate over all available trading pairs.
+
+        - Different from :py:meth:`tradingstrategy.pair.PandasPairUniverse.iterate_pairs` as this yields `TradingPairIdentifier` instances
+        """
+        for p in self.data_universe.pairs.iterate_pairs():
+            yield translate_trading_pair(p)
 
     def create_single_pair_universe(
             dataset: Dataset,

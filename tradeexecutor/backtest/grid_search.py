@@ -16,17 +16,13 @@ from enum import Enum
 from inspect import isclass
 from multiprocessing import Process
 from pathlib import Path
-from typing import Protocol, Dict, List, Tuple, Any, Optional, Collection, Callable
+from typing import Protocol, Dict, List, Tuple, Any, Optional, Collection, Callable, Iterable
 import concurrent.futures.process
 from packaging import version
 
 import numpy as np
 import pandas as pd
 import futureproof
-from web3.datastructures import ReadableAttributeDict
-
-from tradeexecutor.strategy.engine_version import TradingStrategyEngineVersion
-from tradeexecutor.strategy.universe_model import UniverseOptions
 
 try:
     from tqdm_loggable.auto import tqdm
@@ -34,6 +30,13 @@ except ImportError:
     # tqdm_loggable is only available at the live execution,
     # but fallback to normal TQDM auto mode
     from tqdm.auto import tqdm
+
+from tradeexecutor.strategy.engine_version import TradingStrategyEngineVersion
+from tradeexecutor.strategy.execution_context import ExecutionContext, notebook_execution_context, grid_search_execution_context
+from tradeexecutor.strategy.pandas_trader.indicator import IndicatorSet, CreateIndicatorsProtocol, IndicatorStorage, calculate_and_load_indicators, \
+    IndicatorDefinition, warm_up_indicator_cache, IndicatorKey, DEFAULT_INDICATOR_STORAGE_PATH
+from tradeexecutor.strategy.universe_model import UniverseOptions
+
 
 from tradeexecutor.analysis.advanced_metrics import calculate_advanced_metrics, AdvancedMetricsMode
 from tradeexecutor.analysis.trade_analyser import TradeSummary, build_trade_analysis
@@ -44,7 +47,7 @@ from tradeexecutor.state.types import USDollarAmount
 from tradeexecutor.strategy.cycle import CycleDuration
 from tradeexecutor.strategy.default_routing_options import TradeRouting
 from tradeexecutor.strategy.routing import RoutingModel
-from tradeexecutor.strategy.strategy_module import DecideTradesProtocol, DecideTradesProtocol2, StrategyParameters, DecideTradesProtocol3
+from tradeexecutor.strategy.strategy_module import DecideTradesProtocol, DecideTradesProtocol2, StrategyParameters, DecideTradesProtocol3, DecideTradesProtocol4
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
 from tradeexecutor.visual.equity_curve import calculate_equity_curve, calculate_returns
 
@@ -135,7 +138,7 @@ class GridParameter:
             raise NotImplementedError(f"We do not support filename conversion for value {type(value)}={value}")
 
 
-@dataclass()
+@dataclass(slots=True)
 class GridCombination:
     """One combination line in grid search."""
 
@@ -154,6 +157,16 @@ class GridCombination:
     #: If parameter is not "single", i.e. single value, then it is searchable.
     #:
     parameters: Tuple[GridParameter]
+
+    #: Indicators for this combination.
+    #:
+    #: create_indicators() is called with the :py:attr:`parameters` and it
+    #: yields the result of indicators we need to calculate for this grid combination.
+    #: Only avaiable if trading_strategy_engine_version > 0.5.
+    #:
+    #: - One key entry for each trading pair if pair specific indicators are used
+    #:
+    indicators: set[IndicatorKey] | None = None
 
     def __post_init__(self):
         assert len(self.parameters) > 0
@@ -188,7 +201,7 @@ class GridCombination:
 
     def validate(self):
         """Check arguments can be serialised as fs path."""
-        assert len(self.searchable_parameters) > 0, f"Grid search combination does not have any parameters that would have multiple values to search: {self.parameters}"
+        assert len(self.searchable_parameters) > 0, f"Grid search combination does not have any parameters that would have multiple values to search: {self.parameters}. Add parameters to search or use normal backtesting instead."
         assert isinstance(self.get_relative_result_path(), Path)
 
     def as_dict(self) -> dict:
@@ -208,6 +221,19 @@ class GridCombination:
 
     def to_strategy_parameters(self) -> StrategyParameters:
         return StrategyParameters(self.as_dict())
+
+    @staticmethod
+    def get_all_indicators(combinations: Iterable["GridCombination"]) -> set[IndicatorKey]:
+        """Get all defined indicators that need to be calculated, across all grid search combinatios.
+
+        Duplications are merged.
+        """
+        indicators = set()
+        for c in combinations:
+            if c.indicators:
+                for i in c.indicators:
+                    indicators.add(i)
+        return indicators
 
 
 @dataclass(slots=True, frozen=False)
@@ -343,6 +369,9 @@ def prepare_grid_combinations(
     result_path: Path,
     clear_cached_results=False,
     marker_file="README-GRID-SEARCH.md",
+    create_indicators: CreateIndicatorsProtocol | None = None,
+    strategy_universe: TradingStrategyUniverse | None = None,
+    execution_context: ExecutionContext = grid_search_execution_context,
 ) -> List[GridCombination]:
     """Get iterable search matrix of all parameter combinations.
 
@@ -368,11 +397,28 @@ def prepare_grid_combinations(
     :param marker_file:
         Safety to prevent novice users to nuke their hard disk with this command.
 
+    :param create_indicators:
+        Pass `create_indicators` function if you want your grid seacrh to use fast cached indicators.
+
+    :param strategy_universe:
+        Needed with `create_indicators`
+
+    :param execution_context:
+        Tell if we are running unit testing or real backtesting.
+
     :return:
         List of all combinations we need to search through
     """
 
+    from tradeexecutor.monkeypatch import cloudpickle_patch  # Enable pickle patch that allows multiprocessing in notebooks
+
     assert isinstance(result_path, Path)
+
+    if create_indicators is not None:
+        assert strategy_universe is not None, f"You need to pass both create_indicators and strategy_universe"
+
+    if execution_context is not None:
+        assert execution_context.grid_search, f"ExecutionContext.grid_search is not set"
 
     if isclass(parameters):
         parameters = StrategyParameters.from_class(parameters, grid_search=True)
@@ -407,16 +453,22 @@ def prepare_grid_combinations(
     combinations = [GridCombination(index=idx, parameters=sort_by_order(c), result_path=result_path) for idx, c in enumerate(combinations, start=1)]
     for c in combinations:
         c.validate()
+
+        # Determine what indicators this grid search combination needs
+        if create_indicators is not None:
+            indicators = IndicatorSet()
+            create_indicators(c.to_strategy_parameters(), indicators, strategy_universe, execution_context)
+            c.indicators = set(indicators.generate_combinations(strategy_universe))
+
     return combinations
 
 
-
-
 def _run_v04(
-    decide_trades: DecideTradesProtocol3,
+    decide_trades: DecideTradesProtocol3 | DecideTradesProtocol4,
     universe: TradingStrategyUniverse,
     combination: GridCombination,
     trading_strategy_engine_version: TradingStrategyEngineVersion,
+    indicator_storage: IndicatorStorage,
 ):
     """Run decide_trades() with input parameteter.
 
@@ -447,6 +499,7 @@ def _run_v04(
         trading_strategy_engine_version=trading_strategy_engine_version,
         parameters=parameters,
         initial_deposit=initial_cash,
+        indicator_storage=indicator_storage,
     )
 
 
@@ -455,23 +508,34 @@ def run_grid_combination_threaded(
     universe: TradingStrategyUniverse,
     combination: GridCombination,
     trading_strategy_engine_version: TradingStrategyEngineVersion,
-    data_retention: GridSearchDataRetention
+    data_retention: GridSearchDataRetention,
+    indicator_storage_path: Path | None = None,
 ):
     """Threared runner.
 
     Universe is passed as argument.
     """
+
+    # Make sure we always get a indicator storage
+    if version.parse(trading_strategy_engine_version) >= version.parse("0.5"):
+        assert indicator_storage_path is not None, "indicator_storage_path must be passed"
+
+    if indicator_storage_path is not None:
+        assert isinstance(indicator_storage_path, Path)
+        indicator_storage = IndicatorStorage(indicator_storage_path, universe.get_cache_key())
+    else:
+        indicator_storage = None
+
     if GridSearchResult.has_result(combination):
         result = GridSearchResult.load(combination)
         return result
 
     if version.parse(trading_strategy_engine_version) >= version.parse("0.4"):
         # New style runner
-        result = _run_v04(grid_search_worker, universe, combination, trading_strategy_engine_version)
+        result = _run_v04(grid_search_worker, universe, combination, trading_strategy_engine_version, indicator_storage)
     else:
         # Legacy path
         result = grid_search_worker(universe, combination)
-
 
     if data_retention != GridSearchDataRetention.all:
         result.state = None
@@ -486,18 +550,35 @@ def run_grid_combination_multiprocess(
     grid_search_worker: GridSearchWorker | DecideTradesProtocol3,
     combination: GridCombination,
     trading_strategy_engine_version: TradingStrategyEngineVersion,
-    data_retention: GridSearchDataRetention
+    data_retention: GridSearchDataRetention,
+    indicator_storage_path = DEFAULT_INDICATOR_STORAGE_PATH,
 ):
     """Mutltiproecss runner.
 
     Universe is passed as process global.
+
+    :param indicator_storage_path:
+        Override for unit testing
     """
 
     from tradeexecutor.monkeypatch import cloudpickle_patch  # Enable pickle patch that allows multiprocessing in notebooks
 
+    assert isinstance(combination, GridCombination)
+    assert isinstance(indicator_storage_path, Path)
+
     global _universe
 
     universe = _universe
+
+    # Make sure we always get a indicator storage
+    if version.parse(trading_strategy_engine_version) >= version.parse("0.5"):
+        assert indicator_storage_path is not None, "indicator_storage_path must be passed"
+
+    if indicator_storage_path is not None:
+        assert isinstance(indicator_storage_path, Path)
+        indicator_storage = IndicatorStorage(indicator_storage_path, universe.get_cache_key())
+    else:
+        indicator_storage = None
 
     if GridSearchResult.has_result(combination):
         result = GridSearchResult.load(combination)
@@ -505,7 +586,7 @@ def run_grid_combination_multiprocess(
 
     if version.parse(trading_strategy_engine_version) >= version.parse("0.4"):
         # New style runner
-        result = _run_v04(grid_search_worker, universe, combination, trading_strategy_engine_version)
+        result = _run_v04(grid_search_worker, universe, combination, trading_strategy_engine_version, indicator_storage)
     else:
         # Legacy path
         result = grid_search_worker(universe, combination)
@@ -530,6 +611,43 @@ def _read_combination_result(c: GridCombination, data_retention: GridSearchDataR
         result.state = None
 
     return result
+
+
+def warm_up_grid_search_indicator_cache(
+    strategy_universe: TradingStrategyUniverse,
+    combinations: List[GridCombination],
+    indicator_storage: IndicatorStorage,
+    max_workers: int = 8,
+    execution_context: ExecutionContext = grid_search_execution_context,
+):
+    """Prepare indicators used in the grid search.
+
+    - Search all possible indicator combinations through grid search combinations
+
+    - Check if we already have them
+
+    - Calculate indicator if not
+
+    - Store on a disk cache
+
+    - Later on `run_backtest()`, in a separate process, will
+      read this indicator result off the disk
+    """
+
+    # Build an indicator set of all possible indicators needed
+    indicators: set[IndicatorKey] = set()
+    for c in combinations:
+        for ind in c.indicators:
+            indicators.add(ind)
+
+    # Will display TQDM progress bar for filling the cache
+    warm_up_indicator_cache(
+        strategy_universe,
+        indicator_storage,
+        execution_context=execution_context,
+        indicators=indicators,
+        max_workers=max_workers
+    )
 
 
 def _read_cached_results(
@@ -573,7 +691,7 @@ def _read_cached_results(
 
 @_hide_warnings
 def perform_grid_search(
-    grid_search_worker: GridSearchWorker | DecideTradesProtocol3,
+    grid_search_worker: GridSearchWorker | DecideTradesProtocol3 | DecideTradesProtocol4,
     universe: TradingStrategyUniverse,
     combinations: List[GridCombination],
     max_workers=16,
@@ -581,6 +699,8 @@ def perform_grid_search(
     multiprocess=False,
     trading_strategy_engine_version: TradingStrategyEngineVersion="0.3",
     data_retention: GridSearchDataRetention = GridSearchDataRetention.metrics_only,
+    execution_context: ExecutionContext = grid_search_execution_context,
+    indicator_storage: IndicatorStorage | None = None,
 ) -> List[GridSearchResult]:
     """Search different strategy parameters over a grid.
 
@@ -631,6 +751,21 @@ def perform_grid_search(
         data_retention.name,
     )
 
+    if indicator_storage is None:
+        indicator_storage = IndicatorStorage.create_default(universe)
+
+    # First calculate indicators if create_indicators() protocol is used
+    # (engine version = 0.5, DecideTradesProtocolV4)
+    if any(c for c in combinations if c.indicators is not None):
+        warm_up_grid_search_indicator_cache(
+            universe,
+            combinations,
+            indicator_storage,
+            max_workers=max_workers,
+            execution_context=execution_context,
+        )
+
+    # Load grid search results we have already completed before crash / break / previous strategy parameters
     cached_results = _read_cached_results(combinations, data_retention, reader_pool_size)
     logger.info("Read %d cached results", len(cached_results))
 
@@ -663,7 +798,7 @@ def perform_grid_search(
             # Set up a process pool executing structure
             executor = futureproof.ProcessPoolExecutor(max_workers=max_workers, initializer=_process_init, initargs=(pickled_universe,))
             tm = futureproof.TaskManager(executor, error_policy=futureproof.ErrorPolicyEnum.RAISE)
-            task_args = [(grid_search_worker, c, trading_strategy_engine_version, data_retention) for c in combinations if c not in cached_results]
+            task_args = [(grid_search_worker, c, trading_strategy_engine_version, data_retention, indicator_storage.path) for c in combinations if c not in cached_results]
 
             # Set up a signal handler to stop child processes on quit
             _process_pool_executor = executor._executor
@@ -686,7 +821,7 @@ def perform_grid_search(
             # Run individual searchers threads
             #
 
-            task_args = [(grid_search_worker, universe, c, trading_strategy_engine_version, data_retention) for c in combinations if c not in cached_results]
+            task_args = [(grid_search_worker, universe, c, trading_strategy_engine_version, data_retention, indicator_storage.path) for c in combinations if c not in cached_results]
             logger.info("Doing a multithread grid search")
             executor = futureproof.ThreadPoolExecutor(max_workers=max_workers)
             tm = futureproof.TaskManager(executor, error_policy=futureproof.ErrorPolicyEnum.RAISE)
@@ -702,7 +837,7 @@ def perform_grid_search(
         #
 
         logger.info("Doing a single thread grid search")
-        task_args = [(grid_search_worker, universe, c, trading_strategy_engine_version, data_retention) for c in combinations]
+        task_args = [(grid_search_worker, universe, c, trading_strategy_engine_version, data_retention, indicator_storage.path) for c in combinations]
         iter = itertools.starmap(run_grid_combination_threaded, task_args)
 
         # Force workers to finish
@@ -719,8 +854,9 @@ def perform_grid_search(
 
 def run_grid_search_backtest(
     combination: GridCombination,
-    decide_trades: DecideTradesProtocol | DecideTradesProtocol2,
+    decide_trades: DecideTradesProtocol | DecideTradesProtocol2 | DecideTradesProtocol4,
     universe: TradingStrategyUniverse,
+    create_indicators: CreateIndicatorsProtocol | None = None,
     cycle_duration: Optional[CycleDuration] = None,
     start_at: Optional[datetime.datetime | pd.Timestamp] = None,
     end_at: Optional[datetime.datetime | pd.Timestamp] = None,
@@ -732,6 +868,7 @@ def run_grid_search_backtest(
     trading_strategy_engine_version: Optional[str] = None,
     cycle_debug_data: dict | None = None,
     parameters: StrategyParameters | None = None,
+    indicator_storage: IndicatorStorage | None = None,
 ) -> GridSearchResult:
     assert isinstance(universe, TradingStrategyUniverse), f"Received {universe}"
 
@@ -771,6 +908,8 @@ def run_grid_search_backtest(
         cycle_duration=cycle_duration,
         decide_trades=decide_trades,
         create_trading_universe=None,
+        create_indicators=create_indicators,
+        indicator_combinations=combination.indicators,
         universe=universe,
         initial_deposit=initial_deposit,
         reserve_currency=None,
@@ -780,6 +919,7 @@ def run_grid_search_backtest(
         data_delay_tolerance=data_delay_tolerance,
         engine_version=trading_strategy_engine_version,
         parameters=parameters,
+        indicator_storage=indicator_storage,
     )
 
     analysis = build_trade_analysis(state.portfolio)
