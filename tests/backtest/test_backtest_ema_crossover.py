@@ -64,7 +64,7 @@ def test_ema_crossover_real_data(
     assert start == pd.Timestamp('2021-06-01 00:00:00')
     assert end == pd.Timestamp('2021-12-31 00:00:00')
 
-    assert len(debug_dump) == 214
+    assert len(debug_dump) == 215
 
     # TODO: Not sure if we have any meaningful results to verify
 

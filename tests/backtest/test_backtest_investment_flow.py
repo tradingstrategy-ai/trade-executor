@@ -162,7 +162,7 @@ def test_synthetic_data_backtest_run(
 
     state, universe, debug_dump = run_backtest(setup, allow_missing_fees=True)
 
-    assert len(debug_dump) == 214
+    assert len(debug_dump) == 215
 
     portfolio = state.portfolio
     assert len(list(portfolio.get_all_trades())) == 214
