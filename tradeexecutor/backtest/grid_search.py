@@ -1,4 +1,9 @@
 """Perform a grid search ove strategy parameters to find optimal parameters."""
+
+# Enable pickle patch that allows multiprocessing in notebooks
+from tradeexecutor.monkeypatch import cloudpickle_patch  
+
+
 import concurrent
 import datetime
 import enum
@@ -753,6 +758,7 @@ def perform_grid_search(
 
     if indicator_storage is None:
         indicator_storage = IndicatorStorage.create_default(universe)
+        print(f"Using indicator cache {indicator_storage.get_universe_cache_path()}")
 
     # First calculate indicators if create_indicators() protocol is used
     # (engine version = 0.5, DecideTradesProtocolV4)

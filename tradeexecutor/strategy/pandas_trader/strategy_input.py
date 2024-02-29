@@ -412,6 +412,50 @@ class StrategyInput:
             raise InvalidForMultipairStrategy("Strategy universe is multipair - get_default_pair() not available")
         return self.strategy_universe.get_single_pair()
 
+    def is_visualisation_enabled(self) -> bool:
+        """Should we render any visualisation or not.
+
+        - Use this function inside `decide_trades()` to figure out if `state.visualisation` should be filled in
+
+        - Disabled for grid seach to optimise grid search speed, as the visualisation results would be likely be discarded
+
+        Example:
+
+        .. code-block:: python
+
+            def decide_trades(input: StrategyInput):
+
+                # ...
+
+                #
+                # Visualisations
+                #
+
+                if input.is_visualisation_enabled():
+
+                    visualisation = state.visualisation  # Helper class to visualise strategy output
+
+                    visualisation.plot_indicator(
+                        timestamp,
+                        f"ETH",
+                        PlotKind.technical_indicator_detached,
+                        current_price[eth_pair],
+                        colour="blue",
+                    )
+
+                    # Draw BTC + ETH RSI between its trigger zones for this pair of we got a valid value for RSI for this pair
+
+                    # BTC RSI daily
+                    if pd.notna(current_rsi_values[btc_pair]):
+                        visualisation.plot_indicator(
+                            timestamp,
+                            f"RSI",
+                            PlotKind.technical_indicator_detached,
+                            current_rsi_values[btc_pair],
+                            colour="orange",
+                        )
+        """
+        return not self.execution_context.grid_search
 
 
 _time_frame_cache = cachetools.Cache(maxsize=SERIES_CACHE_SIZE)
