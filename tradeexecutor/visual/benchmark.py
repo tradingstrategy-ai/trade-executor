@@ -105,6 +105,7 @@ def visualise_equity_curve_benchmark(
     height=1200,
     start_at: Optional[Union[pd.Timestamp, datetime.datetime]] = None,
     end_at: Optional[Union[pd.Timestamp, datetime.datetime]] = None,
+    log_y=False,
 ) -> go.Figure:
     """Visualise strategy performance against benchmarks.
 
@@ -248,6 +249,16 @@ def visualise_equity_curve_benchmark(
 
         **Note**: Currently not very useful due to Y axis scale
 
+    :param log_y:
+        Use logarithmic Y-axis.
+
+        Because we accumulate larger treasury over time,
+        the swings in the value will be higher later.
+        We need to use a logarithmic Y axis so that we can compare the performance
+        early in the strateg and late in the strategy.
+
+    :return:
+        Plotly figure
     """
 
     fig = go.Figure()
@@ -313,7 +324,10 @@ def visualise_equity_curve_benchmark(
     else:
         fig.update_layout(title=f"Portfolio value", height=height)
 
-    fig.update_yaxes(title="Value $", showgrid=False)
+    if log_y:
+        fig.update_yaxes(title="Value $ (logarithmic)", showgrid=False, type="log")
+    else:
+        fig.update_yaxes(title="Value $", showgrid=False)
 
     fig.update_xaxes(rangeslider={"visible": False})
 

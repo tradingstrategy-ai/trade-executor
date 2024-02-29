@@ -134,7 +134,6 @@ class RoutingModel(abc.ABC):
                 token_data_msg = f"Tokens are:\n"
                 for token in pair_universe.get_all_tokens():
                     token_data_msg += f"  {token}\n"
-            import ipdb ; ipdb.set_trace()
             assert reserve_token, f"Pair universe does not contain our reserve asset {self.reserve_token_address}\n{token_data_msg}"
         return translate_token(reserve_token)
      

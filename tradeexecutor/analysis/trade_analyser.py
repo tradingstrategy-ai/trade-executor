@@ -50,9 +50,11 @@ from tradingstrategy.utils.jupyter import make_clickable
 from tradeexecutor.utils.summarydataframe import as_dollar, as_integer, create_summary_table, as_percent, as_duration, as_bars, as_decimal
 
 try:
-    #  DeprecationWarning: Importing display from IPython.core.display is deprecated since IPython 7.14, please import from IPython display
-    with warnings.catch_warnings():
+
+    with warnings.catch_warnings():  #  DeprecationWarning: Importing display from IPython.core.display is deprecated since IPython 7.14, please import from IPython display
+        warnings.simplefilter(action='ignore', category=FutureWarning)  # yfinance: The default dtype for empty Series will be 'object' instead of 'float64' in a future version. Specify a dtype explicitly to silence this warning.
         import quantstats as qs
+
     HAS_QUANTSTATS = True
 except Exception:
     HAS_QUANTSTATS = False

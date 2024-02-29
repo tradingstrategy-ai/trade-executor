@@ -19,6 +19,8 @@ from tradeexecutor.strategy.pandas_trader.position_manager import PositionManage
 from tradeexecutor.strategy.parameters import StrategyParameters
 from tradeexecutor.strategy.pricing_model import PricingModel
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
+from tradingstrategy.candle import CandleSampleUnavailable
+from tradingstrategy.pair import HumanReadableTradingPairDescription
 from tradingstrategy.utils.time import get_prior_timestamp
 
 logger = logging.getLogger(__name__)
@@ -76,7 +78,7 @@ class StrategyInputIndicators:
     def get_price(
         self,
         pair: TradingPairIdentifier | None = None,
-        data_lag_tolerance=None,
+        data_lag_tolerance=pd.Timedelta(days=7),
     ) -> USDollarPrice | None:
         """Read the available close price of a trading pair.
 
@@ -84,6 +86,10 @@ class StrategyInputIndicators:
 
         - **Does not** return the current price in the decision_cycle,
           because any decision must be made based on the previous price
+
+          :param data_lag_tolerance:
+            In the case the data has issues (no recent price),
+            then accept a price that's this old.
 
         :return:
             The latest available price.
@@ -97,29 +103,31 @@ class StrategyInputIndicators:
         assert isinstance(pair, TradingPairIdentifier)
         assert pair.internal_id, "pair.internal_id missing - bad unit test data?"
 
-        series = self.strategy_universe.data_universe.candles.get_samples_by_pair(pair.internal_id)["close"]
-
-        ts = get_prior_timestamp(series, self.timestamp)
-        if not ts:
+        try:
+            price, when = self.strategy_universe.data_universe.candles.get_price_with_tolerance(
+                pair.internal_id,
+                self.timestamp - self.strategy_universe.data_universe.time_bucket.to_pandas_timedelta(),
+                tolerance=data_lag_tolerance,
+            )
+            return price
+        except CandleSampleUnavailable:
             return None
-
-        return series[ts]
 
     def get_indicator_value(
         self,
         name: str,
         column: str | None = None,
-        pair: TradingPairIdentifier | None = None,
+        pair: TradingPairIdentifier | HumanReadableTradingPairDescription | None = None,
         index: int = -1,
     ) -> float | None:
         """Read the available value of an indicator.
 
-        - Returns the latest available indicator value
+        - Returns the latest available indicator value.
 
         - **Does not** return the current timestamp value in the decision_cycle,
-          because any decision must be made based on the previous price
+          because any decision must be made based on the previous price.
 
-        - Normalises missing inputs, NaNs and other data issues to Python ``None``
+        - Normalises missing inputs, NaNs and other data issues to Python ``None``.
 
          Single pair example with a single series indicator (RSI):
 
@@ -215,7 +223,7 @@ class StrategyInputIndicators:
         self,
         name: str,
         column: str | None = None,
-        pair: TradingPairIdentifier | None = None,
+        pair: TradingPairIdentifier | HumanReadableTradingPairDescription | None = None,
         unlimited=False,
     ) -> pd.Series | None:
         """Get the whole indicator data series.
@@ -248,7 +256,7 @@ class StrategyInputIndicators:
         self,
         name: str,
         column: str | None = None,
-        pair: TradingPairIdentifier | None = None
+        pair: TradingPairIdentifier | HumanReadableTradingPairDescription | None = None
     ) -> pd.Series | pd.DataFrame:
         """Get access to indicator data series/frame.
 
@@ -273,6 +281,10 @@ class StrategyInputIndicators:
             if pair is None:
                 assert self.strategy_universe.get_pair_count() == 1, f"The strategy universe contains multiple pairs. You need to pass pair argument to the function to determine which trading pair you are manipulating."
                 pair = self.strategy_universe.get_single_pair()
+
+            if type(pair) == tuple:
+                # Resolve human description
+                pair = self.strategy_universe.get_pair_by_human_description(pair)
 
             assert isinstance(pair, TradingPairIdentifier)
             assert pair.internal_id, "pair.internal_id missing - bad unit test data?"
@@ -407,6 +419,50 @@ class StrategyInput:
             raise InvalidForMultipairStrategy("Strategy universe is multipair - get_default_pair() not available")
         return self.strategy_universe.get_single_pair()
 
+    def is_visualisation_enabled(self) -> bool:
+        """Should we render any visualisation or not.
+
+        - Use this function inside `decide_trades()` to figure out if `state.visualisation` should be filled in
+
+        - Disabled for grid seach to optimise grid search speed, as the visualisation results would be likely be discarded
+
+        Example:
+
+        .. code-block:: python
+
+            def decide_trades(input: StrategyInput):
+
+                # ...
+
+                #
+                # Visualisations
+                #
+
+                if input.is_visualisation_enabled():
+
+                    visualisation = state.visualisation  # Helper class to visualise strategy output
+
+                    visualisation.plot_indicator(
+                        timestamp,
+                        f"ETH",
+                        PlotKind.technical_indicator_detached,
+                        current_price[eth_pair],
+                        colour="blue",
+                    )
+
+                    # Draw BTC + ETH RSI between its trigger zones for this pair of we got a valid value for RSI for this pair
+
+                    # BTC RSI daily
+                    if pd.notna(current_rsi_values[btc_pair]):
+                        visualisation.plot_indicator(
+                            timestamp,
+                            f"RSI",
+                            PlotKind.technical_indicator_detached,
+                            current_rsi_values[btc_pair],
+                            colour="orange",
+                        )
+        """
+        return not self.execution_context.grid_search
 
 
 _time_frame_cache = cachetools.Cache(maxsize=SERIES_CACHE_SIZE)

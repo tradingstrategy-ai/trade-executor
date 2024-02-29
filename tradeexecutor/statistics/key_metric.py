@@ -3,6 +3,7 @@
 Calculate key metrics used in the web frontend summary cards.
 """
 import datetime
+import warnings
 from typing import List, Iterable, Literal
 
 import pandas as pd
@@ -13,6 +14,7 @@ from tradeexecutor.state.state import State
 from tradeexecutor.state.types import Percent
 from tradeexecutor.strategy.summary import KeyMetric, KeyMetricKind, KeyMetricSource, KeyMetricCalculationMethod
 from tradeexecutor.visual.equity_curve import calculate_size_relative_realised_trading_returns, calculate_non_cumulative_daily_returns
+from tradeexecutor.visual.qs_wrapper import import_quantstats_wrapped
 
 
 def calculate_sharpe(returns: pd.Series, periods=365) -> float:
@@ -30,11 +32,13 @@ def calculate_sharpe(returns: pd.Series, periods=365) -> float:
 
     """
     # Lazy import to allow optional dependency
-    from quantstats.stats import sharpe
-    return sharpe(
-        returns,
-        periods=periods,
-    )
+    qs = import_quantstats_wrapped()
+    with warnings.catch_warnings():
+        warnings.simplefilter('ignore', RuntimeWarning)
+        return qs.stats.sharpe(
+            returns,
+            periods=periods,
+        )
 
 
 def calculate_sortino(returns: pd.Series, periods=365) -> float:
@@ -52,11 +56,13 @@ def calculate_sortino(returns: pd.Series, periods=365) -> float:
 
     """
     # Lazy import to allow optional dependency
-    from quantstats.stats import sortino
-    return sortino(
-        returns,
-        periods=periods,
-    )
+    qs = import_quantstats_wrapped()
+    with warnings.catch_warnings():
+        warnings.simplefilter('ignore', RuntimeWarning)
+        return qs.stats.sortino(
+            returns,
+            periods=periods,
+        )
 
 
 def calculate_profit_factor(returns: pd.Series) -> float:
@@ -71,8 +77,10 @@ def calculate_profit_factor(returns: pd.Series) -> float:
 
     """
     # Lazy import to allow optional dependency
-    from quantstats.stats import profit_factor
-    return profit_factor(returns)
+    qs = import_quantstats_wrapped()
+    with warnings.catch_warnings():
+        warnings.simplefilter('ignore', RuntimeWarning)
+        return qs.stats.profit_factor(returns)
 
 
 def calculate_max_drawdown(returns: pd.Series) -> Percent:
@@ -90,8 +98,10 @@ def calculate_max_drawdown(returns: pd.Series) -> Percent:
 
     """
     # Lazy import to allow optional dependency
-    from quantstats.stats import to_drawdown_series
-    dd = to_drawdown_series(returns)
+    qs = import_quantstats_wrapped()
+    with warnings.catch_warnings():
+        warnings.simplefilter('ignore', RuntimeWarning)
+        dd = qs.stats.to_drawdown_series(returns)
     return dd.min()
 
 
@@ -107,12 +117,10 @@ def calculate_max_runup(returns: pd.Series) -> Percent:
     """
 
     from quantstats import utils
-
     # convert returns to runup series
     prices = utils._prepare_prices(returns)
     ru = prices / np.minimum.accumulate(prices) - 1.
     runup_series = ru.replace([np.inf, -np.inf, -0], 0)
-    
     return runup_series.max()
 
 

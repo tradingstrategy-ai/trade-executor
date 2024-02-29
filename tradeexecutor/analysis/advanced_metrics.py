@@ -18,7 +18,8 @@ import enum
 import warnings
 
 import pandas as pd
-from quantstats import stats
+
+from tradeexecutor.visual.qs_wrapper import import_quantstats_wrapped
 
 
 class AdvancedMetricsMode(enum.Enum):
@@ -85,16 +86,20 @@ def calculate_advanced_metrics(
     """
     #  DeprecationWarning: Importing display from IPython.core.display is deprecated since IPython 7.14, please import from IPython display
     with warnings.catch_warnings():
-        from quantstats.reports import metrics
+        warnings.simplefilter(action='ignore', category=FutureWarning)  # yfinance: The default dtype for empty Series will be 'object' instead of 'float64' in a future version. Specify a dtype explicitly to silence this warning.
+        warnings.simplefilter(action='ignore', category=RuntimeWarning)   # Divided by Nan
+        qs = import_quantstats_wrapped()
+        metrics = qs.reports.metrics
+        stats = qs.stats
 
-    result = metrics(returns, display=False, periods_per_year=periods_per_year, mode=mode.value)
+        result = metrics(returns, display=False, periods_per_year=periods_per_year, mode=mode.value)
 
-    # Hack - see analyse_combination()
-    # Communicative annualized growth return,
-    # as compounded
-    # Should say CAGR (raw), but is what it is for the legacy reasons
-    result.loc["Annualised return (raw)"] = [stats.cagr(returns, 0., compounded=True)]
-    return result
+        # Hack - see analyse_combination()
+        # Communicative annualized growth return,
+        # as compounded
+        # Should say CAGR (raw), but is what it is for the legacy reasons
+        result.loc["Annualised return (raw)"] = [stats.cagr(returns, 0., compounded=True)]
+        return result
 
 
 def visualise_advanced_metrics(
@@ -160,22 +165,25 @@ def visualise_advanced_metrics(
         A DataFrame ready to display
 
     """
-    #  DeprecationWarning: Importing display from IPython.core.display is deprecated since IPython 7.14, please import from IPython display
     with warnings.catch_warnings():
-        from quantstats.reports import metrics
-    # Internal sets the flag for percent output
-    df = metrics(
-        returns,
-        benchmark=benchmark,
-        periods_per_year=365,
-        mode=mode.value,
-        internal=True,
-        display=False)
-    
-    # Set the label
-    if benchmark is not None:
-        benchmark_name = benchmark.attrs.get("name")
-        if benchmark_name:
-            df = df.rename({"Benchmark": benchmark_name}, axis="columns")
-    
-    return df
+        warnings.simplefilter(action='ignore', category=FutureWarning)  # yfinance: The default dtype for empty Series will be 'object' instead of 'float64' in a future version. Specify a dtype explicitly to silence this warning.
+        warnings.simplefilter(action='ignore', category=RuntimeWarning)   # Divided by Nan
+        qs = import_quantstats_wrapped()
+        metrics = qs.reports.metrics
+
+        # Internal sets the flag for percent output
+        df = metrics(
+            returns,
+            benchmark=benchmark,
+            periods_per_year=365,
+            mode=mode.value,
+            internal=True,
+            display=False)
+
+        # Set the label
+        if benchmark is not None:
+            benchmark_name = benchmark.attrs.get("name")
+            if benchmark_name:
+                df = df.rename({"Benchmark": benchmark_name}, axis="columns")
+
+        return df
