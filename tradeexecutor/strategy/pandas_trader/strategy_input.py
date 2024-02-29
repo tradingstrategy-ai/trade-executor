@@ -19,6 +19,7 @@ from tradeexecutor.strategy.pandas_trader.position_manager import PositionManage
 from tradeexecutor.strategy.parameters import StrategyParameters
 from tradeexecutor.strategy.pricing_model import PricingModel
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
+from tradingstrategy.pair import HumanReadableTradingPairDescription
 from tradingstrategy.utils.time import get_prior_timestamp
 
 logger = logging.getLogger(__name__)
@@ -109,17 +110,17 @@ class StrategyInputIndicators:
         self,
         name: str,
         column: str | None = None,
-        pair: TradingPairIdentifier | None = None,
+        pair: TradingPairIdentifier | HumanReadableTradingPairDescription | None = None,
         index: int = -1,
     ) -> float | None:
         """Read the available value of an indicator.
 
-        - Returns the latest available indicator value
+        - Returns the latest available indicator value.
 
         - **Does not** return the current timestamp value in the decision_cycle,
-          because any decision must be made based on the previous price
+          because any decision must be made based on the previous price.
 
-        - Normalises missing inputs, NaNs and other data issues to Python ``None``
+        - Normalises missing inputs, NaNs and other data issues to Python ``None``.
 
          Single pair example with a single series indicator (RSI):
 
@@ -215,7 +216,7 @@ class StrategyInputIndicators:
         self,
         name: str,
         column: str | None = None,
-        pair: TradingPairIdentifier | None = None,
+        pair: TradingPairIdentifier | HumanReadableTradingPairDescription | None = None,
         unlimited=False,
     ) -> pd.Series | None:
         """Get the whole indicator data series.
@@ -248,7 +249,7 @@ class StrategyInputIndicators:
         self,
         name: str,
         column: str | None = None,
-        pair: TradingPairIdentifier | None = None
+        pair: TradingPairIdentifier | HumanReadableTradingPairDescription | None = None
     ) -> pd.Series | pd.DataFrame:
         """Get access to indicator data series/frame.
 
@@ -273,6 +274,10 @@ class StrategyInputIndicators:
             if pair is None:
                 assert self.strategy_universe.get_pair_count() == 1, f"The strategy universe contains multiple pairs. You need to pass pair argument to the function to determine which trading pair you are manipulating."
                 pair = self.strategy_universe.get_single_pair()
+
+            if type(pair) == tuple:
+                # Resolve human description
+                pair = self.strategy_universe.get_pair_by_human_description(pair)
 
             assert isinstance(pair, TradingPairIdentifier)
             assert pair.internal_id, "pair.internal_id missing - bad unit test data?"
