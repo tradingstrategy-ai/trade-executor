@@ -96,7 +96,7 @@ def test_setup_up_indicator_storage_per_pair(tmp_path, strategy_universe):
 
     storage = IndicatorStorage(Path(tmp_path), universe_key=strategy_universe.get_cache_key())
     assert storage.path == Path(tmp_path)
-    assert storage.universe_key == "ethereum_1d_WETH-USDC-WBTC-USDC-2021-06-01-2021-12-31"
+    assert storage.universe_key == "ethereum_1d_WETH-USDC-WBTC-USDC_2021-06-01-2021-12-31"
 
     pair = strategy_universe.get_pair_by_human_description((ChainId.ethereum, "test-dex", "WETH", "USDC"))
 
