@@ -486,7 +486,7 @@ def _decide_trades_v4(input: StrategyInput) -> List[TradeExecution]:
 
 
 def my_custom_indicator(strategy_universe: TradingStrategyUniverse):
-    return pd.Series()
+    return pd.Series(dtype="float64")
 
 
 def test_perform_grid_search_engine_v5(

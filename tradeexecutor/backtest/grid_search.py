@@ -359,8 +359,9 @@ class GridSearchResult:
         # TODO:
         # Fails to pickle functions, but we do not need these in results,
         # so we just shortcut and clear out those functions
-        for ind in self.combination.indicators:
-            ind.definition.func = None
+        if self.combination.indicators is not None:
+            for ind in self.combination.indicators:
+                ind.definition.func = None
 
         # Do atomic replacement to avoid partial pickles,
         # as they cause subsequent test runs to fail
