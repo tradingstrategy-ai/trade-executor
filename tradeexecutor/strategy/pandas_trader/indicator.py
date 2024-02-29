@@ -72,7 +72,7 @@ class IndicatorSource(enum.Enum):
 
 
 
-@dataclass(slots=True, frozen=True)
+@dataclass(slots=True)
 class IndicatorDefinition:
     """A definition for a single indicator.
 
@@ -97,7 +97,9 @@ class IndicatorDefinition:
     #:
     #: Same function can part of multiple indicators with different parameters (length).
     #:
-    func: Callable
+    #: Because function pickling issues, this may be set to ``None`` in results.
+    #:
+    func: Callable | None
 
     #: Parameters for building this indicator.
     #:
@@ -113,21 +115,22 @@ class IndicatorDefinition:
     source: IndicatorSource = IndicatorSource.close_price
 
     def __repr__(self):
-        return f"<Indicator {self.name} using {self.func.__name__} for {self.parameters}>"
+        return f"<Indicator {self.name} using {self.func.__name__ if self.func else '?()'} for {self.parameters}>"
 
     def __eq__(self, other):
-        return self.name == other.name and self.parameters == other.parameters and self.source == other.source and self.func.__name__ == other.func.__name__
+        return self.name == other.name and self.parameters == other.parameters and self.source == other.source
 
     def __hash__(self):
         # https://stackoverflow.com/a/5884123/315168
-        return hash((self.name, frozenset(self.parameters.items()), self.source, self.func.__name__))
+        return hash((self.name, frozenset(self.parameters.items()), self.source))
 
     def __post_init__(self):
         assert type(self.name) == str
-        assert callable(self.func)
         assert type(self.parameters) == dict
 
-        validate_function_kwargs(self.func, self.parameters)
+        if self.func is not None:
+            assert callable(self.func)
+            validate_function_kwargs(self.func, self.parameters)
 
     def is_needed_for_pair(self, pair: TradingPairIdentifier) -> bool:
         """Currently indicators are calculated for spont pairs only."""

@@ -7,6 +7,7 @@ from io import StringIO
 from typing import List, Optional, Union, Literal, Set
 import logging
 
+import cachetools
 import pandas as pd
 
 from tradeexecutor.utils.accuracy import QUANTITY_EPSILON
@@ -26,6 +27,14 @@ from tradeexecutor.strategy.trading_strategy_universe import translate_trading_p
 from tradeexecutor.utils.leverage_calculations import LeverageEstimate
 
 logger = logging.getLogger(__name__)
+
+
+#: Cache translate_trading_pair() result data structures
+#:
+#: See :py:meth:`PositionManager.__init__`.
+#:
+DEFAULT_TRADING_PAIR_CACHE = cachetools.Cache(maxsize=50000)
+
 
 
 class NoSingleOpenPositionException(Exception):
@@ -144,6 +153,7 @@ class PositionManager:
         state: State,
         pricing_model: PricingModel,
         default_slippage_tolerance=0.017,
+        trading_pair_cache=DEFAULT_TRADING_PAIR_CACHE,
     ):
 
         """Create a new PositionManager instance.
@@ -167,6 +177,13 @@ class PositionManager:
             The max slippage tolerance parameter set for any trades if not overriden trade-by-trade basis.
 
             Default to 1.7% max slippage or 170 BPS.
+
+        :param trading_pair_cache:
+            Trading pair cache.
+
+            Used to speed up trading pair look up on multipair strategies.
+
+            See :py:meth:`get_trading_pair`.
 
         """
 
@@ -200,6 +217,7 @@ class PositionManager:
 
         self.reserve_currency = reserve_currency
         self.reserve_price = reserve_price
+        self.trading_pair_cache = trading_pair_cache
 
     def is_any_open(self) -> bool:
         """Do we have any positions open.
@@ -471,17 +489,24 @@ class PositionManager:
             The identifier is a pass-by-copy reference used in the strategy state internally.
         """
 
-        if type(pair) == int:
-            pair_id = pair
-            dex_pair = self.data_universe.pairs.get_pair_by_id(pair_id)
-        elif type(pair) == tuple:
-            dex_pair = self.data_universe.pairs.get_pair_by_human_description(pair)
-        elif isinstance(pair, DEXPair):
-            dex_pair = pair
-        else:
-            raise RuntimeError(f"Unknown trading pair reference type: {pair}")
+        cached = self.trading_pair_cache.get(pair)
+        if cached is None:
 
-        return translate_trading_pair(dex_pair)
+            if type(pair) == int:
+                pair_id = pair
+                dex_pair = self.data_universe.pairs.get_pair_by_id(pair_id)
+            elif type(pair) == tuple:
+                dex_pair = self.data_universe.pairs.get_pair_by_human_description(pair)
+            elif isinstance(pair, DEXPair):
+                dex_pair = pair
+            else:
+                raise RuntimeError(f"Unknown trading pair reference type: {pair}")
+
+            # Rebuild TradingPairIdentifier data structure
+            cached = translate_trading_pair(dex_pair)
+            self.trading_pair_cache[pair] = cached
+
+        return cached
 
     def get_pair_fee(self,
                      pair: Optional[TradingPairIdentifier] = None,

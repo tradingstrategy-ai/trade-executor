@@ -19,6 +19,7 @@ from tradeexecutor.strategy.pandas_trader.position_manager import PositionManage
 from tradeexecutor.strategy.parameters import StrategyParameters
 from tradeexecutor.strategy.pricing_model import PricingModel
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
+from tradingstrategy.candle import CandleSampleUnavailable
 from tradingstrategy.pair import HumanReadableTradingPairDescription
 from tradingstrategy.utils.time import get_prior_timestamp
 
@@ -77,7 +78,7 @@ class StrategyInputIndicators:
     def get_price(
         self,
         pair: TradingPairIdentifier | None = None,
-        data_lag_tolerance=None,
+        data_lag_tolerance=pd.Timedelta(days=7),
     ) -> USDollarPrice | None:
         """Read the available close price of a trading pair.
 
@@ -85,6 +86,10 @@ class StrategyInputIndicators:
 
         - **Does not** return the current price in the decision_cycle,
           because any decision must be made based on the previous price
+
+          :param data_lag_tolerance:
+            In the case the data has issues (no recent price),
+            then accept a price that's this old.
 
         :return:
             The latest available price.
@@ -98,13 +103,15 @@ class StrategyInputIndicators:
         assert isinstance(pair, TradingPairIdentifier)
         assert pair.internal_id, "pair.internal_id missing - bad unit test data?"
 
-        series = self.strategy_universe.data_universe.candles.get_samples_by_pair(pair.internal_id)["close"]
-
-        ts = get_prior_timestamp(series, self.timestamp)
-        if not ts:
+        try:
+            price, when = self.strategy_universe.data_universe.candles.get_price_with_tolerance(
+                pair.internal_id,
+                self.timestamp - self.strategy_universe.data_universe.time_bucket.to_pandas_timedelta(),
+                tolerance=data_lag_tolerance,
+            )
+            return price
+        except CandleSampleUnavailable:
             return None
-
-        return series[ts]
 
     def get_indicator_value(
         self,

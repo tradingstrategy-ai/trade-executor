@@ -1,4 +1,5 @@
 """Perform a grid search ove strategy parameters to find optimal parameters."""
+import tempfile
 
 # Enable pickle patch that allows multiprocessing in notebooks
 from tradeexecutor.monkeypatch import cloudpickle_patch  
@@ -354,8 +355,21 @@ class GridSearchResult:
         """Serialise as Python pickle."""
         base_path = self.combination.get_full_result_path()
         base_path.mkdir(parents=True, exist_ok=True)
-        with open(base_path.joinpath("result.pickle"), "wb") as out:
-            pickle.dump(self, out)
+
+        # TODO:
+        # Fails to pickle functions, but we do not need these in results,
+        # so we just shortcut and clear out those functions
+        for ind in self.combination.indicators:
+            ind.definition.func = None
+
+        # Do atomic replacement to avoid partial pickles,
+        # as they cause subsequent test runs to fail
+        # https://stackoverflow.com/a/3716361/315168
+        final_file = base_path.joinpath("result.pickle")
+        temp = tempfile.NamedTemporaryFile(mode='wb', delete=False, dir=base_path)
+        pickle.dump(self, temp)
+        temp.close()
+        shutil.move(temp.name, final_file)
 
 
 class GridSearchWorker(Protocol):
@@ -685,6 +699,7 @@ def _read_cached_results(
     results = {}
 
     label = ", ".join(p.name for p in combinations[0].searchable_parameters)
+    print(f"Using grid search cache {combinations[0].result_path}")
     with tqdm(total=len(task_args), desc=f"Reading cached grid search results using {reader_pool_size} threads: {label}") as progress_bar:
         # Extract results from the parallel task queue
         for task in tm.as_completed():
