@@ -769,6 +769,7 @@ def run_backtest_inline(
     :param strategy_logging:
         Enable PositionManager log output.
 
+        Set `True` to display output.
         See :py:meth:`tradeexecutor.strategy.pandas_trading.position_manager.PositionManager.log` for usage.
 
     :param parameters:

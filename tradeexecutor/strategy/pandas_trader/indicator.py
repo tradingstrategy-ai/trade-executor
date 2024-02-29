@@ -1,4 +1,8 @@
 """Indicator definitions."""
+
+# Monkey-atch needed for notebook multiprocessing]
+from tradeexecutor.monkeypatch import cloudpickle_patch  # Enable pickle patch that allows multiprocessing in notebooks
+
 import concurrent
 import enum
 import inspect
@@ -639,6 +643,9 @@ def load_indicators(
     label = indicator_set.get_label()
     key: IndicatorKey
 
+    # A hint to the notebook users so they know what to delete to reset the cache
+    print(f"Using indicator cache {storage.get_universe_cache_path()}")
+
     with tqdm(total=len(task_args), desc=f"Reading cached indicators {label} for {strategy_universe.get_pair_count()} pairs, using {max_readers} threads") as progress_bar:
 
         if max_readers > 1:
@@ -741,7 +748,7 @@ def calculate_indicators(
         tm.map(_calculate_and_save_indicator_result, task_args)
 
         # Track the child process completion using tqdm progress bar
-        with tqdm(total=len(task_args), desc=f"Grid searching using {max_workers} processes: {label}") as progress_bar:
+        with tqdm(total=len(task_args), desc=f"Calculating indicators {label} using {max_workers} processes") as progress_bar:
             # Extract results from the parallel task queue
             for task in tm.as_completed():
                 result = task.result

@@ -5,7 +5,9 @@
 
 import logging
 from dataclasses import dataclass
+from functools import lru_cache
 
+import cachetools
 import pandas as pd
 
 from tradeexecutor.state.identifier import TradingPairIdentifier
@@ -20,6 +22,9 @@ from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniv
 from tradingstrategy.utils.time import get_prior_timestamp
 
 logger = logging.getLogger(__name__)
+
+
+SERIES_CACHE_SIZE = 1024
 
 
 class InvalidForMultipairStrategy(Exception):
@@ -38,6 +43,7 @@ class StrategyInputIndicators:
     - The framework takes care of recalculating indicators when needed,
       for backtest and live access
     - For backtests, this class is instiated only once
+    - We assume all indicator data is forward-filled and no gaps
 
     For simple strategies calling :py:meth:`get_indicator_value` should be only required here.
     """
@@ -104,14 +110,16 @@ class StrategyInputIndicators:
         name: str,
         column: str | None = None,
         pair: TradingPairIdentifier | None = None,
-        index: int | None = None,
+        index: int = -1,
     ) -> float | None:
         """Read the available value of an indicator.
 
         - Returns the latest available indicator value
 
-        - **Does not** return the current indicator in the decision_cycle,
+        - **Does not** return the current timestamp value in the decision_cycle,
           because any decision must be made based on the previous price
+
+        - Normalises missing inputs, NaNs and other data issues to Python ``None``
 
          Single pair example with a single series indicator (RSI):
 
@@ -142,6 +150,18 @@ class StrategyInputIndicators:
             # Bollinger band look up length was 20 and standard deviation 2.0.
             bb_value = input.indicators.get_indicator_value("bb", "BBL_20_2.0")
 
+        Example accessing latest and previous values for cross over test:
+
+        .. code-block:: python
+
+            current_rsi_values[pair] = indicators.get_indicator_value("rsi", pair=pair)
+            previous_rsi_values[pair] = indicators.get_indicator_value("rsi", index=-2, pair=pair)
+
+            # Check for RSI crossing our threshold values in this cycle, compared to the previous cycle
+            if current_rsi_values[pair] and previous_rsi_values[pair]:
+                rsi_cross_above = current_rsi_values[pair] >= parameters.rsi_high and previous_rsi_values[btc_pair] < parameters.rsi_high
+                rsi_cross_below = current_rsi_values[pair] < parameters.rsi_low and previous_rsi_values[pair] > parameters.rsi_low
+
         :param name:
             Indicator name as defined in `create_indicators`.
 
@@ -162,8 +182,9 @@ class StrategyInputIndicators:
             If not given, always return the previous available value.
 
             Uses Python list access notation.
-            `-1` is the last item (previous time frame value, yesterday).
-            `-2` is the item before previous time frame (the day before yesterday).
+            - `-1` is the last item (previous time frame value, yesterday).
+            - `-2` is the item before previous time frame (the day before yesterday).
+            - `0` is looking to the future (the value at the end of the current day that has not yet passed)
 
         :return:
             The latest available indicator value.
@@ -175,27 +196,20 @@ class StrategyInputIndicators:
 
         series = self.resolve_indicator_data(name, column, pair)
 
-        ts = get_prior_timestamp(series, self.timestamp)
-        if ts is None:
+        ts = self.timestamp
+        time_frame = _calculate_and_cache_candle_width(series.index)
+        shifted_ts = ts + time_frame * index
+
+        try:
+            value = series[shifted_ts]
+        except KeyError:
             return None
-
-        if index is None:
-            value = series[ts]
-
-        else:
-            assert type(index) == int, f"You must use integer index to access values. Got {type(index)}"
-            import ipdb ; ipdb.set_trace()
-            iloc = series.index[ts]
-
-            try:
-                value = series.iloc[iloc]
-            except KeyError:
-                value = None
 
         if pd.isna(value):
             return None
 
-        return None
+        return value
+
 
     def get_indicator_series(
         self,
@@ -303,6 +317,7 @@ class StrategyInputIndicators:
         self.timestamp = timestamp
 
 
+
 @dataclass
 class StrategyInput:
     """Inputs for a trading decision.
@@ -391,3 +406,22 @@ class StrategyInput:
         if self.strategy_universe.get_pair_count() != 1:
             raise InvalidForMultipairStrategy("Strategy universe is multipair - get_default_pair() not available")
         return self.strategy_universe.get_single_pair()
+
+
+
+_time_frame_cache = cachetools.Cache(maxsize=SERIES_CACHE_SIZE)
+
+def _calculate_and_cache_candle_width(index: pd.DatetimeIndex) -> pd.Timedelta | None:
+    """Get the evenly timestamped index candle/time bar width.
+
+    - Cached for speed - cache size might not make sense for large trading pair use cases
+    """
+
+    key = id(index)
+
+    value = _time_frame_cache.get(key)
+    if value is None:
+        value = index[-1] - index[-2]
+        _time_frame_cache[key] = value
+
+    return value

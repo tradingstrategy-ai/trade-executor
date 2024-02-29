@@ -218,7 +218,8 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
         chain_str = self.data_universe.get_default_chain().get_slug()
         time_bucket_str = self.data_universe.time_bucket.value
 
-        key = f"{chain_str},{time_bucket_str},{pair_str},{time_str}"
+        separator = "_"
+        key = f"{chain_str}{separator}{time_bucket_str}{separator}{pair_str}{separator}{time_str}"
         assert len(key) < 256, f"Generated very long fname cache key, check the generation logic: {key}"
         return key
 
