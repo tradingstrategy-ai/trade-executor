@@ -163,19 +163,20 @@ def visualise_advanced_metrics(
     #  DeprecationWarning: Importing display from IPython.core.display is deprecated since IPython 7.14, please import from IPython display
     with warnings.catch_warnings():
         from quantstats.reports import metrics
-    # Internal sets the flag for percent output
-    df = metrics(
-        returns,
-        benchmark=benchmark,
-        periods_per_year=365,
-        mode=mode.value,
-        internal=True,
-        display=False)
-    
-    # Set the label
-    if benchmark is not None:
-        benchmark_name = benchmark.attrs.get("name")
-        if benchmark_name:
-            df = df.rename({"Benchmark": benchmark_name}, axis="columns")
-    
-    return df
+
+        # Internal sets the flag for percent output
+        df = metrics(
+            returns,
+            benchmark=benchmark,
+            periods_per_year=365,
+            mode=mode.value,
+            internal=True,
+            display=False)
+
+        # Set the label
+        if benchmark is not None:
+            benchmark_name = benchmark.attrs.get("name")
+            if benchmark_name:
+                df = df.rename({"Benchmark": benchmark_name}, axis="columns")
+
+        return df
