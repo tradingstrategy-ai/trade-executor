@@ -121,6 +121,10 @@ class BacktestSetup:
     #:
     mode: ExecutionMode = ExecutionMode.backtesting
 
+    #: How many workers to use for indicator calculation
+    #:
+    max_workers: int = 8
+
     def backtest_static_universe_strategy_factory(
             self,
             *ignore,
@@ -217,6 +221,7 @@ class BacktestSetup:
             execution_context=execution_context,
             indicators=indicator_builder,
             parameters=self.parameters,
+            max_workers=self.max_workers,
         )
 
         strategy_input_indicators = StrategyInputIndicators(
@@ -603,9 +608,11 @@ def run_backtest(
     if execution_context.is_version_greater_or_equal_than(0, 5, 0):
         # Needed for DecideTradesProtocolV4
         if setup.create_indicators is not None:
+            # Indicators need to be created now
             backtest_strategy_indicators = setup.prepare_indicators(execution_context)
         elif setup.indicator_combinations is not None:
             # Grid search
+            # Indicators were created earlier, load now
             backtest_strategy_indicators = setup.load_indicators()
         else:
             raise AssertionError(f"You must give either create_indicators or indicator_combinations argument")
@@ -644,8 +651,10 @@ def run_backtest(
 
     diagnostics_data = main_loop.run_and_setup_backtest()
 
-    # Expose to the caller through non-API
-    diagnostics_data["indicators"] = backtest_strategy_indicators
+    # Expose to the caller through non-API.
+    # Don't serialise this in grid search to make it faster/save space
+    if not execution_context.grid_search:
+        diagnostics_data["indicators"] = backtest_strategy_indicators
 
     return setup.state, backtest_universe, diagnostics_data
 
@@ -678,6 +687,7 @@ def run_backtest_inline(
     strategy_logging=False,
     parameters: Type | StrategyParameters | None = None,
     mode: ExecutionMode = ExecutionMode.backtesting,
+    max_workers=8,
 ) -> Tuple[State, TradingStrategyUniverse, dict]:
     """Run backtests for given decide_trades and create_trading_universe functions.
 
@@ -778,6 +788,11 @@ def run_backtest_inline(
         Allows using the same parameter structure for single backtest runs and gridtesting.
 
         See :py:class:`tradeexecutor.strategy.parameters.StrategyParameters`.
+
+    :param max_workers:
+        Maximum number of worker processes to use to calculate indicators.
+
+        Set to `1` to disable multiprocessing / debug.
 
     :return:
         tuple (State of a completely executed strategy, trading strategy universe, debug dump dict)
@@ -914,6 +929,7 @@ def run_backtest_inline(
         minimum_data_lookback_range=minimum_data_lookback_range,
         parameters=parameters,
         mode=mode,
+        max_workers=max_workers,
     )
 
     state, universe, debug_dump = run_backtest(backtest_setup, client, allow_missing_fees=True)

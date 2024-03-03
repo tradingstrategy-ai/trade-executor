@@ -682,6 +682,7 @@ def calculate_indicators(
     remaining: set[IndicatorKey],
     max_workers=8,
     label: str | None = None,
+    verbose=True,
 ) -> IndicatorResultMap:
     """Calculate indicators for which we do not have cached data yet.
 
@@ -694,6 +695,9 @@ def calculate_indicators(
 
     :param remaining:
         Remaining indicator combinations for which we do not have a cached rresult
+
+    :param verbose:
+        Stdout user printing with helpful messages.
     """
 
     assert isinstance(execution_context, ExecutionContext), f"Expected ExecutionContext, got {type(execution_context)}"
@@ -799,7 +803,7 @@ def calculate_and_load_indicators(
     create_indicators: CreateIndicatorsProtocol | None = None,
     max_workers=8,
     max_readers=8,
-    cache_warmup_only=False,
+    verbose=True,
 ) -> IndicatorResultMap:
     """Precalculate all indicators.
 
@@ -812,6 +816,8 @@ def calculate_and_load_indicators(
     :param cache_warmup_only:
         Only fill the disk cache, do not load results in the memory.
 
+    :param verbose:
+        Stdout printing with heplful messages to the user
     """
 
     assert create_indicators or indicators, "You must give either create_indicators or indicators argument"
@@ -831,6 +837,10 @@ def calculate_and_load_indicators(
     for key in cached.keys():
         # Check we keyed this right
         assert key in all_combinations, f"Loaded a cached result {key} is not in part of the all combinations we expected"
+
+    if verbose:
+        if len(all_combinations) > 0:
+            print(f"Using indicator cache {storage.get_universe_cache_path()}")
 
     calculation_needed = all_combinations - set(cached.keys())
     calculated = calculate_indicators(
