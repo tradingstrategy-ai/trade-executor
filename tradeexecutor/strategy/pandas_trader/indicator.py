@@ -227,7 +227,15 @@ class IndicatorKey:
             slug = self.pair.get_ticker()
         else:
             slug = "universe"
-        parameters = ",".join([f"{k}={v}" for k, v in self.definition.parameters.items()])
+
+        def norm_value(v):
+            if isinstance(v, enum.Enum):
+                v = str(v.value)
+            else:
+                v = str(v)
+            return v
+
+        parameters = ",".join([f"{k}={norm_value(v)}" for k, v in self.definition.parameters.items()])
         return f"{self.definition.name}({parameters})-{slug}"
 
 
