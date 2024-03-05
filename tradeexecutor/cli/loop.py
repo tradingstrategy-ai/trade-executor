@@ -935,7 +935,10 @@ class ExecutionLoop:
         # Validate the backtest state at the end.
         # We want to avoid situation where we have stored
         # non-serialisable types in the state
-        validate_state_serialisation(state)
+        if not self.execution_context.grid_search:
+            # Save time in grid seach of not doing unnecessary validation
+            # (Very unlikely to break)
+            validate_state_serialisation(state)
 
         return self.debug_dump_state
 

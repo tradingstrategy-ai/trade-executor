@@ -119,6 +119,7 @@ class StrategyInputIndicators:
         column: str | None = None,
         pair: TradingPairIdentifier | HumanReadableTradingPairDescription | None = None,
         index: int = -1,
+        clock_shift: pd.Timedelta = pd.Timedelta(hours=0),
     ) -> float | None:
         """Read the available value of an indicator.
 
@@ -194,6 +195,9 @@ class StrategyInputIndicators:
             - `-2` is the item before previous time frame (the day before yesterday).
             - `0` is looking to the future (the value at the end of the current day that has not yet passed)
 
+        :param clock_shift:
+            Used in time-shifted backtesting.
+
         :return:
             The latest available indicator value.
 
@@ -206,7 +210,7 @@ class StrategyInputIndicators:
 
         ts = self.timestamp
         time_frame = _calculate_and_cache_candle_width(series.index)
-        shifted_ts = ts + time_frame * index
+        shifted_ts = ts + time_frame * index + clock_shift
 
         try:
             value = series[shifted_ts]
