@@ -343,6 +343,13 @@ def test_basic_summary_statistics(
     assert summary.sharpe_ratio == pytest.approx(-0.16440603545590504, rel=APPROX_REL)
     assert summary.sortino_ratio == pytest.approx(-0.23988078508533023, rel=APPROX_REL)
     assert summary.profit_factor == pytest.approx(0.9754583954173234, rel=APPROX_REL)
+    assert summary.average_duration_between_positions == pd.Timedelta('17 days 09:36:00')
+    assert summary.average_position_frequency == pytest.approx(0.051643192488262914)
+    assert summary.average_interest_paid_usd == pytest.approx(0.0, rel=APPROX_REL)
+    assert summary.max_interest_paid_usd == pytest.approx(0.0, rel=APPROX_REL)
+    assert summary.min_interest_paid_usd == pytest.approx(0.0, rel=APPROX_REL)
+    assert summary.total_interest_paid_usd == pytest.approx(0.0, rel=APPROX_REL)
+    assert summary.median_interest_paid_usd == pytest.approx(0.0, rel=APPROX_REL)
 
 
 def test_compounding_formulas(
