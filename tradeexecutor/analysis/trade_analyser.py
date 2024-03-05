@@ -344,6 +344,11 @@ class TradeSummary:
             "Biggest losing position %": None,
             "Average duration of winning positions": None,
             "Average duration of losing positions": None,
+            "Average duration between position openings": None,
+            "Average positions per day": None,
+            "Average interest paid": None,
+            "Median interest paid": None,
+            "Total interest paid": None, 
             "Average bars of winning positions": None,
             "Average bars of losing positions": None,
             "LP fees paid": "https://tradingstrategy.ai/glossary/liquidity-provider",
@@ -901,7 +906,7 @@ class TradeAnalysis:
         median_interest_paid_usd = func_check(interest_paid_usd, median)
         max_interest_paid_usd = func_check(interest_paid_usd, max)
         min_interest_paid_usd = func_check(interest_paid_usd, min)
-        average_duration_between_positions = pd.to_timedelta(durations_between_positions).mean()
+        average_duration_between_positions = pd.to_timedelta(durations_between_positions).mean() if len(durations_between_positions) > 0 else datetime.timedelta(0)
 
         biggest_winning_trade_pc = func_check(winning_trades, max)
         biggest_losing_trade_pc = func_check(losing_trades, min)
