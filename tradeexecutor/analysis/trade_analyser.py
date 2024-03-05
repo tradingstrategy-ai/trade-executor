@@ -91,11 +91,6 @@ class TradeSummary:
     average_losing_trade_loss_pc: Optional[float]
     biggest_winning_trade_pc: Optional[float]
     biggest_losing_trade_pc: Optional[float]
-    average_interest_paid_usd: Optional[USDollarPrice]
-    total_interest_paid_usd: Optional[USDollarPrice]
-    median_interest_paid_usd: Optional[USDollarPrice]
-    max_interest_paid_usd: Optional[USDollarPrice]
-    min_interest_paid_usd: Optional[USDollarPrice]
 
     average_duration_of_winning_trades: datetime.timedelta = field(metadata=config(
         encoder=json_encode_timedelta,
@@ -105,11 +100,6 @@ class TradeSummary:
         encoder=json_encode_timedelta,
         decoder=json_decode_timedelta,
     ))  # position
-    average_duration_between_positions: Optional[datetime.timedelta] = field(metadata=config(
-        encoder=json_encode_timedelta,
-        decoder=json_decode_timedelta,
-    ))
-    average_position_frequency: Optional[datetime.timedelta] = field(init = False)
     time_bucket: Optional[TimeBucket] = None
 
     # these stats calculate in post-init, so init=False
@@ -184,6 +174,15 @@ class TradeSummary:
 
     #: Profit in open positions at the end
     unrealised_profit: Optional[USDollarAmount] = None
+
+    average_interest_paid_usd: Optional[USDollarPrice] = None
+    total_interest_paid_usd: Optional[USDollarPrice] = None
+    median_interest_paid_usd: Optional[USDollarPrice] = None
+    max_interest_paid_usd: Optional[USDollarPrice] = None
+    min_interest_paid_usd: Optional[USDollarPrice] = None
+
+    average_duration_between_positions: Optional[datetime.timedelta] = None
+    average_position_frequency: Optional[datetime.timedelta] = None
 
     def __post_init__(self):
 
