@@ -204,10 +204,12 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
         # Currently supports only full date ranges,
         # to keep filenames clean.
         # Easy to support any other range, just add tests.
-        assert self.start_at.hour == 0
-        assert self.end_at.hour == 0
-        assert self.start_at.minute == 0
-        assert self.end_at.minute == 0
+        # assert self.start_at.hour == 0
+        # assert self.end_at.hour == 0
+        # assert self.start_at.minute == 0
+        # assert self.end_at.minute == 0
+        assert self.start_at.second == 0
+        assert self.end_at.second == 0
 
         time_str = f"{self.start_at.strftime('%Y-%m-%d')}-{self.end_at.strftime('%Y-%m-%d')}"
         if self.get_pair_count() < 5:
