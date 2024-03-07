@@ -90,10 +90,9 @@ class TradeSummary:
     ))
 
     average_winning_trade_profit_pc: Optional[float]  # position
-    average_losing_trade_loss_pc: Optional[float]  # position
-    biggest_winning_trade_pc: Optional[float]  # position
-    biggest_losing_trade_pc: Optional[float]  # position
-
+    average_losing_trade_loss_pc: Optional[float]
+    biggest_winning_trade_pc: Optional[float]
+    biggest_losing_trade_pc: Optional[float]
 
     average_duration_of_winning_trades: datetime.timedelta = field(metadata=config(
         encoder=json_encode_timedelta,
@@ -178,6 +177,15 @@ class TradeSummary:
     #: Profit in open positions at the end
     unrealised_profit: Optional[USDollarAmount] = None
 
+    average_interest_paid_usd: Optional[USDollarPrice] = None
+    total_interest_paid_usd: Optional[USDollarPrice] = None
+    median_interest_paid_usd: Optional[USDollarPrice] = None
+    max_interest_paid_usd: Optional[USDollarPrice] = None
+    min_interest_paid_usd: Optional[USDollarPrice] = None
+
+    average_duration_between_positions: Optional[datetime.timedelta] = None
+    average_position_frequency: Optional[datetime.timedelta] = None
+
     def __post_init__(self):
 
         self.total_positions = self.won + self.lost + self.zero_loss
@@ -197,6 +205,9 @@ class TradeSummary:
 
         self.winning_take_profits_percent = calculate_percentage(self.winning_take_profits, self.take_profits)
         self.losing_take_profits_percent = calculate_percentage(self.losing_take_profits, self.take_profits)
+
+        days_as_decimal = self.duration.total_seconds() / (60 * 60 * 24)
+        self.average_position_frequency = self.total_positions / days_as_decimal if days_as_decimal else 0
 
     def get_trading_core_metrics(self) -> Dict[str, str]:
         """Get metrics displayed on a equity curve benchmark tooltip.
@@ -254,6 +265,11 @@ class TradeSummary:
             "Biggest losing position %": as_percent(self.biggest_losing_trade_pc),
             "Average duration of winning positions": self.format_duration(self.average_duration_of_winning_trades),
             "Average duration of losing positions": self.format_duration(self.average_duration_of_losing_trades),
+            "Average duration between position openings": self.format_duration(self.average_duration_between_positions),
+            "Average positions per day": as_decimal(self.average_position_frequency),
+            "Average interest paid": as_dollar(self.average_interest_paid_usd),
+            "Median interest paid": as_dollar(self.median_interest_paid_usd),
+            "Total interest paid": as_dollar(self.total_interest_paid_usd),
         }
 
         if self.time_bucket:
@@ -329,6 +345,11 @@ class TradeSummary:
             "Biggest losing position %": None,
             "Average duration of winning positions": None,
             "Average duration of losing positions": None,
+            "Average duration between position openings": None,
+            "Average positions per day": None,
+            "Average interest paid": None,
+            "Median interest paid": None,
+            "Total interest paid": None, 
             "Average bars of winning positions": None,
             "Average bars of losing positions": None,
             "LP fees paid": "https://tradingstrategy.ai/glossary/liquidity-provider",
@@ -723,6 +744,8 @@ class TradeAnalysis:
         zero_loss_trades_duration = []
         loss_risk_at_open_pc = []
         realised_losses = []
+        interest_paid_usd = []
+        durations_between_positions = []
         biggest_winning_trade_pc = None
         biggest_losing_trade_pc = None
         average_duration_of_losing_trades = datetime.timedelta(0)
@@ -756,6 +779,9 @@ class TradeAnalysis:
         winning_take_profits = 0
         losing_take_profits = 0
 
+        # last_position_opened_at = state.backtest_data.start_at if state.backtest_data else state.created_at
+        last_position_opened_at = None
+
         for pair_id, position in positions:
 
             total_trades += len(position.trades)
@@ -772,9 +798,14 @@ class TradeAnalysis:
                 loss_risk_at_open_pc.append(capital_tied_at_open_pct)
 
             lp_fees_paid += position.get_total_lp_fees_paid() or 0
+            interest_paid_usd.append(position.get_repaid_interest())
 
             for t in position.trades.values():
                 trade_volume += t.get_value()
+            
+            if last_position_opened_at is not None:
+                durations_between_positions.append(position.opened_at - last_position_opened_at) 
+            last_position_opened_at = position.opened_at
 
             if position.is_open():
                 open_value += position.get_value()
@@ -870,11 +901,15 @@ class TradeAnalysis:
 
         max_realised_loss = func_check(realised_losses, min)
         avg_realised_risk = func_check(realised_losses, avg)
-
         max_loss_risk_at_open_pc = func_check(loss_risk_at_open_pc, max)
+        
+        average_interest_paid_usd = func_check(interest_paid_usd, avg)
+        median_interest_paid_usd = func_check(interest_paid_usd, median)
+        max_interest_paid_usd = func_check(interest_paid_usd, max)
+        min_interest_paid_usd = func_check(interest_paid_usd, min)
+        average_duration_between_positions = pd.to_timedelta(durations_between_positions).mean() if len(durations_between_positions) > 0 else datetime.timedelta(0)
 
         biggest_winning_trade_pc = func_check(winning_trades, max)
-
         biggest_losing_trade_pc = func_check(losing_trades, min)
 
         all_durations = winning_trades_duration + losing_trades_duration + zero_loss_trades_duration
@@ -886,6 +921,8 @@ class TradeAnalysis:
             average_duration_of_all_trades = get_avg_trade_duration(all_durations)
 
         lp_fees_average_pc = lp_fees_paid / trade_volume if trade_volume else 0
+
+        total_interest_paid_usd = sum(interest_paid_usd) if interest_paid_usd else 0
 
         return TradeSummary(
             won=won,
@@ -910,7 +947,13 @@ class TradeAnalysis:
             average_duration_of_losing_trades=average_duration_of_losing_trades,
             average_duration_of_zero_loss_trades=average_duration_of_zero_loss_trades,
             average_duration_of_all_trades=average_duration_of_all_trades,
+            average_duration_between_positions=average_duration_between_positions,
             average_trade=average_trade,
+            average_interest_paid_usd=average_interest_paid_usd,
+            median_interest_paid_usd=median_interest_paid_usd,
+            max_interest_paid_usd=max_interest_paid_usd,
+            min_interest_paid_usd=min_interest_paid_usd,
+            total_interest_paid_usd=total_interest_paid_usd,
             median_trade=median_trade,
             median_win=median_win,
             median_loss=median_loss,
