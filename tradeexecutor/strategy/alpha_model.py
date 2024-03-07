@@ -443,7 +443,7 @@ class AlphaModel:
     def get_debug_print(self) -> str:
         """Present the alpha model in a format suitable for the console."""
         buf = StringIO()
-        print(f"Alpha model for {self.timestamp}, for USD {self.investable_equity:,} investments", file=buf)
+        print(f"Alpha model for {self.timestamp}, for USD {self.investable_equity:,} equity", file=buf)
         for idx, signal in enumerate(self.get_signals_sorted_by_weight(), start=1):
             print(f"   Signal #{idx} {signal}", file=buf)
         return buf.getvalue()
@@ -720,6 +720,7 @@ class AlphaModel:
         position_manager: PositionManager,
         min_trade_threshold: USDollarAmount = 10.0,
         use_spot_for_long=True,
+        buy_sell_fee_fix_percent=0.02,
     ) -> List[TradeExecution]:
         """Generate the trades that will rebalance the portfolio.
 
@@ -748,6 +749,24 @@ class AlphaModel:
             If we go long a pair, use spot.
 
             If set False, use leveraged long.
+
+        :param buy_sell_fee_fix_percent:
+            Applied to `min_trade_threshold` when signal increases.
+
+            There is a bug scenario where buy and sell are almost the same, but we still run out of cash due to the trading fees,
+            and this sell trade going below the threshold, while buy does not. We work around this by having a bit % higher
+            threshold for buys.
+
+            Example scenario:
+
+            .. code-block:: text
+
+                min_trade_threshold = 500
+
+                Alpha model for 2020-02-05 00:00:00, for USD 15,171.51501572989 investments
+                   Signal #1 Signal #226 pair:ETH-USDT old weight:0.6115 old value:9,275.537458605508 raw signal:32.2197 normalised weight:0.6444 new value:9,776.423836112543 adjust:500.8863775070349
+                   Signal #2 Signal #225 pair:BTC-USDT old weight:0.3885 old value:5,893.356489256234 raw signal:17.7803 normalised weight:0.3556 new value:5,395.091179617347 adjust:-498.26530963888763
+
 
         :return:
             List of trades we need to execute to reach the target portfolio.
@@ -802,9 +821,23 @@ class AlphaModel:
                         signal.normalised_weight,
                         dollar_diff)
 
-            if abs(dollar_diff) < min_trade_threshold and not signal.is_flipping():
+            if signal.signal > signal.old_weight:
+                # We work around some cash management issues of different
+                # threshold cut outs for buys and sells by applying
+                # a higher threshold for buys
+                applied_min_trade_threshold = min_trade_threshold * (1+buy_sell_fee_fix_percent)
+            else:
+                applied_min_trade_threshold = min_trade_threshold
+
+            if abs(dollar_diff) < applied_min_trade_threshold and not signal.is_flipping():
                 # The value diff in the rebalance is so small that we do not care about it
-                logger.info("Not doing anything, diff %f (value %f) below trade threshold %f", dollar_diff, value, min_trade_threshold)
+                logger.info(
+                    "Not doing anything, diff %f (value %f) below trade threshold %f (applied %f)",
+                    dollar_diff,
+                    value,
+                    min_trade_threshold,
+                    applied_min_trade_threshold
+                )
                 signal.position_adjust_ignored = True
             else:
 
