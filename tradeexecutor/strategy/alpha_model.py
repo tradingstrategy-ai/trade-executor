@@ -784,6 +784,24 @@ class AlphaModel:
             len(self.signals),
         )
 
+        #
+        # Would the portfolio value change enough to justify the rebalance.
+        # We calculate this by taking the highest adjust,
+        # then either ignore or pass all trades.
+        # We cannot ignore individual trades below threshold value,
+        # because otherwise buys will fail if their corresponding sells are not triggered.
+        #
+        max_diff = max((abs(s.position_adjust_usd) for s in self.iterate_signals()), default=0)
+        if max_diff < min_trade_threshold:
+            logger.info(
+                "Total adjust difference is %f USD, our threshold is %f USD, ignoring all the trades",
+                max_diff,
+                min_trade_threshold,
+            )
+            for s in self.iterate_signals():
+                s.position_adjust_ignored = True
+            return []
+
         #  TODO: Break this massive for if spagetti to sub-functions
         for signal in self.iterate_signals():
 
@@ -821,24 +839,19 @@ class AlphaModel:
                         signal.normalised_weight,
                         dollar_diff)
 
-            if signal.position_adjust_usd > 0:
-                # We work around some cash management issues of different
-                # threshold cut outs for buys and sells by applying
-                # a higher threshold for buys
-                applied_min_trade_threshold = min_trade_threshold * (1+buy_sell_fee_fix_percent)
-            else:
-                applied_min_trade_threshold = min_trade_threshold
-
-            if abs(dollar_diff) < applied_min_trade_threshold and not signal.is_flipping():
-                # The value diff in the rebalance is so small that we do not care about it
-                logger.info(
-                    "Not doing anything, diff %f (value %f) below trade threshold %f (applied %f)",
-                    dollar_diff,
-                    value,
-                    min_trade_threshold,
-                    applied_min_trade_threshold
-                )
-                signal.position_adjust_ignored = True
+            if False:
+                pass
+                # Old position adjust threshold trigger - has problems with certain scenarios
+                # if abs(dollar_diff) < applied_min_trade_threshold and not signal.is_flipping():
+                #     # The value diff in the rebalance is so small that we do not care about it
+                #     logger.info(
+                #         "Not doing anything, diff %f (value %f) below trade threshold %f (applied %f)",
+                #         dollar_diff,
+                #         value,
+                #         min_trade_threshold,
+                #         applied_min_trade_threshold
+                #     )
+            #    signal.position_adjust_ignored = True
             else:
 
                 if signal.normalised_weight < self.close_position_weight_epsilon:
@@ -854,6 +867,7 @@ class AlphaModel:
                         signal.position_id = current_position.position_id
                     else:
                         logger.info("Zero signal, but no position to close")
+                        signal.position_adjust_ignored = True
                 else:
                     # Signal is switching between short/long,
                     # so close any old position
