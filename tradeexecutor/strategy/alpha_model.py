@@ -720,7 +720,7 @@ class AlphaModel:
         position_manager: PositionManager,
         min_trade_threshold: USDollarAmount = 10.0,
         use_spot_for_long=True,
-        buy_sell_fee_fix_percent=0.02,
+        buy_sell_fee_fix_percent=0.05,
     ) -> List[TradeExecution]:
         """Generate the trades that will rebalance the portfolio.
 
@@ -821,7 +821,7 @@ class AlphaModel:
                         signal.normalised_weight,
                         dollar_diff)
 
-            if signal.signal > signal.old_weight:
+            if signal.position_adjust_usd > 0:
                 # We work around some cash management issues of different
                 # threshold cut outs for buys and sells by applying
                 # a higher threshold for buys
