@@ -720,7 +720,6 @@ class AlphaModel:
         position_manager: PositionManager,
         min_trade_threshold: USDollarAmount = 10.0,
         use_spot_for_long=True,
-        buy_sell_fee_fix_percent=0.05,
     ) -> List[TradeExecution]:
         """Generate the trades that will rebalance the portfolio.
 
@@ -750,24 +749,6 @@ class AlphaModel:
 
             If set False, use leveraged long.
 
-        :param buy_sell_fee_fix_percent:
-            Applied to `min_trade_threshold` when signal increases.
-
-            There is a bug scenario where buy and sell are almost the same, but we still run out of cash due to the trading fees,
-            and this sell trade going below the threshold, while buy does not. We work around this by having a bit % higher
-            threshold for buys.
-
-            Example scenario:
-
-            .. code-block:: text
-
-                min_trade_threshold = 500
-
-                Alpha model for 2020-02-05 00:00:00, for USD 15,171.51501572989 investments
-                   Signal #1 Signal #226 pair:ETH-USDT old weight:0.6115 old value:9,275.537458605508 raw signal:32.2197 normalised weight:0.6444 new value:9,776.423836112543 adjust:500.8863775070349
-                   Signal #2 Signal #225 pair:BTC-USDT old weight:0.3885 old value:5,893.356489256234 raw signal:17.7803 normalised weight:0.3556 new value:5,395.091179617347 adjust:-498.26530963888763
-
-
         :return:
             List of trades we need to execute to reach the target portfolio.
             The sells are sorted always before buys.
@@ -791,6 +772,13 @@ class AlphaModel:
         # We cannot ignore individual trades below threshold value,
         # because otherwise buys will fail if their corresponding sells are not triggered.
         #
+        #
+        # Example scenario where we need to look rebalances as whole:
+        #
+        # Alpha model for 2020-02-05 00:00:00, for USD 15,171.51501572989 investments
+        #    Signal #1 Signal #226 pair:ETH-USDT old weight:0.6115 old value:9,275.537458605508 raw signal:32.2197 normalised weight:0.6444 new value:9,776.423836112543 adjust:500.8863775070349
+        #    Signal #2 Signal #225 pair:BTC-USDT old weight:0.3885 old value:5,893.356489256234 raw signal:17.7803 normalised weight:0.3556 new value:5,395.091179617347 adjust:-498.26530963888763
+
         max_diff = max((abs(s.position_adjust_usd) for s in self.iterate_signals()), default=0)
         if max_diff < min_trade_threshold:
             logger.info(
