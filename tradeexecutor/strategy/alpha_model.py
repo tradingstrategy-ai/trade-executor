@@ -443,7 +443,7 @@ class AlphaModel:
     def get_debug_print(self) -> str:
         """Present the alpha model in a format suitable for the console."""
         buf = StringIO()
-        print(f"Alpha model for {self.timestamp}, for USD {self.investable_equity:,} investments", file=buf)
+        print(f"Alpha model for {self.timestamp}, for USD {self.investable_equity:,} equity", file=buf)
         for idx, signal in enumerate(self.get_signals_sorted_by_weight(), start=1):
             print(f"   Signal #{idx} {signal}", file=buf)
         return buf.getvalue()
@@ -765,6 +765,31 @@ class AlphaModel:
             len(self.signals),
         )
 
+        #
+        # Would the portfolio value change enough to justify the rebalance.
+        # We calculate this by taking the highest adjust,
+        # then either ignore or pass all trades.
+        # We cannot ignore individual trades below threshold value,
+        # because otherwise buys will fail if their corresponding sells are not triggered.
+        #
+        #
+        # Example scenario where we need to look rebalances as whole:
+        #
+        # Alpha model for 2020-02-05 00:00:00, for USD 15,171.51501572989 investments
+        #    Signal #1 Signal #226 pair:ETH-USDT old weight:0.6115 old value:9,275.537458605508 raw signal:32.2197 normalised weight:0.6444 new value:9,776.423836112543 adjust:500.8863775070349
+        #    Signal #2 Signal #225 pair:BTC-USDT old weight:0.3885 old value:5,893.356489256234 raw signal:17.7803 normalised weight:0.3556 new value:5,395.091179617347 adjust:-498.26530963888763
+
+        max_diff = max((abs(s.position_adjust_usd) for s in self.iterate_signals()), default=0)
+        if max_diff < min_trade_threshold:
+            logger.info(
+                "Total adjust difference is %f USD, our threshold is %f USD, ignoring all the trades",
+                max_diff,
+                min_trade_threshold,
+            )
+            for s in self.iterate_signals():
+                s.position_adjust_ignored = True
+            return []
+
         #  TODO: Break this massive for if spagetti to sub-functions
         for signal in self.iterate_signals():
 
@@ -802,10 +827,19 @@ class AlphaModel:
                         signal.normalised_weight,
                         dollar_diff)
 
-            if abs(dollar_diff) < min_trade_threshold and not signal.is_flipping():
-                # The value diff in the rebalance is so small that we do not care about it
-                logger.info("Not doing anything, diff %f (value %f) below trade threshold %f", dollar_diff, value, min_trade_threshold)
-                signal.position_adjust_ignored = True
+            if False:
+                pass
+                # Old position adjust threshold trigger - has problems with certain scenarios
+                # if abs(dollar_diff) < applied_min_trade_threshold and not signal.is_flipping():
+                #     # The value diff in the rebalance is so small that we do not care about it
+                #     logger.info(
+                #         "Not doing anything, diff %f (value %f) below trade threshold %f (applied %f)",
+                #         dollar_diff,
+                #         value,
+                #         min_trade_threshold,
+                #         applied_min_trade_threshold
+                #     )
+            #    signal.position_adjust_ignored = True
             else:
 
                 if signal.normalised_weight < self.close_position_weight_epsilon:
@@ -821,6 +855,7 @@ class AlphaModel:
                         signal.position_id = current_position.position_id
                     else:
                         logger.info("Zero signal, but no position to close")
+                        signal.position_adjust_ignored = True
                 else:
                     # Signal is switching between short/long,
                     # so close any old position

@@ -185,6 +185,13 @@ class GridCombination:
     def __eq__(self, other):
         return self.parameters == other.parameters
 
+    def __repr__(self):
+        buf = f"<GridCombination #{self.index}\n"
+        for p in self.parameters:
+            buf += f"   {p.name}={p.value}\n"
+        buf += ">"
+        return buf
+
     @property
     def searchable_parameters(self) -> List[GridParameter]:
         """Get all parameters that are searchable.
@@ -922,27 +929,31 @@ def run_grid_search_backtest(
         routing_model = BacktestRoutingIgnoredModel(universe.get_reserve_asset().address)
 
     # Run the test
-    state, universe, debug_dump = run_backtest_inline(
-        name=name,
-        start_at=start_at.to_pydatetime(),
-        end_at=end_at.to_pydatetime(),
-        client=None,
-        cycle_duration=cycle_duration,
-        decide_trades=decide_trades,
-        create_trading_universe=None,
-        create_indicators=create_indicators,
-        indicator_combinations=combination.indicators,
-        universe=universe,
-        initial_deposit=initial_deposit,
-        reserve_currency=None,
-        trade_routing=TradeRouting.user_supplied_routing_model,
-        routing_model=routing_model,
-        allow_missing_fees=True,
-        data_delay_tolerance=data_delay_tolerance,
-        engine_version=trading_strategy_engine_version,
-        parameters=parameters,
-        indicator_storage=indicator_storage,
-    )
+    try:
+        state, universe, debug_dump = run_backtest_inline(
+            name=name,
+            start_at=start_at.to_pydatetime(),
+            end_at=end_at.to_pydatetime(),
+            client=None,
+            cycle_duration=cycle_duration,
+            decide_trades=decide_trades,
+            create_trading_universe=None,
+            create_indicators=create_indicators,
+            indicator_combinations=combination.indicators,
+            universe=universe,
+            initial_deposit=initial_deposit,
+            reserve_currency=None,
+            trade_routing=TradeRouting.user_supplied_routing_model,
+            routing_model=routing_model,
+            allow_missing_fees=True,
+            data_delay_tolerance=data_delay_tolerance,
+            engine_version=trading_strategy_engine_version,
+            parameters=parameters,
+            indicator_storage=indicator_storage,
+        )
+    except Exception as e:
+        # Report to the notebook which of the grid search combinations is a problematic one
+        raise RuntimeError(f"Running a grid search combination failed:\n{combination}") from e
 
     analysis = build_trade_analysis(state.portfolio)
     equity = calculate_equity_curve(state)

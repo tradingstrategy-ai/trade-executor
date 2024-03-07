@@ -162,14 +162,22 @@ def visualise_advanced_metrics(
         If this series as `series.attrs["name"]` name set, it is used as a title instead of "Benchmark".
 
     :return:
-        A DataFrame ready to display
+        A DataFrame ready to display a table of comparable merics.
+
+        Return empty DataFrame if `returns` is all zeroes.
 
     """
+
     with warnings.catch_warnings():
         warnings.simplefilter(action='ignore', category=FutureWarning)  # yfinance: The default dtype for empty Series will be 'object' instead of 'float64' in a future version. Specify a dtype explicitly to silence this warning.
         warnings.simplefilter(action='ignore', category=RuntimeWarning)   # Divided by Nan
         qs = import_quantstats_wrapped()
         metrics = qs.reports.metrics
+
+        if not returns.any():
+            # Cannot calculate any metrics, because
+            # there has not been any trades (all returns are zero)
+            return pd.DataFrame()
 
         # Internal sets the flag for percent output
         df = metrics(
