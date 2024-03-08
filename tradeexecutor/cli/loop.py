@@ -942,6 +942,9 @@ class ExecutionLoop:
 
             cycle += 1
 
+        if progress_bar is not None:
+            progress_bar.close()
+
         # Validate the backtest state at the end.
         # We want to avoid situation where we have stored
         # non-serialisable types in the state
