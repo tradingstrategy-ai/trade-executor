@@ -847,6 +847,7 @@ class ExecutionLoop:
 
         def set_progress_bar_postfix(state, progress_bar, trade_count, cycle, take_profits, stop_losses):
             """Set the values for the progress bar."""
+            assert progress_bar is not None
             rolling_profit = state.stats.get_naive_rolling_pnl_pct()
             progress_bar.set_postfix({
                 "trades": trade_count,
@@ -856,81 +857,90 @@ class ExecutionLoop:
                 "PnL": f"{rolling_profit*100:.2f}%",
             })
 
-        with tqdm(total=seconds) as progress_bar:
+        if not self.execution_context.grid_search:
+            # In grid search do not display
+            # progress bar for individual backtests
+            progress_bar = tqdm(total=seconds)
+        else:
+            # Grid search, do not do progress bar for this backtest
+            progress_bar = None
 
-            while True:
-                ts = snap_to_previous_tick(ts, backtest_step)
+        while True:
+            ts = snap_to_previous_tick(ts, backtest_step)
 
-                # Bump progress bar forward and update backtest status
-                if datetime.datetime.utcnow() - last_progress_update > progress_update_threshold:
-                    friedly_ts = ts.strftime(ts_format)
-                    trade_count = len(list(state.portfolio.get_all_trades()))
+            # Bump progress bar forward and update backtest status
+            if datetime.datetime.utcnow() - last_progress_update > progress_update_threshold:
+                friedly_ts = ts.strftime(ts_format)
+                trade_count = len(list(state.portfolio.get_all_trades()))
+                if progress_bar:
                     progress_bar.set_description(f"Backtesting {self.name}, {friendly_start} - {friendly_end} at {friedly_ts} ({cycle_name})")
                     set_progress_bar_postfix(state, progress_bar, trade_count, cycle, take_profits, stop_losses)
-                    last_progress_update = datetime.datetime.utcnow()
-                    if last_update_ts:
-                        # Push update for the period
-                        passed_seconds = (ts - last_update_ts).total_seconds()
-                        progress_bar.update(int(passed_seconds))
-                    last_update_ts = ts
-
-                execution_test_hook.on_before_cycle(
-                    cycle,
-                    ts,
-                    state,
-                    self.sync_model,
-                )
-
-                # Decide trades and everything for this cycle
-                universe: TradingStrategyUniverse = self.tick(
-                    ts,
-                    backtest_step,
-                    state,
-                    cycle,
-                    live=False,
-                    strategy_cycle_timestamp=ts,
-                    existing_universe=universe,
-                    indicators=self.backtest_strategy_indicators,
-                )
-
-                # Revalue our portfolio
-                self.update_position_valuations(ts, state, universe, self.execution_context.mode)
-
-                # Check for termination in integration testing.
-                # TODO: Get rid of this and only support date ranges to run tests
-                if self.max_cycles is not None:
-                    if cycle >= self.max_cycles:
-                        logger.info("Max backtest cycles reached")
-                        break
-
-                # Backtesting
-                next_tick = snap_to_next_tick(ts + datetime.timedelta(seconds=1), backtest_step, self.tick_offset)
-
-                if next_tick >= self.backtest_end:
-                    # Backteting has ended
-                    logger.info("Terminating backtesting. Backtest end %s, current timestamp %s", self.backtest_end, next_tick)
+                last_progress_update = datetime.datetime.utcnow()
+                if last_update_ts:
+                    # Push update for the period
                     passed_seconds = (ts - last_update_ts).total_seconds()
-                    set_progress_bar_postfix(state, progress_bar, trade_count, cycle, take_profits, stop_losses)
-                    progress_bar.update(int(passed_seconds))
+                    if progress_bar:
+                        progress_bar.update(int(passed_seconds))
+                last_update_ts = ts
+
+            execution_test_hook.on_before_cycle(
+                cycle,
+                ts,
+                state,
+                self.sync_model,
+            )
+
+            # Decide trades and everything for this cycle
+            universe: TradingStrategyUniverse = self.tick(
+                ts,
+                backtest_step,
+                state,
+                cycle,
+                live=False,
+                strategy_cycle_timestamp=ts,
+                existing_universe=universe,
+                indicators=self.backtest_strategy_indicators,
+            )
+
+            # Revalue our portfolio
+            self.update_position_valuations(ts, state, universe, self.execution_context.mode)
+
+            # Check for termination in integration testing.
+            # TODO: Get rid of this and only support date ranges to run tests
+            if self.max_cycles is not None:
+                if cycle >= self.max_cycles:
+                    logger.info("Max backtest cycles reached")
                     break
 
-                # If we have stop loss checks enabled on a separate price feed,
-                # run backtest stop loss checks until the next time
-                if universe.backtest_stop_loss_candles is not None:
-                    res = self.run_backtest_trigger_checks(
-                        ts,
-                        next_tick,
-                        state,
-                        universe,
-                    )
-                    take_profits += res[0]
-                    stop_losses += res[1]
+            # Backtesting
+            next_tick = snap_to_next_tick(ts + datetime.timedelta(seconds=1), backtest_step, self.tick_offset)
 
-                # Add some fuzziness to gacktesting timestamps
-                # TODO: Make this configurable - sub 1h strategies do not work
-                ts = next_tick + datetime.timedelta(minutes=random.randint(0, 4))
+            if next_tick >= self.backtest_end:
+                # Backteting has ended
+                logger.info("Terminating backtesting. Backtest end %s, current timestamp %s", self.backtest_end, next_tick)
+                passed_seconds = (ts - last_update_ts).total_seconds()
+                if progress_bar:
+                    set_progress_bar_postfix(state, progress_bar, trade_count, cycle, take_profits, stop_losses)
+                    progress_bar.update(int(passed_seconds))
+                break
 
-                cycle += 1
+            # If we have stop loss checks enabled on a separate price feed,
+            # run backtest stop loss checks until the next time
+            if universe.backtest_stop_loss_candles is not None:
+                res = self.run_backtest_trigger_checks(
+                    ts,
+                    next_tick,
+                    state,
+                    universe,
+                )
+                take_profits += res[0]
+                stop_losses += res[1]
+
+            # Add some fuzziness to gacktesting timestamps
+            # TODO: Make this configurable - sub 1h strategies do not work
+            ts = next_tick + datetime.timedelta(minutes=random.randint(0, 4))
+
+            cycle += 1
 
         # Validate the backtest state at the end.
         # We want to avoid situation where we have stored
