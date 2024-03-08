@@ -30,6 +30,8 @@ import numpy as np
 import pandas as pd
 import futureproof
 
+from tradingstrategy.client import Client
+
 try:
     from tqdm_loggable.auto import tqdm
 except ImportError:
@@ -1095,3 +1097,25 @@ def _handle_sigterm(*args):
     sys.exit(1)
 
 
+def get_grid_search_result_path(
+    notebook_name: str,
+) -> Path:
+    """Get a path where to store the grid seach results.
+
+    - Used in grid search notebooks
+
+    - Each notebook gets its own storage folder for grid search results somewhere
+
+    - Have some logic to get a persistent path in Datalore notebook environments
+
+    :param notebook_name:
+
+        The name of your notebook file.
+
+        E.g. "v19-candle-search".
+
+    """
+    assert type(notebook_name) == str
+    path = os.path.expanduser(f"~/.cache/trading-strategy/grid-search/{notebook_name}")
+    os.makedirs(path, exist_ok=True)
+    return Path(path)
