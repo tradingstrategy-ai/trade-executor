@@ -620,6 +620,7 @@ def load_indicators(
     indicator_set: IndicatorSet,
     all_combinations: set[IndicatorKey],
     max_readers=8,
+    show_progress=True,
 ) -> IndicatorResultMap:
     """Load cached indicators.
 
@@ -654,8 +655,12 @@ def load_indicators(
     label = indicator_set.get_label()
     key: IndicatorKey
 
-    with tqdm(total=len(task_args), desc=f"Reading cached indicators {label} for {strategy_universe.get_pair_count()} pairs, using {max_readers} threads") as progress_bar:
+    if show_progress:
+        progress_bar = tqdm(total=len(task_args), desc=f"Reading cached indicators {label} for {strategy_universe.get_pair_count()} pairs, using {max_readers} threads")
+    else:
+        progress_bar = None
 
+    try:
         if max_readers > 1:
             logger.info("Multi-thread reading")
 
@@ -671,7 +676,8 @@ def load_indicators(
                 key = result.indicator_key
                 assert key not in results
                 results[key] = result
-                progress_bar.update()
+                if progress_bar:
+                    progress_bar.update()
         else:
             logger.info("Single-thread reading")
             for result in itertools.starmap(_load_indicator_result, task_args):
@@ -679,7 +685,10 @@ def load_indicators(
                 assert key not in results
                 results[key] = result
 
-    return results
+        return results
+    finally:
+        if progress_bar:
+            progress_bar.close()
 
 
 def calculate_indicators(

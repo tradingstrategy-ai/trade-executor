@@ -250,6 +250,7 @@ class BacktestSetup:
             storage,
             available_indicators,
             self.indicator_combinations,
+            show_progress=False,  # Don't mess main grid search notebook progress bars
         )
 
         logger.info(
