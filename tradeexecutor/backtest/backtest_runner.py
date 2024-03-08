@@ -688,6 +688,7 @@ def run_backtest_inline(
     parameters: Type | StrategyParameters | None = None,
     mode: ExecutionMode = ExecutionMode.backtesting,
     max_workers=8,
+    grid_search=False,
 ) -> Tuple[State, TradingStrategyUniverse, dict]:
     """Run backtests for given decide_trades and create_trading_universe functions.
 
@@ -930,6 +931,7 @@ def run_backtest_inline(
         parameters=parameters,
         mode=mode,
         max_workers=max_workers,
+        grid_search=grid_search,
     )
 
     state, universe, debug_dump = run_backtest(backtest_setup, client, allow_missing_fees=True)
