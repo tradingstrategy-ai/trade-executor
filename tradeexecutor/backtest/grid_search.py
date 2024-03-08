@@ -952,6 +952,7 @@ def run_grid_search_backtest(
             engine_version=trading_strategy_engine_version,
             parameters=parameters,
             indicator_storage=indicator_storage,
+            grid_search=True,
         )
     except Exception as e:
         # Report to the notebook which of the grid search combinations is a problematic one
