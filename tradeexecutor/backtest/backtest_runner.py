@@ -115,7 +115,7 @@ class BacktestSetup:
 
     #: Is this backtest part a grid saerch
     #:
-    grid_search = False
+    grid_search: bool = False
 
     #: What's the execution mode of this backtest run
     #:
