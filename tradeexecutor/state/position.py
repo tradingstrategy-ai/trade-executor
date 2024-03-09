@@ -367,11 +367,11 @@ class TradingPosition(GenericPosition):
         This includes spot buy.
         """
         assert len(self.trades) > 0, "Cannot determine if position is long or short because there are no trades"
-        return self.get_first_trade().is_buy()
+        return self.pair.is_spot() or self.pair.is_long()
 
     def is_short(self) -> bool:
         """Is this position short on the underlying base asset."""
-        return not self.is_long()
+        return self.pair.is_short()
 
     def is_leverage(self) -> bool:
         """Is this leveraged/loan backed position."""
