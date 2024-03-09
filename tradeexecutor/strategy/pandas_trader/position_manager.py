@@ -965,12 +965,14 @@ class PositionManager:
         assert trade.closing
         return [trade]
 
-    def close_credit_supply_position(self,
-                       position: TradingPosition,
-                       quantity: float | Decimal | None = None,
-                       notes: Optional[str] = None,
-                       trade_type: TradeType = TradeType.rebalance,
-                       ) -> List[TradeExecution]:
+    def close_credit_supply_position(
+        self,
+        position: TradingPosition,
+        quantity: float | Decimal | None = None,
+        notes: Optional[str] = None,
+        trade_type: TradeType = TradeType.rebalance,
+        flags: Set[TradeFlag] | None = None,
+    ) -> List[TradeExecution]:
         """Close a credit supply position
 
         :param position:
@@ -1003,6 +1005,11 @@ class PositionManager:
         # TODO: Hardcoded USD exchange rate
         reserve_asset = self.strategy_universe.get_reserve_asset()
 
+        if not flags:
+            flags = set()
+
+        flags = {TradeFlag.close} | flags
+
         _, trade, _ = self.state.supply_credit(
             self.timestamp,
             pair,
@@ -1013,7 +1020,7 @@ class PositionManager:
             notes=notes,
             position=position,
             closing=True,
-            flags={TradeFlag.close},
+            flags=flags,
         )
         return [trade]
 
@@ -1172,7 +1179,11 @@ class PositionManager:
 
         position.stop_loss = stop_loss
 
-    def open_credit_supply_position_for_reserves(self, amount: USDollarAmount) -> List[TradeExecution]:
+    def open_credit_supply_position_for_reserves(
+        self,
+        amount: USDollarAmount,
+        flags: Set[TradeFlag] | None = None,
+    ) -> List[TradeExecution]:
         """Move reserve currency to a credit supply position.
 
         :param amount:
@@ -1182,7 +1193,13 @@ class PositionManager:
             List of trades that will open this credit position
         """
 
+        assert self.strategy_universe is not None, f"PositionManager.strategy_universe not set, data_universe is {self.data_universe}"
+
         lending_reserve_identifier = self.strategy_universe.get_credit_supply_pair()
+
+        if not flags:
+            flags = set()
+        flags = {TradeFlag.open} | flags
 
         _, trade, _ = self.state.supply_credit(
             self.timestamp,
@@ -1191,7 +1208,7 @@ class PositionManager:
             trade_type=TradeType.rebalance,
             reserve_currency=self.strategy_universe.get_reserve_asset(),
             collateral_asset_price=1.0,
-            flags={TradeFlag.open},
+            flags=flags,
         )
 
         return [trade]

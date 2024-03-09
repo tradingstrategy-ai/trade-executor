@@ -66,8 +66,9 @@ def perform_test_trade(
     pair: Optional[str] = shared_options.pair,
     all_pairs: bool = shared_options.all_pairs,
 
-    buy_only: bool = Option(None, "--buy-only", envvar="BUY_ONLY", help="Only perform the buy side of the test trade - leave position open."),
-    spot_only: bool = Option(None, "--spot-only", envvar="SPOT_ONLY", help="Perform spot trades only."),
+    buy_only: bool = Option(False, "--buy-only/--no-buy-only", help="Only perform the buy side of the test trade - leave position open."),
+    test_short: bool = Option(True, "--test-short/--no-test-short", help="Perform test short trades as well."),
+    test_credit_supply: bool = Option(True, "--test-credit-supply/--no-test-credit-supply", help="Perform test credit supply trades as well."),
 ):
     """Perform a small test swap.
 
@@ -191,7 +192,8 @@ def perform_test_trade(
                 routing_state,
                 pair=p,
                 buy_only=buy_only,
-                spot_only=spot_only,
+                test_short=test_short,
+                test_credit_supply=test_credit_supply,
             )
     else:
 
@@ -206,6 +208,8 @@ def perform_test_trade(
             routing_state,
             pair=pair,
             buy_only=buy_only,
+            test_short=test_short,
+            test_credit_supply=test_credit_supply,
         )
 
     # Store the test trade data in the strategy history

@@ -312,7 +312,7 @@ class TradingPosition(GenericPosition):
         return not self.is_open()
 
     def is_test(self) -> bool:
-        """The position was openedd and closed by perform-test-trade command.
+        """The position was opened and closed by perform-test-trade command.
 
         The trade and the position should not be counted in the statistics.
         """

@@ -41,7 +41,8 @@ def make_test_trade(
     amount=Decimal("1.0"),
     pair: HumanReadableTradingPairDescription | None = None,
     buy_only: bool = False,
-    spot_only: bool = False,
+    test_short: bool = True,
+    test_credit_supply: bool = True,
 ):
     """Perform a test trade.
 
@@ -150,9 +151,10 @@ def make_test_trade(
     # Open the test position only if there isn't position already open
     # on the previous run
 
+    buy_trade = open_short_trade = close_short_trade = open_credit_supply_trade = close_credit_supply_trade = None
+
     position = state.portfolio.get_position_by_trading_pair(pair)
 
-    buy_trade = open_short_trade = close_short_trade = None
     if position is None:
         # Create trades to open the position
         trades = position_manager.open_spot(
@@ -256,7 +258,7 @@ def make_test_trade(
     else:
         sell_trade = None
 
-    if universe.has_any_lending_data() and universe.can_open_short(datetime.datetime.utcnow(), pair) and not spot_only:
+    if universe.has_any_lending_data() and universe.can_open_short(datetime.datetime.utcnow(), pair) and test_short:
         short_pair = universe.get_shorting_pair(pair)
         position = state.portfolio.get_position_by_trading_pair(short_pair)
 
@@ -389,6 +391,131 @@ def make_test_trade(
         )
         
         update_statistics(datetime.datetime.utcnow(), state.stats, state.portfolio, ExecutionMode.real_trading, long_short_metrics_latest=long_short_metrics_latest)
+        
+    if universe.has_any_lending_data() and universe.can_open_credit_supply(datetime.datetime.utcnow(), pair) and test_credit_supply:
+        credit_pair = universe.get_credit_supply_pair()
+        position = state.portfolio.get_position_by_trading_pair(credit_pair)
+
+        if position is None:
+
+            # Recreate the position manager for the new timestamp,
+            # as time has passed
+            ts = datetime.datetime.utcnow()
+            position_manager = PositionManager(
+                ts,
+                universe,
+                state,
+                pricing_model,
+            )
+
+            # Create trades to open the position
+            trades = position_manager.open_credit_supply_position_for_reserves(float(amount), flags={TradeFlag.test_trade})
+
+            trade = trades[0]
+            open_credit_supply_trade = trade
+
+            # Compose the trades as approve() + swapTokenExact(),
+            # broadcast them to the blockchain network and
+            # wait for the confirmation
+            execution_model.execute_trades(
+                ts,
+                state,
+                trades,
+                routing_model,
+                routing_state,
+            )
+
+            position_id = trade.position_id
+            position = state.portfolio.get_position_by_id(position_id)
+
+            assert position.is_test()
+            assert open_credit_supply_trade.is_test()
+
+            if not trade.is_success() or not position.is_open():
+                # Alot of diagnostics to debug Arbitrum / WBTC issues
+                trades = sum_decimal([t.get_position_quantity() for t in position.trades.values() if t.is_success()])
+                direct_balance_updates = position.get_base_token_balance_update_quantity()
+
+                logger.error("Trade quantity: %s, direct balance updates: %s", trades, direct_balance_updates)
+
+                logger.error("Test open credit supply failed: %s", trade)
+                logger.error("Tx hash: %s", trade.blockchain_transactions[-1].tx_hash)
+                logger.error("Revert reason: %s", trade.blockchain_transactions[-1].revert_reason)
+                logger.error("Trade dump:\n%s", trade.get_debug_dump())
+                logger.error("Position dump:\n%s", position.get_debug_dump())
+
+            if not trade.is_success():
+                raise AssertionError("Test open credit supply failed.")
+
+            if not position.is_open():
+                raise AssertionError("Test buy succeed, but the position was not opened\n"
+                                     "Check for dust corrections.")
+
+            long_short_metrics_latest = serialise_long_short_stats_as_json_table(
+                state, None
+            )
+
+            update_statistics(datetime.datetime.utcnow(), state.stats, state.portfolio, ExecutionMode.real_trading, long_short_metrics_latest=long_short_metrics_latest)
+
+        # Close credit supply
+
+        # Recreate the position manager for the new timestamp,
+        # as time has passed
+        ts = datetime.datetime.utcnow()
+        position_manager = PositionManager(
+            ts,
+            universe,
+            state,
+            pricing_model,
+        )
+
+        # Create trades to open the position
+        trades = position_manager.close_credit_supply_position(position, flags={TradeFlag.test_trade})
+
+        trade = trades[0]
+        close_credit_supply_trade = trade
+
+        assert close_credit_supply_trade.is_test()
+
+        # Compose the trades as approve() + swapTokenExact(),
+        # broadcast them to the blockchain network and
+        # wait for the confirmation
+        execution_model.execute_trades(
+            ts,
+            state,
+            trades,
+            routing_model,
+            routing_state,
+        )
+
+        position_id = trade.position_id
+        position = state.portfolio.get_position_by_id(position_id)
+
+        if not trade.is_success() or position.is_open():
+            # Alot of diagnostics to debug Arbitrum / WBTC issues
+            trades = sum_decimal([t.get_position_quantity() for t in position.trades.values() if t.is_success()])
+            direct_balance_updates = position.get_base_token_balance_update_quantity()
+
+            logger.error("Trade quantity: %s, direct balance updates: %s", trades, direct_balance_updates)
+
+            logger.error("Close credit supply failed: %s", trade)
+            logger.error("Tx hash: %s", trade.blockchain_transactions[-1].tx_hash)
+            logger.error("Revert reason: %s", trade.blockchain_transactions[-1].revert_reason)
+            logger.error("Trade dump:\n%s", trade.get_debug_dump())
+            logger.error("Position dump:\n%s", position.get_debug_dump())
+
+        if not trade.is_success():
+            raise AssertionError(f"Test close credit supply failed, trade not marked as success: {trade.get_revert_reason()}")
+
+        if not position.is_closed():
+            raise AssertionError("Short close succeed, but the position was not closed\n"
+                                 "Check for dust corrections.")
+
+        long_short_metrics_latest = serialise_long_short_stats_as_json_table(
+            state, None
+        )
+        
+        update_statistics(datetime.datetime.utcnow(), state.stats, state.portfolio, ExecutionMode.real_trading, long_short_metrics_latest=long_short_metrics_latest)
 
     gas_at_end = hot_wallet.get_native_currency_balance(web3)
     reserve_currency_at_end = state.portfolio.get_default_reserve_position().get_value()
@@ -403,6 +530,10 @@ def make_test_trade(
     if sell_trade:
         logger.info("  Sell trade price, expected: %s, actual: %s (%s)", sell_trade.planned_price, sell_trade.executed_price, pair.get_ticker())
     if open_short_trade:
-        logger.info("  Open short, expected: %s, actual: %s (%s)", buy_trade.planned_price, buy_trade.executed_price, short_pair.get_ticker())
+        logger.info("  Open short, expected: %s, actual: %s (%s)", open_short_trade.planned_price, open_short_trade.executed_price, short_pair.get_ticker())
     if close_short_trade:
-        logger.info("  Close short, expected: %s, actual: %s (%s)", buy_trade.planned_price, buy_trade.executed_price, short_pair.get_ticker())
+        logger.info("  Close short, expected: %s, actual: %s (%s)", close_short_trade.planned_price, close_short_trade.executed_price, short_pair.get_ticker())
+    if open_credit_supply_trade:
+        logger.info("  Open credit supply, expected: %s, actual: %s (%s)", open_credit_supply_trade.planned_price, open_credit_supply_trade.executed_price, credit_pair.get_ticker())
+    if close_credit_supply_trade:
+        logger.info("  Close credit supply, expected: %s, actual: %s (%s)", close_credit_supply_trade.planned_price, close_credit_supply_trade.executed_price, credit_pair.get_ticker())
