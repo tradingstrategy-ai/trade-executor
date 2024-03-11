@@ -75,6 +75,7 @@ def analyse_combination(
         "Sortino": clean(r.metrics.loc["Sortino"][0]),
         "Average position": r.summary.average_trade,
         "Median position": r.summary.median_trade,
+        "Time in Market": clean(r.metrics.loc["Time in Market"][0]),
     })
 
     # Clear all values except position count if this is not a good trade series

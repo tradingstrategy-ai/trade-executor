@@ -1101,7 +1101,7 @@ def _handle_sigterm(*args):
 def get_grid_search_result_path(
     notebook_name: str,
 ) -> Path:
-    """Get a path where to store the grid seach results.
+    """Get a path where to stget_grid_search_result_pathore the grid seach results.
 
     - Used in grid search notebooks
 
