@@ -8,7 +8,7 @@ from decimal import Decimal, ROUND_DOWN
 from typing import Callable, Optional
 
 from tradeexecutor.state.identifier import TradingPairIdentifier
-from tradeexecutor.state.types import USDollarPrice
+from tradeexecutor.state.types import USDollarPrice, Percent
 from tradeexecutor.strategy.execution_model import ExecutionModel
 from tradeexecutor.strategy.routing import RoutingModel
 from tradeexecutor.strategy.universe_model import StrategyExecutionUniverse
@@ -137,6 +137,29 @@ class PricingModel(abc.ABC):
         assert isinstance(pair, TradingPairIdentifier)
         decimals = pair.base.decimals
         return Decimal(quantity).quantize((Decimal(10) ** Decimal(-decimals)), rounding=rounding)
+
+    def set_trading_fee_override(
+            self,
+            trading_fee_override: Percent | None
+    ):
+        """Set the trading fee override.
+
+        - Override the trading fee for all tradingpairs
+
+        - Allows to simulate different price levels
+          and price impacts, based on the historical data with a different fee tier
+
+        - Only useful for backtesting - in the live execution you pay whatever fees you are given by the venue
+
+        :param trading_fee_override:
+            The new fee tier.
+
+            Example: `0.0030` for 30 BPS.
+
+            Set ``None`` to disable and use the trading fee from the source data.
+        """
+        raise NotImplementedError()
+
 
 #: This factory creates a new pricing model for each trade cycle.
 #: Pricing model depends on the trading universe that may change for each strategy tick,

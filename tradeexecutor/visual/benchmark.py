@@ -96,6 +96,7 @@ def visualise_equity_curve_comparison(
 
 def visualise_equity_curve_benchmark(
     name: Optional[str] = None,
+    title: Optional[str] = None,
     portfolio_statistics: Optional[List[PortfolioStatistics]] = None,
     all_cash: Optional[float] = None,
     buy_and_hold_asset_name: Optional[str] = None,
@@ -196,6 +197,12 @@ def visualise_equity_curve_benchmark(
         )
 
         fig.show()
+
+    :param name:
+        The name of the primary asset we benchark
+
+    :param title:
+        The title of the chart if separate from primary asset
 
     :param portfolio_statistics:
         Portfolio performance record.
@@ -320,7 +327,7 @@ def visualise_equity_curve_benchmark(
             fig.add_trace(scatter)
 
     if name:
-        fig.update_layout(title=f"{name}", height=height)
+        fig.update_layout(title=f"{title or name}", height=height)
     else:
         fig.update_layout(title=f"Portfolio value", height=height)
 

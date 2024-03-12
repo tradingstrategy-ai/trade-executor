@@ -13,7 +13,7 @@ from tradeexecutor.ethereum.uniswap_v2.uniswap_v2_routing import UniswapV2Routin
 from tradeexecutor.state.identifier import TradingPairIdentifier
 from tradeexecutor.strategy.execution_model import ExecutionModel
 
-from tradeexecutor.state.types import USDollarPrice
+from tradeexecutor.state.types import USDollarPrice, Percent
 from tradeexecutor.strategy.pricing_model import PricingModel
 from tradeexecutor.strategy.trade_pricing import TradePricing
 from tradeexecutor.strategy.routing import RoutingModel
@@ -40,14 +40,16 @@ class BacktestPricing(PricingModel):
       gaps in price data
     """
 
-    def __init__(self,
-                candle_universe: GroupedCandleUniverse,
-                routing_model: RoutingModel,
-                data_delay_tolerance=pd.Timedelta("2d"),
-                candle_timepoint_kind="open",
-                very_small_amount=Decimal("0.10"),
-                time_bucket: Optional[TimeBucket] = None,
-                allow_missing_fees=False,
+    def __init__(
+            self,
+            candle_universe: GroupedCandleUniverse,
+            routing_model: RoutingModel,
+            data_delay_tolerance=pd.Timedelta("2d"),
+            candle_timepoint_kind="open",
+            very_small_amount=Decimal("0.10"),
+            time_bucket: Optional[TimeBucket] = None,
+            allow_missing_fees=False,
+            trading_fee_override: float | None=None,
         ):
         """
 
@@ -85,6 +87,11 @@ class BacktestPricing(PricingModel):
             All trading pairs should have good fee information by default,
             unless dealing with legacy tests.
 
+        :param trading_fee_override:
+            Override the trading fee with a custom fee.
+
+            See :py:meth:`set_trading_fee_override`.
+
         """
 
         # TODO: Remove later - now to support some old code111
@@ -100,6 +107,7 @@ class BacktestPricing(PricingModel):
         self.data_delay_tolerance = data_delay_tolerance
         self.time_bucket = time_bucket
         self.allow_missing_fees = allow_missing_fees
+        self.trading_fee_override = trading_fee_override
 
     def __repr__(self):
         return f"<BacktestSimplePricingModel bucket: {self.time_bucket}, candles: {self.candle_universe}>"
@@ -244,15 +252,26 @@ class BacktestPricing(PricingModel):
         decimals = pair.base.decimals
         return Decimal(quantity).quantize((Decimal(10) ** Decimal(-decimals)), rounding=ROUND_DOWN)
 
-    def get_pair_fee(self,
-                     ts: datetime.datetime,
-                     pair: TradingPairIdentifier,
-                     ) -> Optional[float]:
+    def get_pair_fee(
+            self,
+            ts: datetime.datetime,
+            pair: TradingPairIdentifier,
+    ) -> Optional[float]:
         """Figure out the fee from a pair or a routing."""
+
+        if self.trading_fee_override is not None:
+            return self.trading_fee_override
+
         if pair.fee:
             return pair.fee
 
         return self.routing_model.get_default_trading_fee()
+
+    def set_trading_fee_override(
+            self,
+            trading_fee_override: Percent | None
+    ):
+        self.trading_fee_override = trading_fee_override
 
 
 def backtest_pricing_factory(
