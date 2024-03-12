@@ -742,7 +742,7 @@ class PositionManager:
         .. warning ::
 
             Adjust position cannot be used to close an existing position, because
-            epsilons in quantity math. Use :py:meth:`close_position` for this.
+            epsilons in quantity math. Use :py:meth:`close_position`] for this.
 
         :param pair:
             Trading pair which position we adjust
