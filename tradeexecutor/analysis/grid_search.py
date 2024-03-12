@@ -162,20 +162,6 @@ def visualise_table(df: pd.DataFrame):
     ).set_properties(
         subset=DATA_COLS,
     )
-
-    # formatted = df.style.highlight_max(
-    #     color = 'lightgreen',
-    #     axis = 0,
-    #     subset = VALUE_COLS,
-    # ).highlight_min(
-    #     color = 'pink',
-    #     axis = 0,
-    #     subset = VALUE_COLS,
-    # ).format(
-    #     formatter="{:.2%}",
-    #     subset = PERCENT_COLS,
-    # )
-
     display(formatted)
 
 
