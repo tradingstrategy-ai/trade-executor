@@ -33,9 +33,9 @@ class AdvancedMetricsMode(enum.Enum):
 
 
 def calculate_advanced_metrics(
-        returns: pd.Series,
-        mode: AdvancedMetricsMode=AdvancedMetricsMode.basic,
-        periods_per_year=365,
+    returns: pd.Series,
+    mode: AdvancedMetricsMode=AdvancedMetricsMode.basic,
+    periods_per_year=365,
 ) -> pd.DataFrame:
     """Calculate advanced strategy performance statistics using Quantstats.
 

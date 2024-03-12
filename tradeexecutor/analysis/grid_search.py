@@ -21,7 +21,7 @@ from tradeexecutor.visual.benchmark import visualise_all_cash, visualise_portfol
 
 VALUE_COLS = ["CAGR", "Max drawdown", "Sharpe", "Sortino", "Average position", "Median position"]
 
-PERCENT_COLS = ["CAGR", "Max drawdown", "Average position", "Median position"]
+PERCENT_COLS = ["CAGR", "Max drawdown", "Average position", "Median position", "Time in market"]
 
 DATA_COLS = ["Positions", "Trades"]
 
@@ -66,6 +66,7 @@ def analyse_combination(
         # "Combination": r.combination.get_label(),
         "Positions": r.summary.total_positions,
         "Trades": r.summary.total_trades,
+        "Time in market": clean(r.metrics.loc["Time in Market"][0]),
         # "Return": r.summary.return_percent,
         # "Return2": r.summary.annualised_return_percent,
         #"Annualised profit": clean(r.metrics.loc["Expected Yearly"][0]),
@@ -75,7 +76,6 @@ def analyse_combination(
         "Sortino": clean(r.metrics.loc["Sortino"][0]),
         "Average position": r.summary.average_trade,
         "Median position": r.summary.median_trade,
-        "Time in Market": clean(r.metrics.loc["Time in Market"][0]),
     })
 
     # Clear all values except position count if this is not a good trade series
@@ -160,23 +160,8 @@ def visualise_table(df: pd.DataFrame):
         formatter="{:.2%}",
         subset = PERCENT_COLS,
     ).set_properties(
-        subset=DATA_COLS, 
-        **{'background-color': '#333'}
+        subset=DATA_COLS,
     )
-
-    # formatted = df.style.highlight_max(
-    #     color = 'lightgreen',
-    #     axis = 0,
-    #     subset = VALUE_COLS,
-    # ).highlight_min(
-    #     color = 'pink',
-    #     axis = 0,
-    #     subset = VALUE_COLS,
-    # ).format(
-    #     formatter="{:.2%}",
-    #     subset = PERCENT_COLS,
-    # )
-
     display(formatted)
 
 

@@ -1059,7 +1059,7 @@ class TradeAnalysis:
 
         profit_long_pct, profit_short_pct = 0, 0
 
-        if all_stats_trade_summary.return_percent:
+        if all_stats_trade_summary.return_percent and all_profit_usd != 0:
             profit_long_pct = all_stats_trade_summary.return_percent * long_profit_usd / all_profit_usd
             profit_short_pct = all_stats_trade_summary.return_percent * short_profit_usd / all_profit_usd
 
