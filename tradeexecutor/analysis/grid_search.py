@@ -160,8 +160,7 @@ def visualise_table(df: pd.DataFrame):
         formatter="{:.2%}",
         subset = PERCENT_COLS,
     ).set_properties(
-        subset=DATA_COLS, 
-        # **{'background-color': '#333'}
+        subset=DATA_COLS,
     )
 
     # formatted = df.style.highlight_max(
