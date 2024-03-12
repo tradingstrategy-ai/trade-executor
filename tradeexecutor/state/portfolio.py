@@ -575,8 +575,7 @@ class Portfolio:
         """
 
         # Any trading positions we have one
-        spot_values = sum([p.get_equity() for p in self.open_positions.values() if not p.is_leverage()])
-
+        # spot_values = sum([p.get_equity() for p in self.open_positions.values() if not p.is_leverage()])
         return self.get_position_equity_and_loan_nav() + self.get_cash()
 
     def get_net_asset_value(self, include_interest=True) -> USDollarAmount:

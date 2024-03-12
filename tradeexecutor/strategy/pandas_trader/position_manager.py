@@ -927,7 +927,14 @@ class PositionManager:
 
         slippage_tolerance = slippage_tolerance or self.default_slippage_tolerance
 
-        logger.info("Preparing to close position %s, quantity %s, pricing %s, slippage tolerance: %f %%", position, quantity, price_structure, slippage_tolerance * 100)
+        logger.info(
+            "Preparing to close position %s, quantity %s, pricing %s, profit %s, slippage tolerance: %f %%",
+            position,
+            quantity,
+            price_structure,
+            position.get_unrealised_profit_usd(),
+            slippage_tolerance * 100,
+        )
 
         if not flags:
             flags = set()

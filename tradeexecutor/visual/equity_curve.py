@@ -50,9 +50,7 @@ def calculate_equity_curve(
     """
 
     stats: Statistics = state.stats
-
     portfolio_stats: List[PortfolioStatistics] = stats.portfolio
-
     data = [(s.calculated_at, getattr(s, attribute_name)) for s in portfolio_stats]
 
     if len(data) == 0:

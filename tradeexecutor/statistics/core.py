@@ -130,6 +130,8 @@ def calculate_statistics(
             last_trade_at=last_trade and last_trade.executed_at or None,
             summary=trade_analysis.calculate_summary_statistics(),
         )
+
+
     else:
         pf_stats = PortfolioStatistics(
             calculated_at=clock,
