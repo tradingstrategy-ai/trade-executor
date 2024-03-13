@@ -51,7 +51,7 @@ from tradeexecutor.analysis.trade_analyser import TradeSummary, build_trade_anal
 from tradeexecutor.backtest.backtest_routing import BacktestRoutingIgnoredModel
 from tradeexecutor.backtest.backtest_runner import run_backtest_inline
 from tradeexecutor.state.state import State
-from tradeexecutor.state.types import USDollarAmount
+from tradeexecutor.state.types import USDollarAmount, Percent
 from tradeexecutor.strategy.cycle import CycleDuration
 from tradeexecutor.strategy.default_routing_options import TradeRouting
 from tradeexecutor.strategy.routing import RoutingModel
@@ -308,6 +308,12 @@ class GridSearchResult:
     def __eq__(self, other):
         return self.combination == other.combination
 
+    def __repr__(self) -> str:
+        cagr = self.get_cagr()
+        sharpe = self.get_sharpe()
+        max_drawdown = self.get_max_drawdown()
+        return f"<GridSearchResult\n{self.get_label()}\nCAGR={cagr*100:.2f}% Sharpe={sharpe:.2f} Max drawdown={max_drawdown*100:.2f}%\n>"
+
     def get_label(self) -> str:
         """Get name for this result for charts."""
         return self.combination.get_label()
@@ -342,6 +348,15 @@ class GridSearchResult:
         series = self.metrics["Strategy"]
         assert name in self.metrics.index, f"Metric {name} not available. We have: {series.index}"
         return series[name]
+
+    def get_cagr(self) -> Percent:
+        return self.get_metric("CAGR﹪")
+
+    def get_sharpe(self) -> float:
+        return self.get_metric("Sharpe")
+
+    def get_max_drawdown(self) -> Percent:
+        return self.get_metric("Max Drawdown")
 
     @staticmethod
     def has_result(combination: GridCombination):

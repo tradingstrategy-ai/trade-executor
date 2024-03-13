@@ -159,7 +159,7 @@ def visualise_table(df: pd.DataFrame):
     ).format(
         formatter="{:.2%}",
         subset = PERCENT_COLS,
-    ).set_properties(
+    ).format(
         # https://stackoverflow.com/a/12080042/315168
         subset=DATA_COLS,
         formatter="{0:g}",

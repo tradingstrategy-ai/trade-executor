@@ -106,6 +106,7 @@ def visualise_advanced_metrics(
     returns: pd.Series,
     mode: AdvancedMetricsMode=AdvancedMetricsMode.basic,
     benchmark: pd.Series | None = None,
+    name: str | None = None,
 ) -> pd.DataFrame:
     """Calculate advanced strategy performance statistics using Quantstats.
 
@@ -161,6 +162,9 @@ def visualise_advanced_metrics(
 
         If this series as `series.attrs["name"]` name set, it is used as a title instead of "Benchmark".
 
+    :param name:
+        Title oif the primary performance series instead of "Strategy".
+
     :return:
         A DataFrame ready to display a table of comparable merics.
 
@@ -193,5 +197,9 @@ def visualise_advanced_metrics(
             benchmark_name = benchmark.attrs.get("name")
             if benchmark_name:
                 df = df.rename({"Benchmark": benchmark_name}, axis="columns")
+
+        if name is not None:
+            df = df.rename({"Strategy": name}, axis="columns")
+
 
         return df
