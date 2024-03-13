@@ -377,10 +377,10 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
             return False
 
     def can_open_short(
-            self,
-            timestamp: pd.Timestamp | datetime.datetime,
-            pair: TradingPairIdentifier,
-            liquidity_threshold=None,
+        self,
+        timestamp: pd.Timestamp | datetime.datetime,
+        pair: TradingPairIdentifier,
+        liquidity_threshold=None,
     ) -> bool:
         """Can we do a short trade for a trading pair.
 
@@ -398,11 +398,38 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
             Not implemented yet.
 
         :return:
-            True if we can open a spot position.
+            True if we can open a short position.
         """
         assert isinstance(pair, TradingPairIdentifier), f"Expected TradingPairIdentifier, got: {pair.__class}: {pair}"
         return self.has_lending_market_available(timestamp, pair.base, liquidity_threshold) \
             and self.has_lending_market_available(timestamp, pair.quote, liquidity_threshold)
+    
+    def can_open_credit_supply(
+        self,
+        timestamp: pd.Timestamp | datetime.datetime,
+        pair: TradingPairIdentifier,
+        liquidity_threshold=None,
+    ) -> bool:
+        """Can we do a credit supply trade for a trading pair.
+
+        To be used with backtesting. We will
+        check a lending market exists at a certain historic point of time
+        for both base and quote asset.
+
+        :param timestamp:
+            When
+
+        :param pair:
+            The wanted trading pair
+
+        :param liquidity_threshold:
+            Not implemented yet.
+
+        :return:
+            True if we can open a credit supply position.
+        """
+        assert isinstance(pair, TradingPairIdentifier), f"Expected TradingPairIdentifier, got: {pair.__class}: {pair}"
+        return self.has_lending_market_available(timestamp, pair.quote, liquidity_threshold)
 
     def clone(self) -> "TradingStrategyUniverse":
         """Create a copy of this universe.

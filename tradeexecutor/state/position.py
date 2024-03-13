@@ -312,7 +312,7 @@ class TradingPosition(GenericPosition):
         return not self.is_open()
 
     def is_test(self) -> bool:
-        """The position was openedd and closed by perform-test-trade command.
+        """The position was opened and closed by perform-test-trade command.
 
         The trade and the position should not be counted in the statistics.
         """
@@ -367,11 +367,11 @@ class TradingPosition(GenericPosition):
         This includes spot buy.
         """
         assert len(self.trades) > 0, "Cannot determine if position is long or short because there are no trades"
-        return self.get_first_trade().is_buy()
+        return self.pair.is_spot() or self.pair.is_long()
 
     def is_short(self) -> bool:
         """Is this position short on the underlying base asset."""
-        return not self.is_long()
+        return self.pair.is_short()
 
     def is_leverage(self) -> bool:
         """Is this leveraged/loan backed position."""
