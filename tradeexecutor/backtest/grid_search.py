@@ -224,8 +224,18 @@ class GridCombination:
         return {p.name: p.value for p in self.parameters}
 
     def get_label(self) -> str:
-        """Human readable label for this combination"""
+        """Human-readable label for this combination.
+
+        See also :py:meth:`get_all_parameters_label`.
+        """
         return f"#{self.index}, " + ", ".join([f"{p.name}={p.value}" for p in self.searchable_parameters])
+
+    def get_all_parameters_label(self) -> str:
+        """Get label which includes single value parameters as well.
+
+        See also :py:meth:`get_label`.
+        """
+        return f"#{self.index}, " + ", ".join([f"{p.name}={p.value}" for p in self.parameters])
 
     def destructure(self) -> List[Any]:
         """Open parameters dict.
@@ -312,7 +322,7 @@ class GridSearchResult:
         cagr = self.get_cagr()
         sharpe = self.get_sharpe()
         max_drawdown = self.get_max_drawdown()
-        return f"<GridSearchResult\n{self.get_label()}\nCAGR={cagr*100:.2f}% Sharpe={sharpe:.2f} Max drawdown={max_drawdown*100:.2f}%\n>"
+        return f"<GridSearchResult\n  {self.combination.get_all_parameters_label()}\n  CAGR: {cagr*100:.2f}% Sharpe: {sharpe:.2f} Max drawdown:{max_drawdown*100:.2f}%\n>"
 
     def get_label(self) -> str:
         """Get name for this result for charts."""
