@@ -141,7 +141,7 @@ class Portfolio:
     def get_trade_by_id(self, trade_id: int) -> Optional[TradeExecution]:
         """Look up any trade in all positions.
 
-        .. note ::
+        .. note ::]
 
             Slow lookup. Only designed for testing.
 

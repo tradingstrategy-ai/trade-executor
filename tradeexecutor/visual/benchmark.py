@@ -5,14 +5,17 @@ from typing import Optional, List, Union, Collection, Dict
 
 import plotly.graph_objects as go
 import pandas as pd
+from pandas._libs.tslibs.offsets import MonthBegin
 
 from tradeexecutor.analysis.trade_analyser import build_trade_analysis
+from tradeexecutor.state.identifier import TradingPairIdentifier
 from tradeexecutor.state.statistics import PortfolioStatistics
 from tradeexecutor.state.visualisation import Plot
 from tradeexecutor.state.state import State
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
 from tradeexecutor.visual.technical_indicator import visualise_technical_indicator
-from tradeexecutor.visual.equity_curve import calculate_long_compounding_realised_trading_profitability, calculate_short_compounding_realised_trading_profitability, calculate_compounding_realised_trading_profitability
+from tradeexecutor.visual.equity_curve import calculate_long_compounding_realised_trading_profitability, \
+    calculate_short_compounding_realised_trading_profitability, calculate_compounding_realised_trading_profitability, resample_returns, calculate_returns
 from tradingstrategy.timebucket import TimeBucket
 from tradingstrategy.pair import HumanReadableTradingPairDescription
 from tradingstrategy.types import USDollarAmount
@@ -469,7 +472,7 @@ def visualise_benchmark(*args, **kwargs) -> go.Figure:
 
 def create_benchmark_equity_curves(
     strategy_universe: TradingStrategyUniverse,
-    pairs: Dict[str, HumanReadableTradingPairDescription],
+    pairs: Dict[str, HumanReadableTradingPairDescription | TradingPairIdentifier],
     initial_cash: USDollarAmount,
     custom_colours={"BTC": "orange", "ETH": "blue", "All cash": "black"}
 ) -> pd.DataFrame:
@@ -538,8 +541,13 @@ def create_benchmark_equity_curves(
 
     # Get close prices for all pairs
     for key, value in pairs.items():
-        pair = strategy_universe.data_universe.pairs.get_pair_by_human_description(value)
-        close_data = strategy_universe.data_universe.candles.get_candles_by_pair(pair)["close"]
+        if isinstance(value, TradingPairIdentifier):
+            close_data = strategy_universe.data_universe.candles.get_candles_by_pair(value.internal_id)["close"]
+        else:
+            # Assume HumanReadableTradingPairDescription
+            pair = strategy_universe.data_universe.pairs.get_pair_by_human_description(value)
+            close_data = strategy_universe.data_universe.candles.get_candles_by_pair(pair)["close"]
+
         initial_inventory = initial_cash / float(close_data.iloc[0])
         series = close_data * initial_inventory
         returns[key] = series
@@ -619,6 +627,7 @@ def visualise_long_short_benchmark(
 
     return fig
 
+
 def get_plot_from_series(name, colour, series) -> go.Scatter:
     """Draw portfolio performance.
     
@@ -637,7 +646,7 @@ def get_plot_from_series(name, colour, series) -> go.Scatter:
     df = pd.DataFrame(plot, columns=["timestamp", "value"])
     df.set_index("timestamp", inplace=True)
 
-    fig = go.Scatter(
+    scatter = go.Scatter(
         x=df.index,
         y=df["value"],
         mode="lines",
@@ -645,4 +654,103 @@ def get_plot_from_series(name, colour, series) -> go.Scatter:
         line=dict(color=colour),
     )
     
+    return scatter
+
+
+def visualise_vs_returns(
+    returns: pd.Series,
+    benchmark_indexes: pd.DataFrame,
+    name="Strategy returns multiplier vs. benchmark indices",
+    height=800,
+    skipped_benchmarks=("All cash",),
+    freq: pd.DateOffset = MonthBegin()
+)-> go.Figure:
+    """Create a chart that shows the strategy returns direction vs. benchmark.
+
+    - This will tell if the strategy is performing better or worse over time
+
+    :param returns:
+        Strategy returns.
+
+        `Series.attrs` can contain `name` and `colour`.
+
+    :param benchmark_indexes:
+        Benchmark buy and hold indexes.
+
+        Assume starts with `initial_cash` like $10,000 and then moves with the price action.
+
+        Each `Series.attrs` can have keys `name` and `colour`.
+    
+    :param name:
+        Figure title.
+
+    :param height:
+        Chart height in pixels.
+
+    :param skipped_benchmarks:
+        Benchmark indices we do not need to render.
+
+    :param freq:
+        Binning frequency for more readable charts.
+
+        Choose between weekly, monthly, quaterly, yearly binning.
+    """
+
+    assert isinstance(returns, pd.Series)
+    assert isinstance(benchmark_indexes, pd.DataFrame)
+    assert len(benchmark_indexes.columns) > 0, f"benchmark_indexes is empty"
+
+    fig = go.Figure()
+
+    resampled_returns = resample_returns(returns, freq)
+
+    fig.update_layout(title=f"name", height=height)
+    for benchmark in benchmark_indexes.columns:
+
+        if any(s for s in skipped_benchmarks if s in benchmark):
+            # Simple string match filter
+            continue
+        benchmark_series = benchmark_indexes[benchmark]
+        benchmark_returns = calculate_returns(benchmark_series)
+        resampled_benchmark = resample_returns(benchmark_returns, freq)
+        ratio_series = (1+resampled_returns) / (1+resampled_benchmark)
+        colour = benchmark_series.attrs.get("colour")
+        scatter = go.Scatter(
+            x=ratio_series.index,
+            y=ratio_series,
+            mode="lines",
+            name=f"Strategy returns vs. {benchmark} returns",
+            line=dict(color=colour),
+        )
+        fig.add_trace(scatter)
+
+    # Add line at 1
+    scatter = go.Scatter(
+        x=resampled_returns.index,
+        y=[1] * len(resampled_returns.index),
+        mode="lines",
+        name=f"Strategy and index perform equal",
+        line=dict(color="black"),
+    )
+    fig.add_trace(scatter)
+
+    fig.update_yaxes(title="Strategy x benchmark", showgrid=False, tickformat=".2fx")
+    fig.update_xaxes(rangeslider={"visible": False})
+    fig.update_layout(title=name)
+
+    # Move legend to the bottom so we have more space for
+    # time axis in narrow notebook views
+    # https://plotly.com/python/legend/
+    fig.update_layout(legend=dict(
+        orientation="h",
+        yanchor="bottom",
+        y=1.02,
+        xanchor="right",
+        x=1
+    ))
+
     return fig
+
+
+
+

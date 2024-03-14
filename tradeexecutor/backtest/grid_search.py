@@ -30,6 +30,7 @@ import numpy as np
 import pandas as pd
 import futureproof
 
+from tradeexecutor.utils.cpu import get_safe_max_workers_count
 from tradingstrategy.client import Client
 
 try:
@@ -363,7 +364,16 @@ class GridSearchResult:
         return self.get_metric("CAGR﹪")
 
     def get_sharpe(self) -> float:
-        return self.get_metric("Sharpe")
+        """Get the Sharpe ratio of this grid search result.
+
+        :return:
+            0 if not available (the strategy made no trades).
+        """
+        sharpe = self.get_metric("Sharpe")
+        if pd.notna(sharpe) and sharpe != "-":
+            assert type(sharpe) in (float, int), f"Got {type(sharpe)} {sharpe}"
+            return sharpe
+        return 0.0
 
     def get_max_drawdown(self) -> Percent:
         return self.get_metric("Max Drawdown")
@@ -750,8 +760,8 @@ def perform_grid_search(
     grid_search_worker: GridSearchWorker | DecideTradesProtocol3 | DecideTradesProtocol4,
     universe: TradingStrategyUniverse,
     combinations: List[GridCombination],
-    max_workers=16,
-    reader_pool_size=16,
+    max_workers: int | Callable=get_safe_max_workers_count,
+    reader_pool_size: int | Callable=get_safe_max_workers_count,
     multiprocess=False,
     trading_strategy_engine_version: TradingStrategyEngineVersion="0.3",
     data_retention: GridSearchDataRetention = GridSearchDataRetention.metrics_only,
@@ -799,6 +809,13 @@ def perform_grid_search(
     global _process_pool_executor
 
     start = datetime.datetime.utcnow()
+
+    # Resolve CPU count
+    if callable(max_workers):
+        max_workers = max_workers()
+
+    if callable(reader_pool_size):
+        reader_pool_size = reader_pool_size()
 
     logger.info(
         "Performing a grid search over %s combinations, with %d threads, data retention policy is %s",

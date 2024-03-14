@@ -6,7 +6,9 @@
 
 """
 import textwrap
-from typing import List
+import warnings
+from dataclasses import dataclass
+from typing import List, TypeAlias
 
 import numpy as np
 import pandas as pd
@@ -129,7 +131,12 @@ def analyse_grid_search_result(
     return df
 
 
-def visualise_table(df: pd.DataFrame):
+def visualise_table(*args, **kwargs):
+    warnings.warn('This function is deprecated. Use render_grid_search_result_table() instead', DeprecationWarning, stacklevel=2)
+    return render_grid_search_result_table(*args, **kwargs)
+
+
+def render_grid_search_result_table(results: pd.DataFrame | list[GridSearchResult]) -> pd.DataFrame:
     """Render a grid search combination table to notebook output.
 
     - Highlight winners and losers
@@ -137,7 +144,32 @@ def visualise_table(df: pd.DataFrame):
     - Gradient based on the performance of a metric
 
     - Stripes for the input
+
+    Example:
+
+    .. code-block:: python
+
+            grid_search_results = perform_grid_search(
+                decide_trades,
+                strategy_universe,
+                combinations,
+                max_workers=get_safe_max_workers_count(),
+                trading_strategy_engine_version="0.5",
+                multiprocess=True,
+            )
+            render_grid_search_result_table(grid_search_results)
+
+    :param results:
+        Output from :py:func:`perform_grid_search`.
+        
+    :return:
+        Styled DataFrame for the notebook output
     """
+
+    if isinstance(results, pd.DataFrame):
+        df = results
+    else:
+        df = analyse_grid_search_result(results)
 
     # https://stackoverflow.com/a/57152529/315168
 
@@ -164,7 +196,7 @@ def visualise_table(df: pd.DataFrame):
         subset=DATA_COLS,
         formatter="{0:g}",
     )
-    display(formatted)
+    return formatted
 
 
 def visualise_heatmap_2d(
@@ -477,3 +509,25 @@ def visualise_grid_search_equity_curves(
     ))
 
     return fig
+
+
+@dataclass(slots=True)
+class TopGridSearchResult:
+    """Sorted best grid search results."""
+
+    #: Top returns
+    cagr: list[GridSearchResult]
+
+    #: Top Sharpe
+    sharpe: list[GridSearchResult]
+
+
+def find_best_grid_search_results(grid_search_results: list[GridSearchResult], count=20) -> TopGridSearchResult:
+    """From all grid search results, filter out the best one to be displayed.
+
+    """
+    result = TopGridSearchResult(
+        cagr=sorted(grid_search_results, key=lambda r: r.get_cagr(), reverse=True)[0: count],
+        sharpe=sorted(grid_search_results, key=lambda r: r.get_sharpe(), reverse=True)[0: count],
+    )
+    return result

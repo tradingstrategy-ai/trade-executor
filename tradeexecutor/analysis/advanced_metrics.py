@@ -19,6 +19,7 @@ import warnings
 
 import pandas as pd
 
+from tradeexecutor.visual.equity_curve import calculate_returns, resample_returns
 from tradeexecutor.visual.qs_wrapper import import_quantstats_wrapped
 
 
@@ -107,6 +108,7 @@ def visualise_advanced_metrics(
     mode: AdvancedMetricsMode=AdvancedMetricsMode.basic,
     benchmark: pd.Series | None = None,
     name: str | None = None,
+    convert_to_daily=False,
 ) -> pd.DataFrame:
     """Calculate advanced strategy performance statistics using Quantstats.
 
@@ -147,6 +149,18 @@ def visualise_advanced_metrics(
 
         display(metrics)
 
+    When dealing with 1h or 8h data:
+
+    .. code-block:: python
+
+        from tradeexecutor.analysis.advanced_metrics import visualise_advanced_metrics
+
+        visualise_advanced_metrics(
+            best_result.returns,
+            benchmark=benchmark_indexes["ETH"],
+            convert_to_daily=True,
+        )
+
     See also :py:func:`calculate_advanced_metrics`.
 
     :param returns:
@@ -165,6 +179,9 @@ def visualise_advanced_metrics(
     :param name:
         Title oif the primary performance series instead of "Strategy".
 
+    :param convert_to_daily:
+        QuantStats metrics can only work on daily data, so force convert from 1h or 8h or so if needed.
+
     :return:
         A DataFrame ready to display a table of comparable merics.
 
@@ -182,6 +199,12 @@ def visualise_advanced_metrics(
             # Cannot calculate any metrics, because
             # there has not been any trades (all returns are zero)
             return pd.DataFrame()
+        
+        if convert_to_daily:
+            returns = resample_returns(returns, "D")
+
+            if benchmark is not None:
+                benchmark = resample_returns(calculate_returns(benchmark), "D")
 
         # Internal sets the flag for percent output
         df = metrics(
@@ -190,7 +213,8 @@ def visualise_advanced_metrics(
             periods_per_year=365,
             mode=mode.value,
             internal=True,
-            display=False)
+            display=False
+        )
 
         # Set the label
         if benchmark is not None:
@@ -200,6 +224,5 @@ def visualise_advanced_metrics(
 
         if name is not None:
             df = df.rename({"Strategy": name}, axis="columns")
-
 
         return df
