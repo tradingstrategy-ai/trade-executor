@@ -874,7 +874,6 @@ def perform_grid_search(
                 for task in tm.as_completed():
                     results.append(task.result)
                     progress_bar.update()
-
         else:
             #
             # Run individual searchers threads
