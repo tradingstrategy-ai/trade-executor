@@ -364,7 +364,16 @@ class GridSearchResult:
         return self.get_metric("CAGR﹪")
 
     def get_sharpe(self) -> float:
-        return self.get_metric("Sharpe")
+        """Get the Sharpe ratio of this grid search result.
+
+        :return:
+            0 if not available (the strategy made no trades).
+        """
+        sharpe = self.get_metric("Sharpe")
+        if pd.notna(sharpe) and sharpe != "-":
+            assert type(sharpe) in (float, int), f"Got {type(sharpe)} {sharpe}"
+            return sharpe
+        return 0.0
 
     def get_max_drawdown(self) -> Percent:
         return self.get_metric("Max Drawdown")
