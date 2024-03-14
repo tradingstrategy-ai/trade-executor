@@ -149,6 +149,18 @@ def visualise_advanced_metrics(
 
         display(metrics)
 
+    When dealing with 1h or 8h data:
+
+    .. code-block:: python
+
+        from tradeexecutor.analysis.advanced_metrics import visualise_advanced_metrics
+
+        visualise_advanced_metrics(
+            best_result.returns,
+            benchmark=benchmark_indexes["ETH"],
+            convert_to_daily=True,
+        )
+
     See also :py:func:`calculate_advanced_metrics`.
 
     :param returns:
@@ -201,7 +213,8 @@ def visualise_advanced_metrics(
             periods_per_year=365,
             mode=mode.value,
             internal=True,
-            display=False)
+            display=False
+        )
 
         # Set the label
         if benchmark is not None:
@@ -211,6 +224,5 @@ def visualise_advanced_metrics(
 
         if name is not None:
             df = df.rename({"Strategy": name}, axis="columns")
-
 
         return df
