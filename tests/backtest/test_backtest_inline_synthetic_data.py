@@ -17,11 +17,12 @@ from tradeexecutor.cli.log import setup_pytest_logging
 from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier
 from tradeexecutor.state.visualisation import PlotKind
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse, \
-    create_pair_universe_from_code
+    create_pair_universe_from_code, translate_trading_pair
 from tradeexecutor.testing.synthetic_ethereum_data import generate_random_ethereum_address
 from tradeexecutor.testing.synthetic_exchange_data import generate_exchange, generate_simple_routing_model
 from tradeexecutor.testing.synthetic_price_data import generate_ohlcv_candles
-from tradeexecutor.visual.benchmark import visualise_equity_curve_benchmark, visualise_long_short_benchmark
+from tradeexecutor.visual.benchmark import visualise_equity_curve_benchmark, visualise_long_short_benchmark, create_benchmark_equity_curves, \
+    visualise_vs_returns
 from tradingstrategy.candle import GroupedCandleUniverse
 from tradeexecutor.state.trade import TradeExecution
 from tradeexecutor.strategy.pricing_model import PricingModel
@@ -166,7 +167,6 @@ def universe() -> TradingStrategyUniverse:
         fee=0.0030,
     )
 
-
     pair_universe = create_pair_universe_from_code(mock_chain_id, [weth_usdc])
 
     candles = generate_ohlcv_candles(time_bucket, start_at, end_at, pair_id=weth_usdc.internal_id)
@@ -181,7 +181,9 @@ def universe() -> TradingStrategyUniverse:
         liquidity=None
     )
 
-    return TradingStrategyUniverse(data_universe=universe, reserve_assets=[usdc])
+    strategy_universe = TradingStrategyUniverse(data_universe=universe, reserve_assets=[usdc])
+    strategy_universe.data_universe.pairs.exchange_universe = strategy_universe.data_universe.exchange_universe
+    return strategy_universe
 
 
 @pytest.fixture(scope="module")
@@ -644,4 +646,22 @@ def test_benchmark_synthetic_trading_portfolio(
         time_bucket,
     )
 
-    assert len(fig.data) == 3
+    assert len(fig2.data) == 3
+
+    # Test visualise_vs_returns()
+    #
+    equity_curve = calculate_equity_curve(state)
+    returns = calculate_returns(equity_curve)
+    our_pair = translate_trading_pair(strategy_universe.data_universe.pairs.get_single())
+    benchmark_indexes = create_benchmark_equity_curves(
+        strategy_universe,
+        {"ETH": our_pair},
+        initial_cash=state.portfolio.get_initial_cash(),
+    )
+    benchmark_indexes["ETH"].attrs = {"colour": "blue", "name": "Buy and hold ETH"}
+    fig3 = visualise_vs_returns(
+        returns,
+        benchmark_indexes,
+    )
+    assert len(fig3.data) == 2
+

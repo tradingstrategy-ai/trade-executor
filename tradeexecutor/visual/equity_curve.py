@@ -26,6 +26,12 @@ def calculate_equity_curve(
 
     This reads :py:class:`tradeexecutor.state.stats.PortfolioStatistics`
 
+    Example:
+
+    .. code-block:: python
+
+        equity_curve = calculate_equity_curve(state)
+
     :param attribute_name:
         Calculate equity curve based on this attribute of :py:class:`
 

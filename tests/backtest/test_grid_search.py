@@ -20,7 +20,7 @@ from tradingstrategy.exchange import Exchange
 from tradingstrategy.timebucket import TimeBucket
 from tradingstrategy.universe import Universe
 
-from tradeexecutor.analysis.grid_search import analyse_grid_search_result, visualise_table, visualise_heatmap_2d, visualise_grid_search_equity_curves
+from tradeexecutor.analysis.grid_search import analyse_grid_search_result, render_grid_search_result_table, visualise_heatmap_2d, visualise_grid_search_equity_curves
 from tradeexecutor.backtest.grid_search import prepare_grid_combinations, run_grid_search_backtest, perform_grid_search, GridCombination, GridSearchResult, \
     pick_grid_search_result, pick_best_grid_search_result, GridParameter
 from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier
@@ -254,7 +254,7 @@ def test_perform_grid_search_single_thread(
     assert row["CAGR"] == pytest.approx(0.06771955893113946)
     assert row["Positions"] == 2
 
-    visualise_table(table)
+    render_grid_search_result_table(table)
 
     # Remove extra axis by focusing only stop_loss_pct=0.9
     heatmap_data = table.xs(0.9, level="stop_loss_pct")
