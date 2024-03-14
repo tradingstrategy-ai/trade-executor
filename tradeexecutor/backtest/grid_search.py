@@ -51,7 +51,7 @@ from tradeexecutor.analysis.trade_analyser import TradeSummary, build_trade_anal
 from tradeexecutor.backtest.backtest_routing import BacktestRoutingIgnoredModel
 from tradeexecutor.backtest.backtest_runner import run_backtest_inline
 from tradeexecutor.state.state import State
-from tradeexecutor.state.types import USDollarAmount
+from tradeexecutor.state.types import USDollarAmount, Percent
 from tradeexecutor.strategy.cycle import CycleDuration
 from tradeexecutor.strategy.default_routing_options import TradeRouting
 from tradeexecutor.strategy.routing import RoutingModel
@@ -224,8 +224,18 @@ class GridCombination:
         return {p.name: p.value for p in self.parameters}
 
     def get_label(self) -> str:
-        """Human readable label for this combination"""
+        """Human-readable label for this combination.
+
+        See also :py:meth:`get_all_parameters_label`.
+        """
         return f"#{self.index}, " + ", ".join([f"{p.name}={p.value}" for p in self.searchable_parameters])
+
+    def get_all_parameters_label(self) -> str:
+        """Get label which includes single value parameters as well.
+
+        See also :py:meth:`get_label`.
+        """
+        return f"#{self.index}, " + ", ".join([f"{p.name}={p.value}" for p in self.parameters])
 
     def destructure(self) -> List[Any]:
         """Open parameters dict.
@@ -308,6 +318,12 @@ class GridSearchResult:
     def __eq__(self, other):
         return self.combination == other.combination
 
+    def __repr__(self) -> str:
+        cagr = self.get_cagr()
+        sharpe = self.get_sharpe()
+        max_drawdown = self.get_max_drawdown()
+        return f"<GridSearchResult\n  {self.combination.get_all_parameters_label()}\n  CAGR: {cagr*100:.2f}% Sharpe: {sharpe:.2f} Max drawdown:{max_drawdown*100:.2f}%\n>"
+
     def get_label(self) -> str:
         """Get name for this result for charts."""
         return self.combination.get_label()
@@ -342,6 +358,15 @@ class GridSearchResult:
         series = self.metrics["Strategy"]
         assert name in self.metrics.index, f"Metric {name} not available. We have: {series.index}"
         return series[name]
+
+    def get_cagr(self) -> Percent:
+        return self.get_metric("CAGR﹪")
+
+    def get_sharpe(self) -> float:
+        return self.get_metric("Sharpe")
+
+    def get_max_drawdown(self) -> Percent:
+        return self.get_metric("Max Drawdown")
 
     @staticmethod
     def has_result(combination: GridCombination):
@@ -840,13 +865,15 @@ def perform_grid_search(
 
             # Track the child process completion using tqdm progress bar
             results = []
-            label = ", ".join(p.name for p in combinations[0].searchable_parameters)
-            with tqdm(total=len(task_args), desc=f"Grid searching using {max_workers} processes: {label}") as progress_bar:
+
+            # Too wide for Datalore notebooks
+            # label = ", ".join(p.name for p in combinations[0].searchable_parameters)
+            with tqdm(total=len(task_args), desc=f"Searching") as progress_bar:
+                progress_bar.set_postfix({"processes": max_workers})
                 # Extract results from the parallel task queue
                 for task in tm.as_completed():
                     results.append(task.result)
                     progress_bar.update()
-
         else:
             #
             # Run individual searchers threads

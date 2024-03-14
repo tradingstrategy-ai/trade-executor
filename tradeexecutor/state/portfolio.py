@@ -3,6 +3,7 @@
 import logging
 import datetime
 import copy
+import warnings
 from dataclasses import dataclass, field
 from decimal import Decimal
 from itertools import chain
@@ -895,6 +896,14 @@ class Portfolio:
         return None
 
     def get_initial_deposit(self) -> Optional[USDollarAmount]:
+        """Deprecated.
+
+        See :py:meth:`get_initial_cash`
+        """
+        warnings.warn('This function is deprecated. Use get_initial_cash() instead', DeprecationWarning, stacklevel=2)
+        return self.get_initial_cash()
+
+    def get_initial_cash(self) -> Optional[USDollarAmount]:
         """How much we invested at the beginning of a backtest.
 
         .. note::
