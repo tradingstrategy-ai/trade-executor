@@ -865,8 +865,11 @@ def perform_grid_search(
 
             # Track the child process completion using tqdm progress bar
             results = []
-            label = ", ".join(p.name for p in combinations[0].searchable_parameters)
-            with tqdm(total=len(task_args), desc=f"Grid searching using {max_workers} processes: {label}") as progress_bar:
+
+            # Too wide for Datalore notebooks
+            # label = ", ".join(p.name for p in combinations[0].searchable_parameters)
+            with tqdm(total=len(task_args), desc=f"Searching") as progress_bar:
+                progress_bar.set_postfix({"processes": max_workers})
                 # Extract results from the parallel task queue
                 for task in tm.as_completed():
                     results.append(task.result)
