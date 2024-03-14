@@ -35,7 +35,8 @@ from tradeexecutor.strategy.cycle import CycleDuration
 from tradeexecutor.strategy.reserve_currency import ReserveCurrency
 from tradeexecutor.strategy.strategy_type import StrategyType
 from tradeexecutor.strategy.default_routing_options import TradeRouting
-from tradeexecutor.visual.equity_curve import calculate_equity_curve, calculate_returns, calculate_compounding_realised_trading_profitability, calculate_long_compounding_realised_trading_profitability
+from tradeexecutor.visual.equity_curve import calculate_equity_curve, calculate_returns, calculate_compounding_realised_trading_profitability, \
+    calculate_long_compounding_realised_trading_profitability, calculate_rolling_sharpe
 from tradeexecutor.analysis.advanced_metrics import visualise_advanced_metrics, AdvancedMetricsMode
 
 
@@ -665,3 +666,5 @@ def test_benchmark_synthetic_trading_portfolio(
     )
     assert len(fig3.data) == 2
 
+    rolling_sharpe = calculate_rolling_sharpe(returns)
+    assert len(rolling_sharpe) > 0

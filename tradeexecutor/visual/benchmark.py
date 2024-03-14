@@ -5,6 +5,7 @@ from typing import Optional, List, Union, Collection, Dict
 
 import plotly.graph_objects as go
 import pandas as pd
+from pandas._libs.tslibs.offsets import MonthBegin
 
 from tradeexecutor.analysis.trade_analyser import build_trade_analysis
 from tradeexecutor.state.identifier import TradingPairIdentifier
@@ -13,7 +14,8 @@ from tradeexecutor.state.visualisation import Plot
 from tradeexecutor.state.state import State
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
 from tradeexecutor.visual.technical_indicator import visualise_technical_indicator
-from tradeexecutor.visual.equity_curve import calculate_long_compounding_realised_trading_profitability, calculate_short_compounding_realised_trading_profitability, calculate_compounding_realised_trading_profitability
+from tradeexecutor.visual.equity_curve import calculate_long_compounding_realised_trading_profitability, \
+    calculate_short_compounding_realised_trading_profitability, calculate_compounding_realised_trading_profitability, resample_returns, calculate_returns
 from tradingstrategy.timebucket import TimeBucket
 from tradingstrategy.pair import HumanReadableTradingPairDescription
 from tradingstrategy.types import USDollarAmount
@@ -658,8 +660,10 @@ def get_plot_from_series(name, colour, series) -> go.Scatter:
 def visualise_vs_returns(
     returns: pd.Series,
     benchmark_indexes: pd.DataFrame,
-    name="Returns development vs. benchmarks",
+    name="Strategy returns multiplier vs. benchmark indices",
     height=800,
+    skipped_benchmarks=("All cash",),
+    freq: pd.DateOffset = MonthBegin()
 )-> go.Figure:
     """Create a chart that shows the strategy returns direction vs. benchmark.
 
@@ -671,7 +675,9 @@ def visualise_vs_returns(
         `Series.attrs` can contain `name` and `colour`.
 
     :param benchmark_indexes:
-        Benchmark returns.
+        Benchmark buy and hold indexes.
+
+        Assume starts with `initial_cash` like $10,000 and then moves with the price action.
 
         Each `Series.attrs` can have keys `name` and `colour`.
     
@@ -680,6 +686,14 @@ def visualise_vs_returns(
 
     :param height:
         Chart height in pixels.
+
+    :param skipped_benchmarks:
+        Benchmark indices we do not need to render.
+
+    :param freq:
+        Binning frequency for more readable charts.
+
+        Choose between weekly, monthly, quaterly, yearly binning.
     """
 
     assert isinstance(returns, pd.Series)
@@ -688,10 +702,18 @@ def visualise_vs_returns(
 
     fig = go.Figure()
 
+    resampled_returns = resample_returns(returns, freq)
+
     fig.update_layout(title=f"name", height=height)
     for benchmark in benchmark_indexes.columns:
+
+        if any(s for s in skipped_benchmarks if s in benchmark):
+            # Simple string match filter
+            continue
         benchmark_series = benchmark_indexes[benchmark]
-        ratio_series = returns / benchmark_series
+        benchmark_returns = calculate_returns(benchmark_series)
+        resampled_benchmark = resample_returns(benchmark_returns, freq)
+        ratio_series = (1+resampled_returns) / (1+resampled_benchmark)
         colour = benchmark_series.attrs.get("colour")
         scatter = go.Scatter(
             x=ratio_series.index,
@@ -702,7 +724,17 @@ def visualise_vs_returns(
         )
         fig.add_trace(scatter)
 
-    fig.update_yaxes(title="Strategy returns multiplier vs. benchmark indices", showgrid=False)
+    # Add line at 1
+    scatter = go.Scatter(
+        x=resampled_returns.index,
+        y=[1] * len(resampled_returns.index),
+        mode="lines",
+        name=f"Strategy and index perform equal",
+        line=dict(color="black"),
+    )
+    fig.add_trace(scatter)
+
+    fig.update_yaxes(title="Strategy x benchmark", showgrid=False, tickformat=".2fx")
     fig.update_xaxes(rangeslider={"visible": False})
     fig.update_layout(title=name)
 

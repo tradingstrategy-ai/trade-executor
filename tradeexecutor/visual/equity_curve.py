@@ -6,7 +6,9 @@ import datetime
 from typing import List
 
 import pandas as pd
+import numpy as np
 from matplotlib.figure import Figure
+from pandas._libs.tslibs import to_offset
 
 from tradeexecutor.state.state import State
 from tradeexecutor.state.statistics import Statistics, PortfolioStatistics
@@ -549,6 +551,7 @@ def calculate_non_cumulative_daily_returns(state: State, freq_base: pd.offsets.D
     non_cumulative_daily_returns = returns.add(1).resample(freq_base).prod(min_count=1).sub(1).fillna(0)
     return non_cumulative_daily_returns
 
+
 def calculate_cumulative_daily_returns(state: State, freq_base: pd.offsets.DateOffset | None = pd.offsets.Day()) -> pd.Series:
     """Calculates the cumulative daily returns for the strategy over time
 
@@ -565,3 +568,102 @@ def calculate_cumulative_daily_returns(state: State, freq_base: pd.offsets.DateO
     return cumulative_daily_returns
 
 
+def resample_returns(returns: pd.Series, freq: pd.DateOffset) -> pd.Series:
+    """Resample returns series to a longer time frame.
+
+    - Transform daily returns series to monthly and so on
+
+    - The returns of each period is the cumulative product of the sub-returns
+
+    - Does this with a cumulative product transformation
+
+    Example:
+
+    We have `returns`:
+
+    .. code-block:: text
+
+        2021-06-01 00:00:00    0.000000
+        2021-06-01 08:00:00    0.000000
+        2021-06-01 16:00:00    0.000000
+        2021-06-02 00:00:00    0.000000
+        2021-06-02 08:00:00    0.000000
+                                 ...
+        2024-03-08 08:00:00   -0.002334
+        2024-03-08 16:00:00   -0.012170
+        2024-03-09 00:00:00   -0.003148
+        2024-03-09 08:00:00    0.010400
+        2024-03-09 16:00:00   -0.000277
+
+    Make it quarterly:
+
+    .. code-block:: python
+
+        # Transform daily returns to monthly for easier comparison
+        freq = QuarterBegin()
+        resampled_returns = resample_returns(returns, freq)
+
+    Now it is:
+
+    .. code-block:: text
+
+        2021-06-01    0.483777
+        2021-09-01    0.287191
+        2021-12-01    0.265714
+        2022-03-01   -0.035728
+        2022-06-01    0.194215
+        2022-09-01    0.059003
+        2022-12-01    0.062195
+        2023-03-01   -0.091300
+
+    :return:
+        Returns series where the returns are binned by a new timeframe.
+    """
+    # https://stackoverflow.com/a/46216956/315168
+    assert isinstance(returns, pd.Series)
+    return (1+returns).resample(freq).prod() - 1
+
+
+def calculate_rolling_sharpe(
+    returns: pd.Series,
+    freq: pd.DateOffset | None=to_offset(pd.Timedelta(days=1)),
+    periods=90,  # 90 Days
+) -> pd.Series:
+    """Calculate rolling Sharpe ration.
+
+    - Declining rolling :term:`sharpe` means that the alpha of the :term:`strategy is decaying <strategy decay>`.
+
+    - `See this QuantStrat post for more information <https://www.quantstart.com/articles/annualised-rolling-sharpe-ratio-in-qstrader/>`__
+
+    - `Alternative example implementation <https://github.com/pranaysjha/rolling-sharpe/blob/main/rolling_sharpe.py>`__
+
+    Explanation how to interpret rolling sharpe from QuantStrat:
+
+        It can be seen that the strategy had a significant upward period in 2013 which gives rise to a high trailing annualised Sharpe of 2.5, exceeding 3.5 by the start of 2014. However the strategy performance remained flat through 2014, which caused a gradual reduction in the annualised rolling Sharpe since the volatility of returns was largely similar. By the start of 2015 the Sharpe was between 0.5 and 1.0, meaning more risk was being taken per unit of return at this stage. By the end of 2015 the Sharpe had risen slightly to around 1.5, largely due to some consistent upward gains in the latter half of 2015.
+
+    Example:
+
+    .. code-block:: python
+
+
+
+    :param returns:
+        Returns series with rolling sharpe
+
+    :param freq:
+        Returns binning frequency for Sharpe calculations
+
+    :param periods:
+        How many periods of data we sample for rolling sharpe.
+    """
+
+    if freq is not None:
+        resampled_returns = resample_returns(returns, freq)
+    else:
+        resampled_returns = returns
+
+    rolling = resampled_returns.rolling(window=periods)
+    rolling_sharpe = np.sqrt(periods) * (
+        rolling.mean() / rolling.std()
+    )
+    return rolling_sharpe
