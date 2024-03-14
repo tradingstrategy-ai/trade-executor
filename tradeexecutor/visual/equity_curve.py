@@ -8,7 +8,6 @@ from typing import List
 import pandas as pd
 import numpy as np
 from matplotlib.figure import Figure
-from pandas._libs.tslibs import to_offset
 
 from tradeexecutor.state.state import State
 from tradeexecutor.state.statistics import Statistics, PortfolioStatistics
@@ -626,7 +625,7 @@ def resample_returns(returns: pd.Series, freq: pd.DateOffset) -> pd.Series:
 
 def calculate_rolling_sharpe(
     returns: pd.Series,
-    freq: pd.DateOffset | None=to_offset(pd.Timedelta(days=1)),
+    freq: pd.DateOffset | str | None = "D",
     periods=90,  # 90 Days
 ) -> pd.Series:
     """Calculate rolling Sharpe ration.
@@ -645,7 +644,21 @@ def calculate_rolling_sharpe(
 
     .. code-block:: python
 
+        import plotly.express as px
 
+        from tradeexecutor.visual.equity_curve import calculate_rolling_sharpe
+
+        rolling_sharpe = calculate_rolling_sharpe(
+            returns,
+            freq="D",
+            periods=180,
+        )
+
+        fig = px.line(rolling_sharpe, title='Strategy rolling Sharpe (6 months)')
+        fig.update_layout(showlegend=False)
+        fig.update_yaxes(title="Sharpe")
+        fig.update_xaxes(title="Time")
+        fig.show()
 
     :param returns:
         Returns series with rolling sharpe
@@ -666,4 +679,6 @@ def calculate_rolling_sharpe(
     rolling_sharpe = np.sqrt(periods) * (
         rolling.mean() / rolling.std()
     )
-    return rolling_sharpe
+
+    # Remove NA entries at the beginning of the series
+    return rolling_sharpe.dropna()
