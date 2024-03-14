@@ -733,9 +733,10 @@ def _read_cached_results(
 
     results = {}
 
+    # Label too long for Datalore
     label = ", ".join(p.name for p in combinations[0].searchable_parameters)
-    print(f"Using grid search cache {combinations[0].result_path}")
-    with tqdm(total=len(task_args), desc=f"Reading cached grid search results using {reader_pool_size} threads: {label}") as progress_bar:
+    print(f"Using grid search cache {combinations[0].result_path}, for indicators {label}")
+    with tqdm(total=len(task_args), desc=f"Reading cached search results w/ {reader_pool_size} threads") as progress_bar:
         # Extract results from the parallel task queue
         for task in tm.as_completed():
             results[task.args[0]] = task.result
