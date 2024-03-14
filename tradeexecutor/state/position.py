@@ -1112,7 +1112,7 @@ class TradingPosition(GenericPosition):
 
         :return: None if no executed trades
         """
-        if self.is_long():
+        if self.is_long() or self.is_credit_supply():
             return self.get_average_buy()
         else:
             return self.get_average_sell()
