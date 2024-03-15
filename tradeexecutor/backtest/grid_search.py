@@ -1010,6 +1010,7 @@ def run_grid_search_backtest(
         returns,
         mode=AdvancedMetricsMode.full,
         periods_per_year=cycle_duration.get_yearly_periods(),
+        convert_to_daily=True,
     )
     summary = analysis.calculate_summary_statistics()
 
