@@ -209,6 +209,9 @@ class TradeSummary:
             days_as_decimal = self.duration.total_seconds() / (60 * 60 * 24)
             self.average_position_frequency = self.total_positions / days_as_decimal if days_as_decimal else 0
             self.annualised_return_percent = calculate_annualised_return(self.return_percent, self.duration)
+        else:
+            self.average_position_frequency = 0
+            self.annualised_return_percent = 0
 
     def get_trading_core_metrics(self) -> Dict[str, str]:
         """Get metrics displayed on a equity curve benchmark tooltip.
