@@ -1,10 +1,11 @@
 """Describe strategy modules and their loading."""
 import datetime
+import inspect
 import logging
 import runpy
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable, Dict, Protocol, List, Optional, Union, Set
+from typing import Callable, Dict, Protocol, List, Optional, Union, Set, Type
 from urllib.parse import urlparse
 
 from packaging import version
@@ -427,6 +428,16 @@ class StrategyModuleInformation:
     #:
     tags: Optional[Set[StrategyTag]] = None
 
+    #: StrategyParameters class.
+    #:
+    #: trading_strategy_engine_version > "0.5"
+    #:
+    #: Converted to StrategyParameters attributed dict after loading.
+    #:
+    #: See :py:class:`~tradeexecutor.strategy.parameters.StrategyParameters`.
+    #:
+    parameter_configuration: Optional[Type | StrategyParameters] = None
+
     def __repr__(self):
         return f"<StrategyModuleInformation {self.path}>"
 
@@ -435,6 +446,17 @@ class StrategyModuleInformation:
         assert self.trading_strategy_engine_version, f"Strategy module does not contain trading_strategy_engine_version varible: {self.path}"
         required_version = f"{major}.{minor}.{patch}"
         return version.parse(self.trading_strategy_engine_version) >= version.parse(required_version)
+
+    def unpack_strategy_parameters(self, strategy_parameters: StrategyParameters):
+        """Load strategy module parameters from StrategyParameters class.
+
+        trading_strategy_engive > "0.5"
+        """
+        self.trading_strategy_cycle = self.parameter_configuration["cycle_duration"]
+        self.trade_routing = self.parameter_configuration["routing"]
+        self.backtest_start = self.parameter_configuration["backtest_start"]
+        self.backtest_end = self.parameter_configuration["backtest_end"]
+        self.initial_cash = self.parameter_configuration["initial_cash"]
 
     def validate(self):
         """Check that the user inputted variable names look good.
@@ -451,6 +473,16 @@ class StrategyModuleInformation:
 
         if self.trading_strategy_engine_version not in SUPPORTED_TRADING_STRATEGY_ENGINE_VERSIONS:
             raise StrategyModuleNotValid(f"Only versions {SUPPORTED_TRADING_STRATEGY_ENGINE_VERSIONS} supported, got {self.trading_strategy_engine_version}")
+
+        # Validate StrategyParameters now as it is used later
+        if self.is_version_greater_or_equal_than(0, 5, 0):
+            assert self.parameter_configuration is not None, "ParameterConfiguration class missing in the strategy module"
+            assert inspect.isclass(self.parameter_configuration)
+
+            # Transform from class with args to a attribdict
+            self.parameter_configuration = StrategyParameters.from_class(self.parameter_configuration, grid_search=False)
+
+            self.unpack_strategy_parameters(self.parameter_configuration)
 
         if not self.trading_strategy_type:
             raise StrategyModuleNotValid(f"trading_strategy_type missing in the module")
@@ -498,9 +530,9 @@ class StrategyModuleInformation:
             assert type(self.long_description) == str
 
         if self.tags:
-            assert type(self.tags) == set
+            assert type(self.tags) == set, "tags must a Python set in a strategy module"
             for t in self.tags:
-                assert isinstance(t, StrategyTag)
+                assert isinstance(t, StrategyTag), f"Expected StrategyTag instance, got {type(t)}: {t}"
 
         if self.icon:
             result = urlparse(self.icon)
@@ -535,6 +567,7 @@ def parse_strategy_module(
 
     assert isinstance(path, Path)
 
+    # Extract potential module variables and functions across all strategy module versions
     return StrategyModuleInformation(
         path,
         source_code,
@@ -554,6 +587,7 @@ def parse_strategy_module(
         long_description=python_module_exports.get("long_description"),
         tags=python_module_exports.get("tags"),
         create_indicators=python_module_exports.get("create_indicators"),
+        parameter_configuration=python_module_exports.get("parameterconfiguration"),
     )
 
 
