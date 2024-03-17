@@ -4,8 +4,6 @@ import tempfile
 # Enable pickle patch that allows multiprocessing in notebooks
 from tradeexecutor.monkeypatch import cloudpickle_patch  
 
-
-import concurrent
 import datetime
 import enum
 import itertools
@@ -16,7 +14,6 @@ import shutil
 import signal
 import sys
 import warnings
-from collections import Counter
 from dataclasses import dataclass
 from enum import Enum
 from inspect import isclass
@@ -31,7 +28,6 @@ import pandas as pd
 import futureproof
 
 from tradeexecutor.utils.cpu import get_safe_max_workers_count
-from tradingstrategy.client import Client
 
 try:
     from tqdm_loggable.auto import tqdm
@@ -41,9 +37,8 @@ except ImportError:
     from tqdm.auto import tqdm
 
 from tradeexecutor.strategy.engine_version import TradingStrategyEngineVersion
-from tradeexecutor.strategy.execution_context import ExecutionContext, notebook_execution_context, grid_search_execution_context
-from tradeexecutor.strategy.pandas_trader.indicator import IndicatorSet, CreateIndicatorsProtocol, IndicatorStorage, calculate_and_load_indicators, \
-    IndicatorDefinition, warm_up_indicator_cache, IndicatorKey, DEFAULT_INDICATOR_STORAGE_PATH
+from tradeexecutor.strategy.execution_context import ExecutionContext, grid_search_execution_context
+from tradeexecutor.strategy.pandas_trader.indicator import IndicatorSet, CreateIndicatorsProtocol, IndicatorStorage, warm_up_indicator_cache, IndicatorKey, DEFAULT_INDICATOR_STORAGE_PATH
 from tradeexecutor.strategy.universe_model import UniverseOptions
 
 
@@ -55,7 +50,6 @@ from tradeexecutor.state.state import State
 from tradeexecutor.state.types import USDollarAmount, Percent
 from tradeexecutor.strategy.cycle import CycleDuration
 from tradeexecutor.strategy.default_routing_options import TradeRouting
-from tradeexecutor.strategy.routing import RoutingModel
 from tradeexecutor.strategy.strategy_module import DecideTradesProtocol, DecideTradesProtocol2, StrategyParameters, DecideTradesProtocol3, DecideTradesProtocol4
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
 from tradeexecutor.visual.equity_curve import calculate_equity_curve, calculate_returns
