@@ -1,11 +1,11 @@
-"""Test EMA cross-over strategy.
+"""Test live trading with trading strategy engine 0.5 and create_indicators based module.
 
 To run:
 
 .. code-block:: shell
 
     export TRADING_STRATEGY_API_KEY="secret-token:tradingstrategy-6ce98...."
-    export BNB_CHAIN_JSON_RPC="https://bsc-dataseed.binance.org/"
+    export POLYGON_JSON_RPC="https://bsc-dataseed.binance.org/"
     pytest --log-cli-level=info -s -k test_bnb_chain_16h_momentum
 
 """
@@ -38,7 +38,7 @@ from tradeexecutor.cli.log import setup_pytest_logging
 
 
 # https://docs.pytest.org/en/latest/how-to/skipping.html#skip-all-test-functions-of-a-class-or-module
-pytestmark = pytest.mark.skipif(os.environ.get("BNB_CHAIN_JSON_RPC") is None, reason="Set BNB_CHAIN_JSON_RPC environment variable to Binance Smart Chain node to run this test")
+pytestmark = pytest.mark.skipif(os.environ.get("POLYGON_JSON_RPC") is None, reason="Set POLYGON_JSON_RPC environment variable to run this test")
 
 
 @pytest.fixture(scope="module")
