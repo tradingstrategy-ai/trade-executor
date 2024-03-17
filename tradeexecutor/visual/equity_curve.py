@@ -567,7 +567,7 @@ def calculate_cumulative_daily_returns(state: State, freq_base: pd.offsets.DateO
     return cumulative_daily_returns
 
 
-def resample_returns(returns: pd.Series, freq: pd.DateOffset) -> pd.Series:
+def resample_returns(returns: pd.Series, freq: pd.DateOffset | str) -> pd.Series:
     """Resample returns series to a longer time frame.
 
     - Transform daily returns series to monthly and so on
@@ -614,6 +614,14 @@ def resample_returns(returns: pd.Series, freq: pd.DateOffset) -> pd.Series:
         2022-09-01    0.059003
         2022-12-01    0.062195
         2023-03-01   -0.091300
+
+    :param returns:
+        Hourly, 8h, etc. returns
+
+    :param freq:
+        Pandas resample frequency.
+
+        Use "D" for daily.
 
     :return:
         Returns series where the returns are binned by a new timeframe.
