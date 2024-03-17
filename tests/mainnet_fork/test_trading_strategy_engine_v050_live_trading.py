@@ -5,8 +5,8 @@ To run:
 .. code-block:: shell
 
     export TRADING_STRATEGY_API_KEY="secret-token:tradingstrategy-6ce98...."
-    export POLYGON_JSON_RPC="https://bsc-dataseed.binance.org/"
-    pytest --log-cli-level=info -s -k test_bnb_chain_16h_momentum
+    export JSON_RPC_POLYGON=
+    pytest --log-cli-level=info -s -k test_trading_strategy_engine_v050_live_trading
 
 """
 import datetime
@@ -31,6 +31,7 @@ from web3 import Web3, HTTPProvider
 from web3.contract import Contract
 
 from eth_defi.hotwallet import HotWallet
+from eth_defi.trace import assert_transaction_success_with_explanation
 from tradeexecutor.cli.main import app
 from tradeexecutor.state.state import State
 
@@ -38,7 +39,7 @@ from tradeexecutor.cli.log import setup_pytest_logging
 
 
 # https://docs.pytest.org/en/latest/how-to/skipping.html#skip-all-test-functions-of-a-class-or-module
-pytestmark = pytest.mark.skipif(os.environ.get("POLYGON_JSON_RPC") is None, reason="Set POLYGON_JSON_RPC environment variable to run this test")
+pytestmark = pytest.mark.skipif(os.environ.get("JSON_RPC_POLYGON") is None, reason="Set JSON_RPC_POLYGON environment variable to run this test")
 
 
 @pytest.fixture(scope="module")
@@ -48,7 +49,7 @@ def logger(request):
 
 
 @pytest.fixture
-def busd_token(web3) -> Contract:
+def usdc_contract(web3) -> Contract:
     """BUSD with $4B supply."""
     # https://bscscan.com/address/0xe9e7cea3dedca5984780bafc599bd69add087d56
     token = get_deployed_contract(web3, "ERC20MockDecimals.json", "0xe9e7CEA3DedcA5984780Bafc599bD69ADd087D56")
@@ -56,40 +57,45 @@ def busd_token(web3) -> Contract:
 
 
 @pytest.fixture()
-def large_busd_holder() -> HexAddress:
-    """A random account picked from BNB Smart chain that holds a lot of BUSD.
+def large_polygon_usdc_holder() -> HexAddress:
+    """A random account picked from Polygon mainnet that holds USDC.
 
-    This account is unlocked on Ganache, so you have access to good BUSD stash.
-
-    `To find large holder accounts, use bscscan <https://bscscan.com/token/0xe9e7cea3dedca5984780bafc599bd69add087d56#balances>`_.
+    - We use bridged USDC.e here
     """
-    # Binance Hot Wallet 6
-    return HexAddress(HexStr("0x8894E0a0c962CB723c1976a4421c95949bE2D4E3"))
+    return HexAddress(HexStr("0xe7804c37c13166fF0b37F5aE0BB07A3aEbb6e245"))  # Binance Hot Wallet 2
 
 
 @pytest.fixture()
-def anvil_bnb_chain_fork(logger, large_busd_holder) -> str:
+def large_matic_holder() -> HexAddress:
+    """A random account picked from Polygon mainnet that holds MATIC.
+    """
+    return HexAddress(HexStr("0x0000000000000000000000000000000000001010"))
+
+
+@pytest.fixture()
+def anvil_polygon_chain_fork_rpc(logger, large_polygon_usdc_holder, large_matic_holder) -> str:
     """Create a testable fork of live BNB chain.
 
     :return: JSON-RPC URL for Web3
     """
 
-    mainnet_rpc = os.environ["BNB_CHAIN_JSON_RPC"]
+    mainnet_rpc = os.environ["JSON_RPC_POLYGON"]
 
     launch = fork_network_anvil(
         mainnet_rpc,
-        unlocked_addresses=[large_busd_holder])
+        unlocked_addresses=[large_polygon_usdc_holder, large_matic_holder])
     try:
         yield launch.json_rpc_url
     finally:
-        launch.close(log_level=logging.INFO)
+        # launch.close(log_level=logging.INFO)
+        launch.close()
 
 
 @pytest.fixture
-def web3(anvil_bnb_chain_fork: str):
+def web3(anvil_polygon_chain_fork_rpc: str):
     """Set up a local unit testing blockchain."""
     # https://web3py.readthedocs.io/en/stable/examples.html#contract-unit-tests-in-python
-    web3 = Web3(HTTPProvider(anvil_bnb_chain_fork, request_kwargs={"timeout": 5}))
+    web3 = Web3(HTTPProvider(anvil_polygon_chain_fork_rpc, request_kwargs={"timeout": 5}))
     web3.eth.set_gas_price_strategy(node_default_gas_price_strategy)
     install_chain_middleware(web3)
     return web3
@@ -101,15 +107,21 @@ def chain_id(web3):
 
 
 @pytest.fixture()
-def hot_wallet(web3: Web3, busd_token: Contract, large_busd_holder: HexAddress) -> HotWallet:
-    """Our trading Ethereum account.
+def hot_wallet(
+    web3: Web3,
+    usdc_contract: Contract,
+    large_polygon_usdc_holder: HexAddress,
+    large_matic_holder: HexAddress,
+) -> HotWallet:
+    """Our trade-executor hot wallet account.
 
-    Start with 10,000 USDC cash and 2 BNB.
+    Start with 10,000 USDC cash and 2 MATIC.
     """
     account = Account.create()
-    web3.eth.send_transaction({"from": large_busd_holder, "to": account.address, "value": 2*10**18})
-    tx_hash = busd_token.functions.transfer(account.address, 10_000 * 10**18).transact({"from": large_busd_holder})
-    wait_transactions_to_complete(web3, [tx_hash])
+    tx_hash = web3.eth.send_transaction({"from": large_matic_holder, "to": account.address, "value": 2*10**18})
+    assert_transaction_success_with_explanation(web3, tx_hash)
+    tx_hash = usdc_contract.functions.transfer(account.address, 10_000 * 10**18).transact({"from": large_polygon_usdc_holder})
+    assert_transaction_success_with_explanation(web3, tx_hash)
     wallet = HotWallet(account)
     wallet.sync_nonce(web3)
     return wallet
@@ -118,18 +130,16 @@ def hot_wallet(web3: Web3, busd_token: Contract, large_busd_holder: HexAddress) 
 @pytest.fixture()
 def strategy_path() -> Path:
     """Where do we load our strategy file."""
-    return Path(os.path.join(os.path.dirname(__file__), "../..", "strategies", "ema-crossover-long-only-no-stop-loss.py"))
+    return Path(os.path.join(os.path.dirname(__file__), "../..", "strategies", "test_only", "test_trading_strategy_engine_v050_live_trading.py"))
 
 
-# web3.exceptions.BlockNotFound: Block with id: 'latest' not found. with third party JSON-RPC
-# caused by gas pricing middleware
-@flaky.flaky()
-def test_ema_crossover(
-        logger: logging.Logger,
-        strategy_path: Path,
-        anvil_bnb_chain_fork,
-        hot_wallet: HotWallet,
-        persistent_test_cache_path,
+def test_trading_strategy_engine_v050_live_trading(
+    logger: logging.Logger,
+    strategy_path: Path,
+    anvil_polygon_chain_fork_rpc,
+    hot_wallet: HotWallet,
+    persistent_test_cache_path,
+    tmp_path,
     ):
     """Run the strategy test
 
@@ -138,35 +148,19 @@ def test_ema_crossover(
     - Trade against live exchanges
     """
 
-    debug_dump_file = "/tmp/test_bnb_chain_16h_momentum.debug.json"
+    debug_dump_file = f"/{tmp_path}/test_bnb_chain_16h_momentum.debug.json"
+    state_file = f"/{tmp_path}/test_bnb_chain_16h_momentum.json"
 
-    state_file = "/tmp/test_bnb_chain_16h_momentum.json"
-
-    # Set up the configuration for the backtesting,
-    # run the loop 6 cycles using Ganache + live BNB Chain fork
     environment = {
-        "EXECUTOR_ID": "test_ema",
-        "NAME": "test_ema",
-        "STRATEGY_FILE": strategy_path.as_posix(),
-        "PRIVATE_KEY": hot_wallet.account.key.hex(),
-        "HTTP_ENABLED": "false",
-        "JSON_RPC": anvil_bnb_chain_fork,
-        "GAS_PRICE_METHOD": "legacy",
-        "STATE_FILE": state_file,
-        "RESET_STATE": "true",
-        "ASSET_MANAGEMENT_MODE": "backtest",
-        "APPROVAL_TYPE": "unchecked",
-        "CACHE_PATH": persistent_test_cache_path,
         "TRADING_STRATEGY_API_KEY": os.environ["TRADING_STRATEGY_API_KEY"],
-        "DEBUG_DUMP_FILE": debug_dump_file,
-        "BACKTEST_START": "2021-12-07",
-        "BACKTEST_END": "2021-12-09",
-        "BACKTEST_CANDLE_TIME_FRAME_OVERRIDE": "1d",  # Speed up testing / reduce download data
-        "TICK_OFFSET_MINUTES": "10",
-        "CONFIRMATION_BLOCK_COUNT": "8",
+        "STRATEGY_FILE": strategy_path.as_posix(),
+        "CACHE_PATH": persistent_test_cache_path,
+        "JSON_RPC_ANVIL": anvil_polygon_chain_fork_rpc,
+        "PRIVATE_KEY": hot_wallet.private_key.hex(),
         "UNIT_TESTING": "true",
-        "DISCORD_WEBHOOK_URL": "",  # Always disable,
         "LOG_LEVEL": "disabled",
+        "ASSET_MANAGEMENT_MODE": "hot_wallet",
+        "MAX_CYCLES": "4",  # Run for 4 seconds, 4 cycles
     }
 
     # Don't use CliRunner.invoke() here,
@@ -184,8 +178,5 @@ def test_ema_crossover(
     json_text = open(state_file, "rt").read()
     state = State.from_json(json_text)
     state.perform_integrity_check()
-
-    # Check the stats of the first position when it was opened
-    assert len(state.visualisation.plots) > 0
 
     logger.info("All ok")
