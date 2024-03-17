@@ -17,7 +17,7 @@ from tradeexecutor.strategy.pandas_trader.indicator import IndicatorSource, Indi
 from tradeexecutor.strategy.pandas_trader.strategy_input import StrategyInput
 from tradeexecutor.strategy.parameters import StrategyParameters
 from tradeexecutor.strategy.tag import StrategyTag
-from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse, load_trading_and_lending_data
+from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse, load_trading_and_lending_data, load_partial_data
 from tradeexecutor.strategy.universe_model import UniverseOptions
 from tradingstrategy.chain import ChainId
 from tradingstrategy.client import Client
@@ -46,6 +46,7 @@ class ParameterConfiguration:
     rsi_bars = 10
     custom_parameter = 1
     initial_cash = 10_000
+    time_bucket = TimeBucket.d1
 
 
 def decide_trades(
@@ -97,18 +98,38 @@ def create_trading_universe(
 ) -> TradingStrategyUniverse:
     # Try to load live data, do some sanity checks
     assert datetime.datetime.utcnow() - timestamp < datetime.timedelta(minutes=1)
-    dataset = load_trading_and_lending_data(
-        client,
+
+    pairs = [
+        (ChainId.polygon, "uniswap-v3", "WETH", "USDC", 0.0005),
+        (ChainId.polygon, "uniswap-v3", "WMATIC", "USDC", 0.0005),
+    ]
+
+    # Load data for our trading pair whitelist
+    if execution_context.mode.is_backtesting():
+        # For backtesting, we use a specific time range from the strategy parameters
+        start_at = universe_options.start_at
+        end_at = universe_options.end_at
+        required_history_period = None
+    else:
+        # For live trading, we look back 30 days for the data
+        assert execution_context.mode.is_live_trading()
+        start_at = None
+        end_at = None
+        required_history_period = datetime.timedelta(days=30)
+
+    dataset = load_partial_data(
+        client=client,
+        time_bucket=ParameterConfiguration.time_bucket,
+        pairs=pairs,
         execution_context=execution_context,
         universe_options=universe_options,
-        chain_id=ChainId.polygon,
-        exchange_slugs={"uniswap-v3"},
-        reserve_assets={"USDC"},
-        asset_ids={"WMATIC", "WETH"},
-        trading_fee=0.0005,
-        time_bucket=TimeBucket.d1,
-        stop_loss_time_bucket=TimeBucket.h1,
+        liquidity=False,
+        stop_loss_time_bucket=None,
+        start_at=start_at,
+        end_at=end_at,
+        required_history_period=required_history_period,
     )
+
     # Filter down the dataset to the pairs we specified
     universe = TradingStrategyUniverse.create_from_dataset(dataset)
     return universe
