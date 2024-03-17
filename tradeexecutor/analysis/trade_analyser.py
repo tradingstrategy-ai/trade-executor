@@ -199,15 +199,16 @@ class TradeSummary:
         self.end_value = self.open_value + self.uninvested_cash
         initial_cash = self.initial_cash or 0
         self.return_percent = calculate_percentage(self.end_value - initial_cash, initial_cash)
-        self.annualised_return_percent = calculate_annualised_return(self.return_percent, self.duration)
         self.winning_stop_losses_percent = calculate_percentage(self.winning_stop_losses, self.stop_losses)
         self.losing_stop_losses_percent = calculate_percentage(self.losing_stop_losses, self.stop_losses)
 
         self.winning_take_profits_percent = calculate_percentage(self.winning_take_profits, self.take_profits)
         self.losing_take_profits_percent = calculate_percentage(self.losing_take_profits, self.take_profits)
 
-        days_as_decimal = self.duration.total_seconds() / (60 * 60 * 24)
-        self.average_position_frequency = self.total_positions / days_as_decimal if days_as_decimal else 0
+        if self.duration is not None:
+            days_as_decimal = self.duration.total_seconds() / (60 * 60 * 24)
+            self.average_position_frequency = self.total_positions / days_as_decimal if days_as_decimal else 0
+            self.annualised_return_percent = calculate_annualised_return(self.return_percent, self.duration)
 
     def get_trading_core_metrics(self) -> Dict[str, str]:
         """Get metrics displayed on a equity curve benchmark tooltip.
