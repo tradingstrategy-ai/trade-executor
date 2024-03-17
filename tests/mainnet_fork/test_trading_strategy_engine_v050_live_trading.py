@@ -141,12 +141,16 @@ def test_trading_strategy_engine_v050_live_trading(
     persistent_test_cache_path,
     tmp_path,
     ):
-    """Run the strategy test
+    """Run the live strategy test using engine v0.5 for few seconds.
 
-    - Use decision data from the past
+    - Fork Polygon mainnet
 
-    - Trade against live exchanges
+    - Check that the create_indicator and indicator result data looks correct
+
+    - Check that the live strategy re-creates indicator data on every cycle
     """
+
+    assert strategy_path.exists()
 
     debug_dump_file = f"/{tmp_path}/test_bnb_chain_16h_momentum.debug.json"
     state_file = f"/{tmp_path}/test_bnb_chain_16h_momentum.json"
