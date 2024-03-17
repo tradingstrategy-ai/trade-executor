@@ -14,6 +14,7 @@ import pandas as pd
 from web3.datastructures import AttributeDict, ReadableAttributeDict
 
 from tradeexecutor.strategy.engine_version import SUPPORTED_TRADING_STRATEGY_ENGINE_VERSIONS, TradingStrategyEngineVersion
+from tradeexecutor.strategy.pandas_trader.indicator import CreateIndicatorsProtocol
 from tradeexecutor.strategy.pandas_trader.strategy_input import StrategyInput
 from tradeexecutor.strategy.parameters import StrategyParameters
 from tradeexecutor.strategy.tag import StrategyTag
@@ -360,6 +361,12 @@ class StrategyModuleInformation:
     #: need to deal with new and deprecated trading pairs.
     create_trading_universe: CreateTradingUniverseProtocol
 
+    #: A function to prepare strategy indicators
+    #:
+    #: create_indicators() was added in engiver version 0.5
+    #:
+    create_indicators: CreateIndicatorsProtocol
+
     #: Routing hinting.
     #:
     #: Legacy option: most strategies can set this in
@@ -499,6 +506,10 @@ class StrategyModuleInformation:
             result = urlparse(self.icon)
             assert all([result.scheme, result.netloc]), f"Bad icon URL: {self.icon}"
 
+        if self.is_version_greater_or_equal_than(0, 5, 0):
+            assert self.create_indicators is not None, "create_indicators() function missing"
+            assert callable(self.create_indicators), "create_indicators() is not a function"
+
     def validate_backtest(self):
         """Validate that the module is backtest runnable."""
         self.validate()
@@ -542,6 +553,7 @@ def parse_strategy_module(
         short_description=python_module_exports.get("short_description"),
         long_description=python_module_exports.get("long_description"),
         tags=python_module_exports.get("tags"),
+        create_indicators=python_module_exports.get("create_indicators"),
     )
 
 
@@ -584,8 +596,11 @@ def read_strategy_module(path: Path) -> Union[StrategyModuleInformation, Strateg
 
     logger.info("Strategy module %s, engine version %s", path, version)
 
-    mod_info = parse_strategy_module(path, strategy_exports, source_code)
-    mod_info.validate()
+    try:
+        mod_info = parse_strategy_module(path, strategy_exports, source_code)
+        mod_info.validate()
+    except Exception as e:
+        raise RuntimeError(f"Error reading strategy module: {path.resolve()}: {e}") from e
 
     return mod_info
 
