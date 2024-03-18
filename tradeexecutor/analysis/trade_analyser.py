@@ -283,6 +283,11 @@ class TradeSummary:
             })
 
         human_data.update({
+            "Average duration between position openings": self.format_duration(self.average_duration_between_positions),
+            "Average positions per day": as_decimal(self.average_position_frequency),
+            "Average interest paid": as_dollar(self.average_interest_paid_usd),
+            "Median interest paid": as_dollar(self.median_interest_paid_usd),
+            "Total interest paid": as_dollar(self.total_interest_paid_usd),
             "LP fees paid": as_dollar(self.lp_fees_paid),
             "LP fees paid % of volume": as_percent(self.lp_fees_average_pc),
         })
