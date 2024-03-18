@@ -189,6 +189,8 @@ class TradeSummary:
     average_duration_between_position_openings: Optional[datetime.timedelta] = None
     average_position_frequency: Optional[datetime.timedelta] = None
 
+    average_duration_between_postions: int = 0
+
     def __post_init__(self):
 
         self.total_positions = self.won + self.lost + self.zero_loss
