@@ -67,6 +67,9 @@ logger = logging.getLogger(__name__)
 class TradeSummary:
     """Some generic statistics over all the trades
 
+    .. warning:: 
+        Be very careful when editing or removing existing fields here as this can intefere with legacy data testing
+
     TDOO: Cleam this up
     """
     won: int
