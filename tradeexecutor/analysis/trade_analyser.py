@@ -186,6 +186,8 @@ class TradeSummary:
     average_duration_between_positions: Optional[datetime.timedelta] = None
     average_position_frequency: Optional[datetime.timedelta] = None
 
+    time_in_market: Optional[datetime.timedelta] = None
+
     def __post_init__(self):
 
         self.total_positions = self.won + self.lost + self.zero_loss
@@ -238,6 +240,7 @@ class TradeSummary:
             "Cash at start": as_dollar(self.initial_cash),
             "Value at end": as_dollar(self.end_value),
             "Trade volume": as_dollar(self.trade_volume),
+            "Time in market": as_percent(self.time_in_market),
             "Position win percent": as_percent(self.win_percent),
             "Total positions": as_integer(self.total_positions),
             "Won positions": as_integer(self.won),
@@ -318,6 +321,7 @@ class TradeSummary:
             "Cash at start": None,
             "Value at end": None,
             "Trade volume": "https://tradingstrategy.ai/glossary/volume",
+            "Time in market": None,
             "Position win percent": "https://tradingstrategy.ai/glossary/position",
             "Total positions": "https://tradingstrategy.ai/glossary/position",
             "Won positions": "https://tradingstrategy.ai/glossary/position",
@@ -745,6 +749,7 @@ class TradeAnalysis:
         loss_risk_at_open_pc = []
         realised_losses = []
         interest_paid_usd = []
+        times_in_market: list[datetime.timedelta] = []
         durations_between_positions = []
         biggest_winning_trade_pc = None
         biggest_losing_trade_pc = None
@@ -781,6 +786,7 @@ class TradeAnalysis:
 
         # last_position_opened_at = state.backtest_data.start_at if state.backtest_data else state.created_at
         last_position_opened_at = None
+        last_position_closed_at = None
 
         for pair_id, position in positions:
 
@@ -805,13 +811,27 @@ class TradeAnalysis:
             
             if last_position_opened_at is not None:
                 durations_between_positions.append(position.opened_at - last_position_opened_at) 
+
             last_position_opened_at = position.opened_at
 
             if position.is_open():
                 open_value += position.get_value()
                 unrealised_profit_usd += position.get_unrealised_profit_usd()
                 undecided += 1
+
+                # if state.backtest_data and position.opened_at < last_position_closed_at:
+                #     open_position_duration = state.backtest_data.end_at - position.opened_at
+                # else:
+                #     pass
                 continue
+            
+            if last_position_closed_at and position.opened_at < last_position_closed_at:
+                times_in_market.append(last_position_closed_at - last_position_opened_at)
+            else:
+                # concurrent open positions
+                # don't double count the time
+                pass
+            last_position_closed_at = position.closed_at
 
             is_stop_loss = position.is_stop_loss()
             is_take_profit = position.is_take_profit()
@@ -919,6 +939,7 @@ class TradeAnalysis:
             average_duration_of_zero_loss_trades = get_avg_trade_duration(zero_loss_trades_duration)
         if all_durations:
             average_duration_of_all_trades = get_avg_trade_duration(all_durations)
+        time_in_market = pd.to_timedelta(times_in_market).sum()/strategy_duration
 
         lp_fees_average_pc = lp_fees_paid / trade_volume if trade_volume else 0
 
@@ -977,6 +998,7 @@ class TradeAnalysis:
             #sharpe_ratio=sharpe_ratio,
             #sortino_ratio=sortino_ratio,
             #profit_factor=profit_factor,
+            time_in_market=time_in_market,
         )
 
     @staticmethod
