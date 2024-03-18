@@ -152,8 +152,8 @@ def test_trading_strategy_engine_v050_live_trading(
 
     assert strategy_path.exists()
 
-    debug_dump_file = f"/{tmp_path}/test_bnb_chain_16h_momentum.debug.json"
-    state_file = f"/{tmp_path}/test_bnb_chain_16h_momentum.json"
+    debug_dump_file = f"/{tmp_path}/test_trading_strategy_engine_v050_live_trading.debug.json"
+    state_file = f"/{tmp_path}/test_trading_strategy_engine_v050_live_trading.json"
 
     environment = {
         "TRADING_STRATEGY_API_KEY": os.environ["TRADING_STRATEGY_API_KEY"],
@@ -165,7 +165,8 @@ def test_trading_strategy_engine_v050_live_trading(
         "LOG_LEVEL": "disabled",
         "ASSET_MANAGEMENT_MODE": "hot_wallet",
         "MAX_CYCLES": "4",  # Run for 4 seconds, 4 cycles
-        "MAX_DATA_DELAY_MINUTES": f"{10*60*24*365}",  # 10 years or "disabled""
+        "MAX_DATA_DELAY_MINUTES": f"{10*60*24*365}",  # 10 years or "disabled"
+        "DEBUG_DUMP_FILE": debug_dump_file,
     }
 
     # Don't use CliRunner.invoke() here,
@@ -176,6 +177,7 @@ def test_trading_strategy_engine_v050_live_trading(
     # We should have three cycles worth of debug data
     with open(debug_dump_file, "rb") as inp:
         debug_dump = pickle.load(inp)
+        import ipdb ; ipdb.set_trace()
         assert len(debug_dump) == 2
 
     # See we can load the state after all this testing.

@@ -99,7 +99,9 @@ def create_indicators(
     strategy_universe: TradingStrategyUniverse,
     execution_context: ExecutionContext
 ) -> IndicatorSet:
+
     # Test create_indicators() in live trade execution cycle
+    # Do some unit test checks
     assert execution_context.mode in (ExecutionMode.unit_testing_trading, ExecutionMode.backtesting)
     if execution_context.mode.is_live_trading():
         # Live execution
@@ -107,6 +109,7 @@ def create_indicators(
     else:
         # For backtesting we do not get a timestsamp
         assert timestamp is None
+
     indicators = IndicatorSet()
     indicators.add("rsi", pandas_ta.rsi, {"length": parameters.rsi_bars})
     indicators.add("custom_test_indicator", custom_test_indicator, {"custom_parameter": parameters.custom_parameter}, source=IndicatorSource.strategy_universe)
