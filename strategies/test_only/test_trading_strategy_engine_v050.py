@@ -129,7 +129,7 @@ def custom_test_indicator(
 
 
 def create_indicators(
-    timestamp: pd.Timestamp | None,
+    timestamp: datetime.datetime | None,
     parameters: StrategyParameters,
     strategy_universe: TradingStrategyUniverse,
     execution_context: ExecutionContext
@@ -141,10 +141,10 @@ def create_indicators(
     if execution_context.mode.is_live_trading():
         # Live execution
         assert timestamp is not None
-        assert isinstance(timestamp, pd.Timestamp)
+        assert isinstance(timestamp, datetime.datetime)
         assert timestamp.tzinfo is None
     else:
-        # For backtesting we do not get a timestsamp
+        # For backtesting we do not get a timestamp
         assert timestamp is None
 
     indicators = IndicatorSet()
@@ -154,7 +154,7 @@ def create_indicators(
 
 
 def create_trading_universe(
-    timestamp: pd.Timestamp,
+    timestamp: datetime.datetime,
     client: Client,
     execution_context: ExecutionContext,
     universe_options: UniverseOptions,
@@ -171,7 +171,7 @@ def create_trading_universe(
     else:
         # For live trading, we look back 30 days for the data
         assert execution_context.mode.is_live_trading()
-        assert isinstance(timestamp, pd.Timestamp)
+        assert isinstance(timestamp, datetime.datetime)
         start_at = None
         end_at = None
         required_history_period = datetime.timedelta(days=60)  # We need 21 days run up for RSI indicator

@@ -502,7 +502,7 @@ class CreateIndicatorsProtocolV2(Protocol):
 
     def __call__(
         self,
-        timestamp: pd.Timestamp | None,
+        timestamp: datetime.datetime | None,
         parameters: StrategyParameters,
         strategy_universe: TradingStrategyUniverse,
         execution_context: ExecutionContext,
@@ -558,11 +558,7 @@ def call_create_indicators(
         return indicators
 
     # v2
-    if timestamp:
-        pd_timestamp = pd.Timestamp(timestamp)
-    else:
-        pd_timestamp = None
-    return create_indicators_func(pd_timestamp, parameters, strategy_universe, execution_context)
+    return create_indicators_func(timestamp, parameters, strategy_universe, execution_context)
 
 
 @dataclass

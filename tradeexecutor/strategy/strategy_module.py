@@ -278,7 +278,7 @@ class CreateTradingUniverseProtocol(Protocol):
     """
 
     def __call__(self,
-            timestamp: pandas.Timestamp,
+            timestamp: datetime.datetime,
             client: Optional[Client],
             execution_context: ExecutionContext,
             universe_options: UniverseOptions) -> TradingStrategyUniverse:
