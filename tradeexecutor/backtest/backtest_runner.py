@@ -31,7 +31,7 @@ from tradeexecutor.strategy.description import StrategyExecutionDescription
 from tradeexecutor.strategy.execution_context import ExecutionContext, ExecutionMode, standalone_backtest_execution_context
 from tradeexecutor.strategy.generic.generic_pricing_model import GenericPricing
 from tradeexecutor.strategy.generic.generic_router import GenericRouting
-from tradeexecutor.strategy.pandas_trader.indicator import CreateIndicatorsProtocol, calculate_and_load_indicators, IndicatorStorage, IndicatorSet, \
+from tradeexecutor.strategy.pandas_trader.indicator import CreateIndicatorsProtocol, calculate_and_load_indicators, DiskIndicatorStorage, IndicatorSet, \
     IndicatorKey, load_indicators
 from tradeexecutor.strategy.pandas_trader.runner import PandasTraderRunner
 from tradeexecutor.strategy.pandas_trader.strategy_input import StrategyInputIndicators
@@ -95,7 +95,7 @@ class BacktestSetup:
     #
     create_indicators: Optional[CreateIndicatorsProtocol] = None
     indicator_combinations: Optional[set[IndicatorKey]] = None
-    indicator_storage: Optional[IndicatorStorage] = None
+    indicator_storage: Optional[DiskIndicatorStorage] = None
 
     data_preload: bool = True
 
@@ -670,7 +670,7 @@ def run_backtest_inline(
     create_trading_universe: CreateTradingUniverseProtocol = None,
     create_indicators: CreateIndicatorsProtocol = None,
     indicator_combinations: set[IndicatorKey] | None = None,
-    indicator_storage: IndicatorStorage | None = None,
+    indicator_storage: DiskIndicatorStorage | None = None,
     cycle_duration: CycleDuration | None = None,
     initial_deposit: float | None = None,
     reserve_currency: ReserveCurrency | None = None,
@@ -904,7 +904,7 @@ def run_backtest_inline(
 
     # Create default storage
     if indicator_storage is None and universe is not None:
-        indicator_storage = IndicatorStorage.create_default(universe)
+        indicator_storage = DiskIndicatorStorage.create_default(universe)
 
     backtest_setup = BacktestSetup(
         start_at,

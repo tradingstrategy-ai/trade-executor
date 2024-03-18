@@ -10,7 +10,7 @@ import pytest
 
 from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier
 from tradeexecutor.strategy.execution_context import ExecutionContext, unit_test_execution_context
-from tradeexecutor.strategy.pandas_trader.indicator import IndicatorSet, IndicatorStorage, IndicatorDefinition, IndicatorFunctionSignatureMismatch, \
+from tradeexecutor.strategy.pandas_trader.indicator import IndicatorSet, DiskIndicatorStorage, IndicatorDefinition, IndicatorFunctionSignatureMismatch, \
     calculate_and_load_indicators, IndicatorKey, IndicatorSource
 from tradeexecutor.strategy.parameters import StrategyParameters
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse, create_pair_universe_from_code
@@ -87,14 +87,14 @@ def strategy_universe() -> TradingStrategyUniverse:
 
 @pytest.fixture
 def indicator_storage(tmp_path, strategy_universe):
-    return IndicatorStorage(tmp_path, strategy_universe.get_cache_key())
+    return DiskIndicatorStorage(tmp_path, strategy_universe.get_cache_key())
 
 
 
 def test_setup_up_indicator_storage_per_pair(tmp_path, strategy_universe):
     """Create an indicator storage for a trading pair indicator combo."""
 
-    storage = IndicatorStorage(Path(tmp_path), universe_key=strategy_universe.get_cache_key())
+    storage = DiskIndicatorStorage(Path(tmp_path), universe_key=strategy_universe.get_cache_key())
     assert storage.path == Path(tmp_path)
     assert storage.universe_key == "ethereum_1d_WETH-USDC-WBTC-USDC_2021-06-01-2021-12-31"
 
@@ -115,7 +115,7 @@ def test_setup_up_indicator_storage_per_pair(tmp_path, strategy_universe):
 def test_setup_up_indicator_universe(tmp_path, strategy_universe):
     """Create an indicator storage for a universe indicator."""
 
-    storage = IndicatorStorage(Path(tmp_path), universe_key=strategy_universe.get_cache_key())
+    storage = DiskIndicatorStorage(Path(tmp_path), universe_key=strategy_universe.get_cache_key())
     
     ind = IndicatorDefinition(
         name="foobar",
@@ -132,7 +132,7 @@ def test_setup_up_indicator_universe(tmp_path, strategy_universe):
 def test_setup_up_indicator_storage_two_parameters(tmp_path, strategy_universe):
     """Create an indicator storage for test universe using two indicators."""
 
-    storage = IndicatorStorage(Path(tmp_path), universe_key=strategy_universe.get_cache_key())
+    storage = DiskIndicatorStorage(Path(tmp_path), universe_key=strategy_universe.get_cache_key())
     assert storage.path == Path(tmp_path)
     assert storage.universe_key == "ethereum_1d_WETH-USDC-WBTC-USDC_2021-06-01-2021-12-31"
 

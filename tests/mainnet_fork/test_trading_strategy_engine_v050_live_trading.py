@@ -165,6 +165,7 @@ def test_trading_strategy_engine_v050_live_trading(
         "LOG_LEVEL": "disabled",
         "ASSET_MANAGEMENT_MODE": "hot_wallet",
         "MAX_CYCLES": "4",  # Run for 4 seconds, 4 cycles
+        "MAX_DATA_DELAY_MINUTES": f"{10*60*24*365}",  # 10 years or "disabled""
     }
 
     # Don't use CliRunner.invoke() here,

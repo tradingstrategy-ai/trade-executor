@@ -1,4 +1,5 @@
 """Indicator definitions."""
+from abc import ABC, abstractmethod
 
 # Enable pickle patch that allows multiprocessing in notebooks
 from tradeexecutor.monkeypatch import cloudpickle_patch
@@ -30,7 +31,7 @@ from tradeexecutor.state.identifier import TradingPairIdentifier
 from tradeexecutor.strategy.execution_context import ExecutionContext
 from tradeexecutor.strategy.parameters import StrategyParameters
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse, UniverseCacheKey
-
+from tradeexecutor.utils.cpu import get_safe_max_workers_count
 
 logger = logging.getLogger(__name__)
 
@@ -478,9 +479,32 @@ class IndicatorResult:
 
 IndicatorResultMap: TypeAlias = dict[IndicatorKey, IndicatorResult]
 
+class IndicatorStorage(ABC):
+    """Base class for cached indicators and live trading indicators."""
 
-class IndicatorStorage:
+    @abstractmethod
+    def is_available(self, key: IndicatorKey) -> bool:
+        pass
+
+    @abstractmethod
+    def load(self, key: IndicatorKey) -> IndicatorResult:
+        pass
+
+    @abstractmethod
+    def save(self, key: IndicatorKey, df: pd.DataFrame | pd.Series) -> IndicatorResult:
+        pass
+
+
+class DiskIndicatorStorage(IndicatorStorage):
     """Store calculated indicator results on disk.
+
+    Used in
+
+    - Backtesting
+
+    - Grid seacrh
+
+    Indicators are calculated once and the calculation results can be recycled across multiple backtest runs.
 
     TODO: Cannot handle multichain universes at the moment, as serialises trading pairs by their ticker.
     """
@@ -564,9 +588,44 @@ class IndicatorStorage:
     def create_default(
         universe: TradingStrategyUniverse,
         default_path=DEFAULT_INDICATOR_STORAGE_PATH,
-    ) -> "IndicatorStorage":
+    ) -> "DiskIndicatorStorage":
         """Get the indicator storage with the default cache path."""
-        return IndicatorStorage(default_path, universe.get_cache_key())
+        return DiskIndicatorStorage(default_path, universe.get_cache_key())
+
+
+class MemoryIndicatorStorage(IndicatorStorage):
+    """Store calculated indicator results on disk.
+
+    Used in
+
+    - Live trading
+
+    - Indicators are calculated just before `decide_trades()` is called
+
+    - Indicators are recalculated on every decision cycle
+    """
+
+    def __init__(self, universe_key: UniverseCacheKey):
+        self.universe_key = universe_key
+        self.results: dict[IndicatorKey, IndicatorResult] = {}
+
+    def is_available(self, key: IndicatorKey) -> bool:
+        return key in self.results
+
+    def load(self, key: IndicatorKey) -> IndicatorResult:
+        return self.results[key]
+
+    def save(self, key: IndicatorKey, df: pd.DataFrame | pd.Series) -> IndicatorResult:
+        result = IndicatorResult(
+            universe_key=self.universe_key,
+            indicator_key=key,
+            data=df,
+            cached=False,
+        )
+
+        self.results[key] = result
+        return result
+
 
 
 def _serialise_parameters_for_cache_key(parameters: dict) -> str:
@@ -577,7 +636,7 @@ def _serialise_parameters_for_cache_key(parameters: dict) -> str:
 
 
 
-def _load_indicator_result(storage: IndicatorStorage, key: IndicatorKey) -> IndicatorResult:
+def _load_indicator_result(storage: DiskIndicatorStorage, key: IndicatorKey) -> IndicatorResult:
     logger.info("Loading %s", key)
     assert storage.is_available(key), f"Tried to load indicator that is not in the cache: {key}"
     return storage.load(key)
@@ -585,7 +644,7 @@ def _load_indicator_result(storage: IndicatorStorage, key: IndicatorKey) -> Indi
 
 def _calculate_and_save_indicator_result(
     strategy_universe: TradingStrategyUniverse,
-    storage: IndicatorStorage,
+    storage: DiskIndicatorStorage,
     key: IndicatorKey,
 ) -> IndicatorResult:
 
@@ -616,7 +675,7 @@ def _calculate_and_save_indicator_result(
 
 def load_indicators(
     strategy_universe: TradingStrategyUniverse,
-    storage: IndicatorStorage,
+    storage: DiskIndicatorStorage,
     indicator_set: IndicatorSet,
     all_combinations: set[IndicatorKey],
     max_readers=8,
@@ -693,7 +752,7 @@ def load_indicators(
 
 def calculate_indicators(
     strategy_universe: TradingStrategyUniverse,
-    storage: IndicatorStorage,
+    storage: DiskIndicatorStorage,
     indicators: IndicatorSet | None,
     execution_context: ExecutionContext,
     remaining: set[IndicatorKey],
@@ -818,8 +877,8 @@ def calculate_and_load_indicators(
     parameters: StrategyParameters | None = None,
     indicators: IndicatorSet | None = None,
     create_indicators: CreateIndicatorsProtocol | None = None,
-    max_workers=8,
-    max_readers=8,
+    max_workers: int | Callable = get_safe_max_workers_count,
+    max_readers: int | Callable = get_safe_max_workers_count,
     verbose=True,
 ) -> IndicatorResultMap:
     """Precalculate all indicators.
@@ -836,6 +895,13 @@ def calculate_and_load_indicators(
     :param verbose:
         Stdout printing with heplful messages to the user
     """
+
+    # Resolve CPU count
+    if callable(max_workers):
+        max_workers = max_workers()
+
+    if callable(max_readers):
+        max_readers = max_readers()
 
     assert create_indicators or indicators, "You must give either create_indicators or indicators argument"
 
@@ -880,7 +946,7 @@ def calculate_and_load_indicators(
 
 def warm_up_indicator_cache(
     strategy_universe: TradingStrategyUniverse,
-    storage: IndicatorStorage,
+    storage: DiskIndicatorStorage,
     execution_context: ExecutionContext,
     indicators: set[IndicatorKey],
     max_workers=8,

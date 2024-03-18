@@ -29,6 +29,7 @@ from tradeexecutor.strategy.execution_model import ExecutionModel
 from tradeexecutor.strategy.generic.generic_pricing_model import GenericPricing
 from tradeexecutor.strategy.generic.generic_router import GenericRouting
 from tradeexecutor.strategy.generic.generic_valuation import GenericValuation
+from tradeexecutor.strategy.pandas_trader.indicator import CreateIndicatorsProtocol, DiskIndicatorStorage
 from tradeexecutor.strategy.pandas_trader.strategy_input import StrategyInputIndicators
 from tradeexecutor.strategy.parameters import StrategyParameters
 from tradeexecutor.strategy.sync_model import SyncMethodV0, SyncModel
@@ -83,6 +84,8 @@ class StrategyRunner(abc.ABC):
         unit_testing=False,
         trade_settle_wait=None,
         parameters: StrategyParameters = None,
+        create_indicators: CreateIndicatorsProtocol = None,
+        indicator_storage: DiskIndicatorStorage = None,
     ):
         """
         :param engine_version:
@@ -109,6 +112,8 @@ class StrategyRunner(abc.ABC):
         self.unit_testing = unit_testing
         self.routing_model_factory = routing_model_factory
         self.parameters = parameters
+        self.create_indicators = create_indicators
+        self.indicator_storage = indicator_storage
 
         # We need 60 seconds wait to read balances
         # after trades only on a real trading,

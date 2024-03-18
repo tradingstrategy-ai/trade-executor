@@ -371,7 +371,7 @@ def calculate_realised_profitability(
 
         Empty series if there are no trades.
     """
-    data = [(p.closed_at, p.get_realised_profit_percent()) for p in state.portfolio.closed_positions.values() if p.is_closed()]
+    data = [(p.closed_at, p.get_realised_profit_percent()) for p in state.portfolio.closed_positions.values()]
 
     if len(data) == 0:
         return pd.Series(dtype='float64')

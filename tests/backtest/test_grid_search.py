@@ -11,7 +11,7 @@ from plotly.graph_objs import Figure
 from tradeexecutor.state.trade import TradeExecution
 from tradeexecutor.strategy.cycle import CycleDuration
 from tradeexecutor.strategy.execution_context import ExecutionContext, ExecutionMode
-from tradeexecutor.strategy.pandas_trader.indicator import IndicatorSet, IndicatorStorage, IndicatorSource
+from tradeexecutor.strategy.pandas_trader.indicator import IndicatorSet, DiskIndicatorStorage, IndicatorSource
 from tradeexecutor.strategy.pandas_trader.strategy_input import StrategyInput
 from tradeexecutor.strategy.parameters import StrategyParameters
 from tradingstrategy.candle import GroupedCandleUniverse
@@ -128,9 +128,9 @@ def strategy_universe(universe) -> TradingStrategyUniverse:
 
 
 @pytest.fixture
-def indicator_storage(strategy_universe, tmp_path) -> IndicatorStorage:
+def indicator_storage(strategy_universe, tmp_path) -> DiskIndicatorStorage:
     """Mock some assets"""
-    return IndicatorStorage(Path(tmp_path), strategy_universe.get_cache_key())
+    return DiskIndicatorStorage(Path(tmp_path), strategy_universe.get_cache_key())
 
 
 def grid_search_worker(

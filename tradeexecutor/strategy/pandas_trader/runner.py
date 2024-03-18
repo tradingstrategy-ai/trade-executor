@@ -9,6 +9,7 @@ import pandas as pd
 
 from tradeexecutor.cli.discord import post_logging_discord_image
 from tradeexecutor.statistics.in_memory_statistics import refresh_live_strategy_images
+from tradeexecutor.strategy.pandas_trader.indicator import IndicatorSet, calculate_and_load_indicators, MemoryIndicatorStorage
 from tradeexecutor.strategy.pandas_trader.strategy_input import StrategyInput, StrategyInputIndicators
 from tradeexecutor.strategy.parameters import StrategyParameters
 from tradeexecutor.strategy.pricing_model import PricingModel
@@ -72,8 +73,13 @@ class PandasTraderRunner(StrategyRunner):
         # callback
         if self.execution_context.is_version_greater_or_equal_than(0, 5, 0):
 
-            assert indicators is not None, "indicators not created when running trading_strategy_engine_version=0.5"
+            if self.execution_context.mode.is_live_trading():
+                # Indicators are recalculated for every tick in the live trading
+                assert self.create_indicators is not None, "trading_strategy_engine_version > 0.5, but we lack create_indicators"
+                assert self.parameters is not None, "trading_strategy_engine_version > 0.5, but we lack parameters"
+                indicators = self.calculate_live_indicators(clock, strategy_universe, self.parameters)
 
+            assert indicators is not None, "indicators not created when running trading_strategy_engine_version=0.5"
             indicators.prepare_decision_cycle(debug_details["cycle"], pd_timestamp)
 
             # DecideTradesProtocolV4
@@ -327,3 +333,47 @@ class PandasTraderRunner(StrategyRunner):
             else:
                 logger.info(f"Strategy visualisation not posted to Discord because pair count of {universe.get_pair_count()} is greater than 5.")
 
+
+    def calculate_live_indicators(
+        self,
+        timestamp: datetime.datetime,
+        strategy_universe: TradingStrategyUniverse,
+        parameters: StrategyParameters,
+    ) -> StrategyInputIndicators:
+        """Calculate and recalculate indicators in a live trading.
+
+        - Calculated just before `decide_trades` is called
+
+        - Recalculated for every cycle
+
+        :return:
+            Freshly calculated indicators
+        """
+        # storage = self.indicator_storage
+        logger.info("Calculating live indicators for %s", timestamp)
+        indicator_builder = IndicatorSet()
+
+        storage = MemoryIndicatorStorage(strategy_universe.get_cache_key())
+
+        self.create_indicators(
+            parameters=parameters,
+            indicators=indicator_builder,
+            strategy_universe=strategy_universe,
+            execution_context=self.execution_context,
+        )
+
+        indicator_results = calculate_and_load_indicators(
+            strategy_universe=strategy_universe,
+            storage=storage,
+            execution_context=self.execution_context,
+            indicators=indicator_builder,
+            parameters=self.parameters,
+        )
+
+        strategy_input_indicators = StrategyInputIndicators(
+            strategy_universe,
+            indicator_results=indicator_results,
+            available_indicators=indicator_builder,
+        )
+
+        return strategy_input_indicators
