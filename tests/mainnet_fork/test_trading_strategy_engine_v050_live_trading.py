@@ -9,6 +9,7 @@ To run:
     pytest --log-cli-level=info -s -k test_trading_strategy_engine_v050_live_trading
 
 """
+import contextlib
 import datetime
 import logging
 import os
@@ -127,15 +128,8 @@ def hot_wallet(
     return wallet
 
 
-@pytest.fixture()
-def strategy_path() -> Path:
-    """Where do we load our strategy file."""
-    return Path(os.path.join(os.path.dirname(__file__), "../..", "strategies", "test_only", "test_trading_strategy_engine_v050_live_trading.py"))
-
-
 def test_trading_strategy_engine_v050_live_trading(
     logger: logging.Logger,
-    strategy_path: Path,
     anvil_polygon_chain_fork_rpc,
     hot_wallet: HotWallet,
     persistent_test_cache_path,
@@ -150,10 +144,11 @@ def test_trading_strategy_engine_v050_live_trading(
     - Check that the live strategy re-creates indicator data on every cycle
     """
 
+    strategy_path = Path(os.path.join(os.path.dirname(__file__), "../..", "strategies", "test_only", "test_trading_strategy_engine_v050.py"))
     assert strategy_path.exists()
 
-    debug_dump_file = f"/{tmp_path}/test_trading_strategy_engine_v050_live_trading.debug.json"
-    state_file = f"/{tmp_path}/test_trading_strategy_engine_v050_live_trading.json"
+    debug_dump_file = f"{tmp_path}/test_trading_strategy_engine_v050_live_trading.debug.json"
+    state_file = f"{tmp_path}/test_trading_strategy_engine_v050_live_trading.json"
 
     environment = {
         "TRADING_STRATEGY_API_KEY": os.environ["TRADING_STRATEGY_API_KEY"],
@@ -164,6 +159,7 @@ def test_trading_strategy_engine_v050_live_trading(
         "UNIT_TESTING": "true",
         "LOG_LEVEL": "disabled",
         "ASSET_MANAGEMENT_MODE": "hot_wallet",
+        "CYCLE_DURATION": "1s",
         "MAX_CYCLES": "4",  # Run for 4 seconds, 4 cycles
         "MAX_DATA_DELAY_MINUTES": f"{10*60*24*365}",  # 10 years or "disabled"
         "DEBUG_DUMP_FILE": debug_dump_file,
@@ -182,6 +178,51 @@ def test_trading_strategy_engine_v050_live_trading(
         assert len(debug_dump) == 3
         cycle_3 = debug_dump[3]
         assert cycle_3["custom_test_indicator"] == [1, 2, 3, 4]
+
+    # See we can load the state after all this testing.
+    # Mainly stresses on serialization/deserialization issues.
+    json_text = open(state_file, "rt").read()
+    state = State.from_json(json_text)
+    state.perform_integrity_check()
+    logger.info("All ok")
+
+
+def test_trading_strategy_engine_v050_backtest(
+    logger: logging.Logger,
+    persistent_test_cache_path,
+    tmp_path,
+    ):
+    """Run the backtest command for v0.5 strategy module.
+
+    - Check that we get backtest results
+    """
+
+    strategy_path = Path(os.path.join(os.path.dirname(__file__), "../..", "strategies", "test_only", "test_trading_strategy_engine_v050.py"))
+    assert strategy_path.exists()
+
+    environment = {
+        "ID": "test_trading_strategy_engine_v050_backtest",
+        "TRADING_STRATEGY_API_KEY": os.environ["TRADING_STRATEGY_API_KEY"],
+        "STRATEGY_FILE": strategy_path.as_posix(),
+        "CACHE_PATH": persistent_test_cache_path,
+        "UNIT_TESTING": "true",
+        "LOG_LEVEL": "disabled",
+    }
+
+    # Don't use CliRunner.invoke() here,
+    # as it patches stdout/stdin and causes our pdb to stop working
+    curr_path = os.getcwd()
+    try:
+        os.chdir(tmp_path)
+        os.makedirs("state", exist_ok=True)  # TODO: fix in backtest command
+        with mock.patch.dict('os.environ', environment, clear=True):
+            app(["backtest"], standalone_mode=False)
+    finally:
+        os.chdir(curr_path)
+
+    # Generated in backtest.py
+    state_file = Path(f"{tmp_path}/state/test_trading_strategy_engine_v050-backtest.json")
+    assert state_file.exists(), f"backtest command generated different path for the state file, {state_file.resolve()} did not exist"
 
     # See we can load the state after all this testing.
     # Mainly stresses on serialization/deserialization issues.

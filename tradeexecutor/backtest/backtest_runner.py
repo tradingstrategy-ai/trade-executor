@@ -32,7 +32,7 @@ from tradeexecutor.strategy.execution_context import ExecutionContext, Execution
 from tradeexecutor.strategy.generic.generic_pricing_model import GenericPricing
 from tradeexecutor.strategy.generic.generic_router import GenericRouting
 from tradeexecutor.strategy.pandas_trader.indicator import CreateIndicatorsProtocolV1, calculate_and_load_indicators, DiskIndicatorStorage, IndicatorSet, \
-    IndicatorKey, load_indicators, CreateIndicatorsProtocol
+    IndicatorKey, load_indicators, CreateIndicatorsProtocol, call_create_indicators
 from tradeexecutor.strategy.pandas_trader.runner import PandasTraderRunner
 from tradeexecutor.strategy.pandas_trader.strategy_input import StrategyInputIndicators
 from tradeexecutor.strategy.strategy_module import parse_strategy_module, \
@@ -204,22 +204,19 @@ class BacktestSetup:
         assert self.indicator_storage, f"indicator_storage missing"
 
         storage = self.indicator_storage
-        indicator_builder = IndicatorSet()
 
-        self.create_indicators(
+        indicator_set = call_create_indicators(
+            self.create_indicators,
             parameters=self.parameters,
-            indicators=indicator_builder,
             strategy_universe=self.universe,
             execution_context=execution_context,
         )
-
-        available_indicators = indicator_builder
 
         indicator_results = calculate_and_load_indicators(
             strategy_universe=self.universe,
             storage=storage,
             execution_context=execution_context,
-            indicators=indicator_builder,
+            indicators=indicator_set,
             parameters=self.parameters,
             max_workers=self.max_workers,
         )
@@ -227,7 +224,7 @@ class BacktestSetup:
         strategy_input_indicators = StrategyInputIndicators(
             self.universe,
             indicator_results=indicator_results,
-            available_indicators=available_indicators,
+            available_indicators=indicator_set,
         )
 
         return strategy_input_indicators
@@ -289,6 +286,9 @@ def setup_backtest_for_universe(
     allow_missing_fees=False,
     name: Optional[str] = None,
     universe_options: Optional[UniverseOptions] = None,
+    create_indicators: CreateIndicatorsProtocol | None = None,
+    parameters: StrategyParameters | None = None,
+    indicator_storage: DiskIndicatorStorage | None = None,
 ):
     """High-level entry point for setting up a single backtest for a predefined universe.
 
@@ -376,6 +376,9 @@ def setup_backtest_for_universe(
         trade_routing=strategy_module.trade_routing,
         trading_strategy_engine_version=strategy_module.trading_strategy_engine_version,
         name=name,
+        create_indicators=create_indicators,
+        parameters=parameters,
+        indicator_storage=indicator_storage,
     )
 
 
@@ -616,7 +619,7 @@ def run_backtest(
             # Indicators were created earlier, load now
             backtest_strategy_indicators = setup.load_indicators()
         else:
-            raise AssertionError(f"You must give either create_indicators or indicator_combinations argument")
+            raise AssertionError(f"run_backtest(): You must give either create_indicators or indicator_combinations argument")
     else:
         # Legacy
         backtest_strategy_indicators = None

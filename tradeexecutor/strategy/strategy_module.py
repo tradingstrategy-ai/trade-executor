@@ -436,7 +436,7 @@ class StrategyModuleInformation:
     #:
     #: See :py:class:`~tradeexecutor.strategy.parameters.StrategyParameters`.
     #:
-    parameter_configuration: Optional[Type | StrategyParameters] = None
+    parameters: Optional[Type | StrategyParameters] = None
 
     def __repr__(self):
         return f"<StrategyModuleInformation {self.path}>"
@@ -452,11 +452,11 @@ class StrategyModuleInformation:
 
         trading_strategy_engive > "0.5"
         """
-        self.trading_strategy_cycle = self.parameter_configuration["cycle_duration"]
-        self.trade_routing = self.parameter_configuration["routing"]
-        self.backtest_start = self.parameter_configuration["backtest_start"]
-        self.backtest_end = self.parameter_configuration["backtest_end"]
-        self.initial_cash = self.parameter_configuration["initial_cash"]
+        self.trading_strategy_cycle = self.parameters["cycle_duration"]
+        self.trade_routing = self.parameters["routing"]
+        self.backtest_start = self.parameters["backtest_start"]
+        self.backtest_end = self.parameters["backtest_end"]
+        self.initial_cash = self.parameters["initial_cash"]
 
     def validate(self):
         """Check that the user inputted variable names look good.
@@ -476,13 +476,13 @@ class StrategyModuleInformation:
 
         # Validate StrategyParameters now as it is used later
         if self.is_version_greater_or_equal_than(0, 5, 0):
-            assert self.parameter_configuration is not None, "ParameterConfiguration class missing in the strategy module"
-            assert inspect.isclass(self.parameter_configuration)
+            assert self.parameters is not None, "Parameters class missing in the strategy module"
+            assert inspect.isclass(self.parameters)
 
             # Transform from class with args to a attribdict
-            self.parameter_configuration = StrategyParameters.from_class(self.parameter_configuration, grid_search=False)
+            self.parameters = StrategyParameters.from_class(self.parameters, grid_search=False)
 
-            self.unpack_strategy_parameters(self.parameter_configuration)
+            self.unpack_strategy_parameters(self.parameters)
 
         if not self.trading_strategy_type:
             raise StrategyModuleNotValid(f"trading_strategy_type missing in the module")
@@ -587,7 +587,7 @@ def parse_strategy_module(
         long_description=python_module_exports.get("long_description"),
         tags=python_module_exports.get("tags"),
         create_indicators=python_module_exports.get("create_indicators"),
-        parameter_configuration=python_module_exports.get("parameterconfiguration"),
+        parameters=python_module_exports.get("parameters"),
     )
 
 
