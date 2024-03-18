@@ -31,8 +31,8 @@ from tradeexecutor.strategy.description import StrategyExecutionDescription
 from tradeexecutor.strategy.execution_context import ExecutionContext, ExecutionMode, standalone_backtest_execution_context
 from tradeexecutor.strategy.generic.generic_pricing_model import GenericPricing
 from tradeexecutor.strategy.generic.generic_router import GenericRouting
-from tradeexecutor.strategy.pandas_trader.indicator import CreateIndicatorsProtocol, calculate_and_load_indicators, DiskIndicatorStorage, IndicatorSet, \
-    IndicatorKey, load_indicators
+from tradeexecutor.strategy.pandas_trader.indicator import CreateIndicatorsProtocolV1, calculate_and_load_indicators, DiskIndicatorStorage, IndicatorSet, \
+    IndicatorKey, load_indicators, CreateIndicatorsProtocol
 from tradeexecutor.strategy.pandas_trader.runner import PandasTraderRunner
 from tradeexecutor.strategy.pandas_trader.strategy_input import StrategyInputIndicators
 from tradeexecutor.strategy.strategy_module import parse_strategy_module, \
@@ -93,7 +93,7 @@ class BacktestSetup:
     # - create_indicators() used with a single backtest
     # - indicators used by grid search as indicators have been defined and calculated in a prior step
     #
-    create_indicators: Optional[CreateIndicatorsProtocol] = None
+    create_indicators: Optional[CreateIndicatorsProtocolV1] = None
     indicator_combinations: Optional[set[IndicatorKey]] = None
     indicator_storage: Optional[DiskIndicatorStorage] = None
 

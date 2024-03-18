@@ -38,7 +38,7 @@ except ImportError:
 
 from tradeexecutor.strategy.engine_version import TradingStrategyEngineVersion
 from tradeexecutor.strategy.execution_context import ExecutionContext, grid_search_execution_context
-from tradeexecutor.strategy.pandas_trader.indicator import IndicatorSet, CreateIndicatorsProtocol, DiskIndicatorStorage, warm_up_indicator_cache, IndicatorKey, DEFAULT_INDICATOR_STORAGE_PATH
+from tradeexecutor.strategy.pandas_trader.indicator import IndicatorSet, CreateIndicatorsProtocolV1, DiskIndicatorStorage, warm_up_indicator_cache, IndicatorKey, DEFAULT_INDICATOR_STORAGE_PATH
 from tradeexecutor.strategy.universe_model import UniverseOptions
 
 
@@ -427,7 +427,7 @@ def prepare_grid_combinations(
     result_path: Path,
     clear_cached_results=False,
     marker_file="README-GRID-SEARCH.md",
-    create_indicators: CreateIndicatorsProtocol | None = None,
+    create_indicators: CreateIndicatorsProtocolV1 | None = None,
     strategy_universe: TradingStrategyUniverse | None = None,
     execution_context: ExecutionContext = grid_search_execution_context,
 ) -> List[GridCombination]:
@@ -926,7 +926,7 @@ def run_grid_search_backtest(
     combination: GridCombination,
     decide_trades: DecideTradesProtocol | DecideTradesProtocol2 | DecideTradesProtocol4,
     universe: TradingStrategyUniverse,
-    create_indicators: CreateIndicatorsProtocol | None = None,
+    create_indicators: CreateIndicatorsProtocolV1 | None = None,
     cycle_duration: Optional[CycleDuration] = None,
     start_at: Optional[datetime.datetime | pd.Timestamp] = None,
     end_at: Optional[datetime.datetime | pd.Timestamp] = None,

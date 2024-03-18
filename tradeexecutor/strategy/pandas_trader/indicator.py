@@ -1,4 +1,5 @@
 """Indicator definitions."""
+import datetime
 import threading
 from abc import ABC, abstractmethod
 
@@ -347,7 +348,7 @@ class IndicatorSet:
         return indicator_set
 
 
-class CreateIndicatorsProtocol(Protocol):
+class CreateIndicatorsProtocolV1(Protocol):
     """Call signature for create_indicators function.
 
     This Protocol class defines `create_indicators()` function call signature.
@@ -355,6 +356,10 @@ class CreateIndicatorsProtocol(Protocol):
     to define what indicators a strategy needs.
     Used with :py:class`IndicatorSet` to define the indicators
     the strategy can use.
+
+    .. note ::
+
+        Legacy. See :py:class:`CreateIndicatorsProtocol2` instead.
 
     These indicators are precalculated and cached for fast performance.
 
@@ -433,7 +438,127 @@ class CreateIndicatorsProtocol(Protocol):
             This function does not return anything.
 
             Instead `indicators.add` is used to attach new indicators to the strategy.
+
         """
+
+
+class CreateIndicatorsProtocolV2(Protocol):
+    """Call signature for create_indicators function.
+
+    This Protocol class defines `create_indicators()` function call signature.
+    Strategy modules and backtests can provide on `create_indicators` function
+    to define what indicators a strategy needs.
+    Used with :py:class`IndicatorSet` to define the indicators
+    the strategy can use.
+
+
+    These indicators are precalculated and cached for fast performance.
+
+    Example for a grid search:
+
+    .. code-block:: python
+
+        class MyParameters:
+            stop_loss_pct = [0.9, 0.95]
+            cycle_duration = CycleDuration.cycle_1d
+            initial_cash = 10_000
+
+            # Indicator values that are searched in the grid search
+            slow_ema_candle_count = 7
+            fast_ema_candle_count = [1, 2]
+
+
+        def create_indicators(parameters: StrategyParameters, strategy_universe: TradingStrategyUniverse, execution_context: ExecutionContext):
+            indicators = IndicatorSet()
+            indicators.add("slow_ema", pandas_ta.ema, {"length": parameters.slow_ema_candle_count})
+            indicators.add("fast_ema", pandas_ta.ema, {"length": parameters.fast_ema_candle_count})
+            return indicators
+
+    Indicators can be custom, and do not need to be calculated per trading pair.
+    Here is an example of creating indicators "ETH/BTC price" and "ETC/BTC price RSI with length of 20 bars":
+
+    .. code-block:: python
+
+        def calculate_eth_btc(strategy_universe: TradingStrategyUniverse):
+            weth_usdc = strategy_universe.get_pair_by_human_description((ChainId.ethereum, "test-dex", "WETH", "USDC"))
+            wbtc_usdc = strategy_universe.get_pair_by_human_description((ChainId.ethereum, "test-dex", "WBTC", "USDC"))
+            btc_price = strategy_universe.data_universe.candles.get_candles_by_pair(wbtc_usdc.internal_id)
+            eth_price = strategy_universe.data_universe.candles.get_candles_by_pair(weth_usdc.internal_id)
+            series = eth_price["close"] / btc_price["close"]  # Divide two series
+            return series
+
+        def calculate_eth_btc_rsi(strategy_universe: TradingStrategyUniverse, length: int):
+            weth_usdc = strategy_universe.get_pair_by_human_description((ChainId.ethereum, "test-dex", "WETH", "USDC"))
+            wbtc_usdc = strategy_universe.get_pair_by_human_description((ChainId.ethereum, "test-dex", "WBTC", "USDC"))
+            btc_price = strategy_universe.data_universe.candles.get_candles_by_pair(wbtc_usdc.internal_id)
+            eth_price = strategy_universe.data_universe.candles.get_candles_by_pair(weth_usdc.internal_id)
+            eth_btc = eth_price["close"] / btc_price["close"]
+            return pandas_ta.rsi(eth_btc, length=length)
+
+        def create_indicators(parameters: StrategyParameters, indicators: IndicatorSet, strategy_universe: TradingStrategyUniverse, execution_context: ExecutionContext):
+            indicators.add("eth_btc", calculate_eth_btc, source=IndicatorSource.strategy_universe)
+            indicators.add("eth_btc_rsi", calculate_eth_btc_rsi, parameters={"length": parameters.eth_btc_rsi_length}, source=IndicatorSource.strategy_universe)
+    """
+
+    def __call__(
+        self,
+        timestamp: datetime.datetime | None,
+        parameters: StrategyParameters,
+        strategy_universe: TradingStrategyUniverse,
+        execution_context: ExecutionContext,
+    ) -> IndicatorSet:
+        """Build technical indicators for the strategy.
+
+        :param timestamp:
+            The current live execution timestamp.
+
+            Set ``None`` for backtesting, as `create_indicators()` is called only once during the backtest setup.
+
+        :param parameters:
+            Passed from the backtest / live strategy parametrs.
+
+            If doing a grid search, each paramter is simplified.
+
+        :param strategy_universe:
+            The loaded strategy universe.
+
+            Use to resolve symbolic pair information if needed
+
+        :param execution_context:
+            Information about if this is a live or backtest run.
+
+        :return:
+            Indicators the strategy is going to need.
+        """
+
+#: Use this in function singatures
+CreateIndicatorsProtocol: TypeAlias = CreateIndicatorsProtocolV1 | CreateIndicatorsProtocolV2
+
+
+def call_create_indicators(
+    create_indicators_func: Callable,
+    parameters: StrategyParameters,
+    strategy_universe: TradingStrategyUniverse,
+    execution_context: ExecutionContext,
+    timestamp: datetime.datetime = None,
+) -> IndicatorSet:
+    """Backwards compatibe wrapper for create_indicators().
+
+    - Check `create_indicators_func` version
+
+    - Handle legacy / backwards compat
+    """
+    assert callable(create_indicators_func)
+    args = inspect.getfullargspec(create_indicators_func)
+    if "indicators" in args.args:
+        # v1 backwards
+        indicators = IndicatorSet()
+        create_indicators_func(parameters, indicators, strategy_universe, execution_context)
+        return indicators
+
+    # v2
+    return create_indicators_func(timestamp, parameters, strategy_universe, execution_context)
+
 
 @dataclass
 class IndicatorResult:
@@ -479,6 +604,7 @@ class IndicatorResult:
 
 
 IndicatorResultMap: TypeAlias = dict[IndicatorKey, IndicatorResult]
+
 
 class IndicatorStorage(ABC):
     """Base class for cached indicators and live trading indicators."""
@@ -874,14 +1000,22 @@ def prepare_indicators(
     parameters: StrategyParameters,
     strategy_universe: TradingStrategyUniverse,
     execution_context: ExecutionContext,
-
+    timestamp: datetime.datetime = None,
 ):
     """Call the strategy module indicator builder."""
-    indicators = IndicatorSet()
-    create_indicators(parameters, indicators, strategy_universe, execution_context)
+
+    indicators = call_create_indicators(
+        create_indicators,
+        parameters,
+        strategy_universe,
+        execution_context,
+        timestamp=timestamp,
+    )
+
     if indicators.get_count() == 0:
         # TODO: Might have legit use cases?
         logger.warning(f"create_indicators() did not create a single indicator")
+
     return indicators
 
 
@@ -891,10 +1025,11 @@ def calculate_and_load_indicators(
     execution_context: ExecutionContext,
     parameters: StrategyParameters | None = None,
     indicators: IndicatorSet | None = None,
-    create_indicators: CreateIndicatorsProtocol | None = None,
+    create_indicators: CreateIndicatorsProtocolV1 | None = None,
     max_workers: int | Callable = get_safe_max_workers_count,
     max_readers: int | Callable = get_safe_max_workers_count,
     verbose=True,
+    timestamp: datetime.datetime = None,
 ) -> IndicatorResultMap:
     """Precalculate all indicators.
 
@@ -923,7 +1058,7 @@ def calculate_and_load_indicators(
     if create_indicators:
         assert indicators is None, f"Give either indicators or create_indicators, not both"
         assert parameters is not None, f"parameters argument must be given if you give create_indicators"
-        indicators = prepare_indicators(create_indicators, parameters, strategy_universe, execution_context)
+        indicators = prepare_indicators(create_indicators, parameters, strategy_universe, execution_context, timestamp=timestamp)
 
     assert isinstance(indicators, IndicatorSet), f"Got class {type(indicators)} when IndicatorSet expected"
 

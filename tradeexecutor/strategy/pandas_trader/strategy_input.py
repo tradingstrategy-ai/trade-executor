@@ -278,7 +278,7 @@ class StrategyInputIndicators:
         assert self.timestamp, f"prepare_decision_cycle() not called"
 
         indicator = self.available_indicators.get_indicator(name)
-        assert indicator is not None, f"Indicator with name {name} not defined in create_indicators. Available indicators are: {self.available_indicators.get_label()}"
+        assert indicator is not None, f"Indicator with name '{name}' not defined by create_indicators(). Available indicators are: {self.available_indicators.get_label()}"
 
         if indicator.source.is_per_pair():
 

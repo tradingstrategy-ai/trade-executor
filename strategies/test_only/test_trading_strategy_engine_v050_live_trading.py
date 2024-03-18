@@ -36,6 +36,12 @@ LONG_DESCRIPTION = """
 - See test_trading_strategy_engine_v050_live_trading.py
 """
 
+PAIR_IDS = [
+    (ChainId.polygon, "uniswap-v3", "WETH", "USDC", 0.0005),
+    (ChainId.polygon, "uniswap-v3", "WMATIC", "USDC", 0.0005),
+]
+
+
 class ParameterConfiguration:
     # Will be transformed to StrategyParameters dict
     cycle_duration = CycleDuration.cycle_1s
@@ -60,11 +66,20 @@ def decide_trades(
     timestamp = input.timestamp
     indicators = input.indicators
     position_manager.log("decide_trades() start")
+    strategy_universe = input.strategy_universe
 
     assert input.execution_context.mode in (ExecutionMode.unit_testing_trading, ExecutionMode.backtesting)
 
     # We should do 1s cycles near real time
     assert datetime.datetime.utcnow() - timestamp < datetime.timedelta(minutes=1)
+
+    assert parameters.custom_parameter == 1
+
+    # Pass data to the unit test
+    for pair_id in PAIR_IDS:
+        pair = strategy_universe.get_pair_by_human_description(pair_id)
+        input.other_data[f"rsi_{pair.base.token_symbol}"] = indicators.get_indicator_value("rsi", pair=pair)
+        input.other_data[f"custom_test_indicator"] = indicators.get_indicator_series("custom_test_indicator", unlimited=True).to_list()
 
     # We never execute any trades, only test the live execution main loop
     return []
@@ -79,15 +94,23 @@ def custom_test_indicator(
 
 
 def create_indicators(
+    timestamp: datetime.datetime | None,
     parameters: StrategyParameters,
-    indicators: IndicatorSet,
     strategy_universe: TradingStrategyUniverse,
     execution_context: ExecutionContext
-):
+) -> IndicatorSet:
     # Test create_indicators() in live trade execution cycle
     assert execution_context.mode in (ExecutionMode.unit_testing_trading, ExecutionMode.backtesting)
+    if execution_context.mode.is_live_trading():
+        # Live execution
+        assert timestamp is not None
+    else:
+        # For backtesting we do not get a timestsamp
+        assert timestamp is None
+    indicators = IndicatorSet()
     indicators.add("rsi", pandas_ta.rsi, {"length": parameters.rsi_bars})
     indicators.add("custom_test_indicator", custom_test_indicator, {"custom_parameter": parameters.custom_parameter}, source=IndicatorSource.strategy_universe)
+    return indicators
 
 
 def create_trading_universe(
@@ -98,11 +121,6 @@ def create_trading_universe(
 ) -> TradingStrategyUniverse:
     # Try to load live data, do some sanity checks
     assert datetime.datetime.utcnow() - timestamp < datetime.timedelta(minutes=1)
-
-    pairs = [
-        (ChainId.polygon, "uniswap-v3", "WETH", "USDC", 0.0005),
-        (ChainId.polygon, "uniswap-v3", "WMATIC", "USDC", 0.0005),
-    ]
 
     # Load data for our trading pair whitelist
     if execution_context.mode.is_backtesting():
@@ -120,7 +138,7 @@ def create_trading_universe(
     dataset = load_partial_data(
         client=client,
         time_bucket=ParameterConfiguration.time_bucket,
-        pairs=pairs,
+        pairs=PAIR_IDS,
         execution_context=execution_context,
         universe_options=universe_options,
         liquidity=False,

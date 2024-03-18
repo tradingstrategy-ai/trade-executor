@@ -9,7 +9,7 @@ import pandas as pd
 
 from tradeexecutor.cli.discord import post_logging_discord_image
 from tradeexecutor.statistics.in_memory_statistics import refresh_live_strategy_images
-from tradeexecutor.strategy.pandas_trader.indicator import IndicatorSet, calculate_and_load_indicators, MemoryIndicatorStorage
+from tradeexecutor.strategy.pandas_trader.indicator import IndicatorSet, calculate_and_load_indicators, MemoryIndicatorStorage, call_create_indicators
 from tradeexecutor.strategy.pandas_trader.strategy_input import StrategyInput, StrategyInputIndicators
 from tradeexecutor.strategy.parameters import StrategyParameters
 from tradeexecutor.strategy.pricing_model import PricingModel
@@ -72,6 +72,7 @@ class PandasTraderRunner(StrategyRunner):
         # Call the strategy script decide_trades()
         # callback
         if self.execution_context.is_version_greater_or_equal_than(0, 5, 0):
+            # DecideTradesProtocolV4
 
             if self.execution_context.mode.is_live_trading():
                 # Indicators are recalculated for every tick in the live trading
@@ -82,7 +83,6 @@ class PandasTraderRunner(StrategyRunner):
             assert indicators is not None, "indicators not created when running trading_strategy_engine_version=0.5"
             indicators.prepare_decision_cycle(debug_details["cycle"], pd_timestamp)
 
-            # DecideTradesProtocolV4
             input = StrategyInput(
                 cycle=debug_details["cycle"],
                 timestamp=pd_timestamp,
@@ -351,29 +351,30 @@ class PandasTraderRunner(StrategyRunner):
         """
         # storage = self.indicator_storage
         logger.info("Calculating live indicators for %s", timestamp)
-        indicator_builder = IndicatorSet()
 
         storage = MemoryIndicatorStorage(strategy_universe.get_cache_key())
 
-        self.create_indicators(
-            parameters=parameters,
-            indicators=indicator_builder,
-            strategy_universe=strategy_universe,
-            execution_context=self.execution_context,
+        indicators = call_create_indicators(
+            self.create_indicators,
+            parameters,
+            strategy_universe,
+            self.execution_context,
+            timestamp,
         )
 
         indicator_results = calculate_and_load_indicators(
             strategy_universe=strategy_universe,
             storage=storage,
             execution_context=self.execution_context,
-            indicators=indicator_builder,
+            indicators=indicators,
             parameters=self.parameters,
+            timestamp=timestamp,
         )
 
         strategy_input_indicators = StrategyInputIndicators(
             strategy_universe,
             indicator_results=indicator_results,
-            available_indicators=indicator_builder,
+            available_indicators=indicators,
         )
 
         return strategy_input_indicators

@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import Optional
 
 from tradeexecutor.strategy.default_routing_options import TradeRouting
-from tradeexecutor.strategy.pandas_trader.indicator import CreateIndicatorsProtocol
+from tradeexecutor.strategy.pandas_trader.indicator import CreateIndicatorsProtocolV1, CreateIndicatorsProtocol
 from tradeexecutor.strategy.parameters import StrategyParameters
 from tradeexecutor.strategy.routing import RoutingModel
 from tradingstrategy.client import Client

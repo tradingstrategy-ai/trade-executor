@@ -15,7 +15,7 @@ import pandas as pd
 from web3.datastructures import AttributeDict, ReadableAttributeDict
 
 from tradeexecutor.strategy.engine_version import SUPPORTED_TRADING_STRATEGY_ENGINE_VERSIONS, TradingStrategyEngineVersion
-from tradeexecutor.strategy.pandas_trader.indicator import CreateIndicatorsProtocol
+from tradeexecutor.strategy.pandas_trader.indicator import CreateIndicatorsProtocolV1, CreateIndicatorsProtocol
 from tradeexecutor.strategy.pandas_trader.strategy_input import StrategyInput
 from tradeexecutor.strategy.parameters import StrategyParameters
 from tradeexecutor.strategy.tag import StrategyTag
