@@ -21,7 +21,7 @@ from tradeexecutor.strategy.pricing_model import PricingModel
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
 from tradingstrategy.candle import CandleSampleUnavailable
 from tradingstrategy.pair import HumanReadableTradingPairDescription
-from tradingstrategy.utils.time import get_prior_timestamp
+from tradingstrategy.utils.time import get_prior_timestamp, ZERO_TIMEDELTA
 
 logger = logging.getLogger(__name__)
 
@@ -31,6 +31,14 @@ SERIES_CACHE_SIZE = 1024
 
 class InvalidForMultipairStrategy(Exception):
     """Try to use single trading pair functions in a multipair strategy."""
+
+
+class IndicatorDataNotFoundWithinDataTolerance(Exception):
+    """We try to get forward-filled data, but there is no data within our tolerance."""
+
+
+class IndicatorNotFound(Exception):
+    """Asked for an indicator we do not have."""
 
 
 
@@ -120,6 +128,7 @@ class StrategyInputIndicators:
         pair: TradingPairIdentifier | HumanReadableTradingPairDescription | None = None,
         index: int = -1,
         clock_shift: pd.Timedelta = pd.Timedelta(hours=0),
+        data_delay_tolerance: pd.Timedelta=None,
     ) -> float | None:
         """Read the available value of an indicator.
 
@@ -198,12 +207,20 @@ class StrategyInputIndicators:
         :param clock_shift:
             Used in time-shifted backtesting.
 
+        :param data_delay_tolerance:
+            If we do not have an exact timestamp match in the data series, look for the previous value.
+
+            Look back max `data_delay_tolerance` days / hours to get a previous value using forward-fill technique.
+
         :return:
             The latest available indicator value.
 
             Any NaN, NA or not a number value in the indicator data is translated to Python ``None``.
 
             Return ``None`` if value not yet available when asked at the current decision moment.
+
+        :raise IndicatorDataNotFoundWithinDataTolerance:
+            We asked `data_delay_tolerance` look backwards, but there wasn't any samples within the tolerance.
         """
 
         series = self.resolve_indicator_data(name, column, pair)
@@ -212,16 +229,48 @@ class StrategyInputIndicators:
         time_frame = _calculate_and_cache_candle_width(series.index)
         shifted_ts = ts + time_frame * index + clock_shift
 
+        # First try direct timestamp hit.
+        # This is the case for any normal strategies,
+        # where time-series data and decision cycles have the equal indexes
         try:
             value = series[shifted_ts]
         except KeyError:
-            return None
+
+            # Try to check for uneven timeframes
+            # E.g. 1d RSI indicator data and 1s decision cycle
+            #
+            if data_delay_tolerance is not None:
+                # TODO: Do we need to cache the indexer... does it has its own storage?
+                ffill_indexer = series.index.get_indexer([self.timestamp], method="ffill")
+                before_match_iloc = ffill_indexer[0]
+                before_match_timestamp = series.index[before_match_iloc]
+
+                if before_match_iloc < 0:
+                    # We get -1 if there are no timestamps where the forward fill could start
+                    first_sample_timestamp = series.index[0]
+                    raise IndicatorDataNotFoundWithinDataTolerance(
+                        f"Could not find any samples for pair {pair}, indicator {name} at {self.timestamp}\n"
+                        f"- Series has {len(series)} samples\n"
+                        f"- First sample is at {first_sample_timestamp}\n"
+                    )
+                before_match = series.iloc[before_match_iloc]
+
+                # Internal sanity check
+                distance = self.timestamp - before_match_timestamp
+                assert distance >= ZERO_TIMEDELTA, f"Somehow we managed to get a indicator timestamp {before_match_timestamp} that is newer than asked {self.timestamp}"
+
+                if distance > data_delay_tolerance:
+                    raise IndicatorDataNotFoundWithinDataTolerance(f"Asked indicator {name}. Data delay tolerance is {data_delay_tolerance}, but the delay was longer {distance}.")
+
+                value = before_match
+            else:
+                # No match
+                return None
 
         if pd.isna(value):
             return None
 
         return value
-
 
     def get_indicator_series(
         self,
@@ -278,12 +327,14 @@ class StrategyInputIndicators:
         assert self.timestamp, f"prepare_decision_cycle() not called"
 
         indicator = self.available_indicators.get_indicator(name)
-        assert indicator is not None, f"Indicator with name '{name}' not defined by create_indicators(). Available indicators are: {self.available_indicators.get_label()}"
+        if indicator is None:
+            raise IndicatorNotFound(f"Indicator with name '{name}' not defined by create_indicators(). Available indicators are: {self.available_indicators.get_label()}")
 
         if indicator.source.is_per_pair():
 
             if pair is None:
-                assert self.strategy_universe.get_pair_count() == 1, f"The strategy universe contains multiple pairs. You need to pass pair argument to the function to determine which trading pair you are manipulating."
+                if self.strategy_universe.get_pair_count() != 1:
+                    raise InvalidForMultipairStrategy(f"The strategy universe contains multiple pairs. You need to pass pair argument to the function to determine which trading pair you are manipulating.")
                 pair = self.strategy_universe.get_single_pair()
 
             if type(pair) == tuple:

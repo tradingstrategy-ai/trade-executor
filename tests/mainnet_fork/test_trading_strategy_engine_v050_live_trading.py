@@ -167,6 +167,7 @@ def test_trading_strategy_engine_v050_live_trading(
         "MAX_CYCLES": "4",  # Run for 4 seconds, 4 cycles
         "MAX_DATA_DELAY_MINUTES": f"{10*60*24*365}",  # 10 years or "disabled"
         "DEBUG_DUMP_FILE": debug_dump_file,
+        "STATE_FILE": state_file,
     }
 
     # Don't use CliRunner.invoke() here,
@@ -177,8 +178,10 @@ def test_trading_strategy_engine_v050_live_trading(
     # We should have three cycles worth of debug data
     with open(debug_dump_file, "rb") as inp:
         debug_dump = pickle.load(inp)
-        import ipdb ; ipdb.set_trace()
-        assert len(debug_dump) == 2
+        # {3: {'cycle': 3, 'unrounded_timestamp': datetime.datetime(2024, 3, 18, 14, 5, 38, 2508), 'timestamp': datetime.datetime(2024, 3, 18, 14, 5, 38), 'strategy_cycle_trigger': 'cycle_offset', 'reserve_update_events': [], 'total_equity_at_start': 0, 'total_cash_at_start': 0, 'rsi_WETH': None, 'custom_test_indicator': [1, 2, 3, 4], 'rsi_WMATIC': None, 'rebalance_trades': []}}
+        assert len(debug_dump) == 3
+        cycle_3 = debug_dump[3]
+        assert cycle_3["custom_test_indicator"] == [1, 2, 3, 4]
 
     # See we can load the state after all this testing.
     # Mainly stresses on serialization/deserialization issues.

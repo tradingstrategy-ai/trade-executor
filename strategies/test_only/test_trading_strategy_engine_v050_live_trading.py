@@ -14,7 +14,7 @@ from tradeexecutor.strategy.cycle import CycleDuration
 from tradeexecutor.strategy.default_routing_options import TradeRouting
 from tradeexecutor.strategy.execution_context import ExecutionMode, ExecutionContext
 from tradeexecutor.strategy.pandas_trader.indicator import IndicatorSource, IndicatorSet
-from tradeexecutor.strategy.pandas_trader.strategy_input import StrategyInput
+from tradeexecutor.strategy.pandas_trader.strategy_input import StrategyInput, IndicatorNotFound, InvalidForMultipairStrategy
 from tradeexecutor.strategy.parameters import StrategyParameters
 from tradeexecutor.strategy.tag import StrategyTag
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse, load_trading_and_lending_data, load_partial_data
@@ -49,10 +49,10 @@ class ParameterConfiguration:
     routing = TradeRouting.default
     backtest_start = datetime.datetime(2023, 1, 1)
     backtest_end = datetime.datetime(2024, 1, 1)
-    rsi_bars = 10
     custom_parameter = 1
     initial_cash = 10_000
     time_bucket = TimeBucket.d1
+    rsi_length = 21
 
 
 def decide_trades(
@@ -69,16 +69,46 @@ def decide_trades(
     strategy_universe = input.strategy_universe
 
     assert input.execution_context.mode in (ExecutionMode.unit_testing_trading, ExecutionMode.backtesting)
-
-    # We should do 1s cycles near real time
-    assert datetime.datetime.utcnow() - timestamp < datetime.timedelta(minutes=1)
-
+    assert datetime.datetime.utcnow() - timestamp < datetime.timedelta(minutes=1)      # We should do 1s cycles near real time
     assert parameters.custom_parameter == 1
 
-    # Pass data to the unit test
+    # Do various live data assets and
+    # pass data to the main unit test function
     for pair_id in PAIR_IDS:
         pair = strategy_universe.get_pair_by_human_description(pair_id)
-        input.other_data[f"rsi_{pair.base.token_symbol}"] = indicators.get_indicator_value("rsi", pair=pair)
+
+        # Test individual value
+        rsi = indicators.get_indicator_value("rsi", pair=pair, data_delay_tolerance=pd.Timedelta(days=7))
+        assert rsi is not None, f"get_indicator_value() returned None, timestamp is {indicators.timestamp}"
+
+        # Test whole series
+        rsi_series = indicators.get_indicator_series("rsi", pair=pair)
+        # assert len(rsi_series) == parameters.rsi_length, f"RSI for {pair} is length {len(rsi_series)}, values:\n{rsi_series}"
+
+        # The RSI is calculated for all loaded data (we load 60 days)
+        # Each RSI series cell is21 days backwards for RSI from that point
+        # The initial cells have NaN as value
+        assert len(rsi_series) == 60, f"RSI for {pair} is length {len(rsi_series)}, values:\n{rsi_series}"
+
+        # Test unknown indicator
+        try:
+            indicators.get_indicator_value("foobaa")
+            raise RuntimeError(f"Should not happen")
+        except IndicatorNotFound:
+            pass
+
+        # Test pair arugment missing
+        try:
+            indicators.get_indicator_series("rsi")
+            raise RuntimeError(f"Should not happen")
+        except InvalidForMultipairStrategy:
+            pass
+
+        # Test price
+        price = indicators.get_price(pair)
+        assert 0 < price < 10_000, f"Got {pair} price {price}"
+
+        input.other_data[f"rsi_{pair.base.token_symbol}"] = rsi
         input.other_data[f"custom_test_indicator"] = indicators.get_indicator_series("custom_test_indicator", unlimited=True).to_list()
 
     # We never execute any trades, only test the live execution main loop
@@ -111,7 +141,7 @@ def create_indicators(
         assert timestamp is None
 
     indicators = IndicatorSet()
-    indicators.add("rsi", pandas_ta.rsi, {"length": parameters.rsi_bars})
+    indicators.add("rsi", pandas_ta.rsi, {"length": parameters.rsi_length})
     indicators.add("custom_test_indicator", custom_test_indicator, {"custom_parameter": parameters.custom_parameter}, source=IndicatorSource.strategy_universe)
     return indicators
 
@@ -136,7 +166,7 @@ def create_trading_universe(
         assert execution_context.mode.is_live_trading()
         start_at = None
         end_at = None
-        required_history_period = datetime.timedelta(days=30)
+        required_history_period = datetime.timedelta(days=60)  # We need 21 days run up for RSI indicator
 
     dataset = load_partial_data(
         client=client,
