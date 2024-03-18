@@ -1,4 +1,7 @@
 """Indicator definitions."""
+import datetime
+import threading
+from abc import ABC, abstractmethod
 
 # Enable pickle patch that allows multiprocessing in notebooks
 from tradeexecutor.monkeypatch import cloudpickle_patch
@@ -30,7 +33,7 @@ from tradeexecutor.state.identifier import TradingPairIdentifier
 from tradeexecutor.strategy.execution_context import ExecutionContext
 from tradeexecutor.strategy.parameters import StrategyParameters
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse, UniverseCacheKey
-
+from tradeexecutor.utils.cpu import get_safe_max_workers_count
 
 logger = logging.getLogger(__name__)
 
@@ -345,7 +348,7 @@ class IndicatorSet:
         return indicator_set
 
 
-class CreateIndicatorsProtocol(Protocol):
+class CreateIndicatorsProtocolV1(Protocol):
     """Call signature for create_indicators function.
 
     This Protocol class defines `create_indicators()` function call signature.
@@ -353,6 +356,10 @@ class CreateIndicatorsProtocol(Protocol):
     to define what indicators a strategy needs.
     Used with :py:class`IndicatorSet` to define the indicators
     the strategy can use.
+
+    .. note ::
+
+        Legacy. See :py:class:`CreateIndicatorsProtocol2` instead.
 
     These indicators are precalculated and cached for fast performance.
 
@@ -431,7 +438,128 @@ class CreateIndicatorsProtocol(Protocol):
             This function does not return anything.
 
             Instead `indicators.add` is used to attach new indicators to the strategy.
+
         """
+
+
+class CreateIndicatorsProtocolV2(Protocol):
+    """Call signature for create_indicators function.
+
+    This Protocol class defines `create_indicators()` function call signature.
+    Strategy modules and backtests can provide on `create_indicators` function
+    to define what indicators a strategy needs.
+    Used with :py:class`IndicatorSet` to define the indicators
+    the strategy can use.
+
+
+    These indicators are precalculated and cached for fast performance.
+
+    Example for a grid search:
+
+    .. code-block:: python
+
+        class MyParameters:
+            stop_loss_pct = [0.9, 0.95]
+            cycle_duration = CycleDuration.cycle_1d
+            initial_cash = 10_000
+
+            # Indicator values that are searched in the grid search
+            slow_ema_candle_count = 7
+            fast_ema_candle_count = [1, 2]
+
+
+        def create_indicators(parameters: StrategyParameters, strategy_universe: TradingStrategyUniverse, execution_context: ExecutionContext):
+            indicators = IndicatorSet()
+            indicators.add("slow_ema", pandas_ta.ema, {"length": parameters.slow_ema_candle_count})
+            indicators.add("fast_ema", pandas_ta.ema, {"length": parameters.fast_ema_candle_count})
+            return indicators
+
+    Indicators can be custom, and do not need to be calculated per trading pair.
+    Here is an example of creating indicators "ETH/BTC price" and "ETC/BTC price RSI with length of 20 bars":
+
+    .. code-block:: python
+
+        def calculate_eth_btc(strategy_universe: TradingStrategyUniverse):
+            weth_usdc = strategy_universe.get_pair_by_human_description((ChainId.ethereum, "test-dex", "WETH", "USDC"))
+            wbtc_usdc = strategy_universe.get_pair_by_human_description((ChainId.ethereum, "test-dex", "WBTC", "USDC"))
+            btc_price = strategy_universe.data_universe.candles.get_candles_by_pair(wbtc_usdc.internal_id)
+            eth_price = strategy_universe.data_universe.candles.get_candles_by_pair(weth_usdc.internal_id)
+            series = eth_price["close"] / btc_price["close"]  # Divide two series
+            return series
+
+        def calculate_eth_btc_rsi(strategy_universe: TradingStrategyUniverse, length: int):
+            weth_usdc = strategy_universe.get_pair_by_human_description((ChainId.ethereum, "test-dex", "WETH", "USDC"))
+            wbtc_usdc = strategy_universe.get_pair_by_human_description((ChainId.ethereum, "test-dex", "WBTC", "USDC"))
+            btc_price = strategy_universe.data_universe.candles.get_candles_by_pair(wbtc_usdc.internal_id)
+            eth_price = strategy_universe.data_universe.candles.get_candles_by_pair(weth_usdc.internal_id)
+            eth_btc = eth_price["close"] / btc_price["close"]
+            return pandas_ta.rsi(eth_btc, length=length)
+
+        def create_indicators(parameters: StrategyParameters, indicators: IndicatorSet, strategy_universe: TradingStrategyUniverse, execution_context: ExecutionContext):
+            indicators.add("eth_btc", calculate_eth_btc, source=IndicatorSource.strategy_universe)
+            indicators.add("eth_btc_rsi", calculate_eth_btc_rsi, parameters={"length": parameters.eth_btc_rsi_length}, source=IndicatorSource.strategy_universe)
+    """
+
+    def __call__(
+        self,
+        timestamp: datetime.datetime | None,
+        parameters: StrategyParameters,
+        strategy_universe: TradingStrategyUniverse,
+        execution_context: ExecutionContext,
+    ) -> IndicatorSet:
+        """Build technical indicators for the strategy.
+
+        :param timestamp:
+            The current live execution timestamp.
+
+            Set ``None`` for backtesting, as `create_indicators()` is called only once during the backtest setup.
+
+        :param parameters:
+            Passed from the backtest / live strategy parametrs.
+
+            If doing a grid search, each paramter is simplified.
+
+        :param strategy_universe:
+            The loaded strategy universe.
+
+            Use to resolve symbolic pair information if needed
+
+        :param execution_context:
+            Information about if this is a live or backtest run.
+
+        :return:
+            Indicators the strategy is going to need.
+        """
+
+
+#: Use this in function singatures
+CreateIndicatorsProtocol: TypeAlias = CreateIndicatorsProtocolV1 | CreateIndicatorsProtocolV2
+
+
+def call_create_indicators(
+    create_indicators_func: Callable,
+    parameters: StrategyParameters,
+    strategy_universe: TradingStrategyUniverse,
+    execution_context: ExecutionContext,
+    timestamp: datetime.datetime = None,
+) -> IndicatorSet:
+    """Backwards compatibe wrapper for create_indicators().
+
+    - Check `create_indicators_func` version
+
+    - Handle legacy / backwards compat
+    """
+    assert callable(create_indicators_func)
+    args = inspect.getfullargspec(create_indicators_func)
+    if "indicators" in args.args:
+        # v1 backwards
+        indicators = IndicatorSet()
+        create_indicators_func(parameters, indicators, strategy_universe, execution_context)
+        return indicators
+
+    # v2
+    return create_indicators_func(timestamp, parameters, strategy_universe, execution_context)
+
 
 @dataclass
 class IndicatorResult:
@@ -479,8 +607,40 @@ class IndicatorResult:
 IndicatorResultMap: TypeAlias = dict[IndicatorKey, IndicatorResult]
 
 
-class IndicatorStorage:
+class IndicatorStorage(ABC):
+    """Base class for cached indicators and live trading indicators."""
+
+    @abstractmethod
+    def is_available(self, key: IndicatorKey) -> bool:
+        pass
+
+    @abstractmethod
+    def load(self, key: IndicatorKey) -> IndicatorResult:
+        pass
+
+    @abstractmethod
+    def save(self, key: IndicatorKey, df: pd.DataFrame | pd.Series) -> IndicatorResult:
+        pass
+
+    @abstractmethod
+    def get_disk_cache_path(self) -> Path | None:
+        pass
+
+    @abstractmethod
+    def get_universe_cache_path(self) -> Path | None:
+        pass
+
+
+class DiskIndicatorStorage(IndicatorStorage):
     """Store calculated indicator results on disk.
+
+    Used in
+
+    - Backtesting
+
+    - Grid seacrh
+
+    Indicators are calculated once and the calculation results can be recycled across multiple backtest runs.
 
     TODO: Cannot handle multichain universes at the moment, as serialises trading pairs by their ticker.
     """
@@ -496,6 +656,9 @@ class IndicatorStorage:
 
     def get_universe_cache_path(self) -> Path:
         return self.path / Path(self.universe_key)
+
+    def get_disk_cache_path(self) -> Path:
+        return self.path
 
     def get_indicator_path(self, key: IndicatorKey) -> Path:
         """Get the Parquet file where the indicator data is stored.
@@ -564,9 +727,49 @@ class IndicatorStorage:
     def create_default(
         universe: TradingStrategyUniverse,
         default_path=DEFAULT_INDICATOR_STORAGE_PATH,
-    ) -> "IndicatorStorage":
+    ) -> "DiskIndicatorStorage":
         """Get the indicator storage with the default cache path."""
-        return IndicatorStorage(default_path, universe.get_cache_key())
+        return DiskIndicatorStorage(default_path, universe.get_cache_key())
+
+
+class MemoryIndicatorStorage(IndicatorStorage):
+    """Store calculated indicator results on disk.
+
+    Used in
+
+    - Live trading
+
+    - Indicators are calculated just before `decide_trades()` is called
+
+    - Indicators are recalculated on every decision cycle
+    """
+
+    def __init__(self, universe_key: UniverseCacheKey):
+        self.universe_key = universe_key
+        self.results: dict[IndicatorKey, IndicatorResult] = {}
+
+    def is_available(self, key: IndicatorKey) -> bool:
+        return key in self.results
+
+    def load(self, key: IndicatorKey) -> IndicatorResult:
+        return self.results[key]
+
+    def save(self, key: IndicatorKey, df: pd.DataFrame | pd.Series) -> IndicatorResult:
+        result = IndicatorResult(
+            universe_key=self.universe_key,
+            indicator_key=key,
+            data=df,
+            cached=False,
+        )
+
+        self.results[key] = result
+        return result
+
+    def get_disk_cache_path(self) -> Path | None:
+        return None
+
+    def get_universe_cache_path(self) -> Path | None:
+        return None
 
 
 def _serialise_parameters_for_cache_key(parameters: dict) -> str:
@@ -576,8 +779,7 @@ def _serialise_parameters_for_cache_key(parameters: dict) -> str:
     return "".join([f"{k}={v}" for k, v in parameters.items()])
 
 
-
-def _load_indicator_result(storage: IndicatorStorage, key: IndicatorKey) -> IndicatorResult:
+def _load_indicator_result(storage: DiskIndicatorStorage, key: IndicatorKey) -> IndicatorResult:
     logger.info("Loading %s", key)
     assert storage.is_available(key), f"Tried to load indicator that is not in the cache: {key}"
     return storage.load(key)
@@ -585,7 +787,7 @@ def _load_indicator_result(storage: IndicatorStorage, key: IndicatorKey) -> Indi
 
 def _calculate_and_save_indicator_result(
     strategy_universe: TradingStrategyUniverse,
-    storage: IndicatorStorage,
+    storage: DiskIndicatorStorage,
     key: IndicatorKey,
 ) -> IndicatorResult:
 
@@ -616,7 +818,7 @@ def _calculate_and_save_indicator_result(
 
 def load_indicators(
     strategy_universe: TradingStrategyUniverse,
-    storage: IndicatorStorage,
+    storage: DiskIndicatorStorage,
     indicator_set: IndicatorSet,
     all_combinations: set[IndicatorKey],
     max_readers=8,
@@ -693,7 +895,7 @@ def load_indicators(
 
 def calculate_indicators(
     strategy_universe: TradingStrategyUniverse,
-    storage: IndicatorStorage,
+    storage: DiskIndicatorStorage,
     indicators: IndicatorSet | None,
     execution_context: ExecutionContext,
     remaining: set[IndicatorKey],
@@ -762,8 +964,7 @@ def calculate_indicators(
         tm = futureproof.TaskManager(executor, error_policy=futureproof.ErrorPolicyEnum.RAISE)
 
         # Set up a signal handler to stop child processes on quit
-        _process_pool_executor = executor._executor
-        signal.signal(signal.SIGTERM, _handle_sigterm)
+        setup_indicator_multiprocessing(executor)
 
         # Run the tasks
         tm.map(_calculate_and_save_indicator_result, task_args)
@@ -800,14 +1001,22 @@ def prepare_indicators(
     parameters: StrategyParameters,
     strategy_universe: TradingStrategyUniverse,
     execution_context: ExecutionContext,
-
+    timestamp: datetime.datetime = None,
 ):
     """Call the strategy module indicator builder."""
-    indicators = IndicatorSet()
-    create_indicators(parameters, indicators, strategy_universe, execution_context)
+
+    indicators = call_create_indicators(
+        create_indicators,
+        parameters,
+        strategy_universe,
+        execution_context,
+        timestamp=timestamp,
+    )
+
     if indicators.get_count() == 0:
         # TODO: Might have legit use cases?
         logger.warning(f"create_indicators() did not create a single indicator")
+
     return indicators
 
 
@@ -817,10 +1026,11 @@ def calculate_and_load_indicators(
     execution_context: ExecutionContext,
     parameters: StrategyParameters | None = None,
     indicators: IndicatorSet | None = None,
-    create_indicators: CreateIndicatorsProtocol | None = None,
-    max_workers=8,
-    max_readers=8,
+    create_indicators: CreateIndicatorsProtocolV1 | None = None,
+    max_workers: int | Callable = get_safe_max_workers_count,
+    max_readers: int | Callable = get_safe_max_workers_count,
     verbose=True,
+    timestamp: datetime.datetime = None,
 ) -> IndicatorResultMap:
     """Precalculate all indicators.
 
@@ -837,18 +1047,25 @@ def calculate_and_load_indicators(
         Stdout printing with heplful messages to the user
     """
 
+    # Resolve CPU count
+    if callable(max_workers):
+        max_workers = max_workers()
+
+    if callable(max_readers):
+        max_readers = max_readers()
+
     assert create_indicators or indicators, "You must give either create_indicators or indicators argument"
 
     if create_indicators:
         assert indicators is None, f"Give either indicators or create_indicators, not both"
         assert parameters is not None, f"parameters argument must be given if you give create_indicators"
-        indicators = prepare_indicators(create_indicators, parameters, strategy_universe, execution_context)
+        indicators = prepare_indicators(create_indicators, parameters, strategy_universe, execution_context, timestamp=timestamp)
 
     assert isinstance(indicators, IndicatorSet), f"Got class {type(indicators)} when IndicatorSet expected"
 
     all_combinations = set(indicators.generate_combinations(strategy_universe))
 
-    logger.info("Loading indicators %s for the universe %s, storage is %s", indicators.get_label(), strategy_universe.get_cache_key(), storage.path)
+    logger.info("Loading indicators %s for the universe %s, storage is %s", indicators.get_label(), strategy_universe.get_cache_key(), storage.get_disk_cache_path())
     cached = load_indicators(strategy_universe, storage, indicators, all_combinations, max_readers=max_readers)
 
     for key in cached.keys():
@@ -880,7 +1097,7 @@ def calculate_and_load_indicators(
 
 def warm_up_indicator_cache(
     strategy_universe: TradingStrategyUniverse,
-    storage: IndicatorStorage,
+    storage: DiskIndicatorStorage,
     execution_context: ExecutionContext,
     indicators: set[IndicatorKey],
     max_workers=8,
@@ -959,6 +1176,24 @@ def _handle_sigterm(*args):
     for p in processes:
         p.kill()
     sys.exit(1)
+
+
+def setup_indicator_multiprocessing(executor):
+    """Set up multiprocessing for indicators.
+
+    - We use multiprocessing to calculate indicators
+
+    - We want to be able to abort (CTRL+C) gracefully
+    """
+    global _process_pool_executor
+    _process_pool_executor = executor._executor
+
+    # Enable graceful multiprocessing termination only if we run as a backtesting noteboook
+    # pytest work around for: test_trading_strategy_engine_v050_live_trading
+    # ValueError: signal only works in main thread of the main interpreter
+    # https://stackoverflow.com/a/23207116/315168
+    if threading.current_thread() is threading.main_thread():
+        signal.signal(signal.SIGTERM, _handle_sigterm)
 
 
 def validate_function_kwargs(func: Callable, kwargs: dict):

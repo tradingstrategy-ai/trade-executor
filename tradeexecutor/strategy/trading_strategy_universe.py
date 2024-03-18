@@ -2384,7 +2384,7 @@ def load_trading_and_lending_data(
         universe_options.get_range_description(),
         )
 
-    assert len(pairs_df) > 0, f"No trading pairs left after filtering"
+    assert len(pairs_df) > 0, f"load_trading_and_lending_data(): No trading pairs left after loading and filtering given inputs. Check that you are passing a good confirmation in create_universe()."
 
     # We do not build the pair index here,
     # as we assume we filter out the pairs down a bit,

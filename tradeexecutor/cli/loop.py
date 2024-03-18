@@ -31,7 +31,9 @@ from tradeexecutor.strategy.account_correction import check_accounts, Unexpected
 from tradeexecutor.strategy.dummy import DummyExecutionModel
 from tradeexecutor.strategy.generic.generic_pricing_model import GenericPricing
 from tradeexecutor.strategy.pandas_trader.decision_trigger import wait_for_universe_data_availability_jsonl
+from tradeexecutor.strategy.pandas_trader.indicator import CreateIndicatorsProtocol
 from tradeexecutor.strategy.pandas_trader.strategy_input import StrategyInputIndicators
+from tradeexecutor.strategy.parameters import StrategyParameters
 from tradeexecutor.strategy.routing import RoutingModel
 from tradeexecutor.strategy.run_state import RunState
 from tradeexecutor.strategy.strategy_cycle_trigger import StrategyCycleTrigger
@@ -153,6 +155,8 @@ class ExecutionLoop:
             minimum_data_lookback_range: Optional[datetime.timedelta] = None,
             universe_options: Optional[UniverseOptions] = None,
             sync_treasury_on_startup=False,
+            create_indicators: CreateIndicatorsProtocol = None,
+            parameters: StrategyParameters = None,
     ):
         """See main.py for details."""
 
@@ -184,6 +188,8 @@ class ExecutionLoop:
         self.backtest_start = backtest_start
         self.backtest_end = backtest_end
         self.backtest_strategy_indicators = backtest_strategy_indicators
+        self.create_indicators = create_indicators
+        self.parameters = parameters
 
         args = locals().copy()
         args.pop("self")
@@ -1295,12 +1301,15 @@ class ExecutionLoop:
             client=self.client,
             routing_model=self.routing_model,
             run_state=self.run_state,
+            create_indicators=self.create_indicators,
+            parameters=self.parameters,
         )
 
         self.init_live_run_state(run_description)
 
         # Deconstruct strategy input
         self.runner: StrategyRunner = run_description.runner
+
         self.universe_model = run_description.universe_model
 
         # TODO: Do this only when doing backtesting in a notebook

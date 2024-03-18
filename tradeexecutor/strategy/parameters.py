@@ -9,6 +9,7 @@ from web3.datastructures import ReadableAttributeDict, AttributeDict, MutableAtt
 
 from tradeexecutor.state.types import USDollarAmount
 from tradeexecutor.strategy.cycle import CycleDuration
+from tradeexecutor.strategy.default_routing_options import TradeRouting
 
 
 class StrategyParametersMissing(Exception):
@@ -32,6 +33,12 @@ class CoreStrategyParameters(TypedDict):
 
     #: Current strategy decision cycle
     cycle: int
+
+    #: Trade routing model.
+    #:
+    #: Applies to live strategies only
+    #:
+    routing: TradeRouting
 
 
 class StrategyParameters(MutableAttributeDict):

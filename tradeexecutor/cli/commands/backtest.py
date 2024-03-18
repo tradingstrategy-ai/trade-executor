@@ -44,6 +44,7 @@ from ...strategy.cycle import CycleDuration
 from ...strategy.default_routing_options import TradeRouting
 from ...strategy.execution_context import ExecutionContext, ExecutionMode, standalone_backtest_execution_context
 from ...strategy.execution_model import AssetManagementMode
+from ...strategy.pandas_trader.indicator import IndicatorStorage, DiskIndicatorStorage
 from ...strategy.routing import RoutingModel
 from ...strategy.run_state import RunState
 from ...strategy.strategy_cycle_trigger import StrategyCycleTrigger
@@ -147,7 +148,7 @@ def backtest(
     logger.info("Loading backtesting universe data for %s", universe_options)
 
     universe = mod.create_trading_universe(
-        pd.Timestamp.utcnow(),
+        datetime.datetime.utcnow(),
         client,
         standalone_backtest_execution_context,
         universe_options,
@@ -163,6 +164,8 @@ def backtest(
     backtest_start_at = universe_options.start_at + mod.trading_strategy_cycle.to_timedelta()
     logger.info("Backtest starts at %s", backtest_start_at)
 
+    indicator_storage = DiskIndicatorStorage(cache_path / "indicators", universe_key=universe.get_cache_key())
+
     backtest_setup = setup_backtest_for_universe(
         mod,
         start_at=backtest_start_at,
@@ -172,6 +175,9 @@ def backtest(
         name=name,
         universe=universe,
         universe_options=universe_options,
+        create_indicators=mod.create_indicators,
+        parameters=mod.parameters,
+        indicator_storage=indicator_storage,
     )
 
     assert backtest_setup.trading_strategy_engine_version
@@ -187,7 +193,7 @@ def backtest(
 
     display_backtesting_results(state)
 
-    print(f"Writing backtest data the state file: {backtest_result}")
+    print(f"Writing backtest data the state file: {backtest_result.resolve()}")
     state.write_json_file(backtest_result)
     state2 = State.read_json_file(backtest_result)
     assert state.name == state2.name  # Early prototype serialisation checks

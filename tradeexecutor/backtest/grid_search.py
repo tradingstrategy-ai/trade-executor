@@ -38,7 +38,7 @@ except ImportError:
 
 from tradeexecutor.strategy.engine_version import TradingStrategyEngineVersion
 from tradeexecutor.strategy.execution_context import ExecutionContext, grid_search_execution_context
-from tradeexecutor.strategy.pandas_trader.indicator import IndicatorSet, CreateIndicatorsProtocol, IndicatorStorage, warm_up_indicator_cache, IndicatorKey, DEFAULT_INDICATOR_STORAGE_PATH
+from tradeexecutor.strategy.pandas_trader.indicator import IndicatorSet, CreateIndicatorsProtocolV1, DiskIndicatorStorage, warm_up_indicator_cache, IndicatorKey, DEFAULT_INDICATOR_STORAGE_PATH
 from tradeexecutor.strategy.universe_model import UniverseOptions
 
 
@@ -427,7 +427,7 @@ def prepare_grid_combinations(
     result_path: Path,
     clear_cached_results=False,
     marker_file="README-GRID-SEARCH.md",
-    create_indicators: CreateIndicatorsProtocol | None = None,
+    create_indicators: CreateIndicatorsProtocolV1 | None = None,
     strategy_universe: TradingStrategyUniverse | None = None,
     execution_context: ExecutionContext = grid_search_execution_context,
 ) -> List[GridCombination]:
@@ -526,7 +526,7 @@ def _run_v04(
     universe: TradingStrategyUniverse,
     combination: GridCombination,
     trading_strategy_engine_version: TradingStrategyEngineVersion,
-    indicator_storage: IndicatorStorage,
+    indicator_storage: DiskIndicatorStorage,
 ):
     """Run decide_trades() with input parameteter.
 
@@ -580,7 +580,7 @@ def run_grid_combination_threaded(
 
     if indicator_storage_path is not None:
         assert isinstance(indicator_storage_path, Path)
-        indicator_storage = IndicatorStorage(indicator_storage_path, universe.get_cache_key())
+        indicator_storage = DiskIndicatorStorage(indicator_storage_path, universe.get_cache_key())
     else:
         indicator_storage = None
 
@@ -634,7 +634,7 @@ def run_grid_combination_multiprocess(
 
     if indicator_storage_path is not None:
         assert isinstance(indicator_storage_path, Path)
-        indicator_storage = IndicatorStorage(indicator_storage_path, universe.get_cache_key())
+        indicator_storage = DiskIndicatorStorage(indicator_storage_path, universe.get_cache_key())
     else:
         indicator_storage = None
 
@@ -674,7 +674,7 @@ def _read_combination_result(c: GridCombination, data_retention: GridSearchDataR
 def warm_up_grid_search_indicator_cache(
     strategy_universe: TradingStrategyUniverse,
     combinations: List[GridCombination],
-    indicator_storage: IndicatorStorage,
+    indicator_storage: DiskIndicatorStorage,
     max_workers: int = 8,
     execution_context: ExecutionContext = grid_search_execution_context,
 ):
@@ -760,7 +760,7 @@ def perform_grid_search(
     trading_strategy_engine_version: TradingStrategyEngineVersion="0.3",
     data_retention: GridSearchDataRetention = GridSearchDataRetention.metrics_only,
     execution_context: ExecutionContext = grid_search_execution_context,
-    indicator_storage: IndicatorStorage | None = None,
+    indicator_storage: DiskIndicatorStorage | None = None,
 ) -> List[GridSearchResult]:
     """Search different strategy parameters over a grid.
 
@@ -819,7 +819,7 @@ def perform_grid_search(
     )
 
     if indicator_storage is None:
-        indicator_storage = IndicatorStorage.create_default(universe)
+        indicator_storage = DiskIndicatorStorage.create_default(universe)
         print(f"Using indicator cache {indicator_storage.get_universe_cache_path()}")
 
     # First calculate indicators if create_indicators() protocol is used
@@ -926,7 +926,7 @@ def run_grid_search_backtest(
     combination: GridCombination,
     decide_trades: DecideTradesProtocol | DecideTradesProtocol2 | DecideTradesProtocol4,
     universe: TradingStrategyUniverse,
-    create_indicators: CreateIndicatorsProtocol | None = None,
+    create_indicators: CreateIndicatorsProtocolV1 | None = None,
     cycle_duration: Optional[CycleDuration] = None,
     start_at: Optional[datetime.datetime | pd.Timestamp] = None,
     end_at: Optional[datetime.datetime | pd.Timestamp] = None,
@@ -938,7 +938,7 @@ def run_grid_search_backtest(
     trading_strategy_engine_version: Optional[str] = None,
     cycle_debug_data: dict | None = None,
     parameters: StrategyParameters | None = None,
-    indicator_storage: IndicatorStorage | None = None,
+    indicator_storage: DiskIndicatorStorage | None = None,
 ) -> GridSearchResult:
     assert isinstance(universe, TradingStrategyUniverse), f"Received {universe}"
 

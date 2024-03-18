@@ -747,7 +747,7 @@ class TradeAnalysis:
         def func_check(lst, func):
             return func(lst) if lst else None
 
-        initial_cash = self.portfolio.get_initial_deposit()
+        initial_cash = self.portfolio.get_initial_cash()
 
         uninvested_cash = self.portfolio.get_cash()
 
