@@ -283,7 +283,7 @@ class TradeSummary:
             })
 
         human_data.update({
-            "Average duration between position openings": self.format_duration(self.average_duration_between_positions),
+            "Average duration between position openings": self.format_duration(self.average_duration_between_position_openings),
             "Average positions per day": as_decimal(self.average_position_frequency),
             "Average interest paid": as_dollar(self.average_interest_paid_usd),
             "Median interest paid": as_dollar(self.median_interest_paid_usd),
