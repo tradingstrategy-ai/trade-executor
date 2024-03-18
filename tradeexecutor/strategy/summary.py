@@ -177,6 +177,20 @@ class KeyMetricKind(enum.Enum):
     #: Maximum loss risked at the opening of a position
     max_loss_risk_at_opening_of_position = "max_loss_risk_at_opening_of_position"
 
+    average_interest_paid_usd = "average_interest_paid_usd"
+
+    median_interest_paid_usd = "median_interest_paid_usd"
+
+    max_interest_paid_usd = "max_interest_paid_usd"
+
+    min_interest_paid_usd = "min_interest_paid_usd"
+    
+    total_interest_paid_usd = "total_interest_paid_usd"
+
+    average_duration_between_position_openings = "average_duration_between_position_openings"
+
+    average_position_frequency = "average_position_frequency"
+
     def get_help_link(self) -> Optional[str]:
         return _KEY_METRIC_HELP[self]
 
