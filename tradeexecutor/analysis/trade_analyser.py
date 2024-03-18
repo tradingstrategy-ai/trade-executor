@@ -67,6 +67,9 @@ logger = logging.getLogger(__name__)
 class TradeSummary:
     """Some generic statistics over all the trades
 
+    .. warning:: 
+        Be very careful when editing or removing existing fields here as this can intefere with legacy data testing
+
     TDOO: Cleam this up
     """
     won: int
@@ -185,6 +188,8 @@ class TradeSummary:
 
     average_duration_between_position_openings: Optional[datetime.timedelta] = None
     average_position_frequency: Optional[datetime.timedelta] = None
+
+    average_duration_between_postions: int = 0
 
     def __post_init__(self):
 
