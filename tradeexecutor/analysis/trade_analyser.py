@@ -495,7 +495,17 @@ class TradeSummary:
 
         df5 = create_summary_table(data5, "", "Risk Analysis")
 
-        display(self.single_column_dfs(df1, df2, df3, df4, df5))
+        data6 = {
+            'Average interest paid': as_dollar(self.average_interest_paid_usd),
+            'Median interest paid': as_dollar(self.median_interest_paid_usd),
+            'Max interest paid': as_dollar(self.max_interest_paid_usd),
+            'Min interest paid': as_dollar(self.min_interest_paid_usd),
+            'Total interest paid': as_dollar(self.total_interest_paid_usd),
+        }
+
+        df6 = create_summary_table(data6, "", "Interest Paid")
+
+        display(self.single_column_dfs(df1, df2, df3, df4, df5, df6))
 
     def format_duration(self, duration_timedelta):
         if not duration_timedelta:
