@@ -1,4 +1,5 @@
 """Indicator definitions."""
+import threading
 from abc import ABC, abstractmethod
 
 # Enable pickle patch that allows multiprocessing in notebooks
@@ -494,6 +495,14 @@ class IndicatorStorage(ABC):
     def save(self, key: IndicatorKey, df: pd.DataFrame | pd.Series) -> IndicatorResult:
         pass
 
+    @abstractmethod
+    def get_disk_cache_path(self) -> Path | None:
+        pass
+
+    @abstractmethod
+    def get_universe_cache_path(self) -> Path | None:
+        pass
+
 
 class DiskIndicatorStorage(IndicatorStorage):
     """Store calculated indicator results on disk.
@@ -520,6 +529,9 @@ class DiskIndicatorStorage(IndicatorStorage):
 
     def get_universe_cache_path(self) -> Path:
         return self.path / Path(self.universe_key)
+
+    def get_disk_cache_path(self) -> Path:
+        return self.path
 
     def get_indicator_path(self, key: IndicatorKey) -> Path:
         """Get the Parquet file where the indicator data is stored.
@@ -626,6 +638,11 @@ class MemoryIndicatorStorage(IndicatorStorage):
         self.results[key] = result
         return result
 
+    def get_disk_cache_path(self) -> Path | None:
+        return None
+
+    def get_universe_cache_path(self) -> Path | None:
+        return None
 
 
 def _serialise_parameters_for_cache_key(parameters: dict) -> str:
@@ -633,7 +650,6 @@ def _serialise_parameters_for_cache_key(parameters: dict) -> str:
         assert type(k) == str
         assert type(v) not in (list, tuple)  # Don't leak test ranges here - must be a single value
     return "".join([f"{k}={v}" for k, v in parameters.items()])
-
 
 
 def _load_indicator_result(storage: DiskIndicatorStorage, key: IndicatorKey) -> IndicatorResult:
@@ -821,8 +837,7 @@ def calculate_indicators(
         tm = futureproof.TaskManager(executor, error_policy=futureproof.ErrorPolicyEnum.RAISE)
 
         # Set up a signal handler to stop child processes on quit
-        _process_pool_executor = executor._executor
-        signal.signal(signal.SIGTERM, _handle_sigterm)
+        setup_indicator_multiprocessing(executor)
 
         # Run the tasks
         tm.map(_calculate_and_save_indicator_result, task_args)
@@ -914,7 +929,7 @@ def calculate_and_load_indicators(
 
     all_combinations = set(indicators.generate_combinations(strategy_universe))
 
-    logger.info("Loading indicators %s for the universe %s, storage is %s", indicators.get_label(), strategy_universe.get_cache_key(), storage.path)
+    logger.info("Loading indicators %s for the universe %s, storage is %s", indicators.get_label(), strategy_universe.get_cache_key(), storage.get_disk_cache_path())
     cached = load_indicators(strategy_universe, storage, indicators, all_combinations, max_readers=max_readers)
 
     for key in cached.keys():
@@ -1025,6 +1040,23 @@ def _handle_sigterm(*args):
     for p in processes:
         p.kill()
     sys.exit(1)
+
+
+def setup_indicator_multiprocessing(executor):
+    """Set up multiprocessing for indicators.
+
+    - We use multiprocessing to calculate indicators
+
+    - We want to be able to abort (CTRL+C) gracefully
+    """
+    global _process_pool_executor
+    _process_pool_executor = executor._executor
+
+    # pytest work around for:
+    # ValueError: signal only works in main thread of the main interpreter
+    # https://stackoverflow.com/a/23207116/315168
+    if threading.current_thread() is threading.main_thread():
+        signal.signal(signal.SIGTERM, _handle_sigterm)
 
 
 def validate_function_kwargs(func: Callable, kwargs: dict):
