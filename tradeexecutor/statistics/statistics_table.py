@@ -194,6 +194,13 @@ def _serialise_long_short_stats_as_json_table(
         KeyMetricKind.max_pullback_of_total_capital: 'Max pullback of total capital',
         KeyMetricKind.max_loss_risk_at_opening_of_position: 'Max loss risk at opening of position',
         KeyMetricKind.max_drawdown: 'Max drawdown',
+        KeyMetricKind.average_interest_paid_usd: 'average_interest_paid_usd',
+        KeyMetricKind.median_interest_paid_usd: 'median_interest_paid_usd',
+        KeyMetricKind.max_interest_paid_usd: 'max_interest_paid_usd',
+        KeyMetricKind.min_interest_paid_usd: 'min_interest_paid_usd',
+        KeyMetricKind.total_interest_paid_usd: 'total_interest_paid_usd',
+        KeyMetricKind.average_duration_between_position_openings: 'average_duration_between_position_openings',
+        KeyMetricKind.average_position_frequency: 'average_position_frequency',
     }
 
     rows = {}

@@ -183,7 +183,7 @@ class TradeSummary:
     max_interest_paid_usd: Optional[USDollarPrice] = None
     min_interest_paid_usd: Optional[USDollarPrice] = None
 
-    average_duration_between_positions: Optional[datetime.timedelta] = None
+    average_duration_between_position_openings: Optional[datetime.timedelta] = None
     average_position_frequency: Optional[datetime.timedelta] = None
 
     def __post_init__(self):
@@ -269,6 +269,11 @@ class TradeSummary:
             "Biggest losing position %": as_percent(self.biggest_losing_trade_pc),
             "Average duration of winning positions": self.format_duration(self.average_duration_of_winning_trades),
             "Average duration of losing positions": self.format_duration(self.average_duration_of_losing_trades),
+            "Average duration between position openings": self.format_duration(self.average_duration_between_position_openings),
+            "Average positions per day": as_decimal(self.average_position_frequency),
+            "Average interest paid": as_dollar(self.average_interest_paid_usd),
+            "Median interest paid": as_dollar(self.median_interest_paid_usd),
+            "Total interest paid": as_dollar(self.total_interest_paid_usd),
         }
 
         if self.time_bucket:
@@ -278,7 +283,7 @@ class TradeSummary:
             })
 
         human_data.update({
-            "Average duration between position openings": self.format_duration(self.average_duration_between_positions),
+            "Average duration between position openings": self.format_duration(self.average_duration_between_position_openings),
             "Average positions per day": as_decimal(self.average_position_frequency),
             "Average interest paid": as_dollar(self.average_interest_paid_usd),
             "Median interest paid": as_dollar(self.median_interest_paid_usd),
@@ -911,7 +916,7 @@ class TradeAnalysis:
         median_interest_paid_usd = func_check(interest_paid_usd, median)
         max_interest_paid_usd = func_check(interest_paid_usd, max)
         min_interest_paid_usd = func_check(interest_paid_usd, min)
-        average_duration_between_positions = pd.to_timedelta(durations_between_positions).mean() if len(durations_between_positions) > 0 else datetime.timedelta(0)
+        average_duration_between_position_openings = pd.to_timedelta(durations_between_positions).mean() if len(durations_between_positions) > 0 else datetime.timedelta(0)
 
         biggest_winning_trade_pc = func_check(winning_trades, max)
         biggest_losing_trade_pc = func_check(losing_trades, min)
@@ -951,7 +956,7 @@ class TradeAnalysis:
             average_duration_of_losing_trades=average_duration_of_losing_trades,
             average_duration_of_zero_loss_trades=average_duration_of_zero_loss_trades,
             average_duration_of_all_trades=average_duration_of_all_trades,
-            average_duration_between_positions=average_duration_between_positions,
+            average_duration_between_position_openings=average_duration_between_position_openings,
             average_trade=average_trade,
             average_interest_paid_usd=average_interest_paid_usd,
             median_interest_paid_usd=median_interest_paid_usd,
