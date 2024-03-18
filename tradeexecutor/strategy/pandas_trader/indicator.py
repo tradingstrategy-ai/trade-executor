@@ -1052,7 +1052,8 @@ def setup_indicator_multiprocessing(executor):
     global _process_pool_executor
     _process_pool_executor = executor._executor
 
-    # pytest work around for:
+    # Enable graceful multiprocessing termination only if we run as a backtesting noteboook
+    # pytest work around for: test_trading_strategy_engine_v050_live_trading
     # ValueError: signal only works in main thread of the main interpreter
     # https://stackoverflow.com/a/23207116/315168
     if threading.current_thread() is threading.main_thread():
