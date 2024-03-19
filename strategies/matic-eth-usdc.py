@@ -11,6 +11,7 @@ To backtest this strategy module locally:
         --strategy-file=strategies/matic-eth-usdc.py \
         --trading-strategy-api-key=$TRADING_STRATEGY_API_KEY
 
+To see the backtest for longer history, refer to the notebook doing backtest with Binance data.
 """
 import datetime
 
