@@ -131,7 +131,7 @@ def calculate_resampled_matic_eth(strategy_universe: TradingStrategyUniverse, up
 
 
 def calculate_resampled_matic_eth_rsi(strategy_universe: TradingStrategyUniverse, length: int, upsample: TimeBucket, shift: int):
-     """Caclulate RSI for MATIC/ETH price series for x hours.""""
+     """Caclulate RSI for MATIC/ETH price series for x hours."""
      etc_btc = calculate_resampled_matic_eth(strategy_universe, upsample, shift)
      return pandas_ta.rsi(etc_btc, length=length)
 
