@@ -54,6 +54,7 @@ pair_ids = [
 ]
 
 
+# See v37-matic-eth-robustness search for parameters details
 class Parameters:
     """Parameteres for this strategy.
 
@@ -69,12 +70,12 @@ class Parameters:
 
     rsi_bars = 12  # Number of bars to calculate RSI for each tradingbar
     matic_eth_rsi_bars = 5  # Number of bars for the momentum factor
-    rsi_entry = 60  # Single pair entry level - when RSI crosses above this value open a position
-    rsi_exit = 60  # Single pair exit level - when RSI crosses below this value exit a position
+    rsi_entry = 80  # Single pair entry level - when RSI crosses above this value open a position
+    rsi_exit = 55  # Single pair exit level - when RSI crosses below this value exit a position
     allocation = 0.98  # How much cash allocate for volatile positions
     rebalance_threshold = 0.10  # How much position mix % must change when we rebalance between two open positions
     initial_cash = 10_000  # Backtesting start cash
-    trailing_stop_loss = 0.95  # Trailing stop loss as 1 - x
+    trailing_stop_loss = 0.990000  # Trailing stop loss as 1 - x
     trailing_stop_loss_activation_level = 1.07  # How much above opening price we must be before starting to use trailing stop loss
     stop_loss = 0.80  # Hard stop loss when opening a new position
     momentum_exponent = 2  # How much momentum we capture when rebalancing between open positions
@@ -95,7 +96,7 @@ class Parameters:
 
 
 def calculate_matic_eth(strategy_universe: TradingStrategyUniverse):
-    """Calculate MATIC/ETH price."""
+    """Calculate MATIC/ETH price used as a rebalance factor."""
     eth = strategy_universe.get_pair_by_human_description(pair_ids[0])
     matic = strategy_universe.get_pair_by_human_description(pair_ids[1])
     matic_price = strategy_universe.data_universe.candles.get_candles_by_pair(matic.internal_id)
@@ -105,18 +106,19 @@ def calculate_matic_eth(strategy_universe: TradingStrategyUniverse):
 
 
 def calculate_matic_eth_rsi(strategy_universe: TradingStrategyUniverse, length: int):
-    """Calculate RSI for MATIC/ETH price used as the rebalancing factor."""
+    """Calculate x hours RSI for MATIC/ETH price used as the rebalancing factor."""
     matic_eth_series = calculate_matic_eth(strategy_universe)
     return pandas_ta.rsi(matic_eth_series, length=length)
 
 
 def calculate_resampled_rsi(pair_close_price_series: pd.Series, length: int, upsample: TimeBucket, shift: int):
+    """Calculate x hours RSI for a particular trading pair"""
     resampled_close = resample_price_series(pair_close_price_series, upsample.to_pandas_timedelta(), shift=shift)
     return pandas_ta.rsi(resampled_close, length=length)
 
 
 def calculate_resampled_matic_eth(strategy_universe: TradingStrategyUniverse, upsample: TimeBucket, shift: int):
-    """ETH/BTC price series."""
+    """Caclulate MATIC/ETH price series for x hours."""
     eth = strategy_universe.get_pair_by_human_description(pair_ids[0])
     matic = strategy_universe.get_pair_by_human_description(pair_ids[1])
     eth_price = strategy_universe.data_universe.candles.get_candles_by_pair(eth.internal_id)
@@ -128,7 +130,7 @@ def calculate_resampled_matic_eth(strategy_universe: TradingStrategyUniverse, up
 
 
 def calculate_resampled_matic_eth_rsi(strategy_universe: TradingStrategyUniverse, length: int, upsample: TimeBucket, shift: int):
-     """ETH/BTC RSI series."""
+     """Caclulate RSI for MATIC/ETH price series for x hours.""""
      etc_btc = calculate_resampled_matic_eth(strategy_universe, upsample, shift)
      return pandas_ta.rsi(etc_btc, length=length)
 
