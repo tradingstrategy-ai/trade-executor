@@ -451,6 +451,7 @@ class CreateIndicatorsProtocolV2(Protocol):
     Used with :py:class`IndicatorSet` to define the indicators
     the strategy can use.
 
+    This protocol class is second (v2) iteration of the function signature.
 
     These indicators are precalculated and cached for fast performance.
 
@@ -458,7 +459,7 @@ class CreateIndicatorsProtocolV2(Protocol):
 
     .. code-block:: python
 
-        class MyParameters:
+        class Parameters:
             stop_loss_pct = [0.9, 0.95]
             cycle_duration = CycleDuration.cycle_1d
             initial_cash = 10_000
@@ -468,7 +469,12 @@ class CreateIndicatorsProtocolV2(Protocol):
             fast_ema_candle_count = [1, 2]
 
 
-        def create_indicators(parameters: StrategyParameters, strategy_universe: TradingStrategyUniverse, execution_context: ExecutionContext):
+        def create_indicators(
+            timestamp: datetime.datetime | None,
+            parameters: StrategyParameters,
+            strategy_universe: TradingStrategyUniverse,
+            execution_context: ExecutionContext
+        ):
             indicators = IndicatorSet()
             indicators.add("slow_ema", pandas_ta.ema, {"length": parameters.slow_ema_candle_count})
             indicators.add("fast_ema", pandas_ta.ema, {"length": parameters.fast_ema_candle_count})
@@ -495,9 +501,11 @@ class CreateIndicatorsProtocolV2(Protocol):
             eth_btc = eth_price["close"] / btc_price["close"]
             return pandas_ta.rsi(eth_btc, length=length)
 
-        def create_indicators(parameters: StrategyParameters, indicators: IndicatorSet, strategy_universe: TradingStrategyUniverse, execution_context: ExecutionContext):
+        def create_indicators(parameters: StrategyParameters, strategy_universe: TradingStrategyUniverse, execution_context: ExecutionContext) -> IndicatorSet:
+            indicators = IndicatorSet()
             indicators.add("eth_btc", calculate_eth_btc, source=IndicatorSource.strategy_universe)
             indicators.add("eth_btc_rsi", calculate_eth_btc_rsi, parameters={"length": parameters.eth_btc_rsi_length}, source=IndicatorSource.strategy_universe)
+            return indicators
     """
 
     def __call__(
@@ -543,7 +551,7 @@ def call_create_indicators(
     execution_context: ExecutionContext,
     timestamp: datetime.datetime = None,
 ) -> IndicatorSet:
-    """Backwards compatibe wrapper for create_indicators().
+    """Backwards compatible wrapper for create_indicators().
 
     - Check `create_indicators_func` version
 

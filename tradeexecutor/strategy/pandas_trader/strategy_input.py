@@ -85,7 +85,7 @@ class StrategyInputIndicators:
 
     def get_price(
         self,
-        pair: TradingPairIdentifier | None = None,
+        pair: TradingPairIdentifier | HumanReadableTradingPairDescription |  None = None,
         data_lag_tolerance=pd.Timedelta(days=7),
     ) -> USDollarPrice | None:
         """Read the available close price of a trading pair.
@@ -95,7 +95,14 @@ class StrategyInputIndicators:
         - **Does not** return the current price in the decision_cycle,
           because any decision must be made based on the previous price
 
-          :param data_lag_tolerance:
+        :param pair:
+            The trading pair for which we query the price.
+
+            Give as id object or human description tuple format.
+
+            E.g. `(ChainId.centralised_exchange, "binance", "ETH", "USDT")`.
+
+        :param data_lag_tolerance:
             In the case the data has issues (no recent price),
             then accept a price that's this old.
 
@@ -106,8 +113,13 @@ class StrategyInputIndicators:
         """
         assert self.timestamp, f"prepare_decision_cycle() not called - framework missing something somewhere"
 
+        if type(pair) == tuple:
+            # Resolve human description
+            pair = self.strategy_universe.get_pair_by_human_description(pair)
+
         if pair is None:
             pair = self.strategy_universe.get_single_pair()
+
         assert isinstance(pair, TradingPairIdentifier)
         assert pair.internal_id, "pair.internal_id missing - bad unit test data?"
 
