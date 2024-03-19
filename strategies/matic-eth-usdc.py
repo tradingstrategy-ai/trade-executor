@@ -67,7 +67,7 @@ class Parameters:
     target_time_bucket = TimeBucket.h8  # Create synthetic 8h candles
     clock_shift_bars = 0  # Do not do shifted candles
 
-    rsi_bars = 8  # Number of bars to calculate RSI for each tradingbar
+    rsi_bars = 12  # Number of bars to calculate RSI for each tradingbar
     matic_eth_rsi_bars = 5  # Number of bars for the momentum factor
     rsi_entry = 60  # Single pair entry level - when RSI crosses above this value open a position
     rsi_exit = 60  # Single pair exit level - when RSI crosses below this value exit a position

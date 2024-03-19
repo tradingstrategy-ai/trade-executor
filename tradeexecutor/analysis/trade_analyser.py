@@ -189,10 +189,10 @@ class TradeSummary:
     average_duration_between_position_openings: Optional[datetime.timedelta] = None
     average_position_frequency: Optional[datetime.timedelta] = None
 
+    # Backwards compatiblity only
     average_duration_between_postions: int = 0
 
     def __post_init__(self):
-
         self.total_positions = self.won + self.lost + self.zero_loss
         self.win_percent = calculate_percentage(self.won, self.total_positions)
         self.lost_percent = calculate_percentage(self.lost, self.total_positions)
