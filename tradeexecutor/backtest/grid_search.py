@@ -28,6 +28,7 @@ import pandas as pd
 import futureproof
 
 from tradeexecutor.utils.cpu import get_safe_max_workers_count
+from tradeexecutor.utils.jupyter_notebook_name import get_notebook_name
 
 try:
     from tqdm_loggable.auto import tqdm
@@ -38,7 +39,8 @@ except ImportError:
 
 from tradeexecutor.strategy.engine_version import TradingStrategyEngineVersion
 from tradeexecutor.strategy.execution_context import ExecutionContext, grid_search_execution_context
-from tradeexecutor.strategy.pandas_trader.indicator import IndicatorSet, CreateIndicatorsProtocolV1, DiskIndicatorStorage, warm_up_indicator_cache, IndicatorKey, DEFAULT_INDICATOR_STORAGE_PATH
+from tradeexecutor.strategy.pandas_trader.indicator import IndicatorSet, CreateIndicatorsProtocolV1, DiskIndicatorStorage, warm_up_indicator_cache, \
+    IndicatorKey, DEFAULT_INDICATOR_STORAGE_PATH, CreateIndicatorsProtocol, call_create_indicators
 from tradeexecutor.strategy.universe_model import UniverseOptions
 
 
@@ -427,7 +429,7 @@ def prepare_grid_combinations(
     result_path: Path,
     clear_cached_results=False,
     marker_file="README-GRID-SEARCH.md",
-    create_indicators: CreateIndicatorsProtocolV1 | None = None,
+    create_indicators: CreateIndicatorsProtocol | None = None,
     strategy_universe: TradingStrategyUniverse | None = None,
     execution_context: ExecutionContext = grid_search_execution_context,
 ) -> List[GridCombination]:
@@ -514,8 +516,12 @@ def prepare_grid_combinations(
 
         # Determine what indicators this grid search combination needs
         if create_indicators is not None:
-            indicators = IndicatorSet()
-            create_indicators(c.to_strategy_parameters(), indicators, strategy_universe, execution_context)
+            indicators = call_create_indicators(
+                create_indicators,
+                c.to_strategy_parameters(),
+                strategy_universe,
+                execution_context
+            )
             c.indicators = set(indicators.generate_combinations(strategy_universe))
 
     return combinations
@@ -1139,7 +1145,8 @@ def _handle_sigterm(*args):
 
 
 def get_grid_search_result_path(
-    notebook_name: str,
+    #notebook_name: str | Callable = get_notebook_name,
+    notebook_name: str | Callable | None = None,
 ) -> Path:
     """Get a path where to stget_grid_search_result_pathore the grid seach results.
 
@@ -1151,11 +1158,19 @@ def get_grid_search_result_path(
 
     :param notebook_name:
 
-        The name of your notebook file.
+        Override the name.
 
+        If not given try to resolve automatically, but this is fragile.
+
+        The name of your notebook file.
         E.g. "v19-candle-search".
 
     """
+
+    if callable(notebook_name):
+        notebook_name = notebook_name()
+        notebook_name = os.path.basename(notebook_name)
+
     assert type(notebook_name) == str
     path = os.path.expanduser(f"~/.cache/trading-strategy/grid-search/{notebook_name}")
     os.makedirs(path, exist_ok=True)
