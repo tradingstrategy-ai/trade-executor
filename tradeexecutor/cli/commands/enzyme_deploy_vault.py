@@ -1,5 +1,7 @@
 """enzyme-deploy-vault CLI command.
 
+See :ref:`vault deployment` for the full documentation how to use this command.
+
 Example how to manually test:
 
 .. code-block:: shell
@@ -85,9 +87,10 @@ def enzyme_deploy_vault(
 ):
     """Deploy a new Enzyme vault.
 
-    Add adapters for the vault and configure it for automated trading.
-    The account with the private key is set as the owner of the vault.
-    Vault denomination asset is set to USDC.
+    Deploys a new Enzyme vault that is configured to be run with Trading Strategy Protocol.
+
+    Multiple contracts will be deployed and verified in a blockchain explorer.
+    The vault is configured with custom guard, deposit and terms of service contracts.
     """
 
     logger = setup_logging(log_level)
