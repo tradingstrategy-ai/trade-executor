@@ -783,7 +783,7 @@ class TradeAnalysis:
         else:
             strategy_duration = state.get_strategy_duration()
         
-        won = lost = zero_loss = stop_losses = take_profits = undecided = 0
+        won = lost = zero_loss = stop_losses = take_profits = undecided = delta_neutral = 0
         open_value: USDollarAmount = 0
         profit: USDollarAmount = 0
         unrealised_profit_usd: USDollarAmount = 0
@@ -852,7 +852,11 @@ class TradeAnalysis:
 
             duration = position.get_duration()
 
-            if position.is_profitable():
+            if position.is_credit_supply():
+                # TODO: expand this section
+                delta_neutral += 1
+
+            elif position.is_profitable():
                 won += 1
                 winning_trades.append(realised_profit_percent)
                 winning_trades_duration.append(duration)
