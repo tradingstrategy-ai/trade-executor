@@ -378,6 +378,9 @@ class StrategyModuleInformation:
     #: Blockchain id on which this strategy operates
     #:
     #: Valid for single chain strategies only
+    #:
+    #: Legacy. DO NOT USE. Use :py:meth:`get_default_chain_id` instead.
+    #:
     chain_id: Optional[ChainId] = None
 
     #: What currency we use for the strategy.
@@ -552,6 +555,16 @@ class StrategyModuleInformation:
     def get_universe_options(self) -> UniverseOptions:
         """What backtest range this strategy defaults to"""
         return UniverseOptions(start_at=self.backtest_start, end_at=self.backtest_end)
+
+    def get_default_chain_id(self) -> ChainId:
+        """Get the primary chain id for this strategy module."""
+
+        # new way
+        if self.parameters:
+            assert "chain_id" in self.parameters, "Parameters.chain_id missing"
+            return self.parameters["chain_id"]
+
+        return self.chain_id
 
 
 def parse_strategy_module(
