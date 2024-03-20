@@ -850,11 +850,13 @@ class TradeAnalysis:
                 if open_position_lock == False and state:
                     strategy_start, strategy_end = state.get_strategy_time_range()
 
-                    if not previous_position_closed_at or position.opened_at > previous_position_closed_at:
-                        current_grouped_duration += strategy_end - position.opened_at
-                    else:
-                        current_grouped_duration += strategy_end - previous_position_closed_at  # overlapping
-                    times_in_market.append(current_grouped_duration)
+                    if strategy_end:
+                        if not previous_position_closed_at or position.opened_at > previous_position_closed_at:
+                            current_grouped_duration += strategy_end - position.opened_at
+                        else:
+                            current_grouped_duration += strategy_end - previous_position_closed_at  # overlapping
+                        times_in_market.append(current_grouped_duration)
+                    
                     open_position_lock = True
 
                 continue
