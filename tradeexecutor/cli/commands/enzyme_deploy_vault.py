@@ -187,7 +187,7 @@ def enzyme_deploy_vault(
     if asset_manager_address != hot_wallet.address:
         logger.info("Asset manager is %s", asset_manager_address)
     else:
-        logger.warning("No separate asset manager role set")
+        logger.warning("No separate asset manager role set: will use the current hot walle as manager")
 
     logger.info("-" * 80)
 
@@ -221,6 +221,8 @@ def enzyme_deploy_vault(
         # Make a small file, mostly used to communicate with unit tests
         with open(vault_record_file, "wt") as out:
             vault_record = {
+                "fund_name": fund_name,
+                "fund_symbol": fund_symbol,
                 "vault": vault.address,
                 "comptroller": vault.comptroller.address,
                 "generic_adapter": vault.generic_adapter.address,
