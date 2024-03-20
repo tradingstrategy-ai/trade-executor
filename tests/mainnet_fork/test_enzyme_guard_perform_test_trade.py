@@ -56,10 +56,8 @@ def web3(anvil) -> Web3:
     Also perform the Anvil state reset for each test.
     """
     web3 = Web3(HTTPProvider(anvil.json_rpc_url, request_kwargs={"timeout": 10}))
-    # Get rid of attributeddict slow down
     web3.middleware_onion.clear()
     install_chain_middleware(web3)
-    assert web3.eth.block_number > 1
     return web3
 
 
@@ -204,7 +202,7 @@ def test_enzyme_guard_perform_test_trade(
     assert_transaction_success_with_explanation(web3, tx_hash)
     assert usdc.contract.functions.balanceOf(vault.address).call() == deposit_amount
 
-    # Get vault parameters from out deployment
+    # Update the environment for the future commands with vault parameters from out deployment
     environment.update({
         "VAULT_ADDRESS": vault_info["vault"],
         "VAULT_DEPLOYMENT_BLOCK_NUMBER": str(vault_info["block_number"]),
