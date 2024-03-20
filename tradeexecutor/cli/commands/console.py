@@ -148,7 +148,7 @@ def console(
     hot_wallet = HotWallet.from_private_key(private_key)
 
     # Check that we are connected to the chain strategy assumes
-    web3config.set_default_chain(mod.chain_id)
+    web3config.set_default_chain(mod.get_default_chain_id())
     web3config.check_default_chain_id()
 
     if hot_wallet:

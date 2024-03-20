@@ -190,7 +190,7 @@ def enzyme_deploy_vault(
     if asset_manager_address != hot_wallet.address:
         logger.info("Asset manager is %s", asset_manager_address)
     else:
-        logger.warning("No separate asset manager role set: will use the current hot walle as manager")
+        logger.warning("No separate asset manager role set: will use the current hot wallet as the asset manager")
 
     logger.info("-" * 80)
 

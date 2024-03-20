@@ -104,7 +104,7 @@ def repair(
     assert web3config, "No RPC endpoints given. A working JSON-RPC connection is needed for check-wallet"
 
     # Check that we are connected to the chain strategy assumes
-    web3config.set_default_chain(mod.chain_id)
+    web3config.set_default_chain(mod.get_default_chain_id())
 
     if not web3config.has_any_connection():
         raise RuntimeError("Vault deploy requires that you pass JSON-RPC connection to one of the networks")

@@ -553,6 +553,16 @@ class StrategyModuleInformation:
         """What backtest range this strategy defaults to"""
         return UniverseOptions(start_at=self.backtest_start, end_at=self.backtest_end)
 
+    def get_default_chain_id(self) -> ChainId:
+        """Get the primary chain id for this strategy module."""
+
+        # new way
+        if self.parameters:
+            assert "chain_id" in self.parameters, "Parameters.chain_id missing"
+            return self.parameters["chain_id"]
+
+        return self.chain_id
+
 
 def parse_strategy_module(
         path,
