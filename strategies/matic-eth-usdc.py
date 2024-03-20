@@ -64,6 +64,8 @@ class Parameters:
     - Both live trading and backtesting parameters
     """
 
+    chain_id = ChainId.anvil  # Anvil used in unit testing
+
     cycle_duration = CycleDuration.cycle_8h  # Run decide_trades() every 8h
     source_time_bucket = TimeBucket.h1  # Use 1h candles as the raw data
     target_time_bucket = TimeBucket.h8  # Create synthetic 8h candles

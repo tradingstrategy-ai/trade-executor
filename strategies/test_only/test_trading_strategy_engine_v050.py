@@ -46,7 +46,7 @@ class Parameters:
     # We will override this value with CycleDuration.cycle_1s for live trading unit test.
     # Test cycles by live unit testing, takes 4s.
     cycle_duration = CycleDuration.cycle_1d
-    chain_id = ChainId.polygon
+    chain_id = ChainId.anvil
     routing = TradeRouting.default
     backtest_start = datetime.datetime(2023, 1, 1)
     backtest_end = datetime.datetime(2024, 1, 1)
