@@ -847,7 +847,7 @@ class TradeAnalysis:
                 undecided += 1
 
                 # only count the first open position for `time in market`
-                if open_position_lock == False:
+                if open_position_lock == False and state:
                     strategy_start, strategy_end = state.get_strategy_time_range()
 
                     if not previous_position_closed_at or position.opened_at > previous_position_closed_at:
