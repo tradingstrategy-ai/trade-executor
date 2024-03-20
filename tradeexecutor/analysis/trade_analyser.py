@@ -977,7 +977,7 @@ class TradeAnalysis:
 
         biggest_winning_trade_pc = func_check(winning_trades, max)
         biggest_losing_trade_pc = func_check(losing_trades, min)
-        time_in_market = pd.to_timedelta(times_in_market).sum()/strategy_duration if len(times_in_market) > 0 else 0
+        time_in_market = pd.to_timedelta(times_in_market).sum()/strategy_duration if (len(times_in_market) > 0 and strategy_duration) else 0
 
         all_durations = winning_trades_duration + losing_trades_duration + zero_loss_trades_duration
         average_duration_of_winning_trades = get_avg_trade_duration(winning_trades_duration)
