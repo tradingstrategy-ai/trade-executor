@@ -378,6 +378,9 @@ class StrategyModuleInformation:
     #: Blockchain id on which this strategy operates
     #:
     #: Valid for single chain strategies only
+    #:
+    #: Legacy. DO NOT USE. Use :py:meth:`get_default_chain_id` instead.
+    #:
     chain_id: Optional[ChainId] = None
 
     #: What currency we use for the strategy.
