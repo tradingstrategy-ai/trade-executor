@@ -229,6 +229,8 @@ def enzyme_deploy_vault(
                 "guard": vault.guard_contract.address,
                 "deployer": hot_wallet.address,
                 "denomination_token": denomination_token.address,
+                "terms_of_service": terms_of_service_address,
+                "whitelisted_assets": whitelisted_assets,
             }
             json.dump(vault_record, out, indent=4)
         logger.info("Wrote %s for vault details", os.path.abspath(vault_record_file))
