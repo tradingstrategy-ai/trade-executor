@@ -13,6 +13,7 @@ from ..bootstrap import prepare_executor_id, prepare_cache, create_web3_config, 
     create_execution_and_sync_model, create_client
 from ..log import setup_logging
 from ..testtrade import make_test_trade
+from ...ethereum.routing_state import OutOfBalance
 from ...strategy.approval import UncheckedApprovalModel
 from ...strategy.bootstrap import make_factory_from_strategy_mod
 from ...strategy.description import StrategyExecutionDescription
@@ -174,12 +175,29 @@ def perform_test_trade(
     runner = run_description.runner
     routing_state, pricing_model, valuation_method = runner.setup_routing(universe)
 
-    if all_pairs:
+    try:
+        if all_pairs:
 
-        for pair in universe.data_universe.pairs.iterate_pairs():
+            for pair in universe.data_universe.pairs.iterate_pairs():
 
-            _p = construct_identifier_from_pair(pair)
-            p = parse_pair_data(_p)
+                _p = construct_identifier_from_pair(pair)
+                p = parse_pair_data(_p)
+
+                make_test_trade(
+                    web3config.get_default(),
+                    execution_model,
+                    pricing_model,
+                    sync_model,
+                    state,
+                    universe,
+                    runner.routing_model,
+                    routing_state,
+                    pair=p,
+                    buy_only=buy_only,
+                    test_short=test_short,
+                    test_credit_supply=test_credit_supply,
+                )
+        else:
 
             make_test_trade(
                 web3config.get_default(),
@@ -190,27 +208,13 @@ def perform_test_trade(
                 universe,
                 runner.routing_model,
                 routing_state,
-                pair=p,
+                pair=pair,
                 buy_only=buy_only,
                 test_short=test_short,
                 test_credit_supply=test_credit_supply,
             )
-    else:
-
-        make_test_trade(
-            web3config.get_default(),
-            execution_model,
-            pricing_model,
-            sync_model,
-            state,
-            universe,
-            runner.routing_model,
-            routing_state,
-            pair=pair,
-            buy_only=buy_only,
-            test_short=test_short,
-            test_credit_supply=test_credit_supply,
-        )
+    except OutOfBalance as e:
+        raise RuntimeError(f"Failed to a test trade, as we run out of balance. Make sure vault has enough stablecoins deposited for the test trades.") from e
 
     # Store the test trade data in the strategy history
     store.sync(state)
