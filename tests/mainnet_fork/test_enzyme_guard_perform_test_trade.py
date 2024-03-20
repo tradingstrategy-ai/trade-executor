@@ -203,10 +203,10 @@ def test_enzyme_guard_perform_test_trade(
     assert usdc.contract.functions.balanceOf(vault.address).call() == deposit_amount
 
     # Update the environment for the future commands with vault parameters from out deployment
-    github_hack = 10
+    github_hack = 10  # For some reason, CI gets the start block wrong, could be Anvil issue?
     environment.update({
         "VAULT_ADDRESS": vault_info["vault"],
-        "VAULT_DEPLOYMENT_BLOCK_NUMBER": str(vault_info["block_number"] - github_hack ),
+        "VAULT_DEPLOYMENT_BLOCK_NUMBER": str(vault_info["block_number"] - github_hack),
         "VAULT_ADAPTER_ADDRESS": vault_info["generic_adapter"],
         "VAULT_PAYMENT_FORWARDER_ADDRESS": vault_info["usdc_payment_forwarder"],
     })
