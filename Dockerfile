@@ -16,7 +16,7 @@ ENV PYTHONDONTWRITEBYTECODE 1 \
 # curl and jq needed for the health checks
 RUN apt-get update \
     && apt-get install curl jq -y \
-    && curl -sSL https://install.python-poetry.org | python - --version 1.6.1
+    && curl -sSL https://install.python-poetry.org | python - --version 1.8.2
 
 ENV PATH="/root/.local/bin:$PATH"
 
@@ -46,6 +46,7 @@ ENV PATH="${PATH}:/root/.foundry/bin"
 RUN curl -L https://foundry.paradigm.xyz | bash
 RUN foundryup
 
+# trade-executor /api
 # Pyramid HTTP server for webhooks at port 3456
 EXPOSE 3456
 
