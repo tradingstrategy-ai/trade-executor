@@ -759,6 +759,13 @@ class TradeAnalysis:
 
         def func_check(lst, func):
             return func(lst) if lst else None
+        
+        def _get_final_start_time(previous_position_closed_at, current_position_opened_at):
+            """Used in `time_in_market` calculation"""
+            if not previous_position_closed_at or current_position_opened_at > previous_position_closed_at:
+                return current_position_opened_at
+            else:
+                return previous_position_closed_at  # overlapping
 
         initial_cash = self.portfolio.get_initial_cash()
 
@@ -849,12 +856,10 @@ class TradeAnalysis:
                 # only count the first open position for `time in market`
                 if open_position_lock == False and state:
                     strategy_start, strategy_end = state.get_strategy_time_range()
+                    start_time = _get_final_start_time(previous_position_closed_at, position.opened_at)
 
                     if strategy_end:
-                        if not previous_position_closed_at or position.opened_at > previous_position_closed_at:
-                            current_grouped_duration += strategy_end - position.opened_at
-                        else:
-                            current_grouped_duration += strategy_end - previous_position_closed_at  # overlapping
+                        current_grouped_duration += strategy_end - start_time
                         times_in_market.append(current_grouped_duration)
                     
                     open_position_lock = True
