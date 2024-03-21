@@ -973,7 +973,9 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
 
             Examples: 
             
-            - ``0x22177148e681a6ca5242c9888ace170ee7ec47bd``  (USDC address on Polygon)
+            - `0x2791bca1f2de4661ed88a30c99a7a9449aa84174`  (USDC.e bridged address on Polygon)
+
+            - `0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359`  (USDC native)
 
         :param forward_fill:
             Forward-fill the data.
@@ -997,16 +999,24 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
             reserve_asset = translate_token(quote_token)
         elif reserve_asset.startswith("0x"):
             reserve_asset_token = pairs.get_token(reserve_asset)
-            assert reserve_asset_token, f"Pairs dataset does not contain data for token: {reserve_asset}"
+            assert reserve_asset_token, f"Pairs dataset does not contain data for the specified reserve asset: {reserve_asset}.\nThere are {pairs.get_count()} trading pairs loaded."
             reserve_asset = translate_token(reserve_asset_token)
         else:
             reserve_asset_token = pairs.get_token_by_symbol(reserve_asset)
             reserve_asset = translate_token(reserve_asset_token)
 
-        candle_universe = GroupedCandleUniverse(dataset.candles, forward_fill=forward_fill)
+        candle_universe = GroupedCandleUniverse(
+            dataset.candles,
+            forward_fill=forward_fill,
+            time_bucket=dataset.time_bucket
+        )
 
         if dataset.backtest_stop_loss_candles is not None:
-            stop_loss_candle_universe = GroupedCandleUniverse(dataset.backtest_stop_loss_candles, forward_fill=forward_fill)
+            stop_loss_candle_universe = GroupedCandleUniverse(
+                dataset.backtest_stop_loss_candles,
+                forward_fill=forward_fill,
+                time_bucket=dataset.backtest_stop_loss_time_bucket,
+            )
         else:
             stop_loss_candle_universe = None
 
