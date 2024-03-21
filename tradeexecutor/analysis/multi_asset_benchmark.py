@@ -1,24 +1,17 @@
-"""Calculate portfolio benchmarks for multiple assets simulatenously. """
+"""Calculate portfolio benchmark tables for multiple assets side-by-side."""
+
 import pandas as pd
 
 from tradeexecutor.analysis.advanced_metrics import AdvancedMetricsMode, calculate_advanced_metrics
 from tradeexecutor.state.state import State
-from tradeexecutor.visual.equity_curve import calculate_equity_curve, calculate_returns
+from tradeexecutor.state.types import USDollarAmount
+from tradeexecutor.visual.benchmark import DEFAULT_BENCHMARK_COLOURS
+from tradeexecutor.visual.equity_curve import calculate_equity_curve, calculate_returns, resample_returns
 
 from tradeexecutor.state.identifier import TradingPairIdentifier
-from tradeexecutor.state.types import USDollarAmount
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse, translate_trading_pair
-from tradeexecutor.visual.benchmark import create_benchmark_equity_curves
+
 from tradingstrategy.types import TokenSymbol
-
-
-# Default branch colours of well-known assets
-#
-_colours = {
-    "MATIC": "purple",
-    "BTC": "orange",
-    "ETH": "blue",
-}
 
 
 def _find_benchmark_pair(strategy_universe: TradingStrategyUniverse, token_symbol: TokenSymbol) -> TradingPairIdentifier | None:
@@ -35,14 +28,20 @@ def get_benchmark_data(
     strategy_universe: TradingStrategyUniverse,
     max_count=2,
     interesting_assets=("BTC", "WBTC", "ETH", "WETH", "WMATIC", "MATIC"),
-    initial_cash: USDollarAmount = None,
-    all_cash=False,
+    cumulative_with_initial_cash: USDollarAmount =0.0,
+    asset_colours=DEFAULT_BENCHMARK_COLOURS,
 ) -> pd.DataFrame:
     """Get returns series of different benchmark index assets from the universe.
 
     - Assets are: BTC, ETH, MATIC
 
-    To be used with :py:func:`compare_multiple_portfolios`.
+    To be used with :py:func:`compare_multiple_portfolios` and :py:func:`tradeexecutor.visual.benchmark.visualise_equity_curve_benchmark`.
+
+    Example:
+
+    .. code-block:: python
+
+
 
     :param max_count:
         Return this many benchmark series
@@ -52,8 +51,10 @@ def get_benchmark_data(
 
         We also check for wrapped token symbol varients.
 
-    :param initial_cash:
-        Also benchmark hold cash.
+    :param cumulative_with_initial_cash:
+        Get cumulative returns instead of daily returns.
+
+        Set to the cumulative initial cash value.
 
     :return:
         DataFrame with returns series for each asset.
@@ -65,43 +66,40 @@ def get_benchmark_data(
 
     # Get the trading pair ids for the assets we want to compare
     for asset in interesting_assets:
-
         pair = _find_benchmark_pair(strategy_universe, asset)
         if not pair:
             continue
-
         unwrapped_name = asset[1:] if asset.startswith("W") else asset
         benchmark_assets[unwrapped_name] = pair
-
         if len(benchmark_assets) >= max_count:
             break
 
-    # Get returns comparison data
-    benchmark_indexes = create_benchmark_equity_curves(
-        strategy_universe,
-        benchmark_assets,
-        initial_cash=initial_cash,
-    )
+    df = pd.DataFrame()
+    for name, pair in benchmark_assets.items():
+        price_series = strategy_universe.data_universe.candles.get_candles_by_pair(pair.internal_id)["close"]
+        assert len(price_series.dropna()) != 0, f"Failed to read benchmark price series for {name}: {pair}"
+        index_fixed_series = pd.Series(data=price_series.values, index=price_series.index.get_level_values(1))
+        daily_returns = resample_returns(index_fixed_series.pct_change(), freq="D")
 
-    if not all_cash:
-        del benchmark_indexes["All cash"]
+        if cumulative_with_initial_cash:
+            cumulative_returns = (1 + daily_returns).cumprod()
+            df[name] = cumulative_returns * cumulative_with_initial_cash
+            df[name].attrs["returns_series_type"] = "cumulative_returns"
+        else:
+            df[name] = daily_returns
+            df[name].attrs["returns_series_type"] = "daily_returns"
 
-    # Add series colour and name metadata
-    for index_name in benchmark_indexes.columns:
-        benchmark_returns = benchmark_indexes[index_name]
-        benchmark_returns.attrs["name"] = index_name
-        colour = _colours.get(index_name)
-        if colour:
-            benchmark_returns.attrs["colour"] = colour
+        df[name].attrs["colour"] = asset_colours.get(name)
+        df[name].attrs["name"] = name
 
-    return benchmark_indexes
+    return df
 
 
 def compare_multiple_portfolios(
     portfolios: pd.DataFrame,
+    indexes: pd.DataFrame | None = None,
     mode: AdvancedMetricsMode=AdvancedMetricsMode.basic,
     periods_per_year=365,
-    convert_to_daily=True,
 ) -> pd.DataFrame:
     """Compare multiple portfolios.
 
@@ -112,12 +110,15 @@ def compare_multiple_portfolios(
     - Multiple assets in the same table: Strategt vs. BTC vs. ETH
 
     :param portfolios:
-        A DataFrame of different return series.
+        A DataFrame of different daily series of actively trading portfolios.
 
         See :py:func:`tradeexecutor.visual.equity_curve.calculate_returns`.
 
         Each portfolio must have the returns series for the same time period,
         time periods are not matched.
+
+    :param indexes:
+        A DataFrame of different daily returns passive buy and hold indexes.
 
     :return:
         QuantStats comparison of all different returns.
@@ -125,17 +126,27 @@ def compare_multiple_portfolios(
 
     result_table = pd.DataFrame()
 
-    for series_name in portfolios.columns:
-        series = portfolios[series_name]
+    assert len(portfolios.columns + indexes.columns) >= 2, f"Need at least two portfolios to benchmark: {portfolios.columns}, {indexes.columns}"
 
+    for name, portfolio_series in portfolios.items():
         metrics = calculate_advanced_metrics(
-            series,
+            portfolio_series,
             mode=mode,
-            convert_to_daily=convert_to_daily,
             periods_per_year=periods_per_year,
+            convert_to_daily=False,
         )
+        result_table[name] = metrics["Strategy"]
+        last_series = portfolio_series
 
-        result_table[series_name] = metrics["Strategy"]
+    for name, index_series in indexes.items():
+        metrics = calculate_advanced_metrics(
+            last_series,
+            benchmark=index_series,
+            mode=mode,
+            periods_per_year=periods_per_year,
+            convert_to_daily=False,
+        )
+        result_table[name] = metrics["Benchmark"]
 
     return result_table
 
@@ -143,23 +154,30 @@ def compare_multiple_portfolios(
 def compare_strategy_backtest_to_multiple_assets(
     state: State,
     strategy_universe: TradingStrategyUniverse,
-    all_cash=False,
 ) -> pd.DataFrame:
-    """Backtest comparison of strategy against buy and hold assets."""
+    """Backtest comparison of strategy against buy and hold assets.
+
+    :return:
+        DataFrame with QuantStats results.
+
+        One column for strategy and for each benchmark asset we have loaded in the strategy universe.
+    """
+
+    # Get daily returns
     equity = calculate_equity_curve(state)
     returns = calculate_returns(equity)
+    daily_returns = resample_returns(returns, "D")
+
     benchmarks = get_benchmark_data(
         strategy_universe,
-        initial_cash=state.portfolio.get_initial_cash(),
-        all_cash=all_cash,
     )
 
-    comparison_returns = pd.DataFrame(
-        {"Strategy": returns}
+    portfolios = pd.DataFrame(
+        {"Strategy": daily_returns}
     )
 
-    for series_name, series in benchmarks.items():
-        comparison_returns[series_name] = series
-
-    return compare_multiple_portfolios(comparison_returns)
+    return compare_multiple_portfolios(
+        portfolios=portfolios,
+        indexes=benchmarks
+    )
 

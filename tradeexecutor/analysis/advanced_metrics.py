@@ -41,6 +41,7 @@ def calculate_advanced_metrics(
     mode: AdvancedMetricsMode=AdvancedMetricsMode.basic,
     periods_per_year=365,
     convert_to_daily=False,
+    benchmark: pd.Series | None = None,
 ) -> pd.DataFrame:
     """Calculate advanced strategy performance statistics using Quantstats.
 
@@ -100,7 +101,13 @@ def calculate_advanced_metrics(
         metrics = qs.reports.metrics
         stats = qs.stats
 
-        result = metrics(returns, display=False, periods_per_year=periods_per_year, mode=mode.value)
+        result = metrics(
+            returns,
+            benchmark=benchmark,
+            display=False,
+            periods_per_year=periods_per_year,
+            mode=mode.value
+        )
 
         if convert_to_daily:
             returns = resample_returns(returns, "D")
@@ -109,7 +116,8 @@ def calculate_advanced_metrics(
         # Communicative annualized growth return,
         # as compounded
         # Should say CAGR (raw), but is what it is for the legacy reasons
-        result.loc["Annualised return (raw)"] = [stats.cagr(returns, 0., compounded=True)]
+        if benchmark is None:
+            result.loc["Annualised return (raw)"] = [stats.cagr(returns, 0., compounded=True)]
         return result
 
 

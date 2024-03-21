@@ -174,6 +174,13 @@ class ExecutionContext:
     #:
     grid_search: bool = False
 
+    #: Are we running inside Jupyter notebook.
+    #:
+    #: - We might have HTML widgets available like HTML progress bar
+    #: - We have interactive prompts available
+    #:
+    jupyter: bool = False
+
     def __repr__(self):
         version_str = f"v{self.engine_version}" if self.engine_version else "unspecified engine version"
         return f"<ExecutionContext {self.mode.name}, {version_str}>"
@@ -204,7 +211,7 @@ unit_test_execution_context = ExecutionContext(ExecutionMode.unit_testing)
 unit_test_trading_execution_context = ExecutionContext(ExecutionMode.unit_testing_trading)
 
 #: Shorthand for notebooks
-notebook_execution_context = ExecutionContext(ExecutionMode.backtesting)
+notebook_execution_context = ExecutionContext(ExecutionMode.backtesting, jupyter=True)
 
 
 #: Shorthand for doing a grid search within Jupyter

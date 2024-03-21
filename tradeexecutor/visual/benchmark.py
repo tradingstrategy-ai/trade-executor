@@ -311,18 +311,33 @@ def visualise_equity_curve_benchmark(
         benchmark_indexes[buy_and_hold_asset_name] = buy_and_hold_price_series
 
     # Plot all benchmark series
-    for benchmark_name in benchmark_indexes:
-        buy_and_hold_price_series = benchmark_indexes[benchmark_name]
+    for benchmark_name, buy_and_hold_price_series in benchmark_indexes.items():
+
+        colour = buy_and_hold_price_series.attrs.get("colour")
+
         # Clip to the backtest time frame
         buy_and_hold_price_series = buy_and_hold_price_series[start_at:end_at]
-        colour = buy_and_hold_price_series.attrs.get("colour")
-        scatter = visualise_equity_curve_comparison(
-            benchmark_name,
-            buy_and_hold_price_series,
-            all_cash,
-            colour=colour,
-        )
-        fig.add_trace(scatter)
+
+        if buy_and_hold_price_series.attrs.get("returns_series_type") == "cumulative_returns":
+            # See get_benchmark_data()
+            scatter = go.Scatter(
+                x=buy_and_hold_price_series.index,
+                y=buy_and_hold_price_series,
+                mode="lines",
+                name=benchmark_name,
+                line=dict(color=buy_and_hold_price_series.attrs.get("colour")),
+            )
+
+            fig.add_trace(scatter)
+        else:
+            # Legacy path without get_benchmark_data()
+            scatter = visualise_equity_curve_comparison(
+                benchmark_name,
+                buy_and_hold_price_series,
+                all_cash,
+                colour=colour,
+            )
+            fig.add_trace(scatter)
 
     if additional_indicators:
         for plot in additional_indicators:
@@ -469,12 +484,20 @@ def visualise_benchmark(*args, **kwargs) -> go.Figure:
     return visualise_equity_curve_benchmark(*args, **kwargs)
 
 
+#: Default branc colours for benchmark asset lines
+DEFAULT_BENCHMARK_COLOURS = {
+    "BTC": "orange",
+    "ETH": "blue",
+    "MATIC": "purple",
+    "All cash": "black"
+}
 
 def create_benchmark_equity_curves(
     strategy_universe: TradingStrategyUniverse,
     pairs: Dict[str, HumanReadableTradingPairDescription | TradingPairIdentifier],
     initial_cash: USDollarAmount,
-    custom_colours={"BTC": "orange", "ETH": "blue", "All cash": "black"}
+    custom_colours=DEFAULT_BENCHMARK_COLOURS,
+    convert_to_daily=False,
 ) -> pd.DataFrame:
     """Create data series of different buy-and-hold benchmarks.
 
@@ -570,7 +593,7 @@ def create_benchmark_equity_curves(
     # Apply custom colors
     for symbol, colour in custom_colours.items():
         if symbol in benchmark_indexes.columns:
-            benchmark_indexes[symbol].attrs = {"colour": colour}
+            benchmark_indexes[symbol].attrs = {"colour": colour, "name": symbol}
 
     return benchmark_indexes
 
