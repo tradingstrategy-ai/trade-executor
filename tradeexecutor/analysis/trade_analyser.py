@@ -190,7 +190,7 @@ class TradeSummary:
     average_position_frequency: Optional[datetime.timedelta] = None
 
     # Backwards compatiblity only
-    average_duration_between_postions: int = 0
+    average_duration_between_positions: int = 0
 
     # Time in market
     # Doesn't include any open positions
