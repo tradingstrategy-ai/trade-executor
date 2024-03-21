@@ -393,7 +393,9 @@ def create_trading_universe(
         required_history_period=required_history_period,
     )
 
-    # Filter down the dataset to the pairs we specified
+    # Construct a trading universe from the loaded data,
+    # and apply any data preprocessing needed before giving it
+    # to the strategy and indicators
     universe = TradingStrategyUniverse.create_from_dataset(
         dataset,
         reserve_asset="USDC",
