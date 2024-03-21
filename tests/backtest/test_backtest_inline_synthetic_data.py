@@ -11,6 +11,7 @@ import pytest
 import pandas as pd
 from pandas_ta.overlap import ema
 
+from tradeexecutor.analysis.multi_asset_benchmark import get_benchmark_data, compare_strategy_backtest_to_multiple_assets
 from tradeexecutor.analysis.trade_analyser import build_trade_analysis, expand_timeline, expand_timeline_raw, TimelineRowStylingMode, TradeAnalysis, TradeSummary
 from tradeexecutor.backtest.backtest_runner import run_backtest_inline
 from tradeexecutor.cli.log import setup_pytest_logging
@@ -669,3 +670,22 @@ def test_benchmark_synthetic_trading_portfolio(
 
     rolling_sharpe = calculate_rolling_sharpe(returns)
     assert len(rolling_sharpe) > 0
+
+
+def test_compare_portfolios(
+    backtest_result: tuple[State, TradingStrategyUniverse, dict],
+    summary: TradeSummary
+):
+    """Compare multiple portfolios or return series."""
+
+    state, universe, debug_dump = backtest_result
+    df = compare_strategy_backtest_to_multiple_assets(
+        state,
+        universe,
+    )
+    assert len(df.columns) == 2
+    assert df.columns[0] == "Strategy"
+    assert df.columns[1] == "ETH"
+
+
+

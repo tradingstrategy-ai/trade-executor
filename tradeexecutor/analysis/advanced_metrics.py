@@ -19,8 +19,11 @@ import warnings
 
 import pandas as pd
 
+from tradeexecutor.state.identifier import TradingPairIdentifier
+from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse, translate_trading_pair
 from tradeexecutor.visual.equity_curve import calculate_returns, resample_returns
 from tradeexecutor.visual.qs_wrapper import import_quantstats_wrapped
+from tradingstrategy.types import TokenSymbol
 
 
 class AdvancedMetricsMode(enum.Enum):
@@ -233,3 +236,8 @@ def visualise_advanced_metrics(
             df = df.rename({"Strategy": name}, axis="columns")
 
         return df
+
+
+
+
+

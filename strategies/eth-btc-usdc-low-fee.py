@@ -75,7 +75,7 @@ class Parameters:
     rsi_entry = 67  # Single pair entry level - when RSI crosses above this value open a position
     rsi_exit = 60  # Single pair exit level - when RSI crosses below this value exit a position
     allocation = 0.98  # How much cash allocate for volatile positions
-    rebalance_threshold = 0.275  # How much position mix % must change when we rebalance between two open positions
+    rebalance_threshold = 0.10  # How much position mix % must change when we rebalance between two open positions
     initial_cash = 10_000  # Backtesting start cash
     trailing_stop_loss = 0.95  # Trailing stop loss as 1 - x
     trailing_stop_loss_activation_level = 1.07  # How much above opening price we must be before starting to use trailing stop loss

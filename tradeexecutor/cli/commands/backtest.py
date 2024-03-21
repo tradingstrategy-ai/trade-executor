@@ -191,7 +191,7 @@ def backtest(
     # We should not be able let unnamed backtests through
     assert state.name
 
-    display_backtesting_results(state)
+    display_backtesting_results(state, universe=universe)
 
     print(f"Writing backtest data the state file: {backtest_result.resolve()}")
     state.write_json_file(backtest_result)
