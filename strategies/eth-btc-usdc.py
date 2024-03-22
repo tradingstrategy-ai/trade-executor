@@ -87,14 +87,14 @@ class Parameters:
 
     rsi_bars = 12  # Number of bars to calculate RSI for each tradingbar
     eth_btc_rsi_bars = 5  # Number of bars for the momentum factor
-    rsi_entry = 67  # Single pair entry level - when RSI crosses above this value open a position
-    rsi_exit = 60  # Single pair exit level - when RSI crosses below this value exit a position
+    rsi_entry = 60  # Single pair entry level - when RSI crosses above this value open a position
+    rsi_exit = 65  # Single pair exit level - when RSI crosses below this value exit a position
     allocation = 0.98  # How much cash allocate for volatile positions
     rebalance_threshold = 0.275  # How much position mix % must change when we rebalance between two open positions
     initial_cash = 10_000  # Backtesting start cash
-    trailing_stop_loss = 0.95  # Trailing stop loss as 1 - x
-    trailing_stop_loss_activation_level = 1.07  # How much above opening price we must be before starting to use trailing stop loss
-    stop_loss = 0.90  # Hard stop loss when opening a new position
+    trailing_stop_loss = 0.975  # Trailing stop loss as 1 - x
+    trailing_stop_loss_activation_level = 1.06  # How much above opening price we must be before starting to use trailing stop loss
+    stop_loss = None # 0.80  # Hard stop loss when opening a new position
     momentum_exponent = 3.5  # How much momentum we capture when rebalancing between open positions
 
     #
@@ -111,7 +111,7 @@ class Parameters:
     backtest_start = datetime.datetime(2019, 1, 1)
     backtest_end = datetime.datetime(2024, 3, 15)
     stop_loss_time_bucket = TimeBucket.h1  # use 1h close as the stop loss signal
-    backtest_trading_fee = 0.0005
+    backtest_trading_fee = 0.0030
 
 
 def calculate_eth_btc(strategy_universe: TradingStrategyUniverse, mode: ExecutionMode):

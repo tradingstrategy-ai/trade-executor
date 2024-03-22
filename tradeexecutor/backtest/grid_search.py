@@ -896,9 +896,10 @@ def perform_grid_search(
             #
             # Run individual searchers threads
             #
+            logger.warning("Doing a multithread grid search - you should not really use this, pass multiprocessing=True instead")
 
             task_args = [(grid_search_worker, universe, c, trading_strategy_engine_version, data_retention, indicator_storage.path) for c in combinations if c not in cached_results]
-            logger.info("Doing a multithread grid search")
+
             executor = futureproof.ThreadPoolExecutor(max_workers=max_workers)
             tm = futureproof.TaskManager(executor, error_policy=futureproof.ErrorPolicyEnum.RAISE)
 
