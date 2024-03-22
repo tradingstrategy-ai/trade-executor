@@ -41,7 +41,24 @@ def get_benchmark_data(
 
     .. code-block:: python
 
+        from tradeexecutor.analysis.multi_asset_benchmark import get_benchmark_data
+        from tradeexecutor.visual.benchmark import visualise_equity_curve_benchmark
 
+        benchmark_indexes = get_benchmark_data(
+            strategy_universe,
+            cumulative_with_initial_cash=state.portfolio.get_initial_cash()
+        )
+
+        fig = visualise_equity_curve_benchmark(
+            name=state.name,
+            portfolio_statistics=state.stats.portfolio,
+            all_cash=state.portfolio.get_initial_cash(),
+            benchmark_indexes=benchmark_indexes,
+            height=800,
+            log_y=False,
+        )
+
+        fig.show()
 
     :param max_count:
         Return this many benchmark series
@@ -78,7 +95,10 @@ def get_benchmark_data(
     for name, pair in benchmark_assets.items():
         price_series = strategy_universe.data_universe.candles.get_candles_by_pair(pair.internal_id)["close"]
         assert len(price_series.dropna()) != 0, f"Failed to read benchmark price series for {name}: {pair}"
-        index_fixed_series = pd.Series(data=price_series.values, index=price_series.index.get_level_values(1))
+        if isinstance(price_series.index, pd.MultiIndex):
+            index_fixed_series = pd.Series(data=price_series.values, index=price_series.index.get_level_values(1))
+        else:
+            index_fixed_series = price_series
         daily_returns = resample_returns(index_fixed_series.pct_change(), freq="D")
 
         if cumulative_with_initial_cash:

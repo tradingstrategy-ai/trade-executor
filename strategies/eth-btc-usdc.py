@@ -23,7 +23,7 @@ from tradeexecutor.state.visualisation import PlotKind, PlotLabel, PlotShape
 from tradeexecutor.strategy.alpha_model import AlphaModel
 from tradeexecutor.strategy.cycle import CycleDuration
 from tradeexecutor.strategy.default_routing_options import TradeRouting
-from tradeexecutor.strategy.execution_context import ExecutionContext
+from tradeexecutor.strategy.execution_context import ExecutionContext, ExecutionMode
 from tradeexecutor.strategy.pandas_trader.indicator import IndicatorSet, IndicatorSource
 from tradeexecutor.strategy.pandas_trader.strategy_input import StrategyInput
 from tradeexecutor.strategy.parameters import StrategyParameters
@@ -31,8 +31,10 @@ from tradeexecutor.strategy.tag import StrategyTag
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse, load_partial_data
 from tradeexecutor.strategy.universe_model import UniverseOptions
 from tradeexecutor.strategy.weighting import weight_passthrouh
+from tradeexecutor.utils.binance import create_binance_universe
 from tradingstrategy.chain import ChainId
 from tradingstrategy.client import Client
+from tradingstrategy.pair import HumanReadableTradingPairDescription
 from tradingstrategy.timebucket import TimeBucket
 from tradingstrategy.utils.groupeduniverse import resample_price_series
 
@@ -48,14 +50,27 @@ long_description = """
 - [See the blog post for more details](https://tradingstrategy.ai/blog/outperfoming-eth) on how this strategy is constructed
 """
 
-# The pairs we are rading
-pair_ids = [
-    (ChainId.polygon, "quickswap", "WBTC", "WETH", 0.0030),
-    (ChainId.polygon, "uniswap-v3", "WETH", "USDC", 0.0005),
-]
+
+def get_strategy_trading_pairs(execution_mode: ExecutionMode) -> list[HumanReadableTradingPairDescription]:
+    """Switch between backtest and live trading pairs.
+
+    Because the live trading venue does not have enough history (< 2 years)
+    for meaningful backtesting, we test with Binance CEX data.
+    """
+    if execution_mode.is_live_trading():
+        # Live trade
+        return [
+            (ChainId.polygon, "quickswap", "WBTC", "WETH", 0.0030),
+            (ChainId.polygon, "uniswap-v3", "WETH", "USDC", 0.0005),
+        ]
+    else:
+        # Backtest
+        return [
+            (ChainId.centralised_exchange, "binance", "BTC", "USDT"),
+            (ChainId.centralised_exchange, "binance", "ETH", "USDT"),
+        ]
 
 
-# See v37-matic-eth-robustness search for parameters details
 class Parameters:
     """Parameteres for this strategy.
 
@@ -96,10 +111,12 @@ class Parameters:
     backtest_start = datetime.datetime(2021, 1, 1)
     backtest_end = datetime.datetime(2024, 3, 15)
     stop_loss_time_bucket = TimeBucket.h1  # use 1h close as the stop loss signal
+    backtest_trading_fee = 0.0030
 
 
-def calculate_eth_btc(strategy_universe: TradingStrategyUniverse):
+def calculate_eth_btc(strategy_universe: TradingStrategyUniverse, mode: ExecutionMode):
     """Calculate ETH/BTC price used as a rebalance factor."""
+    pair_ids = get_strategy_trading_pairs(mode)
     eth = strategy_universe.get_pair_by_human_description(pair_ids[1])
     btc = strategy_universe.get_pair_by_human_description(pair_ids[0])
     btc_price = strategy_universe.data_universe.candles.get_candles_by_pair(btc.internal_id)
@@ -108,9 +125,9 @@ def calculate_eth_btc(strategy_universe: TradingStrategyUniverse):
     return series
 
 
-def calculate_eth_btc_rsi(strategy_universe: TradingStrategyUniverse, length: int):
+def calculate_eth_btc_rsi(strategy_universe: TradingStrategyUniverse, mode: ExecutionMode, length: int):
     """Calculate x hours RSI for MATIC/ETH price used as the rebalancing factor."""
-    eth_btc_series = calculate_eth_btc(strategy_universe)
+    eth_btc_series = calculate_eth_btc(strategy_universe, mode)
     return pandas_ta.rsi(eth_btc_series, length=length)
 
 
@@ -120,8 +137,9 @@ def calculate_resampled_rsi(pair_close_price_series: pd.Series, length: int, ups
     return pandas_ta.rsi(resampled_close, length=length)
 
 
-def calculate_resampled_eth_btc(strategy_universe: TradingStrategyUniverse, upsample: TimeBucket, shift: int):
+def calculate_resampled_eth_btc(strategy_universe: TradingStrategyUniverse, mode: ExecutionMode, upsample: TimeBucket, shift: int):
     """Calculate BTC/ETH price series for x hours."""
+    pair_ids = get_strategy_trading_pairs(mode)
     eth = strategy_universe.get_pair_by_human_description(pair_ids[1])
     btc = strategy_universe.get_pair_by_human_description(pair_ids[0])
     eth_price = strategy_universe.data_universe.candles.get_candles_by_pair(eth.internal_id)
@@ -132,9 +150,9 @@ def calculate_resampled_eth_btc(strategy_universe: TradingStrategyUniverse, upsa
     return series
 
 
-def calculate_resampled_eth_btc_rsi(strategy_universe: TradingStrategyUniverse, length: int, upsample: TimeBucket, shift: int):
+def calculate_resampled_eth_btc_rsi(strategy_universe: TradingStrategyUniverse, mode: ExecutionMode, length: int, upsample: TimeBucket, shift: int):
      """Caclulate RSI for MATIC/ETH price series for x hours."""
-     etc_btc = calculate_resampled_eth_btc(strategy_universe, upsample, shift)
+     etc_btc = calculate_resampled_eth_btc(strategy_universe, mode, upsample, shift)
      return pandas_ta.rsi(etc_btc, length=length)
 
 
@@ -149,6 +167,7 @@ def create_indicators(
     - Because we use non-standard candle time bucket, we do upsamplign from 1h candles
     """
     indicators = IndicatorSet()
+    mode = execution_context.mode  # Switch between live trading and backtesting pairs
     indicators.add(
         "rsi", calculate_resampled_rsi,
         {"length": parameters.rsi_bars, "upsample": parameters.target_time_bucket, "shift": parameters.clock_shift_bars}
@@ -156,13 +175,13 @@ def create_indicators(
     indicators.add(
         "eth_btc",
         calculate_resampled_eth_btc,
-        {"upsample": parameters.target_time_bucket, "shift": parameters.clock_shift_bars},
+        {"upsample": parameters.target_time_bucket, "mode": mode, "shift": parameters.clock_shift_bars},
         source=IndicatorSource.strategy_universe
     )
     indicators.add(
         "eth_btc_rsi",
         calculate_resampled_eth_btc_rsi,
-        {"length": parameters.eth_btc_rsi_bars, "upsample": parameters.target_time_bucket, "shift": parameters.clock_shift_bars},
+        {"length": parameters.eth_btc_rsi_bars, "mode": mode, "upsample": parameters.target_time_bucket, "shift": parameters.clock_shift_bars},
         source=IndicatorSource.strategy_universe
     )
     return indicators
@@ -187,9 +206,13 @@ def decide_trades(
     clock_shift = parameters.clock_shift_bars * parameters.source_time_bucket.to_pandas_timedelta()
 
     alpha_model = AlphaModel(input.timestamp)
+    position_manager.log("decide_trades() start")
+
+    # Because DEXes does not have enough historical data for meaningful backtest,
+    # we backtest with CEX pairs with longer history
+    pair_ids = get_strategy_trading_pairs(input.execution_context.mode)
     btc_pair = position_manager.get_trading_pair(pair_ids[0])
     eth_pair = position_manager.get_trading_pair(pair_ids[1])
-    position_manager.log("decide_trades() start")
 
     #
     # Indicators
@@ -366,39 +389,46 @@ def create_trading_universe(
     execution_context: ExecutionContext,
     universe_options: UniverseOptions,
 ) -> TradingStrategyUniverse:
+    """Create the trading universe.
 
-    # Load data for our trading pair whitelist
+    - For live trading, we load DEX data
+
+    - We backtest with Binance data, as it has more history
+    """
+
+    pair_ids = get_strategy_trading_pairs(execution_context.mode)
+
     if execution_context.mode.is_backtesting():
-        # For backtesting, we use a specific time range from the strategy parameters
+        # Backtesting - load Binance data
         start_at = universe_options.start_at
         end_at = universe_options.end_at
-        required_history_period = None
-        stop_loss_time_bucket = Parameters.stop_loss_time_bucket
+        strategy_universe = create_binance_universe(
+            [f"{p[2]}{p[3]}" for p in pair_ids],
+            candle_time_bucket=Parameters.source_time_bucket,
+            stop_loss_time_bucket=Parameters.stop_loss_time_bucket,
+            start_at=start_at,
+            end_at=end_at,
+            trading_fee_override=Parameters.backtest_trading_fee,
+        )
     else:
-        start_at = None
-        end_at = None
-        required_history_period = datetime.timedelta(days=Parameters.required_history_period)
-        stop_loss_time_bucket = None
+        # Live trading - load DEX data
+        dataset = load_partial_data(
+            client=client,
+            time_bucket=Parameters.source_time_bucket,
+            pairs=pair_ids,
+            execution_context=execution_context,
+            universe_options=universe_options,
+            liquidity=False,
+            stop_loss_time_bucket=Parameters.stop_loss_time_bucket,
+            required_history_period=Parameters.required_history_period,
+        )
+        # Construct a trading universe from the loaded data,
+        # and apply any data preprocessing needed before giving it
+        # to the strategy and indicators
+        strategy_universe = TradingStrategyUniverse.create_from_dataset(
+            dataset,
+            reserve_asset="USDC",
+            forward_fill=True,
+        )
 
-    dataset = load_partial_data(
-        client=client,
-        time_bucket=Parameters.source_time_bucket,
-        pairs=pair_ids,
-        execution_context=execution_context,
-        universe_options=universe_options,
-        liquidity=False,
-        stop_loss_time_bucket=stop_loss_time_bucket,
-        start_at=start_at,
-        end_at=end_at,
-        required_history_period=required_history_period,
-    )
-
-    # Construct a trading universe from the loaded data,
-    # and apply any data preprocessing needed before giving it
-    # to the strategy and indicators
-    universe = TradingStrategyUniverse.create_from_dataset(
-        dataset,
-        reserve_asset="USDC",
-        forward_fill=True,
-    )
-    return universe
+    return strategy_universe
