@@ -80,9 +80,9 @@ class Parameters:
     """
 
 
-    cycle_duration = CycleDuration.cycle_8h  # Run decide_trades() every 8h
-    source_time_bucket = TimeBucket.h1  # Use 1h candles as the raw data
-    target_time_bucket = TimeBucket.h8  # Create synthetic 8h candles
+    cycle_duration = CycleDuration.cycle_1d  # Run decide_trades() every 8h
+    source_time_bucket = TimeBucket.d1  # Use 1h candles as the raw data
+    target_time_bucket = TimeBucket.d1  # Create synthetic 8h candles
     clock_shift_bars = 0  # Do not do shifted candles
 
     rsi_bars = 12  # Number of bars to calculate RSI for each tradingbar

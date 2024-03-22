@@ -146,7 +146,7 @@ def compare_multiple_portfolios(
 
     result_table = pd.DataFrame()
 
-    assert len(portfolios.columns + indexes.columns) >= 2, f"Need at least two portfolios to benchmark: {portfolios.columns}, {indexes.columns}"
+    assert len(portfolios.columns + indexes.columns) >= 1, f"Need at least one portfolios to benchmark: {portfolios.columns}, {indexes.columns}"
 
     for name, portfolio_series in portfolios.items():
         metrics = calculate_advanced_metrics(
