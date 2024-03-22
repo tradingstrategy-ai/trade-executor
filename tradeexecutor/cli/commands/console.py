@@ -129,7 +129,7 @@ def console(
     cache_path = prepare_cache(id, cache_path)
 
     execution_context = ExecutionContext(
-        mode=ExecutionMode.preflight_check,
+        mode=ExecutionMode.real_trading,
         timed_task_context_manager=timed_task,
         engine_version=mod.trading_strategy_engine_version,
     )

@@ -99,16 +99,17 @@ def check_wallet(
     )
     assert web3config.has_chain_configured(), "No RPC endpoints given. A working JSON-RPC connection is needed for running this command. Check your JSON-RPC configuration."
 
-    universe = mod.create_trading_universe(
-        pd.Timestamp.utcnow(),
-        client,
-        console_command_execution_context,
-        mod.get_universe_options(),
-    )
     execution_context = ExecutionContext(
         mode=ExecutionMode.preflight_check,
         timed_task_context_manager=timed_task,
         engine_version=mod.trading_strategy_engine_version,
+    )
+
+    universe = mod.create_trading_universe(
+        pd.Timestamp.utcnow(),
+        client,
+        execution_context,
+        mod.get_universe_options(),
     )
 
     # Check that we are connected to the chain strategy assumes
