@@ -115,7 +115,7 @@ def check_wallet(
     if unit_test_force_anvil:
         web3config.set_default_chain(ChainId.anvil)
     else:
-        web3config.set_default_chain(universe.get_single_chain())
+        web3config.set_default_chain(mod.get_default_chain_id())
 
     web3config.check_default_chain_id()
 
