@@ -54,7 +54,7 @@ long_description = """
 def get_strategy_trading_pairs(execution_mode: ExecutionMode) -> list[HumanReadableTradingPairDescription]:
     """Switch between backtest and live trading pairs.
 
-    Because the live trading venue does not have enough history (< 2 years)
+    Because the live trading DEX venues do not have enough history (< 2 years)
     for meaningful backtesting, we test with Binance CEX data.
     """
     if execution_mode.is_live_trading():
@@ -64,7 +64,7 @@ def get_strategy_trading_pairs(execution_mode: ExecutionMode) -> list[HumanReada
             (ChainId.polygon, "uniswap-v3", "WETH", "USDC", 0.0005),
         ]
     else:
-        # Backtest
+        # Backtest - Binance fee matched to DEXes with Parameters.backtest_trading_fee
         return [
             (ChainId.centralised_exchange, "binance", "BTC", "USDT"),
             (ChainId.centralised_exchange, "binance", "ETH", "USDT"),
@@ -108,10 +108,10 @@ class Parameters:
     # Backtesting only
     #
 
-    backtest_start = datetime.datetime(2021, 1, 1)
+    backtest_start = datetime.datetime(2019, 1, 1)
     backtest_end = datetime.datetime(2024, 3, 15)
     stop_loss_time_bucket = TimeBucket.h1  # use 1h close as the stop loss signal
-    backtest_trading_fee = 0.0030
+    backtest_trading_fee = 0.0005
 
 
 def calculate_eth_btc(strategy_universe: TradingStrategyUniverse, mode: ExecutionMode):
