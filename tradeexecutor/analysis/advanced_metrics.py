@@ -19,8 +19,11 @@ import warnings
 
 import pandas as pd
 
+from tradeexecutor.state.identifier import TradingPairIdentifier
+from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse, translate_trading_pair
 from tradeexecutor.visual.equity_curve import calculate_returns, resample_returns
 from tradeexecutor.visual.qs_wrapper import import_quantstats_wrapped
+from tradingstrategy.types import TokenSymbol
 
 
 class AdvancedMetricsMode(enum.Enum):
@@ -38,6 +41,7 @@ def calculate_advanced_metrics(
     mode: AdvancedMetricsMode=AdvancedMetricsMode.basic,
     periods_per_year=365,
     convert_to_daily=False,
+    benchmark: pd.Series | None = None,
 ) -> pd.DataFrame:
     """Calculate advanced strategy performance statistics using Quantstats.
 
@@ -97,7 +101,13 @@ def calculate_advanced_metrics(
         metrics = qs.reports.metrics
         stats = qs.stats
 
-        result = metrics(returns, display=False, periods_per_year=periods_per_year, mode=mode.value)
+        result = metrics(
+            returns,
+            benchmark=benchmark,
+            display=False,
+            periods_per_year=periods_per_year,
+            mode=mode.value
+        )
 
         if convert_to_daily:
             returns = resample_returns(returns, "D")
@@ -106,7 +116,8 @@ def calculate_advanced_metrics(
         # Communicative annualized growth return,
         # as compounded
         # Should say CAGR (raw), but is what it is for the legacy reasons
-        result.loc["Annualised return (raw)"] = [stats.cagr(returns, 0., compounded=True)]
+        if benchmark is None:
+            result.loc["Annualised return (raw)"] = [stats.cagr(returns, 0., compounded=True)]
         return result
 
 
@@ -233,3 +244,8 @@ def visualise_advanced_metrics(
             df = df.rename({"Strategy": name}, axis="columns")
 
         return df
+
+
+
+
+

@@ -45,6 +45,7 @@ from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniv
     DefaultTradingStrategyUniverseModel
 from tradeexecutor.strategy.universe_model import StaticUniverseModel, UniverseOptions
 from tradeexecutor.utils.accuracy import setup_decimal_accuracy
+from tradeexecutor.utils.cpu import get_safe_max_workers_count
 from tradeexecutor.utils.timer import timed_task
 from tradingstrategy.client import Client
 from tradingstrategy.timebucket import TimeBucket
@@ -289,6 +290,7 @@ def setup_backtest_for_universe(
     create_indicators: CreateIndicatorsProtocol | None = None,
     parameters: StrategyParameters | None = None,
     indicator_storage: DiskIndicatorStorage | None = None,
+    max_workers: int | None = None,
 ):
     """High-level entry point for setting up a single backtest for a predefined universe.
 
@@ -379,6 +381,7 @@ def setup_backtest_for_universe(
         create_indicators=create_indicators,
         parameters=parameters,
         indicator_storage=indicator_storage,
+        max_workers=max_workers or get_safe_max_workers_count(),
     )
 
 

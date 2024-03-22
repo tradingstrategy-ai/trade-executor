@@ -8,6 +8,7 @@
 
 import datetime
 
+from tradeexecutor.state.types import BPS
 from tradeexecutor.strategy.trading_strategy_universe import (
     Dataset,
     TradingStrategyUniverse,
@@ -175,6 +176,7 @@ def create_binance_universe(
     reserve_pair_ticker: str | None = None,
     include_lending: bool = False,
     force_download: bool = False,
+    trading_fee_override: BPS = None,
 ) -> TradingStrategyUniverse:
     """Create a Binance universe that can be used for backtesting.
 
@@ -189,6 +191,7 @@ def create_binance_universe(
     :param reserve_pair_ticker: Pair ticker to use as the reserve asset
     :param include_lending: Whether to include lending data or not
     :param force_download: Whether to force download of data or get it from cache
+    :param trading_fee_override: Set fee to all trading pairs to this
     :return: Trading strategy universe
     """
     dataset = fetch_binance_dataset(
@@ -200,6 +203,11 @@ def create_binance_universe(
         include_lending=include_lending,
         force_download=force_download,
     )
+
+    # Override any fees in the data
+    if trading_fee_override:
+        # Convert to int BPS
+        dataset.pairs["fee"] = trading_fee_override * 10_000
 
     selected_columns = dataset.pairs[["base_token_symbol", "quote_token_symbol"]]
     pair_tickers = [tuple(x) for x in selected_columns.to_numpy()]

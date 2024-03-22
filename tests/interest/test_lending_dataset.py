@@ -377,3 +377,4 @@ def test_analyse_long_short_universe(persistent_test_client: Client):
     )
 
     assert len(df) > 0
+
