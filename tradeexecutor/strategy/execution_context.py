@@ -223,6 +223,8 @@ python_script_execution_context = ExecutionContext(ExecutionMode.backtesting)
 #: Standalone backtest (not within a notebook)
 standalone_backtest_execution_context = ExecutionContext(ExecutionMode.backtesting)
 
+# trade-execution console commands
+console_command_execution_context = ExecutionContext(ExecutionMode.real_trading)
 
 #: Shorthand for unit testing
 ExecutionContext.unit_test = unit_test_execution_context
