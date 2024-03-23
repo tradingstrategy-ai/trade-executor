@@ -135,6 +135,8 @@ class GridParameter:
 
         if isinstance(value, Enum):
             return f"{self.name}={self.value.value}"
+        elif type(value) == bool:
+            return f"{self.name}={self.value.lower()}"
         elif type(value) in (float, int, str):
             return f"{self.name}={self.value}"
         if value is None:
