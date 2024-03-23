@@ -60,6 +60,8 @@ def test_forward_fill_spot_only_forward_filled(persistent_test_client: Client):
     assert strategy_universe.data_universe.candles.time_bucket == TimeBucket.h1
 
     wbtc_weth = strategy_universe.get_pair_by_human_description(pair_ids[0])
+    btc_df = strategy_universe.data_universe.candles.get_candles_by_pair(wbtc_weth.internal_id)
+    assert "timestamp" in btc_df.columns
     btc_close = strategy_universe.data_universe.candles.get_candles_by_pair(wbtc_weth.internal_id)["close"]
 
     # From MultiIndex to single series index
@@ -125,6 +127,8 @@ def test_forward_fill_spot_only_gapped(persistent_test_client: Client):
     assert strategy_universe.data_universe.candles.time_bucket == TimeBucket.h1
 
     wbtc_weth = strategy_universe.get_pair_by_human_description(pair_ids[0])
+    btc_df = strategy_universe.data_universe.candles.get_candles_by_pair(wbtc_weth.internal_id)
+    assert "timestamp" in btc_df.columns
     btc_close = strategy_universe.data_universe.candles.get_candles_by_pair(wbtc_weth.internal_id)["close"]
 
     # TODO: Why index here is different?
