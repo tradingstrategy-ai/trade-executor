@@ -191,6 +191,8 @@ class KeyMetricKind(enum.Enum):
 
     average_position_frequency = "average_position_frequency"
 
+    time_in_market = "time_in_market"
+
     def get_help_link(self) -> Optional[str]:
         return _KEY_METRIC_HELP[self]
 
