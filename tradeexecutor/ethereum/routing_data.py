@@ -178,6 +178,10 @@ def get_quickswap_default_routing_parameters(
             # Route WMATIC through USDC:WMATIC pool,
             # https://tradingstrategy.ai/trading-view/polygon/quickswap/matic-usdc
             "0x0d500b1d8e8ef31e21c99d1db9a6444d3adf1270": "0x6e7a5fafcec6bb1e78bae2a1f0b612012bf14827",
+
+            # Route WETH through WETH/USDC pool,
+            # https://tradingstrategy.ai/trading-view/polygon/quickswap/eth-usdc
+            "0x7ceb23fd6bc0add59e62ac25578270cff1b9f619": "0x853ee4b2a13f8a742d64c8f088be7ba2131f670d",
         }
     elif reserve_currency == ReserveCurrency.usdt:
         # https://tradingstrategy.ai/trading-view/polygon/tokens/0xc2132d05d31c914a87c6611c10748aeb04b58e8f
