@@ -22,13 +22,6 @@ class CoreStrategyParameters(TypedDict):
 
     """
 
-    #: US dollars at the start of the backtesting
-    initial_cash: USDollarAmount | None = None
-
-    backtest_start: datetime.datetime | None = None
-
-    backtest_end: datetime.datetime | None = None
-
     cycle_duration: CycleDuration
 
     #: Current strategy decision cycle
@@ -39,6 +32,19 @@ class CoreStrategyParameters(TypedDict):
     #: Applies to live strategies only
     #:
     routing: TradeRouting
+
+    #: US dollars at the start of the backtesting
+    initial_cash: USDollarAmount | None
+
+    backtest_start: datetime.datetime | None
+
+    backtest_end: datetime.datetime | None
+
+    #: Live trading needed history
+    #:
+    #: How much data load for each strategy cycle in live trading
+    #:
+    required_history_period: datetime.timedelta | None
 
 
 class StrategyParameters(MutableAttributeDict):
@@ -214,7 +220,6 @@ class StrategyParameters(MutableAttributeDict):
 
     def __getattribute__(self, name):
         # Only implemented to make type hinting to stop complaining
-        # Default behaviour
-        # https://stackoverflow.com/a/2405617/315168
+        # https://stackoverflow.com/questions/78210800/type-hinting-python-class-with-dynamic-any-attribute/78210867#78210867
         return object.__getattribute__(self, name)
 

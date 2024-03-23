@@ -117,7 +117,7 @@ class Dataset:
             assert isinstance(lending_candles, LendingCandleUniverse), f"Expected LendingCandleUniverse, got {lending_candles.__class__}"
 
         if self.history_period:
-            assert self.start_at is None and self.end_at is None, f"You can only give history_period or backtesting range"
+            assert self.start_at is None and self.end_at is None, f"You can only give history_period or backtesting range. We got {self.start_at}, {self.end_at}, {self.history_period}"
 
 
 @dataclass
@@ -1878,18 +1878,22 @@ def load_partial_data(
         logger.warning("This method is designed to load data for low number or trading pairs, got %d", len(pairs))
 
     # Legacy compat
-    if not start_at:
-        start_at = universe_options.start_at
+    if execution_context.mode.is_backtesting():
+        if not start_at:
+            start_at = universe_options.start_at
 
-    # Legacy compat
-    if not end_at:
-        end_at = universe_options.end_at
+        # Legacy compat
+        if not end_at:
+            end_at = universe_options.end_at
 
-    if not required_history_period:
-        required_history_period = universe_options.history_period
-
-    assert (start_at and end_at) or required_history_period, \
-        f"You need to give either history period or backtesting start_at - end_at range. We got {start_at}, {end_at}, {required_history_period}"
+        assert start_at
+        assert end_at
+    elif execution_context.mode.is_live_trading():
+        if not required_history_period:
+            required_history_period = universe_options.history_period
+        assert required_history_period, f"Doing live trading {execution_context.mode}, but universe_options.history_period missing: {universe_options}"
+    else:
+        raise NotImplementedError(f"Cannot determine trading mode: {execution_context.mode}")
 
     # Where the data loading start can come from the hard backtesting range (start - end)
     # or how many days of historical data we ask for

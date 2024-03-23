@@ -87,7 +87,7 @@ class Parameters:
     # Live trading only
     #
     routing = TradeRouting.default  # Pick default routes for trade execution
-    required_history_period = rsi_bars * 2  # How much data a live trade execution needs to load to be able to calculate indicators
+    required_history_period = datetime.timedelta(days=60)
 
     #
     # Backtesting only
@@ -363,14 +363,8 @@ def create_trading_universe(
     # Load data for our trading pair whitelist
     if execution_context.mode.is_backtesting():
         # For backtesting, we use a specific time range from the strategy parameters
-        start_at = universe_options.start_at
-        end_at = universe_options.end_at
-        required_history_period = None
         stop_loss_time_bucket = Parameters.stop_loss_time_bucket
     else:
-        start_at = None
-        end_at = None
-        required_history_period = datetime.timedelta(days=Parameters.required_history_period)  # We need 21 days run up for RSI indicator
         stop_loss_time_bucket = None
 
     dataset = load_partial_data(
@@ -381,9 +375,6 @@ def create_trading_universe(
         universe_options=universe_options,
         liquidity=False,
         stop_loss_time_bucket=stop_loss_time_bucket,
-        start_at=start_at,
-        end_at=end_at,
-        required_history_period=required_history_period,
     )
 
     # Filter down the dataset to the pairs we specified
