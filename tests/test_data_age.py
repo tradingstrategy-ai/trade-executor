@@ -4,7 +4,7 @@ import datetime
 
 import pytest
 
-from tradeexecutor.strategy.execution_context import ExecutionMode, unit_test_execution_context
+from tradeexecutor.strategy.execution_context import ExecutionMode, unit_test_execution_context, unit_test_trading_execution_context
 from tradeexecutor.strategy.universe_model import StrategyExecutionUniverse, DataTooOld, UniverseOptions
 from tradingstrategy.chain import ChainId
 from tradingstrategy.client import Client
@@ -28,7 +28,7 @@ class DataAgeTestUniverseModel(TradingStrategyUniverseModel):
 
         dataset = load_partial_data(
             client,
-            unit_test_execution_context,
+            unit_test_trading_execution_context,
             TimeBucket.d30,
             pairs=((ChainId.ethereum, "uniswap-v3", "WETH", "USDC", 0.0005),),
             universe_options=UniverseOptions(history_period=datetime.timedelta(days=6*30)),

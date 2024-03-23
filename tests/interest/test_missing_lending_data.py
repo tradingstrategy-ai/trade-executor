@@ -16,7 +16,7 @@ from tradeexecutor.strategy.trading_strategy_universe import (
     load_partial_data,
 )
 from tradingstrategy.client import Client
-from tradeexecutor.strategy.execution_context import ExecutionContext, ExecutionMode
+from tradeexecutor.strategy.execution_context import ExecutionContext, ExecutionMode, unit_test_execution_context
 from tradeexecutor.strategy.universe_model import UniverseOptions
 from tradeexecutor.strategy.cycle import CycleDuration
 from tradeexecutor.strategy.default_routing_options import TradeRouting
@@ -326,7 +326,7 @@ def test_missing_lending_data(persistent_test_client):
         end_at=END_AT,
     )
 
-    execution_context = ExecutionContext(mode=ExecutionMode.data_preload)
+    execution_context = unit_test_execution_context
 
     dataset = load_partial_data(
         client,

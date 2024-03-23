@@ -7,7 +7,7 @@ import pytest
 
 from tradeexecutor.analysis.universe import analyse_long_short_universe
 from tradeexecutor.state.identifier import TradingPairKind
-from tradeexecutor.strategy.execution_context import unit_test_execution_context
+from tradeexecutor.strategy.execution_context import unit_test_execution_context, unit_test_trading_execution_context
 from tradeexecutor.strategy.trading_strategy_universe import load_partial_data, TradingStrategyUniverse, load_trading_and_lending_data, translate_trading_pair
 from tradeexecutor.strategy.universe_model import default_universe_options, UniverseOptions
 from tradingstrategy.chain import ChainId
@@ -226,7 +226,7 @@ def test_load_trading_and_lending_data_live(persistent_test_client: Client):
     # for all lending markets on a relevant time period
     dataset = load_trading_and_lending_data(
         client,
-        execution_context=unit_test_execution_context,
+        execution_context=unit_test_trading_execution_context,
         universe_options=UniverseOptions(history_period=datetime.timedelta(days=7)),
         chain_id=ChainId.polygon,
         exchange_slugs="uniswap-v3",

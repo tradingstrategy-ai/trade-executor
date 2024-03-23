@@ -579,7 +579,7 @@ class StrategyModuleInformation:
         """
 
         if self.parameters:
-            val = self.parameters.required_history_period
+            val = self.parameters.get("required_history_period")
             assert isinstance(val, (datetime.timedelta, NoneType)), f"Expected datetime, got {type(val)}: {val}"
             return val
 
