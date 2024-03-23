@@ -61,7 +61,8 @@ class StrategyParameters(MutableAttributeDict):
 
     .. code-block:: python
 
-        assert parameters.rsi_low == parameters["rsi_low"]
+        value = parameters.rsi_low
+        value = parameters["rsi_low"]  # Are equal
 
     Example parameter definition:
 
@@ -210,3 +211,10 @@ class StrategyParameters(MutableAttributeDict):
 
         if "cycle_duration" not in self:
             raise StrategyParametersMissing("cycle_duration parameter missing")
+
+    def __getattribute__(self, name):
+        # Only implemented to make type hinting to stop complaining
+        # Default behaviour
+        # https://stackoverflow.com/a/2405617/315168
+        return object.__getattribute__(self, name)
+
