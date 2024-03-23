@@ -56,6 +56,9 @@ class ExecutionMode(enum.Enum):
 
     #: Internal unit testing of modules
     #:
+    #: This specifically refers to unit testing that uses backtesting data.
+    #: See :py:attr:`unit_testing_trading` as well.
+    #:
     unit_testing = "unit_Testing"
 
     #: We are operating on real datasets like :py:data:`real_trading`
@@ -101,7 +104,7 @@ class ExecutionMode(enum.Enum):
         """The strategy is running for backtesting.
 
         """
-        return self in (self.backtesting,)
+        return self in (self.backtesting, self.unit_testing,)
 
     def is_fresh_data_always_needed(self):
         """Should we purge caches for each trade cycle.
