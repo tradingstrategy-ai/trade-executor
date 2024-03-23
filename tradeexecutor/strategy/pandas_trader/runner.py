@@ -298,8 +298,11 @@ class PandasTraderRunner(StrategyRunner):
 
                 print(f"\n  {pair_slug}", file=buf)
 
-                last_candle = candles.iloc[-1]
-                lag = pd.Timestamp.utcnow().tz_localize(None) - last_candle["timestamp"]
+                if len(candles) > 0:
+                    last_candle = candles.iloc[-1]
+                    lag = pd.Timestamp.utcnow().tz_localize(None) - last_candle["timestamp"]
+                else:
+                    logger.warning("Pair %s had not candle data", pair)
 
                 dex_pair = universe.data_universe.pairs.get_pair_by_id(pair_id)
                 pair = translate_trading_pair(dex_pair)

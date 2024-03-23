@@ -455,13 +455,15 @@ class StrategyRunner(abc.ABC):
             print(f"    {reserve.quantity:,.2f} {reserve.asset.token_symbol}", file=buf)
         logger.trade(buf.getvalue())
 
-    def report_strategy_thinking(self,
-                                 strategy_cycle_timestamp: datetime.datetime,
-                                 cycle: int,
-                                 universe: TradingStrategyUniverse,
-                                 state: State,
-                                 trades: List[TradeExecution],
-                                 debug_details: dict):
+    def report_strategy_thinking(
+        self,
+         strategy_cycle_timestamp: datetime.datetime,
+         cycle: int,
+         universe: TradingStrategyUniverse,
+         state: State,
+         trades: List[TradeExecution],
+         debug_details: dict
+    ):
         """Strategy admin helpers to understand a live running strategy.
 
         - Post latest variables
