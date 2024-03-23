@@ -131,6 +131,7 @@ def test_forward_fill_spot_only_gapped(persistent_test_client: Client):
     assert "timestamp" in btc_df.columns
     btc_close = strategy_universe.data_universe.candles.get_candles_by_pair(wbtc_weth.internal_id)["close"]
 
+
     # TODO: Why index here is different?
     btc_close_index_flattened = btc_close.index
 
