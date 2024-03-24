@@ -9,6 +9,7 @@ import pandas as pd
 import numpy as np
 from matplotlib.figure import Figure
 
+from tradeexecutor.analysis.curve import CurveType, DEFAULT_BENCHMARK_COLOURS
 from tradeexecutor.state.state import State
 from tradeexecutor.state.statistics import Statistics, PortfolioStatistics
 from tradeexecutor.state.position import TradingPosition
@@ -88,8 +89,12 @@ def calculate_equity_curve(
     # 2021-06-01 00:00:00.000000    10000.000000
 
     # https://stackoverflow.com/a/34297689/315168
-    df = df[~df.index.duplicated(keep='last')]
-    return df
+    series = df[~df.index.duplicated(keep='last')]
+    # See curve.py
+    series.attrs["name"] = state.name
+    series.attrs["curve"] = CurveType.equity
+    series.attrs["colour"] = DEFAULT_BENCHMARK_COLOURS["Strategy"]
+    return series
 
 
 def calculate_returns(equity_curve: pd.Series) -> pd.Series:
@@ -113,9 +118,14 @@ def calculate_returns(equity_curve: pd.Series) -> pd.Series:
     """
 
     if len(equity_curve) == 0:
-        return pd.Series([], index=pd.to_datetime([]), dtype='float64')
+        series = pd.Series([], index=pd.to_datetime([]), dtype='float64')
 
-    return equity_curve.pct_change().fillna(0.0)
+    series = equity_curve.pct_change().fillna(0.0)
+
+    series.attrs = equity_curve.attrs.copy()
+    series.attrs["curve"] = CurveType.returns
+
+    return series
 
 
 def generate_buy_and_hold_returns(
@@ -135,6 +145,8 @@ def generate_buy_and_hold_returns(
     """
     assert isinstance(buy_and_hold_price_series, pd.Series)
     returns = calculate_returns(buy_and_hold_price_series)
+
+    returns.attrs["curve"] = CurveType.returns
     return returns
 
 

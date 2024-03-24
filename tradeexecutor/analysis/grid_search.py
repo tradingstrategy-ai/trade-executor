@@ -19,6 +19,7 @@ from plotly.graph_objs import Figure, Scatter
 
 from tradeexecutor.backtest.grid_search import GridSearchResult
 from tradeexecutor.state.types import USDollarAmount
+from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
 from tradeexecutor.visual.benchmark import visualise_all_cash, visualise_portfolio_equity_curve
 
 VALUE_COLS = ["CAGR", "Max drawdown", "Sharpe", "Sortino", "Average position", "Median position"]
@@ -531,3 +532,4 @@ def find_best_grid_search_results(grid_search_results: list[GridSearchResult], c
         sharpe=sorted(grid_search_results, key=lambda r: r.get_sharpe(), reverse=True)[0: count],
     )
     return result
+

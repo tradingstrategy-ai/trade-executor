@@ -11,7 +11,7 @@ import pytest
 import pandas as pd
 from pandas_ta.overlap import ema
 
-from tradeexecutor.analysis.multi_asset_benchmark import get_benchmark_data, compare_strategy_backtest_to_multiple_assets
+from tradeexecutor.analysis.multi_asset_benchmark import compare_strategy_backtest_to_multiple_assets, get_benchmark_data
 from tradeexecutor.analysis.trade_analyser import build_trade_analysis, expand_timeline, expand_timeline_raw, TimelineRowStylingMode, TradeAnalysis, TradeSummary
 from tradeexecutor.backtest.backtest_runner import run_backtest_inline
 from tradeexecutor.cli.log import setup_pytest_logging
@@ -23,7 +23,7 @@ from tradeexecutor.testing.synthetic_ethereum_data import generate_random_ethere
 from tradeexecutor.testing.synthetic_exchange_data import generate_exchange, generate_simple_routing_model
 from tradeexecutor.testing.synthetic_price_data import generate_ohlcv_candles
 from tradeexecutor.visual.benchmark import visualise_equity_curve_benchmark, visualise_long_short_benchmark, create_benchmark_equity_curves, \
-    visualise_vs_returns
+    visualise_vs_returns, visualise_equity_curves
 from tradingstrategy.candle import GroupedCandleUniverse
 from tradeexecutor.state.trade import TradeExecution
 from tradeexecutor.strategy.pricing_model import PricingModel
@@ -37,7 +37,7 @@ from tradeexecutor.strategy.reserve_currency import ReserveCurrency
 from tradeexecutor.strategy.strategy_type import StrategyType
 from tradeexecutor.strategy.default_routing_options import TradeRouting
 from tradeexecutor.visual.equity_curve import calculate_equity_curve, calculate_returns, calculate_compounding_realised_trading_profitability, \
-    calculate_long_compounding_realised_trading_profitability, calculate_rolling_sharpe
+    calculate_long_compounding_realised_trading_profitability, calculate_rolling_sharpe, resample_returns
 from tradeexecutor.analysis.advanced_metrics import visualise_advanced_metrics, AdvancedMetricsMode
 
 
@@ -688,4 +688,41 @@ def test_compare_portfolios(
     assert df.columns[1] == "ETH"
 
 
+def test_compare_portfolios(
+    backtest_result: tuple[State, TradingStrategyUniverse, dict],
+    summary: TradeSummary
+):
+    """Compare multiple portfolios or return series."""
+
+    state, universe, debug_dump = backtest_result
+    df = compare_strategy_backtest_to_multiple_assets(
+        state,
+        universe,
+    )
+    assert len(df.columns) == 2
+    assert df.columns[0] == "Strategy"
+    assert df.columns[1] == "ETH"
+
+
+def test_visualise_comparison(
+    backtest_result: tuple[State, TradingStrategyUniverse, dict],
+    summary: TradeSummary
+):
+    """Compare multiple portfolios or return series."""
+
+    state, strategy_universe, debug_dump = backtest_result
+
+    # Get daily returns
+    equity = calculate_equity_curve(state)
+
+    benchmarks = get_benchmark_data(
+        strategy_universe,
+        cumulative_with_initial_cash=state.portfolio.get_initial_cash(),
+    )
+
+    fig = visualise_equity_curves(
+        [equity, benchmarks["ETH"]],
+    )
+
+    assert len(fig.data) == 2
 
