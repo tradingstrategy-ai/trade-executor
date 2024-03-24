@@ -20,6 +20,7 @@ def visualise_single_grid_search_result_benchmark(
     result: GridSearchResult,
     strategy_universe: TradingStrategyUniverse,
     initial_cash: USDollarAmount | None = None,
+    name="Picked grid search result",
 ) -> go.Figure:
     """Draw one equity curve from grid search results.
 
@@ -53,12 +54,18 @@ def visualise_single_grid_search_result_benchmark(
 
     :param result:
         Picked grid search result
+
     :param strategy_universe:
         Used to get benechmark indexes
+
+    :param name:
+        Chart title
+
     :param initial_cash:
         Not needed. Automatically filled in by grid search.
 
         Legacy param.
+
     :return:
         Plotly figure
     """
@@ -78,7 +85,8 @@ def visualise_single_grid_search_result_benchmark(
     benchmark_series = [v for k, v in benchmarks.items()]
 
     fig = visualise_equity_curves(
-        [equity] + benchmark_series
+        [equity] + benchmark_series,
+        name=name,
     )
 
     return fig
