@@ -189,8 +189,12 @@ class TradeSummary:
     average_duration_between_position_openings: Optional[datetime.timedelta] = None
     average_position_frequency: Optional[datetime.timedelta] = None
 
-    # Backwards compatiblity only
+    # Backwards compatiblity only.
+    #
+    # TODO: Remove these in ~3 months.
+    #
     average_duration_between_positions: int = 0
+    average_duration_between_postions: int = 0
 
     # Time in market
     # Doesn't include any open positions
