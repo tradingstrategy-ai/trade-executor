@@ -100,11 +100,31 @@ def visualise_grid_search_equity_curves(
 
     - Benchmark against hold all cash
 
-    Example for a single trading pair strategy:
+    .. note ::
+
+        Only good up to ~hundreds results. If more than thousand result, rendering takes too long time.
+
+    Example that draws equity curves of a grid search results.
 
     .. code-block:: python
 
-        TODO
+        from tradeexecutor.visual.grid_search import visualise_grid_search_equity_curves
+        from tradeexecutor.analysis.multi_asset_benchmark import get_benchmark_data
+
+        # Automatically create BTC and ETH buy and hold benchmark if present
+        # in the trading universe
+        benchmark_indexes = get_benchmark_data(
+            strategy_universe,
+            cumulative_with_initial_cash=ShiftedStrategyParameters.initial_cash,
+        )
+
+        fig = visualise_grid_search_equity_curves(
+            grid_search_results,
+            name="8h clock shift, stop loss added and adjusted momentum",
+            benchmark_indexes=benchmark_indexes,
+            log_y=False,
+        )
+        fig.show()
 
     :param results:
         Results from the grid search.
