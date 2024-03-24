@@ -277,6 +277,11 @@ class GridSearchResult:
     combination: GridCombination
 
     #: The full back test state
+    #:
+    #: By the default, grid search execution drops these,
+    #: as saving and loading them takes extra time, space,
+    #: and state is not used to compare grid search results.
+    #:
     state: State | None
 
     #: Calculated trade summary
@@ -310,6 +315,13 @@ class GridSearchResult:
     #:
     #: Only applicable to multiprocessing
     process_id: int = None
+
+    #: Initial cash from the state.
+    #:
+    #: Copied here from the state, as it is needed to draw equity curves.
+    #: Not available in legacy data.
+    #:
+    initial_cash: USDollarAmount | None = None
 
     def __hash__(self):
         return self.combination.__hash__()
@@ -1025,6 +1037,7 @@ def run_grid_search_backtest(
         universe_options=universe.options,
         equity_curve=equity,
         returns=returns,
+        initial_cash=state.portfolio.get_initial_cash(),
     )
 
 
