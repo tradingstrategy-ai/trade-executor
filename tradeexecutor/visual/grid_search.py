@@ -37,6 +37,8 @@ def visualise_single_grid_search_result_benchmark(
 
     - :py:func:`tradeexecutor.analysis.multi_asset_benchmark.get_benchmark_data`
 
+    - :py:func:`tradeexecutor.analysis.grid_search.find_best_grid_search_results`
+
     Example:
 
     .. code-block:: python
