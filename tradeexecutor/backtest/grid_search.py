@@ -336,7 +336,12 @@ class GridSearchResult:
         return f"<GridSearchResult\n  {self.combination.get_all_parameters_label()}\n  CAGR: {cagr*100:.2f}% Sharpe: {sharpe:.2f} Max drawdown:{max_drawdown*100:.2f}%\n>"
 
     def get_label(self) -> str:
-        """Get name for this result for charts."""
+        """Get name for this result for charts.
+
+        - Label is grid search parameter key values
+
+        - Includes only searched parameters as label
+        """
         return self.combination.get_label()
 
     def get_metric(self, name: str) -> float:

@@ -14,7 +14,7 @@ from tradeexecutor.strategy.execution_context import ExecutionContext, Execution
 from tradeexecutor.strategy.pandas_trader.indicator import IndicatorSet, DiskIndicatorStorage, IndicatorSource
 from tradeexecutor.strategy.pandas_trader.strategy_input import StrategyInput
 from tradeexecutor.strategy.parameters import StrategyParameters
-from tradeexecutor.visual.grid_search import visualise_grid_search_result_benchmark
+from tradeexecutor.visual.grid_search import visualise_single_grid_search_result_benchmark, visualise_grid_search_equity_curves
 from tradingstrategy.candle import GroupedCandleUniverse
 from tradingstrategy.chain import ChainId
 from tradingstrategy.exchange import Exchange
@@ -22,7 +22,7 @@ from tradingstrategy.timebucket import TimeBucket
 from tradingstrategy.universe import Universe
 
 from tradeexecutor.analysis.grid_search import analyse_grid_search_result, render_grid_search_result_table, visualise_heatmap_2d, \
-    visualise_grid_search_equity_curves, find_best_grid_search_results
+    find_best_grid_search_results
 from tradeexecutor.backtest.grid_search import prepare_grid_combinations, run_grid_search_backtest, perform_grid_search, GridCombination, GridSearchResult, \
     pick_grid_search_result, pick_best_grid_search_result, GridParameter
 from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier
@@ -633,5 +633,5 @@ def test_visualise_grid_search_equity_curve(
     )
     best_results = find_best_grid_search_results(grid_search_results)
 
-    fig = visualise_grid_search_result_benchmark(best_results.cagr[0], strategy_universe)
+    fig = visualise_single_grid_search_result_benchmark(best_results.cagr[0], strategy_universe)
     assert len(fig.data) == 2
