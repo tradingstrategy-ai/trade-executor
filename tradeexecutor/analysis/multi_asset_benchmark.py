@@ -5,7 +5,7 @@ import pandas as pd
 from tradeexecutor.analysis.advanced_metrics import AdvancedMetricsMode, calculate_advanced_metrics
 from tradeexecutor.state.state import State
 from tradeexecutor.state.types import USDollarAmount
-from tradeexecutor.visual.benchmark import DEFAULT_BENCHMARK_COLOURS
+from tradeexecutor.analysis.curve import DEFAULT_BENCHMARK_COLOURS, CurveType
 from tradeexecutor.visual.equity_curve import calculate_equity_curve, calculate_returns, resample_returns
 
 from tradeexecutor.state.identifier import TradingPairIdentifier
@@ -105,9 +105,12 @@ def get_benchmark_data(
             cumulative_returns = (1 + daily_returns).cumprod()
             df[name] = cumulative_returns * cumulative_with_initial_cash
             df[name].attrs["returns_series_type"] = "cumulative_returns"
+            df[name].attrs["curve"] = CurveType.equity
         else:
             df[name] = daily_returns
             df[name].attrs["returns_series_type"] = "daily_returns"
+            df[name].attrs["period"] = "D"
+            df[name].attrs["curve"] = CurveType.returns
 
         df[name].attrs["colour"] = asset_colours.get(name)
         df[name].attrs["name"] = name

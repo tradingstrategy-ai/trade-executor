@@ -277,6 +277,11 @@ class GridSearchResult:
     combination: GridCombination
 
     #: The full back test state
+    #:
+    #: By the default, grid search execution drops these,
+    #: as saving and loading them takes extra time, space,
+    #: and state is not used to compare grid search results.
+    #:
     state: State | None
 
     #: Calculated trade summary
@@ -311,6 +316,13 @@ class GridSearchResult:
     #: Only applicable to multiprocessing
     process_id: int = None
 
+    #: Initial cash from the state.
+    #:
+    #: Copied here from the state, as it is needed to draw equity curves.
+    #: Not available in legacy data.
+    #:
+    initial_cash: USDollarAmount | None = None
+
     def __hash__(self):
         return self.combination.__hash__()
 
@@ -324,7 +336,12 @@ class GridSearchResult:
         return f"<GridSearchResult\n  {self.combination.get_all_parameters_label()}\n  CAGR: {cagr*100:.2f}% Sharpe: {sharpe:.2f} Max drawdown:{max_drawdown*100:.2f}%\n>"
 
     def get_label(self) -> str:
-        """Get name for this result for charts."""
+        """Get name for this result for charts.
+
+        - Label is grid search parameter key values
+
+        - Includes only searched parameters as label
+        """
         return self.combination.get_label()
 
     def get_metric(self, name: str) -> float:
@@ -1025,6 +1042,7 @@ def run_grid_search_backtest(
         universe_options=universe.options,
         equity_curve=equity,
         returns=returns,
+        initial_cash=state.portfolio.get_initial_cash(),
     )
 
 
