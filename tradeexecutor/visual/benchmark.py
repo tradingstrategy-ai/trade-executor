@@ -744,14 +744,14 @@ def visualise_equity_curves(
         # See curve.py for potential attributes
         assert isinstance(curve, pd.Series), f"Expected pd.Series, got {type(curve)}"
         assert isinstance(curve.index, pd.DatetimeIndex), f"Expected DateTimeIndex, got {type(curve.index)}"
-        name = curve.attrs.get("name")
-        assert name, "Series lacks attrs['name']"
+        curve_name = curve.attrs.get("name")
+        assert curve_name, "Series lacks attrs['name']"
         curve_type = curve.attrs.get("curve")
-        assert curve_type, f"Series lacks attrs['curve']: {name}"
+        assert curve_type, f"Series lacks attrs['curve']: {curve_name}"
         colour = curve.attrs.get("colour")
-        assert colour, f"Series lacks attrs['colour']: {name}"
+        assert colour, f"Series lacks attrs['colour']: {curve_name}"
         assert isinstance(curve_type, CurveType), f"{name}: Expected curve to be CurveType, got {type(curve_type)}"
-        assert curve_type == CurveType.equity, f"Only CurveType.equity is supported in this point, got {curve_type} for {name}"
+        assert curve_type == CurveType.equity, f"Only CurveType.equity is supported in this point, got {curve_type} for {curve_name}"
 
         # not implemented yet
         # series = transform_to_equity_curve(curve, initial_cash)
@@ -761,13 +761,13 @@ def visualise_equity_curves(
             x=series.index,
             y=series,
             mode="lines",
-            name=name,
+            name=curve_name,
             line=dict(color=colour),
         )
 
         fig.add_trace(trace)
 
-    fig.update_layout(title=f"{name}", height=height)
+    fig.update_layout(title=name, height=height)
 
     if log_y:
         fig.update_yaxes(title="Value $ (logarithmic)", showgrid=False, type="log")
