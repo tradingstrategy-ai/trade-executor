@@ -246,6 +246,21 @@ class GridCombination:
     def to_strategy_parameters(self) -> StrategyParameters:
         return StrategyParameters(self.as_dict())
 
+    def get_parameter(self, name: str) -> object:
+        """Get a parameter value.
+
+        :param name:
+            Parameter name
+
+        :raise ValueError:
+            If parameter is missing.
+        """
+        for p in self.parameters:
+            if p.name == name:
+                return p.value
+
+        raise ValueError(f"No parameter: {name}")
+
     @staticmethod
     def get_all_indicators(combinations: Iterable["GridCombination"]) -> set[IndicatorKey]:
         """Get all defined indicators that need to be calculated, across all grid search combinatios.
@@ -392,6 +407,24 @@ class GridSearchResult:
 
     def get_max_drawdown(self) -> Percent:
         return self.get_metric("Max Drawdown")
+
+    def get_parameter(self, name) -> object:
+        """Get a combination parameter value used to produce this search.
+
+        Useful in filtering.
+
+        .. code-block:: python
+
+            filtered_results = [r for r in grid_search_results if r.combination.get_parameter("regime_filter_ma_length") is None]
+            print(f"Grid search results without regime filter: {len(filtered_resutls)}")
+
+        :param name:
+            Parameter name
+
+        :raise ValueError:
+            If parameter is missing.
+        """
+        return self.combination.get_parameter(name)
 
     @staticmethod
     def has_result(combination: GridCombination):

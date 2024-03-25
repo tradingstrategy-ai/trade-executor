@@ -566,6 +566,9 @@ def test_perform_grid_search_engine_v5(
     )
     assert len(results_2) == 2
 
+    filtered_results = [r for r in results_2 if r.get_parameter("fast_ema_candle_count") == 2]
+    assert len(filtered_results) == 1
+
     # Check we got results back
     for r in results_2:
         assert r.metrics.loc["Sharpe"][0] != 0
