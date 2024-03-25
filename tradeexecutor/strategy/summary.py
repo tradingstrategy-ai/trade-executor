@@ -30,7 +30,12 @@ class KeyMetricKind(enum.Enum):
     #: UNIX timestamp when the first trade was executd
     started_at = "started_at"
 
-    #: Annualised profitability
+    #: CAGR
+    #:
+    #: See :term:`CAGR`
+    cagr = "cagr"
+
+    #: All-time profitability
     profitability = "profitability"
 
     #: Total equity
@@ -470,6 +475,7 @@ class StrategySummary:
 
 #: Help links for different metrics
 _KEY_METRIC_HELP = {
+   KeyMetricKind.cagr: "https://tradingstrategy.ai/glossary/compound-annual-growth-rate-cagr",
    KeyMetricKind.sharpe: "https://tradingstrategy.ai/glossary/sharpe",
    KeyMetricKind.sortino: "https://tradingstrategy.ai/glossary/sortino",
    KeyMetricKind.max_drawdown: "https://tradingstrategy.ai/glossary/maximum-drawdown",
