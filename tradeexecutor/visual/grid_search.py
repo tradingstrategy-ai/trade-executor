@@ -8,6 +8,7 @@ import pandas as pd
 import plotly.graph_objects as go
 from plotly.graph_objs import Figure, Scatter
 
+from tradeexecutor.analysis.curve import CurveType
 from tradeexecutor.analysis.grid_search import _get_hover_template
 from tradeexecutor.analysis.multi_asset_benchmark import get_benchmark_data
 from tradeexecutor.backtest.grid_search import GridSearchResult
@@ -76,6 +77,7 @@ def visualise_single_grid_search_result_benchmark(
     # Get daily returns
     equity = result.equity_curve
     equity.attrs["name"] = result.get_label()
+    equity.attrs["curve"] = CurveType.equity
 
     benchmarks = get_benchmark_data(
         strategy_universe,
