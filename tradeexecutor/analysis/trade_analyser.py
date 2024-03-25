@@ -141,6 +141,7 @@ class TradeSummary:
     median_trade: Optional[float] = None  # position
     max_pos_cons: Optional[int] = None
     max_neg_cons: Optional[int] = None
+    max_delta_neutral_cons: Optional[int] = None
     max_pullback: Optional[float] = None
     max_loss_risk: Optional[float] = None
     max_realised_loss: Optional[float] = None
@@ -187,11 +188,13 @@ class TradeSummary:
     #: Profit in open positions at the end
     unrealised_profit: Optional[USDollarAmount] = None
 
+    #: Interest stats
     average_interest_paid_usd: Optional[USDollarPrice] = None
     total_interest_paid_usd: Optional[USDollarPrice] = None
     median_interest_paid_usd: Optional[USDollarPrice] = None
     max_interest_paid_usd: Optional[USDollarPrice] = None
     min_interest_paid_usd: Optional[USDollarPrice] = None
+    total_claimed_interest: Optional[USDollarPrice] = None
 
     average_duration_between_position_openings: Optional[datetime.timedelta] = None
     average_position_frequency: Optional[datetime.timedelta] = None
@@ -205,7 +208,12 @@ class TradeSummary:
 
     # Time in market
     # Doesn't include any open positions
-    time_in_market: Optional[datetime.timedelta] = None
+    # Includes credit supply (delta neutral) positions
+    time_in_market_all: Optional[datetime.timedelta] = None
+
+    # Doens't include any open positions
+    # Doesn't include credit supply (delta neutral) positions
+    time_in_market_volatile: Optional[datetime.timedelta] = None
 
     def __post_init__(self):
         self.total_positions = self.won + self.lost + self.zero_loss + self.delta_neutral
@@ -262,7 +270,7 @@ class TradeSummary:
             "Annualised return %": as_percent(self.annualised_return_percent),
             "Cash at start": as_dollar(self.initial_cash),
             "Value at end": as_dollar(self.end_value),
-            "Time in market": as_percent(self.time_in_market),
+            "Time in market": as_percent(self.time_in_market_all),
             "Trade volume": as_dollar(self.trade_volume),
             "Position win percent": as_percent(self.win_percent),
             "Total positions": as_integer(self.total_positions),
@@ -423,7 +431,8 @@ class TradeSummary:
             "Lifetime return %": as_percent(self.return_percent),
             "Realised PnL": as_dollar(self.realised_profit),
             "Unrealised PnL": as_dollar(self.unrealised_profit) if self.unrealised_profit else as_dollar(0),
-            'Trade period': as_duration(self.duration),
+            "Trade period": as_duration(self.duration),
+            "Time in market volatile": as_percent(self.time_in_market_volatile),
         }
 
         df1 = create_summary_table(data1, "", "Returns")
@@ -476,7 +485,7 @@ class TradeSummary:
             'Max consecutive streak': [
                 as_integer(self.max_pos_cons),
                 as_integer(self.max_neg_cons),
-                as_integer(1),
+                as_integer(self.max_delta_neutral_cons),
                 as_percent(None)
             ],
             'Max runup / drawdown': [
@@ -527,6 +536,7 @@ class TradeSummary:
             'Max interest paid': as_dollar(self.max_interest_paid_usd),
             'Min interest paid': as_dollar(self.min_interest_paid_usd),
             'Total interest paid': as_dollar(self.total_interest_paid_usd),
+            'Total interest claimed': as_dollar(self.total_claimed_interest),
         }
 
         df6 = create_summary_table(data6, "", "Interest Paid")
@@ -776,11 +786,17 @@ class TradeAnalysis:
             return func(lst) if lst else None
         
         def _get_final_start_time(previous_position_closed_at, current_position_opened_at):
-            """Used in `time_in_market` calculation"""
+            """Used in `time_in_market_all` calculation"""
             if not previous_position_closed_at or current_position_opened_at > previous_position_closed_at:
                 return current_position_opened_at
             else:
                 return previous_position_closed_at  # overlapping
+            
+        def _append_position_duration_by_market_condition(times_in_market_all, times_in_market_volatile, current_grouped_duration, position):
+            """Append position duration to `times_in_market_all` and `times_in_market_volatile` lists."""
+            times_in_market_all.append(current_grouped_duration)
+            if not position.is_credit_supply():
+                times_in_market_volatile.append(current_grouped_duration)
 
         initial_cash = self.portfolio.get_initial_cash()
 
@@ -804,7 +820,9 @@ class TradeAnalysis:
         realised_losses = []
         interest_paid_usd = []
         durations_between_positions = []
-        times_in_market = []
+        times_in_market_all = []
+        times_in_market_volatile = []  # excludes delta neutral positions
+
         biggest_winning_trade_pc = None
         biggest_losing_trade_pc = None
 
@@ -829,9 +847,11 @@ class TradeAnalysis:
 
         max_pos_cons = 0
         max_neg_cons = 0
+        max_delta_neutral_cons = 0
         max_pullback_pct = 0
         pos_cons = 0
         neg_cons = 0
+        delta_neutral_cons = 0
         pullback = 0
         total_trades = 0
 
@@ -845,6 +865,8 @@ class TradeAnalysis:
         current_grouped_duration = datetime.timedelta(0)
         open_position_lock = False
 
+        total_claimed_interest = 0
+
         for pair_id, position in sorted_positions:
 
             total_trades += len(position.trades)
@@ -853,8 +875,7 @@ class TradeAnalysis:
             capital_tied_at_open_pct = self.get_capital_tied_at_open(position)
 
             if position.stop_loss:
-                # TODO use maximum_risk
-                maximum_risk = position.get_loss_risk_at_open()
+                maximum_risk = position.get_loss_risk_at_open()  # TODO use maximum_risk
                 loss_risk_at_open_pc.append(position.get_loss_risk_at_open_pct())
             else:
                 maximum_risk = None
@@ -869,6 +890,16 @@ class TradeAnalysis:
             if previous_position_opened_at is not None:
                 durations_between_positions.append(position.opened_at - previous_position_opened_at) 
 
+            if position.is_credit_supply():
+                delta_neutral_cons += 1
+            else:
+                delta_neutral_cons = 0
+
+            if delta_neutral_cons > max_delta_neutral_cons:
+                max_delta_neutral_cons = delta_neutral_cons
+
+            total_claimed_interest += position.get_claimed_interest()
+
             if position.is_open():
                 open_value += position.get_value()
                 unrealised_profit_usd += position.get_unrealised_profit_usd()
@@ -881,7 +912,7 @@ class TradeAnalysis:
 
                     if strategy_end:
                         current_grouped_duration += strategy_end - start_time
-                        times_in_market.append(current_grouped_duration)
+                        _append_position_duration_by_market_condition(times_in_market_all, times_in_market_volatile, current_grouped_duration, position)
                     
                     open_position_lock = True
 
@@ -895,7 +926,7 @@ class TradeAnalysis:
                 if position.opened_at < previous_position_closed_at:
                     current_grouped_duration += (position.closed_at - previous_position_closed_at)  # overlapping group
                 else:
-                    times_in_market.append(current_grouped_duration)
+                    _append_position_duration_by_market_condition(times_in_market_all, times_in_market_volatile, current_grouped_duration, position)
                     current_grouped_duration = position_duration  # new group
             previous_position_opened_at = position.opened_at
             previous_position_closed_at = position.closed_at
@@ -959,14 +990,15 @@ class TradeAnalysis:
             # for getting max consecutive wins/losses and max pullback
             # don't do anything if profit = $0
 
-            if (realised_profit_usd > 0):
-                neg_cons = 0
-                pullback = 0
-                pos_cons += 1
-            elif (realised_profit_usd < 0):
-                pos_cons = 0
-                neg_cons += 1
-                pullback += realised_profit_usd
+            if not position.is_credit_supply():
+                if (realised_profit_usd > 0):
+                    neg_cons = 0
+                    pullback = 0
+                    pos_cons += 1
+                elif (realised_profit_usd < 0):
+                    pos_cons = 0
+                    neg_cons += 1
+                    pullback += realised_profit_usd
 
             if (neg_cons > max_neg_cons):
                 max_neg_cons = neg_cons
@@ -1005,8 +1037,10 @@ class TradeAnalysis:
 
         biggest_winning_trade_pc = func_check(winning_trades, max)
         biggest_losing_trade_pc = func_check(losing_trades, min)
-        time_in_market = pd.to_timedelta(times_in_market).sum()/strategy_duration if (len(times_in_market) > 0 and strategy_duration) else 0
         biggest_delta_neutral_pc = func_check(delta_neutral_positions, max)
+        
+        time_in_market_all = pd.to_timedelta(times_in_market_all).sum()/strategy_duration if (len(times_in_market_all) > 0 and strategy_duration) else 0
+        time_in_market_volatile = pd.to_timedelta(times_in_market_volatile).sum()/strategy_duration if (len(times_in_market_volatile) > 0 and strategy_duration) else 0
 
         all_durations = winning_trades_duration + losing_trades_duration + zero_loss_trades_duration
         average_duration_of_winning_trades = get_avg_trade_duration(winning_trades_duration)
@@ -1052,11 +1086,13 @@ class TradeAnalysis:
             max_interest_paid_usd=max_interest_paid_usd,
             min_interest_paid_usd=min_interest_paid_usd,
             total_interest_paid_usd=total_interest_paid_usd,
+            total_claimed_interest=total_claimed_interest,
             median_trade=median_trade,
             median_win=median_win,
             median_loss=median_loss,
             max_pos_cons=max_pos_cons,
             max_neg_cons=max_neg_cons,
+            max_delta_neutral_cons=max_delta_neutral_cons,
             max_pullback=max_pullback_pct,
             #max_drawdown=max_drawdown,
             #max_runup=max_runup,
@@ -1075,7 +1111,8 @@ class TradeAnalysis:
             #sharpe_ratio=sharpe_ratio,
             #sortino_ratio=sortino_ratio,
             #profit_factor=profit_factor,
-            time_in_market = time_in_market,
+            time_in_market_all = time_in_market_all,
+            time_in_market_volatile = time_in_market_volatile,
             delta_neutral=delta_neutral,
             median_delta_neutral=median_delta_neutral,
             average_delta_neutral_profit_pc=average_delta_neutral_profit_pc,
