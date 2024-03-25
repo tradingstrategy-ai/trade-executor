@@ -8,6 +8,7 @@ from typing import List, Iterable, Literal
 
 import pandas as pd
 import numpy as np
+from quantstats.stats import cagr
 
 from tradeexecutor.state.portfolio import Portfolio
 from tradeexecutor.state.state import State
@@ -142,6 +143,17 @@ def calculate_profitability(returns: pd.Series) -> Percent:
     return compounded[-1]
 
 
+def calculate_cagr(returns: pd.Series) -> Percent:
+    """Calculate CAGR.
+
+    See :term:`CAGR`.
+
+    :param returns:
+        Returns series
+    """
+    return cagr(returns)
+
+
 def calculate_trades_last_week(portfolio: Portfolio, cut_off_date=None) -> int:
     """How many trades were executed last week.
 
@@ -158,10 +170,10 @@ def calculate_trades_last_week(portfolio: Portfolio, cut_off_date=None) -> int:
 
 
 def calculate_key_metrics(
-        live_state: State,
-        backtested_state: State | None = None,
-        required_history = datetime.timedelta(days=90),
-        freq_base: pd.DateOffset = pd.offsets.Day(),
+    live_state: State,
+    backtested_state: State | None = None,
+    required_history = datetime.timedelta(days=90),
+    freq_base: pd.DateOffset = pd.offsets.Day(),
 ) -> Iterable[KeyMetric]:
     """Calculate summary metrics to be displayed on the web frontend.
 
@@ -225,6 +237,9 @@ def calculate_key_metrics(
         profitability = calculate_profitability(daily_returns)
         yield KeyMetric.create_metric(KeyMetricKind.profitability, source, profitability, calculation_window_start_at, calculation_window_end_at, KeyMetricCalculationMethod.historical_data)
 
+        cagr = calculate_cagr(daily_returns)
+        yield KeyMetric.create_metric(KeyMetricKind.cagr, source, cagr, calculation_window_start_at, calculation_window_end_at, KeyMetricCalculationMethod.historical_data)
+
         if live_state:
             total_equity = live_state.portfolio.get_total_equity()
 
@@ -246,6 +261,7 @@ def calculate_key_metrics(
         calculation_window_start_at = None
         calculation_window_end_at = None
 
+        yield KeyMetric.create_na(KeyMetricKind.cagr, reason)
         yield KeyMetric.create_na(KeyMetricKind.sharpe, reason)
         yield KeyMetric.create_na(KeyMetricKind.sortino, reason)
         yield KeyMetric.create_na(KeyMetricKind.max_drawdown, reason)

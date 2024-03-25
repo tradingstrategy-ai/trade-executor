@@ -146,7 +146,9 @@ class Metadata:
 
     #: How many days live data is collected until key metrics are switched from backtest to live trading based
     #:
-    key_metrics_backtest_cut_off: datetime.timedelta = datetime.timedelta(days=90)
+    #: Two years: by default we do not show live trading metrics until the strategy has been running for long.
+    #:
+    key_metrics_backtest_cut_off: datetime.timedelta = datetime.timedelta(days=365*2)
 
     #: List of badges strategy tile can display.
     #:
