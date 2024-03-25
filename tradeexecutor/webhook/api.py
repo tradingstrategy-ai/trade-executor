@@ -243,6 +243,8 @@ def web_chart(request: Request):
     Under wrong circumstances
     """
 
+    run_state: RunState = request.registry["run_state"]
+
     type_str = request.params.get("type")
     source_str = request.params.get("source")
 
@@ -257,11 +259,8 @@ def web_chart(request: Request):
         return exception_response(501, detail=f"Not implemented. Unknown source {source_str}")
 
     if source == WebChartSource.live_trading:
-        store: JSONFileStore = request.registry["store"]
-
-        #: We load from the disk to prevent any
-        #: modify in place issues.... slow
-        state = store.load()
+        # Use read-only state copy to calculate charts
+        state = run_state.read_only_state_copy
     else:
         metadata = cast(Metadata, request.registry["metadata"])
         state = metadata.backtested_state
