@@ -426,6 +426,10 @@ class GridSearchResult:
         """
         return self.combination.get_parameter(name)
 
+    def get_trade_count(self) -> int:
+        """How many trades this strategy made."""
+        return self.summary.total_trades
+
     @staticmethod
     def has_result(combination: GridCombination):
         base_path = combination.result_path
