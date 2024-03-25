@@ -160,7 +160,10 @@ def calculate_cagr(returns: pd.Series) -> Percent:
     if len(returns) == 0:
         return 0
 
-    return cagr(returns)
+    try:
+        return cagr(returns)
+    except ZeroDivisionError:
+        return 0
 
 
 def calculate_trades_last_week(portfolio: Portfolio, cut_off_date=None) -> int:
