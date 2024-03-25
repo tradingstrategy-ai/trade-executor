@@ -8,7 +8,6 @@ from typing import List, Iterable, Literal
 
 import pandas as pd
 import numpy as np
-from quantstats.stats import cagr
 
 from tradeexecutor.state.portfolio import Portfolio
 from tradeexecutor.state.state import State
@@ -154,8 +153,14 @@ def calculate_cagr(returns: pd.Series) -> Percent:
     :return:
         Compounded returns,
 
-        0 if cannot calculate.
+        0 if cannot calculate, or QuantStats unimportable.
     """
+
+    try:
+        # Does not work in pyodide
+        from quantstats.stats import cagr
+    except ImportError:
+        return 0
 
     if len(returns) == 0:
         return 0
