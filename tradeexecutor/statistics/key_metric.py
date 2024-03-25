@@ -150,7 +150,16 @@ def calculate_cagr(returns: pd.Series) -> Percent:
 
     :param returns:
         Returns series
+
+    :return:
+        Compounded returns,
+
+        0 if cannot calculate.
     """
+
+    if len(returns) == 0:
+        return 0
+
     return cagr(returns)
 
 
