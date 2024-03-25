@@ -261,6 +261,7 @@ def web_chart(request: Request):
     if source == WebChartSource.live_trading:
         # Use read-only state copy to calculate charts
         state = run_state.read_only_state_copy
+        assert state is not None, "We asked for teh RunState.read_only_state_copy but it was not set in this point"
     else:
         metadata = cast(Metadata, request.registry["metadata"])
         state = metadata.backtested_state
