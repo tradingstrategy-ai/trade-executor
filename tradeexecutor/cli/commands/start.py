@@ -346,6 +346,11 @@ def start(
         run_state.executor_id = id
         run_state.hot_wallet_gas_warning_level = Decimal(gas_balance_warning_level)
 
+        # Set up read-only state sync
+        if not store.is_pristine():
+            run_state.read_only_state_copy = store.load()
+        store.on_save = run_state.on_save_hook
+
         # Create our webhook server
         if http_enabled:
 
