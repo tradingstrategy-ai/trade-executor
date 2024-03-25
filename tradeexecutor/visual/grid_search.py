@@ -22,6 +22,7 @@ def visualise_single_grid_search_result_benchmark(
     strategy_universe: TradingStrategyUniverse,
     initial_cash: USDollarAmount | None = None,
     name="Picked grid search result",
+    log_y=False,
 ) -> go.Figure:
     """Draw one equity curve from grid search results.
 
@@ -90,6 +91,7 @@ def visualise_single_grid_search_result_benchmark(
     fig = visualise_equity_curves(
         [equity] + benchmark_series,
         name=name,
+        log_y=log_y,
     )
 
     return fig
