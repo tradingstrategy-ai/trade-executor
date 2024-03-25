@@ -411,6 +411,14 @@ class TopGridSearchResult:
 def find_best_grid_search_results(grid_search_results: list[GridSearchResult], count=20, unique_only=True) -> TopGridSearchResult:
     """From all grid search results, filter out the best one to be displayed.
 
+    :param unique_only:
+        Return unique value matches only.
+
+        If multiple grid search results share the same metric (CAGR),
+        filter out duplicates. Otherwise the table will be littered with duplicates.
+
+    :return:
+        Top lists
     """
 
     if unique_only:
