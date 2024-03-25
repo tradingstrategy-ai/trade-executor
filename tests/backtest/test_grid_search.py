@@ -14,13 +14,15 @@ from tradeexecutor.strategy.execution_context import ExecutionContext, Execution
 from tradeexecutor.strategy.pandas_trader.indicator import IndicatorSet, DiskIndicatorStorage, IndicatorSource
 from tradeexecutor.strategy.pandas_trader.strategy_input import StrategyInput
 from tradeexecutor.strategy.parameters import StrategyParameters
+from tradeexecutor.visual.grid_search import visualise_single_grid_search_result_benchmark, visualise_grid_search_equity_curves
 from tradingstrategy.candle import GroupedCandleUniverse
 from tradingstrategy.chain import ChainId
 from tradingstrategy.exchange import Exchange
 from tradingstrategy.timebucket import TimeBucket
 from tradingstrategy.universe import Universe
 
-from tradeexecutor.analysis.grid_search import analyse_grid_search_result, render_grid_search_result_table, visualise_heatmap_2d, visualise_grid_search_equity_curves
+from tradeexecutor.analysis.grid_search import analyse_grid_search_result, render_grid_search_result_table, visualise_heatmap_2d, \
+    find_best_grid_search_results
 from tradeexecutor.backtest.grid_search import prepare_grid_combinations, run_grid_search_backtest, perform_grid_search, GridCombination, GridSearchResult, \
     pick_grid_search_result, pick_best_grid_search_result, GridParameter
 from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier
@@ -581,3 +583,55 @@ def test_perform_grid_search_engine_v5(
     )
     assert len(results) == 2
 
+
+def test_visualise_grid_search_equity_curve(
+    strategy_universe,
+    indicator_storage,
+    tmp_path,
+):
+    """Visualise grid search equity curve and other results.
+    """
+    class Parameters:
+        cycle_duration = CycleDuration.cycle_1d
+        initial_cash = 10_000
+        test_param = [1, 2]
+
+    def _decide_trades_flip_buy_sell(input: StrategyInput) -> List[TradeExecution]:
+        """Every other day buy, every other sell."""
+        position_manager = input.get_position_manager()
+        pair = input.strategy_universe.get_single_pair()
+        cash = position_manager.get_current_cash()
+        if input.cycle % 2 == 0:
+            return position_manager.open_spot(pair, cash * 0.99)
+        else:
+            if position_manager.is_any_open():
+                return position_manager.close_all()
+        return []
+
+    def create_indicators(timestamp: datetime.datetime, parameters: StrategyParameters, strategy_universe: TradingStrategyUniverse, execution_context: ExecutionContext):
+        # No indicators needed
+        return IndicatorSet()
+
+    combinations = prepare_grid_combinations(
+        Parameters,
+        tmp_path,
+        strategy_universe=strategy_universe,
+        create_indicators=create_indicators,
+        execution_context=ExecutionContext(mode=ExecutionMode.unit_testing, grid_search=True),
+    )
+
+    assert len(combinations) == 2
+
+    # Single thread
+    grid_search_results = perform_grid_search(
+        _decide_trades_flip_buy_sell,
+        strategy_universe,
+        combinations,
+        max_workers=1,
+        trading_strategy_engine_version="0.5",
+        indicator_storage=indicator_storage,
+    )
+    best_results = find_best_grid_search_results(grid_search_results)
+
+    fig = visualise_single_grid_search_result_benchmark(best_results.cagr[0], strategy_universe)
+    assert len(fig.data) == 2

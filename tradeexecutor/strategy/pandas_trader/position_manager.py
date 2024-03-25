@@ -561,7 +561,7 @@ class PositionManager:
 
     def open_spot(
         self,
-        pair: Union[DEXPair, TradingPairIdentifier],
+        pair: Union[DEXPair, TradingPairIdentifier | None],
         value: USDollarAmount | Decimal,
         take_profit_pct: Optional[float] = None,
         stop_loss_pct: Optional[float] = None,

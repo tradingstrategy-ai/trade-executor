@@ -250,9 +250,9 @@ def start(
 
             if isinstance(mod, StrategyModuleInformation):
                 # This path is not enabled for legacy strategy modules
-                if mod.chain_id:
+                if mod.get_default_chain_id():
                     # Strategy tells what chain to use
-                    web3config.set_default_chain(mod.chain_id)
+                    web3config.set_default_chain(mod.get_default_chain_id())
                     web3config.check_default_chain_id()
                 else:
                     # User has configured only one chain, use it
@@ -327,7 +327,7 @@ def start(
             long_description,
             icon_url,
             asset_management_mode,
-            chain_id=mod.chain_id,
+            chain_id=mod.get_default_chain_id(),
             vault=vault,
             backtest_result=backtest_result,
             backtest_notebook=notebook_report,

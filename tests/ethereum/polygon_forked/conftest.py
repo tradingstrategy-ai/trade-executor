@@ -311,47 +311,50 @@ def one_delta_routing_model(
     )
 
 
-@pytest.fixture()
-def uniswap_v3_routing_model(asset_usdc) -> UniswapV3Routing:
+# @pytest.fixture()
+# def uniswap_v3_routing_model(asset_usdc) -> UniswapV3Routing:
 
-    # for uniswap v3
-    # same addresses for Mainnet, Polygon, Optimism, Arbitrum, Testnets Address
-    # only celo different
-    address_map = {
-        "factory": "0x1F98431c8aD98523631AE4a59f267346ea31F984",
-        "router": "0xE592427A0AEce92De3Edee1F18E0157C05861564",
-        "position_manager": "0xC36442b4a4522E871399CD717aBDD847Ab11FE88",
-        "quoter": "0xb27308f9F90D607463bb33eA1BeBb41C27CE5AB6"
-        # "router02":"0x68b3465833fb72A70ecDF485E0e4C7bD8665Fc45",
-        # "quoterV2":"0x61fFE014bA17989E743c5F6cB21bF9697530B21e"
-    }
+#     # for uniswap v3
+#     # same addresses for Mainnet, Polygon, Optimism, Arbitrum, Testnets Address
+#     # only celo different
+#     address_map = {
+#         "factory": "0x1F98431c8aD98523631AE4a59f267346ea31F984",
+#         "router": "0xE592427A0AEce92De3Edee1F18E0157C05861564",
+#         "position_manager": "0xC36442b4a4522E871399CD717aBDD847Ab11FE88",
+#         "quoter": "0xb27308f9F90D607463bb33eA1BeBb41C27CE5AB6"
+#         # "router02":"0x68b3465833fb72A70ecDF485E0e4C7bD8665Fc45",
+#         # "quoterV2":"0x61fFE014bA17989E743c5F6cB21bF9697530B21e"
+#     }
 
-    allowed_intermediary_pairs = {
-        # Route WMATIC through USDC:WMATIC fee 0.05% pool,
-        # https://tradingstrategy.ai/trading-view/polygon/uniswap-v3/matic-usdc-fee-5
-        "0x0d500b1d8e8ef31e21c99d1db9a6444d3adf1270": "0xa374094527e1673a86de625aa59517c5de346d32",
-        # Route WETH through USDC:WETH fee 0.05% pool,
-        # https://tradingstrategy.ai/trading-view/polygon/uniswap-v3/eth-usdc-fee-5
-        "0x7ceb23fd6bc0add59e62ac25578270cff1b9f619": "0x45dda9cb7c25131df268515131f647d726f50608",
-    }
+#     allowed_intermediary_pairs = {
+#         # Route WMATIC through USDC:WMATIC fee 0.05% pool,
+#         # https://tradingstrategy.ai/trading-view/polygon/uniswap-v3/matic-usdc-fee-5
+#         "0x0d500b1d8e8ef31e21c99d1db9a6444d3adf1270": "0xa374094527e1673a86de625aa59517c5de346d32",
+#         # Route WETH through USDC:WETH fee 0.05% pool,
+#         # https://tradingstrategy.ai/trading-view/polygon/uniswap-v3/eth-usdc-fee-5
+#         "0x7ceb23fd6bc0add59e62ac25578270cff1b9f619": "0x45dda9cb7c25131df268515131f647d726f50608",
+#     }
 
-    return UniswapV3Routing(
-        address_map,
-        allowed_intermediary_pairs,
-        reserve_token_address=asset_usdc.address,
-    )
+#     return UniswapV3Routing(
+#         address_map,
+#         allowed_intermediary_pairs,
+#         reserve_token_address=asset_usdc.address,
+#     )
 
 
-@pytest.fixture()
-def quickswap_routing_model(
-        quickswap_deployment,
-        wmatic_usdc_spot_pair,
-        asset_usdc,
-) -> UniswapV2Routing:
-    # Route WMATIC and USDC quoted pairs on Quickswap
-    uniswap_v2_router = UniswapV2Routing(
-        factory_router_map={quickswap_deployment.factory.address: (quickswap_deployment.router.address, quickswap_deployment.init_code_hash)},
-        allowed_intermediary_pairs={wmatic_usdc_spot_pair.base.address: wmatic_usdc_spot_pair.pool_address},
-        reserve_token_address=asset_usdc.address,
-    )
-    return uniswap_v2_router
+# @pytest.fixture()
+# def quickswap_routing_model(
+#         quickswap_deployment,
+#         wmatic_usdc_spot_pair,
+#         asset_usdc,
+# ) -> UniswapV2Routing:
+#     # Route WMATIC and USDC quoted pairs on Quickswap
+#     uniswap_v2_router = UniswapV2Routing(
+#         factory_router_map={quickswap_deployment.factory.address: (quickswap_deployment.router.address, quickswap_deployment.init_code_hash)},
+#         allowed_intermediary_pairs={
+#             wmatic_usdc_spot_pair.base.address: wmatic_usdc_spot_pair.pool_address,
+#             # "0x7ceb23fd6bc0add59e62ac25578270cff1b9f619": "0x45dda9cb7c25131df268515131f647d726f50608",
+#         },
+#         reserve_token_address=asset_usdc.address,
+#     )
+#     return uniswap_v2_router

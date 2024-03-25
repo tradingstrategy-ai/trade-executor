@@ -117,7 +117,7 @@ class Dataset:
             assert isinstance(lending_candles, LendingCandleUniverse), f"Expected LendingCandleUniverse, got {lending_candles.__class__}"
 
         if self.history_period:
-            assert self.start_at is None and self.end_at is None, f"You can only give history_period or backtesting range"
+            assert self.start_at is None and self.end_at is None, f"You can only give history_period or backtesting range. We got {self.start_at}, {self.end_at}, {self.history_period}"
 
 
 @dataclass
@@ -952,6 +952,7 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
     def create_from_dataset(
         dataset: Dataset,
         reserve_asset: JSONHexAddress | TokenSymbol=None,
+        forward_fill=False,
     ):
         """Create a universe from loaded dataset.
 
@@ -959,6 +960,8 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
 
         :param reserve_asset:
             Which reserve asset to use.
+
+            As the token address or symbol.
 
             If not given try to guess from the dataset.
 
@@ -970,8 +973,18 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
 
             Examples: 
             
-            - ``0x22177148e681a6ca5242c9888ace170ee7ec47bd``  (USDC address on Polygon)
+            - `0x2791bca1f2de4661ed88a30c99a7a9449aa84174`  (USDC.e bridged address on Polygon)
 
+            - `0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359`  (USDC native)
+
+        :param forward_fill:
+            Forward-fill the data.
+
+            When working with sparse data (gaps in candles), many strategies need
+            these gaps to be filled. Setting this parameter `True`
+            will automatically forward-fill any data we are loading from the dataset.
+
+            See :term:`forward fill` for more information.
         """
 
         chain_ids = dataset.pairs["chain_id"].unique()
@@ -986,16 +999,24 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
             reserve_asset = translate_token(quote_token)
         elif reserve_asset.startswith("0x"):
             reserve_asset_token = pairs.get_token(reserve_asset)
-            assert reserve_asset_token, f"Pairs dataset does not contain data for token: {reserve_asset}"
+            assert reserve_asset_token, f"Pairs dataset does not contain data for the specified reserve asset: {reserve_asset}.\nThere are {pairs.get_count()} trading pairs loaded."
             reserve_asset = translate_token(reserve_asset_token)
         else:
             reserve_asset_token = pairs.get_token_by_symbol(reserve_asset)
             reserve_asset = translate_token(reserve_asset_token)
 
-        candle_universe = GroupedCandleUniverse(dataset.candles)
+        candle_universe = GroupedCandleUniverse(
+            dataset.candles,
+            forward_fill=forward_fill,
+            time_bucket=dataset.time_bucket
+        )
 
         if dataset.backtest_stop_loss_candles is not None:
-            stop_loss_candle_universe = GroupedCandleUniverse(dataset.backtest_stop_loss_candles)
+            stop_loss_candle_universe = GroupedCandleUniverse(
+                dataset.backtest_stop_loss_candles,
+                forward_fill=forward_fill,
+                time_bucket=dataset.backtest_stop_loss_time_bucket,
+            )
         else:
             stop_loss_candle_universe = None
 
@@ -1713,6 +1734,7 @@ def load_partial_data(
     name: str | None = None,
     candle_progress_bar_desc: str | None = None,
     lending_candle_progress_bar_desc: str | None = None,
+
 ) -> Dataset:
     """Load pair data for given trading pairs.
 
@@ -1844,6 +1866,9 @@ def load_partial_data(
     assert isinstance(execution_context, ExecutionContext)
     assert isinstance(universe_options, UniverseOptions)
 
+    if required_history_period:
+        assert isinstance(required_history_period, datetime.timedelta), f"required_history_period: expected timedelta, got {type(required_history_period)}: {required_history_period}"
+
     # Apply overrides
     stop_loss_time_bucket = universe_options.stop_loss_time_bucket_override or stop_loss_time_bucket
     time_bucket = universe_options.candle_time_bucket_override or time_bucket
@@ -1853,18 +1878,22 @@ def load_partial_data(
         logger.warning("This method is designed to load data for low number or trading pairs, got %d", len(pairs))
 
     # Legacy compat
-    if not start_at:
-        start_at = universe_options.start_at
+    if execution_context.mode.is_backtesting():
+        if not start_at:
+            start_at = universe_options.start_at
 
-    # Legacy compat
-    if not end_at:
-        end_at = universe_options.end_at
+        # Legacy compat
+        if not end_at:
+            end_at = universe_options.end_at
 
-    if not required_history_period:
-        required_history_period = universe_options.history_period
-
-    assert (start_at and end_at) or required_history_period, \
-        f"You need to give either history period or backtesting start_at - end_at range. We got {start_at}, {end_at}, {required_history_period}"
+        assert start_at
+        assert end_at
+    elif execution_context.mode.is_live_trading():
+        if not required_history_period:
+            required_history_period = universe_options.history_period
+        assert required_history_period, f"Doing live trading {execution_context.mode}, but universe_options.history_period missing: {universe_options}"
+    else:
+        raise NotImplementedError(f"Cannot determine trading mode: {execution_context.mode}")
 
     # Where the data loading start can come from the hard backtesting range (start - end)
     # or how many days of historical data we ask for
