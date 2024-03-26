@@ -20,6 +20,7 @@ from plotly.graph_objs import Figure, Scatter
 from tradeexecutor.backtest.grid_search import GridSearchResult
 from tradeexecutor.state.types import USDollarAmount
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
+from tradeexecutor.utils.sort import unique_sort
 from tradeexecutor.visual.benchmark import visualise_all_cash, visualise_portfolio_equity_curve
 
 VALUE_COLS = ["CAGR", "Max drawdown", "Sharpe", "Sortino", "Average position", "Median position"]
@@ -407,13 +408,27 @@ class TopGridSearchResult:
     sharpe: list[GridSearchResult]
 
 
-def find_best_grid_search_results(grid_search_results: list[GridSearchResult], count=20) -> TopGridSearchResult:
+def find_best_grid_search_results(grid_search_results: list[GridSearchResult], count=20, unique_only=True) -> TopGridSearchResult:
     """From all grid search results, filter out the best one to be displayed.
 
+    :param unique_only:
+        Return unique value matches only.
+
+        If multiple grid search results share the same metric (CAGR),
+        filter out duplicates. Otherwise the table will be littered with duplicates.
+
+    :return:
+        Top lists
     """
+
+    if unique_only:
+        sorter = unique_sort
+    else:
+        sorter = sorted
+
     result = TopGridSearchResult(
-        cagr=sorted(grid_search_results, key=lambda r: r.get_cagr(), reverse=True)[0: count],
-        sharpe=sorted(grid_search_results, key=lambda r: r.get_sharpe(), reverse=True)[0: count],
+        cagr=sorter(grid_search_results, key=lambda r: r.get_cagr(), reverse=True)[0: count],
+        sharpe=sorter(grid_search_results, key=lambda r: r.get_sharpe(), reverse=True)[0: count],
     )
     return result
 

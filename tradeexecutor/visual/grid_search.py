@@ -8,6 +8,7 @@ import pandas as pd
 import plotly.graph_objects as go
 from plotly.graph_objs import Figure, Scatter
 
+from tradeexecutor.analysis.curve import CurveType, DEFAULT_BENCHMARK_COLOURS
 from tradeexecutor.analysis.grid_search import _get_hover_template
 from tradeexecutor.analysis.multi_asset_benchmark import get_benchmark_data
 from tradeexecutor.backtest.grid_search import GridSearchResult
@@ -21,6 +22,7 @@ def visualise_single_grid_search_result_benchmark(
     strategy_universe: TradingStrategyUniverse,
     initial_cash: USDollarAmount | None = None,
     name="Picked grid search result",
+    log_y=False,
 ) -> go.Figure:
     """Draw one equity curve from grid search results.
 
@@ -76,10 +78,12 @@ def visualise_single_grid_search_result_benchmark(
     # Get daily returns
     equity = result.equity_curve
     equity.attrs["name"] = result.get_label()
+    equity.attrs["curve"] = CurveType.equity
+    equity.attrs["colour"] = DEFAULT_BENCHMARK_COLOURS["Strategy"]
 
     benchmarks = get_benchmark_data(
         strategy_universe,
-        cumulative_with_initial_cash=result.initial_cash or initial_cash,
+        cumulative_with_initial_cash=initial_cash or getattr(result, "initial_cash", None),  # Legacy support hack
     )
 
     benchmark_series = [v for k, v in benchmarks.items()]
@@ -87,6 +91,7 @@ def visualise_single_grid_search_result_benchmark(
     fig = visualise_equity_curves(
         [equity] + benchmark_series,
         name=name,
+        log_y=log_y,
     )
 
     return fig
