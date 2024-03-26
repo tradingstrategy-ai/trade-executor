@@ -1023,7 +1023,7 @@ class TradeAnalysis:
         median_win = func_check(winning_trades, median)
         median_loss = func_check(losing_trades, median)
         median_delta_neutral = func_check(delta_neutral_positions, median)
-
+    
         average_winning_trade_profit_pc = get_avg_profit_pct_check(winning_trades)
         average_losing_trade_loss_pc = get_avg_profit_pct_check(losing_trades)
         average_delta_neutral_profit_pc = get_avg_profit_pct_check(delta_neutral_positions)
