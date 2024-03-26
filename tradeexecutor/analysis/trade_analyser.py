@@ -77,7 +77,6 @@ class TradeSummary:
     zero_loss: int
     stop_losses: int
     undecided: int
-    delta_neutral: int
     realised_profit: USDollarAmount
 
     #: Value at the open positinos at the end
@@ -95,11 +94,9 @@ class TradeSummary:
 
     average_winning_trade_profit_pc: Optional[float]  # position
     average_losing_trade_loss_pc: Optional[float]
-    average_delta_neutral_profit_pc: Optional[float]
 
     biggest_winning_trade_pc: Optional[float]
     biggest_losing_trade_pc: Optional[float]
-    biggest_delta_neutral_pc: Optional[float]
 
     average_duration_of_winning_trades: datetime.timedelta = field(metadata=config(
         encoder=json_encode_timedelta,
@@ -146,6 +143,10 @@ class TradeSummary:
     max_loss_risk: Optional[float] = None
     max_realised_loss: Optional[float] = None
     avg_realised_risk: Optional[Percent] = None
+
+    average_delta_neutral_profit_pc: Optional[float] = None
+    biggest_delta_neutral_pc: Optional[float] = None
+    delta_neutral: int = field(default=0)
 
     take_profits: int = field(default=0)
 
@@ -210,7 +211,7 @@ class TradeSummary:
     # Time in market
     # Doesn't include any open positions
     # Includes credit supply (delta neutral) positions
-    time_in_market_all: Optional[datetime.timedelta] = None
+    time_in_market: Optional[datetime.timedelta] = None
 
     # Doens't include any open positions
     # Doesn't include credit supply (delta neutral) positions
@@ -271,7 +272,7 @@ class TradeSummary:
             "Annualised return %": as_percent(self.annualised_return_percent),
             "Cash at start": as_dollar(self.initial_cash),
             "Value at end": as_dollar(self.end_value),
-            "Time in market": as_percent(self.time_in_market_all),
+            "Time in market": as_percent(self.time_in_market),
             "Trade volume": as_dollar(self.trade_volume),
             "Position win percent": as_percent(self.win_percent),
             "Total positions": as_integer(self.total_positions),
@@ -789,7 +790,7 @@ class TradeAnalysis:
             return func(lst) if lst else None
         
         def _get_final_start_time(previous_position_closed_at, current_position_opened_at):
-            """Used in `time_in_market_all` calculation"""
+            """Used in `time_in_market` calculation"""
             if not previous_position_closed_at or current_position_opened_at > previous_position_closed_at:
                 return current_position_opened_at
             else:
@@ -1042,7 +1043,7 @@ class TradeAnalysis:
         biggest_losing_trade_pc = func_check(losing_trades, min)
         biggest_delta_neutral_pc = func_check(delta_neutral_positions, max)
         
-        time_in_market_all = pd.to_timedelta(times_in_market_all).sum()/strategy_duration if (len(times_in_market_all) > 0 and strategy_duration) else 0
+        time_in_market = pd.to_timedelta(times_in_market_all).sum()/strategy_duration if (len(times_in_market_all) > 0 and strategy_duration) else 0
         time_in_market_volatile = pd.to_timedelta(times_in_market_volatile).sum()/strategy_duration if (len(times_in_market_volatile) > 0 and strategy_duration) else 0
 
         all_durations = winning_trades_duration + losing_trades_duration + zero_loss_trades_duration
@@ -1114,7 +1115,7 @@ class TradeAnalysis:
             #sharpe_ratio=sharpe_ratio,
             #sortino_ratio=sortino_ratio,
             #profit_factor=profit_factor,
-            time_in_market_all = time_in_market_all,
+            time_in_market = time_in_market,
             time_in_market_volatile = time_in_market_volatile,
             delta_neutral=delta_neutral,
             median_delta_neutral=median_delta_neutral,
