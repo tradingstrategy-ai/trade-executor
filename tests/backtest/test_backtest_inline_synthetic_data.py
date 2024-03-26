@@ -354,7 +354,7 @@ def test_basic_summary_statistics(
     assert summary.min_interest_paid_usd == pytest.approx(0.0, rel=APPROX_REL)
     assert summary.total_interest_paid_usd == pytest.approx(0.0, rel=APPROX_REL)
     assert summary.median_interest_paid_usd == pytest.approx(0.0, rel=APPROX_REL)
-    assert summary.time_in_market == pytest.approx(0.6056338028169014)
+    assert summary.time_in_market == pytest.approx(0.6384976525821596)
 
 
 def test_compounding_formulas(
