@@ -871,6 +871,8 @@ class TradeAnalysis:
 
         total_claimed_interest = 0
 
+        position_count = 0
+
         for pair_id, position in sorted_positions:
 
             total_trades += len(position.trades)
@@ -932,6 +934,11 @@ class TradeAnalysis:
                 else:
                     _append_position_duration_by_market_condition(times_in_market_all, times_in_market_volatile, current_grouped_duration, position)
                     current_grouped_duration = position_duration  # new group
+
+            if position_count == len(sorted_positions) - 1:
+                _append_position_duration_by_market_condition(times_in_market_all, times_in_market_volatile, current_grouped_duration, position)  # last position
+            position_count += 1
+            
             previous_position_opened_at = position.opened_at
             previous_position_closed_at = position.closed_at
 
