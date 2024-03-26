@@ -7,7 +7,7 @@ import plotly.graph_objects as go
 import pandas as pd
 from pandas._libs.tslibs.offsets import MonthBegin
 
-from tradeexecutor.analysis.trade_analyser import build_trade_analysis
+from tradeexecutor.analysis.curve import DEFAULT_BENCHMARK_COLOURS, CurveType
 from tradeexecutor.state.identifier import TradingPairIdentifier
 from tradeexecutor.state.statistics import PortfolioStatistics
 from tradeexecutor.state.visualisation import Plot
@@ -16,7 +16,6 @@ from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniv
 from tradeexecutor.visual.technical_indicator import visualise_technical_indicator
 from tradeexecutor.visual.equity_curve import calculate_long_compounding_realised_trading_profitability, \
     calculate_short_compounding_realised_trading_profitability, calculate_compounding_realised_trading_profitability, resample_returns, calculate_returns
-from tradingstrategy.timebucket import TimeBucket
 from tradingstrategy.pair import HumanReadableTradingPairDescription
 from tradingstrategy.types import USDollarAmount
 
@@ -118,6 +117,10 @@ def visualise_equity_curve_benchmark(
     - Benchmark against buy and hold of various assets
 
     - Benchmark against hold all cash
+
+    .. note::
+
+        This will be deprecated. Use :py:func:`visualise_equity_curves` instead.
 
     Example for a single trading pair strategy:
 
@@ -311,18 +314,33 @@ def visualise_equity_curve_benchmark(
         benchmark_indexes[buy_and_hold_asset_name] = buy_and_hold_price_series
 
     # Plot all benchmark series
-    for benchmark_name in benchmark_indexes:
-        buy_and_hold_price_series = benchmark_indexes[benchmark_name]
+    for benchmark_name, buy_and_hold_price_series in benchmark_indexes.items():
+
+        colour = buy_and_hold_price_series.attrs.get("colour")
+
         # Clip to the backtest time frame
         buy_and_hold_price_series = buy_and_hold_price_series[start_at:end_at]
-        colour = buy_and_hold_price_series.attrs.get("colour")
-        scatter = visualise_equity_curve_comparison(
-            benchmark_name,
-            buy_and_hold_price_series,
-            all_cash,
-            colour=colour,
-        )
-        fig.add_trace(scatter)
+
+        if buy_and_hold_price_series.attrs.get("returns_series_type") == "cumulative_returns":
+            # See get_benchmark_data()
+            scatter = go.Scatter(
+                x=buy_and_hold_price_series.index,
+                y=buy_and_hold_price_series,
+                mode="lines",
+                name=benchmark_name,
+                line=dict(color=buy_and_hold_price_series.attrs.get("colour")),
+            )
+
+            fig.add_trace(scatter)
+        else:
+            # Legacy path without get_benchmark_data()
+            scatter = visualise_equity_curve_comparison(
+                benchmark_name,
+                buy_and_hold_price_series,
+                all_cash,
+                colour=colour,
+            )
+            fig.add_trace(scatter)
 
     if additional_indicators:
         for plot in additional_indicators:
@@ -360,121 +378,17 @@ def visualise_benchmark(*args, **kwargs) -> go.Figure:
     return visualise_equity_curve_benchmark(*args, **kwargs)
 
 
-
-def create_benchmark_equity_curves(
-    strategy_universe: TradingStrategyUniverse,
-    pairs: Dict[str, HumanReadableTradingPairDescription],
-    initial_cash: USDollarAmount,
-    custom_colours={"BTC": "orange", "ETH": "blue", "All cash": "black"}
-) -> pd.DataFrame:
-    """Create data series of different buy-and-hold benchmarks.
-
-    - Create different benchmark indexes to compare y our backtest results against
-
-    - Has default colours set for `BTC` and `ETH` pair labels
-
-    See also
-
-    - Output be given e.g. to :py:func:`tradeexecutor.analysis.grid_search.visualise_grid_search_equity_curves`
-
-    Example:
-
-    .. code-block:: python
-
-        from tradeexecutor.analysis.grid_search import visualise_grid_search_equity_curves
-        from tradeexecutor.visual.benchmark import create_benchmark_equity_curves
-
-        # List of pair descriptions we used to look up pair metadata
-        our_pairs = [
-            (ChainId.centralised_exchange, "binance", "BTC", "USDT"),
-            (ChainId.centralised_exchange, "binance", "ETH", "USDT"),
-        ]
-
-        benchmark_indexes = create_benchmark_equity_curves(
-            strategy_universe,
-            {"BTC": our_pairs[0], "ETH": our_pairs[1]},
-            initial_cash=StrategyParameters.initial_cash,
-        )
-
-        fig = visualise_grid_search_equity_curves(
-            grid_search_results,
-            benchmark_indexes=benchmark_indexes,
-        )
-        fig.show()
-
-    :param strategy_universe:
-        Strategy universe from where we
-
-    :param pairs:
-        Trading pairs benchmarked.
-
-        In a format `short label` : `pair description`.
-
-    :param initial_cash:
-        The value for all cash benchmark and the initial backtest deposit.
-
-        All cash is that you would just sit on the top of the cash pile
-        since start of the backtest.
-
-    :param custom_colours:
-        Apply these colours on the benchmark series.
-
-        Label -> color mappings.
-
-    :return:
-        Pandas DataFrame.
-
-        DataFrame has series labelled "BTC", "ETH", "All cash", etc.
-
-        DataFrame and its series' `attrs` contains colour information for well-known pairs.
-
-    """
-
-    returns = {}
-
-    # Get close prices for all pairs
-    for key, value in pairs.items():
-        pair = strategy_universe.data_universe.pairs.get_pair_by_human_description(value)
-        close_data = strategy_universe.data_universe.candles.get_candles_by_pair(pair)["close"]
-        initial_inventory = initial_cash / float(close_data.iloc[0])
-        series = close_data * initial_inventory
-        returns[key] = series
-
-    # Form all cash line
-    if initial_cash is not None:
-        assert len(returns) > 0
-        assert type(initial_cash) in (int, float)
-        first_close = next(iter(returns.values()))
-        start_at = first_close.index[0]
-        end_at = first_close.index[-1]
-        idx = [start_at, end_at]
-        values = [initial_cash, initial_cash]
-        all_cash_series = pd.Series(values, idx)
-        returns["All cash"] = all_cash_series
-
-    # Wrap it up in a DataFrame
-    benchmark_indexes = pd.DataFrame(returns)
-
-    # Apply custom colors
-    for symbol, colour in custom_colours.items():
-        if symbol in benchmark_indexes.columns:
-            benchmark_indexes[symbol].attrs = {"colour": colour}
-
-    return benchmark_indexes
-
-
-
 def visualise_benchmark(*args, **kwargs) -> go.Figure:
     warnings.warn('This function is deprecated. Use visualise_equity_curve_benchmark instead', DeprecationWarning, stacklevel=2)
     return visualise_equity_curve_benchmark(*args, **kwargs)
-
 
 
 def create_benchmark_equity_curves(
     strategy_universe: TradingStrategyUniverse,
     pairs: Dict[str, HumanReadableTradingPairDescription | TradingPairIdentifier],
     initial_cash: USDollarAmount,
-    custom_colours={"BTC": "orange", "ETH": "blue", "All cash": "black"}
+    custom_colours=DEFAULT_BENCHMARK_COLOURS,
+    convert_to_daily=False,
 ) -> pd.DataFrame:
     """Create data series of different buy-and-hold benchmarks.
 
@@ -570,7 +484,7 @@ def create_benchmark_equity_curves(
     # Apply custom colors
     for symbol, colour in custom_colours.items():
         if symbol in benchmark_indexes.columns:
-            benchmark_indexes[symbol].attrs = {"colour": colour}
+            benchmark_indexes[symbol].attrs = {"colour": colour, "name": symbol}
 
     return benchmark_indexes
 
@@ -751,6 +665,129 @@ def visualise_vs_returns(
 
     return fig
 
+
+
+def transform_to_equity_curve(curve: pd.Series, initial_cash: USDollarAmount) -> pd.Series:
+    """Transform returns series to equity series.
+
+    :param curve:
+        Returns series with `pd.Series.attrs["curve"]` set
+
+    :param initial_cash:
+        The amount of strategy initial cash.
+
+        Needed to transform benchmark return series to comparable equity curve.
+
+    :return:
+        Equity curve ready to plot
+    """
+
+    name = curve.attrs.get("name", "<unnamed>")
+    curve_type = curve.attrs.get("curve")
+    assert isinstance(curve_type, CurveType)
+
+    match curve_type:
+        case CurveType.equity:
+            return curve
+        case CurveType.returns:
+            assert initial_cash, "initial_cash must be given to transform different return series to equity curve"
+            raise NotImplementedError("Please add implementation")
+        case _:
+            raise NotImplementedError(f"Unsupported curve type {curve_type} on {name}")
+
+
+def visualise_equity_curves(
+    curves: list[pd.Series],
+    name="Equity curve comparison",
+    height=800,
+    log_y=False,
+) -> go.Figure:
+    """Compare equity curves.
+
+    - Draw a plot of different equity curve / return series in the same diagram
+
+    - To benchmark grid search results, see :py:func:`tradeeexecutor.visual.grid_search.visualise_grid_search_result_benchmark`
+
+    See also
+
+    - :py:class:`tradeexecutor.analysis.curve.CurveType`
+
+    - :py:func:`visualise_equity_curve_benchmark` (legacy)
+
+    :param curves:
+        pd.Series with their "curve" attribute set.
+
+        Each Pandas series can have attributes
+
+        - name
+
+        - colour: Plotly colour name
+
+        - curve: Equity curve type
+
+    :param height:
+        Height in pixels
+
+    :param initial_cash:
+        The amount of strategy initial cash.
+
+        Needed to transform benchmark return series to comparable equity curve.
+
+    :return:
+        Plotly figure
+    """
+
+    fig = go.Figure()
+
+    for curve in curves:
+        # Do sanity checks on incoming data
+        # See curve.py for potential attributes
+        assert isinstance(curve, pd.Series), f"Expected pd.Series, got {type(curve)}"
+        assert isinstance(curve.index, pd.DatetimeIndex), f"Expected DateTimeIndex, got {type(curve.index)}"
+        curve_name = curve.attrs.get("name")
+        assert curve_name, "Series lacks attrs['name']"
+        curve_type = curve.attrs.get("curve")
+        assert curve_type, f"Series lacks attrs['curve']: {curve_name}"
+        colour = curve.attrs.get("colour")
+        assert colour, f"Series lacks attrs['colour']: {curve_name}"
+        assert isinstance(curve_type, CurveType), f"{name}: Expected curve to be CurveType, got {type(curve_type)}"
+        assert curve_type == CurveType.equity, f"Only CurveType.equity is supported in this point, got {curve_type} for {curve_name}"
+
+        # not implemented yet
+        # series = transform_to_equity_curve(curve, initial_cash)
+        series = curve
+
+        trace = go.Scatter(
+            x=series.index,
+            y=series,
+            mode="lines",
+            name=curve_name,
+            line=dict(color=colour),
+        )
+
+        fig.add_trace(trace)
+
+    fig.update_layout(title=name, height=height)
+
+    if log_y:
+        fig.update_yaxes(title="Value $ (logarithmic)", showgrid=False, type="log")
+    else:
+        fig.update_yaxes(title="Value $", showgrid=False)
+
+    fig.update_xaxes(rangeslider={"visible": False})
+
+    # Move legend to the bottom so we have more space for
+    # time axis in narrow notebook views
+    # https://plotly.com/python/legend/
+    fig.update_layout(legend=dict(
+        orientation="h",
+        yanchor="bottom",
+        y=1.02,
+        xanchor="right",
+        x=1
+    ))
+
+    return fig
 
 def visualise_portfolio_interest_curve(
     name: str,

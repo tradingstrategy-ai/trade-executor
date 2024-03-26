@@ -189,8 +189,16 @@ class TradeSummary:
     average_duration_between_position_openings: Optional[datetime.timedelta] = None
     average_position_frequency: Optional[datetime.timedelta] = None
 
-    # Backwards compatiblity only
+    # Backwards compatiblity only.
+    #
+    # TODO: Remove these in ~3 months.
+    #
+    average_duration_between_positions: int = 0
     average_duration_between_postions: int = 0
+
+    # Time in market
+    # Doesn't include any open positions
+    time_in_market: Optional[datetime.timedelta] = None
 
     def __post_init__(self):
         self.total_positions = self.won + self.lost + self.zero_loss
@@ -246,6 +254,7 @@ class TradeSummary:
             "Annualised return %": as_percent(self.annualised_return_percent),
             "Cash at start": as_dollar(self.initial_cash),
             "Value at end": as_dollar(self.end_value),
+            "Time in market": as_percent(self.time_in_market),
             "Trade volume": as_dollar(self.trade_volume),
             "Position win percent": as_percent(self.win_percent),
             "Total positions": as_integer(self.total_positions),
@@ -331,6 +340,7 @@ class TradeSummary:
             "Annualised return %": None,
             "Cash at start": None,
             "Value at end": None,
+            "Time in market": None,
             "Trade volume": "https://tradingstrategy.ai/glossary/volume",
             "Position win percent": "https://tradingstrategy.ai/glossary/position",
             "Total positions": "https://tradingstrategy.ai/glossary/position",
@@ -737,6 +747,8 @@ class TradeAnalysis:
                 TradeSummary instance
         """
 
+        sorted_positions = sorted(positions, key=lambda position: position[1].opened_at)
+
         if time_bucket is not None:
             assert isinstance(time_bucket, TimeBucket), "Not a valid time bucket"
 
@@ -751,6 +763,13 @@ class TradeAnalysis:
 
         def func_check(lst, func):
             return func(lst) if lst else None
+        
+        def _get_final_start_time(previous_position_closed_at, current_position_opened_at):
+            """Used in `time_in_market` calculation"""
+            if not previous_position_closed_at or current_position_opened_at > previous_position_closed_at:
+                return current_position_opened_at
+            else:
+                return previous_position_closed_at  # overlapping
 
         initial_cash = self.portfolio.get_initial_cash()
 
@@ -770,6 +789,7 @@ class TradeAnalysis:
         realised_losses = []
         interest_paid_usd = []
         durations_between_positions = []
+        times_in_market = []
         biggest_winning_trade_pc = None
         biggest_losing_trade_pc = None
         average_duration_of_losing_trades = datetime.timedelta(0)
@@ -803,10 +823,12 @@ class TradeAnalysis:
         winning_take_profits = 0
         losing_take_profits = 0
 
-        # last_position_opened_at = state.backtest_data.start_at if state.backtest_data else state.created_at
-        last_position_opened_at = None
+        previous_position_opened_at = None
+        previous_position_closed_at = None
+        current_grouped_duration = datetime.timedelta(0)
+        open_position_lock = False
 
-        for pair_id, position in positions:
+        for pair_id, position in sorted_positions:
 
             total_trades += len(position.trades)
             portfolio_value_at_open = position.portfolio_value_at_open
@@ -827,15 +849,39 @@ class TradeAnalysis:
             for t in position.trades.values():
                 trade_volume += t.get_value()
             
-            if last_position_opened_at is not None:
-                durations_between_positions.append(position.opened_at - last_position_opened_at) 
-            last_position_opened_at = position.opened_at
+            if previous_position_opened_at is not None:
+                durations_between_positions.append(position.opened_at - previous_position_opened_at) 
 
             if position.is_open():
                 open_value += position.get_value()
                 unrealised_profit_usd += position.get_unrealised_profit_usd()
                 undecided += 1
+
+                # only count the first open position for `time in market`
+                if open_position_lock == False and state:
+                    strategy_start, strategy_end = state.get_strategy_time_range()
+                    start_time = _get_final_start_time(previous_position_closed_at, position.opened_at)
+
+                    if strategy_end:
+                        current_grouped_duration += strategy_end - start_time
+                        times_in_market.append(current_grouped_duration)
+                    
+                    open_position_lock = True
+
                 continue
+
+            # time in market
+            position_duration = position.get_duration()
+            if current_grouped_duration == datetime.timedelta(0):
+                current_grouped_duration += position_duration  # first position
+            elif previous_position_closed_at:
+                if position.opened_at < previous_position_closed_at:
+                    current_grouped_duration += (position.closed_at - previous_position_closed_at)  # overlapping group
+                else:
+                    times_in_market.append(current_grouped_duration)
+                    current_grouped_duration = position_duration  # new group
+            previous_position_opened_at = position.opened_at
+            previous_position_closed_at = position.closed_at
 
             is_stop_loss = position.is_stop_loss()
             is_take_profit = position.is_take_profit()
@@ -939,6 +985,7 @@ class TradeAnalysis:
 
         biggest_winning_trade_pc = func_check(winning_trades, max)
         biggest_losing_trade_pc = func_check(losing_trades, min)
+        time_in_market = pd.to_timedelta(times_in_market).sum()/strategy_duration if (len(times_in_market) > 0 and strategy_duration) else 0
 
         all_durations = winning_trades_duration + losing_trades_duration + zero_loss_trades_duration
         average_duration_of_winning_trades = get_avg_trade_duration(winning_trades_duration)
@@ -1005,6 +1052,7 @@ class TradeAnalysis:
             #sharpe_ratio=sharpe_ratio,
             #sortino_ratio=sortino_ratio,
             #profit_factor=profit_factor,
+            time_in_market = time_in_market,
         )
 
     @staticmethod

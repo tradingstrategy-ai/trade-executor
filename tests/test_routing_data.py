@@ -119,6 +119,7 @@ def test_pancake_routing_models(
             ReserveCurrency.usdc,
             {
                 "0x0d500b1d8e8ef31e21c99d1db9a6444d3adf1270": "0x6e7a5fafcec6bb1e78bae2a1f0b612012bf14827",
+                "0x7ceb23fd6bc0add59e62ac25578270cff1b9f619": "0x853ee4b2a13f8a742d64c8f088be7ba2131f670d",
             },
             "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174".lower(),
         ),

@@ -298,8 +298,18 @@ class PandasTraderRunner(StrategyRunner):
 
                 print(f"\n  {pair_slug}", file=buf)
 
-                last_candle = candles.iloc[-1]
-                lag = pd.Timestamp.utcnow().tz_localize(None) - last_candle["timestamp"]
+                lag = None
+                timestamp = None
+                last_candle = None
+                if len(candles) > 0:
+                    last_candle = candles.iloc[-1]
+                    try:
+                        timestamp = last_candle["timestamp"]
+                        lag = pd.Timestamp.utcnow().tz_localize(None) - timestamp
+                    except:
+                        logger.warning("Cannot read timestamp")
+                else:
+                    logger.warning("Pair %s had not candle data", pair)
 
                 dex_pair = universe.data_universe.pairs.get_pair_by_id(pair_id)
                 pair = translate_trading_pair(dex_pair)
@@ -307,9 +317,10 @@ class PandasTraderRunner(StrategyRunner):
                 if not pair:
                     logger.warning(f"  Pair missing: {dex_pair} - should not happen")
                 else:
-                    print(f"  Last candle at: {last_candle['timestamp']} UTC, market data and action lag: {lag}", file=buf)
-                    print(f"  Price open:{last_candle['open']}", file=buf)
-                    print(f"  Close:{last_candle['close']}")
+                    print(f"  Last candle at: {timestamp} UTC, market data and action lag: {lag}", file=buf)
+                    if last_candle is not None:
+                        print(f"  Price open:{last_candle['open']}", file=buf)
+                        print(f"  Close:{last_candle['close']}")
 
                 # Draw indicators
                 for name, plot in visualisation.plots.items():

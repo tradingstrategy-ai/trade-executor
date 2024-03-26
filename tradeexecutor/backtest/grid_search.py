@@ -135,6 +135,8 @@ class GridParameter:
 
         if isinstance(value, Enum):
             return f"{self.name}={self.value.value}"
+        elif type(value) == bool:
+            return f"{self.name}={self.value.lower()}"
         elif type(value) in (float, int, str):
             return f"{self.name}={self.value}"
         if value is None:
@@ -244,6 +246,21 @@ class GridCombination:
     def to_strategy_parameters(self) -> StrategyParameters:
         return StrategyParameters(self.as_dict())
 
+    def get_parameter(self, name: str) -> object:
+        """Get a parameter value.
+
+        :param name:
+            Parameter name
+
+        :raise ValueError:
+            If parameter is missing.
+        """
+        for p in self.parameters:
+            if p.name == name:
+                return p.value
+
+        raise ValueError(f"No parameter: {name}")
+
     @staticmethod
     def get_all_indicators(combinations: Iterable["GridCombination"]) -> set[IndicatorKey]:
         """Get all defined indicators that need to be calculated, across all grid search combinatios.
@@ -275,6 +292,11 @@ class GridSearchResult:
     combination: GridCombination
 
     #: The full back test state
+    #:
+    #: By the default, grid search execution drops these,
+    #: as saving and loading them takes extra time, space,
+    #: and state is not used to compare grid search results.
+    #:
     state: State | None
 
     #: Calculated trade summary
@@ -309,6 +331,13 @@ class GridSearchResult:
     #: Only applicable to multiprocessing
     process_id: int = None
 
+    #: Initial cash from the state.
+    #:
+    #: Copied here from the state, as it is needed to draw equity curves.
+    #: Not available in legacy data.
+    #:
+    initial_cash: USDollarAmount | None = None
+
     def __hash__(self):
         return self.combination.__hash__()
 
@@ -322,7 +351,12 @@ class GridSearchResult:
         return f"<GridSearchResult\n  {self.combination.get_all_parameters_label()}\n  CAGR: {cagr*100:.2f}% Sharpe: {sharpe:.2f} Max drawdown:{max_drawdown*100:.2f}%\n>"
 
     def get_label(self) -> str:
-        """Get name for this result for charts."""
+        """Get name for this result for charts.
+
+        - Label is grid search parameter key values
+
+        - Includes only searched parameters as label
+        """
         return self.combination.get_label()
 
     def get_metric(self, name: str) -> float:
@@ -373,6 +407,28 @@ class GridSearchResult:
 
     def get_max_drawdown(self) -> Percent:
         return self.get_metric("Max Drawdown")
+
+    def get_parameter(self, name) -> object:
+        """Get a combination parameter value used to produce this search.
+
+        Useful in filtering.
+
+        .. code-block:: python
+
+            filtered_results = [r for r in grid_search_results if r.combination.get_parameter("regime_filter_ma_length") is None]
+            print(f"Grid search results without regime filter: {len(filtered_resutls)}")
+
+        :param name:
+            Parameter name
+
+        :raise ValueError:
+            If parameter is missing.
+        """
+        return self.combination.get_parameter(name)
+
+    def get_trade_count(self) -> int:
+        """How many trades this strategy made."""
+        return self.summary.total_trades
 
     @staticmethod
     def has_result(combination: GridCombination):
@@ -896,9 +952,10 @@ def perform_grid_search(
             #
             # Run individual searchers threads
             #
+            logger.warning("Doing a multithread grid search - you should not really use this, pass multiprocessing=True instead")
 
             task_args = [(grid_search_worker, universe, c, trading_strategy_engine_version, data_retention, indicator_storage.path) for c in combinations if c not in cached_results]
-            logger.info("Doing a multithread grid search")
+
             executor = futureproof.ThreadPoolExecutor(max_workers=max_workers)
             tm = futureproof.TaskManager(executor, error_policy=futureproof.ErrorPolicyEnum.RAISE)
 
@@ -1022,6 +1079,7 @@ def run_grid_search_backtest(
         universe_options=universe.options,
         equity_curve=equity,
         returns=returns,
+        initial_cash=state.portfolio.get_initial_cash(),
     )
 
 

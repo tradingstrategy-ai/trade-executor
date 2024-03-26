@@ -32,6 +32,7 @@ from ..loop import ExecutionLoop
 from ..result import display_backtesting_results
 from ..version_info import VersionInfo
 from ..watchdog import stop_watchdog
+from ...backtest.backtest_module import run_backtest_for_module
 from ...backtest.backtest_runner import setup_backtest, run_backtest, setup_backtest_for_universe
 from ...backtest.tearsheet import export_backtest_report
 from ...ethereum.enzyme.vault import EnzymeVaultSyncModel
@@ -129,69 +130,16 @@ def backtest(
 
     print(f"Starting backtesting for {strategy_file}")
 
-    mod = read_strategy_module(strategy_file)
-
-    assert mod.is_version_greater_or_equal_than(0, 2, 0), f"trading_strategy_engine_version must be 0.2.0 or newer for {strategy_file}"
-
-    client = Client.create_live_client(
-        trading_strategy_api_key,
-        cache_path=cache_path,
-        settings_path=None,  # Disable settings file on backtest
-    )
-
-    if mod.name:
-        # Overwrite from the module
-        name = mod.name
-
-    universe_options = mod.get_universe_options()
-
-    logger.info("Loading backtesting universe data for %s", universe_options)
-
-    universe = mod.create_trading_universe(
-        datetime.datetime.utcnow(),
-        client,
-        standalone_backtest_execution_context,
-        universe_options,
-    )
-
-    initial_cash = mod.initial_cash
-    assert initial_cash is not None, f"Strategy module does not set initial_cash needed to backtest"
-
-    assert mod.backtest_start, f"Strategy module does not set backtest_start"
-    assert mod.backtest_end, f"Strategy module does not set backtest_end"
-
-    # Don't start at T+0 because we have not any data for that day yet
-    backtest_start_at = universe_options.start_at + mod.trading_strategy_cycle.to_timedelta()
-    logger.info("Backtest starts at %s", backtest_start_at)
-
-    indicator_storage = DiskIndicatorStorage(cache_path / "indicators", universe_key=universe.get_cache_key())
-
-    backtest_setup = setup_backtest_for_universe(
-        mod,
-        start_at=backtest_start_at,
-        end_at=mod.backtest_end,
-        cycle_duration=mod.trading_strategy_cycle,
-        initial_deposit=initial_cash,
-        name=name,
-        universe=universe,
-        universe_options=universe_options,
-        create_indicators=mod.create_indicators,
-        parameters=mod.parameters,
-        indicator_storage=indicator_storage,
-    )
-
-    assert backtest_setup.trading_strategy_engine_version
-    assert backtest_setup.name
-
-    state, universe, debug_data = run_backtest(
-        backtest_setup,
-        client=client,
+    state, universe, debug_data = run_backtest_for_module(
+        strategy_file=strategy_file,
+        trading_strategy_api_key=trading_strategy_api_key,
+        execution_context=standalone_backtest_execution_context
     )
 
     # We should not be able let unnamed backtests through
     assert state.name
 
-    display_backtesting_results(state)
+    display_backtesting_results(state, strategy_universe=universe)
 
     print(f"Writing backtest data the state file: {backtest_result.resolve()}")
     state.write_json_file(backtest_result)

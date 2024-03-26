@@ -22,7 +22,7 @@ from ...ethereum.enzyme.vault import EnzymeVaultSyncModel
 from ...strategy.approval import UncheckedApprovalModel
 from ...strategy.bootstrap import make_factory_from_strategy_mod
 from ...strategy.description import StrategyExecutionDescription
-from ...strategy.execution_context import ExecutionContext, ExecutionMode, standalone_backtest_execution_context
+from ...strategy.execution_context import ExecutionContext, ExecutionMode, standalone_backtest_execution_context, console_command_execution_context
 from ...strategy.execution_model import AssetManagementMode
 from ...strategy.run_state import RunState
 from ...strategy.strategy_module import read_strategy_module
@@ -95,26 +95,28 @@ def check_wallet(
         json_rpc_ethereum=json_rpc_ethereum,
         json_rpc_anvil=json_rpc_anvil,
         json_rpc_arbitrum=json_rpc_arbitrum,
+        unit_testing=unit_testing,
     )
     assert web3config.has_chain_configured(), "No RPC endpoints given. A working JSON-RPC connection is needed for running this command. Check your JSON-RPC configuration."
 
-    universe = mod.create_trading_universe(
-        pd.Timestamp.utcnow(),
-        client,
-        standalone_backtest_execution_context,
-        mod.get_universe_options(),
-    )
     execution_context = ExecutionContext(
         mode=ExecutionMode.preflight_check,
         timed_task_context_manager=timed_task,
         engine_version=mod.trading_strategy_engine_version,
     )
 
+    universe = mod.create_trading_universe(
+        pd.Timestamp.utcnow(),
+        client,
+        execution_context,
+        mod.get_universe_options(),
+    )
+
     # Check that we are connected to the chain strategy assumes
     if unit_test_force_anvil:
         web3config.set_default_chain(ChainId.anvil)
     else:
-        web3config.set_default_chain(universe.get_single_chain())
+        web3config.set_default_chain(mod.get_default_chain_id())
 
     web3config.check_default_chain_id()
 

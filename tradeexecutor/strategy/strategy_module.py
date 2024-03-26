@@ -5,6 +5,7 @@ import logging
 import runpy
 from dataclasses import dataclass
 from pathlib import Path
+from types import NoneType
 from typing import Callable, Dict, Protocol, List, Optional, Union, Set, Type
 from urllib.parse import urlparse
 
@@ -378,6 +379,9 @@ class StrategyModuleInformation:
     #: Blockchain id on which this strategy operates
     #:
     #: Valid for single chain strategies only
+    #:
+    #: Legacy. DO NOT USE. Use :py:meth:`get_default_chain_id` instead.
+    #:
     chain_id: Optional[ChainId] = None
 
     #: What currency we use for the strategy.
@@ -550,8 +554,36 @@ class StrategyModuleInformation:
         assert self.initial_cash is not None, f"INITIAL_CASH variable is not set in the strategy module {self.path}"
 
     def get_universe_options(self) -> UniverseOptions:
-        """What backtest range this strategy defaults to"""
-        return UniverseOptions(start_at=self.backtest_start, end_at=self.backtest_end)
+        """What backtest range or live trading history period this strategy defaults to."""
+        return UniverseOptions(start_at=self.backtest_start, end_at=self.backtest_end, history_period=self.get_live_trading_history_period())
+
+    def get_default_chain_id(self) -> ChainId:
+        """Get the primary chain id for this strategy module."""
+
+        # new way
+        if self.parameters:
+            assert "chain_id" in self.parameters, "Parameters.chain_id missing"
+            return self.parameters["chain_id"]
+
+        return self.chain_id
+
+    def get_live_trading_history_period(self) -> datetime.timedelta | None:
+        """Get the required history timespan we need to load for each live trading cycle.
+
+        See :py:attr:`tradeexecutor.strategy.parameters.StrategyParameters.required_history_period`.
+
+        :return:
+            `None` if not defined.
+
+            Legacy strategy modules do not define this.
+        """
+
+        if self.parameters:
+            val = self.parameters.get("required_history_period")
+            assert isinstance(val, (datetime.timedelta, NoneType)), f"Expected datetime, got {type(val)}: {val}"
+            return val
+
+        return None
 
 
 def parse_strategy_module(
