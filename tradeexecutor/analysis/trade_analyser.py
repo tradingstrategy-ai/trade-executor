@@ -195,6 +195,7 @@ class TradeSummary:
     max_interest_paid_usd: Optional[USDollarPrice] = None
     min_interest_paid_usd: Optional[USDollarPrice] = None
     total_claimed_interest: Optional[USDollarPrice] = None
+    # average_claimed_interest: Optional[USDollarPrice] = None
 
     average_duration_between_position_openings: Optional[datetime.timedelta] = None
     average_position_frequency: Optional[datetime.timedelta] = None
@@ -433,6 +434,8 @@ class TradeSummary:
             "Unrealised PnL": as_dollar(self.unrealised_profit) if self.unrealised_profit else as_dollar(0),
             "Trade period": as_duration(self.duration),
             "Time in market volatile": as_percent(self.time_in_market_volatile),
+            "Total interest earned": as_dollar(self.total_claimed_interest),
+            "Total funding cost": as_dollar(self.total_interest_paid_usd),
         }
 
         df1 = create_summary_table(data1, "", "Returns")
@@ -520,7 +523,7 @@ class TradeSummary:
         df4 = create_summary_table(data4, ["Stop losses", "Take profits"], "Position Exits")
 
         data5 = {
-            'Biggest realised risk': as_percent(self.max_loss_risk),
+            'Biggest realised risk': as_percent(self.max_realised_loss),
             'Average realised risk': as_percent(self.avg_realised_risk),
             'Max pullback of capital': as_percent(self.max_pullback),
             'Sharpe Ratio': as_decimal(self.sharpe_ratio),
@@ -530,18 +533,18 @@ class TradeSummary:
 
         df5 = create_summary_table(data5, "", "Risk Analysis")
 
-        data6 = {
-            'Average interest paid': as_dollar(self.average_interest_paid_usd),
-            'Median interest paid': as_dollar(self.median_interest_paid_usd),
-            'Max interest paid': as_dollar(self.max_interest_paid_usd),
-            'Min interest paid': as_dollar(self.min_interest_paid_usd),
-            'Total interest paid': as_dollar(self.total_interest_paid_usd),
-            'Total interest claimed': as_dollar(self.total_claimed_interest),
-        }
+        # data6 = {
+        #     'Average interest paid': as_dollar(self.average_interest_paid_usd),
+        #     'Median interest paid': as_dollar(self.median_interest_paid_usd),
+        #     'Max interest paid': as_dollar(self.max_interest_paid_usd),
+        #     'Min interest paid': as_dollar(self.min_interest_paid_usd),
+        #     'Total interest paid': as_dollar(self.total_interest_paid_usd),
+        #     'Total interest claimed': as_dollar(self.total_claimed_interest),
+        # }
 
-        df6 = create_summary_table(data6, "", "Interest Paid")
+        # df6 = create_summary_table(data6, "", "Interest Paid")
 
-        display(self.single_column_dfs(df1, df2, df3, df4, df5, df6))
+        display(self.single_column_dfs(df1, df2, df3, df4, df5))
 
     def format_duration(self, duration_timedelta):
         if not duration_timedelta:
@@ -817,7 +820,7 @@ class TradeAnalysis:
         zero_loss_trades_duration = []
         
         loss_risk_at_open_pc = []
-        realised_losses = []
+        realised_losses_pct = []
         interest_paid_usd = []
         durations_between_positions = []
         times_in_market_all = []
@@ -873,7 +876,7 @@ class TradeAnalysis:
             portfolio_value_at_open = position.portfolio_value_at_open
 
             capital_tied_at_open_pct = self.get_capital_tied_at_open(position)
-
+            
             if position.stop_loss:
                 maximum_risk = position.get_loss_risk_at_open()  # TODO use maximum_risk
                 loss_risk_at_open_pc.append(position.get_loss_risk_at_open_pct())
@@ -968,11 +971,11 @@ class TradeAnalysis:
                 losing_trades_duration.append(duration)
 
                 if portfolio_value_at_open := position.portfolio_value_at_open:
-                    realised_loss = realised_profit_usd / portfolio_value_at_open
+                    realised_loss_pct = realised_profit_usd / portfolio_value_at_open
                 else:
                     # Bad data
-                    realised_loss = 0
-                realised_losses.append(realised_loss)
+                    realised_loss_pct = 0
+                realised_losses_pct.append(realised_loss_pct)
 
                 if is_stop_loss:
                     losing_stop_losses += 1
@@ -1025,8 +1028,8 @@ class TradeAnalysis:
         average_losing_trade_loss_pc = get_avg_profit_pct_check(losing_trades)
         average_delta_neutral_profit_pc = get_avg_profit_pct_check(delta_neutral_positions)
 
-        max_realised_loss = func_check(realised_losses, min)
-        avg_realised_risk = func_check(realised_losses, avg)
+        max_realised_loss = func_check(realised_losses_pct, min)
+        avg_realised_risk = func_check(realised_losses_pct, avg)
         max_loss_risk_at_open_pc = func_check(loss_risk_at_open_pc, max)
         
         average_interest_paid_usd = func_check(interest_paid_usd, avg)
