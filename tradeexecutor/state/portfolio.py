@@ -1059,3 +1059,11 @@ class Portfolio:
             If we have any capital to trade
         """
         return self.get_total_equity() >= threshold_usd
+    
+    def get_total_claimed_interest(self) -> USDollarAmount:
+        """Get the total interest claimed from the positions."""
+        return sum(p.get_claimed_interest() for p in self.get_all_positions())
+    
+    def get_total_repaid_interest(self) -> USDollarAmount:
+        """Get the total interest repaid from the positions."""
+        return sum(p.get_repaid_interest() for p in self.get_all_positions())

@@ -789,5 +789,40 @@ def visualise_equity_curves(
 
     return fig
 
+def visualise_portfolio_interest_curve(
+    name: str,
+    state: State,
+    colour="#008800",
+) -> go.Figure:
+    """Draw portfolio's interest performance."""
 
+    plot = []
+    for p in state.portfolio.closed_positions.values():
+        if p.is_closed() and p.is_credit_supply():
+            plot.append(
+                {
+                    "opened_at": p.opened_at, 
+                    "closed_at": p.closed_at, 
+                    "realised_profit_usd": p.get_realised_profit_usd(),
+                }
+            )
 
+    df = pd.DataFrame(plot)
+    df.set_index("opened_at", inplace=True)
+    df["total_interest"] = df["realised_profit_usd"].cumsum()
+
+    fig = go.Figure()
+    fig.add_trace(
+        go.Scatter(
+            x=df.index,
+            y=df["total_interest"],
+            mode="lines",
+            name=name,
+            line=dict(color=colour),
+        )
+    )
+
+    if name:
+        fig.update_layout(title=name, height=1200)
+
+    return fig
