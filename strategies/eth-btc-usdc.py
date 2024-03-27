@@ -1,4 +1,4 @@
-"""MATIC-ETH-USDC rebalance strategy.
+"""ETH-BTC-USDC 1h rebalance strategy, high fee variant.
 
 - See https://tradingstrategy.ai/blog/outperfoming-eth for the strategy development information
 
@@ -40,16 +40,6 @@ from tradingstrategy.utils.groupeduniverse import resample_price_series
 
 trading_strategy_engine_version = "0.5"
 
-tags = {StrategyTag.beta}
-
-name = "ETH-BTC-USDC momentum"
-
-short_description = "A momentum strategy for ETH-USDC and BTC-USDC pairs based on RSI indicators"
-
-long_description = """
-- [See the blog post for more details](https://tradingstrategy.ai/blog/outperfoming-eth) on how this strategy is constructed
-"""
-
 
 def get_strategy_trading_pairs(execution_mode: ExecutionMode) -> list[HumanReadableTradingPairDescription]:
     """Switch between backtest and live trading pairs.
@@ -60,7 +50,8 @@ def get_strategy_trading_pairs(execution_mode: ExecutionMode) -> list[HumanReada
     if execution_mode.is_live_trading():
         # Live trade
         return [
-            (ChainId.polygon, "quickswap", "WBTC", "WETH", 0.0030),
+            # (ChainId.polygon, "quickswap", "WBTC", "WETH", 0.0030),
+            (ChainId.polygon, "quickswap", "WETH", "USDC", 0.0030),  # TODO temp low liquidity pair for the deployment
             (ChainId.polygon, "uniswap-v3", "WETH", "USDC", 0.0005),
         ]
     else:
@@ -79,22 +70,29 @@ class Parameters:
     - Both live trading and backtesting parameters
     """
 
-
     cycle_duration = CycleDuration.cycle_1d  # Run decide_trades() every 8h
     source_time_bucket = TimeBucket.d1  # Use 1h candles as the raw data
     target_time_bucket = TimeBucket.d1  # Create synthetic 8h candles
     clock_shift_bars = 0  # Do not do shifted candles
 
-    rsi_bars = 12  # Number of bars to calculate RSI for each tradingbar
+    rsi_bars = 8  # Number of bars to calculate RSI for each tradingbar
     eth_btc_rsi_bars = 5  # Number of bars for the momentum factor
-    rsi_entry = 60  # Single pair entry level - when RSI crosses above this value open a position
-    rsi_exit = 65  # Single pair exit level - when RSI crosses below this value exit a position
+
+    # RSI parameters for bull and bear market
+    bearish_rsi_entry = 65
+    bearish_rsi_exit = 70
+    bullish_rsi_entry = 80
+    bullish_rsi_exit = 65
+
+    regime_filter_ma_length = 200  # Bull/bear MA begime filter in days
+    regime_filter_only_btc = 1   # Use BTC or per-pair regime filter
+
     allocation = 0.98  # How much cash allocate for volatile positions
     rebalance_threshold = 0.275  # How much position mix % must change when we rebalance between two open positions
     initial_cash = 10_000  # Backtesting start cash
-    trailing_stop_loss = 0.975  # Trailing stop loss as 1 - x
-    trailing_stop_loss_activation_level = 1.06  # How much above opening price we must be before starting to use trailing stop loss
-    stop_loss = None # 0.80  # Hard stop loss when opening a new position
+    trailing_stop_loss = None  # Trailing stop loss as 1 - x
+    trailing_stop_loss_activation_level = None  # How much above opening price we must be before starting to use trailing stop loss
+    stop_loss = None  # 0.80  # Hard stop loss when opening a new position
     momentum_exponent = 3.5  # How much momentum we capture when rebalancing between open positions
 
     #
@@ -102,7 +100,7 @@ class Parameters:
     #
     chain_id = ChainId.polygon
     routing = TradeRouting.default  # Pick default routes for trade execution
-    required_history_period = target_time_bucket.to_timedelta() * rsi_bars * 2  # How much data a live trade execution needs to load to be able to calculate indicators
+    required_history_period = datetime.timedelta(days=regime_filter_ma_length) * 2  # Ask some extra history just in case
 
     #
     # Backtesting only
@@ -111,7 +109,7 @@ class Parameters:
     backtest_start = datetime.datetime(2019, 1, 1)
     backtest_end = datetime.datetime(2024, 3, 15)
     stop_loss_time_bucket = TimeBucket.h1  # use 1h close as the stop loss signal
-    backtest_trading_fee = 0.0030
+    backtest_trading_fee = 0.0030  # Switch to QuickSwap 30 BPS free from the default Binance 5 BPS fee
 
 
 def calculate_eth_btc(strategy_universe: TradingStrategyUniverse, mode: ExecutionMode):
@@ -156,6 +154,11 @@ def calculate_resampled_eth_btc_rsi(strategy_universe: TradingStrategyUniverse, 
      return pandas_ta.rsi(etc_btc, length=length)
 
 
+def calculate_shifted_sma(pair_close_price_series: pd.Series, length: int, upsample: TimeBucket, shift: int):
+    resampled_close = resample_price_series(pair_close_price_series, upsample.to_pandas_timedelta(), shift=shift)
+    return pandas_ta.sma(resampled_close, length=length)
+
+
 def create_indicators(
     timestamp: datetime.datetime,
     parameters: StrategyParameters,
@@ -168,21 +171,28 @@ def create_indicators(
     """
     indicators = IndicatorSet()
     mode = execution_context.mode  # Switch between live trading and backtesting pairs
+    upsample = parameters.target_time_bucket
+    shift = parameters.clock_shift_bars
     indicators.add(
         "rsi", calculate_resampled_rsi,
-        {"length": parameters.rsi_bars, "upsample": parameters.target_time_bucket, "shift": parameters.clock_shift_bars}
+        {"length": parameters.rsi_bars, "upsample": upsample, "shift": shift}
     )
     indicators.add(
         "eth_btc",
         calculate_resampled_eth_btc,
-        {"upsample": parameters.target_time_bucket, "mode": mode, "shift": parameters.clock_shift_bars},
+        {"upsample": parameters.target_time_bucket, "mode": mode, "shift": shift},
         source=IndicatorSource.strategy_universe
     )
     indicators.add(
         "eth_btc_rsi",
         calculate_resampled_eth_btc_rsi,
-        {"length": parameters.eth_btc_rsi_bars, "mode": mode, "upsample": parameters.target_time_bucket, "shift": parameters.clock_shift_bars},
+        {"length": parameters.eth_btc_rsi_bars, "mode": mode, "upsample": upsample, "shift": shift},
         source=IndicatorSource.strategy_universe
+    )
+    indicators.add(
+        "sma",
+        calculate_shifted_sma,
+        {"length": parameters.regime_filter_ma_length, "upsample": upsample, "shift": shift}
     )
     return indicators
 
@@ -190,29 +200,38 @@ def create_indicators(
 def decide_trades(
     input: StrategyInput,
 ) -> list[TradeExecution]:
-    """Strategy entry/exit logic.
+    """Trade logic."""
 
-    - Indicator reading for the input]
-    - The trade logic
-    - Visualisation for the strategy diagnostics
-    """
-
-    # Resolve our pair metadata for our two pair strategy
+    # Resolve some variables we are going to use to here
     parameters = input.parameters
     position_manager = input.get_position_manager()
     state = input.state
     timestamp = input.timestamp
     indicators = input.indicators
-    clock_shift = parameters.clock_shift_bars * parameters.source_time_bucket.to_pandas_timedelta()
+    shift = parameters.clock_shift_bars
+    clock_shift = pd.Timedelta(hours=1) * shift
+    upsample = parameters.target_time_bucket
+    mode = input.execution_context.mode
+    our_pairs = get_strategy_trading_pairs(mode)
+
+    # Execute the daily trade cycle when the clock hour 0..24 is correct for our hourly shift
+    assert upsample.to_timedelta() >= parameters.cycle_duration.to_timedelta(), "Upsample period must be longer than cycle period"
+    assert shift <= 0  # Shift -1 = do action 1 hour later
+
+    # Override the trading fee to simulate worse DEX fees and price impact vs. Binance
+    if mode.is_backtesting():
+        if parameters.backtest_trading_fee:
+            input.pricing_model.set_trading_fee_override(parameters.backtest_trading_fee)
+
+    # Do the clock shift trick
+    if parameters.cycle_duration.to_timedelta() != upsample.to_timedelta():
+        if (input.cycle - 1 + shift) % int(upsample.to_hours()) != 0:
+            return []
 
     alpha_model = AlphaModel(input.timestamp)
+    btc_pair = position_manager.get_trading_pair(our_pairs[0])
+    eth_pair = position_manager.get_trading_pair(our_pairs[1])
     position_manager.log("decide_trades() start")
-
-    # Because DEXes does not have enough historical data for meaningful backtest,
-    # we backtest with CEX pairs with longer history
-    pair_ids = get_strategy_trading_pairs(input.execution_context.mode)
-    btc_pair = position_manager.get_trading_pair(pair_ids[0])
-    eth_pair = position_manager.get_trading_pair(pair_ids[1])
 
     #
     # Indicators
@@ -231,14 +250,6 @@ def decide_trades(
         current_rsi_values[pair] = indicators.get_indicator_value("rsi", index=-1, pair=pair, clock_shift=clock_shift)
         previous_rsi_values[pair] = indicators.get_indicator_value("rsi", index=-2, pair=pair, clock_shift=clock_shift)
 
-    # Create a number (0...1) how much momentum the trading pair has,
-    # with the effect exaggerated with an exponent.
-    #
-    # Anything below RSI 50 scales towards 0 and above scales towards infinity.
-    #
-    # 0.5 = RSI 0
-    # 1.5 = RSI 100
-    # 1 = RSI 50
     eth_btc_yesterday = indicators.get_indicator_value("eth_btc", clock_shift=clock_shift)
     eth_btc_rsi_yesterday = indicators.get_indicator_value("eth_btc_rsi", clock_shift=clock_shift)
     if eth_btc_rsi_yesterday is not None:
@@ -252,6 +263,28 @@ def decide_trades(
     #
 
     for pair in [btc_pair, eth_pair]:
+
+        #
+        # Regime filter
+        #
+        # If no indicator data yet, or regime filter disabled,
+        # be always bullish
+        bullish = True
+        if parameters.regime_filter_ma_length:  # Regime filter is not disabled
+            regime_filter_pair = btc_pair if parameters.regime_filter_only_btc else pair  # Each pair has its own bullish/bearish regime?
+            regime_filter_price = current_price[regime_filter_pair]
+            sma = indicators.get_indicator_value("sma", index=-1, pair=regime_filter_pair, clock_shift=clock_shift)
+            if sma:
+                # We are bearish if close price is beloe SMA
+                bullish = regime_filter_price > sma
+
+        if bullish:
+            rsi_entry = parameters.bullish_rsi_entry
+            rsi_exit = parameters.bullish_rsi_exit
+        else:
+            rsi_entry = parameters.bearish_rsi_entry
+            rsi_exit = parameters.bearish_rsi_exit
+
         existing_position = position_manager.get_current_position_for_pair(pair)
         pair_open = existing_position is not None
         pair_momentum = momentum.get(pair, 0)
@@ -269,8 +302,13 @@ def decide_trades(
         if current_rsi_values[pair] and previous_rsi_values[pair]:
 
             # Check for RSI crossing our threshold values in this cycle, compared to the previous cycle
-            rsi_cross_above = current_rsi_values[pair] >= parameters.rsi_entry and previous_rsi_values[pair] < parameters.rsi_entry
-            rsi_cross_below = current_rsi_values[pair] < parameters.rsi_exit and previous_rsi_values[pair] > parameters.rsi_exit
+            if rsi_entry:
+                rsi_cross_above = current_rsi_values[pair] >= rsi_entry and previous_rsi_values[pair] < rsi_entry
+            else:
+                # bearish_rsi_entry = None -> don't trade in bear market
+                rsi_cross_above = False
+
+            rsi_cross_below = current_rsi_values[pair] < rsi_exit and previous_rsi_values[pair] > rsi_exit
 
             if not pair_open:
                 # Check for opening a position if no position is open
@@ -284,7 +322,7 @@ def decide_trades(
                     alpha_model.set_signal(pair, 0)
 
     # Enable trailing stop loss if we have reached the activation level
-    if parameters.trailing_stop_loss_activation_level is not None:
+    if parameters.trailing_stop_loss_activation_level is not None and parameters.trailing_stop_loss is not None:
        for p in state.portfolio.open_positions.values():
            if p.trailing_stop_loss_pct is None:
                if current_price[p.pair] >= p.get_opening_price() * parameters.trailing_stop_loss_activation_level:
@@ -311,6 +349,7 @@ def decide_trades(
 
         visualisation = state.visualisation  # Helper class to visualise strategy output
 
+        # BTC RSI daily
         if current_rsi_values[btc_pair]:
             visualisation.plot_indicator(
                 timestamp,
@@ -320,26 +359,24 @@ def decide_trades(
                 colour="orange",
             )
 
-            # Low (vertical line)
+            # RSI exit value
             visualisation.plot_indicator(
                 timestamp,
-                f"RSI low trigger",
+                f"RSI exit trigger",
                 PlotKind.technical_indicator_overlay_on_detached,
-                parameters.rsi_exit,
+                rsi_exit,
                 detached_overlay_name=f"RSI BTC",
-                plot_shape=PlotShape.horizontal_vertical,
                 colour="red",
                 label=PlotLabel.hidden,
             )
 
-            # High (vertical line)
+            # RSI entry value
             visualisation.plot_indicator(
                 timestamp,
-                f"RSI high trigger",
+                f"RSI entry trigger",
                 PlotKind.technical_indicator_overlay_on_detached,
-                parameters.rsi_entry,
+                rsi_entry,
                 detached_overlay_name=f"RSI BTC",
-                plot_shape=PlotShape.horizontal_vertical,
                 colour="red",
                 label=PlotLabel.hidden,
             )
@@ -412,6 +449,12 @@ def create_trading_universe(
         )
     else:
         # Live trading - load DEX data
+        universe_options = UniverseOptions(
+            history_period=Parameters.required_history_period,
+            start_at=None,
+            end_at=None,
+        )
+
         dataset = load_partial_data(
             client=client,
             time_bucket=Parameters.source_time_bucket,
@@ -420,7 +463,6 @@ def create_trading_universe(
             universe_options=universe_options,
             liquidity=False,
             stop_loss_time_bucket=Parameters.stop_loss_time_bucket,
-            required_history_period=Parameters.required_history_period,
         )
         # Construct a trading universe from the loaded data,
         # and apply any data preprocessing needed before giving it
@@ -432,3 +474,89 @@ def create_trading_universe(
         )
 
     return strategy_universe
+
+#
+# Strategy metadata.
+#
+# Displayed in the user interface.
+#
+
+tags = {StrategyTag.beta}
+
+name = "ETH-BTC-USDC momentum"
+
+short_description = "A momentum strategy for ETH-USDC and BTC-USDC pairs based on RSI indicators"
+
+icon = "https://tradingstrategy.ai/avatars/polygon-eth-spot-short.webp"
+
+long_description = """
+
+This strategy is a momentum and breakout strategy.
+
+- Based on [RSI technical indicator](https://tradingstrategy.ai/glossary/relative-strength-index-rsi), the strategy is buying when others are buying, and the strategy is selling when others are selling
+- The strategy has [a regime filter](https://tradingstrategy.ai/glossary/regime-filter) to reduce trading in a [bear market](https://tradingstrategy.ai/glossary/bear-market) 
+
+**Past Performance Is Not Indicative Of Future Results**.
+
+# Assets and trading venues
+
+- The strategy trades only spot market
+- We trade two trading asset: ETH and BTC
+- The strategy keeps reserves in USDC stablecoin
+- The trading happens on QuickSwap and Uniswap on Polygon blockchain
+- The strategy decision cycle is daily rebalance
+
+# Backtesting
+
+The backtesting was performed with Binance ETH-USDT and BTC-USDT data of 2019-2024.
+[Read more about what is backtesting](https://tradingstrategy.ai/glossary/backtest).
+
+The backtesting trading venue (Binance) is different from the live trading venue (Quickswap, Uniswap), because DEX markets
+do not have long enough history to result to a meaningful backtest.
+
+The backtesting period saw one bull market rally that is unlikely to repeat in the same magnitude 
+for the assets we trade.
+
+Past peformance is no guarantee of future results. Like with manual trading, automated trading is unlikely to be perfect.
+There will be variance in the range of 30% - 50% in the results.
+
+# Profit
+
+The backtested results indicate *80%* yearly profit ([CAGR](https://tradingstrategy.ai/glossary/compound-annual-growth-rate-cagr)). 
+
+# Risk
+
+This is medium risk strategy with *-50%* backtested [maximum drawdown](https://tradingstrategy.ai/glossary/maximum-drawdown).
+The backtested [Sharpe ratio](https://tradingstrategy.ai/glossary/sharpe) is is *1.00*.
+
+For understanding the risk assessment
+
+- The strategy does not use any leverage
+- The strategy has high maximum drawdown, comparable to buying and holding cryptocurrency  
+- The strategy trades only highly liquid trading pairs which are unlikely to go to zero
+
+# Benchmark
+
+For the same backtesting period, here are some benchmark of performance of different assets and indices:
+
+- Buy and hold BTC:
+- Buy and hold ETH:
+- SP500 stock index:
+- US treasury notes: 
+
+# Trading frequency
+
+This strategy is estimated to enter a position every *20 days*. 
+
+# Robustness
+
+The strategy wins 50% of its trading positions.
+The strategy is not very accurate. The profits 
+come for long running bull market positions.
+
+# Further information
+
+- [Any questions are welcome in the Discord community chat](https://tradingstrategy.ai/community)
+- [See the blog post how the strategy is constructed](https://tradingstrategy.ai/blog/outperfoming-eth) on how this strategy is constructed
+ 
+"""

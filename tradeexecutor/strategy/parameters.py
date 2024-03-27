@@ -221,5 +221,9 @@ class StrategyParameters(MutableAttributeDict):
     def __getattribute__(self, name):
         # Only implemented to make type hinting to stop complaining
         # https://stackoverflow.com/questions/78210800/type-hinting-python-class-with-dynamic-any-attribute/78210867#78210867
-        return object.__getattribute__(self, name)
+        try:
+            return object.__getattribute__(self, name)
+        except AttributeError:
+            all_params = ", ".join(key for key, val in self.iterate_parameters())
+            raise AttributeError(f"Strategy parameters lacks parameter: {name}\nWe have: {all_params}")
 

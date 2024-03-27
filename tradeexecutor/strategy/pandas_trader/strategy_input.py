@@ -529,6 +529,12 @@ class StrategyInput:
                             colour="orange",
                         )
         """
+
+        # Visuals always enabled for live tradin
+        if self.execution_context.mode.is_live_trading():
+            return True
+
+        # Grid search disables visual plotting to save speed and space
         return not self.execution_context.grid_search
 
 
