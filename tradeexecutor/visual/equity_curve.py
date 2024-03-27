@@ -3,6 +3,7 @@
 For more information see the narrative documentation on :ref:`profitability`.
 """
 import datetime
+import warnings
 from typing import List
 
 import pandas as pd
@@ -309,9 +310,15 @@ def visualise_returns_over_time(
     # In a future version of pandas all arguments of DataFrame.pivot will be keyword-only.
 
     qs = import_quantstats_wrapped()
-    fig = qs.plots.monthly_returns(
-        returns,
-        show=False)
+
+    with warnings.catch_warnings():  #  DeprecationWarning: Importing display from IPython.core.display is deprecated since IPython 7.14, please import from IPython display
+        warnings.simplefilter(action='ignore', category=FutureWarning)
+        # /usr/local/lib/python3.10/site-packages/quantstats/stats.py:968: FutureWarning: In a future version of pandas all arguments of DataFrame.pivot will be keyword-only.
+        #    returns = returns.pivot('Year', 'Month', 'Returns').fillna(0)
+        fig = qs.plots.monthly_returns(
+            returns,
+            show=False)
+    
     return fig
 
 
