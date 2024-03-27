@@ -177,7 +177,7 @@ def calculate_trades_per_month(state: State) -> float:
     :return:
         Avg number of trades per month
     """
-    trade_count = len(state.portfolio.get_all_trades())
+    trade_count = len(list(state.portfolio.get_all_trades()))
     duration = state.get_strategy_duration()
     if duration:
         return trade_count * datetime.timedelta(days=30) / duration
@@ -271,7 +271,7 @@ def calculate_key_metrics(
         yield KeyMetric.create_metric(KeyMetricKind.cagr, source, cagr, calculation_window_start_at, calculation_window_end_at, KeyMetricCalculationMethod.historical_data)
 
         trades_per_month = calculate_trades_per_month(source_state)
-        yield KeyMetric.create_metric(KeyMetricKind.trades_last_week, source, trades_per_month, calculation_window_start_at, calculation_window_end_at, KeyMetricCalculationMethod.historical_data)
+        yield KeyMetric.create_metric(KeyMetricKind.trades_per_month, source, trades_per_month, calculation_window_start_at, calculation_window_end_at, KeyMetricCalculationMethod.historical_data)
 
         if live_state:
             total_equity = live_state.portfolio.get_total_equity()

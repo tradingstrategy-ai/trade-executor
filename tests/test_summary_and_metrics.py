@@ -315,7 +315,7 @@ def test_calculate_key_metrics_live(state: State):
     # returns = calculate_compounding_realised_profitability(state)
 
     metrics = {m.kind.value: m for m in calculate_key_metrics(state)}
-    assert len(metrics) == 9
+    assert len(metrics) == 10
     assert metrics["sharpe"].value == pytest.approx(-2.1464509890620724)
     assert metrics["sortino"].value == pytest.approx(-2.720957242817309)
     assert metrics["profitability"].value == pytest.approx(-0.045838046723895576)
@@ -324,7 +324,7 @@ def test_calculate_key_metrics_live(state: State):
     assert metrics["max_drawdown"].source == KeyMetricSource.live_trading
     assert metrics["max_drawdown"].help_link == "https://tradingstrategy.ai/glossary/maximum-drawdown"
     assert metrics["cagr"].value == pytest.approx(-0.07760827122577163)
-    assert metrics["trades_per_month"].value == pytest.approx(-0.07760827122577163)
+    assert metrics["trades_per_month"].value == pytest.approx(30.0)
 
     assert metrics["trades_last_week"].value == 0
     assert metrics["last_trade"].value == datetime.datetime(2021, 12, 31, 0, 0)

@@ -486,5 +486,6 @@ _KEY_METRIC_HELP = {
    KeyMetricKind.total_equity: "https://tradingstrategy.ai/glossary/total-equity",
    KeyMetricKind.started_at: "https://tradingstrategy.ai/glossary/strategy-age",
    KeyMetricKind.last_trade: "https://tradingstrategy.ai/glossary/last-trade",
-   KeyMetricKind.trades_last_week: "https://tradingstrategy.ai/glossary/trades-last-wee",
+   KeyMetricKind.trades_last_week: "https://tradingstrategy.ai/glossary/trades-last-week",
+   KeyMetricKind.trades_per_month: "https://tradingstrategy.ai/glossary/trade-frequency",
 }
