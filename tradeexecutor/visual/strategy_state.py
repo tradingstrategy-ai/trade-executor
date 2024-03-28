@@ -29,9 +29,8 @@ logger = logging.getLogger(__name__)
 
 def adjust_legend(f):
     def wrapped(*args, **kwargs):
-        fig = f(*args, **kwargs)  # Call the original function to get the figure
+        fig = f(*args, **kwargs)
         if isinstance(fig, go.Figure):
-            # Apply the layout adjustment for the legend
             fig.update_layout(legend=dict(
                 bgcolor='rgba(0,0,0,0)'  # Make legend background transparent
             ))
