@@ -490,6 +490,7 @@ short_description = "A momentum strategy for ETH-USDC and BTC-USDC pairs based o
 icon = "https://tradingstrategy.ai/avatars/polygon-eth-spot-short.webp"
 
 long_description = """
+# Strategy description
 
 This strategy is a momentum and breakout strategy.
 
@@ -498,7 +499,7 @@ This strategy is a momentum and breakout strategy.
 
 **Past Performance Is Not Indicative Of Future Results**.
 
-# Assets and trading venues
+## Assets and trading venues
 
 - The strategy trades only spot market
 - We trade two trading asset: ETH and BTC
@@ -506,7 +507,7 @@ This strategy is a momentum and breakout strategy.
 - The trading happens on QuickSwap and Uniswap on Polygon blockchain
 - The strategy decision cycle is daily rebalance
 
-# Backtesting
+## Backtesting
 
 The backtesting was performed with Binance ETH-USDT and BTC-USDT data of 2019-2024.
 [Read more about what is backtesting](https://tradingstrategy.ai/glossary/backtest).
@@ -520,11 +521,11 @@ for the assets we trade.
 Past peformance is no guarantee of future results. Like with manual trading, automated trading is unlikely to be perfect.
 There will be variance in the range of 30% - 50% in the results.
 
-# Profit
+## Profit
 
 The backtested results indicate *80%* yearly profit ([CAGR](https://tradingstrategy.ai/glossary/compound-annual-growth-rate-cagr)). 
 
-# Risk
+## Risk
 
 This is medium risk strategy with *-50%* backtested [maximum drawdown](https://tradingstrategy.ai/glossary/maximum-drawdown).
 The backtested [Sharpe ratio](https://tradingstrategy.ai/glossary/sharpe) is is *1.00*.
@@ -535,7 +536,7 @@ For understanding the risk assessment
 - The strategy has high maximum drawdown, comparable to buying and holding cryptocurrency  
 - The strategy trades only highly liquid trading pairs which are unlikely to go to zero
 
-# Benchmark
+## Benchmark
 
 For the same backtesting period, here are some benchmark of performance of different assets and indices:
 
@@ -544,17 +545,17 @@ For the same backtesting period, here are some benchmark of performance of diffe
 - SP500 stock index:
 - US treasury notes: 
 
-# Trading frequency
+## Trading frequency
 
 This strategy is estimated to enter a position every *20 days*. 
 
-# Robustness
+## Robustness
 
 The strategy wins 50% of its trading positions.
 The strategy is not very accurate. The profits 
 come for long running bull market positions.
 
-# Further information
+## Further information
 
 - [Any questions are welcome in the Discord community chat](https://tradingstrategy.ai/community)
 - [See the blog post how the strategy is constructed](https://tradingstrategy.ai/blog/outperfoming-eth) on how this strategy is constructed
