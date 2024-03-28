@@ -13,7 +13,8 @@ from tradeexecutor.state.portfolio import Portfolio
 from tradeexecutor.state.state import State
 from tradeexecutor.state.types import Percent
 from tradeexecutor.strategy.summary import KeyMetric, KeyMetricKind, KeyMetricSource, KeyMetricCalculationMethod
-from tradeexecutor.visual.equity_curve import calculate_size_relative_realised_trading_returns, calculate_non_cumulative_daily_returns
+from tradeexecutor.visual.equity_curve import calculate_size_relative_realised_trading_returns, calculate_non_cumulative_daily_returns, calculate_equity_curve, \
+    calculate_returns, calculate_daily_returns
 from tradeexecutor.visual.qs_wrapper import import_quantstats_wrapped
 
 
@@ -166,6 +167,7 @@ def calculate_cagr(returns: pd.Series) -> Percent:
         return 0
 
     try:
+        import ipdb ; ipdb.set_trace()
         return cagr(returns)
     except ZeroDivisionError:
         return 0
@@ -244,15 +246,22 @@ def calculate_key_metrics(
         # Use trading profitability instead of the fund performance
         # as the base for calculations to ensure
         # sharpe/sortino/etc. stays compatible regardless of deposit flow
-        returns = calculate_size_relative_realised_trading_returns(source_state)
-        daily_returns = calculate_non_cumulative_daily_returns(source_state)
-        
-        # alternate method
-        # log_returns = np.log(returns.add(1))
-        # daily_log_sum_returns = log_returns.resample('D').sum().fillna(0)
-        # daily_returns = np.exp(daily_log_sum_returns) - 1
-        
-        periods = pd.Timedelta(days=365) / freq_base
+        if source == KeyMetricSource.backtesting:
+            equity_curve = calculate_equity_curve(source_state)
+            returns = calculate_returns(equity_curve)
+            daily_returns = calculate_daily_returns(source_state, "D")
+            periods = 365
+        else:
+            # TODO: Here we need fix these stats -
+            # calculate_non_cumulative_daily_returns() yields different
+            # results than the method above for the same state
+            returns = calculate_size_relative_realised_trading_returns(source_state)
+            daily_returns = calculate_non_cumulative_daily_returns(source_state)
+            # alternate method
+            # log_returns = np.log(returns.add(1))
+            # daily_log_sum_returns = log_returns.resample('D').sum().fillna(0)
+            # daily_returns = np.exp(daily_log_sum_returns) - 1
+            periods = pd.Timedelta(days=365) / freq_base
 
         sharpe = calculate_sharpe(daily_returns, periods=periods)
         yield KeyMetric.create_metric(KeyMetricKind.sharpe, source, sharpe, calculation_window_start_at, calculation_window_end_at, KeyMetricCalculationMethod.historical_data)
