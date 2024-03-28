@@ -167,7 +167,6 @@ def calculate_cagr(returns: pd.Series) -> Percent:
         return 0
 
     try:
-        import ipdb ; ipdb.set_trace()
         return cagr(returns)
     except ZeroDivisionError:
         return 0
