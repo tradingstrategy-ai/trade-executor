@@ -1211,9 +1211,13 @@ class TradeAnalysis:
 
         profit_long_pct, profit_short_pct = 0, 0
 
-        if all_stats_trade_summary.return_percent and all_profit_usd != 0:
-            profit_long_pct = all_stats_trade_summary.return_percent * long_profit_usd / all_profit_usd
-            profit_short_pct = all_stats_trade_summary.return_percent * short_profit_usd / all_profit_usd
+        if all_stats_trade_summary.return_percent:
+            profit_long_pct = calculate_percentage(all_stats_trade_summary.return_percent * long_profit_usd, all_profit_usd)
+            profit_short_pct = calculate_percentage(all_stats_trade_summary.return_percent * short_profit_usd, all_profit_usd)
+        elif len(all_stats_trade_summary.compounding_returns) > 0:
+            # TODO weight long_stats_trade_summary.compounding_returns and also for short
+            profit_long_pct = calculate_percentage(all_stats_trade_summary.compounding_returns.iloc[-1] * long_profit_usd, all_profit_usd)
+            profit_short_pct = calculate_percentage(long_stats_trade_summary.compounding_returns.iloc[-1] * short_profit_usd, all_profit_usd)
 
         # profit_long_pct = self.calculate_weighted_average_realised_profit(self.get_long_positions())
         # profit_short_pct = self.calculate_weighted_average_realised_profit(self.get_short_positions())
