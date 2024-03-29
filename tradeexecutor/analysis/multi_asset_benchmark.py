@@ -123,6 +123,7 @@ def compare_multiple_portfolios(
     indexes: pd.DataFrame | None = None,
     mode: AdvancedMetricsMode=AdvancedMetricsMode.basic,
     periods_per_year=365,
+    display=False,
 ) -> pd.DataFrame:
     """Compare multiple portfolios.
 
@@ -157,6 +158,7 @@ def compare_multiple_portfolios(
             mode=mode,
             periods_per_year=periods_per_year,
             convert_to_daily=False,
+            display=display,
         )
         result_table[name] = metrics["Strategy"]
         last_series = portfolio_series
@@ -168,6 +170,7 @@ def compare_multiple_portfolios(
             mode=mode,
             periods_per_year=periods_per_year,
             convert_to_daily=False,
+            display=display,
         )
         result_table[name] = metrics["Benchmark"]
 
@@ -177,6 +180,7 @@ def compare_multiple_portfolios(
 def compare_strategy_backtest_to_multiple_assets(
     state: State,
     strategy_universe: TradingStrategyUniverse,
+    display=False,
 ) -> pd.DataFrame:
     """Backtest comparison of strategy against buy and hold assets.
 
@@ -201,6 +205,7 @@ def compare_strategy_backtest_to_multiple_assets(
 
     return compare_multiple_portfolios(
         portfolios=portfolios,
-        indexes=benchmarks
+        indexes=benchmarks,
+        display=display,
     )
 
