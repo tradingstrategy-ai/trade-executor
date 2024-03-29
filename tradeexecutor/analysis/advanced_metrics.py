@@ -105,10 +105,13 @@ def calculate_advanced_metrics(
         result = metrics(
             returns,
             benchmark=benchmark,
-            display=display,
+            as_pct=display,  # QuantStats codebase is a mess
             periods_per_year=periods_per_year,
-            mode=mode.value
+            mode=mode.value,
+            display=False,
         )
+
+        assert result is not None, "metrics(): returned None"
 
         if convert_to_daily:
             returns = resample_returns(returns, "D")
@@ -117,7 +120,7 @@ def calculate_advanced_metrics(
         # Communicative annualized growth return,
         # as compounded
         # Should say CAGR (raw), but is what it is for the legacy reasons
-        if benchmark is None and not display:
+        if benchmark is None:
             result.loc["Annualised return (raw)"] = [stats.cagr(returns, 0., compounded=True)]
         return result
 

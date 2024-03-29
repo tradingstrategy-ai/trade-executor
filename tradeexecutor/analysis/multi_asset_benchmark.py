@@ -160,6 +160,7 @@ def compare_multiple_portfolios(
             convert_to_daily=False,
             display=display,
         )
+        assert "Strategy" in metrics.columns, f"We got {metrics.columns}"
         result_table[name] = metrics["Strategy"]
         last_series = portfolio_series
 
