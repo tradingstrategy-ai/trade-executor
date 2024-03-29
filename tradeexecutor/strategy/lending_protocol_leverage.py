@@ -68,6 +68,7 @@ def create_credit_supply_loan(
 
 
 def update_credit_supply_loan(
+    loan: Loan,
     position: "tradeexecutor.state.position.TradingPosition",
     trade: TradeExecution,
     timestamp: datetime.datetime,
@@ -80,9 +81,6 @@ def update_credit_supply_loan(
 
     pair = position.pair
     assert pair.is_credit_supply()
-
-    loan = position.loan
-    assert loan
 
     loan.collateral.change_quantity_and_value(
         trade.planned_quantity,
