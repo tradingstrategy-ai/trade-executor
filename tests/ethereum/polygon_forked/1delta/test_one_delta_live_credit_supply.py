@@ -319,7 +319,7 @@ def test_one_delta_live_credit_supply_mixed_with_spot(
     weth: Contract,
     asset_usdc,
 ):
-    """Live 1delta trade.
+    """Live 1delta trade mixed with spot position using generic router
 
     - Sets up a simple strategy that open and close a credit supply position
 
@@ -413,7 +413,6 @@ def test_one_delta_live_credit_supply_mixed_with_spot(
     assert state.portfolio.reserves[usdc_id].quantity == 9000
 
     position = state.portfolio.open_positions[1]
-    print(position.portfolio_value_at_open)
     assert position.get_quantity() == pytest.approx(Decimal(1000))
     assert position.get_value() == pytest.approx(1000)
     old_col_value = position.loan.get_collateral_value()

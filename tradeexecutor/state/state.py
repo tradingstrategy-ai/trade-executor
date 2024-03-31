@@ -695,6 +695,7 @@ class State:
                             position,
                             trade,
                             executed_at,
+                            mode="execute",
                         )
                     else:
                         trade.executed_loan_update = update_credit_supply_loan(
@@ -702,6 +703,7 @@ class State:
                             position,
                             trade,
                             executed_at,
+                            mode="execute",
                         )
 
             position.loan = trade.executed_loan_update

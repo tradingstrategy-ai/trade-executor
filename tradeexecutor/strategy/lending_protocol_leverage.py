@@ -22,6 +22,7 @@ def create_credit_supply_loan(
     position: "tradeexecutor.state.position.TradingPosition",
     trade: TradeExecution,
     timestamp: datetime.datetime,
+    mode: Literal["plan", "execute"] = "plan",
 ):
     """Create a loan that supplies credit to a lending protocol.
 
@@ -46,17 +47,22 @@ def create_credit_supply_loan(
     # and whatever more collateral we get for selling the shorted token
     #
 
+    if mode == "plan":
+        reserve_quantity = trade.planned_reserve
+    else:
+        reserve_quantity = trade.executed_reserve
+
     collateral = AssetWithTrackedValue(
         asset=pair.base,  # aUSDC token is the base pair for credit supply positions
         last_usd_price=trade.reserve_currency_exchange_rate,
         last_pricing_at=datetime.datetime.utcnow(),
-        quantity=trade.planned_reserve,
+        quantity=reserve_quantity,
     )
 
     loan = Loan(
         pair=trade.pair,
         collateral=collateral,
-        collateral_interest=Interest.open_new(trade.planned_reserve, timestamp),
+        collateral_interest=Interest.open_new(reserve_quantity, timestamp),
         borrowed=None,
         borrowed_interest=None,
     )
@@ -72,20 +78,24 @@ def update_credit_supply_loan(
     position: "tradeexecutor.state.position.TradingPosition",
     trade: TradeExecution,
     timestamp: datetime.datetime,
+    mode: Literal["plan", "execute"] = "plan",
 ):
     """Close/increase/reduce credit supply loan.
 
     """
 
     assert trade.is_credit_supply()
+    assert position.pair.is_credit_supply()
 
-    pair = position.pair
-    assert pair.is_credit_supply()
+    if mode == "plan":
+        reserve_quantity = trade.planned_quantity
+    else:
+        reserve_quantity = trade.executed_quantity
 
     loan.collateral.change_quantity_and_value(
-        trade.planned_quantity,
+        reserve_quantity,
         trade.reserve_currency_exchange_rate,
-        trade.opened_at,
+        timestamp,
         allow_negative=True,
     )
 
