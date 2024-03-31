@@ -1,6 +1,7 @@
 
 import pytest
 import pandas as pd
+from web3 import Web3
 
 from eth_defi.uniswap_v3.deployment import UniswapV3Deployment
 from tradingstrategy.exchange import ExchangeUniverse
@@ -13,6 +14,10 @@ from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniv
 from tradeexecutor.strategy.execution_context import python_script_execution_context, unit_test_execution_context
 from tradeexecutor.strategy.universe_model import default_universe_options
 from tradeexecutor.ethereum.universe import create_exchange_universe, create_pair_universe
+from tradeexecutor.ethereum.ethereum_protocol_adapters import EthereumPairConfigurator
+from tradeexecutor.strategy.generic.generic_router import GenericRouting
+from tradeexecutor.strategy.generic.generic_pricing_model import GenericPricing
+from tradeexecutor.strategy.generic.generic_valuation import GenericValuation
 
 
 @pytest.fixture
@@ -52,3 +57,41 @@ def trading_strategy_universe(chain_id, exchange_universe, pair_universe, asset_
 
     # Convert loaded data to a trading pair universe
     return TradingStrategyUniverse.create_single_pair_universe(dataset)
+
+
+@pytest.fixture()
+def pair_configurator(
+    web3: Web3,
+    trading_strategy_universe: TradingStrategyUniverse,
+) -> EthereumPairConfigurator:
+    return EthereumPairConfigurator(
+        web3,
+        trading_strategy_universe,
+    )
+
+
+@pytest.fixture()
+def generic_routing_model(pair_configurator) -> GenericRouting:
+    """Create a routing model that trades Uniswap v2, v3 and 1delta + Aave.
+
+    Live Polygon deployment addresses.
+    """
+
+    # Uses default router choose function
+    return GenericRouting(pair_configurator)
+
+
+@pytest.fixture()
+def generic_pricing_model(pair_configurator) -> GenericPricing:
+    """Create a routing model that trades Uniswap v2, v3 and 1delta + Aave.
+
+    Live Polygon deployment addresses.
+    """
+    # Uses default router choose function
+    return GenericPricing(pair_configurator)
+
+
+@pytest.fixture()
+def generic_valuation_model(pair_configurator) -> GenericValuation:
+    return GenericValuation(pair_configurator)
+

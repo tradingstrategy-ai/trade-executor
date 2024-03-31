@@ -695,12 +695,15 @@ class State:
                             position,
                             trade,
                             executed_at,
+                            mode="execute",
                         )
                     else:
                         trade.executed_loan_update = update_credit_supply_loan(
+                            position.loan.clone(),
                             position,
                             trade,
                             executed_at,
+                            mode="execute",
                         )
 
             position.loan = trade.executed_loan_update
