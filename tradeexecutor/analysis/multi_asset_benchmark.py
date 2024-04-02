@@ -1,4 +1,6 @@
-"""Calculate portfolio benchmark tables for multiple assets side-by-side."""
+"""Calculate portfolio benchmark tables for multiple assets side-by-side.
+
+"""
 
 import pandas as pd
 
