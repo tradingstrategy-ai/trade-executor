@@ -13,6 +13,8 @@ from pathlib import Path
 from typing import Optional
 
 from tradeexecutor.strategy.default_routing_options import TradeRouting
+from tradeexecutor.strategy.pandas_trader.indicator import CreateIndicatorsProtocolV1, CreateIndicatorsProtocol
+from tradeexecutor.strategy.parameters import StrategyParameters
 from tradeexecutor.strategy.routing import RoutingModel
 from tradingstrategy.client import Client
 
@@ -103,7 +105,9 @@ def make_factory_from_strategy_mod(mod: StrategyModuleInformation) -> StrategyFa
             timed_task_context_manager: AbstractContextManager,
             approval_model: ApprovalModel,
             run_state: RunState,
-            routing_model: Optional[RoutingModel]=None,
+            routing_model: RoutingModel | None = None,
+            create_indicators: CreateIndicatorsProtocol | None = None,
+            parameters: StrategyParameters | None = None,
             **kwargs) -> StrategyExecutionDescription:
 
         # Migration assert
@@ -149,6 +153,8 @@ def make_factory_from_strategy_mod(mod: StrategyModuleInformation) -> StrategyFa
             run_state=run_state,
             accounting_checks=execution_context.mode.is_live_trading(),
             unit_testing=execution_context.mode.is_unit_testing(),
+            create_indicators=create_indicators,
+            parameters=parameters,
         )
 
         logger.info("Starting strategy runner in execution mode %s:\n%s", execution_context.mode.name, runner.__class__.__name__)
@@ -158,7 +164,7 @@ def make_factory_from_strategy_mod(mod: StrategyModuleInformation) -> StrategyFa
             runner=runner,
             trading_strategy_engine_version=mod_info.trading_strategy_engine_version,
             cycle_duration=mod_info.trading_strategy_cycle,
-            chain_id=mod_info.chain_id,
+            chain_id=mod_info.get_default_chain_id(),
             source_code=mod_info.source_code,
         )
 

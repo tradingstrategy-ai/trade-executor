@@ -242,9 +242,24 @@ def test_backtest_long_short_stats(
     assert summary.compounding_returns.equals(overall_compounding_profit)
     assert long_summary.compounding_returns.equals(long_compounding_profit)
     assert short_summary.compounding_returns.equals(short_compounding_profit)
+
+    # all longs and shorts opened and closed at same time
+    assert summary.time_in_market == pytest.approx(0.5263157894736842)
+    assert long_summary.time_in_market == pytest.approx(0.5263157894736842)
+    assert short_summary.time_in_market == pytest.approx(0.5263157894736842)
     
     assert summary.return_percent == pytest.approx(overall_compounding_profit.iloc[-1], abs=1e-3)  # TODO make more precise
-    
+    assert summary.total_interest_paid_usd == pytest.approx(2.4602719114723985)
+    assert summary.median_interest_paid_usd == pytest.approx(0.0)
+    assert summary.min_interest_paid_usd == pytest.approx(0.0)
+    assert summary.max_interest_paid_usd == pytest.approx(0.2841330557398559)
+
+    assert long_summary.total_interest_paid_usd == 0.0
+    assert short_summary.total_interest_paid_usd == pytest.approx(2.4602719114723985)
+    assert short_summary.median_interest_paid_usd == pytest.approx(0.2721172702270313)
+    assert short_summary.min_interest_paid_usd == pytest.approx(0.0)
+    assert short_summary.max_interest_paid_usd == pytest.approx(0.2841330557398559)
+ 
     assert overall_compounding_profit.iloc[0] == 0
     assert long_compounding_profit.iloc[0] == 0
     assert short_compounding_profit.iloc[0] == 0

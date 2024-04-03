@@ -11,7 +11,7 @@ from typing import TypeAlias
 #:
 #: No changelog available yet.
 #:
-SUPPORTED_TRADING_STRATEGY_ENGINE_VERSIONS = ("0.1", "0.2", "0.3")
+SUPPORTED_TRADING_STRATEGY_ENGINE_VERSIONS = ("0.1", "0.2", "0.3", "0.4", "0.5")
 
 #: Data type for engine versions.
 #:

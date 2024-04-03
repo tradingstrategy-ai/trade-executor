@@ -8,7 +8,7 @@ from dataclasses_json import dataclass_json
 import datetime
 from typing import Literal
 
-from tradeexecutor.analysis.trade_analyser import build_trade_analysis
+from tradeexecutor.analysis.trade_analyser import build_trade_analysis, calculate_annualised_return
 from tradeexecutor.strategy.summary import KeyMetricKind, KeyMetricSource, KeyMetric
 from tradeexecutor.state.state import State
 from tradeexecutor.state.portfolio import Portfolio
@@ -142,7 +142,7 @@ def _serialise_long_short_stats_as_json_table(
     if compounding_returns is not None and len(compounding_returns) > 0:
         daily_returns = calculate_non_cumulative_daily_returns(source_state)
         portfolio_return = compounding_returns.iloc[-1]
-        annualised_return_percent = portfolio_return * 365 * 24 * 60 * 60 / (calculation_window_end_at - calculation_window_start_at).total_seconds()
+        annualised_return_percent = calculate_annualised_return(portfolio_return, calculation_window_end_at - calculation_window_start_at)
         summary.loc['Return %']['All'] = format_value(as_percent(portfolio_return))
         summary.loc['Annualised return %']['All'] = format_value(as_percent(annualised_return_percent))
 
@@ -194,12 +194,22 @@ def _serialise_long_short_stats_as_json_table(
         KeyMetricKind.max_pullback_of_total_capital: 'Max pullback of total capital',
         KeyMetricKind.max_loss_risk_at_opening_of_position: 'Max loss risk at opening of position',
         KeyMetricKind.max_drawdown: 'Max drawdown',
+        KeyMetricKind.average_interest_paid_usd: 'average_interest_paid_usd',
+        KeyMetricKind.median_interest_paid_usd: 'median_interest_paid_usd',
+        KeyMetricKind.max_interest_paid_usd: 'max_interest_paid_usd',
+        KeyMetricKind.min_interest_paid_usd: 'min_interest_paid_usd',
+        KeyMetricKind.total_interest_paid_usd: 'total_interest_paid_usd',
+        KeyMetricKind.average_duration_between_position_openings: 'average_duration_between_position_openings',
+        KeyMetricKind.average_position_frequency: 'average_position_frequency',
     }
 
     rows = {}
     for key_metric_kind, summary_index in key_metrics_map.items():
         if summary_index in summary.index:
             metric_data = summary.loc[summary_index]
+            
+            for i in metric_data:
+                assert isinstance(i, str | None), f"Should be string. Got {i}"
 
             rows[key_metric_kind.value] = KeyMetric(
                 kind=key_metric_kind,

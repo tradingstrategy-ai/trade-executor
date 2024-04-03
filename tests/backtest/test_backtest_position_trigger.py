@@ -412,7 +412,7 @@ def test_synthetic_data_backtest_stop_loss(
     )
 
     # Expect backtesting for 213 days
-    assert len(debug_dump) == 214
+    assert len(debug_dump) == 215
     assert len(list(state.portfolio.get_all_positions())) == 9
     assert len(list(state.portfolio.get_all_trades())) == 17
 
@@ -450,7 +450,7 @@ def test_synthetic_data_backtest_stop_loss(
     assert len(universe.backtest_stop_loss_candles.df) == 5136
 
     # Expect backtesting for 213 days
-    assert len(debug_dump) == 214
+    assert len(debug_dump) == 215
 
     # Check that all positions had stop loss set
     for p in state.portfolio.get_all_positions():
@@ -512,7 +512,7 @@ def test_synthetic_data_backtest_take_profit(
     )
 
     # Expect backtesting for 213 days
-    assert len(debug_dump) == 214
+    assert len(debug_dump) == 215
     assert len(list(state.portfolio.get_all_positions())) == 9
     assert len(list(state.portfolio.get_all_trades())) == 17
 
@@ -547,7 +547,7 @@ def test_synthetic_data_backtest_take_profit(
     assert universe.backtest_stop_loss_time_bucket
 
     # Expect backtesting for 213 days
-    assert len(debug_dump) == 214
+    assert len(debug_dump) == 215
 
     # Check that all positions had take profit set
     for p in state.portfolio.get_all_positions():
@@ -639,7 +639,7 @@ def test_synthetic_data_backtest_trailing_stop_loss(
     )
 
     # Expect backtesting for 213 days
-    assert len(debug_dump) == 214
+    assert len(debug_dump) == 215
     assert len(list(state.portfolio.get_all_positions())) == 46
     assert len(list(state.portfolio.get_all_trades())) == 91
 
@@ -707,7 +707,7 @@ def test_synthetic_data_backtest_stop_loss_usd(
     )
 
     # Expect backtesting for 213 days
-    assert len(debug_dump) == 214
+    assert len(debug_dump) == 215
     assert len(list(state.portfolio.get_all_positions())) == 9
     assert len(list(state.portfolio.get_all_trades())) == 17
 
@@ -745,7 +745,7 @@ def test_synthetic_data_backtest_stop_loss_usd(
     assert len(universe.backtest_stop_loss_candles.df) == 5136
 
     # Expect backtesting for 213 days
-    assert len(debug_dump) == 214
+    assert len(debug_dump) == 215
 
     # Check that all positions had stop loss set
     for p in state.portfolio.get_all_positions():

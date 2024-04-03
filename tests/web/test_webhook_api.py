@@ -39,6 +39,7 @@ def server_url(store):
     execution_state.visualisation.large_image_dark = b"4"
     execution_state.version.tag = "v1"
     execution_state.version.commit_message = "Foobar"
+    execution_state.read_only_state_copy = store.load()
 
     queue = Queue()
 

@@ -54,6 +54,13 @@ class ExecutionMode(enum.Enum):
     #: data in a Jupyter notebook.
     data_preload = "data_preload"
 
+    #: Internal unit testing of modules
+    #:
+    #: This specifically refers to unit testing that uses backtesting data.
+    #: See :py:attr:`unit_testing_trading` as well.
+    #:
+    unit_testing = "unit_Testing"
+
     #: We are operating on real datasets like :py:data:`real_trading`
     #: but we do not want to purge caches.
     #:
@@ -97,7 +104,7 @@ class ExecutionMode(enum.Enum):
         """The strategy is running for backtesting.
 
         """
-        return self in (self.backtesting,)
+        return self in (self.backtesting, self.unit_testing,)
 
     def is_fresh_data_always_needed(self):
         """Should we purge caches for each trade cycle.
@@ -108,7 +115,7 @@ class ExecutionMode(enum.Enum):
 
     def is_unit_testing(self) -> bool:
         """Are we executing unit tests."""
-        return self in (self.unit_testing_trading, self.simulated_trading,)
+        return self in (self.unit_testing_trading, self.simulated_trading, self.unit_testing,)
 
 
 @dataclass
@@ -166,6 +173,17 @@ class ExecutionContext:
     #:
     parameters: StrategyParameters | None = None
 
+    #: Is this backtest run part of a grid search group
+    #:
+    grid_search: bool = False
+
+    #: Are we running inside Jupyter notebook.
+    #:
+    #: - We might have HTML widgets available like HTML progress bar
+    #: - We have interactive prompts available
+    #:
+    jupyter: bool = False
+
     def __repr__(self):
         version_str = f"v{self.engine_version}" if self.engine_version else "unspecified engine version"
         return f"<ExecutionContext {self.mode.name}, {version_str}>"
@@ -191,10 +209,16 @@ class ExecutionContext:
 
 
 #: Shorthand for unit testing
-unit_test_execution_context = ExecutionContext(ExecutionMode.unit_testing_trading)
+unit_test_execution_context = ExecutionContext(ExecutionMode.unit_testing)
+
+unit_test_trading_execution_context = ExecutionContext(ExecutionMode.unit_testing_trading)
 
 #: Shorthand for notebooks
-notebook_execution_context = ExecutionContext(ExecutionMode.backtesting)
+notebook_execution_context = ExecutionContext(ExecutionMode.backtesting, jupyter=True)
+
+
+#: Shorthand for doing a grid search within Jupyter
+grid_search_execution_context = ExecutionContext(ExecutionMode.backtesting, grid_search=True)
 
 #: Shorthand for Python scripts
 python_script_execution_context = ExecutionContext(ExecutionMode.backtesting)
@@ -202,6 +226,8 @@ python_script_execution_context = ExecutionContext(ExecutionMode.backtesting)
 #: Standalone backtest (not within a notebook)
 standalone_backtest_execution_context = ExecutionContext(ExecutionMode.backtesting)
 
+# trade-execution console commands
+console_command_execution_context = ExecutionContext(ExecutionMode.real_trading)
 
 #: Shorthand for unit testing
 ExecutionContext.unit_test = unit_test_execution_context

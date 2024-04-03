@@ -32,22 +32,38 @@ class OneDeltaPoolRevaluator(EthereumPoolRevaluator):
 
         pair = position.pair
 
-        assert pair.is_leverage()
+        if pair.is_leverage():
+            loan = position.loan
+            new_price = loan.borrowed.last_usd_price
+            valued_at = loan.borrowed.last_pricing_at
+            new_value = loan.get_net_asset_value()
+            block_number = loan.borrowed_interest.last_updated_block_number
 
-        loan = position.loan
-        new_price = loan.borrowed.last_usd_price
-        valued_at = loan.borrowed.last_pricing_at
-        new_value = loan.get_net_asset_value()
-        block_number = loan.borrowed_interest.last_updated_block_number
+            evt = ValuationUpdate(
+                created_at=ts,
+                position_id=position.position_id,
+                valued_at=valued_at,
+                new_value=new_value,
+                new_price=new_price,
+                block_number=block_number,
+            )
+        elif pair.is_credit_supply():
+            loan = position.loan
+            new_price = loan.collateral.last_usd_price
+            valued_at = loan.collateral.last_pricing_at
+            new_value = loan.get_net_asset_value()
+            block_number = loan.collateral_interest.last_updated_block_number
 
-        evt = ValuationUpdate(
-            created_at=ts,
-            position_id=position.position_id,
-            valued_at=valued_at,
-            new_value=new_value,
-            new_price=new_price,
-            block_number=block_number,
-        )
+            evt = ValuationUpdate(
+                created_at=ts,
+                position_id=position.position_id,
+                valued_at=valued_at,
+                new_value=new_value,
+                new_price=new_price,
+                block_number=block_number,
+            )
+        else:
+            raise ValueError(f"Unknown position kind: {pair.kind}")
 
         position.valuation_updates.append(evt)
 

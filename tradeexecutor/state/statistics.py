@@ -85,13 +85,17 @@ class FinalPositionStatistics:
 @dataclass_json
 @dataclass
 class PortfolioStatistics:
-    '''Portfolio statistics for each timepoint.
+    """Portfolio statistics for each timepoint.
 
     Updated with regular ticks for a live strategy.
 
     If backtesting, only calculated_at and total_equity are necessary for later visualisations and metrics
-    If livetrading, then all attributes should be specified so that for displaying updated metrics after each trade 
-    '''
+    If livetrading, then all attributes should be specified so that for displaying updated metrics after each trade
+
+    See :py:attr:`Statistics.portfolio` for reading.
+
+
+    """
 
     #: Real-time clock when these stats were calculated
     calculated_at: datetime.datetime
@@ -161,7 +165,7 @@ class Statistics:
     closed_positions: Dict[int, FinalPositionStatistics] = field(default_factory=dict)
     
     #: Latest long short metrics
-    long_short_metrics_latest: str = None
+    long_short_metrics_latest: Optional[str] = None
 
     def get_latest_portfolio_stats(self) -> PortfolioStatistics:
         return self.portfolio[-1]

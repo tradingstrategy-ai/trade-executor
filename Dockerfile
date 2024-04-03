@@ -14,9 +14,10 @@ ENV PYTHONDONTWRITEBYTECODE 1 \
     PYTHONUNBUFFERED 1
 
 # curl and jq needed for the health checks
-RUN apt-get update \
-    && apt-get install curl jq -y \
-    && curl -sSL https://install.python-poetry.org | python - --version 1.6.1
+# node.js and g++ libssl1.0.0 libssl-dev needed for enzyme below - remove when enzyme dep has been factored out
+# https://github.com/nodejs/node-gyp/issues/1195#issuecomment-371954099
+RUN apt-get update && apt-get install -y curl jq ca-certificates gnupg
+RUN curl -sSL https://install.python-poetry.org | python - --version 1.8.2
 
 ENV PATH="/root/.local/bin:$PATH"
 
@@ -41,6 +42,12 @@ COPY . .
 RUN poetry config virtualenvs.create false
 RUN poetry install --no-dev --no-interaction --no-ansi --all-extras
 
+# Anvil is needed for the transaction simulation e.g. by trade-executor enzyme-deploy-vault command
+ENV PATH="${PATH}:/root/.foundry/bin"
+RUN curl -L https://foundry.paradigm.xyz | bash
+RUN foundryup
+
+# trade-executor /api
 # Pyramid HTTP server for webhooks at port 3456
 EXPOSE 3456
 

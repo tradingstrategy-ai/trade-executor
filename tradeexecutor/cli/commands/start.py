@@ -125,7 +125,7 @@ def start(
     stop_loss_check_frequency: Optional[TimeBucket] = typer.Option(None, envvar="STOP_LOSS_CYCLE_DURATION", help="Override live/backtest stop loss check frequency. If not given read from the strategy module."),
     cycle_offset_minutes: int = typer.Option(8, envvar="CYCLE_OFFSET_MINUTES", help="How many minutes we wait after the tick before executing the tick step"),
     stats_refresh_minutes: int = typer.Option(60.0, envvar="STATS_REFRESH_MINUTES", help="How often we refresh position statistics. Default to once in an hour."),
-    cycle_duration: CycleDuration = typer.Option(None, envvar="CYCLE_DURATION", help="How long strategy tick cycles use to execute the strategy. While strategy modules offer their own cycle duration value, you can override it here."),
+    cycle_duration: CycleDuration = typer.Option(None, envvar="CYCLE_DURATION", help="How long strategy tick cycles use to execute the strategy. While strategy modules offer their own cycle duration value, you can override it here for unit testing."),
     position_trigger_check_minutes: int = typer.Option(3.0, envvar="POSITION_TRIGGER_CHECK_MINUTES", help="How often we check for take profit/stop loss triggers. Default to once in 3 minutes. Set 0 to disable."),
     max_data_delay_minutes: int = typer.Option(1*60, envvar="MAX_DATA_DELAY_MINUTES", help="If our data feed is delayed more than this minutes, abort the execution. Defaults to 1 hours. Used by both strategy cycle trigger types."),
     trade_immediately: bool = typer.Option(False, "--trade-immediately", envvar="TRADE_IMMEDIATELY", help="Perform the first rebalance immediately, do not wait for the next trading universe refresh"),
@@ -250,9 +250,9 @@ def start(
 
             if isinstance(mod, StrategyModuleInformation):
                 # This path is not enabled for legacy strategy modules
-                if mod.chain_id:
+                if mod.get_default_chain_id():
                     # Strategy tells what chain to use
-                    web3config.set_default_chain(mod.chain_id)
+                    web3config.set_default_chain(mod.get_default_chain_id())
                     web3config.check_default_chain_id()
                 else:
                     # User has configured only one chain, use it
@@ -327,7 +327,7 @@ def start(
             long_description,
             icon_url,
             asset_management_mode,
-            chain_id=mod.chain_id,
+            chain_id=mod.get_default_chain_id(),
             vault=vault,
             backtest_result=backtest_result,
             backtest_notebook=notebook_report,
@@ -345,6 +345,11 @@ def start(
         run_state.version = VersionInfo.read_docker_version()
         run_state.executor_id = id
         run_state.hot_wallet_gas_warning_level = Decimal(gas_balance_warning_level)
+
+        # Set up read-only state sync
+        if not store.is_pristine():
+            run_state.read_only_state_copy = store.load()
+        store.on_save = run_state.on_save_hook
 
         # Create our webhook server
         if http_enabled:
@@ -479,6 +484,8 @@ def start(
         metadata=metadata,
         check_accounts=check_accounts,
         sync_treasury_on_startup=sync_treasury_on_startup,
+        create_indicators=mod.create_indicators,
+        parameters=mod.parameters,
     )
 
     # Crash gracefully at the start up if our main loop cannot set itself up

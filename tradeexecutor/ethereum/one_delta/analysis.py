@@ -1,6 +1,7 @@
 from web3 import Web3
 from web3.logs import DISCARD
 from eth_abi import decode
+from decimal import Decimal
 
 from eth_defi.abi import (
     get_transaction_data_field,
@@ -65,7 +66,7 @@ def decode_path(encoded_path: bytes) -> list:
     return decoded
 
 
-def analyse_trade_by_receipt(
+def analyse_leverage_trade_by_receipt(
     web3: Web3,
     one_delta: OneDeltaDeployment,
     uniswap: UniswapV3Deployment,
@@ -76,7 +77,7 @@ def analyse_trade_by_receipt(
     input_args: tuple | None = None,
     trade_operation: TradeOperation = TradeOperation.OPEN,
 ) -> tuple[TradeSuccess | TradeFail, int | None]:
-    """Analyse a 1delta trade.
+    """Analyse a 1delta margin trade.
 
     Figure out
 
@@ -176,6 +177,86 @@ def analyse_trade_by_receipt(
         token1=pool.token1,
         lp_fee_paid=lp_fee_paid,
     ), collateral_amount
+
+
+def analyse_credit_trade_by_receipt(
+    web3: Web3,
+    one_delta: OneDeltaDeployment,
+    uniswap: UniswapV3Deployment,
+    aave: AaveV3Deployment,
+    tx: dict,
+    tx_hash: str | bytes,
+    tx_receipt: dict,
+    input_args: tuple | None = None,
+    trade_operation: TradeOperation = TradeOperation.OPEN,
+) -> TradeSuccess | TradeFail:
+    """Analyse a 1delta credit supply trade.
+
+    Figure out
+
+    - The success of the trade
+
+    :param tx_receipt:
+        Transaction receipt
+
+    :param input_args:
+        The swap input arguments.
+
+        If not given automatically decode from `tx`.
+        You need to pass this for Enzyme transactions, because transaction payload 
+        is too complex to decode.
+
+    :return:
+        Trade result
+    """
+    effective_gas_price = tx_receipt.get("effectiveGasPrice", 0)
+    gas_used = tx_receipt["gasUsed"]
+
+    # tx reverted
+    if tx_receipt["status"] != 1:
+        reason = fetch_transaction_revert_reason(web3, tx_hash)
+        return TradeFail(gas_used, effective_gas_price, revert_reason=reason), None
+
+    # transferERC20In -> deposit
+    # transferERC20AllIn -> withdraw
+    args = input_args[0][0]
+    _, multicall_args = one_delta.flash_aggregator.decode_function_input(args)
+
+    if trade_operation == TradeOperation.OPEN:
+        supply_event = aave.pool.events.Supply().process_receipt(tx_receipt, errors=DISCARD)[0]
+        amount_in = supply_event["args"]["amount"]
+
+        in_token = multicall_args["asset"]
+        in_token_decimals = fetch_erc20_details(web3, in_token).decimals
+        out_token_decimals = 0
+
+        amount_out = 0
+
+    else:
+        withdraw_event = aave.pool.events.Withdraw().process_receipt(tx_receipt, errors=DISCARD)[0]
+        amount_out = withdraw_event["args"]["amount"]
+
+        out_token = multicall_args["asset"]
+        out_token_decimals = fetch_erc20_details(web3, out_token).decimals
+        in_token_decimals = 0
+
+        amount_in = 0
+    
+    return TradeSuccess(
+        gas_used,
+        effective_gas_price,
+        path=None,
+        amount_in=amount_in,
+        amount_out_min=None,
+        amount_out=amount_out,
+        price=Decimal(0),
+        amount_in_decimals=in_token_decimals,
+        amount_out_decimals=out_token_decimals,
+        token0=None,
+        token1=None,
+        lp_fee_paid=None,
+    )
+
 
 
 def analyse_one_delta_trade(

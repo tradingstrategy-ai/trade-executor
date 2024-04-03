@@ -7,12 +7,14 @@ import warnings
 from typing import List
 
 import pandas as pd
+import numpy as np
 from matplotlib.figure import Figure
 
+from tradeexecutor.analysis.curve import CurveType, DEFAULT_BENCHMARK_COLOURS
 from tradeexecutor.state.state import State
 from tradeexecutor.state.statistics import Statistics, PortfolioStatistics
 from tradeexecutor.state.position import TradingPosition
-from tradeexecutor.state.types import USDollarAmount
+from tradeexecutor.visual.qs_wrapper import import_quantstats_wrapped
 
 
 def calculate_equity_curve(
@@ -26,6 +28,12 @@ def calculate_equity_curve(
     to :py:class:`pd.Series` that allows easy equity curve calculations.
 
     This reads :py:class:`tradeexecutor.state.stats.PortfolioStatistics`
+
+    Example:
+
+    .. code-block:: python
+
+        equity_curve = calculate_equity_curve(state)
 
     :param attribute_name:
         Calculate equity curve based on this attribute of :py:class:`
@@ -51,9 +59,7 @@ def calculate_equity_curve(
     """
 
     stats: Statistics = state.stats
-
     portfolio_stats: List[PortfolioStatistics] = stats.portfolio
-
     data = [(s.calculated_at, getattr(s, attribute_name)) for s in portfolio_stats]
 
     if len(data) == 0:
@@ -84,8 +90,12 @@ def calculate_equity_curve(
     # 2021-06-01 00:00:00.000000    10000.000000
 
     # https://stackoverflow.com/a/34297689/315168
-    df = df[~df.index.duplicated(keep='last')]
-    return df
+    series = df[~df.index.duplicated(keep='last')]
+    # See curve.py
+    series.attrs["name"] = state.name
+    series.attrs["curve"] = CurveType.equity
+    series.attrs["colour"] = DEFAULT_BENCHMARK_COLOURS["Strategy"]
+    return series
 
 
 def calculate_returns(equity_curve: pd.Series) -> pd.Series:
@@ -109,9 +119,14 @@ def calculate_returns(equity_curve: pd.Series) -> pd.Series:
     """
 
     if len(equity_curve) == 0:
-        return pd.Series([], index=pd.to_datetime([]), dtype='float64')
+        series = pd.Series([], index=pd.to_datetime([]), dtype='float64')
 
-    return equity_curve.pct_change().fillna(0.0)
+    series = equity_curve.pct_change().fillna(0.0)
+
+    series.attrs = equity_curve.attrs.copy()
+    series.attrs["curve"] = CurveType.returns
+
+    return series
 
 
 def generate_buy_and_hold_returns(
@@ -131,6 +146,8 @@ def generate_buy_and_hold_returns(
     """
     assert isinstance(buy_and_hold_price_series, pd.Series)
     returns = calculate_returns(buy_and_hold_price_series)
+
+    returns.attrs["curve"] = CurveType.returns
     return returns
 
 
@@ -253,7 +270,7 @@ def visualise_equity_curve(
         Matplotlit figure
 
     """
-    import quantstats as qs  # Optional dependency
+    qs = import_quantstats_wrapped()
     fig = qs.plots.snapshot(
         returns,
         title=title,
@@ -292,13 +309,17 @@ def visualise_returns_over_time(
     #
     # In a future version of pandas all arguments of DataFrame.pivot will be keyword-only.
 
-    with warnings.catch_warnings():
-        warnings.filterwarnings("ignore")
-        import quantstats as qs  # Optional dependency
+    qs = import_quantstats_wrapped()
+
+    with warnings.catch_warnings():  #  DeprecationWarning: Importing display from IPython.core.display is deprecated since IPython 7.14, please import from IPython display
+        warnings.simplefilter(action='ignore', category=FutureWarning)
+        # /usr/local/lib/python3.10/site-packages/quantstats/stats.py:968: FutureWarning: In a future version of pandas all arguments of DataFrame.pivot will be keyword-only.
+        #    returns = returns.pivot('Year', 'Month', 'Returns').fillna(0)
         fig = qs.plots.monthly_returns(
             returns,
             show=False)
-        return fig
+    
+    return fig
 
 
 def visualise_returns_distribution(
@@ -324,13 +345,12 @@ def visualise_returns_distribution(
         Matplotlit figure
 
     """
-    with warnings.catch_warnings():
-        warnings.filterwarnings("ignore")
-        import quantstats as qs  # Optional dependency
-        fig = qs.plots.distribution(
-            returns,
-            show=False)
-        return fig
+
+    qs = import_quantstats_wrapped()
+    fig = qs.plots.distribution(
+        returns,
+        show=False)
+    return fig
 
 
 def calculate_investment_flow(
@@ -370,7 +390,7 @@ def calculate_realised_profitability(
 
         Empty series if there are no trades.
     """
-    data = [(p.closed_at, p.get_realised_profit_percent()) for p in state.portfolio.closed_positions.values() if p.is_closed()]
+    data = [(p.closed_at, p.get_realised_profit_percent()) for p in state.portfolio.closed_positions.values()]
 
     if len(data) == 0:
         return pd.Series(dtype='float64')
@@ -549,6 +569,7 @@ def calculate_non_cumulative_daily_returns(state: State, freq_base: pd.offsets.D
     non_cumulative_daily_returns = returns.add(1).resample(freq_base).prod(min_count=1).sub(1).fillna(0)
     return non_cumulative_daily_returns
 
+
 def calculate_cumulative_daily_returns(state: State, freq_base: pd.offsets.DateOffset | None = pd.offsets.Day()) -> pd.Series:
     """Calculates the cumulative daily returns for the strategy over time
 
@@ -563,3 +584,128 @@ def calculate_cumulative_daily_returns(state: State, freq_base: pd.offsets.DateO
     _returns = returns.copy()
     cumulative_daily_returns = _returns.resample(freq_base).last().ffill()
     return cumulative_daily_returns
+
+
+def resample_returns(returns: pd.Series, freq: pd.DateOffset | str) -> pd.Series:
+    """Resample returns series to a longer time frame.
+
+    - Transform daily returns series to monthly and so on
+
+    - The returns of each period is the cumulative product of the sub-returns
+
+    - Does this with a cumulative product transformation
+
+    Example:
+
+    We have `returns`:
+
+    .. code-block:: text
+
+        2021-06-01 00:00:00    0.000000
+        2021-06-01 08:00:00    0.000000
+        2021-06-01 16:00:00    0.000000
+        2021-06-02 00:00:00    0.000000
+        2021-06-02 08:00:00    0.000000
+                                 ...
+        2024-03-08 08:00:00   -0.002334
+        2024-03-08 16:00:00   -0.012170
+        2024-03-09 00:00:00   -0.003148
+        2024-03-09 08:00:00    0.010400
+        2024-03-09 16:00:00   -0.000277
+
+    Make it quarterly:
+
+    .. code-block:: python
+
+        # Transform daily returns to monthly for easier comparison
+        freq = QuarterBegin()
+        resampled_returns = resample_returns(returns, freq)
+
+    Now it is:
+
+    .. code-block:: text
+
+        2021-06-01    0.483777
+        2021-09-01    0.287191
+        2021-12-01    0.265714
+        2022-03-01   -0.035728
+        2022-06-01    0.194215
+        2022-09-01    0.059003
+        2022-12-01    0.062195
+        2023-03-01   -0.091300
+
+    :param returns:
+        Hourly, 8h, etc. returns
+
+    :param freq:
+        Pandas resample frequency.
+
+        Use "D" for daily.
+
+    :return:
+        Returns series where the returns are binned by a new timeframe.
+    """
+    # https://stackoverflow.com/a/46216956/315168
+    assert isinstance(returns, pd.Series)
+    return (1+returns).resample(freq).prod() - 1
+
+
+def calculate_rolling_sharpe(
+    returns: pd.Series,
+    freq: pd.DateOffset | str | None = "D",
+    periods=90,  # 90 Days
+) -> pd.Series:
+    """Calculate rolling Sharpe ration.
+
+    - Declining rolling :term:`sharpe` means that the alpha of the :term:`strategy is decaying <strategy decay>`.
+
+    - `See this QuantStrat post for more information <https://www.quantstart.com/articles/annualised-rolling-sharpe-ratio-in-qstrader/>`__
+
+    - `Alternative example implementation <https://github.com/pranaysjha/rolling-sharpe/blob/main/rolling_sharpe.py>`__
+
+    Explanation how to interpret rolling sharpe from QuantStrat:
+
+        It can be seen that the strategy had a significant upward period in 2013 which gives rise to a high trailing annualised Sharpe of 2.5, exceeding 3.5 by the start of 2014. However the strategy performance remained flat through 2014, which caused a gradual reduction in the annualised rolling Sharpe since the volatility of returns was largely similar. By the start of 2015 the Sharpe was between 0.5 and 1.0, meaning more risk was being taken per unit of return at this stage. By the end of 2015 the Sharpe had risen slightly to around 1.5, largely due to some consistent upward gains in the latter half of 2015.
+
+    Example:
+
+    .. code-block:: python
+
+        import plotly.express as px
+
+        from tradeexecutor.visual.equity_curve import calculate_rolling_sharpe
+
+        rolling_sharpe = calculate_rolling_sharpe(
+            returns,
+            freq="D",
+            periods=180,
+        )
+
+        fig = px.line(rolling_sharpe, title='Strategy rolling Sharpe (6 months)')
+        fig.update_layout(showlegend=False)
+        fig.update_yaxes(title="Sharpe")
+        fig.update_xaxes(title="Time")
+        fig.show()
+
+    :param returns:
+        Returns series with rolling sharpe
+
+    :param freq:
+        Returns binning frequency for Sharpe calculations
+
+    :param periods:
+        How many periods of data we sample for rolling sharpe.
+    """
+
+    if freq is not None:
+        resampled_returns = resample_returns(returns, freq)
+    else:
+        resampled_returns = returns
+
+    rolling = resampled_returns.rolling(window=periods)
+    rolling_sharpe = np.sqrt(periods) * (
+        rolling.mean() / rolling.std()
+    )
+
+    # Remove NA entries at the beginning of the series
+    return rolling_sharpe.dropna()

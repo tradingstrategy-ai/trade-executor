@@ -7,6 +7,7 @@ from io import StringIO
 from typing import List, Optional, Union, Literal, Set
 import logging
 
+import cachetools
 import pandas as pd
 
 from tradeexecutor.utils.accuracy import QUANTITY_EPSILON
@@ -26,6 +27,14 @@ from tradeexecutor.strategy.trading_strategy_universe import translate_trading_p
 from tradeexecutor.utils.leverage_calculations import LeverageEstimate
 
 logger = logging.getLogger(__name__)
+
+
+#: Cache translate_trading_pair() result data structures
+#:
+#: See :py:meth:`PositionManager.__init__`.
+#:
+DEFAULT_TRADING_PAIR_CACHE = cachetools.Cache(maxsize=50000)
+
 
 
 class NoSingleOpenPositionException(Exception):
@@ -144,6 +153,7 @@ class PositionManager:
         state: State,
         pricing_model: PricingModel,
         default_slippage_tolerance=0.017,
+        trading_pair_cache=DEFAULT_TRADING_PAIR_CACHE,
     ):
 
         """Create a new PositionManager instance.
@@ -167,6 +177,13 @@ class PositionManager:
             The max slippage tolerance parameter set for any trades if not overriden trade-by-trade basis.
 
             Default to 1.7% max slippage or 170 BPS.
+
+        :param trading_pair_cache:
+            Trading pair cache.
+
+            Used to speed up trading pair look up on multipair strategies.
+
+            See :py:meth:`get_trading_pair`.
 
         """
 
@@ -200,6 +217,7 @@ class PositionManager:
 
         self.reserve_currency = reserve_currency
         self.reserve_price = reserve_price
+        self.trading_pair_cache = trading_pair_cache
 
     def is_any_open(self) -> bool:
         """Do we have any positions open.
@@ -471,17 +489,24 @@ class PositionManager:
             The identifier is a pass-by-copy reference used in the strategy state internally.
         """
 
-        if type(pair) == int:
-            pair_id = pair
-            dex_pair = self.data_universe.pairs.get_pair_by_id(pair_id)
-        elif type(pair) == tuple:
-            dex_pair = self.data_universe.pairs.get_pair_by_human_description(pair)
-        elif isinstance(pair, DEXPair):
-            dex_pair = pair
-        else:
-            raise RuntimeError(f"Unknown trading pair reference type: {pair}")
+        cached = self.trading_pair_cache.get(pair)
+        if cached is None:
 
-        return translate_trading_pair(dex_pair)
+            if type(pair) == int:
+                pair_id = pair
+                dex_pair = self.data_universe.pairs.get_pair_by_id(pair_id)
+            elif type(pair) == tuple:
+                dex_pair = self.data_universe.pairs.get_pair_by_human_description(pair)
+            elif isinstance(pair, DEXPair):
+                dex_pair = pair
+            else:
+                raise RuntimeError(f"Unknown trading pair reference type: {pair}")
+
+            # Rebuild TradingPairIdentifier data structure
+            cached = translate_trading_pair(dex_pair)
+            self.trading_pair_cache[pair] = cached
+
+        return cached
 
     def get_pair_fee(self,
                      pair: Optional[TradingPairIdentifier] = None,
@@ -536,7 +561,7 @@ class PositionManager:
 
     def open_spot(
         self,
-        pair: Union[DEXPair, TradingPairIdentifier],
+        pair: Union[DEXPair, TradingPairIdentifier | None],
         value: USDollarAmount | Decimal,
         take_profit_pct: Optional[float] = None,
         stop_loss_pct: Optional[float] = None,
@@ -717,7 +742,7 @@ class PositionManager:
         .. warning ::
 
             Adjust position cannot be used to close an existing position, because
-            epsilons in quantity math. Use :py:meth:`close_position` for this.
+            epsilons in quantity math. Use :py:meth:`close_position`] for this.
 
         :param pair:
             Trading pair which position we adjust
@@ -902,7 +927,14 @@ class PositionManager:
 
         slippage_tolerance = slippage_tolerance or self.default_slippage_tolerance
 
-        logger.info("Preparing to close position %s, quantity %s, pricing %s, slippage tolerance: %f %%", position, quantity, price_structure, slippage_tolerance * 100)
+        logger.info(
+            "Preparing to close position %s, quantity %s, pricing %s, profit %s, slippage tolerance: %f %%",
+            position,
+            quantity,
+            price_structure,
+            position.get_unrealised_profit_usd(),
+            slippage_tolerance * 100,
+        )
 
         if not flags:
             flags = set()
@@ -940,12 +972,14 @@ class PositionManager:
         assert trade.closing
         return [trade]
 
-    def close_credit_supply_position(self,
-                       position: TradingPosition,
-                       quantity: float | Decimal | None = None,
-                       notes: Optional[str] = None,
-                       trade_type: TradeType = TradeType.rebalance,
-                       ) -> List[TradeExecution]:
+    def close_credit_supply_position(
+        self,
+        position: TradingPosition,
+        quantity: float | Decimal | None = None,
+        notes: Optional[str] = None,
+        trade_type: TradeType = TradeType.rebalance,
+        flags: Set[TradeFlag] | None = None,
+    ) -> List[TradeExecution]:
         """Close a credit supply position
 
         :param position:
@@ -978,6 +1012,11 @@ class PositionManager:
         # TODO: Hardcoded USD exchange rate
         reserve_asset = self.strategy_universe.get_reserve_asset()
 
+        if not flags:
+            flags = set()
+
+        flags = {TradeFlag.close} | flags
+
         _, trade, _ = self.state.supply_credit(
             self.timestamp,
             pair,
@@ -988,6 +1027,7 @@ class PositionManager:
             notes=notes,
             position=position,
             closing=True,
+            flags=flags,
         )
         return [trade]
 
@@ -1146,7 +1186,11 @@ class PositionManager:
 
         position.stop_loss = stop_loss
 
-    def open_credit_supply_position_for_reserves(self, amount: USDollarAmount) -> List[TradeExecution]:
+    def open_credit_supply_position_for_reserves(
+        self,
+        amount: USDollarAmount,
+        flags: Set[TradeFlag] | None = None,
+    ) -> List[TradeExecution]:
         """Move reserve currency to a credit supply position.
 
         :param amount:
@@ -1156,7 +1200,13 @@ class PositionManager:
             List of trades that will open this credit position
         """
 
+        assert self.strategy_universe is not None, f"PositionManager.strategy_universe not set, data_universe is {self.data_universe}"
+
         lending_reserve_identifier = self.strategy_universe.get_credit_supply_pair()
+
+        if not flags:
+            flags = set()
+        flags = {TradeFlag.open} | flags
 
         _, trade, _ = self.state.supply_credit(
             self.timestamp,
@@ -1165,6 +1215,7 @@ class PositionManager:
             trade_type=TradeType.rebalance,
             reserve_currency=self.strategy_universe.get_reserve_asset(),
             collateral_asset_price=1.0,
+            flags=flags,
         )
 
         return [trade]

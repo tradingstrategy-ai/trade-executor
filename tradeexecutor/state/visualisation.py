@@ -382,9 +382,11 @@ class Visualisation:
         timepoint_messages.append(content)
         self.messages[timestamp] = timepoint_messages
 
-    def add_calculations(self,
-                         timestamp: datetime.datetime,
-                         cycle_calculations: dict):
+    def add_calculations(
+        self,
+        timestamp: datetime.datetime,
+        cycle_calculations: dict
+    ):
         """Update strategy cycle calculations diagnostics.
 
         - Each strategy cycle can dump whatever intermediate
@@ -393,6 +395,12 @@ class Visualisation:
 
         - Currently this is used to store the alpha model calculations
           for portfolio construction model.
+
+
+        .. note ::
+
+            Using this method may slow down your backtests because serialising ``cycle_calculations``
+            might be slow. Avoid if not needed.
 
         :param timestamp:
             The current strategy cycle timestamp

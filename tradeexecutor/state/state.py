@@ -31,7 +31,12 @@ from tradeexecutor.utils.summarydataframe import as_duration, format_value
 from tradeexecutor.strategy.trade_pricing import TradePricing
 from ..strategy.cycle import CycleDuration
 from ..utils.accuracy import ZERO_DECIMAL
-from tradeexecutor.strategy.lending_protocol_leverage import create_short_loan, update_short_loan
+from tradeexecutor.strategy.lending_protocol_leverage import (
+    create_short_loan,
+    update_short_loan,
+    create_credit_supply_loan,
+    update_credit_supply_loan,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -493,6 +498,7 @@ class State:
             position: Optional[TradingPosition] = None,
             slippage_tolerance: Optional[float] = None,
             closing: Optional[bool] = False,
+            flags: Optional[Set[TradeFlag]] = None,
     ) -> Tuple[TradingPosition, TradeExecution, bool]:
         """Create or adjust credit supply position.
 
@@ -543,6 +549,7 @@ class State:
             slippage_tolerance=slippage_tolerance,
             closing=closing,
             planned_collateral_allocation=planned_collateral_allocation,
+            flags=flags,
         )
         return position, trade, created
 
@@ -682,8 +689,22 @@ class State:
                             mode="execute",
                             close_position=TradeFlag.close in trade.flags,
                         )
-                else:
-                    raise NotImplementedError()
+                elif position.is_credit_supply():
+                    if not position.loan:
+                        trade.executed_loan_update = create_credit_supply_loan(
+                            position,
+                            trade,
+                            executed_at,
+                            mode="execute",
+                        )
+                    else:
+                        trade.executed_loan_update = update_credit_supply_loan(
+                            position.loan.clone(),
+                            position,
+                            trade,
+                            executed_at,
+                            mode="execute",
+                        )
 
             position.loan = trade.executed_loan_update
 

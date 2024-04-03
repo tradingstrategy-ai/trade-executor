@@ -3,6 +3,7 @@
 import logging
 import datetime
 import copy
+import warnings
 from dataclasses import dataclass, field
 from decimal import Decimal
 from itertools import chain
@@ -140,7 +141,7 @@ class Portfolio:
     def get_trade_by_id(self, trade_id: int) -> Optional[TradeExecution]:
         """Look up any trade in all positions.
 
-        .. note ::
+        .. note ::]
 
             Slow lookup. Only designed for testing.
 
@@ -575,8 +576,7 @@ class Portfolio:
         """
 
         # Any trading positions we have one
-        spot_values = sum([p.get_equity() for p in self.open_positions.values() if not p.is_leverage()])
-
+        # spot_values = sum([p.get_equity() for p in self.open_positions.values() if not p.is_leverage()])
         return self.get_position_equity_and_loan_nav() + self.get_cash()
 
     def get_net_asset_value(self, include_interest=True) -> USDollarAmount:
@@ -896,6 +896,14 @@ class Portfolio:
         return None
 
     def get_initial_deposit(self) -> Optional[USDollarAmount]:
+        """Deprecated.
+
+        See :py:meth:`get_initial_cash`
+        """
+        warnings.warn('This function is deprecated. Use get_initial_cash() instead', DeprecationWarning, stacklevel=2)
+        return self.get_initial_cash()
+
+    def get_initial_cash(self) -> Optional[USDollarAmount]:
         """How much we invested at the beginning of a backtest.
 
         .. note::
@@ -1051,3 +1059,11 @@ class Portfolio:
             If we have any capital to trade
         """
         return self.get_total_equity() >= threshold_usd
+    
+    def get_total_claimed_interest(self) -> USDollarAmount:
+        """Get the total interest claimed from the positions."""
+        return sum(p.get_claimed_interest() for p in self.get_all_positions())
+    
+    def get_total_repaid_interest(self) -> USDollarAmount:
+        """Get the total interest repaid from the positions."""
+        return sum(p.get_repaid_interest() for p in self.get_all_positions())

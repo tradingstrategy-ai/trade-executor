@@ -17,6 +17,7 @@ from tradingstrategy.chain import ChainId
 from tradingstrategy.lending import LendingProtocolType
 from tradingstrategy.timebucket import TimeBucket
 
+from tradeexecutor.analysis.trade_analyser import build_trade_analysis
 from tradeexecutor.backtest.backtest_runner import run_backtest_inline
 from tradeexecutor.state.balance_update import BalanceUpdateCause, BalanceUpdate
 from tradeexecutor.state.identifier import AssetIdentifier
@@ -135,6 +136,14 @@ def test_backtest_open_only_credit_supply_mock_data(
     assert credit_position.get_value() == pytest.approx(10005.8392619598023785)
     assert portfolio.get_total_equity() == pytest.approx(10005.8392619598023785)
 
+    analysis = build_trade_analysis(state.portfolio)
+    summary = analysis.calculate_summary_statistics(state=state)
+
+    assert summary.time_in_market == 1
+    assert summary.time_in_market_volatile == 0
+    assert summary.total_interest_paid_usd == 0
+    assert summary.total_claimed_interest == 0
+
 
 def test_backtest_open_and_close_credit_supply_mock_data(
         logger: logging.Logger,
@@ -221,4 +230,13 @@ def test_backtest_open_and_close_credit_supply_mock_data(
     assert portfolio.get_net_asset_value() == pytest.approx(10002.67867669078453209820816)
     assert portfolio.get_total_equity() == pytest.approx(10002.67867669078453209820816)
 
+    analysis = build_trade_analysis(state.portfolio)
+    summary = analysis.calculate_summary_statistics(state=state)
 
+    assert summary.total_claimed_interest == pytest.approx(2.678676690784532)
+    assert summary.total_interest_paid_usd == 0
+    assert summary.delta_neutral == 1
+    assert summary.total_positions == 1
+
+    assert summary.time_in_market == pytest.approx(0.45161290322580644)
+    assert summary.time_in_market_volatile == 0

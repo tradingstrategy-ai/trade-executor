@@ -50,9 +50,11 @@ from tradingstrategy.utils.jupyter import make_clickable
 from tradeexecutor.utils.summarydataframe import as_dollar, as_integer, create_summary_table, as_percent, as_duration, as_bars, as_decimal
 
 try:
-    #  DeprecationWarning: Importing display from IPython.core.display is deprecated since IPython 7.14, please import from IPython display
-    with warnings.catch_warnings():
+
+    with warnings.catch_warnings():  #  DeprecationWarning: Importing display from IPython.core.display is deprecated since IPython 7.14, please import from IPython display
+        warnings.simplefilter(action='ignore', category=FutureWarning)  # yfinance: The default dtype for empty Series will be 'object' instead of 'float64' in a future version. Specify a dtype explicitly to silence this warning.
         import quantstats as qs
+
     HAS_QUANTSTATS = True
 except Exception:
     HAS_QUANTSTATS = False
@@ -64,6 +66,9 @@ logger = logging.getLogger(__name__)
 @dataclass(slots=True)
 class TradeSummary:
     """Some generic statistics over all the trades
+
+    .. warning:: 
+        Be very careful when editing or removing existing fields here as this can intefere with legacy data testing
 
     TDOO: Cleam this up
     """
@@ -88,10 +93,10 @@ class TradeSummary:
     ))
 
     average_winning_trade_profit_pc: Optional[float]  # position
-    average_losing_trade_loss_pc: Optional[float]  # position
-    biggest_winning_trade_pc: Optional[float]  # position
-    biggest_losing_trade_pc: Optional[float]  # position
+    average_losing_trade_loss_pc: Optional[float]
 
+    biggest_winning_trade_pc: Optional[float]
+    biggest_losing_trade_pc: Optional[float]
 
     average_duration_of_winning_trades: datetime.timedelta = field(metadata=config(
         encoder=json_encode_timedelta,
@@ -107,6 +112,7 @@ class TradeSummary:
     total_positions: int = field(init=False)
     win_percent: float = field(init=False)
     lost_percent: float = field(init=False)
+    delta_neutral_percent: float = field(init=False)
     return_percent: float = field(init=False)
     annualised_return_percent: float = field(init=False)
     all_stop_loss_percent: float = field(init=False)
@@ -132,10 +138,15 @@ class TradeSummary:
     median_trade: Optional[float] = None  # position
     max_pos_cons: Optional[int] = None
     max_neg_cons: Optional[int] = None
+    max_delta_neutral_cons: Optional[int] = None
     max_pullback: Optional[float] = None
     max_loss_risk: Optional[float] = None
     max_realised_loss: Optional[float] = None
     avg_realised_risk: Optional[Percent] = None
+
+    average_delta_neutral_profit_pc: Optional[float] = None
+    biggest_delta_neutral_pc: Optional[float] = None
+    delta_neutral: int = field(default=0)
 
     take_profits: int = field(default=0)
 
@@ -163,6 +174,7 @@ class TradeSummary:
 
     median_win: Optional[float] = None
     median_loss: Optional[float] = None
+    median_delta_neutral: Optional[float] = None
 
     sharpe_ratio: Optional[float] = None
     sortino_ratio: Optional[float] = None
@@ -170,17 +182,46 @@ class TradeSummary:
     max_drawdown: Optional[float] = None
     max_runup: Optional[float] = None
 
+    average_duration_of_delta_neutral_positions: Optional[datetime.timedelta] = None
     average_duration_of_zero_loss_trades: Optional[datetime.timedelta] = None
     average_duration_of_all_trades: Optional[datetime.timedelta] = None
 
     #: Profit in open positions at the end
     unrealised_profit: Optional[USDollarAmount] = None
 
-    def __post_init__(self):
+    #: Interest stats
+    average_interest_paid_usd: Optional[USDollarPrice] = None
+    total_interest_paid_usd: Optional[USDollarPrice] = None
+    median_interest_paid_usd: Optional[USDollarPrice] = None
+    max_interest_paid_usd: Optional[USDollarPrice] = None
+    min_interest_paid_usd: Optional[USDollarPrice] = None
+    total_claimed_interest: Optional[USDollarPrice] = None
+    # average_claimed_interest: Optional[USDollarPrice] = None
 
-        self.total_positions = self.won + self.lost + self.zero_loss
+    average_duration_between_position_openings: Optional[datetime.timedelta] = None
+    average_position_frequency: Optional[datetime.timedelta] = None
+
+    # Backwards compatiblity only.
+    #
+    # TODO: Remove these in ~3 months.
+    #
+    average_duration_between_positions: int = 0
+    average_duration_between_postions: int = 0
+
+    # Time in market
+    # Doesn't include any open positions
+    # Includes credit supply (delta neutral) positions
+    time_in_market: Optional[datetime.timedelta] = None
+
+    # Doens't include any open positions
+    # Doesn't include credit supply (delta neutral) positions
+    time_in_market_volatile: Optional[datetime.timedelta] = None
+
+    def __post_init__(self):
+        self.total_positions = self.won + self.lost + self.zero_loss + self.delta_neutral
         self.win_percent = calculate_percentage(self.won, self.total_positions)
         self.lost_percent = calculate_percentage(self.lost, self.total_positions)
+        self.delta_neutral_percent = calculate_percentage(self.delta_neutral, self.total_positions)
         self.all_stop_loss_percent = calculate_percentage(self.stop_losses, self.total_positions)
         self.all_take_profit_percent = calculate_percentage(self.take_profits, self.total_positions)
         self.lost_stop_loss_percent = calculate_percentage(self.stop_losses, self.lost)
@@ -189,12 +230,19 @@ class TradeSummary:
         self.end_value = self.open_value + self.uninvested_cash
         initial_cash = self.initial_cash or 0
         self.return_percent = calculate_percentage(self.end_value - initial_cash, initial_cash)
-        self.annualised_return_percent = calculate_annualised_return(self.return_percent, self.duration)
         self.winning_stop_losses_percent = calculate_percentage(self.winning_stop_losses, self.stop_losses)
         self.losing_stop_losses_percent = calculate_percentage(self.losing_stop_losses, self.stop_losses)
 
         self.winning_take_profits_percent = calculate_percentage(self.winning_take_profits, self.take_profits)
         self.losing_take_profits_percent = calculate_percentage(self.losing_take_profits, self.take_profits)
+
+        if self.duration is not None:
+            days_as_decimal = self.duration.total_seconds() / (60 * 60 * 24)
+            self.average_position_frequency = self.total_positions / days_as_decimal if days_as_decimal else 0
+            self.annualised_return_percent = calculate_annualised_return(self.return_percent, self.duration)
+        else:
+            self.average_position_frequency = 0
+            self.annualised_return_percent = 0
 
     def get_trading_core_metrics(self) -> Dict[str, str]:
         """Get metrics displayed on a equity curve benchmark tooltip.
@@ -224,6 +272,7 @@ class TradeSummary:
             "Annualised return %": as_percent(self.annualised_return_percent),
             "Cash at start": as_dollar(self.initial_cash),
             "Value at end": as_dollar(self.end_value),
+            "Time in market": as_percent(self.time_in_market),
             "Trade volume": as_dollar(self.trade_volume),
             "Position win percent": as_percent(self.win_percent),
             "Total positions": as_integer(self.total_positions),
@@ -231,7 +280,7 @@ class TradeSummary:
             "Lost positions": as_integer(self.lost),
             "Stop losses triggered": as_integer(self.stop_losses),
             "Stop loss % of all": as_percent(self.all_stop_loss_percent),
-            "Stop loss % of lost": as_percent(self.lost_stop_loss_percent),
+            # "Stop loss % of lost": as_percent(self.lost_stop_loss_percent),  # confusing metric
             "Winning stop losses": as_integer(self.winning_stop_losses),
             "Winning stop losses percent": as_percent(self.winning_stop_losses_percent),
             "Losing stop losses": as_integer(self.losing_stop_losses),
@@ -261,6 +310,11 @@ class TradeSummary:
             })
 
         human_data.update({
+            "Average duration between position openings": self.format_duration(self.average_duration_between_position_openings),
+            "Average positions per day": as_decimal(self.average_position_frequency),
+            "Average interest paid": as_dollar(self.average_interest_paid_usd),
+            "Median interest paid": as_dollar(self.median_interest_paid_usd),
+            "Total interest paid": as_dollar(self.total_interest_paid_usd),
             "LP fees paid": as_dollar(self.lp_fees_paid),
             "LP fees paid % of volume": as_percent(self.lp_fees_average_pc),
         })
@@ -299,6 +353,7 @@ class TradeSummary:
             "Annualised return %": None,
             "Cash at start": None,
             "Value at end": None,
+            "Time in market": None,
             "Trade volume": "https://tradingstrategy.ai/glossary/volume",
             "Position win percent": "https://tradingstrategy.ai/glossary/position",
             "Total positions": "https://tradingstrategy.ai/glossary/position",
@@ -327,6 +382,11 @@ class TradeSummary:
             "Biggest losing position %": None,
             "Average duration of winning positions": None,
             "Average duration of losing positions": None,
+            "Average duration between position openings": None,
+            "Average positions per day": None,
+            "Average interest paid": None,
+            "Median interest paid": None,
+            "Total interest paid": None, 
             "Average bars of winning positions": None,
             "Average bars of losing positions": None,
             "LP fees paid": "https://tradingstrategy.ai/glossary/liquidity-provider",
@@ -373,7 +433,10 @@ class TradeSummary:
             "Lifetime return %": as_percent(self.return_percent),
             "Realised PnL": as_dollar(self.realised_profit),
             "Unrealised PnL": as_dollar(self.unrealised_profit) if self.unrealised_profit else as_dollar(0),
-            'Trade period': as_duration(self.duration),
+            "Trade period": as_duration(self.duration),
+            "Time in market volatile": as_percent(self.time_in_market_volatile),
+            "Total interest earned": as_dollar(self.total_claimed_interest),
+            "Total funding cost": as_dollar(self.total_interest_paid_usd),
         }
 
         df1 = create_summary_table(data1, "", "Returns")
@@ -391,45 +454,53 @@ class TradeSummary:
             'Number of positions': [
                 as_integer(self.won),
                 as_integer(self.lost),
+                as_integer(self.delta_neutral),
                 as_integer(self.total_positions)
             ],
             '% of total': [
                 as_percent(self.win_percent),
                 as_percent(self.lost_percent),
-                as_percent((self.won + self.lost) / self.total_positions) if self.total_positions else as_percent(0)
+                as_percent(self.delta_neutral_percent),
+                as_percent((self.won + self.lost + self.delta_neutral) / self.total_positions) if self.total_positions else as_percent(0)
             ],
             'Average PnL %': [
                 as_percent(self.average_winning_trade_profit_pc),
                 as_percent(self.average_losing_trade_loss_pc),
+                as_percent(self.average_delta_neutral_profit_pc),
                 as_percent(self.average_trade)
             ],
             'Median PnL %': [
                 as_percent(self.median_win),
                 as_percent(self.median_loss),
+                as_percent(self.median_delta_neutral),
                 as_percent(self.median_trade)],
             'Biggest PnL %': [
                 as_percent(self.biggest_winning_trade_pc),
                 as_percent(self.biggest_losing_trade_pc),
+                as_percent(self.biggest_delta_neutral_pc),
                 as_percent(None)
             ],
             'Average duration': [
                 self.format_duration(self.average_duration_of_winning_trades),
                 self.format_duration(self.average_duration_of_losing_trades),
+                self.format_duration(self.average_duration_of_delta_neutral_positions),
                 self.format_duration(self.average_duration_of_all_trades)
             ],
             'Max consecutive streak': [
                 as_integer(self.max_pos_cons),
                 as_integer(self.max_neg_cons),
+                as_integer(self.max_delta_neutral_cons),
                 as_percent(None)
             ],
             'Max runup / drawdown': [
                 as_percent(self.max_runup),
                 as_percent(self.max_drawdown),
+                as_percent(None),
                 as_percent(None)
             ],
         }
 
-        df3 = create_summary_table(data3, ["Winning", "Losing", "Total"], "Closed Positions")
+        df3 = create_summary_table(data3, ["Winning", "Losing", "Delta Neutral", "Total"], "Closed Positions")
 
         data4 = {
             'Triggered exits': [
@@ -453,7 +524,7 @@ class TradeSummary:
         df4 = create_summary_table(data4, ["Stop losses", "Take profits"], "Position Exits")
 
         data5 = {
-            'Biggest realised risk': as_percent(self.max_loss_risk),
+            'Biggest realised risk': as_percent(self.max_realised_loss),
             'Average realised risk': as_percent(self.avg_realised_risk),
             'Max pullback of capital': as_percent(self.max_pullback),
             'Sharpe Ratio': as_decimal(self.sharpe_ratio),
@@ -462,6 +533,17 @@ class TradeSummary:
         }
 
         df5 = create_summary_table(data5, "", "Risk Analysis")
+
+        # data6 = {
+        #     'Average interest paid': as_dollar(self.average_interest_paid_usd),
+        #     'Median interest paid': as_dollar(self.median_interest_paid_usd),
+        #     'Max interest paid': as_dollar(self.max_interest_paid_usd),
+        #     'Min interest paid': as_dollar(self.min_interest_paid_usd),
+        #     'Total interest paid': as_dollar(self.total_interest_paid_usd),
+        #     'Total interest claimed': as_dollar(self.total_claimed_interest),
+        # }
+
+        # df6 = create_summary_table(data6, "", "Interest Paid")
 
         display(self.single_column_dfs(df1, df2, df3, df4, df5))
 
@@ -690,6 +772,8 @@ class TradeAnalysis:
                 TradeSummary instance
         """
 
+        sorted_positions = sorted(positions, key=lambda position: position[1].opened_at)
+
         if time_bucket is not None:
             assert isinstance(time_bucket, TimeBucket), "Not a valid time bucket"
 
@@ -704,8 +788,21 @@ class TradeAnalysis:
 
         def func_check(lst, func):
             return func(lst) if lst else None
+        
+        def _get_final_start_time(previous_position_closed_at, current_position_opened_at):
+            """Used in `time_in_market` calculation"""
+            if not previous_position_closed_at or current_position_opened_at > previous_position_closed_at:
+                return current_position_opened_at
+            else:
+                return previous_position_closed_at  # overlapping
+            
+        def _append_position_duration_by_market_condition(times_in_market_all, times_in_market_volatile, current_grouped_duration, position):
+            """Append position duration to `times_in_market_all` and `times_in_market_volatile` lists."""
+            times_in_market_all.append(current_grouped_duration)
+            if not position.is_credit_supply():
+                times_in_market_volatile.append(current_grouped_duration)
 
-        initial_cash = self.portfolio.get_initial_deposit()
+        initial_cash = self.portfolio.get_initial_cash()
 
         uninvested_cash = self.portfolio.get_cash()
 
@@ -714,17 +811,28 @@ class TradeAnalysis:
 
         duration = datetime.timedelta(0)
 
+        # Note: 'trades' actually refers to positions
         winning_trades = []
         losing_trades = []
+        delta_neutral_positions = []
         winning_trades_duration = []
         losing_trades_duration = []
+        delta_neutral_positions_duration = []
         zero_loss_trades_duration = []
+        
         loss_risk_at_open_pc = []
-        realised_losses = []
+        realised_losses_pct = []
+        interest_paid_usd = []
+        durations_between_positions = []
+        times_in_market_all = []
+        times_in_market_volatile = []  # excludes delta neutral positions
+
         biggest_winning_trade_pc = None
         biggest_losing_trade_pc = None
+
         average_duration_of_losing_trades = datetime.timedelta(0)
         average_duration_of_winning_trades = datetime.timedelta(0)
+        average_duration_of_delta_neutral_positions = datetime.timedelta(0)
         average_duration_of_zero_loss_trades = None
         average_duration_of_all_trades = None
 
@@ -734,7 +842,7 @@ class TradeAnalysis:
         else:
             strategy_duration = state.get_strategy_duration()
         
-        won = lost = zero_loss = stop_losses = take_profits = undecided = 0
+        won = lost = zero_loss = stop_losses = take_profits = undecided = delta_neutral = 0
         open_value: USDollarAmount = 0
         profit: USDollarAmount = 0
         unrealised_profit_usd: USDollarAmount = 0
@@ -743,9 +851,11 @@ class TradeAnalysis:
 
         max_pos_cons = 0
         max_neg_cons = 0
+        max_delta_neutral_cons = 0
         max_pullback_pct = 0
         pos_cons = 0
         neg_cons = 0
+        delta_neutral_cons = 0
         pullback = 0
         total_trades = 0
 
@@ -754,31 +864,83 @@ class TradeAnalysis:
         winning_take_profits = 0
         losing_take_profits = 0
 
-        for pair_id, position in positions:
+        previous_position_opened_at = None
+        previous_position_closed_at = None
+        current_grouped_duration = datetime.timedelta(0)
+        open_position_lock = False
+
+        total_claimed_interest = 0
+
+        position_count = 0
+
+        for pair_id, position in sorted_positions:
 
             total_trades += len(position.trades)
             portfolio_value_at_open = position.portfolio_value_at_open
 
             capital_tied_at_open_pct = self.get_capital_tied_at_open(position)
-
+            
             if position.stop_loss:
-                # TODO use maximum_risk
-                maximum_risk = position.get_loss_risk_at_open()
+                maximum_risk = position.get_loss_risk_at_open()  # TODO use maximum_risk
                 loss_risk_at_open_pc.append(position.get_loss_risk_at_open_pct())
             else:
                 maximum_risk = None
                 loss_risk_at_open_pc.append(capital_tied_at_open_pct)
 
             lp_fees_paid += position.get_total_lp_fees_paid() or 0
+            interest_paid_usd.append(position.get_repaid_interest())
 
             for t in position.trades.values():
                 trade_volume += t.get_value()
+            
+            if previous_position_opened_at is not None:
+                durations_between_positions.append(position.opened_at - previous_position_opened_at) 
+
+            if position.is_credit_supply():
+                delta_neutral_cons += 1
+            else:
+                delta_neutral_cons = 0
+
+            if delta_neutral_cons > max_delta_neutral_cons:
+                max_delta_neutral_cons = delta_neutral_cons
+
+            total_claimed_interest += position.get_claimed_interest()
 
             if position.is_open():
                 open_value += position.get_value()
                 unrealised_profit_usd += position.get_unrealised_profit_usd()
                 undecided += 1
+
+                # only count the first open position for `time in market`
+                if open_position_lock == False and state:
+                    strategy_start, strategy_end = state.get_strategy_time_range()
+                    start_time = _get_final_start_time(previous_position_closed_at, position.opened_at)
+
+                    if strategy_end:
+                        current_grouped_duration += strategy_end - start_time
+                        _append_position_duration_by_market_condition(times_in_market_all, times_in_market_volatile, current_grouped_duration, position)
+                    
+                    open_position_lock = True
+
                 continue
+
+            # time in market
+            position_duration = position.get_duration()
+            if current_grouped_duration == datetime.timedelta(0):
+                current_grouped_duration += position_duration  # first position
+            elif previous_position_closed_at:
+                if position.opened_at < previous_position_closed_at:
+                    current_grouped_duration += (position.closed_at - previous_position_closed_at)  # overlapping group
+                else:
+                    _append_position_duration_by_market_condition(times_in_market_all, times_in_market_volatile, current_grouped_duration, position)
+                    current_grouped_duration = position_duration  # new group
+
+            if position_count == len(sorted_positions) - 1:
+                _append_position_duration_by_market_condition(times_in_market_all, times_in_market_volatile, current_grouped_duration, position)  # last position
+            position_count += 1
+            
+            previous_position_opened_at = position.opened_at
+            previous_position_closed_at = position.closed_at
 
             is_stop_loss = position.is_stop_loss()
             is_take_profit = position.is_take_profit()
@@ -795,7 +957,12 @@ class TradeAnalysis:
 
             duration = position.get_duration()
 
-            if position.is_profitable():
+            if position.is_credit_supply():
+                delta_neutral += 1
+                delta_neutral_positions.append(realised_profit_percent)
+                delta_neutral_positions_duration.append(duration)
+
+            elif position.is_profitable():
                 won += 1
                 winning_trades.append(realised_profit_percent)
                 winning_trades_duration.append(duration)
@@ -812,11 +979,11 @@ class TradeAnalysis:
                 losing_trades_duration.append(duration)
 
                 if portfolio_value_at_open := position.portfolio_value_at_open:
-                    realised_loss = realised_profit_usd / portfolio_value_at_open
+                    realised_loss_pct = realised_profit_usd / portfolio_value_at_open
                 else:
                     # Bad data
-                    realised_loss = 0
-                realised_losses.append(realised_loss)
+                    realised_loss_pct = 0
+                realised_losses_pct.append(realised_loss_pct)
 
                 if is_stop_loss:
                     losing_stop_losses += 1
@@ -834,14 +1001,15 @@ class TradeAnalysis:
             # for getting max consecutive wins/losses and max pullback
             # don't do anything if profit = $0
 
-            if (realised_profit_usd > 0):
-                neg_cons = 0
-                pullback = 0
-                pos_cons += 1
-            elif (realised_profit_usd < 0):
-                pos_cons = 0
-                neg_cons += 1
-                pullback += realised_profit_usd
+            if not position.is_credit_supply():
+                if (realised_profit_usd > 0):
+                    neg_cons = 0
+                    pullback = 0
+                    pos_cons += 1
+                elif (realised_profit_usd < 0):
+                    pos_cons = 0
+                    neg_cons += 1
+                    pullback += realised_profit_usd
 
             if (neg_cons > max_neg_cons):
                 max_neg_cons = neg_cons
@@ -862,28 +1030,42 @@ class TradeAnalysis:
         median_trade = func_check(all_trades, median)
         median_win = func_check(winning_trades, median)
         median_loss = func_check(losing_trades, median)
+        median_delta_neutral = func_check(delta_neutral_positions, median)
 
         average_winning_trade_profit_pc = get_avg_profit_pct_check(winning_trades)
         average_losing_trade_loss_pc = get_avg_profit_pct_check(losing_trades)
+        average_delta_neutral_profit_pc = get_avg_profit_pct_check(delta_neutral_positions)
 
-        max_realised_loss = func_check(realised_losses, min)
-        avg_realised_risk = func_check(realised_losses, avg)
-
+        max_realised_loss = func_check(realised_losses_pct, min)
+        avg_realised_risk = func_check(realised_losses_pct, avg)
         max_loss_risk_at_open_pc = func_check(loss_risk_at_open_pc, max)
+        
+        average_interest_paid_usd = func_check(interest_paid_usd, avg)
+        median_interest_paid_usd = func_check(interest_paid_usd, median)
+        max_interest_paid_usd = func_check(interest_paid_usd, max)
+        min_interest_paid_usd = func_check(interest_paid_usd, min)
+        average_duration_between_position_openings = pd.to_timedelta(durations_between_positions).mean() if len(durations_between_positions) > 0 else datetime.timedelta(0)
 
         biggest_winning_trade_pc = func_check(winning_trades, max)
-
         biggest_losing_trade_pc = func_check(losing_trades, min)
+        biggest_delta_neutral_pc = func_check(delta_neutral_positions, max)
+        
+        time_in_market = pd.to_timedelta(times_in_market_all).sum()/strategy_duration if (len(times_in_market_all) > 0 and strategy_duration) else 0
+        time_in_market_volatile = pd.to_timedelta(times_in_market_volatile).sum()/strategy_duration if (len(times_in_market_volatile) > 0 and strategy_duration) else 0
 
         all_durations = winning_trades_duration + losing_trades_duration + zero_loss_trades_duration
         average_duration_of_winning_trades = get_avg_trade_duration(winning_trades_duration)
         average_duration_of_losing_trades = get_avg_trade_duration(losing_trades_duration)
+        if delta_neutral_positions_duration:
+            average_duration_of_delta_neutral_positions = get_avg_trade_duration(delta_neutral_positions_duration)
         if zero_loss_trades_duration:
             average_duration_of_zero_loss_trades = get_avg_trade_duration(zero_loss_trades_duration)
         if all_durations:
             average_duration_of_all_trades = get_avg_trade_duration(all_durations)
 
         lp_fees_average_pc = lp_fees_paid / trade_volume if trade_volume else 0
+
+        total_interest_paid_usd = sum(interest_paid_usd) if interest_paid_usd else 0
 
         return TradeSummary(
             won=won,
@@ -908,12 +1090,20 @@ class TradeAnalysis:
             average_duration_of_losing_trades=average_duration_of_losing_trades,
             average_duration_of_zero_loss_trades=average_duration_of_zero_loss_trades,
             average_duration_of_all_trades=average_duration_of_all_trades,
+            average_duration_between_position_openings=average_duration_between_position_openings,
             average_trade=average_trade,
+            average_interest_paid_usd=average_interest_paid_usd,
+            median_interest_paid_usd=median_interest_paid_usd,
+            max_interest_paid_usd=max_interest_paid_usd,
+            min_interest_paid_usd=min_interest_paid_usd,
+            total_interest_paid_usd=total_interest_paid_usd,
+            total_claimed_interest=total_claimed_interest,
             median_trade=median_trade,
             median_win=median_win,
             median_loss=median_loss,
             max_pos_cons=max_pos_cons,
             max_neg_cons=max_neg_cons,
+            max_delta_neutral_cons=max_delta_neutral_cons,
             max_pullback=max_pullback_pct,
             #max_drawdown=max_drawdown,
             #max_runup=max_runup,
@@ -932,6 +1122,13 @@ class TradeAnalysis:
             #sharpe_ratio=sharpe_ratio,
             #sortino_ratio=sortino_ratio,
             #profit_factor=profit_factor,
+            time_in_market = time_in_market,
+            time_in_market_volatile = time_in_market_volatile,
+            delta_neutral=delta_neutral,
+            median_delta_neutral=median_delta_neutral,
+            average_delta_neutral_profit_pc=average_delta_neutral_profit_pc,
+            average_duration_of_delta_neutral_positions=average_duration_of_delta_neutral_positions,
+            biggest_delta_neutral_pc=biggest_delta_neutral_pc,
         )
 
     @staticmethod
@@ -1015,8 +1212,12 @@ class TradeAnalysis:
         profit_long_pct, profit_short_pct = 0, 0
 
         if all_stats_trade_summary.return_percent:
-            profit_long_pct = all_stats_trade_summary.return_percent * long_profit_usd / all_profit_usd
-            profit_short_pct = all_stats_trade_summary.return_percent * short_profit_usd / all_profit_usd
+            profit_long_pct = calculate_percentage(all_stats_trade_summary.return_percent * long_profit_usd, all_profit_usd)
+            profit_short_pct = calculate_percentage(all_stats_trade_summary.return_percent * short_profit_usd, all_profit_usd)
+        elif len(all_stats_trade_summary.compounding_returns) > 0:
+            # TODO weight long_stats_trade_summary.compounding_returns and also for short
+            profit_long_pct = calculate_percentage(all_stats_trade_summary.compounding_returns.iloc[-1] * long_profit_usd, all_profit_usd)
+            profit_short_pct = calculate_percentage(long_stats_trade_summary.compounding_returns.iloc[-1] * short_profit_usd, all_profit_usd)
 
         # profit_long_pct = self.calculate_weighted_average_realised_profit(self.get_long_positions())
         # profit_short_pct = self.calculate_weighted_average_realised_profit(self.get_short_positions())
@@ -1072,8 +1273,18 @@ class TradeAnalysis:
         return df
 
 
-def calculate_annualised_return(profit_pct, duration) -> float | None:
-    return calculate_percentage(profit_pct * datetime.timedelta(days=365), duration) if profit_pct else None
+def calculate_annualised_return(profit_pct: float, duration: datetime.timedelta) -> float | None:
+    """Calculate annualised return %. 
+    
+    Uses seconds as the base unit for duration to accomodate for strategies that have been live for less than a day.
+    
+    :param profit_pct: Profit % over the duration
+    :param duration: Duration of the trade as a datetime object
+    :return: Annualised return % if profit_pct is not None
+    """
+    assert isinstance(profit_pct, float | int | None), "Profit % should be a float or int or None"
+    assert isinstance(duration, datetime.timedelta), f"Duration should be a datetime.timedelta object, got {type(duration)}"
+    return calculate_percentage(profit_pct * 365 * 24 * 60 * 60, duration.total_seconds()) if profit_pct else None
 
 
 class TimelineRowStylingMode(enum.Enum):

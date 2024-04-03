@@ -9,6 +9,7 @@ from web3.datastructures import ReadableAttributeDict, AttributeDict, MutableAtt
 
 from tradeexecutor.state.types import USDollarAmount
 from tradeexecutor.strategy.cycle import CycleDuration
+from tradeexecutor.strategy.default_routing_options import TradeRouting
 
 
 class StrategyParametersMissing(Exception):
@@ -21,17 +22,29 @@ class CoreStrategyParameters(TypedDict):
 
     """
 
-    #: US dollars at the start of the backtesting
-    initial_cash: USDollarAmount | None = None
-
-    backtest_start: datetime.datetime | None = None
-
-    backtest_end: datetime.datetime | None = None
-
     cycle_duration: CycleDuration
 
     #: Current strategy decision cycle
     cycle: int
+
+    #: Trade routing model.
+    #:
+    #: Applies to live strategies only
+    #:
+    routing: TradeRouting
+
+    #: US dollars at the start of the backtesting
+    initial_cash: USDollarAmount | None
+
+    backtest_start: datetime.datetime | None
+
+    backtest_end: datetime.datetime | None
+
+    #: Live trading needed history
+    #:
+    #: How much data load for each strategy cycle in live trading
+    #:
+    required_history_period: datetime.timedelta | None
 
 
 class StrategyParameters(MutableAttributeDict):
@@ -54,7 +67,8 @@ class StrategyParameters(MutableAttributeDict):
 
     .. code-block:: python
 
-        assert parameters.rsi_low == parameters["rsi_low"]
+        value = parameters.rsi_low
+        value = parameters["rsi_low"]  # Are equal
 
     Example parameter definition:
 
@@ -203,3 +217,13 @@ class StrategyParameters(MutableAttributeDict):
 
         if "cycle_duration" not in self:
             raise StrategyParametersMissing("cycle_duration parameter missing")
+
+    def __getattribute__(self, name):
+        # Only implemented to make type hinting to stop complaining
+        # https://stackoverflow.com/questions/78210800/type-hinting-python-class-with-dynamic-any-attribute/78210867#78210867
+        try:
+            return object.__getattribute__(self, name)
+        except AttributeError:
+            all_params = ", ".join(key for key, val in self.iterate_parameters())
+            raise AttributeError(f"Strategy parameters lacks parameter: {name}\nWe have: {all_params}")
+

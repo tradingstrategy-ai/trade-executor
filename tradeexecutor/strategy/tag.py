@@ -16,6 +16,9 @@ class StrategyTag(enum.Enum):
       and additional disclaimer depends on the tags
     """
 
+    #: This strategy module is part of internal unit test suite
+    unit_testing = "unit_testing"
+
     #: Testing strategy in forward-testing
     alpha = "alpha"
 

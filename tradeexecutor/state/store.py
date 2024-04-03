@@ -9,7 +9,7 @@ import tempfile
 from pathlib import Path
 import logging
 from pprint import pprint
-from typing import Union, Optional
+from typing import Union, Optional, Callable
 
 from dataclasses_json.core import _ExtendedEncoder
 
@@ -62,11 +62,21 @@ class JSONFileStore(StateStore):
     - Read by webhook when asked over the API
     """
 
-    def __init__(self, path: Union[Path, str]):
+    def __init__(self, path: Union[Path, str], on_save: Callable=None):
+        """
+
+        :param path:
+            Path to the JSON file
+
+        :param on_save:
+            Save hook. Used by `RunState.read_only_state_copy`
+        """
         assert path
         if not isinstance(path, Path):
             path = Path(path)
+
         self.path = path
+        self.on_save = on_save
 
     def __repr__(self):
         path = os.path.abspath(self.path)
@@ -108,6 +118,9 @@ class JSONFileStore(StateStore):
             logger.info(f"Saved state to %s, total {written:,} chars", self.path)
         temp.close()
         shutil.move(temp.name, self.path)
+
+        if self.on_save:
+            self.on_save(state)
 
     def create(self, name: str) -> State:
         logger.info("Created new state for the strategy %s at %s", name, os.path.realpath(self.path))

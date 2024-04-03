@@ -212,7 +212,7 @@ def create_alpha_model_timeline_all_assets(
                 if not signal.position_adjust_ignored:
                     # Signal was given, trades were executed,
                     # calculate how much rebalance we made
-                    assert signal.position_id, f"Signal had no position info recorded: {signal}, cycle {ts}"
+                    assert signal.position_id, f"Signal had no position info recorded: {signal}, cycle {ts}, adjust quantity {signal.position_adjust_quantity}, adjust USD {signal.position_adjust_usd}"
                     position = portfolio.get_position_by_id(signal.position_id)
                     trades = list(position.get_trades_by_strategy_cycle(snapshot.timestamp))
                     # We may get more than 1 trade if take profit/stopp loss was triggered on the same cycle
@@ -230,6 +230,7 @@ def create_alpha_model_timeline_all_assets(
                     quantity = 0
                     price = 0.0
                     value = 0
+                    position = None
 
                 weight = signal.normalised_weight
 

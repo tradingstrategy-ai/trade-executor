@@ -31,10 +31,13 @@ from tradeexecutor.strategy.description import StrategyExecutionDescription
 from tradeexecutor.strategy.execution_context import ExecutionContext, ExecutionMode, standalone_backtest_execution_context
 from tradeexecutor.strategy.generic.generic_pricing_model import GenericPricing
 from tradeexecutor.strategy.generic.generic_router import GenericRouting
+from tradeexecutor.strategy.pandas_trader.indicator import CreateIndicatorsProtocolV1, calculate_and_load_indicators, DiskIndicatorStorage, IndicatorSet, \
+    IndicatorKey, load_indicators, CreateIndicatorsProtocol, call_create_indicators
 from tradeexecutor.strategy.pandas_trader.runner import PandasTraderRunner
+from tradeexecutor.strategy.pandas_trader.strategy_input import StrategyInputIndicators
 from tradeexecutor.strategy.strategy_module import parse_strategy_module, \
     DecideTradesProtocol, CreateTradingUniverseProtocol, CURRENT_ENGINE_VERSION, StrategyModuleInformation, DecideTradesProtocol2, read_strategy_module, \
-    StrategyParameters, DecideTradesProtocol3
+    StrategyParameters, DecideTradesProtocol3, DecideTradesProtocol4
 from tradeexecutor.strategy.engine_version import TradingStrategyEngineVersion
 from tradeexecutor.strategy.reserve_currency import ReserveCurrency
 from tradeexecutor.strategy.default_routing_options import TradeRouting
@@ -42,6 +45,7 @@ from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniv
     DefaultTradingStrategyUniverseModel
 from tradeexecutor.strategy.universe_model import StaticUniverseModel, UniverseOptions
 from tradeexecutor.utils.accuracy import setup_decimal_accuracy
+from tradeexecutor.utils.cpu import get_safe_max_workers_count
 from tradeexecutor.utils.timer import timed_task
 from tradingstrategy.client import Client
 from tradingstrategy.timebucket import TimeBucket
@@ -85,6 +89,15 @@ class BacktestSetup:
     decide_trades: DecideTradesProtocol
     create_trading_universe: Optional[CreateTradingUniverseProtocol]
 
+    #
+    # Indicators needed for this backtest
+    # - create_indicators() used with a single backtest
+    # - indicators used by grid search as indicators have been defined and calculated in a prior step
+    #
+    create_indicators: Optional[CreateIndicatorsProtocolV1] = None
+    indicator_combinations: Optional[set[IndicatorKey]] = None
+    indicator_storage: Optional[DiskIndicatorStorage] = None
+
     data_preload: bool = True
 
     #: Name for this backtest
@@ -100,6 +113,18 @@ class BacktestSetup:
     #: When trading_strategy_engine_version >= 0.4
     #:
     parameters: StrategyParameters | None = None
+
+    #: Is this backtest part a grid saerch
+    #:
+    grid_search: bool = False
+
+    #: What's the execution mode of this backtest run
+    #:
+    mode: ExecutionMode = ExecutionMode.backtesting
+
+    #: How many workers to use for indicator calculation
+    #:
+    max_workers: int = 8
 
     def backtest_static_universe_strategy_factory(
             self,
@@ -149,6 +174,7 @@ class BacktestSetup:
             routing_model=routing_model,
             decide_trades=self.decide_trades,
             execution_context=execution_context,
+            parameters=self.parameters,
         )
 
         return StrategyExecutionDescription(
@@ -157,6 +183,94 @@ class BacktestSetup:
             trading_strategy_engine_version=self.trading_strategy_engine_version,
             cycle_duration=self.cycle_duration,
         )
+
+    def prepare_indicators(self, execution_context: ExecutionContext) -> StrategyInputIndicators:
+        """Prepare indicators for this backtest run.
+
+        - Calculate and cache the indicator results
+
+        - Display TQDM progress bar about reading cached results and calculating new indicators
+        """
+        if self.create_indicators is None:
+            # Legacy - create_indicators() not defined
+            # Empty indicator set
+            return StrategyInputIndicators(
+                self.universe,
+                IndicatorSet(),
+                {}
+            )
+
+        assert self.universe is not None, "You need to pass backtest_universe if you want to use create_indicators"
+        assert self.parameters is not None, "You need to pass backtest parameters if you want to use create_indicators"
+        assert self.indicator_storage, f"indicator_storage missing"
+
+        storage = self.indicator_storage
+
+        indicator_set = call_create_indicators(
+            self.create_indicators,
+            parameters=self.parameters,
+            strategy_universe=self.universe,
+            execution_context=execution_context,
+        )
+
+        indicator_results = calculate_and_load_indicators(
+            strategy_universe=self.universe,
+            storage=storage,
+            execution_context=execution_context,
+            indicators=indicator_set,
+            parameters=self.parameters,
+            max_workers=self.max_workers,
+        )
+
+        strategy_input_indicators = StrategyInputIndicators(
+            self.universe,
+            indicator_results=indicator_results,
+            available_indicators=indicator_set,
+        )
+
+        return strategy_input_indicators
+
+    def load_indicators(self) -> StrategyInputIndicators:
+        """Load indicators for this backtest.
+
+        - Applies for grid search execution path
+
+        - All indicators must be precalculated in cache warm up
+        """
+        assert self.indicator_combinations is not None
+        assert type(self.indicator_combinations) == set
+        assert self.indicator_storage, f"indicator_storage missing"
+        storage = self.indicator_storage
+        available_indicators = IndicatorSet.from_indicator_keys(self.indicator_combinations)
+
+        indicator_results = load_indicators(
+            self.universe,
+            storage,
+            available_indicators,
+            self.indicator_combinations,
+            show_progress=False,  # Don't mess main grid search notebook progress bars
+        )
+
+        logger.info(
+            "BacktestSetup.load_indicators() - loaded %d indicator result out of %d total results, %d indicators defined",
+            len(indicator_results),
+            len(self.indicator_combinations),
+            available_indicators.get_count(),
+        )
+
+        if len(indicator_results) != len(self.indicator_combinations):
+            for key in self.indicator_combinations:
+                if key not in indicator_results:
+                    cache_path = storage.get_indicator_path(key)
+                    raise RuntimeError(f"Indicator key {key} could not be loaded - but is assumed to be on available. Cache path is {cache_path}")
+
+        strategy_input_indicators = StrategyInputIndicators(
+            self.universe,
+            indicator_results=indicator_results,
+            available_indicators=available_indicators,
+        )
+
+        return strategy_input_indicators
 
 
 def setup_backtest_for_universe(
@@ -173,6 +287,10 @@ def setup_backtest_for_universe(
     allow_missing_fees=False,
     name: Optional[str] = None,
     universe_options: Optional[UniverseOptions] = None,
+    create_indicators: CreateIndicatorsProtocol | None = None,
+    parameters: StrategyParameters | None = None,
+    indicator_storage: DiskIndicatorStorage | None = None,
+    max_workers: int | None = None,
 ):
     """High-level entry point for setting up a single backtest for a predefined universe.
 
@@ -260,6 +378,10 @@ def setup_backtest_for_universe(
         trade_routing=strategy_module.trade_routing,
         trading_strategy_engine_version=strategy_module.trading_strategy_engine_version,
         name=name,
+        create_indicators=create_indicators,
+        parameters=parameters,
+        indicator_storage=indicator_storage,
+        max_workers=max_workers or get_safe_max_workers_count(),
     )
 
 
@@ -483,11 +605,27 @@ def run_backtest(
             pass
 
     execution_context = ExecutionContext(
-        mode=ExecutionMode.backtesting,
+        mode=setup.mode,
         timed_task_context_manager=timed_task,
         engine_version=setup.trading_strategy_engine_version,
         parameters=setup.parameters,
+        grid_search=setup.grid_search,
     )
+
+    if execution_context.is_version_greater_or_equal_than(0, 5, 0):
+        # Needed for DecideTradesProtocolV4
+        if setup.create_indicators is not None:
+            # Indicators need to be created now
+            backtest_strategy_indicators = setup.prepare_indicators(execution_context)
+        elif setup.indicator_combinations is not None:
+            # Grid search
+            # Indicators were created earlier, load now
+            backtest_strategy_indicators = setup.load_indicators()
+        else:
+            raise AssertionError(f"run_backtest(): You must give either create_indicators or indicator_combinations argument")
+    else:
+        # Legacy
+        backtest_strategy_indicators = None
 
     main_loop = ExecutionLoop(
         name=setup.name,
@@ -515,11 +653,17 @@ def run_backtest(
         execution_test_hook=execution_test_hook,
         minimum_data_lookback_range=setup.minimum_data_lookback_range,
         universe_options=setup.universe_options,
+        backtest_strategy_indicators=backtest_strategy_indicators,
     )
 
-    debug_dump = main_loop.run_and_setup_backtest()
+    diagnostics_data = main_loop.run_and_setup_backtest()
 
-    return setup.state, backtest_universe, debug_dump
+    # Expose to the caller through non-API.
+    # Don't serialise this in grid search to make it faster/save space
+    if not execution_context.grid_search:
+        diagnostics_data["indicators"] = backtest_strategy_indicators
+
+    return setup.state, backtest_universe, diagnostics_data
 
 
 def run_backtest_inline(
@@ -528,12 +672,15 @@ def run_backtest_inline(
     end_at: Optional[datetime.datetime] = None,
     minimum_data_lookback_range: Optional[datetime.timedelta] = None,
     client: Optional[Client],
-    decide_trades: DecideTradesProtocol | DecideTradesProtocol2 | DecideTradesProtocol3,
+    decide_trades: DecideTradesProtocol | DecideTradesProtocol2 | DecideTradesProtocol3 | DecideTradesProtocol4,
+    create_trading_universe: CreateTradingUniverseProtocol = None,
+    create_indicators: CreateIndicatorsProtocol = None,
+    indicator_combinations: set[IndicatorKey] | None = None,
+    indicator_storage: DiskIndicatorStorage | None = None,
     cycle_duration: CycleDuration | None = None,
     initial_deposit: float | None = None,
     reserve_currency: ReserveCurrency | None = None,
     trade_routing: Optional[TradeRouting] | None = None,
-    create_trading_universe: Optional[CreateTradingUniverseProtocol] = None,
     universe: Optional[TradingStrategyUniverse] = None,
     routing_model: Optional[BacktestRoutingModel] = None,
     max_slippage=0.01,
@@ -546,6 +693,9 @@ def run_backtest_inline(
     engine_version: Optional[TradingStrategyEngineVersion] = None,
     strategy_logging=False,
     parameters: Type | StrategyParameters | None = None,
+    mode: ExecutionMode = ExecutionMode.backtesting,
+    max_workers=8,
+    grid_search=False,
 ) -> Tuple[State, TradingStrategyUniverse, dict]:
     """Run backtests for given decide_trades and create_trading_universe functions.
 
@@ -637,6 +787,7 @@ def run_backtest_inline(
     :param strategy_logging:
         Enable PositionManager log output.
 
+        Set `True` to display output.
         See :py:meth:`tradeexecutor.strategy.pandas_trading.position_manager.PositionManager.log` for usage.
 
     :param parameters:
@@ -646,9 +797,16 @@ def run_backtest_inline(
 
         See :py:class:`tradeexecutor.strategy.parameters.StrategyParameters`.
 
+    :param max_workers:
+        Maximum number of worker processes to use to calculate indicators.
+
+        Set to `1` to disable multiprocessing / debug.
+
     :return:
         tuple (State of a completely executed strategy, trading strategy universe, debug dump dict)
     """
+
+    from tradeexecutor.monkeypatch import cloudpickle_patch  # Enable pickle patch that allows multiprocessing in notebooks 
 
     if ignore:
         # https://www.python.org/dev/peps/pep-3102/
@@ -750,6 +908,10 @@ def run_backtest_inline(
         end_at=end_at,
     )
 
+    # Create default storage
+    if indicator_storage is None and universe is not None:
+        indicator_storage = DiskIndicatorStorage.create_default(universe)
+
     backtest_setup = BacktestSetup(
         start_at,
         end_at,
@@ -764,6 +926,9 @@ def run_backtest_inline(
         sync_model=sync_model,
         decide_trades=decide_trades,
         create_trading_universe=create_trading_universe,
+        indicator_combinations=indicator_combinations,
+        indicator_storage=indicator_storage,
+        create_indicators=create_indicators,
         reserve_currency=reserve_currency,
         trade_routing=trade_routing,
         trading_strategy_engine_version=engine_version,
@@ -771,6 +936,9 @@ def run_backtest_inline(
         data_preload=data_preload,
         minimum_data_lookback_range=minimum_data_lookback_range,
         parameters=parameters,
+        mode=mode,
+        max_workers=max_workers,
+        grid_search=grid_search,
     )
 
     state, universe, debug_dump = run_backtest(backtest_setup, client, allow_missing_fees=True)

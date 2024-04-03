@@ -12,7 +12,10 @@ from web3.exceptions import ContractLogicError
 
 from eth_defi.token import fetch_erc20_details
 from eth_defi.trade import TradeSuccess
-from tradeexecutor.ethereum.one_delta.analysis import analyse_trade_by_receipt
+from tradeexecutor.ethereum.one_delta.analysis import (
+    analyse_leverage_trade_by_receipt,
+    analyse_credit_trade_by_receipt,
+)
 from tradeexecutor.ethereum.swap import get_swap_transactions, report_failure
 from tradeexecutor.state.state import State
 from tradeexecutor.state.trade import TradeExecution
@@ -30,6 +33,7 @@ from eth_defi.one_delta.position import (
     open_short_position,
     reduce_short_position,
 )
+from eth_defi.one_delta.lending import supply, withdraw
 from eth_defi.one_delta.price import (
     OneDeltaPriceHelper,
     estimate_buy_received_amount, 
@@ -222,6 +226,60 @@ class OneDeltaRoutingState(EthereumRoutingState):
             asset_deltas,
             notes=notes,
         )
+
+    def lend_via_one_delta(
+        self,
+        *,
+        one_delta: OneDeltaDeployment,
+        target_pair: TradingPairIdentifier,
+        reserve_amount: int,
+        trade_flags: set[TradeFlag],
+        check_balances: bool = False,
+        asset_deltas: Optional[List[AssetDelta]] = None,
+        notes="",
+    ):
+        base_token, quote_token = get_base_quote(self.web3, target_pair.get_pricing_pair(), target_pair.get_pricing_pair().quote)
+        atoken = get_token_for_asset(self.web3, target_pair.base)
+
+        if check_balances:
+            self.check_has_enough_tokens(quote_token, reserve_amount)
+
+        logger.info(
+            "Creating a trade for %s, reserve amount %d. Trade flags are %s",
+            target_pair,
+            reserve_amount,
+            trade_flags,
+        )
+
+        price_helper = OneDeltaPriceHelper(one_delta)
+
+        if TradeFlag.open in trade_flags:
+            assert reserve_amount > 0
+
+            bound_func = supply(
+                one_delta_deployment=one_delta,
+                token=quote_token,
+                amount=reserve_amount,
+                wallet_address=self.tx_builder.get_token_delivery_address(),
+            )
+        elif TradeFlag.close in trade_flags:
+            bound_func = withdraw(
+                one_delta_deployment=one_delta,
+                token=quote_token,
+                atoken=atoken,
+                amount=MAX_AMOUNT,
+                wallet_address=self.tx_builder.get_token_delivery_address(),
+            )
+        else:
+            raise ValueError(f"Wrong trade flags used: {trade_flags}")
+
+        return self.create_signed_transaction(
+            one_delta.broker_proxy,
+            bound_func,
+            self.swap_gas_limit,
+            asset_deltas,
+            notes=notes,
+        )
     
     def trade_on_router_two_way(
         self,
@@ -235,12 +293,7 @@ class OneDeltaRoutingState(EthereumRoutingState):
         notes="",
         one_delta: OneDeltaDeployment | None = None,
     ):
-        """Prepare the actual swap. Same for Uniswap V2 and V3.
-
-        :param check_balances:
-            Check on-chain balances that the account has enough tokens
-            and raise exception if not.
-        """
+        """Not used for now"""
         pass
         
     def trade_on_router_three_way(
@@ -256,13 +309,7 @@ class OneDeltaRoutingState(EthereumRoutingState):
         notes="",
         one_delta: OneDeltaDeployment | None = None,
     ):
-        """Prepare the actual swap for three way trade.
-
-        :param check_balances:
-            Check on-chain balances that the account has enough tokens
-            and raise exception if not.
-        """
-        # TODO
+        """Not used for now"""
         pass
 
     def ensure_multiple_tokens_approved(
@@ -270,11 +317,11 @@ class OneDeltaRoutingState(EthereumRoutingState):
         *,
         one_delta: OneDeltaDeployment,
         aave_v3: AaveV3Deployment,
-        uniswap_v3: UniswapV3Deployment,
         collateral_token_address: str,
         borrow_token_address: str,
         atoken_address: str,
         vtoken_address: str,
+        uniswap_v3: UniswapV3Deployment | None = None,
     ) -> list[BlockchainTransaction]:
         """Make sure we have ERC-20 approve() for the 1delta
 
@@ -290,7 +337,8 @@ class OneDeltaRoutingState(EthereumRoutingState):
 
         broker_proxy_address = one_delta.broker_proxy.address
         aave_v3_pool_address = aave_v3.pool.address
-        uniswap_router_address = uniswap_v3.swap_router.address
+        if uniswap_v3:
+            uniswap_router_address = uniswap_v3.swap_router.address
 
         for token_address in [
             collateral_token_address,
@@ -299,7 +347,8 @@ class OneDeltaRoutingState(EthereumRoutingState):
         ]:
             txs += self.ensure_token_approved(token_address, broker_proxy_address)
             txs += self.ensure_token_approved(token_address, aave_v3_pool_address)
-            txs += self.ensure_token_approved(token_address, uniswap_router_address)
+            if uniswap_v3:
+                txs += self.ensure_token_approved(token_address, uniswap_router_address)
 
         txs += self.ensure_vtoken_delegation_approved(vtoken_address, broker_proxy_address)
 
@@ -470,6 +519,31 @@ class OneDeltaRouting(EthereumRoutingModel):
             notes=notes,
         )
 
+    def make_credit_supply_trade(
+        self, 
+        routing_state: EthereumRoutingState,
+        target_pair: TradingPairIdentifier,
+        *,
+        reserve_asset: AssetIdentifier,
+        reserve_amount: int,
+        trade_flags: set[TradeFlag],
+        check_balances: bool = False,
+        asset_deltas: Optional[List[AssetDelta]] = None,
+        notes="",
+    ) -> list[BlockchainTransaction]:
+        
+        return super().make_credit_supply_trade(
+            routing_state,
+            target_pair,
+            reserve_asset=reserve_asset,
+            reserve_amount=reserve_amount,
+            address_map=self.address_map,
+            trade_flags=trade_flags,
+            check_balances=check_balances,
+            asset_deltas=asset_deltas,
+            notes=notes,
+        )
+
     def settle_trade(
         self,
         web3: Web3,
@@ -483,74 +557,121 @@ class OneDeltaRouting(EthereumRoutingModel):
         quote_token_details = fetch_erc20_details(web3, pricing_pair.quote.checksum_address)
         reserve = trade.reserve_currency
         tx = get_swap_transactions(trade)
-        one_delta = fetch_one_delta_deployment(web3, tx.contract_address, tx.contract_address, tx.contract_address)
+        one_delta = fetch_one_delta_deployment(web3, tx.contract_address, tx.contract_address, ZERO_ADDRESS_STR)
         uniswap = mock_partial_deployment_for_analysis(web3, ZERO_ADDRESS_STR)
         aave = fetch_aave_v3_deployment(web3, ZERO_ADDRESS_STR, ZERO_ADDRESS_STR, ZERO_ADDRESS_STR)
 
         tx_dict = tx.get_transaction()
         receipt = receipts[HexBytes(tx.tx_hash)]
-
         input_args = tx.get_actual_function_input_args()
 
         ts = get_block_timestamp(web3, receipt["blockNumber"])
 
-        result, collateral_amount = analyse_trade_by_receipt(
-            web3,
-            one_delta=one_delta,
-            uniswap=uniswap,
-            aave=aave,
-            tx=tx_dict,
-            tx_hash=tx.tx_hash,
-            tx_receipt=receipt,
-            input_args=input_args,
-            trade_operation=TradeOperation.OPEN if trade.is_sell() else TradeOperation.CLOSE,
-        )
-
-        if isinstance(result, TradeSuccess):
-            price = result.get_human_price(quote_token_details.address == result.token0.address)
-            
-            if trade.is_buy():
-                executed_amount = -result.amount_out / Decimal(10 ** base_token_details.decimals)
-                executed_collateral_consumption = -result.amount_in / Decimal(10 ** reserve.decimals)
-                # TODO: planned_reserve-planned_collateral_allocation refactor later
-                executed_collateral_allocation = Decimal(collateral_amount) / Decimal(10 ** reserve.decimals)
-                executed_reserve = 0
-            else:
-                executed_amount = result.amount_in / Decimal(10 ** base_token_details.decimals)
-                executed_collateral_consumption = result.amount_out / Decimal(10 ** reserve.decimals)
-                executed_collateral_allocation = 0
-                executed_reserve = Decimal(collateral_amount) / Decimal(10 ** reserve.decimals)
-
-            if trade.is_short():
-                executed_amount = -executed_amount
-
-            lp_fee_paid = result.lp_fee_paid
-
-            assert (executed_amount != 0) and (price > 0), f"Executed amount {executed_amount}, executed collateral consumption: {executed_collateral_consumption},  executed_reserve: {executed_reserve}, price: {price}"
-
-            logger.info("1delta routing\nPlanned: %f %f %f\nExecuted: %f %f %f", trade.planned_collateral_consumption, trade.planned_collateral_allocation, trade.planned_reserve, executed_collateral_consumption, executed_collateral_allocation, executed_reserve)
-
-            # Mark as success
-            state.mark_trade_success(
-                ts,
-                trade,
-                executed_price=float(price),
-                executed_amount=executed_amount,
-                executed_reserve=executed_reserve,
-                executed_collateral_consumption=executed_collateral_consumption,
-                executed_collateral_allocation=executed_collateral_allocation,
-                lp_fees=lp_fee_paid,
-                native_token_price=0,  # won't fix
-                cost_of_gas=result.get_cost_of_gas(),
+        if trade.is_leverage():
+            result, collateral_amount = analyse_leverage_trade_by_receipt(
+                web3,
+                one_delta=one_delta,
+                uniswap=uniswap,
+                aave=aave,
+                tx=tx_dict,
+                tx_hash=tx.tx_hash,
+                tx_receipt=receipt,
+                input_args=input_args,
+                trade_operation=TradeOperation.OPEN if trade.is_sell() else TradeOperation.CLOSE,
             )
 
-            # TODO: This need to be properly accounted and currently there is no mechanism here
-            # Set the check point interest balances for new positions
-            last_block_number = trade.blockchain_transactions[-1].block_number
-            set_interest_checkpoint(state, ts, last_block_number)
+            if isinstance(result, TradeSuccess):
+                price = result.get_human_price(quote_token_details.address == result.token0.address)
+                
+                if trade.is_buy():
+                    executed_amount = -result.amount_out / Decimal(10 ** base_token_details.decimals)
+                    executed_collateral_consumption = -result.amount_in / Decimal(10 ** reserve.decimals)
+                    # TODO: planned_reserve-planned_collateral_allocation refactor later
+                    executed_collateral_allocation = Decimal(collateral_amount) / Decimal(10 ** reserve.decimals)
+                    executed_reserve = 0
+                else:
+                    executed_amount = result.amount_in / Decimal(10 ** base_token_details.decimals)
+                    executed_collateral_consumption = result.amount_out / Decimal(10 ** reserve.decimals)
+                    executed_collateral_allocation = Decimal(0)
+                    executed_reserve = Decimal(collateral_amount) / Decimal(10 ** reserve.decimals)
+
+                if trade.is_short():
+                    executed_amount = -executed_amount
+
+                lp_fee_paid = result.lp_fee_paid
+
+                assert (executed_amount != 0) and (price > 0), f"Executed amount {executed_amount}, executed collateral consumption: {executed_collateral_consumption},  executed_reserve: {executed_reserve}, price: {price}"
+
+                logger.info("1delta routing\nPlanned: %f %f %f\nExecuted: %f %f %f", trade.planned_collateral_consumption, trade.planned_collateral_allocation, trade.planned_reserve, executed_collateral_consumption, executed_collateral_allocation, executed_reserve)
+
+                # Mark as success
+                state.mark_trade_success(
+                    ts,
+                    trade,
+                    executed_price=float(price),
+                    executed_amount=executed_amount,
+                    executed_reserve=executed_reserve,
+                    executed_collateral_consumption=executed_collateral_consumption,
+                    executed_collateral_allocation=executed_collateral_allocation,
+                    lp_fees=lp_fee_paid,
+                    native_token_price=0,  # won't fix
+                    cost_of_gas=result.get_cost_of_gas(),
+                )
+
+                # TODO: This need to be properly accounted and currently there is no mechanism here
+                # Set the check point interest balances for new positions
+                last_block_number = trade.blockchain_transactions[-1].block_number
+                set_interest_checkpoint(state, ts, last_block_number)
+            else:
+                report_failure(ts, state, trade, stop_on_execution_failure)
+
+        elif trade.is_credit_supply():
+            result = analyse_credit_trade_by_receipt(
+                web3,
+                one_delta=one_delta,
+                uniswap=uniswap,
+                aave=aave,
+                tx=tx_dict,
+                tx_hash=tx.tx_hash,
+                tx_receipt=receipt,
+                input_args=input_args,
+                trade_operation=TradeOperation.OPEN if trade.is_buy() else TradeOperation.CLOSE,
+            )
+
+            if isinstance(result, TradeSuccess):
+                price = 1
+                
+                if trade.is_buy():
+                    executed_amount = result.amount_in / Decimal(10 ** base_token_details.decimals)
+                    executed_reserve = executed_amount
+                else:
+                    executed_amount = -result.amount_out / Decimal(10 ** base_token_details.decimals)
+                    executed_reserve = -executed_amount
+
+                assert executed_amount != 0, f"Executed amount {executed_amount}, executed_reserve: {executed_reserve}"
+
+                logger.info("1delta routing\nPlanned: %f\nExecuted: %f", trade.planned_reserve, executed_reserve)
+
+                # Mark as success
+                state.mark_trade_success(
+                    ts,
+                    trade,
+                    executed_price=float(1),
+                    executed_amount=executed_amount,
+                    executed_reserve=executed_reserve,
+                    lp_fees=0,
+                    native_token_price=0,  # won't fix
+                    cost_of_gas=result.get_cost_of_gas(),
+                )
+
+                # TODO: This need to be properly accounted and currently there is no mechanism here
+                # Set the check point interest balances for new positions
+                last_block_number = trade.blockchain_transactions[-1].block_number
+                set_interest_checkpoint(state, ts, last_block_number)
+            else:
+                report_failure(ts, state, trade, stop_on_execution_failure)
         else:
-            # Trade failed
-            report_failure(ts, state, trade, stop_on_execution_failure)
+            raise ValueError(f"Unknown trade type {trade}")
 
 
 def get_one_delta(web3: Web3, address_map: dict) -> OneDeltaDeployment:

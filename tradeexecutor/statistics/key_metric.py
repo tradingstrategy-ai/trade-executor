@@ -3,6 +3,7 @@
 Calculate key metrics used in the web frontend summary cards.
 """
 import datetime
+import warnings
 from typing import List, Iterable, Literal
 
 import pandas as pd
@@ -12,7 +13,9 @@ from tradeexecutor.state.portfolio import Portfolio
 from tradeexecutor.state.state import State
 from tradeexecutor.state.types import Percent
 from tradeexecutor.strategy.summary import KeyMetric, KeyMetricKind, KeyMetricSource, KeyMetricCalculationMethod
-from tradeexecutor.visual.equity_curve import calculate_size_relative_realised_trading_returns, calculate_non_cumulative_daily_returns
+from tradeexecutor.visual.equity_curve import calculate_size_relative_realised_trading_returns, calculate_non_cumulative_daily_returns, calculate_equity_curve, \
+    calculate_returns, calculate_daily_returns
+from tradeexecutor.visual.qs_wrapper import import_quantstats_wrapped
 
 
 def calculate_sharpe(returns: pd.Series, periods=365) -> float:
@@ -30,11 +33,13 @@ def calculate_sharpe(returns: pd.Series, periods=365) -> float:
 
     """
     # Lazy import to allow optional dependency
-    from quantstats.stats import sharpe
-    return sharpe(
-        returns,
-        periods=periods,
-    )
+    qs = import_quantstats_wrapped()
+    with warnings.catch_warnings():
+        warnings.simplefilter('ignore', RuntimeWarning)
+        return qs.stats.sharpe(
+            returns,
+            periods=periods,
+        )
 
 
 def calculate_sortino(returns: pd.Series, periods=365) -> float:
@@ -52,11 +57,13 @@ def calculate_sortino(returns: pd.Series, periods=365) -> float:
 
     """
     # Lazy import to allow optional dependency
-    from quantstats.stats import sortino
-    return sortino(
-        returns,
-        periods=periods,
-    )
+    qs = import_quantstats_wrapped()
+    with warnings.catch_warnings():
+        warnings.simplefilter('ignore', RuntimeWarning)
+        return qs.stats.sortino(
+            returns,
+            periods=periods,
+        )
 
 
 def calculate_profit_factor(returns: pd.Series) -> float:
@@ -71,8 +78,10 @@ def calculate_profit_factor(returns: pd.Series) -> float:
 
     """
     # Lazy import to allow optional dependency
-    from quantstats.stats import profit_factor
-    return profit_factor(returns)
+    qs = import_quantstats_wrapped()
+    with warnings.catch_warnings():
+        warnings.simplefilter('ignore', RuntimeWarning)
+        return qs.stats.profit_factor(returns)
 
 
 def calculate_max_drawdown(returns: pd.Series) -> Percent:
@@ -90,8 +99,10 @@ def calculate_max_drawdown(returns: pd.Series) -> Percent:
 
     """
     # Lazy import to allow optional dependency
-    from quantstats.stats import to_drawdown_series
-    dd = to_drawdown_series(returns)
+    qs = import_quantstats_wrapped()
+    with warnings.catch_warnings():
+        warnings.simplefilter('ignore', RuntimeWarning)
+        dd = qs.stats.to_drawdown_series(returns)
     return dd.min()
 
 
@@ -107,12 +118,10 @@ def calculate_max_runup(returns: pd.Series) -> Percent:
     """
 
     from quantstats import utils
-
     # convert returns to runup series
     prices = utils._prepare_prices(returns)
     ru = prices / np.minimum.accumulate(prices) - 1.
     runup_series = ru.replace([np.inf, -np.inf, -0], 0)
-    
     return runup_series.max()
 
 
@@ -134,6 +143,49 @@ def calculate_profitability(returns: pd.Series) -> Percent:
     return compounded[-1]
 
 
+def calculate_cagr(returns: pd.Series) -> Percent:
+    """Calculate CAGR.
+
+    See :term:`CAGR`.
+
+    :param returns:
+        Returns series
+
+    :return:
+        Compounded returns,
+
+        0 if cannot calculate, or QuantStats unimportable.
+    """
+
+    try:
+        # Does not work in pyodide
+        from quantstats.stats import cagr
+    except ImportError:
+        return 0
+
+    if len(returns) == 0:
+        return 0
+
+    try:
+        return cagr(returns)
+    except ZeroDivisionError:
+        return 0
+
+
+def calculate_trades_per_month(state: State) -> float:
+    """Estimate how many trades per month the strategy does.
+
+    :return:
+        Avg number of trades per month
+    """
+    trade_count = len(list(state.portfolio.get_all_trades()))
+    duration = state.get_strategy_duration()
+    if duration:
+        return trade_count * datetime.timedelta(days=30) / duration
+
+    return 0
+
+
 def calculate_trades_last_week(portfolio: Portfolio, cut_off_date=None) -> int:
     """How many trades were executed last week.
 
@@ -150,10 +202,10 @@ def calculate_trades_last_week(portfolio: Portfolio, cut_off_date=None) -> int:
 
 
 def calculate_key_metrics(
-        live_state: State,
-        backtested_state: State | None = None,
-        required_history = datetime.timedelta(days=90),
-        freq_base: pd.DateOffset = pd.offsets.Day(),
+    live_state: State,
+    backtested_state: State | None = None,
+    required_history = datetime.timedelta(days=90),
+    freq_base: pd.DateOffset = pd.offsets.Day(),
 ) -> Iterable[KeyMetric]:
     """Calculate summary metrics to be displayed on the web frontend.
 
@@ -186,7 +238,6 @@ def calculate_key_metrics(
 
     assert isinstance(live_state, State)
 
-
     source_state, source, calculation_window_start_at, calculation_window_end_at = get_data_source_and_calculation_window(live_state, backtested_state, required_history)
 
     if source_state:
@@ -194,15 +245,22 @@ def calculate_key_metrics(
         # Use trading profitability instead of the fund performance
         # as the base for calculations to ensure
         # sharpe/sortino/etc. stays compatible regardless of deposit flow
-        returns = calculate_size_relative_realised_trading_returns(source_state)
-        daily_returns = calculate_non_cumulative_daily_returns(source_state)
-        
-        # alternate method
-        # log_returns = np.log(returns.add(1))
-        # daily_log_sum_returns = log_returns.resample('D').sum().fillna(0)
-        # daily_returns = np.exp(daily_log_sum_returns) - 1
-        
-        periods = pd.Timedelta(days=365) / freq_base
+        if source == KeyMetricSource.backtesting:
+            equity_curve = calculate_equity_curve(source_state)
+            returns = calculate_returns(equity_curve)
+            daily_returns = calculate_daily_returns(source_state, "D")
+            periods = 365
+        else:
+            # TODO: Here we need fix these stats -
+            # calculate_non_cumulative_daily_returns() yields different
+            # results than the method above for the same state
+            returns = calculate_size_relative_realised_trading_returns(source_state)
+            daily_returns = calculate_non_cumulative_daily_returns(source_state)
+            # alternate method
+            # log_returns = np.log(returns.add(1))
+            # daily_log_sum_returns = log_returns.resample('D').sum().fillna(0)
+            # daily_returns = np.exp(daily_log_sum_returns) - 1
+            periods = pd.Timedelta(days=365) / freq_base
 
         sharpe = calculate_sharpe(daily_returns, periods=periods)
         yield KeyMetric.create_metric(KeyMetricKind.sharpe, source, sharpe, calculation_window_start_at, calculation_window_end_at, KeyMetricCalculationMethod.historical_data)
@@ -216,6 +274,12 @@ def calculate_key_metrics(
 
         profitability = calculate_profitability(daily_returns)
         yield KeyMetric.create_metric(KeyMetricKind.profitability, source, profitability, calculation_window_start_at, calculation_window_end_at, KeyMetricCalculationMethod.historical_data)
+
+        cagr = calculate_cagr(daily_returns)
+        yield KeyMetric.create_metric(KeyMetricKind.cagr, source, cagr, calculation_window_start_at, calculation_window_end_at, KeyMetricCalculationMethod.historical_data)
+
+        trades_per_month = calculate_trades_per_month(source_state)
+        yield KeyMetric.create_metric(KeyMetricKind.trades_per_month, source, trades_per_month, calculation_window_start_at, calculation_window_end_at, KeyMetricCalculationMethod.historical_data)
 
         if live_state:
             total_equity = live_state.portfolio.get_total_equity()
@@ -238,10 +302,12 @@ def calculate_key_metrics(
         calculation_window_start_at = None
         calculation_window_end_at = None
 
+        yield KeyMetric.create_na(KeyMetricKind.cagr, reason)
         yield KeyMetric.create_na(KeyMetricKind.sharpe, reason)
         yield KeyMetric.create_na(KeyMetricKind.sortino, reason)
         yield KeyMetric.create_na(KeyMetricKind.max_drawdown, reason)
         yield KeyMetric.create_na(KeyMetricKind.profitability, reason)
+        yield KeyMetric.create_na(KeyMetricKind.trades_per_month, reason)
         yield KeyMetric.create_na(KeyMetricKind.total_equity, reason)
 
     # The age of the trading history is made available always

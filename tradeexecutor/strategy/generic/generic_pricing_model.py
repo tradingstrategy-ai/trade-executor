@@ -7,7 +7,7 @@ from typing import Dict, Optional
 from tradeexecutor.strategy.generic.pair_configurator import PairConfigurator
 
 from tradeexecutor.state.identifier import TradingPairIdentifier
-from tradeexecutor.state.types import USDollarPrice
+from tradeexecutor.state.types import USDollarPrice, Percent
 from tradeexecutor.strategy.pricing_model import PricingModel
 from tradeexecutor.strategy.trade_pricing import TradePricing
 
@@ -60,3 +60,11 @@ class GenericPricing(PricingModel):
                      ) -> Optional[float]:
         route = self.route(pair)
         return route.get_pair_fee(ts, pair)
+
+    def set_trading_fee_override(
+            self,
+            trading_fee_override: Percent | None
+    ):
+        # TODO: Finish API description and such
+        for config in self.pair_configurator.configs.values():
+            config.pricing_model.set_trading_fee_override(trading_fee_override)

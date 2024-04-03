@@ -196,7 +196,7 @@ class TradingPosition(GenericPosition):
     #:
     #: - Used to mark test trades from command line.
     #:
-    #: - Used to add log information abotu frozen and unfrozen positions
+    #: - Used to add log information about frozen and unfrozen positions
     #:
     notes: Optional[str] = None
 
@@ -214,6 +214,10 @@ class TradingPosition(GenericPosition):
     #  we make a record here for future analysis.
     #:
     #: Trigger updates are stored oldest first.
+    #:
+    #: There is no record made if there are no trigger updates change.
+    #: For example, for trailing stop loss, there is no record added,
+    #: if the price did not move upwards, causing the stop loss level to move.
     #:
     trigger_updates: List[TriggerPriceUpdate] = field(default_factory=list)
 
@@ -308,7 +312,7 @@ class TradingPosition(GenericPosition):
         return not self.is_open()
 
     def is_test(self) -> bool:
-        """The position was openedd and closed by perform-test-trade command.
+        """The position was opened and closed by perform-test-trade command.
 
         The trade and the position should not be counted in the statistics.
         """
@@ -363,11 +367,11 @@ class TradingPosition(GenericPosition):
         This includes spot buy.
         """
         assert len(self.trades) > 0, "Cannot determine if position is long or short because there are no trades"
-        return self.get_first_trade().is_buy()
+        return self.pair.is_spot() or self.pair.is_long()
 
     def is_short(self) -> bool:
         """Is this position short on the underlying base asset."""
-        return not self.is_long()
+        return self.pair.is_short()
 
     def is_leverage(self) -> bool:
         """Is this leveraged/loan backed position."""
@@ -986,7 +990,12 @@ class TradingPosition(GenericPosition):
                     assert trade.is_buy(), "Opening credit position is modelled as buy"
                     trade.planned_loan_update = create_credit_supply_loan(self, trade, strategy_cycle_at)
                 else:
-                    trade.planned_loan_update = update_credit_supply_loan(self, trade, strategy_cycle_at)
+                    trade.planned_loan_update = update_credit_supply_loan(
+                        self.loan.clone(),
+                        self,
+                        trade,
+                        strategy_cycle_at,
+                    )
 
             elif pair.kind.is_leverage():
                 assert pair.get_lending_protocol() == LendingProtocolType.aave_v3, "Unsupported protocol"
@@ -1108,7 +1117,7 @@ class TradingPosition(GenericPosition):
 
         :return: None if no executed trades
         """
-        if self.is_long():
+        if self.is_long() or self.is_credit_supply():
             return self.get_average_buy()
         else:
             return self.get_average_sell()

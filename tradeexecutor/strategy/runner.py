@@ -24,11 +24,14 @@ from tradeexecutor.statistics.statistics_table import StatisticsTable
 from tradeexecutor.strategy.account_correction import check_accounts, UnexpectedAccountingCorrectionIssue
 from tradeexecutor.strategy.approval import ApprovalModel
 from tradeexecutor.strategy.cycle import CycleDuration
-from tradeexecutor.strategy.execution_context import ExecutionContext
+from tradeexecutor.strategy.execution_context import ExecutionContext, ExecutionMode
 from tradeexecutor.strategy.execution_model import ExecutionModel
 from tradeexecutor.strategy.generic.generic_pricing_model import GenericPricing
 from tradeexecutor.strategy.generic.generic_router import GenericRouting
 from tradeexecutor.strategy.generic.generic_valuation import GenericValuation
+from tradeexecutor.strategy.pandas_trader.indicator import CreateIndicatorsProtocolV1, DiskIndicatorStorage, CreateIndicatorsProtocol
+from tradeexecutor.strategy.pandas_trader.strategy_input import StrategyInputIndicators
+from tradeexecutor.strategy.parameters import StrategyParameters
 from tradeexecutor.strategy.sync_model import SyncMethodV0, SyncModel
 from tradeexecutor.strategy.run_state import RunState
 from tradeexecutor.strategy.output import output_positions, DISCORD_BREAK_CHAR, output_trades
@@ -65,21 +68,24 @@ class StrategyRunner(abc.ABC):
     TODO: Make user_supplied_routing_model non-optional after eliminating legacy code.
     """
 
-    def __init__(self,
-                 timed_task_context_manager: AbstractContextManager,
-                 execution_model: ExecutionModel,
-                 approval_model: ApprovalModel,
-                 valuation_model_factory: ValuationModelFactory,
-                 sync_model: Optional[SyncModel],
-                 pricing_model_factory: PricingModelFactory,
-                 execution_context: ExecutionContext,
-                 routing_model: Optional[RoutingModel] = None,
-                 routing_model_factory: Callable[[], RoutingModel] = None,
-                 run_state: Optional[RunState] = None,
-                 accounting_checks=False,
-                 unit_testing=False,
-                 trade_settle_wait=None,
-                 ):
+    def __init__(
+        self,
+        timed_task_context_manager: AbstractContextManager,
+        execution_model: ExecutionModel,
+        approval_model: ApprovalModel,
+        valuation_model_factory: ValuationModelFactory,
+        sync_model: Optional[SyncModel],
+        pricing_model_factory: PricingModelFactory,
+        execution_context: ExecutionContext,
+        routing_model: Optional[RoutingModel] = None,
+        routing_model_factory: Callable[[], RoutingModel] = None,
+        run_state: Optional[RunState] = None,
+        accounting_checks=False,
+        unit_testing=False,
+        trade_settle_wait=None,
+        parameters: StrategyParameters = None,
+        create_indicators: CreateIndicatorsProtocol = None,
+    ):
         """
         :param engine_version:
             Strategy execution version.
@@ -104,6 +110,8 @@ class StrategyRunner(abc.ABC):
         self.accounting_checks = accounting_checks
         self.unit_testing = unit_testing
         self.routing_model_factory = routing_model_factory
+        self.parameters = parameters
+        self.create_indicators = create_indicators
 
         # We need 60 seconds wait to read balances
         # after trades only on a real trading,
@@ -160,7 +168,8 @@ class StrategyRunner(abc.ABC):
 
         - Can be enabled by hacking this function if backtesting needs debugging
         """
-        return self.execution_context.mode.is_live_trading() or self.execution_context.mode.is_unit_testing()
+        # return self.execution_context.mode.is_live_trading() or self.execution_context.mode.is_unit_testing()
+        return self.execution_context.mode.is_live_trading() or self.execution_context.mode == ExecutionMode.unit_testing_trading
 
     def sync_portfolio(
             self,
@@ -334,12 +343,15 @@ class StrategyRunner(abc.ABC):
                 quantity_drift * 100,
             )
 
-    def on_clock(self,
-                 clock: datetime.datetime,
-                 universe: StrategyExecutionUniverse,
-                 pricing_model: PricingModel,
-                 state: State,
-                 debug_details: dict) -> List[TradeExecution]:
+    def on_clock(
+        self,
+        clock: datetime.datetime,
+        universe: StrategyExecutionUniverse,
+        pricing_model: PricingModel,
+        state: State,
+        debug_details: dict,
+        indicators:StrategyInputIndicators | None = None,
+    ) -> List[TradeExecution]:
         """Perform the core strategy decision cycle.
 
         :param clock:
@@ -443,13 +455,15 @@ class StrategyRunner(abc.ABC):
             print(f"    {reserve.quantity:,.2f} {reserve.asset.token_symbol}", file=buf)
         logger.trade(buf.getvalue())
 
-    def report_strategy_thinking(self,
-                                 strategy_cycle_timestamp: datetime.datetime,
-                                 cycle: int,
-                                 universe: TradingStrategyUniverse,
-                                 state: State,
-                                 trades: List[TradeExecution],
-                                 debug_details: dict):
+    def report_strategy_thinking(
+        self,
+         strategy_cycle_timestamp: datetime.datetime,
+         cycle: int,
+         universe: TradingStrategyUniverse,
+         state: State,
+         trades: List[TradeExecution],
+         debug_details: dict
+    ):
         """Strategy admin helpers to understand a live running strategy.
 
         - Post latest variables
@@ -596,6 +610,7 @@ class StrategyRunner(abc.ABC):
         cycle: Optional[int] = None,
         store: Optional[StateStore] = None,
         long_short_metrics_latest: StatisticsTable | None = None,
+        indicators: StrategyInputIndicators | None = None,
     ) -> dict:
         """Execute the core functions of a strategy.
 
@@ -624,6 +639,9 @@ class StrategyRunner(abc.ABC):
 
         :param execution_context:
             Live or backtesting
+
+        :param indicators:
+            Precalculated backtest or live calculated indicator values.
 
         :return: Debug details dictionary where different subsystems can write their diagnostics information what is happening during the dict.
             Mostly useful for integration testing.
@@ -678,7 +696,8 @@ class StrategyRunner(abc.ABC):
                         universe,
                         pricing_model,
                         state,
-                        debug_details
+                        debug_details,
+                        indicators=indicators,
                     )
                     assert type(rebalance_trades) == list
                     debug_details["rebalance_trades"] = rebalance_trades

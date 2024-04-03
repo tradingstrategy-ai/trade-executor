@@ -1,10 +1,12 @@
 """Describe strategy modules and their loading."""
 import datetime
+import inspect
 import logging
 import runpy
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable, Dict, Protocol, List, Optional, Union, Set
+from types import NoneType
+from typing import Callable, Dict, Protocol, List, Optional, Union, Set, Type
 from urllib.parse import urlparse
 
 from packaging import version
@@ -14,6 +16,8 @@ import pandas as pd
 from web3.datastructures import AttributeDict, ReadableAttributeDict
 
 from tradeexecutor.strategy.engine_version import SUPPORTED_TRADING_STRATEGY_ENGINE_VERSIONS, TradingStrategyEngineVersion
+from tradeexecutor.strategy.pandas_trader.indicator import CreateIndicatorsProtocolV1, CreateIndicatorsProtocol
+from tradeexecutor.strategy.pandas_trader.strategy_input import StrategyInput
 from tradeexecutor.strategy.parameters import StrategyParameters
 from tradeexecutor.strategy.tag import StrategyTag
 from tradingstrategy.chain import ChainId
@@ -215,6 +219,22 @@ class DecideTradesProtocol3(Protocol):
         raise NotImplementedError()
 
 
+class DecideTradesProtocol4(Protocol):
+    """New decide_trades() function signature.
+
+    - For `trading_strategy_engine_version == "0.5"`
+
+    - Use :py:class:`tradeexecutor.strategy.pandas_trader.strategy_input.StrategyInput` to define the inputs of a decision cycle
+
+    See :py:class:`DecideTradesProtocol` for more information.
+    """
+
+    def __call__(self,
+        input: StrategyInput,
+    ) -> List[TradeExecution]:
+        """The brain function to decide the trades on each"""
+        raise NotImplementedError()
+
 
 class CreateTradingUniverseProtocol(Protocol):
     """A call signature protocol for user's create_trading_universe() functions.
@@ -259,7 +279,7 @@ class CreateTradingUniverseProtocol(Protocol):
     """
 
     def __call__(self,
-            timestamp: pandas.Timestamp,
+            timestamp: datetime.datetime,
             client: Optional[Client],
             execution_context: ExecutionContext,
             universe_options: UniverseOptions) -> TradingStrategyUniverse:
@@ -343,6 +363,12 @@ class StrategyModuleInformation:
     #: need to deal with new and deprecated trading pairs.
     create_trading_universe: CreateTradingUniverseProtocol
 
+    #: A function to prepare strategy indicators
+    #:
+    #: create_indicators() was added in engiver version 0.5
+    #:
+    create_indicators: CreateIndicatorsProtocol
+
     #: Routing hinting.
     #:
     #: Legacy option: most strategies can set this in
@@ -353,6 +379,9 @@ class StrategyModuleInformation:
     #: Blockchain id on which this strategy operates
     #:
     #: Valid for single chain strategies only
+    #:
+    #: Legacy. DO NOT USE. Use :py:meth:`get_default_chain_id` instead.
+    #:
     chain_id: Optional[ChainId] = None
 
     #: What currency we use for the strategy.
@@ -403,6 +432,16 @@ class StrategyModuleInformation:
     #:
     tags: Optional[Set[StrategyTag]] = None
 
+    #: StrategyParameters class.
+    #:
+    #: trading_strategy_engine_version > "0.5"
+    #:
+    #: Converted to StrategyParameters attributed dict after loading.
+    #:
+    #: See :py:class:`~tradeexecutor.strategy.parameters.StrategyParameters`.
+    #:
+    parameters: Optional[Type | StrategyParameters] = None
+
     def __repr__(self):
         return f"<StrategyModuleInformation {self.path}>"
 
@@ -411,6 +450,17 @@ class StrategyModuleInformation:
         assert self.trading_strategy_engine_version, f"Strategy module does not contain trading_strategy_engine_version varible: {self.path}"
         required_version = f"{major}.{minor}.{patch}"
         return version.parse(self.trading_strategy_engine_version) >= version.parse(required_version)
+
+    def unpack_strategy_parameters(self, strategy_parameters: StrategyParameters):
+        """Load strategy module parameters from StrategyParameters class.
+
+        trading_strategy_engive > "0.5"
+        """
+        self.trading_strategy_cycle = self.parameters["cycle_duration"]
+        self.trade_routing = self.parameters["routing"]
+        self.backtest_start = self.parameters["backtest_start"]
+        self.backtest_end = self.parameters["backtest_end"]
+        self.initial_cash = self.parameters["initial_cash"]
 
     def validate(self):
         """Check that the user inputted variable names look good.
@@ -427,6 +477,16 @@ class StrategyModuleInformation:
 
         if self.trading_strategy_engine_version not in SUPPORTED_TRADING_STRATEGY_ENGINE_VERSIONS:
             raise StrategyModuleNotValid(f"Only versions {SUPPORTED_TRADING_STRATEGY_ENGINE_VERSIONS} supported, got {self.trading_strategy_engine_version}")
+
+        # Validate StrategyParameters now as it is used later
+        if self.is_version_greater_or_equal_than(0, 5, 0):
+            assert self.parameters is not None, "Parameters class missing in the strategy module"
+            assert inspect.isclass(self.parameters)
+
+            # Transform from class with args to a attribdict
+            self.parameters = StrategyParameters.from_class(self.parameters, grid_search=False)
+
+            self.unpack_strategy_parameters(self.parameters)
 
         if not self.trading_strategy_type:
             raise StrategyModuleNotValid(f"trading_strategy_type missing in the module")
@@ -474,13 +534,17 @@ class StrategyModuleInformation:
             assert type(self.long_description) == str
 
         if self.tags:
-            assert type(self.tags) == set
+            assert type(self.tags) == set, "tags must a Python set in a strategy module"
             for t in self.tags:
-                assert isinstance(t, StrategyTag)
+                assert isinstance(t, StrategyTag), f"Expected StrategyTag instance, got {type(t)}: {t}"
 
         if self.icon:
             result = urlparse(self.icon)
             assert all([result.scheme, result.netloc]), f"Bad icon URL: {self.icon}"
+
+        if self.is_version_greater_or_equal_than(0, 5, 0):
+            assert self.create_indicators is not None, "create_indicators() function missing"
+            assert callable(self.create_indicators), "create_indicators() is not a function"
 
     def validate_backtest(self):
         """Validate that the module is backtest runnable."""
@@ -490,8 +554,36 @@ class StrategyModuleInformation:
         assert self.initial_cash is not None, f"INITIAL_CASH variable is not set in the strategy module {self.path}"
 
     def get_universe_options(self) -> UniverseOptions:
-        """What backtest range this strategy defaults to"""
-        return UniverseOptions(start_at=self.backtest_start, end_at=self.backtest_end)
+        """What backtest range or live trading history period this strategy defaults to."""
+        return UniverseOptions(start_at=self.backtest_start, end_at=self.backtest_end, history_period=self.get_live_trading_history_period())
+
+    def get_default_chain_id(self) -> ChainId:
+        """Get the primary chain id for this strategy module."""
+
+        # new way
+        if self.parameters:
+            assert "chain_id" in self.parameters, "Parameters.chain_id missing"
+            return self.parameters["chain_id"]
+
+        return self.chain_id
+
+    def get_live_trading_history_period(self) -> datetime.timedelta | None:
+        """Get the required history timespan we need to load for each live trading cycle.
+
+        See :py:attr:`tradeexecutor.strategy.parameters.StrategyParameters.required_history_period`.
+
+        :return:
+            `None` if not defined.
+
+            Legacy strategy modules do not define this.
+        """
+
+        if self.parameters:
+            val = self.parameters.get("required_history_period")
+            assert isinstance(val, (datetime.timedelta, NoneType)), f"Expected datetime, got {type(val)}: {val}"
+            return val
+
+        return None
 
 
 def parse_strategy_module(
@@ -507,6 +599,7 @@ def parse_strategy_module(
 
     assert isinstance(path, Path)
 
+    # Extract potential module variables and functions across all strategy module versions
     return StrategyModuleInformation(
         path,
         source_code,
@@ -525,6 +618,8 @@ def parse_strategy_module(
         short_description=python_module_exports.get("short_description"),
         long_description=python_module_exports.get("long_description"),
         tags=python_module_exports.get("tags"),
+        create_indicators=python_module_exports.get("create_indicators"),
+        parameters=python_module_exports.get("parameters"),
     )
 
 
@@ -567,8 +662,11 @@ def read_strategy_module(path: Path) -> Union[StrategyModuleInformation, Strateg
 
     logger.info("Strategy module %s, engine version %s", path, version)
 
-    mod_info = parse_strategy_module(path, strategy_exports, source_code)
-    mod_info.validate()
+    try:
+        mod_info = parse_strategy_module(path, strategy_exports, source_code)
+        mod_info.validate()
+    except Exception as e:
+        raise RuntimeError(f"Error reading strategy module: {path.resolve()}: {e}") from e
 
     return mod_info
 

@@ -30,7 +30,12 @@ class KeyMetricKind(enum.Enum):
     #: UNIX timestamp when the first trade was executd
     started_at = "started_at"
 
-    #: Annualised profitability
+    #: CAGR
+    #:
+    #: See :term:`CAGR`
+    cagr = "cagr"
+
+    #: All-time profitability
     profitability = "profitability"
 
     #: Total equity
@@ -41,6 +46,9 @@ class KeyMetricKind(enum.Enum):
 
     #: Trades last week
     trades_last_week = "trades_last_week"
+
+    #: Trades per month estimate
+    trades_per_month = "trades_per_month"
 
     #: Duration of the trading period
     trading_period_length = "trading_period_length"
@@ -176,6 +184,20 @@ class KeyMetricKind(enum.Enum):
 
     #: Maximum loss risked at the opening of a position
     max_loss_risk_at_opening_of_position = "max_loss_risk_at_opening_of_position"
+
+    average_interest_paid_usd = "average_interest_paid_usd"
+
+    median_interest_paid_usd = "median_interest_paid_usd"
+
+    max_interest_paid_usd = "max_interest_paid_usd"
+
+    min_interest_paid_usd = "min_interest_paid_usd"
+    
+    total_interest_paid_usd = "total_interest_paid_usd"
+
+    average_duration_between_position_openings = "average_duration_between_position_openings"
+
+    average_position_frequency = "average_position_frequency"
 
     def get_help_link(self) -> Optional[str]:
         return _KEY_METRIC_HELP[self]
@@ -456,6 +478,7 @@ class StrategySummary:
 
 #: Help links for different metrics
 _KEY_METRIC_HELP = {
+   KeyMetricKind.cagr: "https://tradingstrategy.ai/glossary/compound-annual-growth-rate-cagr",
    KeyMetricKind.sharpe: "https://tradingstrategy.ai/glossary/sharpe",
    KeyMetricKind.sortino: "https://tradingstrategy.ai/glossary/sortino",
    KeyMetricKind.max_drawdown: "https://tradingstrategy.ai/glossary/maximum-drawdown",
@@ -463,5 +486,6 @@ _KEY_METRIC_HELP = {
    KeyMetricKind.total_equity: "https://tradingstrategy.ai/glossary/total-equity",
    KeyMetricKind.started_at: "https://tradingstrategy.ai/glossary/strategy-age",
    KeyMetricKind.last_trade: "https://tradingstrategy.ai/glossary/last-trade",
-   KeyMetricKind.trades_last_week: "https://tradingstrategy.ai/glossary/trades-last-wee",
+   KeyMetricKind.trades_last_week: "https://tradingstrategy.ai/glossary/trades-last-week",
+   KeyMetricKind.trades_per_month: "https://tradingstrategy.ai/glossary/trade-frequency",
 }

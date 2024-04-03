@@ -9,8 +9,11 @@ import pandas as pd
 
 from tradeexecutor.cli.discord import post_logging_discord_image
 from tradeexecutor.statistics.in_memory_statistics import refresh_live_strategy_images
+from tradeexecutor.strategy.pandas_trader.indicator import IndicatorSet, calculate_and_load_indicators, MemoryIndicatorStorage, call_create_indicators
+from tradeexecutor.strategy.pandas_trader.strategy_input import StrategyInput, StrategyInputIndicators
+from tradeexecutor.strategy.parameters import StrategyParameters
 from tradeexecutor.strategy.pricing_model import PricingModel
-from tradeexecutor.strategy.strategy_module import DecideTradesProtocol, DecideTradesProtocol2, DecideTradesProtocol3
+from tradeexecutor.strategy.strategy_module import DecideTradesProtocol, DecideTradesProtocol2, DecideTradesProtocol3, DecideTradesProtocol4
 from tradeexecutor.strategy.sync_model import SyncModel
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse, translate_trading_pair
 
@@ -27,11 +30,13 @@ logger = logging.getLogger(__name__)
 class PandasTraderRunner(StrategyRunner):
     """A trading executor for Pandas math based algorithm."""
 
-    def __init__(self,
-                 *args,
-                 decide_trades: DecideTradesProtocol | DecideTradesProtocol2 | DecideTradesProtocol3,
-                 max_data_age: Optional[datetime.timedelta] = None,
-                 **kwargs):
+    def __init__(
+            self,
+            *args,
+            decide_trades: DecideTradesProtocol | DecideTradesProtocol2 | DecideTradesProtocol3 | DecideTradesProtocol4,
+            max_data_age: datetime.timedelta = None,
+            **kwargs
+    ):
         super().__init__(*args, **kwargs)
         self.decide_trades = decide_trades
         self.max_data_age = max_data_age
@@ -44,12 +49,15 @@ class PandasTraderRunner(StrategyRunner):
     def on_data_signal(self):
         pass
 
-    def on_clock(self,
-                 clock: datetime.datetime,
-                 strategy_universe: TradingStrategyUniverse,
-                 pricing_model: PricingModel,
-                 state: State,
-                 debug_details: dict) -> List[TradeExecution]:
+    def on_clock(
+        self,
+        clock: datetime.datetime,
+        strategy_universe: TradingStrategyUniverse,
+        pricing_model: PricingModel,
+        state: State,
+        debug_details: dict,
+        indicators:StrategyInputIndicators | None = None,
+        ) -> List[TradeExecution]:
         """Run one strategy tick."""
 
         assert isinstance(strategy_universe, TradingStrategyUniverse)
@@ -63,8 +71,35 @@ class PandasTraderRunner(StrategyRunner):
 
         # Call the strategy script decide_trades()
         # callback
-        if self.execution_context.is_version_greater_or_equal_than(0, 4, 0):
+        if self.execution_context.is_version_greater_or_equal_than(0, 5, 0):
+            # DecideTradesProtocolV4
+
+            if self.execution_context.mode.is_live_trading():
+                # Indicators are recalculated for every tick in the live trading
+                assert self.create_indicators is not None, "trading_strategy_engine_version > 0.5, but we lack create_indicators"
+                assert self.parameters is not None, "trading_strategy_engine_version > 0.5, but we lack parameters"
+                indicators = self.calculate_live_indicators(clock, strategy_universe, self.parameters)
+
+            assert indicators is not None, "indicators not created when running trading_strategy_engine_version=0.5"
+            indicators.prepare_decision_cycle(debug_details["cycle"], pd_timestamp)
+
+            input = StrategyInput(
+                cycle=debug_details["cycle"],
+                timestamp=pd_timestamp,
+                strategy_universe=strategy_universe,
+                state=state,
+                pricing_model=pricing_model,
+                other_data=debug_details,
+                indicators=indicators,
+                parameters=self.parameters,
+                execution_context=self.execution_context,
+            )
+            return self.decide_trades(
+                input
+            )
+        elif self.execution_context.is_version_greater_or_equal_than(0, 4, 0):
             parameters = self.execution_context.parameters
+            # DecideTradesProtocolV3
             parameters["cycle"] = debug_details["cycle"]
             return self.decide_trades(
                 timestamp=pd_timestamp,
@@ -174,13 +209,15 @@ class PandasTraderRunner(StrategyRunner):
         """
         refresh_live_strategy_images(self.run_state, small_figure, large_figure)
 
-    def report_strategy_thinking(self,
-                                 strategy_cycle_timestamp: datetime.datetime,
-                                 cycle: int,
-                                 universe: TradingStrategyUniverse,
-                                 state: State,
-                                 trades: List[TradeExecution],
-                                 debug_details: dict):
+    def report_strategy_thinking(
+        self,
+        strategy_cycle_timestamp: datetime.datetime,
+        cycle: int,
+        universe: TradingStrategyUniverse,
+        state: State,
+        trades: List[TradeExecution],
+        debug_details: dict
+    ):
         """Strategy admin helpers to understand a live running strategy.
 
         - Post latest variables
@@ -261,8 +298,18 @@ class PandasTraderRunner(StrategyRunner):
 
                 print(f"\n  {pair_slug}", file=buf)
 
-                last_candle = candles.iloc[-1]
-                lag = pd.Timestamp.utcnow().tz_localize(None) - last_candle["timestamp"]
+                lag = None
+                timestamp = None
+                last_candle = None
+                if len(candles) > 0:
+                    last_candle = candles.iloc[-1]
+                    try:
+                        timestamp = last_candle["timestamp"]
+                        lag = pd.Timestamp.utcnow().tz_localize(None) - timestamp
+                    except:
+                        logger.warning("Cannot read timestamp")
+                else:
+                    logger.warning("Pair %s had not candle data", pair)
 
                 dex_pair = universe.data_universe.pairs.get_pair_by_id(pair_id)
                 pair = translate_trading_pair(dex_pair)
@@ -270,9 +317,10 @@ class PandasTraderRunner(StrategyRunner):
                 if not pair:
                     logger.warning(f"  Pair missing: {dex_pair} - should not happen")
                 else:
-                    print(f"  Last candle at: {last_candle['timestamp']} UTC, market data and action lag: {lag}", file=buf)
-                    print(f"  Price open:{last_candle['open']}", file=buf)
-                    print(f"  Close:{last_candle['close']}")
+                    print(f"  Last candle at: {timestamp} UTC, market data and action lag: {lag}", file=buf)
+                    if last_candle is not None:
+                        print(f"  Price open:{last_candle['open']}", file=buf)
+                        print(f"  Close:{last_candle['close']}")
 
                 # Draw indicators
                 for name, plot in visualisation.plots.items():
@@ -296,3 +344,48 @@ class PandasTraderRunner(StrategyRunner):
             else:
                 logger.info(f"Strategy visualisation not posted to Discord because pair count of {universe.get_pair_count()} is greater than 5.")
 
+
+    def calculate_live_indicators(
+        self,
+        timestamp: datetime.datetime,
+        strategy_universe: TradingStrategyUniverse,
+        parameters: StrategyParameters,
+    ) -> StrategyInputIndicators:
+        """Calculate and recalculate indicators in a live trading.
+
+        - Calculated just before `decide_trades` is called
+
+        - Recalculated for every cycle
+
+        :return:
+            Freshly calculated indicators
+        """
+        # storage = self.indicator_storage
+        logger.info("Calculating live indicators for %s", timestamp)
+
+        storage = MemoryIndicatorStorage(strategy_universe.get_cache_key())
+
+        indicators = call_create_indicators(
+            self.create_indicators,
+            parameters,
+            strategy_universe,
+            self.execution_context,
+            timestamp,
+        )
+
+        indicator_results = calculate_and_load_indicators(
+            strategy_universe=strategy_universe,
+            storage=storage,
+            execution_context=self.execution_context,
+            indicators=indicators,
+            parameters=self.parameters,
+            timestamp=timestamp,
+        )
+
+        strategy_input_indicators = StrategyInputIndicators(
+            strategy_universe,
+            indicator_results=indicator_results,
+            available_indicators=indicators,
+        )
+
+        return strategy_input_indicators

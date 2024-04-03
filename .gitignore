@@ -48,3 +48,6 @@ monitor.db
 
 # Precommit hooks
 .pre-commit-config.yaml
+
+# Visual Studio Code?
+.build

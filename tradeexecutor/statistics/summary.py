@@ -6,6 +6,7 @@ import logging
 
 import pandas as pd
 
+from tradeexecutor.analysis.trade_analyser import calculate_annualised_return
 from tradeexecutor.state.state import State
 from tradeexecutor.statistics.key_metric import calculate_key_metrics
 from tradeexecutor.strategy.execution_context import ExecutionMode
@@ -113,7 +114,7 @@ def calculate_summary_statistics(
                 performance_chart_90_days = None
 
     if age and returns_all_time:
-        returns_annualised = returns_all_time * datetime.timedelta(days=365) / age
+        returns_annualised = calculate_annualised_return(returns_all_time, age)
 
     key_metrics = {m.kind.value: m for m in calculate_key_metrics(state, backtested_state, required_history=key_metrics_backtest_cut_off)}
 

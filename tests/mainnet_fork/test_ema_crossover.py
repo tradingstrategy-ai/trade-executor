@@ -30,7 +30,6 @@ from eth_typing import HexAddress, HexStr
 from web3 import Web3, HTTPProvider
 from web3.contract import Contract
 
-from eth_defi.provider.ganache import fork_network
 from eth_defi.hotwallet import HotWallet
 from tradeexecutor.cli.main import app
 from tradeexecutor.state.state import State

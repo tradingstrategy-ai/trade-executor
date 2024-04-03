@@ -92,6 +92,9 @@ class CycleDuration(enum.Enum):
         """Get the duration of the strategy cycle as Python timedelta object."""
         return _TICK_DURATIONS[self]
 
+    def to_pandas_timedelta(self) -> pd.Timedelta:
+        return pd.Timedelta(self.to_timedelta())
+
     def to_timebucket(self) -> Optional[TimeBucket]:
         """Convert to trading-strategy client format.
 

@@ -201,8 +201,7 @@ def test_run_inline_synthetic_backtest(
     """
 
     state, universe, debug_dump = backtest_result
-
-    assert len(debug_dump) == 214
+    assert len(debug_dump) == 215
 
 
 @pytest.fixture(scope = "module")
