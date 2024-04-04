@@ -81,6 +81,7 @@ def draw_single_pair_strategy_state(
 def draw_multi_pair_strategy_state(
         state: State,
         universe: TradingStrategyUniverse,
+        execution_context: ExecutionContext,
         width: Optional[int] =1024,
         height: Optional[int] = 2048,
         candle_count: Optional[int] = 64,
@@ -132,6 +133,8 @@ def draw_multi_pair_strategy_state(
         The strategy state visualisation as a single Plotly figure with multiple subplots
     """
 
+    assert isinstance(execution_context, ExecutionContext)
+
     data = universe.data_universe.candles.df
 
     if not pair_ids:
@@ -157,6 +160,7 @@ def draw_multi_pair_strategy_state(
     return visualise_multiple_pairs(
         state,
         data,
+        execution_context,
         start_at,
         end_at,
         pair_ids,
