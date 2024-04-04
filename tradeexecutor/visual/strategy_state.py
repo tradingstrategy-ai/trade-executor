@@ -14,7 +14,7 @@ from typing import Optional
 
 from tradeexecutor.state.state import State
 from tradeexecutor.state.types import PairInternalId
-from tradeexecutor.strategy.execution_context import ExecutionContext
+from tradeexecutor.strategy.execution_context import ExecutionContext, unit_test_execution_context
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
 from tradeexecutor.visual.single_pair import visualise_single_pair
 from tradeexecutor.visual.multiple_pairs import visualise_multiple_pairs
@@ -209,6 +209,7 @@ def visualise_single_pair_strategy_state(
     """
     figure = visualise_single_pair(
         state,
+        unit_test_execution_context,
         target_pair_candles,
         start_at=start_at,
         end_at=end_at,

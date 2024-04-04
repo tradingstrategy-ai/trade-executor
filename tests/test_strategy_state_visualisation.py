@@ -18,6 +18,7 @@ from tradeexecutor.backtest.backtest_runner import run_backtest_inline
 from tradeexecutor.cli.log import setup_pytest_logging
 from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier
 from tradeexecutor.state.visualisation import PlotKind
+from tradeexecutor.strategy.execution_context import unit_test_execution_context
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse, \
     create_pair_universe_from_code
 from tradeexecutor.testing.synthetic_ethereum_data import generate_random_ethereum_address
@@ -202,7 +203,7 @@ def test_visualise_strategy_state(
         allow_missing_fees=True,
     )
 
-    image = draw_single_pair_strategy_state(state, strategy_universe)
+    image = draw_single_pair_strategy_state(state, unit_test_execution_context, strategy_universe)
 
     assert len(image.data) == 5
     assert len(image._grid_ref) == 1
