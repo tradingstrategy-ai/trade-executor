@@ -5,6 +5,8 @@ import logging
 import datetime
 
 import plotly.graph_objects as go
+
+from tradeexecutor.strategy.execution_context import ExecutionContext
 from tradingstrategy.charting.candle_chart import VolumeBarMode
 
 from tradeexecutor.state.portfolio import Portfolio
@@ -374,8 +376,14 @@ def get_all_text(
     return title_text, axes_text, volume_text
 
 
-def _get_num_detached_indicators(plots: list[Plot], volume_bar_mode: VolumeBarMode, detached_indicators: bool):
+def _get_num_detached_indicators(
+        plots: list[Plot],
+        execution_context: ExecutionContext,
+        volume_bar_mode: VolumeBarMode,
+        detached_indicators: bool):
     """Get the number of detached technical indicators"""
+
+    assert isinstance(execution_context, ExecutionContext)
 
     if detached_indicators:
         num_detached_indicators = sum(
@@ -402,12 +410,15 @@ def _get_plot_name_and_separator(plot: Plot) -> str:
 
 def _get_subplot_names(
     plots: list[Plot],
+    execution_context: ExecutionContext,
     volume_bar_mode: VolumeBarMode,
     volume_axis_name: str = "Volume USD",
     pair_name: str = None,
 ):
     """Get subplot names for detached technical indicators.
     Overlaid names are appended to the detached plot name."""
+
+    assert isinstance(execution_context, ExecutionContext)
 
     if volume_bar_mode in {VolumeBarMode.hidden, VolumeBarMode.overlay}:
         subplot_names = []
@@ -443,9 +454,13 @@ def _get_subplot_names(
                 if plot.kind == PlotKind.technical_indicator_detached
             ]
 
-            assert (
-                plot.detached_overlay_name in detached_plots
-            ), f"Overlay name {plot.detached_overlay_name} not in available detached plots {detached_plots}. Make sure there is a matching plot with the same name and kind PlotKind.technical_indicator_detached in the visualisation data."
+            # Don't crash live trading due to visualisation bugs.
+            # This can e.g. happen if the strategy code changes
+            # and the state file contains data for old indicators
+            if not execution_context.mode.is_live_trading():
+                assert (
+                    plot.detached_overlay_name in detached_plots
+                ), f"Overlay name {plot.detached_overlay_name} not in available detached plots {detached_plots}. Make sure there is a matching plot with the same name and kind PlotKind.technical_indicator_detached in the visualisation data."
 
             # check if another overlay exists
             if plot.detached_overlay_name in already_overlaid_names:
@@ -467,17 +482,21 @@ def _get_subplot_names(
 
 def get_num_detached_and_names(
     plots: list[Plot],
+    execution_context: ExecutionContext,
     volume_bar_mode: VolumeBarMode,
     volume_axis_name: str,
     pair_name: str | None = None,
     detached_indicators: bool = True,
 ):
     """Get num_detached_indicators and subplot_names"""
-    num_detached_indicators = _get_num_detached_indicators(plots, volume_bar_mode, detached_indicators)
+
+    assert isinstance(execution_context, ExecutionContext), f"Expected ExecutionContext, got {type(execution_context)}"
+
+    num_detached_indicators = _get_num_detached_indicators(plots, execution_context, volume_bar_mode, detached_indicators)
     
     if detached_indicators:
         subplot_names = _get_subplot_names(
-            plots, volume_bar_mode, volume_axis_name, pair_name
+            plots, execution_context, volume_bar_mode, volume_axis_name, pair_name
         )
     elif volume_bar_mode == VolumeBarMode.separate:
         subplot_names = [pair_name, volume_axis_name]
@@ -488,11 +507,15 @@ def get_num_detached_and_names(
 
 
 def get_num_detached_and_names_no_indicators(
+    execution_context: ExecutionContext,
     volume_bar_mode: VolumeBarMode,
     volume_axis_name: str,
     pair_name: str | None = None,
 ):
     """Get num_detached_indicators and subplot_names. Used when technical_indicators == False"""
+
+    assert isinstance(execution_context, ExecutionContext)
+
     if volume_bar_mode == VolumeBarMode.separate:
         num_detached_indicators = 1
     else:

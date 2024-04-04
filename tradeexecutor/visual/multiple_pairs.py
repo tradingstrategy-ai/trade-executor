@@ -11,6 +11,7 @@ from plotly.subplots import make_subplots
 
 from tradeexecutor.state.state import State
 from tradeexecutor.state.types import PairInternalId
+from tradeexecutor.strategy.execution_context import ExecutionContext
 from tradeexecutor.visual.technical_indicator import overlay_all_technical_indicators
 from tradeexecutor.visual.utils import get_pair_base_quote_names
 
@@ -104,6 +105,7 @@ def get_start_and_end_full(candles: pd.DataFrame | GroupedCandleUniverse, start_
 def visualise_multiple_pairs(
     state: State,
     candle_universe: GroupedCandleUniverse | pd.DataFrame,
+    execution_context: ExecutionContext,
     start_at: Optional[Union[pd.Timestamp, datetime.datetime]] = None,
     end_at: Optional[Union[pd.Timestamp, datetime.datetime]] = None,
     pair_ids: Optional[list[PairInternalId]] = None,
@@ -199,6 +201,8 @@ def visualise_multiple_pairs(
         Plotly figure object
     """
 
+    assert isinstance(execution_context, ExecutionContext)
+
     logger.info("Visualising %s", state)
 
     if not show_trades:
@@ -285,10 +289,10 @@ def visualise_multiple_pairs(
 
         if technical_indicators:
             num_detached_indicators, subplot_names = get_num_detached_and_names(
-                plots, volume_bar_modes[i], volume_text, pair_name, detached_indicators
+                plots, execution_context, volume_bar_modes[i], volume_text, pair_name, detached_indicators,
             )
         else:
-            num_detached_indicators, subplot_names = get_num_detached_and_names_no_indicators(volume_bar_modes[i], volume_text, pair_name)
+            num_detached_indicators, subplot_names = get_num_detached_and_names_no_indicators(execution_context, volume_bar_modes[i], volume_text, pair_name)
 
         if not relative_sizing:
             _relative_sizing = [1] + [0.3] * num_detached_indicators

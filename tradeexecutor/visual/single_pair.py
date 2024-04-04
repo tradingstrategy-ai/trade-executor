@@ -13,6 +13,7 @@ from tradeexecutor.state.state import State
 from tradeexecutor.state.trade import TradeExecution
 
 from tradeexecutor.state.types import PairInternalId
+from tradeexecutor.strategy.execution_context import ExecutionContext
 from tradeexecutor.visual.technical_indicator import overlay_all_technical_indicators
 
 from tradingstrategy.candle import GroupedCandleUniverse
@@ -279,24 +280,25 @@ def visualise_positions_with_duration_and_slippage(
 
 
 def visualise_single_pair(
-        state: Optional[State],
-        candle_universe: GroupedCandleUniverse | pd.DataFrame,
-        start_at: Optional[Union[pd.Timestamp, datetime.datetime]] = None,
-        end_at: Optional[Union[pd.Timestamp, datetime.datetime]] = None,
-        pair_id: Optional[PairInternalId] = None,
-        height=800,
-        axes=True,
-        technical_indicators=True,
-        title: Union[str, bool] = True,
-        theme="plotly_white",
-        volume_bar_mode=VolumeBarMode.overlay,
-        vertical_spacing = 0.05,
-        subplot_font_size = 11,
-        relative_sizing: list[float] = None,
-        volume_axis_name: str = "Volume USD",
-        candle_decimals: int = 4,
-        detached_indicators: bool = True,
-        hover_text: bool = True,
+    state: Optional[State],
+    execution_context: ExecutionContext,
+    candle_universe: GroupedCandleUniverse | pd.DataFrame,
+    start_at: Optional[Union[pd.Timestamp, datetime.datetime]] = None,
+    end_at: Optional[Union[pd.Timestamp, datetime.datetime]] = None,
+    pair_id: Optional[PairInternalId] = None,
+    height=800,
+    axes=True,
+    technical_indicators=True,
+    title: Union[str, bool] = True,
+    theme="plotly_white",
+    volume_bar_mode=VolumeBarMode.overlay,
+    vertical_spacing = 0.05,
+    subplot_font_size = 11,
+    relative_sizing: list[float] = None,
+    volume_axis_name: str = "Volume USD",
+    candle_decimals: int = 4,
+    detached_indicators: bool = True,
+    hover_text: bool = True,
 ) -> go.Figure:
     """Visualise single-pair trade execution.
 
@@ -369,6 +371,8 @@ def visualise_single_pair(
     :param hover_text:
         If True, show all standard hover text. If False, show no hover text at all.
     """
+
+    assert isinstance(execution_context, ExecutionContext)
     
     logger.info("Visualising %s", state)
 
@@ -420,7 +424,8 @@ def visualise_single_pair(
     )
 
     fig = _get_grid_with_candles_volume_indicators(
-        state=state, 
+        state=state,
+        execution_context=execution_context,
         start_at=start_at, 
         end_at=end_at, 
         height=height, 
@@ -450,19 +455,20 @@ def visualise_single_pair(
 
 
 def visualise_single_pair_positions_with_duration_and_slippage(
-        state: State,
-        candles: pd.DataFrame,
-        pair_id: Optional[PairInternalId] = None,
-        start_at: Optional[Union[pd.Timestamp, datetime.datetime]] = None,
-        end_at: Optional[Union[pd.Timestamp, datetime.datetime]] = None,
-        height=800,
-        axes=True,
-        title: Union[bool, str] = True,
-        theme="plotly_white",
-        technical_indicators=True,
-        vertical_spacing = 0.05,
-        relative_sizing: list[float] = None,
-        subplot_font_size: int = 11,
+    state: State,
+    execution_context: ExecutionContext,
+    candles: pd.DataFrame,
+    pair_id: Optional[PairInternalId] = None,
+    start_at: Optional[Union[pd.Timestamp, datetime.datetime]] = None,
+    end_at: Optional[Union[pd.Timestamp, datetime.datetime]] = None,
+    height=800,
+    axes=True,
+    title: Union[bool, str] = True,
+    theme="plotly_white",
+    technical_indicators=True,
+    vertical_spacing = 0.05,
+    relative_sizing: list[float] = None,
+    subplot_font_size: int = 11,
 ) -> go.Figure:
     """Visualise performance of a live trading strategy.
 
@@ -532,6 +538,8 @@ def visualise_single_pair_positions_with_duration_and_slippage(
         Plotly figure
     """
 
+    assert isinstance(execution_context, ExecutionContext)
+
     logger.info("Visualising %s", state)
 
     if not (start_at and end_at):
@@ -578,7 +586,8 @@ def visualise_single_pair_positions_with_duration_and_slippage(
     volume_bar_mode = VolumeBarMode.hidden
 
     fig = _get_grid_with_candles_volume_indicators(
-        state=state, 
+        state=state,
+        execution_context=execution_context,
         start_at=start_at, 
         end_at=end_at, 
         height=height, 
@@ -603,7 +612,8 @@ def visualise_single_pair_positions_with_duration_and_slippage(
 
 def _get_grid_with_candles_volume_indicators(
     *,
-    state: State, 
+    state: State,
+    execution_context: ExecutionContext,
     start_at: pd.Timestamp | None, 
     end_at: pd.Timestamp | None, 
     height: int, 
@@ -624,6 +634,8 @@ def _get_grid_with_candles_volume_indicators(
     hover_text: bool = True,
 ):
     """Gets figure grid with candles, volume, and indicators overlayed."""
+
+    assert isinstance(execution_context, ExecutionContext)
     
     title_text, axes_text, volume_text = get_all_text(state.name, axes, title, pair_name, volume_axis_name)
 
@@ -637,9 +649,9 @@ def _get_grid_with_candles_volume_indicators(
     plots = state.visualisation.plots.values()
     
     if technical_indicators:
-        num_detached_indicators, subplot_names = get_num_detached_and_names(plots, volume_bar_mode, volume_text, pair_name=None, detached_indicators=detached_indicators)
+        num_detached_indicators, subplot_names = get_num_detached_and_names(plots, execution_context, volume_bar_mode, volume_text, pair_name=None, detached_indicators=detached_indicators)
     else:
-        num_detached_indicators, subplot_names = get_num_detached_and_names_no_indicators(volume_bar_mode, volume_text, pair_name=None)
+        num_detached_indicators, subplot_names = get_num_detached_and_names_no_indicators(execution_context, volume_bar_mode, volume_text, pair_name=None)
     
     # visualise candles and volume and create empty grid space for technical indicators
     fig = visualise_ohlcv(

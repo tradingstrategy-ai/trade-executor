@@ -18,7 +18,7 @@ from tradeexecutor.backtest.backtest_runner import run_backtest, setup_backtest
 from tradeexecutor.cli.log import setup_pytest_logging
 from tradeexecutor.state.state import State
 from tradeexecutor.statistics.summary import calculate_summary_statistics
-from tradeexecutor.strategy.execution_context import ExecutionMode
+from tradeexecutor.strategy.execution_context import ExecutionMode, unit_test_execution_context
 from tradeexecutor.analysis.trade_analyser import build_trade_analysis
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
 from tradeexecutor.visual.equity_curve import calculate_compounding_realised_trading_profitability
@@ -135,7 +135,7 @@ def test_alpha_model_timeline(
 
 def test_trade_analysis(
     state,
-        strategy_universe,
+    strategy_universe,
     ):
     """See trade analysis calculations do not crash."""
     analysis = build_trade_analysis(state.portfolio)
@@ -147,6 +147,7 @@ def test_trade_analysis(
 
     fig = visualise_single_pair(
         state,
+        unit_test_execution_context,
         strategy_universe.data_universe.candles,
         pair_id=crv_usd.internal_id,
     )
@@ -155,6 +156,7 @@ def test_trade_analysis(
     candles = strategy_universe.data_universe.candles.get_candles_by_pair(crv_usd.internal_id)
     fig = visualise_single_pair_positions_with_duration_and_slippage(
         state,
+        unit_test_execution_context,
         candles=candles,
         pair_id=crv_usd.internal_id,
     )
