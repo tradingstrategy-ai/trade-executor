@@ -68,6 +68,7 @@ def strategy_universe(
 
     pairs = [
         (ChainId.polygon, "quickswap", "WBTC", "WETH", 0.003),
+        (ChainId.polygon, "uniswap-v3", "WETH", "USDC", 0.0005),
         (ChainId.polygon, "quickswap", "WETH", "USDC", 0.003),
     ]
 
@@ -94,6 +95,7 @@ def test_generic_routing_multihops_trade(
     asset_usdc: AssetIdentifier,
     asset_wbtc: AssetIdentifier,
     wbtc_weth_spot_pair: TradingPairIdentifier,
+    weth_usdc_spot_pair: TradingPairIdentifier,
     execution_model: EthereumExecution,
 ):
     """Open Quickswap position using 3-way trade: USDC -> WETH -> WBTC."""
@@ -102,7 +104,7 @@ def test_generic_routing_multihops_trade(
 
     # Check we have data for both DEXes needed
     exchange_universe = strategy_universe.data_universe.pairs.exchange_universe
-    assert exchange_universe.get_exchange_count() == 1
+    assert exchange_universe.get_exchange_count() == 2
     quickswap = exchange_universe.get_by_chain_and_slug(ChainId.polygon, "quickswap")
     assert quickswap is not None
     
@@ -132,6 +134,13 @@ def test_generic_routing_multihops_trade(
         state,
         generic_pricing_model
     )
+
+    wbtc_price = generic_pricing_model.get_buy_price(
+        datetime.datetime.utcnow(),
+        wbtc_weth_spot_pair,
+        Decimal(500),
+    )
+    assert wbtc_price.price == pytest.approx(42392.42498236475)
 
     # Trade on Quickswap spot
     trades = position_manager.open_spot(

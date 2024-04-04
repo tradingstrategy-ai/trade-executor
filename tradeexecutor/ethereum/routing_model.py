@@ -533,6 +533,7 @@ class EthereumRoutingModel(RoutingModel):
                     reserve_asset_amount=t.get_raw_planned_reserve(),
                     check_balances=check_balances,
                     intermediary_pair=intermediary_pair,
+                    asset_deltas=asset_deltas,
                     max_slippage=max_slippage,
                     notes=notes,
                 )
