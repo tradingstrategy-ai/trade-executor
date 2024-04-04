@@ -31,8 +31,8 @@ logger = logging.getLogger(__name__)
 
 def draw_single_pair_strategy_state(
         state: State,
-        universe: TradingStrategyUniverse,
         execution_context: ExecutionContext,
+        universe: TradingStrategyUniverse,
         width=512,
         height=512,
         candle_count=64,
