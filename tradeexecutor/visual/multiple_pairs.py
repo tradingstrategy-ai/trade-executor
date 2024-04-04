@@ -335,9 +335,11 @@ def visualise_multiple_pairs(
 
     num_rows = current_candlestick_row - 1
 
-    assert (
-        len(relative_sizing) == len(subplot_names) == len(specs) == num_rows
-    ), f"Sanity check. Should not happen. Expected {num_rows}, got {len(relative_sizing), len(subplot_names), len(specs)}"
+    # Disabled in live trading, so we do not crash if the strategy has managed to produce invalid visualisation data
+    if execution_context.mode.is_live_trading():
+        assert (
+            len(relative_sizing) == len(subplot_names) == len(specs) == num_rows
+        ), f"Sanity check. Should not happen. Expected {num_rows}, got {len(relative_sizing), len(subplot_names), len(specs)}"
 
     subplot = make_subplots(
         rows=num_rows,
