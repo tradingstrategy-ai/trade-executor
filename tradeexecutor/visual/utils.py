@@ -492,7 +492,7 @@ def get_num_detached_and_names(
 
     assert isinstance(execution_context, ExecutionContext)
 
-    num_detached_indicators = _get_num_detached_indicators(plot, execution_context, volume_bar_mode, detached_indicators)
+    num_detached_indicators = _get_num_detached_indicators(plots, execution_context, volume_bar_mode, detached_indicators)
     
     if detached_indicators:
         subplot_names = _get_subplot_names(
@@ -507,11 +507,15 @@ def get_num_detached_and_names(
 
 
 def get_num_detached_and_names_no_indicators(
+    execution_context: ExecutionContext,
     volume_bar_mode: VolumeBarMode,
     volume_axis_name: str,
     pair_name: str | None = None,
 ):
     """Get num_detached_indicators and subplot_names. Used when technical_indicators == False"""
+
+    assert isinstance(execution_context, ExecutionContext)
+
     if volume_bar_mode == VolumeBarMode.separate:
         num_detached_indicators = 1
     else:

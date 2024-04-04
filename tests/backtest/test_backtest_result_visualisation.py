@@ -13,7 +13,7 @@ from tradeexecutor.state.state import State
 from tradeexecutor.state.validator import validate_state_serialisation
 from tradeexecutor.state.visualisation import PlotKind
 from tradeexecutor.statistics.core import calculate_statistics, update_statistics
-from tradeexecutor.strategy.execution_context import ExecutionMode
+from tradeexecutor.strategy.execution_context import ExecutionMode, unit_test_execution_context
 from tradeexecutor.testing.synthetic_price_data import generate_ohlcv_candles
 from tradeexecutor.testing.unit_test_trader import UnitTestTrader
 from tradeexecutor.visual.single_pair import visualise_single_pair, visualise_single_pair_positions_with_duration_and_slippage
@@ -169,7 +169,8 @@ def test_visualise_trades_with_indicator(state_and_candles: tuple[State, pd.Data
     # Now visualise the events
     #
     fig = visualise_single_pair(
-        state, 
+        state,
+        unit_test_execution_context,
         candle_universe,
     )
 
@@ -208,7 +209,8 @@ def test_visualise_trades_with_indicator(state_and_candles: tuple[State, pd.Data
     assert ts == pd.Timestamp("2021-1-1 00:00")
 
     fig2 = visualise_single_pair(
-        state, 
+        state,
+        unit_test_execution_context,
         candle_universe,
         detached_indicators=False
     )
@@ -217,7 +219,8 @@ def test_visualise_trades_with_indicator(state_and_candles: tuple[State, pd.Data
     assert len(fig2._grid_ref) == 1
 
     fig3 = visualise_single_pair(
-        state, 
+        state,
+        unit_test_execution_context,
         candle_universe,
         detached_indicators=False,
         volume_bar_mode=VolumeBarMode.separate,
@@ -228,6 +231,7 @@ def test_visualise_trades_with_indicator(state_and_candles: tuple[State, pd.Data
 
     fig4 = visualise_single_pair(
         state,
+        unit_test_execution_context,
         candle_universe,
         detached_indicators=True,
         technical_indicators=False,
@@ -238,6 +242,7 @@ def test_visualise_trades_with_indicator(state_and_candles: tuple[State, pd.Data
 
     fig5 = visualise_single_pair(
         state,
+        unit_test_execution_context,
         candle_universe,
         detached_indicators=True,
         technical_indicators=False,
@@ -270,7 +275,8 @@ def test_visualise_trades_separate_volume(
     assert len(state.portfolio.closed_positions) == 1
 
     fig = visualise_single_pair(
-        state, 
+        state,
+        unit_test_execution_context,
         candle_universe, 
         volume_bar_mode=VolumeBarMode.separate,
         relative_sizing=[1, 0.2, 0.2, 0.5],
@@ -331,7 +337,8 @@ def test_visualise_trades_with_duration_and_slippage(
     # Now visualise the events
     #
     fig = visualise_single_pair_positions_with_duration_and_slippage(
-        state, 
+        state,
+        unit_test_execution_context,
         candles,
     )
 
@@ -398,7 +405,8 @@ def test_visualise_single_pair_no_error(
     
     # check no error with different arguments
     fig = visualise_single_pair(
-        state, 
+        state,
+        unit_test_execution_context,
         candle_universe,
         relative_sizing=relative_sizing,
         vertical_spacing=vertical_spacing, 
@@ -433,7 +441,8 @@ def test_visualise_single_pair_with_error(
     # check no error with different arguments
     with pytest.raises(AssertionError):
         fig = visualise_single_pair(
-            state, 
+            state,
+            unit_test_execution_context,
             candle_universe,
             relative_sizing=relative_sizing,
             vertical_spacing=vertical_spacing, 
@@ -469,6 +478,7 @@ def test_visualise_single_pair_with_duration_and_slippage_no_error(
     
     fig = visualise_single_pair_positions_with_duration_and_slippage(
         state=state,
+        execution_context=unit_test_execution_context,
         candles=candles,
         relative_sizing=relative_sizing,
         vertical_spacing=vertical_spacing, 
@@ -494,6 +504,7 @@ def test_visualise_single_pair_with_duration_and_slippage_with_error(
     with pytest.raises(AssertionError):
         fig = visualise_single_pair_positions_with_duration_and_slippage(
             state=state,
+            execution_context=unit_test_execution_context,
             candles=candles,
             relative_sizing=relative_sizing,
             vertical_spacing=vertical_spacing, 
