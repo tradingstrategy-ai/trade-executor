@@ -490,7 +490,7 @@ def get_num_detached_and_names(
 ):
     """Get num_detached_indicators and subplot_names"""
 
-    assert isinstance(execution_context, ExecutionContext)
+    assert isinstance(execution_context, ExecutionContext), f"Expected ExecutionContext, got {type(execution_context)}"
 
     num_detached_indicators = _get_num_detached_indicators(plots, execution_context, volume_bar_mode, detached_indicators)
     

@@ -289,10 +289,10 @@ def visualise_multiple_pairs(
 
         if technical_indicators:
             num_detached_indicators, subplot_names = get_num_detached_and_names(
-                plots, volume_bar_modes[i], volume_text, pair_name, detached_indicators, execution_context,
+                plots, execution_context, volume_bar_modes[i], volume_text, pair_name, detached_indicators,
             )
         else:
-            num_detached_indicators, subplot_names = get_num_detached_and_names_no_indicators(volume_bar_modes[i], volume_text, pair_name)
+            num_detached_indicators, subplot_names = get_num_detached_and_names_no_indicators(execution_context, volume_bar_modes[i], volume_text, pair_name)
 
         if not relative_sizing:
             _relative_sizing = [1] + [0.3] * num_detached_indicators

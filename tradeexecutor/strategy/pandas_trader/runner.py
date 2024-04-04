@@ -150,6 +150,7 @@ class PandasTraderRunner(StrategyRunner):
 
     def refresh_visualisations(self, state: State, universe: TradingStrategyUniverse):
 
+
         if not self.run_state:
             # This strategy is not maintaining a run-state
             # Backtest, simulation, etc.
@@ -163,6 +164,8 @@ class PandasTraderRunner(StrategyRunner):
                     pair_count
                     )
 
+        execution_context = self.execution_context
+
         if universe.is_empty():
             # TODO: Not sure how we end up here
             logger.info("Strategy universe is empty - nothing to report")
@@ -172,24 +175,24 @@ class PandasTraderRunner(StrategyRunner):
 
             if pair_count == 1:
 
-                small_figure = draw_single_pair_strategy_state(state, universe, height=512)
+                small_figure = draw_single_pair_strategy_state(state, universe, execution_context, height=512)
                 # Draw the inline plot and expose them tot he web server
                 # TODO: SVGs here are not very readable, have them as a stop gap solution
-                large_figure = draw_single_pair_strategy_state(state, universe, height=1024)
+                large_figure = draw_single_pair_strategy_state(state, universe, execution_context, height=1024)
 
                 self.update_strategy_thinking_image_data(small_figure, large_figure)
 
             elif 1 < pair_count <= 3:
 
-                small_figure_combined = draw_multi_pair_strategy_state(state, universe, height=1024)
-                large_figure_combined = draw_multi_pair_strategy_state(state, universe, height=2048)
+                small_figure_combined = draw_multi_pair_strategy_state(state, universe, execution_context, height=1024)
+                large_figure_combined = draw_multi_pair_strategy_state(state, universe, execution_context, height=2048)
 
                 self.update_strategy_thinking_image_data(small_figure_combined, large_figure_combined)
 
             elif 3 < pair_count <=5:
 
-                small_figure_combined = draw_multi_pair_strategy_state(state, universe, height=2048, detached_indicators = False)
-                large_figure_combined = draw_multi_pair_strategy_state(state, universe, height=3840, width = 2160, detached_indicators = False)
+                small_figure_combined = draw_multi_pair_strategy_state(state, universe, execution_context, height=2048, detached_indicators = False)
+                large_figure_combined = draw_multi_pair_strategy_state(state, universe, execution_context, height=3840, width = 2160, detached_indicators = False)
 
                 self.update_strategy_thinking_image_data(small_figure_combined, large_figure_combined)
 
