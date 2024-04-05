@@ -178,7 +178,7 @@ class IndicatorDefinition:
             ret = self.func(input, **self.parameters)
             return self._check_good_return_value(ret)
         except Exception as e:
-            raise IndicatorCalculationFailed(f"Could not calculate indicator {self.name} ({self.func}) for parameters {self.parameters}, input universe is {input}") from e
+            raise IndicatorCalculationFailed(f"Could not calculate indicator {self.name} ({self.func}) for parameters {self.parameters}, input universe is {input}. \n\n To debug, set `max_workers=1`, and if doing a grid search, also set `multiprocess=False`") from e
 
     def _check_good_return_value(self, df):
         assert isinstance(df, (pd.Series, pd.DataFrame)), f"Indicator did not return pd.DataFrame or pd.Series: {self.name}, we got {type(df)}"
