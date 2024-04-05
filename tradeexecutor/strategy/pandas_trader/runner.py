@@ -149,7 +149,22 @@ class PandasTraderRunner(StrategyRunner):
                         raise PreflightCheckFailed(f"We do not have up-to-date data for candles. Last candles are at {end}")
 
     def refresh_visualisations(self, state: State, universe: TradingStrategyUniverse):
+        """Updates the visualisation images for the strategy.
 
+        - Used in Discord (small)
+
+        - Used on the frontend (large)
+
+        This is automatically called on trade-executor console startup:
+
+            docker compose run enzyme-polygon-eth-btc-usdc console
+
+        To call this manually from the same console with pre-set up runner
+
+        .. code-block:: shell
+
+            runner.refresh_visualisations(state, strategy_universe)
+        """
 
         if not self.run_state:
             # This strategy is not maintaining a run-state
