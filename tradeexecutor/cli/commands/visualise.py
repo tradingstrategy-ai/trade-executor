@@ -2,7 +2,7 @@
 
 .. code-block:: console
     trade-executor \
-        backtest \
+        visualise \
         --strategy-file=path/to/strategy-module.py \
         --trading-strategy-api-key=$TRADING_STRATEGY_API_KEY
 
@@ -61,10 +61,8 @@ def visualise(
         trading_strategy_api_key=trading_strategy_api_key,
         execution_context=execution_context
     )
-    print(state.visualisation)
 
     pair_count = universe.get_pair_count()
-
     if pair_count == 1:
         small_figure = draw_single_pair_strategy_state(state, execution_context, universe, height=512)
     elif 1 < pair_count <= 3:
