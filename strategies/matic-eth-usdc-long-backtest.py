@@ -31,11 +31,18 @@ from tradeexecutor.strategy.tag import StrategyTag
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse, load_partial_data
 from tradeexecutor.strategy.universe_model import UniverseOptions
 from tradeexecutor.strategy.weighting import weight_passthrouh
+from tradeexecutor.utils.binance import create_binance_universe
 from tradingstrategy.chain import ChainId
 from tradingstrategy.client import Client
 from tradingstrategy.pair import HumanReadableTradingPairDescription
 from tradingstrategy.timebucket import TimeBucket
 from tradingstrategy.utils.groupeduniverse import resample_price_series
+
+# The pairs we are rading
+pair_ids = [
+    (ChainId.polygon, "uniswap-v3", "WETH", "USDC", 0.0005),
+    (ChainId.polygon, "uniswap-v3", "WMATIC", "USDC", 0.0005),
+]
 
 
 # See v37-matic-eth-robustness search for parameters details
@@ -79,6 +86,7 @@ class Parameters:
     backtest_start = datetime.datetime(2022, 1, 1)
     backtest_end = datetime.datetime(2024, 3, 15)
     stop_loss_time_bucket = TimeBucket.h1  # use 1h close as the stop loss signal
+    backtest_trading_fee = 0.0005  # Switch to QuickSwap 30 BPS free from the default Binance 5 BPS fee
 
 
 def calculate_matic_eth(strategy_universe: TradingStrategyUniverse):
@@ -342,6 +350,27 @@ def decide_trades(
     return trades
 
 
+def get_strategy_trading_pairs(execution_mode: ExecutionMode) -> list[HumanReadableTradingPairDescription]:
+    """Switch between backtest and live trading pairs.
+
+    Because the live trading DEX venues do not have enough history (< 2 years)
+    for meaningful backtesting, we test with Binance CEX data.
+    """
+
+    if execution_mode.is_live_trading():
+        # Live trade
+        return [
+            # (ChainId.polygon, "quickswap", "WBTC", "WETH", 0.0030),
+            (ChainId.polygon, "uniswap-v3", "WETH", "USDC", 0.0005),
+            (ChainId.polygon, "uniswap-v3", "WMATIC", "USDC", 0.0005),
+        ]
+    else:
+        # Backtest - Binance fee matched to DEXes with Parameters.backtest_trading_fee
+        return [
+            (ChainId.centralised_exchange, "binance", "ETH", "USDT"),
+            (ChainId.centralised_exchange, "binance", "MATIC", "USDT"),
+        ]
+
 
 def create_trading_universe(
     timestamp: datetime.datetime,
@@ -349,36 +378,54 @@ def create_trading_universe(
     execution_context: ExecutionContext,
     universe_options: UniverseOptions,
 ) -> TradingStrategyUniverse:
+    """Create the trading universe.
 
-    # Load data for our trading pair whitelist
+    - For live trading, we load DEX data
+
+    - We backtest with Binance data, as it has more history
+    """
+
+    pair_ids = get_strategy_trading_pairs(execution_context.mode)
+
     if execution_context.mode.is_backtesting():
-        # For backtesting, we use a specific time range from the strategy parameters
+        # Backtesting - load Binance data
         start_at = universe_options.start_at
         end_at = universe_options.end_at
-        required_history_period = None
-        stop_loss_time_bucket = Parameters.stop_loss_time_bucket
+        strategy_universe = create_binance_universe(
+            [f"{p[2]}{p[3]}" for p in pair_ids],
+            candle_time_bucket=Parameters.source_time_bucket,
+            stop_loss_time_bucket=Parameters.stop_loss_time_bucket,
+            start_at=start_at,
+            end_at=end_at,
+            trading_fee_override=Parameters.backtest_trading_fee,
+        )
     else:
-        start_at = None
-        end_at = None
-        required_history_period = Parameters.required_history_period  # We need 21 days run up for RSI indicator
-        stop_loss_time_bucket = None
+        # Live trading - load DEX data
+        universe_options = UniverseOptions(
+            history_period=Parameters.required_history_period,
+            start_at=None,
+            end_at=None,
+        )
 
-    dataset = load_partial_data(
-        client=client,
-        time_bucket=Parameters.source_time_bucket,
-        pairs=pair_ids,
-        execution_context=execution_context,
-        universe_options=universe_options,
-        liquidity=False,
-        stop_loss_time_bucket=stop_loss_time_bucket,
-        start_at=start_at,
-        end_at=end_at,
-        required_history_period=required_history_period,
-    )
+        dataset = load_partial_data(
+            client=client,
+            time_bucket=Parameters.source_time_bucket,
+            pairs=pair_ids,
+            execution_context=execution_context,
+            universe_options=universe_options,
+            liquidity=False,
+            stop_loss_time_bucket=Parameters.stop_loss_time_bucket,
+        )
+        # Construct a trading universe from the loaded data,
+        # and apply any data preprocessing needed before giving it
+        # to the strategy and indicators
+        strategy_universe = TradingStrategyUniverse.create_from_dataset(
+            dataset,
+            reserve_asset="USDC",
+            forward_fill=True,
+        )
 
-    # Filter down the dataset to the pairs we specified
-    universe = TradingStrategyUniverse.create_from_dataset(dataset)
-    return universe
+    return strategy_universe
 
 
 trading_strategy_engine_version = "0.5"
