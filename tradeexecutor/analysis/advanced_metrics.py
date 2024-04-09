@@ -102,6 +102,11 @@ def calculate_advanced_metrics(
         metrics = qs.reports.metrics
         stats = qs.stats
 
+        # QuantStats function APIs are a mess
+        quantstats_awful_kwargs = {}
+        if display:
+            quantstats_awful_kwargs = {"internal": True}
+
         result = metrics(
             returns,
             benchmark=benchmark,
@@ -109,7 +114,7 @@ def calculate_advanced_metrics(
             periods_per_year=periods_per_year,
             mode=mode.value,
             display=False,
-            internal=display,  # Internal sets the flag for percent output
+            **quantstats_awful_kwargs
         )
 
         assert result is not None, "metrics(): returned None"
