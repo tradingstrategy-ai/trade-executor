@@ -74,5 +74,5 @@ def visualise(
 
     # save image to file for debugging
     img = Image.open(BytesIO(light_image_data))
-    img.save("state/test.png")
+    img.save(f"state/{name}.png")
     img.show()

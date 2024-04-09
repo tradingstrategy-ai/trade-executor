@@ -218,19 +218,19 @@ class Portfolio:
                 return pos
         return None
     
-    def get_existing_position_for_pair(
+    def get_closed_position_for_pair(
         self,
         pair: TradingPairIdentifier,
-        include_test: bool = False,
+        include_test_position: bool = False,
     ) -> Optional[TradingPosition]:
-        """Get existing open or closed position for a trading pair."""
-        assert isinstance(pair, TradingPairIdentifier)
-        pos: TradingPosition
-        for pos in chain(self.open_positions.values(), self.closed_positions.values()):
-            if pos.pair.get_identifier() == pair.get_identifier():
-                if include_test or not pos.is_test():
-                    return pos
-        return None
+        """Get closed position for a trading pair."""
+
+        return next((
+            p 
+            for p in self.closed_positions.values()
+            if p.pair == pair and (include_test_position or not p.is_test())
+        ), None)
+    
 
     def get_open_position_for_asset(self, asset: AssetIdentifier) -> Optional[TradingPosition]:
         """Get open position for a trading pair.
