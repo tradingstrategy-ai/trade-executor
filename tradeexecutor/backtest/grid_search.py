@@ -1058,7 +1058,7 @@ def run_grid_search_backtest(
         )
     except Exception as e:
         # Report to the notebook which of the grid search combinations is a problematic one
-        raise RuntimeError(f"Running a grid search combination failed:\n{combination}") from e
+        raise RuntimeError(f"Running a grid search combination failed:\n{combination}\nThe original exception was: {e}") from e
 
     analysis = build_trade_analysis(state.portfolio)
     equity = calculate_equity_curve(state)
