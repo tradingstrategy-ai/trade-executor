@@ -218,18 +218,18 @@ class Portfolio:
                 return pos
         return None
     
-    def get_closed_position_for_pair(
+    def get_closed_positions_for_pair(
         self,
         pair: TradingPairIdentifier,
         include_test_position: bool = False,
-    ) -> Optional[TradingPosition]:
+    ) -> list[TradingPosition]:
         """Get closed position for a trading pair."""
 
-        return next((
+        return [
             p 
             for p in self.closed_positions.values()
             if p.pair == pair and (include_test_position or not p.is_test())
-        ), None)
+        ]
     
 
     def get_open_position_for_asset(self, asset: AssetIdentifier) -> Optional[TradingPosition]:
