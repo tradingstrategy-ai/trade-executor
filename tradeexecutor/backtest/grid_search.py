@@ -882,7 +882,7 @@ def perform_grid_search(
 
     if indicator_storage is None:
         indicator_storage = DiskIndicatorStorage.create_default(universe)
-        print(f"Using indicator cache {indicator_storage.get_universe_cache_path()}")
+        print(f"Using indicator cac he {indicator_storage.get_universe_cache_path()}")
 
     # First calculate indicators if create_indicators() protocol is used
     # (engine version = 0.5, DecideTradesProtocolV4)
