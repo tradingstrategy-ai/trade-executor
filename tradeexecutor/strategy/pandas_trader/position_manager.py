@@ -425,6 +425,20 @@ class PositionManager:
 
         """
         return self.state.portfolio.get_position_by_trading_pair(pair)
+    
+    def get_closed_positions_for_pair(
+        self,
+        pair: TradingPairIdentifier,
+        include_test_position: bool = False,
+    ) -> list[TradingPosition]:
+        """Get closed positions for a specific trading pair.
+
+        :return:
+            All closed trading position of a trading pair
+
+            If there is no closed position return empty list.
+        """
+        return self.state.portfolio.get_closed_positions_for_pair(pair, include_test_position=include_test_position)
 
     def get_last_closed_position(self) -> Optional[TradingPosition]:
         """Get the position that was last closed.
