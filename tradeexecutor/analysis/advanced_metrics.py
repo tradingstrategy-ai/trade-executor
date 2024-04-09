@@ -109,6 +109,7 @@ def calculate_advanced_metrics(
             periods_per_year=periods_per_year,
             mode=mode.value,
             display=False,
+            internal=display,  # Internal sets the flag for percent output
         )
 
         assert result is not None, "metrics(): returned None"

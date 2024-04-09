@@ -32,7 +32,8 @@ def display_backtesting_results(
         # Nothing further to display
         portfolio_comparison = compare_strategy_backtest_to_multiple_assets(
             state,
-            strategy_universe
+            strategy_universe,
+            display=True,
         )
         display(portfolio_comparison)
 
