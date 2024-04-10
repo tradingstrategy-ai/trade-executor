@@ -539,8 +539,6 @@ def prepare_grid_combinations(
     if isclass(parameters):
         parameters = StrategyParameters.from_class(parameters, grid_search=True)
 
-    assert parameters["grid_search"], f"StrategyParameters(grid_search=False) in prepare_grid_combinations()"
-
     logger.info("Preparing %d grid combinations, caching results in %s", len(parameters), result_path)
 
     if clear_cached_results:

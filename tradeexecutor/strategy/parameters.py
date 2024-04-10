@@ -226,6 +226,4 @@ class StrategyParameters(MutableAttributeDict):
                 v = [v]
             output[k] = v
 
-        output["grid_search"] = grid_search  # Set grid search flag
-
         return StrategyParameters(output)
