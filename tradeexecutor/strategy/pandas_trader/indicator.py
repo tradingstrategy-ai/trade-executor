@@ -76,7 +76,7 @@ class IndicatorSource(enum.Enum):
     #:
     #: Example indicators
     #:
-    #: - Money flow index
+    #: - Money flow index (MFI) reads close, high, low columns
     #:
     #: The indicator function can take arguments named: open, high, low, close, volume
     #: which all are Pandas US dollar series. If parameters are not present they are discarded.
@@ -309,7 +309,7 @@ class IndicatorSet:
 
     - Indicators are calculated for each given trading pair, unless specified otherwise
 
-    See :py:class:`CreateIndicatorsProtocol` for usage.
+    See :py:class:`CreateIndicatorsProtocolV2` for usage.
     """
 
     def __init__(self):
@@ -409,60 +409,7 @@ class IndicatorSet:
 class CreateIndicatorsProtocolV1(Protocol):
     """Call signature for create_indicators function.
 
-    This Protocol class defines `create_indicators()` function call signature.
-    Strategy modules and backtests can provide on `create_indicators` function
-    to define what indicators a strategy needs.
-    Used with :py:class`IndicatorSet` to define the indicators
-    the strategy can use.
-
-    .. note ::
-
-        Legacy. See :py:class:`CreateIndicatorsProtocol2` instead.
-
-    These indicators are precalculated and cached for fast performance.
-
-    Example for a grid search:
-
-    .. code-block:: python
-
-        class MyParameters:
-            stop_loss_pct = [0.9, 0.95]
-            cycle_duration = CycleDuration.cycle_1d
-            initial_cash = 10_000
-
-            # Indicator values that are searched in the grid search
-            slow_ema_candle_count = 7
-            fast_ema_candle_count = [1, 2]
-
-
-        def create_indicators(parameters: StrategyParameters, indicators: IndicatorSet, strategy_universe: TradingStrategyUniverse, execution_context: ExecutionContext):
-            indicators.add("slow_ema", pandas_ta.ema, {"length": parameters.slow_ema_candle_count})
-            indicators.add("fast_ema", pandas_ta.ema, {"length": parameters.fast_ema_candle_count})
-
-    Indicators can be custom, and do not need to be calculated per trading pair.
-    Here is an example of creating indicators "ETH/BTC price" and "ETC/BTC price RSI with length of 20 bars":
-
-    .. code-block:: python
-
-        def calculate_eth_btc(strategy_universe: TradingStrategyUniverse):
-            weth_usdc = strategy_universe.get_pair_by_human_description((ChainId.ethereum, "test-dex", "WETH", "USDC"))
-            wbtc_usdc = strategy_universe.get_pair_by_human_description((ChainId.ethereum, "test-dex", "WBTC", "USDC"))
-            btc_price = strategy_universe.data_universe.candles.get_candles_by_pair(wbtc_usdc.internal_id)
-            eth_price = strategy_universe.data_universe.candles.get_candles_by_pair(weth_usdc.internal_id)
-            series = eth_price["close"] / btc_price["close"]  # Divide two series
-            return series
-
-        def calculate_eth_btc_rsi(strategy_universe: TradingStrategyUniverse, length: int):
-            weth_usdc = strategy_universe.get_pair_by_human_description((ChainId.ethereum, "test-dex", "WETH", "USDC"))
-            wbtc_usdc = strategy_universe.get_pair_by_human_description((ChainId.ethereum, "test-dex", "WBTC", "USDC"))
-            btc_price = strategy_universe.data_universe.candles.get_candles_by_pair(wbtc_usdc.internal_id)
-            eth_price = strategy_universe.data_universe.candles.get_candles_by_pair(weth_usdc.internal_id)
-            eth_btc = eth_price["close"] / btc_price["close"]
-            return pandas_ta.rsi(eth_btc, length=length)
-
-        def create_indicators(parameters: StrategyParameters, indicators: IndicatorSet, strategy_universe: TradingStrategyUniverse, execution_context: ExecutionContext):
-            indicators.add("eth_btc", calculate_eth_btc, source=IndicatorSource.strategy_universe)
-            indicators.add("eth_btc_rsi", calculate_eth_btc_rsi, parameters={"length": parameters.eth_btc_rsi_length}, source=IndicatorSource.strategy_universe)
+    Deprecated. See :py:class:`CreateIndicatorsProtocolV2`.
     """
 
     def __call__(
@@ -513,7 +460,8 @@ class CreateIndicatorsProtocolV2(Protocol):
 
     These indicators are precalculated and cached for fast performance.
 
-    Example for a grid search:
+    Example for creating an Exponential Moving Average (EMA) indicator based on the `close` price.
+    This example is for a grid search.
 
     .. code-block:: python
 
@@ -537,6 +485,33 @@ class CreateIndicatorsProtocolV2(Protocol):
             indicators.add("slow_ema", pandas_ta.ema, {"length": parameters.slow_ema_candle_count})
             indicators.add("fast_ema", pandas_ta.ema, {"length": parameters.fast_ema_candle_count})
             return indicators
+
+    Some indicators may use multiple OHLCV datapoints. In this case, you need to tell the indicator to be :py:attr:`IndicatorSource.ohlcv` type.
+    Here is an example for Money Flow Index (MFI) indicator:
+
+    .. code-block:: python
+
+        import pandas_ta
+
+        from tradeexecutor.strategy.parameters import StrategyParameters
+        from tradeexecutor.strategy.pandas_trader.indicator import IndicatorSet, IndicatorSource
+
+        class Parameters:
+            my_mfi_length = 20
+
+        def create_indicators(
+            timestamp: datetime.datetime | None,
+            parameters: StrategyParameters,
+            strategy_universe: TradingStrategyUniverse,
+            execution_context: ExecutionContext
+        ):
+            indicators = IndicatorSet()
+            indicators.add(
+                "mfi",
+                pandas_ta.mfi,
+                parameters={"length": parameters.my_mfi_length},
+                source=IndicatorSource.ohlcv,
+            )
 
     Indicators can be custom, and do not need to be calculated per trading pair.
     Here is an example of creating indicators "ETH/BTC price" and "ETC/BTC price RSI with length of 20 bars":
