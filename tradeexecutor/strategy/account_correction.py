@@ -194,7 +194,8 @@ def is_relative_mismatch(
     """
 
     # Accounting dust.
-    # Cannot be compared with relative match
+    # The position has been closed but we have left fractions of tokens on the account.
+    # Cannot be compared with relative match.
     if abs(actual_amount) < dust_epsilon and abs(expected_amount) < dust_epsilon:
         return False
 
@@ -684,7 +685,8 @@ def check_accounts(
             "Diff": c.quantity,
             "Dusty": "Y" if dust else "N",
             "Mismatch": "Y" if c.mismatch else "N",
-            "Epsilon": c.dust_epsilon,
+            "Dust epsilon": c.dust_epsilon,
+            "Relative epsilon": c.relative_epsilon,
         })
 
         if c.mismatch:
