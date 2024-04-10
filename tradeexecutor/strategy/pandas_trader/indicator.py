@@ -58,10 +58,30 @@ class IndicatorSource(enum.Enum):
     """The data on which the indicator will be calculated."""
 
     #: Calculate this indicator based on candle close price
+    #:
+    #: Example indicators
+    #:
+    #: - RSI
+    #: - Moving overage
+    #:
     close_price = "close_price"
 
     #: Calculate this indicator based on candle open price
+    #:
+    #: Not used commonly
+    #:
     open_price = "open_price"
+
+    #: Calculate this indicator based on multipe data points (open, high, low, close, volume)
+    #:
+    #: Example indicators
+    #:
+    #: - Money flow index
+    #:
+    #: The indicator function can take arguments named: open, high, low, close, volume
+    #: which all are Pandas US dollar series. If parameters are not present they are discarded.
+    #:
+    ohlcv = "ohlcv"
 
     #: This indicator is calculated once per the strategy universe
     #:
@@ -71,7 +91,7 @@ class IndicatorSource(enum.Enum):
 
     def is_per_pair(self) -> bool:
         """This indicator is calculated to all trading pairs."""
-        return self in (IndicatorSource.open_price, IndicatorSource.close_price)
+        return self in (IndicatorSource.open_price, IndicatorSource.close_price, IndicatorSource.ohlcv)
 
 
 
@@ -161,6 +181,44 @@ class IndicatorDefinition:
         except Exception as e:
             raise IndicatorCalculationFailed(f"Could not calculate indicator {self.name} ({self.func}) for parameters {self.parameters}, input data is {len(input)} rows") from e
 
+    def calculate_by_pair_ohlcv(self, candles: pd.DataFrame) -> pd.DataFrame | pd.Series:
+        """Calculate the underlying OHCLV indicator value.
+
+        Assume function can take parameters: `open`, `high`, `low`, `close`, `volume`,
+        or any combination of those.
+
+        :param input:
+            Raw OHCLV candles data.
+
+        :return:
+            Single or multi series data.
+
+            - Multi-value indicators return DataFrame with multiple columns (BB).
+            - Single-value indicators return Series (RSI, SMA).
+
+        """
+
+        assert isinstance(candles, pd.DataFrame), f"OHLCV-based indicator function must be fed with a DataFrame"
+
+        needed_args = ("open", "high", "low", "close", "volume")
+        full_kwargs = {}
+        enabled = {}
+        func_args = inspect.getfullargspec(self.func).args
+        for a in needed_args:
+            if a in func_args:
+                full_kwargs[a] = candles[a]
+
+        if len(full_kwargs) == 0:
+            raise IndicatorCalculationFailed(f"Could not calculate OHLCV indicator {self.name} ({self.func}): does not take any of function arguments from {needed_args}")
+
+        full_kwargs.update(self.parameters)
+
+        try:
+            ret = self.func(**full_kwargs)
+            return self._check_good_return_value(ret)
+        except Exception as e:
+            raise IndicatorCalculationFailed(f"Could not calculate indicator {self.name} ({self.func}) for parameters {self.parameters}, input data is {len(input)} rows") from e
+
     def calculate_universe(self, input: TradingStrategyUniverse) -> pd.DataFrame | pd.Series:
         """Calculate the underlying indicator value.
 
@@ -178,7 +236,7 @@ class IndicatorDefinition:
             ret = self.func(input, **self.parameters)
             return self._check_good_return_value(ret)
         except Exception as e:
-            raise IndicatorCalculationFailed(f"Could not calculate indicator {self.name} ({self.func}) for parameters {self.parameters}, input universe is {input}. \n\n To debug, set `max_workers=1`, and if doing a grid search, also set `multiprocess=False`") from e
+            raise IndicatorCalculationFailed(f"Could not calculate indicator {self.name} ({self.func}) for parameters {self.parameters}, input universe is {input}.\nException is {e}\n\n To use Python debugger, set `max_workers=1`, and if doing a grid search, also set `multiprocess=False`") from e
 
     def _check_good_return_value(self, df):
         assert isinstance(df, (pd.Series, pd.DataFrame)), f"Indicator did not return pd.DataFrame or pd.Series: {self.name}, we got {type(df)}"
@@ -802,20 +860,24 @@ def _calculate_and_save_indicator_result(
     indicator = key.definition
 
     if indicator.is_per_pair():
+        assert key.pair.internal_id, f"Per-pair indicator lacks pair internal_id: {key.pair}"
         match indicator.source:
             case IndicatorSource.open_price:
                 column = "open"
+                input = strategy_universe.data_universe.candles.get_samples_by_pair(key.pair.internal_id)[column]
+                data = indicator.calculate_by_pair(input)
             case IndicatorSource.close_price:
                 column = "close"
+                input = strategy_universe.data_universe.candles.get_samples_by_pair(key.pair.internal_id)[column]
+                data = indicator.calculate_by_pair(input)
+            case IndicatorSource.ohlcv:
+                input = strategy_universe.data_universe.candles.get_samples_by_pair(key.pair.internal_id)
+                data = indicator.calculate_by_pair_ohlcv(input)
             case _:
                 raise AssertionError(f"Unsupported input source {key.pair} {key.definition} {indicator.source}")
 
-        assert key.pair.internal_id
-
-        input = strategy_universe.data_universe.candles.get_samples_by_pair(key.pair.internal_id)[column]
-        data = indicator.calculate_by_pair(input)
-
     else:
+        # Calculate indicator over the whole universe
         data = indicator.calculate_universe(strategy_universe)
 
     assert data is not None, f"Indicator function {indicator.name} ({indicator.func}) did not return any result, received Python None instead"

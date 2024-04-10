@@ -432,3 +432,55 @@ def test_custom_indicator(strategy_universe, indicator_storage):
         assert isinstance(result.data, pd.Series)
         assert len(result.data) > 0
 
+
+def test_ohlcv_indicator(strategy_universe, indicator_storage):
+    """Create an OHLCV data based indicator.
+
+    - Use Money Flow Index (MFI) using full OHCLV data
+    """
+
+    def create_indicators(timestamp: datetime.datetime, parameters: StrategyParameters, strategy_universe: TradingStrategyUniverse, execution_context: ExecutionContext):
+        indicators = IndicatorSet()
+        indicators.add(
+            "mfi",
+            pandas_ta.mfi,
+            parameters={"length": parameters.mfi_length},
+            source=IndicatorSource.ohlcv,
+        )
+        return indicators
+
+    class Parameters:
+        mfi_length = 20
+
+    indicator_result = calculate_and_load_indicators(
+        strategy_universe,
+        indicator_storage,
+        create_indicators=create_indicators,
+        execution_context=unit_test_execution_context,
+        parameters=StrategyParameters.from_class(Parameters),
+        max_workers=1,
+        max_readers=1,
+    )
+
+    # 2 pairs, 3 indicators
+    assert len(indicator_result) == 2
+    for result in indicator_result.values():
+        assert not result.cached
+        assert isinstance(result.data, pd.Series)
+        assert len(result.data) > 0
+
+    # Rerun, now everything should be cached and loaded
+    indicator_result = calculate_and_load_indicators(
+        strategy_universe,
+        indicator_storage,
+        create_indicators=create_indicators,
+        execution_context=unit_test_execution_context,
+        parameters=StrategyParameters.from_class(Parameters),
+        max_workers=1,
+        max_readers=1,
+    )
+    for result in indicator_result.values():
+        assert result.cached
+        assert isinstance(result.data, pd.Series)  # MFI returns pandas Series
+        assert len(result.data) > 0
+
