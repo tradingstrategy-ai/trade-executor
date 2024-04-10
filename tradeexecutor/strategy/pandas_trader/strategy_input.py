@@ -46,8 +46,9 @@ class IndicatorNotFound(Exception):
 class StrategyInputIndicators:
     """Indicator results for the strategy decision.
 
-    Wraps the indicator results to a format that has good developer experience
-    when accessed from `decide_trades()`. The default timestamp
+    A helper class to read and manipulate indicator and price values.
+    Thi class wraps the indicator results, both cached and real-time, to a format that has good developer experience
+    when accessed from `decide_trades()`.
 
     - Indicators are prepared in `create_indicators` function
     - The framework takes care of recalculating indicators when needed,
@@ -55,7 +56,9 @@ class StrategyInputIndicators:
     - For backtests, this class is instiated only once
     - We assume all indicator data is forward-filled and no gaps
 
-    For simple strategies calling :py:meth:`get_indicator_value` should be only required here.
+    How to use
+
+    - For simple strategies calling :py:meth:`get_indicator_value` should be only required here.
     """
 
     #: Trading universe
