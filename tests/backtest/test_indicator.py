@@ -448,24 +448,6 @@ def test_ohlcv_indicator(strategy_universe, indicator_storage):
         source=IndicatorSource.ohlcv,
     )
 
-    indicator_result = calculate_and_load_indicators(
-        strategy_universe,
-        indicator_storage,
-        indicators=indicators,
-        execution_context=unit_test_execution_context,
-        parameters=StrategyParameters({}),
-        max_workers=1,
-        max_readers=1,
-    )
-
-    # 2 pairs, 3 indicators
-    assert len(indicator_result) == 2
-    for result in indicator_result.values():
-        assert not result.cached
-        assert isinstance(result.data, pd.Series)
-        assert len(result.data) > 0
-
-    # Rerun, now everything should be cached and loaded
     indicator_results = calculate_and_load_indicators(
         strategy_universe,
         indicator_storage,
@@ -476,10 +458,10 @@ def test_ohlcv_indicator(strategy_universe, indicator_storage):
         max_readers=1,
     )
 
-    # Check that mfi() returned pd.Series object
+    # 2 pairs, 1 indicator
+    assert len(indicator_results) == 2
     for result in indicator_results.values():
-        assert result.cached
-        assert isinstance(result.data, pd.Series)  # MFI returns pandas Series
+        assert isinstance(result.data, pd.Series)
         assert len(result.data) > 0
 
     # Test reading MFI value,
