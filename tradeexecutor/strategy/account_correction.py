@@ -684,6 +684,7 @@ def check_accounts(
             "Diff": c.quantity,
             "Dusty": "Y" if dust else "N",
             "Mismatch": "Y" if c.mismatch else "N",
+            "Epsilon": c.dust_epsilon,
         })
 
         if c.mismatch:
