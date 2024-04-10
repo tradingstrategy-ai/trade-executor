@@ -452,13 +452,15 @@ class CreateIndicatorsProtocolV2(Protocol):
 
     This Protocol class defines `create_indicators()` function call signature.
     Strategy modules and backtests can provide on `create_indicators` function
-    to define what indicators a strategy needs.
-    Used with :py:class`IndicatorSet` to define the indicators
-    the strategy can use.
+    to define what indicators a strategy needs. These indicators are precalculated and cached for fast performance.
 
-    This protocol class is second (v2) iteration of the function signature.
+    - There are multiple indicator types, depending on if they are calculated on pair close price,
+      pair OHLCV data or the whole strategy universe. See :py:class:`IndicatorSource`.
 
-    These indicators are precalculated and cached for fast performance.
+    - Uses :py:class`IndicatorSet` class to construct the indicators the strategy can use.
+
+    - To read indicator values in `decide_trades()` function,
+      see :py:class:`~tradeexecutor.strategy.strategy_input.StrategyInputIndicators`.
 
     Example for creating an Exponential Moving Average (EMA) indicator based on the `close` price.
     This example is for a grid search. Unless specified, indicators are assumed to be
@@ -540,6 +542,8 @@ class CreateIndicatorsProtocolV2(Protocol):
             indicators.add("eth_btc", calculate_eth_btc, source=IndicatorSource.strategy_universe)
             indicators.add("eth_btc_rsi", calculate_eth_btc_rsi, parameters={"length": parameters.eth_btc_rsi_length}, source=IndicatorSource.strategy_universe)
             return indicators
+
+    This protocol class is second (v2) iteration of the function signature.
     """
 
     def __call__(
