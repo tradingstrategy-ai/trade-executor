@@ -444,7 +444,7 @@ def test_ohlcv_indicator(strategy_universe, indicator_storage):
     indicators.add(
         "mfi",
         pandas_ta.mfi,
-        parameters={"length": 20},
+        parameters={"length": 4},
         source=IndicatorSource.ohlcv,
     )
 
@@ -486,6 +486,8 @@ def test_ohlcv_indicator(strategy_universe, indicator_storage):
     # read on the last day of backtest data for WBTC-USDC pair
     wbtc_usdc = strategy_universe.get_pair_by_human_description((ChainId.ethereum, "test-dex", "WBTC", "USDC"))
     first_day, last_day = strategy_universe.data_universe.candles.get_timestamp_range()
+    assert last_day == pd.Timestamp('2021-12-31 00:00:00')
+
     input_indicators = StrategyInputIndicators(
         strategy_universe=strategy_universe,
         available_indicators=indicators,
@@ -493,7 +495,5 @@ def test_ohlcv_indicator(strategy_universe, indicator_storage):
         timestamp=last_day,
     )
 
-    value = input_indicators.get_indicator_value("mfi", pair=wbtc_usdc)
-    assert value == 0
-
-
+    indicator_value = input_indicators.get_indicator_value("mfi", pair=wbtc_usdc)
+    assert indicator_value == 0
