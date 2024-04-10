@@ -462,6 +462,10 @@ class CreateIndicatorsProtocolV2(Protocol):
     - To read indicator values in `decide_trades()` function,
       see :py:class:`~tradeexecutor.strategy.strategy_input.StrategyInputIndicators`.
 
+    - For most :py:mod:`pandas_ta` functions. like `pandas_ta.ma`, `pandas_ta.rsi`, `pandas_ta.mfi`, you can pass them directly to
+      `indicators.add()` - as those functions have standard argument names like `close`, `high`, `low` that
+      are data series provided.
+
     Example for creating an Exponential Moving Average (EMA) indicator based on the `close` price.
     This example is for a grid search. Unless specified, indicators are assumed to be
     :py:attr:`IndicatorSource.close_price` type and they only use trading pair close price as input.
