@@ -1099,6 +1099,7 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
         all_candles = dataset.candles
         filtered_candles = filter_for_pairs(all_candles, filtered_pairs_df)
         candle_universe = GroupedCandleUniverse(filtered_candles, time_bucket=time_bucket)
+        exchange_universe=ExchangeUniverse.from_collection(our_exchanges)
 
         universe = Universe(
             time_bucket=dataset.time_bucket,
@@ -1106,8 +1107,10 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
             pairs=pair_universe,
             exchanges=our_exchanges,
             candles=candle_universe,
-            exchange_universe=ExchangeUniverse.from_collection(our_exchanges),
+            exchange_universe=exchange_universe,
         )
+
+        pair_universe.exchange_universe = exchange_universe
 
         if dataset.backtest_stop_loss_candles is not None:
             stop_loss_candle_universe = GroupedCandleUniverse(dataset.backtest_stop_loss_candles)
