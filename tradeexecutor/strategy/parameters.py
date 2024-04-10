@@ -164,32 +164,6 @@ class StrategyParameters(MutableAttributeDict):
         )
     """
 
-    @staticmethod
-    def from_class(c: type, grid_search=False) -> "StrategyParameters":
-        """Create parameter dict out from a class object.
-
-        - Convert inlined class-style strategy parameter input to dictionary
-
-        :param grid_search:
-            Make grid-search style parameters.
-
-            Every scalar input is converted to a single item list if set.
-        """
-        # https://stackoverflow.com/a/1939279/315168
-        keys = [attr for attr in dir(c) if not callable(getattr(c, attr)) and not attr.startswith("__")]
-        params = {k: getattr(c, k) for k in keys}
-
-        if not grid_search:
-            return StrategyParameters(params)
-
-        # Convert single variable declarations to a list
-        output = {}
-        for k, v in params.items():
-            if not type(v) in (list, tuple):
-                v = [v]
-            output[k] = v
-        return StrategyParameters(output)
-
     def iterate_parameters(self) -> Iterable[Tuple[str, any]]:
         """Iterate over parameter definitions."""
         return self.items()
@@ -227,3 +201,28 @@ class StrategyParameters(MutableAttributeDict):
             all_params = ", ".join(key for key, val in self.iterate_parameters())
             raise AttributeError(f"Strategy parameters lacks parameter: {name}\nWe have: {all_params}")
 
+    @staticmethod
+    def from_class(c: type, grid_search=False) -> "StrategyParameters":
+        """Create parameter dict out from a class object.
+
+        - Convert inlined class-style strategy parameter input to dictionary
+
+        :param grid_search:
+            Make grid-search style parameters.
+
+            Every scalar input is converted to a single item list if set.
+        """
+        # https://stackoverflow.com/a/1939279/315168
+        keys = [attr for attr in dir(c) if not callable(getattr(c, attr)) and not attr.startswith("__")]
+        params = {k: getattr(c, k) for k in keys}
+
+        if not grid_search:
+            return StrategyParameters(params)
+
+        # Convert single variable declarations to a list
+        output = {}
+        for k, v in params.items():
+            if not type(v) in (list, tuple):
+                v = [v]
+            output[k] = v
+        return StrategyParameters(output)

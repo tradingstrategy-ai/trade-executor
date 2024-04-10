@@ -12,6 +12,7 @@ from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifie
 from tradeexecutor.strategy.execution_context import ExecutionContext, unit_test_execution_context
 from tradeexecutor.strategy.pandas_trader.indicator import IndicatorSet, DiskIndicatorStorage, IndicatorDefinition, IndicatorFunctionSignatureMismatch, \
     calculate_and_load_indicators, IndicatorKey, IndicatorSource
+from tradeexecutor.strategy.pandas_trader.strategy_input import StrategyInputIndicators
 from tradeexecutor.strategy.parameters import StrategyParameters
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse, create_pair_universe_from_code
 from tradeexecutor.testing.synthetic_ethereum_data import generate_random_ethereum_address
@@ -439,25 +440,20 @@ def test_ohlcv_indicator(strategy_universe, indicator_storage):
     - Use Money Flow Index (MFI) using full OHCLV data
     """
 
-    def create_indicators(timestamp: datetime.datetime, parameters: StrategyParameters, strategy_universe: TradingStrategyUniverse, execution_context: ExecutionContext):
-        indicators = IndicatorSet()
-        indicators.add(
-            "mfi",
-            pandas_ta.mfi,
-            parameters={"length": parameters.mfi_length},
-            source=IndicatorSource.ohlcv,
-        )
-        return indicators
-
-    class Parameters:
-        mfi_length = 20
+    indicators = IndicatorSet()
+    indicators.add(
+        "mfi",
+        pandas_ta.mfi,
+        parameters={"length": 20},
+        source=IndicatorSource.ohlcv,
+    )
 
     indicator_result = calculate_and_load_indicators(
         strategy_universe,
         indicator_storage,
-        create_indicators=create_indicators,
+        indicators=indicators,
         execution_context=unit_test_execution_context,
-        parameters=StrategyParameters.from_class(Parameters),
+        parameters=StrategyParameters({}),
         max_workers=1,
         max_readers=1,
     )
@@ -470,17 +466,34 @@ def test_ohlcv_indicator(strategy_universe, indicator_storage):
         assert len(result.data) > 0
 
     # Rerun, now everything should be cached and loaded
-    indicator_result = calculate_and_load_indicators(
+    indicator_results = calculate_and_load_indicators(
         strategy_universe,
         indicator_storage,
-        create_indicators=create_indicators,
+        indicators=indicators,
         execution_context=unit_test_execution_context,
-        parameters=StrategyParameters.from_class(Parameters),
+        parameters=StrategyParameters({}),
         max_workers=1,
         max_readers=1,
     )
-    for result in indicator_result.values():
+
+    # Check that mfi() returned pd.Series object
+    for result in indicator_results.values():
         assert result.cached
         assert isinstance(result.data, pd.Series)  # MFI returns pandas Series
         assert len(result.data) > 0
+
+    # Test reading MFI value,
+    # read on the last day of backtest data for WBTC-USDC pair
+    wbtc_usdc = strategy_universe.get_pair_by_human_description((ChainId.ethereum, "test-dex", "WBTC", "USDC"))
+    first_day, last_day = strategy_universe.data_universe.candles.get_timestamp_range()
+    input_indicators = StrategyInputIndicators(
+        strategy_universe=strategy_universe,
+        available_indicators=indicators,
+        indicator_results=indicator_results,
+        timestamp=last_day,
+    )
+
+    value = input_indicators.get_indicator_value("mfi", pair=wbtc_usdc)
+    assert value == 0
+
 
