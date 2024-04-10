@@ -50,9 +50,9 @@ logger = logging.getLogger(__name__)
 
 #: The default % we allow the balance to drift before we consider it a mismatch.
 #:
-#: Set to 10 BPS
+#: Set to 50 BPS
 #:
-RELATIVE_EPSILON = Decimal(10**-4)
+RELATIVE_EPSILON = 5 * Decimal(10**-4)
 
 
 class UnexpectedAccountingCorrectionIssue(Exception):
