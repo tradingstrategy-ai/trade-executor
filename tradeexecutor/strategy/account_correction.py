@@ -677,7 +677,11 @@ def check_accounts(
 
         dust = c.is_dusty()
 
-        relative_diff = (c.actual_amount - c.expected_amount) / c.expected_amount
+        if c.expected_amount:
+            relative_diff = (c.actual_amount - c.expected_amount) / c.expected_amount
+            mismatch_str = f"{relative_diff * 100:.2f}%"
+        else:
+            mismatch_str = "Y"
 
         items.append({
             "Address": c.asset.address,
@@ -686,7 +690,7 @@ def check_accounts(
             "Expected amount": c.expected_amount,
             "Diff": c.quantity,
             "Dusty": "Y" if dust else "N",
-            "Mismatch": f"{relative_diff * 100:.2f}%" if c.mismatch else "N",
+            "Mismatch": mismatch_str if c.mismatch else "N",
             "Dust epsilon": c.dust_epsilon,
             "Relative epsilon": c.relative_epsilon,
         })
