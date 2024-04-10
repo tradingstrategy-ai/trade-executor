@@ -461,7 +461,8 @@ class CreateIndicatorsProtocolV2(Protocol):
     These indicators are precalculated and cached for fast performance.
 
     Example for creating an Exponential Moving Average (EMA) indicator based on the `close` price.
-    This example is for a grid search.
+    This example is for a grid search. Unless specified, indicators are assumed to be
+    :py:attr:`IndicatorSource.close_price` type and they only use trading pair close price as input.
 
     .. code-block:: python
 
