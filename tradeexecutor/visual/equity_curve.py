@@ -415,9 +415,12 @@ def calculate_size_relative_realised_trading_returns(
         Empty series if there are no trades.
     """
     positions = [p for p in state.portfolio.closed_positions.values() if p.is_closed()]
-    return _calculate_size_relative_realised_trading_returns(positions)
+    return _calculate_size_relative_trading_returns(positions)
 
-def _calculate_size_relative_realised_trading_returns(positions: list[TradingPosition]):
+
+def _calculate_size_relative_trading_returns(positions: list[TradingPosition]):
+
+    # Legacy path
     data = [(p.closed_at, p.get_size_relative_realised_profit_percent()) for p in positions]
 
     if len(data) == 0:
@@ -464,16 +467,47 @@ def calculate_compounding_realised_trading_profitability(
     """
     started_at, last_ts = _get_strategy_time_range(state, fill_time_gaps)
     positions = [p for p in state.portfolio.closed_positions.values() if p.is_closed()]
-    return _calculate_compounding_realised_trading_profitability(positions, fill_time_gaps, started_at, last_ts)
+    return _calculate_compounding_trading_profitability(positions, fill_time_gaps, started_at, last_ts)
 
 
-def _calculate_compounding_realised_trading_profitability(
-    positions: list[TradingPosition], 
-    fill_time_gaps: bool,
-    started_at: pd.Timestamp = None,
-    last_ts: pd.Timestamp = None,
-):
-    realised_profitability = _calculate_size_relative_realised_trading_returns(positions)
+
+def calculate_compounding_unrealised_trading_profitability(
+    state: State,
+    fill_time_gaps=True,
+) -> pd.Series:
+    """Calculate the current profitability of open and closed trading positions, with the compounding effect.
+
+    Assume the profits from the previous PnL are used in the next one.
+
+    This function returns the :term:`profitability` of individually
+    closed trading positions, relative to the portfolio total equity.
+
+    - See :py:func:`calculate_realised_profitability` for more information
+
+    - See :ref:`profitability` for more information.
+
+    :param fill_time_gaps:
+        Insert a faux book keeping entries at star tand end.
+
+        There chart ends at the last profitable trade.
+        However, we want to render the chart all the way up to the current date.
+        If `True` then insert a booking keeping entry to the last strategy timestamp
+        (`State.last_updated_at),
+        working around various issues when dealing with this data at the frontend.
+
+        Any fixes are not applied to empty arrays.
+
+    :return:
+        Pandas series (DatetimeIndex, cumulative % profit).
+
+        Cumulative profit is 0% if there is no market action.
+        Cumulative profit is 1 (100%) if the equity has doubled during the period.
+
+        The last value of the series is the total trading profitability
+        of the strategy over its lifetime.
+    """
+
+    profits = [p.get_realised_profit_percent]
     # https://stackoverflow.com/a/42672553/315168
     compounded = realised_profitability.add(1).cumprod().sub(1)
 
@@ -486,7 +520,44 @@ def _calculate_compounding_realised_trading_profitability(
         # Strategy always starts at zero
         compounded[started_at] = 0
 
-        # Fill fromt he last sample to current
+        # Fill from he last sample to current
+        if last_ts and len(compounded) > 0 and last_ts > compounded.index[-1]:
+            compounded[last_ts] = last_value
+
+        # Because we insert new entries, we need to resort the array
+        compounded = compounded.sort_index()
+
+    return compounded
+
+
+    started_at, last_ts = _get_strategy_time_range(state, fill_time_gaps)
+    positions = state.portfolio.get_all_positions()  # TODO: Frozen positions may cause issues
+    return _calculate_compounding_trading_profitability(positions, fill_time_gaps, started_at, last_ts)
+
+
+def _calculate_compounding_trading_profitability(
+    positions: list[TradingPosition], 
+    fill_time_gaps: bool,
+    started_at: pd.Timestamp = None,
+    last_ts: pd.Timestamp = None,
+    realised_only=True,
+):
+
+    realised_profitability = _calculate_size_relative_trading_returns(positions)
+
+    # https://stackoverflow.com/a/42672553/315168
+    compounded = realised_profitability.add(1).cumprod().sub(1)
+
+    if fill_time_gaps and len(compounded) > 0:
+
+        assert started_at
+        assert last_ts
+        last_value = compounded.iloc[-1]
+
+        # Strategy always starts at zero
+        compounded[started_at] = 0
+
+        # Fill from he last sample to current
         if last_ts and len(compounded) > 0 and last_ts > compounded.index[-1]:
             compounded[last_ts] = last_value
 
@@ -499,13 +570,13 @@ def _calculate_compounding_realised_trading_profitability(
 def calculate_long_compounding_realised_trading_profitability(state, fill_time_gaps=True):
     started_at, last_ts = _get_strategy_time_range(state, fill_time_gaps)
     positions = [p for p in state.portfolio.closed_positions.values() if (p.is_closed() and p.is_long())]
-    return _calculate_compounding_realised_trading_profitability(positions, fill_time_gaps, started_at, last_ts)
+    return _calculate_compounding_trading_profitability(positions, fill_time_gaps, started_at, last_ts)
 
 
 def calculate_short_compounding_realised_trading_profitability(state, fill_time_gaps=True):
     started_at, last_ts = _get_strategy_time_range(state, fill_time_gaps)
     positions = [p for p in state.portfolio.closed_positions.values() if (p.is_closed() and p.is_short())]
-    return _calculate_compounding_realised_trading_profitability(positions, fill_time_gaps, started_at, last_ts)
+    return _calculate_compounding_trading_profitability(positions, fill_time_gaps, started_at, last_ts)
   
 
 def _get_strategy_time_range(state, fill_time_gaps):

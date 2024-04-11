@@ -2,6 +2,8 @@
 
 - Render Plotly figures as static PNG images
 
+- Used on a frontend for the performance charts, in Discord posts
+
 """
 from io import BytesIO
 
@@ -11,10 +13,10 @@ from pathlib import Path
 
 
 def render_plotly_figure_as_image_file(
-        figure: go.Figure,
-        format: str = "png",
-        width: int = 512,
-        height: int = 512,
+    figure: go.Figure,
+    format: str = "png",
+    width: int = 512,
+    height: int = 512,
 ) -> bytes:
     """"Render Plotly figure as a static PNG image.
 
