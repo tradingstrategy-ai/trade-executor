@@ -1094,7 +1094,8 @@ class PositionManager:
             live = position.get_quantity()  # What was the position quantity before executing any of planned trades
             logger.warning(
                 "Tried to close position that is likely already closed, as there are no tokens to sell: %s.\n"
-                "Quantity left zero. Planned tokens %f, live tokens %f, we have existing planned trades %s",
+                "Quantity left zero. Planned tokens: %f, live tokens: %f\n"
+                "We have existing planned trades: %s",
                 position,
                 planned,
                 live,
