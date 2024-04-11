@@ -5,7 +5,7 @@
 import datetime
 from typing import Tuple, Iterable, TypedDict
 
-from web3.datastructures import ReadableAttributeDict, AttributeDict, MutableAttributeDict
+from web3.datastructures import MutableAttributeDict
 
 from tradeexecutor.state.types import USDollarAmount
 from tradeexecutor.strategy.cycle import CycleDuration
@@ -164,6 +164,15 @@ class StrategyParameters(MutableAttributeDict):
         )
     """
 
+    def __getattribute__(self, name):
+        # Only implemented to make type hinting to stop complaining
+        # https://stackoverflow.com/questions/78210800/type-hinting-python-class-with-dynamic-any-attribute/78210867#78210867
+        try:
+            return object.__getattribute__(self, name)
+        except AttributeError:
+            all_params = ", ".join(key for key, val in self.iterate_parameters())
+            raise AttributeError(f"Strategy parameters lacks parameter: {name}\nWe have: {all_params}")
+
     def iterate_parameters(self) -> Iterable[Tuple[str, any]]:
         """Iterate over parameter definitions."""
         return self.items()
@@ -192,15 +201,6 @@ class StrategyParameters(MutableAttributeDict):
         if "cycle_duration" not in self:
             raise StrategyParametersMissing("cycle_duration parameter missing")
 
-    def __getattribute__(self, name):
-        # Only implemented to make type hinting to stop complaining
-        # https://stackoverflow.com/questions/78210800/type-hinting-python-class-with-dynamic-any-attribute/78210867#78210867
-        try:
-            return object.__getattribute__(self, name)
-        except AttributeError:
-            all_params = ", ".join(key for key, val in self.iterate_parameters())
-            raise AttributeError(f"Strategy parameters lacks parameter: {name}\nWe have: {all_params}")
-
     @staticmethod
     def from_class(c: type, grid_search=False) -> "StrategyParameters":
         """Create parameter dict out from a class object.
@@ -225,4 +225,5 @@ class StrategyParameters(MutableAttributeDict):
             if not type(v) in (list, tuple):
                 v = [v]
             output[k] = v
+
         return StrategyParameters(output)
