@@ -1087,9 +1087,19 @@ class PositionManager:
         quantity_left = position.get_available_trading_quantity()
 
         if quantity_left == 0:
-            # We have already generated closing trades for this position
-            # earlier
-            logger.warning("Tried to close position that is likely already closed, as there are no tokens to sell: %s", position)
+            # We have already generated closing trades for this position earlier?
+            # Add some debug information because these are hard to diagnose
+            planned_trades = [t.get_position_quantity() for t in position.trades.values() if t.is_planned()]
+            planned = sum(planned_trades)  # Sell values sum to negative
+            live = position.get_quantity()  # What was the position quantity before executing any of planned trades
+            logger.warning(
+                "Tried to close position that is likely already closed, as there are no tokens to sell: %s.\n"
+                "Quantity left zero. Planned tokens %f, live tokens %f, we have existing planned trades %s",
+                position,
+                planned,
+                live,
+                planned_trades,
+            )
             return []
 
         if position.is_spot_market():
