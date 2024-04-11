@@ -1060,7 +1060,7 @@ def run_grid_search_backtest(
         # Report to the notebook which of the grid search combinations is a problematic one
         raise RuntimeError(f"Running a grid search combination failed:\n{combination}\nThe original exception was: {e}") from e
 
-    analysis = build_trade_analysis(state.portfolio)
+    # Portfolio performance
     equity = calculate_equity_curve(state)
     returns = calculate_returns(equity)
     metrics = calculate_advanced_metrics(
@@ -1068,10 +1068,14 @@ def run_grid_search_backtest(
         mode=AdvancedMetricsMode.full,
         periods_per_year=cycle_duration.get_yearly_periods(),
         convert_to_daily=True,
+        display=False,
     )
+
+    # Trade stats
+    analysis = build_trade_analysis(state.portfolio)
     summary = analysis.calculate_summary_statistics()
 
-    return GridSearchResult(
+    res = GridSearchResult(
         combination=combination,
         state=state,
         summary=summary,
@@ -1081,6 +1085,13 @@ def run_grid_search_backtest(
         returns=returns,
         initial_cash=state.portfolio.get_initial_cash(),
     )
+
+    # Double check we have not broken QuantStats again
+    # and somehow outputting string values
+    assert type(res.get_cagr()) in (float, int), f"We got {type(res.get_cagr())} for {res.get_cagr()}"
+    assert type(res.get_sharpe()) in (float, int)
+
+    return res
 
 
 def pick_grid_search_result(results: List[GridSearchResult], **kwargs) -> Optional[GridSearchResult]:
