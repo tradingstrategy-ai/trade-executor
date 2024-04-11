@@ -1452,6 +1452,31 @@ class TradingPosition(GenericPosition):
 
         # return (sell_value + self.get_claimed_interest() - self.get_repaid_interest()) / (buy_value) - 1
 
+    def get_unrealised_profit_pct(self) -> Percent:
+        """Get the current profit of this position, minus any netflow.
+
+        - Calculate based on avg buy and sell
+
+        - For the unrealised portion, calculate the expected close
+
+        See also
+
+        - :py:meth:`get_realised_profit_percent`
+
+        :return:
+            Estimated position profit in percet, based on avg trade prices
+        """
+        if self.is_long():
+            total_bought = self.get_total_bought_usd()
+            if total_bought == 0:
+                return 0
+            return self.get_realised_profit_usd()/total_bought
+        else:
+            total_sold = self.get_total_sold_usd()
+            if total_sold == 0:
+                return 0
+            return self.get_realised_profit_usd()/total_sold
+
     def get_size_relative_realised_profit_percent(self) -> Percent:
         """Calculated life-time profit over this position.
 
@@ -1463,6 +1488,16 @@ class TradingPosition(GenericPosition):
         independent of funding deposits and redemptions.
 
         See :ref:`profitability` for more details.
+
+        :return:
+            If the position made 1% profit returns 1.01.
+        """
+        return self.get_realised_profit_percent() * self.get_capital_tied_at_open_pct()
+
+    def get_size_relative_profit_percent(self) -> Percent:
+        """Calculated life-time profit over this position.
+
+        Both realised and unrealised profit.
 
         :return:
             If the position made 1% profit returns 1.01.
