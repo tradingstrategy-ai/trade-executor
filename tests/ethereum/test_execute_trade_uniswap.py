@@ -533,3 +533,77 @@ def test_two_parallel_positions(
     assert balances[asset_aave.address] == 0
     assert balances[asset_weth.address] == 0
 
+
+def test_rebalance_implicit_flipping(
+    web3: Web3,
+    state: State,
+    uniswap_v2: UniswapV2Deployment,
+    hot_wallet: HotWallet,
+    weth_usdc_pair: TradingPairIdentifier,
+    aave_usdc_pair: TradingPairIdentifier,
+    asset_aave,
+    asset_weth,
+    asset_usdc,
+    pair_universe,
+    start_ts: datetime.datetime,
+    tx_builder,
+):
+    """Execute trades on 2 positions in parallel:
+    
+    1. Buy 4500 USDC worth of WETH at 1700 USD
+    2. Buy 4500 USDC worth of AAVE at 200 USD
+    3. Sell all WETH (worth 4500 USDC)
+    4. Buy 4500 USDC worth of AAVE
+    """
+
+    portfolio = state.portfolio
+
+    # We have everything in cash and initial assumptions on the price
+    assert portfolio.get_total_equity() == 10_000
+    assert portfolio.get_cash() == 10_000
+    assert get_current_price(web3, uniswap_v2, weth_usdc_pair) == pytest.approx(1693.211867)
+    assert get_current_price(web3, uniswap_v2, aave_usdc_pair) == pytest.approx(199.201396)
+    assert hot_wallet.current_nonce == 0
+
+    #
+    # 1. Buy 4500 USDC worth of WETH at 1700 USD
+    # 2. Buy 4500 USDC worth of AAVE at 200 USD
+    #
+
+    trader = UniswapV2TestTrader(uniswap_v2, state, pair_universe, tx_builder)
+    position1, trade1 = trader.buy(weth_usdc_pair, Decimal(4500), execute=False)
+    position2, trade2 = trader.buy(aave_usdc_pair, Decimal(4500), execute=False)
+
+    assert position1.position_id == 1
+    assert position2.position_id == 2
+
+    assert len(portfolio.open_positions) == 2
+
+    # Execute both trades
+    trader.execute_trades_simple(trader.create_routing_model(), [trade1, trade2])
+    assert hot_wallet.current_nonce == 3
+
+    assert position1.get_quantity_old() == pytest.approx(Decimal(2.632171037438914461))
+    assert position2.get_quantity_old() == pytest.approx(Decimal(21.940323684081220533))
+    assert position1.get_value() == pytest.approx(4500)
+    assert position2.get_value() == pytest.approx(4500)
+    assert portfolio.get_total_equity() == pytest.approx(9999.999998002779)
+    assert portfolio.get_cash() == pytest.approx(1000)
+
+    balances = get_held_assets(web3, hot_wallet.address, [asset_usdc, asset_aave, asset_weth])
+    assert balances[asset_usdc.address] == pytest.approx(Decimal(1000))
+    assert balances[asset_weth.address] == pytest.approx(Decimal(2.632171037438914461))
+    assert balances[asset_aave.address] == pytest.approx(Decimal(21.940323684081220533))
+
+    #
+    # 3. Sell all WETH (worth 4500 USDC)
+    # 4. Use 4500 USDC worth to buy AAVE
+    #
+
+    position3, trade3 = trader.sell(weth_usdc_pair, position1.get_quantity_old(), execute=False)
+    position4, trade4 = trader.buy(aave_usdc_pair, 4500, execute=False)
+
+    trader.execute_trades_simple(trader.create_routing_model(), [trade3, trade4])
+
+    assert trade3.blockchain_transactions[0].nonce == 3
+    assert trade4.blockchain_transactions[0].nonce == 5
