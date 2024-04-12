@@ -112,6 +112,7 @@ class EthereumRoutingModel(RoutingModel):
         adjusted_reserve_amount = routing_state.adjust_spend(
             reserve_asset,
             reserve_amount,
+            check_balances=check_balances,
         )
 
         logger.info(
@@ -178,6 +179,7 @@ class EthereumRoutingModel(RoutingModel):
         adjusted_reserve_amount = routing_state.adjust_spend(
             reserve_asset,
             reserve_amount,
+            check_balances=check_balances,
         )
 
         trade_txs = routing_state.trade_on_router_three_way(
