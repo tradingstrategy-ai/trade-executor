@@ -534,7 +534,7 @@ def test_two_parallel_positions(
     assert balances[asset_weth.address] == 0
 
 
-def test_rebalance_implicit_flipping(
+def test_execute_alpha_model_rebalance_trades(
     web3: Web3,
     state: State,
     uniswap_v2: UniswapV2Deployment,
@@ -548,7 +548,7 @@ def test_rebalance_implicit_flipping(
     start_ts: datetime.datetime,
     tx_builder,
 ):
-    """Execute trades on 2 positions in parallel:
+    """Execute rebalance trades on 2 positions in parallel:
     
     1. Buy 4500 USDC worth of WETH at 1700 USD
     2. Buy 4500 USDC worth of AAVE at 200 USD
@@ -607,3 +607,13 @@ def test_rebalance_implicit_flipping(
 
     assert trade3.blockchain_transactions[0].nonce == 3
     assert trade4.blockchain_transactions[0].nonce == 5
+
+    assert position3.is_closed()
+    assert position4.is_open()
+    assert portfolio.get_total_equity() == pytest.approx(9779.609513697993)
+    assert portfolio.get_cash() == pytest.approx(973.11125)
+
+    balances = get_held_assets(web3, hot_wallet.address, [asset_usdc, asset_aave, asset_weth])
+    assert balances[asset_usdc.address] == pytest.approx(Decimal(973.11125))
+    assert balances[asset_weth.address] == 0
+    assert balances[asset_aave.address] == pytest.approx(Decimal(42.937205))
