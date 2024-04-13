@@ -17,6 +17,7 @@ Failure trades may be
 - Sell e.g. closing trade failed: position stays open, the assets are marked to be available
   for the future sell
 
+
 """
 import datetime
 import logging
@@ -356,3 +357,73 @@ def repair_trades(
         trades_to_be_repaired,
         new_trades,
     )
+
+
+
+def repair_tx_not_generated(state: State, interactive=True):
+    """Repair command to fix trades that did not generate tranasctions.
+
+    - Reasons include
+
+    - Currently only manually callable from console
+
+    - Simple deletes trades that have an empty transaction list
+
+    TODO:
+
+        Change this to create repair countertrades and fix positions that way.
+
+    Example exception:
+
+    .. code-block:: text
+
+          File "/usr/src/trade-executor/tradeexecutor/ethereum/routing_model.py", line 395, in trade
+            return self.make_direct_trade(
+          File "/usr/src/trade-executor/tradeexecutor/ethereum/uniswap_v3/uniswap_v3_routing.py", line 257, in make_direct_trade
+            return super().make_direct_trade(
+          File "/usr/src/trade-executor/tradeexecutor/ethereum/routing_model.py", line 112, in make_direct_trade
+            adjusted_reserve_amount = routing_state.adjust_spend(
+          File "/usr/src/trade-executor/tradeexecutor/ethereum/routing_state.py", line 283, in adjust_spend
+            raise OutOfBalance(
+        tradeexecutor.ethereum.routing_state.OutOfBalance: Not enough tokens for <USDC at 0x2791bca1f2de4661ed88a30c99a7a9449aa84174> to perform the trade. Required: 3032399763, on-chain balance for 0x375A8Cd0A654E0eCa46F81c1E5eA5200CC6A737C is 87731979.
+
+    :return:
+        Repair trades generated.
+
+        Empty list of interactive operation was cancelled.
+
+        If empty list is returned the state must **not** be saved, as the state is already mutated.
+    """
+
+    tx_missing_trades = set()
+
+    for t in state.portfolio.get_all_trades():
+        if not t.blockchain_transactions:
+            tx_missing_trades.add(t)
+
+    if not tx_missing_trades:
+        return []
+
+    if interactive:
+
+        print("Trade missing TX report")
+        print("-" * 80)
+
+        print("Trade to repair:")
+        for t in tx_missing_trades:
+            print(t)
+        confirm = input("Confirm delete [y/n]? ")
+        if confirm.lower() != "y":
+            return tx_missing_trades
+
+    repair_trades_generated = [repair_trade(t) for t in tx_missing_trades]
+    if interactive:
+        print("Counter-trades:")
+        for t in repair_trades_generated:
+            position = state.portfolio.get_position_by_id(t.position_id)
+            print("Position ", position)
+            print("Repair trade ", t.repaired_at)
+
+    return repair_trades_generated
+
+
