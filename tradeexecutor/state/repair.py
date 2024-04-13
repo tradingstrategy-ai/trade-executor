@@ -384,7 +384,6 @@ def repair_trades(
     )
 
 
-
 def repair_tx_not_generated(state: State, interactive=True):
     """Repair command to fix trades that did not generate tranasctions.
 
@@ -429,6 +428,8 @@ def repair_tx_not_generated(state: State, interactive=True):
             tx_missing_trades.add(t)
 
     if not tx_missing_trades:
+        if interactive:
+            print("No trades with missing blockchain transactions detected")
         return []
 
     if interactive:
@@ -442,7 +443,7 @@ def repair_tx_not_generated(state: State, interactive=True):
 
         confirm = input("Confirm delete [y/n]? ")
         if confirm.lower() != "y":
-            return []
+            raise RepairAborted()
 
     repair_trades_generated = [repair_tx_missing(portfolio, t) for t in tx_missing_trades]
     if interactive:
@@ -454,7 +455,7 @@ def repair_tx_not_generated(state: State, interactive=True):
 
         confirm = input("Looks fixed [y/n]? ")
         if confirm.lower() != "y":
-            return []
+            raise RepairAborted()
 
     return repair_trades_generated
 
