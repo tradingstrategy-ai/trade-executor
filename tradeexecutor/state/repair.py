@@ -411,12 +411,14 @@ def repair_tx_not_generated(state: State, interactive=True):
             raise OutOfBalance(
         tradeexecutor.ethereum.routing_state.OutOfBalance: Not enough tokens for <USDC at 0x2791bca1f2de4661ed88a30c99a7a9449aa84174> to perform the trade. Required: 3032399763, on-chain balance for 0x375A8Cd0A654E0eCa46F81c1E5eA5200CC6A737C is 87731979.
 
+    :param interactive:
+        Use console interactive prompts to ask the user to confirm the repair
+
     :return:
         Repair trades generated.
 
-        Empty list of interactive operation was cancelled.
-
-        If empty list is returned the state must **not** be saved, as the state is already mutated.
+    :raise RepairAborted:
+        Interactive operation was aborted by the user
     """
 
     tx_missing_trades = set()
