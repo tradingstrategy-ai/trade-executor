@@ -9,7 +9,7 @@ import pytest
 
 from tradeexecutor.cli.log import setup_pytest_logging
 from tradeexecutor.monkeypatch.dataclasses_json import patch_dataclasses_json
-from tradeexecutor.state.repair import repair_trades
+from tradeexecutor.state.repair import repair_trades, repair_tx_not_generated
 from tradeexecutor.state.state import State
 from tradeexecutor.state.trade import TradeStatus, TradeType
 from tradeexecutor.statistics.core import calculate_statistics
@@ -35,7 +35,6 @@ def state() -> State:
 
 def test_repair_trade_missing_tx(
     state: State,
-    persistent_test_client: Client,
 ):
     """Repair trades.
 
@@ -47,15 +46,27 @@ def test_repair_trade_missing_tx(
     # Check how our positions look like
     # before repair
     portfolio = state.portfolio
-    pos1 = portfolio.get_position_by_id(4)
-    import ipdb ; ipdb.set_trace()
-    pos2 = portfolio.get_position_by_id(26)
-    pos3 = portfolio.get_position_by_id(36)
+    pos = portfolio.get_position_by_id(4)
+    # {6: <Buy #6 0.8714827051238582225784361754 WETH at 3504.1829635670897, success phase>, 8: <Sell #8 0.871478149181352629 WETH at 3478.199651761113, planned phase>, 11: <Buy #11 0.1727611356789154584852805521 WETH at 3232.903676743047, planned phase>, 13: <Buy #13 0.1784399145897731857878380438 WETH at 3253.869387693136, planned phase>}
+    assert pos.trades[8].get_status() == TradeStatus.planned
+    assert pos.trades[8].blockchain_transactions == []
+    assert pos.trades[8].is_missing_blockchain_transactions()
+    assert len(pos.trades) == 4
 
+    assert pos.get_value() == pytest.approx(2831.946809553303)
+    assert portfolio.get_total_equity() == pytest.approx(4062.6783229397383)
 
+    repair_trades = repair_tx_not_generated(state, interactive=False)
+    assert len(repair_trades) == 7  # 7 repairs across two positions
 
-    # We can serialise the repaired state
-    dump = state.to_json()
-    state2 = State.from_json(dump)
-    state2.perform_integrity_check()
+    # We went from planned -> repaird
+    pos = portfolio.get_position_by_id(4)
+    assert pos.trades[8].get_status() == TradeStatus.repaired
+    assert pos.trades[8].blockchain_transactions == []
+    assert pos.trades[8].is_repaired()
+    assert not pos.trades[8].is_missing_blockchain_transactions()
 
+    assert len(pos.trades) == 7  # 4 original + 3 repairs added
+
+    assert pos.get_value() == pytest.approx(2831.946809553303)
+    assert portfolio.get_total_equity() == pytest.approx(4062.6783229397383)

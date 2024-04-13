@@ -770,9 +770,12 @@ class TradeExecution:
 
         - Because of some crash reason
 
+        - After the trade has been marked repaired, we return `False`.
+
         See also :py:meth:`is_failed`.
         """
-        return not self.is_failed() and len(self.blockchain_transactions) == 0
+
+        return not (self.is_failed() or self.is_repaired()) and len(self.blockchain_transactions) == 0
 
     def is_pending(self) -> bool:
         """This trade was succcessfully completed."""

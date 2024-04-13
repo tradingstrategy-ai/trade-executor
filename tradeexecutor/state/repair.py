@@ -132,6 +132,31 @@ def repair_trade(portfolio: Portfolio, t: TradeExecution) -> TradeExecution:
     return c
 
 
+def repair_tx_missing(portfolio: Portfolio, t: TradeExecution) -> TradeExecution:
+    """Repair a trade which failed to generate new transactions..
+
+    - Make a counter trade for bookkeeping
+
+    - Set the original trade to repaired state (instead of planned state)
+    """
+    p = portfolio.get_position_by_id(t.position_id)
+
+    c = make_counter_trade(portfolio, p, t)
+    now = datetime.datetime.utcnow()
+    t.repaired_at = t.executed_at = datetime.datetime.utcnow()
+    t.executed_quantity = 0
+    t.executed_reserve = 0
+    assert c.trade_id
+    c.repaired_trade_id = t.trade_id
+    t.add_note(f"Repaired at {now.strftime('%Y-%m-%d %H:%M')}, by #{c.trade_id}")
+    c.add_note(f"Repairing trade #{c.repaired_trade_id}")
+    assert t.get_status() == TradeStatus.repaired
+    assert t.get_value() == 0
+    assert t.get_position_quantity() == 0
+    assert t.planned_quantity != 0
+    return c
+
+
 def close_position_with_empty_trade(portfolio: Portfolio, p: TradingPosition) -> TradeExecution:
     """Make a trade that closes the position.
 
@@ -396,9 +421,11 @@ def repair_tx_not_generated(state: State, interactive=True):
     """
 
     tx_missing_trades = set()
+    portfolio = state.portfolio
 
-    for t in state.portfolio.get_all_trades():
+    for t in portfolio.get_all_trades():
         if not t.blockchain_transactions:
+            assert t.get_status() == TradeStatus.planned, f"Trade missing tx, but status is not planned {t}"
             tx_missing_trades.add(t)
 
     if not tx_missing_trades:
@@ -412,17 +439,22 @@ def repair_tx_not_generated(state: State, interactive=True):
         print("Trade to repair:")
         for t in tx_missing_trades:
             print(t)
+
         confirm = input("Confirm delete [y/n]? ")
         if confirm.lower() != "y":
-            return tx_missing_trades
+            return []
 
-    repair_trades_generated = [repair_trade(t) for t in tx_missing_trades]
+    repair_trades_generated = [repair_tx_missing(portfolio, t) for t in tx_missing_trades]
     if interactive:
         print("Counter-trades:")
         for t in repair_trades_generated:
-            position = state.portfolio.get_position_by_id(t.position_id)
+            position = portfolio.get_position_by_id(t.position_id)
             print("Position ", position)
             print("Repair trade ", t.repaired_at)
+
+        confirm = input("Looks fixed [y/n]? ")
+        if confirm.lower() != "y":
+            return []
 
     return repair_trades_generated
 
