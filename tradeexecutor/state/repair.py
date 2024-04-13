@@ -17,6 +17,7 @@ Failure trades may be
 - Sell e.g. closing trade failed: position stays open, the assets are marked to be available
   for the future sell
 
+
 """
 import datetime
 import logging
@@ -128,6 +129,31 @@ def repair_trade(portfolio: Portfolio, t: TradeExecution) -> TradeExecution:
         )
         t.planned_reserve = 0
 
+    return c
+
+
+def repair_tx_missing(portfolio: Portfolio, t: TradeExecution) -> TradeExecution:
+    """Repair a trade which failed to generate new transactions..
+
+    - Make a counter trade for bookkeeping
+
+    - Set the original trade to repaired state (instead of planned state)
+    """
+    p = portfolio.get_position_by_id(t.position_id)
+
+    c = make_counter_trade(portfolio, p, t)
+    now = datetime.datetime.utcnow()
+    t.repaired_at = t.executed_at = datetime.datetime.utcnow()
+    t.executed_quantity = 0
+    t.executed_reserve = 0
+    assert c.trade_id
+    c.repaired_trade_id = t.trade_id
+    t.add_note(f"Repaired at {now.strftime('%Y-%m-%d %H:%M')}, by #{c.trade_id}")
+    c.add_note(f"Repairing trade #{c.repaired_trade_id}")
+    assert t.get_status() == TradeStatus.repaired
+    assert t.get_value() == 0
+    assert t.get_position_quantity() == 0
+    assert t.planned_quantity != 0
     return c
 
 
@@ -356,3 +382,81 @@ def repair_trades(
         trades_to_be_repaired,
         new_trades,
     )
+
+
+def repair_tx_not_generated(state: State, interactive=True):
+    """Repair command to fix trades that did not generate tranasctions.
+
+    - Reasons include
+
+    - Currently only manually callable from console
+
+    - Simple deletes trades that have an empty transaction list
+
+    TODO:
+
+        Change this to create repair countertrades and fix positions that way.
+
+    Example exception:
+
+    .. code-block:: text
+
+          File "/usr/src/trade-executor/tradeexecutor/ethereum/routing_model.py", line 395, in trade
+            return self.make_direct_trade(
+          File "/usr/src/trade-executor/tradeexecutor/ethereum/uniswap_v3/uniswap_v3_routing.py", line 257, in make_direct_trade
+            return super().make_direct_trade(
+          File "/usr/src/trade-executor/tradeexecutor/ethereum/routing_model.py", line 112, in make_direct_trade
+            adjusted_reserve_amount = routing_state.adjust_spend(
+          File "/usr/src/trade-executor/tradeexecutor/ethereum/routing_state.py", line 283, in adjust_spend
+            raise OutOfBalance(
+        tradeexecutor.ethereum.routing_state.OutOfBalance: Not enough tokens for <USDC at 0x2791bca1f2de4661ed88a30c99a7a9449aa84174> to perform the trade. Required: 3032399763, on-chain balance for 0x375A8Cd0A654E0eCa46F81c1E5eA5200CC6A737C is 87731979.
+
+    :return:
+        Repair trades generated.
+
+        Empty list of interactive operation was cancelled.
+
+        If empty list is returned the state must **not** be saved, as the state is already mutated.
+    """
+
+    tx_missing_trades = set()
+    portfolio = state.portfolio
+
+    for t in portfolio.get_all_trades():
+        if not t.blockchain_transactions:
+            assert t.get_status() == TradeStatus.planned, f"Trade missing tx, but status is not planned {t}"
+            tx_missing_trades.add(t)
+
+    if not tx_missing_trades:
+        if interactive:
+            print("No trades with missing blockchain transactions detected")
+        return []
+
+    if interactive:
+
+        print("Trade missing TX report")
+        print("-" * 80)
+
+        print("Trade to repair:")
+        for t in tx_missing_trades:
+            print(t)
+
+        confirm = input("Confirm delete [y/n]? ")
+        if confirm.lower() != "y":
+            raise RepairAborted()
+
+    repair_trades_generated = [repair_tx_missing(portfolio, t) for t in tx_missing_trades]
+    if interactive:
+        print("Counter-trades:")
+        for t in repair_trades_generated:
+            position = portfolio.get_position_by_id(t.position_id)
+            print("Position ", position)
+            print("Repair trade ", t.repaired_at)
+
+        confirm = input("Looks fixed [y/n]? ")
+        if confirm.lower() != "y":
+            raise RepairAborted()
+
+    return repair_trades_generated
+
+
