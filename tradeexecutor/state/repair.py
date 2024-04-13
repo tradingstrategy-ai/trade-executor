@@ -393,10 +393,6 @@ def repair_tx_not_generated(state: State, interactive=True):
 
     - Simple deletes trades that have an empty transaction list
 
-    TODO:
-
-        Change this to create repair countertrades and fix positions that way.
-
     Example exception:
 
     .. code-block:: text
