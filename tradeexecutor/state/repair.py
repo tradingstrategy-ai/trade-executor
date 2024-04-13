@@ -443,7 +443,7 @@ def repair_tx_not_generated(state: State, interactive=True):
         for t in tx_missing_trades:
             print(t)
 
-        confirm = input("Confirm delete [y/n]? ")
+        confirm = input("Confirm repair with counter trades [y/n]? ")
         if confirm.lower() != "y":
             raise RepairAborted()
 
