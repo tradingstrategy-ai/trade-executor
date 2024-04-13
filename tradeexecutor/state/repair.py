@@ -453,7 +453,9 @@ def repair_tx_not_generated(state: State, interactive=True):
         for t in repair_trades_generated:
             position = portfolio.get_position_by_id(t.position_id)
             print("Position ", position)
+            print("Trade that was repaired ", portfolio.get_trade_by_id(t.repaired_trade_id))
             print("Repair trade ", t)
+            print("-")
 
         confirm = input("Looks fixed [y/n]? ")
         if confirm.lower() != "y":
