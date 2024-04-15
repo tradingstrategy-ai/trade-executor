@@ -1458,9 +1458,14 @@ class TradingPosition(GenericPosition):
     def get_unrealised_and_realised_profit_percent(self) -> Percent:
         """Calculated unrealised PnL for this position.
 
+        This is an estimation of the profit % assuming the position would be completely closed
+        with the current price.
+
         See also
 
         - :py:meth:`get_realised_profit_percent`
+
+        - :py:meth:`get_total_profit_percent` (don't use, legacy)
 
         :return:
             The profitability of this position currently.
