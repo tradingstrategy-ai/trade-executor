@@ -1222,10 +1222,13 @@ class TradingPosition(GenericPosition):
         total_profit = realised_profit + unrealised_profit
         return total_profit
 
-    def get_total_profit_percent(self) -> float:
+    def get_total_profit_percent(self) -> Percent:
         """How much % we have made profit so far.
 
-        :return: 0 if profit calculation cannot be made yet
+        TODO: Legacy method. Use :py:meth:`get_unrealised_and_realised_profit_percent` instead.
+
+        :return:
+            0 if profit calculation cannot be made yet
         """
         if self.is_long():
             profit = self.get_total_profit_usd()
@@ -1451,6 +1454,31 @@ class TradingPosition(GenericPosition):
         #     return 0
 
         # return (sell_value + self.get_claimed_interest() - self.get_repaid_interest()) / (buy_value) - 1
+
+    def get_unrealised_and_realised_profit_percent(self) -> Percent:
+        """Calculated unrealised PnL for this position.
+
+        See also
+
+        - :py:meth:`get_realised_profit_percent`
+
+        :return:
+            The profitability of this position currently.
+
+        """
+        if self.is_long():
+            total_bought = self.get_total_bought_usd()
+            if total_bought == 0:
+                return 0
+            return (self.get_realised_profit_usd() + self.get_unrealised_profit_usd()) / total_bought
+        elif self.is_short():
+            total_sold = self.get_total_sold_usd()
+
+            if total_sold == 0:
+                return 0
+            return (self.get_realised_profit_usd() + self.get_unrealised_profit_usd()) / total_sold
+        else:
+            raise NotImplementedError(f"get_unrealised_profit_percent() supports only long and short positions")
 
     def get_size_relative_realised_profit_percent(self) -> Percent:
         """Calculated life-time profit over this position.

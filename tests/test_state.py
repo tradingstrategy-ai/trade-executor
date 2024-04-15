@@ -675,6 +675,16 @@ def test_realised_partial_profit_calculation(usdc, weth_usdc, start_ts: datetime
 
     # TODO: Should we express this differently?
     assert position.get_realised_profit_usd() == pytest.approx(62.5)
+    assert position.get_realised_profit_percent() == pytest.approx(0.023584905660377336)
+    assert position.get_unrealised_profit_usd() == pytest.approx(-50)
+    assert position.get_unrealised_and_realised_profit_percent() == pytest.approx(0.004716981132075429)
+
+    # Realise the remaining 50% of position profit
+    position, trade = trader.sell(weth_usdc, Decimal("0.75"), 1850.0)
+    assert position.get_realised_profit_usd() == pytest.approx(124.99999999999989)
+    assert position.get_realised_profit_percent() == pytest.approx(0.04716981132075467)
+    assert position.get_unrealised_profit_usd() == pytest.approx(0)
+    assert position.get_unrealised_and_realised_profit_percent() == pytest.approx(0.04716981132075467)
 
 
 def test_unrealised_profit_calculation(usdc, weth_usdc, start_ts: datetime.datetime):
@@ -714,6 +724,7 @@ def test_unrealised_profit_calculation(usdc, weth_usdc, start_ts: datetime.datet
     assert position.get_realised_profit_usd() is None
     assert position.get_unrealised_profit_usd() == pytest.approx(-400)
     assert position.get_total_profit_percent() == pytest.approx(-0.15094339622641514)
+    assert position.get_unrealised_and_realised_profit_percent() == pytest.approx(-0.15094339622641514)
 
     # Revalue ETH to 2000 USD, we are on green
     revalue_state(state, start_ts, EthValuator(2000))
