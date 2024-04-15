@@ -642,11 +642,7 @@ class Portfolio:
 
     def find_position_for_trade(self, trade) -> Optional[TradingPosition]:
         """Find a position that a trade belongs for."""
-        if trade.position_id in self.open_positions:
-            return self.open_positions[trade.position_id]
-        else:
-            return self.closed_positions[trade.position_id]
-
+        return self.get_position_by_id(trade.position_id)
 
     def get_reserve_position(self, asset: AssetIdentifier) -> ReservePosition:
         """Get reserves for a certain reserve asset.
