@@ -234,7 +234,10 @@ def find_trades_to_be_repaired(state: State) -> List[TradeExecution]:
         for t in p.trades.values():
             if t.is_repair_needed():
                 logger.info("Found a trade needing repair: %s", t)
-                trades_to_be_repaired.append(t)
+                if t.is_short():
+                    logger.error("Failed short trade can't be repaired using this command yet")
+                else:  
+                    trades_to_be_repaired.append(t)
 
     return trades_to_be_repaired
 
