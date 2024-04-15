@@ -625,18 +625,20 @@ class State:
         assert trade.get_status() == TradeStatus.started
         trade.broadcasted_at = broadcasted_at
 
-    def mark_trade_success(self,
-                           executed_at: datetime.datetime,
-                           trade: TradeExecution,
-                           executed_price: USDollarPrice,
-                           executed_amount: Decimal,
-                           executed_reserve: Decimal,
-                           lp_fees: USDollarAmount,
-                           native_token_price: USDollarPrice,
-                           cost_of_gas: float | None = None ,
-                           executed_collateral_consumption: Optional[Decimal] = None,
-                           executed_collateral_allocation: Optional[Decimal] = None,
-                        ):
+    def mark_trade_success(
+        self,
+        executed_at: datetime.datetime,
+        trade: TradeExecution,
+        executed_price: USDollarPrice,
+        executed_amount: Decimal,
+        executed_reserve: Decimal,
+        lp_fees: USDollarAmount,
+        native_token_price: USDollarPrice,
+        cost_of_gas: float | None = None ,
+        executed_collateral_consumption: Optional[Decimal] = None,
+        executed_collateral_allocation: Optional[Decimal] = None,
+        force: bool = False,
+    ):
         """After trade has been successfully executed, update the state of our internal ledged to reflect this.
 
         - Trade is marked as successfully complete
@@ -667,6 +669,7 @@ class State:
             cost_of_gas=cost_of_gas,
             executed_collateral_consumption=executed_collateral_consumption,
             executed_collateral_allocation=executed_collateral_allocation,
+            force=force,
         )
 
         # The loan status of the position is reflected back to be
