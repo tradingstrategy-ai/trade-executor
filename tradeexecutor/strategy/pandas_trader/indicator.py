@@ -145,7 +145,10 @@ class IndicatorDefinition:
 
     def __hash__(self):
         # https://stackoverflow.com/a/5884123/315168
-        return hash((self.name, frozenset(self.parameters.items()), self.source))
+        try:
+            return hash((self.name, frozenset(self.parameters.items()), self.source))
+        except Exception as e:
+            raise (f"Could not hash {self}. If changing grid search to backtest, remember to change lists to single value. Exception is {e}")
 
     def __post_init__(self):
         assert type(self.name) == str
