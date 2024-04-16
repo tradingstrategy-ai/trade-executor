@@ -28,7 +28,20 @@ from tradingstrategy.charting.candle_chart import VolumeBarMode
 logger = logging.getLogger(__name__)
 
 
+def adjust_legend(f):
+    def wrapped(*args, **kwargs):
+        fig = f(*args, **kwargs)
+        if isinstance(fig, go.Figure):
+            fig.update_layout(legend=dict(
+                bgcolor='rgba(0,0,0,0)'  # Make legend background transparent
+            ))
+        else:
+            raise TypeError("Expected a plotly.graph_objs.Figure object")
+        return fig
+    return wrapped
 
+
+@adjust_legend
 def draw_single_pair_strategy_state(
         state: State,
         execution_context: ExecutionContext,
@@ -81,6 +94,7 @@ def draw_single_pair_strategy_state(
     return visualise_single_pair_strategy_state(state, target_pair_candles, start_at, end_at, technical_indicators=technical_indicators, title=title, height=height)
 
 
+@adjust_legend
 def draw_multi_pair_strategy_state(
     state: State,
     execution_context: ExecutionContext,
