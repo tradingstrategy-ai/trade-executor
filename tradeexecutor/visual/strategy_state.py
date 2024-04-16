@@ -141,7 +141,10 @@ def draw_multi_pair_strategy_state(
     data = universe.data_universe.candles.df
 
     if not pair_ids:
-        pair_ids = universe.data_universe.pairs.get_all_pair_ids()
+        if len(state.visualisation.pair_ids) > 0:
+            pair_ids = state.visualisation.pair_ids
+        else:
+            pair_ids = universe.data_universe.pairs.get_all_pair_ids()
 
     if start_at is None and end_at is None:
             # Get
