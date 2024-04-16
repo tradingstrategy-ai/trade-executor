@@ -20,7 +20,6 @@ from ..bootstrap import prepare_executor_id
 from ..log import setup_logging
 from tradeexecutor.strategy.execution_context import standalone_backtest_execution_context
 from tradeexecutor.backtest.backtest_module import run_backtest_for_module
-
 from tradeexecutor.visual.strategy_state import draw_single_pair_strategy_state, draw_multi_pair_strategy_state
 from tradeexecutor.statistics.in_memory_statistics import get_image_and_dark_image
 
