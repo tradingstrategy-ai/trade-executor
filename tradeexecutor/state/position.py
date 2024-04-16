@@ -521,6 +521,19 @@ class TradingPosition(GenericPosition):
         # Always convert zero to decimal
         return Decimal(s)
 
+    def get_redeemed(self) -> Decimal:
+        """Get amount of position reduced via in-kind redemptions.
+
+        - Also include any other account corrections
+
+        Alias for :py:meth:`get_base_token_balance_update_quantity`
+
+        :return:
+            A negative number, the amount of quantiy redeemed from this position
+        """
+        assert self.is_spot()
+        return self.get_base_token_balance_update_quantity()
+
     def get_available_trading_quantity(self) -> Decimal:
         """Get token quantity still availble for the trades in this strategy cycle.
 
@@ -1194,12 +1207,18 @@ class TradingPosition(GenericPosition):
 
         return trade_profit
 
-    def get_unrealised_profit_usd(self, include_interest=True) -> USDollarAmount:
+    def get_unrealised_profit_usd(self, include_interest=True, account_redemptions=True) -> USDollarAmount:
         """Calculate the position unrealised profit.
 
         Calculates the profit & loss (P&L) that has yet to be 'realised'
         in the remaining non-zero quantity of assets, due to the current
         market price.
+
+        :param include_interest:
+            The interest accrued on this position is includedin the result
+
+        :param account_redemptions:
+            Any in-kind redemptions are reduced from the net euqantity.
 
         :return:
             profit in dollar
@@ -1208,7 +1227,15 @@ class TradingPosition(GenericPosition):
         if avg_price is None:
             return 0
 
-        unrealised_equity = (self.get_current_price() - avg_price) * float(self.get_net_quantity())
+        # get_quantity() accounts for redemptions
+        net_quantity = self.get_quantity()
+
+        if account_redemptions:
+            # Simple accounting model where open positions cannot be touched by redemptions
+            unrealised_equity = (self.get_current_price() - avg_price) * float(net_quantity)
+        else:
+            # Simple accounting model where open positions cannot be touched by redemptions
+            unrealised_equity = (self.get_current_price() - avg_price) * float(net_quantity)
 
         if include_interest:
             return unrealised_equity + self.get_accrued_interest()
@@ -1222,10 +1249,13 @@ class TradingPosition(GenericPosition):
         total_profit = realised_profit + unrealised_profit
         return total_profit
 
-    def get_total_profit_percent(self) -> float:
+    def get_total_profit_percent(self) -> Percent:
         """How much % we have made profit so far.
 
-        :return: 0 if profit calculation cannot be made yet
+        TODO: Legacy method. Use :py:meth:`get_unrealised_and_realised_profit_percent` instead.
+
+        :return:
+            0 if profit calculation cannot be made yet
         """
         if self.is_long():
             profit = self.get_total_profit_usd()
@@ -1409,6 +1439,8 @@ class TradingPosition(GenericPosition):
 
         - :py:meth:`get_unrealised_profit_usd`
 
+        - TODO: Does not include interest calculations
+
         See :ref:`profitability` for more details.
 
         :return:
@@ -1418,10 +1450,12 @@ class TradingPosition(GenericPosition):
             e.g. due to broken trades.
         """
         if self.is_long():
-            total_bought = self.get_total_bought_usd()
-            if total_bought == 0:
-                return 0
-            return self.get_realised_profit_usd()/total_bought
+            # New path
+            return self.get_unrealised_and_realised_profit_percent(include_unrealised=False)
+            #total_bought = self.get_total_bought_usd()
+            #if total_bought == 0:
+            #    return 0
+            #return self.get_realised_profit_usd()/total_bought
         else:
             total_sold = self.get_total_sold_usd()
             if total_sold == 0:
@@ -1451,6 +1485,115 @@ class TradingPosition(GenericPosition):
         #     return 0
 
         # return (sell_value + self.get_claimed_interest() - self.get_repaid_interest()) / (buy_value) - 1
+
+    def get_unrealised_and_realised_profit_percent(
+        self,
+        valuation_price=None,
+        include_unrealised=True,
+    ) -> Percent:
+        """Calculated unrealised PnL for this position.
+
+        This is an estimation of the profit % assuming the position would be completely closed
+        with the current price.
+
+        - This function accounts for in-kind redemptions affecting the position
+
+        - Currently only long positions supportd
+
+        See also
+
+        - :py:meth:`get_realised_profit_percent`
+
+        - :py:meth:`get_total_profit_percent` (don't use, legacy)
+
+        :param valuation_price:
+            Valuate the unrealised portion of tokens at this price
+
+        :param include_unrealised:
+            Include the unrealised PnL as the part of the result
+
+        :return:
+            The profitability of this position currently.
+
+            Return 0.05 for a position that is 5% in profit.
+
+            Return 0 if you ask for realised profit and none of the position is yet closed.
+        """
+
+        if self.is_long():
+            redemptions = self.get_redeemed()  # Negative
+            total_bought = self.get_total_bought_usd()
+            if total_bought == 0:
+                return 0
+
+            unrealised_equity = 0
+            if include_unrealised:
+                quantity_left_sell = self.get_quantity()
+                if quantity_left_sell:
+
+                    if not valuation_price:
+                        valuation_price = self.last_token_price
+
+                    assert valuation_price, "Cannot value unrealised PnL without an explicit valuation price for the unsold portion"
+                    unrealised_equity = valuation_price * float(quantity_left_sell)
+
+            avg_price = self.get_average_price()
+            # redemption_adjustment = avg_price * float(redemptions)
+            profit = ((self.get_realised_profit_usd() or 0) + (self.get_unrealised_profit_usd() or 0))
+
+            buy_quantity = self.get_buy_quantity()
+
+            sell_quantity = self.get_sell_quantity()
+            redeem_adjusted_buy_quantity = buy_quantity + redemptions
+            buy_volume = sum([t.get_value() for t in self.trades.values() if t.is_buy()])
+            sell_volume = sum([t.get_value() for t in self.trades.values() if t.is_sell()])
+            average_buy = buy_volume / float(buy_quantity)
+            average_sell = (sell_volume / float(sell_quantity)) if sell_quantity else 0
+
+            # Predent redemptions where there not in the first palce
+            adjusted_buy_volume = buy_volume + (average_buy * float(redemptions))
+            adjusted_sell_volume = sell_volume
+
+            if redemptions < 0:  # Some broken data might break redemptions amount, in legacy tests
+                assert adjusted_buy_volume <= buy_volume, f"Adjusted buy volume: {adjusted_buy_volume}, buy volume: {buy_volume}"
+                assert adjusted_sell_volume <= sell_volume
+
+            # How much have we closed this position
+            if not include_unrealised:
+
+                # Position has account corrections
+                divider = (buy_quantity + redemptions)
+                if divider == 0:
+                    return 0
+
+                pct_closed = float(sell_quantity / divider)
+                if pct_closed == 0:
+                    return 0
+
+                # if pct_closed not in (0, 1):
+                #    import ipdb ; ipdb.set_trace()
+
+                try:
+                    return sell_volume / (adjusted_buy_volume * pct_closed) - 1
+                except ZeroDivisionError as e:
+                    print(e)
+                    import ipdb ; ipdb.set_trace()
+
+                # return (average_sell - average_buy) * buy_quantity * pct_closed
+
+                adjusted_profit_pct = 1 - (adjusted_buy_volume-adjusted_sell_volume)/(adjusted_buy_volume*pct_closed)
+            else:
+                adjusted_profit_pct = (adjusted_sell_volume + unrealised_equity - adjusted_buy_volume) / (adjusted_buy_volume)
+
+            # average_sell = self.get_total_sold_usd() / float(sell_quantity)
+            # unadjusted_profit_usd = (average_sell - average_buy) / float(buy_quantity)
+            # buy_volume = self.get_average_buy() * float(redeem_adjusted_buy_quantity)
+            return adjusted_profit_pct
+            #else:
+            #    # No in-kind redemptions, the simple accounting path
+            #    return ((self.get_realised_profit_usd() or 0) + (self.get_unrealised_profit_usd() or 0)) / total_bought
+        else:
+            raise NotImplementedError(f"get_unrealised_and_realised_profit_percent() supports only long positions ATM")
 
     def get_size_relative_realised_profit_percent(self) -> Percent:
         """Calculated life-time profit over this position.
