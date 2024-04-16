@@ -42,6 +42,7 @@ def calculate_advanced_metrics(
     periods_per_year=365,
     convert_to_daily=False,
     benchmark: pd.Series | None = None,
+    display=False,
 ) -> pd.DataFrame:
     """Calculate advanced strategy performance statistics using Quantstats.
 
@@ -101,13 +102,22 @@ def calculate_advanced_metrics(
         metrics = qs.reports.metrics
         stats = qs.stats
 
+        # QuantStats function APIs are a mess
+        quantstats_awful_kwargs = {}
+        if display:
+            quantstats_awful_kwargs = {"internal": True}
+
         result = metrics(
             returns,
             benchmark=benchmark,
-            display=False,
+            as_pct=display,  # QuantStats codebase is a mess
             periods_per_year=periods_per_year,
-            mode=mode.value
+            mode=mode.value,
+            display=False,
+            **quantstats_awful_kwargs
         )
+
+        assert result is not None, "metrics(): returned None"
 
         if convert_to_daily:
             returns = resample_returns(returns, "D")

@@ -244,10 +244,11 @@ class EthereumRoutingState(RoutingState):
         return [signed_tx]
 
     def adjust_spend(
-            self,
-            asset: AssetIdentifier,
-            required_amount: int,
-            epsilon=0.00001,
+        self,
+        asset: AssetIdentifier,
+        required_amount: int,
+        epsilon: float = 0.00001,
+        check_balances: bool = False,
     ) -> int:
         """Check that our on-chain balances have enough tokens to cover the trade.
 
@@ -274,12 +275,16 @@ class EthereumRoutingState(RoutingState):
         holding_address = self.tx_builder.get_erc_20_balance_address()
         token = fetch_erc20_details(web3, asset.address)
         on_chain_balance = token.contract.functions.balanceOf(holding_address).call()
-        if on_chain_balance <  required_amount:
+        if on_chain_balance < required_amount:
             # Check if we are within epsilon
             if (required_amount - on_chain_balance) / required_amount < epsilon:
                 logger.info("Adjusting spending amount to fit to the epsilon. For %s we have on-chain: %d, required: %d", asset, on_chain_balance, required_amount)
                 return on_chain_balance
             else:
+                if not check_balances:
+                    logger.info("For %s we have on-chain: %d < required: %d, but we skip balance check since check_balances=False", asset, on_chain_balance, required_amount)
+                    return required_amount
+                
                 raise OutOfBalance(
                     f"Not enough tokens for {asset} to perform the trade. Required: {required_amount}, on-chain balance for {holding_address} is {on_chain_balance}."
                 )

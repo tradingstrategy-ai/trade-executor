@@ -252,6 +252,7 @@ class RunState:
         data = self.to_dict()
         del data["source_code"]
         del data["visualisation"]
+        del data["read_only_state_copy"]
         return RunState(**data)
 
     def on_save_hook(self, state: State):

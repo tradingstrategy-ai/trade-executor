@@ -17,6 +17,7 @@ Failure trades may be
 - Sell e.g. closing trade failed: position stays open, the assets are marked to be available
   for the future sell
 
+
 """
 import datetime
 import logging
@@ -131,6 +132,31 @@ def repair_trade(portfolio: Portfolio, t: TradeExecution) -> TradeExecution:
     return c
 
 
+def repair_tx_missing(portfolio: Portfolio, t: TradeExecution) -> TradeExecution:
+    """Repair a trade which failed to generate new transactions..
+
+    - Make a counter trade for bookkeeping
+
+    - Set the original trade to repaired state (instead of planned state)
+    """
+    p = portfolio.get_position_by_id(t.position_id)
+
+    c = make_counter_trade(portfolio, p, t)
+    now = datetime.datetime.utcnow()
+    t.repaired_at = t.executed_at = datetime.datetime.utcnow()
+    t.executed_quantity = 0
+    t.executed_reserve = 0
+    assert c.trade_id
+    c.repaired_trade_id = t.trade_id
+    t.add_note(f"Repaired at {now.strftime('%Y-%m-%d %H:%M')}, by #{c.trade_id}")
+    c.add_note(f"Repairing trade #{c.repaired_trade_id}")
+    assert t.get_status() == TradeStatus.repaired
+    assert t.get_value() == 0
+    assert t.get_position_quantity() == 0
+    assert t.planned_quantity != 0
+    return c
+
+
 def close_position_with_empty_trade(portfolio: Portfolio, p: TradingPosition) -> TradeExecution:
     """Make a trade that closes the position.
 
@@ -208,7 +234,10 @@ def find_trades_to_be_repaired(state: State) -> List[TradeExecution]:
         for t in p.trades.values():
             if t.is_repair_needed():
                 logger.info("Found a trade needing repair: %s", t)
-                trades_to_be_repaired.append(t)
+                if t.is_short():
+                    logger.error("Failed short trade can't be repaired using this command yet")
+                else:  
+                    trades_to_be_repaired.append(t)
 
     return trades_to_be_repaired
 
@@ -356,3 +385,81 @@ def repair_trades(
         trades_to_be_repaired,
         new_trades,
     )
+
+
+def repair_tx_not_generated(state: State, interactive=True):
+    """Repair command to fix trades that did not generate tranasctions.
+
+    - Reasons include
+
+    - Currently only manually callable from console
+
+    - Simple deletes trades that have an empty transaction list
+
+    Example exception:
+
+    .. code-block:: text
+
+          File "/usr/src/trade-executor/tradeexecutor/ethereum/routing_model.py", line 395, in trade
+            return self.make_direct_trade(
+          File "/usr/src/trade-executor/tradeexecutor/ethereum/uniswap_v3/uniswap_v3_routing.py", line 257, in make_direct_trade
+            return super().make_direct_trade(
+          File "/usr/src/trade-executor/tradeexecutor/ethereum/routing_model.py", line 112, in make_direct_trade
+            adjusted_reserve_amount = routing_state.adjust_spend(
+          File "/usr/src/trade-executor/tradeexecutor/ethereum/routing_state.py", line 283, in adjust_spend
+            raise OutOfBalance(
+        tradeexecutor.ethereum.routing_state.OutOfBalance: Not enough tokens for <USDC at 0x2791bca1f2de4661ed88a30c99a7a9449aa84174> to perform the trade. Required: 3032399763, on-chain balance for 0x375A8Cd0A654E0eCa46F81c1E5eA5200CC6A737C is 87731979.
+
+    :param interactive:
+        Use console interactive prompts to ask the user to confirm the repair
+
+    :return:
+        Repair trades generated.
+
+    :raise RepairAborted:
+        Interactive operation was aborted by the user
+    """
+
+    tx_missing_trades = set()
+    portfolio = state.portfolio
+
+    for t in portfolio.get_all_trades():
+        if not t.blockchain_transactions:
+            assert t.get_status() == TradeStatus.planned, f"Trade missing tx, but status is not planned {t}"
+            tx_missing_trades.add(t)
+
+    if not tx_missing_trades:
+        if interactive:
+            print("No trades with missing blockchain transactions detected")
+        return []
+
+    if interactive:
+
+        print("Trade missing TX report")
+        print("-" * 80)
+
+        print("Trade to repair:")
+        for t in tx_missing_trades:
+            print(t)
+
+        confirm = input("Confirm repair with counter trades [y/n]? ")
+        if confirm.lower() != "y":
+            raise RepairAborted()
+
+    repair_trades_generated = [repair_tx_missing(portfolio, t) for t in tx_missing_trades]
+    if interactive:
+        print("Counter-trades:")
+        for t in repair_trades_generated:
+            position = portfolio.get_position_by_id(t.position_id)
+            print("Position ", position)
+            print("Trade that was repaired ", portfolio.get_trade_by_id(t.repaired_trade_id))
+            print("Repair trade ", t)
+            print("-")
+
+        confirm = input("Looks fixed [y/n]? ")
+        if confirm.lower() != "y":
+            raise RepairAborted()
+
+    return repair_trades_generated
+
+

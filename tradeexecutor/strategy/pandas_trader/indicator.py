@@ -58,10 +58,30 @@ class IndicatorSource(enum.Enum):
     """The data on which the indicator will be calculated."""
 
     #: Calculate this indicator based on candle close price
+    #:
+    #: Example indicators
+    #:
+    #: - RSI
+    #: - Moving overage
+    #:
     close_price = "close_price"
 
     #: Calculate this indicator based on candle open price
+    #:
+    #: Not used commonly
+    #:
     open_price = "open_price"
+
+    #: Calculate this indicator based on multipe data points (open, high, low, close, volume)
+    #:
+    #: Example indicators
+    #:
+    #: - Money flow index (MFI) reads close, high, low columns
+    #:
+    #: The indicator function can take arguments named: open, high, low, close, volume
+    #: which all are Pandas US dollar series. If parameters are not present they are discarded.
+    #:
+    ohlcv = "ohlcv"
 
     #: This indicator is calculated once per the strategy universe
     #:
@@ -71,7 +91,7 @@ class IndicatorSource(enum.Enum):
 
     def is_per_pair(self) -> bool:
         """This indicator is calculated to all trading pairs."""
-        return self in (IndicatorSource.open_price, IndicatorSource.close_price)
+        return self in (IndicatorSource.open_price, IndicatorSource.close_price, IndicatorSource.ohlcv)
 
 
 
@@ -125,7 +145,10 @@ class IndicatorDefinition:
 
     def __hash__(self):
         # https://stackoverflow.com/a/5884123/315168
-        return hash((self.name, frozenset(self.parameters.items()), self.source))
+        try:
+            return hash((self.name, frozenset(self.parameters.items()), self.source))
+        except Exception as e:
+            raise (f"Could not hash {self}. If changing grid search to backtest, remember to change lists to single value. Exception is {e}")
 
     def __post_init__(self):
         assert type(self.name) == str
@@ -161,6 +184,44 @@ class IndicatorDefinition:
         except Exception as e:
             raise IndicatorCalculationFailed(f"Could not calculate indicator {self.name} ({self.func}) for parameters {self.parameters}, input data is {len(input)} rows") from e
 
+    def calculate_by_pair_ohlcv(self, candles: pd.DataFrame) -> pd.DataFrame | pd.Series:
+        """Calculate the underlying OHCLV indicator value.
+
+        Assume function can take parameters: `open`, `high`, `low`, `close`, `volume`,
+        or any combination of those.
+
+        :param input:
+            Raw OHCLV candles data.
+
+        :return:
+            Single or multi series data.
+
+            - Multi-value indicators return DataFrame with multiple columns (BB).
+            - Single-value indicators return Series (RSI, SMA).
+
+        """
+
+        assert isinstance(candles, pd.DataFrame), f"OHLCV-based indicator function must be fed with a DataFrame"
+
+        needed_args = ("open", "high", "low", "close", "volume")
+        full_kwargs = {}
+        enabled = {}
+        func_args = inspect.getfullargspec(self.func).args
+        for a in needed_args:
+            if a in func_args:
+                full_kwargs[a] = candles[a]
+
+        if len(full_kwargs) == 0:
+            raise IndicatorCalculationFailed(f"Could not calculate OHLCV indicator {self.name} ({self.func}): does not take any of function arguments from {needed_args}")
+
+        full_kwargs.update(self.parameters)
+
+        try:
+            ret = self.func(**full_kwargs)
+            return self._check_good_return_value(ret)
+        except Exception as e:
+            raise IndicatorCalculationFailed(f"Could not calculate indicator {self.name} ({self.func}) for parameters {self.parameters}, input data is {len(input)} rows") from e
+
     def calculate_universe(self, input: TradingStrategyUniverse) -> pd.DataFrame | pd.Series:
         """Calculate the underlying indicator value.
 
@@ -178,7 +239,7 @@ class IndicatorDefinition:
             ret = self.func(input, **self.parameters)
             return self._check_good_return_value(ret)
         except Exception as e:
-            raise IndicatorCalculationFailed(f"Could not calculate indicator {self.name} ({self.func}) for parameters {self.parameters}, input universe is {input}") from e
+            raise IndicatorCalculationFailed(f"Could not calculate indicator {self.name} ({self.func}) for parameters {self.parameters}, input universe is {input}.\nException is {e}\n\n To use Python debugger, set `max_workers=1`, and if doing a grid search, also set `multiprocess=False`") from e
 
     def _check_good_return_value(self, df):
         assert isinstance(df, (pd.Series, pd.DataFrame)), f"Indicator did not return pd.DataFrame or pd.Series: {self.name}, we got {type(df)}"
@@ -251,7 +312,7 @@ class IndicatorSet:
 
     - Indicators are calculated for each given trading pair, unless specified otherwise
 
-    See :py:class:`CreateIndicatorsProtocol` for usage.
+    See :py:class:`CreateIndicatorsProtocolV2` for usage.
     """
 
     def __init__(self):
@@ -351,60 +412,7 @@ class IndicatorSet:
 class CreateIndicatorsProtocolV1(Protocol):
     """Call signature for create_indicators function.
 
-    This Protocol class defines `create_indicators()` function call signature.
-    Strategy modules and backtests can provide on `create_indicators` function
-    to define what indicators a strategy needs.
-    Used with :py:class`IndicatorSet` to define the indicators
-    the strategy can use.
-
-    .. note ::
-
-        Legacy. See :py:class:`CreateIndicatorsProtocol2` instead.
-
-    These indicators are precalculated and cached for fast performance.
-
-    Example for a grid search:
-
-    .. code-block:: python
-
-        class MyParameters:
-            stop_loss_pct = [0.9, 0.95]
-            cycle_duration = CycleDuration.cycle_1d
-            initial_cash = 10_000
-
-            # Indicator values that are searched in the grid search
-            slow_ema_candle_count = 7
-            fast_ema_candle_count = [1, 2]
-
-
-        def create_indicators(parameters: StrategyParameters, indicators: IndicatorSet, strategy_universe: TradingStrategyUniverse, execution_context: ExecutionContext):
-            indicators.add("slow_ema", pandas_ta.ema, {"length": parameters.slow_ema_candle_count})
-            indicators.add("fast_ema", pandas_ta.ema, {"length": parameters.fast_ema_candle_count})
-
-    Indicators can be custom, and do not need to be calculated per trading pair.
-    Here is an example of creating indicators "ETH/BTC price" and "ETC/BTC price RSI with length of 20 bars":
-
-    .. code-block:: python
-
-        def calculate_eth_btc(strategy_universe: TradingStrategyUniverse):
-            weth_usdc = strategy_universe.get_pair_by_human_description((ChainId.ethereum, "test-dex", "WETH", "USDC"))
-            wbtc_usdc = strategy_universe.get_pair_by_human_description((ChainId.ethereum, "test-dex", "WBTC", "USDC"))
-            btc_price = strategy_universe.data_universe.candles.get_candles_by_pair(wbtc_usdc.internal_id)
-            eth_price = strategy_universe.data_universe.candles.get_candles_by_pair(weth_usdc.internal_id)
-            series = eth_price["close"] / btc_price["close"]  # Divide two series
-            return series
-
-        def calculate_eth_btc_rsi(strategy_universe: TradingStrategyUniverse, length: int):
-            weth_usdc = strategy_universe.get_pair_by_human_description((ChainId.ethereum, "test-dex", "WETH", "USDC"))
-            wbtc_usdc = strategy_universe.get_pair_by_human_description((ChainId.ethereum, "test-dex", "WBTC", "USDC"))
-            btc_price = strategy_universe.data_universe.candles.get_candles_by_pair(wbtc_usdc.internal_id)
-            eth_price = strategy_universe.data_universe.candles.get_candles_by_pair(weth_usdc.internal_id)
-            eth_btc = eth_price["close"] / btc_price["close"]
-            return pandas_ta.rsi(eth_btc, length=length)
-
-        def create_indicators(parameters: StrategyParameters, indicators: IndicatorSet, strategy_universe: TradingStrategyUniverse, execution_context: ExecutionContext):
-            indicators.add("eth_btc", calculate_eth_btc, source=IndicatorSource.strategy_universe)
-            indicators.add("eth_btc_rsi", calculate_eth_btc_rsi, parameters={"length": parameters.eth_btc_rsi_length}, source=IndicatorSource.strategy_universe)
+    Deprecated. See :py:class:`CreateIndicatorsProtocolV2`.
     """
 
     def __call__(
@@ -447,15 +455,23 @@ class CreateIndicatorsProtocolV2(Protocol):
 
     This Protocol class defines `create_indicators()` function call signature.
     Strategy modules and backtests can provide on `create_indicators` function
-    to define what indicators a strategy needs.
-    Used with :py:class`IndicatorSet` to define the indicators
-    the strategy can use.
+    to define what indicators a strategy needs. These indicators are precalculated and cached for fast performance.
 
-    This protocol class is second (v2) iteration of the function signature.
+    - There are multiple indicator types, depending on if they are calculated on pair close price,
+      pair OHLCV data or the whole strategy universe. See :py:class:`IndicatorSource`.
 
-    These indicators are precalculated and cached for fast performance.
+    - Uses :py:class`IndicatorSet` class to construct the indicators the strategy can use.
 
-    Example for a grid search:
+    - To read indicator values in `decide_trades()` function,
+      see :py:class:`~tradeexecutor.strategy.strategy_input.StrategyInputIndicators`.
+
+    - For most :py:mod:`pandas_ta` functions. like `pandas_ta.ma`, `pandas_ta.rsi`, `pandas_ta.mfi`, you can pass them directly to
+      `indicators.add()` - as those functions have standard argument names like `close`, `high`, `low` that
+      are data series provided.
+
+    Example for creating an Exponential Moving Average (EMA) indicator based on the `close` price.
+    This example is for a grid search. Unless specified, indicators are assumed to be
+    :py:attr:`IndicatorSource.close_price` type and they only use trading pair close price as input.
 
     .. code-block:: python
 
@@ -479,6 +495,33 @@ class CreateIndicatorsProtocolV2(Protocol):
             indicators.add("slow_ema", pandas_ta.ema, {"length": parameters.slow_ema_candle_count})
             indicators.add("fast_ema", pandas_ta.ema, {"length": parameters.fast_ema_candle_count})
             return indicators
+
+    Some indicators may use multiple OHLCV datapoints. In this case, you need to tell the indicator to be :py:attr:`IndicatorSource.ohlcv` type.
+    Here is an example for Money Flow Index (MFI) indicator:
+
+    .. code-block:: python
+
+        import pandas_ta
+
+        from tradeexecutor.strategy.parameters import StrategyParameters
+        from tradeexecutor.strategy.pandas_trader.indicator import IndicatorSet, IndicatorSource
+
+        class Parameters:
+            my_mfi_length = 20
+
+        def create_indicators(
+            timestamp: datetime.datetime | None,
+            parameters: StrategyParameters,
+            strategy_universe: TradingStrategyUniverse,
+            execution_context: ExecutionContext
+        ):
+            indicators = IndicatorSet()
+            indicators.add(
+                "mfi",
+                pandas_ta.mfi,
+                parameters={"length": parameters.my_mfi_length},
+                source=IndicatorSource.ohlcv,
+            )
 
     Indicators can be custom, and do not need to be calculated per trading pair.
     Here is an example of creating indicators "ETH/BTC price" and "ETC/BTC price RSI with length of 20 bars":
@@ -506,6 +549,8 @@ class CreateIndicatorsProtocolV2(Protocol):
             indicators.add("eth_btc", calculate_eth_btc, source=IndicatorSource.strategy_universe)
             indicators.add("eth_btc_rsi", calculate_eth_btc_rsi, parameters={"length": parameters.eth_btc_rsi_length}, source=IndicatorSource.strategy_universe)
             return indicators
+
+    This protocol class is second (v2) iteration of the function signature.
     """
 
     def __call__(
@@ -802,20 +847,24 @@ def _calculate_and_save_indicator_result(
     indicator = key.definition
 
     if indicator.is_per_pair():
+        assert key.pair.internal_id, f"Per-pair indicator lacks pair internal_id: {key.pair}"
         match indicator.source:
             case IndicatorSource.open_price:
                 column = "open"
+                input = strategy_universe.data_universe.candles.get_samples_by_pair(key.pair.internal_id)[column]
+                data = indicator.calculate_by_pair(input)
             case IndicatorSource.close_price:
                 column = "close"
+                input = strategy_universe.data_universe.candles.get_samples_by_pair(key.pair.internal_id)[column]
+                data = indicator.calculate_by_pair(input)
+            case IndicatorSource.ohlcv:
+                input = strategy_universe.data_universe.candles.get_samples_by_pair(key.pair.internal_id)
+                data = indicator.calculate_by_pair_ohlcv(input)
             case _:
                 raise AssertionError(f"Unsupported input source {key.pair} {key.definition} {indicator.source}")
 
-        assert key.pair.internal_id
-
-        input = strategy_universe.data_universe.candles.get_samples_by_pair(key.pair.internal_id)[column]
-        data = indicator.calculate_by_pair(input)
-
     else:
+        # Calculate indicator over the whole universe
         data = indicator.calculate_universe(strategy_universe)
 
     assert data is not None, f"Indicator function {indicator.name} ({indicator.func}) did not return any result, received Python None instead"

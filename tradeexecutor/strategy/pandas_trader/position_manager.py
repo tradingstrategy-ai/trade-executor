@@ -425,6 +425,20 @@ class PositionManager:
 
         """
         return self.state.portfolio.get_position_by_trading_pair(pair)
+    
+    def get_closed_positions_for_pair(
+        self,
+        pair: TradingPairIdentifier,
+        include_test_position: bool = False,
+    ) -> list[TradingPosition]:
+        """Get closed positions for a specific trading pair.
+
+        :return:
+            All closed trading position of a trading pair
+
+            If there is no closed position return empty list.
+        """
+        return self.state.portfolio.get_closed_positions_for_pair(pair, include_test_position=include_test_position)
 
     def get_last_closed_position(self) -> Optional[TradingPosition]:
         """Get the position that was last closed.
@@ -1073,9 +1087,20 @@ class PositionManager:
         quantity_left = position.get_available_trading_quantity()
 
         if quantity_left == 0:
-            # We have already generated closing trades for this position
-            # earlier
-            logger.warning("Tried to close position that is likely already closed, as there are no tokens to sell: %s", position)
+            # We have already generated closing trades for this position earlier?
+            # Add some debug information because these are hard to diagnose
+            planned_trades = [t for t in position.trades.values() if t.is_planned()]
+            planned = sum([t.get_position_quantity() for t in planned_trades])  # Sell values sum to negative
+            live = position.get_quantity()  # What was the position quantity before executing any of planned trades
+            logger.warning(
+                "Tried to close position that is likely already closed, as there are no tokens to sell: %s.\n"
+                "Quantity left zero. Planned tokens: %f, live tokens: %f\n"
+                "We have existing planned trades: %s",
+                position,
+                planned,
+                live,
+                planned_trades,
+            )
             return []
 
         if position.is_spot_market():

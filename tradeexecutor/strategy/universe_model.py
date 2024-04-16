@@ -2,8 +2,9 @@
 import abc
 import datetime
 from dataclasses import dataclass
-from typing import List, Optional, Collection
+from typing import List, Optional, Collection, Type
 
+from tradeexecutor.strategy.parameters import StrategyParameters
 from tradingstrategy.timebucket import TimeBucket
 
 from tradeexecutor.state.identifier import AssetIdentifier
@@ -116,6 +117,28 @@ class UniverseOptions:
             return f"{self.start_at} - {self.end_at}"
         else:
             return f"{self.history_period} back from today"
+
+    @staticmethod
+    def from_strategy_parameters_class(Parameters: Type[StrategyParameters], execution_context: ExecutionContext) -> "UniverseOptions":
+        """Extract backtesting range or live history load range based on if we are doing live trading."""
+
+        assert isinstance(execution_context, ExecutionContext)
+
+        if execution_context.mode.is_backtesting():
+
+            assert Parameters.backtest_start, "Parameters.backtest_start missing"
+            assert Parameters.backtest_end, "Parameters.backtest_end missing"
+
+            return UniverseOptions(
+                start_at=Parameters.backtest_start,
+                end_at=Parameters.backtest_end,
+            )
+        else:
+            return UniverseOptions(
+                start_at=None,
+                end_at=None,
+                history_period=Parameters.required_history_period,
+            )
 
 #: Shorthand method for no specifc trading univese fine tuning options set
 #:

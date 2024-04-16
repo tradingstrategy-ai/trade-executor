@@ -149,6 +149,22 @@ class PandasTraderRunner(StrategyRunner):
                         raise PreflightCheckFailed(f"We do not have up-to-date data for candles. Last candles are at {end}")
 
     def refresh_visualisations(self, state: State, universe: TradingStrategyUniverse):
+        """Updates the visualisation images for the strategy.
+
+        - Used in Discord (small)
+
+        - Used on the frontend (large)
+
+        This is automatically called on trade-executor console startup:
+
+            docker compose run enzyme-polygon-eth-btc-usdc console
+
+        To call this manually from the same console with pre-set up runner
+
+        .. code-block:: shell
+
+            runner.refresh_visualisations(state, strategy_universe)
+        """
 
         if not self.run_state:
             # This strategy is not maintaining a run-state
@@ -163,6 +179,8 @@ class PandasTraderRunner(StrategyRunner):
                     pair_count
                     )
 
+        execution_context = self.execution_context
+
         if universe.is_empty():
             # TODO: Not sure how we end up here
             logger.info("Strategy universe is empty - nothing to report")
@@ -172,24 +190,24 @@ class PandasTraderRunner(StrategyRunner):
 
             if pair_count == 1:
 
-                small_figure = draw_single_pair_strategy_state(state, universe, height=512)
+                small_figure = draw_single_pair_strategy_state(state, execution_context, universe, height=512)
                 # Draw the inline plot and expose them tot he web server
                 # TODO: SVGs here are not very readable, have them as a stop gap solution
-                large_figure = draw_single_pair_strategy_state(state, universe, height=1024)
+                large_figure = draw_single_pair_strategy_state(state, execution_context, universe, height=1024)
 
                 self.update_strategy_thinking_image_data(small_figure, large_figure)
 
             elif 1 < pair_count <= 3:
 
-                small_figure_combined = draw_multi_pair_strategy_state(state, universe, height=1024)
-                large_figure_combined = draw_multi_pair_strategy_state(state, universe, height=2048)
+                small_figure_combined = draw_multi_pair_strategy_state(state, execution_context, universe,  height=1024)
+                large_figure_combined = draw_multi_pair_strategy_state(state, execution_context, universe, height=2048)
 
                 self.update_strategy_thinking_image_data(small_figure_combined, large_figure_combined)
 
             elif 3 < pair_count <=5:
 
-                small_figure_combined = draw_multi_pair_strategy_state(state, universe, height=2048, detached_indicators = False)
-                large_figure_combined = draw_multi_pair_strategy_state(state, universe, height=3840, width = 2160, detached_indicators = False)
+                small_figure_combined = draw_multi_pair_strategy_state(state, execution_context, universe, height=2048, detached_indicators = False)
+                large_figure_combined = draw_multi_pair_strategy_state(state, execution_context, universe, height=3840, width = 2160, detached_indicators = False)
 
                 self.update_strategy_thinking_image_data(small_figure_combined, large_figure_combined)
 
@@ -207,7 +225,8 @@ class PandasTraderRunner(StrategyRunner):
         :param small_image: 512 x 512 image
         :param large_image: 1920 x 1920 image
         """
-        refresh_live_strategy_images(self.run_state, small_figure, large_figure)
+        execution_context = self.execution_context
+        refresh_live_strategy_images(self.run_state, execution_context, small_figure, large_figure)
 
     def report_strategy_thinking(
         self,

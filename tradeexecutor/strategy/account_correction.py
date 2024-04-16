@@ -50,9 +50,9 @@ logger = logging.getLogger(__name__)
 
 #: The default % we allow the balance to drift before we consider it a mismatch.
 #:
-#: Set to 10 BPS
+#: Set to 50 BPS
 #:
-RELATIVE_EPSILON = Decimal(10**-4)
+RELATIVE_EPSILON = 5 * Decimal(10**-4)
 
 
 class UnexpectedAccountingCorrectionIssue(Exception):
@@ -194,7 +194,8 @@ def is_relative_mismatch(
     """
 
     # Accounting dust.
-    # Cannot be compared with relative match
+    # The position has been closed but we have left fractions of tokens on the account.
+    # Cannot be compared with relative match.
     if abs(actual_amount) < dust_epsilon and abs(expected_amount) < dust_epsilon:
         return False
 
@@ -676,6 +677,12 @@ def check_accounts(
 
         dust = c.is_dusty()
 
+        if c.expected_amount:
+            relative_diff = (c.actual_amount - c.expected_amount) / c.expected_amount
+            mismatch_str = f"{relative_diff * 100:.2f}%"
+        else:
+            mismatch_str = "Y"
+
         items.append({
             "Address": c.asset.address,
             "Position": position_label,
@@ -683,7 +690,9 @@ def check_accounts(
             "Expected amount": c.expected_amount,
             "Diff": c.quantity,
             "Dusty": "Y" if dust else "N",
-            "Mismatch": "Y" if c.mismatch else "N",
+            "Mismatch": mismatch_str if c.mismatch else "N",
+            "Dust epsilon": c.dust_epsilon,
+            "Relative epsilon": c.relative_epsilon,
         })
 
         if c.mismatch:

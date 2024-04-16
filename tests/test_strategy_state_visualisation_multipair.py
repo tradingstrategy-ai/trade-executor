@@ -18,6 +18,7 @@ from tradeexecutor.backtest.backtest_runner import run_backtest_inline
 from tradeexecutor.cli.log import setup_pytest_logging
 from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier
 from tradeexecutor.state.visualisation import PlotKind
+from tradeexecutor.strategy.execution_context import unit_test_execution_context
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse, \
     create_pair_universe_from_code
 from tradeexecutor.testing.synthetic_ethereum_data import generate_random_ethereum_address
@@ -360,21 +361,21 @@ def test_visualise_strategy_state(
     )
 
     universe = strategy_universe
-    image = draw_multi_pair_strategy_state(state, universe)
+    image = draw_multi_pair_strategy_state(state, unit_test_execution_context, universe)
 
     assert len(image.data) == 27
     assert len(image._grid_ref) == 6
     assert image.data[0]['x'][0] == datetime.datetime(2023,4,3,0,0)
     assert image.data[0]['x'][-1] == datetime.datetime(2023,6,5,0,0)
 
-    image_no_detached = draw_multi_pair_strategy_state(state, universe, detached_indicators=False)
+    image_no_detached = draw_multi_pair_strategy_state(state, unit_test_execution_context, universe, detached_indicators=False)
 
     assert len(image_no_detached.data) == 24
     assert len(image_no_detached._grid_ref) == 3
     assert image_no_detached.data[0]['x'][0] == datetime.datetime(2023,4,3,0,0)
     assert image_no_detached.data[0]['x'][-1] == datetime.datetime(2023,6,5,0,0)
 
-    image_no_indicators = draw_multi_pair_strategy_state(state, universe, technical_indicators=False)
+    image_no_indicators = draw_multi_pair_strategy_state(state, unit_test_execution_context, universe, technical_indicators=False)
 
     assert len(image_no_indicators.data) == 15
     assert len(image_no_indicators._grid_ref) == 3

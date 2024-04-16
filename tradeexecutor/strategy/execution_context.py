@@ -98,7 +98,7 @@ class ExecutionMode(enum.Enum):
         - Preflight check is considered live trading, because strategy modules
           are not in backtesting when doing preflight checks
         """
-        return self in (self.real_trading, self.paper_trading, self.unit_testing_trading, self.simulated_trading, self.preflight_check)
+        return self in (self.real_trading, self.paper_trading, self.unit_testing_trading, self.simulated_trading, self.preflight_check, self.one_off)
 
     def is_backtesting(self) -> bool:
         """The strategy is running for backtesting.

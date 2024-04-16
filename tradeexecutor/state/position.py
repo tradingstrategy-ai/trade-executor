@@ -990,7 +990,12 @@ class TradingPosition(GenericPosition):
                     assert trade.is_buy(), "Opening credit position is modelled as buy"
                     trade.planned_loan_update = create_credit_supply_loan(self, trade, strategy_cycle_at)
                 else:
-                    trade.planned_loan_update = update_credit_supply_loan(self, trade, strategy_cycle_at)
+                    trade.planned_loan_update = update_credit_supply_loan(
+                        self.loan.clone(),
+                        self,
+                        trade,
+                        strategy_cycle_at,
+                    )
 
             elif pair.kind.is_leverage():
                 assert pair.get_lending_protocol() == LendingProtocolType.aave_v3, "Unsupported protocol"

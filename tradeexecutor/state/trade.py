@@ -754,8 +754,28 @@ class TradeExecution:
         return TradeFlag.test_trade in self.flags
 
     def is_failed(self) -> bool:
-        """This trade was succcessfully completed."""
+        """This trade was succcessfully completed.
+
+        See also :py:meth:`is_missing_transaction_generation`.
+        """
         return (self.failed_at is not None) and (self.repaired_at is None)
+
+    def is_missing_blockchain_transactions(self) -> bool:
+        """Trade failed to generate transactions.
+
+        The system crashed between `decide_trades()` and before the execution model prepared blockchain transactions.
+        This is different from the trade execution itself failed (transaction reverted).
+
+        - Because out of balance pre-checks
+
+        - Because of some crash reason
+
+        - After the trade has been marked repaired, we return `False`.
+
+        See also :py:meth:`is_failed`.
+        """
+
+        return not (self.is_failed() or self.is_repaired()) and len(self.blockchain_transactions) == 0
 
     def is_pending(self) -> bool:
         """This trade was succcessfully completed."""

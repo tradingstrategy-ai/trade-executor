@@ -3,6 +3,7 @@ from IPython.core.display_functions import display
 
 from tradeexecutor.analysis.trade_analyser import build_trade_analysis
 from tradeexecutor.state.state import State
+from tradeexecutor.statistics.key_metric import calculate_key_metrics
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
 from tradeexecutor.analysis.multi_asset_benchmark import compare_strategy_backtest_to_multiple_assets
 
@@ -31,6 +32,17 @@ def display_backtesting_results(
         # Nothing further to display
         portfolio_comparison = compare_strategy_backtest_to_multiple_assets(
             state,
-            strategy_universe
+            strategy_universe,
+            display=True,
         )
         display(portfolio_comparison)
+
+    key_metrics = calculate_key_metrics(
+        State(),
+        state,
+    )
+
+    print("Individual stats")
+    for metric in key_metrics:
+        print(f"{metric.kind.name} = {metric.value}, from {metric.source}")
+
