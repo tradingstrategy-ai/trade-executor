@@ -1516,6 +1516,8 @@ class TradingPosition(GenericPosition):
             The profitability of this position currently.
 
             Return 0.05 for a position that is 5% in profit.
+
+            Return 0 if you ask for realised profit and none of the position is yet closed.
         """
 
         if self.is_long():
@@ -1528,6 +1530,10 @@ class TradingPosition(GenericPosition):
             if include_unrealised:
                 quantity_left_sell = self.get_quantity()
                 if quantity_left_sell:
+
+                    if not valuation_price:
+                        valuation_price = self.last_token_price
+
                     assert valuation_price, "Cannot value unrealised PnL without an explicit valuation price for the unsold portion"
                     unrealised_equity = valuation_price * float(quantity_left_sell)
 
@@ -1551,13 +1557,31 @@ class TradingPosition(GenericPosition):
             assert adjusted_buy_volume <= buy_volume
             assert adjusted_sell_volume <= sell_volume
 
-            adjusted_avg_buy = adjusted_buy_volume / float(redeem_adjusted_buy_quantity)
-            adjusted_profit_pct = (adjusted_sell_volume + unrealised_equity - adjusted_buy_volume) / (adjusted_buy_volume)
+            # How much have we closed this position
+            if not include_unrealised:
+
+                pct_closed = float(sell_quantity / (buy_quantity + redemptions))
+                if pct_closed == 0:
+                    return 0
+
+                # if pct_closed not in (0, 1):
+                #    import ipdb ; ipdb.set_trace()
+
+                try:
+                    return sell_volume / (adjusted_buy_volume * pct_closed) - 1
+                except ZeroDivisionError as e:
+                    print(e)
+                    import ipdb ; ipdb.set_trace()
+
+                # return (average_sell - average_buy) * buy_quantity * pct_closed
+
+                adjusted_profit_pct = 1 - (adjusted_buy_volume-adjusted_sell_volume)/(adjusted_buy_volume*pct_closed)
+            else:
+                adjusted_profit_pct = (adjusted_sell_volume + unrealised_equity - adjusted_buy_volume) / (adjusted_buy_volume)
 
             # average_sell = self.get_total_sold_usd() / float(sell_quantity)
             # unadjusted_profit_usd = (average_sell - average_buy) / float(buy_quantity)
             # buy_volume = self.get_average_buy() * float(redeem_adjusted_buy_quantity)
-            import ipdb ; ipdb.set_trace()
             return adjusted_profit_pct
             #else:
             #    # No in-kind redemptions, the simple accounting path

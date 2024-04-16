@@ -681,7 +681,7 @@ def test_realised_partial_profit_calculation(usdc, weth_usdc, start_ts: datetime
 
     # TODO: Should we express this differently?
     assert position.get_realised_profit_usd() == pytest.approx(62.5)
-    assert position.get_realised_profit_percent() == pytest.approx(0.023584905660377336)
+    assert position.get_realised_profit_percent() == pytest.approx(0.04716981132075467)
     assert position.get_unrealised_profit_usd() == pytest.approx(-50)
     assert position.get_unrealised_and_realised_profit_percent() == pytest.approx(0.004716981132075429)
 
@@ -825,9 +825,9 @@ def test_realised_partial_profit_calculation_with_in_kind_redemption(usdc, weth_
 
     # TODO: Should we express this differently?
     assert position.get_realised_profit_usd() == pytest.approx(62.5)
-    assert position.get_realised_profit_percent() == pytest.approx(0.004716981132075429)
+    assert position.get_realised_profit_percent() == pytest.approx(0.04716981132075482)
     assert position.get_unrealised_profit_usd() == pytest.approx(-50)
-    assert position.get_unrealised_and_realised_profit_percent(1850) == pytest.approx(0.004716981132075429)
+    assert position.get_unrealised_and_realised_profit_percent(1850) == pytest.approx(0.04716981132075482)
     assert position.get_quantity() == pytest.approx(Decimal(0.75))
     assert position.get_average_buy() == pytest.approx(1766.6666666666667)
     assert position.get_average_sell() == 1850
@@ -845,9 +845,9 @@ def test_realised_partial_profit_calculation_with_in_kind_redemption(usdc, weth_
     assert balance_update_evt.quantity == pytest.approx(Decimal(-0.30))  # Redeemed
     assert position.get_redeemed() == pytest.approx(Decimal(-0.30))
     assert position.get_quantity() == pytest.approx(Decimal(0.45))  # Left down from 0.75
-    assert position.get_unrealised_and_realised_profit_percent(1850) == pytest.approx(0.004716981132075429)
+    assert position.get_unrealised_and_realised_profit_percent(1850) == pytest.approx(0.04716981132075472)
     assert position.get_realised_profit_usd() == pytest.approx(62.5)
-    assert position.get_realised_profit_percent() == pytest.approx(0.023584905660377336)
+    assert position.get_realised_profit_percent() == pytest.approx(0.04716981132075472)
     assert position.get_unrealised_profit_usd() == pytest.approx(-30)  # Lower than before redemption
 
     # Check profit stats after the redemption
@@ -949,6 +949,36 @@ def test_unrealised_partial_profit_calculation_with_in_kind_redemption_redeem_th
     assert position.get_realised_profit_percent() == pytest.approx(0.0588235294117647)
 
 
+def test_unrealised_partial_profit_calculation_with_in_kind_redemption_sell_realised(usdc, weth_usdc, start_ts: datetime.datetime):
+    """Calculate realised profit.
+
+    - Sell 50%
+
+    - Calculate the realised profit for this portion
+    """
+
+    state = State()
+    state.update_reserves([ReservePosition(usdc, Decimal(10000), start_ts, 1.0, start_ts)])
+    trader = UnitTestTrader(state, lp_fees=0, price_impact=1)
+
+    assert state.portfolio.get_total_equity() == 10000.0
+
+    # Buy 1 ETH at 1700
+    position, trade = trader.buy(weth_usdc, Decimal("1.0"), 1700.0)
+    assert position.get_average_buy() == pytest.approx(1700)
+    assert position.get_quantity() == Decimal(1.0)
+    assert position.get_unrealised_profit_usd() == 0
+    assert position.get_unrealised_and_realised_profit_percent(1700) == 0
+    assert position.get_unrealised_and_realised_profit_percent(1800) == pytest.approx(0.0588235294117647)
+
+    # print("Realised before sell")
+    assert position.get_unrealised_and_realised_profit_percent(1800, include_unrealised=False) == pytest.approx(0)
+
+    trader.sell(weth_usdc, Decimal("0.50"), 1800.0)
+    # print("Realised after sell")
+    assert position.get_unrealised_and_realised_profit_percent(include_unrealised=False) == pytest.approx(0.0588235294117647)
+
+
 def test_unrealised_partial_profit_calculation_with_in_kind_redemption_redeem_then_sell_partially(usdc, weth_usdc, start_ts: datetime.datetime):
     """Calculate realised profit.
 
@@ -971,8 +1001,10 @@ def test_unrealised_partial_profit_calculation_with_in_kind_redemption_redeem_th
     assert position.get_quantity() == Decimal(1.0)
     assert position.get_unrealised_profit_usd() == 0
     assert position.get_unrealised_and_realised_profit_percent(1700) == 0
-
     assert position.get_unrealised_and_realised_profit_percent(1800) == pytest.approx(0.0588235294117647)
+
+    print("Realised only")
+    assert position.get_unrealised_and_realised_profit_percent(1800, include_unrealised=False) == pytest.approx(0)
 
     # Redeem first
     balance_update_evt = trader.redeem_in_kind(
@@ -983,11 +1015,18 @@ def test_unrealised_partial_profit_calculation_with_in_kind_redemption_redeem_th
     )
 
     trader.sell(weth_usdc, Decimal("0.25"), 1800.0)
+    print("Redeem + sell unrealised")
     assert position.get_unrealised_and_realised_profit_percent(1800) == pytest.approx(0.0588235294117647)
     assert position.get_average_buy() == pytest.approx(1700)
     assert position.get_quantity() == pytest.approx(Decimal("0.25"))
     assert position.get_sell_quantity() == pytest.approx(Decimal("0.25"))
     assert position.get_unrealised_profit_usd() == 0
+    print("Redeem + sell realised")
+    assert position.get_realised_profit_percent() == pytest.approx(0.0588235294117647)
+
+    # Sell remaining
+    trader.sell(weth_usdc, Decimal("0.25"), 1800.0)
+    assert position.get_unrealised_and_realised_profit_percent(1800) == pytest.approx(0.0588235294117647)
     assert position.get_realised_profit_percent() == pytest.approx(0.0588235294117647)
 
 
