@@ -114,10 +114,10 @@ def redraw_visualisations(
 
         if pair_count == 1:
 
-            small_figure = draw_single_pair_strategy_state(state, universe, execution_context, height=512)
+            small_figure = draw_single_pair_strategy_state(state, execution_context, universe, height=512)
             # Draw the inline plot and expose them tot he web server
             # TODO: SVGs here are not very readable, have them as a stop gap solution
-            large_figure = draw_single_pair_strategy_state(state, universe, execution_context, height=1024)
+            large_figure = draw_single_pair_strategy_state(state, execution_context, universe, height=1024)
 
             refresh_live_strategy_images(run_state, execution_context, small_figure, large_figure)
 
@@ -130,8 +130,8 @@ def redraw_visualisations(
 
         elif 3 < pair_count <=5:
 
-            small_figure_combined = draw_multi_pair_strategy_state(state, universe, execution_context, height=2048, detached_indicators = False)
-            large_figure_combined = draw_multi_pair_strategy_state(state, universe, execution_context, height=3840, width = 2160, detached_indicators = False)
+            small_figure_combined = draw_multi_pair_strategy_state(state, execution_context, universe, height=2048, detached_indicators = False)
+            large_figure_combined = draw_multi_pair_strategy_state(state, execution_context, universe, height=3840, width = 2160, detached_indicators = False)
 
             refresh_live_strategy_images(run_state, execution_context, small_figure_combined, large_figure_combined)
 
