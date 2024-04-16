@@ -1560,7 +1560,12 @@ class TradingPosition(GenericPosition):
             # How much have we closed this position
             if not include_unrealised:
 
-                pct_closed = float(sell_quantity / (buy_quantity + redemptions))
+                # Position has account corrections
+                divider = (buy_quantity + redemptions)
+                if divider == 0:
+                    return 0
+
+                pct_closed = float(sell_quantity / divider)
                 if pct_closed == 0:
                     return 0
 
