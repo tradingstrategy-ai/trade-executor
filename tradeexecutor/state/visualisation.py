@@ -368,7 +368,7 @@ class Visualisation:
         point_count = sum([len(p.points) for p in self.plots.values()])
         return f"<Visualisation with {plot_count} plots and {point_count} data points>"
     
-    def set_visualised_pairs(self, pairs: list[TradingPairIdentifier | DEXPair]) -> None:
+    def set_visualised_pairs(self, pairs: list[TradingPairIdentifier]) -> None:
         """Set the trading pair for this plot.
 
         :param pairs:
@@ -377,12 +377,8 @@ class Visualisation:
         """
         assert isinstance(pairs, list)
         for pair in pairs:
-            if isinstance(pair, DEXPair):
-                self.pair_ids.append(pair.pair_id)
-            elif isinstance(pair, TradingPairIdentifier):
-                self.pair_ids.append(pair.internal_id)
-            else:
-                raise ValueError(f"Unexpected pair type, got {pair} of type {type(pair)}")
+            assert isinstance(pair, TradingPairIdentifier), f"Unexpected pair type, got {pair} of type {type(pair)}"
+            self.pair_ids.append(pair.internal_id)
 
     def add_message(self,
                     timestamp: datetime.datetime,

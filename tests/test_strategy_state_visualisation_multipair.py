@@ -398,6 +398,7 @@ def test_visualise_strategy_state(
 def test_visualise_strategy_state_overriden_pairs(
     logger: logging.Logger,
     strategy_universe,
+    mock_exchange,
 ):
     """Visualise strategy state as a bunch inline images."""
 
@@ -420,9 +421,9 @@ def test_visualise_strategy_state_overriden_pairs(
         allow_missing_fees=True,
     )
 
-    # visualise only one pair
+    # visualise only one pair WETH/USDC
     state.visualisation.set_visualised_pairs([
-        strategy_universe.data_universe.pairs.get_pair_by_id(99),
+        strategy_universe.get_trading_pair(99),
     ])
 
     image = draw_multi_pair_strategy_state(state, unit_test_execution_context, strategy_universe)
@@ -444,8 +445,7 @@ def test_visualise_strategy_state_overriden_pairs(
     assert len(image_no_indicators.data) == 5
     assert len(image_no_indicators._grid_ref) == 1
 
-    # Test the image on a local screen
-    # using a web brower
+    # Test the image on a local screen using a web brower
     if os.environ.get("SHOW_IMAGE"):
         open_plotly_figure_in_browser(image, height=2000, width=1000)
         open_plotly_figure_in_browser(image_no_detached, height=2000, width=1000)
