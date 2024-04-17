@@ -1629,19 +1629,30 @@ class TradingPosition(GenericPosition):
     def get_size_relative_realised_profit_percent(self) -> Percent:
         """Calculated life-time profit over this position.
 
-        Calculate how many percent this profit made profit,
-        adjusted to the position size compared to the available
-        strategy equity at the opening of the position.
+        The profit is scaled to the % of the position size relative to the portfolio
+        to account for max capital allocation for the position.
 
-        This is mostly useful to calculate the strategy performance
-        independent of funding deposits and redemptions.
+        - TODO: This does not work for positions that have capital added over time
 
         See :ref:`profitability` for more details.
 
         :return:
-            If the position made 1% profit returns 1.01.
+            If the 50% aloocation position made 1% profit returns 1.005.
         """
         return self.get_realised_profit_percent() * self.get_capital_tied_at_open_pct()
+
+    def get_size_relative_unrealised_profit_percent(self) -> Percent:
+        """Calculated life-time profit over this position, including unrealised PnL.
+
+        The profit is scaled to the % of the position size relative to the portfolio
+        to account for max capital allocation for the position.
+
+        - TODO: This does not work for positions that have capital added over time
+
+        :return:
+            If the 50% aloocation position made 1% profit returns 1.005.
+        """
+        return self.get_unrealised_and_realised_profit_percent() * self.get_capital_tied_at_open_pct()
 
     def get_size_relative_profit_percent(self) -> Percent:
         """Calculated life-time profit over this position.

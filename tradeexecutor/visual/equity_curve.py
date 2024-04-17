@@ -490,16 +490,17 @@ def calculate_compounding_unrealised_trading_profitability(
     porfolio = state.portfolio
 
     # Calculate unrealised/realised profit pct for each position
-    profit_data = [(p.get_profit_timeline_timestamp(), p.get_unrealised_and_realised_profit_percent()) for p in porfolio.get_all_positions()]
-
+    profit_data = [(p.get_profit_timeline_timestamp(), p.get_size_relative_unrealised_profit_percent()) for p in porfolio.get_all_positions()]
+    profit_data.sort(key=lambda t: t[0])
     profit_df = pd.DataFrame(profit_data, columns=["timestamp", "profit"]).set_index("timestamp")
     returns = profit_df["profit"]
 
-    if freq:
-        returns = calculate_aggregate_returns(returns, freq=freq)
-
-    # https://stackoverflow.com/a/42672553/315168
     compounded = returns.add(1).cumprod().sub(1)
+
+    if freq:
+        # returns = calculate_aggregate_returns(returns, freq=freq)
+        compounded = compounded.asfreq(freq, method='ffill')
+
     return compounded
 
 
