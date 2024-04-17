@@ -111,6 +111,8 @@ class PortfolioStatistics:
     #:
     #: See :py:func:`tradeexecutor.visualisation.equity_curve.calculate_compounding_unrealised_trading_profitability`
     #:
+    #: Set to 0 if cannot be calculated yet.
+    #:
     unrealised_profitability: Optional[Percent] = None
     
     free_cash: Optional[USDollarAmount] = None
