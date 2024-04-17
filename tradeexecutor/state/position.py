@@ -1439,8 +1439,6 @@ class TradingPosition(GenericPosition):
 
         - :py:meth:`get_unrealised_profit_usd`
 
-        - TODO: Does not include interest calculations
-
         See :ref:`profitability` for more details.
 
         :return:
@@ -1449,22 +1447,27 @@ class TradingPosition(GenericPosition):
             Return ``0`` if the position profitability cannot be calculated,
             e.g. due to broken trades.
         """
-        if self.is_long() and self.is_spot():
-            # New path with
+        if self.is_spot():
+            # This is the new code path that takes account in-kind redemptions
+            # and redefines the meaning of realised profit
             return self.get_unrealised_and_realised_profit_percent(include_unrealised=False)
-
+        elif self.is_long() or self.is_credit_supply():
             # Legacy path
-            #total_bought = self.get_total_bought_usd()
-            #if total_bought == 0:
-            #    return 0
-            #return self.get_realised_profit_usd()/total_bought
+            # TODO: Check if we need to use lending-based calculations here
+            total_bought = self.get_total_bought_usd()
+            if total_bought == 0:
+                return 0
+            return self.get_realised_profit_usd()/total_bought
+        elif self.is_short():
+            # Legacy path
+            # TODO: Check if we need to use lending-based calculations here
+            total_sold = self.get_total_sold_usd()
+            if total_sold == 0:
+                return 0
         else:
-            # Should not never
-            raise AssertionError("Should not never happen as for non-spot positions we use leverage-based profit calculation")
-            #total_sold = self.get_total_sold_usd()
-            #if total_sold == 0:
-            #    return 0
-            #return self.get_realised_profit_usd()/total_sold
+            # TODO: Some legacy code paths end here?
+            # raise NotImplementedError(f"Should not never happen as for non-spot positions we use leverage-based profit calculation: {self}")
+            return 0
 
 
     def get_unrealised_and_realised_profit_percent(
