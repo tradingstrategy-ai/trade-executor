@@ -1064,6 +1064,26 @@ class TradingPosition(GenericPosition):
         quantity = self.get_quantity()
         return abs(quantity) <= epsilon
 
+    def get_last_updated_at(self) -> datetime.datetime:
+        """When did we update this position last time.
+
+        - What was the last timestamp when this position data was mutated
+
+        :return:
+            UTC time
+        """
+        return max([self.closed_at, self.last_pricing_at, self.last_trade_at])
+
+    def get_profit_timeline_timestamp(self) -> datetime.datetime:
+        """Where to place this position on a profit timeline.
+
+        - If the position is closed, place it at its closing data
+
+        :return:
+            UTC time
+        """
+        return self.get_last_updated_at()
+
     def get_total_bought_usd(self) -> USDollarAmount:
         """How much money we have used on buys"""
         return sum([t.get_value() for t in self.trades.values() if t.is_success() if t.is_buy()])
@@ -1578,31 +1598,6 @@ class TradingPosition(GenericPosition):
             #    return ((self.get_realised_profit_usd() or 0) + (self.get_unrealised_profit_usd() or 0)) / total_bought
         else:
             raise NotImplementedError(f"get_unrealised_and_realised_profit_percent() supports only long positions ATM")
-
-    def get_unrealised_profit_pct(self) -> Percent:
-        """Get the current profit of this position, minus any netflow.
-
-        - Calculate based on avg buy and sell
-
-        - For the unrealised portion, calculate the expected close
-
-        See also
-
-        - :py:meth:`get_realised_profit_percent`
-
-        :return:
-            Estimated position profit in percet, based on avg trade prices
-        """
-        if self.is_long():
-            total_bought = self.get_total_bought_usd()
-            if total_bought == 0:
-                return 0
-            return self.get_realised_profit_usd()/total_bought
-        else:
-            total_sold = self.get_total_sold_usd()
-            if total_sold == 0:
-                return 0
-            return self.get_realised_profit_usd()/total_sold
 
     def get_size_relative_realised_profit_percent(self) -> Percent:
         """Calculated life-time profit over this position.

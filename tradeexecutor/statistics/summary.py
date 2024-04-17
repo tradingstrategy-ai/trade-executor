@@ -11,7 +11,8 @@ from tradeexecutor.state.state import State
 from tradeexecutor.statistics.key_metric import calculate_key_metrics
 from tradeexecutor.strategy.execution_context import ExecutionMode
 from tradeexecutor.strategy.summary import StrategySummaryStatistics
-from tradeexecutor.visual.equity_curve import calculate_compounding_realised_trading_profitability, calculate_cumulative_daily_returns
+from tradeexecutor.visual.equity_curve import calculate_compounding_realised_trading_profitability, calculate_cumulative_daily_returns, \
+    calculate_compounding_unrealised_trading_profitability
 from tradeexecutor.visual.web_chart import export_time_series
 
 logger = logging.getLogger(__name__)
@@ -97,12 +98,12 @@ def calculate_summary_statistics(
     returns_all_time = returns_annualised = None
 
     if len(stats.portfolio) > 0 and not legacy_workarounds:
-        profitability = calculate_compounding_realised_trading_profitability(state)
+        profitability = calculate_compounding_unrealised_trading_profitability(state)
         enough_data = len(profitability.index) > 1 and profitability.index[0] <= start_at
         if len(profitability) >= 2:  # TypeError: cannot do slice indexing on RangeIndex with these indexers [2023-09-08 13:42:01.749186] of type Timestamp
             profitability_time_windowed = profitability[start_at:]
             if len(profitability_time_windowed) > 0:
-                profitability_daily = calculate_cumulative_daily_returns(state)
+                profitability_daily = calculate_compounding_unrealised_trading_profitability(state)
                 profitability_daily = profitability_daily[start_at:]
                 # We do not generate entry for dates without trades so forward fill from the previous day
                 profitability_daily = profitability_daily.ffill()

@@ -13,7 +13,8 @@ from tradeexecutor.strategy.summary import KeyMetricKind, KeyMetricSource, KeyMe
 from tradeexecutor.state.state import State
 from tradeexecutor.state.portfolio import Portfolio
 from tradeexecutor.statistics.key_metric import calculate_max_drawdown
-from tradeexecutor.visual.equity_curve import calculate_compounding_realised_trading_profitability, calculate_non_cumulative_daily_returns
+from tradeexecutor.visual.equity_curve import calculate_compounding_realised_trading_profitability, calculate_non_cumulative_daily_returns, \
+    calculate_compounding_unrealised_trading_profitability
 from tradeexecutor.utils.summarydataframe import as_percent, format_value
 
 
@@ -136,7 +137,7 @@ def _serialise_long_short_stats_as_json_table(
     # correct erroneous values if live
     compounding_returns = None
     if source == KeyMetricSource.live_trading and source_state:
-        compounding_returns = calculate_compounding_realised_trading_profitability(source_state)
+        compounding_returns = calculate_compounding_unrealised_trading_profitability(source_state)
         summary.loc['Trading period length']['All'] = source_state.get_formatted_strategy_duration()
     
     if compounding_returns is not None and len(compounding_returns) > 0:

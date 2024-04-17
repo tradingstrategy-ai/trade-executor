@@ -470,69 +470,37 @@ def calculate_compounding_realised_trading_profitability(
     return _calculate_compounding_trading_profitability(positions, fill_time_gaps, started_at, last_ts)
 
 
-
 def calculate_compounding_unrealised_trading_profitability(
     state: State,
-    fill_time_gaps=True,
+    freq: str | None="D",
 ) -> pd.Series:
     """Calculate the current profitability of open and closed trading positions, with the compounding effect.
 
-    Assume the profits from the previous PnL are used in the next one.
+    :param freq:
+        Bin results to this Pandas frequency.
 
-    This function returns the :term:`profitability` of individually
-    closed trading positions, relative to the portfolio total equity.
-
-    - See :py:func:`calculate_realised_profitability` for more information
-
-    - See :ref:`profitability` for more information.
-
-    :param fill_time_gaps:
-        Insert a faux book keeping entries at star tand end.
-
-        There chart ends at the last profitable trade.
-        However, we want to render the chart all the way up to the current date.
-        If `True` then insert a booking keeping entry to the last strategy timestamp
-        (`State.last_updated_at),
-        working around various issues when dealing with this data at the frontend.
-
-        Any fixes are not applied to empty arrays.
+        Default to daily.
 
     :return:
-        Pandas series (DatetimeIndex, cumulative % profit).
+        Sparse Pandas series of compounded returns.
 
-        Cumulative profit is 0% if there is no market action.
-        Cumulative profit is 1 (100%) if the equity has doubled during the period.
-
-        The last value of the series is the total trading profitability
-        of the strategy over its lifetime.
+        Timeline of (timestamp, position profit) for each timestamp when the position was last updated or closed.
     """
 
-    profits = [p.get_realised_profit_percent]
+    porfolio = state.portfolio
+
+    # Calculate unrealised/realised profit pct for each position
+    profit_data = [(p.get_profit_timeline_timestamp(), p.get_unrealised_and_realised_profit_percent()) for p in porfolio.get_all_positions()]
+
+    profit_df = pd.DataFrame(profit_data, columns=["timestamp", "profit"]).set_index("timestamp")
+    returns = profit_df["profit"]
+
+    if freq:
+        returns = calculate_aggregate_returns(returns, freq=freq)
+
     # https://stackoverflow.com/a/42672553/315168
-    compounded = realised_profitability.add(1).cumprod().sub(1)
-
-    if fill_time_gaps and len(compounded) > 0:
-
-        assert started_at
-        assert last_ts
-        last_value = compounded.iloc[-1]
-
-        # Strategy always starts at zero
-        compounded[started_at] = 0
-
-        # Fill from he last sample to current
-        if last_ts and len(compounded) > 0 and last_ts > compounded.index[-1]:
-            compounded[last_ts] = last_value
-
-        # Because we insert new entries, we need to resort the array
-        compounded = compounded.sort_index()
-
+    compounded = returns.add(1).cumprod().sub(1)
     return compounded
-
-
-    started_at, last_ts = _get_strategy_time_range(state, fill_time_gaps)
-    positions = state.portfolio.get_all_positions()  # TODO: Frozen positions may cause issues
-    return _calculate_compounding_trading_profitability(positions, fill_time_gaps, started_at, last_ts)
 
 
 def _calculate_compounding_trading_profitability(
