@@ -1479,14 +1479,14 @@ class TradingPosition(GenericPosition):
             total_bought = self.get_total_bought_usd()
             if total_bought == 0:
                 return 0
-            return self.get_realised_profit_usd()/total_bought
+            return (self.get_realised_profit_usd() or 0)/total_bought
         elif self.is_short():
             # Legacy path
             # TODO: Check if we need to use lending-based calculations here
             total_sold = self.get_total_sold_usd()
             if total_sold == 0:
                 return 0
-            return self.get_realised_profit_usd()/total_sold
+            return (self.get_realised_profit_usd() or 0)/total_sold
         else:
             # TODO: Some legacy code paths end here?
             # raise NotImplementedError(f"Should not never happen as for non-spot positions we use leverage-based profit calculation: {self}")
@@ -1656,8 +1656,10 @@ class TradingPosition(GenericPosition):
         """
 
         if self.is_spot():
+            # Calculate with in-kind redemption support
             return self.get_unrealised_and_realised_profit_percent() * self.get_capital_tied_at_open_pct()
         else:
+            # Legacy fallback
             return self.get_size_relative_realised_profit_percent()
 
     def get_size_relative_profit_percent(self) -> Percent:
