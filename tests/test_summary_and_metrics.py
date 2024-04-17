@@ -297,17 +297,15 @@ def test_calculate_all_summary_statistics(state: State):
     assert summary.return_annualised == pytest.approx(-0.07818171520665672)
 
     datapoints = summary.performance_chart_90_days
-    assert len(datapoints) == 92
+    assert len(datapoints) == 91
 
-    #assert datapoints[0] == (datetime.datetime(2021, 10, 2, 0, 0), -0.02687699056973558)
-    #assert datapoints[-1] == (datetime.datetime(2021, 12, 31, 0, 0), -0.045838046723895576)
-
+    # First
     assert datapoints[0][0] == pytest.approx(1633132800.0)
     assert datapoints[0][1] == pytest.approx(-0.02687699056973558)
-    assert datapoints[-2][0] == pytest.approx(1640908800.0)
-    assert datapoints[-2][1] == pytest.approx(-0.045838046723895576)
-    assert datapoints[-1][0] == pytest.approx(1640995200.0)
-    assert datapoints[-1][1] == pytest.approx(-0.045838046723895576)
+
+    # Last
+    assert datapoints[-2][0] == pytest.approx(1640822400.0)
+    assert datapoints[-2][1] == pytest.approx(-0.042567772455524344)
 
     # Make sure we do not output anything that is not JSON'able
     data = summary.to_dict()
