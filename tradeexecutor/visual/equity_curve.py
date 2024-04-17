@@ -504,10 +504,15 @@ def calculate_compounding_unrealised_trading_profitability(
 
         # If we haved closed two positions on the same day, asfreq() will fail unless we merge profit values
         def custom_cumprod_resampler(intraday_series):
-            if len(intraday_series) == 0:
-                return 0
-            daily_compounded = intraday_series.add(1).cumprod().sub(1)
-            return daily_compounded.iloc[-1]
+            match len(intraday_series):
+                case 0:
+                    return 0
+                case 1:
+                    return intraday_series.iloc[0]
+                case _:
+                    # Multiple closed positions within the same day, calculate the daily overall return
+                    daily_compounded = intraday_series.add(1).cumprod().sub(1)
+                    return daily_compounded.iloc[-1]
 
         try:
             resampled_returns = returns.resample(freq).agg(custom_cumprod_resampler)
