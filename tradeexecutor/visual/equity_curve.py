@@ -471,7 +471,7 @@ def calculate_compounding_realised_trading_profitability(
 
 
 def calculate_compounding_unrealised_trading_profitability(
-    state: State,
+    state_or_portfolio: State | Portfolio,
     freq: str | None="D",
 ) -> pd.Series:
     """Calculate the current profitability of open and closed trading positions, with the compounding effect.
@@ -487,10 +487,15 @@ def calculate_compounding_unrealised_trading_profitability(
         Timeline of (timestamp, position profit) for each timestamp when the position was last updated or closed.
     """
 
-    porfolio = state.portfolio
+    if isinstance(state_or_portfolio, State):
+        # State not needed, but wanted to maintain the similar signature check
+        portfolio = state_or_portfolio.portfolio
+    else:
+        # Path from calculate_statistics()
+        portfolio = state_or_portfolio
 
     # Calculate unrealised/realised profit pct for each position
-    profit_data = [(p.get_profit_timeline_timestamp(), p.get_size_relative_unrealised_or_realised_profit_percent()) for p in porfolio.get_all_positions()]
+    profit_data = [(p.get_profit_timeline_timestamp(), p.get_size_relative_unrealised_or_realised_profit_percent()) for p in portfolio.get_all_positions()]
 
     if len(profit_data) == 0:
         return pd.Series([], index=pd.to_datetime([]), dtype='float64')
