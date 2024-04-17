@@ -20,7 +20,7 @@ from tradeexecutor.state.interest import Interest
 from tradeexecutor.state.loan import Loan
 from tradeexecutor.state.trade import TradeType, TradeFlag
 from tradeexecutor.state.trade import TradeExecution
-from tradeexecutor.state.types import USDollarAmount, BPS, USDollarPrice, Percent, LeverageMultiplier
+from tradeexecutor.state.types import USDollarAmount, BPS, USDollarPrice, Percent, LeverageMultiplier, LegacyDataException
 from tradeexecutor.state.valuation import ValuationUpdate
 from tradeexecutor.strategy.dust import get_dust_epsilon_for_pair
 from tradeexecutor.strategy.lending_protocol_leverage import create_short_loan, update_short_loan, create_credit_supply_loan, update_credit_supply_loan
@@ -1401,7 +1401,9 @@ class TradingPosition(GenericPosition):
         :return:
             Percent of the portfolio value
         """
-        assert self.portfolio_value_at_open, f"Portfolio value at position open was not recorded for {self}"
+        if not self.portfolio_value_at_open:
+            raise LegacyDataException(f"Portfolio value at position open was not recorded for {self}")
+
         return self.get_value_at_open() / self.portfolio_value_at_open
 
     def get_loss_risk_at_open(self) -> USDollarAmount:
@@ -1560,6 +1562,10 @@ class TradingPosition(GenericPosition):
             adjusted_buy_volume = buy_volume + (average_buy * float(redemptions))
             adjusted_sell_volume = sell_volume
 
+            if adjusted_buy_volume == 0:
+                # We do not have any buys, so we would give zero divider
+                return 0
+
             if redemptions < 0:  # Some broken data might break redemptions amount, in legacy tests
                 assert adjusted_buy_volume <= buy_volume, f"Adjusted buy volume: {adjusted_buy_volume}, buy volume: {buy_volume}"
                 assert adjusted_sell_volume <= sell_volume
@@ -1579,16 +1585,12 @@ class TradingPosition(GenericPosition):
                 # if pct_closed not in (0, 1):
                 #    import ipdb ; ipdb.set_trace()
 
-                try:
-                    return sell_volume / (adjusted_buy_volume * pct_closed) - 1
-                except ZeroDivisionError as e:
-                    print(e)
-                    import ipdb ; ipdb.set_trace()
+                return sell_volume / (adjusted_buy_volume * pct_closed) - 1
 
                 # return (average_sell - average_buy) * buy_quantity * pct_closed
-
-                adjusted_profit_pct = 1 - (adjusted_buy_volume-adjusted_sell_volume)/(adjusted_buy_volume*pct_closed)
+                # adjusted_profit_pct = 1 - (adjusted_buy_volume-adtest_legacy_calculate_all_statisticsjusted_sell_volume)/(adjusted_buy_volume*pct_closed)
             else:
+
                 adjusted_profit_pct = (adjusted_sell_volume + unrealised_equity - adjusted_buy_volume) / (adjusted_buy_volume)
 
             # average_sell = self.get_total_sold_usd() / float(sell_quantity)
