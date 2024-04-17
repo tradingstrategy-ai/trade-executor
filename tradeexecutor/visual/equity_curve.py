@@ -504,7 +504,7 @@ def calculate_compounding_unrealised_trading_profitability(
 
 
 def _calculate_compounding_trading_profitability(
-    positions: list[TradingPosition], 
+    positions: list[TradingPosition],
     fill_time_gaps: bool,
     started_at: pd.Timestamp = None,
     last_ts: pd.Timestamp = None,
@@ -526,6 +526,40 @@ def _calculate_compounding_trading_profitability(
         compounded[started_at] = 0
 
         # Fill from he last sample to current
+        if last_ts and len(compounded) > 0 and last_ts > compounded.index[-1]:
+            compounded[last_ts] = last_value
+
+        # Because we insert new entries, we need to resort the array
+        compounded = compounded.sort_index()
+
+    return compounded
+
+
+    started_at, last_ts = _get_strategy_time_range(state, fill_time_gaps)
+    positions = state.portfolio.get_all_positions()  # TODO: Frozen positions may cause issues
+    return _calculate_compounding_trading_profitability(positions, fill_time_gaps, started_at, last_ts)
+
+
+def _calculate_compounding_realised_trading_profitability(
+    positions: list[TradingPosition],
+    fill_time_gaps: bool,
+    started_at: pd.Timestamp = None,
+    last_ts: pd.Timestamp = None,
+):
+    realised_profitability = _calculate_size_relative_realised_trading_returns(positions)
+    # https://stackoverflow.com/a/42672553/315168
+    compounded = realised_profitability.add(1).cumprod().sub(1)
+
+    if fill_time_gaps and len(compounded) > 0:
+
+        assert started_at
+        assert last_ts
+        last_value = compounded.iloc[-1]
+
+        # Strategy always starts at zero
+        compounded[started_at] = 0
+
+        # Fill fromt he last sample to current
         if last_ts and len(compounded) > 0 and last_ts > compounded.index[-1]:
             compounded[last_ts] = last_value
 
