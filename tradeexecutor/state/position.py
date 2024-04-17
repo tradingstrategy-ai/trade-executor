@@ -1451,7 +1451,7 @@ class TradingPosition(GenericPosition):
             # This is the new code path that takes account in-kind redemptions
             # and redefines the meaning of realised profit
             return self.get_unrealised_and_realised_profit_percent(include_unrealised=False)
-        elif self.is_long() or self.is_credit_supply():
+        elif self.is_long():
             # Legacy path
             # TODO: Check if we need to use lending-based calculations here
             total_bought = self.get_total_bought_usd()
@@ -1464,6 +1464,7 @@ class TradingPosition(GenericPosition):
             total_sold = self.get_total_sold_usd()
             if total_sold == 0:
                 return 0
+            return self.get_realised_profit_usd()/total_sold
         else:
             # TODO: Some legacy code paths end here?
             # raise NotImplementedError(f"Should not never happen as for non-spot positions we use leverage-based profit calculation: {self}")
