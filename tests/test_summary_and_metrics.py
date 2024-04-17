@@ -291,11 +291,6 @@ def test_calculate_all_summary_statistics(state: State):
     assert summary.current_value == pytest.approx(9541.619532761046)
     true_profitability = 9541.619532761046 / 10_000 - 1
 
-    compounding_series_real = calculate_compounding_unrealised_trading_profitability(state, freq=None)
-    compounding_series_daily = calculate_compounding_unrealised_trading_profitability(state, freq="D")
-    import ipdb ; ipdb.set_trace()
-
-
     assert true_profitability == pytest.approx(-0.045838046723895465)
     assert summary.profitability_90_days == pytest.approx(-0.045838046723895465)
     assert summary.return_all_time == pytest.approx(-0.045838046723895576)
