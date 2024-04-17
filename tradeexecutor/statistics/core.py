@@ -11,6 +11,7 @@ from tradeexecutor.state.position import TradingPosition
 from tradeexecutor.state.statistics import Statistics, PortfolioStatistics, PositionStatistics, FinalPositionStatistics
 from tradeexecutor.strategy.execution_context import ExecutionMode
 from tradeexecutor.statistics.statistics_table import StatisticsTable
+from tradeexecutor.visual.equity_curve import calculate_compounding_unrealised_trading_profitability
 
 logger = logging.getLogger(__name__)
 
@@ -118,6 +119,7 @@ def calculate_statistics(
             calculated_at=clock,
             total_equity=portfolio.get_total_equity(),
             net_asset_value=portfolio.get_net_asset_value(),
+            unrealised_profitability=calculate_compounding_unrealised_trading_profitability(state),
             free_cash=float(portfolio.get_cash()),
             open_position_count=len(portfolio.open_positions),
             open_position_equity=portfolio.get_position_equity_and_loan_nav(),
