@@ -1072,7 +1072,9 @@ class TradingPosition(GenericPosition):
         :return:
             UTC time
         """
-        return max([self.closed_at, self.last_pricing_at, self.last_trade_at])
+        time_vars = (self.opened_at, self.closed_at, self.last_pricing_at, self.last_trade_at)
+        # https://stackoverflow.com/a/37311978/315168
+        return max(filter(None, time_vars))
 
     def get_profit_timeline_timestamp(self) -> datetime.datetime:
         """Where to place this position on a profit timeline.
