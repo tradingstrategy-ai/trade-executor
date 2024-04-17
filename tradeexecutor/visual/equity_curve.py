@@ -490,7 +490,7 @@ def calculate_compounding_unrealised_trading_profitability(
     porfolio = state.portfolio
 
     # Calculate unrealised/realised profit pct for each position
-    profit_data = [(p.get_profit_timeline_timestamp(), p.get_size_relative_unrealised_profit_percent()) for p in porfolio.get_all_positions()]
+    profit_data = [(p.get_profit_timeline_timestamp(), p.get_size_relative_unrealised_or_realised_profit_percent()) for p in porfolio.get_all_positions()]
 
     if len(profit_data) == 0:
         return pd.Series([], index=pd.to_datetime([]), dtype='float64')

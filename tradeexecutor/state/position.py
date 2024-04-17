@@ -1599,7 +1599,7 @@ class TradingPosition(GenericPosition):
             #    # No in-kind redemptions, the simple accounting path
             #    return ((self.get_realised_profit_usd() or 0) + (self.get_unrealised_profit_usd() or 0)) / total_bought
         else:
-            raise NotImplementedError(f"get_unrealised_and_realised_profit_percent() supports only long positions ATM")
+            raise NotImplementedError(f"get_unrealised_and_realised_profit_percent() supports only long positions ATM, got {self}")
 
     def get_unrealised_profit_pct(self) -> Percent:
         """Get the current profit of this position, minus any netflow.
@@ -1641,7 +1641,7 @@ class TradingPosition(GenericPosition):
         """
         return self.get_realised_profit_percent() * self.get_capital_tied_at_open_pct()
 
-    def get_size_relative_unrealised_profit_percent(self) -> Percent:
+    def get_size_relative_unrealised_or_realised_profit_percent(self) -> Percent:
         """Calculated life-time profit over this position, including unrealised PnL.
 
         The profit is scaled to the % of the position size relative to the portfolio
@@ -1649,10 +1649,16 @@ class TradingPosition(GenericPosition):
 
         - TODO: This does not work for positions that have capital added over time
 
+        - TODO: Only correctly support unrealised PnL for spot
+
         :return:
             If the 50% aloocation position made 1% profit returns 1.005.
         """
-        return self.get_unrealised_and_realised_profit_percent() * self.get_capital_tied_at_open_pct()
+
+        if self.is_spot():
+            return self.get_unrealised_and_realised_profit_percent() * self.get_capital_tied_at_open_pct()
+        else:
+            return self.get_size_relative_realised_profit_percent()
 
     def get_size_relative_profit_percent(self) -> Percent:
         """Calculated life-time profit over this position.
