@@ -1427,7 +1427,7 @@ class TradingPosition(GenericPosition):
             # Old invalid data
             return 0
 
-def get_realised_profit_percent(self) -> Percent:
+    def get_realised_profit_percent(self) -> Percent:
         """Calculated life-time profit over this position.
 
         Calculate how many percent profit this position made,
