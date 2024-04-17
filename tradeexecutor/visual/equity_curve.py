@@ -11,6 +11,7 @@ import numpy as np
 from matplotlib.figure import Figure
 
 from tradeexecutor.analysis.curve import CurveType, DEFAULT_BENCHMARK_COLOURS
+from tradeexecutor.state.portfolio import Portfolio
 from tradeexecutor.state.state import State
 from tradeexecutor.state.statistics import Statistics, PortfolioStatistics
 from tradeexecutor.state.position import TradingPosition
