@@ -98,12 +98,12 @@ def calculate_summary_statistics(
     returns_all_time = returns_annualised = None
 
     if len(stats.portfolio) > 0 and not legacy_workarounds:
-        profitability = calculate_compounding_unrealised_trading_profitability(state)
+        profitability = calculate_compounding_unrealised_trading_profitability(state, freq="D")
         enough_data = len(profitability.index) > 1 and profitability.index[0] <= start_at
         if len(profitability) >= 2:  # TypeError: cannot do slice indexing on RangeIndex with these indexers [2023-09-08 13:42:01.749186] of type Timestamp
             profitability_time_windowed = profitability[start_at:]
             if len(profitability_time_windowed) > 0:
-                profitability_daily = calculate_compounding_unrealised_trading_profitability(state)
+                profitability_daily = profitability
                 profitability_daily = profitability_daily[start_at:]
                 # We do not generate entry for dates without trades so forward fill from the previous day
                 profitability_daily = profitability_daily.ffill()

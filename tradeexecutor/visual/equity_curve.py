@@ -500,24 +500,23 @@ def calculate_compounding_unrealised_trading_profitability(
     index, profit = list(zip(*profit_data))
     returns = pd.Series(data=profit, index=pd.DatetimeIndex(index))
 
-    compounded = returns.add(1).cumprod().sub(1)
-
     if freq:
 
         # If we haved closed two positions on the same day, asfreq() will fail unless we merge profit values
         def custom_cumprod_resampler(intraday_series):
             if len(intraday_series) == 0:
-                return pd.NA
+                return 0
             daily_compounded = intraday_series.add(1).cumprod().sub(1)
             return daily_compounded.iloc[-1]
 
         try:
-            resampled_compounded = compounded.resample(freq).agg(custom_cumprod_resampler)
+            resampled_returns = returns.resample(freq).agg(custom_cumprod_resampler)
+            resampled_compounded = resampled_returns.add(1).cumprod().sub(1)
             resampled_compounded = resampled_compounded.ffill()
         except Exception as e:
             raise RuntimeError(f"Daily binning failed for: {profit_data}") from e
     else:
-        resampled_compounded = compounded
+        resampled_compounded = returns.add(1).cumprod().sub(1)
 
     return resampled_compounded
 
