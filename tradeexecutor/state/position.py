@@ -1449,42 +1449,23 @@ class TradingPosition(GenericPosition):
             Return ``0`` if the position profitability cannot be calculated,
             e.g. due to broken trades.
         """
-        if self.is_long():
-            # New path
+        if self.is_long() and self.is_spot():
+            # New path with
             return self.get_unrealised_and_realised_profit_percent(include_unrealised=False)
+
+            # Legacy path
             #total_bought = self.get_total_bought_usd()
             #if total_bought == 0:
             #    return 0
             #return self.get_realised_profit_usd()/total_bought
         else:
-            total_sold = self.get_total_sold_usd()
-            if total_sold == 0:
-                return 0
-            return self.get_realised_profit_usd()/total_sold
-        
-        # assert not self.is_open(), "Cannot calculate realised profit for open positions"
+            # Should not never
+            raise AssertionError("Should not never happen as for non-spot positions we use leverage-based profit calculation")
+            #total_sold = self.get_total_sold_usd()
+            #if total_sold == 0:
+            #    return 0
+            #return self.get_realised_profit_usd()/total_sold
 
-        # buy_value = self.get_buy_value()
-        # sell_value = self.get_sell_value()
-
-        # # We only need to handle in-kind redemptions,
-        # # because deposits are never applied to an open position
-        # redemptions = [r for r in self.balance_updates.values() if r.cause == BalanceUpdateCause.redemption]
-        # if redemptions:
-        #     assert self.is_spot(), "Does not know how to handle redemptions for credit positions"
-        #     redemptions_value = sum(r.usd_value for r in redemptions)
-        # else:
-        #     redemptions_value = 0
-
-        # if buy_value == 0:
-        #     # Repaired trade
-        #     return 0
-        
-        # if sell_value == 0:
-        #     # Another way of damaged/repaired trade
-        #     return 0
-
-        # return (sell_value + self.get_claimed_interest() - self.get_repaid_interest()) / (buy_value) - 1
 
     def get_unrealised_and_realised_profit_percent(
         self,
