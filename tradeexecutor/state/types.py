@@ -78,3 +78,6 @@ UnixTimestamp: TypeAlias = float
 #:
 LeverageMultiplier: TypeAlias = float
 
+
+class LegacyDataException(Exception):
+    """We are dealing with old files and cannot complete this calculation because data points where not yet recorded."""

@@ -9,6 +9,7 @@ from tradeexecutor.analysis.trade_analyser import build_trade_analysis
 from tradeexecutor.state.portfolio import Portfolio
 from tradeexecutor.state.position import TradingPosition
 from tradeexecutor.state.statistics import Statistics, PortfolioStatistics, PositionStatistics, FinalPositionStatistics
+from tradeexecutor.state.types import LegacyDataException
 from tradeexecutor.strategy.execution_context import ExecutionMode
 from tradeexecutor.statistics.statistics_table import StatisticsTable
 from tradeexecutor.visual.equity_curve import calculate_compounding_unrealised_trading_profitability
@@ -115,7 +116,11 @@ def calculate_statistics(
 
         trade_analysis = build_trade_analysis(portfolio)
 
-        profitability_series = calculate_compounding_unrealised_trading_profitability(portfolio)
+        try:
+            profitability_series = calculate_compounding_unrealised_trading_profitability(portfolio)
+        except LegacyDataException:
+            # Unit tests running on legacy state files
+            profitability_series = []
         
         pf_stats = PortfolioStatistics(
             calculated_at=clock,
