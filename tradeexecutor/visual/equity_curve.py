@@ -424,7 +424,7 @@ def _calculate_size_relative_trading_returns(positions: list[TradingPosition]):
     data = [(p.closed_at, p.get_size_relative_realised_profit_percent()) for p in positions]
 
     if len(data) == 0:
-        return pd.Series(dtype='float64')
+        return pd.Series(dtype='float64', index=pd.to_datetime([]))
 
     # https://stackoverflow.com/a/66772284/315168
     return pd.DataFrame(data).set_index(0)[1]
@@ -491,9 +491,13 @@ def calculate_compounding_unrealised_trading_profitability(
 
     # Calculate unrealised/realised profit pct for each position
     profit_data = [(p.get_profit_timeline_timestamp(), p.get_size_relative_unrealised_profit_percent()) for p in porfolio.get_all_positions()]
+
+    if len(profit_data) == 0:
+        return pd.Series([], index=pd.to_datetime([]), dtype='float64')
+
     profit_data.sort(key=lambda t: t[0])
-    profit_df = pd.DataFrame(profit_data, columns=["timestamp", "profit"]).set_index("timestamp")
-    returns = profit_df["profit"]
+    index, profit = list(zip(*profit_data))
+    returns = pd.Series(data=profit, index=pd.DatetimeIndex(index))
 
     compounded = returns.add(1).cumprod().sub(1)
 
