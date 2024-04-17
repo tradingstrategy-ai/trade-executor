@@ -415,13 +415,16 @@ def calculate_size_relative_realised_trading_returns(
         Empty series if there are no trades.
     """
     positions = [p for p in state.portfolio.closed_positions.values() if p.is_closed()]
-    return _calculate_size_relative_realised_trading_returns(positions)
+    return _calculate_size_relative_trading_returns(positions)
 
-def _calculate_size_relative_realised_trading_returns(positions: list[TradingPosition]):
+
+def _calculate_size_relative_trading_returns(positions: list[TradingPosition]):
+
+    # Legacy path
     data = [(p.closed_at, p.get_size_relative_realised_profit_percent()) for p in positions]
 
     if len(data) == 0:
-        return pd.Series(dtype='float64')
+        return pd.Series(dtype='float64', index=pd.to_datetime([]))
 
     # https://stackoverflow.com/a/66772284/315168
     return pd.DataFrame(data).set_index(0)[1]
@@ -464,11 +467,104 @@ def calculate_compounding_realised_trading_profitability(
     """
     started_at, last_ts = _get_strategy_time_range(state, fill_time_gaps)
     positions = [p for p in state.portfolio.closed_positions.values() if p.is_closed()]
-    return _calculate_compounding_realised_trading_profitability(positions, fill_time_gaps, started_at, last_ts)
+    return _calculate_compounding_trading_profitability(positions, fill_time_gaps, started_at, last_ts)
+
+
+def calculate_compounding_unrealised_trading_profitability(
+    state: State,
+    freq: str | None="D",
+) -> pd.Series:
+    """Calculate the current profitability of open and closed trading positions, with the compounding effect.
+
+    :param freq:
+        Bin results to this Pandas frequency.
+
+        Default to daily.
+
+    :return:
+        Sparse Pandas series of compounded returns.
+
+        Timeline of (timestamp, position profit) for each timestamp when the position was last updated or closed.
+    """
+
+    porfolio = state.portfolio
+
+    # Calculate unrealised/realised profit pct for each position
+    profit_data = [(p.get_profit_timeline_timestamp(), p.get_size_relative_unrealised_or_realised_profit_percent()) for p in porfolio.get_all_positions()]
+
+    if len(profit_data) == 0:
+        return pd.Series([], index=pd.to_datetime([]), dtype='float64')
+
+    profit_data.sort(key=lambda t: t[0])
+
+    index, profit = list(zip(*profit_data))
+    returns = pd.Series(data=profit, index=pd.DatetimeIndex(index))
+
+    if freq:
+
+        # If we haved closed two positions on the same day, asfreq() will fail unless we merge profit values
+        def custom_cumprod_resampler(intraday_series):
+            match len(intraday_series):
+                case 0:
+                    return 0
+                case 1:
+                    return intraday_series.iloc[0]
+                case _:
+                    # Multiple closed positions within the same day, calculate the daily overall return
+                    daily_compounded = intraday_series.add(1).cumprod().sub(1)
+                    return daily_compounded.iloc[-1]
+
+        try:
+            resampled_returns = returns.resample(freq).agg(custom_cumprod_resampler)
+            resampled_compounded = resampled_returns.add(1).cumprod().sub(1)
+            resampled_compounded = resampled_compounded.ffill()
+        except Exception as e:
+            raise RuntimeError(f"Daily binning failed for: {profit_data}") from e
+    else:
+        resampled_compounded = returns.add(1).cumprod().sub(1)
+
+    return resampled_compounded
+
+
+def _calculate_compounding_trading_profitability(
+    positions: list[TradingPosition],
+    fill_time_gaps: bool,
+    started_at: pd.Timestamp = None,
+    last_ts: pd.Timestamp = None,
+    realised_only=True,
+):
+
+    realised_profitability = _calculate_size_relative_trading_returns(positions)
+
+    # https://stackoverflow.com/a/42672553/315168
+    compounded = realised_profitability.add(1).cumprod().sub(1)
+
+    if fill_time_gaps and len(compounded) > 0:
+
+        assert started_at
+        assert last_ts
+        last_value = compounded.iloc[-1]
+
+        # Strategy always starts at zero
+        compounded[started_at] = 0
+
+        # Fill from he last sample to current
+        if last_ts and len(compounded) > 0 and last_ts > compounded.index[-1]:
+            compounded[last_ts] = last_value
+
+        # Because we insert new entries, we need to resort the array
+        compounded = compounded.sort_index()
+
+    return compounded
+
+
+    started_at, last_ts = _get_strategy_time_range(state, fill_time_gaps)
+    positions = state.portfolio.get_all_positions()  # TODO: Frozen positions may cause issues
+    return _calculate_compounding_trading_profitability(positions, fill_time_gaps, started_at, last_ts)
 
 
 def _calculate_compounding_realised_trading_profitability(
-    positions: list[TradingPosition], 
+    positions: list[TradingPosition],
     fill_time_gaps: bool,
     started_at: pd.Timestamp = None,
     last_ts: pd.Timestamp = None,
@@ -499,13 +595,13 @@ def _calculate_compounding_realised_trading_profitability(
 def calculate_long_compounding_realised_trading_profitability(state, fill_time_gaps=True):
     started_at, last_ts = _get_strategy_time_range(state, fill_time_gaps)
     positions = [p for p in state.portfolio.closed_positions.values() if (p.is_closed() and p.is_long())]
-    return _calculate_compounding_realised_trading_profitability(positions, fill_time_gaps, started_at, last_ts)
+    return _calculate_compounding_trading_profitability(positions, fill_time_gaps, started_at, last_ts)
 
 
 def calculate_short_compounding_realised_trading_profitability(state, fill_time_gaps=True):
     started_at, last_ts = _get_strategy_time_range(state, fill_time_gaps)
     positions = [p for p in state.portfolio.closed_positions.values() if (p.is_closed() and p.is_short())]
-    return _calculate_compounding_realised_trading_profitability(positions, fill_time_gaps, started_at, last_ts)
+    return _calculate_compounding_trading_profitability(positions, fill_time_gaps, started_at, last_ts)
   
 
 def _get_strategy_time_range(state, fill_time_gaps):
