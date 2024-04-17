@@ -496,14 +496,32 @@ def calculate_compounding_unrealised_trading_profitability(
         return pd.Series([], index=pd.to_datetime([]), dtype='float64')
 
     profit_data.sort(key=lambda t: t[0])
-    index, profit = list(zip(*profit_data))
+
+    # If we haved closed two positions on the same day, asfreq() will fail unless we merge profit values
+    merged = []
+    last_key = None
+    last_value = None
+    for key, value in profit_data:
+        if key == last_key:
+            last_value *= value
+        else:
+            if last_key:
+                merged.append((last_key, last_value))
+            last_key = key
+            last_value = value
+    merged.append((last_key, last_value))
+
+    index, profit = list(zip(*merged))
     returns = pd.Series(data=profit, index=pd.DatetimeIndex(index))
 
     compounded = returns.add(1).cumprod().sub(1)
 
     if freq:
         # returns = calculate_aggregate_returns(returns, freq=freq)
-        compounded = compounded.asfreq(freq, method='ffill')
+        try:
+            compounded = compounded.asfreq(freq, method='ffill')
+        except Exception as e:
+            import ipdb ; ipdb.set_trace()
 
     return compounded
 

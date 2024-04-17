@@ -201,7 +201,7 @@ def test_web_chart(logger, server_url):
 
     assert data["data"] == []
     assert data["help_link"] == 'https://tradingstrategy.ai/glossary/profitability'
-    assert data["title"] == 'Compounded realised trading position % profit'
+    assert data["title"] == 'Compounded realised trading position % profititability'
 
 
 def test_web_chart_backtest(logger, server_url):
