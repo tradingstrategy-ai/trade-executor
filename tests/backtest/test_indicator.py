@@ -484,7 +484,11 @@ def test_ohlcv_indicator(strategy_universe, indicator_storage):
 
 
 def test_indicator_single_pair_live_trading_universe(persistent_test_client, indicator_storage):
-    """Repeat a production bug.
+    """Indicators should always have only timestamp as the index
+
+    - Repeat a production bug
+
+    - Live data loader gives (pair, timestamp) index instead of (timestamp) index
     """
 
     client = persistent_test_client
@@ -502,9 +506,6 @@ def test_indicator_single_pair_live_trading_universe(persistent_test_client, ind
         liquidity=False,
     )
 
-    # Construct a trading universe from the loaded data,
-    # and apply any data preprocessing needed before giving it
-    # to the strategy and indicators
     strategy_universe = TradingStrategyUniverse.create_from_dataset(
         dataset,
         reserve_asset="USDC",
@@ -528,8 +529,6 @@ def test_indicator_single_pair_live_trading_universe(persistent_test_client, ind
         max_readers=1,
     )
 
-    # Test reading MFI value,
-    # read on the last day of backtest data for WBTC-USDC pair
     first_day, last_day = strategy_universe.data_universe.candles.get_timestamp_range()
 
     input_indicators = StrategyInputIndicators(
