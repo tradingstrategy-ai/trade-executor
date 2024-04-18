@@ -9,12 +9,13 @@ import pandas_ta
 import pytest
 
 from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier
-from tradeexecutor.strategy.execution_context import ExecutionContext, unit_test_execution_context
+from tradeexecutor.strategy.execution_context import ExecutionContext, unit_test_execution_context, unit_test_trading_execution_context
 from tradeexecutor.strategy.pandas_trader.indicator import IndicatorSet, DiskIndicatorStorage, IndicatorDefinition, IndicatorFunctionSignatureMismatch, \
     calculate_and_load_indicators, IndicatorKey, IndicatorSource
 from tradeexecutor.strategy.pandas_trader.strategy_input import StrategyInputIndicators
 from tradeexecutor.strategy.parameters import StrategyParameters
-from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse, create_pair_universe_from_code
+from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse, create_pair_universe_from_code, load_partial_data
+from tradeexecutor.strategy.universe_model import UniverseOptions
 from tradeexecutor.testing.synthetic_ethereum_data import generate_random_ethereum_address
 from tradeexecutor.testing.synthetic_exchange_data import generate_exchange
 from tradeexecutor.testing.synthetic_price_data import generate_multi_pair_candles
@@ -480,3 +481,65 @@ def test_ohlcv_indicator(strategy_universe, indicator_storage):
 
     indicator_value = input_indicators.get_indicator_value("mfi", pair=wbtc_usdc)
     assert indicator_value in (0, None)  # TODO: Local and Github CI disagree what's the proper MFI value here
+
+
+def test_indicator_single_pair_live_trading_universe(persistent_test_client, indicator_storage):
+    """Repeat a production bug.
+    """
+
+    client = persistent_test_client
+
+    universe_options = UniverseOptions(history_period=datetime.timedelta(days=14))
+
+    pair = (ChainId.polygon, "uniswap-v3", "WMATIC", "USDC", 0.0005)
+
+    dataset = load_partial_data(
+        client=client,
+        time_bucket=TimeBucket.h1,
+        pairs=[pair],
+        execution_context=unit_test_trading_execution_context,
+        universe_options=universe_options,
+        liquidity=False,
+    )
+
+    # Construct a trading universe from the loaded data,
+    # and apply any data preprocessing needed before giving it
+    # to the strategy and indicators
+    strategy_universe = TradingStrategyUniverse.create_from_dataset(
+        dataset,
+        reserve_asset="USDC",
+        forward_fill=True,
+    )
+
+    indicators = IndicatorSet()
+    indicators.add(
+        "ma",
+        pandas_ta.sma,
+        parameters={"length": 4},
+    )
+
+    indicator_results = calculate_and_load_indicators(
+        strategy_universe,
+        indicator_storage,
+        indicators=indicators,
+        execution_context=unit_test_execution_context,
+        parameters=StrategyParameters({}),
+        max_workers=1,
+        max_readers=1,
+    )
+
+    # Test reading MFI value,
+    # read on the last day of backtest data for WBTC-USDC pair
+    first_day, last_day = strategy_universe.data_universe.candles.get_timestamp_range()
+
+    input_indicators = StrategyInputIndicators(
+        strategy_universe=strategy_universe,
+        available_indicators=indicators,
+        indicator_results=indicator_results,
+        timestamp=last_day,
+    )
+
+    indicator_series = input_indicators.get_indicator_series("ma")
+    assert isinstance(indicator_series.index, pd.DatetimeIndex)
+    indicator_value = input_indicators.get_indicator_value("ma")
+    assert 0 < indicator_value < 10_000
