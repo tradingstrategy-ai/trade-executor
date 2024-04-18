@@ -406,7 +406,7 @@ def create_trading_universe(
 
 tags = {StrategyTag.beta, StrategyTag.live}
 
-sort_priorty = 99
+sort_priority = 99
 
 name = "ETH-BTC-USDC momentum"
 
