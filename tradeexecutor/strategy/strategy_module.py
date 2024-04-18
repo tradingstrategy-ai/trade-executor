@@ -432,6 +432,12 @@ class StrategyModuleInformation:
     #:
     tags: Optional[Set[StrategyTag]] = None
 
+    #: The display priority for this strategy.
+    #:
+    #: Higher = the strategy apppears in the frontend first.
+    #:
+    sort_priority: int = 0
+
     #: StrategyParameters class.
     #:
     #: trading_strategy_engine_version > "0.5"
@@ -538,6 +544,9 @@ class StrategyModuleInformation:
             for t in self.tags:
                 assert isinstance(t, StrategyTag), f"Expected StrategyTag instance, got {type(t)}: {t}"
 
+        if self.sort_priority:
+            assert type(self.sort_priority) in (int, float), f"sort_priority not a number: {self.sort_priority}"
+
         if self.icon:
             result = urlparse(self.icon)
             assert all([result.scheme, result.netloc]), f"Bad icon URL: {self.icon}"
@@ -618,6 +627,7 @@ def parse_strategy_module(
         short_description=python_module_exports.get("short_description"),
         long_description=python_module_exports.get("long_description"),
         tags=python_module_exports.get("tags"),
+        sort_priority=python_module_exports.get("sort_priority"),
         create_indicators=python_module_exports.get("create_indicators"),
         parameters=python_module_exports.get("parameters"),
     )

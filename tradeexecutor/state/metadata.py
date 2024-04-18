@@ -172,6 +172,11 @@ class Metadata:
     #:
     tags: Set[StrategyTag] = field(default_factory=set)
 
+    #: The display priority for this strategy.
+    #:
+    #: Higher = the strategy apppears in the frontend first.
+    sort_priority: int = 0
+
     @staticmethod
     def create_dummy() -> "Metadata":
         return Metadata(

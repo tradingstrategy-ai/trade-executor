@@ -1,4 +1,4 @@
-"""MATIC-ETH-USDC rebalance strategy.
+"""MATIC-USDC breakout strategy.
 
 - See https://tradingstrategy.ai/blog/outperfoming-eth for the strategy development information
 
@@ -8,7 +8,7 @@ To backtest this strategy module locally:
 
     trade-executor \
         backtest \
-        --strategy-file=strategies/matic-eth-usdc.py \
+        --strategy-file=strategies/matic-breakout.py \
         --trading-strategy-api-key=$TRADING_STRATEGY_API_KEY
 
 To see the backtest for longer history, refer to the notebook doing backtest with Binance data.
