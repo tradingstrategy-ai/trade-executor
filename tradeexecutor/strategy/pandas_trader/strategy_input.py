@@ -549,6 +549,8 @@ def _calculate_and_cache_candle_width(index: pd.DatetimeIndex) -> pd.Timedelta |
     - Cached for speed - cache size might not make sense for large trading pair use cases
     """
 
+    assert isinstance(index, pd.DatetimeIndex), f"Got index: {index}"
+
     key = id(index)
 
     value = _time_frame_cache.get(key)
