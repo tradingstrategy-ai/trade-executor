@@ -243,7 +243,6 @@ def create_trading_universe(
             execution_context=execution_context,
             universe_options=universe_options,
             liquidity=False,
-            stop_loss_time_bucket=Parameters.stop_loss_time_bucket,
         )
         # Construct a trading universe from the loaded data,
         # and apply any data preprocessing needed before giving it

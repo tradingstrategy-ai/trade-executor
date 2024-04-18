@@ -543,11 +543,17 @@ class StrategyInput:
 
 _time_frame_cache = cachetools.Cache(maxsize=SERIES_CACHE_SIZE)
 
-def _calculate_and_cache_candle_width(index: pd.DatetimeIndex) -> pd.Timedelta | None:
+def _calculate_and_cache_candle_width(index: pd.DatetimeIndex | pd.MultiIndex) -> pd.Timedelta | None:
     """Get the evenly timestamped index candle/time bar width.
 
     - Cached for speed - cache size might not make sense for large trading pair use cases
     """
+
+    # The original data is in grouped DF
+    if isinstance(index, pd.MultiIndex):
+        # AssertionError: Got index: MultiIndex([(2854997, '2024-04-04 21:00:00'),
+        #        (2854997, '2024-04-04 22:00:00'),
+        index = index.get_level_values(1)
 
     assert isinstance(index, pd.DatetimeIndex), f"Got index: {index}"
 
