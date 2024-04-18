@@ -336,6 +336,7 @@ def start(
             badges=badges,
             tags=mod.tags,
             hot_wallet=sync_model.get_hot_wallet(),
+            sort_priority=mod.sort_priority,
         )
 
         # Start the queue that relays info from the web server to the strategy executor
