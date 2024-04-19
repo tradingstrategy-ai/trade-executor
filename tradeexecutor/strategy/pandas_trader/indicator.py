@@ -94,6 +94,19 @@ class IndicatorSource(enum.Enum):
         return self in (IndicatorSource.open_price, IndicatorSource.close_price, IndicatorSource.ohlcv)
 
 
+def _flatten_series_index(series: pd.Series) -> pd.Series:
+    """Ensure that any per-pair series we have has DatetimeIndex, not MultiIndex."""
+    if isinstance(series.index, pd.DatetimeIndex):
+        return series
+    if isinstance(series.index, pd.MultiIndex):
+        new_index = series.index.get_level_values(1)  # assume pair id, timestamp tuples
+        assert isinstance(new_index, pd.DatetimeIndex)
+        series_2 = series.copy()
+        series_2.index = new_index
+        return series_2
+    else:
+        raise NotImplementedError(f"Unknown index: {series.index}")
+
 
 @dataclass(slots=True)
 class IndicatorDefinition:
@@ -179,7 +192,8 @@ class IndicatorDefinition:
 
         """
         try:
-            ret = self.func(input, **self.parameters)
+            input_fixed = _flatten_series_index(input)
+            ret = self.func(input_fixed, **self.parameters)
             return self._check_good_return_value(ret)
         except Exception as e:
             raise IndicatorCalculationFailed(f"Could not calculate indicator {self.name} ({self.func}) for parameters {self.parameters}, input data is {len(input)} rows") from e

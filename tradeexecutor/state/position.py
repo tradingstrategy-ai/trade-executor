@@ -20,7 +20,7 @@ from tradeexecutor.state.interest import Interest
 from tradeexecutor.state.loan import Loan
 from tradeexecutor.state.trade import TradeType, TradeFlag
 from tradeexecutor.state.trade import TradeExecution
-from tradeexecutor.state.types import USDollarAmount, BPS, USDollarPrice, Percent, LeverageMultiplier
+from tradeexecutor.state.types import USDollarAmount, BPS, USDollarPrice, Percent, LeverageMultiplier, LegacyDataException
 from tradeexecutor.state.valuation import ValuationUpdate
 from tradeexecutor.strategy.dust import get_dust_epsilon_for_pair
 from tradeexecutor.strategy.lending_protocol_leverage import create_short_loan, update_short_loan, create_credit_supply_loan, update_credit_supply_loan
@@ -1064,6 +1064,28 @@ class TradingPosition(GenericPosition):
         quantity = self.get_quantity()
         return abs(quantity) <= epsilon
 
+    def get_last_updated_at(self) -> datetime.datetime:
+        """When did we update this position last time.
+
+        - What was the last timestamp when this position data was mutated
+
+        :return:
+            UTC time
+        """
+        time_vars = (self.opened_at, self.closed_at, self.last_pricing_at, self.last_trade_at)
+        # https://stackoverflow.com/a/37311978/315168
+        return max(filter(None, time_vars))
+
+    def get_profit_timeline_timestamp(self) -> datetime.datetime:
+        """Where to place this position on a profit timeline.
+
+        - If the position is closed, place it at its closing data
+
+        :return:
+            UTC time
+        """
+        return self.get_last_updated_at()
+
     def get_total_bought_usd(self) -> USDollarAmount:
         """How much money we have used on buys"""
         return sum([t.get_value() for t in self.trades.values() if t.is_success() if t.is_buy()])
@@ -1379,7 +1401,9 @@ class TradingPosition(GenericPosition):
         :return:
             Percent of the portfolio value
         """
-        assert self.portfolio_value_at_open, f"Portfolio value at position open was not recorded for {self}"
+        if not self.portfolio_value_at_open:
+            raise LegacyDataException(f"Portfolio value at position open was not recorded for {self}")
+
         return self.get_value_at_open() / self.portfolio_value_at_open
 
     def get_loss_risk_at_open(self) -> USDollarAmount:
@@ -1439,8 +1463,6 @@ class TradingPosition(GenericPosition):
 
         - :py:meth:`get_unrealised_profit_usd`
 
-        - TODO: Does not include interest calculations
-
         See :ref:`profitability` for more details.
 
         :return:
@@ -1449,42 +1471,28 @@ class TradingPosition(GenericPosition):
             Return ``0`` if the position profitability cannot be calculated,
             e.g. due to broken trades.
         """
-        if self.is_long():
-            # New path
+        if self.is_spot():
+            # This is the new code path that takes account in-kind redemptions
+            # and redefines the meaning of realised profit
             return self.get_unrealised_and_realised_profit_percent(include_unrealised=False)
-            #total_bought = self.get_total_bought_usd()
-            #if total_bought == 0:
-            #    return 0
-            #return self.get_realised_profit_usd()/total_bought
-        else:
+        elif self.is_long():
+            # Legacy path
+            # TODO: Check if we need to use lending-based calculations here
+            total_bought = self.get_total_bought_usd()
+            if total_bought == 0:
+                return 0
+            return (self.get_realised_profit_usd() or 0)/total_bought
+        elif self.is_short():
+            # Legacy path
+            # TODO: Check if we need to use lending-based calculations here
             total_sold = self.get_total_sold_usd()
             if total_sold == 0:
                 return 0
-            return self.get_realised_profit_usd()/total_sold
-        
-        # assert not self.is_open(), "Cannot calculate realised profit for open positions"
-
-        # buy_value = self.get_buy_value()
-        # sell_value = self.get_sell_value()
-
-        # # We only need to handle in-kind redemptions,
-        # # because deposits are never applied to an open position
-        # redemptions = [r for r in self.balance_updates.values() if r.cause == BalanceUpdateCause.redemption]
-        # if redemptions:
-        #     assert self.is_spot(), "Does not know how to handle redemptions for credit positions"
-        #     redemptions_value = sum(r.usd_value for r in redemptions)
-        # else:
-        #     redemptions_value = 0
-
-        # if buy_value == 0:
-        #     # Repaired trade
-        #     return 0
-        
-        # if sell_value == 0:
-        #     # Another way of damaged/repaired trade
-        #     return 0
-
-        # return (sell_value + self.get_claimed_interest() - self.get_repaid_interest()) / (buy_value) - 1
+            return (self.get_realised_profit_usd() or 0)/total_sold
+        else:
+            # TODO: Some legacy code paths end here?
+            # raise NotImplementedError(f"Should not never happen as for non-spot positions we use leverage-based profit calculation: {self}")
+            return 0
 
     def get_unrealised_and_realised_profit_percent(
         self,
@@ -1554,6 +1562,10 @@ class TradingPosition(GenericPosition):
             adjusted_buy_volume = buy_volume + (average_buy * float(redemptions))
             adjusted_sell_volume = sell_volume
 
+            if adjusted_buy_volume == 0:
+                # We do not have any buys, so we would give zero divider
+                return 0
+
             if redemptions < 0:  # Some broken data might break redemptions amount, in legacy tests
                 assert adjusted_buy_volume <= buy_volume, f"Adjusted buy volume: {adjusted_buy_volume}, buy volume: {buy_volume}"
                 assert adjusted_sell_volume <= sell_volume
@@ -1573,16 +1585,12 @@ class TradingPosition(GenericPosition):
                 # if pct_closed not in (0, 1):
                 #    import ipdb ; ipdb.set_trace()
 
-                try:
-                    return sell_volume / (adjusted_buy_volume * pct_closed) - 1
-                except ZeroDivisionError as e:
-                    print(e)
-                    import ipdb ; ipdb.set_trace()
+                return sell_volume / (adjusted_buy_volume * pct_closed) - 1
 
                 # return (average_sell - average_buy) * buy_quantity * pct_closed
-
-                adjusted_profit_pct = 1 - (adjusted_buy_volume-adjusted_sell_volume)/(adjusted_buy_volume*pct_closed)
+                # adjusted_profit_pct = 1 - (adjusted_buy_volume-adtest_legacy_calculate_all_statisticsjusted_sell_volume)/(adjusted_buy_volume*pct_closed)
             else:
+
                 adjusted_profit_pct = (adjusted_sell_volume + unrealised_equity - adjusted_buy_volume) / (adjusted_buy_volume)
 
             # average_sell = self.get_total_sold_usd() / float(sell_quantity)
@@ -1593,19 +1601,73 @@ class TradingPosition(GenericPosition):
             #    # No in-kind redemptions, the simple accounting path
             #    return ((self.get_realised_profit_usd() or 0) + (self.get_unrealised_profit_usd() or 0)) / total_bought
         else:
-            raise NotImplementedError(f"get_unrealised_and_realised_profit_percent() supports only long positions ATM")
+            raise NotImplementedError(f"get_unrealised_and_realised_profit_percent() supports only long positions ATM, got {self}")
+
+    def get_unrealised_profit_pct(self) -> Percent:
+        """Get the current profit of this position, minus any netflow.
+
+        - Calculate based on avg buy and sell
+
+        - For the unrealised portion, calculate the expected close
+
+        See also
+
+        - :py:meth:`get_realised_profit_percent`
+
+        :return:
+            Estimated position profit in percet, based on avg trade prices
+        """
+        if self.is_long():
+            total_bought = self.get_total_bought_usd()
+            if total_bought == 0:
+                return 0
+            return self.get_realised_profit_usd()/total_bought
+        else:
+            total_sold = self.get_total_sold_usd()
+            if total_sold == 0:
+                return 0
+            return self.get_realised_profit_usd()/total_sold
 
     def get_size_relative_realised_profit_percent(self) -> Percent:
         """Calculated life-time profit over this position.
 
-        Calculate how many percent this profit made profit,
-        adjusted to the position size compared to the available
-        strategy equity at the opening of the position.
+        The profit is scaled to the % of the position size relative to the portfolio
+        to account for max capital allocation for the position.
 
-        This is mostly useful to calculate the strategy performance
-        independent of funding deposits and redemptions.
+        - TODO: This does not work for positions that have capital added over time
 
         See :ref:`profitability` for more details.
+
+        :return:
+            If the 50% aloocation position made 1% profit returns 1.005.
+        """
+        return self.get_realised_profit_percent() * self.get_capital_tied_at_open_pct()
+
+    def get_size_relative_unrealised_or_realised_profit_percent(self) -> Percent:
+        """Calculated life-time profit over this position, including unrealised PnL.
+
+        The profit is scaled to the % of the position size relative to the portfolio
+        to account for max capital allocation for the position.
+
+        - TODO: This does not work for positions that have capital added over time
+
+        - TODO: Only correctly support unrealised PnL for spot
+
+        :return:
+            If the 50% aloocation position made 1% profit returns 1.005.
+        """
+
+        if self.is_spot():
+            # Calculate with in-kind redemption support
+            return self.get_unrealised_and_realised_profit_percent() * self.get_capital_tied_at_open_pct()
+        else:
+            # Legacy fallback
+            return self.get_size_relative_realised_profit_percent()
+
+    def get_size_relative_profit_percent(self) -> Percent:
+        """Calculated life-time profit over this position.
+
+        Both realised and unrealised profit.
 
         :return:
             If the position made 1% profit returns 1.01.
