@@ -37,6 +37,7 @@ from tradeexecutor.testing.synthetic_price_data import generate_ohlcv_candles
 
 from tradeexecutor.visual.equity_curve import calculate_equity_curve, calculate_returns, calculate_deposit_adjusted_returns
 
+CYCLE_DURATION = CycleDuration.cycle_1d
 
 @pytest.fixture(scope="module")
 def logger(request):
@@ -146,7 +147,7 @@ def state(
         strategy_path,
         start_at=datetime.datetime(2021, 6, 1),
         end_at=datetime.datetime(2022, 1, 1),
-        cycle_duration=CycleDuration.cycle_1d,  # Override to use 24h cycles despite what strategy file says
+        cycle_duration=CycleDuration,  # Override to use 24h cycles despite what strategy file says
         candle_time_frame=TimeBucket.d1,  # Override to use 24h cycles despite what strategy file says
         initial_deposit=10_000,
         universe=synthetic_universe,
@@ -248,6 +249,7 @@ def test_calculate_all_summary_statistics(state: State):
         state,
         ExecutionMode.unit_testing_trading,
         now_=now_,
+        cycle_duration=CYCLE_DURATION,
     )
 
     assert summary.calculated_at
@@ -314,7 +316,7 @@ def test_calculate_key_metrics_live(state: State):
     # Check our returns calculationsn look sane
     # returns = calculate_compounding_realised_profitability(state)
 
-    metrics = {m.kind.value: m for m in calculate_key_metrics(state)}
+    metrics = {m.kind.value: m for m in calculate_key_metrics(state, cycle_duration=CYCLE_DURATION)}
     assert len(metrics) == 10
     assert metrics["sharpe"].value == pytest.approx(-2.1464509890620724)
     assert metrics["sortino"].value == pytest.approx(-2.720957242817309)
