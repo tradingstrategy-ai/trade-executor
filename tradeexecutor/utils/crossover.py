@@ -10,7 +10,7 @@ import operator
     
 def contains_cross_over(
         series1: pd.Series, 
-        series2: pd.Series,
+        series2: pd.Series | int,
         lookback_period: int = 2,
         must_return_index: bool = False,
 ) -> bool:
@@ -34,12 +34,15 @@ def contains_cross_over(
         
     """
 
+    if isinstance(series2, int | float):
+        series2 = pd.Series([series2] * lookback_period)
+
     return _cross_check(series1, series2, lookback_period, must_return_index, operator.gt, operator.lt)
 
 
 def contains_cross_under(
         series1: pd.Series, 
-        series2: pd.Series,
+        series2: pd.Series | int,
         lookback_period: int = 2,
         must_return_index: bool = False,
 ) -> bool:
@@ -61,6 +64,9 @@ def contains_cross_under(
         If must_return_index is True, also returns the index of the crossover. Note the index is a negative index e.g. -1 is the latest index, -2 is the second latest etc.
         
     """
+
+    if isinstance(series2, int | float):
+        series2 = pd.Series([series2] * lookback_period)
 
     return _cross_check(series1, series2, lookback_period, must_return_index, operator.lt, operator.gt)
 
