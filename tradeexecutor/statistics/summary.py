@@ -9,6 +9,7 @@ import pandas as pd
 from tradeexecutor.analysis.trade_analyser import calculate_annualised_return
 from tradeexecutor.state.state import State
 from tradeexecutor.statistics.key_metric import calculate_key_metrics
+from tradeexecutor.strategy.cycle import CycleDuration
 from tradeexecutor.strategy.execution_context import ExecutionMode
 from tradeexecutor.strategy.summary import StrategySummaryStatistics
 from tradeexecutor.visual.equity_curve import calculate_compounding_realised_trading_profitability, calculate_cumulative_daily_returns
@@ -25,6 +26,7 @@ def calculate_summary_statistics(
     legacy_workarounds=False,
     backtested_state: State | None = None,
     key_metrics_backtest_cut_off = datetime.timedelta(days=90),
+    cycle_duration: Optional[CycleDuration] = None,
 ) -> StrategySummaryStatistics:
     """Preprocess the strategy statistics for the summary card in the web frontend.
 
@@ -57,13 +59,16 @@ def calculate_summary_statistics(
         Skip some calculations on old data, because data is missing.
 
     :param backtested_state:
-        The result of the earlier backtest run.
 
+        The result of the earlier backtest run.
         The live web server needs to show backtested metrics on the side of
         live trading metrics. This state is used to calculate them.
 
     :param key_metrics_backtest_cut_off:
         How many days live data is collected until key metrics are switched from backtest to live trading based,
+
+    :param cycle_duration:
+        The duration of each trade decision cycle.
 
     :return:
         Summary calculations for the summary tile,
@@ -116,7 +121,7 @@ def calculate_summary_statistics(
     if age and returns_all_time:
         returns_annualised = calculate_annualised_return(returns_all_time, age)
 
-    key_metrics = {m.kind.value: m for m in calculate_key_metrics(state, backtested_state, required_history=key_metrics_backtest_cut_off)}
+    key_metrics = {m.kind.value: m for m in calculate_key_metrics(state, backtested_state, required_history=key_metrics_backtest_cut_off, cycle_duration=cycle_duration)}
 
     logger.info("calculate_summary_statistics() finished, took %s seconds", perf_counter() - func_started_at)
 

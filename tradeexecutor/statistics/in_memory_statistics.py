@@ -14,6 +14,7 @@ from tradeexecutor.statistics.summary import calculate_summary_statistics
 from tradeexecutor.strategy.execution_context import ExecutionContext
 from tradeexecutor.strategy.run_state import RunState
 from tradeexecutor.strategy.sync_model import SyncModel
+from tradeexecutor.strategy.cycle import CycleDuration
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
 from tradeexecutor.visual.image_output import render_plotly_figure_as_image_file
 from tradeexecutor.visual.strategy_state import draw_single_pair_strategy_state, draw_multi_pair_strategy_state
@@ -31,6 +32,7 @@ def refresh_run_state(
     sync_model: SyncModel | None = None,
     backtested_state: State | None = None,
     backtest_cut_off = datetime.timedelta(days=90),
+    cycle_duration: CycleDuration = None,
 ):
     """Update in-memory RunState structures.
 
@@ -58,6 +60,7 @@ def refresh_run_state(
         backtested_state=backtested_state,
         # key_metrics_backtest_cut_off=self.metadata.key_metrics_backtest_cut_off,
         key_metrics_backtest_cut_off=backtest_cut_off,
+        cycle_duration=cycle_duration,
     )
     run_state.summary_statistics = stats
 
