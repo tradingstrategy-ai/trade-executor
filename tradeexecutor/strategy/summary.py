@@ -8,6 +8,7 @@ from dataclasses_json import dataclass_json
 
 from tradeexecutor.state.metadata import OnChainData
 from tradeexecutor.state.types import USDollarAmount, UnixTimestamp, Percent
+from tradeexecutor.strategy.cycle import CycleDuration
 from tradeexecutor.strategy.tag import StrategyTag
 
 
@@ -198,6 +199,8 @@ class KeyMetricKind(enum.Enum):
     average_duration_between_position_openings = "average_duration_between_position_openings"
 
     average_position_frequency = "average_position_frequency"
+
+    decision_cycle_duration = "decision_cycle_duration"
 
     def get_help_link(self) -> Optional[str]:
         return _KEY_METRIC_HELP[self]
@@ -396,6 +399,9 @@ class StrategySummaryStatistics:
     #:
     backtest_metrics_cut_off_period: Optional[datetime.timedelta] = None
 
+    #: Duration of each trade cycle
+    cycle_duration: Optional[CycleDuration] = None
+
 
 @dataclass_json
 @dataclass(frozen=True)
@@ -488,4 +494,5 @@ _KEY_METRIC_HELP = {
    KeyMetricKind.last_trade: "https://tradingstrategy.ai/glossary/last-trade",
    KeyMetricKind.trades_last_week: "https://tradingstrategy.ai/glossary/trades-last-week",
    KeyMetricKind.trades_per_month: "https://tradingstrategy.ai/glossary/trade-frequency",
+   KeyMetricKind.decision_cycle_duration: "https://tradingstrategy.ai/glossary/cycle-duration",
 }

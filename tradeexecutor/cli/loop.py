@@ -314,6 +314,7 @@ class ExecutionLoop:
         state: State,
         visualisation=False,
         universe: TradingStrategyUniverse=None,
+        cycle_duration: CycleDuration=None,
     ):
         """Update the in-process strategy context which we serve over the webhook.
 
@@ -328,6 +329,8 @@ class ExecutionLoop:
             Also update technical charts
         """
 
+        assert CycleDuration is not None, "CycleDuration is required"
+
         run_state = self.run_state
 
         refresh_run_state(
@@ -339,6 +342,7 @@ class ExecutionLoop:
             self.sync_model,
             self.metadata.backtested_state,
             self.metadata.key_metrics_backtest_cut_off,
+            cycle_duration,
         )
 
         # Mark last refreshed

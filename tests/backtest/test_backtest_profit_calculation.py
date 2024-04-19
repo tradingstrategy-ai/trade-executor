@@ -319,14 +319,15 @@ def test_profitabilities_are_same(backtest_result_hourly: State):
     """
     Check that two methods of calculating profit yield the same result
     """
-    summary_stats = calculate_summary_statistics(backtest_result_hourly, time_window=datetime.timedelta(days=2000), key_metrics_backtest_cut_off=datetime.timedelta(days=0))
+    summary_stats = calculate_summary_statistics(backtest_result_hourly, time_window=datetime.timedelta(days=2000), key_metrics_backtest_cut_off=datetime.timedelta(days=0), cycle_duration=CycleDuration.cycle_1h)
+    
     assert summary_stats.return_all_time == pytest.approx(-0.1937959274935105)
     assert summary_stats.key_metrics['profitability'].value == pytest.approx(summary_stats.return_all_time, abs=1e-14)
     
 
 def test_key_metrics(backtest_result_hourly: State):
     """Check that the all key metrics are correct"""
-    summary_stats = calculate_summary_statistics(backtest_result_hourly, time_window=datetime.timedelta(days=2000), key_metrics_backtest_cut_off=datetime.timedelta(days=0))
+    summary_stats = calculate_summary_statistics(backtest_result_hourly, time_window=datetime.timedelta(days=2000), key_metrics_backtest_cut_off=datetime.timedelta(days=0), cycle_duration=CycleDuration.cycle_1h)
     
     # correct since standard dev = 0
     assert summary_stats.key_metrics['sharpe'].value == float('-inf')

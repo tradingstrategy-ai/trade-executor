@@ -18,6 +18,7 @@ from tradeexecutor.backtest.backtest_runner import run_backtest, setup_backtest
 from tradeexecutor.cli.log import setup_pytest_logging
 from tradeexecutor.state.state import State
 from tradeexecutor.statistics.summary import calculate_summary_statistics
+from tradeexecutor.strategy.cycle import CycleDuration
 from tradeexecutor.strategy.execution_context import ExecutionMode, unit_test_execution_context
 from tradeexecutor.analysis.trade_analyser import build_trade_analysis
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
@@ -114,6 +115,7 @@ def test_summary_statistics(
         state,
         ExecutionMode.unit_testing_trading,
         now_=end_at,
+        cycle_duration=CycleDuration.cycle_7d,
     )
 
     assert summary.last_trade_at > datetime.datetime(2022, 1, 1)
