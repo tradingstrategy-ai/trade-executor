@@ -1041,7 +1041,7 @@ class ExecutionLoop:
         )
 
         # Store summary statistics in memory before doing anything else
-        self.refresh_live_run_state(state, visualisation=True, universe=universe)
+        self.refresh_live_run_state(state, visualisation=True, universe=universe, cycle_duration=self.cycle_duration)
 
         # A test path: do not wait until making the first trade
         # The first trade will be execute immediately, despite the time offset or tick
@@ -1132,7 +1132,7 @@ class ExecutionLoop:
                     # TODO: Visualisations are internally refreshed by runner
                     # this is somewhat bad architecture and refreshing run state should be a responsibility
                     # of a single component
-                    self.refresh_live_run_state(state)
+                    self.refresh_live_run_state(state, cycle_duration=self.cycle_duration)
                 except Exception as e:
                     # Failing to do the performance statistics is not fatal,
                     # because this does not contain any state changing events
@@ -1178,7 +1178,7 @@ class ExecutionLoop:
 
                 self.update_position_valuations(ts, state, universe, execution_context.mode)
 
-                self.refresh_live_run_state(state)
+                self.refresh_live_run_state(state, cycle_duration=self.cycle_duration)
             except Exception as e:
                 die(e)
 
