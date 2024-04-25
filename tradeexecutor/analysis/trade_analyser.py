@@ -273,6 +273,7 @@ class TradeSummary:
             "Cash at start": as_dollar(self.initial_cash),
             "Value at end": as_dollar(self.end_value),
             "Time in market": as_percent(self.time_in_market),
+            "Time in market volatile": as_percent(self.time_in_market_volatile),
             "Trade volume": as_dollar(self.trade_volume),
             "Position win percent": as_percent(self.win_percent),
             "Total positions": as_integer(self.total_positions),
@@ -354,6 +355,7 @@ class TradeSummary:
             "Cash at start": None,
             "Value at end": None,
             "Time in market": None,
+            "Time in market volatile": None,
             "Trade volume": "https://tradingstrategy.ai/glossary/volume",
             "Position win percent": "https://tradingstrategy.ai/glossary/position",
             "Total positions": "https://tradingstrategy.ai/glossary/position",
@@ -800,7 +802,7 @@ class TradeAnalysis:
             """Append position duration to `times_in_market_all` and `times_in_market_volatile` lists."""
             times_in_market_all.append(current_grouped_duration)
             if not position.is_credit_supply():
-                times_in_market_volatile.append(current_grouped_duration)
+                times_in_market_volatile.append(position.get_duration())
 
         initial_cash = self.portfolio.get_initial_cash()
 
