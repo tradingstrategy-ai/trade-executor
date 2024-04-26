@@ -362,7 +362,7 @@ def calculate_key_metrics(
         calculation_window_start_at=calculation_window_start_at,
         calculation_window_end_at=calculation_window_end_at,
         calculation_method=KeyMetricCalculationMethod.latest_value,
-        unavailability_reason="Not available, should always be available live trading",
+        unavailability_reason="Not available, should always be available live trading" if not cycle_duration else None,
         help_link=KeyMetricKind.decision_cycle_duration.get_help_link(),
         name="Cycle Duration"
     )
