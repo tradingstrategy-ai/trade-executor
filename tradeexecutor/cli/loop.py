@@ -329,7 +329,7 @@ class ExecutionLoop:
             Also update technical charts
         """
 
-        assert CycleDuration is not None, "CycleDuration is required"
+        assert cycle_duration is not None, "CycleDuration is required, got None"
 
         run_state = self.run_state
 
@@ -1157,7 +1157,7 @@ class ExecutionLoop:
 
             run_state.completed_cycle = cycle
             run_state.cycles += 1
-            self.refresh_live_run_state(state)
+            self.refresh_live_run_state(state, cycle_duration=self.cycle_duration)
 
             # Reset the background watchdog timer
             mark_alive(watchdog_registry, "live_cycle")
