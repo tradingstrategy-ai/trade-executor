@@ -925,14 +925,6 @@ class ExecutionLoop:
             # Backtesting
             next_tick = snap_to_next_tick(ts + datetime.timedelta(seconds=1), backtest_step, self.tick_offset)
 
-            if next_tick >= self.backtest_end:
-                # Backteting has ended
-                logger.info("Terminating backtesting. Backtest end %s, current timestamp %s", self.backtest_end, next_tick)
-                passed_seconds = (ts - last_update_ts).total_seconds()
-                if progress_bar:
-                    set_progress_bar_postfix(state, progress_bar, trade_count, cycle, take_profits, stop_losses)
-                    progress_bar.update(int(passed_seconds))
-                break
 
             # If we have stop loss checks enabled on a separate price feed,
             # run backtest stop loss checks until the next time
@@ -945,8 +937,18 @@ class ExecutionLoop:
                 )
                 take_profits += res[0]
                 stop_losses += res[1]
+            
+            if next_tick >= self.backtest_end:
+                # Backteting has ended
+                logger.info("Terminating backtesting. Backtest end %s, current timestamp %s", self.backtest_end, next_tick)
+                trade_count = len(list(state.portfolio.get_all_trades()))
+                passed_seconds = (ts - last_update_ts).total_seconds()
+                if progress_bar:
+                    set_progress_bar_postfix(state, progress_bar, trade_count, cycle, take_profits, stop_losses)
+                    progress_bar.update(int(passed_seconds))
+                break
 
-            # Add some fuzziness to gacktesting timestamps
+            # Add some fuzziness to backtesting timestamps
             # TODO: Make this configurable - sub 1h strategies do not work
             ts = next_tick + datetime.timedelta(minutes=random.randint(0, 4))
 

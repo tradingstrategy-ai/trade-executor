@@ -457,13 +457,14 @@ def test_synthetic_data_backtest_stop_loss(
         assert p.stop_loss, f"Position did not have stop loss: {p}"
 
     assert len(list(state.portfolio.get_all_positions())) == 31
-    assert len(list(state.portfolio.get_all_trades())) == 61
+    assert len([p for p in state.portfolio.get_all_positions() if p.is_closed()]) == 31
+    assert len(list(state.portfolio.get_all_trades())) == 62
 
     # We should have some stop loss trades and some trades closed for profit
     stop_loss_trades = [t for t in state.portfolio.get_all_trades() if t.is_stop_loss()]
     rebalance_trades = [t for t in state.portfolio.get_all_trades() if t.is_rebalance()]
     assert len(rebalance_trades) == 37
-    assert len(stop_loss_trades) == 24
+    assert len(stop_loss_trades) == 25
 
     # Check are stop loss positions unprofitable
     stop_loss_positions = [p for p in state.portfolio.get_all_positions() if p.is_stop_loss()]
@@ -641,13 +642,14 @@ def test_synthetic_data_backtest_trailing_stop_loss(
     # Expect backtesting for 213 days
     assert len(debug_dump) == 215
     assert len(list(state.portfolio.get_all_positions())) == 46
-    assert len(list(state.portfolio.get_all_trades())) == 91
+    assert len([p for p in state.portfolio.get_all_positions() if p.is_closed()]) == 46
+    assert len(list(state.portfolio.get_all_trades())) == 92
 
     # Check we got trailing stop losses triggered
     stop_loss_positions = [p for p in state.portfolio.get_all_positions() if p.is_stop_loss()]
     trailing_stop_loss_positions = [p for p in state.portfolio.get_all_positions() if p.is_trailing_stop_loss()]
-    assert len(stop_loss_positions) == 45
-    assert len(trailing_stop_loss_positions) == 45
+    assert len(stop_loss_positions) == 46
+    assert len(trailing_stop_loss_positions) == 46
 
     # Check one trigger update for contents
     p: TradingPosition
@@ -709,6 +711,7 @@ def test_synthetic_data_backtest_stop_loss_usd(
     # Expect backtesting for 213 days
     assert len(debug_dump) == 215
     assert len(list(state.portfolio.get_all_positions())) == 9
+    assert len([p for p in state.portfolio.get_all_positions() if p.is_open()]) == 1
     assert len(list(state.portfolio.get_all_trades())) == 17
 
     analysis = build_trade_analysis(state.portfolio)
@@ -752,13 +755,14 @@ def test_synthetic_data_backtest_stop_loss_usd(
         assert p.stop_loss, f"Position did not have stop loss: {p}"
 
     assert len(list(state.portfolio.get_all_positions())) == 31
-    assert len(list(state.portfolio.get_all_trades())) == 61
+    assert len([p for p in state.portfolio.get_all_positions() if p.is_closed()]) == 31
+    assert len(list(state.portfolio.get_all_trades())) == 62
 
     # We should have some stop loss trades and some trades closed for profit
     stop_loss_trades = [t for t in state.portfolio.get_all_trades() if t.is_stop_loss()]
     rebalance_trades = [t for t in state.portfolio.get_all_trades() if t.is_rebalance()]
     assert len(rebalance_trades) == 37
-    assert len(stop_loss_trades) == 24
+    assert len(stop_loss_trades) == 25
 
     # Check are stop loss positions unprofitable
     stop_loss_positions = [p for p in state.portfolio.get_all_positions() if p.is_stop_loss()]

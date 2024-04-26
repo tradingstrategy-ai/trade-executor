@@ -105,7 +105,7 @@ def test_trailing_stop_loss_check(
     # Check we got trailing stop losses triggered
     stop_loss_positions = [p for p in state.portfolio.get_all_positions() if p.is_stop_loss()]
     trailing_stop_loss_positions = [p for p in state.portfolio.get_all_positions() if p.is_trailing_stop_loss()]
-    assert len(stop_loss_positions) == 91
-    assert len(trailing_stop_loss_positions) == 91
+    assert len(stop_loss_positions) == 93
+    assert len(trailing_stop_loss_positions) == 93
 
 
