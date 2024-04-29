@@ -20,7 +20,7 @@ from typing import List, Optional, Callable, Tuple, Set, Dict, Iterable, Collect
 import pandas as pd
 
 from tradeexecutor.state.types import JSONHexAddress, Percent
-from tradingstrategy.lending import LendingReserveUniverse, LendingReserveDescription, LendingCandleType, LendingCandleUniverse, UnknownLendingReserve
+from tradingstrategy.lending import LendingReserveUniverse, LendingReserveDescription, LendingCandleType, LendingCandleUniverse, UnknownLendingReserve, LendingProtocolType
 from tradingstrategy.token import Token
 from tradingstrategy.candle import GroupedCandleUniverse
 from tradingstrategy.chain import ChainId
@@ -2224,8 +2224,10 @@ def load_trading_and_lending_data(
     chain_id: ChainId,
     time_bucket: TimeBucket = TimeBucket.d1,
     universe_options: UniverseOptions = default_universe_options,
+    *,
     exchange_slugs: Set[str] | str | None = None,
-    liquidity=False,
+    lending_protocol: LendingProtocolType | None = None,
+    liquidity: bool = False,
     stop_loss_time_bucket: TimeBucket | None = None,
     asset_ids: Set[TokenSymbol] | None = None,
     reserve_assets: Set[TokenSymbol | NonChecksummedAddress] = frozenset({"USDC"}),
@@ -2363,6 +2365,9 @@ def load_trading_and_lending_data(
 
     lending_reserves = client.fetch_lending_reserve_universe()
     lending_reserves = lending_reserves.limit_to_chain(chain_id)
+
+    if lending_protocol:
+        lending_reserves = lending_reserves.limit_to_protocol(lending_protocol)
 
     if asset_ids is None:
         asset_ids = set()
