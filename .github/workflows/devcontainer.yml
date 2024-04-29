@@ -14,9 +14,7 @@ name: Build Dev Container Docker image
 jobs:
   notebook-docker-image:
     runs-on: ubuntu-latest
-    if: github.event_name == 'push' && contains(github.ref, 'refs/tags/v')
-    env:
-      REGISTRY: ghcr.io
+    #if: github.event_name == 'push' && contains(github.ref, 'refs/tags/v')
     steps:
       - uses: actions/checkout@v3
         with:
