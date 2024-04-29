@@ -1,0 +1,25 @@
+# Build Dev Container image to be used with Microsoft Visual Studio Code and Github Codespaces
+
+name: Build Dev Container Docker image
+on:
+  push:
+    branches: [ master ]
+    tags: [ v* ]
+  pull_request:
+    branches: [ master ]
+
+jobs:
+  notebook-docker-image:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && contains(github.ref, 'refs/tags/v')
+    env:
+      REGISTRY: ghcr.io
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          submodules: 'recursive'
+      - name: Run Devcontainer bild
+        uses: devcontainers/ci@v0.3
+        with:
+          push: always
+          imageName: ghcr.io/tradingstrategy-ai/dev-container
