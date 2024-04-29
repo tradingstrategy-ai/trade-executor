@@ -12,7 +12,7 @@ on:
     branches: [ master ]
 
 jobs:
-  notebook-docker-image:
+  devcontainer:
     runs-on: ubuntu-latest
     if: github.event_name == 'push' && contains(github.ref, 'refs/tags/v')
     steps:
@@ -35,7 +35,7 @@ jobs:
         uses: devcontainers/ci@v0.3
         with:
           push: always
-          imageName: ghcr.io/tradingstrategy-ai/dev-container
+          imageName: ghcr.io/tradingstrategy-ai/devcontainer
           env: |
             GIT_VERSION_TAG=${{ env.RELEASE_VERSION }}
             GIT_COMMIT_MESSAGE=${{ github.event.head_commit.message }}
