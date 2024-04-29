@@ -2,7 +2,7 @@
 // README at: https://github.com/devcontainers/templates/tree/main/src/python
 // The original blog post this is based at: https://marioscalas.medium.com/using-python-and-poetry-inside-a-dev-container-33c80bc5a22c
 {
-  "name": "Trading Strategy notebooks",
+  "name": "Trading Strategy Devcontainer",
 
   "build": {
     "dockerfile": "Dockerfile",
