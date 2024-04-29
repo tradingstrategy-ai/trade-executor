@@ -4,17 +4,17 @@
 #
 
 name: Dev Container Docker image
-#on:
-#  push:
-#    branches: [ master ]
-#    tags: [ v* ]
-#  pull_request:
-#    branches: [ master ]
+on:
+  push:
+    branches: [ master ]
+    tags: [ v* ]
+  pull_request:
+    branches: [ master ]
 
 jobs:
   notebook-docker-image:
     runs-on: ubuntu-latest
-    #if: github.event_name == 'push' && contains(github.ref, 'refs/tags/v')
+    if: github.event_name == 'push' && contains(github.ref, 'refs/tags/v')
     steps:
       - uses: actions/checkout@v3
         with:
