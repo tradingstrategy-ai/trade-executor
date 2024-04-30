@@ -256,15 +256,15 @@ def console(
     else:
         backtested_state = None
 
-    refresh_run_state(
-        run_state,
-        state,
-        execution_context,
-        visualisation=True,
-        universe=universe,
-        sync_model=sync_model,
-        backtested_state=backtested_state,
-    )
+    # refresh_run_state(
+    #     run_state,
+    #     state,
+    #     execution_context,
+    #     visualisation=True,
+    #     universe=universe,
+    #     sync_model=sync_model,
+    #     backtested_state=backtested_state,
+    # )
 
     # Set up the default objects
     # availalbe in the interactive session
