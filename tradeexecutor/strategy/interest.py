@@ -34,7 +34,7 @@ def update_interest(
     log_index: int | None = None,
     max_interest_gain: Percent = 0.05,
 ) -> BalanceUpdate:
-    """Poke credit supply position to increase its interest amount.
+    """Poke leverage position to increase its interest amount.
 
     :param position:
         Trading position to update
@@ -60,9 +60,7 @@ def update_interest(
 
         Terminate execution if bad math detected.
     """
-
     assert asset is not None
-    # assert position.pair.kind == TradingPairKind.credit_supply
     assert position.is_open() or position.is_frozen(), f"Cannot update interest for position {position.position_id}\n" \
                                                        f"Position details: {position}\n" \
                                                        f"Position closed at: {position.closed_at}\n" \
@@ -73,15 +71,20 @@ def update_interest(
     loan = position.loan
     assert loan
 
+    is_updating_borrowed_asset = False
+
     if asset == loan.collateral.asset:
         interest = loan.collateral_interest
     elif loan.borrowed and asset == position.loan.borrowed.asset:
         interest = loan.borrowed_interest
+        is_updating_borrowed_asset = True
     else:
-        raise AssertionError(f"Loan {loan} does not have asset {asset}\n"
-                             f"We have\n"
-                             f"- {loan.collateral.asset}\n"
-                             f"- {loan.borrowed.asset if loan.borrowed else '<no borrow>'}")
+        raise AssertionError(
+            f"Loan {loan} does not have asset {asset}\n"
+            f"We have\n"
+            f"- {loan.collateral.asset}\n"
+            f"- {loan.borrowed.asset if loan.borrowed else '<no borrow>'}"
+        )
 
     assert interest, f"Position does not have interest tracked set up on {asset.token_symbol}:\n" \
                      f"{position} \n" \
@@ -131,6 +134,10 @@ def update_interest(
     interest.last_event_at = event_at
     interest.last_updated_block_number = block_number
     interest.last_token_amount = new_token_amount
+
+    # Also revalue the loan
+    if is_updating_borrowed_asset:
+        loan.borrowed.revalue(asset_price, event_at)
 
     return evt
 
