@@ -348,6 +348,22 @@ class StrategyInputIndicators:
 
         return series.loc[:ts]
 
+    def get_indicator_dataframe(
+        self,
+        name: str,
+        pair: TradingPairIdentifier | HumanReadableTradingPairDescription | None = None
+    ) -> pd.DataFrame:
+        """Get the whole raw indicator data for DataFrame-like indicator with multiple columns.
+
+        See also :py:meth:`get_indicator_series`
+
+        :return:
+            DataFrame for a multicolumn indicator like Bollinger Bands or ADX
+        """
+        df = self.resolve_indicator_data(name, "all", pair)
+        assert isinstance(df, pd.DataFrame), f"Not DataFrame indicator: {name}"
+        return df
+
     def resolve_indicator_data(
         self,
         name: str,
@@ -357,6 +373,14 @@ class StrategyInputIndicators:
         """Get access to indicator data series/frame.
 
         Throw friendly error messages for pitfalls.
+
+        :param name:
+            Indicator name
+
+        :param column:
+            Column name for multi-column indicators.
+
+            "all" to get the whole DataFrame.
 
         :param pair:
             Needed when universe contains multiple trading pairs.
@@ -407,6 +431,10 @@ class StrategyInputIndicators:
         assert data is not None, f"Indicator pre-calculated values missing for {name} - lookup key {key}"
 
         if isinstance(data, pd.DataFrame):
+
+            if column == "all":
+                return data
+
             assert column is not None, f"Indicator {name} has multiple available columns to choose from: {data.columns}"
             assert column in data.columns, f"Indicator {name} subcolumn {column} not in the available columns: {data.columns}"
             series = data[column]

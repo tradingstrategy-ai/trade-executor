@@ -157,3 +157,6 @@ def test_decide_trades_v04(strategy_universe):
 
     assert result.indicators.available_indicators.has_indicator("rsi")
     assert result.indicators.available_indicators.has_indicator("bb")
+
+    bb = result.indicators.get_indicator_dataframe("bb")
+    assert isinstance(bb,  pd.DataFrame)
