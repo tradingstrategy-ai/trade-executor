@@ -977,7 +977,7 @@ def run_backtest_inline(
 
     #: TODO: Hack to pass the backtest data range to the grid search
     #:
-    universe.options = universe_options
+    result.strategy_universe.options = universe_options
     return result
 
 
