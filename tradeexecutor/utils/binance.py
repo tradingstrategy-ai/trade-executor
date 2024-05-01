@@ -42,6 +42,7 @@ def fetch_binance_dataset(
     end_at: datetime.datetime | None = None,
     include_lending: bool = False,
     force_download: bool = False,
+    desc="Downloading Binance data",
 ) -> Dataset:
     """Load a Binance dataset.
 
@@ -97,6 +98,7 @@ def fetch_binance_dataset(
         start_at,
         end_at,
         force_download=force_download,
+        desc=desc,
     )
 
     spot_symbol_map = {symbol: i + 1 for i, symbol in enumerate(symbols)}
