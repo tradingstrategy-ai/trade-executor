@@ -171,7 +171,7 @@ class StrategyInputIndicators:
         pair: TradingPairIdentifier | HumanReadableTradingPairDescription | None = None,
         index: int = -1,
         clock_shift: pd.Timedelta = pd.Timedelta(hours=0),
-        data_delay_tolerance: pd.Timedelta=None,
+        data_delay_tolerance: pd.Timedelta="auto",
     ) -> float | None:
         """Read the available value of an indicator.
 
@@ -256,6 +256,13 @@ class StrategyInputIndicators:
 
             Look back max `data_delay_tolerance` days / hours to get a previous value using forward-fill technique.
 
+            We need to do this when there is a mismatch between the indicator timeframe (e.g. daily)
+            and decision cycle / price time frame (e.g. 15 minutes).
+
+            Set to `None` to always return indicator value for the exact timestamp match.
+
+            Set to `auto to try to figure out mismatch between indicator data and candle data automatically.s
+
         :return:
             The latest available indicator value.
 
@@ -269,8 +276,14 @@ class StrategyInputIndicators:
 
         series = self.resolve_indicator_data(name, column, pair)
         ts = self.timestamp
+
         time_frame = _calculate_and_cache_candle_width(series.index)
-        shifted_ts = ts + time_frame * index + clock_shift
+
+        if data_delay_tolerance == "auto":
+            ts = ts.floor(time_frame)
+            data_delay_tolerance = time_frame
+
+        shifted_ts = ts + time_frame*index + clock_shift
 
         # First try direct timestamp hit.
         # This is the case for any normal strategies,
