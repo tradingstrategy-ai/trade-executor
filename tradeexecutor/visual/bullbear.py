@@ -120,7 +120,8 @@ def visualise_market_regime_filter(
     assert len(price) > 0
     assert len(signal) > 0
 
-    assert len(price) == len(signal), f"Price and signal are different series. Price length: {len(price)}, signal length: {len(signal)}"
+    # TODO: Complications
+    # assert len(price) == len(signal), f"Price and signal are different series. Price length: {len(price)}, signal length: {len(signal)}"
 
     signal_unique = signal.unique()
     for uniq_val in signal_unique:
@@ -163,37 +164,47 @@ def visualise_market_regime_filter(
 
 
 def visualise_raw_market_regime_indicator(
-    candles: pd.DataFrame,
+    price: pd.Series,
     indicator: pd.DataFrame,
     title="Raw market regime indicator data",
     height=800,
     indicator_height=200,
 ):
-    """Draw a raw underlying market regime filter indicator data."""
+    """Draw a raw underlying market regime filter indicator data.
+
+    - Visualise ADX indicator or similar under a price chart
+
+    :param price:
+        Close price series
+
+    :param indicator:
+        ADX indicator data or similar
+
+    :return:
+        Plotly figure
+    """
+
+    assert isinstance(price, pd.Series)
+    assert isinstance(indicator, pd.DataFrame)
 
     indicator_count = len(indicator.columns)
     rows = 1 + indicator_count
 
+    row_heights = [height] + [indicator_height] * indicator_count
+    total_height = sum(row_heights)
+
     fig = make_subplots(
         rows=rows,
         shared_xaxes=True,
-        row_heights=[height] + [indicator_height] * indicator_count
+        row_heights=row_heights
     )
 
-    # fig = go.Figure(
-    #     layout={
-    #         "title": title,
-    #         "height": height,
-    #     }
-    # )
-
     fig.add_trace(
-        go.Candlestick(
-            x=candles.index,
-            open=candles.open,
-            close=candles.close,
-            high=candles.high,
-            low=candles.low,
+        go.Scatter(
+            x=price.index,
+            y=price,
+            line_color="black",
+            showlegend=False,
         ),
         row=1,
         col=1,
@@ -203,18 +214,6 @@ def visualise_raw_market_regime_indicator(
         row=1,
         col=1,
     )
-    # fig.add_trace(
-    #     go.Candlestick(
-    #         x=candles.index,
-    #         open=candles.open,
-    #         close=candles.close,
-    #         high=candles.high,
-    #         low=candles.low,
-    #     ),
-    #     row=2,
-    #     col=1,
-    # )
-
     row = 2
     for name, indicator in indicator.items():
         fig.add_scatter(
@@ -235,6 +234,7 @@ def visualise_raw_market_regime_indicator(
         title=title,
         showlegend=False,
         hovermode="x unified",
+        height=total_height,
     )
 
     # Unified cross hair

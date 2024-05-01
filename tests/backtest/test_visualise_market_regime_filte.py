@@ -63,5 +63,5 @@ def test_visualise_raw_market_regime_indicator(dataset):
         low=dataset.candles.low,
     )
 
-    fig = visualise_raw_market_regime_indicator(dataset.candles, adx_df)
+    fig = visualise_raw_market_regime_indicator(dataset.candles.close, adx_df)
     assert fig.data  # No other checks here for now, just that code runs

@@ -67,7 +67,7 @@ class BacktestResult:
     #: Python bag of values for internal testing
     diagnostics_data: dict
 
-    #: Indicators usedin the backtest
+    #: Indicators we calculated for the backtest
     indicators: StrategyInputIndicators
 
     def __iter__(self):
@@ -442,8 +442,6 @@ def setup_backtest(
     :param strategy_path:
         Path to the strategy Python module
 
-    :param start_at:
-        Legacy. Use universe_options.
 
     :param end_at:
         Legacy. Use universe_options.
