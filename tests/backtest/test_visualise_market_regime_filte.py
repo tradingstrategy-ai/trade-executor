@@ -90,6 +90,7 @@ def test_access_regime_filter_data_15m(tmp_path):
         return daily_df
 
     def daily_adx(open, high, low, close, length):
+        """Calculate 0-100 ADX value and +DMI and -DMI values for every day."""
         daily_df = daily_price(open, high, low, close)
         adx_df = pandas_ta.adx(
             close=daily_df.close,
@@ -110,7 +111,7 @@ def test_access_regime_filter_data_15m(tmp_path):
         """
         adx_df = daily_adx(open, high, low, close, length)
         def regime_filter(row):
-            # ADX, DMP, # DMN
+            # ADX, DMP, DMN
             average_direction_index, direction_index_positive, direction_index_negative = row.values
             if direction_index_positive > regime_threshold:
                 return Regime.bull.value

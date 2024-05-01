@@ -281,6 +281,7 @@ class StrategyInputIndicators:
 
         if data_delay_tolerance == "auto":
             ts = ts.floor(time_frame)
+            data_delay_tolerance = time_frame
 
         shifted_ts = ts + time_frame*index + clock_shift
 
