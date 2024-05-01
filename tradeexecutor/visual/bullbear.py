@@ -155,7 +155,7 @@ def visualise_market_regime_filter(
             x=price.index,
             y=price,
             line_color="black",
-            showlegend=True,
+            showlegend=False,
         )
     )
 
