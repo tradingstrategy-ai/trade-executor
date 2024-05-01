@@ -91,13 +91,15 @@ class StrategyInputIndicators:
         pair: TradingPairIdentifier | HumanReadableTradingPairDescription |  None = None,
         data_lag_tolerance=pd.Timedelta(days=7),
         index: int = -1,
+        timestamp: pd.Timestamp | None = None,
     ) -> USDollarPrice | None:
         """Read the available close price of a trading pair.
 
-        - Returns the latest available close price
+        - Returns the latest available close price.
 
         - **Does not** return the current price in the decision_cycle,
           because any decision must be made based on the previous price
+          to avoid lookahead bias.
 
         :param pair:
             The trading pair for which we query the price.
@@ -121,16 +123,26 @@ class StrategyInputIndicators:
             - `-2` is the item before previous time frame (the day before yesterday).
             - `0` is looking to the future (the value at the end of the current day that has not yet passed)
 
+        :param timestamp:
+            Look price at a specific timestamp.
+
+            Manually calculate lookback. There is no timeshift for this value,
+            so unless you are careful you may case lookahead bias.
+
+            `index` parameter is ignored.
+
         :return:
             The latest available price.
 
             ``None`` if no price information is yet available at this point of time for the strategy.
         """
-        assert self.timestamp, f"prepare_decision_cycle() not called - framework missing something somewhere"
-
-        ts = self.timestamp
-        time_frame = self.strategy_universe.data_universe.time_bucket.to_pandas_timedelta()
-        shifted_ts = ts + time_frame * index
+        if timestamp:
+            shifted_ts = timestamp
+        else:
+            assert self.timestamp, f"prepare_decision_cycle() not called - framework missing something somewhere"
+            ts = self.timestamp
+            time_frame = self.strategy_universe.data_universe.time_bucket.to_pandas_timedelta()
+            shifted_ts = ts + time_frame * index
 
         if type(pair) == tuple:
             # Resolve human description
@@ -145,7 +157,7 @@ class StrategyInputIndicators:
         try:
             price, when = self.strategy_universe.data_universe.candles.get_price_with_tolerance(
                 pair.internal_id,
-                shifted_ts - self.strategy_universe.data_universe.time_bucket.to_pandas_timedelta(),
+                shifted_ts,
                 tolerance=data_lag_tolerance,
             )
             return price
