@@ -111,6 +111,7 @@ def decide_trades(
 
         # Test price
         price = indicators.get_price(pair)
+        assert price is not None, f"Got None price for {pair} at {timestamp}"
         assert 0 < price < 10_000, f"Got {pair} price {price}"
 
         input.other_data[f"rsi_{pair.base.token_symbol}"] = rsi
