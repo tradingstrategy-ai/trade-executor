@@ -508,14 +508,22 @@ def test_get_close_price(strategy_universe, indicator_storage):
     )
 
     wbtc_usdc = strategy_universe.get_pair_by_human_description((ChainId.ethereum, "test-dex", "WBTC", "USDC"))
-    raw_candles = strategy_universe.data_universe.candles.get_candles_by_pair(wbtc_usdc.internal_id)
 
-    # We have no price at the first day, because the price is based on the previous daily close
+    # Check that we correctly read price if there is no prior data
+    # Both absolute ts, and relative
     price = input_indicators.get_price(timestamp=first_day - pd.Timedelta(days=1), pair=wbtc_usdc)
     assert price is None
 
     price = input_indicators.get_price(timestamp=first_day + pd.Timedelta(days=1), pair=wbtc_usdc)
     assert price is not None
+
+    input_indicators.timestamp = first_day
+    assert input_indicators.get_price(pair=wbtc_usdc) is None
+
+    input_indicators.timestamp = first_day + pd.Timedelta(days=1)
+    assert input_indicators.get_price(pair=wbtc_usdc) is not None
+    assert input_indicators.get_price(pair=wbtc_usdc, index=-2) is None
+    assert input_indicators.get_price(pair=wbtc_usdc, index=-1) is not None
 
 
 def test_indicator_single_pair_live_trading_universe(persistent_test_client, indicator_storage):
