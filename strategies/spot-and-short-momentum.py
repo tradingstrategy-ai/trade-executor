@@ -23,6 +23,7 @@ from tradeexecutor.strategy.weighting import weight_by_1_slash_n
 from tradingstrategy.chain import ChainId
 from tradingstrategy.client import Client
 from tradingstrategy.timebucket import TimeBucket
+from tradingstrategy.lending import LendingProtocolType
 from tradeexecutor.strategy.cycle import CycleDuration
 from tradeexecutor.strategy.strategy_module import StrategyType, TradeRouting, ReserveCurrency
 
@@ -191,6 +192,7 @@ def create_trading_universe(
         # Ask for all Polygon data
         chain_id=ChainId.polygon,
         exchange_slugs={"uniswap-v3"},
+        lending_protocol=LendingProtocolType.aave_v3,
         reserve_assets={"0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174"},
         asset_ids={"LINK", "WMATIC", "WETH", "BAL"},
         trading_fee=0.0005,
