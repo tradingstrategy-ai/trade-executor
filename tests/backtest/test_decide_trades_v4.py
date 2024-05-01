@@ -141,7 +141,7 @@ def test_decide_trades_v04(strategy_universe):
         bb_length = 20
 
     # Run the test
-    state, universe, debug_dump = run_backtest_inline(
+    result = run_backtest_inline(
         client=None,
         decide_trades=decide_trades,
         create_indicators=create_indicators,
@@ -152,4 +152,8 @@ def test_decide_trades_v04(strategy_universe):
         mode=ExecutionMode.unit_testing,
     )
 
+    state, universe, debug_dump = result
     assert len(state.portfolio.closed_positions) == 15
+
+    assert result.indicators.available_indicators.has_indicator("rsi")
+    assert result.indicators.available_indicators.has_indicator("bb")
