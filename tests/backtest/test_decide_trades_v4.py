@@ -103,6 +103,11 @@ def test_decide_trades_v04(strategy_universe):
         price_value = input.indicators.get_price()
         if price_value is not None:
             assert 0 < price_value < 100_000
+        assert price_value == input.indicators.get_price(index=-1)
+        previous_price = input.indicators.get_price(index=-2)
+        if previous_price is not None:
+            assert 0 < previous_price < 100_000
+            assert previous_price != price_value
 
         # Check indicator accessor
         rsi_value = input.indicators.get_indicator_value("rsi")

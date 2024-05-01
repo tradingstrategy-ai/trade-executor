@@ -90,6 +90,7 @@ class StrategyInputIndicators:
         self,
         pair: TradingPairIdentifier | HumanReadableTradingPairDescription |  None = None,
         data_lag_tolerance=pd.Timedelta(days=7),
+        index: int = -1,
     ) -> USDollarPrice | None:
         """Read the available close price of a trading pair.
 
@@ -109,12 +110,27 @@ class StrategyInputIndicators:
             In the case the data has issues (no recent price),
             then accept a price that's this old.
 
+        :param index:
+            Access a specific previous timeframe item.
+
+            If not given, always return the previous available value.
+            Timeframe = candle bar here.
+
+            Uses Python list access notation.
+            - `-1` is the last item (previous time frame value, yesterday).
+            - `-2` is the item before previous time frame (the day before yesterday).
+            - `0` is looking to the future (the value at the end of the current day that has not yet passed)
+
         :return:
             The latest available price.
 
             ``None`` if no price information is yet available at this point of time for the strategy.
         """
         assert self.timestamp, f"prepare_decision_cycle() not called - framework missing something somewhere"
+
+        ts = self.timestamp
+        time_frame = self.strategy_universe.data_universe.time_bucket.to_pandas_timedelta()
+        shifted_ts = ts + time_frame * index
 
         if type(pair) == tuple:
             # Resolve human description
@@ -129,7 +145,7 @@ class StrategyInputIndicators:
         try:
             price, when = self.strategy_universe.data_universe.candles.get_price_with_tolerance(
                 pair.internal_id,
-                self.timestamp - self.strategy_universe.data_universe.time_bucket.to_pandas_timedelta(),
+                shifted_ts - self.strategy_universe.data_universe.time_bucket.to_pandas_timedelta(),
                 tolerance=data_lag_tolerance,
             )
             return price
@@ -213,6 +229,7 @@ class StrategyInputIndicators:
             Access a specific previous timeframe item.
 
             If not given, always return the previous available value.
+            Timeframe = candle bar here.
 
             Uses Python list access notation.
             - `-1` is the last item (previous time frame value, yesterday).
@@ -239,7 +256,6 @@ class StrategyInputIndicators:
         """
 
         series = self.resolve_indicator_data(name, column, pair)
-
         ts = self.timestamp
         time_frame = _calculate_and_cache_candle_width(series.index)
         shifted_ts = ts + time_frame * index + clock_shift
