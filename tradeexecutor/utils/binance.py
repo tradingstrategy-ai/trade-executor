@@ -179,7 +179,7 @@ def create_binance_universe(
     include_lending: bool = False,
     force_download: bool = False,
     trading_fee_override: BPS = None,
-    forward_fill=True,
+    forward_fill=False,
 ) -> TradingStrategyUniverse:
     """Create a Binance universe that can be used for backtesting.
 

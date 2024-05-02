@@ -730,7 +730,11 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
 
         if all_candles is not None:
             filtered_candles = filter_for_pairs(all_candles, pair_universe.df)
-            candle_universe = GroupedCandleUniverse(filtered_candles, forward_fill=forward_fill)
+            candle_universe = GroupedCandleUniverse(
+                filtered_candles,
+                time_bucket=dataset.time_bucket,
+                forward_fill=forward_fill
+            )
         else:
             candle_universe = None
 
@@ -762,7 +766,6 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
         reserve_assets = [
             trading_pair_identifier.quote
         ]
-
         universe = Universe(
             time_bucket=dataset.time_bucket,
             chains={chain_id},
