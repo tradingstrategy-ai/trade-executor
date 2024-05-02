@@ -20,21 +20,51 @@ class ScoringMethod:
     failure_rate = "failure_rate"
 
 
+CHART_TITLES = {
+    ScoringMethod.realised_profitability: "Realised profitability per opening hour of a position",
+    ScoringMethod.success_rate: "Number of profitable positions per opening hour",
+    ScoringMethod.failure_rate: "Number of unprofitable positions per opening hour",
+}
+
+
+COLOUR_SCHEHEM_NAMING = {
+    ScoringMethod.success_rate: "Positions",
+    ScoringMethod.failure_rate: "Positions (neg)",
+    ScoringMethod.realised_profitability: "Profitability %",
+}
+
+
 def visualise_weekly_time_heatmap(
     positions: Iterable[TradingPosition],
     method: ScoringMethod = ScoringMethod.success_rate,
-    colour_scheme=DEFAULT_COLOUR_SCHEME,
+    color_continuous_scale: str | None = None,  # Reversed, blue = best
+    height=600,
 ) -> go.Figure:
-    """Create a heatmap of which hours/days are best for trading."""
+    """Create a heatmap of which hours/days are best for trading.
+
+    - Figyre out best trading hours
+
+    - Mostly useful for strategies that trade 1h or more frequently
+
+    :param positions:
+        Any trading positions to consider.
+
+        We will filter based on method.
+
+    :param method:
+        Which kind of heatmap to draw.
+
+    :param color_continuous_scale:
+        The color scheme of the heatmap.
+
+    :return:
+        Plotly heatmap figure
+    """
 
     # Initialise the grid to 0 values
-
-    # Each weekday is a series of entries 0-24
-    hours = range(0, 24)
-
     weekday_names = [
         "Monday",
-        "Tuesday"
+        "Tuesday",
         "Wednesday",
         "Thursday",
         "Friday",
@@ -42,53 +72,53 @@ def visualise_weekly_time_heatmap(
         "Sunday"
     ]
 
+    if method == ScoringMethod.realised_profitability:
+        initial_value = 1
+    else:
+        initial_value = 0
+
     data = {}
-    for day in weekday_names:
-        data[day] = [0] * hours
+    for day in range(7):
+        data[day] = [initial_value] * 24
 
     # Go through positions and add them a score on the timemap based on the position opening
-
     for p in positions:
-
-        assert p.is_closed(), "Only closed positions supported"
-
         opened_at = p.opened_at
         weekday = opened_at.weekday()
-        named_weekday = weekday_names[weekday]
         hour = opened_at.hour
+        profit = p.get_unrealised_and_realised_profit_percent()
 
         match method:
             case ScoringMethod.success_rate:
-                if p.get_realised_profit_usd() > 0:
-                    data[named_weekday][hour] += 1
+                if profit > 0:
+                    data[weekday][hour] += 1
             case ScoringMethod.failure_rate:
-                if p.get_realised_profit_usd() < 0:
-                    data[named_weekday][hour] -= 1
+                if profit < 0:
+                    data[weekday][hour] -= 1
             case ScoringMethod.realised_profitability:
                 # Cumulative profifability for this day
-                data[named_weekday][hour] *= (1+data[named_weekday][hour]) * p.get_realised_profit_percent() - 1
+                data[weekday][hour] *= (1+profit)
 
-    match method:
-        case ScoringMethod.success_rate:
-            color = "Number of successful trades"
-        case ScoringMethod.failure_rate:
-            color = "Number of failed trades"
-        case ScoringMethod.realised_profitability:
-            color = "Realised profatibility"
+    matrix = [v for v in data.values()]
+
+    # Normalise -100% to 100%
+    if method == ScoringMethod.realised_profitability:
+        for day in range(7):
+            for hour in range(24):
+                matrix[day][hour] = matrix[day][hour] * 100 - 100
+        print(matrix)
 
     # https://plotly.com/python/heatmaps/
     fig = px.imshow(
-        [v for v in data.values()],
-        labels=dict(x="Day of Week", y="Time of Day", color=color),
-        x=weekday_names,
-        y=[str(h) for h in hours]
+        matrix,
+        labels=dict(x="Hour (UTC)", y="Day of week", color=COLOUR_SCHEHEM_NAMING.get(method)),
+        y=weekday_names,
+        x=[f"{h:02d}:00" for h in range(24)],
+        height=height,
+        color_continuous_scale=color_continuous_scale,
     )
     fig.update_xaxes(side="top")
+    fig.update_layout(
+        title=CHART_TITLES.get(method)
+    )
     return fig
-
-
-
-
-
-
-

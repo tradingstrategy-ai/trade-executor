@@ -179,6 +179,7 @@ def create_binance_universe(
     include_lending: bool = False,
     force_download: bool = False,
     trading_fee_override: BPS = None,
+    forward_fill=True,
 ) -> TradingStrategyUniverse:
     """Create a Binance universe that can be used for backtesting.
 
@@ -194,6 +195,7 @@ def create_binance_universe(
     :param include_lending: Whether to include lending data or not
     :param force_download: Whether to force download of data or get it from cache
     :param trading_fee_override: Set fee to all trading pairs to this
+    :param forward_fill: Forward fill data gaps when Binance was down
     :return: Trading strategy universe
     """
     dataset = fetch_binance_dataset(
@@ -223,6 +225,7 @@ def create_binance_universe(
         exchange_slug=BINANCE_EXCHANGE_SLUG,
         pairs=pair_tickers,
         reserve_asset_pair_ticker=reserve_asset_ticker,
+        forward_fill=forward_fill,
     )
 
     return universe

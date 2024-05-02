@@ -678,11 +678,13 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
 
     @staticmethod
     def create_limited_pair_universe(
-            dataset: Dataset,
-            chain_id: ChainId,
-            exchange_slug: str,
-            pairs: Set[Tuple[str, str]],
-            reserve_asset_pair_ticker: Optional[Tuple[str, str]] = None) -> "TradingStrategyUniverse":
+        dataset: Dataset,
+        chain_id: ChainId,
+        exchange_slug: str,
+        pairs: Set[Tuple[str, str]],
+        reserve_asset_pair_ticker: Optional[Tuple[str, str]] = None,
+        forward_fill=False,
+    ) -> "TradingStrategyUniverse":
         """Filters down the dataset for couple trading pair.
 
         This is ideal for strategies that only want to trade few pairs,
@@ -699,6 +701,15 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
         :param reserve_asset_pair_ticker:
             Choose the quote token of this trading pair as a reserve asset.
             This must be given if there are several pairs (Python set order is unstable).
+
+        :param forward_fill:
+            Forward-fill the data.
+
+            When working with sparse data (gaps in candles), many strategies need
+            these gaps to be filled. Setting this parameter `True`
+            will automatically forward-fill any data we are loading from the dataset.
+
+            See :term:`forward fill` for more information.
 
         """
 
@@ -719,7 +730,7 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
 
         if all_candles is not None:
             filtered_candles = filter_for_pairs(all_candles, pair_universe.df)
-            candle_universe = GroupedCandleUniverse(filtered_candles)
+            candle_universe = GroupedCandleUniverse(filtered_candles, forward_fill=forward_fill)
         else:
             candle_universe = None
 

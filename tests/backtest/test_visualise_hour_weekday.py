@@ -2,41 +2,34 @@
 """
 
 import logging
-import os.path
 import random
 import datetime
-from pathlib import Path
 from typing import List, Dict
 
 import pytest
 
 import pandas as pd
-from matplotlib.figure import Figure
+from tradingstrategy.candle import GroupedCandleUniverse
+from tradingstrategy.universe import Universe
+from tradingstrategy.chain import ChainId
+from tradingstrategy.timebucket import TimeBucket
 
-from tradeexecutor.analysis.single_pair import expand_entries_and_exits
 from tradeexecutor.analysis.timemap import ScoringMethod, visualise_weekly_time_heatmap
 from tradeexecutor.backtest.backtest_runner import run_backtest_inline
-from tradeexecutor.cli.log import setup_pytest_logging
 from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse, \
     create_pair_universe_from_code, translate_trading_pair
 from tradeexecutor.testing.synthetic_ethereum_data import generate_random_ethereum_address
 from tradeexecutor.testing.synthetic_exchange_data import generate_exchange, generate_simple_routing_model
 from tradeexecutor.testing.synthetic_price_data import generate_ohlcv_candles
-from tradeexecutor.visual.equity_curve import calculate_equity_curve, calculate_returns, \
-    calculate_aggregate_returns, visualise_equity_curve, visualise_returns_over_time, visualise_returns_distribution
-from tradingstrategy.candle import GroupedCandleUniverse
+from tradeexecutor.strategy.cycle import CycleDuration
+from tradeexecutor.strategy.reserve_currency import ReserveCurrency
+from tradeexecutor.strategy.default_routing_options import TradeRouting
 from tradeexecutor.state.trade import TradeExecution
 from tradeexecutor.strategy.pricing_model import PricingModel
 from tradeexecutor.strategy.pandas_trader.position_manager import PositionManager
 from tradeexecutor.state.state import State
-from tradingstrategy.universe import Universe
-from tradingstrategy.chain import ChainId
-from tradingstrategy.timebucket import TimeBucket
-from tradeexecutor.strategy.cycle import CycleDuration
-from tradeexecutor.strategy.reserve_currency import ReserveCurrency
-from tradeexecutor.strategy.default_routing_options import TradeRouting
-from tradeexecutor.visual.web_chart import render_web_chart, WebChartType, WebChartSource
+
 
 
 def decide_trades(
@@ -45,16 +38,8 @@ def decide_trades(
         state: State,
         pricing_model: PricingModel,
         cycle_debug_data: Dict) -> List[TradeExecution]:
-    """Cycle between assets to generate trades.
+    """Generate random trades and positions."""
 
-    - On 3rd days buy or sell asset 1
-
-    - On 5rd days buy or sell asset 2
-
-    - But with 25% of cash
-    """
-
-    assert timestamp.hour == 0
     assert timestamp.minute == 0
 
     # The pair we are trading
@@ -71,19 +56,12 @@ def decide_trades(
 
     position_manager = PositionManager(timestamp, universe, state, pricing_model)
 
-    if timestamp.day % 3 == 0:
-        position = position_manager.get_current_position_for_pair(asset_1)
-        if position is None:
+    if not position_manager.is_any_open():
+        if random.randint(0, 5) == 0:
             trades += position_manager.open_spot(asset_1, cash * 0.25)
-        else:
-            trades += position_manager.close_position(position)
-
-    if timestamp.day % 5 == 0:
-        position = position_manager.get_current_position_for_pair(asset_2)
-        if position is None:
-            trades += position_manager.open_spot(asset_2, cash * 0.25)
-        else:
-            trades += position_manager.close_position(position)
+    else:
+        if random.randint(0, 5) == 0:
+            trades += position_manager.close_all()
 
     return trades
 
@@ -171,7 +149,7 @@ def state(universe):
         start_at=start_at.to_pydatetime(),
         end_at=end_at.to_pydatetime(),
         client=None,  # None of downloads needed, because we are using synthetic data
-        cycle_duration=CycleDuration.cycle_1d,  # Override to use 24h cycles despite what strategy file says
+        cycle_duration=CycleDuration.cycle_1h,  # Override to use 24h cycles despite what strategy file says
         decide_trades=decide_trades,
         create_trading_universe=None,
         universe=universe,
@@ -185,10 +163,9 @@ def state(universe):
     return state
 
 
-@pytest.mark.parametrize("method", [ScoringMethod.realised_profitability, ScoringMethod.success_rate, ScoringMethod.failure_rate])
+@pytest.mark.parametrize("method", [ScoringMethod.success_rate, ScoringMethod.failure_rate, ScoringMethod.realised_profitability])
 def test_visualise_timemap(state, method):
-    """Check our generated data looks correct."""
+    """Check weekday heatmap."""
     positions = state.portfolio.get_all_positions()
     fig = visualise_weekly_time_heatmap(positions, method)
-    fig.show()
-    import ipdb ; ipdb.set_trace()
+    assert fig.data   # We just check code runs, not that it gives good data
