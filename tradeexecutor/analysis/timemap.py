@@ -22,8 +22,8 @@ class ScoringMethod:
 
 def visualise_weekly_time_heatmap(
     positions: Iterable[TradingPosition],
-    colour_scheme=DEFAULT_COLOUR_SCHEME,
     method: ScoringMethod = ScoringMethod.success_rate,
+    colour_scheme=DEFAULT_COLOUR_SCHEME,
 ) -> go.Figure:
     """Create a heatmap of which hours/days are best for trading."""
 

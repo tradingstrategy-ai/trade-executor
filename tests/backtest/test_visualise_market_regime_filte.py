@@ -191,7 +191,7 @@ def test_access_regime_filter_data_15m(tmp_path):
     input_indicators.timestamp = pd.Timestamp("2023-01-20 00:15")
     assert input_indicators.get_indicator_value("regime") == 0
 
-    input_indicators.timestamp = pd.Timestamp("2023-01-21 00:00")
+    input_indicators.timestamp = pd.Timestamp("2023-01-21 0a0:00")
     assert input_indicators.get_indicator_value("regime") == 0
     input_indicators.timestamp = pd.Timestamp("2023-01-21 00:15")
     assert input_indicators.get_indicator_value("regime") == 0
