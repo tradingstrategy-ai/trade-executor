@@ -234,7 +234,7 @@ class IndicatorDefinition:
             ret = self.func(**full_kwargs)
             return self._check_good_return_value(ret)
         except Exception as e:
-            raise IndicatorCalculationFailed(f"Could not calculate indicator {self.name} ({self.func}) for parameters {self.parameters}, input data is {len(input)} rows") from e
+            raise IndicatorCalculationFailed(f"Could not calculate indicator {self.name} ({self.func}) for parameters {self.parameters}, candles is {len(candles)} rows, {candles.columns} columns") from e
 
     def calculate_universe(self, input: TradingStrategyUniverse) -> pd.DataFrame | pd.Series:
         """Calculate the underlying indicator value.
