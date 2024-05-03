@@ -1185,6 +1185,9 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
             Short pair with ticker (vToken for borrowed asseet, aToken for reserve asset)
         """
 
+        if not self.data_universe.lending_reserves:
+            raise TradingUniverseIssue(f"Lending rates data missing. Asking shorting data for trading pair {pair}.\nMake sure you load lending rates data if you want to backtest leveraged trading.")
+
         assert pair.kind == TradingPairKind.spot_market_hold
 
         borrow_token = pair.base
