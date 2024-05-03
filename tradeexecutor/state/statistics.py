@@ -16,6 +16,7 @@ import pandas as pd
 from dataclasses_json import dataclass_json
 from pandas import DatetimeIndex
 
+from tradeexecutor.state.types import Percent
 from tradingstrategy.types import USDollarAmount
 from tradeexecutor.analysis.trade_analyser import TradeSummary
 
@@ -100,11 +101,19 @@ class PortfolioStatistics:
     #: Real-time clock when these stats were calculated
     calculated_at: datetime.datetime
 
-
     # Deprecated: Use net_asset_value
     total_equity: USDollarAmount
 
+    #: How much was TVL equivalent
     net_asset_value: Optional[USDollarAmount] = None
+
+    #: The unrealised all-time profitability of this strategy at this point of time
+    #:
+    #: See :py:func:`tradeexecutor.visualisation.equity_curve.calculate_compounding_unrealised_trading_profitability`
+    #:
+    #: Set to 0 if cannot be calculated yet.
+    #:
+    unrealised_profitability: Optional[Percent] = None
     
     free_cash: Optional[USDollarAmount] = None
     open_position_count: Optional[int] = None

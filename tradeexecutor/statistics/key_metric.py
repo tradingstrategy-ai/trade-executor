@@ -12,6 +12,7 @@ import numpy as np
 from tradeexecutor.state.portfolio import Portfolio
 from tradeexecutor.state.state import State
 from tradeexecutor.state.types import Percent
+from tradeexecutor.strategy.cycle import CycleDuration
 from tradeexecutor.strategy.summary import KeyMetric, KeyMetricKind, KeyMetricSource, KeyMetricCalculationMethod
 from tradeexecutor.visual.equity_curve import calculate_size_relative_realised_trading_returns, calculate_non_cumulative_daily_returns, calculate_equity_curve, \
     calculate_returns, calculate_daily_returns
@@ -206,6 +207,7 @@ def calculate_key_metrics(
     backtested_state: State | None = None,
     required_history = datetime.timedelta(days=90),
     freq_base: pd.DateOffset = pd.offsets.Day(),
+    cycle_duration: CycleDuration = None,
 ) -> Iterable[KeyMetric]:
     """Calculate summary metrics to be displayed on the web frontend.
 
@@ -227,8 +229,8 @@ def calculate_key_metrics(
     :param freq_base:
         The frequency for which we resample data when resamping is needed for calculations.
 
-    :param now_:
-        Override the current timestamp for testing
+    :param cycle_duration:
+        The duration of each trade cycle
 
     :return:
         Key metrics.
@@ -261,6 +263,9 @@ def calculate_key_metrics(
             # daily_log_sum_returns = log_returns.resample('D').sum().fillna(0)
             # daily_returns = np.exp(daily_log_sum_returns) - 1
             periods = pd.Timedelta(days=365) / freq_base
+
+        if source == KeyMetricSource.live_trading:
+            assert cycle_duration is not None, "Cycle duration is required for live trading"
 
         sharpe = calculate_sharpe(daily_returns, periods=periods)
         yield KeyMetric.create_metric(KeyMetricKind.sharpe, source, sharpe, calculation_window_start_at, calculation_window_end_at, KeyMetricCalculationMethod.historical_data)
@@ -348,6 +353,18 @@ def calculate_key_metrics(
         calculation_window_end_at=calculation_window_end_at,
         calculation_method=KeyMetricCalculationMethod.latest_value,
         help_link=KeyMetricKind.trades_last_week.get_help_link(),
+    )
+
+    yield KeyMetric(
+        KeyMetricKind.decision_cycle_duration,
+        KeyMetricSource.live_trading,
+        cycle_duration,
+        calculation_window_start_at=calculation_window_start_at,
+        calculation_window_end_at=calculation_window_end_at,
+        calculation_method=KeyMetricCalculationMethod.latest_value,
+        unavailability_reason="Not available, should always be available live trading" if not cycle_duration else None,
+        help_link=KeyMetricKind.decision_cycle_duration.get_help_link(),
+        name="Cycle Duration"
     )
 
 

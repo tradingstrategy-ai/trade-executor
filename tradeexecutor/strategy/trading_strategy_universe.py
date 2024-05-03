@@ -20,7 +20,7 @@ from typing import List, Optional, Callable, Tuple, Set, Dict, Iterable, Collect
 import pandas as pd
 
 from tradeexecutor.state.types import JSONHexAddress, Percent
-from tradingstrategy.lending import LendingReserveUniverse, LendingReserveDescription, LendingCandleType, LendingCandleUniverse, UnknownLendingReserve
+from tradingstrategy.lending import LendingReserveUniverse, LendingReserveDescription, LendingCandleType, LendingCandleUniverse, UnknownLendingReserve, LendingProtocolType
 from tradingstrategy.token import Token
 from tradingstrategy.candle import GroupedCandleUniverse
 from tradingstrategy.chain import ChainId
@@ -678,11 +678,13 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
 
     @staticmethod
     def create_limited_pair_universe(
-            dataset: Dataset,
-            chain_id: ChainId,
-            exchange_slug: str,
-            pairs: Set[Tuple[str, str]],
-            reserve_asset_pair_ticker: Optional[Tuple[str, str]] = None) -> "TradingStrategyUniverse":
+        dataset: Dataset,
+        chain_id: ChainId,
+        exchange_slug: str,
+        pairs: Set[Tuple[str, str]],
+        reserve_asset_pair_ticker: Optional[Tuple[str, str]] = None,
+        forward_fill=False,
+    ) -> "TradingStrategyUniverse":
         """Filters down the dataset for couple trading pair.
 
         This is ideal for strategies that only want to trade few pairs,
@@ -699,6 +701,15 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
         :param reserve_asset_pair_ticker:
             Choose the quote token of this trading pair as a reserve asset.
             This must be given if there are several pairs (Python set order is unstable).
+
+        :param forward_fill:
+            Forward-fill the data.
+
+            When working with sparse data (gaps in candles), many strategies need
+            these gaps to be filled. Setting this parameter `True`
+            will automatically forward-fill any data we are loading from the dataset.
+
+            See :term:`forward fill` for more information.
 
         """
 
@@ -719,7 +730,11 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
 
         if all_candles is not None:
             filtered_candles = filter_for_pairs(all_candles, pair_universe.df)
-            candle_universe = GroupedCandleUniverse(filtered_candles)
+            candle_universe = GroupedCandleUniverse(
+                filtered_candles,
+                time_bucket=dataset.time_bucket,
+                forward_fill=forward_fill
+            )
         else:
             candle_universe = None
 
@@ -751,7 +766,6 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
         reserve_assets = [
             trading_pair_identifier.quote
         ]
-
         universe = Universe(
             time_bucket=dataset.time_bucket,
             chains={chain_id},
@@ -2224,8 +2238,10 @@ def load_trading_and_lending_data(
     chain_id: ChainId,
     time_bucket: TimeBucket = TimeBucket.d1,
     universe_options: UniverseOptions = default_universe_options,
+    *,
     exchange_slugs: Set[str] | str | None = None,
-    liquidity=False,
+    lending_protocol: LendingProtocolType | None = None,
+    liquidity: bool = False,
     stop_loss_time_bucket: TimeBucket | None = None,
     asset_ids: Set[TokenSymbol] | None = None,
     reserve_assets: Set[TokenSymbol | NonChecksummedAddress] = frozenset({"USDC"}),
@@ -2363,6 +2379,9 @@ def load_trading_and_lending_data(
 
     lending_reserves = client.fetch_lending_reserve_universe()
     lending_reserves = lending_reserves.limit_to_chain(chain_id)
+
+    if lending_protocol:
+        lending_reserves = lending_reserves.limit_to_protocol(lending_protocol)
 
     if asset_ids is None:
         asset_ids = set()

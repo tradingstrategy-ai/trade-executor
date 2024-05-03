@@ -314,6 +314,7 @@ class ExecutionLoop:
         state: State,
         visualisation=False,
         universe: TradingStrategyUniverse=None,
+        cycle_duration: CycleDuration=None,
     ):
         """Update the in-process strategy context which we serve over the webhook.
 
@@ -328,6 +329,8 @@ class ExecutionLoop:
             Also update technical charts
         """
 
+        assert cycle_duration is not None, "CycleDuration is required, got None"
+
         run_state = self.run_state
 
         refresh_run_state(
@@ -339,6 +342,7 @@ class ExecutionLoop:
             self.sync_model,
             self.metadata.backtested_state,
             self.metadata.key_metrics_backtest_cut_off,
+            cycle_duration,
         )
 
         # Mark last refreshed
@@ -921,14 +925,6 @@ class ExecutionLoop:
             # Backtesting
             next_tick = snap_to_next_tick(ts + datetime.timedelta(seconds=1), backtest_step, self.tick_offset)
 
-            if next_tick >= self.backtest_end:
-                # Backteting has ended
-                logger.info("Terminating backtesting. Backtest end %s, current timestamp %s", self.backtest_end, next_tick)
-                passed_seconds = (ts - last_update_ts).total_seconds()
-                if progress_bar:
-                    set_progress_bar_postfix(state, progress_bar, trade_count, cycle, take_profits, stop_losses)
-                    progress_bar.update(int(passed_seconds))
-                break
 
             # If we have stop loss checks enabled on a separate price feed,
             # run backtest stop loss checks until the next time
@@ -941,8 +937,18 @@ class ExecutionLoop:
                 )
                 take_profits += res[0]
                 stop_losses += res[1]
+            
+            if next_tick >= self.backtest_end:
+                # Backteting has ended
+                logger.info("Terminating backtesting. Backtest end %s, current timestamp %s", self.backtest_end, next_tick)
+                trade_count = len(list(state.portfolio.get_all_trades()))
+                passed_seconds = (ts - last_update_ts).total_seconds()
+                if progress_bar:
+                    set_progress_bar_postfix(state, progress_bar, trade_count, cycle, take_profits, stop_losses)
+                    progress_bar.update(int(passed_seconds))
+                break
 
-            # Add some fuzziness to gacktesting timestamps
+            # Add some fuzziness to backtesting timestamps
             # TODO: Make this configurable - sub 1h strategies do not work
             ts = next_tick + datetime.timedelta(minutes=random.randint(0, 4))
 
@@ -1037,7 +1043,7 @@ class ExecutionLoop:
         )
 
         # Store summary statistics in memory before doing anything else
-        self.refresh_live_run_state(state, visualisation=True, universe=universe)
+        self.refresh_live_run_state(state, visualisation=True, universe=universe, cycle_duration=self.cycle_duration)
 
         # A test path: do not wait until making the first trade
         # The first trade will be execute immediately, despite the time offset or tick
@@ -1128,7 +1134,7 @@ class ExecutionLoop:
                     # TODO: Visualisations are internally refreshed by runner
                     # this is somewhat bad architecture and refreshing run state should be a responsibility
                     # of a single component
-                    self.refresh_live_run_state(state)
+                    self.refresh_live_run_state(state, cycle_duration=self.cycle_duration)
                 except Exception as e:
                     # Failing to do the performance statistics is not fatal,
                     # because this does not contain any state changing events
@@ -1153,7 +1159,7 @@ class ExecutionLoop:
 
             run_state.completed_cycle = cycle
             run_state.cycles += 1
-            self.refresh_live_run_state(state)
+            self.refresh_live_run_state(state, cycle_duration=self.cycle_duration)
 
             # Reset the background watchdog timer
             mark_alive(watchdog_registry, "live_cycle")
@@ -1174,7 +1180,7 @@ class ExecutionLoop:
 
                 self.update_position_valuations(ts, state, universe, execution_context.mode)
 
-                self.refresh_live_run_state(state)
+                self.refresh_live_run_state(state, cycle_duration=self.cycle_duration)
             except Exception as e:
                 die(e)
 

@@ -557,6 +557,7 @@ class PositionManager:
          stop_loss_usd: Optional[USDollarAmount] = None,
          notes: Optional[str] = None,
          slippage_tolerance: Optional[float] = None,
+         take_profit_usd: Optional[USDollarAmount] = None,
     ) -> List[TradeExecution]:
         """Deprecated function for opening a spot position.
 
@@ -570,7 +571,8 @@ class PositionManager:
             trailing_stop_loss_pct=trailing_stop_loss_pct,
             stop_loss_usd=stop_loss_usd,
             notes=notes,
-            slippage_tolerance=slippage_tolerance
+            slippage_tolerance=slippage_tolerance,
+            take_profit_usd=take_profit_usd,
         )
 
     def open_spot(
@@ -584,6 +586,7 @@ class PositionManager:
         notes: Optional[str] = None,
         slippage_tolerance: Optional[float] = None,
         flags: Set[TradeFlag] | None = None,
+        take_profit_usd: Optional[USDollarAmount] = None,
     ) -> List[TradeExecution]:
         """Open a spot position.
 
@@ -634,6 +637,10 @@ class PositionManager:
             Slippage tolerance for this trade.
 
             Use :py:attr:`default_slippage_tolerance` if not set.
+
+        :param take_profit_usd:
+            If set, set the position take profit at the given dollar price.
+            Cannot be used with take_profit_pct.
 
         :return:
             A list of new trades.
@@ -696,6 +703,11 @@ class PositionManager:
         if take_profit_pct:
             position.take_profit = price_structure.mid_price * take_profit_pct
 
+        if take_profit_usd:
+            assert not take_profit_pct, "You cannot give both take_profit_pct and take_profit_usd"
+            assert take_profit_usd > price_structure.mid_price, f"take_profit_usd must be more than mid_price got {take_profit_usd} <= {price_structure.mid_price}"
+            position.take_profit = take_profit_usd
+
         if stop_loss_pct is not None:
             assert 0 <= stop_loss_pct <= 1, f"stop_loss_pct must be 0..1, got {stop_loss_pct}"
             self.update_stop_loss(position, price_structure.mid_price * stop_loss_pct)
@@ -729,7 +741,7 @@ class PositionManager:
     def adjust_position(self,
                         pair: TradingPairIdentifier,
                         dollar_delta: USDollarAmount,
-                        quantity_delta: Optional[float],
+                        quantity_delta: float,
                         weight: float,
                         stop_loss: Optional[Percent] = None,
                         take_profit: Optional[Percent] = None,

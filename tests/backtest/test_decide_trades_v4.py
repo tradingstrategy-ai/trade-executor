@@ -103,6 +103,11 @@ def test_decide_trades_v04(strategy_universe):
         price_value = input.indicators.get_price()
         if price_value is not None:
             assert 0 < price_value < 100_000
+        assert price_value == input.indicators.get_price(index=-1)
+        previous_price = input.indicators.get_price(index=-2)
+        if previous_price is not None:
+            assert 0 < previous_price < 100_000
+            assert previous_price != price_value
 
         # Check indicator accessor
         rsi_value = input.indicators.get_indicator_value("rsi")
@@ -136,7 +141,7 @@ def test_decide_trades_v04(strategy_universe):
         bb_length = 20
 
     # Run the test
-    state, universe, debug_dump = run_backtest_inline(
+    result = run_backtest_inline(
         client=None,
         decide_trades=decide_trades,
         create_indicators=create_indicators,
@@ -147,4 +152,11 @@ def test_decide_trades_v04(strategy_universe):
         mode=ExecutionMode.unit_testing,
     )
 
+    state, universe, debug_dump = result
     assert len(state.portfolio.closed_positions) == 15
+
+    assert result.indicators.available_indicators.has_indicator("rsi")
+    assert result.indicators.available_indicators.has_indicator("bb")
+
+    bb = result.indicators.get_indicator_dataframe("bb")
+    assert isinstance(bb,  pd.DataFrame)

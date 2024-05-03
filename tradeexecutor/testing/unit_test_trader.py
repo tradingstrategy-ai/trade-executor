@@ -4,6 +4,10 @@ from decimal import Decimal
 from typing import Tuple
 
 import pandas as pd
+
+from tradeexecutor.state.balance_update import BalanceUpdate, BalanceUpdatePositionType, BalanceUpdateCause
+from tradeexecutor.state.portfolio import Portfolio
+from tradeexecutor.state.reserve import ReservePosition
 from tradingstrategy.candle import GroupedCandleUniverse
 
 from tradeexecutor.state.state import State, TradeType
@@ -11,6 +15,7 @@ from tradeexecutor.state.position import TradingPosition
 from tradeexecutor.state.trade import TradeExecution, TradeFlag 
 from tradeexecutor.state.identifier import TradingPairIdentifier
 from tradeexecutor.utils.leverage_calculations import LeverageEstimate
+from tradingstrategy.types import Percent
 
 
 class UnitTestTrader:
@@ -215,4 +220,69 @@ class UnitTestTrader:
 
         self.ts += datetime.timedelta(seconds=1)
         return position, trade
+
+    def redeem_in_kind(
+        self,
+        timestamp: datetime.datetime,
+        portfolio: Portfolio,
+        position: TradingPosition,
+        quantity: Decimal,
+        redeemer="0x0000000000000000000000000000000000000000",
+    ) -> BalanceUpdate:
+        """Simulate in-kind redemption.
+
+        :param quantity:
+            How much to redeem, in the spot units hold.
+        """
+
+        assert position.is_long()
+        assert position.is_spot()
+        assert isinstance(quantity, Decimal)
+
+        asset = position.pair.base
+
+        event_id = portfolio.next_balance_update_id
+        portfolio.next_balance_update_id += 1
+
+        if isinstance(position, ReservePosition):
+            position_id = None
+            old_balance = position.quantity
+            position.quantity -= quantity
+            position_type = BalanceUpdatePositionType.reserve
+            # TODO: USD stablecoin hardcoded to 1:1 with USD
+            usd_value = float(quantity)
+        elif isinstance(position, TradingPosition):
+            position_id = position.position_id
+            old_balance = position.get_quantity()
+            position_type = BalanceUpdatePositionType.open_position
+            usd_value = position.calculate_quantity_usd_value(quantity)
+        else:
+            raise NotImplementedError()
+
+        assert old_balance - quantity >= 0, f"Position went to negative: {position}\n" \
+                                            f"Quantity: {quantity}, old balance: {old_balance}"
+
+        assert timestamp is not None, f"Timestamp cannot be none: {timestamp}"
+
+        evt = BalanceUpdate(
+            balance_update_id=event_id,
+            cause=BalanceUpdateCause.redemption,
+            position_type=position_type,
+            asset=asset,
+            block_mined_at=timestamp,
+            strategy_cycle_included_at=timestamp,
+            chain_id=asset.chain_id,
+            quantity=-quantity,
+            old_balance=old_balance,
+            owner_address=redeemer,
+            tx_hash=None,
+            log_index=None,
+            position_id=position_id,
+            usd_value=usd_value,
+            block_number=None
+        )
+
+        position.add_balance_update_event(evt)
+
+        return evt
 

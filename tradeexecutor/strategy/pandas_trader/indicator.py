@@ -94,6 +94,19 @@ class IndicatorSource(enum.Enum):
         return self in (IndicatorSource.open_price, IndicatorSource.close_price, IndicatorSource.ohlcv)
 
 
+def _flatten_index(series: pd.Series) -> pd.Series:
+    """Ensure that any per-pair series we have has DatetimeIndex, not MultiIndex."""
+    if isinstance(series.index, pd.DatetimeIndex):
+        return series
+    if isinstance(series.index, pd.MultiIndex):
+        new_index = series.index.get_level_values(1)  # assume pair id, timestamp tuples
+        assert isinstance(new_index, pd.DatetimeIndex)
+        series_2 = series.copy()
+        series_2.index = new_index
+        return series_2
+    else:
+        raise NotImplementedError(f"Unknown index: {series.index}")
+
 
 @dataclass(slots=True)
 class IndicatorDefinition:
@@ -145,7 +158,10 @@ class IndicatorDefinition:
 
     def __hash__(self):
         # https://stackoverflow.com/a/5884123/315168
-        return hash((self.name, frozenset(self.parameters.items()), self.source))
+        try:
+            return hash((self.name, frozenset(self.parameters.items()), self.source))
+        except Exception as e:
+            raise (f"Could not hash {self}. If changing grid search to backtest, remember to change lists to single value. Exception is {e}")
 
     def __post_init__(self):
         assert type(self.name) == str
@@ -176,7 +192,8 @@ class IndicatorDefinition:
 
         """
         try:
-            ret = self.func(input, **self.parameters)
+            input_fixed = _flatten_index(input)
+            ret = self.func(input_fixed, **self.parameters)
             return self._check_good_return_value(ret)
         except Exception as e:
             raise IndicatorCalculationFailed(f"Could not calculate indicator {self.name} ({self.func}) for parameters {self.parameters}, input data is {len(input)} rows") from e
@@ -200,13 +217,14 @@ class IndicatorDefinition:
 
         assert isinstance(candles, pd.DataFrame), f"OHLCV-based indicator function must be fed with a DataFrame"
 
+        input_fixed = _flatten_index(candles)
+
         needed_args = ("open", "high", "low", "close", "volume")
         full_kwargs = {}
-        enabled = {}
         func_args = inspect.getfullargspec(self.func).args
         for a in needed_args:
             if a in func_args:
-                full_kwargs[a] = candles[a]
+                full_kwargs[a] = input_fixed[a]
 
         if len(full_kwargs) == 0:
             raise IndicatorCalculationFailed(f"Could not calculate OHLCV indicator {self.name} ({self.func}): does not take any of function arguments from {needed_args}")
@@ -217,7 +235,7 @@ class IndicatorDefinition:
             ret = self.func(**full_kwargs)
             return self._check_good_return_value(ret)
         except Exception as e:
-            raise IndicatorCalculationFailed(f"Could not calculate indicator {self.name} ({self.func}) for parameters {self.parameters}, input data is {len(input)} rows") from e
+            raise IndicatorCalculationFailed(f"Could not calculate indicator {self.name} ({self.func}) for parameters {self.parameters}, candles is {len(candles)} rows, {candles.columns} columns") from e
 
     def calculate_universe(self, input: TradingStrategyUniverse) -> pd.DataFrame | pd.Series:
         """Calculate the underlying indicator value.
