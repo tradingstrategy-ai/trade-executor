@@ -7,6 +7,7 @@
 import ast
 import hashlib
 import inspect
+import textwrap
 
 
 def _remove_docstring(node):
@@ -31,6 +32,10 @@ def hash_function(func, char_length=8):
 
     See https://stackoverflow.com/a/49998190/315168
 
+    :param char_length:
+        How many characters you want in your hash,
+        to reduce the hash size.
+
     :return:
         Part of hex hash of the function body
     """
@@ -38,6 +43,8 @@ def hash_function(func, char_length=8):
     assert callable(func), f"Not a function: {func}"
 
     func_str = inspect.getsource(func)
+
+    func_str = textwrap.dedent(func_str)
 
     # Heurestics if this is a lambda function - in this case ast will fail
     # Account for ending new line (may or may not be there?)

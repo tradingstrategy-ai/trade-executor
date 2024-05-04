@@ -149,7 +149,7 @@ def test_setup_up_indicator_storage_two_parameters(tmp_path, strategy_universe):
     key = IndicatorKey(pair, ind)
 
     ind_path = storage.get_indicator_path(key)
-    assert ind_path == Path(tmp_path) / storage.universe_key / "sma(length=21,offset=1)-WETH-USDC.parquet"
+    assert ind_path == Path(tmp_path) / storage.universe_key / "sma_424a22f1(length=21,offset=1)-WETH-USDC.parquet"
 
 
 
