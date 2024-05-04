@@ -34,7 +34,7 @@ def update_interest(
     log_index: int | None = None,
     max_interest_gain: Percent = 0.05,
 ) -> BalanceUpdate:
-    """Poke credit supply position to increase its interest amount.
+    """Poke leverage position to increase its interest amount.
 
     :param position:
         Trading position to update
@@ -60,9 +60,7 @@ def update_interest(
 
         Terminate execution if bad math detected.
     """
-
     assert asset is not None
-    # assert position.pair.kind == TradingPairKind.credit_supply
     assert position.is_open() or position.is_frozen(), f"Cannot update interest for position {position.position_id}\n" \
                                                        f"Position details: {position}\n" \
                                                        f"Position closed at: {position.closed_at}\n" \
@@ -78,10 +76,12 @@ def update_interest(
     elif loan.borrowed and asset == position.loan.borrowed.asset:
         interest = loan.borrowed_interest
     else:
-        raise AssertionError(f"Loan {loan} does not have asset {asset}\n"
-                             f"We have\n"
-                             f"- {loan.collateral.asset}\n"
-                             f"- {loan.borrowed.asset if loan.borrowed else '<no borrow>'}")
+        raise AssertionError(
+            f"Loan {loan} does not have asset {asset}\n"
+            f"We have\n"
+            f"- {loan.collateral.asset}\n"
+            f"- {loan.borrowed.asset if loan.borrowed else '<no borrow>'}"
+        )
 
     assert interest, f"Position does not have interest tracked set up on {asset.token_symbol}:\n" \
                      f"{position} \n" \
@@ -383,6 +383,7 @@ def distribute_interest_for_assets(
     # We also may encounter negative updates < epsilon due to the rounding
     # errors.
     interest_accrued = new_amount - asset_total
+    logger.info("Interest accrued for %s: %s, %s, %s", asset, interest_accrued, new_amount, asset_total)
     if abs(interest_accrued) >= INTEREST_EPSILON:
 
         assert interest_accrued >= 0, f"Interest cannot go negative: {interest_accrued}, our epsilon is {INTEREST_EPSILON}"
@@ -452,6 +453,8 @@ def accrue_interest(
         asset_interest_data = interest_distribution.get_interest_data(asset)
         interest = float((new_balance - asset_interest_data.total) / asset_interest_data.total) / part_of_year
         asset_interest_data.effective_rate = interest
+
+        logger.info("Effective interest is %f for the asset %s, %s, %s", interest, asset, new_balance, asset_interest_data.total)
 
         # We cannot generate interest events for zero updates,
         # as it breaks math
