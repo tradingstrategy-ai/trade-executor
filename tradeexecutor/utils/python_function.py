@@ -38,21 +38,29 @@ def hash_function(func, char_length=8):
     assert callable(func), f"Not a function: {func}"
 
     func_str = inspect.getsource(func)
-    module = ast.parse(func_str)
 
-    assert len(module.body) == 1 and isinstance(module.body[0], ast.FunctionDef)
+    # Heurestics if this is a lambda function - in this case ast will fail
+    # Account for ending new line (may or may not be there?)
+    lambda_like = len(func_str.split("\n")) in (1, 2) and "lambda" in func_str
 
-    # Clear function name so it doesn't affect the hash
-    func_node = module.body[0]
-    func_node.name = ""
+    if not lambda_like:
+        module = ast.parse(func_str)
+        assert len(module.body) == 1 and isinstance(module.body[0], ast.FunctionDef)
 
-    # Clear all the doc strings
-    for node in ast.walk(module):
-        _remove_docstring(node)
+        # Clear function name so it doesn't affect the hash
+        func_node = module.body[0]
+        func_node.name = ""
 
-    # Convert the ast to a string for hashing
-    ast_str = ast.dump(module, annotate_fields=False).encode("utf-8")
+        # Clear all the doc strings
+        for node in ast.walk(module):
+            _remove_docstring(node)
 
-    # Produce the hash
-    fhash = hashlib.sha256(ast_str)
+        # Convert the ast to a string for hashing
+        ast_str = ast.dump(module, annotate_fields=False).encode("utf-8")
+        # Produce the hash
+        fhash = hashlib.sha256(ast_str)
+    else:
+        # Handle lambda special case
+        fhash = hashlib.sha256(func_str.encode("utf-8"))
+
     return fhash.hexdigest()[0:char_length]
