@@ -51,7 +51,7 @@ def hash_function(func, char_length=8):
         _remove_docstring(node)
 
     # Convert the ast to a string for hashing
-    ast_str = ast.dump(module, annotate_fields=False)
+    ast_str = ast.dump(module, annotate_fields=False).encode("utf-8")
 
     # Produce the hash
     fhash = hashlib.sha256(ast_str)

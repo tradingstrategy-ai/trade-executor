@@ -323,7 +323,7 @@ class IndicatorKey:
             return v
 
         parameters = ",".join([f"{k}={norm_value(v)}" for k, v in self.definition.parameters.items()])
-        return f"{self.definition.name}{self.definition.get_function_body_hash()}({parameters})-{slug}"
+        return f"{self.definition.name}_{self.definition.get_function_body_hash()}({parameters})-{slug}"
 
 
 class IndicatorSet:
