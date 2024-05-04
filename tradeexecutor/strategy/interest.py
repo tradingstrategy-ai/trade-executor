@@ -71,13 +71,10 @@ def update_interest(
     loan = position.loan
     assert loan
 
-    is_updating_borrowed_asset = False
-
     if asset == loan.collateral.asset:
         interest = loan.collateral_interest
     elif loan.borrowed and asset == position.loan.borrowed.asset:
         interest = loan.borrowed_interest
-        is_updating_borrowed_asset = True
     else:
         raise AssertionError(
             f"Loan {loan} does not have asset {asset}\n"
@@ -134,10 +131,6 @@ def update_interest(
     interest.last_event_at = event_at
     interest.last_updated_block_number = block_number
     interest.last_token_amount = new_token_amount
-
-    # Also revalue the loan
-    if is_updating_borrowed_asset:
-        loan.borrowed.revalue(asset_price, event_at)
 
     return evt
 
@@ -301,6 +294,9 @@ def prepare_interest_distribution(
                 )
                 price = price_structure.price
 
+                # Revalue the loan borrowed side right when we have new price
+                p.loan.borrowed.revalue(price, timestamp)
+
             entry = InterestDistributionEntry(
                 side=side,
                 position=p,
@@ -390,6 +386,7 @@ def distribute_interest_for_assets(
     # We also may encounter negative updates < epsilon due to the rounding
     # errors.
     interest_accrued = new_amount - asset_total
+    logger.info("Interest accrued for %s: %s, %s, %s", asset, interest_accrued, new_amount, asset_total)
     if abs(interest_accrued) >= INTEREST_EPSILON:
 
         assert interest_accrued >= 0, f"Interest cannot go negative: {interest_accrued}, our epsilon is {INTEREST_EPSILON}"
@@ -459,6 +456,8 @@ def accrue_interest(
         asset_interest_data = interest_distribution.get_interest_data(asset)
         interest = float((new_balance - asset_interest_data.total) / asset_interest_data.total) / part_of_year
         asset_interest_data.effective_rate = interest
+
+        logger.info("Effective interest is %f for the asset %s, %s, %s", interest, asset, new_balance, asset_interest_data.total)
 
         # We cannot generate interest events for zero updates,
         # as it breaks math

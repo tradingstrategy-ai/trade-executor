@@ -39,12 +39,19 @@ class OneDeltaPoolRevaluator(EthereumPoolRevaluator):
             new_value = loan.get_net_asset_value()
             block_number = loan.borrowed_interest.last_updated_block_number
 
+            # also update legacy position.last_token_price
+            old_price = position.last_token_price
+            old_value = position.get_value()
+            position.revalue_base_asset(valued_at, new_price)
+
             evt = ValuationUpdate(
                 created_at=ts,
                 position_id=position.position_id,
                 valued_at=valued_at,
-                new_value=new_value,
                 new_price=new_price,
+                new_value=new_value,
+                old_price=old_price,
+                old_value=old_value,
                 block_number=block_number,
             )
         elif pair.is_credit_supply():
@@ -58,8 +65,8 @@ class OneDeltaPoolRevaluator(EthereumPoolRevaluator):
                 created_at=ts,
                 position_id=position.position_id,
                 valued_at=valued_at,
-                new_value=new_value,
                 new_price=new_price,
+                new_value=new_value,
                 block_number=block_number,
             )
         else:
