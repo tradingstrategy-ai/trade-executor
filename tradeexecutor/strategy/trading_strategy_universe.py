@@ -221,7 +221,17 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
         time_bucket_str = self.data_universe.time_bucket.value
 
         separator = "_"
-        key = f"{chain_str}{separator}{time_bucket_str}{separator}{pair_str}{separator}{time_str}"
+
+        # Add forward fill flag to the universe cache file name
+        match self.data_universe.forward_filled:
+            case None:
+                ff = ""
+            case True:
+                ff = f"{separator}ff"
+            case False:
+                ff = "{separator}nff"
+
+        key = f"{chain_str}{separator}{time_bucket_str}{separator}{pair_str}{separator}{time_str}{ff}"
         assert len(key) < 256, f"Generated very long fname cache key, check the generation logic: {key}"
         return key
 
@@ -1044,6 +1054,7 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
             exchange_universe=dataset.exchanges,
             exchanges={e for e in dataset.exchanges.exchanges.values()},
             lending_candles=dataset.lending_candles,
+            forward_filled=forward_fill,
         )
 
         return TradingStrategyUniverse(
