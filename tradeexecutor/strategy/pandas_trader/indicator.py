@@ -34,6 +34,7 @@ from tradeexecutor.strategy.execution_context import ExecutionContext
 from tradeexecutor.strategy.parameters import StrategyParameters
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse, UniverseCacheKey
 from tradeexecutor.utils.cpu import get_safe_max_workers_count
+from tradeexecutor.utils.python_function import hash_function
 
 logger = logging.getLogger(__name__)
 
@@ -170,6 +171,13 @@ class IndicatorDefinition:
         if self.func is not None:
             assert callable(self.func)
             validate_function_kwargs(self.func, self.parameters)
+
+    def get_function_body_hash(self) -> str:
+        """Calculate the hash for the function code.
+
+        Allows us to detect if the function body changes.
+        """
+        return hash_function(self.func)
 
     def is_needed_for_pair(self, pair: TradingPairIdentifier) -> bool:
         """Currently indicators are calculated for spont pairs only."""
@@ -315,7 +323,7 @@ class IndicatorKey:
             return v
 
         parameters = ",".join([f"{k}={norm_value(v)}" for k, v in self.definition.parameters.items()])
-        return f"{self.definition.name}({parameters})-{slug}"
+        return f"{self.definition.name}{self.definition.get_function_body_hash()}({parameters})-{slug}"
 
 
 class IndicatorSet:
