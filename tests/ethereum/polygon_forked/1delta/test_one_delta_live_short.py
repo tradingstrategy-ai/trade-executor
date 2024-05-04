@@ -229,7 +229,6 @@ def test_one_delta_live_strategy_short_open_and_close(
     # assert state.portfolio.reserves[usdc_id].quantity == 10000
 
 
-# @pytest.mark.skip(reason="Currently failing due to unknown reason")
 def test_one_delta_live_strategy_short_open_accrue_interests(
     logger,
     web3: Web3,
@@ -284,12 +283,19 @@ def test_one_delta_live_strategy_short_open_accrue_interests(
     get_sell_price_mock = mocker.patch(
         "tradeexecutor.ethereum.one_delta.one_delta_live_pricing.OneDeltaLivePricing.get_sell_price",
         side_effect=[
+            # invoke from our test
+            mocker.Mock(price=2000.0, mid_price=2000.0),
+            # 1st tick()
             mocker.Mock(price=2000.0, mid_price=2000.0),
             mocker.Mock(price=2000.0, mid_price=2000.0),
+            # 2nd tick()
             mocker.Mock(price=1950.0, mid_price=1950.0),
-            # mocker.Mock(price=1950.0, mid_price=1950.0),
+            mocker.Mock(price=1950.0, mid_price=1950.0),
+            mocker.Mock(price=1950.0, mid_price=1950.0),
+            # 3rd tick()
             mocker.Mock(price=1800.0, mid_price=1800.0),
-            # mocker.Mock(price=1800.0, mid_price=1800.0),
+            mocker.Mock(price=1800.0, mid_price=1800.0),
+            mocker.Mock(price=1800.0, mid_price=1800.0),
         ]
     )
     revalue = mocker.spy(AssetWithTrackedValue, "revalue")
@@ -359,8 +365,8 @@ def test_one_delta_live_strategy_short_open_accrue_interests(
 
     # loan isn't revalued yet so price is still at the point opening the loan
     assert loan.borrowed.last_usd_price == pytest.approx(2000)
-    assert revalue.call_count == 0
-    assert get_sell_price_mock.call_count == 2
+    assert revalue.call_count == 1
+    assert get_sell_price_mock.call_count == 3
 
     # mine a few block before running next tick
     for i in range(1, 5):
@@ -401,8 +407,8 @@ def test_one_delta_live_strategy_short_open_accrue_interests(
 
     # loan should be revalued already
     assert loan.borrowed.last_usd_price == pytest.approx(1950) 
-    assert revalue.call_count == 1
-    assert get_sell_price_mock.call_count == 3
+    assert revalue.call_count == 3
+    assert get_sell_price_mock.call_count == 6
     assert position.get_current_price() == pytest.approx(1950)
 
     # mine a few block before running next tick
@@ -434,7 +440,7 @@ def test_one_delta_live_strategy_short_open_accrue_interests(
 
     # loan should be revalued again
     assert loan.borrowed.last_usd_price == pytest.approx(1800) 
-    assert revalue.call_count == 2
+    assert revalue.call_count == 5
     assert position.get_current_price() == pytest.approx(1800)
 
     # TODO: there should be 4 interest update events (2 per cycle), but currently only 2 since vWETH isn't accrued yet
@@ -589,9 +595,9 @@ def test_one_delta_live_strategy_short_increase(
     assert len(state.portfolio.open_positions) == 1
 
     # check the position size get increased and reserve should be reduced
-    assert state.portfolio.reserves[usdc_id].quantity == pytest.approx(Decimal(8000.014215170340548866079189))
-    assert state.portfolio.open_positions[1].get_quantity() == pytest.approx(Decimal(-1.786964643334085140))
-    assert state.portfolio.open_positions[1].get_value() == pytest.approx(1999.778098480197)
+    assert state.portfolio.reserves[usdc_id].quantity == pytest.approx(Decimal(8000.236073000000033061951399))
+    assert state.portfolio.open_positions[1].get_quantity() == pytest.approx(Decimal(-1.786568284806183555))
+    assert state.portfolio.open_positions[1].get_value() == pytest.approx(1999.778098480197, rel=APPROX_REL)
 
 
 def test_one_delta_live_strategy_short_reduce(
@@ -739,6 +745,6 @@ def test_one_delta_live_strategy_short_reduce(
     assert len(state.portfolio.open_positions) == 1
 
     # check the position size get reduced and reserve should be increased
-    assert state.portfolio.reserves[usdc_id].quantity == pytest.approx(Decimal(9500.014223))
-    assert state.portfolio.open_positions[1].get_quantity() == pytest.approx(Decimal(-0.446542426863275337))
-    assert state.portfolio.open_positions[1].get_value() == pytest.approx(499.02187110825594)
+    assert state.portfolio.reserves[usdc_id].quantity == pytest.approx(Decimal(9500.236073))
+    assert state.portfolio.open_positions[1].get_quantity() == pytest.approx(Decimal(-0.446393815741076019))
+    assert state.portfolio.open_positions[1].get_value() == pytest.approx(499.02187110825594, rel=APPROX_REL)

@@ -294,9 +294,6 @@ def prepare_interest_distribution(
                 )
                 price = price_structure.price
 
-                # Revalue the loan borrowed side right when we have new price
-                p.loan.borrowed.revalue(price, timestamp)
-
             entry = InterestDistributionEntry(
                 side=side,
                 position=p,
