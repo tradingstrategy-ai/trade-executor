@@ -128,7 +128,7 @@ def test_setup_up_indicator_universe(tmp_path, strategy_universe):
     key = IndicatorKey(None, ind)
 
     ind_path = storage.get_indicator_path(key)
-    assert ind_path == Path(tmp_path) / storage.universe_key / "foobar_05fdcf55(length=21)-universe.parquet"
+    assert ind_path == Path(tmp_path) / storage.universe_key / "foobar_94954f0a(length=21)-universe.parquet"
 
 
 def test_setup_up_indicator_storage_two_parameters(tmp_path, strategy_universe):
