@@ -545,8 +545,11 @@ class Visualisation:
                 value = float(value)
             except TypeError as e:
                 raise RuntimeError(f"Could not convert value {value} {value.__class__} to float" + _get_helper_message("value") + ". Make sure you provide a float or int, not a series, to plot_indicator.") from e
+            
+            if pd.isna(value):
+                value = None
 
-            assert not pd.isna(value), f"Cannot plot NaN (not a number) values. {name} received {value} at timestamp {timestamp}. Please convert to None or do not call plot_indicator() for NaN values."
+            # assert not pd.isna(value), f"Cannot plot NaN (not a number) values. {name} received {value} at timestamp {timestamp}. Please convert to None or do not call plot_indicator() for NaN values."
 
         if detached_overlay_name:
             assert type(detached_overlay_name) is str, "Detached overlay must be a string" + _get_helper_message("detached_overlay_name")
