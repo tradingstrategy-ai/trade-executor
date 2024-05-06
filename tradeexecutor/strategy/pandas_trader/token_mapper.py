@@ -235,4 +235,23 @@ def create_trading_universe_for_tokens(
     strategy_universe = TradingStrategyUniverse.create_from_dataset(dataset, reserve_asset=reserve_token)
     logger.info("Created strategy universe with %d pairs", strategy_universe.get_pair_count())
 
+    bad_pairs = set()
+
+    for p in our_pairs:
+        candles = strategy_universe.data_universe.candles.get_candles_by_pair(p.internal_id)
+        if candles is None or len(candles) == 0:
+            bad_pairs.add(p)
+
+    if bad_pairs:
+        logger.warning(
+            f"We have no %s OHCLV candles for the following %d trading pairs.\n"
+            f"Double check the data at the TradingStrategy.ai search.\n"
+            f"This might be because these tokens are not well established and only saw very limited trading.\n"
+            f"Remove tokens with no data from the input address set.",
+            time_bucket,
+            len(bad_pairs),
+        )
+        for p in bad_pairs:
+            logger.warning("Pair %s", p)
+
     return strategy_universe

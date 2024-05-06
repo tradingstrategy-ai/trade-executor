@@ -35,6 +35,7 @@ from tradeexecutor.strategy.parameters import StrategyParameters
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse, UniverseCacheKey
 from tradeexecutor.utils.cpu import get_safe_max_workers_count
 from tradeexecutor.utils.python_function import hash_function
+from tradingstrategy.utils.groupeduniverse import PairCandlesMissing
 
 logger = logging.getLogger(__name__)
 
@@ -865,26 +866,35 @@ def _calculate_and_save_indicator_result(
     strategy_universe: TradingStrategyUniverse,
     storage: DiskIndicatorStorage,
     key: IndicatorKey,
-) -> IndicatorResult:
+) -> IndicatorResult | None:
+    """Calculate an indicator result.
+
+    - Mark missing data as empty Series
+
+    """
 
     indicator = key.definition
 
     if indicator.is_per_pair():
         assert key.pair.internal_id, f"Per-pair indicator lacks pair internal_id: {key.pair}"
-        match indicator.source:
-            case IndicatorSource.open_price:
-                column = "open"
-                input = strategy_universe.data_universe.candles.get_samples_by_pair(key.pair.internal_id)[column]
-                data = indicator.calculate_by_pair(input)
-            case IndicatorSource.close_price:
-                column = "close"
-                input = strategy_universe.data_universe.candles.get_samples_by_pair(key.pair.internal_id)[column]
-                data = indicator.calculate_by_pair(input)
-            case IndicatorSource.ohlcv:
-                input = strategy_universe.data_universe.candles.get_samples_by_pair(key.pair.internal_id)
-                data = indicator.calculate_by_pair_ohlcv(input)
-            case _:
-                raise AssertionError(f"Unsupported input source {key.pair} {key.definition} {indicator.source}")
+        try:
+            match indicator.source:
+                case IndicatorSource.open_price:
+                    column = "open"
+                    input = strategy_universe.data_universe.candles.get_samples_by_pair(key.pair.internal_id)[column]
+                    data = indicator.calculate_by_pair(input)
+                case IndicatorSource.close_price:
+                    column = "close"
+                    input = strategy_universe.data_universe.candles.get_samples_by_pair(key.pair.internal_id)[column]
+                    data = indicator.calculate_by_pair(input)
+                case IndicatorSource.ohlcv:
+                    input = strategy_universe.data_universe.candles.get_samples_by_pair(key.pair.internal_id)
+                    data = indicator.calculate_by_pair_ohlcv(input)
+                case _:
+                    raise AssertionError(f"Unsupported input source {key.pair} {key.definition} {indicator.source}")
+        except PairCandlesMissing as e:
+            logger.warning("Indicator data %s not generated for pair %s because of lack of OHLCV data", key.definition.name, key.pair)
+            data = pd.Series(index=pd.DatetimeIndex([]))
 
     else:
         # Calculate indicator over the whole universe
