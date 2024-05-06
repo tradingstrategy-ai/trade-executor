@@ -229,7 +229,7 @@ def create_trading_universe_for_tokens(
         liquidity=False,
         stop_loss_time_bucket=stop_loss_time_bucket,
         name=name,
-        candle_progress_bar_desc=f"Downloading OHLCV data for {len(pairs_df)} trading pairs",
+        candle_progress_bar_desc=f"Downloading OHLCV data for {len(filtered_pairs_df)} trading pairs",
         )
 
     strategy_universe = TradingStrategyUniverse.create_from_dataset(dataset, reserve_asset=reserve_token)
