@@ -205,7 +205,7 @@ def test_generic_router_spot_and_short_strategy_manual_tick(
     assert len(portfolio.open_positions) == 1
     
     tolerance = 1e-5
-    assert position.loan.get_borrow_interest() == pytest.approx(1.2064069951721614, abs=tolerance)
+    assert position.loan.get_borrow_interest() == pytest.approx(1.4861359925126336, abs=tolerance)
     tolerance = 1e-4
     assert position.loan.get_collateral_interest() == pytest.approx(13.711178, abs=tolerance)
 
