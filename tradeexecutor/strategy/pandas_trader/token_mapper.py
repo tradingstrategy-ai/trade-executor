@@ -252,6 +252,6 @@ def create_trading_universe_for_tokens(
             len(bad_pairs),
         )
         for p in bad_pairs:
-            logger.warning("Pair %s", p)
+            logger.warning("Pair %s, base token %s", p, p.base.address)
 
     return strategy_universe

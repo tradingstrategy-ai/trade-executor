@@ -279,6 +279,11 @@ class StrategyInputIndicators:
 
         time_frame = _calculate_and_cache_candle_width(series.index)
 
+        if time_frame is None:
+            # Bad data.
+            # E.g. portfolio data with missing values
+            return None
+
         if data_delay_tolerance == "auto":
             ts = ts.floor(time_frame)
             data_delay_tolerance = time_frame
@@ -616,6 +621,9 @@ def _calculate_and_cache_candle_width(index: pd.DatetimeIndex | pd.MultiIndex) -
     """Get the evenly timestamped index candle/time bar width.
 
     - Cached for speed - cache size might not make sense for large trading pair use cases
+
+    :return:
+        None of the index is empty and candle width cannot be calculated
     """
 
     # The original data is in grouped DF
@@ -630,7 +638,10 @@ def _calculate_and_cache_candle_width(index: pd.DatetimeIndex | pd.MultiIndex) -
 
     value = _time_frame_cache.get(key)
     if value is None:
-        value = index[-1] - index[-2]
+        if len(index) > 2:
+            value = index[-1] - index[-2]
+        else:
+            value = None
         _time_frame_cache[key] = value
 
     return value

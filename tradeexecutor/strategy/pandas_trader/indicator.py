@@ -266,7 +266,7 @@ class IndicatorDefinition:
             raise IndicatorCalculationFailed(f"Could not calculate indicator {self.name} ({self.func}) for parameters {self.parameters}, input universe is {input}.\nException is {e}\n\n To use Python debugger, set `max_workers=1`, and if doing a grid search, also set `multiprocess=False`") from e
 
     def _check_good_return_value(self, df):
-        assert isinstance(df, (pd.Series, pd.DataFrame)), f"Indicator did not return pd.DataFrame or pd.Series: {self.name}, we got {type(df)}"
+        assert isinstance(df, (pd.Series, pd.DataFrame)), f"Indicator did not return pd.DataFrame or pd.Series: {self.name}, we got {type(df)}\nCheck you are using IndicatorSource correcly e.g. IndicatorSource.close_price when creating indicators"
         return df
 
 
@@ -892,9 +892,15 @@ def _calculate_and_save_indicator_result(
                     data = indicator.calculate_by_pair_ohlcv(input)
                 case _:
                     raise AssertionError(f"Unsupported input source {key.pair} {key.definition} {indicator.source}")
+
+            if data is None:
+                logger.warning("Indicator %s generated empty data for pair %s. Input data length is %d candles.", key.definition.name, key.pair, len(input))
+                data = pd.Series(dtype="float64", index=pd.DatetimeIndex([]))
+
         except PairCandlesMissing as e:
-            logger.warning("Indicator data %s not generated for pair %s because of lack of OHLCV data", key.definition.name, key.pair)
-            data = pd.Series(index=pd.DatetimeIndex([]))
+            logger.warning("Indicator data %s not generated for pair %s because of lack of OHLCV data. Exception %s", key.definition.name, key.pair, e)
+            data = pd.Series(dtype="float64", index=pd.DatetimeIndex([]))
+
 
     else:
         # Calculate indicator over the whole universe
