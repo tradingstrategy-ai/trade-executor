@@ -111,7 +111,7 @@ def test_setup_up_indicator_storage_per_pair(tmp_path, strategy_universe):
     key = IndicatorKey(pair, ind)
 
     ind_path = storage.get_indicator_path(key)
-    assert ind_path == Path(tmp_path) / storage.universe_key / "sma(length=21)-WETH-USDC.parquet"
+    assert ind_path == Path(tmp_path) / storage.universe_key / "sma_424a22f1(length=21)-WETH-USDC.parquet"
 
 
 def test_setup_up_indicator_universe(tmp_path, strategy_universe):
@@ -128,7 +128,7 @@ def test_setup_up_indicator_universe(tmp_path, strategy_universe):
     key = IndicatorKey(None, ind)
 
     ind_path = storage.get_indicator_path(key)
-    assert ind_path == Path(tmp_path) / storage.universe_key / "foobar(length=21)-universe.parquet"
+    assert ind_path == Path(tmp_path) / storage.universe_key / "foobar_94954f0a(length=21)-universe.parquet"
 
 
 def test_setup_up_indicator_storage_two_parameters(tmp_path, strategy_universe):
@@ -149,7 +149,7 @@ def test_setup_up_indicator_storage_two_parameters(tmp_path, strategy_universe):
     key = IndicatorKey(pair, ind)
 
     ind_path = storage.get_indicator_path(key)
-    assert ind_path == Path(tmp_path) / storage.universe_key / "sma(length=21,offset=1)-WETH-USDC.parquet"
+    assert ind_path == Path(tmp_path) / storage.universe_key / "sma_424a22f1(length=21,offset=1)-WETH-USDC.parquet"
 
 
 
@@ -481,6 +481,49 @@ def test_ohlcv_indicator(strategy_universe, indicator_storage):
 
     indicator_value = input_indicators.get_indicator_value("mfi", pair=wbtc_usdc)
     assert indicator_value in (0, None)  # TODO: Local and Github CI disagree what's the proper MFI value here
+
+
+def test_get_close_price(strategy_universe, indicator_storage):
+    """Get the close price."""
+
+    indicators = IndicatorSet()
+
+    indicator_results = calculate_and_load_indicators(
+        strategy_universe,
+        indicator_storage,
+        indicators=indicators,
+        execution_context=unit_test_execution_context,
+        parameters=StrategyParameters({}),
+        max_workers=1,
+        max_readers=1,
+    )
+
+    first_day, last_day = strategy_universe.data_universe.candles.get_timestamp_range()
+
+    input_indicators = StrategyInputIndicators(
+        strategy_universe=strategy_universe,
+        available_indicators=indicators,
+        indicator_results=indicator_results,
+        timestamp=last_day,
+    )
+
+    wbtc_usdc = strategy_universe.get_pair_by_human_description((ChainId.ethereum, "test-dex", "WBTC", "USDC"))
+
+    # Check that we correctly read price if there is no prior data
+    # Both absolute ts, and relative
+    price = input_indicators.get_price(timestamp=first_day - pd.Timedelta(days=1), pair=wbtc_usdc)
+    assert price is None
+
+    price = input_indicators.get_price(timestamp=first_day + pd.Timedelta(days=1), pair=wbtc_usdc)
+    assert price is not None
+
+    input_indicators.timestamp = first_day
+    assert input_indicators.get_price(pair=wbtc_usdc) is None
+
+    input_indicators.timestamp = first_day + pd.Timedelta(days=1)
+    assert input_indicators.get_price(pair=wbtc_usdc) is not None
+    assert input_indicators.get_price(pair=wbtc_usdc, index=-2) is None
+    assert input_indicators.get_price(pair=wbtc_usdc, index=-1) is not None
 
 
 def test_indicator_single_pair_live_trading_universe(persistent_test_client, indicator_storage):

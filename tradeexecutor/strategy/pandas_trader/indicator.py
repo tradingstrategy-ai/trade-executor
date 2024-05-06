@@ -34,6 +34,8 @@ from tradeexecutor.strategy.execution_context import ExecutionContext
 from tradeexecutor.strategy.parameters import StrategyParameters
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse, UniverseCacheKey
 from tradeexecutor.utils.cpu import get_safe_max_workers_count
+from tradeexecutor.utils.python_function import hash_function
+from tradingstrategy.utils.groupeduniverse import PairCandlesMissing
 
 logger = logging.getLogger(__name__)
 
@@ -94,7 +96,7 @@ class IndicatorSource(enum.Enum):
         return self in (IndicatorSource.open_price, IndicatorSource.close_price, IndicatorSource.ohlcv)
 
 
-def _flatten_series_index(series: pd.Series) -> pd.Series:
+def _flatten_index(series: pd.Series) -> pd.Series:
     """Ensure that any per-pair series we have has DatetimeIndex, not MultiIndex."""
     if isinstance(series.index, pd.DatetimeIndex):
         return series
@@ -171,6 +173,13 @@ class IndicatorDefinition:
             assert callable(self.func)
             validate_function_kwargs(self.func, self.parameters)
 
+    def get_function_body_hash(self) -> str:
+        """Calculate the hash for the function code.
+
+        Allows us to detect if the function body changes.
+        """
+        return hash_function(self.func)
+
     def is_needed_for_pair(self, pair: TradingPairIdentifier) -> bool:
         """Currently indicators are calculated for spont pairs only."""
         return pair.is_spot()
@@ -192,7 +201,7 @@ class IndicatorDefinition:
 
         """
         try:
-            input_fixed = _flatten_series_index(input)
+            input_fixed = _flatten_index(input)
             ret = self.func(input_fixed, **self.parameters)
             return self._check_good_return_value(ret)
         except Exception as e:
@@ -217,13 +226,14 @@ class IndicatorDefinition:
 
         assert isinstance(candles, pd.DataFrame), f"OHLCV-based indicator function must be fed with a DataFrame"
 
+        input_fixed = _flatten_index(candles)
+
         needed_args = ("open", "high", "low", "close", "volume")
         full_kwargs = {}
-        enabled = {}
         func_args = inspect.getfullargspec(self.func).args
         for a in needed_args:
             if a in func_args:
-                full_kwargs[a] = candles[a]
+                full_kwargs[a] = input_fixed[a]
 
         if len(full_kwargs) == 0:
             raise IndicatorCalculationFailed(f"Could not calculate OHLCV indicator {self.name} ({self.func}): does not take any of function arguments from {needed_args}")
@@ -234,7 +244,7 @@ class IndicatorDefinition:
             ret = self.func(**full_kwargs)
             return self._check_good_return_value(ret)
         except Exception as e:
-            raise IndicatorCalculationFailed(f"Could not calculate indicator {self.name} ({self.func}) for parameters {self.parameters}, input data is {len(input)} rows") from e
+            raise IndicatorCalculationFailed(f"Could not calculate indicator {self.name} ({self.func}) for parameters {self.parameters}, candles is {len(candles)} rows, {candles.columns} columns") from e
 
     def calculate_universe(self, input: TradingStrategyUniverse) -> pd.DataFrame | pd.Series:
         """Calculate the underlying indicator value.
@@ -256,7 +266,7 @@ class IndicatorDefinition:
             raise IndicatorCalculationFailed(f"Could not calculate indicator {self.name} ({self.func}) for parameters {self.parameters}, input universe is {input}.\nException is {e}\n\n To use Python debugger, set `max_workers=1`, and if doing a grid search, also set `multiprocess=False`") from e
 
     def _check_good_return_value(self, df):
-        assert isinstance(df, (pd.Series, pd.DataFrame)), f"Indicator did not return pd.DataFrame or pd.Series: {self.name}, we got {type(df)}"
+        assert isinstance(df, (pd.Series, pd.DataFrame)), f"Indicator did not return pd.DataFrame or pd.Series: {self.name}, we got {type(df)}\nCheck you are using IndicatorSource correcly e.g. IndicatorSource.close_price when creating indicators"
         return df
 
 
@@ -314,7 +324,7 @@ class IndicatorKey:
             return v
 
         parameters = ",".join([f"{k}={norm_value(v)}" for k, v in self.definition.parameters.items()])
-        return f"{self.definition.name}({parameters})-{slug}"
+        return f"{self.definition.name}_{self.definition.get_function_body_hash()}({parameters})-{slug}"
 
 
 class IndicatorSet:
@@ -856,26 +866,41 @@ def _calculate_and_save_indicator_result(
     strategy_universe: TradingStrategyUniverse,
     storage: DiskIndicatorStorage,
     key: IndicatorKey,
-) -> IndicatorResult:
+) -> IndicatorResult | None:
+    """Calculate an indicator result.
+
+    - Mark missing data as empty Series
+
+    """
 
     indicator = key.definition
 
     if indicator.is_per_pair():
         assert key.pair.internal_id, f"Per-pair indicator lacks pair internal_id: {key.pair}"
-        match indicator.source:
-            case IndicatorSource.open_price:
-                column = "open"
-                input = strategy_universe.data_universe.candles.get_samples_by_pair(key.pair.internal_id)[column]
-                data = indicator.calculate_by_pair(input)
-            case IndicatorSource.close_price:
-                column = "close"
-                input = strategy_universe.data_universe.candles.get_samples_by_pair(key.pair.internal_id)[column]
-                data = indicator.calculate_by_pair(input)
-            case IndicatorSource.ohlcv:
-                input = strategy_universe.data_universe.candles.get_samples_by_pair(key.pair.internal_id)
-                data = indicator.calculate_by_pair_ohlcv(input)
-            case _:
-                raise AssertionError(f"Unsupported input source {key.pair} {key.definition} {indicator.source}")
+        try:
+            match indicator.source:
+                case IndicatorSource.open_price:
+                    column = "open"
+                    input = strategy_universe.data_universe.candles.get_samples_by_pair(key.pair.internal_id)[column]
+                    data = indicator.calculate_by_pair(input)
+                case IndicatorSource.close_price:
+                    column = "close"
+                    input = strategy_universe.data_universe.candles.get_samples_by_pair(key.pair.internal_id)[column]
+                    data = indicator.calculate_by_pair(input)
+                case IndicatorSource.ohlcv:
+                    input = strategy_universe.data_universe.candles.get_samples_by_pair(key.pair.internal_id)
+                    data = indicator.calculate_by_pair_ohlcv(input)
+                case _:
+                    raise AssertionError(f"Unsupported input source {key.pair} {key.definition} {indicator.source}")
+
+            if data is None:
+                logger.warning("Indicator %s generated empty data for pair %s. Input data length is %d candles.", key.definition.name, key.pair, len(input))
+                data = pd.Series(dtype="float64", index=pd.DatetimeIndex([]))
+
+        except PairCandlesMissing as e:
+            logger.warning("Indicator data %s not generated for pair %s because of lack of OHLCV data. Exception %s", key.definition.name, key.pair, e)
+            data = pd.Series(dtype="float64", index=pd.DatetimeIndex([]))
+
 
     else:
         # Calculate indicator over the whole universe

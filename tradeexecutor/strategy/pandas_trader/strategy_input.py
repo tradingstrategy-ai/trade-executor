@@ -90,13 +90,16 @@ class StrategyInputIndicators:
         self,
         pair: TradingPairIdentifier | HumanReadableTradingPairDescription |  None = None,
         data_lag_tolerance=pd.Timedelta(days=7),
+        index: int = -1,
+        timestamp: pd.Timestamp | None = None,
     ) -> USDollarPrice | None:
         """Read the available close price of a trading pair.
 
-        - Returns the latest available close price
+        - Returns the latest available close price.
 
         - **Does not** return the current price in the decision_cycle,
           because any decision must be made based on the previous price
+          to avoid lookahead bias.
 
         :param pair:
             The trading pair for which we query the price.
@@ -109,12 +112,37 @@ class StrategyInputIndicators:
             In the case the data has issues (no recent price),
             then accept a price that's this old.
 
+        :param index:
+            Access a specific previous timeframe item.
+
+            If not given, always return the previous available value.
+            Timeframe = candle bar here.
+
+            Uses Python list access notation.
+            - `-1` is the last item (previous time frame value, yesterday).
+            - `-2` is the item before previous time frame (the day before yesterday).
+            - `0` is looking to the future (the value at the end of the current day that has not yet passed)
+
+        :param timestamp:
+            Look price at a specific timestamp.
+
+            Manually calculate lookback. There is no timeshift for this value,
+            so unless you are careful you may case lookahead bias.
+
+            `index` parameter is ignored.
+
         :return:
             The latest available price.
 
             ``None`` if no price information is yet available at this point of time for the strategy.
         """
-        assert self.timestamp, f"prepare_decision_cycle() not called - framework missing something somewhere"
+        if timestamp:
+            shifted_ts = timestamp
+        else:
+            assert self.timestamp, f"prepare_decision_cycle() not called - framework missing something somewhere"
+            ts = self.timestamp
+            time_frame = self.strategy_universe.data_universe.time_bucket.to_pandas_timedelta()
+            shifted_ts = ts + time_frame * index
 
         if type(pair) == tuple:
             # Resolve human description
@@ -129,7 +157,7 @@ class StrategyInputIndicators:
         try:
             price, when = self.strategy_universe.data_universe.candles.get_price_with_tolerance(
                 pair.internal_id,
-                self.timestamp - self.strategy_universe.data_universe.time_bucket.to_pandas_timedelta(),
+                shifted_ts,
                 tolerance=data_lag_tolerance,
             )
             return price
@@ -143,7 +171,7 @@ class StrategyInputIndicators:
         pair: TradingPairIdentifier | HumanReadableTradingPairDescription | None = None,
         index: int = -1,
         clock_shift: pd.Timedelta = pd.Timedelta(hours=0),
-        data_delay_tolerance: pd.Timedelta=None,
+        data_delay_tolerance: pd.Timedelta="auto",
     ) -> float | None:
         """Read the available value of an indicator.
 
@@ -213,6 +241,7 @@ class StrategyInputIndicators:
             Access a specific previous timeframe item.
 
             If not given, always return the previous available value.
+            Timeframe = candle bar here.
 
             Uses Python list access notation.
             - `-1` is the last item (previous time frame value, yesterday).
@@ -227,6 +256,13 @@ class StrategyInputIndicators:
 
             Look back max `data_delay_tolerance` days / hours to get a previous value using forward-fill technique.
 
+            We need to do this when there is a mismatch between the indicator timeframe (e.g. daily)
+            and decision cycle / price time frame (e.g. 15 minutes).
+
+            Set to `None` to always return indicator value for the exact timestamp match.
+
+            Set to `auto to try to figure out mismatch between indicator data and candle data automatically.s
+
         :return:
             The latest available indicator value.
 
@@ -239,10 +275,20 @@ class StrategyInputIndicators:
         """
 
         series = self.resolve_indicator_data(name, column, pair)
-
         ts = self.timestamp
+
         time_frame = _calculate_and_cache_candle_width(series.index)
-        shifted_ts = ts + time_frame * index + clock_shift
+
+        if time_frame is None:
+            # Bad data.
+            # E.g. portfolio data with missing values
+            return None
+
+        if data_delay_tolerance == "auto":
+            ts = ts.floor(time_frame)
+            data_delay_tolerance = time_frame
+
+        shifted_ts = ts + time_frame*index + clock_shift
 
         # First try direct timestamp hit.
         # This is the case for any normal strategies,
@@ -320,6 +366,22 @@ class StrategyInputIndicators:
 
         return series.loc[:ts]
 
+    def get_indicator_dataframe(
+        self,
+        name: str,
+        pair: TradingPairIdentifier | HumanReadableTradingPairDescription | None = None
+    ) -> pd.DataFrame:
+        """Get the whole raw indicator data for DataFrame-like indicator with multiple columns.
+
+        See also :py:meth:`get_indicator_series`
+
+        :return:
+            DataFrame for a multicolumn indicator like Bollinger Bands or ADX
+        """
+        df = self.resolve_indicator_data(name, "all", pair)
+        assert isinstance(df, pd.DataFrame), f"Not DataFrame indicator: {name}"
+        return df
+
     def resolve_indicator_data(
         self,
         name: str,
@@ -329,6 +391,14 @@ class StrategyInputIndicators:
         """Get access to indicator data series/frame.
 
         Throw friendly error messages for pitfalls.
+
+        :param name:
+            Indicator name
+
+        :param column:
+            Column name for multi-column indicators.
+
+            "all" to get the whole DataFrame.
 
         :param pair:
             Needed when universe contains multiple trading pairs.
@@ -379,6 +449,10 @@ class StrategyInputIndicators:
         assert data is not None, f"Indicator pre-calculated values missing for {name} - lookup key {key}"
 
         if isinstance(data, pd.DataFrame):
+
+            if column == "all":
+                return data
+
             assert column is not None, f"Indicator {name} has multiple available columns to choose from: {data.columns}"
             assert column in data.columns, f"Indicator {name} subcolumn {column} not in the available columns: {data.columns}"
             series = data[column]
@@ -547,6 +621,9 @@ def _calculate_and_cache_candle_width(index: pd.DatetimeIndex | pd.MultiIndex) -
     """Get the evenly timestamped index candle/time bar width.
 
     - Cached for speed - cache size might not make sense for large trading pair use cases
+
+    :return:
+        None of the index is empty and candle width cannot be calculated
     """
 
     # The original data is in grouped DF
@@ -561,7 +638,10 @@ def _calculate_and_cache_candle_width(index: pd.DatetimeIndex | pd.MultiIndex) -
 
     value = _time_frame_cache.get(key)
     if value is None:
-        value = index[-1] - index[-2]
+        if len(index) > 2:
+            value = index[-1] - index[-2]
+        else:
+            value = None
         _time_frame_cache[key] = value
 
     return value

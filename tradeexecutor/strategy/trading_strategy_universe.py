@@ -221,7 +221,17 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
         time_bucket_str = self.data_universe.time_bucket.value
 
         separator = "_"
-        key = f"{chain_str}{separator}{time_bucket_str}{separator}{pair_str}{separator}{time_str}"
+
+        # Add forward fill flag to the universe cache file name
+        match self.data_universe.forward_filled:
+            case None:
+                ff = ""
+            case True:
+                ff = f"{separator}ff"
+            case False:
+                ff = f"{separator}nff"
+
+        key = f"{chain_str}{separator}{time_bucket_str}{separator}{pair_str}{separator}{time_str}{ff}"
         assert len(key) < 256, f"Generated very long fname cache key, check the generation logic: {key}"
         return key
 
@@ -678,11 +688,13 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
 
     @staticmethod
     def create_limited_pair_universe(
-            dataset: Dataset,
-            chain_id: ChainId,
-            exchange_slug: str,
-            pairs: Set[Tuple[str, str]],
-            reserve_asset_pair_ticker: Optional[Tuple[str, str]] = None) -> "TradingStrategyUniverse":
+        dataset: Dataset,
+        chain_id: ChainId,
+        exchange_slug: str,
+        pairs: Set[Tuple[str, str]],
+        reserve_asset_pair_ticker: Optional[Tuple[str, str]] = None,
+        forward_fill=False,
+    ) -> "TradingStrategyUniverse":
         """Filters down the dataset for couple trading pair.
 
         This is ideal for strategies that only want to trade few pairs,
@@ -699,6 +711,15 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
         :param reserve_asset_pair_ticker:
             Choose the quote token of this trading pair as a reserve asset.
             This must be given if there are several pairs (Python set order is unstable).
+
+        :param forward_fill:
+            Forward-fill the data.
+
+            When working with sparse data (gaps in candles), many strategies need
+            these gaps to be filled. Setting this parameter `True`
+            will automatically forward-fill any data we are loading from the dataset.
+
+            See :term:`forward fill` for more information.
 
         """
 
@@ -719,7 +740,11 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
 
         if all_candles is not None:
             filtered_candles = filter_for_pairs(all_candles, pair_universe.df)
-            candle_universe = GroupedCandleUniverse(filtered_candles)
+            candle_universe = GroupedCandleUniverse(
+                filtered_candles,
+                time_bucket=dataset.time_bucket,
+                forward_fill=forward_fill
+            )
         else:
             candle_universe = None
 
@@ -751,7 +776,6 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
         reserve_assets = [
             trading_pair_identifier.quote
         ]
-
         universe = Universe(
             time_bucket=dataset.time_bucket,
             chains={chain_id},
@@ -1030,6 +1054,7 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
             exchange_universe=dataset.exchanges,
             exchanges={e for e in dataset.exchanges.exchanges.values()},
             lending_candles=dataset.lending_candles,
+            forward_filled=forward_fill,
         )
 
         return TradingStrategyUniverse(
@@ -1124,7 +1149,7 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
             backtest_stop_loss_candles=stop_loss_candle_universe,
         )
 
-    def     get_credit_supply_pair(self) -> TradingPairIdentifier:
+    def get_credit_supply_pair(self) -> TradingPairIdentifier:
         """Get the credit supply trading pair.
 
         This trading pair identifies the trades where we move our strategy reserve
@@ -1170,6 +1195,9 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
         :return:
             Short pair with ticker (vToken for borrowed asseet, aToken for reserve asset)
         """
+
+        if not self.data_universe.lending_reserves:
+            raise TradingUniverseIssue(f"Lending rates data missing. Asking shorting data for trading pair {pair}.\nMake sure you load lending rates data if you want to backtest leveraged trading.")
 
         assert pair.kind == TradingPairKind.spot_market_hold
 
@@ -1217,6 +1245,59 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
             kind=TradingPairKind.lending_protocol_short,
             underlying_spot_pair=pair,
         )
+
+    def get_trading_broken_reason(
+        self,
+        pair: TradingPairIdentifier,
+        min_candles_required: int,
+        min_price=0.00000001,
+        max_price=1_000_000,
+    ) -> str | None:
+        """Can we trade a pair.
+
+        Check if we can trade a particular trading pair.
+
+        - Work around spotty low cap coins
+
+        - Check that we have minimum amout of bars of data
+
+        - Check that price data does not look weird
+
+        :param pair:
+            Trading pair
+
+        :param min_candles_required:
+            How many bars of adta we need
+
+        :param min_price:
+            Avoid low cap tokens with float64 breaking prices
+
+        :param max_pric:
+            Avoid low cap tokens with float64 breaking prices
+
+        :return:
+            A string why the trading pair is broken.
+
+            `None` if good.
+        """
+        candles = self.data_universe.candles.get_candles_by_pair(pair.internal_id)
+
+        if candles is None:
+            return "No OHLCV candles"
+
+        if len(candles) >= min_candles_required:
+
+            # Get the first opening price
+            for column in ("open", "close"):
+                pair_min_price = candles[column].min()
+                pair_max_price = candles[column].max()
+
+                if pair_min_price < min_price:
+                    return f"Avoid pairs with too low price. Pair min price is {pair_min_price}"
+                elif pair_max_price > max_price:
+                    return f"Avoid pairs with too high price. Pair max price is {pair_max_price}"
+            return None
+        return f"Not enough OHLCV candles, {min_candles_required} candles needed"
 
 
 class TradingStrategyUniverseModel(UniverseModel):

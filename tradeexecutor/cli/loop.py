@@ -583,6 +583,7 @@ class ExecutionLoop:
 
         routing_state, pricing_model, valuation_method = self.runner.setup_routing(universe)
 
+        # TODO: this seems to be duplicated in tick()
         with self.timed_task_context_manager("revalue_portfolio_statistics"):
             logger.info("Updating position valuations")
             self.runner.revalue_state(clock, state, valuation_method)
