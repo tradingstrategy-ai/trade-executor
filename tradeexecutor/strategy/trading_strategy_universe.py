@@ -229,7 +229,7 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
             case True:
                 ff = f"{separator}ff"
             case False:
-                ff = "{separator}nff"
+                ff = f"{separator}nff"
 
         key = f"{chain_str}{separator}{time_bucket_str}{separator}{pair_str}{separator}{time_str}{ff}"
         assert len(key) < 256, f"Generated very long fname cache key, check the generation logic: {key}"
