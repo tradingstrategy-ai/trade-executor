@@ -35,6 +35,7 @@ from tradeexecutor.strategy.parameters import StrategyParameters
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse, UniverseCacheKey
 from tradeexecutor.utils.cpu import get_safe_max_workers_count
 from tradeexecutor.utils.python_function import hash_function
+from tradingstrategy.utils.groupeduniverse import PairCandlesMissing
 
 logger = logging.getLogger(__name__)
 
@@ -265,7 +266,7 @@ class IndicatorDefinition:
             raise IndicatorCalculationFailed(f"Could not calculate indicator {self.name} ({self.func}) for parameters {self.parameters}, input universe is {input}.\nException is {e}\n\n To use Python debugger, set `max_workers=1`, and if doing a grid search, also set `multiprocess=False`") from e
 
     def _check_good_return_value(self, df):
-        assert isinstance(df, (pd.Series, pd.DataFrame)), f"Indicator did not return pd.DataFrame or pd.Series: {self.name}, we got {type(df)}"
+        assert isinstance(df, (pd.Series, pd.DataFrame)), f"Indicator did not return pd.DataFrame or pd.Series: {self.name}, we got {type(df)}\nCheck you are using IndicatorSource correcly e.g. IndicatorSource.close_price when creating indicators"
         return df
 
 
@@ -865,26 +866,41 @@ def _calculate_and_save_indicator_result(
     strategy_universe: TradingStrategyUniverse,
     storage: DiskIndicatorStorage,
     key: IndicatorKey,
-) -> IndicatorResult:
+) -> IndicatorResult | None:
+    """Calculate an indicator result.
+
+    - Mark missing data as empty Series
+
+    """
 
     indicator = key.definition
 
     if indicator.is_per_pair():
         assert key.pair.internal_id, f"Per-pair indicator lacks pair internal_id: {key.pair}"
-        match indicator.source:
-            case IndicatorSource.open_price:
-                column = "open"
-                input = strategy_universe.data_universe.candles.get_samples_by_pair(key.pair.internal_id)[column]
-                data = indicator.calculate_by_pair(input)
-            case IndicatorSource.close_price:
-                column = "close"
-                input = strategy_universe.data_universe.candles.get_samples_by_pair(key.pair.internal_id)[column]
-                data = indicator.calculate_by_pair(input)
-            case IndicatorSource.ohlcv:
-                input = strategy_universe.data_universe.candles.get_samples_by_pair(key.pair.internal_id)
-                data = indicator.calculate_by_pair_ohlcv(input)
-            case _:
-                raise AssertionError(f"Unsupported input source {key.pair} {key.definition} {indicator.source}")
+        try:
+            match indicator.source:
+                case IndicatorSource.open_price:
+                    column = "open"
+                    input = strategy_universe.data_universe.candles.get_samples_by_pair(key.pair.internal_id)[column]
+                    data = indicator.calculate_by_pair(input)
+                case IndicatorSource.close_price:
+                    column = "close"
+                    input = strategy_universe.data_universe.candles.get_samples_by_pair(key.pair.internal_id)[column]
+                    data = indicator.calculate_by_pair(input)
+                case IndicatorSource.ohlcv:
+                    input = strategy_universe.data_universe.candles.get_samples_by_pair(key.pair.internal_id)
+                    data = indicator.calculate_by_pair_ohlcv(input)
+                case _:
+                    raise AssertionError(f"Unsupported input source {key.pair} {key.definition} {indicator.source}")
+
+            if data is None:
+                logger.warning("Indicator %s generated empty data for pair %s. Input data length is %d candles.", key.definition.name, key.pair, len(input))
+                data = pd.Series(dtype="float64", index=pd.DatetimeIndex([]))
+
+        except PairCandlesMissing as e:
+            logger.warning("Indicator data %s not generated for pair %s because of lack of OHLCV data. Exception %s", key.definition.name, key.pair, e)
+            data = pd.Series(dtype="float64", index=pd.DatetimeIndex([]))
+
 
     else:
         # Calculate indicator over the whole universe

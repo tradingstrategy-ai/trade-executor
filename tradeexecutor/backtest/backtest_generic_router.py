@@ -36,13 +36,14 @@ class EthereumBacktestPairConfigurator(PairConfigurator):
         strategy_universe = self.strategy_universe
 
         reserve = strategy_universe.reserve_assets[0]
-        assert reserve.token_symbol in ("USDC", "USDT"), f"Expected USDT/USDC reserve, got {reserve.token_symbol}"
+        assert reserve.token_symbol in ("USDC", "USDT"), f"Expected USDT/USDC reserve, got {reserve.token_symbol}.\nTODO: Development assert. Please fix."
 
         routing_model = BacktestRoutingIgnoredModel(reserve.address)
 
         pricing_model = BacktestPricing(
             strategy_universe.data_universe.candles,
             routing_model,
+            data_delay_tolerance=self.data_delay_tolerance,
         )
 
         valuation_model = BacktestValuationModel(pricing_model)

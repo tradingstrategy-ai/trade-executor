@@ -905,7 +905,10 @@ def run_backtest_inline(
 
     if universe:
 
-        pair_configurator = EthereumBacktestPairConfigurator(universe)
+        if data_delay_tolerance is None:
+            data_delay_tolerance = guess_data_delay_tolerance(universe)
+
+        pair_configurator = EthereumBacktestPairConfigurator(universe, data_delay_tolerance=data_delay_tolerance)
 
         if trade_routing == TradeRouting.default:
             routing_model = GenericRouting(pair_configurator)
@@ -914,11 +917,10 @@ def run_backtest_inline(
             assert trade_routing, "You just give either routing_mode or trade_routing"
             routing_model = get_backtest_routing_model(trade_routing, reserve_currency)
 
-        if data_delay_tolerance is None:
-            data_delay_tolerance = guess_data_delay_tolerance(universe)
-
         if trade_routing == TradeRouting.default:
-            pricing_model = GenericPricing(pair_configurator)
+            pricing_model = GenericPricing(
+                pair_configurator,
+            )
         else:
             pricing_model = BacktestPricing(
                 universe.data_universe.candles,
