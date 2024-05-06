@@ -407,7 +407,7 @@ def visualise_single_pair(
 
     candle_start_ts = candles["timestamp"].min()
     candle_end_ts = candles["timestamp"].max()
-    logger.info(f"Candles are {candle_start_ts} = {candle_end_ts}")
+    logger.info(f"Candles are {candle_start_ts} = {candle_end_ts}, having {len(candles)} candles")
 
     trades_df = export_trades_as_dataframe(
         state.portfolio,
