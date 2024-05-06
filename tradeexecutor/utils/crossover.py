@@ -38,7 +38,7 @@ def contains_cross_over(
 
 def contains_cross_under(
         series1: pd.Series, 
-        series2: pd.Series | int | float,
+        series2: pd.Series,
         lookback_period: int = 2,
         must_return_index: bool = False,
 ) -> bool:
