@@ -13,7 +13,7 @@ from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniv
 from tradeexecutor.strategy.universe_model import UniverseOptions
 from tradingstrategy.chain import ChainId
 from tradingstrategy.client import Client
-from tradingstrategy.pair import PandasPairUniverse, filter_for_base_tokens
+from tradingstrategy.pair import PandasPairUniverse, filter_for_base_tokens, StablecoinFilteringMode, filter_for_stablecoins
 from tradingstrategy.timebucket import TimeBucket
 
 
@@ -99,7 +99,7 @@ def find_best_pairs_for_tokens(
         assert isinstance(token, TokenTuple)
 
         # No self pairs
-        if token.address in (intermediate_token, reserve_token):
+        if token.address == reserve_token:
             continue
 
         # Take a subset of raw pair DataFrame where we have the current token as a base token
@@ -146,9 +146,14 @@ def create_trading_universe_for_tokens(
     """Create a trading universe based on a list of ERC-20 tokens addresses only.
 
     - Takes a full trading universe and a list of ERC-20 addresses input,
-      and returns a new trading pair universe with the best match for the tradeable tokens
+      and returns a new trading pair universe with the best match for the tradeable tokens.
 
-    - Display TQDM progress bar for the load
+    - The good trading pair is picked by today's 30 days USD volume.
+      The pick may fail if the trading pair has ceased in the past.
+
+    - Display TQDM progress bar for the load.
+
+    - Stablecoin-stablecoin pairs are discarded.
 
     :param client:
         Trading Strategy data client
@@ -202,6 +207,8 @@ def create_trading_universe_for_tokens(
         build_index=True,
         exchange_universe=exchange_universe
     )
+
+    pairs_df = filter_for_stablecoins(pairs_df, StablecoinFilteringMode.only_volatile_pairs)
 
     # Create a set of trading pairs based on the filtering conditions
     our_pairs = {p for p in find_best_pairs_for_tokens(pair_universe, tokens, reserve_token, intermediate_token, volume_30d_threshold_today)}

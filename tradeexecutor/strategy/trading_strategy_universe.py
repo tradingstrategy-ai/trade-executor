@@ -1286,12 +1286,16 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
             return "No OHLCV candles"
 
         if len(candles) >= min_candles_required:
+
             # Get the first opening price
-            price = candles.iloc[0]["close"]
-            if price < min_price:
-                return "Avoid pairs with too low price"
-            elif price > max_price:
-                return "Avoid pairs with too high price"
+            for column in ("open", "close"):
+                pair_min_price = candles[column].min()
+                pair_max_price = candles[column].max()
+
+                if pair_min_price < min_price:
+                    return f"Avoid pairs with too low price. Pair min price is {pair_min_price}"
+                elif pair_max_price > max_price:
+                    return f"Avoid pairs with too high price. Pair max price is {pair_max_price}"
             return None
         return f"Not enough OHLCV candles, {min_candles_required} candles needed"
 
