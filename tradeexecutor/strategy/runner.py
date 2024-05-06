@@ -851,6 +851,8 @@ class StrategyRunner(abc.ABC):
 
             triggered_trades = check_position_triggers(position_manager)
 
+            triggered_trades = post_process_trade_decision(state, triggered_trades)
+
             approved_trades = self.approval_model.confirm_trades(state, triggered_trades)
 
             if approved_trades:
