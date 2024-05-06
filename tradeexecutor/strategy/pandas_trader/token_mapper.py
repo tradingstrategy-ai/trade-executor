@@ -16,10 +16,11 @@ from tradingstrategy.client import Client
 from tradingstrategy.pair import PandasPairUniverse, filter_for_base_tokens
 from tradingstrategy.timebucket import TimeBucket
 
+
 logger = logging.getLogger(__name__)
 
 
-@dataclass
+@dataclass(slots=True, frozen=True)
 class TokenTuple:
     """A token you want to trade.
 
@@ -28,10 +29,23 @@ class TokenTuple:
     chain_id: ChainId
     address: JSONHexAddress
 
+    def __eq__(self, other):
+        return other.chain_id == self.chain_id and other.address == self.address
+
+    def __hash__(self):
+        return hash((self.chain_id, self.address))
+
+    def __post_init__(self):
+        # Type check and transform input
+        assert isinstance(self.chain_id, ChainId)
+        assert type(self.address) == str
+        assert self.address.startswith("0x")
+        assert self.address == self.address.lower()
+
 
 def find_best_pairs_for_tokens(
-    tokens: Iterable[TokenTuple],
     pair_universe: PandasPairUniverse,
+    tokens: Iterable[TokenTuple],
     reserve_token: JSONHexAddress,
     intermediate_token: JSONHexAddress | None = None,
     volume_30d_threshold_today: USDollarAmount = 0,
@@ -39,6 +53,11 @@ def find_best_pairs_for_tokens(
     """Find the best DEXes and trading pairs to trade tokens.
 
     - Find the best trading pairs for a list of tokens
+
+    - If the token has both /USDC and /WETH /WMATIC e.g.
+      pairs try to pick the best one
+
+    - USDC is always preferred if it has enough volume
 
     :param tokens:
         A list of tokens
@@ -64,29 +83,27 @@ def find_best_pairs_for_tokens(
         Iterable of trading pairs that match criteria.
     """
 
-    if isinstance(pair_universe, PandasPairUniverse)
-        df = pair_universe.df
-    else:
-        df = pair_universe
+    assert isinstance(pair_universe, PandasPairUniverse), f"Expected PandasPairUniverse, got {type(pair_universe)}"
+    df = pair_universe.df
 
     assert isinstance(df, pd.DataFrame)
 
     if intermediate_token:
         assert intermediate_token.startswith("0x")
+        intermediate_token = intermediate_token.lower()
 
     assert reserve_token.startswith("0x")
-
     reserve_token = reserve_token.lower()
-    intermediate_token = intermediate_token.lower()
 
     for token in tokens:
         assert isinstance(token, TokenTuple)
-        chain_id, token_address = token
-        assert isinstance(chain_id, ChainId), f"Expected ChainId, got {type(chain_id)}"
-        assert token_address.startswith("0x")
+
+        # No self pairs
+        if token.address in (intermediate_token, reserve_token):
+            continue
 
         # Take a subset of raw pair DataFrame where we have the current token as a base token
-        matching_pair_ids = filter_for_base_tokens(df, {token_address})
+        matching_pair_ids = filter_for_base_tokens(df, {token.address})
         pair_matches = [pair_universe.get_pair_by_id(pair_id) for pair_id in matching_pair_ids["pair_id"]]
 
         # We have now several trading pairs for the token.
@@ -100,16 +117,18 @@ def find_best_pairs_for_tokens(
         for p in pair_matches:
             # First checkc USDC (reserve currency) volume
             if p.quote_token_address == reserve_token:
-                if p.volume_30d > volume_30d_threshold_today:
+                if p.volume_30d >= volume_30d_threshold_today:
                     logger.info("Pair %s matches reserve token %s", p, reserve_token)
                     yield translate_trading_pair(p)
+                    break
             # Then check for WMATIC/WETH (intermediate token) volume
             elif p.quote_token_address == intermediate_token:
-                if p.volume_30d > volume_30d_threshold_today:
+                if p.volume_30d >= volume_30d_threshold_today:
                     logger.info("Pair %s matches intermediate token %s", p, intermediate_token)
                     yield translate_trading_pair(p)
-
-            logger.info("Token %s pair %s discarded", token.address, p)
+                    break
+            else:
+                logger.info("Token %s pair %s discarded, no reserve or intermediate match", token.address, p)
 
 
 def create_trading_universe_for_tokens(
@@ -124,10 +143,12 @@ def create_trading_universe_for_tokens(
     stop_loss_time_bucket: TimeBucket | None = None,
     name: str | None = None,
 ) -> TradingStrategyUniverse:
-    """Create a trading universe based on a list of tokens.
+    """Create a trading universe based on a list of ERC-20 tokens addresses only.
 
     - Takes a full trading universe and a list of ERC-20 addresses input,
       and returns a new trading pair universe with the best match for the tradeable tokens
+
+    - Display TQDM progress bar for the load
 
     :param client:
         Trading Strategy data client
@@ -192,10 +213,10 @@ def create_trading_universe_for_tokens(
     chain_ids = {p.chain_id for p in our_pairs}
     assert len(chain_ids) == 1, f"Multiple chain_ids in the source: {chain_ids}"
 
-    chain = next(iter(chain_ids))
+    chain = ChainId(next(iter(chain_ids)))
 
     if not name:
-        name = f"{len(tokens)} on chain {chain.name}"
+        name = f"{len(tokens)} tokens on chain {chain.name}"
 
     # Reload all data
     logger.info("Loading final trading universe data with candles")
@@ -215,16 +236,3 @@ def create_trading_universe_for_tokens(
     logger.info("Created strategy universe with %d pairs", strategy_universe.get_pair_count())
 
     return strategy_universe
-
-
-
-
-
-
-
-
-
-
-
-
-
