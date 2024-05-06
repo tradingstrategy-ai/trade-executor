@@ -4,6 +4,7 @@ from abc import abstractmethod, ABC
 from dataclasses import dataclass
 from typing import Set, Dict
 
+import pandas as pd
 from web3 import Web3
 
 from tradeexecutor.state.identifier import TradingPairIdentifier, ExchangeType
@@ -86,6 +87,7 @@ class PairConfigurator(ABC):
     def __init__(
         self,
         strategy_universe: TradingStrategyUniverse,
+        data_delay_tolerance=pd.Timedelta("2d"),
     ):
         """Initialise pair configuration.
 
@@ -101,6 +103,8 @@ class PairConfigurator(ABC):
 
         #: Our cached configs
         self.configs: Dict[ProtocolRoutingId, ProtocolRoutingConfig] = {}
+
+        self.data_delay_tolerance = data_delay_tolerance  # See BacktestPricingModel
 
     @abstractmethod
     def create_config(self, routing_id: ProtocolRoutingId) -> ProtocolRoutingConfig:

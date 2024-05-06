@@ -1149,7 +1149,7 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
             backtest_stop_loss_candles=stop_loss_candle_universe,
         )
 
-    def     get_credit_supply_pair(self) -> TradingPairIdentifier:
+    def get_credit_supply_pair(self) -> TradingPairIdentifier:
         """Get the credit supply trading pair.
 
         This trading pair identifies the trades where we move our strategy reserve
@@ -1245,6 +1245,55 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
             kind=TradingPairKind.lending_protocol_short,
             underlying_spot_pair=pair,
         )
+
+    def get_trading_broken_reason(
+        self,
+        pair: TradingPairIdentifier,
+        min_candles_required: int,
+        min_price=0.00000001,
+        max_price=1_000_000,
+    ) -> str | None:
+        """Can we trade a pair.
+
+        Check if we can trade a particular trading pair.
+
+        - Work around spotty low cap coins
+
+        - Check that we have minimum amout of bars of data
+
+        - Check that price data does not look weird
+
+        :param pair:
+            Trading pair
+
+        :param min_candles_required:
+            How many bars of adta we need
+
+        :param min_price:
+            Avoid low cap tokens with float64 breaking prices
+
+        :param max_pric:
+            Avoid low cap tokens with float64 breaking prices
+
+        :return:
+            A string why the trading pair is broken.
+
+            `None` if good.
+        """
+        candles = self.data_universe.candles.get_candles_by_pair(pair.internal_id)
+
+        if candles is None:
+            return "No OHLCV candles"
+
+        if len(candles) >= min_candles_required:
+            # Get the first opening price
+            price = candles.iloc[0]["close"]
+            if price < min_price:
+                return "Avoid pairs with too low price"
+            elif price > max_price:
+                return "Avoid pairs with too high price"
+            return None
+        return f"Not enough OHLCV candles, {min_candles_required} candles needed"
 
 
 class TradingStrategyUniverseModel(UniverseModel):

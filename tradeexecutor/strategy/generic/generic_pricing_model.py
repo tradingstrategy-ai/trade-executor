@@ -4,6 +4,8 @@ import datetime
 from _decimal import Decimal
 from typing import Dict, Optional
 
+import pandas as pd
+
 from tradeexecutor.strategy.generic.pair_configurator import PairConfigurator
 
 from tradeexecutor.state.identifier import TradingPairIdentifier
@@ -25,10 +27,12 @@ class GenericPricing(PricingModel):
 
 
     def __init__(
-            self,
-            pair_configurator: PairConfigurator,
+        self,
+        pair_configurator: PairConfigurator,
+        data_delay_tolerance=pd.Timedelta("2d"),
     ):
         self.pair_configurator = pair_configurator
+        self.data_delay_tolerance = data_delay_tolerance
 
     def route(self, pair: TradingPairIdentifier) -> PricingModel:
         return self.pair_configurator.get_pricing(pair)
