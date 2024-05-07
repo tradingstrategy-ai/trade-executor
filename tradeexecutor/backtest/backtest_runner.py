@@ -236,6 +236,9 @@ class BacktestSetup:
             execution_context=execution_context,
         )
 
+        assert indicator_set is not None, "create_indicators(): must return IndicatorSet object"
+        assert isinstance(indicator_set, IndicatorSet)
+
         indicator_results = calculate_and_load_indicators(
             strategy_universe=self.universe,
             storage=storage,
@@ -683,6 +686,12 @@ def run_backtest(
     # Don't serialise this in grid search to make it faster/save space
     if not execution_context.grid_search:
         diagnostics_data["indicators"] = backtest_strategy_indicators
+
+    # We are no longer in an active timeframe,
+    # prevent using any stale timestamp we have.
+    # STrategyInputIndicators has some internal asserts to detect timestamp = None,
+    if backtest_strategy_indicators:
+        backtest_strategy_indicators.timestamp = None
 
     result = BacktestResult(
         state=setup.state,

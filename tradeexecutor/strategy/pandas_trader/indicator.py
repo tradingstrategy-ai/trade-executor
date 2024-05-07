@@ -91,9 +91,17 @@ class IndicatorSource(enum.Enum):
     #:
     strategy_universe = "strategy_universe"
 
+
+    #: Data loaded from an external source.
+    #:
+    #: Per-pair data.
+    #:
+    #:
+    external_per_pair = "custom_per_pairexternal_per_pair"
+
     def is_per_pair(self) -> bool:
         """This indicator is calculated to all trading pairs."""
-        return self in (IndicatorSource.open_price, IndicatorSource.close_price, IndicatorSource.ohlcv)
+        return self in (IndicatorSource.open_price, IndicatorSource.close_price, IndicatorSource.ohlcv, IndicatorSource.external_per_pair)
 
 
 def _flatten_index(series: pd.Series) -> pd.Series:
@@ -186,6 +194,26 @@ class IndicatorDefinition:
 
     def is_per_pair(self) -> bool:
         return self.source.is_per_pair()
+    
+    def calculate_by_pair_external(self, pair: TradingPairIdentifier, run_backtest="""Calculate indicator for external data.
+
+        :param pair:
+            Trading pair we are calculating for.
+
+        :return:
+            Single or multi series data.
+
+            - Multi-value indicators return DataFrame with multiple columns (e.g. BB).
+            - Single-value indicators return Series (e.g. RSI, SMA).
+
+        """) -> pd.DataFrame | pd.Series:
+        run_backtest
+        try:
+            ret = self.func(pair, **self.parameters)
+            output_fixed = _flatten_index(ret)
+            return self._check_good_return_value(output_fixed)
+        except Exception as e:
+            raise IndicatorCalculationFailed(f"Could not calculate external data indicator {self.name} ({self.func}) for parameters {self.parameters}, pair {pair}") from e
 
     def calculate_by_pair(self, input: pd.Series) -> pd.DataFrame | pd.Series:
         """Calculate the underlying indicator value.
@@ -890,6 +918,8 @@ def _calculate_and_save_indicator_result(
                 case IndicatorSource.ohlcv:
                     input = strategy_universe.data_universe.candles.get_samples_by_pair(key.pair.internal_id)
                     data = indicator.calculate_by_pair_ohlcv(input)
+                case IndicatorSource.external_per_pair:
+                    data = indicator.calculate_by_pair_external(key.pair)
                 case _:
                     raise AssertionError(f"Unsupported input source {key.pair} {key.definition} {indicator.source}")
 
@@ -1150,7 +1180,7 @@ def calculate_and_load_indicators(
     if callable(max_readers):
         max_readers = max_readers()
 
-    assert create_indicators or indicators, "You must give either create_indicators or indicators argument"
+    assert create_indicators or indicators, f"You must give either create_indicators or indicators argument. Got {create_indicators} and {indicators}"
 
     if create_indicators:
         assert indicators is None, f"Give either indicators or create_indicators, not both"
