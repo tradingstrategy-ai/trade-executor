@@ -328,6 +328,9 @@ class StrategyInputIndicators:
                 # No match
                 return None
 
+        # The input data was not properly cleaned up and has duplicated values for some dates/times
+        assert not isinstance(value, pd.Series), "Duplicate DatetimeIndex entries detected for: {name} {column} {pair}"
+
         if pd.isna(value):
             return None
 

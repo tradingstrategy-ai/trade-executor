@@ -688,8 +688,10 @@ def run_backtest(
         diagnostics_data["indicators"] = backtest_strategy_indicators
 
     # We are no longer in an active timeframe,
-    # prevent using any stale timestamp we have
-    backtest_strategy_indicators.timestamp = None
+    # prevent using any stale timestamp we have.
+    # STrategyInputIndicators has some internal asserts to detect timestamp = None,
+    if backtest_strategy_indicators:
+        backtest_strategy_indicators.timestamp = None
 
     result = BacktestResult(
         state=setup.state,
