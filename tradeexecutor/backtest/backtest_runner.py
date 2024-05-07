@@ -236,6 +236,9 @@ class BacktestSetup:
             execution_context=execution_context,
         )
 
+        assert indicator_set is not None, "create_indicators(): must return IndicatorSet object"
+        assert isinstance(indicator_set, IndicatorSet)
+
         indicator_results = calculate_and_load_indicators(
             strategy_universe=self.universe,
             storage=storage,
