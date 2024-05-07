@@ -195,8 +195,7 @@ class IndicatorDefinition:
     def is_per_pair(self) -> bool:
         return self.source.is_per_pair()
     
-    def calculate_by_pair_external(self, pair: TradingPairIdentifier) -> pd.DataFrame | pd.Series:
-        """Calculate indicator for external data.
+    def calculate_by_pair_external(self, pair: TradingPairIdentifier, run_backtest="""Calculate indicator for external data.
 
         :param pair:
             Trading pair we are calculating for.
@@ -207,10 +206,12 @@ class IndicatorDefinition:
             - Multi-value indicators return DataFrame with multiple columns (e.g. BB).
             - Single-value indicators return Series (e.g. RSI, SMA).
 
-        """
+        """) -> pd.DataFrame | pd.Series:
+        run_backtest
         try:
             ret = self.func(pair, **self.parameters)
-            return self._check_good_return_value(ret)
+            output_fixed = _flatten_index(ret)
+            return self._check_good_return_value(output_fixed)
         except Exception as e:
             raise IndicatorCalculationFailed(f"Could not calculate external data indicator {self.name} ({self.func}) for parameters {self.parameters}, pair {pair}") from e
 

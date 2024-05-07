@@ -687,6 +687,10 @@ def run_backtest(
     if not execution_context.grid_search:
         diagnostics_data["indicators"] = backtest_strategy_indicators
 
+    # We are no longer in an active timeframe,
+    # prevent using any stale timestamp we have
+    backtest_strategy_indicators.timestamp = None
+
     result = BacktestResult(
         state=setup.state,
         strategy_universe=backtest_universe,

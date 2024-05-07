@@ -355,7 +355,10 @@ class StrategyInputIndicators:
             Return ``None`` if any data is not yet available before this stamp.
         """
 
-        series = self.resolve_indicator_data(name, column, pair)
+        if not unlimited:
+            assert self.timestamp is not None, "StrategInputIndicators.timestamp not set for decide_trades(). Call get_indicator_series(unlimited=True) to get all data."
+
+        series = self.resolve_indicator_data(name, column, pair, unlimited=unlimited)
 
         if unlimited:
             return series
@@ -386,7 +389,8 @@ class StrategyInputIndicators:
         self,
         name: str,
         column: str | None = None,
-        pair: TradingPairIdentifier | HumanReadableTradingPairDescription | None = None
+        pair: TradingPairIdentifier | HumanReadableTradingPairDescription | None = None,
+        unlimited=False,
     ) -> pd.Series | pd.DataFrame:
         """Get access to indicator data series/frame.
 
@@ -404,12 +408,17 @@ class StrategyInputIndicators:
             Needed when universe contains multiple trading pairs.
 
             Can be omitted from non-pair indicators.
+
+        :param unlimited:
+            Allow loading of past and future data.
+
         """
         assert type(name) == str
         if column is not None:
             assert type(column) == str
 
-        assert self.timestamp, f"prepare_decision_cycle() not called"
+        if not unlimited:
+            assert self.timestamp, f"StrategyInputIndicators.timestamp is None. prepare_decision_cycle() not called, or you are outside a decide_trades() function."
 
         indicator = self.available_indicators.get_indicator(name)
         if indicator is None:
