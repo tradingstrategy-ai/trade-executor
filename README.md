@@ -112,3 +112,4 @@ See [internal development documentation](https://tradingstrategy.ai/docs/program
 
 - AGPL
 - [Contact for the commercial dual licensing](https://tradingstrategy.ai/about)
+
