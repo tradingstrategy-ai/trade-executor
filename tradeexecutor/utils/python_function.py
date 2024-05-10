@@ -27,7 +27,7 @@ def _remove_docstring(node):
             node.body.pop(0)
 
 
-def hash_function(func, char_length=8):
+def hash_function(func, char_length=8, bytecode_only=False):
     """Produces a hash for the code in the given function.
 
     See https://stackoverflow.com/a/49998190/315168
@@ -39,6 +39,11 @@ def hash_function(func, char_length=8):
         How many characters you want in your hash,
         to reduce the hash size.
 
+    :param bytecode_only:
+        Don't attempt to hash with sanitised source.
+
+        We will also autodetect this when the source is not available.
+
     :return:
         Part of hex hash of the function body
     """
@@ -47,6 +52,15 @@ def hash_function(func, char_length=8):
 
     try:
         func_str = inspect.getsource(func)
+    except OSError:
+        # When using https://github.com/cloudpipe/cloudpickle with multiprocessing.
+        # Fall back to function bytecode
+        # File "/Users/moo/.pyenv/versions/3.11.5/lib/python3.11/inspect.py", line 1081, in findsource
+        #   raise OSError('could not get source code')
+        bytecode_only = True
+
+
+    if not bytecode_only:
         func_str = textwrap.dedent(func_str)
         # Heurestics if this is a lambda function - in this case ast will fail
         # Account for ending new line (may or may not be there?)
@@ -71,12 +85,7 @@ def hash_function(func, char_length=8):
         else:
             # Handle lambda special case
             fhash = hashlib.sha256(func_str.encode("utf-8"))
-
-    except OSError:
-        # When using https://github.com/cloudpipe/cloudpickle with multiprocessing.
-        # Fall back to function bytecode
-        # File "/Users/moo/.pyenv/versions/3.11.5/lib/python3.11/inspect.py", line 1081, in findsource
-        #   raise OSError('could not get source code')
+    else:
         fhash = hashlib.sha256(func.__code__.co_code)
 
     return fhash.hexdigest()[0:char_length]
