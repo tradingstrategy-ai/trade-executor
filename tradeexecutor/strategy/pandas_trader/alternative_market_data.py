@@ -90,8 +90,9 @@ def resample_multi_pair(
         if len(pair_df) > 0:
             segment = resample_single_pair(pair_df, bucket)
             for c in copy_columns:
-                first_row = pair_df.iloc[0]
-                segment[c] = first_row[c]
+                if c in pair_df.columns:
+                    first_row = pair_df.iloc[0]
+                    segment[c] = first_row[c]
             segments.append(segment)
 
     return pd.concat(segments)

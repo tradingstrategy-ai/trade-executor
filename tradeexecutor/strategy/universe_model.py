@@ -51,7 +51,7 @@ class StrategyExecutionUniverse:
             If we have multiple reserve assets (unsupported)
         """
         assert len(self.reserve_assets) == 1
-        return self.reserve_assets[0]
+        return next(iter(self.reserve_assets))
 
 
 @dataclass

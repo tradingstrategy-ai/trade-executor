@@ -35,7 +35,7 @@ class EthereumBacktestPairConfigurator(PairConfigurator):
 
         strategy_universe = self.strategy_universe
 
-        reserve = strategy_universe.reserve_assets[0]
+        reserve = strategy_universe.get_reserve_asset()
         assert reserve.token_symbol in ("USDC", "USDT"), f"Expected USDT/USDC reserve, got {reserve.token_symbol}.\nTODO: Development assert. Please fix."
 
         routing_model = BacktestRoutingIgnoredModel(reserve.address)
