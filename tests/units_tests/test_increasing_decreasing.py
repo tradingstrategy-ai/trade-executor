@@ -9,7 +9,7 @@ import pytest
     (pd.Series([2, 2, 2]), 2, True),  # Testing constant values
     (pd.Series([]), 1, False),        # Testing empty series
     (pd.Series([1]), 1, True),         # Testing single element
-    (pd.Series([1,2,1,3,4,5]), 4, False),
+    (pd.Series([1,2,1,3,4,5]), 5, False),
 
 ])
 def test_is_monotonically_increasing(series, index, expected):
