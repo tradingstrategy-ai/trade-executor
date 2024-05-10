@@ -195,7 +195,8 @@ class IndicatorDefinition:
     def is_per_pair(self) -> bool:
         return self.source.is_per_pair()
     
-    def calculate_by_pair_external(self, pair: TradingPairIdentifier, run_backtest="""Calculate indicator for external data.
+    def calculate_by_pair_external(self, pair: TradingPairIdentifier) -> pd.DataFrame | pd.Series:
+        """Calculate indicator for external data.
 
         :param pair:
             Trading pair we are calculating for.
@@ -206,8 +207,7 @@ class IndicatorDefinition:
             - Multi-value indicators return DataFrame with multiple columns (e.g. BB).
             - Single-value indicators return Series (e.g. RSI, SMA).
 
-        """) -> pd.DataFrame | pd.Series:
-        run_backtest
+        """
         try:
             ret = self.func(pair, **self.parameters)
             output_fixed = _flatten_index(ret)
@@ -215,7 +215,7 @@ class IndicatorDefinition:
         except Exception as e:
             raise IndicatorCalculationFailed(f"Could not calculate external data indicator {self.name} ({self.func}) for parameters {self.parameters}, pair {pair}") from e
 
-    def calculate_by_pair(self, input: pd.Series) -> pd.DataFrame | pd.Series:
+    def calculate_by_pair(self, input: pd.Series, pair: TradingPairIdentifier) -> pd.DataFrame | pd.Series:
         """Calculate the underlying indicator value.
 
         :param input:
@@ -230,7 +230,11 @@ class IndicatorDefinition:
         """
         try:
             input_fixed = _flatten_index(input)
-            ret = self.func(input_fixed, **self.parameters)
+            func_args = inspect.getfullargspec(self.func).args
+            if "pair" in func_args:
+                ret = self.func(input_fixed, pair, **self.parameters)
+            else:
+                ret = self.func(input_fixed, **self.parameters)
             return self._check_good_return_value(ret)
         except Exception as e:
             raise IndicatorCalculationFailed(f"Could not calculate indicator {self.name} ({self.func}) for parameters {self.parameters}, input data is {len(input)} rows") from e
@@ -910,11 +914,11 @@ def _calculate_and_save_indicator_result(
                 case IndicatorSource.open_price:
                     column = "open"
                     input = strategy_universe.data_universe.candles.get_samples_by_pair(key.pair.internal_id)[column]
-                    data = indicator.calculate_by_pair(input)
+                    data = indicator.calculate_by_pair(input, key.pair)
                 case IndicatorSource.close_price:
                     column = "close"
                     input = strategy_universe.data_universe.candles.get_samples_by_pair(key.pair.internal_id)[column]
-                    data = indicator.calculate_by_pair(input)
+                    data = indicator.calculate_by_pair(input, key.pair)
                 case IndicatorSource.ohlcv:
                     input = strategy_universe.data_universe.candles.get_samples_by_pair(key.pair.internal_id)
                     data = indicator.calculate_by_pair_ohlcv(input)

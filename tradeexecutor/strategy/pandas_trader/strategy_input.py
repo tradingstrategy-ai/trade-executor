@@ -20,6 +20,7 @@ from tradeexecutor.strategy.parameters import StrategyParameters
 from tradeexecutor.strategy.pricing_model import PricingModel
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
 from tradingstrategy.candle import CandleSampleUnavailable
+from tradingstrategy.liquidity import LiquidityDataUnavailable
 from tradingstrategy.pair import HumanReadableTradingPairDescription
 from tradingstrategy.utils.time import get_prior_timestamp, ZERO_TIMEDELTA
 
@@ -164,6 +165,86 @@ class StrategyInputIndicators:
         except CandleSampleUnavailable:
             return None
 
+    def get_tvl(
+        self,
+        pair: TradingPairIdentifier | HumanReadableTradingPairDescription |  None = None,
+        data_lag_tolerance=pd.Timedelta(days=7),
+        index: int = -1,
+        timestamp: pd.Timestamp | None = None,
+    ) -> USDollarPrice | None:
+        """Read the available TVL of a trading pair.
+
+        - Returns the latest available TVL/liquidity sample.
+
+        - **Does not** return the current liquidity in the decision_cycle,
+          because any decision must be made based on the previous price
+          to avoid lookahead bias.
+
+        See also :py:meth:`get_price`
+
+        :param pair:
+            The trading pair for which we query the price.
+
+            Give as id object or human description tuple format.
+
+            E.g. `(ChainId.centralised_exchange, "binance", "ETH", "USDT")`.
+
+        :param data_lag_tolerance:
+            In the case the data has issues (no recent price),
+            then accept a price that's this old.
+
+        :param index:
+            Access a specific previous timeframe item.
+
+            If not given, always return the previous available value.
+            Timeframe = candle bar here.
+
+            Uses Python list access notation.
+            - `-1` is the last item (previous time frame value, yesterday).
+            - `-2` is the item before previous time frame (the day before yesterday).
+            - `0` is looking to the future (the value at the end of the current day that has not yet passed)
+
+        :param timestamp:
+            Look price at a specific timestamp.
+
+            Manually calculate lookback. There is no timeshift for this value,
+            so unless you are careful you may case lookahead bias.
+
+            `index` parameter is ignored.
+
+        :return:
+            The latest available TVL.
+
+            ``None`` if no price information is yet available at this point of time for the strategy.
+        """
+        if timestamp:
+            shifted_ts = timestamp
+        else:
+            assert self.timestamp, f"prepare_decision_cycle() not called - framework missing something somewhere"
+            ts = self.timestamp
+            time_frame = self.strategy_universe.data_universe.time_bucket.to_pandas_timedelta()
+            shifted_ts = ts + time_frame * index
+
+        if type(pair) == tuple:
+            # Resolve human description
+            pair = self.strategy_universe.get_pair_by_human_description(pair)
+
+        if pair is None:
+            pair = self.strategy_universe.get_single_pair()
+
+        assert isinstance(pair, TradingPairIdentifier)
+        assert pair.internal_id, "pair.internal_id missing - bad unit test data?"
+
+        try:
+            price, when = self.strategy_universe.data_universe.liquidity.get_liquidity_with_tolerance(
+                pair.internal_id,
+                shifted_ts,
+                tolerance=data_lag_tolerance,
+            )
+            return price
+        except LiquidityDataUnavailable:
+            return None
+
     def get_indicator_value(
         self,
         name: str,
@@ -297,6 +378,11 @@ class StrategyInputIndicators:
             value = series[shifted_ts]
         except KeyError:
 
+            if shifted_ts > series.index[-1]:
+                # The data series has ended before the timestamp,
+                # and there are not going to be new values in the future
+                return None
+
             # Try to check for uneven timeframes
             # E.g. 1d RSI indicator data and 1s decision cycle
             #
@@ -308,12 +394,16 @@ class StrategyInputIndicators:
 
                 if before_match_iloc < 0:
                     # We get -1 if there are no timestamps where the forward fill could start
-                    first_sample_timestamp = series.index[0]
-                    raise IndicatorDataNotFoundWithinDataTolerance(
-                        f"Could not find any samples for pair {pair}, indicator {name} at {self.timestamp}\n"
-                        f"- Series has {len(series)} samples\n"
-                        f"- First sample is at {first_sample_timestamp}\n"
-                    )
+                    # This means there are not yet any samples available at the timestamp,
+                    # because the time series will start after the timestamp
+                    return None
+
+                    # first_sample_timestamp = series.index[0]
+                    #raise IndicatorDataNotFoundWithinDataTolerance(
+                    #    f"Could not find any samples for pair {pair}, indicator {name} at {self.timestamp}\n"
+                    #    f"- Series has {len(series)} samples\n"
+                    #    f"- First sample is at {first_sample_timestamp}\n"
+                    #)
                 before_match = series.iloc[before_match_iloc]
 
                 # Internal sanity check
@@ -321,7 +411,10 @@ class StrategyInputIndicators:
                 assert distance >= ZERO_TIMEDELTA, f"Somehow we managed to get a indicator timestamp {before_match_timestamp} that is newer than asked {self.timestamp}"
 
                 if distance > data_delay_tolerance:
-                    raise IndicatorDataNotFoundWithinDataTolerance(f"Asked indicator {name}. Data delay tolerance is {data_delay_tolerance}, but the delay was longer {distance}.")
+                    raise IndicatorDataNotFoundWithinDataTolerance(
+                        f"Asked indicator {name}. Data delay tolerance is {data_delay_tolerance}, but the delay was longer {distance}.\n"
+                        f"Our timestamp {self.timestamp}, fixed timestamp {shifted_ts}, data available at {before_match_timestamp}.\n"
+                    )
 
                 value = before_match
             else:
