@@ -27,17 +27,18 @@ print("Downloading/opening pairs dataset")
 pairs_df = client.fetch_pair_universe().to_pandas()
 our_chain_pair_ids = pairs_df[pairs_df.chain_id == chain_id.value]["pair_id"].unique()
 
-print(f"We have data for {len(our_chain_pair_ids}} trading pairs on {chain_id.name}")
+print(f"We have data for {len(our_chain_pair_ids)} trading pairs on {chain_id.name}")
 
 # Download all liquidity data, extract
 # trading pairs that exceed our prefiltering threshold
 print("Downloading/opening liquidity dataset")
 liquidity_df = client.fetch_all_liquidity_samples(time_bucket).to_pandas()
+print(f"Filtering out liquidity for chain {chain_id.name}")
 liquidity_df = liquidity_df.loc[liquidity_df.pair_id.isin(our_chain_pair_ids)]
 liquidity_per_pair = liquidity_df.groupby(liquidity_df.pair_id)
-print(f"Chain {chain_id.name} has liquidity data for {liquidity_per_pair.size()}")
+print(f"Chain {chain_id.name} has liquidity data for {len(liquidity_per_pair.groups)}")
 
-passed_pair_ids = {}
+passed_pair_ids = set()
 liquidity_output_chunks = []
 
 for pair_id, pair_df in liquidity_per_pair:
@@ -45,8 +46,16 @@ for pair_id, pair_df in liquidity_per_pair:
         liquidity_output_chunks.append(pair_df)
         passed_pair_ids.add(pair_id)
 
-print(f"After filtering for {min_prefilter_liquidity:,} USD we have {len(passed_pair_ids)} pairs")
+print(f"After filtering for {min_prefilter_liquidity:,} USD min liquidity we have {len(passed_pair_ids)} pairs")
 
-liquidity_out_df = pd.merge(liquidity_output_chunks)
-liquidity_out_df.write_parquet(liquidity_output_fname)
+liquidity_out_df = pd.concat(liquidity_output_chunks)
+liquidity_out_df.to_parquet(liquidity_output_fname)
 
+print(f"Wrote {liquidity_output_fname}, {liquidity_output_fname.stat().st_size:,} bytes")
+
+print("Downloading/opening OHLCV dataset")
+price_df = client.fetch_all_candles(time_bucket).to_pandas()
+price_df = price_df.loc[price_df.pair_id.isin(passed_pair_ids)]
+price_df.to_parquet(price_output_fname)
+
+print(f"Wrote {price_output_fname}, {price_output_fname.stat().st_size:,} bytes")
