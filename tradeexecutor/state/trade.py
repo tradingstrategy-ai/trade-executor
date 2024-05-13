@@ -17,6 +17,7 @@ from tradeexecutor.ethereum.revert import clean_revert_reason_message
 from tradeexecutor.state.blockhain_transaction import BlockchainTransaction
 from tradeexecutor.state.identifier import TradingPairIdentifier, AssetIdentifier
 from tradeexecutor.state.loan import Loan
+from tradeexecutor.state.trigger import Trigger, TriggerType
 from tradeexecutor.state.types import USDollarAmount, USDollarPrice, BPS, LeverageMultiplier
 from tradeexecutor.strategy.trade_pricing import TradePricing
 from tradeexecutor.utils.accuracy import QUANTITY_EPSILON
@@ -28,6 +29,9 @@ class TradeType(enum.Enum):
     """What kind of trade execution this was."""
 
     #: A normal trade with strategy decision
+    #:
+    #: Trigger trades are also rebalances.
+    #:
     rebalance = "rebalance"
 
     #: The trade was made because stop loss trigger reached
@@ -116,6 +120,12 @@ class TradeFlag(enum.Enum):
     #:
     #:
     test_trade = "test_trade"
+
+    #: This trade is a trigger order.
+    #:
+    #: Set when :py:attr:`TradeExecution.triggers` is filled
+    #:
+    triggered = "triggered"
 
 
 @dataclass_json
@@ -246,6 +256,18 @@ class TradeExecution:
     #: Not available on legacy data.
     #:
     flags: Set[TradeFlag] | None = None
+
+    #: Trigger type
+    #:
+    #: - Simulate market limit orders
+    #:
+    #: - Stop loss/take profit have hardcoded triggers
+    #:   as they were developed before trigger data structure
+    #:
+    #: See :py:class:`TradeFlag` for info.
+    #: Not available on legacy data.
+    #:
+    triggers: List[Trigger] | None = None
 
     #: Planned amount of reserve currency that goes in or out to collateral.
     #:
@@ -1365,3 +1387,12 @@ class TradeExecution:
             self.notes = ""
 
         self.notes += line + "\n"
+
+    def trigger_on_market_limit(self, price_point: USDollarAmount, expiration: datetime.datetime):
+        """Convert to trigger order."""
+        if self.is_buy():
+            self.triggers = [Trigger(TriggerType.cross_above, price_point, expiration)]
+        else:
+            self.triggers = [Trigger(TriggerType.cross_below, price_point, expiration)]
+
+        self.flags |= TradeFlag.triggered
