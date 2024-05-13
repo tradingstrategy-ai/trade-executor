@@ -736,6 +736,8 @@ class PositionManager:
         if trade.is_buy():
             assert trade.planned_quantity > QUANTITY_EPSILON, f"Bad buy quantity: {trade}"
 
+        logger.info("Generated trade %s to open a spot position %s", trade.get_human_description(), position.get_human_readable_name())
+
         return [trade]
 
     def adjust_position(self,

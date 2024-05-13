@@ -160,7 +160,8 @@ class BacktestPricing(PricingModel):
             # Move price below mid price
             price = mid_price * (1 - pair_fee)
 
-            assert lp_fee > 0, f"Got bad fee: {pair} {quantity}: {lp_fee}"
+            assert lp_fee > 0, f"After simulating SELL trade, got non-positive LP fee: {pair} {quantity}: ${lp_fee}.\n"\
+                               f"Mid price: {mid_price}, quantity: {quantity}, reserve: {reserve} , pair fee: {pair_fee}"
 
         else:
             # Fee information not available
