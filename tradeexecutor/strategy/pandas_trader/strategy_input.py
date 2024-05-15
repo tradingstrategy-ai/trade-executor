@@ -93,6 +93,7 @@ class StrategyInputIndicators:
         data_lag_tolerance=pd.Timedelta(days=7),
         index: int = -1,
         timestamp: pd.Timestamp | None = None,
+        column="close",
     ) -> USDollarPrice | None:
         """Read the available close price of a trading pair.
 
@@ -132,6 +133,11 @@ class StrategyInputIndicators:
 
             `index` parameter is ignored.
 
+        :param column:
+            Which column to read from the price series.
+
+            E.g. "volume".
+
         :return:
             The latest available price.
 
@@ -160,6 +166,7 @@ class StrategyInputIndicators:
                 pair.internal_id,
                 shifted_ts,
                 tolerance=data_lag_tolerance,
+                kind=column,
             )
             return price
         except CandleSampleUnavailable:
@@ -465,6 +472,41 @@ class StrategyInputIndicators:
 
         return series.loc[:ts]
 
+    def get_price_series(
+        self,
+        column: str = "close",
+        pair: TradingPairIdentifier | HumanReadableTradingPairDescription | None = None,
+    ) -> pd.Series:
+        """Get the whole price series.
+
+        - Use for visualisation and other checks
+        - Not useful inside `decide_trades`, as includes future data
+
+        :param column:
+            Which column to get, default to "close",
+
+        :return:
+            Indicator data.
+
+            Data may contain NaN values.
+
+        """
+
+        if type(pair) == tuple:
+            # Resolve human description
+            pair = self.strategy_universe.get_pair_by_human_description(pair)
+
+        if pair is None:
+            pair = self.strategy_universe.get_single_pair()
+
+        assert isinstance(pair, TradingPairIdentifier)
+        assert pair.internal_id, "pair.internal_id missing - bad unit test data?"
+
+        df = self.strategy_universe.data_universe.candles.get_candles_by_pair(
+            pair.internal_id,
+        )
+        return df[column]
+
     def get_indicator_dataframe(
         self,
         name: str,
@@ -477,9 +519,7 @@ class StrategyInputIndicators:
         :return:
             DataFrame for a multicolumn indicator like Bollinger Bands or ADX
         """
-        df = self.resolve_indicator_data(name, "all", pair, unlimited=True)
-        assert isinstance(df, pd.DataFrame), f"Not DataFrame indicator: {name}"
-        return df
+
 
     def resolve_indicator_data(
         self,

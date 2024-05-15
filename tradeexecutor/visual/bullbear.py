@@ -127,7 +127,7 @@ def visualise_raw_market_regime_indicator(
     """
 
     assert isinstance(price, pd.Series)
-    assert isinstance(indicator, pd.DataFrame)
+    assert isinstance(indicator, pd.DataFrame), f"Expected DataFrame, got {type(indicator)}"
 
     indicator_count = len(indicator.columns)
     rows = 1 + indicator_count
