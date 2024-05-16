@@ -519,7 +519,9 @@ class StrategyInputIndicators:
         :return:
             DataFrame for a multicolumn indicator like Bollinger Bands or ADX
         """
-
+        df = self.resolve_indicator_data(name, "all", pair, unlimited=True)
+        assert isinstance(df, pd.DataFrame), f"Not DataFrame indicator: {name}"
+        return df
 
     def resolve_indicator_data(
         self,
