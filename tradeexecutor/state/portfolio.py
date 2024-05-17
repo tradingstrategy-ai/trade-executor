@@ -97,6 +97,14 @@ class Portfolio:
     #: - rug pull token - transfer disabled
     frozen_positions: Dict[int, TradingPosition] = field(default_factory=dict)
 
+    #: Positions which have not been opened yet, but are waiting the trade order trigger to happen.
+    #:
+    #: - When a trigger happens, the
+    #:
+    #: Will be pruned when these order expire.
+    #:
+    pending_positions: Dict[int, TradingPosition] = field(default_factory=dict)
+
     def __repr__(self):
         reserve_asset, _ = self.get_default_reserve_asset()
         reserve_position = self.get_reserve_position(reserve_asset)
