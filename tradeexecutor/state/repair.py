@@ -424,8 +424,13 @@ def repair_tx_not_generated(state: State, interactive=True):
     portfolio = state.portfolio
 
     for t in portfolio.get_all_trades():
+
+        if t.get_status() == TradeStatus.repaired:
+            # Already repaired
+            continue
+
         if not t.blockchain_transactions:
-            assert t.get_status() == TradeStatus.planned, f"Trade missing tx, but status is not planned {t}"
+            assert t.get_status() == TradeStatus.planned, f"Trade missing tx, but status is not planned/repaired {t}"
             tx_missing_trades.add(t)
 
     if not tx_missing_trades:
