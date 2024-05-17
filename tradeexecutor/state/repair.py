@@ -425,7 +425,15 @@ def repair_tx_not_generated(state: State, interactive=True):
 
     for t in portfolio.get_all_trades():
 
+        if t.repaired_trade_id:
+            # This is an accounting repair for some other trade
+            continue
+
         if t.get_status() == TradeStatus.repaired:
+            # Already repaired
+            continue
+
+        if t.get_status() == TradeStatus.success    :
             # Already repaired
             continue
 
