@@ -10,6 +10,7 @@ import logging
 import cachetools
 import pandas as pd
 
+from tradeexecutor.state.trigger import TriggerType, Trigger, TriggerCondition
 from tradeexecutor.utils.accuracy import QUANTITY_EPSILON
 from tradingstrategy.candle import CandleSampleUnavailable
 from tradingstrategy.pair import DEXPair, HumanReadableTradingPairDescription
@@ -20,8 +21,8 @@ from tradeexecutor.state.loan import LiquidationRisked
 from tradeexecutor.state.portfolio import Portfolio
 from tradeexecutor.state.position import TradingPosition, TriggerPriceUpdate
 from tradeexecutor.state.state import State
-from tradeexecutor.state.trade import TradeType, TradeExecution, TradeFlag
-from tradeexecutor.state.types import USDollarAmount, Percent, LeverageMultiplier
+from tradeexecutor.state.trade import TradeType, TradeExecution, TradeFlag, TradeStatus
+from tradeexecutor.state.types import USDollarAmount, Percent, LeverageMultiplier, USDollarPrice
 from tradeexecutor.strategy.pricing_model import PricingModel
 from tradeexecutor.strategy.trading_strategy_universe import translate_trading_pair, TradingStrategyUniverse
 from tradeexecutor.utils.leverage_calculations import LeverageEstimate
@@ -1857,6 +1858,57 @@ class PositionManager:
             raise LiquidationRisked(f"The position value adjust to new value {new_value}, delta {delta:+f} USD, delta {borrowed_quantity_delta:+f} {base_token}, would liquidate the position,") from e
 
         return [adjust_trade]
+
+    def set_trade_trigger(
+        self,
+        trade: TradeExecution,
+        trigger_type: TriggerType,
+        price: USDollarPrice,
+        expires_at: datetime.datetime | None=None,
+        relative_size: Percent | None = None,
+    ):
+        """Set a trade to have a triggered execution.
+
+        - The created trade is not executed immediately, but later
+          when a trigger condition is meet
+
+        - Possible trades: market limit order, partial take profit
+
+        """
+
+        portfolio = self.state.portfolio
+
+        assert trade.get_status() == TradeStatus.planned, f"Can only set triggers for planned trades: {trade}"
+        position = portfolio.get_position_by_id(trade.position_id)
+        assert position.is_open(), f"Cannot set trade trigger on a closed position: {position}"
+
+        condition = None
+
+        if position.is_long() or position.is_spot():
+            if trigger_type == TriggerType.market_limit:
+                condition = TriggerCondition.cross_above
+        elif position.is_short():
+            if trigger_type == TriggerType.market_limit:
+                condition = TriggerCondition.cross_below
+
+        assert condition, f"Could not figure trigger condition for {trigger_type} on {position}"
+
+        trigger = Trigger(
+            trigger_type,
+            condition,
+            price,
+            expires_at
+        )
+
+        trade.triggers.append(trigger)
+
+        trade.flags |= TradeFlag.triggered
+
+        if trigger_type == TriggerType.market_limit:
+            def portfolio.open_positions[position.id]
+            portfolio.pending_positions[position.id] = position
+
+        logger.info("Added trade trigger: trade: %s, position: %s, trigger: %s", trade, position, trigger)
 
     def log(self, msg: str, level=logging.INFO, prefix="{self.timestamp}: "):
         """Log debug info.
