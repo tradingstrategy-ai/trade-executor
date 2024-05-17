@@ -11,7 +11,7 @@ import pandas_ta
 import pytest
 import pandas as pd
 
-from tradeexecutor.strategy.pandas_trader.indicator import IndicatorSet
+from tradeexecutor.strategy.pandas_trader.indicator import IndicatorSet, DiskIndicatorStorage
 from tradeexecutor.strategy.pandas_trader.strategy_input import StrategyInput
 from tradeexecutor.strategy.strategy_module import StrategyParameters
 from tradingstrategy.client import Client
@@ -79,7 +79,7 @@ def strategy_universe(persistent_test_client: Client):
     )
 
 
-def test_decide_trades_v04(strategy_universe):
+def test_decide_trades_v04(strategy_universe, tmp_path):
     """Test DecideTradesProtocolV4
 
     - Check that StrategyInput is passed correctly in backtesting (only backtesting, not live trading)
@@ -140,6 +140,8 @@ def test_decide_trades_v04(strategy_universe):
         rsi_length = 21
         bb_length = 20
 
+    indicator_storage = DiskIndicatorStorage(tmp_path, strategy_universe.get_cache_key())
+
     # Run the test
     result = run_backtest_inline(
         client=None,
@@ -150,13 +152,27 @@ def test_decide_trades_v04(strategy_universe):
         engine_version="0.5",
         parameters=StrategyParameters.from_class(MyParameters),
         mode=ExecutionMode.unit_testing,
+        indicator_storage=indicator_storage,
     )
 
     state, universe, debug_dump = result
     assert len(state.portfolio.closed_positions) == 15
 
-    assert result.indicators.available_indicators.has_indicator("rsi")
-    assert result.indicators.available_indicators.has_indicator("bb")
+    indicators = result.indicators
 
+    assert indicators.available_indicators.has_indicator("rsi")
+    assert indicators.available_indicators.has_indicator("bb")
+
+    # Function body change may change the cache key here
+    indicator_cache_keys = list(indicators.indicator_results.keys())
+    assert indicator_cache_keys[0].get_cache_key() == "rsi_9700a409(length=21)-WETH-USDC"
+    assert indicator_cache_keys[1].get_cache_key() == "bb_0446e69a(length=20)-WETH-USDC"
+
+    bb_result = indicators.indicator_results[indicator_cache_keys[1]]
+    assert bb_result.universe_key == "polygon_1d_WETH-USDC_2023-01-01-2023-02-01"
+    assert bb_result.cached is False
+    assert bb_result.data is not None
+
+    # Check we access the data
     bb = result.indicators.get_indicator_dataframe("bb")
     assert isinstance(bb,  pd.DataFrame)
