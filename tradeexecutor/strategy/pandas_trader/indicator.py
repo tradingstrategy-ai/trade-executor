@@ -186,7 +186,7 @@ class IndicatorDefinition:
 
         Allows us to detect if the function body changes.
         """
-        return hash_function(self.func)
+        return hash_function(self.func, bytecode_only=True)
 
     def is_needed_for_pair(self, pair: TradingPairIdentifier) -> bool:
         """Currently indicators are calculated for spont pairs only."""
@@ -974,7 +974,7 @@ def load_indicators(
             task_args.append((storage, key))
 
     logger.info(
-        "Loading cached indicators indicators, we have %d indicator combinations out of %d available in the cache %s",
+        "Loading cached indicators, we have %d indicator combinations out of %d available in the cache %s",
         len(task_args),
         len(all_combinations),
         storage.get_universe_cache_path()
