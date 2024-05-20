@@ -7,6 +7,8 @@ from pathlib import Path
 import pandas as pd
 import pandas_ta
 import pytest
+import futureproof
+import inspect
 
 from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier
 from tradeexecutor.strategy.execution_context import ExecutionContext, unit_test_execution_context, unit_test_trading_execution_context
@@ -19,6 +21,7 @@ from tradeexecutor.strategy.universe_model import UniverseOptions
 from tradeexecutor.testing.synthetic_ethereum_data import generate_random_ethereum_address
 from tradeexecutor.testing.synthetic_exchange_data import generate_exchange
 from tradeexecutor.testing.synthetic_price_data import generate_multi_pair_candles
+from tradeexecutor.utils.python_function import hash_function
 from tradingstrategy.candle import GroupedCandleUniverse
 from tradingstrategy.chain import ChainId
 from tradingstrategy.timebucket import TimeBucket
@@ -111,7 +114,7 @@ def test_setup_up_indicator_storage_per_pair(tmp_path, strategy_universe):
     key = IndicatorKey(pair, ind)
 
     ind_path = storage.get_indicator_path(key)
-    assert ind_path == Path(tmp_path) / storage.universe_key / "sma_424a22f1(length=21)-WETH-USDC.parquet"
+    assert ind_path == Path(tmp_path) / storage.universe_key / "sma_dfc27ff4(length=21)-WETH-USDC.parquet"
 
 
 def test_setup_up_indicator_universe(tmp_path, strategy_universe):
@@ -128,7 +131,7 @@ def test_setup_up_indicator_universe(tmp_path, strategy_universe):
     key = IndicatorKey(None, ind)
 
     ind_path = storage.get_indicator_path(key)
-    assert ind_path == Path(tmp_path) / storage.universe_key / "foobar_94954f0a(length=21)-universe.parquet"
+    assert ind_path == Path(tmp_path) / storage.universe_key / "foobar_01b82463(length=21)-universe.parquet"
 
 
 def test_setup_up_indicator_storage_two_parameters(tmp_path, strategy_universe):
@@ -149,7 +152,7 @@ def test_setup_up_indicator_storage_two_parameters(tmp_path, strategy_universe):
     key = IndicatorKey(pair, ind)
 
     ind_path = storage.get_indicator_path(key)
-    assert ind_path == Path(tmp_path) / storage.universe_key / "sma_424a22f1(length=21,offset=1)-WETH-USDC.parquet"
+    assert ind_path == Path(tmp_path) / storage.universe_key / "sma_dfc27ff4(length=21,offset=1)-WETH-USDC.parquet"
 
 
 

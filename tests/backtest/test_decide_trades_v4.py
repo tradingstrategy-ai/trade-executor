@@ -165,8 +165,8 @@ def test_decide_trades_v04(strategy_universe, tmp_path):
 
     # Function body change may change the cache key here
     indicator_cache_keys = list(indicators.indicator_results.keys())
-    assert indicator_cache_keys[0].get_cache_key() == "rsi_9700a409(length=21)-WETH-USDC"
-    assert indicator_cache_keys[1].get_cache_key() == "bb_0446e69a(length=20)-WETH-USDC"
+    assert indicator_cache_keys[0].get_cache_key() == "rsi_cddc4a87(length=21)-WETH-USDC"
+    assert indicator_cache_keys[1].get_cache_key() == "bb_3bdd79e8(length=20)-WETH-USDC"
 
     bb_result = indicators.indicator_results[indicator_cache_keys[1]]
     assert bb_result.universe_key == "polygon_1d_WETH-USDC_2023-01-01-2023-02-01"
@@ -278,8 +278,8 @@ def test_decide_trades_v04_cached(strategy_universe, tmp_path):
     # Function body change may change the cache key here
     indicator_cache_keys = list(indicators.indicator_results.keys())
     indicator_cache_keys.sort(key=lambda x: x.get_cache_key())
-    assert indicator_cache_keys[0].get_cache_key() == "bb_0446e69a(length=20)-WETH-USDC"
-    assert indicator_cache_keys[1].get_cache_key() == "rsi_9700a409(length=21)-WETH-USDC"
+    assert indicator_cache_keys[0].get_cache_key() == "bb_3bdd79e8(length=20)-WETH-USDC"
+    assert indicator_cache_keys[1].get_cache_key() == "rsi_cddc4a87(length=21)-WETH-USDC"
 
     bb_result = indicators.indicator_results[indicator_cache_keys[1]]
     assert bb_result.universe_key == "polygon_1d_WETH-USDC_2023-01-01-2023-02-01"
