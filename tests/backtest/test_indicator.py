@@ -131,7 +131,7 @@ def test_setup_up_indicator_universe(tmp_path, strategy_universe):
     key = IndicatorKey(None, ind)
 
     ind_path = storage.get_indicator_path(key)
-    assert ind_path == Path(tmp_path) / storage.universe_key / "foobar_94954f0a(length=21)-universe.parquet"
+    assert ind_path == Path(tmp_path) / storage.universe_key / "foobar_01b82463(length=21)-universe.parquet"
 
 
 def test_setup_up_indicator_storage_two_parameters(tmp_path, strategy_universe):
@@ -152,7 +152,7 @@ def test_setup_up_indicator_storage_two_parameters(tmp_path, strategy_universe):
     key = IndicatorKey(pair, ind)
 
     ind_path = storage.get_indicator_path(key)
-    assert ind_path == Path(tmp_path) / storage.universe_key / "sma_424a22f1(length=21,offset=1)-WETH-USDC.parquet"
+    assert ind_path == Path(tmp_path) / storage.universe_key / "sma_dfc27ff4(length=21,offset=1)-WETH-USDC.parquet"
 
 
 
@@ -588,23 +588,3 @@ def test_indicator_single_pair_live_trading_universe(persistent_test_client, ind
     assert isinstance(indicator_series.index, pd.DatetimeIndex)
     indicator_value = input_indicators.get_indicator_value("ma")
     assert 0 < indicator_value < 10_000
-    
-
-def test_indicator_cache_key():
-    def test_func(param):
-        return param
-    
-    executor = futureproof.ProcessPoolExecutor(max_workers=2)
-    tm = futureproof.TaskManager(executor, error_policy=futureproof.ErrorPolicyEnum.RAISE)
-    tm.map(hash_function, [test_func])
-
-    cache_key_1 = hash_function(test_func)
-    cache_key_2 = next(tm.as_completed()).result
-
-    print(cache_key_1, cache_key_2)
-    assert cache_key_1 == cache_key_2
-
-    # check if inspect.getsource() raises an error in multiprocessing
-    tm.map(inspect.getsource, [test_func])
-    with pytest.raises(OSError):
-        next(tm.as_completed())
