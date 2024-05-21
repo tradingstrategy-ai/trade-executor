@@ -154,10 +154,11 @@ def environment(
         "FUND_SYMBOL": "BOO1",
         # 0x625E7708f30cA75bfd92586e17077590C60eb4cD
         "WHITELISTED_ASSETS": "0x7ceb23fd6bc0add59e62ac25578270cff1b9f619 0x625E7708f30cA75bfd92586e17077590C60eb4cD",  # WETH, aPolUSDC
-        "DENOMINATION_ASSET": "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174",   # USDC
+        "DENOMINATION_ASSET": "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174",   # USDC.e
         "TERMS_OF_SERVICE_ADDRESS": "0xbe1418df0bAd87577de1A41385F19c6e77312780",  # Deployed earlier, but not used
         "OWNER_ADDRESS": "0x238B0435F69355e623d99363d58F7ba49C408491",  # ProtoDAO multisig
         "PATH": os.environ["PATH"],  # Needs forge
+        "ONE_DELTA": "true",
     }
     return environment
 
@@ -215,7 +216,7 @@ def test_enzyme_guard_perform_test_trade_aave(
     # Check the resulting state and see we made some trade for trading fee losses
     with state_file.open("rt") as inp:
         state: State = State.from_json(inp.read())
-        assert len(list(state.portfolio.get_all_trades())) == 4  # buy+sell matic and eth
+        assert len(list(state.portfolio.get_all_trades())) == 4  # buy ETH, sell ETH, supply aPolUSDC, unsupply aPolUSDC
         reserve_value = state.portfolio.get_default_reserve_position().get_value()
         assert reserve_value < 500
 
