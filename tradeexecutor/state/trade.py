@@ -380,7 +380,9 @@ class TradeExecution:
     #:
     #: Examples
     #:
-    #: - `0`: no slippage toleranc eallowed at all
+    #: - `None` - not set, legacy
+    #:
+    #: - `0`: no slippage toleranc allowed at all, used for credit supply
     #:
     #: - `0.01`: 1% slippage tolerance
     #:
@@ -1315,11 +1317,21 @@ class TradeExecution:
         """
 
         # TODO: slippage tolerance currently ignores multihop trades
+        if self.is_credit_supply():
+            input_asset = self.reserve_currency
+            input_amount = self.planned_reserve
 
-        assert self.slippage_tolerance is not None, "Slippage tolerance must be set before we can calculate_asset_deltas()"
-        assert 0 <= self.slippage_tolerance <= 1.0, f"Slippage tolerance must be 0...1, got {self.slippage_tolerance}"
+            output_asset = self.pair.base
+            output_amount = self.planned_quantity
 
-        if self.is_buy():
+            assert input_amount > 0, "Credit supply: missing input amount"
+            assert output_amount > 0, "Credit supply: missing output amount"
+
+        elif self.is_buy():
+
+            assert self.slippage_tolerance is not None, "Slippage tolerance must be set before we can calculate_asset_deltas()"
+            assert 0 <= self.slippage_tolerance <= 1.0, f"Slippage tolerance must be 0...1, got {self.slippage_tolerance}"
+
             input_asset = self.reserve_currency
             input_amount = self.planned_reserve
 
@@ -1329,6 +1341,10 @@ class TradeExecution:
             assert input_amount > 0, "Buy missing input amount"
             assert output_amount > 0, "Buy missing output amount"
         else:
+
+            assert self.slippage_tolerance is not None, "Slippage tolerance must be set before we can calculate_asset_deltas()"
+            assert 0 <= self.slippage_tolerance <= 1.0, f"Slippage tolerance must be 0...1, got {self.slippage_tolerance}"
+
             input_asset = self.pair.base
             input_amount = -self.planned_quantity
 

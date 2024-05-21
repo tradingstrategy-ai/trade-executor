@@ -531,6 +531,12 @@ class State:
 
         quantity = collateral_quantity
 
+        # For credit supply, slippage tolerance should be 0
+        # as all USDC is converted to aPolUSDC in the supply operation
+        # and None is lost for the slippage
+        if slippage_tolerance is None:
+            slippage_tolerance = 0.0
+
         position, trade, created = self.create_trade(
             strategy_cycle_at=strategy_cycle_at,
             pair=pair,
