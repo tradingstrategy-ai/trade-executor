@@ -69,7 +69,7 @@ def test_forward_fill_spot_only_forward_filled(persistent_test_client: Client):
     # MultiIndex([(93807, '2022-01-01'),
     #        (93807, '2022-01-02'),
     #         (93807, '2022-01-03'),
-    btc_close_index_flattened = btc_close.index.get_level_values(1)
+    btc_close_index_flattened = btc_close.index
 
     # Check there are no 1h gaps in the data
     # https://stackoverflow.com/a/42555628/315168

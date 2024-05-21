@@ -1,5 +1,15 @@
 """backtest CLI command
 
+To read generated cprofile reports:
+
+.. code-block:: python
+
+    import pstats
+    p = pstats.Stats('backtest.cprof')
+    p.strip_dirs().sort_stats('cumulative').print_stats(10)
+
+
+
 """
 
 import datetime
@@ -78,6 +88,8 @@ def backtest(
 
     notebook_report: Optional[Path] = shared_options.notebook_report,
     html_report: Optional[Path] = shared_options.html_report,
+
+    python_profile_report: Optional[Path] = Option(None, envvar="PYTHON_PROFILE_REPORT", help="Write a Python cprof file to check where backtest spends time"),
     ):
     """Backtest a given strategy module.
 
@@ -130,11 +142,27 @@ def backtest(
 
     print(f"Starting backtesting for {strategy_file}")
 
-    state, universe, debug_data = run_backtest_for_module(
-        strategy_file=strategy_file,
-        trading_strategy_api_key=trading_strategy_api_key,
-        execution_context=standalone_backtest_execution_context
-    )
+
+    def loop():
+        result = run_backtest_for_module(
+            strategy_file=strategy_file,
+            trading_strategy_api_key=trading_strategy_api_key,
+            execution_context=standalone_backtest_execution_context
+        )
+        return result
+
+    if python_profile_report:
+        import cProfile
+        profiler = cProfile.Profile()
+        print("Preparing to profile the backtest execution")
+        result = profiler.runcall(loop)
+        print(f"Writing Python profile report {python_profile_report}")
+        profiler.dump_stats(python_profile_report)
+    else:
+        result = loop()
+
+    state = result.state
+    universe = result.strategy_universe
 
     # We should not be able let unnamed backtests through
     assert state.name
