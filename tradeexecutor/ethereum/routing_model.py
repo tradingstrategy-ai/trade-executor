@@ -330,7 +330,7 @@ class EthereumRoutingModel(RoutingModel):
             reserve_asset,
             reserve_amount,
         )
-        
+        import ipdb ; ipdb.set_trace()
         trade_txs = routing_state.lend_via_one_delta(
             one_delta=one_delta,
             target_pair=target_pair,
