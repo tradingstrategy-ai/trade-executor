@@ -8,9 +8,8 @@ To backtest this strategy module locally:
 
     trade-executor \
         backtest \
-        --strategy-file=strategies/eth-breakout-atr-1h.py \
-        --trading-strategy-api-key=$TRADING_STRATEGY_API_KEY \
-        --python-profile-report=backtest.cprof
+        --strategy-file=strategies/eth-breakout-atr-1h-aave.py \
+        --trading-strategy-api-key=$TRADING_STRATEGY_API_KEY
 
 
 """
