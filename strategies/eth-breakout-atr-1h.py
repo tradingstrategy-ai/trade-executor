@@ -16,6 +16,7 @@ To backtest this strategy module locally:
 """
 
 import datetime
+import os
 
 import pandas as pd
 import pandas_ta
@@ -37,6 +38,7 @@ from tradeexecutor.strategy.cycle import CycleDuration
 from tradeexecutor.state.visualisation import PlotKind
 from tradeexecutor.state.trade import TradeExecution
 from tradeexecutor.strategy.pandas_trader.strategy_input import StrategyInput
+from tradeexecutor.utils.binance import create_binance_universe
 
 
 trading_strategy_engine_version = "0.5"
@@ -62,17 +64,15 @@ class Parameters:
     candle_time_bucket = TimeBucket.h1
     allocation = 0.98
 
-    atr_length = 40  # 40 bars
-    fract = 1.0  # Fraction between last hourly close and breakout level
+    atr_length = 10  #
+    fract = 3.0  # Fraction between last hourly close and breakout level
 
     adx_length = 14  # 14 days
-    adx_filter_threshold = 25
+    adx_filter_threshold = 15
 
-
-    trailing_stop_loss_pct = 0.98
-    trailing_stop_loss_activation_level = 1.05
+    trailing_stop_loss_pct = 0.99
+    trailing_stop_loss_activation_level = 1.10
     stop_loss_pct = 0.98
-    take_profit_pct = 1.10
 
     #
     # Live trading only
@@ -84,11 +84,20 @@ class Parameters:
     #
     # Backtesting only
     #
-    backtest_start = datetime.datetime(2022, 8, 1)
-    backtest_end = datetime.datetime(2023, 8, 1)
+
+    use_binance_data = True
+    if use_binance_data:
+        # Perform backesting on binance data instead of DEX data, allows longer backtesting period
+        backtest_start = datetime.datetime(2019, 8, 1)
+        backtest_end = datetime.datetime(2024, 5, 1)
+    else:
+        # WETH-USDC 5 BPS is not available on Polygon unti 2022-08
+        backtest_start = datetime.datetime(2022, 8, 1)
+        backtest_end = datetime.datetime(2024, 5, 15)
     stop_loss_time_bucket = TimeBucket.m5
     backtest_trading_fee = 0.0005  # Override the default Binance data trading fee and assume we can trade 5 BPS fee on WMATIC-USDC on Polygon on Uniswap v3
     initial_cash = 10_000
+
 
 
 def daily_price(open, high, low, close) -> pd.DataFrame:
@@ -276,25 +285,42 @@ def create_trading_universe(
     - We backtest with Binance data, as it has more history
     """
 
-    pair_ids = trading_pairs
 
-    dataset = load_partial_data(
-        client=client,
-        time_bucket=Parameters.candle_time_bucket,
-        pairs=pair_ids,
-        execution_context=execution_context,
-        universe_options=universe_options,
-        liquidity=False,
-        stop_loss_time_bucket=Parameters.stop_loss_time_bucket,
-    )
-    # Construct a trading universe from the loaded data,
-    # and apply any data preprocessing needed before giving it
-    # to the strategy and indicators
-    strategy_universe = TradingStrategyUniverse.create_from_dataset(
-        dataset,
-        reserve_asset="USDC",
-        forward_fill=True,
-    )
+    if Parameters.use_binance_data:
+        global trading_pairs
+
+        trading_pairs = [
+            (ChainId.centralised_exchange, "binance", "ETH", "USDT")
+        ]
+
+        start_at = universe_options.start_at
+        end_at = universe_options.end_at
+        strategy_universe = create_binance_universe(
+            [f"{p[2]}{p[3]}" for p in trading_pairs],
+            candle_time_bucket=Parameters.candle_time_bucket,
+            stop_loss_time_bucket=Parameters.stop_loss_time_bucket,
+            start_at=start_at,
+            end_at=end_at,
+            trading_fee_override=Parameters.backtest_trading_fee,
+        )
+    else:
+        dataset = load_partial_data(
+            client=client,
+            time_bucket=Parameters.candle_time_bucket,
+            pairs=trading_pairs,
+            execution_context=execution_context,
+            universe_options=universe_options,
+            liquidity=False,
+            stop_loss_time_bucket=Parameters.stop_loss_time_bucket,
+        )
+        # Construct a trading universe from the loaded data,
+        # and apply any data preprocessing needed before giving it
+        # to the strategy and indicators
+        strategy_universe = TradingStrategyUniverse.create_from_dataset(
+            dataset,
+            reserve_asset="USDC",
+            forward_fill=True,
+        )
 
     return strategy_universe
 
