@@ -502,7 +502,6 @@ class EthereumRoutingModel(RoutingModel):
                     asset_deltas=asset_deltas,
                     notes=notes,
                 )
-                import ipdb ; ipdb.set_trace()
             elif intermediary_pair is None:
                 # Two way trade
                 # Decide between buying and selling
