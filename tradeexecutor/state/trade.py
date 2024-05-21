@@ -1318,14 +1318,26 @@ class TradeExecution:
 
         # TODO: slippage tolerance currently ignores multihop trades
         if self.is_credit_supply():
+
+            # Supply: input: USDC, output: aPolUSDC
+            # Recall: input: USDC, output: aPolUSDC
+
             input_asset = self.reserve_currency
             input_amount = self.planned_reserve
 
             output_asset = self.pair.base
             output_amount = self.planned_quantity
 
+            # If output amount is negative, we are recalling the credit
             assert input_amount > 0, "Credit supply: missing input amount"
-            assert output_amount > 0, "Credit supply: missing output amount"
+            assert output_amount != 0, "Credit supply: missing output amount"
+
+            assert abs(input_amount) == abs(output_amount), f"Credit supply mismatch: {input_amount} {input_asset}, {output_amount} {output_asset}"
+
+            if output_amount < 0:
+                # Use recall asset deltas
+                input_asset, output_asset = output_asset, input_asset
+                output_amount = abs(output_amount)
 
         elif self.is_buy():
 

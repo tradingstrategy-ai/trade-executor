@@ -180,7 +180,6 @@ def perform_test_trade(
 
     try:
         if all_pairs:
-
             for pair in universe.data_universe.pairs.iterate_pairs():
 
                 _p = construct_identifier_from_pair(pair)
