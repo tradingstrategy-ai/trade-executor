@@ -620,10 +620,12 @@ class ExecutionLoop:
             
         return long_short_metrics_latest
 
-    def check_position_triggers(self,
-                          ts: datetime.datetime,
-                          state: State,
-                          universe: TradingStrategyUniverse) -> List[TradeExecution]:
+    def check_position_triggers(
+          self,
+          ts: datetime.datetime,
+          state: State,
+          universe: TradingStrategyUniverse
+    ) -> List[TradeExecution]:
         """Run stop loss price checks.
 
         Used for live stop loss check; backtesting

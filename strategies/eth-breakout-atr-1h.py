@@ -9,19 +9,30 @@ To backtest this strategy module locally:
     trade-executor \
         backtest \
         --strategy-file=strategies/eth-breakout-atr-1h.py \
-        --trading-strategy-api-key=$TRADING_STRATEGY_API_KEY
+        --trading-strategy-api-key=$TRADING_STRATEGY_API_KEY \
+        --python-profile-report=backtest.cprof
 
 
 """
+
+import datetime
+
+import pandas as pd
+import pandas_ta
+
+from tradingstrategy.utils.groupeduniverse import resample_candles
+from tradingstrategy.chain import ChainId
+from tradingstrategy.client import Client
+from tradingstrategy.timebucket import TimeBucket
+
+from tradeexecutor.analysis.regime import Regime
+from tradeexecutor.strategy.pandas_trader.indicator import IndicatorSet, IndicatorSource
+from tradeexecutor.strategy.parameters import StrategyParameters
+from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
 from tradeexecutor.strategy.execution_context import ExecutionContext
 from tradeexecutor.strategy.trading_strategy_universe import load_partial_data
 from tradeexecutor.strategy.universe_model import UniverseOptions
-from tradingstrategy.chain import ChainId
-import datetime
-
 from tradeexecutor.strategy.default_routing_options import TradeRouting
-from tradingstrategy.client import Client
-from tradingstrategy.timebucket import TimeBucket
 from tradeexecutor.strategy.cycle import CycleDuration
 from tradeexecutor.state.visualisation import PlotKind
 from tradeexecutor.state.trade import TradeExecution
@@ -73,22 +84,11 @@ class Parameters:
     #
     # Backtesting only
     #
-    backtest_start = datetime.datetime(2022, 1, 1)
-    backtest_end = datetime.datetime(2024, 5, 1)
+    backtest_start = datetime.datetime(2022, 8, 1)
+    backtest_end = datetime.datetime(2023, 8, 1)
     stop_loss_time_bucket = TimeBucket.m5
     backtest_trading_fee = 0.0005  # Override the default Binance data trading fee and assume we can trade 5 BPS fee on WMATIC-USDC on Polygon on Uniswap v3
     initial_cash = 10_000
-
-
-import pandas as pd
-import pandas_ta
-
-from tradeexecutor.analysis.regime import Regime
-from tradeexecutor.strategy.execution_context import ExecutionContext
-from tradeexecutor.strategy.pandas_trader.indicator import IndicatorSet, IndicatorSource
-from tradeexecutor.strategy.parameters import StrategyParameters
-from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
-from tradingstrategy.utils.groupeduniverse import resample_candles
 
 
 def daily_price(open, high, low, close) -> pd.DataFrame:
@@ -277,19 +277,6 @@ def create_trading_universe(
     """
 
     pair_ids = trading_pairs
-
-    # Live trading - load DEX data
-
-    if execution_context.mode.is_live_trading():
-        universe_options = UniverseOptions(
-            history_period=Parameters.required_history_period,
-            start_at=None,
-            end_at=None,
-        )
-    else:
-        # Backtest
-        assert universe_options.start_at
-        assert universe_options.end_at
 
     dataset = load_partial_data(
         client=client,

@@ -6,7 +6,7 @@ import datetime
 import sys
 from pathlib import Path
 
-from tradeexecutor.backtest.backtest_runner import run_backtest, setup_backtest_for_universe
+from tradeexecutor.backtest.backtest_runner import run_backtest, setup_backtest_for_universe, BacktestResult
 from tradeexecutor.state.state import State
 from tradeexecutor.strategy.execution_context import standalone_backtest_execution_context
 from tradeexecutor.strategy.pandas_trader.indicator import DiskIndicatorStorage
@@ -25,7 +25,7 @@ def run_backtest_for_module(
     trading_strategy_api_key: str = None,
     execution_context=standalone_backtest_execution_context,
     max_workers: int = None,
-) -> tuple[State, TradingStrategyUniverse, dict]:
+) -> BacktestResult:
     """Run a backtest described in the strategy module.
 
     - Designed for notebooks and console
@@ -119,9 +119,9 @@ def run_backtest_for_module(
     assert backtest_setup.trading_strategy_engine_version
     assert backtest_setup.name
 
-    state, universe, debug_data = run_backtest(
+    result = run_backtest(
         backtest_setup,
         client=client,
     )
 
-    return state, universe, debug_data
+    return result
