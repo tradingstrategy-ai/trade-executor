@@ -1473,7 +1473,7 @@ class TradingPosition(GenericPosition):
             # This is the new code path that takes account in-kind redemptions
             # and redefines the meaning of realised profit
             return self.get_unrealised_and_realised_profit_percent(include_unrealised=False)
-        elif self.is_long():
+        elif self.is_long() or self.is_credit_supply():
             # Legacy path
             # TODO: Check if we need to use lending-based calculations here
             total_bought = self.get_total_bought_usd()
