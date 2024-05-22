@@ -40,6 +40,9 @@ class TradeType(enum.Enum):
     #: The trade was made because take profit trigger reached
     take_profit = "take_profit"
 
+    #: Trade was triggered by something else than hardcode stop loss/take profit as above
+    trigger = "trigger"
+
     #: This is an accounting counter trade to cancel a broken trade.
     #:
     #: - The original trade is marked as repaied
@@ -49,6 +52,8 @@ class TradeType(enum.Enum):
 
     #: Internal state balances are updated to match on-chain balances
     accounting_correction = "accounting_correction"
+
+
 
 
 class TradeStatus(enum.Enum):
@@ -272,6 +277,12 @@ class TradeExecution:
     #: Not available on legacy data.
     #:
     triggers: List[Trigger] | None = field(default_factory=list)
+
+    #: What was the trigger that activated this trade.
+    #:
+    #: Other triggers will be moved to the expires list.
+    #:
+    activated_trigger: Trigger | None = None
 
     #: Trigger that have been phased out for this trade.
     #:
