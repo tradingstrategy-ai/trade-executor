@@ -70,33 +70,27 @@ class Trigger:
     #:
     triggered_at: datetime.datetime | None = None
 
-    #: How much of the position to execute.
-    #:
-    #: Only with the partial take profits
-    #:
-    relative_size: Percent | None = None
-
     def __repr__(self):
         return f"<Trigger {self.type.value} {self.condition.value} at {self.price} expires at {self.expires_at} with size {self.relative_size}>"
 
     def __post_init__(self):
-        if self.expiration is not None:
-            assert isinstance(self.expiration, datetime.datetime)
+        if self.expires_at is not None:
+            assert isinstance(self.expires_at, datetime.datetime)
 
-        if self.price_level is not None:
-            assert type(self.price_level) == float
+        if type(self.price) == int:
+            self.price = float(self.price)
+
+        if self.price is not None:
+            assert type(self.price) == float, f"Price not a float: {type(self.price)}"
 
         assert isinstance(self.type, TriggerType)
-
-        if self.relative_size:
-            assert self.type == TriggerType.take_profit_partial, "Size supported only for take_profit_partial"
 
     def is_expired(self, ts: datetime.datetime) -> bool:
         """This trigger has expired.
 
         Expired triggers must not be executed, and must be moved to past triggers.
         """
-        return ts > self.expiration
+        return ts > self.expires_at
 
     def is_executed(self) -> bool:
         """This trigged is already executed."""

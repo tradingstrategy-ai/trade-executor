@@ -48,13 +48,15 @@ def report_position_triggered(
 
 
 def check_position_triggers(
-        position_manager: PositionManager,
+    position_manager: PositionManager,
 ) -> List[TradeExecution]:
     """Generate trades that depend on real-time price signals.
 
     - Stop loss
 
     - Take profit
+
+    - Any trade.triggers like market limit
 
     What does this do:
 

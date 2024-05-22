@@ -1679,11 +1679,10 @@ class PositionManager:
 
     def set_trade_trigger(
         self,
-        trade: TradeExecution,
+        trades: List[TradeExecution],
         trigger_type: TriggerType,
         price: USDollarPrice,
         expires_at: datetime.datetime | None=None,
-        relative_size: Percent | None = None,
     ):
         """Set a trade to have a triggered execution.
 
@@ -1692,41 +1691,49 @@ class PositionManager:
 
         - Possible trades: market limit order, partial take profit
 
+        :param trades:
+            List of trades to apply for
         """
 
         portfolio = self.state.portfolio
 
-        assert trade.get_status() == TradeStatus.planned, f"Can only set triggers for planned trades: {trade}"
-        position = portfolio.get_position_by_id(trade.position_id)
-        assert position.is_open(), f"Cannot set trade trigger on a closed position: {position}"
+        for trade in trades:
+            assert isinstance(trade, TradeExecution)
+            assert trade.get_status() == TradeStatus.planned, f"Can only set triggers for planned trades: {trade}"
+            position = portfolio.get_position_by_id(trade.position_id)
+            assert position.is_open(), f"Cannot set trade trigger on a closed position: {position}"
 
-        condition = None
+            condition = None
 
-        if position.is_long() or position.is_spot():
+            if position.is_long() or position.is_spot():
+                if trigger_type == TriggerType.market_limit:
+                    condition = TriggerCondition.cross_above
+            elif position.is_short():
+                if trigger_type == TriggerType.market_limit:
+                    condition = TriggerCondition.cross_below
+
+            assert condition, f"Could not figure trigger condition for {trigger_type} on {position}"
+
+            trigger = Trigger(
+                trigger_type,
+                condition,
+                price,
+                expires_at
+            )
+
+            trade.triggers.append(trigger)
+            trade.flags.add(TradeFlag.triggered)
+
             if trigger_type == TriggerType.market_limit:
-                condition = TriggerCondition.cross_above
-        elif position.is_short():
-            if trigger_type == TriggerType.market_limit:
-                condition = TriggerCondition.cross_below
+                assert position.position_id in portfolio.open_positions, f"Market limit can be only applied if the position is about to open"
+                del portfolio.open_positions[position.position_id]
+                portfolio.pending_positions[position.position_id] = position
 
-        assert condition, f"Could not figure trigger condition for {trigger_type} on {position}"
+            # Move trade to pending, instead to be executed right away
+            del position.trades[trade.trade_id]
+            position.pending_trades[trade.trade_id] = trade
 
-        trigger = Trigger(
-            trigger_type,
-            condition,
-            price,
-            expires_at
-        )
-
-        trade.triggers.append(trigger)
-
-        trade.flags |= TradeFlag.triggered
-
-        if trigger_type == TriggerType.market_limit:
-            def portfolio.open_positions[position.id]
-            portfolio.pending_positions[position.id] = position
-
-        logger.info("Added trade trigger: trade: %s, position: %s, trigger: %s", trade, position, trigger)
+            logger.info("Added trade trigger: trade: %s, position: %s, trigger: %s", trade, position, trigger)
 
     def log(self, msg: str, level=logging.INFO, prefix="{self.timestamp}: "):
         """Log debug info.
