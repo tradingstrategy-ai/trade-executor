@@ -6,6 +6,7 @@ import pprint
 import warnings
 from dataclasses import dataclass, field, asdict
 from decimal import Decimal
+from itertools import chain
 
 from typing import Dict, Optional, List, Iterable, Tuple, Set
 
@@ -353,7 +354,7 @@ class TradingPosition(GenericPosition):
 
         Considers unexecuted trades.
         """
-        return next(iter(self.trades.values()))
+        return next(iter(chain(self.trades.values(), self.pending_trades.values())))
 
     def get_last_trade(self) -> TradeExecution:
         """Get the the last trade for this position.
@@ -364,7 +365,7 @@ class TradingPosition(GenericPosition):
 
     def is_spot(self) -> bool:
         """Is this a spot market position."""
-        assert len(self.trades) > 0, "Cannot determine if position is long or short because there are no trades"
+        assert len(self.trades) + len(self.pending_trades) > 0, "Cannot determine if position is long or short because there are no trades"
         return self.get_first_trade().is_spot()
 
     def is_long(self) -> bool:
@@ -374,7 +375,7 @@ class TradingPosition(GenericPosition):
 
         This includes spot buy.
         """
-        assert len(self.trades) > 0, "Cannot determine if position is long or short because there are no trades"
+        assert len(self.trades) + len(self.pending_trades) > 0, "Cannot determine if position is long or short because there are no trades"
         return self.pair.is_spot() or self.pair.is_long()
 
     def is_short(self) -> bool:

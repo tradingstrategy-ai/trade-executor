@@ -7,6 +7,7 @@ import pytest
 
 from tradeexecutor.backtest.backtest_pricing import BacktestPricing
 from tradeexecutor.backtest.backtest_routing import BacktestRoutingModel
+from tradeexecutor.cli.log import setup_pytest_logging
 from tradeexecutor.state.identifier import TradingPairIdentifier, AssetIdentifier
 from tradeexecutor.state.reserve import ReservePosition
 from tradeexecutor.state.state import State
@@ -22,6 +23,13 @@ from tradingstrategy.candle import GroupedCandleUniverse
 from tradingstrategy.chain import ChainId
 from tradingstrategy.timebucket import TimeBucket
 from tradingstrategy.universe import Universe
+
+
+@pytest.fixture(scope="module")
+def logger(request):
+    """Setup test logger."""
+    return setup_pytest_logging(request, mute_requests=False)
+
 
 
 @pytest.fixture(scope="module")
@@ -112,6 +120,7 @@ def position_manager(state, synthetic_universe, pricing_model):
 
 
 def test_market_limit_executed(
+    logger,
     synthetic_universe,
     pricing_model,
     state,
@@ -160,12 +169,70 @@ def test_market_limit_executed(
     executed_trades = check_position_triggers(position_manager)
     assert len(executed_trades) == 0
 
-    # Set to the trigger price
-    position.last_token_price = 1900.0
+    # Fast-forward time to the moment when market price
+    # has exceeeded the trigger
+    position_manager.timestamp = datetime.datetime(2021, 7, 4)
+    assert position_manager.pricing_model.get_mid_price(position_manager.timestamp, pair) == pytest.approx(2499.642153569536)
 
     executed_trades = check_position_triggers(position_manager)
     assert len(executed_trades) == 1
     assert executed_trades[0] == trade
 
+    assert trade.activated_trigger is not None
+    assert trade.triggers == []
+    assert trade.expired_triggers == []
+
+
+def test_market_limit_expires(
+    logger,
+    synthetic_universe,
+    pricing_model,
+    state,
+):
+    """See that the market limit order expires."""
+
+    ts = datetime.datetime(2021, 6, 2)
+    position_manager = PositionManager(ts, synthetic_universe.data_universe, state, pricing_model)
+    portfolio = state.portfolio
+
+    pair = position_manager.get_trading_pair((ChainId.ethereum, "my-dex", "WETH", "USDC"))
+
+    trades = position_manager.open_spot(
+        pair=pair,
+        value=position_manager.get_current_cash(),
+    )
+
+    assert len(trades) == 1
+    trade = trades[0]
+
+    # Moves position from open to pending
+    position_manager.set_trade_trigger(
+        trades,
+        TriggerType.market_limit,
+        price=5000,
+        expires_at=datetime.datetime(2021, 6, 3),
+    )
+
+    # Check that position has its pending trades list updated
+    position = portfolio.pending_positions[1]
+    assert len(position.trades) == 0
+    assert len(position.pending_trades) == 1
+    assert len(position.expired_trades) == 0
+
+    executed_trades = check_position_triggers(position_manager)
+    assert len(executed_trades) == 0
+    assert len(position.pending_trades) == 1  # Did not expire yet
+
+    # Fast-forward time to the moment when the trigger has expired
+    position_manager.timestamp = datetime.datetime(2021, 6, 4)
+    assert position_manager.pricing_model.get_mid_price(position_manager.timestamp, pair) < 5000
+
+    executed_trades = check_position_triggers(position_manager)
+    assert len(executed_trades) == 0
+
+    assert trade.activated_trigger is None
+    assert len(trade.triggers) == 0
+    assert len(trade.expired_triggers) == 1
+    assert trade.expired_triggers[0].expired_at == datetime.datetime(2021, 6, 4)
 
 

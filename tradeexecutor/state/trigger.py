@@ -10,6 +10,7 @@ import datetime
 import enum
 from dataclasses import dataclass
 
+from tradeexecutor.state.types import USDollarPrice
 from tradingstrategy.types import USDollarAmount, Percent
 
 
@@ -65,6 +66,9 @@ class Trigger:
     #: After expiration, this trade execution is removed from the hanging queue
     expires_at: datetime.datetime | None
 
+    #: When this trigger was marked as expired
+    expired_at: datetime.datetime | None = None
+
     #: When the trigger happened
     #:
     #:
@@ -84,16 +88,32 @@ class Trigger:
             assert type(self.price) == float, f"Price not a float: {type(self.price)}"
 
         assert isinstance(self.type, TriggerType)
+        assert isinstance(self.condition, TriggerCondition)
 
     def is_expired(self, ts: datetime.datetime) -> bool:
         """This trigger has expired.
 
         Expired triggers must not be executed, and must be moved to past triggers.
         """
+        if not self.expires_at:
+            return False
         return ts > self.expires_at
 
     def is_executed(self) -> bool:
         """This trigged is already executed."""
         return self.triggered_at is not None
+
+    def is_triggering(self, market_price: USDollarPrice) -> bool:
+        """Is the given price triggering a tride."""
+
+        if self.condition == TriggerCondition.cross_above:
+            if market_price >= self.price:
+                return True
+        else:
+            if market_price <= self.price:
+                return True
+
+        return False
+
 
 
