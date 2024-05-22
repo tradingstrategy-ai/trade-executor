@@ -116,6 +116,12 @@ class Portfolio:
     #:
     pending_positions: Dict[int, TradingPosition] = field(default_factory=dict)
 
+    #: Positions from :py:attr:`pending_positions` that never triggered
+    #:
+    #: Stored for diagnostics.
+    #:
+    expired_positions: Dict[int, TradingPosition] = field(default_factory=dict)
+
     def __repr__(self):
         reserve_asset, _ = self.get_default_reserve_asset()
         reserve_position = self.get_reserve_position(reserve_asset)

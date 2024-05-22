@@ -130,6 +130,14 @@ class TradingPosition(GenericPosition):
     #: trade_id -> Trade map
     trades: Dict[int, TradeExecution] = field(default_factory=dict)
 
+    #: List of trigger trades waiting to be taken
+    #: trade_id -> Trade map
+    pending_trades: Dict[int, TradeExecution] = field(default_factory=dict)
+
+    #: List of trigger trades that have expried
+    #: trade_id -> Trade map
+    expired_trades: Dict[int, TradeExecution] = field(default_factory=dict)
+
     #: When this position was closed
     #:
     #: Execution time of the trade or wall-clock time if not available.
@@ -466,8 +474,18 @@ class TradingPosition(GenericPosition):
         return False
 
     def has_trigger_conditions(self) -> bool:
-        """Does this position need to check for stop loss/take profit."""
-        return self.stop_loss is not None or self.take_profit is not None
+        """Does this position need to check for a trigger condition.
+
+        - stop loss/take profit hardcoded options
+
+        - other triggers
+
+        :return:
+            True if ewe need to check for the triggers in the trigger udpdate
+        """
+        return self.stop_loss is not None or \
+            self.take_profit is not None or \
+            self.pending_trades
 
     def get_executed_trades(self) -> Iterable[TradeExecution]:
         for t in self.trades.values():

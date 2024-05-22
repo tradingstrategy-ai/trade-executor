@@ -271,7 +271,11 @@ class TradeExecution:
     #: See :py:class:`TradeFlag` for info.
     #: Not available on legacy data.
     #:
-    triggers: List[Trigger] | None = None
+    triggers: List[Trigger] | None = field(default_factory=list)
+
+    #: Trigger that have been phased out for this trade.
+    #:
+    expired_triggers: List[Trigger] | None = field(default_factory=list)
 
     #: Planned amount of reserve currency that goes in or out to collateral.
     #:
@@ -1416,12 +1420,3 @@ class TradeExecution:
             self.notes = ""
 
         self.notes += line + "\n"
-
-    def trigger_on_market_limit(self, price_point: USDollarAmount, expiration: datetime.datetime):
-        """Convert to trigger order."""
-        if self.is_buy():
-            self.triggers = [Trigger(TriggerType.cross_above, price_point, expiration)]
-        else:
-            self.triggers = [Trigger(TriggerType.cross_below, price_point, expiration)]
-
-        self.flags |= TradeFlag.triggered
