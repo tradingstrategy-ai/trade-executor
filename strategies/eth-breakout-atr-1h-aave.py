@@ -50,8 +50,8 @@ trading_pairs = [
 ]
 
 # We use Aave v3 pool to store our excess cash when we are out of the market
-lending_reserves= [
-    (ChainId.polygon, LendingProtocolType.aave_v2, "USDC"),
+lending_reserves = [
+    (ChainId.polygon, LendingProtocolType.aave_v3, "USDC.e"),
 ]
 
 

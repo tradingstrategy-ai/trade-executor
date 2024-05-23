@@ -391,7 +391,7 @@ def make_test_trade(
         )
         
         update_statistics(datetime.datetime.utcnow(), state.stats, state.portfolio, ExecutionMode.real_trading, long_short_metrics_latest=long_short_metrics_latest)
-        
+
     if universe.has_any_lending_data() and universe.can_open_credit_supply(datetime.datetime.utcnow(), pair) and test_credit_supply:
         credit_pair = universe.get_credit_supply_pair()
         position = state.portfolio.get_position_by_trading_pair(credit_pair)

@@ -1,4 +1,4 @@
-"""Test Enzyme using end-to-end integration with guard smart contracts."""
+"""Test Enzyme using end-to-end integration with guard smart contracts and Aave test trade."""
 import json
 import os
 import secrets
@@ -107,7 +107,7 @@ def hot_wallet(
 @pytest.fixture()
 def strategy_file() -> Path:
     """Where do we load our strategy file."""
-    return Path(os.path.dirname(__file__)) / ".." / ".." / "strategies" / "matic-eth-usdc.py"
+    return Path(os.path.dirname(__file__)) / ".." / ".." / "strategies" / "eth-breakout-atr-1h-aave.py"
 
 
 @pytest.fixture()
@@ -121,7 +121,7 @@ def state_file(tmp_path) -> Path:
 
     Always start with an empty file.
     """
-    path = Path(f"/{tmp_path}/test_enzyme_end_to_end_uniswap_v3.json")
+    path = Path(f"/{tmp_path}/test_enzyme_end_to_end_aave.json")
     if path.exists():
         os.remove(path)
     return path
@@ -138,7 +138,7 @@ def environment(
     """Passed to init and start commands as environment variables"""
     # Set up the configuration for the live trader
     environment = {
-        "EXECUTOR_ID": "test_enzyme_guard_perform_test_trade",
+        "EXECUTOR_ID": "test_enzyme_guard_perform_test_trade_aave",
         "STRATEGY_FILE": strategy_file.as_posix(),
         "PRIVATE_KEY": hot_wallet.account.key.hex(),
         "JSON_RPC_ANVIL": anvil.json_rpc_url,
@@ -150,18 +150,20 @@ def environment(
         "CONFIRMATION_BLOCK_COUNT": "0",  # Needed for test backend, Anvil
         "TRADING_STRATEGY_API_KEY": os.environ["TRADING_STRATEGY_API_KEY"],
         "VAULT_RECORD_FILE": vault_record_file.as_posix(),
-        "FUND_NAME": "Lestijoki Algo I",
-        "FUND_SYMBOL": "ALGO1",
-        "WHITELISTED_ASSETS": "0x7ceb23fd6bc0add59e62ac25578270cff1b9f619 0x0d500B1d8E8eF31E21C99d1Db9A6444d3ADf1270",  # WETH, WMATIC
-        "DENOMINATION_ASSET": "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174",   # USDC
+        "FUND_NAME": "Boogeyman I",
+        "FUND_SYMBOL": "BOO1",
+        # 0x625E7708f30cA75bfd92586e17077590C60eb4cD
+        "WHITELISTED_ASSETS": "0x7ceb23fd6bc0add59e62ac25578270cff1b9f619 0x625E7708f30cA75bfd92586e17077590C60eb4cD",  # WETH, aPolUSDC
+        "DENOMINATION_ASSET": "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174",   # USDC.e
         "TERMS_OF_SERVICE_ADDRESS": "0xbe1418df0bAd87577de1A41385F19c6e77312780",  # Deployed earlier, but not used
         "OWNER_ADDRESS": "0x238B0435F69355e623d99363d58F7ba49C408491",  # ProtoDAO multisig
         "PATH": os.environ["PATH"],  # Needs forge
+        "ONE_DELTA": "true",
     }
     return environment
 
 
-def test_enzyme_guard_perform_test_trade(
+def test_enzyme_guard_perform_test_trade_aave(
     environment: dict,
     web3: Web3,
     state_file: Path,
@@ -169,17 +171,8 @@ def test_enzyme_guard_perform_test_trade(
     hot_wallet: HotWallet,
     vault_record_file: Path,
 ):
-    """Perform a test trade on Enzyme vault via CLI.
+    """Perform a test trade on Enzyme vault via CLI with Aave credit position.
 
-    - Use MATIC-ETH-USDC strategy
-
-    - The vault is deployed via `enzyme-deploy-vault`
-
-    - The deployer configures a guard for the vault
-
-    - We do the checks and then perform a test trade on the vault for all trading pairs
-
-    - See docs for the workflow https://tradingstrategy.ai/docs/deployment/vault-deployment.html
     """
 
     # Deploy a new vault on the
@@ -223,9 +216,7 @@ def test_enzyme_guard_perform_test_trade(
     # Check the resulting state and see we made some trade for trading fee losses
     with state_file.open("rt") as inp:
         state: State = State.from_json(inp.read())
-        assert len(list(state.portfolio.get_all_trades())) == 4  # buy+sell matic and eth
+        assert len(list(state.portfolio.get_all_trades())) == 4  # buy ETH, sell ETH, supply aPolUSDC, unsupply aPolUSDC
         reserve_value = state.portfolio.get_default_reserve_position().get_value()
         assert reserve_value < 500
-
-
 

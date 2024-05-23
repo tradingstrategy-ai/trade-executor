@@ -330,7 +330,7 @@ class EthereumRoutingModel(RoutingModel):
             reserve_asset,
             reserve_amount,
         )
-        
+
         trade_txs = routing_state.lend_via_one_delta(
             one_delta=one_delta,
             target_pair=target_pair,
@@ -461,7 +461,7 @@ class EthereumRoutingModel(RoutingModel):
                 # Old path that does not slippage tolerances for trades
                 asset_deltas = None
 
-            max_slippage = t.slippage_tolerance or DEFAULT_SLIPPAGE_TOLERANCE
+            max_slippage = t.slippage_tolerance if t.slippage_tolerance is not None else DEFAULT_SLIPPAGE_TOLERANCE
 
             logger.info("Slippage tolerance is: %f %%, expected asset deltas: %s", max_slippage * 100, asset_deltas)
 
