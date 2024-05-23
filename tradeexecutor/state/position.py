@@ -1784,6 +1784,10 @@ class TradingPosition(GenericPosition):
 
         Messages are newline separated.
         """
+
+        if not msg:
+            return
+
         if self.notes is None:
             self.notes = ""
 

@@ -502,8 +502,8 @@ class Portfolio:
         )
 
         # Update notes
-        trade.notes = notes
-        position.notes = notes
+        trade.add_note(notes)
+        position.add_notes_message(notes)
 
         # Check we accidentally do not reuse trade id somehow
 
