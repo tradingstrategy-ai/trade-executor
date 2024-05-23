@@ -84,6 +84,7 @@ def visualise_single_grid_search_result_benchmark(
     benchmarks = get_benchmark_data(
         strategy_universe,
         cumulative_with_initial_cash=initial_cash or getattr(result, "initial_cash", None),  # Legacy support hack
+        start_at=equity.index[0],
     )
 
     benchmark_series = [v for k, v in benchmarks.items()]

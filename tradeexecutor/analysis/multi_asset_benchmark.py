@@ -32,6 +32,7 @@ def get_benchmark_data(
     interesting_assets=("BTC", "WBTC", "ETH", "WETH", "WMATIC", "MATIC"),
     cumulative_with_initial_cash: USDollarAmount =0.0,
     asset_colours=DEFAULT_BENCHMARK_COLOURS,
+    start_at: pd.Timestamp | None = None,
 ) -> pd.DataFrame:
     """Get returns series of different benchmark index assets from the universe.
 
@@ -96,6 +97,10 @@ def get_benchmark_data(
     df = pd.DataFrame()
     for name, pair in benchmark_assets.items():
         price_series = strategy_universe.data_universe.candles.get_candles_by_pair(pair.internal_id)["close"]
+
+        if start_at:
+            price_series = price_series.loc[start_at:]
+
         assert len(price_series.dropna()) != 0, f"Failed to read benchmark price series for {name}: {pair}"
         if isinstance(price_series.index, pd.MultiIndex):
             index_fixed_series = pd.Series(data=price_series.values, index=price_series.index.get_level_values(1))
