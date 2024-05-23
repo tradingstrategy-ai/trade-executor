@@ -1791,6 +1791,10 @@ class TradingPosition(GenericPosition):
         if self.notes is None:
             self.notes = ""
 
+        # Sanitise ending new line
+        if self.notes and not self.notes.endswith("\n"):
+            self.notes += "\n"
+
         self.notes += msg
         self.notes += "\n"
 

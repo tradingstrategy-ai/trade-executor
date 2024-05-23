@@ -1435,6 +1435,9 @@ def expand_timeline(
 
         duration = position.get_duration()
 
+        notes = position.notes or ""
+        notes = notes.replace("\n", "<br>")
+
         r = {
             # "timestamp": timestamp,
             "Id": position.position_id,
@@ -1453,7 +1456,7 @@ def expand_timeline(
             "Close mid price USD": format_price(position.get_closing_price()) if position.is_closed() else np.nan,
             "Trade count": position.get_trade_count(),
             "LP fees": f"${position.get_total_lp_fees_paid():,.2f}",
-            "Notes": f"{position.notes or ''}"
+            "Notes": notes,
         }
         return r
 
