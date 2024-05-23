@@ -156,6 +156,7 @@ def _serialise_long_short_stats_as_json_table(
         KeyMetricKind.annualised_return_percent: 'Annualised return %',
         KeyMetricKind.cash_at_start: 'Cash at start',
         KeyMetricKind.value_at_end: 'Value at end',
+        KeyMetricKind.time_in_market: 'Time in market',
         KeyMetricKind.trade_volume: 'Trade volume',
         KeyMetricKind.position_win_percent: 'Position win percent',
         KeyMetricKind.total_positions: 'Total positions',
