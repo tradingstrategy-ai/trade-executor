@@ -859,9 +859,13 @@ def run_backtest_inline(
         parameters.validate_backtest()
 
     if start_at is None and end_at is None:
-        start_at, end_at = universe.data_universe.candles.get_timestamp_range()
-        start_at = start_at.to_pydatetime()
-        end_at = end_at.to_pydatetime()
+        if parameters:
+            start_at = parameters.backtest_start
+            end_at = parameters.backtest_end
+        else:
+            start_at, end_at = universe.data_universe.candles.get_timestamp_range()
+            start_at = start_at.to_pydatetime()
+            end_at = end_at.to_pydatetime()
 
     if start_at:
         assert isinstance(start_at, datetime.datetime)
