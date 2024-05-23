@@ -859,7 +859,7 @@ def run_backtest_inline(
         parameters.validate_backtest()
 
     if start_at is None and end_at is None:
-        if parameters:
+        if parameters and hasattr(parameters, "backtest_start") and hasattr(parameters, "backtest_end"):
             start_at = parameters.backtest_start
             end_at = parameters.backtest_end
         else:
