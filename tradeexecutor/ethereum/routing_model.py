@@ -454,7 +454,6 @@ class EthereumRoutingModel(RoutingModel):
             else:
                 t.blockchain_transactions = []
 
-
             # TODO: Add support for accurate multihop asset deltas
             if t.slippage_tolerance is not None:
                 asset_deltas = t.calculate_asset_deltas()
@@ -462,7 +461,7 @@ class EthereumRoutingModel(RoutingModel):
                 # Old path that does not slippage tolerances for trades
                 asset_deltas = None
 
-            max_slippage = t.slippage_tolerance is None or DEFAULT_SLIPPAGE_TOLERANCE
+            max_slippage = t.slippage_tolerance if t.slippage_tolerance is not None else DEFAULT_SLIPPAGE_TOLERANCE
 
             logger.info("Slippage tolerance is: %f %%, expected asset deltas: %s", max_slippage * 100, asset_deltas)
 
