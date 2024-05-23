@@ -1435,8 +1435,6 @@ def expand_timeline(
 
         duration = position.get_duration()
 
-        print(position.notes)
-
         r = {
             # "timestamp": timestamp,
             "Id": position.position_id,

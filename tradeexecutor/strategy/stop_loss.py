@@ -185,7 +185,8 @@ def check_position_triggers(
             ]):
                 trigger_type = TradeType.stop_loss
                 trigger_price = p.stop_loss
-                trades.extend(position_manager.close_position(p, TradeType.stop_loss))
+                notes = f"Stoploss:{trigger_price} mid-price:{mid_price}"
+                trades.extend(position_manager.close_position(p, TradeType.stop_loss, notes=notes))
 
         if trigger_type:
             # We got triggered
