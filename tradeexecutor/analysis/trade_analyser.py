@@ -1329,13 +1329,13 @@ class TimelineStyler:
         pnl_raw = row["PnL % raw"]
 
         if pnl_raw < -0.05:
-            return pd.Series('background-color: Salmon', row.index)
+            return pd.Series('background-color: Salmon; color: black', row.index)
         elif pnl_raw < 0:
-            return pd.Series('background-color: LightSalmon', row.index)
+            return pd.Series('background-color: LightSalmon; color: black', row.index)
         elif pnl_raw > 0.05:
-            return pd.Series('background-color: LawnGreen', row.index)
+            return pd.Series('background-color: LawnGreen; color: black', row.index)
         else:
-            return pd.Series('background-color: PaleGreen', row.index)
+            return pd.Series('background-color: PaleGreen; color: black', row.index)
 
     def __call__(self, df: pd.DataFrame):
         """Applies styles on a dataframe

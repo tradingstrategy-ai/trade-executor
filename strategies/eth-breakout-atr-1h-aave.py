@@ -15,7 +15,6 @@ To backtest this strategy module locally:
 """
 
 import datetime
-import os
 
 import pandas as pd
 import pandas_ta
@@ -43,17 +42,6 @@ from tradeexecutor.utils.binance import create_binance_universe
 
 trading_strategy_engine_version = "0.5"
 
-# List of trading pairs we use in the backtest
-# In this backtest, we use Binance data as it has more price history than DEXes
-trading_pairs = [
-    (ChainId.polygon, "uniswap-v3", "WETH", "USDC"),
-]
-
-# We use Aave v3 pool to store our excess cash when we are out of the market
-lending_reserves = [
-    (ChainId.polygon, LendingProtocolType.aave_v3, "USDC.e"),
-]
-
 
 class Parameters:
     """Parameteres for this strategy.
@@ -75,11 +63,9 @@ class Parameters:
     adx_length = 14  # 14 days
     adx_filter_threshold = 15
 
-    trailing_stop_loss_pct = 0.99
-    trailing_stop_loss_activation_level = 1.10
+    trailing_stop_loss_pct = 0.98
+    trailing_stop_loss_activation_level = 1.075
     stop_loss_pct = 0.98
-
-    lending_enabled = True  # Use Aave pools when avaible (not in Binance backtests)
 
     #
     # Live trading only
@@ -95,8 +81,9 @@ class Parameters:
     use_binance_data = False
     if use_binance_data:
         # Perform backesting on binance data instead of DEX data, allows longer backtesting period
-        backtest_start = datetime.datetime(2019, 8, 1)
-        backtest_end = datetime.datetime(2024, 5, 1)
+        #backtest_start = datetime.datetime(2019, 8, 1)
+        backtest_start = datetime.datetime(2022, 8, 1)
+        backtest_end = datetime.datetime(2024, 5, 15)
     else:
         # WETH-USDC 5 BPS is not available on Polygon unti 2022-08
         backtest_start = datetime.datetime(2022, 8, 1)
@@ -105,6 +92,83 @@ class Parameters:
     stop_loss_time_bucket = TimeBucket.m5
     backtest_trading_fee = 0.0005  # Override the default Binance data trading fee and assume we can trade 5 BPS fee on WMATIC-USDC on Polygon on Uniswap v3
     initial_cash = 10_000
+
+    # Use Aave pools when avaible
+    # We cannot do lending tests in if we are using Binance data for the strategy backtest,
+    # as Binance does not have a lending market
+    lending_enabled = not use_binance_data
+
+
+if not Parameters.use_binance_data:
+
+    # List of trading pairs we use in the backtest
+    # In this backtest, we use Binance data as it has more price history than DEXes
+    trading_pairs = [
+        (ChainId.polygon, "uniswap-v3", "WETH", "USDC"),
+    ]
+
+    # We use Aave v3 pool to store our excess cash when we are out of the market
+    lending_reserves = [
+        (ChainId.polygon, LendingProtocolType.aave_v3, "USDC.e"),
+    ]
+else:
+
+    trading_pairs = [
+        (ChainId.centralised_exchange, "binance", "ETH", "USDT")
+    ]
+
+
+
+def create_trading_universe(
+    timestamp: datetime.datetime,
+    client: Client,
+    execution_context: ExecutionContext,
+    universe_options: UniverseOptions,
+) -> TradingStrategyUniverse:
+    """Create the trading universe.
+
+    - For live trading, we load DEX data
+
+    - We backtest with Binance data, as it has more history
+    """
+
+
+    if Parameters.use_binance_data:
+
+        assert not Parameters.lending_enabled, "Cannot use Aave lending with Binance trading"
+
+        start_at = universe_options.start_at
+        end_at = universe_options.end_at
+        strategy_universe = create_binance_universe(
+            [f"{p[2]}{p[3]}" for p in trading_pairs],
+            candle_time_bucket=Parameters.candle_time_bucket,
+            stop_loss_time_bucket=Parameters.stop_loss_time_bucket,
+            start_at=start_at,
+            end_at=end_at,
+            trading_fee_override=Parameters.backtest_trading_fee,
+        )
+    else:
+        dataset = load_partial_data(
+            client=client,
+            time_bucket=Parameters.candle_time_bucket,
+            pairs=trading_pairs,
+            execution_context=execution_context,
+            universe_options=universe_options,
+            liquidity=False,
+            stop_loss_time_bucket=Parameters.stop_loss_time_bucket,
+            lending_reserves=lending_reserves,
+        )
+        # Construct a trading universe from the loaded data,
+        # and apply any data preprocessing needed before giving it
+        # to the strategy and indicators
+        strategy_universe = TradingStrategyUniverse.create_from_dataset(
+            dataset,
+            reserve_asset="USDC",
+            forward_fill=True,
+        )
+
+    return strategy_universe
+
 
 
 
@@ -291,60 +355,4 @@ def decide_trades(
 
     return trades  # Return the list of trades we made in this cycle
 
-
-def create_trading_universe(
-    timestamp: datetime.datetime,
-    client: Client,
-    execution_context: ExecutionContext,
-    universe_options: UniverseOptions,
-) -> TradingStrategyUniverse:
-    """Create the trading universe.
-
-    - For live trading, we load DEX data
-
-    - We backtest with Binance data, as it has more history
-    """
-
-
-    if Parameters.use_binance_data:
-
-        assert Parameters.lending_enabled, "Cannot use Aave lending with Binance trading"
-
-        # Override to binance pairs
-        global trading_pairs
-        trading_pairs = [
-            (ChainId.centralised_exchange, "binance", "ETH", "USDT")
-        ]
-
-        start_at = universe_options.start_at
-        end_at = universe_options.end_at
-        strategy_universe = create_binance_universe(
-            [f"{p[2]}{p[3]}" for p in trading_pairs],
-            candle_time_bucket=Parameters.candle_time_bucket,
-            stop_loss_time_bucket=Parameters.stop_loss_time_bucket,
-            start_at=start_at,
-            end_at=end_at,
-            trading_fee_override=Parameters.backtest_trading_fee,
-        )
-    else:
-        dataset = load_partial_data(
-            client=client,
-            time_bucket=Parameters.candle_time_bucket,
-            pairs=trading_pairs,
-            execution_context=execution_context,
-            universe_options=universe_options,
-            liquidity=False,
-            stop_loss_time_bucket=Parameters.stop_loss_time_bucket,
-            lending_reserves=lending_reserves,
-        )
-        # Construct a trading universe from the loaded data,
-        # and apply any data preprocessing needed before giving it
-        # to the strategy and indicators
-        strategy_universe = TradingStrategyUniverse.create_from_dataset(
-            dataset,
-            reserve_asset="USDC",
-            forward_fill=True,
-        )
-
-    return strategy_universe
 
