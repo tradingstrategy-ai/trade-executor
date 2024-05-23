@@ -1411,6 +1411,9 @@ class TradeExecution:
         Do not remove any old notes.
         """
 
+        if not line:
+            return
+
         if not self.notes:
             self.notes = ""
 
