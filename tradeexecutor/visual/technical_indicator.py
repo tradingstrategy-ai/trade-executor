@@ -67,6 +67,8 @@ def overlay_all_technical_indicators(
         start_row = 1
         plots = visualisation.plots.values()
     
+    # only for PlotKind.technical_indicator_detached
+    detached_plots_to_row = {}
 
     # https://plotly.com/python/graphing-multiple-chart-types/
     for plot in plots:
@@ -89,13 +91,14 @@ def overlay_all_technical_indicators(
         # add trace to plot
         if plot.kind == PlotKind.technical_indicator_detached:
             cur_row += 1
+            detached_plots_to_row[plot.name] = cur_row
             fig.add_trace(trace, row=cur_row, col=1)
         elif plot.kind == PlotKind.technical_indicator_on_price:
             # don't increment current row
             fig.add_trace(trace, row=start_row, col=1)
         elif plot.kind == PlotKind.technical_indicator_overlay_on_detached:
             # don't increment current row
-            fig.add_trace(trace, row=cur_row, col=1)
+            fig.add_trace(trace, row=detached_plots_to_row[plot.detached_overlay_name], col=1)
         else:
             raise NotImplementedError(f"Unknown plot kind: {plot.kind}")
 

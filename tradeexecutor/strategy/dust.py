@@ -44,8 +44,14 @@ def get_dust_epsilon_for_asset(asset: AssetIdentifier) -> Decimal:
 
     """
 
-    # Hardcoded rules for now
-    if asset.token_symbol == "WBTC":
+    # Hardcoded rules for now.
+    # Some practical problems we have run across in backtesting.
+    # We have wrapped and non-wrapped token symbols as we are backtesting both on DEX and CEX data
+    if asset.token_symbol in ("WBTC", "BTC"):
         return Decimal(10 ** -7)
+    elif asset.token_symbol in ("ETH", "WETH"):
+        return Decimal(10 ** -7)
+    elif asset.token_symbol in ("USDC", "USDC.e"):
+        return Decimal(0.1)
     else:
         return DEFAULT_DUST_EPSILON

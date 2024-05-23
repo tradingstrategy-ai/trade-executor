@@ -455,13 +455,15 @@ class StrategyRunner(abc.ABC):
             print(f"    {reserve.quantity:,.2f} {reserve.asset.token_symbol}", file=buf)
         logger.trade(buf.getvalue())
 
-    def report_strategy_thinking(self,
-                                 strategy_cycle_timestamp: datetime.datetime,
-                                 cycle: int,
-                                 universe: TradingStrategyUniverse,
-                                 state: State,
-                                 trades: List[TradeExecution],
-                                 debug_details: dict):
+    def report_strategy_thinking(
+        self,
+         strategy_cycle_timestamp: datetime.datetime,
+         cycle: int,
+         universe: TradingStrategyUniverse,
+         state: State,
+         trades: List[TradeExecution],
+         debug_details: dict
+    ):
         """Strategy admin helpers to understand a live running strategy.
 
         - Post latest variables
@@ -687,6 +689,8 @@ class StrategyRunner(abc.ABC):
             # and we have a flag to check it for here
             if state.portfolio.has_trading_capital() or execution_context.mode.is_unit_testing():
 
+                old_position_ids = set(state.portfolio.open_positions.keys())
+
                 # Run the strategy cycle main trading decision cycle
                 with self.timed_task_context_manager("decide_trades"):
                     rebalance_trades = self.on_clock(
@@ -702,12 +706,13 @@ class StrategyRunner(abc.ABC):
 
                     # Make some useful diagnostics output for log files to troubleshoot if something
                     # when wrong internally
-                    _, last_point_at = state.visualisation.get_timestamp_range()
-                    logger.info("We have %d new trades, %d total visualisation points, last visualisation point at %s",
-                                len(rebalance_trades),
-                                state.visualisation.get_total_points(),
-                                last_point_at
-                                )
+                    # if self.execution_context.live_trading:
+                    #     _, last_point_at = state.visualisation.get_timestamp_range()
+                    #     logger.info("We have %d new trades, %d total visualisation points, last visualisation point at %s",
+                    #                 len(rebalance_trades),
+                    #                 state.visualisation.get_total_points(),
+                    #                 last_point_at
+                    #                 )
 
                     # Check that we did not get duplicate trades for some reason,
                     # like API bugs
@@ -715,6 +720,18 @@ class StrategyRunner(abc.ABC):
                     for t in rebalance_trades:
                         assert t not in trade_set, f"decide_trades() returned a duplicate trade: {t}"
                         trade_set.add(t)
+
+                new_position_ids = set(state.portfolio.open_positions.keys())
+                if old_position_ids != new_position_ids and len(trade_set) == 0:
+                    # Handle user error within decide_trades() that they forget to return trades list.
+                    # 1. PositionManager.open_spot() called
+                    # 2. Trade is created
+                    # 3. This trade is not returned
+                    raise RuntimeError(f"decide_trades() returned empty trade list, but new positions were added.\n"
+                                       f"This is likely a bug in your decide_trades() - remember to return trades list for any position modifications you do,\n"
+                                       f"and do not accidentally return empty list when you have made trades.\n"
+                                       f"Old positions before decide_trades(): {old_position_ids}\n"
+                                       f"New positions after decide_trades(): {new_position_ids}\n")
 
                 rebalance_trades = post_process_trade_decision(state, rebalance_trades)
 
@@ -848,6 +865,8 @@ class StrategyRunner(abc.ABC):
             )
 
             triggered_trades = check_position_triggers(position_manager)
+
+            triggered_trades = post_process_trade_decision(state, triggered_trades)
 
             approved_trades = self.approval_model.confirm_trades(state, triggered_trades)
 

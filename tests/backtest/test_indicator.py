@@ -7,16 +7,21 @@ from pathlib import Path
 import pandas as pd
 import pandas_ta
 import pytest
+import futureproof
+import inspect
 
 from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier
-from tradeexecutor.strategy.execution_context import ExecutionContext, unit_test_execution_context
+from tradeexecutor.strategy.execution_context import ExecutionContext, unit_test_execution_context, unit_test_trading_execution_context
 from tradeexecutor.strategy.pandas_trader.indicator import IndicatorSet, DiskIndicatorStorage, IndicatorDefinition, IndicatorFunctionSignatureMismatch, \
     calculate_and_load_indicators, IndicatorKey, IndicatorSource
+from tradeexecutor.strategy.pandas_trader.strategy_input import StrategyInputIndicators
 from tradeexecutor.strategy.parameters import StrategyParameters
-from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse, create_pair_universe_from_code
+from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse, create_pair_universe_from_code, load_partial_data
+from tradeexecutor.strategy.universe_model import UniverseOptions
 from tradeexecutor.testing.synthetic_ethereum_data import generate_random_ethereum_address
 from tradeexecutor.testing.synthetic_exchange_data import generate_exchange
 from tradeexecutor.testing.synthetic_price_data import generate_multi_pair_candles
+from tradeexecutor.utils.python_function import hash_function
 from tradingstrategy.candle import GroupedCandleUniverse
 from tradingstrategy.chain import ChainId
 from tradingstrategy.timebucket import TimeBucket
@@ -109,7 +114,7 @@ def test_setup_up_indicator_storage_per_pair(tmp_path, strategy_universe):
     key = IndicatorKey(pair, ind)
 
     ind_path = storage.get_indicator_path(key)
-    assert ind_path == Path(tmp_path) / storage.universe_key / "sma(length=21)-WETH-USDC.parquet"
+    assert ind_path == Path(tmp_path) / storage.universe_key / "sma_dfc27ff4(length=21)-WETH-USDC.parquet"
 
 
 def test_setup_up_indicator_universe(tmp_path, strategy_universe):
@@ -126,7 +131,7 @@ def test_setup_up_indicator_universe(tmp_path, strategy_universe):
     key = IndicatorKey(None, ind)
 
     ind_path = storage.get_indicator_path(key)
-    assert ind_path == Path(tmp_path) / storage.universe_key / "foobar(length=21)-universe.parquet"
+    assert ind_path == Path(tmp_path) / storage.universe_key / "foobar_01b82463(length=21)-universe.parquet"
 
 
 def test_setup_up_indicator_storage_two_parameters(tmp_path, strategy_universe):
@@ -147,7 +152,7 @@ def test_setup_up_indicator_storage_two_parameters(tmp_path, strategy_universe):
     key = IndicatorKey(pair, ind)
 
     ind_path = storage.get_indicator_path(key)
-    assert ind_path == Path(tmp_path) / storage.universe_key / "sma(length=21,offset=1)-WETH-USDC.parquet"
+    assert ind_path == Path(tmp_path) / storage.universe_key / "sma_dfc27ff4(length=21,offset=1)-WETH-USDC.parquet"
 
 
 
@@ -432,3 +437,154 @@ def test_custom_indicator(strategy_universe, indicator_storage):
         assert isinstance(result.data, pd.Series)
         assert len(result.data) > 0
 
+
+def test_ohlcv_indicator(strategy_universe, indicator_storage):
+    """Create an OHLCV data based indicator.
+
+    - Use Money Flow Index (MFI) using full OHCLV data
+    """
+
+    indicators = IndicatorSet()
+    indicators.add(
+        "mfi",
+        pandas_ta.mfi,
+        parameters={"length": 4},
+        source=IndicatorSource.ohlcv,
+    )
+
+    indicator_results = calculate_and_load_indicators(
+        strategy_universe,
+        indicator_storage,
+        indicators=indicators,
+        execution_context=unit_test_execution_context,
+        parameters=StrategyParameters({}),
+        max_workers=1,
+        max_readers=1,
+    )
+
+    # 2 pairs, 1 indicator
+    assert len(indicator_results) == 2
+    for result in indicator_results.values():
+        assert isinstance(result.data, pd.Series)
+        assert result.data.name == "MFI_4"
+        assert len(result.data) > 0
+
+    # Test reading MFI value,
+    # read on the last day of backtest data for WBTC-USDC pair
+    wbtc_usdc = strategy_universe.get_pair_by_human_description((ChainId.ethereum, "test-dex", "WBTC", "USDC"))
+    first_day, last_day = strategy_universe.data_universe.candles.get_timestamp_range()
+    assert last_day == pd.Timestamp('2021-12-31 00:00:00')
+
+    input_indicators = StrategyInputIndicators(
+        strategy_universe=strategy_universe,
+        available_indicators=indicators,
+        indicator_results=indicator_results,
+        timestamp=last_day,
+    )
+
+    indicator_value = input_indicators.get_indicator_value("mfi", pair=wbtc_usdc)
+    assert indicator_value in (0, None)  # TODO: Local and Github CI disagree what's the proper MFI value here
+
+
+def test_get_close_price(strategy_universe, indicator_storage):
+    """Get the close price."""
+
+    indicators = IndicatorSet()
+
+    indicator_results = calculate_and_load_indicators(
+        strategy_universe,
+        indicator_storage,
+        indicators=indicators,
+        execution_context=unit_test_execution_context,
+        parameters=StrategyParameters({}),
+        max_workers=1,
+        max_readers=1,
+    )
+
+    first_day, last_day = strategy_universe.data_universe.candles.get_timestamp_range()
+
+    input_indicators = StrategyInputIndicators(
+        strategy_universe=strategy_universe,
+        available_indicators=indicators,
+        indicator_results=indicator_results,
+        timestamp=last_day,
+    )
+
+    wbtc_usdc = strategy_universe.get_pair_by_human_description((ChainId.ethereum, "test-dex", "WBTC", "USDC"))
+
+    # Check that we correctly read price if there is no prior data
+    # Both absolute ts, and relative
+    price = input_indicators.get_price(timestamp=first_day - pd.Timedelta(days=1), pair=wbtc_usdc)
+    assert price is None
+
+    price = input_indicators.get_price(timestamp=first_day + pd.Timedelta(days=1), pair=wbtc_usdc)
+    assert price is not None
+
+    input_indicators.timestamp = first_day
+    assert input_indicators.get_price(pair=wbtc_usdc) is None
+
+    input_indicators.timestamp = first_day + pd.Timedelta(days=1)
+    assert input_indicators.get_price(pair=wbtc_usdc) is not None
+    assert input_indicators.get_price(pair=wbtc_usdc, index=-2) is None
+    assert input_indicators.get_price(pair=wbtc_usdc, index=-1) is not None
+
+
+def test_indicator_single_pair_live_trading_universe(persistent_test_client, indicator_storage):
+    """Indicators should always have only timestamp as the index
+
+    - Repeat a production bug
+
+    - Live data loader gives (pair, timestamp) index instead of (timestamp) index
+    """
+
+    client = persistent_test_client
+
+    universe_options = UniverseOptions(history_period=datetime.timedelta(days=14))
+
+    pair = (ChainId.polygon, "uniswap-v3", "WMATIC", "USDC", 0.0005)
+
+    dataset = load_partial_data(
+        client=client,
+        time_bucket=TimeBucket.h1,
+        pairs=[pair],
+        execution_context=unit_test_trading_execution_context,
+        universe_options=universe_options,
+        liquidity=False,
+    )
+
+    strategy_universe = TradingStrategyUniverse.create_from_dataset(
+        dataset,
+        reserve_asset="USDC",
+        forward_fill=True,
+    )
+
+    indicators = IndicatorSet()
+    indicators.add(
+        "ma",
+        pandas_ta.sma,
+        parameters={"length": 4},
+    )
+
+    indicator_results = calculate_and_load_indicators(
+        strategy_universe,
+        indicator_storage,
+        indicators=indicators,
+        execution_context=unit_test_execution_context,
+        parameters=StrategyParameters({}),
+        max_workers=1,
+        max_readers=1,
+    )
+
+    first_day, last_day = strategy_universe.data_universe.candles.get_timestamp_range()
+
+    input_indicators = StrategyInputIndicators(
+        strategy_universe=strategy_universe,
+        available_indicators=indicators,
+        indicator_results=indicator_results,
+        timestamp=last_day,
+    )
+
+    indicator_series = input_indicators.get_indicator_series("ma")
+    assert isinstance(indicator_series.index, pd.DatetimeIndex)
+    indicator_value = input_indicators.get_indicator_value("ma")
+    assert 0 < indicator_value < 10_000

@@ -88,6 +88,30 @@ class CycleDuration(enum.Enum):
     #: new blocks with EthereumTester chain.
     cycle_unknown = "unknown"
 
+    #: Alias to match :py:class:`TimeBucket`
+    s1 = cycle_1s
+
+    #: Alias to match :py:class:`TimeBucket`
+    m1 = cycle_1m
+
+    #: Alias to match :py:class:`TimeBucket`
+    m15 = cycle_15m
+
+    #: Alias to match :py:class:`TimeBucket`
+    h1 = cycle_1h
+
+    #: Alias to match :py:class:`TimeBucket`
+    h4 = cycle_4h
+
+    #: Alias to match :py:class:`TimeBucket`
+    d1 = cycle_1d
+
+    #: Alias to match :py:class:`TimeBucket`
+    d7 = cycle_7d
+
+    #: Alias
+    unknown = cycle_unknown
+
     def to_timedelta(self) -> datetime.timedelta:
         """Get the duration of the strategy cycle as Python timedelta object."""
         return _TICK_DURATIONS[self]

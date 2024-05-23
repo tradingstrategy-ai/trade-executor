@@ -14,6 +14,7 @@ from typing import Optional
 
 from tradeexecutor.state.state import State
 from tradeexecutor.state.types import PairInternalId
+from tradeexecutor.strategy.execution_context import ExecutionContext, unit_test_execution_context
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
 from tradeexecutor.visual.single_pair import visualise_single_pair
 from tradeexecutor.visual.multiple_pairs import visualise_multiple_pairs
@@ -27,9 +28,23 @@ from tradingstrategy.charting.candle_chart import VolumeBarMode
 logger = logging.getLogger(__name__)
 
 
+def adjust_legend(f):
+    def wrapped(*args, **kwargs):
+        fig = f(*args, **kwargs)
+        if isinstance(fig, go.Figure):
+            fig.update_layout(legend=dict(
+                bgcolor='rgba(0,0,0,0)'  # Make legend background transparent
+            ))
+        else:
+            raise TypeError("Expected a plotly.graph_objs.Figure object")
+        return fig
+    return wrapped
 
+
+@adjust_legend
 def draw_single_pair_strategy_state(
         state: State,
+        execution_context: ExecutionContext,
         universe: TradingStrategyUniverse,
         width=512,
         height=512,
@@ -59,6 +74,7 @@ def draw_single_pair_strategy_state(
         The strategy state visualisation as Plotly figure
     """
 
+    assert isinstance(execution_context, ExecutionContext)
     assert universe.is_single_pair_universe(), "This visualisation can be done only for single pair trading"
 
     if start_at is None and end_at is None:
@@ -78,17 +94,19 @@ def draw_single_pair_strategy_state(
     return visualise_single_pair_strategy_state(state, target_pair_candles, start_at, end_at, technical_indicators=technical_indicators, title=title, height=height)
 
 
+@adjust_legend
 def draw_multi_pair_strategy_state(
-        state: State,
-        universe: TradingStrategyUniverse,
-        width: Optional[int] =1024,
-        height: Optional[int] = 2048,
-        candle_count: Optional[int] = 64,
-        start_at: Optional[datetime.datetime] = None,
-        end_at: Optional[datetime.datetime] = None,
-        technical_indicators: Optional[bool] = True,
-        pair_ids: Optional[list[PairInternalId]] = None,
-        detached_indicators: Optional[bool] = True,
+    state: State,
+    execution_context: ExecutionContext,
+    universe: TradingStrategyUniverse,
+    width: Optional[int] =1024,
+    height: Optional[int] = 2048,
+    candle_count: Optional[int] = 64,
+    start_at: Optional[datetime.datetime] = None,
+    end_at: Optional[datetime.datetime] = None,
+    technical_indicators: Optional[bool] = True,
+    pair_ids: Optional[list[PairInternalId]] = None,
+    detached_indicators: Optional[bool] = True,
 ) -> list[go.Figure]:
     """Draw mini price chart images for multiple pairs. Returns a single figure with multiple subplots.
 
@@ -132,10 +150,15 @@ def draw_multi_pair_strategy_state(
         The strategy state visualisation as a single Plotly figure with multiple subplots
     """
 
+    assert isinstance(execution_context, ExecutionContext), f"Expected ExecutionContext, got {type(execution_context)}"
+
     data = universe.data_universe.candles.df
 
     if not pair_ids:
-        pair_ids = universe.data_universe.pairs.get_all_pair_ids()
+        if len(state.visualisation.pair_ids) > 0:
+            pair_ids = state.visualisation.pair_ids
+        else:
+            pair_ids = universe.data_universe.pairs.get_all_pair_ids()
 
     if start_at is None and end_at is None:
             # Get
@@ -157,6 +180,7 @@ def draw_multi_pair_strategy_state(
     return visualise_multiple_pairs(
         state,
         data,
+        execution_context,
         start_at,
         end_at,
         pair_ids,
@@ -202,6 +226,7 @@ def visualise_single_pair_strategy_state(
     """
     figure = visualise_single_pair(
         state,
+        unit_test_execution_context,
         target_pair_candles,
         start_at=start_at,
         end_at=end_at,

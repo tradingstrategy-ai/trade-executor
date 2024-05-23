@@ -23,6 +23,8 @@ import pandas as pd
 import logging
 
 from dataclasses_json import dataclass_json
+from tradingstrategy.pair import DEXPair
+from tradingstrategy.types import PrimaryKey
 
 from tradeexecutor.utils.timestamp import convert_and_validate_timestamp, convert_and_validate_timestamp_as_int
 from tradeexecutor.state.identifier import TradingPairIdentifier
@@ -321,7 +323,6 @@ class Plot:
         return sorted_entries
 
 
-
 @dataclass_json
 @dataclass
 class Visualisation:
@@ -358,10 +359,26 @@ class Visualisation:
     #:
     plots: Dict[str, Plot] = field(default_factory=dict)
 
+    #: Trading pair IDs to visualise instead of the default trading pairs from 
+    #: strategy universe.
+    pair_ids: list[PrimaryKey] = field(default_factory=list)
+
     def __repr__(self) -> str:
         plot_count = len(self.plots)
         point_count = sum([len(p.points) for p in self.plots.values()])
         return f"<Visualisation with {plot_count} plots and {point_count} data points>"
+    
+    def set_visualised_pairs(self, pairs: list[TradingPairIdentifier]) -> None:
+        """Set the trading pair for this plot.
+
+        :param pairs:
+            Use these trading pairs to plot candle charts instead of the default
+            trading pairs from strategy universe.
+        """
+        assert isinstance(pairs, list)
+        for pair in pairs:
+            assert isinstance(pair, TradingPairIdentifier), f"Unexpected pair type, got {pair} of type {type(pair)}"
+            self.pair_ids.append(pair.internal_id)
 
     def add_message(self,
                     timestamp: datetime.datetime,
@@ -528,8 +545,11 @@ class Visualisation:
                 value = float(value)
             except TypeError as e:
                 raise RuntimeError(f"Could not convert value {value} {value.__class__} to float" + _get_helper_message("value") + ". Make sure you provide a float or int, not a series, to plot_indicator.") from e
+            
+            if pd.isna(value):
+                value = None
 
-            assert not pd.isna(value), f"Cannot plot NaN (not a number) values. {name} received {value} at timestamp {timestamp}. Please convert to None or do not call plot_indicator() for NaN values."
+            # assert not pd.isna(value), f"Cannot plot NaN (not a number) values. {name} received {value} at timestamp {timestamp}. Please convert to None or do not call plot_indicator() for NaN values."
 
         if detached_overlay_name:
             assert type(detached_overlay_name) is str, "Detached overlay must be a string" + _get_helper_message("detached_overlay_name")

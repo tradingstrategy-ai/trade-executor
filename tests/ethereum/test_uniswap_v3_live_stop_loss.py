@@ -768,7 +768,8 @@ def test_metadata_stats(
     stats = calculate_summary_statistics(
         state,
         loop.execution_context.mode,
-        key_metrics_backtest_cut_off=datetime.timedelta(seconds=0)
+        key_metrics_backtest_cut_off=datetime.timedelta(seconds=0),
+        cycle_duration=loop.cycle_duration,
     )
     loop.runner.run_state.summary_statistics = stats
     loop.runner.run_state.make_exportable_copy().to_json()

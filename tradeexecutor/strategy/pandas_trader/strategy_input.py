@@ -20,6 +20,7 @@ from tradeexecutor.strategy.parameters import StrategyParameters
 from tradeexecutor.strategy.pricing_model import PricingModel
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
 from tradingstrategy.candle import CandleSampleUnavailable
+from tradingstrategy.liquidity import LiquidityDataUnavailable
 from tradingstrategy.pair import HumanReadableTradingPairDescription
 from tradingstrategy.utils.time import get_prior_timestamp, ZERO_TIMEDELTA
 
@@ -46,8 +47,9 @@ class IndicatorNotFound(Exception):
 class StrategyInputIndicators:
     """Indicator results for the strategy decision.
 
-    Wraps the indicator results to a format that has good developer experience
-    when accessed from `decide_trades()`. The default timestamp
+    A helper class to read and manipulate indicator and price values.
+    Thi class wraps the indicator results, both cached and real-time, to a format that has good developer experience
+    when accessed from `decide_trades()`.
 
     - Indicators are prepared in `create_indicators` function
     - The framework takes care of recalculating indicators when needed,
@@ -55,7 +57,9 @@ class StrategyInputIndicators:
     - For backtests, this class is instiated only once
     - We assume all indicator data is forward-filled and no gaps
 
-    For simple strategies calling :py:meth:`get_indicator_value` should be only required here.
+    How to use
+
+    - For simple strategies calling :py:meth:`get_indicator_value` should be only required here.
     """
 
     #: Trading universe
@@ -87,13 +91,17 @@ class StrategyInputIndicators:
         self,
         pair: TradingPairIdentifier | HumanReadableTradingPairDescription |  None = None,
         data_lag_tolerance=pd.Timedelta(days=7),
+        index: int = -1,
+        timestamp: pd.Timestamp | None = None,
+        column="close",
     ) -> USDollarPrice | None:
         """Read the available close price of a trading pair.
 
-        - Returns the latest available close price
+        - Returns the latest available close price.
 
         - **Does not** return the current price in the decision_cycle,
           because any decision must be made based on the previous price
+          to avoid lookahead bias.
 
         :param pair:
             The trading pair for which we query the price.
@@ -106,12 +114,42 @@ class StrategyInputIndicators:
             In the case the data has issues (no recent price),
             then accept a price that's this old.
 
+        :param index:
+            Access a specific previous timeframe item.
+
+            If not given, always return the previous available value.
+            Timeframe = candle bar here.
+
+            Uses Python list access notation.
+            - `-1` is the last item (previous time frame value, yesterday).
+            - `-2` is the item before previous time frame (the day before yesterday).
+            - `0` is looking to the future (the value at the end of the current day that has not yet passed)
+
+        :param timestamp:
+            Look price at a specific timestamp.
+
+            Manually calculate lookback. There is no timeshift for this value,
+            so unless you are careful you may case lookahead bias.
+
+            `index` parameter is ignored.
+
+        :param column:
+            Which column to read from the price series.
+
+            E.g. "volume".
+
         :return:
             The latest available price.
 
             ``None`` if no price information is yet available at this point of time for the strategy.
         """
-        assert self.timestamp, f"prepare_decision_cycle() not called - framework missing something somewhere"
+        if timestamp:
+            shifted_ts = timestamp
+        else:
+            assert self.timestamp, f"prepare_decision_cycle() not called - framework missing something somewhere"
+            ts = self.timestamp
+            time_frame = self.strategy_universe.data_universe.time_bucket.to_pandas_timedelta()
+            shifted_ts = ts + time_frame * index
 
         if type(pair) == tuple:
             # Resolve human description
@@ -126,11 +164,92 @@ class StrategyInputIndicators:
         try:
             price, when = self.strategy_universe.data_universe.candles.get_price_with_tolerance(
                 pair.internal_id,
-                self.timestamp - self.strategy_universe.data_universe.time_bucket.to_pandas_timedelta(),
+                shifted_ts,
                 tolerance=data_lag_tolerance,
+                kind=column,
             )
             return price
         except CandleSampleUnavailable:
+            return None
+
+    def get_tvl(
+        self,
+        pair: TradingPairIdentifier | HumanReadableTradingPairDescription |  None = None,
+        data_lag_tolerance=pd.Timedelta(days=7),
+        index: int = -1,
+        timestamp: pd.Timestamp | None = None,
+    ) -> USDollarPrice | None:
+        """Read the available TVL of a trading pair.
+
+        - Returns the latest available TVL/liquidity sample.
+
+        - **Does not** return the current liquidity in the decision_cycle,
+          because any decision must be made based on the previous price
+          to avoid lookahead bias.
+
+        See also :py:meth:`get_price`
+
+        :param pair:
+            The trading pair for which we query the price.
+
+            Give as id object or human description tuple format.
+
+            E.g. `(ChainId.centralised_exchange, "binance", "ETH", "USDT")`.
+
+        :param data_lag_tolerance:
+            In the case the data has issues (no recent price),
+            then accept a price that's this old.
+
+        :param index:
+            Access a specific previous timeframe item.
+
+            If not given, always return the previous available value.
+            Timeframe = candle bar here.
+
+            Uses Python list access notation.
+            - `-1` is the last item (previous time frame value, yesterday).
+            - `-2` is the item before previous time frame (the day before yesterday).
+            - `0` is looking to the future (the value at the end of the current day that has not yet passed)
+
+        :param timestamp:
+            Look price at a specific timestamp.
+
+            Manually calculate lookback. There is no timeshift for this value,
+            so unless you are careful you may case lookahead bias.
+
+            `index` parameter is ignored.
+
+        :return:
+            The latest available TVL.
+
+            ``None`` if no price information is yet available at this point of time for the strategy.
+        """
+        if timestamp:
+            shifted_ts = timestamp
+        else:
+            assert self.timestamp, f"prepare_decision_cycle() not called - framework missing something somewhere"
+            ts = self.timestamp
+            time_frame = self.strategy_universe.data_universe.time_bucket.to_pandas_timedelta()
+            shifted_ts = ts + time_frame * index
+
+        if type(pair) == tuple:
+            # Resolve human description
+            pair = self.strategy_universe.get_pair_by_human_description(pair)
+
+        if pair is None:
+            pair = self.strategy_universe.get_single_pair()
+
+        assert isinstance(pair, TradingPairIdentifier)
+        assert pair.internal_id, "pair.internal_id missing - bad unit test data?"
+
+        try:
+            price, when = self.strategy_universe.data_universe.liquidity.get_liquidity_with_tolerance(
+                pair.internal_id,
+                shifted_ts,
+                tolerance=data_lag_tolerance,
+            )
+            return price
+        except LiquidityDataUnavailable:
             return None
 
     def get_indicator_value(
@@ -140,7 +259,7 @@ class StrategyInputIndicators:
         pair: TradingPairIdentifier | HumanReadableTradingPairDescription | None = None,
         index: int = -1,
         clock_shift: pd.Timedelta = pd.Timedelta(hours=0),
-        data_delay_tolerance: pd.Timedelta=None,
+        data_delay_tolerance: pd.Timedelta="auto",
     ) -> float | None:
         """Read the available value of an indicator.
 
@@ -210,6 +329,7 @@ class StrategyInputIndicators:
             Access a specific previous timeframe item.
 
             If not given, always return the previous available value.
+            Timeframe = candle bar here.
 
             Uses Python list access notation.
             - `-1` is the last item (previous time frame value, yesterday).
@@ -224,6 +344,13 @@ class StrategyInputIndicators:
 
             Look back max `data_delay_tolerance` days / hours to get a previous value using forward-fill technique.
 
+            We need to do this when there is a mismatch between the indicator timeframe (e.g. daily)
+            and decision cycle / price time frame (e.g. 15 minutes).
+
+            Set to `None` to always return indicator value for the exact timestamp match.
+
+            Set to `auto to try to figure out mismatch between indicator data and candle data automatically.s
+
         :return:
             The latest available indicator value.
 
@@ -236,10 +363,20 @@ class StrategyInputIndicators:
         """
 
         series = self.resolve_indicator_data(name, column, pair)
-
         ts = self.timestamp
+
         time_frame = _calculate_and_cache_candle_width(series.index)
-        shifted_ts = ts + time_frame * index + clock_shift
+
+        if time_frame is None:
+            # Bad data.
+            # E.g. portfolio data with missing values
+            return None
+
+        if data_delay_tolerance == "auto":
+            ts = ts.floor(time_frame)
+            data_delay_tolerance = time_frame
+
+        shifted_ts = ts + time_frame*index + clock_shift
 
         # First try direct timestamp hit.
         # This is the case for any normal strategies,
@@ -247,6 +384,11 @@ class StrategyInputIndicators:
         try:
             value = series[shifted_ts]
         except KeyError:
+
+            if shifted_ts > series.index[-1]:
+                # The data series has ended before the timestamp,
+                # and there are not going to be new values in the future
+                return None
 
             # Try to check for uneven timeframes
             # E.g. 1d RSI indicator data and 1s decision cycle
@@ -259,12 +401,16 @@ class StrategyInputIndicators:
 
                 if before_match_iloc < 0:
                     # We get -1 if there are no timestamps where the forward fill could start
-                    first_sample_timestamp = series.index[0]
-                    raise IndicatorDataNotFoundWithinDataTolerance(
-                        f"Could not find any samples for pair {pair}, indicator {name} at {self.timestamp}\n"
-                        f"- Series has {len(series)} samples\n"
-                        f"- First sample is at {first_sample_timestamp}\n"
-                    )
+                    # This means there are not yet any samples available at the timestamp,
+                    # because the time series will start after the timestamp
+                    return None
+
+                    # first_sample_timestamp = series.index[0]
+                    #raise IndicatorDataNotFoundWithinDataTolerance(
+                    #    f"Could not find any samples for pair {pair}, indicator {name} at {self.timestamp}\n"
+                    #    f"- Series has {len(series)} samples\n"
+                    #    f"- First sample is at {first_sample_timestamp}\n"
+                    #)
                 before_match = series.iloc[before_match_iloc]
 
                 # Internal sanity check
@@ -272,12 +418,18 @@ class StrategyInputIndicators:
                 assert distance >= ZERO_TIMEDELTA, f"Somehow we managed to get a indicator timestamp {before_match_timestamp} that is newer than asked {self.timestamp}"
 
                 if distance > data_delay_tolerance:
-                    raise IndicatorDataNotFoundWithinDataTolerance(f"Asked indicator {name}. Data delay tolerance is {data_delay_tolerance}, but the delay was longer {distance}.")
+                    raise IndicatorDataNotFoundWithinDataTolerance(
+                        f"Asked indicator {name}. Data delay tolerance is {data_delay_tolerance}, but the delay was longer {distance}.\n"
+                        f"Our timestamp {self.timestamp}, fixed timestamp {shifted_ts}, data available at {before_match_timestamp}.\n"
+                    )
 
                 value = before_match
             else:
                 # No match
                 return None
+
+        # The input data was not properly cleaned up and has duplicated values for some dates/times
+        assert not isinstance(value, pd.Series), "Duplicate DatetimeIndex entries detected for: {name} {column} {pair}"
 
         if pd.isna(value):
             return None
@@ -306,7 +458,10 @@ class StrategyInputIndicators:
             Return ``None`` if any data is not yet available before this stamp.
         """
 
-        series = self.resolve_indicator_data(name, column, pair)
+        if not unlimited:
+            assert self.timestamp is not None, "StrategInputIndicators.timestamp not set for decide_trades(). Call get_indicator_series(unlimited=True) to get all data."
+
+        series = self.resolve_indicator_data(name, column, pair, unlimited=unlimited)
 
         if unlimited:
             return series
@@ -317,26 +472,91 @@ class StrategyInputIndicators:
 
         return series.loc[:ts]
 
+    def get_price_series(
+        self,
+        column: str = "close",
+        pair: TradingPairIdentifier | HumanReadableTradingPairDescription | None = None,
+    ) -> pd.Series:
+        """Get the whole price series.
+
+        - Use for visualisation and other checks
+        - Not useful inside `decide_trades`, as includes future data
+
+        :param column:
+            Which column to get, default to "close",
+
+        :return:
+            Indicator data.
+
+            Data may contain NaN values.
+
+        """
+
+        if type(pair) == tuple:
+            # Resolve human description
+            pair = self.strategy_universe.get_pair_by_human_description(pair)
+
+        if pair is None:
+            pair = self.strategy_universe.get_single_pair()
+
+        assert isinstance(pair, TradingPairIdentifier)
+        assert pair.internal_id, "pair.internal_id missing - bad unit test data?"
+
+        df = self.strategy_universe.data_universe.candles.get_candles_by_pair(
+            pair.internal_id,
+        )
+        return df[column]
+
+    def get_indicator_dataframe(
+        self,
+        name: str,
+        pair: TradingPairIdentifier | HumanReadableTradingPairDescription | None = None
+    ) -> pd.DataFrame:
+        """Get the whole raw indicator data for DataFrame-like indicator with multiple columns.
+
+        See also :py:meth:`get_indicator_series`
+
+        :return:
+            DataFrame for a multicolumn indicator like Bollinger Bands or ADX
+        """
+        df = self.resolve_indicator_data(name, "all", pair, unlimited=True)
+        assert isinstance(df, pd.DataFrame), f"Not DataFrame indicator: {name}"
+        return df
+
     def resolve_indicator_data(
         self,
         name: str,
         column: str | None = None,
-        pair: TradingPairIdentifier | HumanReadableTradingPairDescription | None = None
+        pair: TradingPairIdentifier | HumanReadableTradingPairDescription | None = None,
+        unlimited=False,
     ) -> pd.Series | pd.DataFrame:
         """Get access to indicator data series/frame.
 
         Throw friendly error messages for pitfalls.
 
+        :param name:
+            Indicator name
+
+        :param column:
+            Column name for multi-column indicators.
+
+            "all" to get the whole DataFrame.
+
         :param pair:
             Needed when universe contains multiple trading pairs.
 
             Can be omitted from non-pair indicators.
+
+        :param unlimited:
+            Allow loading of past and future data.
+
         """
         assert type(name) == str
         if column is not None:
             assert type(column) == str
 
-        assert self.timestamp, f"prepare_decision_cycle() not called"
+        if not unlimited:
+            assert self.timestamp, f"StrategyInputIndicators.timestamp is None. prepare_decision_cycle() not called, or you are outside a decide_trades() function."
 
         indicator = self.available_indicators.get_indicator(name)
         if indicator is None:
@@ -376,6 +596,10 @@ class StrategyInputIndicators:
         assert data is not None, f"Indicator pre-calculated values missing for {name} - lookup key {key}"
 
         if isinstance(data, pd.DataFrame):
+
+            if column == "all":
+                return data
+
             assert column is not None, f"Indicator {name} has multiple available columns to choose from: {data.columns}"
             assert column in data.columns, f"Indicator {name} subcolumn {column} not in the available columns: {data.columns}"
             series = data[column]
@@ -529,22 +753,42 @@ class StrategyInput:
                             colour="orange",
                         )
         """
+
+        # Visuals always enabled for live tradin
+        if self.execution_context.mode.is_live_trading():
+            return True
+
+        # Grid search disables visual plotting to save speed and space
         return not self.execution_context.grid_search
 
 
 _time_frame_cache = cachetools.Cache(maxsize=SERIES_CACHE_SIZE)
 
-def _calculate_and_cache_candle_width(index: pd.DatetimeIndex) -> pd.Timedelta | None:
+def _calculate_and_cache_candle_width(index: pd.DatetimeIndex | pd.MultiIndex) -> pd.Timedelta | None:
     """Get the evenly timestamped index candle/time bar width.
 
     - Cached for speed - cache size might not make sense for large trading pair use cases
+
+    :return:
+        None of the index is empty and candle width cannot be calculated
     """
+
+    # The original data is in grouped DF
+    if isinstance(index, pd.MultiIndex):
+        # AssertionError: Got index: MultiIndex([(2854997, '2024-04-04 21:00:00'),
+        #        (2854997, '2024-04-04 22:00:00'),
+        index = index.get_level_values(1)
+
+    assert isinstance(index, pd.DatetimeIndex), f"Got index: {index}"
 
     key = id(index)
 
     value = _time_frame_cache.get(key)
     if value is None:
-        value = index[-1] - index[-2]
+        if len(index) > 2:
+            value = index[-1] - index[-2]
+        else:
+            value = None
         _time_frame_cache[key] = value
 
     return value

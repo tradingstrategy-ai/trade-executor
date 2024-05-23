@@ -19,6 +19,8 @@ from plotly.graph_objs import Figure, Scatter
 
 from tradeexecutor.backtest.grid_search import GridSearchResult
 from tradeexecutor.state.types import USDollarAmount
+from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
+from tradeexecutor.utils.sort import unique_sort
 from tradeexecutor.visual.benchmark import visualise_all_cash, visualise_portfolio_equity_curve
 
 VALUE_COLS = ["CAGR", "Max drawdown", "Sharpe", "Sortino", "Average position", "Median position"]
@@ -395,122 +397,6 @@ def _get_hover_template(
     return template
 
 
-def visualise_grid_search_equity_curves(
-    results: List[GridSearchResult],
-    name: str | None = None,
-    benchmark_indexes: pd.DataFrame | None = None,
-    height=1200,
-    colour="rgba(160, 160, 160, 0.5)",
-    log_y=False,
-) -> Figure:
-    """Draw multiple equity curves in the same chart.
-
-    - See how all grid searched strategies work
-
-    - Benchmark against buy and hold of various assets
-
-    - Benchmark against hold all cash
-
-    Example for a single trading pair strategy:
-
-    .. code-block:: python
-
-        TODO
-
-    :param results:
-        Results from the grid search.
-
-    :param benchmark_indexes:
-        List of other asset price series displayed on the timeline besides equity curve.
-
-        DataFrame containing multiple series.
-
-        - Asset name is the series name.
-        - Setting `colour` for `pd.Series.attrs` allows you to override the colour of the index
-
-    :param height:
-        Chart height in pixels
-
-    :param start_at:
-        When the backtest started
-
-    :param end_at:
-        When the backtest ended
-
-    :param additional_indicators:
-        Additional technical indicators drawn on this chart.
-
-        List of indicator names.
-
-        The indicators must be plotted earlier using `state.visualisation.plot_indicator()`.
-
-        **Note**: Currently not very useful due to Y axis scale
-
-    :param log_y:
-        Use logarithmic Y-axis.
-
-        Because we accumulate larger treasury over time,
-        the swings in the value will be higher later.
-        We need to use a logarithmic Y axis so that we can compare the performance
-        early in the strateg and late in the strategy.
-
-    """
-
-    if name is None:
-        name = "Grid search equity curve comparison"
-
-    fig = Figure()
-
-    for result in results:
-        curve = result.equity_curve
-        label = result.get_label()
-        template =_get_hover_template(result)
-        scatter = Scatter(
-            x=curve.index,
-            y=curve,
-            mode="lines",
-            name="",  # Hides hover legend, use hovertext only
-            line=dict(color=colour),
-            showlegend=False,
-            hovertemplate=template,
-            hovertext=None,
-        )
-        fig.add_trace(scatter)
-
-    if benchmark_indexes is not None:
-        for benchmark_name, curve in benchmark_indexes.items():
-            benchmark_colour = curve.attrs.get("colour", "black")
-            scatter = Scatter(
-                x=curve.index,
-                y=curve,
-                mode="lines",
-                name=benchmark_name,
-                line=dict(color=benchmark_colour),
-                showlegend=True,
-            )
-            fig.add_trace(scatter)
-
-    fig.update_layout(title=f"{name}", height=height)
-    if log_y:
-        fig.update_yaxes(title="Value $ (logarithmic)", showgrid=False, type="log")
-    else:
-        fig.update_yaxes(title="Value $", showgrid=False)
-    fig.update_xaxes(rangeslider={"visible": False})
-
-    # Move legend to the bottom so we have more space for
-    # time axis in narrow notebook views
-    # https://plotly.com/python/legend/
-    fig.update_layout(legend=dict(
-        orientation="h",
-        yanchor="bottom",
-        y=1.02,
-        xanchor="right",
-        x=1
-    ))
-
-    return fig
-
-
 @dataclass(slots=True)
 class TopGridSearchResult:
     """Sorted best grid search results."""
@@ -522,12 +408,33 @@ class TopGridSearchResult:
     sharpe: list[GridSearchResult]
 
 
-def find_best_grid_search_results(grid_search_results: list[GridSearchResult], count=20) -> TopGridSearchResult:
+def find_best_grid_search_results(grid_search_results: list[GridSearchResult], count=20, unique_only=True) -> TopGridSearchResult:
     """From all grid search results, filter out the best one to be displayed.
 
+    :param unique_only:
+        Return unique value matches only.
+
+        If multiple grid search results share the same metric (CAGR),
+        filter out duplicates. Otherwise the table will be littered with duplicates.
+
+    :return:
+        Top lists
     """
+
+    if unique_only:
+        sorter = unique_sort
+    else:
+        sorter = sorted
+
     result = TopGridSearchResult(
-        cagr=sorted(grid_search_results, key=lambda r: r.get_cagr(), reverse=True)[0: count],
-        sharpe=sorted(grid_search_results, key=lambda r: r.get_sharpe(), reverse=True)[0: count],
+        cagr=sorter(grid_search_results, key=lambda r: r.get_cagr(), reverse=True)[0: count],
+        sharpe=sorter(grid_search_results, key=lambda r: r.get_sharpe(), reverse=True)[0: count],
     )
     return result
+
+
+def visualise_grid_search_equity_curves(*args, **kwags):
+    """Deprecated."""
+    warnings.warn("use tradeexecutor.visual.grid_search.visualise_grid_search_equity_curves instead", DeprecationWarning, stacklevel=2)
+    from tradeexecutor.visual.grid_search import visualise_grid_search_equity_curves
+    return visualise_grid_search_equity_curves(*args, **kwags)

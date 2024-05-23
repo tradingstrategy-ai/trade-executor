@@ -84,6 +84,7 @@ def enzyme_deploy_vault(
     production: bool = Option(False, envvar="PRODUCTION", help="Set production metadata flag true for the deployment."),
     simulate: bool = Option(False, envvar="SIMULATE", help="Simulate deployment using Anvil mainnet work, when doing manual deployment testing."),
     etherscan_api_key: Optional[str] = Option(None, envvar="ETHERSCAN_API_KEY", help="Etherscan API key need to verify the contracts on a production deployment."),
+    one_delta: bool = Option(False, envvar="ONE_DELTA", help="Whitelist 1delta interaction with GuardV0 smart contract."),
 ):
     """Deploy a new Enzyme vault.
 
@@ -144,6 +145,7 @@ def enzyme_deploy_vault(
             deployment_info = POLYGON_DEPLOYMENT
             enzyme_deployment = EnzymeDeployment.fetch_deployment(web3, POLYGON_DEPLOYMENT, deployer=hot_wallet.address)
             denomination_token = fetch_erc20_details(web3, deployment_info["usdc"])
+            one_delta = True
         case _:
             assert comptroller_lib, f"You need to give Enzyme's ComptrollerLib address for a chain {chain_id}"
             assert denomination_asset, f"You need to give denomination_asset for a chain {chain_id}"
@@ -182,6 +184,9 @@ def enzyme_deploy_vault(
     logger.info("Terms of service: %s", terms_of_service.address if terms_of_service else "-")
     logger.info("Fund: %s (%s)", fund_name, fund_symbol)
     logger.info("Whitelisted assets: %s", ", ".join([a.symbol for a in whitelisted_asset_details]))
+
+    logger.info("Whitelisting 1delta and Aave: %s", one_delta)
+
     if owner_address != hot_wallet.address:
         logger.info("Ownership will be transferred to %s", owner_address)
     else:
@@ -190,7 +195,7 @@ def enzyme_deploy_vault(
     if asset_manager_address != hot_wallet.address:
         logger.info("Asset manager is %s", asset_manager_address)
     else:
-        logger.warning("No separate asset manager role set: will use the current hot walle as manager")
+        logger.warning("No separate asset manager role set: will use the current hot wallet as the asset manager")
 
     logger.info("-" * 80)
 
@@ -215,6 +220,7 @@ def enzyme_deploy_vault(
             whitelisted_assets=whitelisted_asset_details,
             etherscan_api_key=etherscan_api_key if not simulate else None,  # Only verify when not simulating
             production=production,
+            one_delta=one_delta,
         )
 
     except Exception as e:

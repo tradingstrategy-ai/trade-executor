@@ -225,6 +225,6 @@ def test_enzyme_redeemed_position_profit(
 
     assert position.get_realised_profit_usd() == pytest.approx(-7.372047000000003)
     # (1359.153875 - 1582.577362) / 1582.577362 ~= -14.1
-    assert position.get_realised_profit_percent() == pytest.approx(-0.07372047000000002)
+    assert position.get_realised_profit_percent() == pytest.approx(-0.14744093999999996)
     assert position.get_total_profit_usd() == position.get_realised_profit_usd()
     assert position.get_total_profit_usd() == pytest.approx(-7.372047000000003)

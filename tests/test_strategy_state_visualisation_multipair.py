@@ -14,30 +14,30 @@ import pandas as pd
 from pandas_ta import bbands
 from pandas_ta.momentum import rsi
 
+from tradingstrategy.universe import Universe
+from tradingstrategy.chain import ChainId
+from tradingstrategy.timebucket import TimeBucket
+from tradingstrategy.candle import GroupedCandleUniverse
+from tradingstrategy.exchange import ExchangeUniverse
+
 from tradeexecutor.backtest.backtest_runner import run_backtest_inline
-from tradeexecutor.cli.log import setup_pytest_logging
 from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier
 from tradeexecutor.state.visualisation import PlotKind
+from tradeexecutor.strategy.execution_context import unit_test_execution_context
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse, \
     create_pair_universe_from_code
 from tradeexecutor.testing.synthetic_ethereum_data import generate_random_ethereum_address
 from tradeexecutor.testing.synthetic_exchange_data import generate_exchange, generate_simple_routing_model
 from tradeexecutor.testing.synthetic_price_data import generate_ohlcv_candles
-from tradeexecutor.testing.synthetic_pair_data import generate_pair
-from tradingstrategy.candle import GroupedCandleUniverse
 from tradeexecutor.state.trade import TradeExecution
 from tradeexecutor.strategy.pricing_model import PricingModel
 from tradeexecutor.strategy.pandas_trader.position_manager import PositionManager
 from tradeexecutor.state.state import State
-from tradingstrategy.universe import Universe
-from tradingstrategy.chain import ChainId
-from tradingstrategy.timebucket import TimeBucket
 from tradeexecutor.strategy.cycle import CycleDuration
 from tradeexecutor.strategy.reserve_currency import ReserveCurrency
 from tradeexecutor.strategy.default_routing_options import TradeRouting
 from tradeexecutor.visual.strategy_state import draw_multi_pair_strategy_state
 from tradeexecutor.visual.image_output import open_plotly_figure_in_browser
-from tradingstrategy.utils.groupeduniverse import NoDataAvailable
 from tradeexecutor.strategy.trading_strategy_universe import translate_trading_pair
 
 
@@ -265,14 +265,20 @@ def decide_trades(
 
 
 @pytest.fixture(scope="module")
-def strategy_universe() -> TradingStrategyUniverse:
+def mock_exchange():
+    return generate_exchange(
+        exchange_id=random.randint(1, 1000),
+        chain_id=ChainId.ethereum,
+        address=generate_random_ethereum_address(),
+        exchange_slug="uniswap-mock",
+    )
+
+
+@pytest.fixture(scope="module")
+def strategy_universe(mock_exchange) -> TradingStrategyUniverse:
 
     # Set up fake assets
     mock_chain_id = ChainId.ethereum
-    mock_exchange = generate_exchange(
-        exchange_id=random.randint(1, 1000),
-        chain_id=mock_chain_id,
-        address=generate_random_ethereum_address())
     
     usdc = AssetIdentifier(ChainId.ethereum.value, generate_random_ethereum_address(), "USDC", 6, 1)
     
@@ -310,6 +316,7 @@ def strategy_universe() -> TradingStrategyUniverse:
     time_bucket = CANDLE_TIME_BUCKET
 
     pair_universe = create_pair_universe_from_code(mock_chain_id, [weth_usdc, pepe_usdc, bob_usdc])
+    exchange_universe = ExchangeUniverse(exchanges={mock_exchange.exchange_id: mock_exchange})
 
     candles_weth_usdc = generate_ohlcv_candles(time_bucket, START_AT_DATA, END_AT, pair_id=weth_usdc.internal_id, random_seed=1)
     candles_pepe_usdc = generate_ohlcv_candles(time_bucket, START_AT_DATA, END_AT, pair_id=pepe_usdc.internal_id, random_seed = 2)
@@ -321,6 +328,7 @@ def strategy_universe() -> TradingStrategyUniverse:
         time_bucket=time_bucket,
         chains={mock_chain_id},
         exchanges={mock_exchange},
+        exchange_universe=exchange_universe,
         pairs=pair_universe,
         candles=candle_universe,
         liquidity=None
@@ -360,27 +368,84 @@ def test_visualise_strategy_state(
     )
 
     universe = strategy_universe
-    image = draw_multi_pair_strategy_state(state, universe)
+    image = draw_multi_pair_strategy_state(state, unit_test_execution_context, universe)
 
     assert len(image.data) == 27
     assert len(image._grid_ref) == 6
     assert image.data[0]['x'][0] == datetime.datetime(2023,4,3,0,0)
     assert image.data[0]['x'][-1] == datetime.datetime(2023,6,5,0,0)
 
-    image_no_detached = draw_multi_pair_strategy_state(state, universe, detached_indicators=False)
+    image_no_detached = draw_multi_pair_strategy_state(state, unit_test_execution_context, universe, detached_indicators=False)
 
     assert len(image_no_detached.data) == 24
     assert len(image_no_detached._grid_ref) == 3
     assert image_no_detached.data[0]['x'][0] == datetime.datetime(2023,4,3,0,0)
     assert image_no_detached.data[0]['x'][-1] == datetime.datetime(2023,6,5,0,0)
 
-    image_no_indicators = draw_multi_pair_strategy_state(state, universe, technical_indicators=False)
+    image_no_indicators = draw_multi_pair_strategy_state(state, unit_test_execution_context, universe, technical_indicators=False)
 
     assert len(image_no_indicators.data) == 15
     assert len(image_no_indicators._grid_ref) == 3
 
     # Test the image on a local screen
     # using a web brower
+    if os.environ.get("SHOW_IMAGE"):
+        open_plotly_figure_in_browser(image, height=2000, width=1000)
+        open_plotly_figure_in_browser(image_no_detached, height=2000, width=1000)
+        open_plotly_figure_in_browser(image_no_indicators, height=2000, width=1000)
+
+
+def test_visualise_strategy_state_overriden_pairs(
+    logger: logging.Logger,
+    strategy_universe,
+    mock_exchange,
+):
+    """Visualise strategy state as a bunch inline images."""
+
+    routing_model = generate_simple_routing_model(strategy_universe)
+
+    # Run the test
+    state, strategy_universe, debug_dump = run_backtest_inline(
+        start_at=START_AT,
+        end_at=END_AT,
+        client=None,  # None of downloads needed, because we are using synthetic data
+        cycle_duration=TRADING_STRATEGY_CYCLE,
+        decide_trades=decide_trades,
+        create_trading_universe=None,
+        universe=strategy_universe,
+        initial_deposit=INITIAL_DEPOSIT,
+        reserve_currency=ReserveCurrency.busd,
+        trade_routing=TradeRouting.user_supplied_routing_model,
+        routing_model=routing_model,
+        log_level=logging.WARNING,
+        allow_missing_fees=True,
+    )
+
+    # visualise only one pair WETH/USDC
+    state.visualisation.set_visualised_pairs([
+        strategy_universe.get_trading_pair(99),
+    ])
+
+    image = draw_multi_pair_strategy_state(state, unit_test_execution_context, strategy_universe)
+
+    assert len(image.data) == 9
+    assert len(image._grid_ref) == 2
+    assert image.data[0]['x'][0] == datetime.datetime(2023,4,3,0,0)
+    assert image.data[0]['x'][-1] == datetime.datetime(2023,6,5,0,0)
+
+    image_no_detached = draw_multi_pair_strategy_state(state, unit_test_execution_context, strategy_universe, detached_indicators=False)
+
+    assert len(image_no_detached.data) == 8
+    assert len(image_no_detached._grid_ref) == 1
+    assert image_no_detached.data[0]['x'][0] == datetime.datetime(2023,4,3,0,0)
+    assert image_no_detached.data[0]['x'][-1] == datetime.datetime(2023,6,5,0,0)
+
+    image_no_indicators = draw_multi_pair_strategy_state(state, unit_test_execution_context, strategy_universe, technical_indicators=False)
+
+    assert len(image_no_indicators.data) == 5
+    assert len(image_no_indicators._grid_ref) == 1
+
+    # Test the image on a local screen using a web brower
     if os.environ.get("SHOW_IMAGE"):
         open_plotly_figure_in_browser(image, height=2000, width=1000)
         open_plotly_figure_in_browser(image_no_detached, height=2000, width=1000)

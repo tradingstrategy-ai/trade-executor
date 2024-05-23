@@ -17,10 +17,10 @@ jobs:
         with:
           submodules: 'recursive'
 
-      - name: Set up Python 3.10
+      - name: Set up Python 3.11
         uses: actions/setup-python@v4
         with:
-          python-version: "3.10"
+          python-version: "3.11"
 
       - name: Install Poetry
         uses: snok/install-poetry@v1
@@ -49,6 +49,9 @@ jobs:
       # Needed for Anvil
       - name: Install Foundry
         uses: foundry-rs/foundry-toolchain@v1
+        with:
+          # pick a nightly release from: https://github.com/foundry-rs/foundry/releases
+          version: 'nightly-de33b6af53005037b463318d2628b5cfcaf39916'
 
       - name: Install dependencies
         if: steps.cached-poetry-dependencies.outputs.cache-hit != 'true'

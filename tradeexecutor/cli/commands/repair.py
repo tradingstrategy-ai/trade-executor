@@ -12,7 +12,7 @@ from .app import app
 from ..bootstrap import prepare_executor_id, create_state_store, create_execution_and_sync_model, prepare_cache, create_web3_config, create_client
 from ..log import setup_logging
 from ...ethereum.rebroadcast import rebroadcast_all
-from ...state.repair import repair_trades
+from ...state.repair import repair_trades, repair_tx_not_generated
 from ...strategy.approval import UncheckedApprovalModel
 from ...strategy.bootstrap import make_factory_from_strategy_mod
 from ...strategy.description import StrategyExecutionDescription
@@ -104,7 +104,7 @@ def repair(
     assert web3config, "No RPC endpoints given. A working JSON-RPC connection is needed for check-wallet"
 
     # Check that we are connected to the chain strategy assumes
-    web3config.set_default_chain(mod.chain_id)
+    web3config.set_default_chain(mod.get_default_chain_id())
 
     if not web3config.has_any_connection():
         raise RuntimeError("Vault deploy requires that you pass JSON-RPC connection to one of the networks")
@@ -174,7 +174,12 @@ def repair(
     routing_state, pricing_model, valuation_method = runner.setup_routing(universe)
 
     #
-    # First fix txs that have unresolved state
+    # First trades that have txs missing
+    #
+    repair_tx_not_generated(state, interactive=True)
+
+    #
+    # Second fix txs that have unresolved state
     #
 
     # Get the latest nonce from the chain

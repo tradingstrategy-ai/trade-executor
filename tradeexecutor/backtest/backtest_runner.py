@@ -32,7 +32,7 @@ from tradeexecutor.strategy.execution_context import ExecutionContext, Execution
 from tradeexecutor.strategy.generic.generic_pricing_model import GenericPricing
 from tradeexecutor.strategy.generic.generic_router import GenericRouting
 from tradeexecutor.strategy.pandas_trader.indicator import CreateIndicatorsProtocolV1, calculate_and_load_indicators, DiskIndicatorStorage, IndicatorSet, \
-    IndicatorKey, load_indicators, CreateIndicatorsProtocol, call_create_indicators
+    IndicatorKey, load_indicators, CreateIndicatorsProtocol, call_create_indicators, IndicatorResultMap
 from tradeexecutor.strategy.pandas_trader.runner import PandasTraderRunner
 from tradeexecutor.strategy.pandas_trader.strategy_input import StrategyInputIndicators
 from tradeexecutor.strategy.strategy_module import parse_strategy_module, \
@@ -45,12 +45,36 @@ from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniv
     DefaultTradingStrategyUniverseModel
 from tradeexecutor.strategy.universe_model import StaticUniverseModel, UniverseOptions
 from tradeexecutor.utils.accuracy import setup_decimal_accuracy
+from tradeexecutor.utils.cpu import get_safe_max_workers_count
 from tradeexecutor.utils.timer import timed_task
 from tradingstrategy.client import Client
 from tradingstrategy.timebucket import TimeBucket
 
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass(slots=True, frozen=True)
+class BacktestResult:
+    """What we have after backtest"""
+
+    #: The resulting state after the backtest run
+    state: State
+
+    #: Universe we loaded
+    strategy_universe: TradingStrategyUniverse
+
+    #: Python bag of values for internal testing
+    diagnostics_data: dict
+
+    #: Indicators we calculated for the backtest
+    indicators: StrategyInputIndicators
+
+    def __iter__(self):
+        #: Legacy compatibility
+        yield self.state
+        yield self.strategy_universe
+        yield self.diagnostics_data
 
 
 @dataclass
@@ -212,6 +236,9 @@ class BacktestSetup:
             execution_context=execution_context,
         )
 
+        assert indicator_set is not None, "create_indicators(): must return IndicatorSet object"
+        assert isinstance(indicator_set, IndicatorSet)
+
         indicator_results = calculate_and_load_indicators(
             strategy_universe=self.universe,
             storage=storage,
@@ -289,6 +316,7 @@ def setup_backtest_for_universe(
     create_indicators: CreateIndicatorsProtocol | None = None,
     parameters: StrategyParameters | None = None,
     indicator_storage: DiskIndicatorStorage | None = None,
+    max_workers: int | None = None,
 ):
     """High-level entry point for setting up a single backtest for a predefined universe.
 
@@ -379,6 +407,7 @@ def setup_backtest_for_universe(
         create_indicators=create_indicators,
         parameters=parameters,
         indicator_storage=indicator_storage,
+        max_workers=max_workers or get_safe_max_workers_count(),
     )
 
 
@@ -416,8 +445,6 @@ def setup_backtest(
     :param strategy_path:
         Path to the strategy Python module
 
-    :param start_at:
-        Legacy. Use universe_options.
 
     :param end_at:
         Legacy. Use universe_options.
@@ -536,7 +563,7 @@ def run_backtest(
     client: Optional[Client]=None,
     allow_missing_fees=False,
     execution_test_hook: Optional[ExecutionTestHook] = None,
-) -> Tuple[State, TradingStrategyUniverse, dict]:
+) -> BacktestResult:
     """Run a strategy backtest.
 
     Loads strategy file, construct trading universe is real data
@@ -660,7 +687,20 @@ def run_backtest(
     if not execution_context.grid_search:
         diagnostics_data["indicators"] = backtest_strategy_indicators
 
-    return setup.state, backtest_universe, diagnostics_data
+    # We are no longer in an active timeframe,
+    # prevent using any stale timestamp we have.
+    # STrategyInputIndicators has some internal asserts to detect timestamp = None,
+    if backtest_strategy_indicators:
+        backtest_strategy_indicators.timestamp = None
+
+    result = BacktestResult(
+        state=setup.state,
+        strategy_universe=backtest_universe,
+        diagnostics_data=diagnostics_data,
+        indicators=backtest_strategy_indicators
+    )
+
+    return result
 
 
 def run_backtest_inline(
@@ -693,7 +733,7 @@ def run_backtest_inline(
     mode: ExecutionMode = ExecutionMode.backtesting,
     max_workers=8,
     grid_search=False,
-) -> Tuple[State, TradingStrategyUniverse, dict]:
+) -> BacktestResult:
     """Run backtests for given decide_trades and create_trading_universe functions.
 
     Does not load strategy from a separate .py file.
@@ -819,9 +859,13 @@ def run_backtest_inline(
         parameters.validate_backtest()
 
     if start_at is None and end_at is None:
-        start_at, end_at = universe.data_universe.candles.get_timestamp_range()
-        start_at = start_at.to_pydatetime()
-        end_at = end_at.to_pydatetime()
+        if parameters and hasattr(parameters, "backtest_start") and hasattr(parameters, "backtest_end"):
+            start_at = parameters.backtest_start
+            end_at = parameters.backtest_end
+        else:
+            start_at, end_at = universe.data_universe.candles.get_timestamp_range()
+            start_at = start_at.to_pydatetime()
+            end_at = end_at.to_pydatetime()
 
     if start_at:
         assert isinstance(start_at, datetime.datetime)
@@ -874,7 +918,10 @@ def run_backtest_inline(
 
     if universe:
 
-        pair_configurator = EthereumBacktestPairConfigurator(universe)
+        if data_delay_tolerance is None:
+            data_delay_tolerance = guess_data_delay_tolerance(universe)
+
+        pair_configurator = EthereumBacktestPairConfigurator(universe, data_delay_tolerance=data_delay_tolerance)
 
         if trade_routing == TradeRouting.default:
             routing_model = GenericRouting(pair_configurator)
@@ -883,11 +930,10 @@ def run_backtest_inline(
             assert trade_routing, "You just give either routing_mode or trade_routing"
             routing_model = get_backtest_routing_model(trade_routing, reserve_currency)
 
-        if data_delay_tolerance is None:
-            data_delay_tolerance = guess_data_delay_tolerance(universe)
-
         if trade_routing == TradeRouting.default:
-            pricing_model = GenericPricing(pair_configurator)
+            pricing_model = GenericPricing(
+                pair_configurator,
+            )
         else:
             pricing_model = BacktestPricing(
                 universe.data_universe.candles,
@@ -938,15 +984,14 @@ def run_backtest_inline(
         grid_search=grid_search,
     )
 
-    state, universe, debug_dump = run_backtest(backtest_setup, client, allow_missing_fees=True)
+    result = run_backtest(backtest_setup, client, allow_missing_fees=True)
 
-    debug_dump["wallet"] = wallet
+    result.diagnostics_data["wallet"] = wallet
 
     #: TODO: Hack to pass the backtest data range to the grid search
     #:
-    universe.options = universe_options
-
-    return state, universe, debug_dump
+    result.strategy_universe.options = universe_options
+    return result
 
 
 def guess_data_delay_tolerance(universe: TradingStrategyUniverse) -> pd.Timedelta:

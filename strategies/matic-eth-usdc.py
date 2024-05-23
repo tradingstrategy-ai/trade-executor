@@ -1,4 +1,4 @@
-"""MATIC-ETH-USDC rebalance strategy.
+"""MATIC-USDC breakout strategy.
 
 - See https://tradingstrategy.ai/blog/outperfoming-eth for the strategy development information
 
@@ -8,7 +8,7 @@ To backtest this strategy module locally:
 
     trade-executor \
         backtest \
-        --strategy-file=strategies/matic-eth-usdc.py \
+        --strategy-file=strategies/matic-breakout.py \
         --trading-strategy-api-key=$TRADING_STRATEGY_API_KEY
 
 To see the backtest for longer history, refer to the notebook doing backtest with Binance data.
@@ -64,6 +64,8 @@ class Parameters:
     - Both live trading and backtesting parameters
     """
 
+    chain_id = ChainId.anvil  # Anvil used in unit testing
+
     cycle_duration = CycleDuration.cycle_8h  # Run decide_trades() every 8h
     source_time_bucket = TimeBucket.h1  # Use 1h candles as the raw data
     target_time_bucket = TimeBucket.h8  # Create synthetic 8h candles
@@ -85,7 +87,7 @@ class Parameters:
     # Live trading only
     #
     routing = TradeRouting.default  # Pick default routes for trade execution
-    required_history_period = rsi_bars * 2  # How much data a live trade execution needs to load to be able to calculate indicators
+    required_history_period = datetime.timedelta(days=60)
 
     #
     # Backtesting only
@@ -361,14 +363,8 @@ def create_trading_universe(
     # Load data for our trading pair whitelist
     if execution_context.mode.is_backtesting():
         # For backtesting, we use a specific time range from the strategy parameters
-        start_at = universe_options.start_at
-        end_at = universe_options.end_at
-        required_history_period = None
         stop_loss_time_bucket = Parameters.stop_loss_time_bucket
     else:
-        start_at = None
-        end_at = None
-        required_history_period = datetime.timedelta(days=Parameters.required_history_period)  # We need 21 days run up for RSI indicator
         stop_loss_time_bucket = None
 
     dataset = load_partial_data(
@@ -379,9 +375,6 @@ def create_trading_universe(
         universe_options=universe_options,
         liquidity=False,
         stop_loss_time_bucket=stop_loss_time_bucket,
-        start_at=start_at,
-        end_at=end_at,
-        required_history_period=required_history_period,
     )
 
     # Filter down the dataset to the pairs we specified

@@ -592,7 +592,7 @@ class OneDeltaRouting(EthereumRoutingModel):
                 else:
                     executed_amount = result.amount_in / Decimal(10 ** base_token_details.decimals)
                     executed_collateral_consumption = result.amount_out / Decimal(10 ** reserve.decimals)
-                    executed_collateral_allocation = 0
+                    executed_collateral_allocation = Decimal(0)
                     executed_reserve = Decimal(collateral_amount) / Decimal(10 ** reserve.decimals)
 
                 if trade.is_short():

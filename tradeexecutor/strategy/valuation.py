@@ -133,7 +133,7 @@ def revalue_portfolio(
                 ts,
             )
         except Exception as e:
-            raise InvalidValuationOutput(f"Valuation model failed {valuation_model.__class__.__name__} failed for position {position}") from e
+            raise InvalidValuationOutput(f"Valuation model failed {valuation_model.__class__.__name__} failed for position {position}\nPosition debug data: {position.get_debug_dump()}") from e
 
 
 

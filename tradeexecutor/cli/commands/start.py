@@ -250,9 +250,9 @@ def start(
 
             if isinstance(mod, StrategyModuleInformation):
                 # This path is not enabled for legacy strategy modules
-                if mod.chain_id:
+                if mod.get_default_chain_id():
                     # Strategy tells what chain to use
-                    web3config.set_default_chain(mod.chain_id)
+                    web3config.set_default_chain(mod.get_default_chain_id())
                     web3config.check_default_chain_id()
                 else:
                     # User has configured only one chain, use it
@@ -327,7 +327,7 @@ def start(
             long_description,
             icon_url,
             asset_management_mode,
-            chain_id=mod.chain_id,
+            chain_id=mod.get_default_chain_id(),
             vault=vault,
             backtest_result=backtest_result,
             backtest_notebook=notebook_report,
@@ -336,6 +336,7 @@ def start(
             badges=badges,
             tags=mod.tags,
             hot_wallet=sync_model.get_hot_wallet(),
+            sort_priority=mod.sort_priority,
         )
 
         # Start the queue that relays info from the web server to the strategy executor
@@ -345,6 +346,11 @@ def start(
         run_state.version = VersionInfo.read_docker_version()
         run_state.executor_id = id
         run_state.hot_wallet_gas_warning_level = Decimal(gas_balance_warning_level)
+
+        # Set up read-only state sync
+        if not store.is_pristine():
+            run_state.read_only_state_copy = store.load()
+        store.on_save = run_state.on_save_hook
 
         # Create our webhook server
         if http_enabled:

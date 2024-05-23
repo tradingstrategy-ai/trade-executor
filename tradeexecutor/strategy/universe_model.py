@@ -2,8 +2,9 @@
 import abc
 import datetime
 from dataclasses import dataclass
-from typing import List, Optional, Collection
+from typing import List, Optional, Collection, Type
 
+from tradeexecutor.strategy.parameters import StrategyParameters
 from tradingstrategy.timebucket import TimeBucket
 
 from tradeexecutor.state.identifier import AssetIdentifier
@@ -50,7 +51,7 @@ class StrategyExecutionUniverse:
             If we have multiple reserve assets (unsupported)
         """
         assert len(self.reserve_assets) == 1
-        return self.reserve_assets[0]
+        return next(iter(self.reserve_assets))
 
 
 @dataclass
@@ -74,11 +75,14 @@ class UniverseOptions:
         universe_options = UniverseOptions()
 
     See :ref:`command-line-backtest` how these options are used.
+
+    Both backtesting range and live trading history period can be given at the same time.
+    In this case, the loaded data range is determined by :py:class:`~tradeexecutor.strategy.execution_context.ExecutionMode`.
+
+    See also
+
+    - :py:class:`~tradeexecutor.strategy.trading_strategy_universe.load_partial_data`
     """
-
-    candle_time_bucket_override: Optional[TimeBucket] = None
-
-    stop_loss_time_bucket_override: Optional[TimeBucket] = None
 
     #: Optionally passed backtest start time.
     #:
@@ -99,9 +103,13 @@ class UniverseOptions:
     #:
     history_period: Optional[datetime.timedelta] = None
 
-    def __post_init__(self):
-        if self.history_period:
-            assert self.start_at is None and self.end_at is None, f"You can only give history_period or backtesting range"
+    #: Override settings defined in the strategy module in unit testing
+    #:
+    candle_time_bucket_override: Optional[TimeBucket] = None
+
+    #: Override settings defined in the strategy module in unit testing
+    #:
+    stop_loss_time_bucket_override: Optional[TimeBucket] = None
 
     def get_range_description(self) -> str:
         """Get the human description of the time range for these universe load options."""
@@ -110,7 +118,31 @@ class UniverseOptions:
         else:
             return f"{self.history_period} back from today"
 
+    @staticmethod
+    def from_strategy_parameters_class(Parameters: Type[StrategyParameters], execution_context: ExecutionContext) -> "UniverseOptions":
+        """Extract backtesting range or live history load range based on if we are doing live trading."""
+
+        assert isinstance(execution_context, ExecutionContext)
+
+        if execution_context.mode.is_backtesting():
+
+            assert Parameters.backtest_start, "Parameters.backtest_start missing"
+            assert Parameters.backtest_end, "Parameters.backtest_end missing"
+
+            return UniverseOptions(
+                start_at=Parameters.backtest_start,
+                end_at=Parameters.backtest_end,
+            )
+        else:
+            return UniverseOptions(
+                start_at=None,
+                end_at=None,
+                history_period=Parameters.required_history_period,
+            )
+
 #: Shorthand method for no specifc trading univese fine tuning options set
+#:
+#: Used in unit testing only.
 #:
 default_universe_options = UniverseOptions()
 

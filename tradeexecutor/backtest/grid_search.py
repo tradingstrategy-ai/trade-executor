@@ -135,6 +135,8 @@ class GridParameter:
 
         if isinstance(value, Enum):
             return f"{self.name}={self.value.value}"
+        elif type(value) == bool:
+            return f"{self.name}={self.value.lower()}"
         elif type(value) in (float, int, str):
             return f"{self.name}={self.value}"
         if value is None:
@@ -213,7 +215,7 @@ class GridCombination:
 
     def validate(self):
         """Check arguments can be serialised as fs path."""
-        assert len(self.searchable_parameters) > 0, f"Grid search combination does not have any parameters that would have multiple values to search: {self.parameters}. Add parameters to search or use normal backtesting instead."
+        assert len(self.searchable_parameters) > 0, f"Grid search combination does not have any parameters that would have multiple values to search: {self.parameters}. Add parameters to search or use normal backtesting instead. Also make sure your parameter class is not called StrategyParameters, as it is reserved for grid search."
         assert isinstance(self.get_relative_result_path(), Path)
 
     def as_dict(self) -> dict:
@@ -243,6 +245,21 @@ class GridCombination:
 
     def to_strategy_parameters(self) -> StrategyParameters:
         return StrategyParameters(self.as_dict())
+
+    def get_parameter(self, name: str) -> object:
+        """Get a parameter value.
+
+        :param name:
+            Parameter name
+
+        :raise ValueError:
+            If parameter is missing.
+        """
+        for p in self.parameters:
+            if p.name == name:
+                return p.value
+
+        raise ValueError(f"No parameter: {name}")
 
     @staticmethod
     def get_all_indicators(combinations: Iterable["GridCombination"]) -> set[IndicatorKey]:
@@ -275,6 +292,11 @@ class GridSearchResult:
     combination: GridCombination
 
     #: The full back test state
+    #:
+    #: By the default, grid search execution drops these,
+    #: as saving and loading them takes extra time, space,
+    #: and state is not used to compare grid search results.
+    #:
     state: State | None
 
     #: Calculated trade summary
@@ -309,6 +331,13 @@ class GridSearchResult:
     #: Only applicable to multiprocessing
     process_id: int = None
 
+    #: Initial cash from the state.
+    #:
+    #: Copied here from the state, as it is needed to draw equity curves.
+    #: Not available in legacy data.
+    #:
+    initial_cash: USDollarAmount | None = None
+
     def __hash__(self):
         return self.combination.__hash__()
 
@@ -322,7 +351,12 @@ class GridSearchResult:
         return f"<GridSearchResult\n  {self.combination.get_all_parameters_label()}\n  CAGR: {cagr*100:.2f}% Sharpe: {sharpe:.2f} Max drawdown:{max_drawdown*100:.2f}%\n>"
 
     def get_label(self) -> str:
-        """Get name for this result for charts."""
+        """Get name for this result for charts.
+
+        - Label is grid search parameter key values
+
+        - Includes only searched parameters as label
+        """
         return self.combination.get_label()
 
     def get_metric(self, name: str) -> float:
@@ -373,6 +407,28 @@ class GridSearchResult:
 
     def get_max_drawdown(self) -> Percent:
         return self.get_metric("Max Drawdown")
+
+    def get_parameter(self, name) -> object:
+        """Get a combination parameter value used to produce this search.
+
+        Useful in filtering.
+
+        .. code-block:: python
+
+            filtered_results = [r for r in grid_search_results if r.combination.get_parameter("regime_filter_ma_length") is None]
+            print(f"Grid search results without regime filter: {len(filtered_resutls)}")
+
+        :param name:
+            Parameter name
+
+        :raise ValueError:
+            If parameter is missing.
+        """
+        return self.combination.get_parameter(name)
+
+    def get_trade_count(self) -> int:
+        """How many trades this strategy made."""
+        return self.summary.total_trades
 
     @staticmethod
     def has_result(combination: GridCombination):
@@ -497,7 +553,7 @@ def prepare_grid_combinations(
 
     args_lists: List[list] = []
     for name, values in parameters.items():
-        assert isinstance(values, Collection), f"Expected list, got: {values}"
+        assert isinstance(values, Collection), f"For parameter {name}, expected list, got: {values}"
         single = len(values) <= 1
         args = [GridParameter(name, v, single) for v in values]
         args_lists.append(args)
@@ -826,7 +882,7 @@ def perform_grid_search(
 
     if indicator_storage is None:
         indicator_storage = DiskIndicatorStorage.create_default(universe)
-        print(f"Using indicator cache {indicator_storage.get_universe_cache_path()}")
+        print(f"Using indicator cac he {indicator_storage.get_universe_cache_path()}")
 
     # First calculate indicators if create_indicators() protocol is used
     # (engine version = 0.5, DecideTradesProtocolV4)
@@ -896,9 +952,10 @@ def perform_grid_search(
             #
             # Run individual searchers threads
             #
+            logger.warning("Doing a multithread grid search - you should not really use this, pass multiprocessing=True instead")
 
             task_args = [(grid_search_worker, universe, c, trading_strategy_engine_version, data_retention, indicator_storage.path) for c in combinations if c not in cached_results]
-            logger.info("Doing a multithread grid search")
+
             executor = futureproof.ThreadPoolExecutor(max_workers=max_workers)
             tm = futureproof.TaskManager(executor, error_policy=futureproof.ErrorPolicyEnum.RAISE)
 
@@ -1001,9 +1058,9 @@ def run_grid_search_backtest(
         )
     except Exception as e:
         # Report to the notebook which of the grid search combinations is a problematic one
-        raise RuntimeError(f"Running a grid search combination failed:\n{combination}") from e
+        raise RuntimeError(f"Running a grid search combination failed:\n{combination}\nThe original exception was: {e}") from e
 
-    analysis = build_trade_analysis(state.portfolio)
+    # Portfolio performance
     equity = calculate_equity_curve(state)
     returns = calculate_returns(equity)
     metrics = calculate_advanced_metrics(
@@ -1011,10 +1068,14 @@ def run_grid_search_backtest(
         mode=AdvancedMetricsMode.full,
         periods_per_year=cycle_duration.get_yearly_periods(),
         convert_to_daily=True,
+        display=False,
     )
+
+    # Trade stats
+    analysis = build_trade_analysis(state.portfolio)
     summary = analysis.calculate_summary_statistics()
 
-    return GridSearchResult(
+    res = GridSearchResult(
         combination=combination,
         state=state,
         summary=summary,
@@ -1022,7 +1083,15 @@ def run_grid_search_backtest(
         universe_options=universe.options,
         equity_curve=equity,
         returns=returns,
+        initial_cash=state.portfolio.get_initial_cash(),
     )
+
+    # Double check we have not broken QuantStats again
+    # and somehow outputting string values
+    assert type(res.get_cagr()) in (float, int), f"We got {type(res.get_cagr())} for {res.get_cagr()}"
+    assert type(res.get_sharpe()) in (float, int)
+
+    return res
 
 
 def pick_grid_search_result(results: List[GridSearchResult], **kwargs) -> Optional[GridSearchResult]:

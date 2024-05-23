@@ -217,6 +217,20 @@ class Portfolio:
             if pos.pair.get_identifier() == pair.get_identifier():
                 return pos
         return None
+    
+    def get_closed_positions_for_pair(
+        self,
+        pair: TradingPairIdentifier,
+        include_test_position: bool = False,
+    ) -> list[TradingPosition]:
+        """Get closed position for a trading pair."""
+
+        return [
+            p 
+            for p in self.closed_positions.values()
+            if p.pair == pair and (include_test_position or not p.is_test())
+        ]
+    
 
     def get_open_position_for_asset(self, asset: AssetIdentifier) -> Optional[TradingPosition]:
         """Get open position for a trading pair.
@@ -488,8 +502,8 @@ class Portfolio:
         )
 
         # Update notes
-        trade.notes = notes
-        position.notes = notes
+        trade.add_note(notes)
+        position.add_notes_message(notes)
 
         # Check we accidentally do not reuse trade id somehow
 
@@ -628,11 +642,7 @@ class Portfolio:
 
     def find_position_for_trade(self, trade) -> Optional[TradingPosition]:
         """Find a position that a trade belongs for."""
-        if trade.position_id in self.open_positions:
-            return self.open_positions[trade.position_id]
-        else:
-            return self.closed_positions[trade.position_id]
-
+        return self.get_position_by_id(trade.position_id)
 
     def get_reserve_position(self, asset: AssetIdentifier) -> ReservePosition:
         """Get reserves for a certain reserve asset.
@@ -1059,3 +1069,11 @@ class Portfolio:
             If we have any capital to trade
         """
         return self.get_total_equity() >= threshold_usd
+    
+    def get_total_claimed_interest(self) -> USDollarAmount:
+        """Get the total interest claimed from the positions."""
+        return sum(p.get_claimed_interest() for p in self.get_all_positions())
+    
+    def get_total_repaid_interest(self) -> USDollarAmount:
+        """Get the total interest repaid from the positions."""
+        return sum(p.get_repaid_interest() for p in self.get_all_positions())

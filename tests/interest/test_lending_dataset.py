@@ -7,7 +7,7 @@ import pytest
 
 from tradeexecutor.analysis.universe import analyse_long_short_universe
 from tradeexecutor.state.identifier import TradingPairKind
-from tradeexecutor.strategy.execution_context import unit_test_execution_context
+from tradeexecutor.strategy.execution_context import unit_test_execution_context, unit_test_trading_execution_context
 from tradeexecutor.strategy.trading_strategy_universe import load_partial_data, TradingStrategyUniverse, load_trading_and_lending_data, translate_trading_pair
 from tradeexecutor.strategy.universe_model import default_universe_options, UniverseOptions
 from tradingstrategy.chain import ChainId
@@ -199,6 +199,7 @@ def test_load_trading_and_lending_data_historical_certain_assets_only(persistent
     assert usdc_reserve.vtoken_symbol == "variableDebtPolUSDC"
 
     lending_reserves = data_universe.lending_reserves
+    assert lending_reserves.get_count() == 6
     assert lending_reserves.get_by_chain_and_symbol(ChainId.polygon, "LINK") is not None
     assert lending_reserves.get_by_chain_and_symbol(ChainId.polygon, "WETH") is not None
 
@@ -216,6 +217,23 @@ def test_load_trading_and_lending_data_historical_certain_assets_only(persistent
     link_usdc = data_universe.pairs.get_pair_by_human_description((ChainId.polygon, None, "LINK", "USDC"))
     assert link_usdc.fee_tier == 0.0005
 
+    # test again with protocol filtered
+    dataset = load_trading_and_lending_data(
+        client,
+        execution_context=unit_test_execution_context,
+        universe_options=UniverseOptions(start_at=start_at, end_at=end_at),
+        chain_id=ChainId.polygon,
+        exchange_slugs="uniswap-v3",
+        lending_protocol=LendingProtocolType.aave_v3,
+        asset_ids={"LINK", "WETH"},
+        trading_fee=0.0005,
+        reserve_assets={"0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174"}
+    )
+    strategy_universe = TradingStrategyUniverse.create_from_dataset(dataset)
+    data_universe = strategy_universe.data_universe
+
+    assert data_universe.lending_reserves.get_count() == 3
+
 
 def test_load_trading_and_lending_data_live(persistent_test_client: Client):
     """Load lending market data today."""
@@ -226,7 +244,7 @@ def test_load_trading_and_lending_data_live(persistent_test_client: Client):
     # for all lending markets on a relevant time period
     dataset = load_trading_and_lending_data(
         client,
-        execution_context=unit_test_execution_context,
+        execution_context=unit_test_trading_execution_context,
         universe_options=UniverseOptions(history_period=datetime.timedelta(days=7)),
         chain_id=ChainId.polygon,
         exchange_slugs="uniswap-v3",
@@ -377,3 +395,4 @@ def test_analyse_long_short_universe(persistent_test_client: Client):
     )
 
     assert len(df) > 0
+

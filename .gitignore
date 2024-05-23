@@ -51,3 +51,6 @@ monitor.db
 
 # Visual Studio Code?
 .build
+
+# Python profiler dumps
+*.cprof

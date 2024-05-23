@@ -30,3 +30,6 @@ class StrategyTag(enum.Enum):
 
     #: The strategy is not expected to make profit, but is only running as an infrastructure test
     internal_testing = "internal_testing"
+
+    #: The strategy should appear on the front page hero box showcasing strategies
+    hero = "hero"

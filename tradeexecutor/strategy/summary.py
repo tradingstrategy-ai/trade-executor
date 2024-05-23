@@ -8,6 +8,7 @@ from dataclasses_json import dataclass_json
 
 from tradeexecutor.state.metadata import OnChainData
 from tradeexecutor.state.types import USDollarAmount, UnixTimestamp, Percent
+from tradeexecutor.strategy.cycle import CycleDuration
 from tradeexecutor.strategy.tag import StrategyTag
 
 
@@ -30,7 +31,12 @@ class KeyMetricKind(enum.Enum):
     #: UNIX timestamp when the first trade was executd
     started_at = "started_at"
 
-    #: Annualised profitability
+    #: CAGR
+    #:
+    #: See :term:`CAGR`
+    cagr = "cagr"
+
+    #: All-time profitability
     profitability = "profitability"
 
     #: Total equity
@@ -41,6 +47,9 @@ class KeyMetricKind(enum.Enum):
 
     #: Trades last week
     trades_last_week = "trades_last_week"
+
+    #: Trades per month estimate
+    trades_per_month = "trades_per_month"
 
     #: Duration of the trading period
     trading_period_length = "trading_period_length"
@@ -192,6 +201,8 @@ class KeyMetricKind(enum.Enum):
     average_position_frequency = "average_position_frequency"
 
     time_in_market = "time_in_market"
+
+    decision_cycle_duration = "decision_cycle_duration"
 
     def get_help_link(self) -> Optional[str]:
         return _KEY_METRIC_HELP[self]
@@ -390,6 +401,9 @@ class StrategySummaryStatistics:
     #:
     backtest_metrics_cut_off_period: Optional[datetime.timedelta] = None
 
+    #: Duration of each trade cycle
+    cycle_duration: Optional[CycleDuration] = None
+
 
 @dataclass_json
 @dataclass(frozen=True)
@@ -472,6 +486,7 @@ class StrategySummary:
 
 #: Help links for different metrics
 _KEY_METRIC_HELP = {
+   KeyMetricKind.cagr: "https://tradingstrategy.ai/glossary/compound-annual-growth-rate-cagr",
    KeyMetricKind.sharpe: "https://tradingstrategy.ai/glossary/sharpe",
    KeyMetricKind.sortino: "https://tradingstrategy.ai/glossary/sortino",
    KeyMetricKind.max_drawdown: "https://tradingstrategy.ai/glossary/maximum-drawdown",
@@ -479,5 +494,7 @@ _KEY_METRIC_HELP = {
    KeyMetricKind.total_equity: "https://tradingstrategy.ai/glossary/total-equity",
    KeyMetricKind.started_at: "https://tradingstrategy.ai/glossary/strategy-age",
    KeyMetricKind.last_trade: "https://tradingstrategy.ai/glossary/last-trade",
-   KeyMetricKind.trades_last_week: "https://tradingstrategy.ai/glossary/trades-last-wee",
+   KeyMetricKind.trades_last_week: "https://tradingstrategy.ai/glossary/trades-last-week",
+   KeyMetricKind.trades_per_month: "https://tradingstrategy.ai/glossary/trade-frequency",
+   KeyMetricKind.decision_cycle_duration: "https://tradingstrategy.ai/glossary/cycle-duration",
 }

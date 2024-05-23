@@ -14,6 +14,7 @@ from tradeexecutor.statistics.summary import calculate_summary_statistics
 from tradeexecutor.strategy.execution_context import ExecutionContext
 from tradeexecutor.strategy.run_state import RunState
 from tradeexecutor.strategy.sync_model import SyncModel
+from tradeexecutor.strategy.cycle import CycleDuration
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
 from tradeexecutor.visual.image_output import render_plotly_figure_as_image_file
 from tradeexecutor.visual.strategy_state import draw_single_pair_strategy_state, draw_multi_pair_strategy_state
@@ -31,6 +32,7 @@ def refresh_run_state(
     sync_model: SyncModel | None = None,
     backtested_state: State | None = None,
     backtest_cut_off = datetime.timedelta(days=90),
+    cycle_duration: CycleDuration = None,
 ):
     """Update in-memory RunState structures.
 
@@ -58,6 +60,7 @@ def refresh_run_state(
         backtested_state=backtested_state,
         # key_metrics_backtest_cut_off=self.metadata.key_metrics_backtest_cut_off,
         key_metrics_backtest_cut_off=backtest_cut_off,
+        cycle_duration=cycle_duration,
     )
     run_state.summary_statistics = stats
 
@@ -67,7 +70,7 @@ def refresh_run_state(
     # Strategy charts
     if visualisation:
         assert universe, "Candle data must be available to update visualisations"
-        redraw_visualisations(run_state, state, universe)
+        redraw_visualisations(run_state, state, universe, execution_context)
 
     # Set gas level warning
     if sync_model is not None:
@@ -85,7 +88,8 @@ def refresh_run_state(
 def redraw_visualisations(
     run_state: RunState | None,
     state: State,
-    universe: TradingStrategyUniverse
+    universe: TradingStrategyUniverse,
+    execution_context: ExecutionContext,
 ):
     """Redraw strategy thinking visualisations."""
 
@@ -113,26 +117,26 @@ def redraw_visualisations(
 
         if pair_count == 1:
 
-            small_figure = draw_single_pair_strategy_state(state, universe, height=512)
+            small_figure = draw_single_pair_strategy_state(state, execution_context, universe, height=512)
             # Draw the inline plot and expose them tot he web server
             # TODO: SVGs here are not very readable, have them as a stop gap solution
-            large_figure = draw_single_pair_strategy_state(state, universe, height=1024)
+            large_figure = draw_single_pair_strategy_state(state, execution_context, universe, height=1024)
 
-            refresh_live_strategy_images(run_state, small_figure, large_figure)
+            refresh_live_strategy_images(run_state, execution_context, small_figure, large_figure)
 
         elif 1 < pair_count <= 3:
 
-            small_figure_combined = draw_multi_pair_strategy_state(state, universe, height=1024)
-            large_figure_combined = draw_multi_pair_strategy_state(state, universe, height=2048)
+            small_figure_combined = draw_multi_pair_strategy_state(state, execution_context, universe, height=1024)
+            large_figure_combined = draw_multi_pair_strategy_state(state, execution_context, universe, height=2048)
 
-            refresh_live_strategy_images(run_state, small_figure_combined, large_figure_combined)
+            refresh_live_strategy_images(run_state, execution_context, small_figure_combined, large_figure_combined)
 
         elif 3 < pair_count <=5:
 
-            small_figure_combined = draw_multi_pair_strategy_state(state, universe, height=2048, detached_indicators = False)
-            large_figure_combined = draw_multi_pair_strategy_state(state, universe, height=3840, width = 2160, detached_indicators = False)
+            small_figure_combined = draw_multi_pair_strategy_state(state, execution_context, universe, height=2048, detached_indicators = False)
+            large_figure_combined = draw_multi_pair_strategy_state(state, execution_context, universe, height=3840, width = 2160, detached_indicators = False)
 
-            refresh_live_strategy_images(run_state, small_figure_combined, large_figure_combined)
+            refresh_live_strategy_images(run_state, execution_context, small_figure_combined, large_figure_combined)
 
         else:
             logger.warning("Charts not yet available for this strategy type. Pair count: %d", pair_count)
@@ -145,6 +149,7 @@ def redraw_visualisations(
 
 def refresh_live_strategy_images(
     run_state: RunState,
+    execution_context: ExecutionContext,
     small_figure,
     large_figure
 ):
@@ -155,6 +160,7 @@ def refresh_live_strategy_images(
     """
 
     assert isinstance(run_state, RunState)
+    assert isinstance(execution_context, ExecutionContext)
 
     small_image, small_image_dark = get_small_images(small_figure)
     large_image, large_image_dark = get_large_images(large_figure)

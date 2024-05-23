@@ -425,6 +425,20 @@ class PositionManager:
 
         """
         return self.state.portfolio.get_position_by_trading_pair(pair)
+    
+    def get_closed_positions_for_pair(
+        self,
+        pair: TradingPairIdentifier,
+        include_test_position: bool = False,
+    ) -> list[TradingPosition]:
+        """Get closed positions for a specific trading pair.
+
+        :return:
+            All closed trading position of a trading pair
+
+            If there is no closed position return empty list.
+        """
+        return self.state.portfolio.get_closed_positions_for_pair(pair, include_test_position=include_test_position)
 
     def get_last_closed_position(self) -> Optional[TradingPosition]:
         """Get the position that was last closed.
@@ -543,6 +557,7 @@ class PositionManager:
          stop_loss_usd: Optional[USDollarAmount] = None,
          notes: Optional[str] = None,
          slippage_tolerance: Optional[float] = None,
+         take_profit_usd: Optional[USDollarAmount] = None,
     ) -> List[TradeExecution]:
         """Deprecated function for opening a spot position.
 
@@ -556,12 +571,13 @@ class PositionManager:
             trailing_stop_loss_pct=trailing_stop_loss_pct,
             stop_loss_usd=stop_loss_usd,
             notes=notes,
-            slippage_tolerance=slippage_tolerance
+            slippage_tolerance=slippage_tolerance,
+            take_profit_usd=take_profit_usd,
         )
 
     def open_spot(
         self,
-        pair: Union[DEXPair, TradingPairIdentifier],
+        pair: Union[DEXPair, TradingPairIdentifier | None],
         value: USDollarAmount | Decimal,
         take_profit_pct: Optional[float] = None,
         stop_loss_pct: Optional[float] = None,
@@ -570,6 +586,7 @@ class PositionManager:
         notes: Optional[str] = None,
         slippage_tolerance: Optional[float] = None,
         flags: Set[TradeFlag] | None = None,
+        take_profit_usd: Optional[USDollarAmount] = None,
     ) -> List[TradeExecution]:
         """Open a spot position.
 
@@ -620,6 +637,10 @@ class PositionManager:
             Slippage tolerance for this trade.
 
             Use :py:attr:`default_slippage_tolerance` if not set.
+
+        :param take_profit_usd:
+            If set, set the position take profit at the given dollar price.
+            Cannot be used with take_profit_pct.
 
         :return:
             A list of new trades.
@@ -682,6 +703,11 @@ class PositionManager:
         if take_profit_pct:
             position.take_profit = price_structure.mid_price * take_profit_pct
 
+        if take_profit_usd:
+            assert not take_profit_pct, "You cannot give both take_profit_pct and take_profit_usd"
+            assert take_profit_usd > price_structure.mid_price, f"take_profit_usd must be more than mid_price got {take_profit_usd} <= {price_structure.mid_price}"
+            position.take_profit = take_profit_usd
+
         if stop_loss_pct is not None:
             assert 0 <= stop_loss_pct <= 1, f"stop_loss_pct must be 0..1, got {stop_loss_pct}"
             self.update_stop_loss(position, price_structure.mid_price * stop_loss_pct)
@@ -710,12 +736,14 @@ class PositionManager:
         if trade.is_buy():
             assert trade.planned_quantity > QUANTITY_EPSILON, f"Bad buy quantity: {trade}"
 
+        logger.info("Generated trade %s to open a spot position %s", trade.get_human_description(), position.get_human_readable_name())
+
         return [trade]
 
     def adjust_position(self,
                         pair: TradingPairIdentifier,
                         dollar_delta: USDollarAmount,
-                        quantity_delta: Optional[float],
+                        quantity_delta: float,
                         weight: float,
                         stop_loss: Optional[Percent] = None,
                         take_profit: Optional[Percent] = None,
@@ -1073,9 +1101,20 @@ class PositionManager:
         quantity_left = position.get_available_trading_quantity()
 
         if quantity_left == 0:
-            # We have already generated closing trades for this position
-            # earlier
-            logger.warning("Tried to close position that is likely already closed, as there are no tokens to sell: %s", position)
+            # We have already generated closing trades for this position earlier?
+            # Add some debug information because these are hard to diagnose
+            planned_trades = [t for t in position.trades.values() if t.is_planned()]
+            planned = sum([t.get_position_quantity() for t in planned_trades])  # Sell values sum to negative
+            live = position.get_quantity()  # What was the position quantity before executing any of planned trades
+            logger.warning(
+                "Tried to close position that is likely already closed, as there are no tokens to sell: %s.\n"
+                "Quantity left zero. Planned tokens: %f, live tokens: %f\n"
+                "We have existing planned trades: %s",
+                position,
+                planned,
+                live,
+                planned_trades,
+            )
             return []
 
         if position.is_spot_market():
@@ -1201,6 +1240,8 @@ class PositionManager:
         """
 
         assert self.strategy_universe is not None, f"PositionManager.strategy_universe not set, data_universe is {self.data_universe}"
+
+        assert self.strategy_universe.has_lending_data(), "open_credit_supply_position_for_reserves(): lending data not loaded"
 
         lending_reserve_identifier = self.strategy_universe.get_credit_supply_pair()
 

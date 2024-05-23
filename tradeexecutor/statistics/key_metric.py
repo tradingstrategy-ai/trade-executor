@@ -12,8 +12,10 @@ import numpy as np
 from tradeexecutor.state.portfolio import Portfolio
 from tradeexecutor.state.state import State
 from tradeexecutor.state.types import Percent
+from tradeexecutor.strategy.cycle import CycleDuration
 from tradeexecutor.strategy.summary import KeyMetric, KeyMetricKind, KeyMetricSource, KeyMetricCalculationMethod
-from tradeexecutor.visual.equity_curve import calculate_size_relative_realised_trading_returns, calculate_non_cumulative_daily_returns
+from tradeexecutor.visual.equity_curve import calculate_size_relative_realised_trading_returns, calculate_non_cumulative_daily_returns, calculate_equity_curve, \
+    calculate_returns, calculate_daily_returns
 from tradeexecutor.visual.qs_wrapper import import_quantstats_wrapped
 
 
@@ -142,6 +144,49 @@ def calculate_profitability(returns: pd.Series) -> Percent:
     return compounded[-1]
 
 
+def calculate_cagr(returns: pd.Series) -> Percent:
+    """Calculate CAGR.
+
+    See :term:`CAGR`.
+
+    :param returns:
+        Returns series
+
+    :return:
+        Compounded returns,
+
+        0 if cannot calculate, or QuantStats unimportable.
+    """
+
+    try:
+        # Does not work in pyodide
+        from quantstats.stats import cagr
+    except ImportError:
+        return 0
+
+    if len(returns) == 0:
+        return 0
+
+    try:
+        return cagr(returns)
+    except ZeroDivisionError:
+        return 0
+
+
+def calculate_trades_per_month(state: State) -> float:
+    """Estimate how many trades per month the strategy does.
+
+    :return:
+        Avg number of trades per month
+    """
+    trade_count = len(list(state.portfolio.get_all_trades()))
+    duration = state.get_strategy_duration()
+    if duration:
+        return trade_count * datetime.timedelta(days=30) / duration
+
+    return 0
+
+
 def calculate_trades_last_week(portfolio: Portfolio, cut_off_date=None) -> int:
     """How many trades were executed last week.
 
@@ -158,10 +203,11 @@ def calculate_trades_last_week(portfolio: Portfolio, cut_off_date=None) -> int:
 
 
 def calculate_key_metrics(
-        live_state: State,
-        backtested_state: State | None = None,
-        required_history = datetime.timedelta(days=90),
-        freq_base: pd.DateOffset = pd.offsets.Day(),
+    live_state: State,
+    backtested_state: State | None = None,
+    required_history = datetime.timedelta(days=90),
+    freq_base: pd.DateOffset = pd.offsets.Day(),
+    cycle_duration: CycleDuration = None,
 ) -> Iterable[KeyMetric]:
     """Calculate summary metrics to be displayed on the web frontend.
 
@@ -183,8 +229,8 @@ def calculate_key_metrics(
     :param freq_base:
         The frequency for which we resample data when resamping is needed for calculations.
 
-    :param now_:
-        Override the current timestamp for testing
+    :param cycle_duration:
+        The duration of each trade cycle
 
     :return:
         Key metrics.
@@ -194,7 +240,6 @@ def calculate_key_metrics(
 
     assert isinstance(live_state, State)
 
-
     source_state, source, calculation_window_start_at, calculation_window_end_at = get_data_source_and_calculation_window(live_state, backtested_state, required_history)
 
     if source_state:
@@ -202,15 +247,25 @@ def calculate_key_metrics(
         # Use trading profitability instead of the fund performance
         # as the base for calculations to ensure
         # sharpe/sortino/etc. stays compatible regardless of deposit flow
-        returns = calculate_size_relative_realised_trading_returns(source_state)
-        daily_returns = calculate_non_cumulative_daily_returns(source_state)
-        
-        # alternate method
-        # log_returns = np.log(returns.add(1))
-        # daily_log_sum_returns = log_returns.resample('D').sum().fillna(0)
-        # daily_returns = np.exp(daily_log_sum_returns) - 1
-        
-        periods = pd.Timedelta(days=365) / freq_base
+        if source == KeyMetricSource.backtesting:
+            equity_curve = calculate_equity_curve(source_state)
+            returns = calculate_returns(equity_curve)
+            daily_returns = calculate_daily_returns(source_state, "D")
+            periods = 365
+        else:
+            # TODO: Here we need fix these stats -
+            # calculate_non_cumulative_daily_returns() yields different
+            # results than the method above for the same state
+            returns = calculate_size_relative_realised_trading_returns(source_state)
+            daily_returns = calculate_non_cumulative_daily_returns(source_state)
+            # alternate method
+            # log_returns = np.log(returns.add(1))
+            # daily_log_sum_returns = log_returns.resample('D').sum().fillna(0)
+            # daily_returns = np.exp(daily_log_sum_returns) - 1
+            periods = pd.Timedelta(days=365) / freq_base
+
+        if source == KeyMetricSource.live_trading:
+            assert cycle_duration is not None, "Cycle duration is required for live trading"
 
         sharpe = calculate_sharpe(daily_returns, periods=periods)
         yield KeyMetric.create_metric(KeyMetricKind.sharpe, source, sharpe, calculation_window_start_at, calculation_window_end_at, KeyMetricCalculationMethod.historical_data)
@@ -224,6 +279,12 @@ def calculate_key_metrics(
 
         profitability = calculate_profitability(daily_returns)
         yield KeyMetric.create_metric(KeyMetricKind.profitability, source, profitability, calculation_window_start_at, calculation_window_end_at, KeyMetricCalculationMethod.historical_data)
+
+        cagr = calculate_cagr(daily_returns)
+        yield KeyMetric.create_metric(KeyMetricKind.cagr, source, cagr, calculation_window_start_at, calculation_window_end_at, KeyMetricCalculationMethod.historical_data)
+
+        trades_per_month = calculate_trades_per_month(source_state)
+        yield KeyMetric.create_metric(KeyMetricKind.trades_per_month, source, trades_per_month, calculation_window_start_at, calculation_window_end_at, KeyMetricCalculationMethod.historical_data)
 
         if live_state:
             total_equity = live_state.portfolio.get_total_equity()
@@ -246,10 +307,12 @@ def calculate_key_metrics(
         calculation_window_start_at = None
         calculation_window_end_at = None
 
+        yield KeyMetric.create_na(KeyMetricKind.cagr, reason)
         yield KeyMetric.create_na(KeyMetricKind.sharpe, reason)
         yield KeyMetric.create_na(KeyMetricKind.sortino, reason)
         yield KeyMetric.create_na(KeyMetricKind.max_drawdown, reason)
         yield KeyMetric.create_na(KeyMetricKind.profitability, reason)
+        yield KeyMetric.create_na(KeyMetricKind.trades_per_month, reason)
         yield KeyMetric.create_na(KeyMetricKind.total_equity, reason)
 
     # The age of the trading history is made available always
@@ -290,6 +353,18 @@ def calculate_key_metrics(
         calculation_window_end_at=calculation_window_end_at,
         calculation_method=KeyMetricCalculationMethod.latest_value,
         help_link=KeyMetricKind.trades_last_week.get_help_link(),
+    )
+
+    yield KeyMetric(
+        KeyMetricKind.decision_cycle_duration,
+        KeyMetricSource.live_trading,
+        cycle_duration,
+        calculation_window_start_at=calculation_window_start_at,
+        calculation_window_end_at=calculation_window_end_at,
+        calculation_method=KeyMetricCalculationMethod.latest_value,
+        unavailability_reason="Not available, should always be available live trading" if not cycle_duration else None,
+        help_link=KeyMetricKind.decision_cycle_duration.get_help_link(),
+        name="Cycle Duration"
     )
 
 

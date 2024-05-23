@@ -35,8 +35,10 @@ from tradeexecutor.testing.synthetic_ethereum_data import generate_random_ethere
 from tradeexecutor.testing.synthetic_exchange_data import generate_exchange, generate_simple_routing_model
 from tradeexecutor.testing.synthetic_price_data import generate_ohlcv_candles
 
-from tradeexecutor.visual.equity_curve import calculate_equity_curve, calculate_returns, calculate_deposit_adjusted_returns
+from tradeexecutor.visual.equity_curve import calculate_equity_curve, calculate_returns, calculate_deposit_adjusted_returns, \
+    calculate_compounding_unrealised_trading_profitability, calculate_compounding_realised_trading_profitability
 
+CYCLE_DURATION = CycleDuration.cycle_1d
 
 @pytest.fixture(scope="module")
 def logger(request):
@@ -236,6 +238,40 @@ def test_calculate_all_summary_statistics_empty():
         now_=now_,
     )
 
+
+def test_calculate_profitability_statistics(state: State):
+    """See our profitability calculations make sense."""
+    # Set "last 90 days" to the end of backtest data
+    now_ = pd.Timestamp(datetime.datetime(2021, 12, 31, 0, 0))
+
+    summary = calculate_summary_statistics(
+        state,
+        ExecutionMode.unit_testing_trading,
+        now_=now_,
+        cycle_duration=CYCLE_DURATION,
+    )
+
+    assert summary.calculated_at
+    assert summary.enough_data
+    assert summary.first_trade_at == datetime.datetime(2021, 6, 1, 0, 0)
+    assert summary.last_trade_at == datetime.datetime(2021, 12, 31, 0, 0)
+    assert summary.current_value == pytest.approx(9541.619532761046)
+
+    # Check the profit of the first closed position
+    p = state.portfolio.closed_positions[1]
+    assert p.closed_at == datetime.datetime(2021, 6, 2)
+    assert p.get_realised_profit_percent() == pytest.approx(-0.042326904149544875)
+    assert p.get_unrealised_and_realised_profit_percent() == pytest.approx(-0.042326904149544875)
+
+    compounding_series_real = calculate_compounding_unrealised_trading_profitability(state, freq=None)
+    compounding_series_daily = calculate_compounding_unrealised_trading_profitability(state, freq="D")
+    realised_daily = calculate_compounding_realised_trading_profitability(state)
+
+    assert compounding_series_real[datetime.datetime(2021, 6, 2)] == pytest.approx(-0.0042326904149544875)
+    assert compounding_series_daily[datetime.datetime(2021, 6, 2)] == pytest.approx(-0.0042326904149544875)
+    assert realised_daily[datetime.datetime(2021, 6, 2)] == pytest.approx(-0.0042326904149544875)
+
+
 def test_calculate_all_summary_statistics(state: State):
     """Calculate all summary statistics.
 
@@ -248,6 +284,7 @@ def test_calculate_all_summary_statistics(state: State):
         state,
         ExecutionMode.unit_testing_trading,
         now_=now_,
+        cycle_duration=CYCLE_DURATION,
     )
 
     assert summary.calculated_at
@@ -256,23 +293,22 @@ def test_calculate_all_summary_statistics(state: State):
     assert summary.last_trade_at == datetime.datetime(2021, 12, 31, 0, 0)
     assert summary.current_value == pytest.approx(9541.619532761046)
     true_profitability = 9541.619532761046 / 10_000 - 1
+
     assert true_profitability == pytest.approx(-0.045838046723895465)
     assert summary.profitability_90_days == pytest.approx(-0.045838046723895465)
     assert summary.return_all_time == pytest.approx(-0.045838046723895576)
     assert summary.return_annualised == pytest.approx(-0.07818171520665672)
 
     datapoints = summary.performance_chart_90_days
-    assert len(datapoints) == 92
+    assert len(datapoints) == 91
 
-    #assert datapoints[0] == (datetime.datetime(2021, 10, 2, 0, 0), -0.02687699056973558)
-    #assert datapoints[-1] == (datetime.datetime(2021, 12, 31, 0, 0), -0.045838046723895576)
-
+    # First
     assert datapoints[0][0] == pytest.approx(1633132800.0)
     assert datapoints[0][1] == pytest.approx(-0.02687699056973558)
-    assert datapoints[-2][0] == pytest.approx(1640908800.0)
-    assert datapoints[-2][1] == pytest.approx(-0.045838046723895576)
-    assert datapoints[-1][0] == pytest.approx(1640995200.0)
-    assert datapoints[-1][1] == pytest.approx(-0.045838046723895576)
+
+    # Last
+    assert datapoints[-2][0] == pytest.approx(1640822400.0)
+    assert datapoints[-2][1] == pytest.approx(-0.042567772455524344)
 
     # Make sure we do not output anything that is not JSON'able
     data = summary.to_dict()
@@ -314,8 +350,8 @@ def test_calculate_key_metrics_live(state: State):
     # Check our returns calculationsn look sane
     # returns = calculate_compounding_realised_profitability(state)
 
-    metrics = {m.kind.value: m for m in calculate_key_metrics(state)}
-    assert len(metrics) == 8
+    metrics = {m.kind.value: m for m in calculate_key_metrics(state, cycle_duration=CYCLE_DURATION)}
+    assert len(metrics) == 11
     assert metrics["sharpe"].value == pytest.approx(-2.1464509890620724)
     assert metrics["sortino"].value == pytest.approx(-2.720957242817309)
     assert metrics["profitability"].value == pytest.approx(-0.045838046723895576)
@@ -323,9 +359,12 @@ def test_calculate_key_metrics_live(state: State):
     assert metrics["max_drawdown"].value == pytest.approx(0.04780138378916754)
     assert metrics["max_drawdown"].source == KeyMetricSource.live_trading
     assert metrics["max_drawdown"].help_link == "https://tradingstrategy.ai/glossary/maximum-drawdown"
+    assert metrics["cagr"].value == pytest.approx(-0.07760827122577163)
+    assert metrics["trades_per_month"].value == pytest.approx(30.0)
 
     assert metrics["trades_last_week"].value == 0
     assert metrics["last_trade"].value == datetime.datetime(2021, 12, 31, 0, 0)
+    assert metrics["decision_cycle_duration"].value == CycleDuration.cycle_1d
 
 
 def test_calculate_key_metrics_live_and_backtesting(state: State):

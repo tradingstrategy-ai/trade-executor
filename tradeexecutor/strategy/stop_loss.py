@@ -118,7 +118,6 @@ def check_position_triggers(
             
         try:
             mid_price = pricing_model.get_mid_price(ts, spot_pair)
-            expected_sell_price = pricing_model.get_sell_price(ts, spot_pair, abs(size))
         except CandleSampleUnavailable:
             # Backtest does not have price available for this timestamp,
             # because there has not been any trades.
@@ -186,10 +185,12 @@ def check_position_triggers(
             ]):
                 trigger_type = TradeType.stop_loss
                 trigger_price = p.stop_loss
-                trades.extend(position_manager.close_position(p, TradeType.stop_loss))
+                notes = f"Stoploss:{trigger_price} mid-price:{mid_price}"
+                trades.extend(position_manager.close_position(p, TradeType.stop_loss, notes=notes))
 
         if trigger_type:
             # We got triggered
+            expected_sell_price = pricing_model.get_sell_price(ts, spot_pair, abs(size))
             report_position_triggered(
                 p,
                 trigger_type,

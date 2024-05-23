@@ -1,4 +1,5 @@
 """Execution state communicates the current trade execution loop state to the webhook."""
+import copy
 import datetime
 import sys
 from _decimal import Decimal
@@ -11,6 +12,7 @@ from dataclasses_json import dataclass_json
 from tblib import Traceback
 
 from tradeexecutor.cli.version_info import VersionInfo
+from tradeexecutor.state.state import State
 from tradeexecutor.state.types import JSONHexAddress
 from tradeexecutor.strategy.summary import StrategySummaryStatistics
 
@@ -199,6 +201,15 @@ class RunState:
     #:
     version: VersionInfo = field(default_factory=VersionInfo)
 
+    #: A read only copy of the strategy state.
+    #:
+    #: - Used by API end points to display metrics on the state.
+    #: - Created duing sync and start up
+    #: - Static - the live state may be mutated in other threads, so web endpoints
+    #:   cannot read it.
+    #:
+    read_only_state_copy: State | None = None
+
     def __repr__(self):
         return f"<RunState for {self.executor_id}>"
 
@@ -241,5 +252,9 @@ class RunState:
         data = self.to_dict()
         del data["source_code"]
         del data["visualisation"]
+        del data["read_only_state_copy"]
         return RunState(**data)
 
+    def on_save_hook(self, state: State):
+        """Called by JSONStateStore.sync()"""
+        self.read_only_state_copy = copy.deepcopy(state)

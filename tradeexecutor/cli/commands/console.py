@@ -129,7 +129,7 @@ def console(
     cache_path = prepare_cache(id, cache_path)
 
     execution_context = ExecutionContext(
-        mode=ExecutionMode.preflight_check,
+        mode=ExecutionMode.real_trading,
         timed_task_context_manager=timed_task,
         engine_version=mod.trading_strategy_engine_version,
     )
@@ -148,7 +148,7 @@ def console(
     hot_wallet = HotWallet.from_private_key(private_key)
 
     # Check that we are connected to the chain strategy assumes
-    web3config.set_default_chain(mod.chain_id)
+    web3config.set_default_chain(mod.get_default_chain_id())
     web3config.check_default_chain_id()
 
     if hot_wallet:
@@ -272,13 +272,14 @@ def console(
         "web3": web3,
         "client": client,
         "state": state,
-        "universe": universe,
+        "strategy_universe": universe,
         "store": store,
         "hot_wallet": hot_wallet,
         "routing_state": routing_state,
         "pricing_model": pricing_model,
         "valuation_model": valuation_model,
         "routing_model": routing_model,
+        "runner": runner,
         "sync_model": sync_model,
         "pd": pd,
         "cache_path": cache_path.absolute(),

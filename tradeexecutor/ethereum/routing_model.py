@@ -112,6 +112,7 @@ class EthereumRoutingModel(RoutingModel):
         adjusted_reserve_amount = routing_state.adjust_spend(
             reserve_asset,
             reserve_amount,
+            check_balances=check_balances,
         )
 
         logger.info(
@@ -178,6 +179,7 @@ class EthereumRoutingModel(RoutingModel):
         adjusted_reserve_amount = routing_state.adjust_spend(
             reserve_asset,
             reserve_amount,
+            check_balances=check_balances,
         )
 
         trade_txs = routing_state.trade_on_router_three_way(
@@ -328,7 +330,7 @@ class EthereumRoutingModel(RoutingModel):
             reserve_asset,
             reserve_amount,
         )
-        
+
         trade_txs = routing_state.lend_via_one_delta(
             one_delta=one_delta,
             target_pair=target_pair,
@@ -459,7 +461,7 @@ class EthereumRoutingModel(RoutingModel):
                 # Old path that does not slippage tolerances for trades
                 asset_deltas = None
 
-            max_slippage = t.slippage_tolerance or DEFAULT_SLIPPAGE_TOLERANCE
+            max_slippage = t.slippage_tolerance if t.slippage_tolerance is not None else DEFAULT_SLIPPAGE_TOLERANCE
 
             logger.info("Slippage tolerance is: %f %%, expected asset deltas: %s", max_slippage * 100, asset_deltas)
 
@@ -533,6 +535,7 @@ class EthereumRoutingModel(RoutingModel):
                     reserve_asset_amount=t.get_raw_planned_reserve(),
                     check_balances=check_balances,
                     intermediary_pair=intermediary_pair,
+                    asset_deltas=asset_deltas,
                     max_slippage=max_slippage,
                     notes=notes,
                 )

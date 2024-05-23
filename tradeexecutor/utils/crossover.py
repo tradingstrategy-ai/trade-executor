@@ -33,7 +33,6 @@ def contains_cross_over(
         If must_return_index is True, also returns the index of the crossover. Note the index is a negative index e.g. -1 is the latest index, -2 is the second latest etc.
         
     """
-
     return _cross_check(series1, series2, lookback_period, must_return_index, operator.gt, operator.lt)
 
 
@@ -61,18 +60,26 @@ def contains_cross_under(
         If must_return_index is True, also returns the index of the crossover. Note the index is a negative index e.g. -1 is the latest index, -2 is the second latest etc.
         
     """
-
     return _cross_check(series1, series2, lookback_period, must_return_index, operator.lt, operator.gt)
 
 
 def _cross_check(
-    series1, 
-    series2, 
-    lookback_period, 
-    must_return_index, 
-    comparison_operator,
-    unlock_operator,
+    series1: pd.Series, 
+    series2: pd.Series, 
+    lookback_period: int, 
+    must_return_index: bool, 
+    comparison_operator: callable,
+    unlock_operator: callable,
 ):
+    """Private function to check whether there has been a crossover or crossunder between two series.
+    
+    :param series1: Series to check for crossover/under
+    :param series2: Series to check for crossover/under
+    :param lookback_period: Number of periods to look back
+    :param must_return_index: Whether to return the index of the crossover
+    :param comparison_operator: Operator to compare for crossover
+    :param unlock_operator: Operator to unlock the crossover (opposite of comparison_operator)
+    """
     
     assert type(series1) == pd.Series, "Series must be pandas.Series"
     assert type(series2) == pd.Series, "Series must be pandas.Series"

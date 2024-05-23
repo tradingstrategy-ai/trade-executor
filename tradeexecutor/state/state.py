@@ -531,6 +531,12 @@ class State:
 
         quantity = collateral_quantity
 
+        # For credit supply, slippage tolerance should be 0
+        # as all USDC is converted to aPolUSDC in the supply operation
+        # and None is lost for the slippage
+        if slippage_tolerance is None:
+            slippage_tolerance = 0.0
+
         position, trade, created = self.create_trade(
             strategy_cycle_at=strategy_cycle_at,
             pair=pair,
@@ -625,18 +631,20 @@ class State:
         assert trade.get_status() == TradeStatus.started
         trade.broadcasted_at = broadcasted_at
 
-    def mark_trade_success(self,
-                           executed_at: datetime.datetime,
-                           trade: TradeExecution,
-                           executed_price: USDollarPrice,
-                           executed_amount: Decimal,
-                           executed_reserve: Decimal,
-                           lp_fees: USDollarAmount,
-                           native_token_price: USDollarPrice,
-                           cost_of_gas: float | None = None ,
-                           executed_collateral_consumption: Optional[Decimal] = None,
-                           executed_collateral_allocation: Optional[Decimal] = None,
-                        ):
+    def mark_trade_success(
+        self,
+        executed_at: datetime.datetime,
+        trade: TradeExecution,
+        executed_price: USDollarPrice,
+        executed_amount: Decimal,
+        executed_reserve: Decimal,
+        lp_fees: USDollarAmount,
+        native_token_price: USDollarPrice,
+        cost_of_gas: float | None = None ,
+        executed_collateral_consumption: Optional[Decimal] = None,
+        executed_collateral_allocation: Optional[Decimal] = None,
+        force: bool = False,
+    ):
         """After trade has been successfully executed, update the state of our internal ledged to reflect this.
 
         - Trade is marked as successfully complete
@@ -667,6 +675,7 @@ class State:
             cost_of_gas=cost_of_gas,
             executed_collateral_consumption=executed_collateral_consumption,
             executed_collateral_allocation=executed_collateral_allocation,
+            force=force,
         )
 
         # The loan status of the position is reflected back to be
@@ -695,12 +704,15 @@ class State:
                             position,
                             trade,
                             executed_at,
+                            mode="execute",
                         )
                     else:
                         trade.executed_loan_update = update_credit_supply_loan(
+                            position.loan.clone(),
                             position,
                             trade,
                             executed_at,
+                            mode="execute",
                         )
 
             position.loan = trade.executed_loan_update

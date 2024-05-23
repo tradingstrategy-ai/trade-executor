@@ -96,5 +96,8 @@ def setup_charting_and_output(
         current_renderer.width = width
         current_renderer.height = height
 
+    # TODO: Currently we do not reset interactive mode if the notebook has been run once
+    # If you run setup_charting_and_output(offline) once you are stuck offline
+
     if max_rows:
         pd.set_option('display.max_rows', max_rows)

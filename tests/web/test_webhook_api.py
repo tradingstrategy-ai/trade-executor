@@ -39,6 +39,7 @@ def server_url(store):
     execution_state.visualisation.large_image_dark = b"4"
     execution_state.version.tag = "v1"
     execution_state.version.commit_message = "Foobar"
+    execution_state.read_only_state_copy = store.load()
 
     queue = Queue()
 
@@ -200,7 +201,7 @@ def test_web_chart(logger, server_url):
 
     assert data["data"] == []
     assert data["help_link"] == 'https://tradingstrategy.ai/glossary/profitability'
-    assert data["title"] == 'Compounded realised trading position % profit'
+    assert data["title"] == 'Compounded unrealised trading position % profitability'
 
 
 def test_web_chart_backtest(logger, server_url):
