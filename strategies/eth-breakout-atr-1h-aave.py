@@ -131,7 +131,7 @@ def get_strategy_trading_pairs(execution_mode: ExecutionMode) -> tuple[list[Huma
         ]
 
         # We cannot test lending with Binance
-        lending_reserves = None,
+        lending_reserves = None
 
     return trading_pairs, lending_reserves
 
@@ -291,8 +291,12 @@ def decide_trades(
     indicators = input.indicators
     strategy_universe = input.strategy_universe
 
+    trading_pairs, lending_reserves = get_strategy_trading_pairs(input.execution_context.mode)
+
     pair = strategy_universe.get_single_pair()
     cash = position_manager.get_current_cash()
+
+    lending_enabled = lending_reserves is not None  # Binance backtest does not have lending opportunity
 
     #
     # Indicators
@@ -335,7 +339,7 @@ def decide_trades(
             if close_price > long_breakout_entry_level:
 
                 # Unwind credit position to have cash to take a directional position
-                if parameters.lending_enabled and position_manager.is_any_credit_supply_position_open():
+                if lending_enabled and position_manager.is_any_credit_supply_position_open():
                     credit_supply_position = position_manager.get_current_credit_supply_position()
                     trades += position_manager.close_credit_supply_position(credit_supply_position)
                     cash = float(credit_supply_position.get_quantity())
@@ -355,7 +359,7 @@ def decide_trades(
                     position.trailing_stop_loss_pct = parameters.trailing_stop_loss_pct
 
     # Move all cash to to Aave credit to earn interest
-    if parameters.lending_enabled:
+    if lending_enabled:
         if not position_manager.is_any_credit_supply_position_open() and not position_manager.is_any_long_position_open():
             amount = cash * 0.9999
             trades += position_manager.open_credit_supply_position_for_reserves(amount)
