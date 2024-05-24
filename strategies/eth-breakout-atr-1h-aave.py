@@ -19,7 +19,8 @@ import datetime
 import pandas as pd
 import pandas_ta
 
-from tradingstrategy.lending import LendingProtocolType
+from tradingstrategy.lending import LendingProtocolType, LendingReserveDescription
+from tradingstrategy.pair import HumanReadableTradingPairDescription
 from tradingstrategy.utils.groupeduniverse import resample_candles
 from tradingstrategy.chain import ChainId
 from tradingstrategy.client import Client
@@ -29,7 +30,7 @@ from tradeexecutor.analysis.regime import Regime
 from tradeexecutor.strategy.pandas_trader.indicator import IndicatorSet, IndicatorSource
 from tradeexecutor.strategy.parameters import StrategyParameters
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
-from tradeexecutor.strategy.execution_context import ExecutionContext
+from tradeexecutor.strategy.execution_context import ExecutionContext, ExecutionMode
 from tradeexecutor.strategy.trading_strategy_universe import load_partial_data
 from tradeexecutor.strategy.universe_model import UniverseOptions
 from tradeexecutor.strategy.default_routing_options import TradeRouting
@@ -77,12 +78,15 @@ class Parameters:
     #
     # Backtesting only
     #
+    # Because the underlying DEX live trading market does not have enough
+    # history, we perform the backtesting using Binance data.
+    #
 
-    use_binance_data = False
-    if use_binance_data:
+    use_binance_data_in_backtesting = True
+
+    if use_binance_data_in_backtesting:
         # Perform backesting on binance data instead of DEX data, allows longer backtesting period
-        #backtest_start = datetime.datetime(2019, 8, 1)
-        backtest_start = datetime.datetime(2022, 8, 1)
+        backtest_start = datetime.datetime(2018, 1, 1)
         backtest_end = datetime.datetime(2024, 5, 15)
     else:
         # WETH-USDC 5 BPS is not available on Polygon unti 2022-08
@@ -93,30 +97,43 @@ class Parameters:
     backtest_trading_fee = 0.0005  # Override the default Binance data trading fee and assume we can trade 5 BPS fee on WMATIC-USDC on Polygon on Uniswap v3
     initial_cash = 10_000
 
-    # Use Aave pools when avaible
+    # A switch to test between lending pool enabled strategy and no lending strategy modes.
+    # Use Aave pools when avaible.
     # We cannot do lending tests in if we are using Binance data for the strategy backtest,
-    # as Binance does not have a lending market
-    lending_enabled = not use_binance_data
+    # as Binance does not have a lending market.
+    lending_enabled = True
 
 
-if not Parameters.use_binance_data:
+def get_strategy_trading_pairs(execution_mode: ExecutionMode) -> tuple[list[HumanReadableTradingPairDescription], list[LendingReserveDescription] | None]:
+    """Switch between backtest and live trading pairs.
 
-    # List of trading pairs we use in the backtest
-    # In this backtest, we use Binance data as it has more price history than DEXes
-    trading_pairs = [
-        (ChainId.polygon, "uniswap-v3", "WETH", "USDC"),
-    ]
+    Because the live trading DEX venues do not have enough history (< 2 years)
+    for meaningful backtesting, we test with Binance CEX data.
+    """
+    if execution_mode.is_live_trading() or not Parameters.use_binance_data_in_backtesting:
 
-    # We use Aave v3 pool to store our excess cash when we are out of the market
-    lending_reserves = [
-        (ChainId.polygon, LendingProtocolType.aave_v3, "USDC.e"),
-    ]
-else:
+        # List of trading pairs we use in the backtest
+        # In this backtest, we use Binance data as it has more price history than DEXes
+        trading_pairs = [
+            (ChainId.polygon, "uniswap-v3", "WETH", "USDC"),
+        ]
 
-    trading_pairs = [
-        (ChainId.centralised_exchange, "binance", "ETH", "USDT")
-    ]
+        if Parameters.lending_enabled:
+            # We use Aave v3 pool to store our excess cash when we are out of the market
+            lending_reserves = [
+                (ChainId.polygon, LendingProtocolType.aave_v3, "USDC.e"),
+            ]
+        else:
+            lending_reserves = None
+    else:
+        trading_pairs = [
+            (ChainId.centralised_exchange, "binance", "ETH", "USDT")
+        ]
 
+        # We cannot test lending with Binance
+        lending_reserves = None,
+
+    return trading_pairs, lending_reserves
 
 
 def create_trading_universe(
@@ -132,11 +149,9 @@ def create_trading_universe(
     - We backtest with Binance data, as it has more history
     """
 
+    trading_pairs, lending_reserves = get_strategy_trading_pairs(execution_context.mode)
 
-    if Parameters.use_binance_data:
-
-        assert not Parameters.lending_enabled, "Cannot use Aave lending with Binance trading"
-
+    if execution_context.mode.is_backtesting():
         start_at = universe_options.start_at
         end_at = universe_options.end_at
         strategy_universe = create_binance_universe(
@@ -168,8 +183,6 @@ def create_trading_universe(
         )
 
     return strategy_universe
-
-
 
 
 def daily_price(open, high, low, close) -> pd.DataFrame:
@@ -354,5 +367,4 @@ def decide_trades(
         visualisation.plot_indicator(timestamp, "ATR", PlotKind.technical_indicator_detached, atr)
 
     return trades  # Return the list of trades we made in this cycle
-
 
