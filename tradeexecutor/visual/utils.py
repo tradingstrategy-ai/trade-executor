@@ -45,6 +45,7 @@ def export_trade_for_dataframe(p: Portfolio, t: TradeExecution) -> dict:
     """
 
     position = p.get_position_by_id(t.position_id)
+    reserve_token_symbol = position.reserve_currency.token_symbol
     base_token_symbol = position.pair.get_pricing_pair().base.token_symbol
     price_prefix = f"{base_token_symbol} / USD"
 
@@ -78,6 +79,19 @@ def export_trade_for_dataframe(p: Portfolio, t: TradeExecution) -> dict:
                 "",
                 f"Triggered at: {position.take_profit:.4f} {price_prefix}",
             ]
+        elif t.is_credit_supply():
+            if t.is_buy():
+                type = "open-credit-supply"
+                label += [
+                    f"Open credit supply {reserve_token_symbol}",
+                    "",
+                ]
+            else:
+                type = "close-credit-supply"
+                label += [
+                    f"Close credit supply {reserve_token_symbol}",
+                    "",
+                ]
         elif t.is_sell():
             type = "sell"
             label += [
@@ -164,7 +178,11 @@ def export_trades_as_dataframe(
     data = []
 
     for t in portfolio.get_all_trades():
-        if pair_id is not None and t.pair.get_pricing_pair().internal_id != pair_id:
+        if (
+            pair_id is not None 
+            and t.pair.get_pricing_pair().internal_id != pair_id
+            and not t.is_credit_supply()
+        ):
             continue
 
         # Crop
@@ -193,7 +211,7 @@ def visualise_trades(
     """Plot individual trades over the candlestick chart."""
 
     # If we have used stop loss, do different categories
-    advanced_trade_types = ("stop-loss", "take-profit")
+    advanced_trade_types = ("stop-loss", "take-profit", "open-credit-supply", "close-credit-supply")
     advanced_trades = (
         len(trades_df.loc[trades_df["type"].isin(advanced_trade_types)]) > 0
     )
@@ -203,11 +221,15 @@ def visualise_trades(
         sells_df = trades_df.loc[trades_df["type"] == "sell"]
         stop_loss_df = trades_df.loc[trades_df["type"] == "stop-loss"].copy()
         take_profit_df = trades_df.loc[trades_df["type"] == "take-profit"]
+        open_credit_supply_df = trades_df.loc[trades_df["type"] == "open-credit-supply"]
+        close_credit_supply_df = trades_df.loc[trades_df["type"] == "close-credit-supply"]
     else:
         buys_df = trades_df.loc[trades_df["type"] == "buy"]
         sells_df = trades_df.loc[trades_df["type"] == "sell"]
         stop_loss_df = None
         take_profit_df = None
+        open_credit_supply_df = None
+        close_credit_supply_df = None
 
     # Buys
     fig.add_trace(
@@ -286,6 +308,47 @@ def visualise_trades(
                     "size": 12,
                     "line": {"width": 1, "color": "black"},
                     "color": "lightgreen",
+                },
+                hoverinfo="text",
+            ),
+            secondary_y=False,
+            row=candlestick_row,
+            col=column,
+        )
+
+    if open_credit_supply_df is not None:
+        fig.add_trace(
+            go.Scatter(
+                name="Open credit supply",
+                mode="markers",
+                x=open_credit_supply_df["timestamp"],
+                y=open_credit_supply_df["price"],
+                text=open_credit_supply_df["label"],
+                marker={
+                    "symbol": "triangle-ne",
+                    "size": 12,
+                    "line": {"width": 1, "color": "black"},
+                    "color": "green",
+                },
+                hoverinfo="text",
+            ),
+            secondary_y=False,
+            row=candlestick_row,
+            col=column,
+        )
+    if close_credit_supply_df is not None:
+        fig.add_trace(
+            go.Scatter(
+                name="Close credit supply",
+                mode="markers",
+                x=close_credit_supply_df["timestamp"],
+                y=close_credit_supply_df["price"],
+                text=close_credit_supply_df["label"],
+                marker={
+                    "symbol": "triangle-sw",
+                    "size": 12,
+                    "line": {"width": 1, "color": "black"},
+                    "color": "orange",
                 },
                 hoverinfo="text",
             ),
