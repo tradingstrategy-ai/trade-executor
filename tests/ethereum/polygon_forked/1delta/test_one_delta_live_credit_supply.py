@@ -112,6 +112,7 @@ def test_one_delta_live_credit_supply_open_only(
         routing_model=routing_model,
     )
     loop.runner.run_state = RunState()  # Needed for visualisations
+    loop.runner.accounting_checks = True
 
     ts = get_latest_block_timestamp(web3)
 
@@ -243,6 +244,7 @@ def test_one_delta_live_credit_supply_open_and_close(
         routing_model=routing_model,
     )
     loop.runner.run_state = RunState()  # Needed for visualisations
+    loop.runner.accounting_checks = True
 
     ts = get_latest_block_timestamp(web3)
 

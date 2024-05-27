@@ -156,6 +156,10 @@ def get_asset_amounts(p: TradingPosition) -> List[Tuple[AssetIdentifier, Decimal
             (p.pair.base, p.loan.get_borrowed_quantity()),
             (p.pair.quote, p.loan.get_collateral_quantity()),
         ]
+    if p.is_credit_supply():
+        return [
+            (p.pair.base, p.loan.get_collateral_quantity()),
+        ]
     else:
         raise NotImplementedError()
 
@@ -200,10 +204,6 @@ def build_expected_asset_map(
 
     mappings: Dict[AssetIdentifier, AssetToPositionsMapping] = {}
 
-    def need_skip_position(p: TradingPosition):
-        # TODO: Temporary hot fix to avoid issues with credit position checks
-        return p.is_credit_supply()
-
     r: ReservePosition
     for r in portfolio.reserves.values():
         if r.asset not in mappings:
@@ -213,9 +213,6 @@ def build_expected_asset_map(
         mappings[r.asset].quantity += r.quantity
 
     for p in portfolio.get_open_and_frozen_positions():
-
-        if need_skip_position(p):
-            continue
 
         for asset, amount in get_asset_amounts(p):
             if asset not in mappings:
@@ -233,9 +230,6 @@ def build_expected_asset_map(
     closed_positions_lifo = list(portfolio.closed_positions.values())
     closed_positions_lifo.reverse()
     for p in closed_positions_lifo:
-
-        if need_skip_position(p):
-            continue
 
         for asset, amount in get_asset_amounts(p):
             if asset not in mappings:
