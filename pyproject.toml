@@ -75,7 +75,7 @@ trading-strategy-qstrader = {version="^0.5",  optional = true}
 # quantstats package for generating
 # advanced statistical reports
 #
-quantstats = {version="^0.0.59", optional = true}
+quantstats = {version="^0.0.59"}
 
 # Needed for Plotly Express scatter(trendline="ols)
 # https://www.statsmodels.org/stable/index.html
@@ -123,7 +123,7 @@ web-server = [
 ]
 
 # for generating advanced statistical reports
-quantstats = ["quantstats"]
+# quantstats = ["quantstats"]
 
 [tool.poetry.dev-dependencies]
 pytest = "^7.2.2"
