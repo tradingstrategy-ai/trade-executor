@@ -41,5 +41,5 @@ COPY . .
 # git submodule update --init --recursive
 #
 RUN poetry config virtualenvs.create false
-RUN poetry install --no-dev --no-interaction --no-ansi -E execution -E quantstats
+RUN poetry install --no-dev --no-interaction --no-ansi -E execution
 
