@@ -13,7 +13,7 @@ from tradeexecutor.strategy.cycle import CycleDuration
 from tradeexecutor.strategy.execution_context import ExecutionMode
 from tradeexecutor.strategy.summary import StrategySummaryStatistics
 from tradeexecutor.visual.equity_curve import calculate_compounding_realised_trading_profitability, calculate_cumulative_daily_returns, \
-    calculate_compounding_unrealised_trading_profitability
+    calculate_compounding_unrealised_trading_profitability, extract_compounding_unrealised_trading_profitability_portfolio_statistics
 from tradeexecutor.visual.web_chart import export_time_series
 
 logger = logging.getLogger(__name__)
@@ -101,9 +101,14 @@ def calculate_summary_statistics(
     enough_data = False
     performance_chart_90_days = None
     returns_all_time = returns_annualised = None
+    compounding_unrealised_trading_profitability = None
 
     if len(stats.portfolio) > 0 and not legacy_workarounds:
         profitability = calculate_compounding_unrealised_trading_profitability(state, freq="D")
+
+        unrealised_profit_data = extract_compounding_unrealised_trading_profitability_portfolio_statistics(state)
+        compounding_unrealised_trading_profitability = export_time_series(unrealised_profit_data)
+
         enough_data = len(profitability.index) > 1 and profitability.index[0] <= start_at
         if len(profitability) >= 2:  # TypeError: cannot do slice indexing on RangeIndex with these indexers [2023-09-08 13:42:01.749186] of type Timestamp
             profitability_time_windowed = profitability[start_at:]
@@ -133,6 +138,7 @@ def calculate_summary_statistics(
         current_value=current_value,
         profitability_90_days=profitability_90_days,
         performance_chart_90_days=performance_chart_90_days,
+        compounding_unrealised_trading_profitability=compounding_unrealised_trading_profitability,
         key_metrics=key_metrics,
         launched_at=state.created_at,
         backtest_metrics_cut_off_period=key_metrics_backtest_cut_off,

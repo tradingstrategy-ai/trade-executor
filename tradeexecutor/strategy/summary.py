@@ -375,7 +375,17 @@ class StrategySummaryStatistics:
     #: Based on :ref:`compounding realised positions profit`.
     return_annualised: Optional[Percent] = None
 
-    #: Data for the performance chart used in the summary card.
+    #: Performance chart used in the summary card.
+    #:
+    #: - Contains frequenetly snapshotted performance
+    #:
+    #: Contains (UNIX time, performance %) tuples.
+    #:
+    compounding_unrealised_trading_profitability: Optional[List[Tuple[UnixTimestamp, Percent]]] = None
+
+    #: OLD Data for the performance chart used in the summary card.
+    #:
+    #: - Contains only samples at position close events
     #:
     #: Contains (UNIX time, performance %) tuples.
     #:
@@ -387,7 +397,7 @@ class StrategySummaryStatistics:
     #: are inclusive.
     #:
     #: Based on :ref:`compounding realised positions profit`.
-    performance_chart_90_days: Optional[List[Tuple[UnixTimestamp, USDollarAmount]]] = None
+    performance_chart_90_days: Optional[List[Tuple[UnixTimestamp, Percent]]] = None
 
     #: Strategy performance metrics to be displayed on the summary card
     #:

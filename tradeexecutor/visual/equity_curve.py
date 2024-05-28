@@ -532,6 +532,18 @@ def calculate_compounding_unrealised_trading_profitability(
     return resampled_compounded
 
 
+def extract_compounding_unrealised_trading_profitability_portfolio_statistics(state: State) -> pd.Series:
+    """Get the statistics out from the summary profit data.
+
+    :return:
+        Pandas series with profitability % as value and DatetimeIndex as the sampled time
+    """
+    data = [(stat_entry.calculated_at, stat_entry.unrealised_profitability) for stat_entry in state.stats.portfolio]
+    df = pd.DataFrame(data, columns=["timestamp", "profitability"])
+    df = df.set_index("timestamp")
+    return df["profitability"]
+
+
 def _calculate_compounding_trading_profitability(
     positions: list[TradingPosition],
     fill_time_gaps: bool,
