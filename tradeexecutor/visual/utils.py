@@ -153,6 +153,7 @@ def export_trades_as_dataframe(
     pair_id: PairInternalId,
     start: Optional[pd.Timestamp] = None,
     end: Optional[pd.Timestamp] = None,
+    include_credit_supply_positions: bool = False,
 ) -> pd.DataFrame:
     """Convert executed trades to a dataframe, so it is easier to work with them in Plotly.
 
@@ -178,10 +179,12 @@ def export_trades_as_dataframe(
     data = []
 
     for t in portfolio.get_all_trades():
-        if (
+        if t.is_credit_supply():
+            if not include_credit_supply_positions:
+                continue
+        elif (
             pair_id is not None 
             and t.pair.get_pricing_pair().internal_id != pair_id
-            and not t.is_credit_supply()
         ):
             continue
 
@@ -207,29 +210,34 @@ def visualise_trades(
     trades_df: pd.DataFrame,
     candlestick_row: int | None = None,
     column: int | None = None,
+    include_credit_supply_positions: bool = False,
 ):
     """Plot individual trades over the candlestick chart."""
 
     # If we have used stop loss, do different categories
-    advanced_trade_types = ("stop-loss", "take-profit", "open-credit-supply", "close-credit-supply")
+    if include_credit_supply_positions:
+        advanced_trade_types = ("stop-loss", "take-profit", "open-credit-supply", "close-credit-supply")
+    else: 
+        advanced_trade_types = ("stop-loss", "take-profit")
     advanced_trades = (
         len(trades_df.loc[trades_df["type"].isin(advanced_trade_types)]) > 0
     )
 
+    stop_loss_df = None
+    take_profit_df = None
+    open_credit_supply_df = None
+    close_credit_supply_df = None
     if advanced_trades:
         buys_df = trades_df.loc[trades_df["type"] == "buy"]
         sells_df = trades_df.loc[trades_df["type"] == "sell"]
         stop_loss_df = trades_df.loc[trades_df["type"] == "stop-loss"].copy()
         take_profit_df = trades_df.loc[trades_df["type"] == "take-profit"]
-        open_credit_supply_df = trades_df.loc[trades_df["type"] == "open-credit-supply"]
-        close_credit_supply_df = trades_df.loc[trades_df["type"] == "close-credit-supply"]
+        if include_credit_supply_positions:
+            open_credit_supply_df = trades_df.loc[trades_df["type"] == "open-credit-supply"]
+            close_credit_supply_df = trades_df.loc[trades_df["type"] == "close-credit-supply"]
     else:
         buys_df = trades_df.loc[trades_df["type"] == "buy"]
         sells_df = trades_df.loc[trades_df["type"] == "sell"]
-        stop_loss_df = None
-        take_profit_df = None
-        open_credit_supply_df = None
-        close_credit_supply_df = None
 
     # Buys
     fig.add_trace(
@@ -336,6 +344,7 @@ def visualise_trades(
             row=candlestick_row,
             col=column,
         )
+
     if close_credit_supply_df is not None:
         fig.add_trace(
             go.Scatter(
