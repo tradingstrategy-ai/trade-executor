@@ -123,6 +123,7 @@ def visualise_multiple_pairs(
     candle_decimals: int = 4,
     show_trades: bool = True,
     detached_indicators: bool = True,
+    include_credit_supply_positions: bool = False,
 ) -> go.Figure:
     """Visualise single-pair trade execution.
 
@@ -261,11 +262,16 @@ def visualise_multiple_pairs(
         logger.info(f"Candles for {pair_name} are {candle_start_ts} - {candle_end_ts}")
 
         if show_trades:
+            # only include credit position in the 1st pair's trades_df
+            if include_credit_supply_positions is True and i != 0:
+                include_credit_supply_positions = False
+                
             trades_df = export_trades_as_dataframe(
                 state.portfolio,
                 pair_id,
                 candle_start_ts,
                 candle_end_ts,
+                include_credit_supply_positions=include_credit_supply_positions,
             )
         else: 
             trades_df = None
@@ -423,6 +429,7 @@ def visualise_multiple_pairs(
                 trades_df,
                 pair_subplot_info.candlestick_row,
                 1,
+                include_credit_supply_positions=include_credit_supply_positions,
             )
 
     subplot.update_xaxes(rangeslider={"visible": False})

@@ -299,6 +299,7 @@ def visualise_single_pair(
     candle_decimals: int = 4,
     detached_indicators: bool = True,
     hover_text: bool = True,
+    include_credit_supply_positions: bool = False,
 ) -> go.Figure:
     """Visualise single-pair trade execution.
 
@@ -414,6 +415,7 @@ def visualise_single_pair(
         pair_id,
         start_at,
         end_at,
+        include_credit_supply_positions=include_credit_supply_positions,
     )
 
     labels = make_candle_labels(
@@ -449,7 +451,7 @@ def visualise_single_pair(
 
     # Add trade markers if any trades have been made
     if len(trades_df) > 0:
-        visualise_trades(fig, candles, trades_df)
+        visualise_trades(fig, candles, trades_df, include_credit_supply_positions=include_credit_supply_positions)
 
     return fig
 

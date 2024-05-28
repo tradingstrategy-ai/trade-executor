@@ -428,21 +428,21 @@ def test_visualise_strategy_state_overriden_pairs(
 
     image = draw_multi_pair_strategy_state(state, unit_test_execution_context, strategy_universe)
 
-    assert len(image.data) == 9
+    assert len(image.data) == 11
     assert len(image._grid_ref) == 2
     assert image.data[0]['x'][0] == datetime.datetime(2023,4,3,0,0)
     assert image.data[0]['x'][-1] == datetime.datetime(2023,6,5,0,0)
 
     image_no_detached = draw_multi_pair_strategy_state(state, unit_test_execution_context, strategy_universe, detached_indicators=False)
 
-    assert len(image_no_detached.data) == 8
+    assert len(image_no_detached.data) == 10
     assert len(image_no_detached._grid_ref) == 1
     assert image_no_detached.data[0]['x'][0] == datetime.datetime(2023,4,3,0,0)
     assert image_no_detached.data[0]['x'][-1] == datetime.datetime(2023,6,5,0,0)
 
     image_no_indicators = draw_multi_pair_strategy_state(state, unit_test_execution_context, strategy_universe, technical_indicators=False)
 
-    assert len(image_no_indicators.data) == 5
+    assert len(image_no_indicators.data) == 7
     assert len(image_no_indicators._grid_ref) == 1
 
     # Test the image on a local screen using a web brower
