@@ -188,6 +188,7 @@ def draw_multi_pair_strategy_state(
         width=width,
         technical_indicators=technical_indicators,
         detached_indicators=detached_indicators,
+        include_credit_supply_positions=True,
     )
 
 
@@ -236,6 +237,7 @@ def visualise_single_pair_strategy_state(
         axes=False,
         technical_indicators=technical_indicators,
         volume_bar_mode=VolumeBarMode.hidden,  # TODO: Might be needed in the future strats
+        include_credit_supply_positions=True,
     )
 
     figure.update_layout(
