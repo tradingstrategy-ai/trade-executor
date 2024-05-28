@@ -539,6 +539,10 @@ def extract_compounding_unrealised_trading_profitability_portfolio_statistics(st
         Pandas series with profitability % as value and DatetimeIndex as the sampled time
     """
     data = [(stat_entry.calculated_at, stat_entry.unrealised_profitability) for stat_entry in state.stats.portfolio]
+
+    if len(data) == 0:
+        return pd.Series([], index=pd.to_datetime([]), dtype='float64')
+
     df = pd.DataFrame(data, columns=["timestamp", "profitability"])
     df = df.set_index("timestamp")
     return df["profitability"]
