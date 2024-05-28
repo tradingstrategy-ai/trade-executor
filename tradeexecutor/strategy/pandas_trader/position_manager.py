@@ -1249,7 +1249,7 @@ class PositionManager:
             flags = set()
         flags = {TradeFlag.open} | flags
 
-        _, trade, _ = self.state.supply_credit(
+        position, trade, _ = self.state.supply_credit(
             self.timestamp,
             lending_reserve_identifier,
             collateral_quantity=Decimal(amount),
@@ -1258,6 +1258,9 @@ class PositionManager:
             collateral_asset_price=1.0,
             flags=flags,
         )
+
+        # record the latest supply APR when opening a new position
+        position.supply_apr = self.strategy_universe.get_latest_supply_apr(timestamp=self.timestamp)
 
         return [trade]
     

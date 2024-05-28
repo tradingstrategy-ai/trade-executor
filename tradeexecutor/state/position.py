@@ -259,6 +259,14 @@ class TradingPosition(GenericPosition):
     #: 
     liquidation_price: USDollarAmount | None = None
 
+    #: What is supply interest rate (APR) when opening this position.
+    #:
+    #: Applicable for
+    #:
+    #: - credit supply positions
+    #: 
+    supply_apr: float | None = None
+
     def __repr__(self):
         if self.is_open():
             return f"<Open position #{self.position_id} {self.pair} ${self.get_value()}>"

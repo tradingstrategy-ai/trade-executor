@@ -145,6 +145,7 @@ def test_one_delta_live_credit_supply_open_only(
     old_col_value = position.loan.get_collateral_value()
     assert old_col_value == pytest.approx(1000)
     assert position.loan.get_collateral_interest() == 0
+    assert position.supply_apr == pytest.approx(15.336368478574258)
     
     for i in range(100):
         mine(web3)
@@ -178,6 +179,7 @@ def test_one_delta_live_credit_supply_open_only(
     assert position.loan.get_collateral_value() == pytest.approx(1000.000308)
     assert position.loan.get_collateral_value() > old_col_value
     assert position.loan.get_collateral_interest() > 0
+    assert position.supply_apr == pytest.approx(15.336368478574258)  # shoudln't change
 
 
 def test_one_delta_live_credit_supply_open_and_close(
