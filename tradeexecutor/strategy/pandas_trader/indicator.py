@@ -64,6 +64,11 @@ class IndicatorNotFound(Exception):
     """
 
 class IndicatorDependencyResolutionError(Exception):
+    """Something wrong trying to look up data from other indicators.
+
+    """
+
+class IndicatorOrderError(Exception):
     """An indicator in earier dependency resolution order tries to ask data for one that comes later.
 
     """
@@ -1250,9 +1255,6 @@ class IndicatorDependencyResolver:
         if len(filtered_by_name) == 0:
             raise IndicatorDependencyResolutionError(f"No indicator named {name}. {all_text}")
 
-        if len(filtered_by_name) == 1 and parameters is None and pair is None:
-            return next(iter(filtered_by_name))
-
         if pair is not None:
             filtered_by_pair = [i for i in filtered_by_name if i.pair == pair]
             if len(filtered_by_pair) == 0:
@@ -1274,7 +1276,7 @@ class IndicatorDependencyResolver:
         result = filtered_by_parameters[0]
 
         if self.current_dependency_order <= result.definition.dependency_order:
-            raise IndicatorDependencyResolutionError(f"The dependency order for {name} is {result.definition.dependency_order}, but we ask data at the current dependency order level {self.current_order}")
+            raise IndicatorOrderError(f"The dependency order for {name} is {result.definition.dependency_order}, but we ask data at the current dependency order level {self.current_dependency_order}")
 
         return result
 
@@ -1317,12 +1319,10 @@ class IndicatorDependencyResolver:
         indicator_result = self.indicator_storage.load(key)
 
         if indicator_result is None:
-            all_keys = set(self.self.indicator_results.keys())
-            all_indicators = set(self.available_indicators.indicators.keys())
+            all_indicators = self.all_indicators
             raise AssertionError(
                 f"Indicator results did not contain key {key} for indicator {name}.\n"
                 f"Available indicators: {all_indicators}\n"
-                f"Available data series: {all_keys}\n"
             )
 
         data = indicator_result.data

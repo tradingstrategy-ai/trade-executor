@@ -13,7 +13,7 @@ import inspect
 from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier
 from tradeexecutor.strategy.execution_context import ExecutionContext, unit_test_execution_context, unit_test_trading_execution_context
 from tradeexecutor.strategy.pandas_trader.indicator import IndicatorSet, DiskIndicatorStorage, IndicatorDefinition, IndicatorFunctionSignatureMismatch, \
-    calculate_and_load_indicators, IndicatorKey, IndicatorSource, IndicatorStorage, IndicatorDependencyResolver
+    calculate_and_load_indicators, IndicatorKey, IndicatorSource, IndicatorStorage, IndicatorDependencyResolver, IndicatorOrderError, IndicatorCalculationFailed
 from tradeexecutor.strategy.pandas_trader.strategy_input import StrategyInputIndicators
 from tradeexecutor.strategy.parameters import StrategyParameters
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse, create_pair_universe_from_code, load_partial_data
@@ -712,4 +712,63 @@ def test_indicator_dependency_resolution(persistent_test_client, indicator_stora
     indicator_value = input_indicators.get_indicator_value("ma_crossover")
     assert indicator_value in (True, False)
 
+
+def test_indicator_dependency_order_error(persistent_test_client, indicator_storage):
+    """Try to calculate data in wrong dependency oredr.
+    """
+
+    client = persistent_test_client
+
+    universe_options = UniverseOptions(history_period=datetime.timedelta(days=14))
+
+    pair = (ChainId.polygon, "uniswap-v3", "WMATIC", "USDC", 0.0005)
+
+    dataset = load_partial_data(
+        client=client,
+        time_bucket=TimeBucket.h1,
+        pairs=[pair],
+        execution_context=unit_test_trading_execution_context,
+        universe_options=universe_options,
+        liquidity=False,
+    )
+
+    strategy_universe = TradingStrategyUniverse.create_from_dataset(
+        dataset,
+        reserve_asset="USDC",
+        forward_fill=True,
+    )
+
+    def ma_crossover(
+        close: pd.Series,
+        pair: TradingPairIdentifier,
+        dependency_resolver: IndicatorDependencyResolver,
+    ) -> pd.Series:
+        # Fails because order parameter not set in indiactors.add()
+        slow_sma: pd.Series = dependency_resolver.get_indicator_data("slow_sma")
+        return slow_sma
+
+    indicators = IndicatorSet()
+    indicators.add(
+        "slow_sma",
+        pandas_ta.sma,
+        parameters={"length": 21},
+    )
+    # order parameter is not set
+    indicators.add(
+        "ma_crossover",
+        ma_crossover,
+        source=IndicatorSource.ohlcv,
+    )
+
+    with pytest.raises(IndicatorCalculationFailed):
+        # TODO: match the nested IndicatorOrderError here
+        calculate_and_load_indicators(
+            strategy_universe,
+            indicator_storage,
+            indicators=indicators,
+            execution_context=unit_test_execution_context,
+            parameters=StrategyParameters({}),
+            max_workers=1,
+            max_readers=1,
+        )
 
