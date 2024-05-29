@@ -582,6 +582,9 @@ class CreateIndicatorsProtocolV2(Protocol):
       `indicators.add()` - as those functions have standard argument names like `close`, `high`, `low` that
       are data series provided.
 
+    - If you wish to use data from earlier indicators calculations in later indicator calculations, see :py:class:`IndicatorDependencyResolver`
+      for how to do it
+
     Example for creating an Exponential Moving Average (EMA) indicator based on the `close` price.
     This example is for a grid search. Unless specified, indicators are assumed to be
     :py:attr:`IndicatorSource.close_price` type and they only use trading pair close price as input.
@@ -966,6 +969,8 @@ def _calculate_and_save_indicator_result(
     # Picked result
     strategy_universe = _universe
 
+    assert strategy_universe is not None, "Process global _universe not set"
+
     current_dependency_order = key.definition.dependency_order
 
     resolver = IndicatorDependencyResolver(
@@ -1155,6 +1160,55 @@ class IndicatorDependencyResolver:
             order=2,  # 2nd order indicators can depend on the data of 1st order indicators
         )
 
+    When you use indicator dependency resolution with the grid search, you need to specify indicator parameters you want read,
+    as for each named indicator there might be multiple copies with different grid search combinations:
+
+    .. code-block:: text
+
+        class Parameters:
+            cycle_duration = CycleDuration.cycle_1d
+            initial_cash = 10_000
+
+            # Indicator values that are searched in the grid search
+            slow_ema_candle_count = [21, 30]
+            fast_ema_candle_count = [7, 12]
+            combined_indicator_modes = [1, 2]
+
+        def combined_indicator(close: pd.Series, mode: int, pair: TradingPairIdentifier, dependency_resolver: IndicatorDependencyResolver):
+            # An indicator that peeks the earlier grid search indicator calculations
+            match mode:
+                case 1:
+                    # When we look up data in grid search we need to give the parameter of which data we want,
+                    # and the trading pair if needed
+                    fast_ema = dependency_resolver.get_indicator_data("slow_ema", pair=pair, parameters={"length": 21})
+                    slow_ema = dependency_resolver.get_indicator_data("fast_ema", pair=pair, parameters={"length": 7})
+                case 2:
+                    # Look up one set of parameters
+                    fast_ema = dependency_resolver.get_indicator_data("slow_ema", pair=pair, parameters={"length": 30})
+                    slow_ema = dependency_resolver.get_indicator_data("fast_ema", pair=pair, parameters={"length": 12})
+                case _:
+                    raise NotImplementedError()
+
+            return fast_ema * slow_ema * close # Calculate something based on two indicators and price
+
+        def create_indicators(parameters: StrategyParameters, indicators: IndicatorSet, strategy_universe: TradingStrategyUniverse, execution_context: ExecutionContext):
+            indicators.add("slow_ema", pandas_ta.ema, {"length": parameters.slow_ema_candle_count})
+            indicators.add("fast_ema", pandas_ta.ema, {"length": parameters.fast_ema_candle_count})
+            indicators.add(
+                "combined_indicator",
+                combined_indicator,
+                {"mode": parameters.combined_indicator_modes},
+                source=IndicatorSource.ohlcv,
+                order=2,
+            )
+
+        combinations = prepare_grid_combinations(
+            Parameters,
+            tmp_path,
+            strategy_universe=strategy_universe,
+            create_indicators=create_indicators,
+            execution_context=ExecutionContext(mode=ExecutionMode.unit_testing, grid_search=True),
+        )
     """
 
     #: Trading universe
@@ -1344,6 +1398,8 @@ def calculate_indicators(
         Stdout user printing with helpful messages.
     """
 
+    assert isinstance(strategy_universe, TradingStrategyUniverse)
+    assert isinstance(storage, IndicatorStorage)
     assert isinstance(execution_context, ExecutionContext), f"Expected ExecutionContext, got {type(execution_context)}"
 
     results: IndicatorResultMap
@@ -1417,6 +1473,7 @@ def calculate_indicators(
         # Do single thread - good for debuggers like pdb/ipdb
         #
 
+        global _universe
         _universe = strategy_universe
 
         logger.info("Doing a single thread indicator calculation")
@@ -1428,10 +1485,10 @@ def calculate_indicators(
         for order, group_task_args in groups.items():
             iter = itertools.starmap(_calculate_and_save_indicator_result, group_task_args)
 
-        # Force workers to finish
-        result: IndicatorResult
-        for result in iter:
-            results[result.indicator_key] = result
+            # Force workers to finish
+            result: IndicatorResult
+            for result in iter:
+                results[result.indicator_key] = result
 
     logger.info("Total %d indicator results calculated", len(results))
 
