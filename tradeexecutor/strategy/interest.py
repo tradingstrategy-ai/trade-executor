@@ -6,6 +6,7 @@ from decimal import Decimal
 from typing import Tuple, Dict, List, Iterable
 
 from eth_defi.aave_v3.rates import SECONDS_PER_YEAR_INT
+from tradingstrategy.utils.time import ZERO_TIMEDELTA
 
 from tradeexecutor.state.balance_update import BalanceUpdate, BalanceUpdatePositionType, BalanceUpdateCause
 from tradeexecutor.state.identifier import AssetIdentifier
@@ -17,7 +18,7 @@ from tradeexecutor.state.state import State
 from tradeexecutor.state.types import USDollarPrice, Percent, BlockNumber
 from tradeexecutor.strategy.pricing_model import PricingModel
 from tradeexecutor.utils.accuracy import QUANTITY_EPSILON, INTEREST_EPSILON
-from tradingstrategy.utils.time import ZERO_TIMEDELTA
+from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
 
 logger = logging.getLogger(__name__)
 
@@ -565,3 +566,27 @@ def set_interest_checkpoint(
 
     block_number_str = f"{block_number,}" if block_number else "<no block>"
     logger.info(f"Interest check point set to {timestamp}, block: {block_number_str}")
+
+
+def record_interest_rate(
+    state: State,
+    universe: TradingStrategyUniverse, 
+    timestamp: datetime.datetime,
+):
+    """Record interest rate at the time opening position.
+
+    Currently support only credit supply positions
+    """
+    assert isinstance(universe, TradingStrategyUniverse)
+    assert universe.has_lending_data()
+
+    for p in state.portfolio.get_open_and_frozen_positions():
+        if p.is_credit_supply():
+            loan = p.loan
+
+            # check if already recorded
+            if loan.collateral.interest_rate:
+                return
+            
+            logger.info("Recording interest rate for %s at %s", p, timestamp)
+            loan.collateral.interest_rate = universe.get_latest_supply_apr(timestamp=timestamp)

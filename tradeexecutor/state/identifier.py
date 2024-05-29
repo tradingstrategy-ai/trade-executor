@@ -631,6 +631,12 @@ class AssetWithTrackedValue:
     #:
     created_strategy_cycle_at: datetime.datetime | None = None
 
+    #: Supply or borrow interest rate for this asset when the loan is created
+    #: 
+    #: This is recorded using lending candles data when position is created
+    #:
+    interest_rate: float | None = None
+
     def __repr__(self):
         return f"<AssetWithTrackedValue {self.asset.token_symbol} {self.quantity} at price {self.last_usd_price} USD>"
 
