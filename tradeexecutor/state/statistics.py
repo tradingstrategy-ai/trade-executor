@@ -141,6 +141,10 @@ class PortfolioStatistics:
         # TODO: Cannot do this yet because of legacy data
         # assert (self.total_equity or self.net_asset_value), "PortfolioStatistics: could not calculate value for the portfolio"
 
+        # Safety checks for the bad data
+        if self.unrealised_profitability is not None:
+            assert not pd.isna(self.unrealised_profitability)
+
 
 @dataclass_json
 @dataclass

@@ -110,12 +110,18 @@ def render_web_chart(
 
 
 def export_time_series(series: pd.Series) -> List[Tuple[float, float]]:
-    """Export Pandas series for web frontend rendering."""
+    """Export Pandas series for web frontend rendering.
+
+    :return:
+        JSON list of (unix timestamp, float value) tuples.
+    """
 
     if len(series.index) == 0:
         return []
 
     assert isinstance(series.index, pd.DatetimeIndex), f"Got index: {series.index.__class__}"
+    assert not series.isna(), f"Series contains NA values and cannot be exported to Javascript: {series}"
+
     return [(index.timestamp(), value) for index, value in series.items()]
 
 
