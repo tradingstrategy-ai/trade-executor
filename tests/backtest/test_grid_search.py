@@ -11,7 +11,7 @@ from plotly.graph_objs import Figure
 from tradeexecutor.state.trade import TradeExecution
 from tradeexecutor.strategy.cycle import CycleDuration
 from tradeexecutor.strategy.execution_context import ExecutionContext, ExecutionMode
-from tradeexecutor.strategy.pandas_trader.indicator import IndicatorSet, DiskIndicatorStorage, IndicatorSource
+from tradeexecutor.strategy.pandas_trader.indicator import IndicatorSet, DiskIndicatorStorage, IndicatorSource, IndicatorDependencyResolver
 from tradeexecutor.strategy.pandas_trader.strategy_input import StrategyInput
 from tradeexecutor.strategy.parameters import StrategyParameters
 from tradeexecutor.visual.grid_search import visualise_single_grid_search_result_benchmark, visualise_grid_search_equity_curves
@@ -487,6 +487,11 @@ def _decide_trades_v4(input: StrategyInput) -> List[TradeExecution]:
     return []
 
 
+def _decide_trades_combined_indicator(input: StrategyInput) -> List[TradeExecution]:
+    input.indicators.get_indicator_value("combined_indicator")
+    return []
+
+
 def my_custom_indicator(strategy_universe: TradingStrategyUniverse):
     return pd.Series(dtype="float64")
 
@@ -638,3 +643,97 @@ def test_visualise_grid_search_equity_curve(
 
     fig = visualise_single_grid_search_result_benchmark(best_results.cagr[0], strategy_universe)
     assert len(fig.data) == 2
+
+
+def test_perform_grid_search_with_indicator_dependency_resolution(
+    strategy_universe,
+    indicator_storage,
+    tmp_path,
+):
+    """Check that grid search indicators can read data from other indicators
+
+    """
+    class MyParameters:
+        cycle_duration = CycleDuration.cycle_1d
+        initial_cash = 10_000
+
+        # Indicator values that are searched in the grid search
+        slow_ema_candle_count = [21, 30]
+        fast_ema_candle_count = [7, 12]
+        combined_indicator_modes = [1, 2]
+
+    def combined_indicator(close: pd.Series, mode: int, pair: TradingPairIdentifier, dependency_resolver: IndicatorDependencyResolver):
+        # An indicator that peeks the earlier grid search indicator calculations
+        match mode:
+            case 1:
+                # When we look up data in grid search we need to give the parameter of which data we want,
+                # and the trading pair if needed
+                fast_ema = dependency_resolver.get_indicator_data("slow_ema", pair=pair, parameters={"length": 21})
+                slow_ema = dependency_resolver.get_indicator_data("fast_ema", pair=pair, parameters={"length": 7})
+            case 2:
+                # Look up one set of parameters
+                fast_ema = dependency_resolver.get_indicator_data("slow_ema", pair=pair, parameters={"length": 30})
+                slow_ema = dependency_resolver.get_indicator_data("fast_ema", pair=pair, parameters={"length": 12})
+            case _:
+                raise NotImplementedError()
+
+        return fast_ema * slow_ema * close # Calculate something based on two indicators and price
+
+    def create_indicators(parameters: StrategyParameters, indicators: IndicatorSet, strategy_universe: TradingStrategyUniverse, execution_context: ExecutionContext):
+        indicators.add("slow_ema", pandas_ta.ema, {"length": parameters.slow_ema_candle_count})
+        indicators.add("fast_ema", pandas_ta.ema, {"length": parameters.fast_ema_candle_count})
+        indicators.add(
+            "combined_indicator",
+            combined_indicator,
+            {"mode": parameters.combined_indicator_modes},
+            source=IndicatorSource.ohlcv,
+            order=2,
+        )
+
+    combinations = prepare_grid_combinations(
+        MyParameters,
+        tmp_path,
+        strategy_universe=strategy_universe,
+        create_indicators=create_indicators,
+        execution_context=ExecutionContext(mode=ExecutionMode.unit_testing, grid_search=True),
+    )
+
+    # fast ema 1, slow ema 7, my custom indicator
+    c = combinations[0]
+    assert len(c.indicators) == 3
+
+    # fast ema 2, slow ema 7, my custom indicator
+    c = combinations[1]
+    assert len(c.indicators) == 3
+
+    # {<IndicatorKey slow_ema(length=7)-WETH-USDC>, <IndicatorKey fast_ema(length=2)-WETH-USDC>, <IndicatorKey fast_ema(length=1)-WETH-USDC>, <IndicatorKey my_custom_indicator()-universe>}
+    all_indicators = GridCombination.get_all_indicators(combinations)
+    assert len(all_indicators) == 6
+
+    # Indicators were properly created
+    for c in combinations:
+        assert c.indicators is not None
+
+    # Multiprocess
+    results_2 = perform_grid_search(
+        _decide_trades_combined_indicator,
+        strategy_universe,
+        combinations,
+        max_workers=4,
+        multiprocess=True,
+        trading_strategy_engine_version="0.5",
+        indicator_storage=indicator_storage,
+    )
+    assert len(results_2) == 8
+
+    # Single thread
+    results = perform_grid_search(
+        _decide_trades_combined_indicator,
+        strategy_universe,
+        combinations,
+        max_workers=1,
+        multiprocess=True,
+        trading_strategy_engine_version="0.5",
+        indicator_storage=indicator_storage,
+    )
+    assert len(results) == 8

@@ -1104,10 +1104,18 @@ def load_indicators(
 class IndicatorDependencyResolver:
     """A helper class allowing access to the indicators we depend on.
 
-    - Allows you to define indicators that use data from other indicators
+    - Allows you to define indicators that use data from other indicators.
 
     - Indicators are calculated in the order defined by :py:attr:`IndicatorDefinition.dependency_order`,
-      higher dependency order can read data from lower one
+      higher dependency order can read data from lower one.
+
+    - If you add a parameter `dependency_resolver` to your indicator functions,
+      the instance of this class is passed and you can use `dependency_resolver`
+      to laod and read data from the past indicator calculations.
+
+    - The indicator function still can take its usual values like `close` (for close price series),
+      `strategy_universe`, etc. based on :py:class:`IndicatorSource`, even if these values
+       are not used in the calculations
 
     An example where a single-pair indicator uses data from two other indicators:
 
@@ -1202,12 +1210,12 @@ class IndicatorDependencyResolver:
             filtered_by_parameters = [i for i in filtered_by_pair if i.definition.parameters == parameters]
 
             if len(filtered_by_parameters) == 0:
-                raise IndicatorDependencyResolutionError(f"No indicator named {name}, for pair {pair}, parameters {parameters}. {all_text}")
+                raise IndicatorDependencyResolutionError(f"No indicator named {name},\n for pair {pair},\n parameters {parameters}.\n{all_text}")
         else:
             filtered_by_parameters = filtered_by_pair
 
         if len(filtered_by_parameters) != 1:
-            raise IndicatorDependencyResolutionError(f"Multiple indicator results for named {name}, for pair {pair}, parameters {parameters}. {all_text}")
+            raise IndicatorDependencyResolutionError(f"Multiple indicator results for named {name},\n for pair {pair},\n parameters {parameters}.\n{all_text}")
 
         result = filtered_by_parameters[0]
 
@@ -1536,6 +1544,7 @@ def warm_up_indicator_cache(
     execution_context: ExecutionContext,
     indicators: set[IndicatorKey],
     max_workers=8,
+    all_combinations: set[IndicatorKey] | None = None,
 ) -> tuple[set[IndicatorKey], set[IndicatorKey]]:
     """Precalculate all indicators.
 
@@ -1581,6 +1590,7 @@ def warm_up_indicator_cache(
         execution_context,
         needed,
         max_workers=max_workers,
+        all_combinations=all_combinations,
         label=f"Calculating {len(needed)} indicators for the grid search"
     )
 
