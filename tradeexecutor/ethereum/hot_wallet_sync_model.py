@@ -23,6 +23,7 @@ from tradeexecutor.strategy.sync_model import SyncModel, OnChainBalance
 from tradeexecutor.strategy.interest import (
     prepare_interest_distribution,
     accrue_interest,
+    record_interest_rate,
 )
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
 from tradeexecutor.strategy.pricing_model import PricingModel
@@ -153,9 +154,9 @@ class HotWalletSyncModel(SyncModel):
             logger.info(f"Interest sync checkpoint not set at {timestamp}, nothing to sync/cannot sync interest.")
             return []
 
-        duration = 0
-        if duration == ZERO_TIMEDELTA:
-            logger.error(f"Sync time span must be positive:{previous_update_at} - {timestamp}")
+        duration = timestamp - previous_update_at
+        if duration <= ZERO_TIMEDELTA:
+            logger.error(f"Sync time span must be positive: {previous_update_at} - {timestamp}")
             return []
 
         logger.info(
@@ -164,6 +165,8 @@ class HotWalletSyncModel(SyncModel):
             previous_update_at,
             duration,
         )
+
+        record_interest_rate(state, universe, timestamp)
 
         interest_distribution = prepare_interest_distribution(
             state.sync.interest.last_sync_at,

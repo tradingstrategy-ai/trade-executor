@@ -1299,6 +1299,49 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
                     return f"Avoid pairs with too high price. Pair max price is {pair_max_price}"
             return None
         return f"Not enough OHLCV candles, {min_candles_required} candles needed"
+    
+    def get_latest_supply_apr(
+        self,
+        asset: AssetIdentifier | None = None,
+        timestamp: datetime.datetime | None = None,
+    ) -> float:
+        """Get the latest supply APR for the lending asset.
+
+        :param asset:
+            Specify the asset to get the rate for
+            If none, use the reserve asset
+
+        :param timestamp:
+            Specify timestamp to get the rate for
+            If none, return the latest rate
+
+        :return:
+            Latest supply APR rate
+        """
+        if not asset:
+            asset = self.get_reserve_asset()
+
+        # Will raise exception if not available
+        lending_reserve = self.data_universe.lending_reserves.get_by_chain_and_address(
+            ChainId(asset.chain_id),
+            asset.address,
+        )
+
+        if timestamp:
+            rate, _ = self.data_universe.lending_candles.supply_apr.get_single_rate(
+                lending_reserve,
+                timestamp,
+                data_lag_tolerance=pd.Timedelta(days=1),
+            )
+            return rate
+
+        # get last available rate
+        df = self.data_universe.lending_candles.supply_apr.get_rates_by_reserve(lending_reserve)
+        last = df.iloc[-1]
+
+        logger.info("Got latest supply APR %s for %s at %s", last, asset, last.index)
+
+        return last["close"]
 
 
 class TradingStrategyUniverseModel(UniverseModel):
