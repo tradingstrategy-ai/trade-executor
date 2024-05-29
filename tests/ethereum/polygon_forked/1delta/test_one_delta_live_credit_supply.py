@@ -178,7 +178,8 @@ def test_one_delta_live_credit_supply_open_only(
     assert position.loan.get_collateral_value() == pytest.approx(1000.000308)
     assert position.loan.get_collateral_value() > old_col_value
     assert position.loan.get_collateral_interest() > 0
-    assert position.loan.collateral.interest_rate == pytest.approx(15.336368478574258)
+    assert position.loan.collateral.interest_rate_at_open == pytest.approx(0.15336368478574258)
+    assert position.loan.collateral.last_interest_rate == pytest.approx(0.15336368478574258)
 
 
 def test_one_delta_live_credit_supply_open_and_close(

@@ -635,7 +635,13 @@ class AssetWithTrackedValue:
     #: 
     #: This is recorded using lending candles data when position is created
     #:
-    interest_rate: float | None = None
+    interest_rate_at_open: Percent | None = None
+
+    #: Latest supply or borrow interest rate for this asset
+    #: 
+    #: This is recorded using lending candles data every time `sync_interests` is called
+    #:
+    last_interest_rate: Percent | None = None
 
     def __repr__(self):
         return f"<AssetWithTrackedValue {self.asset.token_symbol} {self.quantity} at price {self.last_usd_price} USD>"

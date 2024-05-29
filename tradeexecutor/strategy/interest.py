@@ -584,9 +584,12 @@ def record_interest_rate(
         if p.is_credit_supply():
             loan = p.loan
 
-            # check if already recorded
-            if loan.collateral.interest_rate:
-                return
-            
-            logger.info("Recording interest rate for %s at %s", p, timestamp)
-            loan.collateral.interest_rate = universe.get_latest_supply_apr(timestamp=timestamp)
+            last_interest_rate = universe.get_latest_supply_apr(timestamp=timestamp) / 100
+            assert 0 < last_interest_rate < 1
+
+            logger.info("Recording interest rate %f for %s at %s", last_interest_rate, p, timestamp)
+
+            if not loan.collateral.interest_rate_at_open:
+                loan.collateral.interest_rate_at_open = last_interest_rate
+
+            loan.collateral.last_interest_rate = last_interest_rate
