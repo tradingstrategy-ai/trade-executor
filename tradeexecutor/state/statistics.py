@@ -144,6 +144,7 @@ class PortfolioStatistics:
         # Safety checks for the bad data
         if self.unrealised_profitability is not None:
             assert not pd.isna(self.unrealised_profitability)
+            assert type(self.unrealised_profitability) == float
 
 
 @dataclass_json
