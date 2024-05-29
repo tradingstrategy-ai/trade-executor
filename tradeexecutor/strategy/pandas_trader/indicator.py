@@ -1,4 +1,19 @@
-"""Indicator definitions."""
+"""Indicator definitions.
+
+- Defining technical analysis and external indicators for :term:`trading strategies <trading strategy>`
+
+- Precalculating indicators and caching the results on a disk
+
+- Continuing indicator calculator in the case of crash
+
+- Support both single backtest and grid search modes
+
+- Support indicators depending on other indicators via dependency order resolution using :py:class:`IndicatorDependencyResolver`
+
+- Support external data sources
+
+To get started with indicators see examples in :py:class:`CreateIndicatorsProtocolV2`.
+"""
 import datetime
 import threading
 from abc import ABC, abstractmethod
