@@ -2,6 +2,7 @@
 import datetime
 import threading
 from abc import ABC, abstractmethod
+from collections import defaultdict
 
 # Enable pickle patch that allows multiprocessing in notebooks
 from tradeexecutor.monkeypatch import cloudpickle_patch
@@ -35,6 +36,7 @@ from tradeexecutor.strategy.parameters import StrategyParameters
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse, UniverseCacheKey
 from tradeexecutor.utils.cpu import get_safe_max_workers_count
 from tradeexecutor.utils.python_function import hash_function
+from tradingstrategy.pair import HumanReadableTradingPairDescription
 from tradingstrategy.utils.groupeduniverse import PairCandlesMissing
 
 logger = logging.getLogger(__name__)
@@ -51,9 +53,29 @@ class IndicatorCalculationFailed(Exception):
     - Wrap the underlying Python exception to a friendlier error message
     """
 
-
 class IndicatorFunctionSignatureMismatch(Exception):
     """Given Pythohn function cannot run on the passed parameters."""
+
+
+class IndicatorNotFound(Exception):
+    """Asked for an indicator we do not have.
+
+    See :py:func:`resolve_indicator_data`
+    """
+
+class IndicatorDependencyResolutionError(Exception):
+    """Something wrong trying to look up data from other indicators.
+
+    """
+
+class IndicatorOrderError(Exception):
+    """An indicator in earier dependency resolution order tries to ask data for one that comes later.
+
+    """
+
+class InvalidForMultipairStrategy(Exception):
+    """Try to use single trading pair functions in a multipair strategy."""
+
 
 
 class IndicatorSource(enum.Enum):
@@ -91,13 +113,15 @@ class IndicatorSource(enum.Enum):
     #:
     strategy_universe = "strategy_universe"
 
-
     #: Data loaded from an external source.
     #:
     #: Per-pair data.
     #:
+    external_per_pair = "external_per_pair"
+
+    #: The indicator takes strategy universe + all earlier indicators as an input.
     #:
-    external_per_pair = "custom_per_pairexternal_per_pair"
+    earlier_indicators = "earlier_indicators"
 
     def is_per_pair(self) -> bool:
         """This indicator is calculated to all trading pairs."""
@@ -160,6 +184,20 @@ class IndicatorDefinition:
     #:
     source: IndicatorSource = IndicatorSource.close_price
 
+    #: Dependency resolution order.
+    #:
+    #: Indicators are calculated in order from the lowest order to the highest.
+    #: The order parameter allows lightweight dependency resolution, where later
+    #: indicators and read the earlier indicators data.
+    #:
+    #: By default all indicators are on the same dependency resolution order layer `1`
+    #: and cannot access data from other indicators. You need to create indicator
+    #: with `order == 2` to be able to access data from indicators where `order == 1`.
+    #:
+    #: See :py:class:`IndicatorDependencyResolver` for details and examples.
+    #:
+    dependency_order: int = 1
+
     def __repr__(self):
         return f"<Indicator {self.name} using {self.func.__name__ if self.func else '?()'} for {self.parameters}>"
 
@@ -194,8 +232,8 @@ class IndicatorDefinition:
 
     def is_per_pair(self) -> bool:
         return self.source.is_per_pair()
-    
-    def calculate_by_pair_external(self, pair: TradingPairIdentifier) -> pd.DataFrame | pd.Series:
+
+    def calculate_by_pair_external(self, pair: TradingPairIdentifier, resolver: "IndicatorDependencyResolver") -> pd.DataFrame | pd.Series:
         """Calculate indicator for external data.
 
         :param pair:
@@ -209,13 +247,13 @@ class IndicatorDefinition:
 
         """
         try:
-            ret = self.func(pair, **self.parameters)
+            ret = self.func(pair, **self._fix_parameters_for_function_signature(resolver, pair))
             output_fixed = _flatten_index(ret)
             return self._check_good_return_value(output_fixed)
         except Exception as e:
             raise IndicatorCalculationFailed(f"Could not calculate external data indicator {self.name} ({self.func}) for parameters {self.parameters}, pair {pair}") from e
 
-    def calculate_by_pair(self, input: pd.Series, pair: TradingPairIdentifier) -> pd.DataFrame | pd.Series:
+    def calculate_by_pair(self, input: pd.Series, pair: TradingPairIdentifier, resolver: "IndicatorDependencyResolver") -> pd.DataFrame | pd.Series:
         """Calculate the underlying indicator value.
 
         :param input:
@@ -231,15 +269,12 @@ class IndicatorDefinition:
         try:
             input_fixed = _flatten_index(input)
             func_args = inspect.getfullargspec(self.func).args
-            if "pair" in func_args:
-                ret = self.func(input_fixed, pair, **self.parameters)
-            else:
-                ret = self.func(input_fixed, **self.parameters)
+            ret = self.func(input_fixed, **self._fix_parameters_for_function_signature(resolver, pair))
             return self._check_good_return_value(ret)
         except Exception as e:
             raise IndicatorCalculationFailed(f"Could not calculate indicator {self.name} ({self.func}) for parameters {self.parameters}, input data is {len(input)} rows") from e
 
-    def calculate_by_pair_ohlcv(self, candles: pd.DataFrame) -> pd.DataFrame | pd.Series:
+    def calculate_by_pair_ohlcv(self, candles: pd.DataFrame, pair: TradingPairIdentifier, resolver: "IndicatorDependencyResolver") -> pd.DataFrame | pd.Series:
         """Calculate the underlying OHCLV indicator value.
 
         Assume function can take parameters: `open`, `high`, `low`, `close`, `volume`,
@@ -270,7 +305,9 @@ class IndicatorDefinition:
         if len(full_kwargs) == 0:
             raise IndicatorCalculationFailed(f"Could not calculate OHLCV indicator {self.name} ({self.func}): does not take any of function arguments from {needed_args}")
 
-        full_kwargs.update(self.parameters)
+        fixed_params = self._fix_parameters_for_function_signature(resolver, pair)
+
+        full_kwargs.update(fixed_params)
 
         try:
             ret = self.func(**full_kwargs)
@@ -278,7 +315,7 @@ class IndicatorDefinition:
         except Exception as e:
             raise IndicatorCalculationFailed(f"Could not calculate indicator {self.name} ({self.func}) for parameters {self.parameters}, candles is {len(candles)} rows, {candles.columns} columns\nThe original exception was: {e}") from e
 
-    def calculate_universe(self, input: TradingStrategyUniverse) -> pd.DataFrame | pd.Series:
+    def calculate_universe(self, input: TradingStrategyUniverse, resolver: "IndicatorDependencyResolver") -> pd.DataFrame | pd.Series:
         """Calculate the underlying indicator value.
 
         :param input:
@@ -292,7 +329,7 @@ class IndicatorDefinition:
 
         """
         try:
-            ret = self.func(input, **self.parameters)
+            ret = self.func(input, **self._fix_parameters_for_function_signature(resolver, None))
             return self._check_good_return_value(ret)
         except Exception as e:
             raise IndicatorCalculationFailed(f"Could not calculate indicator {self.name} ({self.func}) for parameters {self.parameters}, input universe is {input}.\nException is {e}\n\n To use Python debugger, set `max_workers=1`, and if doing a grid search, also set `multiprocess=False`") from e
@@ -300,6 +337,24 @@ class IndicatorDefinition:
     def _check_good_return_value(self, df):
         assert isinstance(df, (pd.Series, pd.DataFrame)), f"Indicator did not return pd.DataFrame or pd.Series: {self.name}, we got {type(df)}\nCheck you are using IndicatorSource correcly e.g. IndicatorSource.close_price when creating indicators"
         return df
+
+    def _fix_parameters_for_function_signature(self, resolver: "IndicatorDependencyResolver", pair: TradingPairIdentifier | None) -> dict:
+        """Update parameters to include resolver if the indicator needs it.
+
+        This was a late addon, so we cram it in here.
+        """
+
+        parameters = self.parameters.copy()
+
+        func_args = inspect.getfullargspec(self.func).args
+        if "dependency_resolver" in func_args:
+            parameters["dependency_resolver"] = resolver
+
+        if pair:
+            if "pair" in func_args:
+                parameters["pair"] = pair
+
+        return parameters
 
 
 @dataclass(slots=True, frozen=True)
@@ -366,7 +421,8 @@ class IndicatorSet:
 
     - For live trading, these indicators are recalculated for the each decision cycle
 
-    - Indicators are calculated for each given trading pair, unless specified otherwise
+    - Indicators are calculated for each given trading pair, unless specified otherwise,
+      and a separate :py:class:`IndicatorKey` is generated by :py:meth:`generate_combinations`
 
     See :py:class:`CreateIndicatorsProtocolV2` for usage.
     """
@@ -399,6 +455,7 @@ class IndicatorSet:
         func: Callable,
         parameters: dict | None = None,
         source: IndicatorSource=IndicatorSource.close_price,
+        order=1,
     ):
         """Add a new indicator to this indicator set.
 
@@ -431,6 +488,11 @@ class IndicatorSet:
 
             Defaults to the close price for each trading pair.
             To calculate universal indicators set to :py:attr:`IndicatorSource.strategy_universe`.
+
+        :param order:
+            Dependency resolution order.
+
+            See :py:attr:`tradingstrategy.strategy.pandas_trader.indicator.IndicatorKey.order` parameter.
         """
         assert type(name) == str
         assert callable(func), f"{func} is not callable"
@@ -440,7 +502,7 @@ class IndicatorSet:
         assert type(parameters) == dict, f"parameters must be dictionary, we got {parameters.__class__}"
         assert isinstance(source, IndicatorSource), f"Expected IndicatorSource, got {type(source)}"
         assert name not in self.indicators, f"Indicator {name} already added"
-        self.indicators[name] = IndicatorDefinition(name, func, parameters, source)
+        self.indicators[name] = IndicatorDefinition(name, func, parameters, source, order)
 
     def iterate(self) -> Iterable[IndicatorDefinition]:
         yield from self.indicators.values()
@@ -524,6 +586,9 @@ class CreateIndicatorsProtocolV2(Protocol):
     - For most :py:mod:`pandas_ta` functions. like `pandas_ta.ma`, `pandas_ta.rsi`, `pandas_ta.mfi`, you can pass them directly to
       `indicators.add()` - as those functions have standard argument names like `close`, `high`, `low` that
       are data series provided.
+
+    - If you wish to use data from earlier indicators calculations in later indicator calculations, see :py:class:`IndicatorDependencyResolver`
+      for how to do it
 
     Example for creating an Exponential Moving Average (EMA) indicator based on the `close` price.
     This example is for a grid search. Unless specified, indicators are assumed to be
@@ -895,15 +960,30 @@ def _load_indicator_result(storage: DiskIndicatorStorage, key: IndicatorKey) -> 
 
 
 def _calculate_and_save_indicator_result(
-    strategy_universe: TradingStrategyUniverse,
     storage: DiskIndicatorStorage,
     key: IndicatorKey,
+    all_indicators: set[IndicatorKey],
 ) -> IndicatorResult | None:
     """Calculate an indicator result.
 
     - Mark missing data as empty Series
 
     """
+    global _universe
+
+    # Picked result
+    strategy_universe = _universe
+
+    assert strategy_universe is not None, "Process global _universe not set"
+
+    current_dependency_order = key.definition.dependency_order
+
+    resolver = IndicatorDependencyResolver(
+        strategy_universe,
+        all_indicators,
+        storage,
+        current_dependency_order,
+    )
 
     indicator = key.definition
 
@@ -914,18 +994,18 @@ def _calculate_and_save_indicator_result(
                 case IndicatorSource.open_price:
                     column = "open"
                     input = strategy_universe.data_universe.candles.get_samples_by_pair(key.pair.internal_id)[column]
-                    data = indicator.calculate_by_pair(input, key.pair)
+                    data = indicator.calculate_by_pair(input, key.pair, resolver)
                 case IndicatorSource.close_price:
                     column = "close"
                     input = strategy_universe.data_universe.candles.get_samples_by_pair(key.pair.internal_id)[column]
-                    data = indicator.calculate_by_pair(input, key.pair)
+                    data = indicator.calculate_by_pair(input, key.pair, resolver)
                 case IndicatorSource.ohlcv:
                     input = strategy_universe.data_universe.candles.get_samples_by_pair(key.pair.internal_id)
-                    data = indicator.calculate_by_pair_ohlcv(input)
+                    data = indicator.calculate_by_pair_ohlcv(input, key.pair, resolver)
                 case IndicatorSource.external_per_pair:
-                    data = indicator.calculate_by_pair_external(key.pair)
+                    data = indicator.calculate_by_pair_external(key.pair, resolver)
                 case _:
-                    raise AssertionError(f"Unsupported input source {key.pair} {key.definition} {indicator.source}")
+                    raise NotImplementedError(f"Unsupported input source {key.pair} {key.definition} {indicator.source}")
 
             if data is None:
                 logger.warning("Indicator %s generated empty data for pair %s. Input data length is %d candles.", key.definition.name, key.pair, len(input))
@@ -938,7 +1018,13 @@ def _calculate_and_save_indicator_result(
 
     else:
         # Calculate indicator over the whole universe
-        data = indicator.calculate_universe(strategy_universe)
+        match indicator.source:
+            case IndicatorSource.strategy_universe:
+                data = indicator.calculate_universe(strategy_universe, resolver)
+            case IndicatorSource.earlier_indicators:
+                data = indicator.calculate_earlier_indicators(strategy_universe, resolver)
+            case _:
+                raise NotImplementedError(f"Unsupported input source {key.pair} {key.definition} {indicator.source}")
 
     assert data is not None, f"Indicator function {indicator.name} ({indicator.func}) did not return any result, received Python None instead"
 
@@ -1023,6 +1109,263 @@ def load_indicators(
             progress_bar.close()
 
 
+
+@dataclass
+class IndicatorDependencyResolver:
+    """A helper class allowing access to the indicators we depend on.
+
+    - Allows you to define indicators that use data from other indicators.
+
+    - Indicators are calculated in the order defined by :py:attr:`IndicatorDefinition.dependency_order`,
+      higher dependency order can read data from lower one.
+
+    - If you add a parameter `dependency_resolver` to your indicator functions,
+      the instance of this class is passed and you can use `dependency_resolver`
+      to laod and read data from the past indicator calculations.
+
+    - The indicator function still can take its usual values like `close` (for close price series),
+      `strategy_universe`, etc. based on :py:class:`IndicatorSource`, even if these values
+       are not used in the calculations
+
+    An example where a single-pair indicator uses data from two other indicators:
+
+    .. code-block:: python
+
+        def ma_crossover(
+            close: pd.Series,
+            pair: TradingPairIdentifier,
+            dependency_resolver: IndicatorDependencyResolver,
+        ) -> pd.Series:
+            # Do cross-over calculation based on other two earlier moving average indicators.
+            # Return pd.Series with True/False valeus and DatetimeIndex
+            slow_sma: pd.Series = dependency_resolver.get_indicator_data("slow_sma")
+            fast_sma: pd.Series = dependency_resolver.get_indicator_data("fast_sma")
+            return fast_sma > slow_sma
+
+        indicators = IndicatorSet()
+        # Slow moving average
+        indicators.add(
+            "fast_sma",
+            pandas_ta.sma,
+            parameters={"length": 7},
+            order=1,
+        )
+        # Fast moving average
+        indicators.add(
+            "slow_sma",
+            pandas_ta.sma,
+            parameters={"length": 21},
+            order=1,
+        )
+        # An indicator that depends on both fast MA and slow MA above
+        indicators.add(
+            "ma_crossover",
+            ma_crossover,
+            source=IndicatorSource.ohlcv,
+            order=2,  # 2nd order indicators can depend on the data of 1st order indicators
+        )
+
+    When you use indicator dependency resolution with the grid search, you need to specify indicator parameters you want read,
+    as for each named indicator there might be multiple copies with different grid search combinations:
+
+    .. code-block:: text
+
+        class Parameters:
+            cycle_duration = CycleDuration.cycle_1d
+            initial_cash = 10_000
+
+            # Indicator values that are searched in the grid search
+            slow_ema_candle_count = [21, 30]
+            fast_ema_candle_count = [7, 12]
+            combined_indicator_modes = [1, 2]
+
+        def combined_indicator(close: pd.Series, mode: int, pair: TradingPairIdentifier, dependency_resolver: IndicatorDependencyResolver):
+            # An indicator that peeks the earlier grid search indicator calculations
+            match mode:
+                case 1:
+                    # When we look up data in grid search we need to give the parameter of which data we want,
+                    # and the trading pair if needed
+                    fast_ema = dependency_resolver.get_indicator_data("slow_ema", pair=pair, parameters={"length": 21})
+                    slow_ema = dependency_resolver.get_indicator_data("fast_ema", pair=pair, parameters={"length": 7})
+                case 2:
+                    # Look up one set of parameters
+                    fast_ema = dependency_resolver.get_indicator_data("slow_ema", pair=pair, parameters={"length": 30})
+                    slow_ema = dependency_resolver.get_indicator_data("fast_ema", pair=pair, parameters={"length": 12})
+                case _:
+                    raise NotImplementedError()
+
+            return fast_ema * slow_ema * close # Calculate something based on two indicators and price
+
+        def create_indicators(parameters: StrategyParameters, indicators: IndicatorSet, strategy_universe: TradingStrategyUniverse, execution_context: ExecutionContext):
+            indicators.add("slow_ema", pandas_ta.ema, {"length": parameters.slow_ema_candle_count})
+            indicators.add("fast_ema", pandas_ta.ema, {"length": parameters.fast_ema_candle_count})
+            indicators.add(
+                "combined_indicator",
+                combined_indicator,
+                {"mode": parameters.combined_indicator_modes},
+                source=IndicatorSource.ohlcv,
+                order=2,
+            )
+
+        combinations = prepare_grid_combinations(
+            Parameters,
+            tmp_path,
+            strategy_universe=strategy_universe,
+            create_indicators=create_indicators,
+            execution_context=ExecutionContext(mode=ExecutionMode.unit_testing, grid_search=True),
+        )
+    """
+
+    #: Trading universe
+    #:
+    #: - Perform additional pair lookups if needed
+    #:
+    strategy_universe: TradingStrategyUniverse
+
+    #: Available indicators as defined in create_indicators()
+    #:
+    all_indicators: set[IndicatorKey]
+
+    #: Raw cached indicator results or ones calculated in the memory
+    #:
+    indicator_storage: IndicatorStorage
+
+    #: The current resolved dependency order level
+    current_dependency_order: int = 0
+
+    def match_indicator(
+        self,
+        name: str,
+        pair: TradingPairIdentifier | HumanReadableTradingPairDescription | None = None,
+        parameters: dict | None = None,
+    ) -> IndicatorKey:
+        """Find an indicator key for an indicator.
+
+        - Check by name, pair and parameter
+
+        - Make sure that the indicator defined is on a lower level than the current dependency order level
+        """
+
+        if len(self.all_indicators) > 8:
+            all_text = f"We have total {len(self.all_indicators)} indicator keys across all pairs and grid combinations."
+        else:
+            all_text = f"We have indicators: {self.all_indicators}."
+
+        filtered_by_name = [i for i in self.all_indicators if i.definition.name == name]
+        if len(filtered_by_name) == 0:
+            raise IndicatorDependencyResolutionError(f"No indicator named {name}. {all_text}")
+
+        if pair is not None:
+            filtered_by_pair = [i for i in filtered_by_name if i.pair == pair]
+            if len(filtered_by_pair) == 0:
+                raise IndicatorDependencyResolutionError(f"No indicator named {name}, for pair {pair}. {all_text}")
+        else:
+            filtered_by_pair = filtered_by_name
+
+        if parameters is not None:
+            filtered_by_parameters = [i for i in filtered_by_pair if i.definition.parameters == parameters]
+
+            if len(filtered_by_parameters) == 0:
+                raise IndicatorDependencyResolutionError(f"No indicator named {name},\n for pair {pair},\n parameters {parameters}.\n{all_text}")
+        else:
+            filtered_by_parameters = filtered_by_pair
+
+        if len(filtered_by_parameters) != 1:
+            raise IndicatorDependencyResolutionError(f"Multiple indicator results for named {name},\n for pair {pair},\n parameters {parameters}.\n{all_text}")
+
+        result = filtered_by_parameters[0]
+
+        if self.current_dependency_order <= result.definition.dependency_order:
+            raise IndicatorOrderError(f"The dependency order for {name} is {result.definition.dependency_order}, but we ask data at the current dependency order level {self.current_dependency_order}")
+
+        return result
+
+    def get_indicator_data(
+        self,
+        name: str,
+        column: str | None = None,
+        pair: TradingPairIdentifier | HumanReadableTradingPairDescription | None = None,
+        parameters: dict | None = None,
+    ) -> pd.Series | pd.DataFrame:
+        """Get access to indicator data series/frame.
+
+        Throw friendly error messages for pitfalls.
+
+        :param name:
+            Indicator name
+
+        :param parameters:
+            If there the dependent indicator has multiple versions
+            with different parameters, we need to get the specify parameters.
+
+        :param column:
+            Column name for multi-column indicators.
+
+            "all" to get the whole DataFrame.
+
+        :param pair:
+            Needed when universe contains multiple trading pairs.
+
+            Can be omitted from non-pair indicators.
+
+        """
+
+        key = self.match_indicator(
+            name,
+            pair,
+            parameters
+        )
+
+        indicator_result = self.indicator_storage.load(key)
+
+        if indicator_result is None:
+            all_indicators = self.all_indicators
+            raise AssertionError(
+                f"Indicator results did not contain key {key} for indicator {name}.\n"
+                f"Available indicators: {all_indicators}\n"
+            )
+
+        data = indicator_result.data
+        assert data is not None, f"Indicator pre-calculated values missing for {name} - lookup key {key}"
+
+        if isinstance(data, pd.DataFrame):
+
+            if column == "all":
+                return data
+
+            assert column is not None, f"Indicator {name} has multiple available columns to choose from: {data.columns}"
+            assert column in data.columns, f"Indicator {name} subcolumn {column} not in the available columns: {data.columns}"
+            series = data[column]
+        elif isinstance(data, pd.Series):
+            series = data
+        else:
+            raise NotImplementedError(f"Unknown indicator data type {type(data)}")
+
+        return series
+
+
+#: Indicator multiprocess unit as function parameters
+CalculateTaskArguments = tuple[IndicatorStorage, IndicatorKey, set[IndicatorKey]]
+
+
+def group_indicators(task_args: list[CalculateTaskArguments]) -> dict[int, list[CalculateTaskArguments]]:
+    """Split indicator calculations to the groups based on their dependency resolution order.
+
+    :return:
+        ordered dict, lowest first
+    """
+
+    grouped = {}
+    sorted_args = sorted(task_args, key=lambda ta: ta[1].definition.dependency_order)
+    for task_args in sorted_args:
+        order = task_args[1].definition.dependency_order
+        if order not in grouped:
+            # Create keys in order
+            grouped[order] = []
+        grouped[order].append(task_args)
+    return grouped
+
+
 def calculate_indicators(
     strategy_universe: TradingStrategyUniverse,
     storage: DiskIndicatorStorage,
@@ -1031,6 +1374,7 @@ def calculate_indicators(
     remaining: set[IndicatorKey],
     max_workers=8,
     label: str | None = None,
+    all_combinations: set[IndicatorKey] | None = None,
     verbose=True,
 ) -> IndicatorResultMap:
     """Calculate indicators for which we do not have cached data yet.
@@ -1045,10 +1389,17 @@ def calculate_indicators(
     :param remaining:
         Remaining indicator combinations for which we do not have a cached rresult
 
+    :param all_combinations:
+        All available indicator combinations.
+
+        Only needed if we are doing indicator dependency resolution.
+
     :param verbose:
         Stdout user printing with helpful messages.
     """
 
+    assert isinstance(strategy_universe, TradingStrategyUniverse)
+    assert isinstance(storage, IndicatorStorage)
     assert isinstance(execution_context, ExecutionContext), f"Expected ExecutionContext, got {type(execution_context)}"
 
     results: IndicatorResultMap
@@ -1065,15 +1416,15 @@ def calculate_indicators(
         logger.info("Nothing to calculate")
         return {}
 
-    task_args = []
+    task_args: list[CalculateTaskArguments] = []
     for key in remaining:
-        task_args.append((strategy_universe, storage, key))
+        task_args.append((storage, key, all_combinations))
 
     results = {}
 
     if max_workers > 1:
 
-        # Do a parallel scan for the maximum speed
+        # Do a parallel calculation for the maximum speed
         #
         # Set up a futureproof task manager
         #
@@ -1096,30 +1447,48 @@ def calculate_indicators(
         # Set up a signal handler to stop child processes on quit
         setup_indicator_multiprocessing(executor)
 
-        # Run the tasks
-        tm.map(_calculate_and_save_indicator_result, task_args)
+        # Dependency order resolution.
+        # Group is a list of task args where the order is the same
+        groups = group_indicators(task_args)
 
-        # Track the child process completion using tqdm progress bar
-        with tqdm(total=len(task_args), desc=f"Calculating indicators {label} using {max_workers} processes") as progress_bar:
-            # Extract results from the parallel task queue
-            for task in tm.as_completed():
-                result = task.result
-                results[result.indicator_key] = result
-                progress_bar.update()
+        for order, group_task_args in groups.items():
+
+            # Run the tasks
+            tm.map(_calculate_and_save_indicator_result, group_task_args)
+
+            if order == 0:
+                desc = f"Calculating indicators {label} using {max_workers} processes, dependency group #{order}"
+            else:
+                desc = f"Calculating indicators {label} using {max_workers} processes"
+
+            # Track the child process completion using tqdm progress bar
+            with tqdm(total=len(task_args), desc=desc) as progress_bar:
+                # Extract results from the parallel task queue
+                for task in tm.as_completed():
+                    result = task.result
+                    results[result.indicator_key] = result
+                    progress_bar.update()
 
     else:
         # Do single thread - good for debuggers like pdb/ipdb
         #
 
+        global _universe
         _universe = strategy_universe
 
         logger.info("Doing a single thread indicator calculation")
-        iter = itertools.starmap(_calculate_and_save_indicator_result, task_args)
 
-        # Force workers to finish
-        result: IndicatorResult
-        for result in iter:
-            results[result.indicator_key] = result
+        # Dependency order resolution.
+        # Group is a list of task args where the order is the same
+        groups = group_indicators(task_args)
+
+        for order, group_task_args in groups.items():
+            iter = itertools.starmap(_calculate_and_save_indicator_result, group_task_args)
+
+            # Force workers to finish
+            result: IndicatorResult
+            for result in iter:
+                results[result.indicator_key] = result
 
     logger.info("Total %d indicator results calculated", len(results))
 
@@ -1214,6 +1583,7 @@ def calculate_and_load_indicators(
         execution_context,
         calculation_needed,
         max_workers=max_workers,
+        all_combinations=all_combinations,
     )
 
     result = cached | calculated
@@ -1231,6 +1601,7 @@ def warm_up_indicator_cache(
     execution_context: ExecutionContext,
     indicators: set[IndicatorKey],
     max_workers=8,
+    all_combinations: set[IndicatorKey] | None = None,
 ) -> tuple[set[IndicatorKey], set[IndicatorKey]]:
     """Precalculate all indicators.
 
@@ -1276,6 +1647,7 @@ def warm_up_indicator_cache(
         execution_context,
         needed,
         max_workers=max_workers,
+        all_combinations=all_combinations,
         label=f"Calculating {len(needed)} indicators for the grid search"
     )
 

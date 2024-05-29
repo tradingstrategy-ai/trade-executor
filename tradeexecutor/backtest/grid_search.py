@@ -766,7 +766,8 @@ def warm_up_grid_search_indicator_cache(
         indicator_storage,
         execution_context=execution_context,
         indicators=indicators,
-        max_workers=max_workers
+        max_workers=max_workers,
+        all_combinations=indicators,
     )
 
 

@@ -13,7 +13,7 @@ import inspect
 from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier
 from tradeexecutor.strategy.execution_context import ExecutionContext, unit_test_execution_context, unit_test_trading_execution_context
 from tradeexecutor.strategy.pandas_trader.indicator import IndicatorSet, DiskIndicatorStorage, IndicatorDefinition, IndicatorFunctionSignatureMismatch, \
-    calculate_and_load_indicators, IndicatorKey, IndicatorSource
+    calculate_and_load_indicators, IndicatorKey, IndicatorSource, IndicatorStorage, IndicatorDependencyResolver, IndicatorOrderError, IndicatorCalculationFailed
 from tradeexecutor.strategy.pandas_trader.strategy_input import StrategyInputIndicators
 from tradeexecutor.strategy.parameters import StrategyParameters
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse, create_pair_universe_from_code, load_partial_data
@@ -24,6 +24,7 @@ from tradeexecutor.testing.synthetic_price_data import generate_multi_pair_candl
 from tradeexecutor.utils.python_function import hash_function
 from tradingstrategy.candle import GroupedCandleUniverse
 from tradingstrategy.chain import ChainId
+from tradingstrategy.pair import HumanReadableTradingPairDescription
 from tradingstrategy.timebucket import TimeBucket
 from tradingstrategy.universe import Universe
 
@@ -588,3 +589,186 @@ def test_indicator_single_pair_live_trading_universe(persistent_test_client, ind
     assert isinstance(indicator_series.index, pd.DatetimeIndex)
     indicator_value = input_indicators.get_indicator_value("ma")
     assert 0 < indicator_value < 10_000
+
+
+def test_indicator_dependency_resolution(persistent_test_client, indicator_storage):
+    """Indicators can depend each other and consume data of indicators calculated earlier.
+
+    - Create an example where we have one indicator (crossover) depending on two other indicators (smas)
+    - Live data loader gives (pair, timestamp) index instead of (timestamp) index
+    - We can control dependency order resolution using :py:attr:`~tradingstrategy.strategy.pandas_trader.indicator.IndicatorKey.order` parameter
+    - Dependency resolved indicators must use :py:attr:`~tradingstrategy.strategy.pandas_trader.indicator.IndicatorSource.order` as indicator osurce
+    """
+
+    client = persistent_test_client
+
+    universe_options = UniverseOptions(history_period=datetime.timedelta(days=14))
+
+    pair = (ChainId.polygon, "uniswap-v3", "WMATIC", "USDC", 0.0005)
+
+    dataset = load_partial_data(
+        client=client,
+        time_bucket=TimeBucket.h1,
+        pairs=[pair],
+        execution_context=unit_test_trading_execution_context,
+        universe_options=universe_options,
+        liquidity=False,
+    )
+
+    strategy_universe = TradingStrategyUniverse.create_from_dataset(
+        dataset,
+        reserve_asset="USDC",
+        forward_fill=True,
+    )
+
+    def ma_crossover(
+        close: pd.Series,
+        pair: TradingPairIdentifier,
+        dependency_resolver: IndicatorDependencyResolver,
+    ) -> pd.Series:
+        """Do cross-over calculation based on other two earlier moving average indicators.
+
+        - This example calculates regions here fast moving average is above slow moving averag
+
+        - Return pd.Series with True/False valeus and DatetimeIndex
+        """
+        slow_sma: pd.Series = dependency_resolver.get_indicator_data("slow_sma")
+        fast_sma: pd.Series = dependency_resolver.get_indicator_data("fast_sma")
+        return fast_sma > slow_sma
+
+    def ma_crossover_by_pair(
+        close: pd.Series,
+        pair: TradingPairIdentifier,
+        dependency_resolver: IndicatorDependencyResolver,
+    ) -> pd.Series:
+        slow_sma: pd.Series = dependency_resolver.get_indicator_data("slow_sma", pair=pair)
+        fast_sma: pd.Series = dependency_resolver.get_indicator_data("fast_sma", pair=pair)
+        return fast_sma > slow_sma
+
+    def ma_crossover_by_pair_and_parameters(
+        close: pd.Series,
+        pair: TradingPairIdentifier,
+        dependency_resolver: IndicatorDependencyResolver,
+    ) -> pd.Series:
+        slow_sma: pd.Series = dependency_resolver.get_indicator_data("slow_sma", pair=pair, parameters={"length": 21})
+        fast_sma: pd.Series = dependency_resolver.get_indicator_data("fast_sma", pair=pair, parameters={"length": 7})
+        return fast_sma > slow_sma
+
+    indicators = IndicatorSet()
+    # Slow moving average
+    indicators.add(
+        "fast_sma",
+        pandas_ta.sma,
+        parameters={"length": 7},
+        order=1,
+    )
+    # Fast moving average
+    indicators.add(
+        "slow_sma",
+        pandas_ta.sma,
+        parameters={"length": 21},
+        order=1,
+    )
+    # An indicator that depends on both fast MA and slow MA above
+    indicators.add(
+        "ma_crossover",
+        ma_crossover,
+        source=IndicatorSource.ohlcv,
+        order=2,  # 2nd order indicators can depend on the data of 1st order indicators
+    )
+    indicators.add(
+        "ma_crossover_by_pair",
+        ma_crossover_by_pair,
+        source=IndicatorSource.ohlcv,
+        order=2,  # 2nd order indicators can depend on the data of 1st order indicators
+    )
+    indicators.add(
+        "ma_crossover_by_pair_and_parameters",
+        ma_crossover_by_pair_and_parameters,
+        source=IndicatorSource.ohlcv,
+        order=2,  # 2nd order indicators can depend on the data of 1st order indicators
+    )
+    indicator_results = calculate_and_load_indicators(
+        strategy_universe,
+        indicator_storage,
+        indicators=indicators,
+        execution_context=unit_test_execution_context,
+        parameters=StrategyParameters({}),
+        max_workers=2,
+        max_readers=1,
+    )
+
+    first_day, last_day = strategy_universe.data_universe.candles.get_timestamp_range()
+
+    input_indicators = StrategyInputIndicators(
+        strategy_universe=strategy_universe,
+        available_indicators=indicators,
+        indicator_results=indicator_results,
+        timestamp=last_day,
+    )
+
+    indicator_series = input_indicators.get_indicator_series("ma_crossover")
+    assert isinstance(indicator_series.index, pd.DatetimeIndex)
+    indicator_value = input_indicators.get_indicator_value("ma_crossover")
+    assert indicator_value in (True, False)
+
+
+def test_indicator_dependency_order_error(persistent_test_client, indicator_storage):
+    """Try to calculate data in wrong dependency oredr.
+    """
+
+    client = persistent_test_client
+
+    universe_options = UniverseOptions(history_period=datetime.timedelta(days=14))
+
+    pair = (ChainId.polygon, "uniswap-v3", "WMATIC", "USDC", 0.0005)
+
+    dataset = load_partial_data(
+        client=client,
+        time_bucket=TimeBucket.h1,
+        pairs=[pair],
+        execution_context=unit_test_trading_execution_context,
+        universe_options=universe_options,
+        liquidity=False,
+    )
+
+    strategy_universe = TradingStrategyUniverse.create_from_dataset(
+        dataset,
+        reserve_asset="USDC",
+        forward_fill=True,
+    )
+
+    def ma_crossover(
+        close: pd.Series,
+        pair: TradingPairIdentifier,
+        dependency_resolver: IndicatorDependencyResolver,
+    ) -> pd.Series:
+        # Fails because order parameter not set in indiactors.add()
+        slow_sma: pd.Series = dependency_resolver.get_indicator_data("slow_sma")
+        return slow_sma
+
+    indicators = IndicatorSet()
+    indicators.add(
+        "slow_sma",
+        pandas_ta.sma,
+        parameters={"length": 21},
+    )
+    # order parameter is not set
+    indicators.add(
+        "ma_crossover",
+        ma_crossover,
+        source=IndicatorSource.ohlcv,
+    )
+
+    with pytest.raises(IndicatorCalculationFailed):
+        # TODO: match the nested IndicatorOrderError here
+        calculate_and_load_indicators(
+            strategy_universe,
+            indicator_storage,
+            indicators=indicators,
+            execution_context=unit_test_execution_context,
+            parameters=StrategyParameters({}),
+            max_workers=1,
+            max_readers=1,
+        )
+

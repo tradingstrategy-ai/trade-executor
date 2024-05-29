@@ -14,7 +14,7 @@ from tradeexecutor.state.identifier import TradingPairIdentifier
 from tradeexecutor.state.state import State
 from tradeexecutor.state.types import USDollarPrice
 from tradeexecutor.strategy.execution_context import ExecutionContext
-from tradeexecutor.strategy.pandas_trader.indicator import IndicatorResultMap, IndicatorSet, IndicatorKey
+from tradeexecutor.strategy.pandas_trader.indicator import IndicatorResultMap, IndicatorSet, IndicatorKey, IndicatorNotFound, InvalidForMultipairStrategy
 from tradeexecutor.strategy.pandas_trader.position_manager import PositionManager
 from tradeexecutor.strategy.parameters import StrategyParameters
 from tradeexecutor.strategy.pricing_model import PricingModel
@@ -30,16 +30,8 @@ logger = logging.getLogger(__name__)
 SERIES_CACHE_SIZE = 1024
 
 
-class InvalidForMultipairStrategy(Exception):
-    """Try to use single trading pair functions in a multipair strategy."""
-
-
 class IndicatorDataNotFoundWithinDataTolerance(Exception):
     """We try to get forward-filled data, but there is no data within our tolerance."""
-
-
-class IndicatorNotFound(Exception):
-    """Asked for an indicator we do not have."""
 
 
 
