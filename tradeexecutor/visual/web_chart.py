@@ -9,13 +9,25 @@ from eth_defi.utils import to_unix_timestamp
 
 from tradeexecutor.state.state import State
 from tradeexecutor.visual.equity_curve import calculate_compounding_realised_trading_profitability, calculate_equity_curve, calculate_investment_flow, \
-    calculate_compounding_unrealised_trading_profitability
+    calculate_compounding_unrealised_trading_profitability, extract_compounding_unrealised_trading_profitability_portfolio_statistics
 
 
 class WebChartType(enum.Enum):
     """Different charts we can generate for frontend rendering."""
 
+    #: Live trading strategy portfolio's profitabiltiy.
+    #:
+    #: - Sampled from open positions hourly
+    #:
+    #: - It is adjusted for deposits/redemptions to refelect the strategy performance,
+    #:   not TVL
+    #:
+    compounding_unrealised_trading_profitability_sampled = "compounding_unrealised_trading_profitability_sampled"
+
     #: See :ref:`profitability`
+    #:
+    #: Differs from :py:attr:`compounding_unrealised_trading_profitability_sampled` as calculated only on close.
+    #:
     compounding_realised_profitability = "compounding_realised_profitability"
 
     #: See :ref:`profitability`
@@ -74,9 +86,13 @@ def render_web_chart(
     """
 
     match type:
+        case WebChartType.compounding_unrealised_trading_profitability_sampled:
+            df = extract_compounding_unrealised_trading_profitability_portfolio_statistics(state)
+            description = "Unrealised trading profitability %"
+            help_link = "https://tradingstrategy.ai/glossary/profitability"
         case WebChartType.compounding_realised_profitability:
             df = calculate_compounding_unrealised_trading_profitability(state)
-            description = "Compounded unrealised trading position % profitability"
+            description = "Compounded unrealised trading position profitability % on close"
             help_link = "https://tradingstrategy.ai/glossary/profitability"
         case WebChartType.total_equity:
             df = calculate_equity_curve(state, fill_time_gaps=True)

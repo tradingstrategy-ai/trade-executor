@@ -546,6 +546,7 @@ def extract_compounding_unrealised_trading_profitability_portfolio_statistics(st
     # https://stackoverflow.com/a/78156103/315168
     df = pd.DataFrame(data, columns=["timestamp", "profitability"])
     df = df.set_index("timestamp")
+    df = df.dropna()
     return df["profitability"]
 
 
