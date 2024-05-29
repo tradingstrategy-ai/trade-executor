@@ -2,6 +2,7 @@
 import datetime
 import threading
 from abc import ABC, abstractmethod
+from collections import defaultdict
 
 # Enable pickle patch that allows multiprocessing in notebooks
 from tradeexecutor.monkeypatch import cloudpickle_patch
@@ -91,13 +92,15 @@ class IndicatorSource(enum.Enum):
     #:
     strategy_universe = "strategy_universe"
 
-
     #: Data loaded from an external source.
     #:
     #: Per-pair data.
     #:
+    external_per_pair = "external_per_pair"
+
+    #: The indicator takes strategy universe + all earlier indicators as an input.
     #:
-    external_per_pair = "custom_per_pairexternal_per_pair"
+    earlier_indicators = "earlier_indicators"
 
     def is_per_pair(self) -> bool:
         """This indicator is calculated to all trading pairs."""
@@ -159,6 +162,16 @@ class IndicatorDefinition:
     #: On what trading universe data this indicator is calculated
     #:
     source: IndicatorSource = IndicatorSource.close_price
+
+    #: Dependency resolution order.
+    #:
+    #: Indicators are calculated in order from the lowest order to the highest.
+    #: The order parameter allows lightweight dependency resolution, where later
+    #: indicators and read the earlier indicators data.
+    #:
+    #:
+    #:
+    order = 0
 
     def __repr__(self):
         return f"<Indicator {self.name} using {self.func.__name__ if self.func else '?()'} for {self.parameters}>"
@@ -399,6 +412,7 @@ class IndicatorSet:
         func: Callable,
         parameters: dict | None = None,
         source: IndicatorSource=IndicatorSource.close_price,
+        order=1,
     ):
         """Add a new indicator to this indicator set.
 
@@ -431,6 +445,11 @@ class IndicatorSet:
 
             Defaults to the close price for each trading pair.
             To calculate universal indicators set to :py:attr:`IndicatorSource.strategy_universe`.
+
+        :param order:
+            Dependency resolution order.
+
+            See :py:attr:`tradingstrategy.strategy.pandas_trader.indicator.IndicatorKey.order` parameter.
         """
         assert type(name) == str
         assert callable(func), f"{func} is not callable"
@@ -440,7 +459,7 @@ class IndicatorSet:
         assert type(parameters) == dict, f"parameters must be dictionary, we got {parameters.__class__}"
         assert isinstance(source, IndicatorSource), f"Expected IndicatorSource, got {type(source)}"
         assert name not in self.indicators, f"Indicator {name} already added"
-        self.indicators[name] = IndicatorDefinition(name, func, parameters, source)
+        self.indicators[name] = IndicatorDefinition(name, func, parameters, source, order)
 
     def iterate(self) -> Iterable[IndicatorDefinition]:
         yield from self.indicators.values()
@@ -925,7 +944,7 @@ def _calculate_and_save_indicator_result(
                 case IndicatorSource.external_per_pair:
                     data = indicator.calculate_by_pair_external(key.pair)
                 case _:
-                    raise AssertionError(f"Unsupported input source {key.pair} {key.definition} {indicator.source}")
+                    raise NotImplementedError(f"Unsupported input source {key.pair} {key.definition} {indicator.source}")
 
             if data is None:
                 logger.warning("Indicator %s generated empty data for pair %s. Input data length is %d candles.", key.definition.name, key.pair, len(input))
@@ -938,7 +957,13 @@ def _calculate_and_save_indicator_result(
 
     else:
         # Calculate indicator over the whole universe
-        data = indicator.calculate_universe(strategy_universe)
+        match indicator.source:
+            case IndicatorSource.strategy_universe:
+                data = indicator.calculate_universe(strategy_universe)
+            case IndicatorSource.earlier_indicators:
+                data = indicator.calculate_earlier_indicators(strategy_universe)
+            case _:
+                raise NotImplementedError(f"Unsupported input source {key.pair} {key.definition} {indicator.source}")
 
     assert data is not None, f"Indicator function {indicator.name} ({indicator.func}) did not return any result, received Python None instead"
 
@@ -1023,6 +1048,28 @@ def load_indicators(
             progress_bar.close()
 
 
+#: Indicator multiprocess unit as function parameters
+TaskArguments = tuple[TradingStrategyUniverse, IndicatorStorage, IndicatorKey]
+
+
+def group_indicators(task_args: list[TaskArguments]) -> dict[int, list[TaskArguments]]:
+    """Split indicator calculations to the groups based on their dependency resolution order.
+
+    :return:
+        ordered dict, lowest first
+    """
+
+    grouped = {}
+    sorted_args = sorted(task_args, key=lambda ta: ta[2].definition.order)
+    for task_args in sorted_args:
+        order = task_args[2].definition.order
+        if order not in grouped:
+            # Create keys in order
+            grouped[order] = []
+        grouped[order].append(task_args)
+    return grouped
+
+
 def calculate_indicators(
     strategy_universe: TradingStrategyUniverse,
     storage: DiskIndicatorStorage,
@@ -1065,7 +1112,7 @@ def calculate_indicators(
         logger.info("Nothing to calculate")
         return {}
 
-    task_args = []
+    task_args: list[TaskArguments] = []
     for key in remaining:
         task_args.append((strategy_universe, storage, key))
 
@@ -1096,16 +1143,27 @@ def calculate_indicators(
         # Set up a signal handler to stop child processes on quit
         setup_indicator_multiprocessing(executor)
 
-        # Run the tasks
-        tm.map(_calculate_and_save_indicator_result, task_args)
+        # Dependency order resolution.
+        # Group is a list of task args where the order is the same
+        groups = group_indicators(task_args)
 
-        # Track the child process completion using tqdm progress bar
-        with tqdm(total=len(task_args), desc=f"Calculating indicators {label} using {max_workers} processes") as progress_bar:
-            # Extract results from the parallel task queue
-            for task in tm.as_completed():
-                result = task.result
-                results[result.indicator_key] = result
-                progress_bar.update()
+        for order, group in groups.items():
+
+            # Run the tasks
+            tm.map(_calculate_and_save_indicator_result, group)
+
+            if order == 0:
+                desc = f"Calculating indicators {label} using {max_workers} processes, dependency group #{order}"
+            else:
+                desc = f"Calculating indicators {label} using {max_workers} processes"
+
+            # Track the child process completion using tqdm progress bar
+            with tqdm(total=len(task_args), desc=desc) as progress_bar:
+                # Extract results from the parallel task queue
+                for task in tm.as_completed():
+                    result = task.result
+                    results[result.indicator_key] = result
+                    progress_bar.update()
 
     else:
         # Do single thread - good for debuggers like pdb/ipdb

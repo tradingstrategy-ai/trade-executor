@@ -13,7 +13,7 @@ import inspect
 from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier
 from tradeexecutor.strategy.execution_context import ExecutionContext, unit_test_execution_context, unit_test_trading_execution_context
 from tradeexecutor.strategy.pandas_trader.indicator import IndicatorSet, DiskIndicatorStorage, IndicatorDefinition, IndicatorFunctionSignatureMismatch, \
-    calculate_and_load_indicators, IndicatorKey, IndicatorSource
+    calculate_and_load_indicators, IndicatorKey, IndicatorSource, IndicatorStorage
 from tradeexecutor.strategy.pandas_trader.strategy_input import StrategyInputIndicators
 from tradeexecutor.strategy.parameters import StrategyParameters
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse, create_pair_universe_from_code, load_partial_data
@@ -572,6 +572,93 @@ def test_indicator_single_pair_live_trading_universe(persistent_test_client, ind
         execution_context=unit_test_execution_context,
         parameters=StrategyParameters({}),
         max_workers=1,
+        max_readers=1,
+    )
+
+    first_day, last_day = strategy_universe.data_universe.candles.get_timestamp_range()
+
+    input_indicators = StrategyInputIndicators(
+        strategy_universe=strategy_universe,
+        available_indicators=indicators,
+        indicator_results=indicator_results,
+        timestamp=last_day,
+    )
+
+    indicator_series = input_indicators.get_indicator_series("ma")
+    assert isinstance(indicator_series.index, pd.DatetimeIndex)
+    indicator_value = input_indicators.get_indicator_value("ma")
+    assert 0 < indicator_value < 10_000
+
+
+
+def test_indicator_dependency_resolution(persistent_test_client, indicator_storage):
+    """Indicators can depend each other and consume data of indicators calculated earlier.
+
+    - Create an example where we have one indicator (crossover) depending on two other indicators (smas)
+    - Live data loader gives (pair, timestamp) index instead of (timestamp) index
+    - We can control dependency order resolution using :py:attr:`~tradingstrategy.strategy.pandas_trader.indicator.IndicatorKey.order` parameter
+    - Dependency resolved indicators must use :py:attr:`~tradingstrategy.strategy.pandas_trader.indicator.IndicatorSource.order` as indicator osurce
+    """
+
+    client = persistent_test_client
+
+    universe_options = UniverseOptions(history_period=datetime.timedelta(days=14))
+
+    pair = (ChainId.polygon, "uniswap-v3", "WMATIC", "USDC", 0.0005)
+
+    dataset = load_partial_data(
+        client=client,
+        time_bucket=TimeBucket.h1,
+        pairs=[pair],
+        execution_context=unit_test_trading_execution_context,
+        universe_options=universe_options,
+        liquidity=False,
+    )
+
+    strategy_universe = TradingStrategyUniverse.create_from_dataset(
+        dataset,
+        reserve_asset="USDC",
+        forward_fill=True,
+    )
+
+    def ma_crossover_indicator(
+        strategy_universe: TradingStrategyUniverse,
+        indicator_strorage: IndicatorStorage,
+    ) -> pd.Series:
+        """Do cross-over calculation based on other two earlier moving average indicators."""
+        slow_ma: pd.Series = indicator_strorage.get_data_by_name("slow_ma", length=7)
+        fast_ma: pd.Series = indicator_strorage.get_data_by_name("fast_ma", length=21)
+        return pandas.crossover(slow_ma, fast_ma)
+
+    indicators = IndicatorSet()
+    indicators.add(
+        "fast_sma",
+        pandas_ta.sma,
+        parameters={"length": 7},
+        order=1,
+    )
+
+    indicators.add(
+        "slow_sma",
+        pandas_ta.sma,
+        parameters={"length": 21},
+        order=1,
+    )
+
+    indicators.add(
+        "ma_crossover_indicator",
+        ma_crossover_indicator,
+        source=IndicatorSource.close_price,
+        order=2,  # 2nd order indicators can depend on the data of 1st order indicators
+    )
+
+    indicator_results = calculate_and_load_indicators(
+        strategy_universe,
+        indicator_storage,
+        indicators=indicators,
+        execution_context=unit_test_execution_context,
+        parameters=StrategyParameters({}),
+        max_workers=2,
         max_readers=1,
     )
 
