@@ -1132,7 +1132,8 @@ class IndicatorDependencyResolver:
     - Allows you to define indicators that use data from other indicators.
 
     - Indicators are calculated in the order defined by :py:attr:`IndicatorDefinition.dependency_order`,
-      higher dependency order can read data from lower one.
+      higher dependency order can read data from lower one. You usually specify this with
+      ``indicator.add(order)` argument.
 
     - If you add a parameter `dependency_resolver` to your indicator functions,
       the instance of this class is passed and you can use `dependency_resolver`
@@ -1183,7 +1184,7 @@ class IndicatorDependencyResolver:
     When you use indicator dependency resolution with the grid search, you need to specify indicator parameters you want read,
     as for each named indicator there might be multiple copies with different grid search combinations:
 
-    .. code-block:: text
+    .. code-block:: python
 
         class Parameters:
             cycle_duration = CycleDuration.cycle_1d
@@ -1256,6 +1257,8 @@ class IndicatorDependencyResolver:
     ) -> IndicatorKey:
         """Find an indicator key for an indicator.
 
+        - Get the `IndicatorKey` instance that is the look up for loading the indicator data
+
         - Check by name, pair and parameter
 
         - Make sure that the indicator defined is on a lower level than the current dependency order level
@@ -1302,15 +1305,15 @@ class IndicatorDependencyResolver:
         pair: TradingPairIdentifier | HumanReadableTradingPairDescription | None = None,
         parameters: dict | None = None,
     ) -> pd.Series | pd.DataFrame:
-        """Get access to indicator data series/frame.
+        """Read data from another indicator.
 
-        Throw friendly error messages for pitfalls.
+        -The indicator must be
 
         :param name:
             Indicator name
 
         :param parameters:
-            If there the dependent indicator has multiple versions
+            If the dependent indicator has multiple versions
             with different parameters, we need to get the specify parameters.
 
         :param column:
@@ -1323,6 +1326,8 @@ class IndicatorDependencyResolver:
 
             Can be omitted from non-pair indicators.
 
+        :return:
+            The indicator data as is was saved on the disk
         """
 
         key = self.match_indicator(
