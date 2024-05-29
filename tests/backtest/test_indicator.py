@@ -636,6 +636,24 @@ def test_indicator_dependency_resolution(persistent_test_client, indicator_stora
         fast_sma: pd.Series = dependency_resolver.get_indicator_data("fast_sma")
         return fast_sma > slow_sma
 
+    def ma_crossover_by_pair(
+        close: pd.Series,
+        pair: TradingPairIdentifier,
+        dependency_resolver: IndicatorDependencyResolver,
+    ) -> pd.Series:
+        slow_sma: pd.Series = dependency_resolver.get_indicator_data("slow_sma", pair=pair)
+        fast_sma: pd.Series = dependency_resolver.get_indicator_data("fast_sma", pair=pair)
+        return fast_sma > slow_sma
+
+    def ma_crossover_by_pair_and_parameters(
+        close: pd.Series,
+        pair: TradingPairIdentifier,
+        dependency_resolver: IndicatorDependencyResolver,
+    ) -> pd.Series:
+        slow_sma: pd.Series = dependency_resolver.get_indicator_data("slow_sma", pair=pair, parameters={"length": 21})
+        fast_sma: pd.Series = dependency_resolver.get_indicator_data("fast_sma", pair=pair, parameters={"length": 7})
+        return fast_sma > slow_sma
+
     indicators = IndicatorSet()
     # Slow moving average
     indicators.add(
@@ -658,7 +676,18 @@ def test_indicator_dependency_resolution(persistent_test_client, indicator_stora
         source=IndicatorSource.ohlcv,
         order=2,  # 2nd order indicators can depend on the data of 1st order indicators
     )
-
+    indicators.add(
+        "ma_crossover_by_pair",
+        ma_crossover_by_pair,
+        source=IndicatorSource.ohlcv,
+        order=2,  # 2nd order indicators can depend on the data of 1st order indicators
+    )
+    indicators.add(
+        "ma_crossover_by_pair_and_parameters",
+        ma_crossover_by_pair_and_parameters,
+        source=IndicatorSource.ohlcv,
+        order=2,  # 2nd order indicators can depend on the data of 1st order indicators
+    )
     indicator_results = calculate_and_load_indicators(
         strategy_universe,
         indicator_storage,

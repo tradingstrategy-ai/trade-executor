@@ -1102,7 +1102,52 @@ def load_indicators(
 
 @dataclass
 class IndicatorDependencyResolver:
-    """A helper class allowing access to the indicators we depend on."""
+    """A helper class allowing access to the indicators we depend on.
+
+    - Allows you to define indicators that use data from other indicators
+
+    - Indicators are calculated in the order defined by :py:attr:`IndicatorDefinition.dependency_order`,
+      higher dependency order can read data from lower one
+
+    An example where a single-pair indicator uses data from two other indicators:
+
+    .. code-block:: python
+
+        def ma_crossover(
+            close: pd.Series,
+            pair: TradingPairIdentifier,
+            dependency_resolver: IndicatorDependencyResolver,
+        ) -> pd.Series:
+            # Do cross-over calculation based on other two earlier moving average indicators.
+            # Return pd.Series with True/False valeus and DatetimeIndex
+            slow_sma: pd.Series = dependency_resolver.get_indicator_data("slow_sma")
+            fast_sma: pd.Series = dependency_resolver.get_indicator_data("fast_sma")
+            return fast_sma > slow_sma
+
+        indicators = IndicatorSet()
+        # Slow moving average
+        indicators.add(
+            "fast_sma",
+            pandas_ta.sma,
+            parameters={"length": 7},
+            order=1,
+        )
+        # Fast moving average
+        indicators.add(
+            "slow_sma",
+            pandas_ta.sma,
+            parameters={"length": 21},
+            order=1,
+        )
+        # An indicator that depends on both fast MA and slow MA above
+        indicators.add(
+            "ma_crossover",
+            ma_crossover,
+            source=IndicatorSource.ohlcv,
+            order=2,  # 2nd order indicators can depend on the data of 1st order indicators
+        )
+
+    """
 
     #: Trading universe
     #:
@@ -1166,7 +1211,7 @@ class IndicatorDependencyResolver:
 
         result = filtered_by_parameters[0]
 
-        if result.definition.dependency_order >= self.current_order:
+        if self.current_dependency_order <= result.definition.dependency_order:
             raise IndicatorDependencyResolutionError(f"The dependency order for {name} is {result.definition.dependency_order}, but we ask data at the current dependency order level {self.current_order}")
 
         return result
