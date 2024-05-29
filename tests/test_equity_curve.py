@@ -295,12 +295,23 @@ def test_web_compounding_realised_profit_export(state: State):
     )
 
     assert chart.help_link == 'https://tradingstrategy.ai/glossary/profitability'
-    assert chart.title == 'Compounded unrealised trading position % profitability'
+    assert chart.title == 'Compounded realised trading position profitability % on close'
 
     second_tuple = chart.data[1]  # See calculate_compounding_realised_trading_profitability(fill_current_time_gap)
     assert second_tuple[0] == 1623024000.0
     assert second_tuple[1] == -0.0033223057702593817
 
+
+def test_compounding_unrealised_trading_profitability_sampled(state: State):
+    """Export sampled profit % to the web."""
+    chart = render_web_chart(
+        state,
+        WebChartType.compounding_unrealised_trading_profitability_sampled,
+        WebChartSource.backtest,
+    )
+
+    assert chart.help_link == 'https://tradingstrategy.ai/glossary/profitability'
+    assert len(chart.data) == 0  # Only available in live, because sampled hourly
 
 def test_web_equity_curve(state: State):
     """Export equity curve the web."""
