@@ -92,7 +92,7 @@ def render_web_chart(
             help_link = "https://tradingstrategy.ai/glossary/profitability"
         case WebChartType.compounding_realised_profitability:
             df = calculate_compounding_unrealised_trading_profitability(state)
-            description = "Compounded unrealised trading position profitability % on close"
+            description = "Compounded realised trading position profitability % on close"
             help_link = "https://tradingstrategy.ai/glossary/profitability"
         case WebChartType.total_equity:
             df = calculate_equity_curve(state, fill_time_gaps=True)
