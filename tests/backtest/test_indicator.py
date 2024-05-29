@@ -13,7 +13,7 @@ import inspect
 from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier
 from tradeexecutor.strategy.execution_context import ExecutionContext, unit_test_execution_context, unit_test_trading_execution_context
 from tradeexecutor.strategy.pandas_trader.indicator import IndicatorSet, DiskIndicatorStorage, IndicatorDefinition, IndicatorFunctionSignatureMismatch, \
-    calculate_and_load_indicators, IndicatorKey, IndicatorSource, IndicatorStorage
+    calculate_and_load_indicators, IndicatorKey, IndicatorSource, IndicatorStorage, IndicatorDependencyResolver
 from tradeexecutor.strategy.pandas_trader.strategy_input import StrategyInputIndicators
 from tradeexecutor.strategy.parameters import StrategyParameters
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse, create_pair_universe_from_code, load_partial_data
@@ -591,7 +591,6 @@ def test_indicator_single_pair_live_trading_universe(persistent_test_client, ind
     assert 0 < indicator_value < 10_000
 
 
-
 def test_indicator_dependency_resolution(persistent_test_client, indicator_storage):
     """Indicators can depend each other and consume data of indicators calculated earlier.
 
@@ -622,14 +621,20 @@ def test_indicator_dependency_resolution(persistent_test_client, indicator_stora
         forward_fill=True,
     )
 
-    def ma_crossover_indicator(
-        strategy_universe: TradingStrategyUniverse,
-        indicator_strorage: IndicatorStorage,
+    def ma_crossover(
+        close: pd.Series,
+        pair: TradingPairIdentifier,
+        dependency_resolver: IndicatorDependencyResolver,
     ) -> pd.Series:
-        """Do cross-over calculation based on other two earlier moving average indicators."""
-        slow_ma: pd.Series = indicator_strorage.get_data_by_name("slow_ma", length=7)
-        fast_ma: pd.Series = indicator_strorage.get_data_by_name("fast_ma", length=21)
-        return pandas.crossover(slow_ma, fast_ma)
+        """Do cross-over calculation based on other two earlier moving average indicators.
+
+        - This example calculates regions here fast moving average is above slow moving averag
+
+        - Return pd.Series with True/False valeus and DatetimeIndex
+        """
+        slow_sma: pd.Series = dependency_resolver.get_indicator_data("slow_sma")
+        fast_sma: pd.Series = dependency_resolver.get_indicator_data("fast_sma")
+        return fast_sma > slow_sma
 
     indicators = IndicatorSet()
     # Slow moving average
@@ -648,9 +653,9 @@ def test_indicator_dependency_resolution(persistent_test_client, indicator_stora
     )
     # An indicator that depends on both fast MA and slow MA above
     indicators.add(
-        "ma_crossover_indicator",
-        ma_crossover_indicator,
-        source=IndicatorSource.close_price,
+        "ma_crossover",
+        ma_crossover,
+        source=IndicatorSource.ohlcv,
         order=2,  # 2nd order indicators can depend on the data of 1st order indicators
     )
 
@@ -673,9 +678,9 @@ def test_indicator_dependency_resolution(persistent_test_client, indicator_stora
         timestamp=last_day,
     )
 
-    indicator_series = input_indicators.get_indicator_series("ma")
+    indicator_series = input_indicators.get_indicator_series("ma_crossover")
     assert isinstance(indicator_series.index, pd.DatetimeIndex)
-    indicator_value = input_indicators.get_indicator_value("ma")
-    assert 0 < indicator_value < 10_000
+    indicator_value = input_indicators.get_indicator_value("ma_crossover")
+    assert indicator_value in (True, False)
 
 

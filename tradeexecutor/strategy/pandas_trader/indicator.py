@@ -63,7 +63,7 @@ class IndicatorNotFound(Exception):
     See :py:func:`resolve_indicator_data`
     """
 
-class IndicatorDependencyOrderError(Exception):
+class IndicatorDependencyResolutionError(Exception):
     """An indicator in earier dependency resolution order tries to ask data for one that comes later.
 
     """
@@ -185,9 +185,13 @@ class IndicatorDefinition:
     #: The order parameter allows lightweight dependency resolution, where later
     #: indicators and read the earlier indicators data.
     #:
+    #: By default all indicators are on the same dependency resolution order layer `1`
+    #: and cannot access data from other indicators. You need to create indicator
+    #: with `order == 2` to be able to access data from indicators where `order == 1`.
     #:
+    #: See :py:class:`IndicatorDependencyResolver` for details and examples.
     #:
-    order = 0
+    dependency_order: int = 1
 
     def __repr__(self):
         return f"<Indicator {self.name} using {self.func.__name__ if self.func else '?()'} for {self.parameters}>"
@@ -223,8 +227,8 @@ class IndicatorDefinition:
 
     def is_per_pair(self) -> bool:
         return self.source.is_per_pair()
-    
-    def calculate_by_pair_external(self, pair: TradingPairIdentifier) -> pd.DataFrame | pd.Series:
+
+    def calculate_by_pair_external(self, pair: TradingPairIdentifier, resolver: "IndicatorDependencyResolver") -> pd.DataFrame | pd.Series:
         """Calculate indicator for external data.
 
         :param pair:
@@ -238,13 +242,13 @@ class IndicatorDefinition:
 
         """
         try:
-            ret = self.func(pair, **self.parameters)
+            ret = self.func(pair, **self._fix_parameters_for_function_signature(resolver, pair))
             output_fixed = _flatten_index(ret)
             return self._check_good_return_value(output_fixed)
         except Exception as e:
             raise IndicatorCalculationFailed(f"Could not calculate external data indicator {self.name} ({self.func}) for parameters {self.parameters}, pair {pair}") from e
 
-    def calculate_by_pair(self, input: pd.Series, pair: TradingPairIdentifier) -> pd.DataFrame | pd.Series:
+    def calculate_by_pair(self, input: pd.Series, pair: TradingPairIdentifier, resolver: "IndicatorDependencyResolver") -> pd.DataFrame | pd.Series:
         """Calculate the underlying indicator value.
 
         :param input:
@@ -260,15 +264,12 @@ class IndicatorDefinition:
         try:
             input_fixed = _flatten_index(input)
             func_args = inspect.getfullargspec(self.func).args
-            if "pair" in func_args:
-                ret = self.func(input_fixed, pair, **self.parameters)
-            else:
-                ret = self.func(input_fixed, **self.parameters)
+            ret = self.func(input_fixed, **self._fix_parameters_for_function_signature(resolver, pair))
             return self._check_good_return_value(ret)
         except Exception as e:
             raise IndicatorCalculationFailed(f"Could not calculate indicator {self.name} ({self.func}) for parameters {self.parameters}, input data is {len(input)} rows") from e
 
-    def calculate_by_pair_ohlcv(self, candles: pd.DataFrame) -> pd.DataFrame | pd.Series:
+    def calculate_by_pair_ohlcv(self, candles: pd.DataFrame, pair: TradingPairIdentifier, resolver: "IndicatorDependencyResolver") -> pd.DataFrame | pd.Series:
         """Calculate the underlying OHCLV indicator value.
 
         Assume function can take parameters: `open`, `high`, `low`, `close`, `volume`,
@@ -299,7 +300,9 @@ class IndicatorDefinition:
         if len(full_kwargs) == 0:
             raise IndicatorCalculationFailed(f"Could not calculate OHLCV indicator {self.name} ({self.func}): does not take any of function arguments from {needed_args}")
 
-        full_kwargs.update(self.parameters)
+        fixed_params = self._fix_parameters_for_function_signature(resolver, pair)
+
+        full_kwargs.update(fixed_params)
 
         try:
             ret = self.func(**full_kwargs)
@@ -307,7 +310,7 @@ class IndicatorDefinition:
         except Exception as e:
             raise IndicatorCalculationFailed(f"Could not calculate indicator {self.name} ({self.func}) for parameters {self.parameters}, candles is {len(candles)} rows, {candles.columns} columns\nThe original exception was: {e}") from e
 
-    def calculate_universe(self, input: TradingStrategyUniverse) -> pd.DataFrame | pd.Series:
+    def calculate_universe(self, input: TradingStrategyUniverse, resolver: "IndicatorDependencyResolver") -> pd.DataFrame | pd.Series:
         """Calculate the underlying indicator value.
 
         :param input:
@@ -321,7 +324,7 @@ class IndicatorDefinition:
 
         """
         try:
-            ret = self.func(input, **self.parameters)
+            ret = self.func(input, **self._fix_parameters_for_function_signature(resolver, None))
             return self._check_good_return_value(ret)
         except Exception as e:
             raise IndicatorCalculationFailed(f"Could not calculate indicator {self.name} ({self.func}) for parameters {self.parameters}, input universe is {input}.\nException is {e}\n\n To use Python debugger, set `max_workers=1`, and if doing a grid search, also set `multiprocess=False`") from e
@@ -329,6 +332,24 @@ class IndicatorDefinition:
     def _check_good_return_value(self, df):
         assert isinstance(df, (pd.Series, pd.DataFrame)), f"Indicator did not return pd.DataFrame or pd.Series: {self.name}, we got {type(df)}\nCheck you are using IndicatorSource correcly e.g. IndicatorSource.close_price when creating indicators"
         return df
+
+    def _fix_parameters_for_function_signature(self, resolver: "IndicatorDependencyResolver", pair: TradingPairIdentifier | None) -> dict:
+        """Update parameters to include resolver if the indicator needs it.
+
+        This was a late addon, so we cram it in here.
+        """
+
+        parameters = self.parameters.copy()
+
+        func_args = inspect.getfullargspec(self.func).args
+        if "dependency_resolver" in func_args:
+            parameters["dependency_resolver"] = resolver
+
+        if pair:
+            if "pair" in func_args:
+                parameters["pair"] = pair
+
+        return parameters
 
 
 @dataclass(slots=True, frozen=True)
@@ -945,7 +966,7 @@ def _calculate_and_save_indicator_result(
     # Picked result
     strategy_universe = _universe
 
-    current_dependency_order = key.definition.orderxx
+    current_dependency_order = key.definition.dependency_order
 
     resolver = IndicatorDependencyResolver(
         strategy_universe,
@@ -963,16 +984,16 @@ def _calculate_and_save_indicator_result(
                 case IndicatorSource.open_price:
                     column = "open"
                     input = strategy_universe.data_universe.candles.get_samples_by_pair(key.pair.internal_id)[column]
-                    data = indicator.calculate_by_pair(input, key.pair)
+                    data = indicator.calculate_by_pair(input, key.pair, resolver)
                 case IndicatorSource.close_price:
                     column = "close"
                     input = strategy_universe.data_universe.candles.get_samples_by_pair(key.pair.internal_id)[column]
-                    data = indicator.calculate_by_pair(input, key.pair)
+                    data = indicator.calculate_by_pair(input, key.pair, resolver)
                 case IndicatorSource.ohlcv:
                     input = strategy_universe.data_universe.candles.get_samples_by_pair(key.pair.internal_id)
-                    data = indicator.calculate_by_pair_ohlcv(input)
+                    data = indicator.calculate_by_pair_ohlcv(input, key.pair, resolver)
                 case IndicatorSource.external_per_pair:
-                    data = indicator.calculate_by_pair_external(key.pair)
+                    data = indicator.calculate_by_pair_external(key.pair, resolver)
                 case _:
                     raise NotImplementedError(f"Unsupported input source {key.pair} {key.definition} {indicator.source}")
 
@@ -989,9 +1010,9 @@ def _calculate_and_save_indicator_result(
         # Calculate indicator over the whole universe
         match indicator.source:
             case IndicatorSource.strategy_universe:
-                data = indicator.calculate_universe(strategy_universe)
+                data = indicator.calculate_universe(strategy_universe, resolver)
             case IndicatorSource.earlier_indicators:
-                data = indicator.calculate_earlier_indicators(strategy_universe)
+                data = indicator.calculate_earlier_indicators(strategy_universe, resolver)
             case _:
                 raise NotImplementedError(f"Unsupported input source {key.pair} {key.definition} {indicator.source}")
 
@@ -1113,9 +1134,14 @@ class IndicatorDependencyResolver:
         - Make sure that the indicator defined is on a lower level than the current dependency order level
         """
 
+        if len(self.all_indicators) > 8:
+            all_text = f"We have total {len(self.all_indicators)} indicator keys across all pairs and grid combinations."
+        else:
+            all_text = f"We have indicators: {self.all_indicators}."
+
         filtered_by_name = [i for i in self.all_indicators if i.definition.name == name]
         if len(filtered_by_name) == 0:
-            raise IndicatorNotFound(f"No indicator named {name}, we have total {len(self.all_indicators)} indicator keys across all pairs and grid combinations")
+            raise IndicatorDependencyResolutionError(f"No indicator named {name}. {all_text}")
 
         if len(filtered_by_name) == 1 and parameters is None and pair is None:
             return next(iter(filtered_by_name))
@@ -1123,7 +1149,7 @@ class IndicatorDependencyResolver:
         if pair is not None:
             filtered_by_pair = [i for i in filtered_by_name if i.pair == pair]
             if len(filtered_by_pair) == 0:
-                raise IndicatorNotFound(f"No indicator named {name}, for pair {pair}, we have total {len(self.all_indicators)} indicator keys across all pairs and grid combinations")
+                raise IndicatorDependencyResolutionError(f"No indicator named {name}, for pair {pair}. {all_text}")
         else:
             filtered_by_pair = filtered_by_name
 
@@ -1131,15 +1157,17 @@ class IndicatorDependencyResolver:
             filtered_by_parameters = [i for i in filtered_by_pair if i.definition.parameters == parameters]
 
             if len(filtered_by_parameters) == 0:
-                raise IndicatorNotFound(f"No indicator named {name}, for pair {pair}, parameters {parameters}, we have total {len(self.all_indicators)} indicator keys across all pairs and grid combinations")
+                raise IndicatorDependencyResolutionError(f"No indicator named {name}, for pair {pair}, parameters {parameters}. {all_text}")
+        else:
+            filtered_by_parameters = filtered_by_pair
 
         if len(filtered_by_parameters) != 1:
-            raise IndicatorNotFound(f"Multiple indicator results for named {name}, for pair {pair}, parameters {parameters}, we have total {len(self.all_indicators)} indicator keys across all pairs and grid combinations")
+            raise IndicatorDependencyResolutionError(f"Multiple indicator results for named {name}, for pair {pair}, parameters {parameters}. {all_text}")
 
         result = filtered_by_parameters[0]
 
-        if result.definition.order >= self.current_order:
-            raise IndicatorDependencyOrderError(f"The dependency order for {name} is {result.definition.order}, but we ask data at the current dependency order level {self.current_order}")
+        if result.definition.dependency_order >= self.current_order:
+            raise IndicatorDependencyResolutionError(f"The dependency order for {name} is {result.definition.dependency_order}, but we ask data at the current dependency order level {self.current_order}")
 
         return result
 
@@ -1148,6 +1176,7 @@ class IndicatorDependencyResolver:
         name: str,
         column: str | None = None,
         pair: TradingPairIdentifier | HumanReadableTradingPairDescription | None = None,
+        parameters: dict | None = None,
     ) -> pd.Series | pd.DataFrame:
         """Get access to indicator data series/frame.
 
@@ -1209,10 +1238,10 @@ class IndicatorDependencyResolver:
 
 
 #: Indicator multiprocess unit as function parameters
-TaskArguments = tuple[TradingStrategyUniverse, IndicatorStorage, IndicatorKey, IndicatorDependencyResolver]
+CalculateTaskArguments = tuple[IndicatorStorage, IndicatorKey, set[IndicatorKey]]
 
 
-def group_indicators(task_args: list[TaskArguments]) -> dict[int, list[TaskArguments]]:
+def group_indicators(task_args: list[CalculateTaskArguments]) -> dict[int, list[CalculateTaskArguments]]:
     """Split indicator calculations to the groups based on their dependency resolution order.
 
     :return:
@@ -1220,9 +1249,9 @@ def group_indicators(task_args: list[TaskArguments]) -> dict[int, list[TaskArgum
     """
 
     grouped = {}
-    sorted_args = sorted(task_args, key=lambda ta: ta[2].definition.order)
+    sorted_args = sorted(task_args, key=lambda ta: ta[1].definition.dependency_order)
     for task_args in sorted_args:
-        order = task_args[2].definition.order
+        order = task_args[1].definition.dependency_order
         if order not in grouped:
             # Create keys in order
             grouped[order] = []
@@ -1238,8 +1267,7 @@ def calculate_indicators(
     remaining: set[IndicatorKey],
     max_workers=8,
     label: str | None = None,
-    all_combinations: set[IndicatorKey] | None,
-    current_dependency_order=1,
+    all_combinations: set[IndicatorKey] | None = None,
     verbose=True,
 ) -> IndicatorResultMap:
     """Calculate indicators for which we do not have cached data yet.
@@ -1279,9 +1307,9 @@ def calculate_indicators(
         logger.info("Nothing to calculate")
         return {}
 
-    task_args: list[TaskArguments] = []
+    task_args: list[CalculateTaskArguments] = []
     for key in remaining:
-        task_args.append((storage, key))
+        task_args.append((storage, key, all_combinations))
 
     results = {}
 
@@ -1445,7 +1473,7 @@ def calculate_and_load_indicators(
         execution_context,
         calculation_needed,
         max_workers=max_workers,
-        all_combinations,
+        all_combinations=all_combinations,
     )
 
     result = cached | calculated
