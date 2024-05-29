@@ -120,7 +120,7 @@ def export_time_series(series: pd.Series) -> List[Tuple[float, float]]:
         return []
 
     assert isinstance(series.index, pd.DatetimeIndex), f"Got index: {series.index.__class__}"
-    assert not series.isna(), f"Series contains NA values and cannot be exported to Javascript: {series}"
+    assert not series.isna().any(), f"Series contains NA values and cannot be exported to Javascript: {series}"
 
     return [(index.timestamp(), value) for index, value in series.items()]
 
