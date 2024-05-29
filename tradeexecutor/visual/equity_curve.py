@@ -538,7 +538,7 @@ def extract_compounding_unrealised_trading_profitability_portfolio_statistics(st
     :return:
         Pandas series with profitability % as value and DatetimeIndex as the sampled time
     """
-    data = [(stat_entry.calculated_at, stat_entry.unrealised_profitability) for stat_entry in state.stats.portfolio]
+    data = [(stat_entry.calculated_at, stat_entry.unrealised_profitability) for stat_entry in state.stats.portfolio if stat_entry.unrealised_profitability is not None]
 
     if len(data) == 0:
         return pd.Series([], index=pd.to_datetime([]), dtype='float64')
