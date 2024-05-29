@@ -30,16 +30,8 @@ logger = logging.getLogger(__name__)
 SERIES_CACHE_SIZE = 1024
 
 
-class InvalidForMultipairStrategy(Exception):
-    """Try to use single trading pair functions in a multipair strategy."""
-
-
 class IndicatorDataNotFoundWithinDataTolerance(Exception):
     """We try to get forward-filled data, but there is no data within our tolerance."""
-
-
-class IndicatorNotFound(Exception):
-    """Asked for an indicator we do not have."""
 
 
 

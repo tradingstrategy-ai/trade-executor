@@ -24,6 +24,7 @@ from tradeexecutor.testing.synthetic_price_data import generate_multi_pair_candl
 from tradeexecutor.utils.python_function import hash_function
 from tradingstrategy.candle import GroupedCandleUniverse
 from tradingstrategy.chain import ChainId
+from tradingstrategy.pair import HumanReadableTradingPairDescription
 from tradingstrategy.timebucket import TimeBucket
 from tradingstrategy.universe import Universe
 
@@ -631,20 +632,21 @@ def test_indicator_dependency_resolution(persistent_test_client, indicator_stora
         return pandas.crossover(slow_ma, fast_ma)
 
     indicators = IndicatorSet()
+    # Slow moving average
     indicators.add(
         "fast_sma",
         pandas_ta.sma,
         parameters={"length": 7},
         order=1,
     )
-
+    # Fast moving average
     indicators.add(
         "slow_sma",
         pandas_ta.sma,
         parameters={"length": 21},
         order=1,
     )
-
+    # An indicator that depends on both fast MA and slow MA above
     indicators.add(
         "ma_crossover_indicator",
         ma_crossover_indicator,
@@ -675,3 +677,5 @@ def test_indicator_dependency_resolution(persistent_test_client, indicator_stora
     assert isinstance(indicator_series.index, pd.DatetimeIndex)
     indicator_value = input_indicators.get_indicator_value("ma")
     assert 0 < indicator_value < 10_000
+
+
