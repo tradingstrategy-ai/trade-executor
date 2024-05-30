@@ -14,7 +14,17 @@ class TradeExecutionFailed(Exception):
 
 
 def is_swap_function(name: str):
-    return name in {"swapExactTokensForTokens", "exactInput", "multicall"}
+    return name in {
+        # Uniswap v2
+        "swapExactTokensForTokens",
+        # Uniswap v3
+        "exactInput",
+        # 1delta
+        "multicall",
+        # Aave
+        "supply",
+        "withdraw",
+    }
 
 
 def get_swap_transactions(trade: TradeExecution) -> BlockchainTransaction:
