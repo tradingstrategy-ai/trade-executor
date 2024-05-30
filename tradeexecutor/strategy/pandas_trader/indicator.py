@@ -1133,7 +1133,7 @@ class IndicatorDependencyResolver:
 
     - Indicators are calculated in the order defined by :py:attr:`IndicatorDefinition.dependency_order`,
       higher dependency order can read data from lower one. You usually specify this with
-      ``indicator.add(order)` argument.
+      `indicator.add(order)` argument.
 
     - If you add a parameter `dependency_resolver` to your indicator functions,
       the instance of this class is passed and you can use `dependency_resolver`
