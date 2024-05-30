@@ -1,4 +1,4 @@
-"""Set up assets and contracts for Aave and 1delta on Polygon fork."""
+"""Set up assets and contracts for Aave on Polygon fork."""
 
 import os
 import logging
@@ -12,20 +12,17 @@ from eth_defi.token import fetch_erc20_details, TokenDetails
 from eth_defi.uniswap_v2.deployment import UniswapV2Deployment, fetch_deployment
 from eth_defi.uniswap_v3.deployment import UniswapV3Deployment, fetch_deployment as fetch_uniswap_v3_deployment
 from eth_defi.hotwallet import HotWallet
-from eth_defi.aave_v3.deployment import AaveV3Deployment, fetch_deployment as fetch_aave_deployment
+from eth_defi.aave_v3.deployment import fetch_deployment as fetch_aave_deployment
 from eth_defi.one_delta.deployment import OneDeltaDeployment
 from eth_defi.one_delta.deployment import fetch_deployment as fetch_1delta_deployment
 from eth_defi.provider.multi_provider import create_multi_provider_web3
 from eth_defi.provider.anvil import fork_network_anvil, mine
 from eth_defi.uniswap_v3.price import UniswapV3PriceHelper
+
 from tradeexecutor.ethereum.one_delta.one_delta_routing import OneDeltaRouting
 from tradeexecutor.ethereum.routing_data import get_quickswap_default_routing_parameters
 from tradeexecutor.ethereum.token import translate_token_details
-from tradeexecutor.ethereum.uniswap_v2.uniswap_v2_routing import UniswapV2Routing
-from tradeexecutor.ethereum.uniswap_v3.uniswap_v3_routing import UniswapV3Routing
-
 from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier, TradingPairKind, AssetType
-from tradeexecutor.strategy.reserve_currency import ReserveCurrency
 
 WETH_USDC_FEE = 0.003
 AAVE_USDC_FEE = 0.003

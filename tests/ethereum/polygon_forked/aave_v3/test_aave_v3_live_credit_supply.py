@@ -53,15 +53,12 @@ def test_aave_v3_live_credit_supply_open_only(
     web3: Web3,
     hot_wallet: HotWallet,
     strategy_universe: TradingStrategyUniverse,
-    uniswap_v3_deployment: UniswapV3Deployment,
     generic_routing_model,
     generic_pricing_model,
     generic_valuation_model,
     usdc: Contract,
-    weth: Contract,
-    asset_usdc,
 ):
-    """Live 1delta trade.
+    """Live Aave v3 trade.
 
     - Sets up a simple strategy that open a credit supply position
 
@@ -80,8 +77,6 @@ def test_aave_v3_live_credit_supply_open_only(
         cycle_debug_data: dict
     ) -> List[TradeExecution]:
         """Opens a credit supply."""
-        
-        # pair = strategy_universe.universe.pairs.get_single()
 
         # Open for 1,000 USD
         position_size = 1000.00

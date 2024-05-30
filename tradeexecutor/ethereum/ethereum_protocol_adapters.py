@@ -210,7 +210,7 @@ def create_aave_v3_adapter(
 
     # TODO: Avoid circular imports for now
     from tradeexecutor.ethereum.uniswap_v3.uniswap_v3_live_pricing import UniswapV3LivePricing
-    from tradeexecutor.ethereum.uniswap_v3.uniswap_v3_valuation import UniswapV3PoolRevaluator
+    from tradeexecutor.ethereum.eth_valuation import EthereumPoolRevaluator
     from tradeexecutor.ethereum.aave_v3.aave_v3_routing import AaveV3Routing
 
     assert routing_id.router_name == "aave-v3"
@@ -261,7 +261,7 @@ def create_aave_v3_adapter(
         routing_model,
     )
 
-    valuation_model = UniswapV3PoolRevaluator(pricing_model)
+    valuation_model = EthereumPoolRevaluator(pricing_model)
 
     return ProtocolRoutingConfig(
         routing_id=routing_id,
