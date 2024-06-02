@@ -169,7 +169,6 @@ class AaveV3RoutingState(EthereumRoutingState):
         aave_v3_deployment: AaveV3Deployment,
         collateral_token_address: str,
         atoken_address: str,
-        uniswap_v3: UniswapV3Deployment | None = None,
     ) -> list[BlockchainTransaction]:
         """Make sure we have ERC-20 approve() for the 1delta
 
@@ -183,16 +182,11 @@ class AaveV3RoutingState(EthereumRoutingState):
         """
         txs = []
 
-        if uniswap_v3:
-            uniswap_router_address = uniswap_v3.swap_router.address
-
         for token_address in [
             collateral_token_address,
             atoken_address,
         ]:
             txs += self.ensure_token_approved(token_address, aave_v3_deployment.pool.address)
-            if uniswap_v3:
-                txs += self.ensure_token_approved(token_address, uniswap_router_address)
 
         return txs
 
@@ -276,35 +270,6 @@ class AaveV3Routing(EthereumRoutingModel):
         logger.info("  Quoter: %s", self.address_map["quoter"])
 
         self.reserve_asset_logging(pair_universe)
-        
-    def make_leverage_trade(
-        self, 
-        routing_state: EthereumRoutingState,
-        target_pair: TradingPairIdentifier,
-        *,
-        borrow_amount: int,
-        collateral_amount: int,
-        reserve_amount: int,
-        max_slippage: float,
-        trade_flags: set[TradeFlag],
-        check_balances: bool = False,
-        asset_deltas: Optional[List[AssetDelta]] = None,
-        notes="",
-    ) -> list[BlockchainTransaction]:
-        
-        return super().make_leverage_trade(
-            routing_state,
-            target_pair,
-            borrow_amount=borrow_amount,
-            collateral_amount=collateral_amount,
-            reserve_amount=reserve_amount,
-            max_slippage=max_slippage,
-            address_map=self.address_map,
-            trade_flags=trade_flags,
-            check_balances=check_balances,
-            asset_deltas=asset_deltas,
-            notes=notes,
-        )
 
     def make_credit_supply_trade(
         self, 

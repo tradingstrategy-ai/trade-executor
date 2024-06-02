@@ -214,20 +214,12 @@ def create_aave_v3_adapter(
     from tradeexecutor.ethereum.aave_v3.aave_v3_routing import AaveV3Routing
 
     assert routing_id.router_name == "aave-v3"
-    assert routing_id.exchange_slug == "uniswap-v3"
+    assert routing_id.lending_protocol_slug == "aave_v3"
 
     assert len(strategy_universe.data_universe.chains) == 1
     assert len(strategy_universe.reserve_assets) == 1
     chain_id = strategy_universe.get_single_chain()
     reserve_asset = strategy_universe.get_reserve_asset()
-
-    uniswap_v3_deployment = fetch_uniswap_v3_deployment(
-        web3,
-        "0x1F98431c8aD98523631AE4a59f267346ea31F984",
-        "0xE592427A0AEce92De3Edee1F18E0157C05861564",
-        "0xC36442b4a4522E871399CD717aBDD847Ab11FE88",
-        "0xb27308f9F90D607463bb33eA1BeBb41C27CE5AB6",
-    )
 
     aave_v3_deployment = fetch_aave_deployment(
         web3,
@@ -240,12 +232,6 @@ def create_aave_v3_adapter(
         "aave_v3_pool": aave_v3_deployment.pool.address,
         "aave_v3_data_provider": aave_v3_deployment.data_provider.address,
         "aave_v3_oracle": aave_v3_deployment.oracle.address,
-
-        # TODO
-        # "factory": uniswap_v3_deployment.factory.address,
-        # "router": uniswap_v3_deployment.swap_router.address,
-        # "position_manager": uniswap_v3_deployment.position_manager.address,
-        # "quoter": uniswap_v3_deployment.quoter.address
     }
 
     routing_model = AaveV3Routing(

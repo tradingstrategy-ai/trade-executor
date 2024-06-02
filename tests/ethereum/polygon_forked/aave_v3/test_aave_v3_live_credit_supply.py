@@ -34,6 +34,7 @@ from tradeexecutor.ethereum.universe import create_exchange_universe, create_pai
 from tradeexecutor.testing.simulated_execution_loop import set_up_simulated_ethereum_generic_execution
 from tradeexecutor.utils.blockchain import get_latest_block_timestamp
 from tradeexecutor.strategy.account_correction import check_accounts
+from tradeexecutor.ethereum.aave_v3.aave_v3_routing import AaveV3RoutingState
 
 
 pytestmark = pytest.mark.skipif(
@@ -42,13 +43,7 @@ pytestmark = pytest.mark.skipif(
 )
 
 
-#: How much values we allow to drift.
-#: A hack fix receiving different decimal values on Github CI than on a local
-APPROX_REL = 0.001
-APPROX_REL_DECIMAL = Decimal("0.001")
-
-
-def test_aave_v3_live_credit_supply_open_only(
+def test_aave_v3_live_credit_supply_open_and_close(
     logger,
     web3: Web3,
     hot_wallet: HotWallet,
@@ -57,6 +52,7 @@ def test_aave_v3_live_credit_supply_open_only(
     generic_pricing_model,
     generic_valuation_model,
     usdc: Contract,
+    mocker,
 ):
     """Live Aave v3 trade.
 
@@ -67,6 +63,8 @@ def test_aave_v3_live_credit_supply_open_only(
     - Advance to cycle 1 and make sure the credit supply position is opened
 
     - Advance to cycle 2 and make sure the credit supply position is still open and interest is accured
+
+    - Advance to cycle 3 to close the position
     """
 
     def decide_trades(
@@ -87,8 +85,13 @@ def test_aave_v3_live_credit_supply_open_only(
 
         if not position_manager.is_any_credit_supply_position_open():
             trades += position_manager.open_credit_supply_position_for_reserves(position_size)
+        elif cycle_debug_data["cycle"] == 3:
+            trades += position_manager.close_all()
 
         return trades
+    
+    # setup spy mock
+    lend_on_aave_v3 = mocker.spy(AaveV3RoutingState, "lend_on_aave_v3")
 
     # Set up an execution loop we can step through
     state = State()
@@ -125,6 +128,7 @@ def test_aave_v3_live_credit_supply_open_only(
     loop.runner.check_accounts(strategy_universe, state)
 
     assert len(state.portfolio.open_positions) == 1
+    assert lend_on_aave_v3.call_count == 1
 
     # After the first tick, we should have synced our reserves and opened the first position
     usdc_id = f"{web3.eth.chain_id}-{usdc.address.lower()}"
@@ -169,3 +173,33 @@ def test_aave_v3_live_credit_supply_open_only(
     assert position.loan.get_collateral_value() == pytest.approx(1000.000308)
     assert position.loan.get_collateral_value() > old_col_value
     assert position.loan.get_collateral_interest() > 0
+
+    for i in range(100):
+        mine(web3)
+
+    # trade another cycle to close the position
+    ts = get_latest_block_timestamp(web3)
+    strategy_cycle_timestamp = snap_to_next_tick(ts, loop.cycle_duration)
+
+    loop.tick(
+        ts,
+        loop.cycle_duration,
+        state,
+        cycle=3,
+        live=True,
+        strategy_cycle_timestamp=strategy_cycle_timestamp,
+    )
+
+    loop.update_position_valuations(
+        ts,
+        state,
+        strategy_universe,
+        ExecutionMode.real_trading
+    )
+
+    loop.runner.check_accounts(strategy_universe, state)
+
+    assert len(state.portfolio.open_positions) == 0
+    assert state.portfolio.reserves[usdc_id].quantity == pytest.approx(Decimal(10000.000303))
+
+    assert lend_on_aave_v3.call_count == 2

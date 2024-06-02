@@ -5,6 +5,7 @@ import pytest as pytest
 from web3 import Web3
 
 from tradeexecutor.ethereum.ethereum_protocol_adapters import EthereumPairConfigurator
+from tradeexecutor.state.identifier import TradingPairIdentifier
 from tradeexecutor.strategy.generic.generic_valuation import GenericValuation
 from tradingstrategy.chain import ChainId
 
@@ -16,8 +17,21 @@ from tradeexecutor.ethereum.universe import create_exchange_universe
 from tradeexecutor.strategy.execution_context import unit_test_execution_context
 from tradeexecutor.strategy.generic.generic_router import GenericRouting
 from tradeexecutor.strategy.generic.generic_pricing_model import GenericPricing
+from tradeexecutor.strategy.generic.pair_configurator import ProtocolRoutingId
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse, load_partial_data
 from tradeexecutor.strategy.universe_model import default_universe_options
+
+
+class TestForkedPolygonPairConfigurator(EthereumPairConfigurator):
+    """Override default EthereumPairConfigurator to force Aave v3 routing"""
+    def match_router(self, pair: TradingPairIdentifier) -> ProtocolRoutingId:
+        if pair.is_credit_supply():
+            return ProtocolRoutingId(
+                router_name="aave-v3",
+                lending_protocol_slug="aave_v3",
+            )    
+        
+        return super().match_router(pair)
 
 
 @pytest.fixture()
@@ -67,7 +81,7 @@ def pair_configurator(
     web3: Web3,
     strategy_universe: TradingStrategyUniverse,
 ) -> EthereumPairConfigurator:
-    return EthereumPairConfigurator(
+    return TestForkedPolygonPairConfigurator(
         web3,
         strategy_universe,
     )
