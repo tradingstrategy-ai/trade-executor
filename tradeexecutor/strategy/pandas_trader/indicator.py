@@ -261,6 +261,7 @@ class IndicatorDefinition:
             - Single-value indicators return Series (e.g. RSI, SMA).
 
         """
+
         try:
             ret = self.func(**self._fix_parameters_for_function_signature(resolver, pair))
             output_fixed = _flatten_index(ret)
@@ -283,7 +284,6 @@ class IndicatorDefinition:
         """
         try:
             input_fixed = _flatten_index(input)
-            func_args = inspect.getfullargspec(self.func).args
             ret = self.func(input_fixed, **self._fix_parameters_for_function_signature(resolver, pair))
             return self._check_good_return_value(ret)
         except Exception as e:

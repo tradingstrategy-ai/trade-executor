@@ -392,6 +392,8 @@ def make_test_trade(
         
         update_statistics(datetime.datetime.utcnow(), state.stats, state.portfolio, ExecutionMode.real_trading, long_short_metrics_latest=long_short_metrics_latest)
 
+    # Credit supply test trade:
+    # TODO: Clean up - this is written incorrectly
     if universe.has_any_lending_data() and universe.can_open_credit_supply(datetime.datetime.utcnow(), pair) and test_credit_supply:
         credit_pair = universe.get_credit_supply_pair()
         position = state.portfolio.get_position_by_trading_pair(credit_pair)
@@ -409,6 +411,7 @@ def make_test_trade(
             )
 
             # Create trades to open the position
+            amount = 6  # TODO: Hardcoded aave workaround
             trades = position_manager.open_credit_supply_position_for_reserves(float(amount), flags={TradeFlag.test_trade})
 
             trade = trades[0]
