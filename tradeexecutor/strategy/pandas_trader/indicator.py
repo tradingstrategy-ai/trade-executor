@@ -262,7 +262,7 @@ class IndicatorDefinition:
 
         """
         try:
-            ret = self.func(pair, **self._fix_parameters_for_function_signature(resolver, pair))
+            ret = self.func(**self._fix_parameters_for_function_signature(resolver, pair))
             output_fixed = _flatten_index(ret)
             return self._check_good_return_value(output_fixed)
         except Exception as e:
