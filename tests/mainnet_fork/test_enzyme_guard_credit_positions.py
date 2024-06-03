@@ -42,6 +42,7 @@ def anvil(usdc_whale) -> AnvilLaunch:
     anvil = launch_anvil(
         fork_url=rpc_url,
         unlocked_addresses=[usdc_whale],
+        fork_block_number=57_000_000,
     )
     try:
         yield anvil
@@ -159,21 +160,28 @@ def environment(
         "OWNER_ADDRESS": "0x238B0435F69355e623d99363d58F7ba49C408491",  # ProtoDAO multisig
         "PATH": os.environ["PATH"],  # Needs forge
         "ONE_DELTA": "true",
+        "MAX_CYCLES": "6",  # Run decide_trades() 5 times
     }
     return environment
 
 
-def test_enzyme_guard_perform_test_trade_aave(
+def test_enzyme_guard_credit_positions(
     environment: dict,
     web3: Web3,
     state_file: Path,
     usdc: TokenDetails,
     hot_wallet: HotWallet,
     vault_record_file: Path,
+    mocker,
 ):
     """Perform a test trade on Enzyme vault via CLI with Aave credit position.
 
     """
+
+    sync_interests = mocker.patch(
+        "tradeexecutor.ethereum.enzyme.vault.EnzymeVaultSyncModel.sync_interests",
+        return_value=[],
+    )
 
     # Deploy a new vault on the
     with mock.patch.dict('os.environ', environment, clear=True):
@@ -210,8 +218,9 @@ def test_enzyme_guard_perform_test_trade_aave(
     with mock.patch.dict('os.environ', environment, clear=True):
         app(["check-wallet"], standalone_mode=False)
 
+    # run the strategy for 5 cycles (use MAX_CYCLES above)
     with mock.patch.dict('os.environ', environment, clear=True):
-        app(["perform-test-trade", "--all-pairs"], standalone_mode=False)
+        app(["start"], standalone_mode=False)
 
     # shouldn't crash
     with mock.patch.dict('os.environ', environment, clear=True):
@@ -221,7 +230,7 @@ def test_enzyme_guard_perform_test_trade_aave(
     # Check the resulting state and see we made some trade for trading fee losses
     with state_file.open("rt") as inp:
         state: State = State.from_json(inp.read())
-        assert len(list(state.portfolio.get_all_trades())) == 4  # buy ETH, sell ETH, supply aPolUSDC, unsupply aPolUSDC
-        reserve_value = state.portfolio.get_default_reserve_position().get_value()
-        assert reserve_value < 500
+        assert len(list(state.portfolio.get_all_trades())) == 2  # supply aPolUSDC, withdraw aPolUSDC
+
+    assert sync_interests.call_count == 5
 
