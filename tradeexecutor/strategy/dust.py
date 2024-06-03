@@ -51,7 +51,12 @@ def get_dust_epsilon_for_asset(asset: AssetIdentifier) -> Decimal:
         return Decimal(10 ** -7)
     elif asset.token_symbol in ("ETH", "WETH"):
         return Decimal(10 ** -7)
-    elif asset.token_symbol in ("USDC", "USDC.e", "aPolUSDC"):
+    elif asset.token_symbol in ("USDC", "USDC.e"):
         return Decimal(0.1)
+    elif asset.token_symbol in ("aPolUSDC", ):
+        # Hot fix for aave USDC.e accounting issues
+        # TODO: double check the root cause - what could
+        # cause aave balance to mismatch?
+        return Decimal(5.0)
     else:
         return DEFAULT_DUST_EPSILON

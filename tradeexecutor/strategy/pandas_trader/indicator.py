@@ -831,6 +831,12 @@ class DiskIndicatorStorage(IndicatorStorage):
 
     Indicators are calculated once and the calculation results can be recycled across multiple backtest runs.
 
+    How to initialise in the notebook:
+
+    .. code-block:: python
+
+        indicator_storage = DiskIndicatorStorage.create_default(strategy_universe)
+
     TODO: Cannot handle multichain universes at the moment, as serialises trading pairs by their ticker.
     """
 
@@ -1284,7 +1290,7 @@ class IndicatorDependencyResolver:
             filtered_by_parameters = [i for i in filtered_by_pair if i.definition.parameters == parameters]
 
             if len(filtered_by_parameters) == 0:
-                raise IndicatorDependencyResolutionError(f"No indicator named {name},\n for pair {pair},\n parameters {parameters}.\n{all_text}")
+                raise IndicatorDependencyResolutionError(f"No indicator named {name},\nPair {pair},\nParameters {parameters}.\nOther parameter combinations:{filtered_by_pair}\n{all_text}")
         else:
             filtered_by_parameters = filtered_by_pair
 
@@ -1319,7 +1325,7 @@ class IndicatorDependencyResolver:
         :param column:
             Column name for multi-column indicators.
 
-            "all" to get the whole DataFrame.
+            Set to string `all` to get the whole DataFrame.
 
         :param pair:
             Needed when universe contains multiple trading pairs.
@@ -1476,7 +1482,7 @@ def calculate_indicators(
             # Run the tasks
             tm.map(_calculate_and_save_indicator_result, group_task_args)
 
-            if order == 0:
+            if order != 1:
                 desc = f"Calculating indicators {label} using {max_workers} processes, dependency group #{order}"
             else:
                 desc = f"Calculating indicators {label} using {max_workers} processes"
