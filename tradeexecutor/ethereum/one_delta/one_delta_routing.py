@@ -531,18 +531,39 @@ class OneDeltaRouting(EthereumRoutingModel):
         asset_deltas: Optional[List[AssetDelta]] = None,
         notes="",
     ) -> list[BlockchainTransaction]:
+        one_delta = routing_state.get_one_delta_for_pair(self.address_map, target_pair)
+        aave_v3 = routing_state.get_aave_v3_for_pair(self.address_map, target_pair)
         
-        return super().make_credit_supply_trade(
-            routing_state,
+        spot_pair = target_pair.get_pricing_pair()
+        
+        txs = routing_state.ensure_multiple_tokens_approved(
+            one_delta=one_delta,
+            aave_v3=aave_v3,
+            collateral_token_address=spot_pair.quote.address,
+            borrow_token_address=spot_pair.base.address,
+            atoken_address=target_pair.quote.address,
+            vtoken_address=target_pair.base.address,
+        )
+
+        logger.info(
+            "Doing credit supply trade. Pair:%s\n Reserve asset:%s Reserve amount: %s",
             target_pair,
-            reserve_asset=reserve_asset,
+            reserve_asset,
+            reserve_amount,
+        )
+
+        trade_txs = routing_state.lend_via_one_delta(
+            one_delta=one_delta,
+            target_pair=target_pair,
             reserve_amount=reserve_amount,
-            address_map=self.address_map,
             trade_flags=trade_flags,
             check_balances=check_balances,
             asset_deltas=asset_deltas,
             notes=notes,
         )
+
+        txs += trade_txs
+        return txs
 
     def settle_trade(
         self,

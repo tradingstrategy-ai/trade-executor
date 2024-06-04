@@ -30,7 +30,7 @@ class ProtocolRoutingId:
     router_name: str
 
     #: "quickswap" or "uniswap-v3" or "trader-joe"
-    exchange_slug: str
+    exchange_slug: str | None = None
 
     #: "aave"
     lending_protocol_slug: str | None = None

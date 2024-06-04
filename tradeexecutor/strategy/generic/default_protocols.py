@@ -22,12 +22,25 @@ def default_match_router(
 
     assert isinstance(pair, TradingPairIdentifier)
 
-    if pair.is_leverage() or pair.is_credit_supply():
+    if pair.is_leverage():
         return ProtocolRoutingId(
             router_name="1delta",
             exchange_slug="uniswap-v3",
             lending_protocol_slug="aave"
         )
+    elif pair.is_credit_supply():
+        # prefer 1delta whenever possible
+        if pair.chain_id in [ChainId.polygon.value]:
+            return ProtocolRoutingId(
+                router_name="1delta",
+                exchange_slug="uniswap-v3",
+                lending_protocol_slug="aave"
+            )
+        else:
+            return ProtocolRoutingId(
+                router_name="aave-v3",
+                lending_protocol_slug="aave_v3",
+            )
 
     pair_universe = strategy_universe.data_universe.pairs
 
@@ -78,6 +91,14 @@ def default_supported_routers(strategy_universe: TradingStrategyUniverse) -> Set
                 router_name="1delta",
                 exchange_slug="uniswap-v3",
                 lending_protocol_slug="aave",
+            )
+        )
+
+        configs.add(
+            ProtocolRoutingId(
+                router_name="aave-v3",
+                exchange_slug="uniswap-v3",
+                lending_protocol_slug="aave_v3",
             )
         )
 

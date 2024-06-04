@@ -202,6 +202,61 @@ def create_1delta_adapter(
     )
 
 
+def create_aave_v3_adapter(
+    web3: Web3,
+    strategy_universe: TradingStrategyUniverse,
+    routing_id: ProtocolRoutingId,
+) -> ProtocolRoutingConfig:
+
+    # TODO: Avoid circular imports for now
+    from tradeexecutor.ethereum.uniswap_v3.uniswap_v3_live_pricing import UniswapV3LivePricing
+    from tradeexecutor.ethereum.eth_valuation import EthereumPoolRevaluator
+    from tradeexecutor.ethereum.aave_v3.aave_v3_routing import AaveV3Routing
+
+    assert routing_id.router_name == "aave-v3"
+    assert routing_id.lending_protocol_slug == "aave_v3"
+
+    assert len(strategy_universe.data_universe.chains) == 1
+    assert len(strategy_universe.reserve_assets) == 1
+    chain_id = strategy_universe.get_single_chain()
+    reserve_asset = strategy_universe.get_reserve_asset()
+
+    aave_v3_deployment = fetch_aave_deployment(
+        web3,
+        pool_address="0x794a61358D6845594F94dc1DB02A252b5b4814aD",
+        data_provider_address="0x69FA688f1Dc47d4B5d8029D5a35FB7a548310654",
+        oracle_address="0xb023e699F5a33916Ea823A16485e259257cA8Bd1",
+    )
+
+    address_map = {
+        "aave_v3_pool": aave_v3_deployment.pool.address,
+        "aave_v3_data_provider": aave_v3_deployment.data_provider.address,
+        "aave_v3_oracle": aave_v3_deployment.oracle.address,
+    }
+
+    routing_model = AaveV3Routing(
+        address_map=address_map,
+        chain_id=chain_id,
+        reserve_token_address=reserve_asset.address,
+        allowed_intermediary_pairs={},
+    )
+
+    pricing_model = UniswapV3LivePricing(
+        web3,
+        strategy_universe.data_universe.pairs,
+        routing_model,
+    )
+
+    valuation_model = EthereumPoolRevaluator(pricing_model)
+
+    return ProtocolRoutingConfig(
+        routing_id=routing_id,
+        routing_model=routing_model,
+        pricing_model=pricing_model,
+        valuation_model=valuation_model,
+    )
+
+
 class EthereumPairConfigurator(PairConfigurator):
     """Set up routes for EVM trading pairs.
 
@@ -212,6 +267,8 @@ class EthereumPairConfigurator(PairConfigurator):
     - Uniswap v2 likes
 
     - Uniswap v3 likes
+
+    - Aave v3
     """
 
     def __init__(
@@ -248,6 +305,8 @@ class EthereumPairConfigurator(PairConfigurator):
             return create_uniswap_v2_adapter(self.web3, self.strategy_universe, routing_id)
         elif routing_id.router_name == "uniswap-v3":
             return create_uniswap_v3_adapter(self.web3, self.strategy_universe, routing_id)
+        elif routing_id.router_name == "aave-v3":
+            return create_aave_v3_adapter(self.web3, self.strategy_universe, routing_id)
         else:
             raise NotImplementedError(f"Cannot route exchange {routing_id}")
 
