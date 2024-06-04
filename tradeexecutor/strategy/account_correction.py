@@ -31,7 +31,8 @@ from tradeexecutor.ethereum.tx import TransactionBuilder
 from tradeexecutor.state.generic_position import GenericPosition
 from tradeexecutor.state.portfolio import Portfolio
 from tradeexecutor.state.repair import close_position_with_empty_trade
-from tradeexecutor.strategy.dust import DEFAULT_DUST_EPSILON, get_dust_epsilon_for_pair, get_dust_epsilon_for_asset, DEFAULT_RELATIVE_EPSILON
+from tradeexecutor.strategy.dust import DEFAULT_DUST_EPSILON, get_dust_epsilon_for_pair, get_dust_epsilon_for_asset, DEFAULT_RELATIVE_EPSILON, \
+    get_relative_epsilon_for_asset
 from tradingstrategy.pair import PandasPairUniverse
 
 from tradeexecutor.state.balance_update import BalanceUpdate, BalanceUpdatePositionType, BalanceUpdateCause
@@ -122,6 +123,9 @@ class AccountingBalanceCheck:
     #: Was there a balance mismatch that is larger than the epsilon
     #:
     mismatch: bool
+
+    def __post_init__(self):
+        assert type(self.relative_epsilon) == float, f"Got {type(self.relative_epsilon)}"
 
     def __repr__(self):
 
