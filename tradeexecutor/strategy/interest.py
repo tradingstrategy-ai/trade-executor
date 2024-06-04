@@ -6,6 +6,7 @@ from decimal import Decimal
 from typing import Tuple, Dict, List, Iterable
 
 from eth_defi.aave_v3.rates import SECONDS_PER_YEAR_INT
+from eth_defi.provider.broken_provider import get_almost_latest_block_number
 from tradingstrategy.utils.time import ZERO_TIMEDELTA
 
 from tradeexecutor.state.balance_update import BalanceUpdate, BalanceUpdatePositionType, BalanceUpdateCause
@@ -19,6 +20,7 @@ from tradeexecutor.state.types import USDollarPrice, Percent, BlockNumber
 from tradeexecutor.strategy.pricing_model import PricingModel
 from tradeexecutor.utils.accuracy import QUANTITY_EPSILON, INTEREST_EPSILON
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
+from tradeexecutor.ethereum.onchain_balance import fetch_address_balances
 
 logger = logging.getLogger(__name__)
 
@@ -593,3 +595,86 @@ def record_interest_rate(
                 loan.collateral.interest_rate_at_open = last_interest_rate
 
             loan.collateral.last_interest_rate = last_interest_rate
+
+
+def sync_interests(
+    *,
+    web3,
+    wallet_address: str,
+    timestamp: datetime.datetime,
+    state: State,
+    universe: TradingStrategyUniverse,
+    pricing_model: PricingModel,
+) -> List[BalanceUpdate]:
+    """Update position's interests on all tokens that receive interests
+
+    - Credit supply positions: aToken
+    - Short positions: aToken, vToken
+
+    :param web3:
+        Web3 connection to the active blockchain
+    :param wallet_address:
+        Hot wallet or vault address
+    :param timestamp:
+        Wall clock time
+    :param state:
+        Current strategy state
+    :param universe:
+        Trading universe that must include lending data
+    :param pricing_model:
+        Used to update asset price in loan
+    """
+    assert isinstance(timestamp, datetime.datetime), f"got {type(timestamp)}"
+    if not universe.has_lending_data():
+        # sync_interests() is not needed if the strategy isn't dealing with leverage
+        return []
+
+    previous_update_at = state.sync.interest.last_sync_at
+    if not previous_update_at:
+        # No interest based positions yet?
+        logger.info(f"Interest sync checkpoint not set at {timestamp}, nothing to sync/cannot sync interest.")
+        return []
+
+    duration = timestamp - previous_update_at
+    if duration <= ZERO_TIMEDELTA:
+        logger.error(f"Sync time span must be positive: {previous_update_at} - {timestamp}")
+        return []
+
+    logger.info(
+        "Starting hot wallet interest distribution operation at: %s, previous update %s, syncing %s",
+        timestamp,
+        previous_update_at,
+        duration,
+    )
+
+    record_interest_rate(state, universe, timestamp)
+
+    interest_distribution = prepare_interest_distribution(
+        state.sync.interest.last_sync_at,
+        timestamp,
+        state.portfolio,
+        pricing_model
+    )
+
+    # Then sync interest back from the chain
+    block_identifier = get_almost_latest_block_number(web3)
+    balances = {}
+    onchain_balances = fetch_address_balances(
+        web3,
+        wallet_address,
+        interest_distribution.assets,
+        filter_zero=True,
+        block_number=block_identifier,
+    )
+
+    balances = {
+        b.asset: b.amount
+        for b in onchain_balances
+    }
+
+    # Then distribute gained interest (new atokens/vtokens) among positions
+    events_iter = accrue_interest(state, balances, interest_distribution, timestamp, None)
+
+    events = list(events_iter)
+
+    return events

@@ -26,7 +26,6 @@ from tradeexecutor.ethereum.enzyme.tx import EnzymeTransactionBuilder
 from tradeexecutor.ethereum.onchain_balance import fetch_address_balances
 from tradeexecutor.ethereum.token import translate_token_details
 from tradeexecutor.state.portfolio import Portfolio
-
 from tradeexecutor.state.identifier import AssetIdentifier
 from tradeexecutor.state.position import TradingPosition
 from tradeexecutor.state.reserve import ReservePosition
@@ -37,6 +36,9 @@ from tradeexecutor.state.types import BlockNumber
 from tradeexecutor.strategy.account_correction import check_accounts
 from tradeexecutor.strategy.sync_model import SyncModel, OnChainBalance
 from tradingstrategy.chain import ChainId
+from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
+from tradeexecutor.strategy.pricing_model import PricingModel
+from tradeexecutor.strategy.interest import sync_interests
 
 logger = logging.getLogger(__name__)
 
@@ -415,6 +417,23 @@ class EnzymeVaultSyncModel(SyncModel):
         deployment.vault_token_symbol = self.vault.get_symbol()
         deployment.chain_id = ChainId(web3.eth.chain_id)
         deployment.initialised_at = datetime.datetime.utcnow()
+
+    def sync_interests(
+        self,
+        timestamp: datetime.datetime,
+        state: State,
+        universe: TradingStrategyUniverse,
+        pricing_model: PricingModel,
+    ) -> List[BalanceUpdate]:
+
+        return sync_interests(
+            web3=self.web3,
+            wallet_address=self.get_vault_address(),
+            timestamp=timestamp,
+            state=state,
+            universe=universe,
+            pricing_model=pricing_model,
+        )
 
     def fetch_onchain_balances(
             self,

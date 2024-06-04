@@ -39,14 +39,14 @@ class Parameters:
 
     id = "enzyme-e2e-mixed" # Used in cache paths
 
-    cycle_duration = CycleDuration.h1
+    cycle_duration = CycleDuration.s1
     candle_time_bucket = TimeBucket.h1
     allocation = 0.98
     chain_id = ChainId.anvil
     routing = TradeRouting.default  # Pick default routes for trade execution
     required_history_period = datetime.timedelta(hours=200)
 
-    backtest_start = datetime.datetime(2024, 5, 1)
+    backtest_start = datetime.datetime(2024, 5, 10)
     backtest_end = datetime.datetime(2024, 5, 15)
     initial_cash = 10_000
 
@@ -106,15 +106,15 @@ def create_indicators(
 
 
 def decide_trades(input: StrategyInput) -> list[TradeExecution]:
-    parameters = input.parameters
     position_manager = input.get_position_manager()
-    state = input.state
-    timestamp = input.timestamp
-    strategy_universe = input.strategy_universe
-
-    pair = strategy_universe.get_single_pair()
     cash = position_manager.get_current_cash()
     trades = []
+
+    if not position_manager.is_any_credit_supply_position_open():
+        amount = cash * 0.9
+        trades += position_manager.open_credit_supply_position_for_reserves(amount)
+    elif input.cycle % 5 == 0:
+        trades += position_manager.close_all()
 
     return trades  # Return the list of trades we made in this cycle
 
