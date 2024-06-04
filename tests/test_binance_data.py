@@ -81,11 +81,12 @@ def test_fetch_binance_dataset(correct_df_candles, correct_df_lending):
             START_AT,
             END_AT,
             include_lending=True,
+            force_download=True,
         )
 
     assert len(dataset.candles) == 2
     assert dataset.candles.isna().sum().sum() == 0
-    assert len(dataset.backtest_stop_loss_candles) == 12
+    assert len(dataset.backtest_stop_loss_candles) == 7
     assert dataset.backtest_stop_loss_candles.isna().sum().sum() == 0
     assert len(dataset.pairs) == 1
     assert dataset.time_bucket == TimeBucket.d1
@@ -120,16 +121,20 @@ def test_create_binance_universe(correct_df_candles, correct_df_lending):
             START_AT,
             END_AT,
             include_lending=True,
+            force_download=True,
         )
 
     assert universe.backtest_stop_loss_time_bucket == TimeBucket.h4
-    assert len(universe.backtest_stop_loss_candles.df) == 12
+    assert len(universe.backtest_stop_loss_candles.df) == 7
     assert universe.backtest_stop_loss_candles.df.isna().sum().sum() == 0
 
     data_universe = universe.data_universe
     assert data_universe.time_bucket == TimeBucket.d1
     assert len(data_universe.candles.df) == 2
     assert data_universe.candles.df.isna().sum().sum() == 0
+    assert data_universe.candles.df.index[0].to_pydatetime() == START_AT
+    assert data_universe.candles.df.index[-1].to_pydatetime() == END_AT
+
     assert len(data_universe.lending_reserves.reserves) == 2
     assert data_universe.chains == {BINANCE_CHAIN_ID}
     assert len(data_universe.pairs.df) == 1
@@ -140,6 +145,10 @@ def test_create_binance_universe(correct_df_candles, correct_df_lending):
     assert data_universe.lending_candles.variable_borrow_apr.df.isna().sum().sum() == 0
     assert len(data_universe.lending_candles.supply_apr.df) == 4
     assert data_universe.lending_candles.supply_apr.df.isna().sum().sum() == 0
+
+    assert data_universe.lending_candles.variable_borrow_apr.df.index[0].to_pydatetime() == START_AT
+    assert data_universe.lending_candles.variable_borrow_apr.df.index[-1].to_pydatetime() == END_AT
+
 
 
 @pytest.mark.skipif(os.environ.get("BINANCE_LENDING_DATA") == "false", reason="Binance lending API not available in the country")
@@ -231,11 +240,15 @@ def test_binance_multi_pair():
         start_at=datetime.datetime(2020, 1, 1),
         end_at=datetime.datetime(2020, 2, 1),
         include_lending=False,
+        force_download=True,
     )
+
+    assert dataset.candles.iloc[0]["timestamp"].to_pydatetime() == datetime.datetime(2020, 1, 1)
+    assert dataset.candles.iloc[-1]["timestamp"].to_pydatetime() == datetime.datetime(2020, 2, 1)
 
     eth_row = dataset.candles.iloc[0]
     assert eth_row["pair_id"] == 1
-    assert eth_row.to_dict() == {'open': 129.16, 'high': 130.98, 'low': 128.68, 'close': 130.2, 'volume': 31685.73908, 'pair_id': 1, 'base_token_symbol': 'ETH', 'quote_token_symbol': 'USDT', 'exchange_slug': 'binance', 'chain_id': -1.0, 'fee': 0.0005, 'buy_volume_all_time': 0.0, 'address': '0xe82ac67166a910f4092c23f781cd39e46582ec9c', 'exchange_id': 129875571.0, 'token0_address': '0x4b2d72c1cb89c0b2b320c43bb67ff79f562f5ff4', 'token1_address': '0x5b1a1833b16b6594f92daa9f6d9b7a6024bce9d0', 'token0_symbol': 'ETH', 'token1_symbol': 'USDT', 'token0_decimals': 18.0, 'token1_decimals': 18.0, 'timestamp': Timestamp('2020-01-01 00:00:00')}
+    assert eth_row.to_dict() == {'open': 129.16, 'high': 133.05, 'low': 128.68, 'close': 130.77, 'volume': 144770.52197, 'pair_id': 1, 'base_token_symbol': 'ETH', 'quote_token_symbol': 'USDT', 'exchange_slug': 'binance', 'chain_id': -1.0, 'fee': 0.0005, 'token0_address': '0x4b2d72c1cb89c0b2b320c43bb67ff79f562f5ff4', 'token1_address': '0x5b1a1833b16b6594f92daa9f6d9b7a6024bce9d0', 'token0_symbol': 'ETH', 'token1_symbol': 'USDT', 'token0_decimals': 18.0, 'token1_decimals': 18.0, 'timestamp': Timestamp('2020-01-01 00:00:00')}
 
     eth_row = dataset.candles.iloc[1]
     assert eth_row["pair_id"] == 1
@@ -243,7 +256,7 @@ def test_binance_multi_pair():
 
     btc_row = dataset.candles.iloc[-1]
     assert btc_row["pair_id"] == 2
-    assert btc_row.to_dict() == {'open': 9367.76, 'high': 9409.99, 'low': 9350.0, 'close': 9384.61, 'volume': 3397.370382, 'pair_id': 2, 'base_token_symbol': 'BTC', 'quote_token_symbol': 'USDT', 'exchange_slug': 'binance', 'chain_id': -1.0, 'fee': 0.0005, 'buy_volume_all_time': 0.0, 'address': '0x1d06ef1d6470d25f8e3d6f04f5acc111f176939c', 'exchange_id': 129875571.0, 'token0_address': '0x505e65d08c67660dc618072422e9c78053c261e9', 'token1_address': '0x5b1a1833b16b6594f92daa9f6d9b7a6024bce9d0', 'token0_symbol': 'BTC', 'token1_symbol': 'USDT', 'token0_decimals': 18.0, 'token1_decimals': 18.0, 'timestamp': Timestamp('2020-02-01 20:00:00')}
+    assert btc_row.to_dict() == {'open': 9351.71, 'high': 9464.53, 'low': 9341.17, 'close': 9432.33, 'volume': 4624.992378, 'pair_id': 2, 'base_token_symbol': 'BTC', 'quote_token_symbol': 'USDT', 'exchange_slug': 'binance', 'chain_id': -1.0, 'fee': 0.0005, 'token0_address': '0x505e65d08c67660dc618072422e9c78053c261e9', 'token1_address': '0x5b1a1833b16b6594f92daa9f6d9b7a6024bce9d0', 'token0_symbol': 'BTC', 'token1_symbol': 'USDT', 'token0_decimals': 18.0, 'token1_decimals': 18.0, 'timestamp': Timestamp('2020-02-01 00:00:00')}
 
 
 @pytest.mark.skipif(os.environ.get("GITHUB_ACTIONS", None) == "true", reason="Github US servers are blocked by Binance with HTTP 451")

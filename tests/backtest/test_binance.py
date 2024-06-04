@@ -23,6 +23,7 @@ def test_price_series_resample_and_shift_binance(persistent_test_client: Client)
         start_at=datetime.datetime(2020, 1, 1),
         end_at=datetime.datetime(2020, 2, 1),
         include_lending=False,
+        force_download=True,
     )
 
     raw_candles = dataset.candles["close"]
