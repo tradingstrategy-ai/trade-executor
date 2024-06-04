@@ -20,24 +20,53 @@ STOP_LOSS_TIME_BUCKET = TimeBucket.h4
 
 
 @pytest.fixture()
-def correct_df_candles():
+def correct_df_candles() -> pd.DataFrame:
     """Return a correct dataframe for the candles."""
     data = {
-        'open': [736.42, 744.87, 737.37, 738.85, 735.39, 725.34, 728.91, 730.39, 735.12, 729.70, 768.45, 784.79],
-        'high': [749.00, 747.09, 741.76, 743.33, 737.73, 731.97, 734.40, 740.49, 738.35, 772.80, 787.69, 785.48],
-        'low': [729.33, 734.40, 725.10, 732.12, 714.29, 722.50, 714.91, 726.26, 723.01, 728.25, 764.50, 750.12],
-        'close': [744.82, 737.38, 738.85, 735.39, 725.34, 728.91, 730.39, 735.12, 729.70, 768.43, 784.79, 774.56],
-        'volume': [130893.19622, 72474.10311, 128108.21447, 121504.02184, 156457.71927, 65676.83838, 119184.44960, 97938.27713, 120264.73109, 428448.45842, 334396.99240, 252385.66804],
-        'pair_id': ['ETHUSDT'] * 12
+        'timestamp': [
+            '2021-01-01 00:00:00', '2021-01-01 04:00:00', '2021-01-01 08:00:00',
+            '2021-01-01 12:00:00', '2021-01-01 16:00:00', '2021-01-01 20:00:00',
+            '2021-01-02 00:00:00'
+        ],
+        'open': [736.42, 744.87, 737.37, 738.85, 735.39, 725.34, 728.91],
+        'high': [749.0, 747.09, 741.76, 743.33, 737.73, 731.97, 734.4],
+        'low': [729.33, 734.4, 725.1, 732.12, 714.29, 722.5, 714.91],
+        'close': [744.82, 737.38, 738.85, 735.39, 725.34, 728.91, 730.39],
+        'volume': [130893.19622, 72474.10311, 128108.21447, 121504.02184, 156457.71927, 65676.83838, 119184.4496],
+        'pair_id': [1, 1, 1, 1, 1, 1, 1],
+        'base_token_symbol': ['ETH', 'ETH', 'ETH', 'ETH', 'ETH', 'ETH', 'ETH'],
+        'quote_token_symbol': ['USDT', 'USDT', 'USDT', 'USDT', 'USDT', 'USDT', 'USDT'],
+        'exchange_slug': ['binance', 'binance', 'binance', 'binance', 'binance', 'binance', 'binance'],
+        'chain_id': [-1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0],
+        'fee': [0.0005, 0.0005, 0.0005, 0.0005, 0.0005, 0.0005, 0.0005],
+        'buy_volume_all_time': [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+        'address': [
+            '0xe82ac67166a910f4092c23f781cd39e46582ec9c', '0xe82ac67166a910f4092c23f781cd39e46582ec9c',
+            '0xe82ac67166a910f4092c23f781cd39e46582ec9c', '0xe82ac67166a910f4092c23f781cd39e46582ec9c',
+            '0xe82ac67166a910f4092c23f781cd39e46582ec9c', '0xe82ac67166a910f4092c23f781cd39e46582ec9c',
+            '0xe82ac67166a910f4092c23f781cd39e46582ec9c'
+        ],
+        'exchange_id': [129875571.0, 129875571.0, 129875571.0, 129875571.0, 129875571.0, 129875571.0, 129875571.0],
+        'token0_address': [
+            '0x4b2d72c1cb89c0b2b320c43bb67ff79f562f5ff4', '0x4b2d72c1cb89c0b2b320c43bb67ff79f562f5ff4',
+            '0x4b2d72c1cb89c0b2b320c43bb67ff79f562f5ff4', '0x4b2d72c1cb89c0b2b320c43bb67ff79f562f5ff4',
+            '0x4b2d72c1cb89c0b2b320c43bb67ff79f562f5ff4', '0x4b2d72c1cb89c0b2b320c43bb67ff79f562f5ff4',
+            '0x4b2d72c1cb89c0b2b320c43bb67ff79f562f5ff4'
+        ],
+        'token1_address': [
+            '0x5b1a1833b16b6594f92daa9f6d9b7a6024bce9d0', '0x5b1a1833b16b6594f92daa9f6d9b7a6024bce9d0',
+            '0x5b1a1833b16b6594f92daa9f6d9b7a6024bce9d0', '0x5b1a1833b16b6594f92daa9f6d9b7a6024bce9d0',
+            '0x5b1a1833b16b6594f92daa9f6d9b7a6024bce9d0', '0x5b1a1833b16b6594f92daa9f6d9b7a6024bce9d0',
+            '0x5b1a1833b16b6594f92daa9f6d9b7a6024bce9d0'
+        ],
+        'token0_symbol': ['ETH', 'ETH', 'ETH', 'ETH', 'ETH', 'ETH', 'ETH'],
+        'token1_symbol': ['USDT', 'USDT', 'USDT', 'USDT', 'USDT', 'USDT', 'USDT'],
+        'token0_decimals': [18.0, 18.0, 18.0, 18.0, 18.0, 18.0, 18.0],
+        'token1_decimals': [18.0, 18.0, 18.0, 18.0, 18.0, 18.0, 18.0]
     }
-
-    df = pd.DataFrame(data, index=pd.to_datetime([
-        '2021-01-01 00:00:00', '2021-01-01 04:00:00', '2021-01-01 08:00:00', 
-        '2021-01-01 12:00:00', '2021-01-01 16:00:00', '2021-01-01 20:00:00', 
-        '2021-01-02 00:00:00', '2021-01-02 04:00:00', '2021-01-02 08:00:00', 
-        '2021-01-02 12:00:00', '2021-01-02 16:00:00', '2021-01-02 20:00:00'
-    ]))
-
+    df = pd.DataFrame(data)
+    df['timestamp'] = pd.to_datetime(df['timestamp'])
+    df.index = pd.Int64Index([0, 1, 2, 3, 4, 5, 6], dtype='int64')
     return df
 
 
@@ -83,15 +112,24 @@ def test_fetch_binance_dataset(correct_df_candles, correct_df_lending):
             include_lending=True,
             force_download=True,
         )
+    
+    assert dataset.backtest_stop_loss_candles.equals(correct_df_candles)
+    assert len(dataset.backtest_stop_loss_candles) == 7
+    assert dataset.backtest_stop_loss_candles.isna().sum().sum() == 0
 
     assert len(dataset.candles) == 2
     assert dataset.candles.isna().sum().sum() == 0
-    assert len(dataset.backtest_stop_loss_candles) == 7
-    assert dataset.backtest_stop_loss_candles.isna().sum().sum() == 0
+    
     assert len(dataset.pairs) == 1
     assert dataset.time_bucket == TimeBucket.d1
     assert dataset.backtest_stop_loss_time_bucket == TimeBucket.h4
     assert dataset.exchanges.exchanges[BINANCE_EXCHANGE_ID]
+
+    assert dataset.candles["timestamp"][0].to_pydatetime() == START_AT
+    assert dataset.candles["timestamp"][-1].to_pydatetime() == END_AT
+    
+    assert dataset.backtest_stop_loss_candles["timestamp"].iloc[0].to_pydatetime() == START_AT
+    assert dataset.backtest_stop_loss_candles["timestamp"].iloc[-1].to_pydatetime() == END_AT
 
 
 @pytest.mark.skipif(os.environ.get("BINANCE_LENDING_DATA") == "false", reason="Binance lending API not available in the country")
