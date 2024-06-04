@@ -31,7 +31,8 @@ from tradeexecutor.ethereum.tx import TransactionBuilder
 from tradeexecutor.state.generic_position import GenericPosition
 from tradeexecutor.state.portfolio import Portfolio
 from tradeexecutor.state.repair import close_position_with_empty_trade
-from tradeexecutor.strategy.dust import DEFAULT_DUST_EPSILON, get_dust_epsilon_for_pair, get_dust_epsilon_for_asset
+from tradeexecutor.strategy.dust import DEFAULT_DUST_EPSILON, get_dust_epsilon_for_pair, get_dust_epsilon_for_asset, DEFAULT_RELATIVE_EPSILON, \
+    get_relative_epsilon_for_asset
 from tradingstrategy.pair import PandasPairUniverse
 
 from tradeexecutor.state.balance_update import BalanceUpdate, BalanceUpdatePositionType, BalanceUpdateCause
@@ -41,18 +42,11 @@ from tradeexecutor.state.reserve import ReservePosition
 from tradeexecutor.state.state import State
 from tradeexecutor.state.sync import BalanceEventRef
 from tradeexecutor.state.types import USDollarAmount
-from tradeexecutor.strategy.asset import get_relevant_assets, map_onchain_asset_to_position, build_expected_asset_map
+from tradeexecutor.strategy.asset import build_expected_asset_map
 from tradeexecutor.strategy.sync_model import SyncModel
 
 
 logger = logging.getLogger(__name__)
-
-
-#: The default % we allow the balance to drift before we consider it a mismatch.
-#:
-#: Set to 50 BPS
-#:
-RELATIVE_EPSILON = 5 * Decimal(10**-4)
 
 
 class UnexpectedAccountingCorrectionIssue(Exception):
@@ -129,6 +123,9 @@ class AccountingBalanceCheck:
     #: Was there a balance mismatch that is larger than the epsilon
     #:
     mismatch: bool
+
+    def __post_init__(self):
+        assert type(self.relative_epsilon) == float, f"Got {type(self.relative_epsilon)}"
 
     def __repr__(self):
 
@@ -222,7 +219,7 @@ def calculate_account_corrections(
     reserve_assets: Collection[AssetIdentifier],
     state: State,
     sync_model: SyncModel,
-    relative_epsilon=RELATIVE_EPSILON,
+    relative_epsilon=None,
     all_balances=False,
     block_identifier: BlockIdentifier = None,
 ) -> Iterable[AccountingBalanceCheck]:
@@ -338,7 +335,12 @@ def calculate_account_corrections(
 
         logger.debug("Correction check worth of %s worth of %f USD, actual amount %s, expected amount %s", ab.asset, usd_value or 0, actual_amount, expected_amount)
 
-        mismatch = is_relative_mismatch(actual_amount, expected_amount, relative_epsilon, dust_epsilon)
+        if relative_epsilon is None:
+            pair_relative_epsilon = get_relative_epsilon_for_asset(ab.asset)
+        else:
+            pair_relative_epsilon = relative_epsilon
+
+        mismatch = is_relative_mismatch(actual_amount, expected_amount, pair_relative_epsilon, dust_epsilon)
 
         if mismatch or all_balances:
             yield AccountingBalanceCheck(
@@ -349,7 +351,7 @@ def calculate_account_corrections(
                 expected_amount,
                 actual_amount,
                 dust_epsilon,
-                relative_epsilon,
+                pair_relative_epsilon,
                 ab.block_number,
                 ab.timestamp,
                 usd_value,
@@ -655,7 +657,7 @@ def check_accounts(
         reserve_assets,
         state,
         sync_model,
-        relative_epsilon=RELATIVE_EPSILON,
+        relative_epsilon=None,
         all_balances=True,
         block_identifier=block_identifier,
     )

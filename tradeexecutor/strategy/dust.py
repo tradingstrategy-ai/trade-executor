@@ -5,9 +5,11 @@ a lot of trades may end up having rounding artifacts.
 We need to deal with these rounding artifacts by checking for "dust".
 
 """
+from _decimal import Decimal
 from decimal import Decimal
 
 from tradeexecutor.state.identifier import TradingPairIdentifier, AssetIdentifier
+from tradeexecutor.state.types import Percent
 
 #: The absolute number of tokens we consider the value to be zero
 #:
@@ -17,6 +19,13 @@ from tradeexecutor.state.identifier import TradingPairIdentifier, AssetIdentifie
 #:
 #:
 DEFAULT_DUST_EPSILON = Decimal(10 ** -4)
+
+
+#: The default % we allow the balance to drift before we consider it a mismatch.
+#:
+#: Set to 50 BPS
+#:
+DEFAULT_RELATIVE_EPSILON = 5 * 10 ** -4
 
 
 
@@ -60,3 +69,26 @@ def get_dust_epsilon_for_asset(asset: AssetIdentifier) -> Decimal:
         return Decimal(5.0)
     else:
         return DEFAULT_DUST_EPSILON
+
+
+def get_relative_epsilon_for_asset(asset: AssetIdentifier) -> Percent:
+    """Get the relative threshold for a trading pair.
+
+    :param pair:
+        Trading pair identifier.
+
+    :return:
+        Maximum amount of units we consider "zero".
+
+    """
+
+    # Aave issues
+    if asset.token_symbol in ("aPolUSDC", ):
+        return 0.01
+    else:
+        return DEFAULT_RELATIVE_EPSILON
+
+
+def get_relative_epsilon_for_pair(pair: TradingPairIdentifier) -> Percent:
+    return get_relative_epsilon_for_asset(pair.base)
+
