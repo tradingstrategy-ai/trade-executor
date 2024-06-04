@@ -84,8 +84,9 @@ def get_relative_epsilon_for_asset(asset: AssetIdentifier) -> Percent:
 
     # Aave issues
     if asset.token_symbol in ("aPolUSDC", ):
-        return 0.01
+        return 0.01  # Allow 1% tolerance
     else:
+        # 5 BPS
         return DEFAULT_RELATIVE_EPSILON
 
 
