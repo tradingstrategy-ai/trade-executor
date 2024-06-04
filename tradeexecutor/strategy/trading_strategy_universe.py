@@ -1116,7 +1116,7 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
                 translated_pair = translate_trading_pair(p)
                 reserve_token = translated_pair.quote
 
-        assert reserve_token, f"Reserve token {reserve_token_symbol} missing the pair quote tokens"
+        assert reserve_token, f"Reserve token {reserve_token_symbol} missing the specified pair quote tokens of {reserve_token}"
         reserve_assets = [
             reserve_token
         ]
