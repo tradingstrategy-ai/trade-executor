@@ -190,12 +190,12 @@ def test_create_binance_universe(correct_df_candles, correct_df_lending):
     assert len(universe.backtest_stop_loss_candles.df) == 7
     assert universe.backtest_stop_loss_candles.df.isna().sum().sum() == 0
 
+    assert data_universe.candles.df.index[0].to_pydatetime() == START_AT
+    assert data_universe.candles.df.index[-1].to_pydatetime() == END_AT
     data_universe = universe.data_universe
     assert data_universe.time_bucket == TimeBucket.d1
     assert len(data_universe.candles.df) == 2
     assert data_universe.candles.df.isna().sum().sum() == 0
-    assert data_universe.candles.df.index[0].to_pydatetime() == START_AT
-    assert data_universe.candles.df.index[-1].to_pydatetime() == END_AT
 
     assert len(data_universe.lending_reserves.reserves) == 2
     assert data_universe.chains == {BINANCE_CHAIN_ID}
