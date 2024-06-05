@@ -73,6 +73,8 @@ def correct_df_candles() -> pd.DataFrame:
         # gets converted internally to match above
         df['pair_id'] = ["ETHUSDT", "ETHUSDT", "ETHUSDT", "ETHUSDT", "ETHUSDT", "ETHUSDT", "ETHUSDT"]
         df.index = pd.DatetimeIndex(df.index)
+        df.drop(columns=['base_token_symbol', 'quote_token_symbol', 'exchange_slug', 'chain_id', 'fee', 'buy_volume_all_time', 'address', 'exchange_id', 'token0_address', 'token1_address', 'token0_symbol', 'token1_symbol', 'token0_decimals', 'token1_decimals'], inplace=True)
+
 
     return df
 
@@ -197,6 +199,7 @@ def test_create_binance_universe(correct_df_candles, correct_df_lending):
     assert len(universe.backtest_stop_loss_candles.df) == 7
     assert universe.backtest_stop_loss_candles.df.isna().sum().sum() == 0
 
+    data_universe = universe.data_universe
     assert data_universe.candles.df.index[0].to_pydatetime() == START_AT
     assert data_universe.candles.df.index[-1].to_pydatetime() == END_AT
     data_universe = universe.data_universe
