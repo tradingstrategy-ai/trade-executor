@@ -72,6 +72,7 @@ def correct_df_candles() -> pd.DataFrame:
     if os.environ.get("GITHUB_ACTIONS", None) == 'true':
         # gets converted internally
         df['pair_id'] = ["ETHUSDT", "ETHUSDT", "ETHUSDT", "ETHUSDT", "ETHUSDT", "ETHUSDT", "ETHUSDT"]
+        df.index = pd.DatetimeIndex(df.index)
 
     return df
 
