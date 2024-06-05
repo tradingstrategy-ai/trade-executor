@@ -70,7 +70,7 @@ def correct_df_candles() -> pd.DataFrame:
 
 
     if os.environ.get("GITHUB_ACTIONS", None) == 'true':
-        # gets converted internally
+        # gets converted internally to match above
         df['pair_id'] = ["ETHUSDT", "ETHUSDT", "ETHUSDT", "ETHUSDT", "ETHUSDT", "ETHUSDT", "ETHUSDT"]
         df.index = pd.DatetimeIndex(df.index)
 
@@ -81,23 +81,30 @@ def correct_df_candles() -> pd.DataFrame:
 def correct_df_lending():
     """Return a correct dataframe for the lending."""
 
-    # Data dictionary
-    data = {
-        'open': [9.125, 34.675, 9.125, 34.675],
-        'close': [9.125, 34.675, 9.125, 34.675],
-        'high': [9.125, 34.675, 9.125, 34.675],
-        'low': [9.125, 34.675, 9.125, 34.675],
-        'timestamp': ['2021-01-01', '2021-01-01', '2021-01-02', '2021-01-02'],
-        'reserve_id': [1, 2, 1, 2],
-        'asset_symbol': ['ETH', 'USDT', 'ETH', 'USDT']
-    }
+    if os.environ.get("GITHUB_ACTIONS", None) == 'true':
+        # gets converted internally to match else case
+        data = {
+            'timestamp': ['2021-01-01', '2021-01-02', '2021-01-01', '2021-01-02'],
+            'lending_rates': [34.675, 34.675, 9.125, 9.125],
+            'pair_id': ['USDT', 'USDT', 'ETH', 'ETH']
+        }
+        df = pd.DataFrame(data)
+        df.set_index('timestamp', inplace=True)
+        df.index = pd.DatetimeIndex(df.index)
+    else:
+        data = {
+            'open': [9.125, 34.675, 9.125, 34.675],
+            'close': [9.125, 34.675, 9.125, 34.675],
+            'high': [9.125, 34.675, 9.125, 34.675],
+            'low': [9.125, 34.675, 9.125, 34.675],
+            'timestamp': ['2021-01-01', '2021-01-01', '2021-01-02', '2021-01-02'],
+            'reserve_id': [1, 2, 1, 2],
+            'asset_symbol': ['ETH', 'USDT', 'ETH', 'USDT']
+        }
+        df = pd.DataFrame(data)
+        df['timestamp'] = pd.to_datetime(df['timestamp'])
+        df.set_index('timestamp', inplace=True, drop=False)
 
-    # Create the DataFrame
-    df = pd.DataFrame(data)
-
-    # Set the index to 'timestamp'
-    df['timestamp'] = pd.to_datetime(df['timestamp'])
-    df.set_index('timestamp', inplace=True, drop=False)
     return df
 
 
