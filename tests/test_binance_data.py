@@ -68,9 +68,10 @@ def correct_df_candles() -> pd.DataFrame:
     df['timestamp'] = pd.to_datetime(df['timestamp'])
     df.index = pd.Int64Index([0, 1, 2, 3, 4, 5, 6], dtype='int64')
 
+
     if os.environ.get("GITHUB_ACTIONS", None) == True:
         # gets converted internally
-        df['pair_id'] == ["ETHUSDT", "ETHUSDT", "ETHUSDT", "ETHUSDT", "ETHUSDT", "ETHUSDT", "ETHUSDT"]
+        df['pair_id'] = ["ETHUSDT", "ETHUSDT", "ETHUSDT", "ETHUSDT", "ETHUSDT", "ETHUSDT", "ETHUSDT"]
 
     return df
 
