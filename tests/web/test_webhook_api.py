@@ -217,6 +217,7 @@ def test_icon(logger, server_url):
     data = resp.json()
     icon_url = data["icon_url"]
     assert icon_url.endswith("/icon")
+    assert icon_url.startswith("https://")
     resp = requests.get(f"{server_url}/icon")
     assert resp.status_code == 200, f"Got: {icon_url} {resp.text}"
     assert resp.headers.get("content-type") == "image/png"
