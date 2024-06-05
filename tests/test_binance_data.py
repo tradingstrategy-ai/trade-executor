@@ -81,11 +81,23 @@ def correct_df_candles() -> pd.DataFrame:
 def correct_df_lending():
     """Return a correct dataframe for the lending."""
 
+    # Data dictionary
     data = {
-        'lending_rates': [0.000250, 0.000250, 0.001045, 0.001045],
-        'pair_id': ['ETH', 'ETH', 'USDT', 'USDT']
+        'open': [9.125, 34.675, 9.125, 34.675],
+        'close': [9.125, 34.675, 9.125, 34.675],
+        'high': [9.125, 34.675, 9.125, 34.675],
+        'low': [9.125, 34.675, 9.125, 34.675],
+        'timestamp': ['2021-01-01', '2021-01-01', '2021-01-02', '2021-01-02'],
+        'reserve_id': [1, 2, 1, 2],
+        'asset_symbol': ['ETH', 'USDT', 'ETH', 'USDT']
     }
-    df = pd.DataFrame(data, index=pd.to_datetime(['2020-12-31', '2021-01-01', '2020-12-31', '2021-01-01']))
+
+    # Create the DataFrame
+    df = pd.DataFrame(data)
+
+    # Set the index to 'timestamp'
+    df['timestamp'] = pd.to_datetime(df['timestamp'])
+    df.set_index('timestamp', inplace=True, drop=False)
     return df
 
 
@@ -119,7 +131,12 @@ def test_fetch_binance_dataset(correct_df_candles, correct_df_lending):
             include_lending=True,
             force_download=True,
         )
-    
+
+
+    assert dataset.lending_candles.variable_borrow_apr.df.equals(correct_df_lending)
+    assert dataset.lending_candles.variable_borrow_apr.df["timestamp"].iloc[0].to_pydatetime() == START_AT
+    assert dataset.lending_candles.variable_borrow_apr.df["timestamp"].iloc[-1].to_pydatetime() == END_AT
+
     assert dataset.backtest_stop_loss_candles.equals(correct_df_candles)
     assert len(dataset.backtest_stop_loss_candles) == 7
     assert dataset.backtest_stop_loss_candles.isna().sum().sum() == 0
