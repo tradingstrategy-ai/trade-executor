@@ -55,6 +55,9 @@ def web_metadata(request: Request):
     metadata: Metadata = request.registry["metadata"]
     run_state: RunState = request.registry["run_state"]
 
+    _icon_url = urljoin(request.application_url, "icon")
+    icon_url = _icon_url.replace("http://", "https://")
+
     # Retrofitted with the running flag,
     # not really a nice API design.
     # Do not mutate a global state in place/
@@ -62,7 +65,7 @@ def web_metadata(request: Request):
         name=metadata.name,
         short_description=metadata.short_description,
         long_description=metadata.long_description,
-        icon_url=urljoin(request.application_url, "icon"),
+        icon_url=icon_url,
         started_at=time.mktime(metadata.started_at.timetuple()),
         executor_running=run_state.executor_running,
         summary_statistics=run_state.summary_statistics,
