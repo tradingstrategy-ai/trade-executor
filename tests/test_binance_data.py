@@ -66,7 +66,7 @@ def correct_df_candles() -> pd.DataFrame:
     }
     df = pd.DataFrame(data)
     df['timestamp'] = pd.to_datetime(df['timestamp'])
-    df.index = pd.Int64Index([0, 1, 2, 3, 4, 5, 6], dtype='int64')
+    # df.index = pd.Int64Index([0, 1, 2, 3, 4, 5, 6], dtype='int64')
 
 
     if os.environ.get("GITHUB_ACTIONS", None) == 'true':
