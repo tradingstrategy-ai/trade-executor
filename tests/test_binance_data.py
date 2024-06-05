@@ -18,9 +18,7 @@ END_AT = datetime.datetime(2021, 1, 2)
 TIME_BUCKET = TimeBucket.d1
 STOP_LOSS_TIME_BUCKET = TimeBucket.h4
 
-
-@pytest.fixture()
-def correct_df_candles() -> pd.DataFrame:
+def final_candles_df() -> pd.DataFrame:
     """Return a correct dataframe for the candles."""
     data = {
         'timestamp': [
@@ -66,52 +64,46 @@ def correct_df_candles() -> pd.DataFrame:
     }
     df = pd.DataFrame(data)
     df['timestamp'] = pd.to_datetime(df['timestamp'])
-    # df.index = pd.Int64Index([0, 1, 2, 3, 4, 5, 6], dtype='int64')
-
-
-    if os.environ.get("GITHUB_ACTIONS", None) == 'true':
-        # gets converted internally to match above
-        df['pair_id'] = ["ETHUSDT", "ETHUSDT", "ETHUSDT", "ETHUSDT", "ETHUSDT", "ETHUSDT", "ETHUSDT"]
-        df.index = pd.DatetimeIndex(df.index)
-        df.drop(columns=['base_token_symbol', 'quote_token_symbol', 'exchange_slug', 'chain_id', 'fee', 'buy_volume_all_time', 'address', 'exchange_id', 'token0_address', 'token1_address', 'token0_symbol', 'token1_symbol', 'token0_decimals', 'token1_decimals'], inplace=True)
-
-
+    df.set_index('timestamp', inplace=True, drop=False)
     return df
 
 
-@pytest.fixture()
-def correct_df_lending():
+def mock_candles_df():
+    df = final_candles_df()
+    df['pair_id'] = ["ETHUSDT", "ETHUSDT", "ETHUSDT", "ETHUSDT", "ETHUSDT", "ETHUSDT", "ETHUSDT"]
+    df.index = pd.DatetimeIndex(df['timestamp'])
+    df.drop(columns=['base_token_symbol', 'quote_token_symbol', 'exchange_slug', 'chain_id', 'fee', 'buy_volume_all_time', 'address', 'exchange_id', 'token0_address', 'token1_address', 'token0_symbol', 'token1_symbol', 'token0_decimals', 'token1_decimals'], inplace=True)
+    return df
+
+
+def final_lending_df():
     """Return a correct dataframe for the lending."""
-
-    if os.environ.get("GITHUB_ACTIONS", None) == 'true':
-        # gets converted internally to match else case
-        data = {
-            'timestamp': ['2021-01-01', '2021-01-02', '2021-01-01', '2021-01-02'],
-            'lending_rates': [34.675, 34.675, 9.125, 9.125],
-            'pair_id': ['USDT', 'USDT', 'ETH', 'ETH']
-        }
-        df = pd.DataFrame(data)
-        df.set_index('timestamp', inplace=True)
-        df.index = pd.DatetimeIndex(df.index)
-    else:
-        data = {
-            'open': [9.125, 34.675, 9.125, 34.675],
-            'close': [9.125, 34.675, 9.125, 34.675],
-            'high': [9.125, 34.675, 9.125, 34.675],
-            'low': [9.125, 34.675, 9.125, 34.675],
-            'timestamp': ['2021-01-01', '2021-01-01', '2021-01-02', '2021-01-02'],
-            'reserve_id': [1, 2, 1, 2],
-            'asset_symbol': ['ETH', 'USDT', 'ETH', 'USDT']
-        }
-        df = pd.DataFrame(data)
-        df['timestamp'] = pd.to_datetime(df['timestamp'])
-        df.set_index('timestamp', inplace=True, drop=False)
+    data = {
+        'open': [9.125, 34.675, 9.125, 34.675],
+        'close': [9.125, 34.675, 9.125, 34.675],
+        'high': [9.125, 34.675, 9.125, 34.675],
+        'low': [9.125, 34.675, 9.125, 34.675],
+        'timestamp': ['2021-01-01', '2021-01-01', '2021-01-02', '2021-01-02'],
+        'reserve_id': [1, 2, 1, 2],
+        'asset_symbol': ['ETH', 'USDT', 'ETH', 'USDT']
+    }
+    df = pd.DataFrame(data)
+    df['timestamp'] = pd.to_datetime(df['timestamp'])
+    df.set_index('timestamp', inplace=True, drop=False)
 
     return df
+
+
+def mock_lending_df():
+    return pd.DataFrame({
+        'timestamp': ['2021-01-01', '2021-01-02', '2021-01-01', '2021-01-02'],
+        'lending_rates': [34.675, 34.675, 9.125, 9.125],
+        'pair_id': ['USDT', 'USDT', 'ETH', 'ETH']
+    }).set_index('timestamp').rename_axis(index='timestamp', axis=1).set_index(pd.DatetimeIndex(pd.Series(['2021-01-01', '2021-01-02', '2021-01-01', '2021-01-02'])))
 
 
 @pytest.mark.skipif(os.environ.get("BINANCE_LENDING_DATA") == "false", reason="Binance lending API not available in the country")
-def test_fetch_binance_dataset(correct_df_candles, correct_df_lending):
+def test_fetch_binance_dataset():
     """Test that the fetch_binance_dataset function works as expected."""
     if os.environ.get("GITHUB_ACTIONS", None) == "true":
         with patch(
@@ -119,8 +111,8 @@ def test_fetch_binance_dataset(correct_df_candles, correct_df_lending):
         ) as mock_fetch_candlestick_data, patch(
             "tradingstrategy.binance.downloader.BinanceDownloader.fetch_lending_rates"
         ) as mock_fetch_lending_data:
-            mock_fetch_candlestick_data.return_value = correct_df_candles
-            mock_fetch_lending_data.return_value = correct_df_lending
+            mock_fetch_candlestick_data.return_value = mock_candles_df()
+            mock_fetch_lending_data.return_value = mock_lending_df()
 
             dataset = fetch_binance_dataset(
                 ["ETHUSDT"],
@@ -142,11 +134,10 @@ def test_fetch_binance_dataset(correct_df_candles, correct_df_lending):
         )
 
 
-    assert dataset.lending_candles.variable_borrow_apr.df.equals(correct_df_lending)
+    assert dataset.lending_candles.variable_borrow_apr.df.equals(final_lending_df())
     assert dataset.lending_candles.variable_borrow_apr.df["timestamp"].iloc[0].to_pydatetime() == START_AT
     assert dataset.lending_candles.variable_borrow_apr.df["timestamp"].iloc[-1].to_pydatetime() == END_AT
 
-    assert dataset.backtest_stop_loss_candles.equals(correct_df_candles)
     assert len(dataset.backtest_stop_loss_candles) == 7
     assert dataset.backtest_stop_loss_candles.isna().sum().sum() == 0
 
@@ -166,7 +157,7 @@ def test_fetch_binance_dataset(correct_df_candles, correct_df_lending):
 
 
 @pytest.mark.skipif(os.environ.get("BINANCE_LENDING_DATA") == "false", reason="Binance lending API not available in the country")
-def test_create_binance_universe(correct_df_candles, correct_df_lending):
+def test_create_binance_universe():
     """Test that the create_binance_universe function works as expected."""
     if os.environ.get("GITHUB_ACTIONS", None) == "true":
         with patch(
@@ -174,8 +165,8 @@ def test_create_binance_universe(correct_df_candles, correct_df_lending):
         ) as mock_fetch_candlestick_data, patch(
             "tradingstrategy.binance.downloader.BinanceDownloader.fetch_lending_rates"
         ) as mock_fetch_lending_data:
-            mock_fetch_candlestick_data.return_value = correct_df_candles
-            mock_fetch_lending_data.return_value = correct_df_lending
+            mock_fetch_candlestick_data.return_value = mock_candles_df()
+            mock_fetch_lending_data.return_value = mock_lending_df()
             universe = create_binance_universe(
                 ["ETHUSDT"],
                 TIME_BUCKET,
@@ -194,6 +185,9 @@ def test_create_binance_universe(correct_df_candles, correct_df_lending):
             include_lending=True,
             force_download=True,
         )
+
+    assert universe.backtest_stop_loss_candles.df.equals(final_candles_df())
+    assert universe.data_universe.lending_candles.variable_borrow_apr.df.equals(final_lending_df())
 
     assert universe.backtest_stop_loss_time_bucket == TimeBucket.h4
     assert len(universe.backtest_stop_loss_candles.df) == 7
