@@ -438,3 +438,13 @@ def visualise_grid_search_equity_curves(*args, **kwags):
     warnings.warn("use tradeexecutor.visual.grid_search.visualise_grid_search_equity_curves instead", DeprecationWarning, stacklevel=2)
     from tradeexecutor.visual.grid_search import visualise_grid_search_equity_curves
     return visualise_grid_search_equity_curves(*args, **kwags)
+
+
+def order_grid_search_results_by_metric(results: List[GridSearchResult], metric: str = 'Cumulative Return') -> List[GridSearchResult]:
+    """Order grid search results by a metric. Default is Cumulative Return.
+    
+    :param results: List of GridSearchResult
+    :param metric: Metric to order by. Default is 'Cumulative Return'
+    :return: List of GridSearchResult ordered by the metric
+    """
+    return sorted(results, key=lambda x: x.get_metric(metric), reverse=True)

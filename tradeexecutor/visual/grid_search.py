@@ -9,7 +9,7 @@ import plotly.graph_objects as go
 from plotly.graph_objs import Figure, Scatter
 
 from tradeexecutor.analysis.curve import CurveType, DEFAULT_BENCHMARK_COLOURS
-from tradeexecutor.analysis.grid_search import _get_hover_template
+from tradeexecutor.analysis.grid_search import _get_hover_template, order_grid_search_results_by_metric
 from tradeexecutor.analysis.multi_asset_benchmark import get_benchmark_data
 from tradeexecutor.backtest.grid_search import GridSearchResult
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
@@ -98,13 +98,16 @@ def visualise_single_grid_search_result_benchmark(
     return fig
 
 
+
+
 def visualise_grid_search_equity_curves(
     results: List[GridSearchResult],
     name: str | None = None,
     benchmark_indexes: pd.DataFrame | None = None,
     height=1200,
-    colour="rgba(160, 160, 160, 0.5)",
+    colour=None,
     log_y=False,
+    alpha=0.7,
 ) -> Figure:
     """Draw multiple equity curves in the same chart.
 
@@ -154,6 +157,9 @@ def visualise_grid_search_equity_curves(
     :param height:
         Chart height in pixels
 
+    :param colour:
+        Colour of the equity curve e.g. "rgba(160, 160, 160, 0.5)". If provided, all equity curves will be drawn with this colour.
+
     :param start_at:
         When the backtest started
 
@@ -178,11 +184,37 @@ def visualise_grid_search_equity_curves(
         early in the strateg and late in the strategy.
 
     """
+    def generate_broad_bluered_colors(num_colors, alpha):
+        """
+        Generate a list of RGBA colors along a broad blue-purple-red color scale.
 
-    if name is None:
-        name = "Grid search equity curve comparison"
+        Parameters:
+        num_colors (int): Number of colors to generate.
+        alpha (float): Alpha value for the colors (0 to 1).
+
+        Returns:
+        list: List of RGBA color tuples.
+        """
+        colors = []
+        for i in range(num_colors):
+            ratio = i / (num_colors - 1)
+            if ratio < 0.7:
+                red = int(255 * (1.5 * ratio))
+                blue = 255
+            else:
+                red = 255
+                blue = int(255 * (2 * (1 - ratio)))
+            green = max(0, int(255 * (1 - abs(ratio - 0.7) * 2)))
+            color = (red, green, blue, alpha)
+            colors.append(f"rgba{color}")
+        return colors
+
 
     fig = Figure()
+
+    colors = generate_broad_bluered_colors(len(results), alpha)
+
+    results = order_grid_search_results_by_metric(results)
 
     for result in results:
         curve = result.equity_curve
@@ -193,7 +225,7 @@ def visualise_grid_search_equity_curves(
             y=curve,
             mode="lines",
             name="",  # Hides hover legend, use hovertext only
-            line=dict(color=colour),
+            line=dict(color=colors.pop(0)),
             showlegend=False,
             hovertemplate=template,
             hovertext=None,
