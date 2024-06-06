@@ -19,6 +19,8 @@ import threading
 from abc import ABC, abstractmethod
 from collections import defaultdict
 
+from tradingstrategy.timebucket import TimeBucket
+
 # Enable pickle patch that allows multiprocessing in notebooks
 from tradeexecutor.monkeypatch import cloudpickle_patch
 
@@ -52,7 +54,7 @@ from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniv
 from tradeexecutor.utils.cpu import get_safe_max_workers_count
 from tradeexecutor.utils.python_function import hash_function
 from tradingstrategy.pair import HumanReadableTradingPairDescription
-from tradingstrategy.utils.groupeduniverse import PairCandlesMissing
+from tradingstrategy.utils.groupeduniverse import PairCandlesMissing, resample_candles, resample_price_series
 
 logger = logging.getLogger(__name__)
 
@@ -212,6 +214,9 @@ class IndicatorDefinition:
     #: See :py:class:`IndicatorDependencyResolver` for details and examples.
     #:
     dependency_order: int = 1
+
+    #: If a different time bucket than the candles is needed, set it here.
+    resample_time_bucket: TimeBucket | None = None
 
     def __repr__(self):
         return f"<Indicator {self.name} using {self.func.__name__ if self.func else '?()'} for {self.parameters}>"
@@ -471,6 +476,7 @@ class IndicatorSet:
         parameters: dict | None = None,
         source: IndicatorSource=IndicatorSource.close_price,
         order=1,
+        resample_time_bucket: TimeBucket | None = None,
     ):
         """Add a new indicator to this indicator set.
 
@@ -517,7 +523,7 @@ class IndicatorSet:
         assert type(parameters) == dict, f"parameters must be dictionary, we got {parameters.__class__}"
         assert isinstance(source, IndicatorSource), f"Expected IndicatorSource, got {type(source)}"
         assert name not in self.indicators, f"Indicator {name} already added"
-        self.indicators[name] = IndicatorDefinition(name, func, parameters, source, order)
+        self.indicators[name] = IndicatorDefinition(name, func, parameters, source, order, resample_time_bucket)
 
     def iterate(self) -> Iterable[IndicatorDefinition]:
         yield from self.indicators.values()
@@ -1010,26 +1016,49 @@ def _calculate_and_save_indicator_result(
 
     if indicator.is_per_pair():
         assert key.pair.internal_id, f"Per-pair indicator lacks pair internal_id: {key.pair}"
+
+        time_bucket = indicator.resample_time_bucket
+
+        # check that resample time bucket is less granular than the candles
+        if time_bucket:
+            universe_time_bucket = strategy_universe.data_universe.time_bucket
+            if time_bucket < universe_time_bucket:
+                raise ValueError(f"Indicator {indicator.name} time_bucket {time_bucket} is less granular than the universe time_bucket {universe_time_bucket}. Rather create the universe with the more granular time_bucket.")
+            
         try:
+            def _get_final_input(input: pd.DataFrame | pd.Series, time_bucket: TimeBucket | None, indicator_source: IndicatorSource) -> pd.DataFrame:
+                """Resample input data if needed."""
+                if time_bucket:
+                    if indicator_source in {IndicatorSource.open_price, IndicatorSource.close_price}:
+                        return resample_price_series(input, time_bucket.to_pandas_timedelta())
+                    elif indicator_source == IndicatorSource.ohlcv:
+                        return resample_candles(input, time_bucket.to_pandas_timedelta())
+                    else:
+                        raise NotImplementedError(f"Unsupported input source {key.pair} {key.definition} {indicator_source}")
+                return input
+
             match indicator.source:
                 case IndicatorSource.open_price:
                     column = "open"
                     input = strategy_universe.data_universe.candles.get_samples_by_pair(key.pair.internal_id)[column]
-                    data = indicator.calculate_by_pair(input, key.pair, resolver)
+                    final_input = _get_final_input(input, time_bucket, indicator.source)
+                    data = indicator.calculate_by_pair(final_input, key.pair, resolver)
                 case IndicatorSource.close_price:
                     column = "close"
                     input = strategy_universe.data_universe.candles.get_samples_by_pair(key.pair.internal_id)[column]
-                    data = indicator.calculate_by_pair(input, key.pair, resolver)
+                    final_input = _get_final_input(input, time_bucket, indicator.source)
+                    data = indicator.calculate_by_pair(final_input, key.pair, resolver)
                 case IndicatorSource.ohlcv:
                     input = strategy_universe.data_universe.candles.get_samples_by_pair(key.pair.internal_id)
-                    data = indicator.calculate_by_pair_ohlcv(input, key.pair, resolver)
+                    final_input = _get_final_input(input, time_bucket, indicator.source)
+                    data = indicator.calculate_by_pair_ohlcv(final_input, key.pair, resolver)
                 case IndicatorSource.external_per_pair:
                     data = indicator.calculate_by_pair_external(key.pair, resolver)
                 case _:
                     raise NotImplementedError(f"Unsupported input source {key.pair} {key.definition} {indicator.source}")
 
             if data is None:
-                logger.warning("Indicator %s generated empty data for pair %s. Input data length is %d candles.", key.definition.name, key.pair, len(input))
+                logger.warning("Indicator %s generated empty data for pair %s. Input data length is %d candles.", key.definition.name, key.pair, len(final_input))
                 data = pd.Series(dtype="float64", index=pd.DatetimeIndex([]))
 
         except PairCandlesMissing as e:
@@ -1592,6 +1621,9 @@ def calculate_and_load_indicators(
 
     logger.info("Loading indicators %s for the universe %s, storage is %s", indicators.get_label(), strategy_universe.get_cache_key(), storage.get_disk_cache_path())
     cached = load_indicators(strategy_universe, storage, indicators, all_combinations, max_readers=max_readers)
+    
+    # for testing
+    # cached = {}
 
     for key in cached.keys():
         # Check we keyed this right
