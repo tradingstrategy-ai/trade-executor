@@ -216,7 +216,9 @@ class IndicatorDefinition:
     dependency_order: int = 1
 
     #: If a different time bucket than the candles is needed, set it here.
-    resample_time_bucket: TimeBucket | None = None
+    #:
+    #: Note that this time bucket must be less granular than the loaded candles i.e. only downsampling supported
+    time_bucket: TimeBucket | None = None
 
     def __repr__(self):
         return f"<Indicator {self.name} using {self.func.__name__ if self.func else '?()'} for {self.parameters}>"
@@ -476,7 +478,7 @@ class IndicatorSet:
         parameters: dict | None = None,
         source: IndicatorSource=IndicatorSource.close_price,
         order=1,
-        resample_time_bucket: TimeBucket | None = None,
+        time_bucket: TimeBucket | None = None,
     ):
         """Add a new indicator to this indicator set.
 
@@ -523,7 +525,7 @@ class IndicatorSet:
         assert type(parameters) == dict, f"parameters must be dictionary, we got {parameters.__class__}"
         assert isinstance(source, IndicatorSource), f"Expected IndicatorSource, got {type(source)}"
         assert name not in self.indicators, f"Indicator {name} already added"
-        self.indicators[name] = IndicatorDefinition(name, func, parameters, source, order, resample_time_bucket)
+        self.indicators[name] = IndicatorDefinition(name, func, parameters, source, order, time_bucket)
 
     def iterate(self) -> Iterable[IndicatorDefinition]:
         yield from self.indicators.values()
@@ -1017,7 +1019,7 @@ def _calculate_and_save_indicator_result(
     if indicator.is_per_pair():
         assert key.pair.internal_id, f"Per-pair indicator lacks pair internal_id: {key.pair}"
 
-        time_bucket = indicator.resample_time_bucket
+        time_bucket = indicator.time_bucket
 
         # check that resample time bucket is less granular than the candles
         if time_bucket:
