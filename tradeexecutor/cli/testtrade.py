@@ -411,7 +411,6 @@ def make_test_trade(
             )
 
             # Create trades to open the position
-            amount = 6  # TODO: Hardcoded aave workaround
             trades = position_manager.open_credit_supply_position_for_reserves(float(amount), flags={TradeFlag.test_trade})
 
             trade = trades[0]
