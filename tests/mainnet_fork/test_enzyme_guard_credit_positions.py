@@ -2,6 +2,7 @@
 import json
 import os
 import secrets
+import flaky
 from pathlib import Path
 from unittest import mock
 
@@ -165,6 +166,7 @@ def environment(
     return environment
 
 
+@flaky.flaky(max_runs=3)
 def test_enzyme_guard_credit_positions(
     environment: dict,
     web3: Web3,

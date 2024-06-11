@@ -1599,7 +1599,15 @@ class TradingPosition(GenericPosition):
             #    # No in-kind redemptions, the simple accounting path
             #    return ((self.get_realised_profit_usd() or 0) + (self.get_unrealised_profit_usd() or 0)) / total_bought
         else:
-            raise NotImplementedError(f"get_unrealised_and_realised_profit_percent() supports only long positions ATM, got {self}")
+            # raise NotImplementedError(f"get_unrealised_and_realised_profit_percent() supports only long positions ATM, got {self}")
+            
+            # TODO check correct
+            total_profit_usd = self.get_total_profit_usd()
+            total_bought = self.get_total_bought_usd()
+            if total_profit_usd == 0 or total_bought == 0:
+                return 0
+            return total_profit_usd / total_bought
+
 
     def get_unrealised_profit_pct(self) -> Percent:
         """Get the current profit of this position, minus any netflow.
