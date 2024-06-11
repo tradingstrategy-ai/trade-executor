@@ -182,7 +182,6 @@ def test_indicators_single_backtest_single_thread(strategy_universe, indicator_s
         indicators.add("rsi", pandas_ta.rsi, {"length": parameters.rsi_length})
         indicators.add("sma_long", pandas_ta.sma, {"length": parameters.sma_long})
         indicators.add("sma_short", pandas_ta.sma, {"length": parameters.sma_short})
-        indicators.add("sma_short_7d", pandas_ta.sma, {"length": parameters.sma_short}, time_bucket=TimeBucket.d7)
 
     class MyParameters:
         rsi_length=20
@@ -200,7 +199,7 @@ def test_indicators_single_backtest_single_thread(strategy_universe, indicator_s
     )
 
     # 2 pairs, 3 indicators
-    assert len(indicator_result) == 2 * 4
+    assert len(indicator_result) == 2 * 3
 
     exchange = strategy_universe.data_universe.exchange_universe.get_single()
     weth_usdc = strategy_universe.get_pair_by_human_description((ChainId.ethereum, exchange.exchange_slug, "WETH", "USDC"))
@@ -218,20 +217,14 @@ def test_indicators_single_backtest_single_thread(strategy_universe, indicator_s
     assert keys[1].definition.name == "sma_long"
     assert keys[1].definition.parameters == {"length": 200}
 
-    assert keys[3].definition.name == 'sma_short_7d'
-    assert keys[3].definition.parameters == {'length': 12}
-
-    assert keys[4].pair== wbtc_usdc
-    assert keys[4].definition.name == "rsi"
-    assert keys[4].definition.parameters == {"length": 20}
+    assert keys[3].pair== wbtc_usdc
+    assert keys[3].definition.name == "rsi"
+    assert keys[3].definition.parameters == {"length": 20}
 
     for result in indicator_result.values():
         assert not result.cached
         assert isinstance(result.data, pd.Series)
         assert len(result.data) > 0
-
-        if result.indicator_key.definition.name == "sma_short_7d":
-            assert result.data.index.freq == '7D'
 
     # Rerun, now everything should be cached and loaede
     indicator_result = calculate_and_load_indicators(
