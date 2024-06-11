@@ -51,6 +51,9 @@ class Trigger:
 
     - Nested structure inside :py:class:`tradeexecutor.state.trade.TradeExecution`
 
+    - Any price structure estimations on trigger trades is based on the time of the trigger creation,
+      and maybe very different when the trigger is executed
+
     """
 
     #: Do we trigger when price crossed above or below
