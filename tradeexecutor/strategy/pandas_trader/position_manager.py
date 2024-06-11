@@ -938,18 +938,24 @@ class PositionManager:
         notes: Optional[str] = None,
         slippage_tolerance: Optional[float] = None,
         flags: Set[TradeFlag] | None = None,
+        quantity: Decimal | None = None,
     ) -> List[TradeExecution]:
         """Close a single spot market trading position.
 
         See :py:meth:`close_position` for usage.
+
+        :param quantity:
+            Partially close the position
         """
 
         assert position.is_spot_market()
 
-        quantity_left = position.get_available_trading_quantity()
-
         pair = position.pair
-        quantity = quantity_left
+
+        quantity = quantity or position.get_available_trading_quantity()
+        if quantity:
+            assert quantity > 0, "Closing spot, quantity must be positive"
+
         price_structure = self.pricing_model.get_sell_price(self.timestamp, pair, quantity=quantity)
 
         reserve_asset, reserve_price = self.state.portfolio.get_default_reserve_asset()
@@ -988,7 +994,6 @@ class PositionManager:
             price_structure=price_structure,
             closing=True,
             flags=flags,
-
         )
         assert position == position2, f"Somehow messed up the close_position() trade.\n" \
                                       f"Original position: {position}.\n" \
@@ -1859,10 +1864,9 @@ class PositionManager:
 
         return [adjust_trade]
 
-    def set_trade_trigger(
+    def set_market_limit_trigger(
         self,
         trades: List[TradeExecution],
-        trigger_type: TriggerType,
         price: USDollarPrice,
         expires_at: datetime.datetime | None=None,
     ):
@@ -1873,11 +1877,29 @@ class PositionManager:
 
         - Possible trades: market limit order, partial take profit
 
+        Example:
+
+        .. code-block:: python
+
+            trades = position_manager.open_spot(
+                pair=pair,
+                value=position_manager.get_current_cash(),
+
+            # Do not open the position until the price crosses above 1900
+            position_manager.set_market_limit_trigger(
+                trades,
+                TriggerType.market_limit,
+                price=1900,
+                expires_at=None,
+            )
+
         :param trades:
             List of trades to apply for
         """
 
         portfolio = self.state.portfolio
+
+        trigger_type = TriggerType.market_limit
 
         for trade in trades:
             assert isinstance(trade, TradeExecution)
@@ -1916,6 +1938,50 @@ class PositionManager:
             position.pending_trades[trade.trade_id] = trade
 
             logger.info("Added trade trigger: trade: %s, position: %s, trigger: %s", trade, position, trigger)
+
+    def prepare_take_profit_trades(
+        self,
+        position: TradingPosition,
+        levels: List[tuple],
+    ):
+        """Set multiple take profit levels, and prepare trades for them.
+
+        - Populate `position.pending_trades` with triggered trades to
+          take profit when the price moves
+
+        - Any triggers are added on the top of the existing triggers,
+          no triggers are removed
+
+        - If you want to reset the take profit triggers you need to call `TODO`
+
+        :param position:
+            The trading position
+
+        :param levels:
+            Tuples of (price, quantity)
+
+        """
+        assert position.is_spot(), "Currently spot is only supported market type"
+        assert not position.is_closed()
+
+        pair = position.pair
+
+        for level in levels:
+
+            price = level[0]
+            if type(price) == int:
+                price = float(price)
+            assert type(price) == float, f"Take-profit price must be as float, got {type(price)}"
+            quantity = level[1]
+            assert isinstance(level[1], Decimal), f"Take-profit amount must be Decimal, got {type(quantity)}"
+
+            _, trade, _ = self.close_spot_position(
+                position,
+                TradeType.take_profit,
+                flags={TradeFlag.partial_take_profit, TradeFlag.reduce, TradeFlag.triggered}
+            )
+
+
 
     def log(self, msg: str, level=logging.INFO, prefix="{self.timestamp}: "):
         """Log debug info.

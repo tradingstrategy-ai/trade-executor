@@ -143,7 +143,7 @@ def test_market_limit_executed(
     trade = trades[0]
 
     # Moves position from open to pending
-    position_manager.set_trade_trigger(
+    position_manager.set_market_limit_trigger(
         trades,
         TriggerType.market_limit,
         price=1900,
@@ -206,7 +206,7 @@ def test_market_limit_expires(
     trade = trades[0]
 
     # Moves position from open to pending
-    position_manager.set_trade_trigger(
+    position_manager.set_market_limit_trigger(
         trades,
         TriggerType.market_limit,
         price=5000,
@@ -236,3 +236,63 @@ def test_market_limit_expires(
     assert trade.expired_triggers[0].expired_at == datetime.datetime(2021, 6, 4)
 
 
+def test_partial_take_profit(
+    logger,
+    synthetic_universe,
+    pricing_model,
+    state,
+):
+    """Partial take profit triggered."""
+
+    ts = datetime.datetime(2021, 6, 2)
+    position_manager = PositionManager(ts, synthetic_universe.data_universe, state, pricing_model)
+    portfolio = state.portfolio
+
+    pair = position_manager.get_trading_pair((ChainId.ethereum, "my-dex", "WETH", "USDC"))
+
+    # Open a trade
+    trades = position_manager.open_spot(
+        pair=pair,
+        value=position_manager.get_current_cash(),
+    )
+
+    position = position_manager.get_current_position_for_pair(pair)
+    position_manager.set_take_profit_triggers(
+        position,
+        [
+            (position.get_quantity() / 0.5, 1800),
+            (position.get_quantity() / 0.5, 2500),
+        ]
+    )
+
+    assert len(position.pending_trades) == 2
+    assert len(position.expired_trades) == 0
+
+    # Position moved to pending list when market limit set
+    assert len(portfolio.open_positions) == 0
+    assert len(portfolio.pending_positions) == 1
+
+    # Check that position has its pending trades list updated
+    position = portfolio.pending_positions[1]
+    assert len(position.trades) == 0
+    assert len(position.pending_trades) == 1
+    assert len(position.expired_trades) == 0
+
+    # We are not yet in trigger threshold
+    assert position.last_token_price == 1818.0
+
+    executed_trades = check_position_triggers(position_manager)
+    assert len(executed_trades) == 0
+
+    # Fast-forward time to the moment when market price
+    # has exceeeded the trigger
+    position_manager.timestamp = datetime.datetime(2021, 7, 4)
+    assert position_manager.pricing_model.get_mid_price(position_manager.timestamp, pair) == pytest.approx(2499.642153569536)
+
+    executed_trades = check_position_triggers(position_manager)
+    assert len(executed_trades) == 1
+    assert executed_trades[0] == trade
+
+    assert trade.activated_trigger is not None
+    assert trade.triggers == []
+    assert trade.expired_triggers == []

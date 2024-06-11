@@ -40,8 +40,8 @@ class TradeType(enum.Enum):
     #: The trade was made because take profit trigger reached
     take_profit = "take_profit"
 
-    #: Trade was triggered by something else than hardcode stop loss/take profit as above
-    trigger = "trigger"
+    #: Market limit position opening
+    market_limit = "market_limit"
 
     #: This is an accounting counter trade to cancel a broken trade.
     #:
@@ -135,6 +135,11 @@ class TradeFlag(enum.Enum):
     #: The trade was made to associate unknown tokens to a position
     #:
     missing_position_repair = "missing_position_repair"
+
+    #: This trade is a partial take profit
+    #:
+    partial_take_profit = "partial_take_profit"
+
 
 
 @dataclass_json
