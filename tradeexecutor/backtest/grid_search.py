@@ -1192,6 +1192,18 @@ def pick_best_grid_search_result(
     return match
 
 
+def save_multiprocess_strategy_universe(strategy_universe):
+    """Prepare handing over the strategy universe for the child processes."""
+    global _universe
+    _universe = strategy_universe
+
+
+def load_multiprocess_strategy_universe():
+    """Pop the strategy universe data from the parent process."""
+    global _universe
+    assert _universe
+    return _universe
+
 
 #: Process global stored universe for multiprocess workers
 _universe: Optional[TradingStrategyUniverse] = None

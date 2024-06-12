@@ -216,7 +216,6 @@ unit_test_trading_execution_context = ExecutionContext(ExecutionMode.unit_testin
 #: Shorthand for notebooks
 notebook_execution_context = ExecutionContext(ExecutionMode.backtesting, jupyter=True)
 
-
 #: Shorthand for doing a grid search within Jupyter
 grid_search_execution_context = ExecutionContext(ExecutionMode.backtesting, grid_search=True)
 
@@ -225,6 +224,11 @@ python_script_execution_context = ExecutionContext(ExecutionMode.backtesting)
 
 #: Standalone backtest (not within a notebook)
 standalone_backtest_execution_context = ExecutionContext(ExecutionMode.backtesting)
+
+#: Shorthand when running a indicator parameter optimizer using scikit-optimizer.
+#:
+#: We are inside a child worker process spawned by scikit,
+scikit_optimizer_context = ExecutionContext(ExecutionMode.backtesting, jupyter=False)
 
 # trade-execution console commands
 console_command_execution_context = ExecutionContext(ExecutionMode.real_trading)
