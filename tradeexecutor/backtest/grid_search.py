@@ -1218,7 +1218,6 @@ def save_disk_multiprocess_strategy_universe(strategy_universe: TradingStrategyU
     fname = os.path.join(temp_dir, strategy_universe.get_cache_key()) + ".pickle"
     with open(fname, "wb") as out:
         pickle.dump(strategy_universe, out)
-    print("Wrote", fname)
     return fname
 
 
