@@ -93,6 +93,7 @@ statsmodels = {version="^0.14.0"}
 tqdm = "^4.64.1"
 tblib = "^1.7.0"
 cloudpickle = "^3.0.0"
+scikit-optimize = "^0.10.2"
 
 [tool.poetry.extras]
 
