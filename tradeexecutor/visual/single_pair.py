@@ -387,6 +387,8 @@ def visualise_single_pair(
         if not pair_id:
             assert candle_universe.get_pair_count() == 1, "visualise_single_pair() can be only used for a trading universe with a single pair, please pass pair_id or use visualise_multiple_pairs()"
             pair_id = next(iter(candle_universe.get_pair_ids()))
+        elif candle_universe.get_pair_count() > 1:
+            assert all(p.pair and p.pair.internal_id for p in state.visualisation.plots.values()), "Please make sure you provide the `pair` argument to `plot_indicator` inside `decide_trades`, since you are using `visualise_single_pair` in a multipair universe."
         candles = candle_universe.get_candles_by_pair(pair_id)
     else:
         # Raw dataframe
@@ -639,20 +641,21 @@ def _get_grid_with_candles_volume_indicators(
     detached_indicators: bool = True,
     hover_text: bool = True,
 ):
-    """Gets figure grid with candles, volume, and indicators overlayed."""
+    """Gets figure grid with candles, volume, and indicators overlayed.
+    
+    .. warning:: Currently only `compatible with visualise_single_pair` and `visualise_single_pair_positions_with_duration_and_slippage`.
+    """
 
     assert isinstance(execution_context, ExecutionContext)
     
     title_text, axes_text, volume_text = get_all_text(state.name, axes, title, pair_name, volume_axis_name)
 
-    # TODO (fix)
-    # without this line, will show detached indicators for all pairs
-    # but with this line involves breaking change 
-    # since plot_indicator will require pair argument
-
-    # plots = [plot for plot in state.visualisation.plots.values() if getattr(plot.pair, "internal_id", None) == pair_id]
-
-    plots = state.visualisation.plots.values()
+    if all(p.pair and p.pair.internal_id for p in state.visualisation.plots.values()) and pair_id:
+        plots = [plot for plot in state.visualisation.plots.values() if plot.pair.internal_id == pair_id]
+        start_row=1
+    else:
+        plots = state.visualisation.plots.values()
+        start_row=None
     
     num_detached_indicators, subplot_names = get_num_detached_and_names(
         technical_indicators,
@@ -692,6 +695,7 @@ def _get_grid_with_candles_volume_indicators(
             volume_bar_mode,
             pair_id,
             detached_indicators=detached_indicators,
+            start_row=start_row,
         )
 
     fig.update_yaxes(showspikes=True, spikemode='across', spikesnap='cursor', spikedash='dot', spikethickness=1)

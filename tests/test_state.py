@@ -219,6 +219,7 @@ def test_single_buy(usdc, weth, weth_usdc, start_ts):
     value_after_trade = 1690 * 0.09
     assert trade.get_status() == TradeStatus.success
     assert trade.get_value() == pytest.approx(value_after_trade)
+    assert trade.get_executed_value() == pytest.approx(value_after_trade)
     assert trade.reserve_currency_allocated == 0
     assert trade.get_fees_paid() == pytest.approx(2.50)
 
