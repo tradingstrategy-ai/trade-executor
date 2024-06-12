@@ -38,6 +38,8 @@ from tradeexecutor.strategy.reserve_currency import ReserveCurrency
 from tradeexecutor.strategy.default_routing_options import TradeRouting
 from tradeexecutor.visual.strategy_state import draw_multi_pair_strategy_state
 from tradeexecutor.visual.image_output import open_plotly_figure_in_browser
+from tradeexecutor.visual.multiple_pairs import visualise_multiple_pairs
+from tradeexecutor.visual.single_pair import visualise_single_pair
 from tradeexecutor.strategy.trading_strategy_universe import translate_trading_pair
 
 
@@ -264,6 +266,96 @@ def decide_trades(
     return trades
 
 
+def decide_trades_2(
+        timestamp: pd.Timestamp,
+        universe: Universe,
+        state: State,
+        pricing_model: PricingModel,
+        cycle_debug_data: Dict) -> List[TradeExecution]:
+    """The brain function to decide the trades on each trading strategy cycle.
+
+    - Reads incoming execution state (positions, past trades)
+
+    - Reads the current universe (candles)
+
+    - Decides what trades to do next, if any, at current timestamp.
+
+    - Outputs strategy thinking for visualisation and debug messages
+
+    :param timestamp:
+        The Pandas timestamp object for this cycle. Matches
+        TRADING_STRATEGY_CYCLE division.
+        Always truncated to the zero seconds and minutes, never a real-time clock.
+
+    :param universe:
+        Trading universe that was constructed earlier.
+
+    :param state:
+        The current trade execution state.
+        Contains current open positions and all previously executed trades, plus output
+        for statistics, visualisation and diangnostics of the strategy.
+
+    :param pricing_model:
+        Pricing model can tell the buy/sell price of the particular asset at a particular moment.
+
+    :param cycle_debug_data:
+        Python dictionary for various debug variables you can read or set, specific to this trade cycle.
+        This data is discarded at the end of the trade cycle.
+
+    :return:
+        List of trade instructions in the form of :py:class:`TradeExecution` instances.
+        The trades can be generated using `position_manager` but strategy could also hand craft its trades.
+    """
+
+  # Create a position manager helper class that allows us easily to create
+    # opening/closing trades for different positions
+    position_manager = PositionManager(timestamp, universe, state, pricing_model)
+
+    # The array of trades we are going to perform in this cycle.
+    trades = []
+
+    # How much cash we have in a hand
+    cash = state.portfolio.get_cash()
+
+    # Set up the 
+    # Load candle data for this decision frame,
+    # We look back LOOKBACK_WINDOW candles.
+    # Timestamp is the current open time, always make decision based on the last 
+    # candle close, so adjust the end time minus one candle.
+    start = timestamp - (LOOKBACK_CANDLE_COUNT * CANDLE_TIME_BUCKET.to_pandas_timedelta())
+    end = timestamp - CANDLE_TIME_BUCKET.to_pandas_timedelta()  
+
+    # Fetch candle data for all pairs in a single go
+    candle_data = universe.candles.iterate_samples_by_pair_range(start, end)
+
+    visualisation = state.visualisation
+
+    for pair_id, candles in candle_data:
+
+        # Convert raw trading pair data to strategy execution format
+        pair_data = universe.pairs.get_pair_by_id(pair_id)
+        pair = translate_trading_pair(pair_data)
+
+        # We have data for open, high, close, etc.
+        # We only operate using candle close values in this strategy.
+        close_prices = candles["close"]
+
+        rsi_bars = rsi(close_prices, length=RSI_LENGTH)
+
+        if rsi_bars is None:
+            # Lookback buffer does not have enough candles yet
+            continue
+
+        current_rsi = rsi_bars[-1]
+
+        pair_slug = f"{pair.base.token_symbol}/{pair.quote.token_symbol}"
+        
+        # rsi
+        visualisation.plot_indicator(timestamp, f"{pair_slug} RSI", PlotKind.technical_indicator_detached, current_rsi)
+
+    return trades
+
+
 @pytest.fixture(scope="module")
 def mock_exchange():
     return generate_exchange(
@@ -445,8 +537,50 @@ def test_visualise_strategy_state_overriden_pairs(
     assert len(image_no_indicators.data) == 7
     assert len(image_no_indicators._grid_ref) == 1
 
+    fig = visualise_multiple_pairs(state, strategy_universe.universe.candles, unit_test_execution_context)
+    assert len(fig._grid_ref) == 6
+    assert len(fig.data) == 27
+    assert fig.data[0].x[0] == datetime.datetime(2022,7,1)
+    assert fig.data[0].x[-1] == datetime.datetime(2023,6,5)
+    # open_plotly_figure_in_browser(fig, height=2000, width=1000)
+
+    fig2 = visualise_single_pair(state, unit_test_execution_context, strategy_universe.universe.candles, pair_id=strategy_universe.iterate_pairs().__next__().internal_id)
+    assert len(fig2.data) == 10
+    assert len(fig2._grid_ref) == 2
+    assert fig2.data[0].x[0] == datetime.datetime(2022,7,1)
+    assert fig2.data[0].x[-1] == datetime.datetime(2023,6,5)
+    # open_plotly_figure_in_browser(fig2, height=2000, width=1000)
+
     # Test the image on a local screen using a web brower
     if os.environ.get("SHOW_IMAGE"):
         open_plotly_figure_in_browser(image, height=2000, width=1000)
         open_plotly_figure_in_browser(image_no_detached, height=2000, width=1000)
         open_plotly_figure_in_browser(image_no_indicators, height=2000, width=1000)
+
+
+def test_no_pair_provided(
+    logger: logging.Logger,
+    strategy_universe,
+    mock_exchange,
+):
+    routing_model = generate_simple_routing_model(strategy_universe)
+
+    # Run the test
+    state, strategy_universe, debug_dump = run_backtest_inline(
+        start_at=START_AT,
+        end_at=END_AT,
+        client=None,  # None of downloads needed, because we are using synthetic data
+        cycle_duration=TRADING_STRATEGY_CYCLE,
+        decide_trades=decide_trades_2,
+        create_trading_universe=None,
+        universe=strategy_universe,
+        initial_deposit=INITIAL_DEPOSIT,
+        reserve_currency=ReserveCurrency.busd,
+        trade_routing=TradeRouting.user_supplied_routing_model,
+        routing_model=routing_model,
+        log_level=logging.WARNING,
+        allow_missing_fees=True,
+    )
+
+    with pytest.raises(AssertionError, match="provide the `pair` argument to `plot_indicator` inside `decide_trades`"):
+        visualise_single_pair(state, unit_test_execution_context, strategy_universe.universe.candles, pair_id=strategy_universe.iterate_pairs().__next__().internal_id)

@@ -107,7 +107,7 @@ def draw_multi_pair_strategy_state(
     technical_indicators: Optional[bool] = True,
     pair_ids: Optional[list[PairInternalId]] = None,
     detached_indicators: Optional[bool] = True,
-) -> list[go.Figure]:
+) -> go.Figure:
     """Draw mini price chart images for multiple pairs. Returns a single figure with multiple subplots.
 
     See also
