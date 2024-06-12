@@ -646,6 +646,8 @@ class TradingPosition(GenericPosition):
 
         If the position is closed, the value should be zero
 
+        .. note:: This is the planned value, so may be different fr om the executed value.
+
         :param include_interest:
             Include accrued interest in the valuation.
 

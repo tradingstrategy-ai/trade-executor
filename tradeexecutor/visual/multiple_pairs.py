@@ -29,7 +29,6 @@ from tradeexecutor.visual.utils import (
     get_start_and_end,
     get_all_text,
     get_num_detached_and_names,
-    get_num_detached_and_names_no_indicators,
 )
 
 
@@ -124,6 +123,7 @@ def visualise_multiple_pairs(
     show_trades: bool = True,
     detached_indicators: bool = True,
     include_credit_supply_positions: bool = False,
+    legend: bool = True,
 ) -> go.Figure:
     """Visualise single-pair trade execution.
 
@@ -293,12 +293,16 @@ def visualise_multiple_pairs(
             state.name, axes, title, pair_name, volume_axis_name
         )
 
-        if technical_indicators:
-            num_detached_indicators, subplot_names = get_num_detached_and_names(
-                plots, execution_context, volume_bar_modes[i], volume_text, pair_name, detached_indicators,
-            )
-        else:
-            num_detached_indicators, subplot_names = get_num_detached_and_names_no_indicators(execution_context, volume_bar_modes[i], volume_text, pair_name)
+
+        num_detached_indicators, subplot_names = get_num_detached_and_names(
+            technical_indicators,
+            plots, 
+            execution_context, 
+            volume_bar_modes[i], 
+            volume_text, 
+            pair_name, 
+            detached_indicators,
+        )
 
         if not relative_sizing:
             _relative_sizing = [1] + [0.3] * num_detached_indicators
@@ -447,5 +451,8 @@ def visualise_multiple_pairs(
     
     if volume_bars:
         subplot.update_annotations(xshift=40)
+
+    if not legend:
+        subplot.update_layout(showlegend=False)
 
     return subplot

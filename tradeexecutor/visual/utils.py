@@ -555,21 +555,19 @@ def _get_subplot_names(
     return subplot_names
 
 
-def get_num_detached_and_names(
-    plots: list[Plot],
-    execution_context: ExecutionContext,
-    volume_bar_mode: VolumeBarMode,
+def get_subplot_names(
+    pair_name: str | None,
     volume_axis_name: str,
-    pair_name: str | None = None,
-    detached_indicators: bool = True,
-):
-    """Get num_detached_indicators and subplot_names"""
-
-    assert isinstance(execution_context, ExecutionContext), f"Expected ExecutionContext, got {type(execution_context)}"
-
-    num_detached_indicators = _get_num_detached_indicators(plots, execution_context, volume_bar_mode, detached_indicators)
-    
+    volume_bar_mode: VolumeBarMode,
+    detached_indicators: bool,
+    plots: list[Plot] = None,
+    execution_context: ExecutionContext = None,
+) -> list[str]: 
+    """Get subplot names for detached technical indicators. Overlaid names are appended to the detached plot name.
+    plots and execution_context are only needed if detached_indicators is True."""
     if detached_indicators:
+        # assert isinstance(plots, list), f"Expected list, got {type(plots)}. Shouldn't happen"
+        assert isinstance(execution_context, ExecutionContext), f"Expected ExecutionContext, got {type(execution_context)}. Shouldn't happen"
         subplot_names = _get_subplot_names(
             plots, execution_context, volume_bar_mode, volume_axis_name, pair_name
         )
@@ -578,10 +576,43 @@ def get_num_detached_and_names(
     else:
         subplot_names = [pair_name]
 
+    return subplot_names
+
+def get_num_detached_and_names(
+    technical_indicators: bool,
+    plots: list[Plot],
+    execution_context: ExecutionContext,
+    volume_bar_mode: VolumeBarMode,
+    volume_text: str,
+    pair_name: str | None,
+    detached_indicators: bool,
+):
+    if technical_indicators:
+        num_detached_indicators, subplot_names = _get_num_detached_and_names(
+            plots, execution_context, volume_bar_mode, volume_text, pair_name, detached_indicators,
+        )
+    else:
+        num_detached_indicators, subplot_names = _get_num_detached_and_names_no_indicators(execution_context, volume_bar_mode, volume_text, pair_name)
+
     return num_detached_indicators, subplot_names
 
 
-def get_num_detached_and_names_no_indicators(
+def _get_num_detached_and_names(
+    plots: list[Plot],
+    execution_context: ExecutionContext,
+    volume_bar_mode: VolumeBarMode,
+    volume_axis_name: str,
+    pair_name: str | None = None,
+    detached_indicators: bool = True,
+):
+    """Get num_detached_indicators and subplot_names"""
+    assert isinstance(execution_context, ExecutionContext), f"Expected ExecutionContext, got {type(execution_context)}"
+    num_detached_indicators = _get_num_detached_indicators(plots, execution_context, volume_bar_mode, detached_indicators)
+    subplot_names = get_subplot_names(pair_name, volume_axis_name, volume_bar_mode, detached_indicators, plots, execution_context)
+    return num_detached_indicators, subplot_names
+
+
+def _get_num_detached_and_names_no_indicators(
     execution_context: ExecutionContext,
     volume_bar_mode: VolumeBarMode,
     volume_axis_name: str,
@@ -590,15 +621,9 @@ def get_num_detached_and_names_no_indicators(
     """Get num_detached_indicators and subplot_names. Used when technical_indicators == False"""
 
     assert isinstance(execution_context, ExecutionContext)
-
     if volume_bar_mode == VolumeBarMode.separate:
         num_detached_indicators = 1
     else:
         num_detached_indicators = 0
-    
-    if volume_bar_mode == VolumeBarMode.separate:
-        subplot_names = [pair_name, volume_axis_name]
-    else:
-        subplot_names = [pair_name]
-
+    subplot_names = get_subplot_names(pair_name, volume_axis_name, volume_bar_mode, False)
     return num_detached_indicators, subplot_names
