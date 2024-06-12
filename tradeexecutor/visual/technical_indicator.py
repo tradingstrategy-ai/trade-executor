@@ -23,14 +23,14 @@ logger = logging.getLogger(__name__)
 
 
 def overlay_all_technical_indicators(
-        fig: go.Figure,
-        visualisation: Visualisation,
-        start_at: Optional[pd.Timestamp] = None,
-        end_at: Optional[pd.Timestamp] = None,
-        volume_bar_mode: VolumeBarMode = None,
-        pair_id: Optional[int] = None,
-        start_row: int = None,
-        detached_indicators: bool = True,
+    fig: go.Figure,
+    visualisation: Visualisation,
+    start_at: Optional[pd.Timestamp] = None,
+    end_at: Optional[pd.Timestamp] = None,
+    volume_bar_mode: VolumeBarMode = None,
+    pair_id: Optional[int] = None,
+    start_row: int = None,
+    detached_indicators: bool = True,
 ):
     """Draw all technical indicators from the visualisation over candle chart.
 
@@ -89,15 +89,14 @@ def overlay_all_technical_indicators(
             return
         
         # add trace to plot
+        # only increment row if detached plot
         if plot.kind == PlotKind.technical_indicator_detached:
             cur_row += 1
             detached_plots_to_row[plot.name] = cur_row
             fig.add_trace(trace, row=cur_row, col=1)
         elif plot.kind == PlotKind.technical_indicator_on_price:
-            # don't increment current row
             fig.add_trace(trace, row=start_row, col=1)
         elif plot.kind == PlotKind.technical_indicator_overlay_on_detached:
-            # don't increment current row
             fig.add_trace(trace, row=detached_plots_to_row[plot.detached_overlay_name], col=1)
         else:
             raise NotImplementedError(f"Unknown plot kind: {plot.kind}")

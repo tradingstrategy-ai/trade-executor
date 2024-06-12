@@ -19,7 +19,7 @@ from tradeexecutor.visual.technical_indicator import overlay_all_technical_indic
 from tradingstrategy.candle import GroupedCandleUniverse
 from tradingstrategy.charting.candle_chart import visualise_ohlcv, make_candle_labels, VolumeBarMode
 
-from tradeexecutor.visual.utils import get_all_positions, get_pair_name_from_first_trade, get_all_text, get_num_detached_and_names, get_pair_base_quote_names, get_start_and_end, export_trades_as_dataframe, visualise_trades, get_num_detached_and_names_no_indicators
+from tradeexecutor.visual.utils import get_all_positions, get_pair_name_from_first_trade, get_all_text, get_num_detached_and_names, get_pair_base_quote_names, get_start_and_end, export_trades_as_dataframe, visualise_trades
 
 
 logger = logging.getLogger(__name__)
@@ -300,6 +300,7 @@ def visualise_single_pair(
     detached_indicators: bool = True,
     hover_text: bool = True,
     include_credit_supply_positions: bool = False,
+    legend: bool = True,
 ) -> go.Figure:
     """Visualise single-pair trade execution.
 
@@ -386,6 +387,8 @@ def visualise_single_pair(
         if not pair_id:
             assert candle_universe.get_pair_count() == 1, "visualise_single_pair() can be only used for a trading universe with a single pair, please pass pair_id or use visualise_multiple_pairs()"
             pair_id = next(iter(candle_universe.get_pair_ids()))
+        elif candle_universe.get_pair_count() > 1:
+            assert all(p.pair and p.pair.internal_id for p in state.visualisation.plots.values()), "Please make sure you provide the `pair` argument to `plot_indicator` inside `decide_trades`, since you are using `visualise_single_pair` in a multipair universe."
         candles = candle_universe.get_candles_by_pair(pair_id)
     else:
         # Raw dataframe
@@ -452,6 +455,9 @@ def visualise_single_pair(
     # Add trade markers if any trades have been made
     if len(trades_df) > 0:
         visualise_trades(fig, candles, trades_df, include_credit_supply_positions=include_credit_supply_positions)
+
+    if not legend:
+        fig.update_layout(showlegend=False)
 
     return fig
 
@@ -635,26 +641,32 @@ def _get_grid_with_candles_volume_indicators(
     detached_indicators: bool = True,
     hover_text: bool = True,
 ):
-    """Gets figure grid with candles, volume, and indicators overlayed."""
+    """Gets figure grid with candles, volume, and indicators overlayed.
+    
+    .. warning:: Currently only `compatible with visualise_single_pair` and `visualise_single_pair_positions_with_duration_and_slippage`.
+    """
 
     assert isinstance(execution_context, ExecutionContext)
     
     title_text, axes_text, volume_text = get_all_text(state.name, axes, title, pair_name, volume_axis_name)
 
-    # TODO (fix)
-    # without this line, will show detached indicators for all pairs
-    # but with this line involves breaking change 
-    # since plot_indicator will require pair argument
-
-    # plots = [plot for plot in state.visualisation.plots.values() if getattr(plot.pair, "internal_id", None) == pair_id]
-
-    plots = state.visualisation.plots.values()
-    
-    if technical_indicators:
-        num_detached_indicators, subplot_names = get_num_detached_and_names(plots, execution_context, volume_bar_mode, volume_text, pair_name=None, detached_indicators=detached_indicators)
+    if all(p.pair and p.pair.internal_id for p in state.visualisation.plots.values()) and pair_id:
+        plots = [plot for plot in state.visualisation.plots.values() if plot.pair.internal_id == pair_id]
+        start_row=1
     else:
-        num_detached_indicators, subplot_names = get_num_detached_and_names_no_indicators(execution_context, volume_bar_mode, volume_text, pair_name=None)
+        plots = state.visualisation.plots.values()
+        start_row=None
     
+    num_detached_indicators, subplot_names = get_num_detached_and_names(
+        technical_indicators,
+        plots, 
+        execution_context, 
+        volume_bar_mode, 
+        volume_text, 
+        pair_name=None, 
+        detached_indicators=detached_indicators
+    )
+
     # visualise candles and volume and create empty grid space for technical indicators
     fig = visualise_ohlcv(
         candles,
@@ -683,6 +695,7 @@ def _get_grid_with_candles_volume_indicators(
             volume_bar_mode,
             pair_id,
             detached_indicators=detached_indicators,
+            start_row=start_row,
         )
 
     fig.update_yaxes(showspikes=True, spikemode='across', spikesnap='cursor', spikedash='dot', spikethickness=1)
