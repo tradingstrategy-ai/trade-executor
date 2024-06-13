@@ -523,7 +523,19 @@ class IndicatorSet:
         yield from self.indicators.values()
 
     def generate_combinations(self, strategy_universe: TradingStrategyUniverse) -> Iterable[IndicatorKey]:
-        """Create all indiviual indicator (per pair) we need to calculate for this trading universe."""
+        """Create all indiviual indicator (per pair) we need to calculate for this trading universe.
+
+        - Because most indicators are per pair, we need to combine the trading pair universe
+          with wanted indicators to get the final set of indicators we need to calcuate
+
+        - Note that some indicator are calculated over the whole universe or an
+          external source and may not have a trading pair defined
+
+        :return:
+            IndicatorKey iterator.
+
+            (Trading pair, indicator) iterator
+        """
         for name, indicator in self.indicators.items():
             if indicator.is_per_pair():
                 for pair in strategy_universe.iterate_pairs():
