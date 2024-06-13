@@ -1603,7 +1603,14 @@ def calculate_and_load_indicators(
     all_combinations = set(indicators.generate_combinations(strategy_universe))
 
     logger.info("Loading indicators %s for the universe %s, storage is %s", indicators.get_label(), strategy_universe.get_cache_key(), storage.get_disk_cache_path())
-    cached = load_indicators(strategy_universe, storage, indicators, all_combinations, max_readers=max_readers)
+    cached = load_indicators(
+        strategy_universe,
+        storage,
+        indicators,
+        all_combinations,
+        max_readers=max_readers,
+        show_progress=verbose,  # Don't display progress bars when running as child process under Visual Studio Code
+    )
 
     for key in cached.keys():
         # Check we keyed this right

@@ -565,7 +565,7 @@ class StrategyInputIndicators:
                 # Resolve human description
                 pair = self.strategy_universe.get_pair_by_human_description(pair)
 
-            assert isinstance(pair, TradingPairIdentifier)
+            assert isinstance(pair, TradingPairIdentifier), f"Expected TradingPairIdentifier instance, got {type(pair)}: {pair}"
             assert pair.internal_id, "pair.internal_id missing - bad unit test data?"
 
             key = IndicatorKey(pair, indicator)
