@@ -1192,8 +1192,59 @@ def pick_best_grid_search_result(
     return match
 
 
+def save_forked_multiprocess_strategy_universe(strategy_universe):
+    """Prepare handing over the strategy universe for the child processes."""
+    global _universe
+    _universe = strategy_universe
+
+
+def load_multiprocess_strategy_universe():
+    """Pop the strategy universe data from the parent process."""
+    global _universe
+    assert _universe, "The strategy_universe process global is not set - did you set this variable before forking from the parent process"
+    return _universe
+
+
+def save_disk_multiprocess_strategy_universe(strategy_universe: TradingStrategyUniverse):
+    """Prepare handing over the strategy universe for the child processes.
+
+    For joblib Loki backend that lacks process initialisers.
+
+    See https://github.com/joblib/joblib/pull/1525
+
+    There is no clean up, this is just a workaround of joblib's shortcomings.
+    """
+    temp_dir = tempfile.mkdtemp()
+    fname = os.path.join(temp_dir, strategy_universe.get_cache_key()) + ".pickle"
+    with open(fname, "wb") as out:
+        pickle.dump(strategy_universe, out)
+    return fname
+
+
+def initialise_multiprocess_strategy_universe_from_disk(fname: str) -> TradingStrategyUniverse:
+    """Pop the strategy universe data from the parent process.
+
+    - See :py:func:`save_disk_multiprocess_strategy_universe`
+
+    - Only load once per child process
+
+    - Load the universe from disk and cache in-process
+    """
+
+    assert type(fname) == str, f"Got {fname}"
+
+    global _universe
+
+    if _universe is None:
+        with open(fname, "rb") as inp:
+            _universe = pickle.load(inp)
+
+    return _universe
 
 #: Process global stored universe for multiprocess workers
+#:
+#: See :py:func:`save_forked_multiprocess_strategy_universe` and :py:func:`load_forked_multiprocess_strategy_universe`
+#:
 _universe: Optional[TradingStrategyUniverse] = None
 
 _process_pool: concurrent.futures.process.ProcessPoolExecutor | None = None
