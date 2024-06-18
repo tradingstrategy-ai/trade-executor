@@ -744,21 +744,27 @@ def test_perform_optimisation_engine_v5_single_worker(
         initial_cash = 10_000
 
         # Indicator values that are searched in the grid search
-        slow_ema_candle_count = space.Real(5, 7)
-        fast_ema_candle_count = space.Integer(1, 2)
+        slow_ema_candle_count = space.Integer(5, 7)
+        fast_ema_candle_count = space.Integer(2, 4)
+        real_val = space.Real(2, 3)
+
+    def my_real_value_indicator(close: pd.Series, x: float):
+        assert isinstance(x, float)
+        return close
 
     def create_indicators(parameters: StrategyParameters, indicators: IndicatorSet, strategy_universe: TradingStrategyUniverse, execution_context: ExecutionContext):
         indicators.add("slow_ema", pandas_ta.ema, {"length": parameters.slow_ema_candle_count})
         indicators.add("fast_ema", pandas_ta.ema, {"length": parameters.fast_ema_candle_count})
+        indicators.add("my_real_value_indicator", my_real_value_indicator, {"x": parameters.real_val})
         indicators.add("my_custom_indicator", my_custom_indicator, source=IndicatorSource.strategy_universe)
 
     # Single process search
     result = perform_optimisation(
-        iterations=4,
+        iterations=3,
         search_func=optimise_profit,
         decide_trades=_decide_trades_v4,
         strategy_universe=strategy_universe,
-        parameters=StrategyParameters.from_class(Parameters),
+        parameters=prepare_optimiser_parameters(Parameters),
         max_workers=1,
         indicator_storage=indicator_storage,
         result_path=tmp_path,

@@ -7,6 +7,7 @@
 - Instead of searching all parameter combinations, search only some based on an algorithm
 
 """
+import dataclasses
 import datetime
 import inspect
 import logging
@@ -27,7 +28,7 @@ from tqdm_loggable.auto import tqdm
 from tradeexecutor.backtest.grid_search import GridSearchWorker, GridCombination, GridSearchDataRetention, GridSearchResult, save_disk_multiprocess_strategy_universe, initialise_multiprocess_strategy_universe_from_disk, run_grid_search_backtest, \
     get_grid_search_result_path, GridParameter
 from tradeexecutor.strategy.engine_version import TradingStrategyEngineVersion
-from tradeexecutor.strategy.execution_context import ExecutionContext, grid_search_execution_context
+from tradeexecutor.strategy.execution_context import ExecutionContext, grid_search_execution_context, scikit_optimizer_context
 from tradeexecutor.strategy.pandas_trader.indicator import DiskIndicatorStorage, CreateIndicatorsProtocol, IndicatorStorage
 from tradeexecutor.strategy.parameters import StrategyParameters
 from tradeexecutor.strategy.strategy_module import DecideTradesProtocol4
@@ -99,9 +100,6 @@ class OptimiserResult:
     #:
     parameters: StrategyParameters
 
-    # The best found optimised value
-    best_result: SearchResult
-
     # Where we store the grid search results
     result_path: Path
 
@@ -109,7 +107,7 @@ class OptimiserResult:
     #:
     #: From the best to the worst
     #:
-    results: list[GridSearchResult]
+    results: list[SearchResult]
 
     # Where did we store precalculated indicator files
     indicator_storage: DiskIndicatorStorage
@@ -188,12 +186,14 @@ class ObjectiveWrapper:
             # We have run this search point before and can load from the cache
             result = GridSearchResult.load(combination)
         else:
+            # We are running this search point for the first time
 
             # Merge the current search values with the fixed parameter
             merged_parameters = StrategyParameters.from_dict(self.parameters)
-            merged_parameters.update({p.name: p.value for p in combination.parameters})
+            merged_parameters.update({p.name: p.get_computable_value() for p in combination.parameters})
 
-            # We are running this search point for the first time
+            execution_context = dataclasses.replace(scikit_optimizer_context)
+            execution_context.engine_version = self.trading_strategy_engine_version
             result = run_grid_search_backtest(
                 combination,
                 decide_trades=self.decide_trades,
@@ -201,6 +201,8 @@ class ObjectiveWrapper:
                 create_indicators=self.create_indicators,
                 parameters=merged_parameters,
                 indicator_storage=self.indicator_storage,
+                trading_strategy_engine_version=self.trading_strategy_engine_version,
+                execution_context=execution_context,
             )
 
             result.save()
@@ -211,7 +213,6 @@ class ObjectiveWrapper:
 def get_optimised_dimensions(parameters: StrategyParameters) -> list[space.Dimension]:
     """Get all dimensions we are going to search."""
     return [p for p in parameters.values() if isinstance(p, space.Dimension)]
-
 
 
 
@@ -266,6 +267,10 @@ def create_grid_combination(
     # Convert scikit-optimise determined search space parameters
     # for this round to GridParameters, which are used as a cache key
 
+    assert type(search_space) == list
+    assert type(search_args) == list
+    assert len(search_space) == len(search_args), f"Got {len(search_space)}, {len(search_args)}"
+
     parameters = []
     for dim, val in zip(search_space, search_args):
 
@@ -273,6 +278,8 @@ def create_grid_combination(
         # to some manageable values we can use in filenames
         if isinstance(dim, space.Real):
             val = Decimal(val).quantize(real_space_rounding)
+
+        assert dim.name, f"Dimension unnamed: {dim}. Did you call prepare_optimiser_parameters()? Do not call StrategyParameters.from_class()."
 
         p = GridParameter(name=dim.name, value=val, single=True, optimise=True)
         parameters.append(p)
@@ -399,6 +406,8 @@ def perform_optimisation(
 
     result_index = 1
 
+    all_results: list[SearchResult] = []
+
     with tqdm(total=iterations, desc=f"Searching the best parameters for {name}") as progress_bar:
         for i in range(0, iterations):
             with warnings.catch_warnings():
@@ -408,27 +417,40 @@ def perform_optimisation(
                 x = optimizer.ask(n_points=batch_size)  # x is a list of n_points points
 
             # Prepare a patch of search space params to be send to the worker processes
-            batch = []
-            for args in x:
-                batch.append(delayed(objective)(result_index, args))  # Funny joblib way to construct parallel task
-                result_index += 1
+            if max_workers > 1:
+                batch = []
+                for args in x:
+                    batch.append(delayed(objective)(result_index, args))  # Funny joblib way to construct parallel task
+                    result_index += 1
 
-            y = worker_processor(batch)  # evaluate points in parallel
-            optimizer.tell(x, y)  # Tell optimiser how well the last batch did
+                y = worker_processor(batch)  # evaluate points in parallel
+            else:
+                # Single thread path
+                y = [objective(result_index, args) for args in x]
 
-            best_so_far = min(optimizer.yi)  # Get the best value for "bull days matched"
-            progress_bar.set_postfix({"Best so far": best_so_far})
+            # Tell optimiser how well the last batch did
+            # by matching each x points to their raw optimise y value,
+            # and unpack our data structure
+            optimizer.tell(x, [single_y.value for single_y in y])
+
+            for result in y:
+                all_results.append(result)
+
+            best_so_far: SearchResult = min(all_results)  # Get the best value for "bull days matched"
+            progress_bar.set_postfix({"Best so far": best_so_far.get_original_value()})
             progress_bar.update()
 
     logger.info("The best result for the optimiser value was %s", best_so_far)
 
+    all_results.sort()
     duration = datetime.datetime.utcnow() - start
-    logger.info("Grid search finished in %s, calculated %d new results", duration, len(results))
-
-    results = list(cached_results.values()) + results
-    logger.info("Total %d results", len(results))
-
-    return results
+    logger.info("Optimiser search finished in %s, calculated %d results", duration, len(all_results))
+    return OptimiserResult(
+        parameters=parameters,
+        result_path=result_path,
+        results=all_results,
+        indicator_storage=indicator_storage,
+    )
 
 
 def optimise_profit(result: GridSearchResult) -> SearchResult:

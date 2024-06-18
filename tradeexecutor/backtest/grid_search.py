@@ -41,7 +41,7 @@ except ImportError:
     from tqdm.auto import tqdm
 
 from tradeexecutor.strategy.engine_version import TradingStrategyEngineVersion
-from tradeexecutor.strategy.execution_context import ExecutionContext, grid_search_execution_context
+from tradeexecutor.strategy.execution_context import ExecutionContext, grid_search_execution_context, standalone_backtest_execution_context
 from tradeexecutor.strategy.pandas_trader.indicator import IndicatorSet, CreateIndicatorsProtocolV1, DiskIndicatorStorage, warm_up_indicator_cache, \
     IndicatorKey, DEFAULT_INDICATOR_STORAGE_PATH, CreateIndicatorsProtocol, call_create_indicators, IndicatorStorage
 from tradeexecutor.strategy.universe_model import UniverseOptions
@@ -128,7 +128,7 @@ class GridParameter:
     optimise: bool = False
 
     def __post_init__(self):
-        pass
+        assert type(self.name) == str
 
     def __hash__(self):
         return hash((self.name, self.value))
@@ -138,6 +138,12 @@ class GridParameter:
 
     def is_searchable(self) -> bool:
         return self.optimise or not self.single
+
+    def get_computable_value(self) -> float | int | bool | str:
+        """Handle use of rounded Decimals in optimiser."""
+        if isinstance(self.value, Decimal):
+            return float(self.value)
+        return self.value
 
     def to_path(self) -> str:
         """"""
@@ -1021,6 +1027,7 @@ def run_grid_search_backtest(
     cycle_debug_data: dict | None = None,
     parameters: StrategyParameters | None = None,
     indicator_storage: IndicatorStorage | None = None,
+    execution_context=standalone_backtest_execution_context,
 ) -> GridSearchResult:
     assert isinstance(universe, TradingStrategyUniverse), f"Received {universe}"
 
@@ -1074,9 +1081,11 @@ def run_grid_search_backtest(
             parameters=parameters,
             indicator_storage=indicator_storage,
             grid_search=True,
+            execution_context=execution_context,
         )
     except Exception as e:
         # Report to the notebook which of the grid search combinations is a problematic one
+        raise
         raise RuntimeError(f"Running a grid search combination failed:\n{combination}\nThe original exception was: {e}") from e
 
     # Portfolio performance

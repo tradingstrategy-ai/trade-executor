@@ -224,7 +224,7 @@ class IndicatorDefinition:
         try:
             return hash((self.name, frozenset(self.parameters.items()), self.source))
         except Exception as e:
-            raise (f"Could not hash {self}. If changing grid search to backtest, remember to change lists to single value. Exception is {e}")
+            raise RuntimeError(f"Could not hash {self}. If changing grid search to backtest, remember to change lists to single value. Exception is {e}")
 
     def __post_init__(self):
         assert type(self.name) == str
@@ -287,7 +287,7 @@ class IndicatorDefinition:
             ret = self.func(input_fixed, **self._fix_parameters_for_function_signature(resolver, pair))
             return self._check_good_return_value(ret)
         except Exception as e:
-            raise IndicatorCalculationFailed(f"Could not calculate indicator {self.name} ({self.func}) for parameters {self.parameters}, input data is {len(input)} rows") from e
+            raise IndicatorCalculationFailed(f"Could not calculate indicator {self.name} ({self.func}) for parameters {self.parameters}, input data is {len(input)} rows: {e}") from e
 
     def calculate_by_pair_ohlcv(self, candles: pd.DataFrame, pair: TradingPairIdentifier, resolver: "IndicatorDependencyResolver") -> pd.DataFrame | pd.Series:
         """Calculate the underlying OHCLV indicator value.
@@ -1500,12 +1500,20 @@ def calculate_indicators(
                 desc = f"Calculating indicators {label} using {max_workers} processes"
 
             # Track the child process completion using tqdm progress bar
-            with tqdm(total=len(task_args), desc=desc) as progress_bar:
-                # Extract results from the parallel task queue
-                for task in tm.as_completed():
-                    result = task.result
-                    results[result.indicator_key] = result
+            if verbose:
+                progress_bar = tqdm(total=len(task_args), desc=desc)
+            else:
+                progress_bar = None
+
+            # Extract results from the parallel task queue
+            for task in tm.as_completed():
+                result = task.result
+                results[result.indicator_key] = result
+                if progress_bar is not None:
                     progress_bar.update()
+
+            if progress_bar is not None:
+                progress_bar.close()
 
     else:
         # Do single thread - good for debuggers like pdb/ipdb
@@ -1629,6 +1637,7 @@ def calculate_and_load_indicators(
         calculation_needed,
         max_workers=max_workers,
         all_combinations=all_combinations,
+        verbose=verbose,
     )
 
     result = cached | calculated
