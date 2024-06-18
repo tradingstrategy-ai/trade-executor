@@ -12,18 +12,20 @@ import inspect
 import logging
 import typing
 import warnings
+from _decimal import Decimal
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, Type
 
 from joblib import Parallel, delayed
 from skopt import space, Optimizer
+from skopt.space import Dimension
 
 from tqdm_loggable.auto import tqdm
 
 
 from tradeexecutor.backtest.grid_search import GridSearchWorker, GridCombination, GridSearchDataRetention, GridSearchResult, save_disk_multiprocess_strategy_universe, initialise_multiprocess_strategy_universe_from_disk, run_grid_search_backtest, \
-    get_grid_search_result_path
+    get_grid_search_result_path, GridParameter
 from tradeexecutor.strategy.engine_version import TradingStrategyEngineVersion
 from tradeexecutor.strategy.execution_context import ExecutionContext, grid_search_execution_context
 from tradeexecutor.strategy.pandas_trader.indicator import DiskIndicatorStorage, CreateIndicatorsProtocol, IndicatorStorage
@@ -35,6 +37,38 @@ from tradeexecutor.utils.cpu import get_safe_max_workers_count
 logger = logging.getLogger(__name__)
 
 
+@dataclass(slots=True, frozen=True)
+class SearchResult:
+    """Single optimiser search result value"""
+
+    #: The raw value
+    value: float
+
+    #: Did we flip this value to negative  because we are looking for a minimised result
+    negative: bool
+
+    #: Full result data (serialised)
+    result: GridSearchResult
+
+    def __repr__(self):
+        return f"<SearchResult {self.result.get_label()} = {self.get_original_value()}>"
+
+    def __eq__(self, other):
+        return self.value == other.value
+
+    def __lt__(self, other):
+        return self.value < other.value
+
+    def __gt__(self, other):
+        return self.value > other.value
+
+    def get_original_value(self) -> float:
+        if self.negative:
+            return -self.value
+        else:
+            return self.value
+
+
 class SearchFunction(typing.Protocol):
     """The function definition for the optimiser search function.
 
@@ -42,7 +76,7 @@ class SearchFunction(typing.Protocol):
       for from the :py:class:`GridSearchResult`
     """
 
-    def __call___(self, result: GridSearchResult) -> float:
+    def __call__(self, result: GridSearchResult) -> SearchResult:
         """The search function extracts the parm
 
         :param result:
@@ -66,7 +100,7 @@ class OptimiserResult:
     parameters: StrategyParameters
 
     # The best found optimised value
-    best_result: float
+    best_result: SearchResult
 
     # Where we store the grid search results
     result_path: Path
@@ -109,6 +143,8 @@ class ObjectiveWrapper:
         create_indicators: CreateIndicatorsProtocol,
         indicator_storage: IndicatorStorage,
         result_path: Path,
+        search_space: list[Dimension],
+        real_space_rounding: Decimal,
     ):
         self.search_func = search_func
         self.pickled_universe_fname = pickled_universe_fname
@@ -118,11 +154,13 @@ class ObjectiveWrapper:
         self.indicator_storage = indicator_storage
         self.trading_strategy_engine_version = trading_strategy_engine_version
         self.result_path = result_path
+        self.search_space = search_space
+        self.real_space_rounding = real_space_rounding
 
     def __call__(
         self,
         result_index: int,
-        args: list,
+        args: list[str | int | float],
     ):
         """This function is at the entry point of a child worker process.
 
@@ -138,13 +176,34 @@ class ObjectiveWrapper:
 
         strategy_universe = initialise_multiprocess_strategy_universe_from_disk(self.pickled_universe_fname)
 
-        combination = create_grid_combination(args)
-
-        result = run_grid_search_backtest(
-            combination,
-            decide_trades=self.decide_trades,
-            universe=strategy_universe,
+        combination = create_grid_combination(
+            self.result_path,
+            self.search_space,
+            result_index,
+            args,
+            self.real_space_rounding,
         )
+
+        if GridSearchResult.has_result(combination):
+            # We have run this search point before and can load from the cache
+            result = GridSearchResult.load(combination)
+        else:
+
+            # Merge the current search values with the fixed parameter
+            merged_parameters = StrategyParameters.from_dict(self.parameters)
+            merged_parameters.update({p.name: p.value for p in combination.parameters})
+
+            # We are running this search point for the first time
+            result = run_grid_search_backtest(
+                combination,
+                decide_trades=self.decide_trades,
+                universe=strategy_universe,
+                create_indicators=self.create_indicators,
+                parameters=merged_parameters,
+                indicator_storage=self.indicator_storage,
+            )
+
+            result.save()
 
         return self.search_func(result)
 
@@ -192,21 +251,36 @@ def prepare_optimiser_parameters(
 
 
 def create_grid_combination(
-    index: int,
     result_path: Path,
-    search_args: list
+    search_space: list[Dimension],
+    index: int,
+    search_args: list[str | float | int],
+    real_space_rounding: Decimal,
 ) -> GridCombination:
-    """Turn scikit-optimise search arguments to a grid combination."""
+    """Turn scikit-optimise search arguments to a grid combination.
+
+    GridCombination allows us to store the results on the disk
+    and match the data for the later analysis and caching.
+    """
 
     # Convert scikit-optimise determined search space parameters
     # for this round to GridParameters, which are used as a cache key
 
-    grid_parameters = []
-    import ipdb ; ipdb.set_trace()
+    parameters = []
+    for dim, val in zip(search_space, search_args):
+
+        # Round real numbers in the search space
+        # to some manageable values we can use in filenames
+        if isinstance(dim, space.Real):
+            val = Decimal(val).quantize(real_space_rounding)
+
+        p = GridParameter(name=dim.name, value=val, single=True, optimise=True)
+        parameters.append(p)
 
     combination = GridCombination(
         index=index,
         result_path=result_path,
+        parameters=tuple(parameters),
     )
     return combination
 
@@ -224,6 +298,8 @@ def perform_optimisation(
     execution_context: ExecutionContext = grid_search_execution_context,
     indicator_storage: DiskIndicatorStorage | None = None,
     result_path: Path | None = None,
+    min_batch_size=4,
+    real_space_rounding=Decimal("0.00001"),
 ) -> OptimiserResult:
     """Search different strategy parameters using an optimiser.
 
@@ -247,6 +323,12 @@ def perform_optimisation(
 
     :param result_path:
         Where to store the grid search results
+
+    :param real_space_rounding:
+        For search dimensions that are Real numbers, round to this accuracy.
+
+        We need to write float values as cache filename parameters and too high float accuracy causes
+        too long strings breaking filenames.
 
     :return:
         Grid search results for different combinations.
@@ -294,7 +376,7 @@ def perform_optimisation(
         backend="loky",
     )
 
-    batch_size = max_workers
+    batch_size = max(min_batch_size, max_workers)  # Make sure we have some batch size even if running single CPU
 
     # We do some disk saving trickery to avoid pickling super large
     # trading universe data as as function argument every time a new search is performed
@@ -309,6 +391,8 @@ def perform_optimisation(
         indicator_storage=indicator_storage,
         result_path=result_path,
         create_indicators=create_indicators,
+        search_space=search_space,
+        real_space_rounding=real_space_rounding,
     )
 
     name = parameters.get("name") or parameters.get("id") or "backtest"
@@ -326,12 +410,11 @@ def perform_optimisation(
             # Prepare a patch of search space params to be send to the worker processes
             batch = []
             for args in x:
-                batch.append((result_index, args))
-                worker_processor(delayed(objective)(result_index, args))
+                batch.append(delayed(objective)(result_index, args))  # Funny joblib way to construct parallel task
                 result_index += 1
 
-            y = worker_processor(delayed(objective)(batch))  # evaluate points in parallel
-            optimizer.tell(x, y)
+            y = worker_processor(batch)  # evaluate points in parallel
+            optimizer.tell(x, y)  # Tell optimiser how well the last batch did
 
             best_so_far = min(optimizer.yi)  # Get the best value for "bull days matched"
             progress_bar.set_postfix({"Best so far": best_so_far})
@@ -348,6 +431,6 @@ def perform_optimisation(
     return results
 
 
-def optimise_profit(result: GridSearchResult) -> float:
+def optimise_profit(result: GridSearchResult) -> SearchResult:
     """Search for the best CAGR value."""
-    return -result.get_cagr()
+    return SearchResult(-result.get_cagr(), negative=True, result=result)

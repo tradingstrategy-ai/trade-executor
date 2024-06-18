@@ -242,7 +242,7 @@ class StrategyParameters(MutableAttributeDict):
         return StrategyParameters(output)
 
     @staticmethod
-    def from_dict(other_parameters: dict) -> "StrategyParameters":
+    def from_dict(other_parameters: dict | MutableAttributeDict) -> "StrategyParameters":
         """Create parameter dict out from another dict.
 
         - Convert scikit-optimizer parameteres to astrategy parameter input to dictionary

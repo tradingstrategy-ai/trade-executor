@@ -1,5 +1,8 @@
 """Perform a grid search ove strategy parameters to find optimal parameters."""
 import tempfile
+from _decimal import Decimal
+
+import numpy
 
 # Enable pickle patch that allows multiprocessing in notebooks
 from tradeexecutor.monkeypatch import cloudpickle_patch  
@@ -40,7 +43,7 @@ except ImportError:
 from tradeexecutor.strategy.engine_version import TradingStrategyEngineVersion
 from tradeexecutor.strategy.execution_context import ExecutionContext, grid_search_execution_context
 from tradeexecutor.strategy.pandas_trader.indicator import IndicatorSet, CreateIndicatorsProtocolV1, DiskIndicatorStorage, warm_up_indicator_cache, \
-    IndicatorKey, DEFAULT_INDICATOR_STORAGE_PATH, CreateIndicatorsProtocol, call_create_indicators
+    IndicatorKey, DEFAULT_INDICATOR_STORAGE_PATH, CreateIndicatorsProtocol, call_create_indicators, IndicatorStorage
 from tradeexecutor.strategy.universe_model import UniverseOptions
 
 
@@ -120,6 +123,10 @@ class GridParameter:
     #:
     single: bool
 
+    #: Is this parameter a search space point in an optimiser
+    #:
+    optimise: bool = False
+
     def __post_init__(self):
         pass
 
@@ -129,6 +136,9 @@ class GridParameter:
     def __eq__(self, other):
         return self.name == other.name and self.value == other.value
 
+    def is_searchable(self) -> bool:
+        return self.optimise or not self.single
+
     def to_path(self) -> str:
         """"""
         value = self.value
@@ -137,6 +147,14 @@ class GridParameter:
             return f"{self.name}={self.value.value}"
         elif type(value) == bool:
             return f"{self.name}={self.value.lower()}"
+        elif isinstance(value, (numpy.float64, numpy.float32, numpy.int64)):
+            # scikit-optimise values
+            return f"{self.name}={self.value}"
+        elif isinstance(value, Decimal):
+            # scikit-optimise values
+            # where space.Real is rounded to accuracy
+            # that can fit into a filename
+            return f"{self.name}={self.value}"
         elif type(value) in (float, int, str):
             return f"{self.name}={self.value}"
         if value is None:
@@ -199,7 +217,7 @@ class GridCombination:
 
         Searchable parameters have two or more values.
         """
-        return [p for p in self.parameters if not p.single]
+        return [p for p in self.parameters if p.is_searchable()]
 
     def get_relative_result_path(self) -> Path:
         """Get the path where the resulting state file is stored.
@@ -1002,7 +1020,7 @@ def run_grid_search_backtest(
     trading_strategy_engine_version: Optional[str] = None,
     cycle_debug_data: dict | None = None,
     parameters: StrategyParameters | None = None,
-    indicator_storage: DiskIndicatorStorage | None = None,
+    indicator_storage: IndicatorStorage | None = None,
 ) -> GridSearchResult:
     assert isinstance(universe, TradingStrategyUniverse), f"Received {universe}"
 
