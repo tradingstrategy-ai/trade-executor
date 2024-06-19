@@ -959,6 +959,10 @@ def run_backtest_inline(
     if indicator_storage is None and universe is not None:
         indicator_storage = DiskIndicatorStorage.create_default(universe)
 
+    # Backwardd compatibility for the code that never set execution context
+    if execution_context.engine_version != engine_version:
+        execution_context.engine_version = engine_version
+
     backtest_setup = BacktestSetup(
         start_at,
         end_at,
