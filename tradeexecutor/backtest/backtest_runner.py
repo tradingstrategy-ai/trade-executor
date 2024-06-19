@@ -963,6 +963,9 @@ def run_backtest_inline(
     if execution_context.engine_version != engine_version:
         execution_context.engine_version = engine_version
 
+    if execution_context.parameters is None:
+        execution_context.parameters = parameters
+
     backtest_setup = BacktestSetup(
         start_at,
         end_at,

@@ -1,6 +1,7 @@
 """Perform a grid search ove strategy parameters to find optimal parameters."""
 import dataclasses
 import tempfile
+import traceback
 from _decimal import Decimal
 
 import numpy
@@ -1089,7 +1090,8 @@ def run_grid_search_backtest(
         )
     except Exception as e:
         # Report to the notebook which of the grid search combinations is a problematic one
-        raise RuntimeError(f"Running a grid search combination failed:\n{combination}\nThe original exception was: {e}") from e
+        tb = traceback.format_exc()
+        raise RuntimeError(f"Running a grid search combination failed:\n{combination}\nThe original exception was: {e}\n{tb}") from e
 
     # Portfolio performance
     equity = calculate_equity_curve(state)
