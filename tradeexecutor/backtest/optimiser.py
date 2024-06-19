@@ -43,12 +43,21 @@ logger = logging.getLogger(__name__)
 
 @dataclass(slots=True, frozen=False)
 class SearchResult:
-    """Single optimiser search result value"""
+    """Single optimiser search result value.
 
-    #: The raw value
+    This is used in different contextes
+
+    - Return value from :py:class:`SearchFunction`
+
+    - Passing data from child worker to the parent process
+
+    - Passing data from :py:func:`perform_optimisation` to the notebook
+    """
+
+    #: The raw value of the search function we are optimising
     value: float
 
-    #: Did we flip this value to negative  because we are looking for a minimised result
+    #: Did we flip this value to negative because we are looking for a minimised result
     negative: bool
 
     #: For which grid combination this result was
@@ -64,7 +73,9 @@ class SearchResult:
     result: GridSearchResult | None = None
 
     def __repr__(self):
-        return f"<SearchResult {self.result.get_label()} = {self.get_original_value()}>"
+        return f"<SearchResult {self.combination} = {self.get_original_value()}>"
+
+    # Allow to call min(list[SearchResult]) to find the best value
 
     def __eq__(self, other):
         return self.value == other.value
@@ -76,12 +87,17 @@ class SearchResult:
         return self.value > other.value
 
     def get_original_value(self) -> float:
+        """Get the original best search value.
+
+        - Flip off the extra minus sign if we had to add it
+        """
         if self.negative:
             return -self.value
         else:
             return self.value
 
     def hydrate(self):
+        """Load the grid search result data for this result from the disk."""
         self.result = GridSearchResult.load(self.combination)
 
 
@@ -107,7 +123,10 @@ class SearchFunction(typing.Protocol):
 
 @dataclass(frozen=True, slots=True)
 class OptimiserResult:
-    """The outcome of the optimiser run."""
+    """The outcome of the optimiser run.
+
+    - Contains all the grid search results we generated during the run
+    """
 
     #: The parameters we searched
     #:
@@ -124,7 +143,9 @@ class OptimiserResult:
     #:
     results: list[SearchResult]
 
-    # Where did we store precalculated indicator files
+    #: Where did we store precalculated indicator files.
+    #:
+    #: Allows to peek into raw indicator data if we need to.
     indicator_storage: DiskIndicatorStorage
 
     @staticmethod
@@ -194,7 +215,7 @@ class ObjectiveWrapper:
         assert type(args) == list, f"Expected list of args, got {args}"
 
         if self.log_level:
-            setup_notebook_logging(self.log_level)
+            setup_notebook_logging(self.log_level, show_process=True)
 
         logger.info("Starting optimiser batch %d in child worker %d", result_index, os.getpid())
 
@@ -218,8 +239,10 @@ class ObjectiveWrapper:
             merged_parameters = StrategyParameters.from_dict(self.parameters)
             merged_parameters.update({p.name: p.get_computable_value() for p in combination.parameters})
 
+            # Make sure we drag the engine version along
             execution_context = dataclasses.replace(scikit_optimizer_context)
             execution_context.engine_version = self.trading_strategy_engine_version
+
             result = run_grid_search_backtest(
                 combination,
                 decide_trades=self.decide_trades,
@@ -229,6 +252,7 @@ class ObjectiveWrapper:
                 indicator_storage=self.indicator_storage,
                 trading_strategy_engine_version=self.trading_strategy_engine_version,
                 execution_context=execution_context,
+                max_workers=1,  # Don't allow this child process to create its own worker pool for indicator calculations
             )
             logger.info("Backtest %d completed, saving the result", result_index)
             result.save()
@@ -444,6 +468,7 @@ def perform_optimisation(
         n_jobs=max_workers,
         backend="loky",
         timeout=timeout,
+        return_as="generator_unordered",
         max_nbytes=40*1024*1024,  # Allow passing 40 MBytes for child processes
     )
 
@@ -491,9 +516,13 @@ def perform_optimisation(
                     result_index += 1
 
                 y = worker_processor(batch)  # evaluate points in parallel
+                y = list(y)
             else:
                 # Single thread path
-                y = [objective(result_index, args) for args in x]
+                y = []
+                for args in x:
+                    y.append(objective(result_index, args))
+                    logger.info("Got result for %s", args)
 
                 logger.info("Iteration %d multiprocessing complete", i)
 

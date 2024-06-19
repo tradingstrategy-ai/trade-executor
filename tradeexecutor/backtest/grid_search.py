@@ -1030,6 +1030,7 @@ def run_grid_search_backtest(
     parameters: StrategyParameters | None = None,
     indicator_storage: IndicatorStorage | None = None,
     execution_context=standalone_backtest_execution_context,
+    max_workers: int = 0,
 ) -> GridSearchResult:
     assert isinstance(universe, TradingStrategyUniverse), f"Received {universe}"
 
@@ -1088,6 +1089,7 @@ def run_grid_search_backtest(
             indicator_storage=indicator_storage,
             grid_search=True,
             execution_context=execution_context,
+            max_workers=max_workers,
         )
     except Exception as e:
         # Report to the notebook which of the grid search combinations is a problematic one
