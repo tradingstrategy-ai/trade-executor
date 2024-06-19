@@ -1060,8 +1060,9 @@ def run_grid_search_backtest(
     if not routing_model:
         routing_model = BacktestRoutingIgnoredModel(universe.get_reserve_asset().address)
 
-    execution_context = dataclasses.replace(grid_search_execution_context)
-    execution_context.engine_version = trading_strategy_engine_version
+    if execution_context is None:
+        execution_context = dataclasses.replace(grid_search_execution_context)
+        execution_context.engine_version = trading_strategy_engine_version
 
     # Run the test
     try:

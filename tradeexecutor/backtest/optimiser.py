@@ -101,12 +101,12 @@ class OptimiserResult:
     #:
     parameters: StrategyParameters
 
-    # Where we store the grid search results
+    # Where we store the grid search results data
     result_path: Path
 
     #: Different grid search results
     #:
-    #: From the best to the worst
+    #: Sortd from the best to the worst.
     #:
     results: list[SearchResult]
 
@@ -124,6 +124,10 @@ class OptimiserResult:
         assert name_hint, f"Cannot determine parameter id or name for StrategyParameters, needed for optimiser search result storage: {parameters}"
 
         return get_grid_search_result_path(name_hint)
+
+    def get_combination_count(self) -> int:
+        """How many combinations we searched in this optimiser run."""
+        return len(self.results)
 
 
 class ObjectiveWrapper:
@@ -311,20 +315,29 @@ def perform_optimisation(
 ) -> OptimiserResult:
     """Search different strategy parameters using an optimiser.
 
-    Use scikit-optimize to find the optimal strategy parameters.
+    - Use scikit-optimize to find the optimal strategy parameters.
 
-    :param combinations:
-        Prepared grid combinations.
+    - The results of previous runs are cached on a disk using the same cache as grid search,
+      though the cache is not as effective as each optimise run walks randomly around.
+
+    - Unlike in grid search, indicators are calculated in the child worker processes,
+      because we do not know what indicator values we are going to search upfront.
+      There might a race condition between different child workers to calculate and save
+      indicator data series, but it should not matter as cache writes are atomic.
+
+    :param iterations:
+        How many iteratiosn we will search
+
+    :param search_func:
+        The function that will rank the optimise iteration results.
+
+        See :py:func:`optimise_profit` and :py:func:`optimise_sharpe`,
+        but can be any of your custom functions.
+
+    :param parameters:
+        Prepared search space and fixed parameters.
 
         See :py:func:`prepare_grid_combinations`
-
-    :param stats:
-        If passed, collect run-time and unit testing statistics to this dictionary.
-
-    :param multiprocess:
-        Perform the search using multiple CPUs and Python's multiprocessing.
-
-        Set `1` to debug in a single thread.
 
     :param trading_strategy_engine_version:
         Which version of engine we are using.
@@ -338,11 +351,13 @@ def perform_optimisation(
         We need to write float values as cache filename parameters and too high float accuracy causes
         too long strings breaking filenames.
 
+    :param min_batch_size:
+        How many points we ask for the batch processing from the scikit-optimiser once.
+
+        You generally do not need to care about this.
+
     :return:
         Grid search results for different combinations.
-
-        Sorted so that the first result is the best optimised,
-        then decreaseing.
 
     """
 
@@ -412,7 +427,7 @@ def perform_optimisation(
 
     all_results: list[SearchResult] = []
 
-    with tqdm(total=iterations, desc=f"Searching the best parameters for {name}") as progress_bar:
+    with tqdm(total=iterations, desc=f"Optimising {name}, search space is {len(search_space)} variables, using {max_workers} CPUs") as progress_bar:
         for i in range(0, iterations):
             with warnings.catch_warnings():
                 # Ignore warning when we too close to optimal:
