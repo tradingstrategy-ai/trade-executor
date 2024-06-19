@@ -1,3 +1,4 @@
+import dataclasses
 import datetime
 import logging
 import runpy
@@ -960,11 +961,16 @@ def run_backtest_inline(
         indicator_storage = DiskIndicatorStorage.create_default(universe)
 
     # Backwardd compatibility for the code that never set execution context
+
+    execution_context = dataclasses.replace(execution_context)
+
     if execution_context.engine_version != engine_version:
         execution_context.engine_version = engine_version
 
     if execution_context.parameters is None:
         execution_context.parameters = parameters
+
+    execution_context.mode = mode
 
     backtest_setup = BacktestSetup(
         start_at,
