@@ -186,8 +186,9 @@ def compare_multiple_portfolios(
 
 
 def compare_strategy_backtest_to_multiple_assets(
-    state: State,
+    state: State | None,
     strategy_universe: TradingStrategyUniverse,
+    returns: pd.Series | None = None,
     display=False,
 ) -> pd.DataFrame:
     """Backtest comparison of strategy against buy and hold assets.
@@ -199,8 +200,10 @@ def compare_strategy_backtest_to_multiple_assets(
     """
 
     # Get daily returns
-    equity = calculate_equity_curve(state)
-    returns = calculate_returns(equity)
+    if returns is None:
+        assert state, "State must be given if no returns are given"
+        equity = calculate_equity_curve(state)
+        returns = calculate_returns(equity)
     daily_returns = resample_returns(returns, "D")
 
     benchmarks = get_benchmark_data(
