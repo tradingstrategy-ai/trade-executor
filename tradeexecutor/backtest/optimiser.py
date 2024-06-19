@@ -41,7 +41,7 @@ from tradeexecutor.utils.cpu import get_safe_max_workers_count
 logger = logging.getLogger(__name__)
 
 
-@dataclass(slots=True, frozen=False)
+@dataclass(slots=True)
 class SearchResult:
     """Single optimiser search result value.
 
@@ -71,6 +71,12 @@ class SearchResult:
     #: Call :py:meth:`hydrate` to make this data available.
     #:
     result: GridSearchResult | None = None
+
+    #: Did we filter out this result
+    #:
+    #: See `result_filter` in :py:func:`perform_optimisation`
+    #:
+    filtered: bool = False
 
     def __repr__(self):
         return f"<SearchResult {self.combination} = {self.get_original_value()}>"
@@ -381,10 +387,11 @@ def perform_optimisation(
     indicator_storage: DiskIndicatorStorage | None = None,
     result_path: Path | None = None,
     min_batch_size=4,
-    real_space_rounding=Decimal("0.00001"),
+    real_space_rounding=Decimal("0.01"),
     timeout: float = 10 * 60,
     log_level: int | None=None,
     result_filter=MinTradeCountFilter(50),
+    bad_result_value=0,
 ) -> OptimiserResult:
     """Search different strategy parameters using an optimiser.
 
@@ -447,6 +454,9 @@ def perform_optimisation(
         Filter bad strategies.
 
         Try to avoid strategies that open too few trades or are otherwise not viable.
+
+    :param bad_result_value:
+        What placeholder value we use for the optimiser when `result_filter` does not like the outcome.
 
     :return:
         Grid search results for different combinations.
@@ -560,8 +570,10 @@ def perform_optimisation(
                 if result_filter(single_y):
                     value = single_y.value
                 else:
+                    # Feed deeply negative value to the optimiser
                     # TODO: What's a better way to filter values for Gaussian Process?
-                    value = 0
+                    value = bad_result_value
+                    single_y.filtered = True
                 filtered_y.append(value)
 
             # Tell optimiser how well the last batch did

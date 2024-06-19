@@ -51,7 +51,7 @@ def analyse_combination(
 
         # Skip parameters that are single fixed value
         # and do not affect the grid search results
-        if param.single:
+        if param.single and not param.optimise:
             continue
 
         row[param.name] = param.value
@@ -128,6 +128,7 @@ def analyse_grid_search_result(
     df = pd.DataFrame(rows)
     r = results[0]
     param_names = [p.name for p in r.combination.searchable_parameters]
+    # display(df)
     df = df.set_index(param_names)
     df = df.sort_index()
     return df
