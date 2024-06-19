@@ -23,9 +23,9 @@ from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniv
 from tradeexecutor.utils.sort import unique_sort
 from tradeexecutor.visual.benchmark import visualise_all_cash, visualise_portfolio_equity_curve
 
-VALUE_COLS = ["CAGR", "Max drawdown", "Sharpe", "Sortino", "Average position", "Median position"]
+VALUE_COLS = ["CAGR", "Max drawdown", "Sharpe", "Sortino", "Average position", "Median position", "Win rate"]
 
-PERCENT_COLS = ["CAGR", "Max drawdown", "Average position", "Median position", "Time in market"]
+PERCENT_COLS = ["CAGR", "Max drawdown", "Average position", "Median position", "Time in market", "Win rate"]
 
 DATA_COLS = ["Positions", "Trades"]
 
@@ -78,6 +78,7 @@ def analyse_combination(
         "Max drawdown": clean(r.metrics.loc["Max Drawdown"][0]),
         "Sharpe": clean(r.metrics.loc["Sharpe"][0]),
         "Sortino": clean(r.metrics.loc["Sortino"][0]),
+        "Win rate": clean(r.get_win_rate()),
         "Average position": r.summary.average_trade,
         "Median position": r.summary.median_trade,
     })
@@ -126,10 +127,29 @@ def analyse_grid_search_result(
     assert len(results) > 0, "No results"
     rows = [analyse_combination(r, min_positions_threshold) for r in results]
     df = pd.DataFrame(rows)
+
+    duplicate_cols_count = df.columns.duplicated(keep='first').sum()
+    if duplicate_cols_count > 0:
+        raise RuntimeError(f"Duplicate columns: {df.columns}")
+
     r = results[0]
     param_names = [p.name for p in r.combination.searchable_parameters]
     # display(df)
     df = df.set_index(param_names)
+
+    # Optimiser may result to the duplicate grid combinations
+    # as the optimiser searches are down in parallel
+    # - however this would break styles of this df.
+    # We remove duplicates here.
+
+    df = df.drop_duplicates(keep="first")
+
+    # duplicates = df[df.index.duplicated(keep='first')]
+    # if len(duplicates)> 0:
+    #    for r in duplicates.iterrows():
+    #        print(f"Row: {r}")
+    #    raise RuntimeError(f"Duplicate indexes found: {duplicates}")
+
     df = df.sort_index()
     return df
 

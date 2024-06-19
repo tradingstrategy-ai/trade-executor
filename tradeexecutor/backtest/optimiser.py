@@ -175,8 +175,11 @@ class OptimiserResult:
         return len(self.results)
 
     def get_results_as_grid_search_results(self) -> list[GridSearchResult]:
-        """Get all search results as grid search results list for the analysis."""
-        return [r.result for r in self.results]
+        """Get all search results as grid search results list for the analysis.
+        
+        - Any results that are marked as filtered away are not returned
+        """
+        return [r.result for r in self.results if not r.filtered]
 
 
 class ObjectiveWrapper:
@@ -267,6 +270,7 @@ class ObjectiveWrapper:
                 trading_strategy_engine_version=self.trading_strategy_engine_version,
                 execution_context=execution_context,
                 max_workers=1,  # Don't allow this child process to create its own worker pool for indicator calculations
+                initial_deposit=merged_parameters["initial_cash"],
             )
             logger.info("Backtest %d completed, saving the result", result_index)
             result.save()
@@ -586,8 +590,8 @@ def perform_optimisation(
                 result.hydrate()  # Load grid search result data from the disk
                 all_results.append(result)
 
-            best_so_far: SearchResult = min(all_results)  # Get the best value for "bull days matched"
-            progress_bar.set_postfix({"Best so far": best_so_far.get_original_value()})
+            best_so_far: SearchResult = min([r for r in all_results if not r.filtered], default=None)  # Get the best value for "bull days matched"
+            progress_bar.set_postfix({"Best so far": best_so_far.get_original_value() if best_so_far else "-"})
             progress_bar.update()
 
     # Cleans up Loky backend hanging in pytest
@@ -619,3 +623,8 @@ def optimise_profit(result: GridSearchResult) -> SearchResult:
 def optimise_sharpe(result: GridSearchResult) -> SearchResult:
     """Search for the best Sharpe value."""
     return SearchResult(-result.get_sharpe(), negative=True)
+
+
+def optimise_win_rate(result: GridSearchResult) -> SearchResult:
+    """Search for the best trade win rate."""
+    return SearchResult(-result.get_win_rate(), negative=True)
