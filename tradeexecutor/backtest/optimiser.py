@@ -11,6 +11,7 @@ import dataclasses
 import datetime
 import inspect
 import logging
+import os
 import typing
 import warnings
 from _decimal import Decimal
@@ -28,6 +29,7 @@ from tqdm_loggable.auto import tqdm
 
 from tradeexecutor.backtest.grid_search import GridSearchWorker, GridCombination, GridSearchDataRetention, GridSearchResult, save_disk_multiprocess_strategy_universe, initialise_multiprocess_strategy_universe_from_disk, run_grid_search_backtest, \
     get_grid_search_result_path, GridParameter
+from tradeexecutor.cli.log import setup_notebook_logging
 from tradeexecutor.strategy.engine_version import TradingStrategyEngineVersion
 from tradeexecutor.strategy.execution_context import ExecutionContext, grid_search_execution_context, scikit_optimizer_context
 from tradeexecutor.strategy.pandas_trader.indicator import DiskIndicatorStorage, CreateIndicatorsProtocol, IndicatorStorage
@@ -39,7 +41,7 @@ from tradeexecutor.utils.cpu import get_safe_max_workers_count
 logger = logging.getLogger(__name__)
 
 
-@dataclass(slots=True, frozen=True)
+@dataclass(slots=True, frozen=False)
 class SearchResult:
     """Single optimiser search result value"""
 
@@ -49,8 +51,17 @@ class SearchResult:
     #: Did we flip this value to negative  because we are looking for a minimised result
     negative: bool
 
-    #: Full result data (serialised)
-    result: GridSearchResult
+    #: For which grid combination this result was
+    #:
+    #: This is the key to load the child worker produced data from the disk in the parent process
+    #:
+    combination: GridCombination | None = None
+
+    # We do not pass the result directly to child process but let the parent process to read it from the disk
+    #:
+    #: Call :py:meth:`hydrate` to make this data available.
+    #:
+    result: GridSearchResult | None = None
 
     def __repr__(self):
         return f"<SearchResult {self.result.get_label()} = {self.get_original_value()}>"
@@ -69,6 +80,9 @@ class SearchResult:
             return -self.value
         else:
             return self.value
+
+    def hydrate(self):
+        self.result = GridSearchResult.load(self.combination)
 
 
 class SearchFunction(typing.Protocol):
@@ -148,6 +162,7 @@ class ObjectiveWrapper:
         result_path: Path,
         search_space: list[Dimension],
         real_space_rounding: Decimal,
+        log_level: int,
     ):
         self.search_func = search_func
         self.pickled_universe_fname = pickled_universe_fname
@@ -159,6 +174,7 @@ class ObjectiveWrapper:
         self.result_path = result_path
         self.search_space = search_space
         self.real_space_rounding = real_space_rounding
+        self.log_level = log_level
 
     def __call__(
         self,
@@ -176,6 +192,11 @@ class ObjectiveWrapper:
 
         assert type(result_index) == int
         assert type(args) == list, f"Expected list of args, got {args}"
+
+        if self.log_level:
+            setup_notebook_logging(self.log_level)
+
+        logger.info("Starting optimiser batch %d in child worker %d", result_index, os.getpid())
 
         strategy_universe = initialise_multiprocess_strategy_universe_from_disk(self.pickled_universe_fname)
 
@@ -209,10 +230,13 @@ class ObjectiveWrapper:
                 trading_strategy_engine_version=self.trading_strategy_engine_version,
                 execution_context=execution_context,
             )
-
+            logger.info("Backtest %d completed, saving the result", result_index)
             result.save()
 
-        return self.search_func(result)
+        opt_val = self.search_func(result)
+        opt_val.combination = combination
+        logger.info("Optimiser for combination %s resulted to %s, exiting child process", combination, opt_val)
+        return opt_val
 
 
 def get_optimised_dimensions(parameters: StrategyParameters) -> list[space.Dimension]:
@@ -312,6 +336,8 @@ def perform_optimisation(
     result_path: Path | None = None,
     min_batch_size=4,
     real_space_rounding=Decimal("0.00001"),
+    timeout: float = 10 * 60,
+    log_level: int | None=None,
 ) -> OptimiserResult:
     """Search different strategy parameters using an optimiser.
 
@@ -324,6 +350,8 @@ def perform_optimisation(
       because we do not know what indicator values we are going to search upfront.
       There might a race condition between different child workers to calculate and save
       indicator data series, but it should not matter as cache writes are atomic.
+
+    - This will likely consume gigabytes of disk space
 
     :param iterations:
         How many iteratiosn we will search
@@ -356,6 +384,18 @@ def perform_optimisation(
 
         You generally do not need to care about this.
 
+    :param timeout:
+        Maximum timeout for a joblib.Parallel for a single worker process for a single iteration.
+
+        Will interrupt hung child processes if a backtest takes forever.
+
+        Increase the number if you are getting issues.
+
+    :param log_level:
+        Control for the diagnostics.
+
+        E.g. set to `logging.INFO`.
+
     :return:
         Grid search results for different combinations.
 
@@ -364,6 +404,9 @@ def perform_optimisation(
     assert iterations > 0
     assert isinstance(parameters, StrategyParameters), f"Bad parameters: {type(parameters)}"
     assert callable(search_func), f"Search function is not callable: {search_func}"
+
+    if log_level is not None:
+        setup_notebook_logging(log_level)
 
     start = datetime.datetime.utcnow()
 
@@ -400,6 +443,8 @@ def perform_optimisation(
     worker_processor = Parallel(
         n_jobs=max_workers,
         backend="loky",
+        timeout=timeout,
+        max_nbytes=40*1024*1024,  # Allow passing 40 MBytes for child processes
     )
 
     batch_size = max(min_batch_size, max_workers)  # Make sure we have some batch size even if running single CPU
@@ -419,6 +464,7 @@ def perform_optimisation(
         create_indicators=create_indicators,
         search_space=search_space,
         real_space_rounding=real_space_rounding,
+        log_level=log_level,
     )
 
     name = parameters.get("name") or parameters.get("id") or "backtest"
@@ -426,6 +472,8 @@ def perform_optimisation(
     result_index = 1
 
     all_results: list[SearchResult] = []
+
+    print(f"Optimiser search result cache is {result_path}\nIndicator cache is {indicator_storage.get_disk_cache_path()}")
 
     with tqdm(total=iterations, desc=f"Optimising {name}, search space is {len(search_space)} variables, using {max_workers} CPUs") as progress_bar:
         for i in range(0, iterations):
@@ -447,12 +495,16 @@ def perform_optimisation(
                 # Single thread path
                 y = [objective(result_index, args) for args in x]
 
+                logger.info("Iteration %d multiprocessing complete", i)
+
             # Tell optimiser how well the last batch did
             # by matching each x points to their raw optimise y value,
             # and unpack our data structure
             optimizer.tell(x, [single_y.value for single_y in y])
 
+            result: SearchResult
             for result in y:
+                result.hydrate()  # Load grid search result data from the disk
                 all_results.append(result)
 
             best_so_far: SearchResult = min(all_results)  # Get the best value for "bull days matched"
@@ -482,29 +534,9 @@ def perform_optimisation(
 
 def optimise_profit(result: GridSearchResult) -> SearchResult:
     """Search for the best CAGR value."""
-    return SearchResult(-result.get_cagr(), negative=True, result=result)
+    return SearchResult(-result.get_cagr(), negative=True)
 
 
 def optimise_sharpe(result: GridSearchResult) -> SearchResult:
     """Search for the best Sharpe value."""
-    return SearchResult(-result.get_sharpe(), negative=True, result=result)
-
-
-def _fix_loky_backend_hanging_forever(worker_processor):
-    """Hotfix of working aroudn Joblib and Loky lacking clean terminate() function.
-
-    - If we do not kill Loky child worker processes, our process like unit test,
-      will never terminate
-    """
-    import psutil
-    backend = worker_processor._backend
-    import ipdb ; ipdb.set_trace()
-    try:
-        backend.abort_everything(ensure_ready=False)
-    except AttributeError:
-        pass
-    #current_process = psutil.Process()
-    #for subproc in current_process.children(recursive=True):
-    #    import ipdb ; ipdb.set_trace()
-    #    print(subproc)
-        # psutil.Process(subproc).terminate()
+    return SearchResult(-result.get_sharpe(), negative=True)
