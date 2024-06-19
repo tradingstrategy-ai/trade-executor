@@ -100,6 +100,10 @@ class SearchResult:
         """Load the grid search result data for this result from the disk."""
         self.result = GridSearchResult.load(self.combination)
 
+    def is_valid(self) -> bool:
+        """Could not calculate a value."""
+        return self.value is not None
+
 
 class SearchFunction(typing.Protocol):
     """The function definition for the optimiser search function.
@@ -163,6 +167,10 @@ class OptimiserResult:
     def get_combination_count(self) -> int:
         """How many combinations we searched in this optimiser run."""
         return len(self.results)
+
+    def get_results_as_grid_search_results(self) -> list[GridSearchResult]:
+        """Get all search results as grid search results list for the analysis."""
+        return [r.result for r in self.results]
 
 
 class ObjectiveWrapper:
@@ -345,6 +353,20 @@ def create_grid_combination(
     return combination
 
 
+class MinTradeCountFilter:
+    """Have a minimum threshold of a created trading position count.
+
+    Avoid strategies that have a single or few random successful open and close.
+    """
+
+    def __init__(self, min_trade_count):
+        self.min_trade_count = min_trade_count
+
+    def __call__(self, result: SearchResult) -> bool:
+        """Return true if the trade count threshold is reached."""
+        return result.result.get_trade_count() > self.min_trade_count
+
+
 def perform_optimisation(
     iterations: int,
     search_func: SearchFunction,
@@ -362,6 +384,7 @@ def perform_optimisation(
     real_space_rounding=Decimal("0.00001"),
     timeout: float = 10 * 60,
     log_level: int | None=None,
+    result_filter=MinTradeCountFilter(50),
 ) -> OptimiserResult:
     """Search different strategy parameters using an optimiser.
 
@@ -420,6 +443,11 @@ def perform_optimisation(
 
         E.g. set to `logging.INFO`.
 
+    :param result_filter:
+        Filter bad strategies.
+
+        Try to avoid strategies that open too few trades or are otherwise not viable.
+
     :return:
         Grid search results for different combinations.
 
@@ -468,7 +496,6 @@ def perform_optimisation(
         n_jobs=max_workers,
         backend="loky",
         timeout=timeout,
-        return_as="generator_unordered",
         max_nbytes=40*1024*1024,  # Allow passing 40 MBytes for child processes
     )
 
@@ -526,10 +553,21 @@ def perform_optimisation(
 
                 logger.info("Iteration %d multiprocessing complete", i)
 
+            # Filter values - set invalid values to zeros
+            filtered_y = []
+            for single_y in y:
+                single_y.hydrate()
+                if result_filter(single_y):
+                    value = single_y.value
+                else:
+                    # TODO: What's a better way to filter values for Gaussian Process?
+                    value = 0
+                filtered_y.append(value)
+
             # Tell optimiser how well the last batch did
             # by matching each x points to their raw optimise y value,
             # and unpack our data structure
-            optimizer.tell(x, [single_y.value for single_y in y])
+            optimizer.tell(x, filtered_y)
 
             result: SearchResult
             for result in y:
