@@ -93,8 +93,9 @@ def analyse_combination(
 
 
 def analyse_grid_search_result(
-        results: List[GridSearchResult],
-        min_positions_threshold: int = 5,
+    results: List[GridSearchResult],
+    min_positions_threshold: int = 5,
+    drop_duplicates=True,
 ) -> pd.DataFrame:
     """Create aa table showing grid search result of each combination.
 
@@ -141,8 +142,8 @@ def analyse_grid_search_result(
     # as the optimiser searches are down in parallel
     # - however this would break styles of this df.
     # We remove duplicates here.
-
-    df = df.drop_duplicates(keep="first")
+    if drop_duplicates:
+        df = df.drop_duplicates(keep="first")
 
     # duplicates = df[df.index.duplicated(keep='first')]
     # if len(duplicates)> 0:
