@@ -186,7 +186,7 @@ def setup_pytest_logging(request=None, mute_requests=True) -> logging.Logger:
     return logging.getLogger("test")
 
 
-def setup_notebook_logging(log_level: str | int=logging.WARNING) -> logging.Logger:
+def setup_notebook_logging(log_level: str | int=logging.WARNING, show_process=False) -> logging.Logger:
     """Setup logger in notebook / backtesting environments.
 
     This will enable logging for all loggeres and the output is too verbose
@@ -196,7 +196,11 @@ def setup_notebook_logging(log_level: str | int=logging.WARNING) -> logging.Logg
     logger = logging.getLogger()
 
     # Set log format to dislay the logger name to hunt down verbose logging modules
-    fmt = "%(asctime)s %(name)-50s %(levelname)-8s %(message)s"
+    if show_process:
+        # Debugging the Loky backing - what a mess
+        format = "<proc:%(process)d> %(asctime)s %(name)-50s %(levelname)-8s %(message)s"
+    else:
+        format = "%(asctime)s %(name)-50s %(levelname)-8s %(message)s"
 
     # TODO: coloredlogs disabled for notebook -
     # see https://stackoverflow.com/a/68930736/315168
@@ -209,7 +213,11 @@ def setup_notebook_logging(log_level: str | int=logging.WARNING) -> logging.Logg
 
     logger = logging.getLogger()
 
-    logging.basicConfig(stream=sys.stdout, level=log_level)
+    logging.basicConfig(
+        stream=sys.stdout,
+        level=log_level,
+        format=format,
+    )
     #logger.setLevel(log_level)
 
     setup_custom_log_levels()

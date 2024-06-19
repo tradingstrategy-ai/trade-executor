@@ -177,6 +177,10 @@ class ExecutionContext:
     #:
     grid_search: bool = False
 
+    #: Is this backtest run part of a optimiser
+    #:
+    optimiser: bool = False
+
     #: Are we running inside Jupyter notebook.
     #:
     #: - We might have HTML widgets available like HTML progress bar
@@ -199,6 +203,13 @@ class ExecutionContext:
         running_version = self.engine_version or "0.1"
         required_version = f"{major}.{minor}.{patch}"
         return version.parse(running_version) >= version.parse(required_version)
+
+    def has_visualisation(self) -> bool:
+        """Should backtest spend time to draw custom visualisations.
+
+        - Disabled for the grid search for the speed
+        """
+        return not(self.grid_search or self.optimiser)
 
     @property
     def live_trading(self) -> bool:
@@ -238,6 +249,7 @@ scikit_optimizer_context = ExecutionContext(
     ExecutionMode.backtesting,
     jupyter=False,
     progress_bars=False,
+    optimiser=True,
 )
 
 # trade-execution console commands

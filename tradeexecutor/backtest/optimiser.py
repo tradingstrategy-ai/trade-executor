@@ -11,6 +11,7 @@ import dataclasses
 import datetime
 import inspect
 import logging
+import os
 import typing
 import warnings
 from _decimal import Decimal
@@ -28,6 +29,7 @@ from tqdm_loggable.auto import tqdm
 
 from tradeexecutor.backtest.grid_search import GridSearchWorker, GridCombination, GridSearchDataRetention, GridSearchResult, save_disk_multiprocess_strategy_universe, initialise_multiprocess_strategy_universe_from_disk, run_grid_search_backtest, \
     get_grid_search_result_path, GridParameter
+from tradeexecutor.cli.log import setup_notebook_logging
 from tradeexecutor.strategy.engine_version import TradingStrategyEngineVersion
 from tradeexecutor.strategy.execution_context import ExecutionContext, grid_search_execution_context, scikit_optimizer_context
 from tradeexecutor.strategy.pandas_trader.indicator import DiskIndicatorStorage, CreateIndicatorsProtocol, IndicatorStorage
@@ -39,21 +41,47 @@ from tradeexecutor.utils.cpu import get_safe_max_workers_count
 logger = logging.getLogger(__name__)
 
 
-@dataclass(slots=True, frozen=True)
+@dataclass(slots=True)
 class SearchResult:
-    """Single optimiser search result value"""
+    """Single optimiser search result value.
 
-    #: The raw value
+    This is used in different contextes
+
+    - Return value from :py:class:`SearchFunction`
+
+    - Passing data from child worker to the parent process
+
+    - Passing data from :py:func:`perform_optimisation` to the notebook
+    """
+
+    #: The raw value of the search function we are optimising
     value: float
 
-    #: Did we flip this value to negative  because we are looking for a minimised result
+    #: Did we flip this value to negative because we are looking for a minimised result
     negative: bool
 
-    #: Full result data (serialised)
-    result: GridSearchResult
+    #: For which grid combination this result was
+    #:
+    #: This is the key to load the child worker produced data from the disk in the parent process
+    #:
+    combination: GridCombination | None = None
+
+    # We do not pass the result directly to child process but let the parent process to read it from the disk
+    #:
+    #: Call :py:meth:`hydrate` to make this data available.
+    #:
+    result: GridSearchResult | None = None
+
+    #: Did we filter out this result
+    #:
+    #: See `result_filter` in :py:func:`perform_optimisation`
+    #:
+    filtered: bool = False
 
     def __repr__(self):
-        return f"<SearchResult {self.result.get_label()} = {self.get_original_value()}>"
+        return f"<SearchResult {self.combination} = {self.get_original_value()}>"
+
+    # Allow to call min(list[SearchResult]) to find the best value
 
     def __eq__(self, other):
         return self.value == other.value
@@ -65,10 +93,22 @@ class SearchResult:
         return self.value > other.value
 
     def get_original_value(self) -> float:
+        """Get the original best search value.
+
+        - Flip off the extra minus sign if we had to add it
+        """
         if self.negative:
             return -self.value
         else:
             return self.value
+
+    def hydrate(self):
+        """Load the grid search result data for this result from the disk."""
+        self.result = GridSearchResult.load(self.combination)
+
+    def is_valid(self) -> bool:
+        """Could not calculate a value."""
+        return self.value is not None
 
 
 class SearchFunction(typing.Protocol):
@@ -93,7 +133,10 @@ class SearchFunction(typing.Protocol):
 
 @dataclass(frozen=True, slots=True)
 class OptimiserResult:
-    """The outcome of the optimiser run."""
+    """The outcome of the optimiser run.
+
+    - Contains all the grid search results we generated during the run
+    """
 
     #: The parameters we searched
     #:
@@ -101,16 +144,18 @@ class OptimiserResult:
     #:
     parameters: StrategyParameters
 
-    # Where we store the grid search results
+    # Where we store the grid search results data
     result_path: Path
 
     #: Different grid search results
     #:
-    #: From the best to the worst
+    #: Sortd from the best to the worst.
     #:
     results: list[SearchResult]
 
-    # Where did we store precalculated indicator files
+    #: Where did we store precalculated indicator files.
+    #:
+    #: Allows to peek into raw indicator data if we need to.
     indicator_storage: DiskIndicatorStorage
 
     @staticmethod
@@ -124,6 +169,14 @@ class OptimiserResult:
         assert name_hint, f"Cannot determine parameter id or name for StrategyParameters, needed for optimiser search result storage: {parameters}"
 
         return get_grid_search_result_path(name_hint)
+
+    def get_combination_count(self) -> int:
+        """How many combinations we searched in this optimiser run."""
+        return len(self.results)
+
+    def get_results_as_grid_search_results(self) -> list[GridSearchResult]:
+        """Get all search results as grid search results list for the analysis."""
+        return [r.result for r in self.results]
 
 
 class ObjectiveWrapper:
@@ -144,6 +197,7 @@ class ObjectiveWrapper:
         result_path: Path,
         search_space: list[Dimension],
         real_space_rounding: Decimal,
+        log_level: int,
     ):
         self.search_func = search_func
         self.pickled_universe_fname = pickled_universe_fname
@@ -155,6 +209,7 @@ class ObjectiveWrapper:
         self.result_path = result_path
         self.search_space = search_space
         self.real_space_rounding = real_space_rounding
+        self.log_level = log_level
 
     def __call__(
         self,
@@ -172,6 +227,11 @@ class ObjectiveWrapper:
 
         assert type(result_index) == int
         assert type(args) == list, f"Expected list of args, got {args}"
+
+        if self.log_level:
+            setup_notebook_logging(self.log_level, show_process=True)
+
+        logger.info("Starting optimiser batch %d in child worker %d", result_index, os.getpid())
 
         strategy_universe = initialise_multiprocess_strategy_universe_from_disk(self.pickled_universe_fname)
 
@@ -193,8 +253,10 @@ class ObjectiveWrapper:
             merged_parameters = StrategyParameters.from_dict(self.parameters)
             merged_parameters.update({p.name: p.get_computable_value() for p in combination.parameters})
 
+            # Make sure we drag the engine version along
             execution_context = dataclasses.replace(scikit_optimizer_context)
             execution_context.engine_version = self.trading_strategy_engine_version
+
             result = run_grid_search_backtest(
                 combination,
                 decide_trades=self.decide_trades,
@@ -204,11 +266,15 @@ class ObjectiveWrapper:
                 indicator_storage=self.indicator_storage,
                 trading_strategy_engine_version=self.trading_strategy_engine_version,
                 execution_context=execution_context,
+                max_workers=1,  # Don't allow this child process to create its own worker pool for indicator calculations
             )
-
+            logger.info("Backtest %d completed, saving the result", result_index)
             result.save()
 
-        return self.search_func(result)
+        opt_val = self.search_func(result)
+        opt_val.combination = combination
+        logger.info("Optimiser for combination %s resulted to %s, exiting child process", combination, opt_val)
+        return opt_val
 
 
 def get_optimised_dimensions(parameters: StrategyParameters) -> list[space.Dimension]:
@@ -293,6 +359,20 @@ def create_grid_combination(
     return combination
 
 
+class MinTradeCountFilter:
+    """Have a minimum threshold of a created trading position count.
+
+    Avoid strategies that have a single or few random successful open and close.
+    """
+
+    def __init__(self, min_trade_count):
+        self.min_trade_count = min_trade_count
+
+    def __call__(self, result: SearchResult) -> bool:
+        """Return true if the trade count threshold is reached."""
+        return result.result.get_trade_count() > self.min_trade_count
+
+
 def perform_optimisation(
     iterations: int,
     search_func: SearchFunction,
@@ -307,24 +387,39 @@ def perform_optimisation(
     indicator_storage: DiskIndicatorStorage | None = None,
     result_path: Path | None = None,
     min_batch_size=4,
-    real_space_rounding=Decimal("0.00001"),
+    real_space_rounding=Decimal("0.01"),
+    timeout: float = 10 * 60,
+    log_level: int | None=None,
+    result_filter=MinTradeCountFilter(50),
+    bad_result_value=0,
 ) -> OptimiserResult:
     """Search different strategy parameters using an optimiser.
 
-    Use scikit-optimize to find the optimal strategy parameters.
+    - Use scikit-optimize to find the optimal strategy parameters.
 
-    :param combinations:
-        Prepared grid combinations.
+    - The results of previous runs are cached on a disk using the same cache as grid search,
+      though the cache is not as effective as each optimise run walks randomly around.
+
+    - Unlike in grid search, indicators are calculated in the child worker processes,
+      because we do not know what indicator values we are going to search upfront.
+      There might a race condition between different child workers to calculate and save
+      indicator data series, but it should not matter as cache writes are atomic.
+
+    - This will likely consume gigabytes of disk space
+
+    :param iterations:
+        How many iteratiosn we will search
+
+    :param search_func:
+        The function that will rank the optimise iteration results.
+
+        See :py:func:`optimise_profit` and :py:func:`optimise_sharpe`,
+        but can be any of your custom functions.
+
+    :param parameters:
+        Prepared search space and fixed parameters.
 
         See :py:func:`prepare_grid_combinations`
-
-    :param stats:
-        If passed, collect run-time and unit testing statistics to this dictionary.
-
-    :param multiprocess:
-        Perform the search using multiple CPUs and Python's multiprocessing.
-
-        Set `1` to debug in a single thread.
 
     :param trading_strategy_engine_version:
         Which version of engine we are using.
@@ -338,17 +433,42 @@ def perform_optimisation(
         We need to write float values as cache filename parameters and too high float accuracy causes
         too long strings breaking filenames.
 
+    :param min_batch_size:
+        How many points we ask for the batch processing from the scikit-optimiser once.
+
+        You generally do not need to care about this.
+
+    :param timeout:
+        Maximum timeout for a joblib.Parallel for a single worker process for a single iteration.
+
+        Will interrupt hung child processes if a backtest takes forever.
+
+        Increase the number if you are getting issues.
+
+    :param log_level:
+        Control for the diagnostics.
+
+        E.g. set to `logging.INFO`.
+
+    :param result_filter:
+        Filter bad strategies.
+
+        Try to avoid strategies that open too few trades or are otherwise not viable.
+
+    :param bad_result_value:
+        What placeholder value we use for the optimiser when `result_filter` does not like the outcome.
+
     :return:
         Grid search results for different combinations.
-
-        Sorted so that the first result is the best optimised,
-        then decreaseing.
 
     """
 
     assert iterations > 0
     assert isinstance(parameters, StrategyParameters), f"Bad parameters: {type(parameters)}"
     assert callable(search_func), f"Search function is not callable: {search_func}"
+
+    if log_level is not None:
+        setup_notebook_logging(log_level)
 
     start = datetime.datetime.utcnow()
 
@@ -385,6 +505,8 @@ def perform_optimisation(
     worker_processor = Parallel(
         n_jobs=max_workers,
         backend="loky",
+        timeout=timeout,
+        max_nbytes=40*1024*1024,  # Allow passing 40 MBytes for child processes
     )
 
     batch_size = max(min_batch_size, max_workers)  # Make sure we have some batch size even if running single CPU
@@ -404,6 +526,7 @@ def perform_optimisation(
         create_indicators=create_indicators,
         search_space=search_space,
         real_space_rounding=real_space_rounding,
+        log_level=log_level,
     )
 
     name = parameters.get("name") or parameters.get("id") or "backtest"
@@ -412,7 +535,9 @@ def perform_optimisation(
 
     all_results: list[SearchResult] = []
 
-    with tqdm(total=iterations, desc=f"Searching the best parameters for {name}") as progress_bar:
+    print(f"Optimiser search result cache is {result_path}\nIndicator cache is {indicator_storage.get_disk_cache_path()}")
+
+    with tqdm(total=iterations, desc=f"Optimising {name}, search space is {len(search_space)} variables, using {max_workers} CPUs") as progress_bar:
         for i in range(0, iterations):
             with warnings.catch_warnings():
                 # Ignore warning when we too close to optimal:
@@ -428,16 +553,37 @@ def perform_optimisation(
                     result_index += 1
 
                 y = worker_processor(batch)  # evaluate points in parallel
+                y = list(y)
             else:
                 # Single thread path
-                y = [objective(result_index, args) for args in x]
+                y = []
+                for args in x:
+                    y.append(objective(result_index, args))
+                    logger.info("Got result for %s", args)
+
+                logger.info("Iteration %d multiprocessing complete", i)
+
+            # Filter values - set invalid values to zeros
+            filtered_y = []
+            for single_y in y:
+                single_y.hydrate()
+                if result_filter(single_y):
+                    value = single_y.value
+                else:
+                    # Feed deeply negative value to the optimiser
+                    # TODO: What's a better way to filter values for Gaussian Process?
+                    value = bad_result_value
+                    single_y.filtered = True
+                filtered_y.append(value)
 
             # Tell optimiser how well the last batch did
             # by matching each x points to their raw optimise y value,
             # and unpack our data structure
-            optimizer.tell(x, [single_y.value for single_y in y])
+            optimizer.tell(x, filtered_y)
 
+            result: SearchResult
             for result in y:
+                result.hydrate()  # Load grid search result data from the disk
                 all_results.append(result)
 
             best_so_far: SearchResult = min(all_results)  # Get the best value for "bull days matched"
@@ -467,29 +613,9 @@ def perform_optimisation(
 
 def optimise_profit(result: GridSearchResult) -> SearchResult:
     """Search for the best CAGR value."""
-    return SearchResult(-result.get_cagr(), negative=True, result=result)
+    return SearchResult(-result.get_cagr(), negative=True)
 
 
 def optimise_sharpe(result: GridSearchResult) -> SearchResult:
     """Search for the best Sharpe value."""
-    return SearchResult(-result.get_sharpe(), negative=True, result=result)
-
-
-def _fix_loky_backend_hanging_forever(worker_processor):
-    """Hotfix of working aroudn Joblib and Loky lacking clean terminate() function.
-
-    - If we do not kill Loky child worker processes, our process like unit test,
-      will never terminate
-    """
-    import psutil
-    backend = worker_processor._backend
-    import ipdb ; ipdb.set_trace()
-    try:
-        backend.abort_everything(ensure_ready=False)
-    except AttributeError:
-        pass
-    #current_process = psutil.Process()
-    #for subproc in current_process.children(recursive=True):
-    #    import ipdb ; ipdb.set_trace()
-    #    print(subproc)
-        # psutil.Process(subproc).terminate()
+    return SearchResult(-result.get_sharpe(), negative=True)

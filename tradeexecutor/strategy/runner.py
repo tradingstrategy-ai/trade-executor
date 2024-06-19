@@ -220,7 +220,9 @@ class StrategyRunner(abc.ABC):
         token = reserve_assets[0]
         assert token.decimals and token.decimals > 0, f"Reserve asset lacked decimals"
 
-        logger.info("sync_portfolio() starting at block %s", end_block)
+        if end_block is not None:
+            # Only msg in live executoin
+            logger.info("sync_portfolio() starting at block %s", end_block)
 
         balance_update_events = self.sync_model.sync_treasury(
             strategy_cycle_or_trigger_check_ts,
@@ -229,7 +231,8 @@ class StrategyRunner(abc.ABC):
             end_block=end_block,
         )
         assert type(balance_update_events) == list
-        logger.info("Received %d balance update events from the sync", len(balance_update_events))
+        if end_block is not None:
+            logger.info("Received %d balance update events from the sync", len(balance_update_events))
         for e in balance_update_events:
             logger.trade("Funding flow event: %s", e)
 
@@ -841,7 +844,9 @@ class StrategyRunner(abc.ABC):
         debug_details = {}
 
         end_block = self.execution_model.get_safe_latest_block()
-        logger.info(f"check_position_triggers() using block %s", end_block)
+        if end_block is not None:
+            # Only log in live execution
+            logger.info(f"check_position_triggers() using block %s", end_block)
 
         with self.timed_task_context_manager("check_position_triggers"):
 
@@ -852,7 +857,8 @@ class StrategyRunner(abc.ABC):
 
             # Check that our on-chain balances are good
             with self.timed_task_context_manager("check_accounts_position_triggers"):
-                logger.info("Position trigger pre-trade accounts balance check")
+                if self.execution_context.mode.is_live_trading():
+                    logger.info("Position trigger pre-trade accounts balance check")
                 self.check_accounts(universe, state, end_block=end_block)
 
             # We use PositionManager.close_position()
@@ -977,7 +983,9 @@ class StrategyRunner(abc.ABC):
                     raise UnexpectedAccountingCorrectionIssue("Aborting execution as we cannot reliable trade with incorrect balances.")
         else:
             # Path taken by some legacy tests
-            logger.info("Accounting checks disabled - skipping")
+            # Too noisy
+            # logger.info("Accounting checks disabled - skipping")
+            pass
 
 
 def post_process_trade_decision(state: State, trades: List[TradeExecution]):

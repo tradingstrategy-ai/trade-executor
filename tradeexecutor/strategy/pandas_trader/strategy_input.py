@@ -545,7 +545,7 @@ class StrategyInputIndicators:
         """
         assert type(name) == str
         if column is not None:
-            assert type(column) == str
+            assert type(column) == str, f"Expected string, got {type(column)}: {column}"
 
         if not unlimited:
             assert self.timestamp, f"StrategyInputIndicators.timestamp is None. prepare_decision_cycle() not called, or you are outside a decide_trades() function."
@@ -751,7 +751,7 @@ class StrategyInput:
             return True
 
         # Grid search disables visual plotting to save speed and space
-        return not self.execution_context.grid_search
+        return self.execution_context.has_visualisation()
 
 
 _time_frame_cache = cachetools.Cache(maxsize=SERIES_CACHE_SIZE)

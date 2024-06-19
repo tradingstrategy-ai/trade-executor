@@ -1030,6 +1030,7 @@ def run_grid_search_backtest(
     parameters: StrategyParameters | None = None,
     indicator_storage: IndicatorStorage | None = None,
     execution_context=standalone_backtest_execution_context,
+    max_workers: int = 0,
 ) -> GridSearchResult:
     assert isinstance(universe, TradingStrategyUniverse), f"Received {universe}"
 
@@ -1060,8 +1061,9 @@ def run_grid_search_backtest(
     if not routing_model:
         routing_model = BacktestRoutingIgnoredModel(universe.get_reserve_asset().address)
 
-    execution_context = dataclasses.replace(grid_search_execution_context)
-    execution_context.engine_version = trading_strategy_engine_version
+    if execution_context is None:
+        execution_context = dataclasses.replace(grid_search_execution_context)
+        execution_context.engine_version = trading_strategy_engine_version
 
     # Run the test
     try:
@@ -1087,6 +1089,7 @@ def run_grid_search_backtest(
             indicator_storage=indicator_storage,
             grid_search=True,
             execution_context=execution_context,
+            max_workers=max_workers,
         )
     except Exception as e:
         # Report to the notebook which of the grid search combinations is a problematic one

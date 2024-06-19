@@ -51,7 +51,7 @@ def analyse_combination(
 
         # Skip parameters that are single fixed value
         # and do not affect the grid search results
-        if param.single:
+        if param.single and not param.optimise:
             continue
 
         row[param.name] = param.value
@@ -116,9 +116,9 @@ def analyse_grid_search_result(
         Output from :py:meth:`tradeexecutor.backtest.grid_search.perform_grid_search`.
 
     :param min_positions_threshold:
-        If we did less positions than this amount, do not consider this a proper strategy.
+        If we has less closed positions than this amount, do not consider this a proper trading strategy.
 
-        Filter out one position outliers.
+        It is just random noise. Do not write a result line for such parameter combinations.
 
     :return:
         Table of grid search combinations
@@ -128,6 +128,7 @@ def analyse_grid_search_result(
     df = pd.DataFrame(rows)
     r = results[0]
     param_names = [p.name for p in r.combination.searchable_parameters]
+    # display(df)
     df = df.set_index(param_names)
     df = df.sort_index()
     return df
