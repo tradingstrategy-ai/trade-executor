@@ -1,4 +1,5 @@
 """Perform a grid search ove strategy parameters to find optimal parameters."""
+import dataclasses
 import tempfile
 from _decimal import Decimal
 
@@ -1058,6 +1059,9 @@ def run_grid_search_backtest(
     if not routing_model:
         routing_model = BacktestRoutingIgnoredModel(universe.get_reserve_asset().address)
 
+    execution_context = dataclasses.replace(grid_search_execution_context)
+    execution_context.engine_version = trading_strategy_engine_version
+
     # Run the test
     try:
         state, universe, debug_dump = run_backtest_inline(
@@ -1085,7 +1089,6 @@ def run_grid_search_backtest(
         )
     except Exception as e:
         # Report to the notebook which of the grid search combinations is a problematic one
-        raise
         raise RuntimeError(f"Running a grid search combination failed:\n{combination}\nThe original exception was: {e}") from e
 
     # Portfolio performance

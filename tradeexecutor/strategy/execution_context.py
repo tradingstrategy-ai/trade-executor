@@ -118,7 +118,7 @@ class ExecutionMode(enum.Enum):
         return self in (self.unit_testing_trading, self.simulated_trading, self.unit_testing,)
 
 
-@dataclass
+@dataclass(slots=True)
 class ExecutionContext:
     """Information about the strategy execution environment.
 

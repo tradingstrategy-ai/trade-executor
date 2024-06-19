@@ -516,7 +516,7 @@ def test_perform_grid_search_engine_v5(
 
         # Indicator values that are searched in the grid search
         slow_ema_candle_count = 7
-        fast_ema_candle_count = [1, 2]
+        fast_ema_candle_count = [2, 3]
 
     def create_indicators(parameters: StrategyParameters, indicators: IndicatorSet, strategy_universe: TradingStrategyUniverse, execution_context: ExecutionContext):
         indicators.add("slow_ema", pandas_ta.ema, {"length": parameters.slow_ema_candle_count})
