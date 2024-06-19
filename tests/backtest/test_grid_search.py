@@ -249,7 +249,11 @@ def test_perform_grid_search_single_thread(
     sample = pick_best_grid_search_result(results)
     assert sample is not None
 
-    table = analyse_grid_search_result(results, min_positions_threshold=0)
+    table = analyse_grid_search_result(
+        results,
+        min_positions_threshold=0,
+        drop_duplicates=False,
+    )
     assert len(table) == 2 * 2 * 2
     row = table.iloc[0]
     # assert row["stop_loss_pct"] == 0.9

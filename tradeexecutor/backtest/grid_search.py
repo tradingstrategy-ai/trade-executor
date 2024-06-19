@@ -388,6 +388,8 @@ class GridSearchResult:
     def get_metric(self, name: str) -> float:
         """Get a performance metric from quantstats.
 
+        See also :py:meth:`get_summary_metric`
+
         A shortcut method.
 
         Example:
@@ -416,6 +418,21 @@ class GridSearchResult:
         assert name in self.metrics.index, f"Metric {name} not available. We have: {series.index}"
         return series[name]
 
+    def get_trade_summary_metric(self, name: str) -> float:
+        """Return one of the trade summart metrics.
+
+        - Get one of summary card attributes. see :py:attr:`summary`.
+
+        See also :py:meth:`get_metric`.
+
+        Example:
+
+        .. code-block:: python
+
+            return result.get_summary_metric("win_rate")
+        """
+        return getattr(self.summary, name)
+
     def get_cagr(self) -> Percent:
         return self.get_metric("CAGR﹪")
 
@@ -433,6 +450,14 @@ class GridSearchResult:
 
     def get_max_drawdown(self) -> Percent:
         return self.get_metric("Max Drawdown")
+
+    def get_win_rate(self) -> Percent:
+        """How many trades were won.
+
+        :return:
+            0 if we made zero trades
+        """
+        return self.get_trade_summary_metric("win_percent") or 0
 
     def get_parameter(self, name) -> object:
         """Get a combination parameter value used to produce this search.
