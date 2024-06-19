@@ -1,3 +1,4 @@
+import dataclasses
 import datetime
 import logging
 import runpy
@@ -246,6 +247,7 @@ class BacktestSetup:
             indicators=indicator_set,
             parameters=self.parameters,
             max_workers=self.max_workers,
+            verbose=execution_context.progress_bars,
         )
 
         strategy_input_indicators = StrategyInputIndicators(
@@ -563,6 +565,7 @@ def run_backtest(
     client: Optional[Client]=None,
     allow_missing_fees=False,
     execution_test_hook: Optional[ExecutionTestHook] = None,
+    execution_context: ExecutionContext | None = None,
 ) -> BacktestResult:
     """Run a strategy backtest.
 
@@ -628,13 +631,14 @@ def run_backtest(
         def backtest_setup(state: State, universe: TradingStrategyUniverse, deposit_syncer: BacktestSyncer):
             pass
 
-    execution_context = ExecutionContext(
-        mode=setup.mode,
-        timed_task_context_manager=timed_task,
-        engine_version=setup.trading_strategy_engine_version,
-        parameters=setup.parameters,
-        grid_search=setup.grid_search,
-    )
+    if execution_context is None:
+        execution_context = ExecutionContext(
+            mode=setup.mode,
+            timed_task_context_manager=timed_task,
+            engine_version=setup.trading_strategy_engine_version,
+            parameters=setup.parameters,
+            grid_search=setup.grid_search,
+        )
 
     if execution_context.is_version_greater_or_equal_than(0, 5, 0):
         # Needed for DecideTradesProtocolV4
@@ -733,6 +737,7 @@ def run_backtest_inline(
     mode: ExecutionMode = ExecutionMode.backtesting,
     max_workers=8,
     grid_search=False,
+    execution_context=standalone_backtest_execution_context,
 ) -> BacktestResult:
     """Run backtests for given decide_trades and create_trading_universe functions.
 
@@ -955,6 +960,18 @@ def run_backtest_inline(
     if indicator_storage is None and universe is not None:
         indicator_storage = DiskIndicatorStorage.create_default(universe)
 
+    # Backwardd compatibility for the code that never set execution context
+
+    execution_context = dataclasses.replace(execution_context)
+
+    if execution_context.engine_version != engine_version:
+        execution_context.engine_version = engine_version
+
+    if execution_context.parameters is None:
+        execution_context.parameters = parameters
+
+    execution_context.mode = mode
+
     backtest_setup = BacktestSetup(
         start_at,
         end_at,
@@ -984,7 +1001,12 @@ def run_backtest_inline(
         grid_search=grid_search,
     )
 
-    result = run_backtest(backtest_setup, client, allow_missing_fees=True)
+    result = run_backtest(
+        backtest_setup,
+        client,
+        allow_missing_fees=True,
+        execution_context=execution_context,
+    )
 
     result.diagnostics_data["wallet"] = wallet
 

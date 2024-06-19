@@ -118,7 +118,7 @@ class ExecutionMode(enum.Enum):
         return self in (self.unit_testing_trading, self.simulated_trading, self.unit_testing,)
 
 
-@dataclass
+@dataclass(slots=True)
 class ExecutionContext:
     """Information about the strategy execution environment.
 
@@ -184,6 +184,12 @@ class ExecutionContext:
     #:
     jupyter: bool = False
 
+    #: Render tqdm progress bars when running
+    #:
+    #: Disabled in child worker process context.
+    #:
+    progress_bars: bool = True
+
     def __repr__(self):
         version_str = f"v{self.engine_version}" if self.engine_version else "unspecified engine version"
         return f"<ExecutionContext {self.mode.name}, {version_str}>"
@@ -228,7 +234,11 @@ standalone_backtest_execution_context = ExecutionContext(ExecutionMode.backtesti
 #: Shorthand when running a indicator parameter optimizer using scikit-optimizer.
 #:
 #: We are inside a child worker process spawned by scikit,
-scikit_optimizer_context = ExecutionContext(ExecutionMode.backtesting, jupyter=False)
+scikit_optimizer_context = ExecutionContext(
+    ExecutionMode.backtesting,
+    jupyter=False,
+    progress_bars=False,
+)
 
 # trade-execution console commands
 console_command_execution_context = ExecutionContext(ExecutionMode.real_trading)

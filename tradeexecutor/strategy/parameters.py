@@ -162,6 +162,19 @@ class StrategyParameters(MutableAttributeDict):
             trading_strategy_engine_version="0.4",
             multiprocess=True,
         )
+
+    When working with optimiser, the optimiser search space must be defined using :py:class:`skopt.space.Dimension`
+    instances like :py:class:`skopt.space.Real`, :py:class:`skopt.space.Integer` or :py:class:`skopt.space.Categorial`.
+
+    .. code-block:: python
+
+        from skopt import space
+
+        class Parameters:
+            stop_loss = space.Real(0.85, 0.99)
+            max_asset_amount = space.Integer(3, 4)
+            regime_filter_type = space.Categorical(["bull", "bull_and_bear"])
+
     """
 
     def __getattribute__(self, name):
@@ -229,7 +242,7 @@ class StrategyParameters(MutableAttributeDict):
         return StrategyParameters(output)
 
     @staticmethod
-    def from_dict(other_parameters: dict) -> "StrategyParameters":
+    def from_dict(other_parameters: dict | MutableAttributeDict) -> "StrategyParameters":
         """Create parameter dict out from another dict.
 
         - Convert scikit-optimizer parameteres to astrategy parameter input to dictionary
