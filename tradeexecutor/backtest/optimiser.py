@@ -18,6 +18,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, Type
 
+import psutil
 from joblib import Parallel, delayed
 from skopt import space, Optimizer
 from skopt.space import Dimension
@@ -378,6 +379,9 @@ def perform_optimisation(
     )
 
     # Set up a joblib processor using multiprocessing (forking)
+    # With hot fix https://stackoverflow.com/a/67860638/315168
+    current_process = psutil.Process()
+    subproc_before = set([p.pid for p in current_process.children(recursive=True)])
     worker_processor = Parallel(
         n_jobs=max_workers,
         backend="loky",
@@ -440,6 +444,14 @@ def perform_optimisation(
             progress_bar.set_postfix({"Best so far": best_so_far.get_original_value()})
             progress_bar.update()
 
+    # Cleans up Loky backend hanging in pytest
+    # https://stackoverflow.com/a/77130505/315168
+    subproc_after = set([p.pid for p in current_process.children(recursive=True)])
+    terminate_set  = subproc_after - subproc_before
+    logger.info("Terminating bad Loky workers %d", len(terminate_set))
+    for subproc in terminate_set:
+        psutil.Process(subproc).terminate()
+
     logger.info("The best result for the optimiser value was %s", best_so_far)
 
     all_results.sort()
@@ -456,3 +468,28 @@ def perform_optimisation(
 def optimise_profit(result: GridSearchResult) -> SearchResult:
     """Search for the best CAGR value."""
     return SearchResult(-result.get_cagr(), negative=True, result=result)
+
+
+def optimise_sharpe(result: GridSearchResult) -> SearchResult:
+    """Search for the best Sharpe value."""
+    return SearchResult(-result.get_sharpe(), negative=True, result=result)
+
+
+def _fix_loky_backend_hanging_forever(worker_processor):
+    """Hotfix of working aroudn Joblib and Loky lacking clean terminate() function.
+
+    - If we do not kill Loky child worker processes, our process like unit test,
+      will never terminate
+    """
+    import psutil
+    backend = worker_processor._backend
+    import ipdb ; ipdb.set_trace()
+    try:
+        backend.abort_everything(ensure_ready=False)
+    except AttributeError:
+        pass
+    #current_process = psutil.Process()
+    #for subproc in current_process.children(recursive=True):
+    #    import ipdb ; ipdb.set_trace()
+    #    print(subproc)
+        # psutil.Process(subproc).terminate()
