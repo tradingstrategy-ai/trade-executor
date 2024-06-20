@@ -19,7 +19,19 @@ class Regime(enum.Enum):
     bear = -1
 
     #: We are in a sideways market (no trends)
+    #:
+    #: `None` is alias for `0` value here.
     crab = 0
+
+    @classmethod
+    def _missing_(cls, val):
+        """Construct enum based on a raw int value.
+
+        None (lack of data) is automatically converted to crab market.
+        """
+        if not val:
+            val = Regime.crab.value
+        return super()._missing_(val)
 
 
 @dataclass(frozen=True, slots=True)
