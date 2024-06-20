@@ -79,6 +79,29 @@ class StrategyInputIndicators:
         assert isinstance(self.available_indicators, IndicatorSet)
         assert isinstance(self.strategy_universe, TradingStrategyUniverse)
 
+    def get_ohlcv(
+        self,
+        pair: TradingPairIdentifier | HumanReadableTradingPairDescription | None = None,
+    ) -> pd.DataFrame:
+        """Get full OHLCV price feed for a trading pair.
+
+        :return:
+            DataFrame with open, high, low, close, volume columns.
+
+        """
+
+        if type(pair) == tuple:
+            # Resolve human description
+            pair = self.strategy_universe.get_pair_by_human_description(pair)
+
+        if pair is None:
+            pair = self.strategy_universe.get_single_pair()
+
+        assert isinstance(pair, TradingPairIdentifier)
+        assert pair.internal_id, "pair.internal_id missing - bad unit test data?"
+
+        return self.strategy_universe.data_universe.candles.get_candles_by_pair(pair.internal_id)
+
     def get_price(
         self,
         pair: TradingPairIdentifier | HumanReadableTradingPairDescription |  None = None,
