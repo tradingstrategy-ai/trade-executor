@@ -336,8 +336,7 @@ class GridSearchResult:
     #: The full back test state
     #:
     #: By the default, grid search execution drops these,
-    #: as saving and loading them takes extra time, space,
-    #: and state is not used to compare grid search results.
+    #: and saves as a separate file.
     #:
     state: State | None
 
@@ -516,8 +515,12 @@ class GridSearchResult:
         result.cached = True
         return result
 
-    def save(self):
-        """Serialise the result as Python pickle and state as separate file."""
+    def save(self, include_state=False):
+        """Serialise the result as Python pickle and state as separate file.
+
+        :param state:
+            State is saved also on the disk
+        """
 
         # TODO:
         # Fails to pickle functions, but we do not need these in results,
@@ -531,12 +534,16 @@ class GridSearchResult:
         # https://stackoverflow.com/a/3716361/315168
 
         final_file = self.combination.get_joblib_pickle_path()
+
+        os.makedirs(final_file.parent, exist_ok=True)
+
         temp = tempfile.NamedTemporaryFile(mode='wb', delete=False, dir=final_file.parent)
         joblib.dump(self, temp, compress=("gzip", 3))
         temp.close()
         shutil.move(temp.name, final_file)
 
-        self.save_state(self.state)
+        if include_state:
+            self.save_state(self.state)
 
     def save_state(self, state: State):
         """Save state in a separate file.

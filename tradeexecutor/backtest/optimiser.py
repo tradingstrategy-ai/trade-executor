@@ -273,7 +273,7 @@ class ObjectiveWrapper:
                 initial_deposit=merged_parameters["initial_cash"],
             )
             logger.info("Backtest %d completed, saving the result", result_index)
-            result.save()
+            result.save(include_state=True)
 
         opt_val = self.search_func(result)
         opt_val.combination = combination
