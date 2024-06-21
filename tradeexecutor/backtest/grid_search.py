@@ -541,13 +541,13 @@ class GridSearchResult:
 
         os.makedirs(final_file.parent, exist_ok=True)
 
+        if include_state:
+            self.save_state()
+
         temp = tempfile.NamedTemporaryFile(mode='wb', delete=False, dir=final_file.parent)
         joblib.dump(self, temp.name, compress=("gzip", 3))
         temp.close()
         shutil.move(temp.name, final_file)
-
-        if include_state:
-            self.save_state()
 
     def save_state(self):
         """Save state in a separate file.
