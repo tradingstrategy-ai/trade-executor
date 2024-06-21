@@ -1,9 +1,11 @@
 """Perform a grid search ove strategy parameters to find optimal parameters."""
 import dataclasses
+import gc
 import tempfile
 import traceback
 from _decimal import Decimal
 
+import joblib
 import numpy
 
 # Enable pickle patch that allows multiprocessing in notebooks
@@ -239,6 +241,22 @@ class GridCombination:
         """Get the path where the resulting state file is stored."""
         return self.result_path.joinpath(self.get_relative_result_path())
 
+    def get_metrics_pickle_path(self) -> Path:
+        """Get the filename for joblib pickled results are stored.
+
+        - This file is serialised with joblib and compressed with gzip
+        """
+        return self.result_path.joinpath(self.get_relative_result_path()) / "metricks.joblib.gz"
+
+    def get_state_file_path(self) -> Path:
+        """Get the state file for the results.
+
+        - We use pickle over JSON here as other apps do not read this data
+
+        - Pickle is faster https://stackoverflow.com/a/39607169/315168
+        """
+        return self.get_full_result_path() / "state.pickle"
+
     def validate(self):
         """Check arguments can be serialised as fs path."""
         assert len(self.searchable_parameters) > 0, f"Grid search combination does not have any parameters that would have multiple values to search: {self.parameters}. Add parameters to search or use normal backtesting instead. Also make sure your parameter class is not called StrategyParameters, as it is reserved for grid search."
@@ -319,9 +337,10 @@ class GridSearchResult:
 
     #: The full back test state
     #:
-    #: By the default, grid search execution drops these,
-    #: as saving and loading them takes extra time, space,
-    #: and state is not used to compare grid search results.
+    #: By the default, grid search execution drops these.
+    #: Optimiser saves the state as a separate file and you
+    #: can load it with :py:meth:`hydrate_state`.
+    #:
     #:
     state: State | None
 
@@ -483,25 +502,29 @@ class GridSearchResult:
 
     @staticmethod
     def has_result(combination: GridCombination):
-        base_path = combination.result_path
-        return base_path.joinpath(combination.get_full_result_path()).joinpath("result.pickle").exists()
+        return combination.get_metrics_pickle_path().exists()
 
     @staticmethod
     def load(combination: GridCombination):
         """Deserialised from the cached Python pickle."""
 
-        base_path = combination.get_full_result_path()
+        path = combination.get_metrics_pickle_path()
 
-        with open(base_path.joinpath("result.pickle"), "rb") as inp:
-            result: GridSearchResult = pickle.load(inp)
+        # with open(base_path.joinpath("result.pickle"), "rb") as inp:
+        #    result: GridSearchResult = pickle.load(inp)
+        gc.disable()
+        result = joblib.load(path)
+        gc.enable()
 
         result.cached = True
         return result
 
-    def save(self):
-        """Serialise as Python pickle."""
-        base_path = self.combination.get_full_result_path()
-        base_path.mkdir(parents=True, exist_ok=True)
+    def save(self, include_state=False):
+        """Serialise the result as Python pickle and state as separate file.
+
+        :param state:
+            State is saved also on the disk
+        """
 
         # TODO:
         # Fails to pickle functions, but we do not need these in results,
@@ -513,11 +536,51 @@ class GridSearchResult:
         # Do atomic replacement to avoid partial pickles,
         # as they cause subsequent test runs to fail
         # https://stackoverflow.com/a/3716361/315168
-        final_file = base_path.joinpath("result.pickle")
-        temp = tempfile.NamedTemporaryFile(mode='wb', delete=False, dir=base_path)
-        pickle.dump(self, temp)
+
+        final_file = self.combination.get_metrics_pickle_path()
+
+        os.makedirs(final_file.parent, exist_ok=True)
+
+        if include_state:
+            self.save_state()
+
+        temp = tempfile.NamedTemporaryFile(mode='wb', delete=False, dir=final_file.parent)
+        joblib.dump(self, temp.name, compress=("gzip", 3))
         temp.close()
         shutil.move(temp.name, final_file)
+
+    def save_state(self):
+        """Save state in a separate file.
+
+        - Not a part of the core metrics pickle
+
+        - We use pickle and not JSON as it is faster
+
+        - Called by :py:meth:`save`
+        """
+        state = self.state
+        final_file = self.combination.get_state_file_path()
+        temp = tempfile.NamedTemporaryFile(mode='wb', delete=False, dir=final_file.parent)
+        with open(temp.name, "wb") as out:
+            pickle.dump(state, out)
+        temp.close()
+        shutil.move(temp.name, final_file)
+
+    def hydrate_state(self) -> State:
+        """Get the grid search result full state.
+
+         - Make it part of the result object
+
+        - By default we do not load these, because it is too much overhad
+        """
+        if self.state is None:
+            final_file = self.combination.get_state_file_path()
+            assert final_file.exists(), f"State file {final_file} not written - did your searcher call save(include_state=True)?"
+            gc.disable()
+            with open(final_file, "rb") as inp:
+                self.state = pickle.load(inp)
+            gc.enable()
+        return self.state
 
 
 class GridSearchWorker(Protocol):
@@ -1116,6 +1179,7 @@ def run_grid_search_backtest(
             execution_context=execution_context,
             max_workers=max_workers,
         )
+
     except Exception as e:
         # Report to the notebook which of the grid search combinations is a problematic one
         tb = traceback.format_exc()
