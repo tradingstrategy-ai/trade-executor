@@ -1,9 +1,11 @@
 """Perform a grid search ove strategy parameters to find optimal parameters."""
 import dataclasses
+import gc
 import tempfile
 import traceback
 from _decimal import Decimal
 
+import joblib
 import numpy
 
 # Enable pickle patch that allows multiprocessing in notebooks
@@ -238,6 +240,17 @@ class GridCombination:
     def get_full_result_path(self) -> Path:
         """Get the path where the resulting state file is stored."""
         return self.result_path.joinpath(self.get_relative_result_path())
+
+    def get_joblib_pickle_path(self) -> Path:
+        """Get the filename for joblib pickled results are stored."""
+        return self.result_path.joinpath(self.get_relative_result_path()) / "result.joblib.gz"
+
+    def get_state_file_path(self) -> Path:
+        """Get the state file for the results."""
+        return self.get_full_result_path()
+
+    def write_state(self, state: State):
+        state.write_json_file(self.get_state_file_path())
 
     def validate(self):
         """Check arguments can be serialised as fs path."""
@@ -483,25 +496,25 @@ class GridSearchResult:
 
     @staticmethod
     def has_result(combination: GridCombination):
-        base_path = combination.result_path
-        return base_path.joinpath(combination.get_full_result_path()).joinpath("result.pickle").exists()
+        return combination.get_joblib_pickle_path().exists()
 
     @staticmethod
     def load(combination: GridCombination):
         """Deserialised from the cached Python pickle."""
 
-        base_path = combination.get_full_result_path()
+        path = combination.get_joblib_pickle_path()
 
-        with open(base_path.joinpath("result.pickle"), "rb") as inp:
-            result: GridSearchResult = pickle.load(inp)
+        # with open(base_path.joinpath("result.pickle"), "rb") as inp:
+        #    result: GridSearchResult = pickle.load(inp)
+        gc.disable()
+        result = joblib.load(path)
+        gc.enable()
 
         result.cached = True
         return result
 
     def save(self):
         """Serialise as Python pickle."""
-        base_path = self.combination.get_full_result_path()
-        base_path.mkdir(parents=True, exist_ok=True)
 
         # TODO:
         # Fails to pickle functions, but we do not need these in results,
@@ -513,11 +526,39 @@ class GridSearchResult:
         # Do atomic replacement to avoid partial pickles,
         # as they cause subsequent test runs to fail
         # https://stackoverflow.com/a/3716361/315168
-        final_file = base_path.joinpath("result.pickle")
-        temp = tempfile.NamedTemporaryFile(mode='wb', delete=False, dir=base_path)
-        pickle.dump(self, temp)
+
+        final_file = self.combination.get_joblib_pickle_path()
+        temp = tempfile.NamedTemporaryFile(mode='wb', delete=False, dir=final_file.parent)
+        joblib.dump(self, temp, compress=(3, "gzip"))
         temp.close()
         shutil.move(temp.name, final_file)
+
+    def save_state(self, state: State):
+        """Save state in a separate file.
+
+        - Not a part of the pickle
+
+        - Call after :py:meth:`save`
+        """
+        base_path = self.combination.get_full_result_path()
+        final_file = base_path.joinpath("state.json")
+        temp = tempfile.NamedTemporaryFile(mode='wb', delete=False, dir=base_path)
+        state.write_json_file(final_file)
+        temp.close()
+        shutil.move(temp.name, final_file)
+
+    def hydrate_state(self) -> State:
+        """Get the grid search result full state.
+
+         - Make it part of the result object
+
+        - By default we do not load these, because it is too much overhad
+        """
+        if self.state is None:
+            base_path = self.combination.get_full_result_path()
+            final_file = base_path.joinpath("state.json")
+            self.state = State.read_json_file(final_file)
+        return self.state
 
 
 class GridSearchWorker(Protocol):
@@ -1116,6 +1157,9 @@ def run_grid_search_backtest(
             execution_context=execution_context,
             max_workers=max_workers,
         )
+
+
+
     except Exception as e:
         # Report to the notebook which of the grid search combinations is a problematic one
         tb = traceback.format_exc()
