@@ -71,7 +71,8 @@ def visualise_market_regime_filter(
 
     signal_unique = signal.unique()
     for uniq_val in signal_unique:
-        assert uniq_val in (-1, 0, 1), f"Got unknown market regime value: {uniq_val}"
+        if not pd.isna(uniq_val):
+            assert uniq_val in (-1, 0, 1, None), f"Got unknown market regime value: {uniq_val}"
 
     # Fill the area between close price and SMA indicator
     # See https://plotly.com/python/filled-area-plots/#interior-filling-for-area-chart

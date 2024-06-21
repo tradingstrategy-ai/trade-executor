@@ -11,7 +11,9 @@ from tradeexecutor.state.types import Percent
 class Regime(enum.Enum):
     """Possible market regimes.
 
-    The content of signal for :py:func:`visualise_market_regime_filter`
+    The content of signal for :py:func:`visualise_market_regime_filter`.
+
+    Any incoming `nan` or `None` is aliased to crab region.
     """
 
     #: We are in a bull market (trends up)
