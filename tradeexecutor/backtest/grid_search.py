@@ -242,7 +242,10 @@ class GridCombination:
         return self.result_path.joinpath(self.get_relative_result_path())
 
     def get_joblib_pickle_path(self) -> Path:
-        """Get the filename for joblib pickled results are stored."""
+        """Get the filename for joblib pickled results are stored.
+
+        - This file is serialised with joblib and compressed with gzip
+        """
         return self.result_path.joinpath(self.get_relative_result_path()) / "result.joblib.gz"
 
     def get_state_file_path(self) -> Path:
@@ -514,7 +517,7 @@ class GridSearchResult:
         return result
 
     def save(self):
-        """Serialise as Python pickle."""
+        """Serialise the result as Python pickle and state as separate file."""
 
         # TODO:
         # Fails to pickle functions, but we do not need these in results,
@@ -529,9 +532,11 @@ class GridSearchResult:
 
         final_file = self.combination.get_joblib_pickle_path()
         temp = tempfile.NamedTemporaryFile(mode='wb', delete=False, dir=final_file.parent)
-        joblib.dump(self, temp, compress=(3, "gzip"))
+        joblib.dump(self, temp, compress=("gzip", 3))
         temp.close()
         shutil.move(temp.name, final_file)
+
+        self.save_state(self.state)
 
     def save_state(self, state: State):
         """Save state in a separate file.
@@ -557,7 +562,12 @@ class GridSearchResult:
         if self.state is None:
             base_path = self.combination.get_full_result_path()
             final_file = base_path.joinpath("state.json")
+
+            assert final_file.exists(), f"State file {final_file} not written"
+
+            gc.disable()
             self.state = State.read_json_file(final_file)
+            gc.enable()
         return self.state
 
 
@@ -1157,8 +1167,6 @@ def run_grid_search_backtest(
             execution_context=execution_context,
             max_workers=max_workers,
         )
-
-
 
     except Exception as e:
         # Report to the notebook which of the grid search combinations is a problematic one
