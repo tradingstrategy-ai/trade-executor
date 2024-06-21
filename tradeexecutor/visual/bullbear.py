@@ -24,6 +24,7 @@ def visualise_market_regime_filter(
     height=800,
     colour_map=DEFAULT_COLOUR_MAP,
     opacity=0.1,
+    region_data: list | None=None,
 ) -> go.Figure:
     """Visualise a bull/bear market regime filter on the top of the price action chart.
 
@@ -45,6 +46,9 @@ def visualise_market_regime_filter(
 
     :param title:
         Chart title
+
+    :param region_data:
+        Export individua region data for inspection
 
     :return:
         A chart with price action.
@@ -83,6 +87,10 @@ def visualise_market_regime_filter(
     for region in get_regime_signal_regions(signal):
         # https://stackoverflow.com/questions/55062965/python-how-to-make-shaded-areas-or-alternating-background-color-using-plotly
         colour = colour_map.get(region.regime)
+
+        if region_data is not None:
+            region_data.append(region)
+
         if colour:
             fig.add_vrect(
                 x0=region.start,

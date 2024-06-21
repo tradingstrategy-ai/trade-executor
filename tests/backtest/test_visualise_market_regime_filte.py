@@ -34,6 +34,11 @@ def dataset(persistent_test_client: Client):
     return dataset
 
 
+def test_regime_nan():
+    r = Regime(float("nan"))
+    assert r.name == "crab"
+
+
 def test_visualise_adx_binance_btc(dataset):
     """Resample price series to a higher time frame and shift at the same time using Binance data."""
 
