@@ -241,19 +241,21 @@ class GridCombination:
         """Get the path where the resulting state file is stored."""
         return self.result_path.joinpath(self.get_relative_result_path())
 
-    def get_joblib_pickle_path(self) -> Path:
+    def get_metrics_pickle_path(self) -> Path:
         """Get the filename for joblib pickled results are stored.
 
         - This file is serialised with joblib and compressed with gzip
         """
-        return self.result_path.joinpath(self.get_relative_result_path()) / "result.joblib.gz"
+        return self.result_path.joinpath(self.get_relative_result_path()) / "metricks.joblib.gz"
 
     def get_state_file_path(self) -> Path:
-        """Get the state file for the results."""
-        return self.get_full_result_path()
+        """Get the state file for the results.
 
-    def write_state(self, state: State):
-        state.write_json_file(self.get_state_file_path())
+        - We use pickle over JSON here as other apps do not read this data
+
+        - Pickle is faster https://stackoverflow.com/a/39607169/315168
+        """
+        return self.get_full_result_path() / "state.pickle"
 
     def validate(self):
         """Check arguments can be serialised as fs path."""
@@ -335,8 +337,10 @@ class GridSearchResult:
 
     #: The full back test state
     #:
-    #: By the default, grid search execution drops these,
-    #: and saves as a separate file.
+    #: By the default, grid search execution drops these.
+    #: Optimiser saves the state as a separate file and you
+    #: can load it with :py:meth:`hydrate_state`.
+    #:
     #:
     state: State | None
 
@@ -498,13 +502,13 @@ class GridSearchResult:
 
     @staticmethod
     def has_result(combination: GridCombination):
-        return combination.get_joblib_pickle_path().exists()
+        return combination.get_metrics_pickle_path().exists()
 
     @staticmethod
     def load(combination: GridCombination):
         """Deserialised from the cached Python pickle."""
 
-        path = combination.get_joblib_pickle_path()
+        path = combination.get_metrics_pickle_path()
 
         # with open(base_path.joinpath("result.pickle"), "rb") as inp:
         #    result: GridSearchResult = pickle.load(inp)
@@ -533,7 +537,7 @@ class GridSearchResult:
         # as they cause subsequent test runs to fail
         # https://stackoverflow.com/a/3716361/315168
 
-        final_file = self.combination.get_joblib_pickle_path()
+        final_file = self.combination.get_metrics_pickle_path()
 
         os.makedirs(final_file.parent, exist_ok=True)
 
@@ -548,14 +552,16 @@ class GridSearchResult:
     def save_state(self, state: State):
         """Save state in a separate file.
 
-        - Not a part of the pickle
+        - Not a part of the core metrics pickle
+
+        - We use pickle and not JSON as it is faster
 
         - Call after :py:meth:`save`
         """
-        base_path = self.combination.get_full_result_path()
-        final_file = base_path.joinpath("state.json")
-        temp = tempfile.NamedTemporaryFile(mode='wb', delete=False, dir=base_path)
-        state.write_json_file(final_file)
+        final_file = self.combination.get_state_file_path()
+        temp = tempfile.NamedTemporaryFile(mode='wb', delete=False, dir=final_file.parent)
+        with open(temp, "wb") as out:
+            pickle.dump(state, out)
         temp.close()
         shutil.move(temp.name, final_file)
 
@@ -567,13 +573,11 @@ class GridSearchResult:
         - By default we do not load these, because it is too much overhad
         """
         if self.state is None:
-            base_path = self.combination.get_full_result_path()
-            final_file = base_path.joinpath("state.json")
-
+            final_file = self.combination.get_state_file_path()
             assert final_file.exists(), f"State file {final_file} not written"
-
             gc.disable()
-            self.state = State.read_json_file(final_file)
+            with open(final_file, "rb") as inp:
+                self.state = pickle.load(inp)
             gc.enable()
         return self.state
 
