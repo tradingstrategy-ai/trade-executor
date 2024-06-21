@@ -542,25 +542,26 @@ class GridSearchResult:
         os.makedirs(final_file.parent, exist_ok=True)
 
         temp = tempfile.NamedTemporaryFile(mode='wb', delete=False, dir=final_file.parent)
-        joblib.dump(self, temp, compress=("gzip", 3))
+        joblib.dump(self, temp.name, compress=("gzip", 3))
         temp.close()
         shutil.move(temp.name, final_file)
 
         if include_state:
-            self.save_state(self.state)
+            self.save_state()
 
-    def save_state(self, state: State):
+    def save_state(self):
         """Save state in a separate file.
 
         - Not a part of the core metrics pickle
 
         - We use pickle and not JSON as it is faster
 
-        - Call after :py:meth:`save`
+        - Called by :py:meth:`save`
         """
+        state = self.state
         final_file = self.combination.get_state_file_path()
         temp = tempfile.NamedTemporaryFile(mode='wb', delete=False, dir=final_file.parent)
-        with open(temp, "wb") as out:
+        with open(temp.name, "wb") as out:
             pickle.dump(state, out)
         temp.close()
         shutil.move(temp.name, final_file)
@@ -574,7 +575,7 @@ class GridSearchResult:
         """
         if self.state is None:
             final_file = self.combination.get_state_file_path()
-            assert final_file.exists(), f"State file {final_file} not written"
+            assert final_file.exists(), f"State file {final_file} not written - did your searcher call save(include_state=True)?"
             gc.disable()
             with open(final_file, "rb") as inp:
                 self.state = pickle.load(inp)
