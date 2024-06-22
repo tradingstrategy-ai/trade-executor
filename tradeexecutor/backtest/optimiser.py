@@ -631,5 +631,20 @@ def optimise_win_rate(result: GridSearchResult) -> SearchResult:
 
 
 def optimise_max_drawdown(result: GridSearchResult) -> SearchResult:
-    """Search for the lowest max drawdown."""
-    return SearchResult(-result.get_max_drawdown(), negative=True)
+    """Search for the lowest max drawdown.
+
+    - Return absolute value of drawdown (negative sign removed).
+
+    - Lower is better.
+    """
+    return SearchResult(abs(result.get_max_drawdown()), negative=False)
+
+
+def optimise_sharpe_and_max_drawdown(result: GridSearchResult) -> SearchResult:
+    """Search for the best sharpe / max drawndown ratio.
+
+    - Search combined sharpe / max drawdown ratio.
+
+    - Higher is better.
+    """
+    return SearchResult(-(result.get_sharpe() / abs(result.get_max_drawdown())), negative=True)

@@ -468,6 +468,10 @@ class GridSearchResult:
         return 0.0
 
     def get_max_drawdown(self) -> Percent:
+        """Get the maximum drawdown.
+
+        Always a negative number.
+        """
         return self.get_metric("Max Drawdown")
 
     def get_win_rate(self) -> Percent:
