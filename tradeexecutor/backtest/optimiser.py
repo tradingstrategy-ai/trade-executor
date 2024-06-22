@@ -643,6 +643,9 @@ def optimise_max_drawdown(result: GridSearchResult) -> SearchResult:
 def optimise_sharpe_and_max_drawdown(result: GridSearchResult) -> SearchResult:
     """Search for the best sharpe / max drawndown ratio.
 
+    - One of the attempts to try to find "balanced" strategies that do not
+      take risky trades, but rather sit on the cash (which can be used elsewhere)
+
     - Search combined sharpe / max drawdown ratio.
 
     - Higher is better.
