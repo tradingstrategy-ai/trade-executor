@@ -628,3 +628,8 @@ def optimise_sharpe(result: GridSearchResult) -> SearchResult:
 def optimise_win_rate(result: GridSearchResult) -> SearchResult:
     """Search for the best trade win rate."""
     return SearchResult(-result.get_win_rate(), negative=True)
+
+
+def optimise_max_drawdown(result: GridSearchResult) -> SearchResult:
+    """Search for the lowest max drawdown."""
+    return SearchResult(-result.get_max_drawdown(), negative=True)
