@@ -1599,6 +1599,11 @@ def calculate_and_load_indicators(
     if callable(max_readers):
         max_readers = max_readers()
 
+    if isinstance(storage, MemoryIndicatorStorage) and (max_workers > 1 or max_readers > 1):
+        logger.warning("MemoryIndicatorStorage does not support multiprocessing, setting max_workers and max_readers to 1")
+        max_workers = 1
+        max_readers = 1
+
     assert create_indicators or indicators, f"You must give either create_indicators or indicators argument. Got {create_indicators} and {indicators}"
 
     if create_indicators:

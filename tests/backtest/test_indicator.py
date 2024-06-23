@@ -12,8 +12,11 @@ import inspect
 
 from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier
 from tradeexecutor.strategy.execution_context import ExecutionContext, unit_test_execution_context, unit_test_trading_execution_context
-from tradeexecutor.strategy.pandas_trader.indicator import IndicatorSet, DiskIndicatorStorage, IndicatorDefinition, IndicatorFunctionSignatureMismatch, \
-    calculate_and_load_indicators, IndicatorKey, IndicatorSource, IndicatorStorage, IndicatorDependencyResolver, IndicatorOrderError, IndicatorCalculationFailed
+from tradeexecutor.strategy.pandas_trader.indicator import (
+    IndicatorSet, DiskIndicatorStorage, IndicatorDefinition, IndicatorFunctionSignatureMismatch,
+    calculate_and_load_indicators, IndicatorKey, IndicatorSource, IndicatorDependencyResolver, 
+    IndicatorOrderError, IndicatorCalculationFailed, MemoryIndicatorStorage,
+)
 from tradeexecutor.strategy.pandas_trader.strategy_input import StrategyInputIndicators
 from tradeexecutor.strategy.parameters import StrategyParameters
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse, create_pair_universe_from_code, load_partial_data
@@ -780,3 +783,72 @@ def test_indicator_dependency_order_error(persistent_test_client, indicator_stor
             max_readers=1,
         )
 
+
+def test_indicator_dependency_memory_storage(strategy_universe, mocker):
+    """Test dependency resolution with memory storage."""
+
+    def regime(
+        close: pd.Series,
+        pair: TradingPairIdentifier,
+        length: int,
+        dependency_resolver: IndicatorDependencyResolver,
+    ) -> pd.Series:
+        fast_sma: pd.Series = dependency_resolver.get_indicator_data("fast_sma", pair=pair, parameters={"length": length})
+        return close > fast_sma
+
+    def create_indicators(parameters: StrategyParameters, indicators: IndicatorSet, strategy_universe: TradingStrategyUniverse, execution_context: ExecutionContext):
+        indicators.add("fast_sma", pandas_ta.sma, {"length": parameters.fast_sma}, order=1)
+        indicators.add("regime", regime, {"length": parameters.fast_sma}, order=2)
+
+    class MyParameters:
+        fast_sma = 20
+
+    indicator_storage = MemoryIndicatorStorage(strategy_universe.get_cache_key())
+
+    indicator_result = calculate_and_load_indicators(
+        strategy_universe,
+        indicator_storage,
+        create_indicators=create_indicators,
+        execution_context=unit_test_execution_context,
+        parameters=StrategyParameters.from_class(MyParameters),
+    )
+
+    exchange = strategy_universe.data_universe.exchange_universe.get_single()
+    weth_usdc = strategy_universe.get_pair_by_human_description((ChainId.ethereum, exchange.exchange_slug, "WETH", "USDC"))
+    wbtc_usdc = strategy_universe.get_pair_by_human_description((ChainId.ethereum, exchange.exchange_slug, "WBTC", "USDC"))
+
+    keys = list(indicator_result.keys())
+    keys = sorted(keys, key=lambda k: (k.pair.internal_id, k.definition.name))  # Ensure we read set in deterministic order
+
+    # Check our pair x indicator matrix
+    assert keys[0].pair== weth_usdc
+    assert keys[0].definition.name == "fast_sma"
+    assert keys[0].definition.parameters == {"length": 20}
+
+    assert keys[1].pair== weth_usdc
+    assert keys[1].definition.name == "regime"
+    assert keys[1].definition.parameters == {"length": 20}
+
+    assert keys[3].pair == wbtc_usdc
+    assert keys[3].definition.name == "regime"
+
+    for result in indicator_result.values():
+        assert not result.cached
+        assert isinstance(result.data, pd.Series)
+        assert len(result.data) > 0
+
+    # Run with higher workers count should still work since it should force single thread
+    logger_mock = mocker.patch("tradeexecutor.strategy.pandas_trader.indicator.logger.warning")
+    indicator_result = calculate_and_load_indicators(
+        strategy_universe,
+        indicator_storage,
+        create_indicators=create_indicators,
+        execution_context=unit_test_execution_context,
+        parameters=StrategyParameters.from_class(MyParameters),
+        max_workers=3,
+        max_readers=3,
+    )
+
+    assert logger_mock.call_count == 1
+    assert logger_mock.call_args[0][0] == "MemoryIndicatorStorage does not support multiprocessing, setting max_workers and max_readers to 1"
+   
