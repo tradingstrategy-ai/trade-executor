@@ -535,6 +535,8 @@ class GridSearchResult:
 
         path = combination.get_metrics_pickle_path()
 
+        assert path.exists(), f"GridSearchResult {path} does not exist"
+
         # with open(base_path.joinpath("result.pickle"), "rb") as inp:
         #    result: GridSearchResult = pickle.load(inp)
         gc.disable()

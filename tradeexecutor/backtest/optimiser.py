@@ -281,6 +281,7 @@ class ObjectiveWrapper:
                 max_workers=1,  # Don't allow this child process to create its own worker pool for indicator calculations
                 initial_deposit=merged_parameters["initial_cash"],
             )
+            result.save(include_state=True)
 
         opt_val = self.search_func(result)
         opt_val.combination = combination
