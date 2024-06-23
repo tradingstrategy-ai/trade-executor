@@ -73,8 +73,6 @@ def analyse_combination(
         })
 
     row.update({
-        # "Combination": r.combination.get_label(),
-        "Time in market": clean(r.metrics.loc["Time in Market"][0]),
         # "Return": r.summary.return_percent,
         # "Return2": r.summary.annualised_return_percent,
         #"Annualised profit": clean(r.metrics.loc["Expected Yearly"][0]),
@@ -82,6 +80,8 @@ def analyse_combination(
         "Max DD": clean(r.metrics.loc["Max Drawdown"][0]),
         "Sharpe": clean(r.metrics.loc["Sharpe"][0]),
         "Sortino": clean(r.metrics.loc["Sortino"][0]),
+        # "Combination": r.combination.get_label(),
+        "Time in market": clean(r.metrics.loc["Time in Market"][0]),
         "Win rate": clean(r.get_win_rate()),
         "Avg pos": r.summary.average_trade,  # Average position
         "Med pos": r.summary.median_trade,  # Median position
