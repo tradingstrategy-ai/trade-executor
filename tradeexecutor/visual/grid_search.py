@@ -23,6 +23,7 @@ def visualise_single_grid_search_result_benchmark(
     initial_cash: USDollarAmount | None = None,
     name="Picked grid search result",
     log_y=False,
+    asset_count=3,
 ) -> go.Figure:
     """Draw one equity curve from grid search results.
 
@@ -68,6 +69,9 @@ def visualise_single_grid_search_result_benchmark(
 
         Legacy param.
 
+    :param asset_count:
+        Draw this many comparison buy-and-hold curves from well-known assets.
+
     :return:
         Plotly figure
     """
@@ -77,7 +81,7 @@ def visualise_single_grid_search_result_benchmark(
 
     # Get daily returns
     equity = result.equity_curve
-    equity.attrs["name"] = result.get_label()
+    equity.attrs["name"] = result.get_truncated_label()
     equity.attrs["curve"] = CurveType.equity
     equity.attrs["colour"] = DEFAULT_BENCHMARK_COLOURS["Strategy"]
 
@@ -85,6 +89,7 @@ def visualise_single_grid_search_result_benchmark(
         strategy_universe,
         cumulative_with_initial_cash=initial_cash or getattr(result, "initial_cash", None),  # Legacy support hack
         start_at=equity.index[0],
+        max_count=asset_count,
     )
 
     benchmark_series = [v for k, v in benchmarks.items()]
@@ -218,7 +223,7 @@ def visualise_grid_search_equity_curves(
 
     for result in results:
         curve = result.equity_curve
-        label = result.get_label()
+        label = result.get_truncated_label()
         template =_get_hover_template(result)
         scatter = Scatter(
             x=curve.index,

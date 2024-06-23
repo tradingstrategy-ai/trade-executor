@@ -8,31 +8,27 @@
 import textwrap
 import warnings
 from dataclasses import dataclass
-from typing import List, TypeAlias
+from typing import List
 
 import numpy as np
 import pandas as pd
-from IPython.core.display_functions import display
 
 import plotly.express as px
-from plotly.graph_objs import Figure, Scatter
+from plotly.graph_objs import Figure
 
 from tradeexecutor.backtest.grid_search import GridSearchResult
-from tradeexecutor.state.types import USDollarAmount
-from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
 from tradeexecutor.utils.sort import unique_sort
-from tradeexecutor.visual.benchmark import visualise_all_cash, visualise_portfolio_equity_curve
 
-VALUE_COLS = ["CAGR", "Max drawdown", "Sharpe", "Sortino", "Average position", "Median position", "Win rate"]
+VALUE_COLS = ["Optim", "CAGR", "Max DD", "Sharpe", "Sortino", "Avg pos", "Med pos", "Win rate", "Time in market"]
 
-PERCENT_COLS = ["CAGR", "Max drawdown", "Average position", "Median position", "Time in market", "Win rate"]
+PERCENT_COLS = ["CAGR", "Max DD", "Avg pos", "Med pos", "Time in market", "Win rate"]
 
 DATA_COLS = ["Positions", "Trades"]
 
 
 def analyse_combination(
-        r: GridSearchResult,
-        min_positions_threshold: int,
+    r: GridSearchResult,
+    min_positions_threshold: int,
 ) -> dict:
     """Create a grid search result table row.
 
@@ -64,23 +60,31 @@ def analyse_combination(
             return np.NaN
         return x
 
-    # import ipdb ; ipdb.set_trace()
-
     row.update({
-        # "Combination": r.combination.get_label(),
         "Positions": r.summary.total_positions,
         "Trades": r.summary.total_trades,
-        "Time in market": clean(r.metrics.loc["Time in Market"][0]),
+    })
+
+    if r.optimiser_search_value is not None:
+        # Display raw optimiser search values
+        # See analyse_optimiser_result()
+        row.update({
+            "Optim": r.optimiser_search_value,
+        })
+
+    row.update({
         # "Return": r.summary.return_percent,
         # "Return2": r.summary.annualised_return_percent,
         #"Annualised profit": clean(r.metrics.loc["Expected Yearly"][0]),
         "CAGR": clean(r.metrics.loc["Annualised return (raw)"][0]),
-        "Max drawdown": clean(r.metrics.loc["Max Drawdown"][0]),
+        "Max DD": clean(r.metrics.loc["Max Drawdown"][0]),
         "Sharpe": clean(r.metrics.loc["Sharpe"][0]),
         "Sortino": clean(r.metrics.loc["Sortino"][0]),
+        # "Combination": r.combination.get_label(),
+        "Time in market": clean(r.metrics.loc["Time in Market"][0]),
         "Win rate": clean(r.get_win_rate()),
-        "Average position": r.summary.average_trade,
-        "Median position": r.summary.median_trade,
+        "Avg pos": r.summary.average_trade,  # Average position
+        "Med pos": r.summary.median_trade,  # Median position
     })
 
     # Clear all values except position count if this is not a good trade series
@@ -201,24 +205,31 @@ def render_grid_search_result_table(results: pd.DataFrame | list[GridSearchResul
     # Diverge color gradient around zero
     # https://stackoverflow.com/a/60654669/315168
 
+    # Optimised column is not alwqys present
+    value_cols = [v for v in VALUE_COLS if v in df.columns]
+
+    format_dict = {}
+    for v in value_cols:
+        format_dict[v] = "{:.2}"
+    for v in PERCENT_COLS:
+        format_dict[v] = "{:.2%}"
+    for v in DATA_COLS:
+        # # https://stackoverflow.com/a/12080042/315168
+        format_dict[v] = "{0:g}"
+
     formatted = df.style.background_gradient(
         axis = 0,
-        subset = VALUE_COLS,
+        subset = value_cols,
     ).highlight_min(
         color = 'pink',
         axis = 0,
-        subset = VALUE_COLS,
+        subset = value_cols,
     ).highlight_max(
         color = 'darkgreen',
         axis = 0,
-        subset = VALUE_COLS,
+        subset = value_cols,
     ).format(
-        formatter="{:.2%}",
-        subset = PERCENT_COLS,
-    ).format(
-        # https://stackoverflow.com/a/12080042/315168
-        subset=DATA_COLS,
-        formatter="{0:g}",
+        format_dict
     )
     return formatted
 

@@ -6,32 +6,25 @@ from typing import List
 import pandas as pd
 import pandas_ta
 import pytest
-from plotly.graph_objs import Figure
 from skopt import space
 
-from tradeexecutor.backtest.optimiser import prepare_optimiser_parameters, perform_optimisation, optimise_profit, OptimiserResult
+from tradeexecutor.backtest.optimiser import prepare_optimiser_parameters, perform_optimisation, OptimiserResult
+from tradeexecutor.backtest.optimiser_functions import optimise_profit
 from tradeexecutor.state.trade import TradeExecution
 from tradeexecutor.strategy.cycle import CycleDuration
-from tradeexecutor.strategy.execution_context import ExecutionContext, ExecutionMode
-from tradeexecutor.strategy.pandas_trader.indicator import IndicatorSet, DiskIndicatorStorage, IndicatorSource, IndicatorDependencyResolver
+from tradeexecutor.strategy.execution_context import ExecutionContext
+from tradeexecutor.strategy.pandas_trader.indicator import IndicatorSet, DiskIndicatorStorage
 from tradeexecutor.strategy.pandas_trader.strategy_input import StrategyInput
 from tradeexecutor.strategy.parameters import StrategyParameters
-from tradeexecutor.visual.grid_search import visualise_single_grid_search_result_benchmark, visualise_grid_search_equity_curves
 from tradingstrategy.candle import GroupedCandleUniverse
 from tradingstrategy.chain import ChainId
 from tradingstrategy.exchange import Exchange
 from tradingstrategy.timebucket import TimeBucket
 from tradingstrategy.universe import Universe
 
-from tradeexecutor.analysis.grid_search import analyse_grid_search_result, render_grid_search_result_table, visualise_heatmap_2d, \
-    find_best_grid_search_results
-from tradeexecutor.backtest.grid_search import prepare_grid_combinations, run_grid_search_backtest, perform_grid_search, GridCombination, GridSearchResult, \
-    pick_grid_search_result, pick_best_grid_search_result, GridParameter
+
 from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier
 from tradeexecutor.state.state import State
-from tradeexecutor.state.visualisation import PlotKind
-from tradeexecutor.strategy.pandas_trader.position_manager import PositionManager
-from tradeexecutor.strategy.pricing_model import PricingModel
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse, create_pair_universe_from_code
 from tradeexecutor.testing.synthetic_ethereum_data import generate_random_ethereum_address
 from tradeexecutor.testing.synthetic_exchange_data import generate_exchange

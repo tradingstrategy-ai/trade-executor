@@ -27,7 +27,7 @@ from skopt.space import Dimension
 from tqdm_loggable.auto import tqdm
 
 
-from tradeexecutor.backtest.grid_search import GridSearchWorker, GridCombination, GridSearchDataRetention, GridSearchResult, save_disk_multiprocess_strategy_universe, initialise_multiprocess_strategy_universe_from_disk, run_grid_search_backtest, \
+from tradeexecutor.backtest.grid_search import GridCombination, GridSearchDataRetention, GridSearchResult, save_disk_multiprocess_strategy_universe, initialise_multiprocess_strategy_universe_from_disk, run_grid_search_backtest, \
     get_grid_search_result_path, GridParameter
 from tradeexecutor.cli.log import setup_notebook_logging
 from tradeexecutor.strategy.engine_version import TradingStrategyEngineVersion
@@ -38,11 +38,12 @@ from tradeexecutor.strategy.strategy_module import DecideTradesProtocol4
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
 from tradeexecutor.utils.cpu import get_safe_max_workers_count
 
+
 logger = logging.getLogger(__name__)
 
 
 @dataclass(slots=True)
-class SearchResult:
+class OptimiserSearchResult:
     """Single optimiser search result value.
 
     This is used in different contextes
@@ -79,9 +80,9 @@ class SearchResult:
     filtered: bool = False
 
     def __repr__(self):
-        return f"<SearchResult {self.combination} = {self.get_original_value()}>"
+        return f"<OptimiserSearchResult {self.combination} = {self.get_original_value()}>"
 
-    # Allow to call min(list[SearchResult]) to find the best value
+    # Allow to call min(list[OptimiserSearchResult]) to find the best value
 
     def __eq__(self, other):
         return self.value == other.value
@@ -116,9 +117,17 @@ class SearchFunction(typing.Protocol):
 
     - The search function extracts the result variable we want to optimise
       for from the :py:class:`GridSearchResult`
+
+    Example:
+
+    .. code-block:: python
+
+        # Search for the best CAGR value.
+        def optimise_profit(result: GridSearchResult) -> OptimiserSearchResult:
+            return OptimiserSearchResult(-result.get_cagr(), negative=True)
     """
 
-    def __call__(self, result: GridSearchResult) -> SearchResult:
+    def __call__(self, result: GridSearchResult) -> OptimiserSearchResult:
         """The search function extracts the parm
 
         :param result:
@@ -151,7 +160,7 @@ class OptimiserResult:
     #:
     #: Sortd from the best to the worst.
     #:
-    results: list[SearchResult]
+    results: list[OptimiserSearchResult]
 
     #: Where did we store precalculated indicator files.
     #:
@@ -180,6 +189,10 @@ class OptimiserResult:
         - Any results that are marked as filtered away are not returned
         """
         return [r.result for r in self.results if not r.filtered]
+
+    def get_cached_count(self) -> int:
+        """How many of the results were directly read from the disk and not calculated on this run."""
+        return len([r for r in self.results if r.result.cached])
 
 
 class ObjectiveWrapper:
@@ -272,7 +285,6 @@ class ObjectiveWrapper:
                 max_workers=1,  # Don't allow this child process to create its own worker pool for indicator calculations
                 initial_deposit=merged_parameters["initial_cash"],
             )
-            logger.info("Backtest %d completed, saving the result", result_index)
             result.save(include_state=True)
 
         opt_val = self.search_func(result)
@@ -372,7 +384,7 @@ class MinTradeCountFilter:
     def __init__(self, min_trade_count):
         self.min_trade_count = min_trade_count
 
-    def __call__(self, result: SearchResult) -> bool:
+    def __call__(self, result: OptimiserSearchResult) -> bool:
         """Return true if the trade count threshold is reached."""
         return result.result.get_trade_count() > self.min_trade_count
 
@@ -537,7 +549,7 @@ def perform_optimisation(
 
     result_index = 1
 
-    all_results: list[SearchResult] = []
+    all_results: list[OptimiserSearchResult] = []
 
     print(f"Optimiser search result cache is {result_path}\nIndicator cache is {indicator_storage.get_disk_cache_path()}")
 
@@ -585,12 +597,12 @@ def perform_optimisation(
             # and unpack our data structure
             optimizer.tell(x, filtered_y)
 
-            result: SearchResult
+            result: OptimiserSearchResult
             for result in y:
                 result.hydrate()  # Load grid search result data from the disk
                 all_results.append(result)
 
-            best_so_far: SearchResult = min([r for r in all_results if not r.filtered], default=None)  # Get the best value for "bull days matched"
+            best_so_far: OptimiserSearchResult = min([r for r in all_results if not r.filtered], default=None)  # Get the best value for "bull days matched"
             progress_bar.set_postfix({"Best so far": best_so_far.get_original_value() if best_so_far else "-"})
             progress_bar.update()
 
@@ -613,41 +625,3 @@ def perform_optimisation(
         results=all_results,
         indicator_storage=indicator_storage,
     )
-
-
-def optimise_profit(result: GridSearchResult) -> SearchResult:
-    """Search for the best CAGR value."""
-    return SearchResult(-result.get_cagr(), negative=True)
-
-
-def optimise_sharpe(result: GridSearchResult) -> SearchResult:
-    """Search for the best Sharpe value."""
-    return SearchResult(-result.get_sharpe(), negative=True)
-
-
-def optimise_win_rate(result: GridSearchResult) -> SearchResult:
-    """Search for the best trade win rate."""
-    return SearchResult(-result.get_win_rate(), negative=True)
-
-
-def optimise_max_drawdown(result: GridSearchResult) -> SearchResult:
-    """Search for the lowest max drawdown.
-
-    - Return absolute value of drawdown (negative sign removed).
-
-    - Lower is better.
-    """
-    return SearchResult(abs(result.get_max_drawdown()), negative=False)
-
-
-def optimise_sharpe_and_max_drawdown(result: GridSearchResult) -> SearchResult:
-    """Search for the best sharpe / max drawndown ratio.
-
-    - One of the attempts to try to find "balanced" strategies that do not
-      take risky trades, but rather sit on the cash (which can be used elsewhere)
-
-    - Search combined sharpe / max drawdown ratio.
-
-    - Higher is better.
-    """
-    return SearchResult(-(result.get_sharpe() / abs(result.get_max_drawdown())), negative=True)

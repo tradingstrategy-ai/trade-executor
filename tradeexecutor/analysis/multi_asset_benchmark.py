@@ -190,6 +190,7 @@ def compare_strategy_backtest_to_multiple_assets(
     strategy_universe: TradingStrategyUniverse,
     returns: pd.Series | None = None,
     display=False,
+    asset_count=3,
 ) -> pd.DataFrame:
     """Backtest comparison of strategy against buy and hold assets.
 
@@ -208,6 +209,7 @@ def compare_strategy_backtest_to_multiple_assets(
 
     benchmarks = get_benchmark_data(
         strategy_universe,
+        max_count=asset_count,
     )
 
     portfolios = pd.DataFrame(

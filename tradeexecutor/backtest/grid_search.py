@@ -383,6 +383,15 @@ class GridSearchResult:
     #:
     initial_cash: USDollarAmount | None = None
 
+    #: When used with optimiser, store the raw search function result here.
+    #:
+    #: Allows to debug and display optimiser progress for complex optimiser search functions like :py:class:`~tradeexecutor.backtest.optimiser_functions.BalancedSharpeAndMaxDrawdownOptimisationFunction`.
+    #:
+    #: This is not stored as the part of disk data, because the user can change the search function
+    #: without the need to regenerate search results. See :py:func:`analyse_optimiser_result` for more information.
+    #:
+    optimiser_search_value: float | None = None
+
     def __hash__(self):
         return self.combination.__hash__()
 
@@ -403,6 +412,18 @@ class GridSearchResult:
         - Includes only searched parameters as label
         """
         return self.combination.get_label()
+
+    def get_truncated_label(self, max_len=30) -> str:
+        """Get name for this result for charts.
+
+        - For multiple parameters the label gets too long to render
+
+        - Chop it shorted
+        """
+        label = self.combination.get_label()
+        if len(label) > max_len:
+            return label[0:max_len] + "…"
+        return label
 
     def get_metric(self, name: str) -> float:
         """Get a performance metric from quantstats.
@@ -513,6 +534,8 @@ class GridSearchResult:
         """Deserialised from the cached Python pickle."""
 
         path = combination.get_metrics_pickle_path()
+
+        assert path.exists(), f"GridSearchResult {path} does not exist"
 
         # with open(base_path.joinpath("result.pickle"), "rb") as inp:
         #    result: GridSearchResult = pickle.load(inp)
