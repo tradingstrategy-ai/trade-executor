@@ -30,8 +30,12 @@ Example:
 
     print(f"Optimise completed, optimiser searched {optimised_results.get_combination_count()} combinations")
 """
-from tradingstrategy.types import Percent
+
+import numpy as np
+
 from .optimiser import GridSearchResult, OptimiserSearchResult
+from ..state.types import Percent
+from ..visual.equity_curve import calculate_rolling_sharpe
 
 
 def optimise_profit(result: GridSearchResult) -> OptimiserSearchResult:
@@ -140,3 +144,58 @@ class BalancedSharpeAndMaxDrawdownOptimisationFunction:
         # assert total_normalised > 0, error_message
         assert total_normalised < 1 + self.epsilon, error_message
         return OptimiserSearchResult(-total_normalised, negative=True)
+
+
+
+class RollingSharpeOptimisationFunction:
+    """Find a rolling sharpe that's stable and high.
+
+    - Rolling sharpe is not volatile but a constant line
+
+    - This means the strategy produces constant results over the time
+
+    - Higher rolling sharpe is better
+
+    """
+
+    def __init__(self, rolling_sharpe_window_days=180):
+        self.rolling_sharpe_window_days = rolling_sharpe_window_days
+
+    def __call__(self, result: GridSearchResult) -> OptimiserSearchResult:
+
+        rolling_sharpe = calculate_rolling_sharpe(
+            result.returns,
+            freq="D",
+            periods=self.rolling_sharpe_window_days,
+        )
+
+        # The ratio of mean divided by standard deviation is known by different names depending on the context, but it's most commonly referred to as the following:
+        #
+        # Coefficient of Variation (CV): This term is used when both the mean and standard deviation are positive. It's often expressed as a percentage.
+        # Signal-to-Noise Ratio (SNR): This term is used in signal processing and statistics.
+        #
+        # In some contexts, particularly in finance, the inverse (standard deviation divided by mean) is called the Coefficient of Variation.
+        # Interpretation of high and low values:
+        # High values (mean >> standard deviation):
+        #
+        # Indicate that the mean is large relative to the variability in the data.
+        # Suggest more consistent or stable data.
+        # In finance, could indicate better risk-adjusted returns.
+        # In signal processing, suggest a clearer signal relative to noise.
+        #
+        # Low values (mean << standard deviation):
+        #
+        # Indicate high variability relative to the mean.
+        # Suggest more dispersed or volatile data.
+        # In finance, could indicate worse risk-adjusted returns.
+        # In signal processing, suggest a weaker signal relative to noise.
+        #
+        # It's important to note that the interpretation can vary depending on the specific field and context. For example:
+        #
+        # In manufacturing quality control, a lower CV typically indicates better process control.
+        # In investment, a higher Sharpe ratio (which is based on this concept) indicates better risk-adjusted returns.
+        # In experimental sciences, a lower CV might indicate more precise measurements.
+
+        value = np.mean(rolling_sharpe) / np.std(rolling_sharpe)
+
+        return OptimiserSearchResult(-value, negative=True)

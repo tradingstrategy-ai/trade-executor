@@ -27,7 +27,7 @@ from skopt.space import Dimension
 from tqdm_loggable.auto import tqdm
 
 
-from tradeexecutor.backtest.grid_search import GridSearchWorker, GridCombination, GridSearchDataRetention, GridSearchResult, save_disk_multiprocess_strategy_universe, initialise_multiprocess_strategy_universe_from_disk, run_grid_search_backtest, \
+from tradeexecutor.backtest.grid_search import GridCombination, GridSearchDataRetention, GridSearchResult, save_disk_multiprocess_strategy_universe, initialise_multiprocess_strategy_universe_from_disk, run_grid_search_backtest, \
     get_grid_search_result_path, GridParameter
 from tradeexecutor.cli.log import setup_notebook_logging
 from tradeexecutor.strategy.engine_version import TradingStrategyEngineVersion
@@ -37,6 +37,7 @@ from tradeexecutor.strategy.parameters import StrategyParameters
 from tradeexecutor.strategy.strategy_module import DecideTradesProtocol4
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
 from tradeexecutor.utils.cpu import get_safe_max_workers_count
+
 
 logger = logging.getLogger(__name__)
 
@@ -280,8 +281,6 @@ class ObjectiveWrapper:
                 max_workers=1,  # Don't allow this child process to create its own worker pool for indicator calculations
                 initial_deposit=merged_parameters["initial_cash"],
             )
-            logger.info("Backtest %d completed, saving the result", result_index)
-            result.save(include_state=True)
 
         opt_val = self.search_func(result)
         opt_val.combination = combination

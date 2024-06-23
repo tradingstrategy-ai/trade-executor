@@ -383,6 +383,15 @@ class GridSearchResult:
     #:
     initial_cash: USDollarAmount | None = None
 
+    #: When used with optimiser, store the raw search function result here.
+    #:
+    #: Allows to debug and display optimiser progress for complex optimiser search functions like :py:class:`~tradeexecutor.backtest.optimiser_functions.BalancedSharpeAndMaxDrawdownOptimisationFunction`.
+    #:
+    #: This is not stored as the part of disk data, because the user can change the search function
+    #: without the need to regenerate search results. See :py:func:`analyse_optimiser_result` for more information.
+    #:
+    optimiser_search_value: float | None = None
+
     def __hash__(self):
         return self.combination.__hash__()
 
