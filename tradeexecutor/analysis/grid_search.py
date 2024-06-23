@@ -208,6 +208,15 @@ def render_grid_search_result_table(results: pd.DataFrame | list[GridSearchResul
     # Optimised column is not alwqys present
     value_cols = [v for v in VALUE_COLS if v in df.columns]
 
+    format_dict = {}
+    for v in value_cols:
+        format_dict[v] = "{:.2}"
+    for v in PERCENT_COLS:
+        format_dict[v] = "{:.2%}"
+    for v in DATA_COLS:
+        # # https://stackoverflow.com/a/12080042/315168
+        format_dict[v] = "{0:g}"
+
     formatted = df.style.background_gradient(
         axis = 0,
         subset = value_cols,
@@ -220,15 +229,7 @@ def render_grid_search_result_table(results: pd.DataFrame | list[GridSearchResul
         axis = 0,
         subset = value_cols,
     ).format(
-        formatter="{:.2%}",
-        subset = PERCENT_COLS,
-    ).format(
-        formatter="{:.2}",
-        subset = value_cols,
-    ).format(
-        # https://stackoverflow.com/a/12080042/315168
-        subset=DATA_COLS,
-        formatter="{0:g}",
+        format_dict
     )
     return formatted
 
