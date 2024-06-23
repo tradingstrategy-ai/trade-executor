@@ -614,40 +614,4 @@ def perform_optimisation(
         indicator_storage=indicator_storage,
     )
 
-
-def optimise_profit(result: GridSearchResult) -> SearchResult:
-    """Search for the best CAGR value."""
-    return SearchResult(-result.get_cagr(), negative=True)
-
-
-def optimise_sharpe(result: GridSearchResult) -> SearchResult:
-    """Search for the best Sharpe value."""
-    return SearchResult(-result.get_sharpe(), negative=True)
-
-
-def optimise_win_rate(result: GridSearchResult) -> SearchResult:
-    """Search for the best trade win rate."""
-    return SearchResult(-result.get_win_rate(), negative=True)
-
-
-def optimise_max_drawdown(result: GridSearchResult) -> SearchResult:
-    """Search for the lowest max drawdown.
-
-    - Return absolute value of drawdown (negative sign removed).
-
-    - Lower is better.
-    """
-    return SearchResult(abs(result.get_max_drawdown()), negative=False)
-
-
-def optimise_sharpe_and_max_drawdown(result: GridSearchResult) -> SearchResult:
-    """Search for the best sharpe / max drawndown ratio.
-
-    - One of the attempts to try to find "balanced" strategies that do not
-      take risky trades, but rather sit on the cash (which can be used elsewhere)
-
-    - Search combined sharpe / max drawdown ratio.
-
-    - Higher is better.
-    """
-    return SearchResult(-(result.get_sharpe() / abs(result.get_max_drawdown())), negative=True)
+turn SearchResult(-(result.get_sharpe() / abs(result.get_max_drawdown())), negative=True)
