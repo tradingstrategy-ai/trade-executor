@@ -8,24 +8,20 @@
 import textwrap
 import warnings
 from dataclasses import dataclass
-from typing import List, TypeAlias
+from typing import List
 
 import numpy as np
 import pandas as pd
-from IPython.core.display_functions import display
 
 import plotly.express as px
-from plotly.graph_objs import Figure, Scatter
+from plotly.graph_objs import Figure
 
 from tradeexecutor.backtest.grid_search import GridSearchResult
-from tradeexecutor.state.types import USDollarAmount
-from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
 from tradeexecutor.utils.sort import unique_sort
-from tradeexecutor.visual.benchmark import visualise_all_cash, visualise_portfolio_equity_curve
 
-VALUE_COLS = ["Opt", "CAGR", "Max DD", "Sharpe", "Sortino", "Avg pos", "Median pos", "Win rate"]
+VALUE_COLS = ["Optim", "CAGR", "Max DD", "Sharpe", "Sortino", "Avg pos", "Med pos", "Win rate", "Time in market"]
 
-PERCENT_COLS = ["CAGR", "Max DD", "Avg pos", "Median pos", "Time in market", "Win rate"]
+PERCENT_COLS = ["CAGR", "Max DD", "Avg pos", "Med pos", "Time in market", "Win rate"]
 
 DATA_COLS = ["Positions", "Trades"]
 
@@ -64,16 +60,20 @@ def analyse_combination(
             return np.NaN
         return x
 
+    row.update({
+        "Positions": r.summary.total_positions,
+        "Trades": r.summary.total_trades,
+    })
+
     if r.optimiser_search_value is not None:
         # Display raw optimiser search values
+        # See analyse_optimiser_result()
         row.update({
-            "Opt": r.optimiser_search_value,
+            "Optim": r.optimiser_search_value,
         })
 
     row.update({
         # "Combination": r.combination.get_label(),
-        "Positions": r.summary.total_positions,
-        "Trades": r.summary.total_trades,
         "Time in market": clean(r.metrics.loc["Time in Market"][0]),
         # "Return": r.summary.return_percent,
         # "Return2": r.summary.annualised_return_percent,
@@ -83,8 +83,8 @@ def analyse_combination(
         "Sharpe": clean(r.metrics.loc["Sharpe"][0]),
         "Sortino": clean(r.metrics.loc["Sortino"][0]),
         "Win rate": clean(r.get_win_rate()),
-        "Avg pos": r.summary.average_trade,
-        "Median pos": r.summary.median_trade,
+        "Avg pos": r.summary.average_trade,  # Average position
+        "Med pos": r.summary.median_trade,  # Median position
     })
 
     # Clear all values except position count if this is not a good trade series
@@ -222,6 +222,9 @@ def render_grid_search_result_table(results: pd.DataFrame | list[GridSearchResul
     ).format(
         formatter="{:.2%}",
         subset = PERCENT_COLS,
+    ).format(
+        formatter="{:.2}",
+        subset = value_cols,
     ).format(
         # https://stackoverflow.com/a/12080042/315168
         subset=DATA_COLS,

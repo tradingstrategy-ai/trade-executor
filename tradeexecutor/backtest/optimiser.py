@@ -190,6 +190,10 @@ class OptimiserResult:
         """
         return [r.result for r in self.results if not r.filtered]
 
+    def get_cached_count(self) -> int:
+        """How many of the results were directly read from the disk and not calculated on this run."""
+        return len([r for r in self.results if r.result.cached])
+
 
 class ObjectiveWrapper:
     """Middleware between Optimiser and TS frameworks.
