@@ -23,7 +23,7 @@ from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniv
 from tradeexecutor.utils.sort import unique_sort
 from tradeexecutor.visual.benchmark import visualise_all_cash, visualise_portfolio_equity_curve
 
-VALUE_COLS = ["CAGR", "Max DD", "Sharpe", "Sortino", "Avg pos", "Median pos", "Win rate"]
+VALUE_COLS = ["Opt", "CAGR", "Max DD", "Sharpe", "Sortino", "Avg pos", "Median pos", "Win rate"]
 
 PERCENT_COLS = ["CAGR", "Max DD", "Avg pos", "Median pos", "Time in market", "Win rate"]
 
@@ -67,7 +67,7 @@ def analyse_combination(
     if r.optimiser_search_value is not None:
         # Display raw optimiser search values
         row.update({
-            "Opt.": r.optimiser_search_value,
+            "Opt": r.optimiser_search_value,
         })
 
     row.update({
