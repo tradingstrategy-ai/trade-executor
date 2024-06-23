@@ -1,37 +1,37 @@
 """Functions the optimiser would be looking for.
 
-- You can also write your own optimiser functions
+- You can also write your own optimiser functions, see :py:class:`tradeexecutor.backtest.optimiser.SearchFunction`.
 """
+from tradingstrategy.types import Percent
+from .optimiser import GridSearchResult, OptimiserSearchResult
 
-from .optimiser import GridSearchResult, SearchResult
 
-
-def optimise_profit(result: GridSearchResult) -> SearchResult:
+def optimise_profit(result: GridSearchResult) -> OptimiserSearchResult:
     """Search for the best CAGR value."""
-    return SearchResult(-result.get_cagr(), negative=True)
+    return OptimiserSearchResult(-result.get_cagr(), negative=True)
 
 
-def optimise_sharpe(result: GridSearchResult) -> SearchResult:
+def optimise_sharpe(result: GridSearchResult) -> OptimiserSearchResult:
     """Search for the best Sharpe value."""
-    return SearchResult(-result.get_sharpe(), negative=True)
+    return OptimiserSearchResult(-result.get_sharpe(), negative=True)
 
 
-def optimise_win_rate(result: GridSearchResult) -> SearchResult:
+def optimise_win_rate(result: GridSearchResult) -> OptimiserSearchResult:
     """Search for the best trade win rate."""
-    return SearchResult(-result.get_win_rate(), negative=True)
+    return OptimiserSearchResult(-result.get_win_rate(), negative=True)
 
 
-def optimise_max_drawdown(result: GridSearchResult) -> SearchResult:
+def optimise_max_drawdown(result: GridSearchResult) -> OptimiserSearchResult:
     """Search for the lowest max drawdown.
 
     - Return absolute value of drawdown (negative sign removed).
 
     - Lower is better.
     """
-    return SearchResult(abs(result.get_max_drawdown()), negative=False)
+    return OptimiserSearchResult(abs(result.get_max_drawdown()), negative=False)
 
 
-def optimise_sharpe_and_max_drawdown_ratio(result: GridSearchResult) -> SearchResult:
+def optimise_sharpe_and_max_drawdown_ratio(result: GridSearchResult) -> OptimiserSearchResult:
     """Search for the best sharpe / max drawndown ratio.
 
     - One of the attempts to try to find "balanced" strategies that do not
@@ -43,7 +43,7 @@ def optimise_sharpe_and_max_drawdown_ratio(result: GridSearchResult) -> SearchRe
 
     - See also :py:func:`BalancedSharpeAndMaxDrawdownOptimisationFunction`
     """
-    return SearchResult(-(result.get_sharpe() / abs(result.get_max_drawdown())), negative=True)
+    return OptimiserSearchResult(-(result.get_sharpe() / abs(result.get_max_drawdown())), negative=True)
 
 
 class BalancedSharpeAndMaxDrawdownOptimisationFunction:
@@ -70,12 +70,10 @@ class BalancedSharpeAndMaxDrawdownOptimisationFunction:
         self.max_sharpe = max_sharpe
         self.epsilon = epsilon
 
-    def __call__(self, result: GridSearchResult) -> SearchResult:
+    def __call__(self, result: GridSearchResult) -> OptimiserSearchResult:
         normalised_max_drawdown = 1 + result.get_max_drawdown()  # 0 drawdown get value of max 1
         normalised_sharpe = min(result.get_sharpe(), self.max_sharpe) / self.max_sharpe  # clamp sharpe to 3
-        total_normalised = normalised_max_drawdown * self.max_drawdown_weight + self.normalised_sharpe * self.sharpe_weight
+        total_normalised = normalised_max_drawdown * self.max_drawdown_weight + normalised_sharpe * self.sharpe_weight
         assert total_normalised > 0, f"Got {total_normalised}"
         assert total_normalised < 1 + self.epsilon, f"Got {total_normalised} with normalised sharpe: {normalised_sharpe} and normalised max drawdown {normalised_max_drawdown}, weights sharpe: {self.sharpe_weight} / dd: {self.max_drawdown_weight}"
-        return total_normalised
-
-
+        return OptimiserSearchResult(-total_normalised, negative=True)

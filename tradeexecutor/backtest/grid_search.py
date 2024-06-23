@@ -404,6 +404,18 @@ class GridSearchResult:
         """
         return self.combination.get_label()
 
+    def get_truncated_label(self, max_len=30) -> str:
+        """Get name for this result for charts.
+
+        - For multiple parameters the label gets too long to render
+
+        - Chop it shorted
+        """
+        label = self.combination.get_label()
+        if len(label) > max_len:
+            return label[0:max_len] + "…"
+        return label
+
     def get_metric(self, name: str) -> float:
         """Get a performance metric from quantstats.
 

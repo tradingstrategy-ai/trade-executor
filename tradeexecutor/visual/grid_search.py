@@ -218,7 +218,7 @@ def visualise_grid_search_equity_curves(
 
     for result in results:
         curve = result.equity_curve
-        label = result.get_label()
+        label = result.get_truncated_label()
         template =_get_hover_template(result)
         scatter = Scatter(
             x=curve.index,

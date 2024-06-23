@@ -42,7 +42,7 @@ logger = logging.getLogger(__name__)
 
 
 @dataclass(slots=True)
-class SearchResult:
+class OptimiserSearchResult:
     """Single optimiser search result value.
 
     This is used in different contextes
@@ -79,9 +79,9 @@ class SearchResult:
     filtered: bool = False
 
     def __repr__(self):
-        return f"<SearchResult {self.combination} = {self.get_original_value()}>"
+        return f"<OptimiserSearchResult {self.combination} = {self.get_original_value()}>"
 
-    # Allow to call min(list[SearchResult]) to find the best value
+    # Allow to call min(list[OptimiserSearchResult]) to find the best value
 
     def __eq__(self, other):
         return self.value == other.value
@@ -116,9 +116,17 @@ class SearchFunction(typing.Protocol):
 
     - The search function extracts the result variable we want to optimise
       for from the :py:class:`GridSearchResult`
+
+    Example:
+
+    .. code-block:: python
+
+        # Search for the best CAGR value.
+        def optimise_profit(result: GridSearchResult) -> OptimiserSearchResult:
+            return OptimiserSearchResult(-result.get_cagr(), negative=True)
     """
 
-    def __call__(self, result: GridSearchResult) -> SearchResult:
+    def __call__(self, result: GridSearchResult) -> OptimiserSearchResult:
         """The search function extracts the parm
 
         :param result:
@@ -151,7 +159,7 @@ class OptimiserResult:
     #:
     #: Sortd from the best to the worst.
     #:
-    results: list[SearchResult]
+    results: list[OptimiserSearchResult]
 
     #: Where did we store precalculated indicator files.
     #:
@@ -372,7 +380,7 @@ class MinTradeCountFilter:
     def __init__(self, min_trade_count):
         self.min_trade_count = min_trade_count
 
-    def __call__(self, result: SearchResult) -> bool:
+    def __call__(self, result: OptimiserSearchResult) -> bool:
         """Return true if the trade count threshold is reached."""
         return result.result.get_trade_count() > self.min_trade_count
 
@@ -537,7 +545,7 @@ def perform_optimisation(
 
     result_index = 1
 
-    all_results: list[SearchResult] = []
+    all_results: list[OptimiserSearchResult] = []
 
     print(f"Optimiser search result cache is {result_path}\nIndicator cache is {indicator_storage.get_disk_cache_path()}")
 
@@ -585,12 +593,12 @@ def perform_optimisation(
             # and unpack our data structure
             optimizer.tell(x, filtered_y)
 
-            result: SearchResult
+            result: OptimiserSearchResult
             for result in y:
                 result.hydrate()  # Load grid search result data from the disk
                 all_results.append(result)
 
-            best_so_far: SearchResult = min([r for r in all_results if not r.filtered], default=None)  # Get the best value for "bull days matched"
+            best_so_far: OptimiserSearchResult = min([r for r in all_results if not r.filtered], default=None)  # Get the best value for "bull days matched"
             progress_bar.set_postfix({"Best so far": best_so_far.get_original_value() if best_so_far else "-"})
             progress_bar.update()
 
@@ -613,5 +621,3 @@ def perform_optimisation(
         results=all_results,
         indicator_storage=indicator_storage,
     )
-
-turn SearchResult(-(result.get_sharpe() / abs(result.get_max_drawdown())), negative=True)
