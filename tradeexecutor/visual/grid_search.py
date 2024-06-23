@@ -81,7 +81,7 @@ def visualise_single_grid_search_result_benchmark(
 
     # Get daily returns
     equity = result.equity_curve
-    equity.attrs["name"] = result.get_label()
+    equity.attrs["name"] = result.get_truncated_label()
     equity.attrs["curve"] = CurveType.equity
     equity.attrs["colour"] = DEFAULT_BENCHMARK_COLOURS["Strategy"]
 
