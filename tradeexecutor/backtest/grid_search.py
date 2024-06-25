@@ -7,6 +7,7 @@ from _decimal import Decimal
 
 import joblib
 import numpy
+from pandas._libs.missing import NAType
 
 # Enable pickle patch that allows multiprocessing in notebooks
 from tradeexecutor.monkeypatch import cloudpickle_patch  
@@ -488,16 +489,27 @@ class GridSearchResult:
             return sharpe
         return 0.0
 
-    def get_max_drawdown(self) -> Percent:
+    def get_max_drawdown(self) -> Percent | NAType:
         """Get the maximum drawdown.
 
-        Always a negative number.
+        :return:
+            Always a negative number.
+
+            Return `pd.NA` if not results (no trades, etc.)
+
         """
         dd = self.get_metric("Max Drawdown")
+
+        if type(dd) != float:
+            if not dd:
+                # Make sure None, empty string, etc are normalised here
+                return pd.NA
+
         if type(dd) == str:
             # TODO: No idea what's causing this, adding debug
             logger.warning("Bad drawdown value %s", dd)
             return 1
+
         return dd
 
     def get_win_rate(self) -> Percent:
