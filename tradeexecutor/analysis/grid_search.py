@@ -58,6 +58,10 @@ def analyse_combination(
             return np.NaN
         elif x == "":
             return np.NaN
+
+        if type(x) == int:
+            return float(x)
+
         return x
 
     row.update({
@@ -69,7 +73,7 @@ def analyse_combination(
         # Display raw optimiser search values
         # See analyse_optimiser_result()
         row.update({
-            "Optim": r.optimiser_search_value,
+            "Optim": clean(r.optimiser_search_value),
         })
 
     row.update({

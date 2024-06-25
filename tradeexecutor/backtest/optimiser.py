@@ -140,6 +140,15 @@ class SearchFunction(typing.Protocol):
         """
 
 
+class ResultFilter(typing.Protocol):
+    """Apply to drop bad optimiser result.
+
+    - E.g. by :py:class:`MinTradeCountFilter`
+    """
+    def __call__(self, result: GridSearchResult) -> bool:
+        """Return true if the optimiser result satifies our filter criteria."""
+        pass
+
 @dataclass(frozen=True, slots=True)
 class OptimiserResult:
     """The outcome of the optimiser run.
@@ -214,6 +223,7 @@ class ObjectiveWrapper:
         search_space: list[Dimension],
         real_space_rounding: Decimal,
         log_level: int,
+        result_filter: ResultFilter,
     ):
         self.search_func = search_func
         self.pickled_universe_fname = pickled_universe_fname
@@ -226,6 +236,8 @@ class ObjectiveWrapper:
         self.search_space = search_space
         self.real_space_rounding = real_space_rounding
         self.log_level = log_level
+        self.result_filter = result_filter
+        self.filtered_result_value = 0
 
     def __call__(
         self,
@@ -287,10 +299,15 @@ class ObjectiveWrapper:
             )
             result.save(include_state=True)
 
-        opt_val = self.search_func(result)
-        opt_val.combination = combination
-        logger.info("Optimiser for combination %s resulted to %s, exiting child process", combination, opt_val)
-        return opt_val
+        opt_result = self.search_func(result)
+
+        # Apply result filter and zero out the value for optimiser if needed
+        if not self.result_filter(result):
+            opt_result.value = self.filtered_result_value
+
+        opt_result.combination = combination
+        logger.info("Optimiser for combination %s resulted to %s, exiting child process", combination, opt_result.value)
+        return opt_result
 
 
 def get_optimised_dimensions(parameters: StrategyParameters) -> list[space.Dimension]:
@@ -375,6 +392,7 @@ def create_grid_combination(
     return combination
 
 
+
 class MinTradeCountFilter:
     """Have a minimum threshold of a created trading position count.
 
@@ -384,9 +402,9 @@ class MinTradeCountFilter:
     def __init__(self, min_trade_count):
         self.min_trade_count = min_trade_count
 
-    def __call__(self, result: OptimiserSearchResult) -> bool:
+    def __call__(self, result: GridSearchResult) -> bool:
         """Return true if the trade count threshold is reached."""
-        return result.result.get_trade_count() > self.min_trade_count
+        return result.get_trade_count() > self.min_trade_count
 
 
 def perform_optimisation(
@@ -406,7 +424,7 @@ def perform_optimisation(
     real_space_rounding=Decimal("0.01"),
     timeout: float = 10 * 60,
     log_level: int | None=None,
-    result_filter=MinTradeCountFilter(50),
+    result_filter:ResultFilter = MinTradeCountFilter(50),
     bad_result_value=0,
 ) -> OptimiserResult:
     """Search different strategy parameters using an optimiser.
@@ -542,6 +560,7 @@ def perform_optimisation(
         create_indicators=create_indicators,
         search_space=search_space,
         real_space_rounding=real_space_rounding,
+        result_filter=result_filter,
         log_level=log_level,
     )
 
@@ -579,18 +598,7 @@ def perform_optimisation(
 
                 logger.info("Iteration %d multiprocessing complete", i)
 
-            # Filter values - set invalid values to zeros
-            filtered_y = []
-            for single_y in y:
-                single_y.hydrate()
-                if result_filter(single_y):
-                    value = single_y.value
-                else:
-                    # Feed deeply negative value to the optimiser
-                    # TODO: What's a better way to filter values for Gaussian Process?
-                    value = bad_result_value
-                    single_y.filtered = True
-                filtered_y.append(value)
+            filtered_y = [result.value for result in y]
 
             # Tell optimiser how well the last batch did
             # by matching each x points to their raw optimise y value,
