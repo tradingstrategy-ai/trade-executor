@@ -497,7 +497,7 @@ class GridSearchResult:
         if type(dd) == str:
             # TODO: No idea what's causing this, adding debug
             logger.warning("Bad drawdown value %s", dd)
-            return 0
+            return 1
         return dd
 
     def get_win_rate(self) -> Percent:
