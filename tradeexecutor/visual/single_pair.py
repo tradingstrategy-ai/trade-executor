@@ -13,7 +13,8 @@ from tradeexecutor.state.state import State
 from tradeexecutor.state.trade import TradeExecution
 
 from tradeexecutor.state.types import PairInternalId
-from tradeexecutor.strategy.execution_context import ExecutionContext
+from tradeexecutor.strategy.execution_context import ExecutionContext, notebook_execution_context
+from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
 from tradeexecutor.visual.technical_indicator import overlay_all_technical_indicators
 
 from tradingstrategy.candle import GroupedCandleUniverse
@@ -706,3 +707,48 @@ def _get_grid_with_candles_volume_indicators(
     fig.update_traces(xaxis='x')
         
     return fig
+
+
+
+def visualise_single_position(
+    state: State,
+    strategy_universe: TradingStrategyUniverse,
+    position: TradingPosition,
+    area_around: int | pd.Timedelta = 100,
+    execution_context: ExecutionContext = notebook_execution_context,
+) -> go.Figure:
+    """Inspect individual won or lost trade.
+
+    - Give you an overview what failed in the trade
+
+    :param area_around:
+        How many candles display before and start of the position
+    """
+
+    assert position.is_closed(), "We can only visualise closed positions for now"
+
+    start_at = position.get_first_trade().executed_at
+    end_at = position.get_last_trade().executed_at
+    candle_width = strategy_universe.data_universe.time_bucket.to_pandas_timedelta()
+
+    if type(area_around) == int:
+        buffer = area_around * candle_width
+    else:
+        assert isinstance(area_around, pd.Timedelta)
+        buffer = area_around
+
+    start_at_around = start_at - buffer
+    end_at_around = end_at + buffer
+
+    title = f"#{position.position_id}: {position.get_realised_profit_usd()} USD"
+
+    return visualise_single_pair(
+        state=state,
+        execution_context=execution_context,
+        candle_universe=strategy_universe.data_universe.candles,
+        start_at=start_at_around,
+        end_at=end_at_around,
+        pair_id=position.pair.internal_id,
+        title=title,
+    )
+
