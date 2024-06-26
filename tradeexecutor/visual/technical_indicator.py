@@ -151,12 +151,13 @@ def export_plot_as_dataframe(
 
         See :py:class:`tradeexecutor.state.visualisation.RecordingTime` for more information.
     """
-    data = []
+    if start_at or end_at:
+        start_at_unix = start_at.timestamp()
+        end_at_unix = end_at.timestamp()
 
-    start_at_unix = start_at.astype('int64') // 10**9
-    end_at_unix = start_at.astype('int64') // 10 ** 9
-
-    data = [{"timestamp": time, "value": value} for time, value in plot.points.items() if start_at_unix <= time <= end_at_unix]
+        data = [{"timestamp": time, "value": value} for time, value in plot.points.items() if start_at_unix <= time <= end_at_unix]
+    else:
+        data = [{"timestamp": time, "value": value} for time, value in plot.points.items()]
 
     # set_index fails if the frame is empty
     if len(data) == 0:
@@ -164,7 +165,7 @@ def export_plot_as_dataframe(
 
     # Convert timestamp to pd.Timestamp column
     df = pd.DataFrame(data)
-    df["timestamp"] = to_datetime(df["timestamp"], unit='s', utc=True)
+    df["timestamp"] = pd.to_datetime(df["timestamp"].values, unit='s', utc=True)
     df = df.set_index(pd.DatetimeIndex(df["timestamp"]))
 
     # TODO: Not a perfect implementation, will
