@@ -165,7 +165,8 @@ def export_plot_as_dataframe(
 
     # Convert timestamp to pd.Timestamp column
     df = pd.DataFrame(data)
-    df["timestamp"] = pd.to_datetime(df["timestamp"].values, unit='s', utc=True)
+    # .values claims to offer extra speedup trick
+    df["timestamp"] = pd.to_datetime(df["timestamp"].values, unit='s', utc=True).tz_localize(None)
     df = df.set_index(pd.DatetimeIndex(df["timestamp"]))
 
     # TODO: Not a perfect implementation, will
