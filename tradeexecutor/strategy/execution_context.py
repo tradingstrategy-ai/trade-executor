@@ -194,6 +194,16 @@ class ExecutionContext:
     #:
     progress_bars: bool = True
 
+    #: Force collection of visualisation and draw data during grid search and optimisation.
+    #:
+    #: Slows down the process a bit.
+    #: Note that changing this parameter means that you need to manually deleted previous cached results,
+    #: as this is stored as the part of the backtest state.
+    #:
+    #: See `perform_optimisation(draw_visualisation)` argument.
+    #:
+    force_visualisation: bool = False
+
     def __repr__(self):
         version_str = f"v{self.engine_version}" if self.engine_version else "unspecified engine version"
         return f"<ExecutionContext {self.mode.name}, {version_str}>"
@@ -207,9 +217,9 @@ class ExecutionContext:
     def has_visualisation(self) -> bool:
         """Should backtest spend time to draw custom visualisations.
 
-        - Disabled for the grid search for the speed
+        - By default, disabled for the grid search/optimiser for the speed
         """
-        return not(self.grid_search or self.optimiser)
+        return self.force_visualisation or not(self.grid_search or self.optimiser)
 
     @property
     def live_trading(self) -> bool:

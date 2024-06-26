@@ -740,9 +740,9 @@ def visualise_single_position(
     start_at_around = start_at - buffer
     end_at_around = end_at + buffer
 
-    title = f"#{position.position_id}: {position.get_realised_profit_usd()} USD"
+    title = f"Position #{position.position_id}: {position.get_unrealised_and_realised_profit_percent()*100}%, {position.get_realised_profit_usd()} USD"
 
-    return visualise_single_pair(
+    fig = visualise_single_pair(
         state=state,
         execution_context=execution_context,
         candle_universe=strategy_universe.data_universe.candles,
@@ -752,3 +752,14 @@ def visualise_single_position(
         title=title,
     )
 
+    # No title needed to display
+    fig.update_layout(
+        title="",
+    )
+
+    # https://community.plotly.com/t/excessive-margins-in-graphs-how-to-remove/49094/2
+    fig.update_layout(
+        margin=dict(l=5, r=5, t=5, b=5),
+    )
+
+    return fig
