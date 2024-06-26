@@ -141,10 +141,14 @@ def export_plot_as_dataframe(
         Internal Plot object from the strategy state.
 
     :param start_at:
-        Crop range
+        Crop range.
+
+        Inclusive.
 
     :param end_at:
         Crop range
+
+        Inclusive.
 
     :param correct_look_ahead_bias_negation:
         How many candles to shift the data if the source plot was adjusted for the look ahead bias.
@@ -152,8 +156,8 @@ def export_plot_as_dataframe(
         See :py:class:`tradeexecutor.state.visualisation.RecordingTime` for more information.
     """
     if start_at or end_at:
-        start_at_unix = start_at.timestamp()
-        end_at_unix = end_at.timestamp()
+        start_at_unix = start_at.timestamp() if start_at else 0
+        end_at_unix = end_at.timestamp() if end_at else pd.Timestamp("2099-1-1").timestamp()
 
         data = [{"timestamp": time, "value": value} for time, value in plot.points.items() if start_at_unix <= time <= end_at_unix]
     else:
@@ -166,6 +170,7 @@ def export_plot_as_dataframe(
     # Convert timestamp to pd.Timestamp column
     df = pd.DataFrame(data)
     # .values claims to offer extra speedup trick
+    # https://stackoverflow.com/questions/65948018/how-to-convert-unix-epoch-time-to-datetime-with-timezone-in-pandas
     df["timestamp"] = pd.to_datetime(df["timestamp"].values, unit='s', utc=True).tz_localize(None)
     df = df.set_index(pd.DatetimeIndex(df["timestamp"]))
 
