@@ -130,10 +130,10 @@ def visualise_technical_indicator(
 
 
 def export_plot_as_dataframe(
-        plot: Plot,
-        start_at: Optional[pd.Timestamp] = None,
-        end_at: Optional[pd.Timestamp] = None,
-        correct_look_ahead_bias_negation=True,
+    plot: Plot,
+    start_at: Optional[pd.Timestamp] = None,
+    end_at: Optional[pd.Timestamp] = None,
+    correct_look_ahead_bias_negation=True,
 ) -> pd.DataFrame:
     """Convert visualisation state to Plotly friendly df.
 
@@ -141,28 +141,27 @@ def export_plot_as_dataframe(
         Internal Plot object from the strategy state.
 
     :param start_at:
-        Crop range
+        Crop range.
+
+        Inclusive.
 
     :param end_at:
         Crop range
+
+        Inclusive.
 
     :param correct_look_ahead_bias_negation:
         How many candles to shift the data if the source plot was adjusted for the look ahead bias.
 
         See :py:class:`tradeexecutor.state.visualisation.RecordingTime` for more information.
     """
-    data = []
-    for time, value in plot.points.items():
-        time = pd.to_datetime(time, unit='s')
+    if start_at or end_at:
+        start_at_unix = start_at.timestamp() if start_at else 0
+        end_at_unix = end_at.timestamp() if end_at else pd.Timestamp("2099-1-1").timestamp()
 
-        if start_at or end_at:
-            if time < start_at or time > end_at:
-                continue
-
-        data.append({
-            "timestamp": time,
-            "value": value,
-        })
+        data = [{"timestamp": time, "value": value} for time, value in plot.points.items() if start_at_unix <= time <= end_at_unix]
+    else:
+        data = [{"timestamp": time, "value": value} for time, value in plot.points.items()]
 
     # set_index fails if the frame is empty
     if len(data) == 0:
@@ -170,6 +169,9 @@ def export_plot_as_dataframe(
 
     # Convert timestamp to pd.Timestamp column
     df = pd.DataFrame(data)
+    # .values claims to offer extra speedup trick
+    # https://stackoverflow.com/questions/65948018/how-to-convert-unix-epoch-time-to-datetime-with-timezone-in-pandas
+    df["timestamp"] = pd.to_datetime(df["timestamp"].values, unit='s', utc=True).tz_localize(None)
     df = df.set_index(pd.DatetimeIndex(df["timestamp"]))
 
     # TODO: Not a perfect implementation, will

@@ -68,6 +68,9 @@ def setup_charting_and_output(
         Default 20 is too low to display summary tables.
     """
 
+    from plotly.offline import init_notebook_mode
+    import plotly.io as pio
+
     # Get rid of findfont: Font family 'Arial' not found.
     # when running a remote notebook on Jupyter Server on Ubuntu Linux server
     # https://stackoverflow.com/questions/42097053/matplotlib-cannot-find-basic-fonts/76136516#76136516
@@ -81,11 +84,9 @@ def setup_charting_and_output(
     if mode == OutputMode.static:
 
          # https://stackoverflow.com/a/52956402/315168
-        from plotly.offline import init_notebook_mode
         init_notebook_mode()
 
         # https://stackoverflow.com/a/74609837/315168
-        import plotly.io as pio
         pio.kaleido.scope.default_format = image_format
 
         # https://plotly.com/python/renderers/#overriding-the-default-renderer
@@ -95,6 +96,12 @@ def setup_charting_and_output(
         # Have SVGs default pixel with
         current_renderer.width = width
         current_renderer.height = height
+    elif mode == OutputMode.interactive:
+        # https://plotly.com/python/renderers/#setting-the-default-renderer
+        pio.renderers.default = "notebook_connected"
+        init_notebook_mode(connected=False)
+    else:
+        raise NotImplementedError(f"Unknown rendering mode: {mode}")
 
     # TODO: Currently we do not reset interactive mode if the notebook has been run once
     # If you run setup_charting_and_output(offline) once you are stuck offline
