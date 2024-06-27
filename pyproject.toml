@@ -95,6 +95,7 @@ tqdm = "^4.64.1"
 tblib = "^1.7.0"
 cloudpickle = "^3.0.0"
 scikit-optimize = "^0.10.2"
+ta-lib = "^0.4.31"
 
 [tool.poetry.extras]
 
