@@ -110,17 +110,29 @@ def get_benchmark_data(
 
         if cumulative_with_initial_cash:
             cumulative_returns = (1 + daily_returns).cumprod()
-            df[name] = cumulative_returns * cumulative_with_initial_cash
+            equity_curve = cumulative_returns * cumulative_with_initial_cash
+
+            # Merge df and equity_curve_df with an outer join
+            # since indexes can differ
+            equity_curve_df = equity_curve.to_frame(name=name)
+            df = df.merge(equity_curve_df, left_index=True, right_index=True, how='outer')
+
+            df[name] = equity_curve
+        else:
+            df[name] = daily_returns
+            
+    # reassign attrs after merge since they are lost
+    for column in df.columns:
+        name = df[column].name
+        if cumulative_with_initial_cash:
+            df[name].attrs["name"] = name
+            df[name].attrs["colour"] = asset_colours.get(name)
             df[name].attrs["returns_series_type"] = "cumulative_returns"
             df[name].attrs["curve"] = CurveType.equity
         else:
-            df[name] = daily_returns
             df[name].attrs["returns_series_type"] = "daily_returns"
             df[name].attrs["period"] = "D"
             df[name].attrs["curve"] = CurveType.returns
-
-        df[name].attrs["colour"] = asset_colours.get(name)
-        df[name].attrs["name"] = name
 
     return df
 
