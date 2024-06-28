@@ -224,6 +224,7 @@ class ObjectiveWrapper:
         real_space_rounding: Decimal,
         log_level: int,
         result_filter: ResultFilter,
+        draw_visualisation: bool,
     ):
         self.search_func = search_func
         self.pickled_universe_fname = pickled_universe_fname
@@ -238,6 +239,7 @@ class ObjectiveWrapper:
         self.log_level = log_level
         self.result_filter = result_filter
         self.filtered_result_value = 0
+        self.draw_visualisation = draw_visualisation
 
     def __call__(
         self,
@@ -284,6 +286,7 @@ class ObjectiveWrapper:
             # Make sure we drag the engine version along
             execution_context = dataclasses.replace(scikit_optimizer_context)
             execution_context.engine_version = self.trading_strategy_engine_version
+            execution_context.force_visualisation = self.draw_visualisation
 
             result = run_grid_search_backtest(
                 combination,
@@ -426,6 +429,7 @@ def perform_optimisation(
     log_level: int | None=None,
     result_filter:ResultFilter = MinTradeCountFilter(50),
     bad_result_value=0,
+    draw_visualisation=False,
 ) -> OptimiserResult:
     """Search different strategy parameters using an optimiser.
 
@@ -491,6 +495,13 @@ def perform_optimisation(
 
     :param bad_result_value:
         What placeholder value we use for the optimiser when `result_filter` does not like the outcome.
+
+    :param draw_visualisation:
+        Draw and collect visualisation data during the backtest execution when optimising.
+
+        This will slow down optimisation: use this only if you really want to collect the data.
+
+        In `decide_trades()` function, `input.is_visualisation_enabled()` will return True.
 
     :return:
         Grid search results for different combinations.
@@ -562,6 +573,7 @@ def perform_optimisation(
         real_space_rounding=real_space_rounding,
         result_filter=result_filter,
         log_level=log_level,
+        draw_visualisation=draw_visualisation,
     )
 
     name = parameters.get("name") or parameters.get("id") or "backtest"

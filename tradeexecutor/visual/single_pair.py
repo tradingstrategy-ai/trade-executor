@@ -13,7 +13,8 @@ from tradeexecutor.state.state import State
 from tradeexecutor.state.trade import TradeExecution
 
 from tradeexecutor.state.types import PairInternalId
-from tradeexecutor.strategy.execution_context import ExecutionContext
+from tradeexecutor.strategy.execution_context import ExecutionContext, notebook_execution_context
+from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
 from tradeexecutor.visual.technical_indicator import overlay_all_technical_indicators
 
 from tradingstrategy.candle import GroupedCandleUniverse
@@ -705,4 +706,100 @@ def _get_grid_with_candles_volume_indicators(
 
     fig.update_traces(xaxis='x')
         
+    return fig
+
+
+
+def visualise_single_position(
+    state: State,
+    strategy_universe: TradingStrategyUniverse,
+    position: TradingPosition,
+    area_around: int | pd.Timedelta = 100,
+    execution_context: ExecutionContext = notebook_execution_context,
+) -> go.Figure:
+    """Inspect individual won or lost trade.
+
+    - Give you an overview what failed in the trade
+
+    - We draw the technical indicators if the source data has them (`input.visualisation == True`).
+
+    Example:
+
+    .. code-block:: python
+
+        from tradeexecutor.utils.list import get_linearly_sampled_items
+        from tradeexecutor.visual.single_pair import visualise_single_position
+        from tradeexecutor.utils.profile import profiled
+
+        # We are always using interactive charting mode for single position visualisation
+        setup_charting_and_output(OutputMode.interactive)
+
+        state = best_pick.hydrate_state()
+        portfolio = state.portfolio
+
+        pair = strategy_universe.get_pair_by_human_description(trading_pairs[0])  # We examine positions for this trading pair only
+        examinaned_position_count = 3  # We are linearly sampling this many failing trades for visualisation
+        area_around_candels = 40  # How many candles before and after entry and exit
+
+        all_positions = list(portfolio.get_all_positions())
+        positions_lost = [p for p in all_positions if p.is_loss()]
+
+        print(f"Total lost positions for {pair.get_ticker()} is {len(positions_lost)} / {len(all_positions)}. We are visualising {examinaned_position_count} of these.")
+        # Take 3 positions equally weighted from the time line
+
+        examined_positions = get_linearly_sampled_items(positions_lost, count=examinaned_position_count)
+
+        for position in examined_positions:
+            position_summary = pd.Series(position.get_human_summary())
+            display(position_summary)
+            fig = visualise_single_position(
+                state=state,
+                strategy_universe=strategy_universe,
+                position=position,
+                area_around=area_around_candels,
+            )
+            display(fig)
+
+    :param position:
+        A single trading position to visualise
+
+    :param area_around:
+        How many candles display before and start of the position
+    """
+
+    assert position.is_closed(), "We can only visualise closed positions for now"
+
+    start_at = position.get_first_trade().executed_at
+    end_at = position.get_last_trade().executed_at
+    candle_width = strategy_universe.data_universe.time_bucket.to_pandas_timedelta()
+
+    if type(area_around) == int:
+        buffer = area_around * candle_width
+    else:
+        assert isinstance(area_around, pd.Timedelta)
+        buffer = area_around
+
+    start_at_around = start_at - buffer
+    end_at_around = end_at + buffer
+
+    fig = visualise_single_pair(
+        state=state,
+        execution_context=execution_context,
+        candle_universe=strategy_universe.data_universe.candles,
+        start_at=start_at_around,
+        end_at=end_at_around,
+        pair_id=position.pair.internal_id,
+    )
+
+    # title = f"Position #{position.position_id}: {position.get_unrealised_and_realised_profit_percent()*100}%, {position.get_realised_profit_usd()} USD"
+    # No title needed to display
+    fig.update_layout(
+        title="",
+    )
+
+    # https://community.plotly.com/t/excessive-margins-in-graphs-how-to-remove/49094/2
+    fig.update_layout(
+        margin=dict(l=0, r=0, t=0, b=0),
+    )
+
     return fig

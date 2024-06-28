@@ -300,6 +300,28 @@ class TradingPosition(GenericPosition):
         """
         return pprint.pformat(asdict(self), width=160)
 
+    def get_human_summary(self) -> dict:
+        """Get the human readable debug dump.
+
+        :return:
+            Human readable dict
+        """
+
+        return {
+            "Position id": self.position_id,
+            "Pair": self.pair.get_ticker(),
+            "Type": self.pair.kind.name,
+            "Trade count": self.get_trade_count(),
+            "PnL %": self.get_unrealised_and_realised_profit_percent() * 100,
+            "PnL USD": self.get_realised_profit_usd(),
+            "Started at": self.get_first_trade().executed_at,
+            "Ended at": self.get_last_trade().executed_at,
+            "Duration": self.get_duration(),
+            "Entry price": self.get_opening_price(),
+            "Exit price": self.get_closing_price(),
+            "Quantity (open)": self.get_first_trade().executed_quantity,
+        }
+
     def is_open(self) -> bool:
         """This is an open trading position."""
         return self.closed_at is None
