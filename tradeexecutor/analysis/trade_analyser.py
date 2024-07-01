@@ -678,6 +678,8 @@ class TradeAnalysis:
             max_drawdown = calculate_max_drawdown(original_returns)
             max_runup = calculate_max_runup(original_returns)
         else:
+            logger.warning("State not provided, some advanced statistics will not be calculated, and time_in_market may be inaccurate. Rather provide state and time_bucket arguments")
+
             daily_returns = None
             compounding_returns = None
             sharpe_ratio = None
@@ -700,8 +702,8 @@ class TradeAnalysis:
 
     def calculate_short_summary_statistics(
             self,
-            time_bucket,
-            state,
+            time_bucket: TimeBucket,
+            state: 'State',
     ) -> TradeSummary:
         """Calculate some statistics how our short trades went.
 
@@ -715,10 +717,11 @@ class TradeAnalysis:
             TradeSummary instance
         """
         compounding_returns = None
-        if state is not None:
-            # import here to avoid circular import error
-            from tradeexecutor.visual.equity_curve import calculate_short_compounding_realised_trading_profitability
-            compounding_returns = calculate_short_compounding_realised_trading_profitability(state)
+        assert state is not None, "State must be provided to calculate short summary statistics"
+        
+        # import here to avoid circular import error
+        from tradeexecutor.visual.equity_curve import calculate_short_compounding_realised_trading_profitability
+        compounding_returns = calculate_short_compounding_realised_trading_profitability(state)
         
         short_summary = self.calculate_summary_statistics_for_positions(time_bucket, state, self.get_short_positions())
         short_summary.compounding_returns = compounding_returns
@@ -729,8 +732,8 @@ class TradeAnalysis:
 
     def calculate_long_summary_statistics(
             self,
-            time_bucket,
-            state,
+            time_bucket: TimeBucket,
+            state: 'State',
     ) -> TradeSummary:
         """Calculate some statistics how our long trades went.
 
@@ -744,10 +747,11 @@ class TradeAnalysis:
             TradeSummary instance
         """
         compounding_returns = None
-        if state is not None:
-            # import here to avoid circular import error
-            from tradeexecutor.visual.equity_curve import calculate_long_compounding_realised_trading_profitability
-            compounding_returns = calculate_long_compounding_realised_trading_profitability(state)
+        assert state is not None, "State must be provided to calculate long summary statistics"
+        
+        # import here to avoid circular import error
+        from tradeexecutor.visual.equity_curve import calculate_long_compounding_realised_trading_profitability
+        compounding_returns = calculate_long_compounding_realised_trading_profitability(state)
 
         long_summary =  self.calculate_summary_statistics_for_positions(time_bucket, state, self.get_long_positions())
         long_summary.compounding_returns = compounding_returns
@@ -797,16 +801,117 @@ class TradeAnalysis:
                 return current_position_opened_at
             else:
                 return previous_position_closed_at  # overlapping
+        
+        times_in_market_all = []
+        times_in_market_volatile = []  # excludes delta neutral positions
+        _positions = []
+
+        def _append_last_position(
+            grouped_duration: pd.Timedelta,
+            previous_position_closed_at: pd.Timedelta | None,
+            _position_duration: pd.Timedelta | None = None,
+        ) -> None:
+            """Last position has to be handled separately.
             
-        def _append_position_duration_by_market_condition(times_in_market_all, times_in_market_volatile, current_grouped_duration, position):
-            """Append position duration to `times_in_market_all` and `times_in_market_volatile` lists."""
-            times_in_market_all.append(current_grouped_duration)
-            if not position.is_credit_supply():
-                times_in_market_volatile.append(position.get_duration())
+            :param grouped_duration:
+                Duration of the previous group of positions. Should not include the last position's duration.
+                Should never include credit supply positions (we calculate them separately)
+
+            :param previous_position_closed_at:
+                The closed_at timestamp of the previous position. Used to check for overlapping positions.
+            
+            :_position_duration:
+                Override the position's duration. Needed when doing calculations on open positions
+
+            :return:
+                None
+            """
+            position_duration = _position_duration or position.get_duration()
+            
+            if not previous_position_closed_at:
+                assert len(_positions) == 0, "Should be the only position"
+                assert grouped_duration == datetime.timedelta(0), "Should be the only position"
+
+                times_in_market_all.append(position_duration)
+                if not position.is_credit_supply():
+                    times_in_market_volatile.append(position_duration)
+            elif previous_position_closed_at > position.opened_at:
+                # overlapping group
+                assert not position.is_credit_supply(), "Delta neutral positions should not be here"
+                
+                if not position.closed_at:
+                    assert position_duration is not None, "position_duration should be provided for open positions"
+                    grouped_duration += position_duration
+                else:
+                    grouped_duration += position.closed_at - previous_position_closed_at
+
+                times_in_market_all.append(grouped_duration)
+                times_in_market_volatile.append(grouped_duration)
+            else:
+                # new group
+                times_in_market_all.append(grouped_duration)
+                times_in_market_all.append(position_duration)
+                times_in_market_volatile.append(grouped_duration)
+                if not position.is_credit_supply():
+                    times_in_market_volatile.append(position_duration)
+
+            return None
+
+        def _get_new_grouped_duration_and_append(
+            grouped_duration: pd.Timedelta, 
+            position: TradingPosition, 
+            _position_duration: pd.Timedelta | None = None, 
+            last_position: bool = False, 
+        ) -> pd.Timedelta | None:
+            """Called when we have a new position or new group of overlapping positions. 
+            
+            Append position duration to `times_in_market_all` and `times_in_market_volatile` lists.
+            
+            :param grouped_duration:
+                NB: does not include current position's duration. It is the duration of the previous group.
+                Should never include credit supply positions (added separately to lists)
+
+            :param position:
+                The TradingPosition instance
+
+            :param position_duration:
+                Override the position's duration. Needed when doing calculations on open positions
+
+            :param last_position:
+                Whether the provided position is the last open or last closed position chronologically
+                
+            :return:
+                The new grouped_duration that includes the current position's duration (unless it is credit supply). 
+            """
+
+            if len(_positions) > 1 and not last_position:
+                assert _positions[-1].closed_at < position.opened_at, "Overlapping positions. Should not happen unless last open or last closed position"
+
+            # if last_postion, check for overlap and adjust accordingly
+            elif last_position:
+                # TODO use one level up
+                return _append_last_position(grouped_duration, previous_position_closed_at, _position_duration)
+            
+            assert not last_position, "Should not be last position here"
+
+            position_duration = position.get_duration()
+            assert position_duration, "Position duration should be provided"
+
+            times_in_market_all.append(grouped_duration)
+            times_in_market_volatile.append(grouped_duration)
+
+            if position.is_credit_supply():
+                times_in_market_all.append(position_duration)
+                grouped_duration = datetime.timedelta(0) # don't include credit supply in new group
+            else:
+                grouped_duration = position_duration or datetime.timedelta(0)  # new group
+
+            _positions.append(position)
+            return grouped_duration
 
         initial_cash = self.portfolio.get_initial_cash()
 
-        uninvested_cash = self.portfolio.get_cash()
+        uninvested_cash = self.portfolio.get_cash()                          
 
         # EthLisbon hack
         extra_return = 0
@@ -826,8 +931,6 @@ class TradeAnalysis:
         realised_losses_pct = []
         interest_paid_usd = []
         durations_between_positions = []
-        times_in_market_all = []
-        times_in_market_volatile = []  # excludes delta neutral positions
 
         biggest_winning_trade_pc = None
         biggest_losing_trade_pc = None
@@ -868,12 +971,10 @@ class TradeAnalysis:
 
         previous_position_opened_at = None
         previous_position_closed_at = None
-        current_grouped_duration = datetime.timedelta(0)
+        grouped_duration = datetime.timedelta(0)
         open_position_lock = False
 
         total_claimed_interest = 0
-
-        position_count = 0
 
         for pair_id, position in sorted_positions:
 
@@ -912,35 +1013,40 @@ class TradeAnalysis:
                 open_value += position.get_value()
                 unrealised_profit_usd += position.get_unrealised_profit_usd()
                 undecided += 1
-
+                
+                # time in market for open positions
                 # only count the first open position for `time in market`
+                # otherwise double counting
                 if open_position_lock == False and state:
                     strategy_start, strategy_end = state.get_strategy_time_range()
                     start_time = _get_final_start_time(previous_position_closed_at, position.opened_at)
 
                     if strategy_end:
-                        current_grouped_duration += strategy_end - start_time
-                        _append_position_duration_by_market_condition(times_in_market_all, times_in_market_volatile, current_grouped_duration, position)
-                    
+                        position_duration = strategy_end - start_time
+                        _get_new_grouped_duration_and_append(grouped_duration, position, position_duration, last_position=True)
+
                     open_position_lock = True
 
                 continue
 
-            # time in market
-            position_duration = position.get_duration()
-            if current_grouped_duration == datetime.timedelta(0):
-                current_grouped_duration += position_duration  # first position
+            # time in market for closed positions
+            if grouped_duration == datetime.timedelta(0):
+                # start new group
+                if len(_positions) > 0:
+                    assert not position.is_credit_supply(), "Delta neutral positions should not be here"
+                grouped_duration += position.get_duration()
             elif previous_position_closed_at:
                 if position.opened_at < previous_position_closed_at:
-                    current_grouped_duration += (position.closed_at - previous_position_closed_at)  # overlapping group
+                    # overlapping group
+                    assert not position.is_credit_supply(), "Delta neutral positions should not overlap"
+                    grouped_duration += (position.closed_at - previous_position_closed_at)  
                 else:
-                    _append_position_duration_by_market_condition(times_in_market_all, times_in_market_volatile, current_grouped_duration, position)
-                    current_grouped_duration = position_duration  # new group
+                    # end new group
+                    # credit supply should only be here
+                    grouped_duration = _get_new_grouped_duration_and_append(grouped_duration, position)
+            else:
+                raise ValueError("previous_position_closed_at is None. This should not happen.")
 
-            if position_count == len(sorted_positions) - 1:
-                _append_position_duration_by_market_condition(times_in_market_all, times_in_market_volatile, current_grouped_duration, position)  # last position
-            position_count += 1
-            
             previous_position_opened_at = position.opened_at
             previous_position_closed_at = position.closed_at
 
@@ -1026,6 +1132,9 @@ class TradeAnalysis:
             else:
                 # Bad input data / legacy data
                 max_pullback_pct = 0
+
+        # add time in market for very last closed position
+        _get_new_grouped_duration_and_append(grouped_duration, position, last_position=True)
 
         all_trades = winning_trades + losing_trades + [0 for i in range(zero_loss)]
         average_trade = func_check(all_trades, avg)
@@ -1154,8 +1263,8 @@ class TradeAnalysis:
 
     def calculate_all_summary_stats_by_side(
             self,
-            time_bucket: Optional[TimeBucket] = None,
-            state=None,
+            time_bucket: TimeBucket,
+            state: 'State',
             urls=False,
     ) -> pd.DataFrame:
         """Calculate some statistics how our trades went. This returns a DataFrame with 3 separate columns for overall, long and short.
@@ -1174,6 +1283,9 @@ class TradeAnalysis:
         :return:
             DataFrame with all the stats for overall, long and short.
         """
+
+        assert state is not None, "State must be provided to calculate all summary statistics by side"
+        assert isinstance(time_bucket, TimeBucket), "Not a valid time bucket"
 
         all_stats_trade_summary = self.calculate_summary_statistics(time_bucket, state)
         long_stats_trade_summary = self.calculate_long_summary_statistics(time_bucket, state)
@@ -1434,8 +1546,6 @@ def expand_timeline(
             remarks += "BAD"
 
         duration = position.get_duration()
-
-        print(position.notes)
 
         r = {
             # "timestamp": timestamp,
