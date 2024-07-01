@@ -1263,8 +1263,8 @@ class TradeAnalysis:
 
     def calculate_all_summary_stats_by_side(
             self,
-            time_bucket: TimeBucket,
-            state: 'State',
+            time_bucket: Optional[TimeBucket] = None,
+            state: Optional['State'] = None,
             urls=False,
     ) -> pd.DataFrame:
         """Calculate some statistics how our trades went. This returns a DataFrame with 3 separate columns for overall, long and short.
@@ -1283,9 +1283,6 @@ class TradeAnalysis:
         :return:
             DataFrame with all the stats for overall, long and short.
         """
-
-        assert state is not None, "State must be provided to calculate all summary statistics by side"
-        assert isinstance(time_bucket, TimeBucket), "Not a valid time bucket"
 
         all_stats_trade_summary = self.calculate_summary_statistics(time_bucket, state)
         long_stats_trade_summary = self.calculate_long_summary_statistics(time_bucket, state)
