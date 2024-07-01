@@ -16,6 +16,19 @@ from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniv
 from tradingstrategy.types import TokenSymbol
 
 
+#: What is the priority of buy-and-hold assets to shown in the benchmarks
+DEFAULT_BENCHMARK_ASSETS = [
+    "BTC",
+    "WBTC",
+    "ETH",
+    "WETH",
+    "WMATIC",
+    "MATIC",
+    "ARB",
+    "WARB"
+]
+
+
 def _find_benchmark_pair(strategy_universe: TradingStrategyUniverse, token_symbol: TokenSymbol) -> TradingPairIdentifier | None:
     """Try to find the price series for our comparison asset in the trading universe."""
     for dex_pair in strategy_universe.data_universe.pairs.iterate_pairs():
@@ -29,7 +42,7 @@ def _find_benchmark_pair(strategy_universe: TradingStrategyUniverse, token_symbo
 def get_benchmark_data(
     strategy_universe: TradingStrategyUniverse,
     max_count=2,
-    interesting_assets=("BTC", "WBTC", "ETH", "WETH", "WMATIC", "MATIC"),
+    interesting_assets=DEFAULT_BENCHMARK_ASSETS,
     cumulative_with_initial_cash: USDollarAmount =0.0,
     asset_colours=DEFAULT_BENCHMARK_COLOURS,
     start_at: pd.Timestamp | None = None,

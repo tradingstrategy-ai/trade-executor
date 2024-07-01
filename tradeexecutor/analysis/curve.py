@@ -33,6 +33,7 @@ DEFAULT_BENCHMARK_COLOURS = {
     "BTC": "orange",
     "ETH": "blue",
     "MATIC": "purple",
+    "ARB": "red",
     "All cash": "black",
     "Strategy": "green",
 }
