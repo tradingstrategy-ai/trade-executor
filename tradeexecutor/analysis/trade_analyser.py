@@ -883,9 +883,8 @@ class TradeAnalysis:
             :return:
                 The new grouped_duration that includes the current position's duration (unless it is credit supply). 
             """
-
             if len(_positions) > 1 and not last_position:
-                assert _positions[-1].closed_at < position.opened_at, "Overlapping positions. Should not happen unless last open or last closed position"
+                assert _positions[-1].closed_at <= position.opened_at, "Overlapping positions. Should not happen unless last open or last closed position"
 
             # if last_postion, check for overlap and adjust accordingly
             elif last_position:
@@ -895,7 +894,7 @@ class TradeAnalysis:
             assert not last_position, "Should not be last position here"
 
             position_duration = position.get_duration()
-            assert position_duration, "Position duration should be provided"
+            assert position_duration is not None, "Position duration should be provided"
 
             times_in_market_all.append(grouped_duration)
             times_in_market_volatile.append(grouped_duration)
