@@ -808,6 +808,7 @@ class TradeAnalysis:
 
         def _append_last_position(
             grouped_duration: pd.Timedelta,
+            position: TradingPosition,
             previous_position_closed_at: pd.Timedelta | None,
             _position_duration: pd.Timedelta | None = None,
         ) -> None:
@@ -816,6 +817,9 @@ class TradeAnalysis:
             :param grouped_duration:
                 Duration of the previous group of positions. Should not include the last position's duration.
                 Should never include credit supply positions (we calculate them separately)
+
+            :param position:
+                The last TradingPosition instance
 
             :param previous_position_closed_at:
                 The closed_at timestamp of the previous position. Used to check for overlapping positions.
@@ -827,6 +831,7 @@ class TradeAnalysis:
                 None
             """
             position_duration = _position_duration or position.get_duration()
+            assert position_duration is not None, "position_duration should not be None here"
             
             if not previous_position_closed_at:
                 assert len(_positions) == 0, "Should be the only position"
@@ -840,7 +845,6 @@ class TradeAnalysis:
                 assert not position.is_credit_supply(), "Delta neutral positions should not be here"
                 
                 if not position.closed_at:
-                    assert position_duration is not None, "position_duration should be provided for open positions"
                     grouped_duration += position_duration
                 else:
                     grouped_duration += position.closed_at - previous_position_closed_at
@@ -883,13 +887,13 @@ class TradeAnalysis:
             :return:
                 The new grouped_duration that includes the current position's duration (unless it is credit supply). 
             """
+            # TODO remove and delete _positions
             if len(_positions) > 1 and not last_position:
                 assert _positions[-1].closed_at <= position.opened_at, "Overlapping positions. Should not happen unless last open or last closed position"
 
-            # if last_postion, check for overlap and adjust accordingly
-            elif last_position:
+            if last_position:
                 # TODO use one level up
-                return _append_last_position(grouped_duration, previous_position_closed_at, _position_duration)
+                return _append_last_position(grouped_duration, position, previous_position_closed_at, _position_duration)
             
             assert not last_position, "Should not be last position here"
 
@@ -905,7 +909,6 @@ class TradeAnalysis:
             else:
                 grouped_duration = position_duration or datetime.timedelta(0)  # new group
 
-            _positions.append(position)
             return grouped_duration
 
         initial_cash = self.portfolio.get_initial_cash()
@@ -1136,7 +1139,7 @@ class TradeAnalysis:
 
         if last_closed_position:
             # add time in market for very last closed position
-            _get_new_grouped_duration_and_append(grouped_duration, position, last_position=True)
+            _get_new_grouped_duration_and_append(grouped_duration, last_closed_position, last_position=True)
 
         all_trades = winning_trades + losing_trades + [0 for i in range(zero_loss)]
         average_trade = func_check(all_trades, avg)
