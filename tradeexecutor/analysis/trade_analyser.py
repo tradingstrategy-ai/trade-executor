@@ -974,6 +974,7 @@ class TradeAnalysis:
         open_position_lock = False
 
         total_claimed_interest = 0
+        last_closed_position = None
 
         for pair_id, position in sorted_positions:
 
@@ -1046,6 +1047,7 @@ class TradeAnalysis:
             else:
                 raise ValueError("previous_position_closed_at is None. This should not happen.")
 
+            last_closed_position = position
             previous_position_opened_at = position.opened_at
             previous_position_closed_at = position.closed_at
 
@@ -1132,8 +1134,9 @@ class TradeAnalysis:
                 # Bad input data / legacy data
                 max_pullback_pct = 0
 
-        # add time in market for very last closed position
-        _get_new_grouped_duration_and_append(grouped_duration, position, last_position=True)
+        if last_closed_position:
+            # add time in market for very last closed position
+            _get_new_grouped_duration_and_append(grouped_duration, position, last_position=True)
 
         all_trades = winning_trades + losing_trades + [0 for i in range(zero_loss)]
         average_trade = func_check(all_trades, avg)
