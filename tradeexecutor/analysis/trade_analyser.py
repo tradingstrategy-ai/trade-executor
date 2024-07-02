@@ -872,6 +872,7 @@ class TradeAnalysis:
             position: TradingPosition, 
         ) -> pd.Timedelta | None:
             """Called when we have a new position or new group of overlapping positions. 
+            This new group should not be overlapping with any previous position
             
             Append position duration to `times_in_market_all` and `times_in_market_volatile` lists.
             
