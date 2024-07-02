@@ -830,12 +830,18 @@ class TradeAnalysis:
             :return:
                 None
             """
+            if _position_duration:
+                assert position.is_open(), "Should be open position"
+            else:
+                assert position.is_closed(), "Should be closed position"
+
             position_duration = _position_duration or position.get_duration()
+            
             assert position_duration is not None, "position_duration should not be None here"
             
             if not previous_position_closed_at:
                 assert len(_positions) == 0, "Should be the only position"
-                assert grouped_duration == datetime.timedelta(0), "Should be the only position"
+                assert grouped_duration == position_duration, "Should be the only position"
 
                 times_in_market_all.append(position_duration)
                 if not position.is_credit_supply():
@@ -864,6 +870,7 @@ class TradeAnalysis:
         def _get_new_grouped_duration_and_append(
             grouped_duration: pd.Timedelta, 
             position: TradingPosition, 
+            previous_position_closed_at: pd.Timedelta | None,
             _position_duration: pd.Timedelta | None = None, 
             last_position: bool = False, 
         ) -> pd.Timedelta | None:
@@ -878,7 +885,7 @@ class TradeAnalysis:
             :param position:
                 The TradingPosition instance
 
-            :param position_duration:
+            :param _position_duration:
                 Override the position's duration. Needed when doing calculations on open positions
 
             :param last_position:
@@ -977,7 +984,6 @@ class TradeAnalysis:
         open_position_lock = False
 
         total_claimed_interest = 0
-        last_closed_position = None
 
         for pair_id, position in sorted_positions:
 
@@ -1022,12 +1028,11 @@ class TradeAnalysis:
                 # otherwise double counting
                 if open_position_lock == False and state:
                     strategy_start, strategy_end = state.get_strategy_time_range()
-                    start_time = _get_final_start_time(previous_position_closed_at, position.opened_at)
 
                     if strategy_end:
-                        position_duration = strategy_end - start_time
-                        _get_new_grouped_duration_and_append(grouped_duration, position, position_duration, last_position=True)
-
+                        position_duration = strategy_end - position.opened_at
+                        _get_new_grouped_duration_and_append(grouped_duration, position, previous_position_closed_at, position_duration, last_position=True)
+                        previous_position_closed_at = None
                     open_position_lock = True
 
                 continue
@@ -1050,7 +1055,11 @@ class TradeAnalysis:
             else:
                 raise ValueError("previous_position_closed_at is None. This should not happen.")
 
-            last_closed_position = position
+            last_closed_position_info = {
+                "position": position,
+                "grouped_duration": grouped_duration,
+                "previous_position_closed_at": previous_position_closed_at,
+            }
             previous_position_opened_at = position.opened_at
             previous_position_closed_at = position.closed_at
 
@@ -1137,9 +1146,12 @@ class TradeAnalysis:
                 # Bad input data / legacy data
                 max_pullback_pct = 0
 
-        if last_closed_position:
+        if last_closed_position_info:
             # add time in market for very last closed position
-            _get_new_grouped_duration_and_append(grouped_duration, last_closed_position, last_position=True)
+            _get_new_grouped_duration_and_append(
+                **last_closed_position_info, 
+                last_position=True,
+            )
 
         all_trades = winning_trades + losing_trades + [0 for i in range(zero_loss)]
         average_trade = func_check(all_trades, avg)
