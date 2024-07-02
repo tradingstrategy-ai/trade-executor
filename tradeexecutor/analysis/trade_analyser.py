@@ -840,7 +840,7 @@ class TradeAnalysis:
             assert position_duration is not None, "position_duration should not be None here"
             
             if not previous_position_closed_at:
-                assert len(_positions) == 0, "Should be the only position"
+                assert len(_positions) == 1, "Should be the only position"
                 assert grouped_duration == position_duration, "Should be the only position"
 
                 times_in_market_all.append(position_duration)
