@@ -1051,7 +1051,7 @@ class TradeAnalysis:
                 else:
                     # end new group
                     # credit supply should only be here
-                    grouped_duration = _get_new_grouped_duration_and_append(grouped_duration, position)
+                    grouped_duration = _get_new_grouped_duration_and_append(grouped_duration, position, previous_position_closed_at)
             else:
                 raise ValueError("previous_position_closed_at is None. This should not happen.")
 
