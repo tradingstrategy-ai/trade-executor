@@ -245,6 +245,7 @@ def test_backtest_long_short_stats(
 
     # all longs and shorts opened and closed at same time
     assert summary.time_in_market == pytest.approx(0.5263157894736842)
+    assert summary.time_in_market_volatile == pytest.approx(0.5263157894736842)
     assert long_summary.time_in_market == pytest.approx(0.5263157894736842)
     assert short_summary.time_in_market == pytest.approx(0.5263157894736842)
     
