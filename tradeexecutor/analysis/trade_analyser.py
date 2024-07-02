@@ -870,9 +870,6 @@ class TradeAnalysis:
         def _get_new_grouped_duration_and_append(
             grouped_duration: pd.Timedelta, 
             position: TradingPosition, 
-            previous_position_closed_at: pd.Timedelta | None,
-            _position_duration: pd.Timedelta | None = None, 
-            last_position: bool = False, 
         ) -> pd.Timedelta | None:
             """Called when we have a new position or new group of overlapping positions. 
             
@@ -894,16 +891,9 @@ class TradeAnalysis:
             :return:
                 The new grouped_duration that includes the current position's duration (unless it is credit supply). 
             """
-            # TODO remove and delete _positions
-            if len(_positions) > 1 and not last_position:
-                assert _positions[-1].closed_at <= position.opened_at, "Overlapping positions. Should not happen unless last open or last closed position"
-
-            if last_position:
-                # TODO use one level up
-                return _append_last_position(grouped_duration, position, previous_position_closed_at, _position_duration)
+            if len(_positions) > 1:
+                assert _positions[-1].closed_at <= position.opened_at, "Overlapping positions. Should not happen here"
             
-            assert not last_position, "Should not be last position here"
-
             position_duration = position.get_duration()
             assert position_duration is not None, "Position duration should be provided"
 
@@ -1032,7 +1022,7 @@ class TradeAnalysis:
 
                     if strategy_end:
                         position_duration = strategy_end - position.opened_at
-                        _get_new_grouped_duration_and_append(grouped_duration, position, previous_position_closed_at, position_duration, last_position=True)
+                        _append_last_position(grouped_duration, position, previous_position_closed_at, position_duration)
                         previous_position_closed_at = None
                     open_position_lock = True
 
@@ -1057,8 +1047,8 @@ class TradeAnalysis:
                 raise ValueError("previous_position_closed_at is None. This should not happen.")
 
             last_closed_position_info = {
-                "position": position,
                 "grouped_duration": grouped_duration,
+                "position": position,
                 "previous_position_closed_at": previous_position_closed_at,
             }
             previous_position_opened_at = position.opened_at
@@ -1149,10 +1139,8 @@ class TradeAnalysis:
 
         if last_closed_position_info:
             # add time in market for very last closed position
-            _get_new_grouped_duration_and_append(
-                **last_closed_position_info, 
-                last_position=True,
-            )
+             _append_last_position(**last_closed_position_info)
+
 
         all_trades = winning_trades + losing_trades + [0 for i in range(zero_loss)]
         average_trade = func_check(all_trades, avg)
