@@ -815,8 +815,8 @@ class TradeAnalysis:
             """Last position has to be handled separately.
             
             :param grouped_duration:
-                Duration of the previous group of positions. Should not include the last position's duration.
-                Should never include credit supply positions (we calculate them separately)
+                - Duration of the previous group of positions. If `position` is closed and is overlapping with previous position, **will** include the current position's duration.
+                - Should never include credit supply positions (we calculate them separately)
 
             :param position:
                 The last TradingPosition instance
@@ -834,6 +834,10 @@ class TradeAnalysis:
                 assert position.is_open(), "Should be open position"
             else:
                 assert position.is_closed(), "Should be closed position"
+            
+            if position.is_closed() and open_position_lock:
+                # already included when dealing with open position
+                return None
 
             position_duration = _position_duration or position.get_duration()
             
@@ -852,19 +856,24 @@ class TradeAnalysis:
                 
                 if not position.closed_at:
                     grouped_duration += position_duration
+                    times_in_market_all.append(grouped_duration)
+                    times_in_market_volatile.append(grouped_duration)
                 else:
-                    grouped_duration += position.closed_at - previous_position_closed_at
-
-                times_in_market_all.append(grouped_duration)
-                times_in_market_volatile.append(grouped_duration)
+                    pass
+                    # already included if closed and overlapping
+                    # grouped_duration += position.closed_at - previous_position_closed_at
             else:
                 # new group
                 times_in_market_all.append(grouped_duration)
-                times_in_market_all.append(position_duration)
                 times_in_market_volatile.append(grouped_duration)
+                times_in_market_all.append(position_duration)
                 if not position.is_credit_supply():
                     times_in_market_volatile.append(position_duration)
 
+            # for safety
+            if last_closed_position_info:
+                last_closed_position_info["grouped_duration"] = datetime.timedelta(0)
+            
             return None
 
         def _get_new_grouped_duration_and_append(
@@ -877,8 +886,8 @@ class TradeAnalysis:
             Append position duration to `times_in_market_all` and `times_in_market_volatile` lists.
             
             :param grouped_duration:
-                NB: does not include current position's duration. It is the duration of the previous group.
-                Should never include credit supply positions (added separately to lists)
+                - NB: does not include current position's duration. It is the duration of the previous group. (unlike in _append_last_position)
+                - Should never include credit supply positions (added separately to lists)
 
             :param position:
                 The TradingPosition instance
@@ -897,6 +906,7 @@ class TradeAnalysis:
             
             position_duration = position.get_duration()
             assert position_duration is not None, "Position duration should be provided"
+            assert grouped_duration, "Grouped duration should not be Falsy here"
 
             times_in_market_all.append(grouped_duration)
             times_in_market_volatile.append(grouped_duration)
