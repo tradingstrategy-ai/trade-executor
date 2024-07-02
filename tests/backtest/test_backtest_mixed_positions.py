@@ -244,10 +244,10 @@ def test_backtest_long_short_stats(
     assert short_summary.compounding_returns.equals(short_compounding_profit)
 
     # all longs and shorts opened and closed at same time
-    assert summary.time_in_market == pytest.approx(0.5789473684210527)
-    assert summary.time_in_market_volatile == pytest.approx(0.5789473684210527)
-    assert long_summary.time_in_market == pytest.approx(0.5789473684210527)
-    assert short_summary.time_in_market == pytest.approx(0.5789473684210527)
+    assert summary.time_in_market == pytest.approx(0.5263157894736842)
+    assert summary.time_in_market_volatile == pytest.approx(0.5263157894736842)
+    assert long_summary.time_in_market == pytest.approx(0.5263157894736842)
+    assert short_summary.time_in_market == pytest.approx(0.5263157894736842)
     
     assert summary.return_percent == pytest.approx(overall_compounding_profit.iloc[-1], abs=1e-3)  # TODO make more precise
     assert summary.total_interest_paid_usd == pytest.approx(2.4602719114723985)

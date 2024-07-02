@@ -864,8 +864,12 @@ class TradeAnalysis:
                     # grouped_duration += position.closed_at - previous_position_closed_at
             else:
                 # new group
-                times_in_market_all.append(grouped_duration)
-                times_in_market_volatile.append(grouped_duration)
+                if position.is_open():
+                    times_in_market_all.append(grouped_duration)
+                    times_in_market_volatile.append(grouped_duration)
+                else:
+                    pass
+                    # grouped_duration = position_duration if closed and not overlapping
                 times_in_market_all.append(position_duration)
                 if not position.is_credit_supply():
                     times_in_market_volatile.append(position_duration)
