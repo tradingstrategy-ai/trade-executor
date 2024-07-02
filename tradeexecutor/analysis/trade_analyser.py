@@ -980,6 +980,7 @@ class TradeAnalysis:
 
         previous_position_opened_at = None
         previous_position_closed_at = None
+        last_closed_position_info = None
         grouped_duration = datetime.timedelta(0)
         open_position_lock = False
 
