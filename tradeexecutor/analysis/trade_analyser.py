@@ -678,7 +678,7 @@ class TradeAnalysis:
             max_drawdown = calculate_max_drawdown(original_returns)
             max_runup = calculate_max_runup(original_returns)
         else:
-            logger.warning("State not provided, some advanced statistics will not be calculated, and time_in_market may be inaccurate. Rather provide state and time_bucket arguments")
+            # logger.warning("State not provided, some advanced statistics will not be calculated, and time_in_market may be inaccurate. Rather provide state and time_bucket arguments")
 
             daily_returns = None
             compounding_returns = None
