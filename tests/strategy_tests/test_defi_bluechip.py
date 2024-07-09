@@ -167,6 +167,7 @@ def test_trade_analysis(
     profit1 = calculate_compounding_realised_trading_profitability(state).iloc[-1]
     profit2 = summary.return_percent
     # TODO: This is don't match in alpha model strategies, need to investigate
+    # see https://github.com/tradingstrategy-ai/trade-executor/issues/795
     # assert profit1 == pytest.approx(profit2)
 
 

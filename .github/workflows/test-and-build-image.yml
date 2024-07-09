@@ -86,6 +86,9 @@ jobs:
 
   build:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        platform: [linux/amd64, linux/arm64]
     # needs: automated-test-suite
     # Only build on tag push or branch push with rc-* prefix
     if: (github.event_name == 'push' && contains(github.ref, 'refs/tags/v')) || startsWith(github.head_ref, 'rc-')
@@ -115,6 +118,7 @@ jobs:
         uses: docker/build-push-action@v5
         with:
           context: .
+          platforms: ${{ matrix.platform }}
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}

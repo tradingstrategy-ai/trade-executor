@@ -229,6 +229,8 @@ class StrategyParameters(MutableAttributeDict):
         keys = [attr for attr in dir(c) if not callable(getattr(c, attr)) and not attr.startswith("__")]
         params = {k: getattr(c, k) for k in keys}
 
+        params["grid_search"] = grid_search
+
         if not grid_search:
             return StrategyParameters(params)
 

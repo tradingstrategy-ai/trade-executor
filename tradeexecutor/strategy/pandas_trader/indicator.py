@@ -19,6 +19,8 @@ import threading
 from abc import ABC, abstractmethod
 from collections import defaultdict
 
+from skopt.space import Dimension
+
 # Enable pickle patch that allows multiprocessing in notebooks
 from tradeexecutor.monkeypatch import cloudpickle_patch
 
@@ -233,6 +235,11 @@ class IndicatorDefinition:
         if self.func is not None:
             assert callable(self.func)
             validate_function_kwargs(self.func, self.parameters)
+
+        # Check for common data passing errors
+        for k, v in self.parameters.items():
+            assert not isinstance(v, Dimension), f"Detected scikit-optimize Dimension as a parameter value: {k}: {v} - did you accidentally pass in optimiser search space to a single backtest"
+
 
     def get_function_body_hash(self) -> str:
         """Calculate the hash for the function code.

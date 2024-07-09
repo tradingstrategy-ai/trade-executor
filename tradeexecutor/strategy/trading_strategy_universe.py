@@ -2077,7 +2077,7 @@ def load_partial_data(
         )
 
         if stop_loss_time_bucket:
-            stop_loss_desc = f"Loading stop loss/take profit granular trigge data for {name}"
+            stop_loss_desc = f"Loading stop loss/take profit granular trigger data for {name}"
             stop_loss_candles = client.fetch_candles_by_pair_ids(
                 our_pair_ids,
                 stop_loss_time_bucket,

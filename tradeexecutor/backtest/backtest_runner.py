@@ -854,6 +854,7 @@ def run_backtest_inline(
         # https://www.python.org/dev/peps/pep-3102/
         raise TypeError("Only keyword arguments accepted")
 
+
     if parameters is not None:
         if type(parameters) == type:
             # Class like definition
@@ -862,6 +863,8 @@ def run_backtest_inline(
             assert isinstance(parameters, StrategyParameters)
 
         parameters.validate_backtest()
+
+        assert not parameters.get("grid_search"), f"Grid search parameters were passed to a single backtest: {parameters}"
 
     if start_at is None and end_at is None:
         if parameters and hasattr(parameters, "backtest_start") and hasattr(parameters, "backtest_end"):
