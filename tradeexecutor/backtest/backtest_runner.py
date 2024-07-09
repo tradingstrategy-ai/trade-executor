@@ -864,7 +864,8 @@ def run_backtest_inline(
 
         parameters.validate_backtest()
 
-        assert not parameters.get("grid_search"), f"Grid search parameters were passed to a single backtest: {parameters}"
+        if not grid_search:
+            assert not parameters.get("grid_search"), f"Grid search parameters were passed to a single backtest: {parameters}"
 
     if start_at is None and end_at is None:
         if parameters and hasattr(parameters, "backtest_start") and hasattr(parameters, "backtest_end"):
