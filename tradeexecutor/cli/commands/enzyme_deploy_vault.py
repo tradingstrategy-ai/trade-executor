@@ -35,6 +35,7 @@ Example how to manually test:
 """
 
 import json
+import logging
 import os.path
 import sys
 from pathlib import Path
@@ -224,6 +225,12 @@ def enzyme_deploy_vault(
         )
 
     except Exception as e:
+
+        if web3config.is_mainnet_fork():
+            # Try to get some useful debug info from Anvil
+            web3config.anvil_dump_level = logging.ERROR
+            web3config.close()
+
         raise RuntimeError(f"Deployment failed. Hot wallet: {hot_wallet.address}, denomination asset: {denomination_token.address}") from e
 
     if vault_record_file:

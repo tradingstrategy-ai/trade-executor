@@ -55,6 +55,9 @@ class Web3Config:
     #: Anvil backend we use for the transaction simuation
     anvil: Optional[AnvilLaunch] = None
 
+    #: Set this to logging.ERROR to get stdout output from Anvil in the case of a crash
+    anvil_dump_level = None
+
     @staticmethod
     def create_web3(
             configuration_line: str,
@@ -144,7 +147,7 @@ class Web3Config:
     def close(self):
         """Close all connections."""
         if self.anvil is not None:
-            self.anvil.close()
+            self.anvil.close(self.anvil_dump_level)
 
     def has_chain_configured(self) -> bool:
         """Do we have one or more chains configured."""
