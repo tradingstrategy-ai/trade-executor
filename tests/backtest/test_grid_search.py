@@ -402,7 +402,7 @@ def test_perform_grid_search_engine_v4(
     assert not fast_ema_candle_count.single
 
     assert len(combinations[0].searchable_parameters) == 2
-    assert len(combinations[0].parameters) == 5
+    assert len(combinations[0].parameters) == 6
 
     results = perform_grid_search(
         _decide_trades_v3,
@@ -561,7 +561,7 @@ def test_perform_grid_search_engine_v5(
     assert not fast_ema_candle_count.single
 
     assert len(combinations[0].searchable_parameters) == 1
-    assert len(combinations[0].parameters) == 4
+    assert len(combinations[0].parameters) == 5
 
     # Multiprocess
     results_2 = perform_grid_search(
