@@ -90,9 +90,10 @@ class Web3Config:
 
         if simulate:
             logger.info(f"Simulating transactions with Anvil for {configuration_line}")
-            anvil = launch_anvil(configuration_line)
+            anvil = launch_anvil(configuration_line, attempts=1)
             web3 = create_multi_provider_web3(anvil.json_rpc_url)
             web3.anvil = anvil
+            configuration_line = anvil.json_rpc_url  # Override whatever configuration given earlier
         else:
             web3 = create_multi_provider_web3(configuration_line)
 
