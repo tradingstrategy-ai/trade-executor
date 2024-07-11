@@ -46,7 +46,7 @@ from typer import Option
 
 from eth_defi.abi import get_deployed_contract
 from eth_defi.deploy import deploy_contract
-from eth_defi.enzyme.deployment import POLYGON_DEPLOYMENT, EnzymeDeployment
+from eth_defi.enzyme.deployment import POLYGON_DEPLOYMENT, EnzymeDeployment, ETHEREUM_DEPLOYMENT
 from eth_defi.enzyme.generic_adapter_vault import deploy_vault_with_generic_adapter
 from eth_defi.hotwallet import HotWallet
 from eth_defi.token import fetch_erc20_details
@@ -141,7 +141,10 @@ def enzyme_deploy_vault(
     # No other supported Enzyme deployments
     match chain_id:
         case ChainId.ethereum:
-            raise NotImplementedError("Not supported yet")
+            deployment_info = ETHEREUM_DEPLOYMENT
+            enzyme_deployment = EnzymeDeployment.fetch_deployment(web3, ETHEREUM_DEPLOYMENT, deployer=hot_wallet.address)
+            denomination_token = fetch_erc20_details(web3, deployment_info["usdc"])
+            one_delta = False
         case ChainId.polygon:
             deployment_info = POLYGON_DEPLOYMENT
             enzyme_deployment = EnzymeDeployment.fetch_deployment(web3, POLYGON_DEPLOYMENT, deployer=hot_wallet.address)
