@@ -247,7 +247,8 @@ class Web3Config:
 
     def is_mainnet_fork(self) -> bool:
         """Is this connection a testing fork of a mainnet."""
-        return len(self.connections) and self.connections.get(ChainId.anvil.value) is not None
+        # return len(self.connections) and self.connections.get(ChainId.anvil.value) is not None
+        return self.anvil is not None
 
     def add_hot_wallet_signing(self, hot_wallet: HotWallet):
         """Make web3.py native signing available in the console."""
