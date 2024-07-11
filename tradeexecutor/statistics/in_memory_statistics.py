@@ -143,7 +143,7 @@ def redraw_visualisations(
 
     except Exception as e:
         # Don't take trade executor down if visualisations fail
-        logger.warning("Could not draw visualisations in refresh_visualisations()")
+        logger.warning("Could not draw visualisations in refresh_visualisations() - exception ignored")
         logger.warning("Visualisation exception %s", e, exc_info=e)
 
 
