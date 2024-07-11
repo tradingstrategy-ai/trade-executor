@@ -55,15 +55,15 @@ class Web3Config:
     #: Anvil backend we use for the transaction simuation
     anvil: Optional[AnvilLaunch] = None
 
-    #: Set this to logging.ERROR to get stdout output from Anvil in the case of a crash
-    anvil_dump_level = None
+    #: Is this mainnet fork for simulation deployment
+    mainnet_fork_simulation = False
 
     @staticmethod
     def create_web3(
-            configuration_line: str,
-            gas_price_method: Optional[GasPriceMethod] = None,
-            unit_testing: bool=False,
-            simulate: bool=False,
+        configuration_line: str,
+        gas_price_method: Optional[GasPriceMethod] = None,
+        unit_testing: bool=False,
+        simulate: bool=False,
     ) -> MultiProviderWeb3:
         """Create a new Web3.py connection.
 
@@ -93,6 +93,7 @@ class Web3Config:
             anvil = launch_anvil(configuration_line, attempts=1)
             web3 = create_multi_provider_web3(anvil.json_rpc_url)
             web3.anvil = anvil
+            web3.simulate = True
             configuration_line = anvil.json_rpc_url  # Override whatever configuration given earlier
         else:
             web3 = create_multi_provider_web3(configuration_line)
@@ -223,6 +224,7 @@ class Web3Config:
         web3config = Web3Config()
 
         web3config.gas_price_method = gas_price_method
+        web3config.mainnet_fork_simulation = simulate
 
         # Lowercase all key names
         kwargs = {k.lower(): v for k, v in kwargs.items()}
@@ -251,8 +253,13 @@ class Web3Config:
 
     def is_mainnet_fork(self) -> bool:
         """Is this connection a testing fork of a mainnet."""
-        # return len(self.connections) and self.connections.get(ChainId.anvil.value) is not None
-        return self.anvil is not None
+
+        if self.mainnet_fork_simulation:
+            return True
+
+        # TODO: The last condition here is for the legacy compat
+        return len(self.connections) and self.connections.get(ChainId.anvil.value) is not None
+
 
     def add_hot_wallet_signing(self, hot_wallet: HotWallet):
         """Make web3.py native signing available in the console."""
