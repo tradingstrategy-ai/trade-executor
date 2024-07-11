@@ -229,12 +229,11 @@ def enzyme_deploy_vault(
 
     except Exception as e:
 
-        logger.error("Failed to deploy, using mainnet fork %s", web3config.is_mainnet_fork())
+        logger.error("Failed to deploy, is_mainnet_fork(): %s", web3config.is_mainnet_fork())
 
         if web3config.is_mainnet_fork():
             # Try to get some useful debug info from Anvil
-            web3config.anvil_dump_level = logging.ERROR
-            web3config.close()
+            web3config.close(logging.ERROR)
 
         raise RuntimeError(f"Deployment failed. Hot wallet: {hot_wallet.address}, denomination asset: {denomination_token.address}") from e
 

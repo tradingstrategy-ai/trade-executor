@@ -145,10 +145,14 @@ class Web3Config:
 
         return web3
 
-    def close(self):
-        """Close all connections."""
+    def close(self, log_level: int | None = None):
+        """Close all connections.
+
+        :param level:
+            Logging level to copy Anvil stdout
+        """
         if self.anvil is not None:
-            self.anvil.close(self.anvil_dump_level)
+            self.anvil.close(log_level=log_level)
 
     def has_chain_configured(self) -> bool:
         """Do we have one or more chains configured."""
