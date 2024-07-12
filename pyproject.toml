@@ -136,7 +136,7 @@ web-server = [
 ]
 
 # Trendspotter and sentiment data integration
-trendspotter = [
+trendsspotter = [
     "gcsfs",
     "google-cloud-storage",
     "fsspec",
