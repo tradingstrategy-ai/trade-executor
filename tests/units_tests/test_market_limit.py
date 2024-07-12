@@ -278,7 +278,7 @@ def test_partial_take_profit(
     assert len(position.pending_trades) == 1
     assert len(position.expired_trades) == 0
 
-    # We are not yet in trigger threshold
+    # Go to the firs trigger threshold
     assert position.last_token_price == 1818.0
 
     executed_trades = check_position_triggers(position_manager)

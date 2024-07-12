@@ -741,18 +741,19 @@ class PositionManager:
 
         return [trade]
 
-    def adjust_position(self,
-                        pair: TradingPairIdentifier,
-                        dollar_delta: USDollarAmount,
-                        quantity_delta: float,
-                        weight: float,
-                        stop_loss: Optional[Percent] = None,
-                        take_profit: Optional[Percent] = None,
-                        trailing_stop_loss: Optional[Percent] = None,
-                        slippage_tolerance: Optional[float] = None,
-                        override_stop_loss=False,
-                        notes: Optional[str] = None,
-                        ) -> List[TradeExecution]:
+    def adjust_position(
+        self,
+        pair: TradingPairIdentifier,
+        dollar_delta: USDollarAmount,
+        quantity_delta: float,
+        weight: float,
+        stop_loss: Optional[Percent] = None,
+        take_profit: Optional[Percent] = None,
+        trailing_stop_loss: Optional[Percent] = None,
+        slippage_tolerance: Optional[float] = None,
+        override_stop_loss=False,
+        notes: Optional[str] = None,
+        ) -> List[TradeExecution]:
         """Adjust holdings for a certain position.
 
         Used to rebalance positions.
@@ -1939,7 +1940,7 @@ class PositionManager:
 
             logger.info("Added trade trigger: trade: %s, position: %s, trigger: %s", trade, position, trigger)
 
-    def prepare_take_profit_trades(
+    def set_take_profit_triggers(
         self,
         position: TradingPosition,
         levels: List[tuple],
@@ -1975,12 +1976,15 @@ class PositionManager:
             quantity = level[1]
             assert isinstance(level[1], Decimal), f"Take-profit amount must be Decimal, got {type(quantity)}"
 
-            _, trade, _ = self.close_spot_position(
-                position,
+            _, trade, _ = self.adjust_position(
+                pair,
                 TradeType.take_profit,
                 flags={TradeFlag.partial_take_profit, TradeFlag.reduce, TradeFlag.triggered}
             )
 
+            # Move trade to pending, instead to be executed right away
+            del position.trades[trade.trade_id]
+            position.pending_trades[trade.trade_id] = trade
 
 
     def log(self, msg: str, level=logging.INFO, prefix="{self.timestamp}: "):
