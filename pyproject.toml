@@ -135,6 +135,7 @@ web-server = [
     "waitress"
 ]
 
+# Trendspotter and sentiment data integration
 trendspotter = [
     "gcsfs",
     "google-cloud-storage",
