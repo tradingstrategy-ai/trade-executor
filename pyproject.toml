@@ -96,6 +96,17 @@ tblib = "^1.7.0"
 cloudpickle = "^3.0.0"
 scikit-optimize = "^0.10.2"
 
+
+#
+# TrendsSpotter and sentiment data analysis integration
+#
+#
+gcsfs = {version="^2024.6.1",  optional = true}
+google-cloud-storage = {version="^2.17.0",  optional = true}
+fsspec = {version="^2024.6.1",  optional = true}
+google-auth =  {version="^2.32.0",  optional = true}
+
+
 [tool.poetry.extras]
 
 # Legacy strats
@@ -122,6 +133,13 @@ web-server = [
     "openapi-core",
     "pyramid-openapi3",
     "waitress"
+]
+
+trendspotter = [
+    "gcsfs",
+    "google-cloud-storage",
+    "fsspec",
+    "google-auth"
 ]
 
 # for generating advanced statistical reports

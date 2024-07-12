@@ -260,7 +260,6 @@ class Web3Config:
         # TODO: The last condition here is for the legacy compat
         return len(self.connections) and self.connections.get(ChainId.anvil.value) is not None
 
-
     def add_hot_wallet_signing(self, hot_wallet: HotWallet):
         """Make web3.py native signing available in the console."""
         assert isinstance(hot_wallet, HotWallet)
