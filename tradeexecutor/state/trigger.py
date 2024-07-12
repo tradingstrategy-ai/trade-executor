@@ -39,7 +39,7 @@ class Trigger:
     - Unopened positions, see :py:attr:`tradeeexecutor.state.portfolio.Portfolio.pending_positions`
       where the trigger is on the trade that will open the position (market limit order case)
 
-    - Opened positions, see :py:attr:`tradeeexecutor.state.portfolio.Portfolio.pending_positions`
+    - Opened positions, see :py:attr:`tradeeexecutor.state.position.TradingPosition.pending_positions`
       where the trigger order is on the increase/reduce position (partial take profit case)
 
     - Trigger orders can be created to make trades to happen outside the strategy decision cycle

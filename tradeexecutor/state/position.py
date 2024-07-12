@@ -21,6 +21,7 @@ from tradeexecutor.state.interest import Interest
 from tradeexecutor.state.loan import Loan
 from tradeexecutor.state.trade import TradeType, TradeFlag
 from tradeexecutor.state.trade import TradeExecution
+from tradeexecutor.state.trigger import Trigger
 from tradeexecutor.state.types import USDollarAmount, BPS, USDollarPrice, Percent, LeverageMultiplier, LegacyDataException
 from tradeexecutor.state.valuation import ValuationUpdate
 from tradeexecutor.strategy.dust import get_dust_epsilon_for_pair
@@ -133,6 +134,9 @@ class TradingPosition(GenericPosition):
 
     #: List of trigger trades waiting to be taken
     #: trade_id -> Trade map
+    #:
+    #: SEe also old style :py:attr:`stop_loss`, :py:attr:`trailing_stop_loss`, :py:attr:`trigged_updates`.
+    #:
     pending_trades: Dict[int, TradeExecution] = field(default_factory=dict)
 
     #: List of trigger trades that have expried
@@ -227,6 +231,8 @@ class TradingPosition(GenericPosition):
     #: There is no record made if there are no trigger updates change.
     #: For example, for trailing stop loss, there is no record added,
     #: if the price did not move upwards, causing the stop loss level to move.
+    #:
+    #: See also py:attr:`pending_trades` where new-style partial take profit trades are placed.
     #:
     trigger_updates: List[TriggerPriceUpdate] = field(default_factory=list)
 
