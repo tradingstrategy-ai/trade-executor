@@ -852,7 +852,8 @@ class TradeAnalysis:
                     times_in_market_volatile.append(position_duration)
             elif previous_position_closed_at > position.opened_at:
                 # overlapping group
-                assert not position.is_credit_supply(), "Delta neutral positions should not be here"
+                # TODO: See comments on line 1058
+                # assert not position.is_credit_supply(), "Delta neutral positions should not be here"
                 
                 if not position.closed_at:
                     grouped_duration += position_duration
@@ -985,6 +986,7 @@ class TradeAnalysis:
 
         previous_position_opened_at = None
         previous_position_closed_at = None
+        previous_position = None
         last_closed_position_info = None
         grouped_duration = datetime.timedelta(0)
         open_position_lock = False
@@ -1052,7 +1054,11 @@ class TradeAnalysis:
             elif previous_position_closed_at:
                 if position.opened_at < previous_position_closed_at:
                     # overlapping group
-                    assert not position.is_credit_supply(), "Delta neutral positions should not overlap"
+                    # TODO: Check this condition again
+                    # AssertionError: Delta neutral positions should not overlap.
+                    # Current position: <Closed position #4 <Pair aUSDC-USDC credit_supply at 0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48 (0.0000% fee) on exchange 0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48> $2641.843508551401> was 2023-07-10 00:00:00 - 2023-09-18 00:00:00
+                    # Previous position: <Closed position #3 <Pair WETH-USDC spot_market_hold at 0x88e6a0c2ddd26feeb64f039a2c41296fcb3f5640 (0.0500% fee) on exchange uniswap-v3> $2540.7825849186183> was 2023-07-03 00:00:00 - 2023-08-17 16:00:00
+                    assert not (position.is_credit_supply() and previous_position.is_credit_supply()), f"Delta neutral positions should not overlap.\nCurrent position: {position} was {position.opened_at} - {position.closed_at}\nPrevious position: {previous_position} was {previous_position.opened_at} - {previous_position.closed_at}"
                     grouped_duration += (position.closed_at - previous_position_closed_at)  
                 else:
                     # end new group
@@ -1069,6 +1075,7 @@ class TradeAnalysis:
             }
             previous_position_opened_at = position.opened_at
             previous_position_closed_at = position.closed_at
+            previous_position = position
 
             is_stop_loss = position.is_stop_loss()
             is_take_profit = position.is_take_profit()

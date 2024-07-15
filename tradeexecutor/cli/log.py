@@ -93,6 +93,9 @@ def setup_logging(
     logging.getLogger("graphql").setLevel(logging.WARNING)
     logging.getLogger("gql").setLevel(logging.WARNING)
 
+    # By default, disable performance monitor logging
+    logging.getLogger("tradeexecutor.utils.timer").setLevel(logging.WARNING)
+
     if in_memory_buffer:
         setup_in_memory_logging(logger)
 
