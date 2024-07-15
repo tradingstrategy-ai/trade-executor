@@ -198,11 +198,18 @@ class State:
     def mark_ready(self, timestamp: datetime.datetime | pd.Timestamp):
         """Mark that the strategy has enough (backtest) data to decide the first trade.
 
+        This marks the difference between the backtesting data availability period,
+        and actual tradeable period when all indicators have enough data.
+
         - See :py:attr:`BacktestData.ready_at` for more information
 
         - Can be called multiple times, only the first time counts
 
         - See :py:meth:`get_trading_time_range` for reading
+
+        - If you do not call this method in `decide_trades()`, nothing bad happens,
+          but backtest benchmark indices (buy and hold BTC, etc.) might have biases results
+          to a direction or another
         """
         if self.backtest_data:
             self.backtest_data.mark_ready(timestamp)
@@ -213,6 +220,8 @@ class State:
         - If this is a backtest, return backtesting range
 
         - If this is a live execution, return created - last updated
+
+        - See also :py:meth:`get_trading_time_range`
         """
         if self.backtest_data and self.backtest_data.start_at:
             return self.backtest_data.start_at, self.backtest_data.end_at
@@ -225,6 +234,8 @@ class State:
         - If live trading same as :py:meth:`get_strategy_time_range`
 
         - See :py:meth:`mark_ready` for setting
+
+        - See :py:func:`get_strategy_time_range` to get the full data availability range of a backtest
         """
         start_at, end_at = self.get_strategy_time_range()
 
