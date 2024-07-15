@@ -768,8 +768,30 @@ def resample_returns(returns: pd.Series, freq: pd.DateOffset | str) -> pd.Series
     """
     # https://stackoverflow.com/a/46216956/315168
     assert isinstance(returns, pd.Series)
-    return (1+returns).resample(freq).prod() - 1
 
+    # Handle daily specially so that time-to-market etc. analysis
+    # will work for weekly data
+    if freq == "D":
+        period = None
+        if len(returns) > 2:
+            period = (returns.index[1] - returns.index[0])
+
+        if True or period is None or period <= pd.Timedelta(hours=24):
+            # From more frequent to daily
+            return (1 + returns).resample(freq).prod() - 1
+
+        match period:
+            case pd.Timedelta(days=7):
+                # Distribute returns to each week day equally so that our
+                # time to market stats looks sane
+                forward_filled = returns.resample("D").ffill() / 7
+                resampled = (1 + forward_filled).resample(freq).prod() - 1
+                return resampled
+            case _:
+                raise NotImplementedError(f"Unsupported period {period}")
+    else:
+        # All other cases - hit or miss
+        return (1 + returns).resample(freq).prod() - 1
 
 def calculate_rolling_sharpe(
     returns: pd.Series,

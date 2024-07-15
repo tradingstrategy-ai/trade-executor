@@ -46,9 +46,9 @@ class UncleanState(Exception):
 
 
 @dataclass_json
-@dataclass
+@dataclass(slots=True)
 class BacktestData:
-    """Miscancellous data needed only for backtests."""
+    """Miscellaneous data needed to store only for the backtest state."""
 
     #: The start of backtest period
     start_at: datetime. datetime
@@ -60,9 +60,38 @@ class BacktestData:
     #:
     decision_cycle_duration: CycleDuration
 
+    #: When the strategy was ready to make its first trade decision.
+    #:
+    #: This timestamp marks there was enough trade history to correctly complete decide_trades().
+    #: Must be manually set with :py:attr:`mark_ready` in decide trades..
+    #: If available then benchmark curves and strategy equity curves can be correctly aligned,
+    #: otherwise there might be misaligment (strategy sits on cash until enough history is available).
+    #:
+    ready_at: Optional[datetime.datetime] = None
+
+    def mark_ready(self, timestamp: datetime.datetime | pd.Timestamp):
+        """Mark that the strategy has enough data to decide its first trade.
+
+        - See :py:attr:`ready_at` for more information
+
+        - Can be called multiple times, only the first time counts
+
+        - Interest positions may be ignored for mark_ready()
+          (decide_trades() can do interest positions before ready state has been reached)
+        """
+
+        if self.ready_at is not None:
+            # Already set
+            return
+
+        if isinstance(timestamp, pd.Timestamp):
+            timestamp = timestamp.to_pydatetime()
+
+        self.ready_at = timestamp
+
 
 @dataclass_json
-@dataclass
+@dataclass(slots=True)
 class State:
     """The current state of the trading strategy execution.
 
@@ -166,6 +195,18 @@ class State:
         assert isinstance(pair, TradingPairIdentifier), f"Expected TradingPairIdentifier, got {type(pair)}: {pair}"
         return (pair.base.get_identifier() not in self.asset_blacklist) and (pair.quote.get_identifier() not in self.asset_blacklist)
 
+    def mark_ready(self, timestamp: datetime.datetime | pd.Timestamp):
+        """Mark that the strategy has enough (backtest) data to decide the first trade.
+
+        - See :py:attr:`BacktestData.ready_at` for more information
+
+        - Can be called multiple times, only the first time counts
+
+        - See :py:meth:`get_trading_time_range` for reading
+        """
+        if self.backtest_data:
+            self.backtest_data.mark_ready(timestamp)
+
     def get_strategy_time_range(self) -> Tuple[datetime.datetime, datetime.datetime]:
         """Get the time range for which the strategy should have data.
 
@@ -177,7 +218,22 @@ class State:
             return self.backtest_data.start_at, self.backtest_data.end_at
         else:
             return self.created_at, self.last_updated_at
-        
+
+    def get_trading_time_range(self) -> Tuple[datetime.datetime, datetime.datetime]:
+        """Get the time range when the strategy could have made trades.
+
+        - If live trading same as :py:meth:`get_strategy_time_range`
+
+        - See :py:meth:`mark_ready` for setting
+        """
+        start_at, end_at = self.get_strategy_time_range()
+
+        # We can do this backtest period normalisation only if mark_ready() has been called
+        if self.backtest_data and self.backtest_data.ready_at:
+            return self.backtest_data.ready_at, end_at
+
+        return start_at, end_at
+
     def get_strategy_duration(self) -> datetime.timedelta | None:
         """Get the age of the strategy execution. If backtest, return backtest range, if live, return created - last updated
         
@@ -189,7 +245,7 @@ class State:
         if strategy_start and strategy_end:
             return strategy_end - strategy_start
         return None
-    
+
     def get_formatted_strategy_duration(self) -> str:
         """Get the age of the strategy execution in human-readable format.
         

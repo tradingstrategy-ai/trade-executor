@@ -21,17 +21,24 @@ from tradingstrategy.types import USDollarAmount
 
 
 def visualise_portfolio_equity_curve(
-        name: str,
-        portfolio_statistics: List[PortfolioStatistics],
-        colour="#008800") -> go.Scatter:
+    name: str,
+    portfolio_statistics: List[PortfolioStatistics],
+    colour="#008800",
+    start_at: datetime.datetime | None=None,
+) -> go.Scatter:
     """Draw portfolio performance."""
 
-    plot = []
-    for s in portfolio_statistics:
-        plot.append({
-            "timestamp": pd.Timestamp(s.calculated_at),
-            "value": s.total_equity,
-        })
+    # plot = []
+    # for s in portfolio_statistics:
+    #     plot.append({
+    #         "timestamp": pd.Timestamp(s.calculated_at),
+    #         "value": s.total_equity,
+    #     })
+
+    if start_at:
+        plot = [{"timestamp": pd.Timestamp(s.calculated_at), "value": s.total_equity} for s in portfolio_statistics if s.calculated_at >= start_at]
+    else:
+        plot = [{"timestamp": pd.Timestamp(s.calculated_at), "value": s.total_equity} for s in portfolio_statistics]
 
     df = pd.DataFrame(plot)
     df.set_index("timestamp", inplace=True)
@@ -299,7 +306,11 @@ def visualise_equity_curve_benchmark(
     if not end_at or end_at > last_portfolio_timestamp:
         end_at = last_portfolio_timestamp
 
-    scatter = visualise_portfolio_equity_curve(name, portfolio_statistics)
+    scatter = visualise_portfolio_equity_curve(
+        name,
+        portfolio_statistics,
+        start_at=start_at.to_pydatetime(),
+    )
     fig.add_trace(scatter)
 
     if all_cash:
