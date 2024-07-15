@@ -112,7 +112,8 @@ def get_benchmark_data(
 
     # Check that we have a good source for daily returns
     # If we have only weekly candles we cannot really calculate daily returns
-    # and will get funny results
+    # and will get funny results. In this case, check the availability
+    # of resampling price series from stop loss backtesting data.
     candle_source = None
     candle_source_freq = None
     if strategy_universe.data_universe.time_bucket > TimeBucket.d1:
@@ -257,6 +258,8 @@ def compare_strategy_backtest_to_multiple_assets(
         assert state, "State must be given if no returns are given"
         equity = calculate_equity_curve(state)
         returns = calculate_returns(equity)
+
+    import ipdb ; ipdb.set_trace()
     daily_returns = resample_returns(returns, "D")
 
     benchmarks = get_benchmark_data(
