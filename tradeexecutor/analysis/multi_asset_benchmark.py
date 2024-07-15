@@ -12,6 +12,7 @@ from tradeexecutor.visual.equity_curve import calculate_equity_curve, calculate_
 
 from tradeexecutor.state.identifier import TradingPairIdentifier
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse, translate_trading_pair
+from tradingstrategy.timebucket import TimeBucket
 
 from tradingstrategy.types import TokenSymbol
 
@@ -108,8 +109,30 @@ def get_benchmark_data(
             break
 
     df = pd.DataFrame()
+
+    # Check that we have a good source for daily returns
+    # If we have only weekly candles we cannot really calculate daily returns
+    # and will get funny results
+    candle_source = None
+    candle_source_freq = None
+    if strategy_universe.data_universe.time_bucket > TimeBucket.d1:
+        # Check if we can use stop loss data
+        if strategy_universe.backtest_stop_loss_time_bucket:
+            if strategy_universe.backtest_stop_loss_time_bucket <= TimeBucket.d1:
+                candle_source = strategy_universe.backtest_stop_loss_candles
+                candle_source_freq = strategy_universe.backtest_stop_loss_time_bucket
+
+    else:
+        candle_source = strategy_universe.data_universe.candles
+        candle_source_freq = strategy_universe.data_universe.time_bucket
+
+    assert candle_source, f"Could not find daily or shorter candles to calculate daily returns for benchmark data indexes.\n" \
+                          f"Candle time bucket: {strategy_universe.data_universe.time_bucket}\n" \
+                          f"Stop-loss candle time bucket: {strategy_universe.backtest_stop_loss_time_bucket}\n"
+
     for name, pair in benchmark_assets.items():
-        price_series = strategy_universe.data_universe.candles.get_candles_by_pair(pair.internal_id)["close"]
+
+        price_series = candle_source.get_candles_by_pair(pair.internal_id)["close"]
 
         if start_at:
             price_series = price_series.loc[start_at:]
@@ -119,7 +142,11 @@ def get_benchmark_data(
             index_fixed_series = pd.Series(data=price_series.values, index=price_series.index.get_level_values(1))
         else:
             index_fixed_series = price_series
-        daily_returns = resample_returns(index_fixed_series.pct_change(), freq="D")
+
+        if candle_source_freq == TimeBucket.d1:
+            daily_returns = index_fixed_series.pct_change()
+        else:
+            daily_returns = resample_returns(index_fixed_series.pct_change(), freq="D")
 
         if cumulative_with_initial_cash:
             cumulative_returns = (1 + daily_returns).cumprod()
