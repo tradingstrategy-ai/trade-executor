@@ -1921,11 +1921,16 @@ class TradingPosition(GenericPosition):
         return self.loan.collateral.get_usd_value()
 
     def get_held_assets(self) -> Iterable[Tuple[AssetIdentifier, Decimal]]:
+        """Get the assumption of the portfolio asset amount for the account correction / accounting double check.
+
+        :return:
+            (Asset id, amount) iterables
+        """
         assert self.is_open() or self.is_frozen()
         if self.is_spot():
             yield self.pair.base, self.get_quantity()
         elif self.is_credit_supply():
-            yield self.loan.collateral.asset, self.loan.collateral.quantity
+            yield self.loan.collateral.asset, self.loan.get_collateral_quantity()
         elif self.is_short():
             yield self.loan.collateral.asset, self.loan.get_collateral_quantity()
             yield self.loan.borrowed.asset, self.loan.get_borrowed_quantity()

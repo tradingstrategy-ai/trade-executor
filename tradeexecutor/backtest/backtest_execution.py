@@ -406,7 +406,10 @@ class BacktestExecution(ExecutionModel):
         all_assets = calculate_total_assets(state.portfolio)
         clean, asset_df = self.wallet.verify_balances(all_assets)
         if not clean:
-            raise RuntimeError(f"Backtest simulated wallet and portfolio out of sync at {ts}:\n{asset_df}")
+            logger.info("All portfolio assets were")
+            for a, v in all_assets.items():
+                logger.info("Asset %s: %s", a, v)
+            raise RuntimeError(f"Backtest simulated wallet and portfolio out of sync at {ts} after executing trades:\n{asset_df}")
 
         # Set the check point interest balacnes for new positions
         set_interest_checkpoint(state, ts, None)
