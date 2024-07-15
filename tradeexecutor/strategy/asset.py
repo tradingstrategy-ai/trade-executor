@@ -213,11 +213,9 @@ def build_expected_asset_map(
         mappings[r.asset].quantity += r.quantity
 
     for p in portfolio.get_open_and_frozen_positions():
-
         for asset, amount in get_asset_amounts(p):
             if asset not in mappings:
                 mappings[asset] = AssetToPositionsMapping(asset=asset)
-
             mappings[asset].positions.add(p)
             mappings[asset].quantity += amount
             logger.info("Open/frozen position #%d has asset %s for %f", p.position_id, asset.token_symbol, amount)
@@ -230,7 +228,6 @@ def build_expected_asset_map(
     closed_positions_lifo = list(portfolio.closed_positions.values())
     closed_positions_lifo.reverse()
     for p in closed_positions_lifo:
-
         for asset, amount in get_asset_amounts(p):
             if asset not in mappings:
                 mappings[asset] = AssetToPositionsMapping(asset=asset)

@@ -27,6 +27,19 @@ DEFAULT_COLUMN_MAP: Final = {
 PAIR_STATIC_COLUMNS = ('pair_id', 'base_token_symbol', 'quote_token_symbol', 'exchange_slug', 'chain_id', 'fee','token0_address', 'token1_address', 'token0_symbol', 'token1_symbol', 'token0_decimals', 'token1_decimals')
 
 
+def get_resample_frequency(bucket: TimeBucket) -> str | pd.DateOffset:
+    """Get Pandas resample frequency for our candles.
+
+    - Map 7d to "weekly" instead of 7d + arbitrary starting date
+    """
+    match bucket:
+        case TimeBucket.d7:
+            return "W"
+        case _:
+            return bucket.to_frequency()
+
+
+
 def resample_single_pair(df: pd.DataFrame, bucket: TimeBucket) -> pd.DataFrame:
     """Upsample a single pair DataFrame to a lower time bucket.
 
@@ -51,7 +64,8 @@ def resample_single_pair(df: pd.DataFrame, bucket: TimeBucket) -> pd.DataFrame:
 
     # Do forward fill, as missing values in the source data
     # may case NaN to appear as price
-    resampled = df.resample(bucket.to_frequency()).agg(ohlc_dict)
+    freq = get_resample_frequency(bucket)
+    resampled = df.resample(freq).agg(ohlc_dict)
     filled = resampled.ffill()
 
     # Remove rows that appear before first row in df

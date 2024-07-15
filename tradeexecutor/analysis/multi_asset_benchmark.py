@@ -1,7 +1,9 @@
 """Calculate portfolio benchmark tables for multiple assets side-by-side.
 
 """
+import warnings
 
+import numpy as np
 import pandas as pd
 
 from tradeexecutor.analysis.advanced_metrics import AdvancedMetricsMode, calculate_advanced_metrics
@@ -12,6 +14,7 @@ from tradeexecutor.visual.equity_curve import calculate_equity_curve, calculate_
 
 from tradeexecutor.state.identifier import TradingPairIdentifier
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse, translate_trading_pair
+from tradingstrategy.timebucket import TimeBucket
 
 from tradingstrategy.types import TokenSymbol
 
@@ -46,7 +49,8 @@ def get_benchmark_data(
     cumulative_with_initial_cash: USDollarAmount =0.0,
     asset_colours=DEFAULT_BENCHMARK_COLOURS,
     start_at: pd.Timestamp | None = None,
-) -> pd.DataFrame:
+    include_price_series=False,
+) -> pd.DataFrame | tuple[pd.DataFrame, pd.DataFrame]:
     """Get returns series of different benchmark index assets from the universe.
 
     - Assets are: BTC, ETH, MATIC
@@ -89,6 +93,11 @@ def get_benchmark_data(
 
         Set to the cumulative initial cash value.
 
+    :param include_price_series:
+        Include price series for the comparison.
+
+        Changes return type.
+
     :return:
         DataFrame with returns series for each asset.
 
@@ -102,24 +111,59 @@ def get_benchmark_data(
         pair = _find_benchmark_pair(strategy_universe, asset)
         if not pair:
             continue
+        # Handle WETH -> ETH
         unwrapped_name = asset[1:] if asset.startswith("W") else asset
         benchmark_assets[unwrapped_name] = pair
         if len(benchmark_assets) >= max_count:
             break
 
     df = pd.DataFrame()
+
+    # Check that we have a good source for daily returns
+    # If we have only weekly candles we cannot really calculate daily returns
+    # and will get funny results. In this case, check the availability
+    # of resampling price series from stop loss backtesting data.
+    candle_source = None
+    candle_source_freq = None
+    if strategy_universe.data_universe.time_bucket > TimeBucket.d1:
+        # Check if we can use stop loss data
+        if strategy_universe.backtest_stop_loss_time_bucket:
+            if strategy_universe.backtest_stop_loss_time_bucket <= TimeBucket.d1:
+                candle_source = strategy_universe.backtest_stop_loss_candles
+                candle_source_freq = strategy_universe.backtest_stop_loss_time_bucket
+
+    else:
+        candle_source = strategy_universe.data_universe.candles
+        candle_source_freq = strategy_universe.data_universe.time_bucket
+
+    assert candle_source, f"Could not find daily or shorter candles to calculate daily returns for benchmark data indexes.\n" \
+                          f"Candle time bucket: {strategy_universe.data_universe.time_bucket}\n" \
+                          f"Stop-loss candle time bucket: {strategy_universe.backtest_stop_loss_time_bucket}\n"
+
+    price_data = pd.DataFrame()
     for name, pair in benchmark_assets.items():
-        price_series = strategy_universe.data_universe.candles.get_candles_by_pair(pair.internal_id)["close"]
+
+        price_series = candle_source.get_candles_by_pair(pair.internal_id)["close"]
 
         if start_at:
             price_series = price_series.loc[start_at:]
+
+        price_data[name] = price_series
 
         assert len(price_series.dropna()) != 0, f"Failed to read benchmark price series for {name}: {pair}"
         if isinstance(price_series.index, pd.MultiIndex):
             index_fixed_series = pd.Series(data=price_series.values, index=price_series.index.get_level_values(1))
         else:
             index_fixed_series = price_series
-        daily_returns = resample_returns(index_fixed_series.pct_change(), freq="D")
+
+        if candle_source_freq == TimeBucket.d1:
+            daily_returns = index_fixed_series.pct_change()
+        else:
+            if candle_source_freq < TimeBucket.d1:
+                daily_returns = index_fixed_series.resample("D").ffill().pct_change()
+                # daily_returns = resample_returns(index_fixed_series.pct_change(), freq="D")
+            else:
+                raise NotImplementedError("Cannot correctly fill in the data")
 
         if cumulative_with_initial_cash:
             cumulative_returns = (1 + daily_returns).cumprod()
@@ -146,6 +190,9 @@ def get_benchmark_data(
             df[name].attrs["returns_series_type"] = "daily_returns"
             df[name].attrs["period"] = "D"
             df[name].attrs["curve"] = CurveType.returns
+
+    if include_price_series:
+        return df, price_data
 
     return df
 
@@ -196,6 +243,7 @@ def compare_multiple_portfolios(
         result_table[name] = metrics["Strategy"]
         last_series = portfolio_series
 
+    # Add benchmark indexes to the result table
     for name, index_series in indexes.items():
         metrics = calculate_advanced_metrics(
             last_series,
@@ -216,8 +264,15 @@ def compare_strategy_backtest_to_multiple_assets(
     returns: pd.Series | None = None,
     display=False,
     asset_count=3,
+    verbose=True,
 ) -> pd.DataFrame:
     """Backtest comparison of strategy against buy and hold assets.
+
+    - Benchmark start is set to the timestamp when the strategy marked itself being ready,
+      see :py:meth:`State.mark_ready`.
+
+    :param state:
+        Needed to extract the trust decidable backtesting range
 
     :return:
         DataFrame with QuantStats results.
@@ -225,25 +280,70 @@ def compare_strategy_backtest_to_multiple_assets(
         One column for strategy and for each benchmark asset we have loaded in the strategy universe.
     """
 
+    if verbose:
+        if strategy_universe.data_universe.time_bucket >= TimeBucket.d7:
+            print("Some of the performance metrics might be incorrect for the strategy, because the trading time frame is longer than 1 day")
+
     # Get daily returns
     if returns is None:
         assert state, "State must be given if no returns are given"
         equity = calculate_equity_curve(state)
         returns = calculate_returns(equity)
+
     daily_returns = resample_returns(returns, "D")
 
-    benchmarks = get_benchmark_data(
+    if state is not None:
+        start_at, end_at = state.get_trading_time_range()
+    else:
+        start_at = end_at = None
+
+    benchmarks, price_data = get_benchmark_data(
         strategy_universe,
         max_count=asset_count,
+        include_price_series=True,
+        start_at=start_at,
     )
 
     portfolios = pd.DataFrame(
         {"Strategy": daily_returns}
     )
 
-    return compare_multiple_portfolios(
+    table = compare_multiple_portfolios(
         portfolios=portfolios,
         indexes=benchmarks,
         display=display,
     )
+
+    # Add start and end prices
+    start_price = {"Strategy": pd.NA}
+    end_price = {"Strategy": pd.NA}
+    diff = {"Strategy": pd.NA}
+    multiplier = {"Strategy": pd.NA}
+    first_price_at = {"Strategy": pd.Timestamp(state.get_trading_time_range()[0])}
+    price_freq = {"Strategy": pd.NA}
+    for asset_name, price_series in price_data.items():
+        start_price[asset_name] = price_series.iloc[0]
+        end_price[asset_name] = price_series.iloc[-1]
+        diff[asset_name] = (end_price[asset_name] - start_price[asset_name]) / start_price[asset_name]
+        multiplier[asset_name] = (end_price[asset_name] - start_price[asset_name]) / start_price[asset_name] + 1
+        first_price_at[asset_name] = price_series.index[0]
+        price_freq[asset_name] =  price_series.index[1] - price_series.index[0]
+
+    index = ["Benchmark start", "Start price", "End price", "Price diff", "Multiplier X", "Candle freq"]
+
+    with warnings.catch_warnings():
+        # Inferring datetime64[ns] from data containing strings is deprecated and will be removed in a future version. To retain the old behavior explicitly pass Series(data, dtype=datetime64[ns])
+        warnings.simplefilter(action='ignore', category=FutureWarning)
+
+        prices_table = pd.DataFrame(
+            [first_price_at, start_price, end_price, diff, multiplier, price_freq],
+            index=index
+        )
+
+    prices_table = prices_table.applymap(lambda x: f"{x:.2f}" if isinstance(x, (float, np.float64)) else x)
+    prices_table = prices_table.fillna("-")
+
+    table = pd.concat([table, prices_table])
+
+    return table
 
