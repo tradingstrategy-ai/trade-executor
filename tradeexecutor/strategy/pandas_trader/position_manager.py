@@ -1946,7 +1946,7 @@ class PositionManager:
 
             logger.info("Added trade trigger: trade: %s, position: %s, trigger: %s", trade, position, trigger)
 
-    def set_take_profit_triggers(
+    def prepare_take_profit_trades(
         self,
         position: TradingPosition,
         levels: list[PartialTradeLevel],
@@ -1960,6 +1960,13 @@ class PositionManager:
           no triggers are removed
 
         - If you want to reset the take profit triggers you need to call `TODO`
+
+
+        .. note ::
+
+            Currently there might be a mismatch between planned quantity and executed quantity,
+            so make sure there is enough rounding error left. The take profit
+            with the closing flag set will always execute the remaining quantity.
 
         :param position:
             The trading position

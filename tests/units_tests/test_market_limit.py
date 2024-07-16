@@ -13,7 +13,9 @@ from tradeexecutor.state.reserve import ReservePosition
 from tradeexecutor.state.state import State
 from tradeexecutor.state.trade import TradeStatus
 from tradeexecutor.state.trigger import TriggerType, TriggerCondition
+from tradeexecutor.strategy.pandas_trader.indicator import IndicatorSet
 from tradeexecutor.strategy.pandas_trader.position_manager import PositionManager
+from tradeexecutor.strategy.parameters import StrategyParameters
 from tradeexecutor.strategy.stop_loss import check_position_triggers
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse, create_pair_universe_from_code
 from tradeexecutor.testing.synthetic_ethereum_data import generate_random_ethereum_address
@@ -112,14 +114,6 @@ def state(synthetic_universe: TradingStrategyUniverse):
     ts = datetime.datetime(2022, 1, 1, tzinfo=None)
     state.update_reserves([ReservePosition(usdc, Decimal(1000), ts, 1.0, ts)])
     return state
-
-
-@pytest.fixture
-def position_manager(state, synthetic_universe, pricing_model):
-    # Assume position manager is played on the second day
-    ts = datetime.datetime(2021, 6, 2)
-    p = PositionManager(ts, synthetic_universe.data_universe, state, pricing_model)
-    return p
 
 
 def test_market_limit_executed(
@@ -270,7 +264,7 @@ def test_partial_take_profit(
     position = position_manager.get_current_position_for_pair(pair)
     total_quantity = position.get_quantity(planned=True)
     half_quantity = total_quantity / Decimal(2)
-    prepared_trades = position_manager.set_take_profit_triggers(
+    prepared_trades = position_manager.prepare_take_profit_trades(
         position,
         [
             (1900.0, -half_quantity, False),
@@ -344,4 +338,3 @@ def test_partial_take_profit(
     assert t.is_success()
     assert t.executed_quantity == pytest.approx(-half_quantity)
     assert position.is_closed()
-
