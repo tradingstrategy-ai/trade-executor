@@ -8,10 +8,21 @@
 """
 import datetime
 import enum
+from decimal import Decimal
 from dataclasses import dataclass
+from typing import TypeAlias
 
 from tradeexecutor.state.types import USDollarPrice
 from tradingstrategy.types import USDollarAmount, Percent
+
+
+#: Take profit / stop less levels are (price, quantity) tuples
+#:
+#: - Base asset price as US Dollar
+#: - Quantity in base asset units
+#: - Close flag: True if this trade should close the position
+#:
+PartialTradeLevel: TypeAlias = tuple[USDollarAmount, Decimal, bool]
 
 
 class TriggerType(enum.Enum):

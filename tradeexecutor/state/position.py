@@ -525,7 +525,7 @@ class TradingPosition(GenericPosition):
         base = self.pair.base
         return sum_decimal([b.quantity for b in self.balance_updates.values() if b.asset == base])
 
-    def get_quantity(self) -> Decimal:
+    def get_quantity(self, planned=False) -> Decimal:
         """Get the tied up token quantity in all successfully executed trades.
 
         - Does not account for trades that are currently being executed (in started,
@@ -542,12 +542,18 @@ class TradingPosition(GenericPosition):
 
         - The accrued interest can be read from balance update events
 
+        :param planned:
+            Include the quantity of the planned trades that are going to be executed on this cycle.
+
         :return:
             Number of asset units held by this position.
 
             Rounded down to zero if the sum of
         """
-        trades = sum_decimal([t.get_position_quantity() for t in self.trades.values() if t.is_success()])
+        if planned:
+            trades = sum_decimal([t.get_position_quantity() for t in self.trades.values() if t.is_success() or t.is_planned()])
+        else:
+            trades = sum_decimal([t.get_position_quantity() for t in self.trades.values() if t.is_success()])
         direct_balance_updates = self.get_base_token_balance_update_quantity()
 
         # Because short position is modelled as negative quantity,
@@ -604,7 +610,7 @@ class TradingPosition(GenericPosition):
         """Get the price of the base asset based on the latest valuation."""
         return self.last_token_price
 
-    def get_opening_price(self) -> USDollarAmount:
+    def get_opening_price(self) -> USDollarPrice:
         """Get the price when the position was opened.
 
         :return:
@@ -616,11 +622,15 @@ class TradingPosition(GenericPosition):
         first_trade = self.get_first_trade()
         return first_trade.executed_price or 0.0
 
-    def get_closing_price(self) -> USDollarAmount:
+    def get_closing_price(self) -> USDollarPrice:
         """Get the price when the position was closed."""
         assert self.has_executed_trades()
         last_trade = self.get_last_trade()
         return last_trade.executed_price
+
+    def get_current_price(self) -> USDollarPrice:
+        """Get the last recorded and cached market price for the position base asset."""
+        return self.last_token_price
 
     def get_quantity_old(self) -> Decimal:
         """How many asset units this position tolds.

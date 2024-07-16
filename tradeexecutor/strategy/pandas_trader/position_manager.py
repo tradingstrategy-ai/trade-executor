@@ -4,13 +4,13 @@ import datetime
 import warnings
 from decimal import Decimal
 from io import StringIO
-from typing import List, Optional, Union, Literal, Set
+from typing import List, Optional, Union, Literal, Set, TypeAlias
 import logging
 
 import cachetools
 import pandas as pd
 
-from tradeexecutor.state.trigger import TriggerType, Trigger, TriggerCondition
+from tradeexecutor.state.trigger import TriggerType, Trigger, TriggerCondition, PartialTradeLevel
 from tradeexecutor.utils.accuracy import QUANTITY_EPSILON
 from tradingstrategy.candle import CandleSampleUnavailable
 from tradingstrategy.pair import DEXPair, HumanReadableTradingPairDescription
@@ -745,7 +745,7 @@ class PositionManager:
         self,
         pair: TradingPairIdentifier,
         dollar_delta: USDollarAmount,
-        quantity_delta: float,
+        quantity_delta: float | Decimal,
         weight: float,
         stop_loss: Optional[Percent] = None,
         take_profit: Optional[Percent] = None,
@@ -753,6 +753,7 @@ class PositionManager:
         slippage_tolerance: Optional[float] = None,
         override_stop_loss=False,
         notes: Optional[str] = None,
+        flags: Optional[set[TradeFlag]] = None,
         ) -> List[TradeExecution]:
         """Adjust holdings for a certain position.
 
@@ -794,7 +795,11 @@ class PositionManager:
             Currently only used to detect condition "sell all" instead of
             trying to match quantity/price conversion.
 
-            If unsure and buying, set to ``1``.
+            Relevant for portfolio construction strategies.
+
+            If unsure and buying, set to `1`.
+
+            If unsure and selling, set to `1`.
 
         :param stop_loss:
             Set the stop loss for the position.
@@ -900,9 +905,10 @@ class PositionManager:
                 lp_fees_estimated=price_structure.get_total_lp_fees(),
                 slippage_tolerance=slippage_tolerance,
                 price_structure=price_structure,
+                flags=flags,
             )
 
-        assert trade.lp_fees_estimated > 0, f"LP fees estimated: {trade.lp_fees_estimated} - {trade}"
+        assert trade.lp_fees_estimated > 0, f"LP fees estimated: {trade.lp_fees_estimated} - {trade} - DEX fee data missing?"
 
         # Update stop loss for this position
         if stop_loss:
@@ -1943,8 +1949,8 @@ class PositionManager:
     def set_take_profit_triggers(
         self,
         position: TradingPosition,
-        levels: List[tuple],
-    ):
+        levels: list[PartialTradeLevel],
+    ) -> list[TradeExecution]:
         """Set multiple take profit levels, and prepare trades for them.
 
         - Populate `position.pending_trades` with triggered trades to
@@ -1959,13 +1965,22 @@ class PositionManager:
             The trading position
 
         :param levels:
-            Tuples of (price, quantity)
+            Tuples of (price, quantity).
+
+            Quantity must be negative when closing spot positions.
+
+        :return:
+            Prepared trades.
+
+            Stored in `position.pending_trades`.
 
         """
         assert position.is_spot(), "Currently spot is only supported market type"
         assert not position.is_closed()
+        assert position.get_quantity(planned=True) > 0, f"Got bad quantity: {position.get_quantity()}"
 
         pair = position.pair
+        trades = []
 
         for level in levels:
 
@@ -1976,16 +1991,42 @@ class PositionManager:
             quantity = level[1]
             assert isinstance(level[1], Decimal), f"Take-profit amount must be Decimal, got {type(quantity)}"
 
-            _, trade, _ = self.adjust_position(
+            close_flag = level[2]
+            assert type(close_flag) == bool, f"Close flag must be bool: {close_flag}"
+
+            assert quantity < 0, f"Got bad spot take profit quantity: {quantity}"
+
+            dollar_delta = float(quantity) * position.get_current_price()
+            weight = 0 if close_flag else 1
+
+            per_level_trades = self.adjust_position(
                 pair,
-                TradeType.take_profit,
-                flags={TradeFlag.partial_take_profit, TradeFlag.reduce, TradeFlag.triggered}
+                dollar_delta=dollar_delta,
+                quantity_delta=quantity,  # Flip for short
+                flags={TradeFlag.partial_take_profit, TradeFlag.reduce, TradeFlag.triggered, TradeFlag.partial_take_profit},
+                weight=weight,
             )
+
+            assert len(per_level_trades) == 1
+            trade = per_level_trades[0]
+
+            # Add take profit trigger
+            trade.triggers = [
+                Trigger(
+                    type=TriggerType.take_profit_partial,
+                    price=price,
+                    condition=TriggerCondition.cross_above,
+                    expires_at=None,
+                )
+            ]
 
             # Move trade to pending, instead to be executed right away
             del position.trades[trade.trade_id]
             position.pending_trades[trade.trade_id] = trade
 
+            trades.append(trade)
+
+        return trades
 
     def log(self, msg: str, level=logging.INFO, prefix="{self.timestamp}: "):
         """Log debug info.
