@@ -168,7 +168,7 @@ class StrategyInputIndicators:
                 tolerance=data_lag_tolerance,
                 kind=column,
             )
-            return price
+            return float(price)  # numpy.float64 -> float
         except CandleSampleUnavailable:
             return None
 
