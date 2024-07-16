@@ -11,7 +11,8 @@ from tradeexecutor.cli.log import setup_pytest_logging
 from tradeexecutor.state.identifier import TradingPairIdentifier, AssetIdentifier
 from tradeexecutor.state.reserve import ReservePosition
 from tradeexecutor.state.state import State
-from tradeexecutor.state.trigger import TriggerType
+from tradeexecutor.state.trade import TradeStatus
+from tradeexecutor.state.trigger import TriggerType, TriggerCondition
 from tradeexecutor.strategy.pandas_trader.position_manager import PositionManager
 from tradeexecutor.strategy.stop_loss import check_position_triggers
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse, create_pair_universe_from_code
@@ -55,7 +56,9 @@ def synthetic_universe() -> TradingStrategyUniverse:
         generate_random_ethereum_address(),
         mock_exchange.address,
         internal_id=random.randint(1, 1000),
-        internal_exchange_id=mock_exchange.exchange_id)
+        internal_exchange_id=mock_exchange.exchange_id,
+        fee=0.0030,
+    )
 
     time_bucket = TimeBucket.d1
 
@@ -250,36 +253,52 @@ def test_partial_take_profit(
 
     pair = position_manager.get_trading_pair((ChainId.ethereum, "my-dex", "WETH", "USDC"))
 
-    # Open a trade
-    trades = position_manager.open_spot(
+    # Start to prepare a new position
+    opening_trades = position_manager.open_spot(
         pair=pair,
         value=position_manager.get_current_cash(),
     )
+    assert len(opening_trades) == 1
 
+    # Set the two stage take profit for the position in preparation
     position = position_manager.get_current_position_for_pair(pair)
-    position_manager.set_take_profit_triggers(
+    quantity = position.get_quantity(planned=True)
+    half_quantity = quantity / Decimal(0.5)
+    prepared_trades = position_manager.set_take_profit_triggers(
         position,
         [
-            (position.get_quantity() / 0.5, 1800),
-            (position.get_quantity() / 0.5, 2500),
+            (1900.0, -half_quantity, False),
+            (2500.0, -half_quantity, True),
         ]
     )
 
+    # Check that the bunch of data structures are initialised correctly
+    assert len(prepared_trades) == 2
     assert len(position.pending_trades) == 2
     assert len(position.expired_trades) == 0
+    assert len(portfolio.open_positions) == 1
+    assert len(portfolio.pending_positions) == 0
+    t = prepared_trades[0]
+    assert t.is_sell()  # Spot take profit is sell
+    assert t.get_status() == TradeStatus.planned
+    assert t.planned_quantity == pytest.approx(-half_quantity)
+    assert len(t.triggers) == 1
+    trigger = t.triggers[0]
+    assert trigger.price == pytest.approx(1900.0)
+    assert trigger.type == TriggerType.take_profit_partial
+    assert trigger.condition == TriggerCondition.cross_above
 
-    # Position moved to pending list when market limit set
-    assert len(portfolio.open_positions) == 0
-    assert len(portfolio.pending_positions) == 1
+    t = prepared_trades[1]
+    trigger = t.triggers[0]
+    assert trigger.price == pytest.approx(2500.0)
 
-    # Check that position has its pending trades list updated
-    position = portfolio.pending_positions[1]
-    assert len(position.trades) == 0
-    assert len(position.pending_trades) == 1
-    assert len(position.expired_trades) == 0
+    # Execute the position open
+    trader = UnitTestTrader(state)
+    trader.set_perfectly_executed(opening_trades[0])
+    assert opening_trades[0].is_success()
 
-    # Go to the firs trigger threshold
-    assert position.last_token_price == 1818.0
+    # We are not within take profit level yet
+    assert position.last_token_price == pytest.approx(1823.4539999999997)
 
     executed_trades = check_position_triggers(position_manager)
     assert len(executed_trades) == 0
