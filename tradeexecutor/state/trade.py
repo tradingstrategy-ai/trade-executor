@@ -53,7 +53,8 @@ class TradeType(enum.Enum):
     #: Internal state balances are updated to match on-chain balances
     accounting_correction = "accounting_correction"
 
-
+    #: Partial take profit, etc.
+    flexible_trigger = "flexible_trigger"
 
 
 class TradeStatus(enum.Enum):

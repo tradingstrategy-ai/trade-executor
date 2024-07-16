@@ -200,7 +200,7 @@ def check_position_triggers(
             triggered_trades = check_flexible_triggers(ts, p, mid_price)
             if triggered_trades:
                 trades += triggered_trades
-                trigger_type = TradeType.trigger
+                trigger_type = TradeType.flexible_trigger
         else:
             # Stop loss/take profit was triggered,
             # remove remaining triggers

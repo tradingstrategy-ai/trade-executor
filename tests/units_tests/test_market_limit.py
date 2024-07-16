@@ -245,7 +245,13 @@ def test_partial_take_profit(
     pricing_model,
     state,
 ):
-    """Partial take profit triggered."""
+    """Partial take profit triggered.
+
+    - Open a spot position
+    - Set two partial take profits on it
+    - Last partial take profit will close the position
+    - See that take profits are orderly executed
+    """
 
     ts = datetime.datetime(2021, 6, 2)
     position_manager = PositionManager(ts, synthetic_universe.data_universe, state, pricing_model)
@@ -262,8 +268,8 @@ def test_partial_take_profit(
 
     # Set the two stage take profit for the position in preparation
     position = position_manager.get_current_position_for_pair(pair)
-    quantity = position.get_quantity(planned=True)
-    half_quantity = quantity / Decimal(0.5)
+    total_quantity = position.get_quantity(planned=True)
+    half_quantity = total_quantity / Decimal(2)
     prepared_trades = position_manager.set_take_profit_triggers(
         position,
         [
@@ -287,7 +293,6 @@ def test_partial_take_profit(
     assert trigger.price == pytest.approx(1900.0)
     assert trigger.type == TriggerType.take_profit_partial
     assert trigger.condition == TriggerCondition.cross_above
-
     t = prepared_trades[1]
     trigger = t.triggers[0]
     assert trigger.price == pytest.approx(2500.0)
@@ -296,6 +301,7 @@ def test_partial_take_profit(
     trader = UnitTestTrader(state)
     trader.set_perfectly_executed(opening_trades[0])
     assert opening_trades[0].is_success()
+    assert position.get_quantity() == pytest.approx(total_quantity)
 
     # We are not within take profit level yet
     assert position.last_token_price == pytest.approx(1823.4539999999997)
@@ -304,14 +310,38 @@ def test_partial_take_profit(
     assert len(executed_trades) == 0
 
     # Fast-forward time to the moment when market price
-    # has exceeeded the trigger
-    position_manager.timestamp = datetime.datetime(2021, 7, 4)
-    assert position_manager.pricing_model.get_mid_price(position_manager.timestamp, pair) == pytest.approx(2499.642153569536)
+    # has exceeeded the first trigger
+    position_manager.timestamp = datetime.datetime(2021, 6, 8)
+    assert position_manager.pricing_model.get_mid_price(position_manager.timestamp, pair) == pytest.approx(1929.8436337926182)
 
-    executed_trades = check_position_triggers(position_manager)
-    assert len(executed_trades) == 1
-    assert executed_trades[0] == trade
+    # Check that the first trade triggers, and execute it
+    triggered_trades = check_position_triggers(position_manager)
+    assert len(triggered_trades) == 1
+    t = triggered_trades[0]
+    assert t.planned_quantity == pytest.approx(-half_quantity)
+    assert position.get_quantity() == pytest.approx(total_quantity)
+    trader.set_perfectly_executed(t)
+    assert t.is_sell()
+    assert t.is_success()
+    assert t.executed_quantity == pytest.approx(-half_quantity)
+    assert position.is_open()
 
-    assert trade.activated_trigger is not None
-    assert trade.triggers == []
-    assert trade.expired_triggers == []
+    # The position quantity should have decreased to half,
+    # and we have only one pending trade left
+    assert position.get_quantity() == pytest.approx(half_quantity)
+    assert len(position.pending_trades) == 1
+
+    # Trigger the remaining take profit and close the position
+    position_manager.timestamp = datetime.datetime(2021, 8, 1)
+    assert position_manager.pricing_model.get_mid_price(position_manager.timestamp, pair) == pytest.approx(3302.7545979895194)
+    triggered_trades = check_position_triggers(position_manager)
+    assert len(triggered_trades) == 1
+    t = triggered_trades[0]
+    assert t.planned_quantity == pytest.approx(-half_quantity)
+    assert position.get_quantity() == pytest.approx(half_quantity)
+    trader.set_perfectly_executed(t)
+    assert t.is_sell()
+    assert t.is_success()
+    assert t.executed_quantity == pytest.approx(-half_quantity)
+    assert position.is_closed()
+
