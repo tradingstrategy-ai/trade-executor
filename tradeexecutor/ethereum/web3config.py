@@ -92,7 +92,7 @@ class Web3Config:
             # Use last given RPC for anvil,
             # because first one is likely MEV one
             last_rpc = configuration_line.split(" ")[-1]
-            logger.info(f"Simulating transactions with Anvil for {last_rpc}")
+            logger.info(f"Simulating transactions with Anvil, forking from {last_rpc}")
             anvil = launch_anvil(last_rpc, attempts=1)
             web3 = create_multi_provider_web3(anvil.json_rpc_url)
             web3.anvil = anvil
