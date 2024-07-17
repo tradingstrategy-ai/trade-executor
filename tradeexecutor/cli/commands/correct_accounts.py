@@ -185,7 +185,7 @@ def correct_accounts(
     universe = universe_model.construct_universe(
         datetime.datetime.utcnow(),
         execution_context.mode,
-        UniverseOptions()
+        mod.get_universe_options(),
     )
 
     logger.info("Universe contains %d pairs", universe.data_universe.pairs.get_count())
