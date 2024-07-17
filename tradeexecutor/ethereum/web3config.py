@@ -89,7 +89,9 @@ class Web3Config:
         assert type(configuration_line) == str, f"Got: {configuration_line.__class__}"
 
         if simulate:
-            logger.info(f"Simulating transactions with Anvil for {configuration_line}")
+            # Use last given RPC for anvil
+            last_rpc = configuration_line.split(" ")[-1]
+            logger.info(f"Simulating transactions with Anvil for {last_rpc}")
             anvil = launch_anvil(configuration_line, attempts=1)
             web3 = create_multi_provider_web3(anvil.json_rpc_url)
             web3.anvil = anvil
