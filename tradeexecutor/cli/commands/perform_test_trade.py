@@ -106,7 +106,7 @@ def perform_test_trade(
         json_rpc_anvil=json_rpc_anvil,
         json_rpc_arbitrum=json_rpc_arbitrum,
         unit_testing=unit_testing,
-        simulate=True,
+        simulate=simulate,
     )
 
     if not web3config.has_any_connection():
