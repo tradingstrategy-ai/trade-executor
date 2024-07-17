@@ -180,6 +180,9 @@ def perform_test_trade(
     runner = run_description.runner
     routing_state, pricing_model, valuation_method = runner.setup_routing(universe)
 
+    if simulate:
+        logger.info("Simulating test trades")
+
     try:
         if all_pairs:
             for pair in universe.data_universe.pairs.iterate_pairs():
@@ -220,8 +223,13 @@ def perform_test_trade(
     except OutOfBalance as e:
         raise RuntimeError(f"Failed to a test trade, as we run out of balance. Make sure vault has enough stablecoins deposited for the test trades.") from e
 
-    # Store the test trade data in the strategy history
-    store.sync(state)
+    # Store the test trade data in the strategy history,
+    # but only if we did not run the simulation
+    if not simulate:
+        logger.info("Storing the state data from test trades")
+        store.sync(state)
+    else:
+        logger.info("Simulation, no state changes")
 
     logger.info("All ok")
 
