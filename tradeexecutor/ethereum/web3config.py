@@ -171,6 +171,7 @@ class Web3Config:
         default_chain_id = next(iter(self.connections.keys()))
         self.set_default_chain(default_chain_id)
         self.check_default_chain_id()
+        logger.info("Chosen to use single blockchain. Chain id: %d: Provider: %s", default_chain_id, self.connections[default_chain_id].provider)
 
     def set_default_chain(self, chain_id: ChainId):
         """Set the default chain our strategy runs on.

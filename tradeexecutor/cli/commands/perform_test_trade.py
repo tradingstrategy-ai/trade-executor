@@ -110,7 +110,7 @@ def perform_test_trade(
     )
 
     if not web3config.has_any_connection():
-        raise RuntimeError("Vault deploy requires that you pass JSON-RPC connection to one of the networks")
+        raise RuntimeError("perform-test-trade requires that you pass JSON-RPC connection to one of the networks")
 
     web3config.choose_single_chain()
 
