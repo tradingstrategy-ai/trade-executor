@@ -92,7 +92,7 @@ class Web3Config:
             # Use last given RPC for anvil
             last_rpc = configuration_line.split(" ")[-1]
             logger.info(f"Simulating transactions with Anvil for {last_rpc}")
-            anvil = launch_anvil(configuration_line, attempts=1)
+            anvil = launch_anvil(last_rpc, attempts=1)
             web3 = create_multi_provider_web3(last_rpc)
             web3.anvil = anvil
             web3.simulate = True
