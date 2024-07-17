@@ -157,7 +157,7 @@ class GridParameter:
         if isinstance(value, Enum):
             return f"{self.name}={self.value.value}"
         elif type(value) == bool:
-            return f"{self.name}={self.value.lower()}"
+            return f"{self.name}={str(self.value).lower()}"
         elif isinstance(value, (numpy.float64, numpy.float32, numpy.int64)):
             # scikit-optimise values
             return f"{self.name}={self.value}"
