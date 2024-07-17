@@ -94,7 +94,7 @@ class Web3Config:
             last_rpc = configuration_line.split(" ")[-1]
             logger.info(f"Simulating transactions with Anvil for {last_rpc}")
             anvil = launch_anvil(last_rpc, attempts=1)
-            web3 = create_multi_provider_web3(last_rpc)
+            web3 = create_multi_provider_web3(anvil.json_rpc_url)
             web3.anvil = anvil
             web3.simulate = True
             configuration_line = anvil.json_rpc_url  # Override whatever configuration given earlier
@@ -171,7 +171,7 @@ class Web3Config:
         default_chain_id = next(iter(self.connections.keys()))
         self.set_default_chain(default_chain_id)
         self.check_default_chain_id()
-        logger.info("Chosen to use single blockchain. Chain id: %d: Provider: %s", default_chain_id, self.connections[default_chain_id].provider)
+        logger.info("Chosen to use a single blockchain. Chain id: %d: Provider: %s", default_chain_id, self.connections[default_chain_id].provider)
 
     def set_default_chain(self, chain_id: ChainId):
         """Set the default chain our strategy runs on.
