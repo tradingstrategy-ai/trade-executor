@@ -85,6 +85,8 @@ class Portfolio:
     #:
     #: For migration code, see :py:class:`ReservePosition`.
     #:
+    #: Set by :py:meth:`initialise_reserves`.
+    #:
     reserves: Dict[AssetFriendlyId, ReservePosition] = field(default_factory=dict)
 
     #: Trades completed in the past

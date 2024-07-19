@@ -191,6 +191,20 @@ def correct_accounts(
     logger.info("Universe contains %d pairs", universe.data_universe.pairs.get_count())
     logger.info("Reserve assets are: %s", universe.reserve_assets)
 
+    if not state.portfolio.reserves:
+        # Running correct-account on clean init()
+        # Need to add reserves now, because we have missed the original deposit event
+        logger.info("Reserve configuration not detected, adding", universe.reserve_assets)
+
+        assert len(universe.reserve_assets) > 0
+
+        reserve_asset = universe.reserve_assets[0]
+
+        if not state.portfolio.reserves:
+            state.portfolio.initialise_reserves(reserve_asset)
+
+        logger.info("Reserves are %s", state.portfolio.reserves)
+
     assert len(universe.reserve_assets) == 1, "Need exactly one reserve asset"
 
     # Set initial reserves,
