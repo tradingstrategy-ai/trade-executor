@@ -155,19 +155,19 @@ class GridParameter:
         value = self.value
 
         if isinstance(value, Enum):
-            return f"{self.name}={self.value.value}"
-        elif type(value) == bool:
-            return f"{self.name}={str(self.value).lower()}"
+            return f"{self.name}={value.value}"
+        elif isinstance(value, (bool, numpy.bool_)):
+            return f"{self.name}={str(value).lower()}"
         elif isinstance(value, (numpy.float64, numpy.float32, numpy.int64)):
             # scikit-optimise values
-            return f"{self.name}={self.value}"
+            return f"{self.name}={value}"
         elif isinstance(value, Decimal):
             # scikit-optimise values
             # where space.Real is rounded to accuracy
             # that can fit into a filename
-            return f"{self.name}={self.value}"
+            return f"{self.name}={value}"
         elif type(value) in (float, int, str):
-            return f"{self.name}={self.value}"
+            return f"{self.name}={value}"
         if value is None:
             return f"{self.name}=none"
         else:
