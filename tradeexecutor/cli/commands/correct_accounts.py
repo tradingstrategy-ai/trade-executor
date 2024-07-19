@@ -194,7 +194,7 @@ def correct_accounts(
     if not state.portfolio.reserves:
         # Running correct-account on clean init()
         # Need to add reserves now, because we have missed the original deposit event
-        logger.info("Reserve configuration not detected, adding", universe.reserve_assets)
+        logger.info("Reserve configuration not detected, adding %s", universe.reserve_assets)
 
         assert len(universe.reserve_assets) > 0
 
