@@ -21,7 +21,7 @@ def visualise_single_grid_search_result_benchmark(
     result: GridSearchResult,
     strategy_universe: TradingStrategyUniverse,
     initial_cash: USDollarAmount | None = None,
-    name="Picked grid search result",
+    name="Picked search result",
     log_y=False,
     asset_count=3,
 ) -> go.Figure:
@@ -85,10 +85,15 @@ def visualise_single_grid_search_result_benchmark(
     equity.attrs["curve"] = CurveType.equity
     equity.attrs["colour"] = DEFAULT_BENCHMARK_COLOURS["Strategy"]
 
+    if result.state is not None:
+        start_at = result.state.get_trading_time_range()[0]
+    else:
+        start_at = equity.index[0]
+
     benchmarks = get_benchmark_data(
         strategy_universe,
         cumulative_with_initial_cash=initial_cash or getattr(result, "initial_cash", None),  # Legacy support hack
-        start_at=equity.index[0],
+        start_at=start_at,
         max_count=asset_count,
     )
 
@@ -98,6 +103,7 @@ def visualise_single_grid_search_result_benchmark(
         [equity] + benchmark_series,
         name=name,
         log_y=log_y,
+        start_at=start_at,
     )
 
     return fig

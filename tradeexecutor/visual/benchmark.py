@@ -288,9 +288,13 @@ def visualise_equity_curve_benchmark(
         warnings.warn('Pass parameter state instead of portfolio_statistics', DeprecationWarning, stacklevel=2)
 
     if start_at is not None:
+        if isinstance(start_at, datetime.datetime):
+            start_at = pd.Timestamp(start_at)
         assert isinstance(start_at, pd.Timestamp)
 
     if end_at is not None:
+        if isinstance(end_at, datetime.datetime):
+            end_at = pd.Timestamp(end_at)
         assert isinstance(end_at, pd.Timestamp)
 
     if state is not None:
@@ -736,6 +740,7 @@ def visualise_equity_curves(
     name="Equity curve comparison",
     height=800,
     log_y=False,
+    start_at: pd.Timestamp | datetime.datetime | None=None,
 ) -> go.Figure:
     """Compare equity curves.
 
@@ -791,6 +796,9 @@ def visualise_equity_curves(
         # not implemented yet
         # series = transform_to_equity_curve(curve, initial_cash)
         series = curve
+
+        if start_at:
+            series = series[start_at:]
 
         trace = go.Scatter(
             x=series.index,
