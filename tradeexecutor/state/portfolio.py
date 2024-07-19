@@ -99,6 +99,15 @@ class Portfolio:
     #: - rug pull token - transfer disabled
     frozen_positions: Dict[int, TradingPosition] = field(default_factory=dict)
 
+    #: Mark positions that we cannot value as zero
+    #:
+    #: This is a backtesting issue workaround flag for disappearing markets.
+    #: E.g. MKR-USDC liquidity disappears here https://tradingstrategy.ai/trading-view/ethereum/uniswap-v3/mkr-usdc-fee-5#7d
+    #:
+    #: TODO: Not supported yet.
+    #:
+    revalue_failures_as_zero: bool = False
+
     def __repr__(self):
         reserve_asset, _ = self.get_default_reserve_asset()
         reserve_position = self.get_reserve_position(reserve_asset)

@@ -61,3 +61,11 @@ class ValuationUpdate:
     #:
     block_number: BlockNumber | None = None
 
+    #: In this update, we marked down this position to zero because of the valuation failure.
+    #:
+    #: Set to `True` indicate we lost the valuation source for this position.
+    #:
+    #: See `revalue_portfolio()`.
+    #:
+    mark_down_to_zero: bool | None = None
+

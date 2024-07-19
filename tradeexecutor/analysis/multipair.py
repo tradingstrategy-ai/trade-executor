@@ -48,6 +48,7 @@ def analyse_pair_trades(pair: TradingPairIdentifier, portfolio: Portfolio) -> di
         "Trading pair": pair.get_human_description(describe_type=True),
         "Positions": len(positions),
         "Trades": len(trades),
+        "Total return %": total_return,
         "Total PnL USD": total_usd_profit,
         "Best": best,
         "Worst": worst,
@@ -59,8 +60,7 @@ def analyse_pair_trades(pair: TradingPairIdentifier, portfolio: Portfolio) -> di
         "Take profits": take_profits,
         "Stop losses": stop_losses,
         "Trailing stop losses": trailing_stop_losses,
-        "Volatility": volatility,
-        "Total return %": total_return,
+        "Volatility": volatility,        
     }
 
 
@@ -116,6 +116,7 @@ def format_multipair_summary(
         "Trading pair": str,
         "Positions": str,
         "Trades": str,
+        "Total return %": format_percent_2_decimals,
         "Total PnL USD": _format_value,
         "Best": format_percent_2_decimals,
         "Worst": format_percent_2_decimals,
@@ -127,8 +128,7 @@ def format_multipair_summary(
         "Take profits": str,
         "Stop losses": str,
         "Trailing stop losses": str,
-        "Volatility": format_percent_2_decimals,
-        "Total return %": format_percent_2_decimals,
+        "Volatility": format_percent_2_decimals,        
     }
 
     for col, format_func in formatters.items():
@@ -139,6 +139,7 @@ def format_multipair_summary(
             ("Trading pair", "https://tradingstrategy.ai/glossary/trading-pair"),
             ("Positions", "https://tradingstrategy.ai/glossary/position"),
             ("Trades", "https://tradingstrategy.ai/glossary/swap"),
+            ("Total return %", "https://tradingstrategy.ai/glossary/aggregate-return"),
             ("Total PnL USD", None),
             ("Best", None),
             ("Worst", None),
@@ -150,8 +151,7 @@ def format_multipair_summary(
             ("Take profits", "https://tradingstrategy.ai/glossary/take-profit"),
             ("Stop losses", "https://tradingstrategy.ai/glossary/stop-loss"),
             ("Trailing stop losses", "https://tradingstrategy.ai/glossary/trailing-stop-loss"),
-            ("Volatility", None),
-            ("Total return %", "https://tradingstrategy.ai/glossary/aggregate-return")
+            ("Volatility", None),            
         ]
 
         df.columns = [make_clickable(h, url) if url else h for h, url in headings]

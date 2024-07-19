@@ -719,6 +719,7 @@ class AlphaModel:
         self,
         position_manager: PositionManager,
         min_trade_threshold: USDollarAmount = 10.0,
+        invidiual_rebalance_min_threshold: USDollarAmount = 0.0,
         use_spot_for_long=True,
     ) -> List[TradeExecution]:
         """Generate the trades that will rebalance the portfolio.
@@ -743,6 +744,9 @@ class AlphaModel:
 
             This is to prevent doing too small trades due to fuzziness in the valuations
             and calculations.
+
+        :param invidiual_rebalance_min_threshold:
+            If an invidual treade value is smaller than this, skip it.
 
         :param use_spot_for_long:
             If we go long a pair, use spot.
@@ -826,6 +830,12 @@ class AlphaModel:
                         signal.old_weight,
                         signal.normalised_weight,
                         dollar_diff)
+
+            if invidiual_rebalance_min_threshold:
+                trade_size = abs(dollar_diff)
+                if trade_size < invidiual_rebalance_min_threshold:
+                    logger.info("Individual trade size too small, trade size is %s, our threshold %s", trade_size, invidiual_rebalance_min_threshold)
+                    continue
 
             if False:
                 pass

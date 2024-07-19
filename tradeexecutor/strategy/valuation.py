@@ -17,6 +17,7 @@ from abc import abstractmethod, ABC
 from typing import Protocol, Tuple, Callable
 
 from tradeexecutor.state.valuation import ValuationUpdate
+from tradingstrategy.candle import CandleSampleUnavailable
 from tradingstrategy.types import USDollarAmount
 
 from tradeexecutor.state.portfolio import Portfolio
@@ -115,9 +116,28 @@ def revalue_portfolio(
 
     positions = portfolio.get_open_and_frozen_positions() if revalue_frozen else portfolio.open_positions.values()
 
+    revalue_failures_as_zero = False
+
     for position in positions:
         try:
-            value_update = valuation_model(ts, position)
+            try:
+                value_update = valuation_model(ts, position)
+            except CandleSampleUnavailable as csu:
+                # See comments in :py:class:`Portfolio`
+                if revalue_failures_as_zero:
+                    value_update = ValuationUpdate(
+                        position_id=position.position_id,
+                        created_at=ts,
+                        valued_at=ts,
+                        new_value=0,
+                        new_price=0,
+                        old_value=position.get_value(),
+                        old_price=position.last_token_price,
+                        mark_down_to_zero=True,
+                    )
+                else:
+                    # Consider as fatal failure
+                    raise
             assert isinstance(value_update, ValuationUpdate), f"Expected ValuationUpdate, received {value_update.__class__} from {valuation_model.__class__.__name__}"
 
             logger.info(
