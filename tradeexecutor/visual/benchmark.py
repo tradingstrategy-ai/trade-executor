@@ -312,8 +312,8 @@ def visualise_equity_curve_benchmark(
 
     else:
         # Legacy, gives mislaigned curves
-        first_portfolio_timestamp = portfolio_statistics[0].timestamp
-        last_portfolio_timestamp = portfolio_statistics[-1].timestamp
+        first_portfolio_timestamp = portfolio_statistics[0].calculated_at
+        last_portfolio_timestamp = portfolio_statistics[-1].calculated_at
 
         if not start_at or start_at < first_portfolio_timestamp:
             start_at = first_portfolio_timestamp
