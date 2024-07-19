@@ -1781,3 +1781,17 @@ def explain_open_position_failure(
     print("- You can fill the notes field when opening the trade to diagnose where the trade was opened", file=buf)
 
     return buf.getvalue()
+
+
+def explain_portfolio_contents(portfolio: Portfolio) -> str:
+    """Build an error message about what makes our portflio:
+
+    :param portfolio:
+    :return:
+    """
+    assert isinstance(portfolio, Portfolio)
+
+    buf = StringIO()
+    for pos in portfolio.open_positions.values():
+        print(f"   {pos.pair.get_ticker()}, opened:{pos.opened_at} value:${pos.get_value()}", file=buf)
+    return buf.getvalue()

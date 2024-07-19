@@ -319,7 +319,7 @@ def compare_strategy_backtest_to_multiple_assets(
     end_price = {"Strategy": pd.NA}
     diff = {"Strategy": pd.NA}
     multiplier = {"Strategy": pd.NA}
-    first_price_at = {"Strategy": pd.Timestamp(state.get_trading_time_range()[0])}
+    first_price_at = {"Strategy": pd.Timestamp(state.get_trading_time_range()[0]) if state else pd.NA}
     price_freq = {"Strategy": pd.NA}
     for asset_name, price_series in price_data.items():
         start_price[asset_name] = price_series.iloc[0]
