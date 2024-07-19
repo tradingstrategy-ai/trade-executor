@@ -106,6 +106,7 @@ def visualise_equity_curve_comparison(
 def visualise_equity_curve_benchmark(
     name: Optional[str] = None,
     title: Optional[str] = None,
+    state: Optional[State] = None,
     portfolio_statistics: Optional[List[PortfolioStatistics]] = None,
     all_cash: Optional[float] = None,
     buy_and_hold_asset_name: Optional[str] = None,
@@ -283,13 +284,8 @@ def visualise_equity_curve_benchmark(
 
     fig = go.Figure()
 
-    assert portfolio_statistics
-
-    if isinstance(start_at, datetime.datetime):
-        start_at = pd.Timestamp(start_at)
-
-    if isinstance(end_at, datetime.datetime):
-        end_at = pd.Timestamp(end_at)
+    if portfolio_statistics is not None:
+        warnings.warn('Pass parameter state instead of portfolio_statistics', DeprecationWarning, stacklevel=2)
 
     if start_at is not None:
         assert isinstance(start_at, pd.Timestamp)
@@ -297,14 +293,42 @@ def visualise_equity_curve_benchmark(
     if end_at is not None:
         assert isinstance(end_at, pd.Timestamp)
 
-    first_portfolio_timestamp = pd.Timestamp(portfolio_statistics[0].calculated_at)
-    last_portfolio_timestamp = pd.Timestamp(portfolio_statistics[-1].calculated_at)
+    if state is not None:
+        # Fill in defaults from state
+        first_portfolio_timestamp, last_portfolio_timestamp = state.get_trading_time_range()
+        portfolio_statistics = state.stats.portfolio
 
-    if not start_at or start_at < first_portfolio_timestamp:
-        start_at = first_portfolio_timestamp
+        if start_at is None:
+            start_at = first_portfolio_timestamp
 
-    if not end_at or end_at > last_portfolio_timestamp:
-        end_at = last_portfolio_timestamp
+        if end_at is None:
+            end_at = last_portfolio_timestamp
+
+        if name is None:
+            name = state.name
+
+        if all_cash is None:
+            all_cash = state.portfolio.get_initial_cash()
+
+    else:
+        # Legacy, gives mislaigned curves
+        first_portfolio_timestamp = portfolio_statistics[0].timestamp
+        last_portfolio_timestamp = portfolio_statistics[-1].timestamp
+
+        if not start_at or start_at < first_portfolio_timestamp:
+            start_at = first_portfolio_timestamp
+
+        if not end_at or end_at > last_portfolio_timestamp:
+            end_at = last_portfolio_timestamp
+
+    assert start_at is not None
+    assert end_at is not None
+
+    if isinstance(start_at, datetime.datetime):
+        start_at = pd.Timestamp(start_at)
+
+    if isinstance(end_at, datetime.datetime):
+        end_at = pd.Timestamp(end_at)
 
     scatter = visualise_portfolio_equity_curve(
         name,

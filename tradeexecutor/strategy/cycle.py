@@ -80,6 +80,9 @@ class CycleDuration(enum.Enum):
     #: Run `decide_trades()` for every month
     cycle_30d = "30d"
 
+    #: Random cycle that's prime number in hours
+    cycle_97h = "97h"
+
     #: Don't really know or care about the trade cycle duration.
     #:
     #: Used when doing a simulated execution loop
@@ -249,6 +252,7 @@ _TICK_DURATIONS = {
     CycleDuration.cycle_7d: datetime.timedelta(days=7),
     CycleDuration.cycle_30d: datetime.timedelta(days=30),
     CycleDuration.cycle_unknown: datetime.timedelta(days=0),
+    CycleDuration.cycle_97h: datetime.timedelta(hours=97),
 }
 
 assert len(_TICK_DURATIONS) == len(CycleDuration)  # sanity check

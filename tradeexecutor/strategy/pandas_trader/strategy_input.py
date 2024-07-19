@@ -473,6 +473,10 @@ class StrategyInputIndicators:
             Return ``None`` if any data is not yet available before this stamp.
         """
 
+        if self.timestamp is None:
+            # Accessed in backtesting diagnostics
+            unlimited = True
+
         if not unlimited:
             assert self.timestamp is not None, "StrategInputIndicators.timestamp not set for decide_trades(). Call get_indicator_series(unlimited=True) to get all data."
 
