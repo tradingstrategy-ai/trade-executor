@@ -120,7 +120,7 @@ class Dataset:
             assert self.start_at is None and self.end_at is None, f"You can only give history_period or backtesting range. We got {self.start_at}, {self.end_at}, {self.history_period}"
 
 
-@dataclass
+@dataclass(slots=True)
 class TradingStrategyUniverse(StrategyExecutionUniverse):
     """A trading strategy universe using our own data feeds.
 
