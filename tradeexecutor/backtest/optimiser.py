@@ -308,14 +308,15 @@ class ObjectiveWrapper:
 
         if getattr(result, "exception", None) is None:  # Legacy pickle compat
             opt_result = self.search_func(result)
+
+            # Apply result filter and zero out the value for optimiser if needed
+            if not self.result_filter(result):
+                opt_result.value = self.filtered_result_value
+
         else:
             # The backtest crashed with an exception,
             # likely OutOfBalance
             opt_result = OptimiserSearchResult(self.filtered_result_value, negative=False)
-
-        # Apply result filter and zero out the value for optimiser if needed
-        if not self.result_filter(result):
-            opt_result.value = self.filtered_result_value
 
         opt_result.combination = combination
         logger.info("Optimiser for combination %s resulted to %s, exiting child process", combination, opt_result.value)
