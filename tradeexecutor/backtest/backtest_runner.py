@@ -1025,7 +1025,10 @@ def guess_data_delay_tolerance(universe: TradingStrategyUniverse) -> pd.Timedelt
 
     This could work around some data quality issues or early historical data.
     """
-    if universe.data_universe.time_bucket == TimeBucket.d7:
+
+    if universe.price_data_delay_tolerance:
+        return pd.Timedelta(universe.price_data_delay_tolerance)
+    elif universe.data_universe.time_bucket == TimeBucket.d7:
         data_delay_tolerance = pd.Timedelta("9d")
     else:
         data_delay_tolerance = pd.Timedelta("2d")

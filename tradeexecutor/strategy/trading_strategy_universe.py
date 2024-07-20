@@ -171,6 +171,16 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
     #:
     options: UniverseOptions | None = None
 
+    #: How much lag we allow in the price feed.
+    #:
+    #: This can be set for a very high value when working with open ended universes where the liquidity pools are
+    #: disappear when liquidity providers leave.
+    #:
+    #: TODO: Use carefully - this is mostly a workaround variable and
+    #: will have a more robust TVL/liquidity solution in the future.
+    #:
+    price_data_delay_tolerance: datetime.timedelta | None = None
+
     def __repr__(self):
         pair_count = self.data_universe.pairs.get_count()
         if pair_count <= 3:

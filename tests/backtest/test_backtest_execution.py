@@ -5,8 +5,10 @@ import datetime
 import logging
 from decimal import Decimal
 
+import pandas as pd
 import pytest
 
+from tradeexecutor.backtest.backtest_runner import guess_data_delay_tolerance
 from tradeexecutor.state.identifier import AssetIdentifier
 from tradeexecutor.state.trade import TradeStatus
 from tradeexecutor.strategy.reserve_currency import ReserveCurrency
@@ -260,7 +262,7 @@ def test_buy_with_fee(
     logger: logging.Logger,
     state: State,
     wallet: SimulatedWallet,
-        strategy_universe,
+    strategy_universe,
     routing_model: BacktestRoutingModel,
     pricing_model: BacktestPricing,
     wbnb: AssetIdentifier,
@@ -341,3 +343,11 @@ def test_buy_sell_backtest_with_fee(
     # Check our wallet was credited
     assert wallet.get_balance(busd.address) == pytest.approx(Decimal('9990.040840796019796453251579'))
     assert wallet.get_balance(wbnb.address) == 0
+
+
+def test_price_data_tolerance(
+    strategy_universe,
+):
+    """Workaround for Uni v3 issues"""
+    strategy_universe.price_data_delay_tolerance = datetime.timedelta(days=365)
+    assert guess_data_delay_tolerance(strategy_universe) == pd.Timedelta(days=365)
