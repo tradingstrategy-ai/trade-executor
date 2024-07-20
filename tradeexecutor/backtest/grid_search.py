@@ -753,6 +753,7 @@ def _run_v04(
     combination: GridCombination,
     trading_strategy_engine_version: TradingStrategyEngineVersion,
     indicator_storage: DiskIndicatorStorage,
+    ignore_wallet_errors: bool,
 ):
     """Run decide_trades() with input parameteter.
 
@@ -784,6 +785,7 @@ def _run_v04(
         parameters=parameters,
         initial_deposit=initial_cash,
         indicator_storage=indicator_storage,
+        ignore_wallet_errors=ignore_wallet_errors,
     )
 
 
@@ -794,6 +796,7 @@ def run_grid_combination_threaded(
     trading_strategy_engine_version: TradingStrategyEngineVersion,
     data_retention: GridSearchDataRetention,
     indicator_storage_path: Path | None = None,
+    ignore_wallet_errors=False,
 ):
     """Threared runner.
 
@@ -816,7 +819,7 @@ def run_grid_combination_threaded(
 
     if version.parse(trading_strategy_engine_version) >= version.parse("0.4"):
         # New style runner
-        result = _run_v04(grid_search_worker, universe, combination, trading_strategy_engine_version, indicator_storage)
+        result = _run_v04(grid_search_worker, universe, combination, trading_strategy_engine_version, indicator_storage, ignore_wallet_errors)
     else:
         # Legacy path
         result = grid_search_worker(universe, combination)
@@ -836,6 +839,7 @@ def run_grid_combination_multiprocess(
     trading_strategy_engine_version: TradingStrategyEngineVersion,
     data_retention: GridSearchDataRetention,
     indicator_storage_path = DEFAULT_INDICATOR_STORAGE_PATH,
+    ignore_wallet_errors: bool = False,
 ):
     """Mutltiproecss runner.
 
@@ -870,7 +874,7 @@ def run_grid_combination_multiprocess(
 
     if version.parse(trading_strategy_engine_version) >= version.parse("0.4"):
         # New style runner
-        result = _run_v04(grid_search_worker, universe, combination, trading_strategy_engine_version, indicator_storage)
+        result = _run_v04(grid_search_worker, universe, combination, trading_strategy_engine_version, indicator_storage, ignore_wallet_errors)
     else:
         # Legacy path
         result = grid_search_worker(universe, combination)
@@ -988,6 +992,7 @@ def perform_grid_search(
     data_retention: GridSearchDataRetention = GridSearchDataRetention.metrics_only,
     execution_context: ExecutionContext = grid_search_execution_context,
     indicator_storage: DiskIndicatorStorage | None = None,
+    ignore_wallet_errors=False,
 ) -> List[GridSearchResult]:
     """Search different strategy parameters over a grid.
 
@@ -1093,7 +1098,7 @@ def perform_grid_search(
             # Set up a process pool executing structure
             executor = futureproof.ProcessPoolExecutor(max_workers=max_workers, initializer=_process_init, initargs=(pickled_universe,))
             tm = futureproof.TaskManager(executor, error_policy=futureproof.ErrorPolicyEnum.RAISE)
-            task_args = [(grid_search_worker, c, trading_strategy_engine_version, data_retention, indicator_storage.path) for c in combinations if c not in cached_results]
+            task_args = [(grid_search_worker, c, trading_strategy_engine_version, data_retention, indicator_storage.path, ignore_wallet_errors) for c in combinations if c not in cached_results]
 
             # Set up a signal handler to stop child processes on quit
             _process_pool_executor = executor._executor
@@ -1119,7 +1124,7 @@ def perform_grid_search(
             #
             logger.warning("Doing a multithread grid search - you should not really use this, pass multiprocessing=True instead")
 
-            task_args = [(grid_search_worker, universe, c, trading_strategy_engine_version, data_retention, indicator_storage.path) for c in combinations if c not in cached_results]
+            task_args = [(grid_search_worker, universe, c, trading_strategy_engine_version, data_retention, indicator_storage.path, ignore_wallet_errors) for c in combinations if c not in cached_results]
 
             executor = futureproof.ThreadPoolExecutor(max_workers=max_workers)
             tm = futureproof.TaskManager(executor, error_policy=futureproof.ErrorPolicyEnum.RAISE)
@@ -1135,7 +1140,7 @@ def perform_grid_search(
         #
 
         logger.info("Doing a single thread grid search")
-        task_args = [(grid_search_worker, universe, c, trading_strategy_engine_version, data_retention, indicator_storage.path) for c in combinations]
+        task_args = [(grid_search_worker, universe, c, trading_strategy_engine_version, data_retention, indicator_storage.path, ignore_wallet_errors) for c in combinations]
         iter = itertools.starmap(run_grid_combination_threaded, task_args)
 
         # Force workers to finish
@@ -1281,9 +1286,9 @@ def run_grid_search_backtest(
                 max_workers=max_workers,
             )
         except BacktestExecutionFailed as bef:
-
-            # See backtest_execution.py
-            if ignore_wallet_errors and isinstance(bef.__cause__, OutOfSimulatedBalance):
+            # unnest
+            contains_oof = isinstance(bef.__cause__, OutOfSimulatedBalance) or isinstance(getattr(bef.__cause__, "__cause__", None), OutOfSimulatedBalance)
+            if ignore_wallet_errors and contains_oof:
                 #
                 # There is a bug in the backtest that tries to use more money
                 # to trade than we have available.
@@ -1299,6 +1304,7 @@ def run_grid_search_backtest(
     except Exception as e:        
         # Report to the notebook which of the grid search combinations is a problematic one
         tb = traceback.format_exc()
+        import ipdb ; ipdb.set_trace()
         raise RuntimeError(f"Running a grid search combination failed:\n{combination}\nThe original exception was: {e}\n{tb}") from e
 
     # Portfolio performance

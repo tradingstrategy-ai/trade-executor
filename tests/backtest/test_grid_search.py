@@ -8,6 +8,7 @@ import pandas_ta
 import pytest
 from plotly.graph_objs import Figure
 
+from tradeexecutor.backtest.backtest_execution import BacktestExecutionFailed
 from tradeexecutor.state.trade import TradeExecution
 from tradeexecutor.strategy.cycle import CycleDuration
 from tradeexecutor.strategy.execution_context import ExecutionContext, ExecutionMode
@@ -496,6 +497,18 @@ def _decide_trades_combined_indicator(input: StrategyInput) -> List[TradeExecuti
     return []
 
 
+def _decide_trades_out_of_balance(input: StrategyInput) -> List[TradeExecution]:
+    strategy_universe = input.strategy_universe
+    pair = strategy_universe.get_single_pair()
+    position_manager = input.get_position_manager()
+    # Buy too much, we have only $10,000
+    trades = position_manager.open_spot(
+        pair,
+        value=99_999,
+    )
+    return trades
+
+
 def my_custom_indicator(strategy_universe: TradingStrategyUniverse):
     return pd.Series(dtype="float64")
 
@@ -762,3 +775,44 @@ def test_create_failed_result(tmp_path):
     )
 
     assert r.exception is not None
+
+
+
+def test_grid_out_of_balance(
+    strategy_universe,
+    indicator_storage,
+    tmp_path,
+):
+    """Gracefully handle out of balance."""
+    class MyParameters:
+        cycle_duration = CycleDuration.cycle_1d
+        initial_cash = 10_000
+        test_param = [1, 2]
+
+
+    def create_indicators(parameters: StrategyParameters, indicators: IndicatorSet, strategy_universe: TradingStrategyUniverse, execution_context: ExecutionContext):
+        return indicators
+
+    combinations = prepare_grid_combinations(
+        MyParameters,
+        tmp_path,
+        strategy_universe=strategy_universe,
+        create_indicators=create_indicators,
+        execution_context=ExecutionContext(mode=ExecutionMode.unit_testing, grid_search=True),
+    )
+
+    # Multiprocess
+    results = perform_grid_search(
+        _decide_trades_out_of_balance,
+        strategy_universe,
+        combinations,
+        max_workers=1,
+        multiprocess=False,
+        trading_strategy_engine_version="0.5",
+        indicator_storage=indicator_storage,
+        ignore_wallet_errors=True,
+    )
+
+    assert len(results) == 2
+    for r in results:
+        assert isinstance(r.exception, BacktestExecutionFailed)
