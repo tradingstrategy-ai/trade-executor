@@ -319,7 +319,7 @@ class ObjectiveWrapper:
             opt_result = OptimiserSearchResult(self.filtered_result_value, negative=False)
 
         opt_result.combination = combination
-        logger.info("Optimiser for combination %s resulted to %s, exiting child process", combination, opt_result.value)
+        logger.info("Optimiser for combination %s resulted to %s, exception is %s, exiting child process", combination, opt_result.value, result.exception)
         return opt_result
 
 
