@@ -1181,6 +1181,7 @@ def create_grid_search_failed_result(combination, state, exception: Exception) -
         biggest_losing_trade_pc=0,
         average_duration_of_winning_trades=datetime.timedelta(0),
         average_duration_of_losing_trades=datetime.timedelta(0),
+        total_trades=0,
     )
 
     metrics = calculate_advanced_metrics(
