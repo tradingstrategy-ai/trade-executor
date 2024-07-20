@@ -24,7 +24,7 @@ from tradingstrategy.universe import Universe
 from tradeexecutor.analysis.grid_search import analyse_grid_search_result, render_grid_search_result_table, visualise_heatmap_2d, \
     find_best_grid_search_results
 from tradeexecutor.backtest.grid_search import prepare_grid_combinations, run_grid_search_backtest, perform_grid_search, GridCombination, GridSearchResult, \
-    pick_grid_search_result, pick_best_grid_search_result, GridParameter
+    pick_grid_search_result, pick_best_grid_search_result, GridParameter, create_grid_search_failed_result
 from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier
 from tradeexecutor.state.state import State
 from tradeexecutor.state.visualisation import PlotKind
@@ -741,3 +741,24 @@ def test_perform_grid_search_with_indicator_dependency_resolution(
         indicator_storage=indicator_storage,
     )
     assert len(results) == 8
+
+
+
+def test_create_failed_result(tmp_path):
+    """See we can serialise a failed result."""
+
+    parameters = {
+        "stop_loss_pct": [0.9, 0.95],
+        "slow_ema_candle_count": [7, 9],
+        "fast_ema_candle_count": [2, 3],
+    }
+
+    combinations = prepare_grid_combinations(parameters, tmp_path)
+
+    r = create_grid_search_failed_result(
+        combination=combinations[0],
+        state=State(),
+        exception=RuntimeError(),
+    )
+
+    assert r.exception is not None

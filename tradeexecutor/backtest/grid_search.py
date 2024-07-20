@@ -393,6 +393,10 @@ class GridSearchResult:
     #:
     optimiser_search_value: float | None = None
 
+    #: If this grid search failed with an exception store the result here
+    #:
+    exception: Exception | None = None
+
     def __hash__(self):
         return self.combination.__hash__()
 
@@ -1144,6 +1148,54 @@ def perform_grid_search(
     return results
 
 
+def create_grid_search_failed_result(combination, state, exception: Exception) -> GridSearchResult:
+    """Create a result for a crashed backtest."""
+
+    # A lot of dance to avoid division by zero errors when creating metrics table
+    index = pd.DatetimeIndex([pd.Timestamp(1970, 1, 1), pd.Timestamp(1970, 1, 2)])
+    returns = pd.Series([0, 0], dtype="float64", index=index)
+    equity_curve = pd.Series([0, 0], dtype="float64", index=index)
+
+    summary = TradeSummary(
+        won=0,
+        lost=0,
+        zero_loss=0,
+        stop_losses=0,
+        undecided=0,
+        realised_profit=0,
+        open_value=0,
+        uninvested_cash=0,
+        initial_cash=0,
+        extra_return=0,
+        duration=datetime.timedelta(0),
+        average_winning_trade_profit_pc=0,
+        average_losing_trade_loss_pc=0,
+        biggest_winning_trade_pc=0,
+        biggest_losing_trade_pc=0,
+        average_duration_of_winning_trades=datetime.timedelta(0),
+        average_duration_of_losing_trades=datetime.timedelta(0),
+    )
+
+    metrics = calculate_advanced_metrics(
+        returns,
+        mode=AdvancedMetricsMode.full,
+        convert_to_daily=False,
+        display=False,
+    )
+
+    return GridSearchResult(
+        combination=combination,
+        state=state,
+        initial_cash=0,
+        returns=returns,
+        equity_curve=equity_curve,
+        metrics=metrics,
+        summary=summary,
+        exception=exception,
+        universe_options=None,
+    )
+
+
 def run_grid_search_backtest(
     combination: GridCombination,
     decide_trades: DecideTradesProtocol | DecideTradesProtocol2 | DecideTradesProtocol4,
@@ -1163,6 +1215,7 @@ def run_grid_search_backtest(
     indicator_storage: IndicatorStorage | None = None,
     execution_context=standalone_backtest_execution_context,
     max_workers: int = 0,
+    ignore_wallet_errors=False,
 ) -> GridSearchResult:
     assert isinstance(universe, TradingStrategyUniverse), f"Received {universe}"
 
@@ -1199,32 +1252,46 @@ def run_grid_search_backtest(
 
     # Run the test
     try:
-        state, universe, debug_dump = run_backtest_inline(
-            name=name,
-            start_at=start_at.to_pydatetime(),
-            end_at=end_at.to_pydatetime(),
-            client=None,
-            cycle_duration=cycle_duration,
-            decide_trades=decide_trades,
-            create_trading_universe=None,
-            create_indicators=create_indicators,
-            indicator_combinations=combination.indicators,
-            universe=universe,
-            initial_deposit=initial_deposit,
-            reserve_currency=None,
-            trade_routing=TradeRouting.user_supplied_routing_model,
-            routing_model=routing_model,
-            allow_missing_fees=True,
-            data_delay_tolerance=data_delay_tolerance,
-            engine_version=trading_strategy_engine_version,
-            parameters=parameters,
-            indicator_storage=indicator_storage,
-            grid_search=True,
-            execution_context=execution_context,
-            max_workers=max_workers,
-        )
+        try:
+            state, universe, debug_dump = run_backtest_inline(
+                name=name,
+                start_at=start_at.to_pydatetime(),
+                end_at=end_at.to_pydatetime(),
+                client=None,
+                cycle_duration=cycle_duration,
+                decide_trades=decide_trades,
+                create_trading_universe=None,
+                create_indicators=create_indicators,
+                indicator_combinations=combination.indicators,
+                universe=universe,
+                initial_deposit=initial_deposit,
+                reserve_currency=None,
+                trade_routing=TradeRouting.user_supplied_routing_model,
+                routing_model=routing_model,
+                allow_missing_fees=True,
+                data_delay_tolerance=data_delay_tolerance,
+                engine_version=trading_strategy_engine_version,
+                parameters=parameters,
+                indicator_storage=indicator_storage,
+                grid_search=True,
+                execution_context=execution_context,
+                max_workers=max_workers,
+            )
+        except OutOfBalance as oob:
+            if not ignore_wallet_errors:
+                raise 
 
-    except Exception as e:
+            #
+            # There is a bug in the backtest that tries to use more money 
+            # to trade than we have available.
+            # Usually these bugs must be fixed in the strategy,
+            # but in a grid search we may choose to ignore such strategies
+            # as non-working and mark them down to zero.
+            #
+
+            return create_grid_search_failed_result(combination, state, oob)
+
+    except Exception as e:        
         # Report to the notebook which of the grid search combinations is a problematic one
         tb = traceback.format_exc()
         raise RuntimeError(f"Running a grid search combination failed:\n{combination}\nThe original exception was: {e}\n{tb}") from e
