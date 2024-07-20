@@ -107,6 +107,7 @@ def calculate_advanced_metrics(
         if display:
             quantstats_awful_kwargs = {"internal": True}
 
+        import ipdb ; ipdb.set_trace()
         result = metrics(
             returns,
             benchmark=benchmark,
