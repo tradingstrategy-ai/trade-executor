@@ -306,7 +306,12 @@ class ObjectiveWrapper:
             
             result.save(include_state=True)
 
-        opt_result = self.search_func(result)
+        if getattr(result, "exception", None) is None:  # Legacy pickle compat
+            opt_result = self.search_func(result)
+        else:
+            # The backtest crashed with an exception,
+            # likely OutOfBalance
+            opt_result = self.filtered_result_value
 
         # Apply result filter and zero out the value for optimiser if needed
         if not self.result_filter(result):

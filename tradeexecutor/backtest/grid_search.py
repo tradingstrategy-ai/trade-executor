@@ -1151,10 +1151,30 @@ def perform_grid_search(
 def create_grid_search_failed_result(combination, state, exception: Exception) -> GridSearchResult:
     """Create a result for a crashed backtest."""
 
-    index = pd.DatetimeIndex([pd.Timestamp(1970, 1, 1)])
+    # A lot of dance to avoid division by zero errors when creating metrics table
+    index = pd.DatetimeIndex([pd.Timestamp(1970, 1, 1), pd.Timestamp(1970, 1, 2)])
+    returns = pd.Series([0, 0], dtype="float64", index=index)
+    equity_curve = pd.Series([0, 0], dtype="float64", index=index)
 
-    returns = pd.Series([0], dtype="float64", index=index)
-    equity_curve = pd.Series([0], dtype="float64", index=index)
+    summary = TradeSummary(
+        won=0,
+        lost=0,
+        zero_loss=0,
+        stop_losses=0,
+        undecided=0,
+        realised_profit=0,
+        open_value=0,
+        uninvested_cash=0,
+        initial_cash=0,
+        extra_return=0,
+        duration=datetime.timedelta(0),
+        average_winning_trade_profit_pc=0,
+        average_losing_trade_loss_pc=0,
+        biggest_winning_trade_pc=0,
+        biggest_losing_trade_pc=0,
+        average_duration_of_winning_trades=datetime.timedelta(0),
+        average_duration_of_losing_trades=datetime.timedelta(0),
+    )
 
     metrics = calculate_advanced_metrics(
         returns,
@@ -1170,7 +1190,9 @@ def create_grid_search_failed_result(combination, state, exception: Exception) -
         returns=returns,
         equity_curve=equity_curve,
         metrics=metrics,
+        summary=summary,
         exception=exception,
+        universe_options=None,
     )
 
 
