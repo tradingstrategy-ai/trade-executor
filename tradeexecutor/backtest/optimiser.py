@@ -311,7 +311,7 @@ class ObjectiveWrapper:
         else:
             # The backtest crashed with an exception,
             # likely OutOfBalance
-            opt_result = self.filtered_result_value
+            opt_result = OptimiserSearchResult(self.filtered_result_value, negative=False)
 
         # Apply result filter and zero out the value for optimiser if needed
         if not self.result_filter(result):
