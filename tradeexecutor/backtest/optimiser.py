@@ -225,6 +225,7 @@ class ObjectiveWrapper:
         log_level: int,
         result_filter: ResultFilter,
         draw_visualisation: bool,
+        ignore_wallet_errors: bool,
     ):
         self.search_func = search_func
         self.pickled_universe_fname = pickled_universe_fname
@@ -240,6 +241,7 @@ class ObjectiveWrapper:
         self.result_filter = result_filter
         self.filtered_result_value = 0
         self.draw_visualisation = draw_visualisation
+        self.ignore_wallet_errors = ignore_wallet_errors
 
     def __call__(
         self,
@@ -299,7 +301,9 @@ class ObjectiveWrapper:
                 execution_context=execution_context,
                 max_workers=1,  # Don't allow this child process to create its own worker pool for indicator calculations
                 initial_deposit=merged_parameters["initial_cash"],
+                ignore_wallet_errors=self.ignore_wallet_errors,
             )
+            
             result.save(include_state=True)
 
         opt_result = self.search_func(result)
@@ -430,6 +434,7 @@ def perform_optimisation(
     result_filter:ResultFilter = MinTradeCountFilter(50),
     bad_result_value=0,
     draw_visualisation=False,
+    ignore_wallet_errors=True,
 ) -> OptimiserResult:
     """Search different strategy parameters using an optimiser.
 
@@ -503,6 +508,13 @@ def perform_optimisation(
 
         In `decide_trades()` function, `input.is_visualisation_enabled()` will return True.
 
+    :param ignore_wallet_errors:
+        Ignore `OutOfBalance` exceptions.
+
+        In the case if our backtest fails due to making trades for which we do not have money,
+        instead of crashing the whole strategy run, mark down these backtest results
+        as zero profit.
+
     :return:
         Grid search results for different combinations.
 
@@ -574,6 +586,7 @@ def perform_optimisation(
         result_filter=result_filter,
         log_level=log_level,
         draw_visualisation=draw_visualisation,
+        ignore_wallet_errors=ignore_wallet_errors,
     )
 
     name = parameters.get("name") or parameters.get("id") or "backtest"
