@@ -9,6 +9,8 @@ import joblib
 import numpy
 from pandas._libs.missing import NAType
 
+from tradeexecutor.backtest.backtest_execution import BacktestExecutionFailed
+from tradeexecutor.backtest.simulated_wallet import OutOfSimulatedBalance
 # Enable pickle patch that allows multiprocessing in notebooks
 from tradeexecutor.monkeypatch import cloudpickle_patch  
 
@@ -54,7 +56,7 @@ from tradeexecutor.strategy.universe_model import UniverseOptions
 
 from tradeexecutor.analysis.advanced_metrics import calculate_advanced_metrics, AdvancedMetricsMode
 from tradeexecutor.analysis.trade_analyser import TradeSummary, build_trade_analysis
-from tradeexecutor.backtest.backtest_routing import BacktestRoutingIgnoredModel
+from tradeexecutor.backtest.backtest_routing import BacktestRoutingIgnoredModel, OutOfBalance
 from tradeexecutor.backtest.backtest_runner import run_backtest_inline
 from tradeexecutor.state.state import State
 from tradeexecutor.state.types import USDollarAmount, Percent
@@ -1277,19 +1279,21 @@ def run_grid_search_backtest(
                 execution_context=execution_context,
                 max_workers=max_workers,
             )
-        except OutOfBalance as oob:
-            if not ignore_wallet_errors:
-                raise 
+        except BacktestExecutionFailed as bef:
 
-            #
-            # There is a bug in the backtest that tries to use more money 
-            # to trade than we have available.
-            # Usually these bugs must be fixed in the strategy,
-            # but in a grid search we may choose to ignore such strategies
-            # as non-working and mark them down to zero.
-            #
+            # See backtest_execution.py
+            if ignore_wallet_errors and isinstance(bef.__cause__, OutOfSimulatedBalance):
+                #
+                # There is a bug in the backtest that tries to use more money
+                # to trade than we have available.
+                # Usually these bugs must be fixed in the strategy,
+                # but in a grid search we may choose to ignore such strategies
+                # as non-working and mark them down to zero.
+                #
+                return create_grid_search_failed_result(combination, state, bef)
 
-            return create_grid_search_failed_result(combination, state, oob)
+            # Does not know how to gracefully handle
+            raise
 
     except Exception as e:        
         # Report to the notebook which of the grid search combinations is a problematic one
