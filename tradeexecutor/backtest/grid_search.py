@@ -1254,6 +1254,7 @@ def run_grid_search_backtest(
 
     # Run the test
     try:
+        state = None
         try:
             state, universe, debug_dump = run_backtest_inline(
                 name=name,
