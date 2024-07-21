@@ -47,6 +47,9 @@ except ImportError:
     # but fallback to normal TQDM auto mode
     from tqdm.auto import tqdm
 
+
+import zstandard as zstd
+
 from tradeexecutor.strategy.engine_version import TradingStrategyEngineVersion
 from tradeexecutor.strategy.execution_context import ExecutionContext, grid_search_execution_context, standalone_backtest_execution_context
 from tradeexecutor.strategy.pandas_trader.indicator import IndicatorSet, CreateIndicatorsProtocolV1, DiskIndicatorStorage, warm_up_indicator_cache, \
@@ -259,6 +262,11 @@ class GridCombination:
         - Pickle is faster https://stackoverflow.com/a/39607169/315168
         """
         return self.get_full_result_path() / "state.pickle"
+
+    def get_compressed_state_file_path(self) -> Path:
+        """Get the state file that is compresed
+        """
+        return self.get_full_result_path() / "state.pickle.zstd"
 
     def validate(self):
         """Check arguments can be serialised as fs path."""
@@ -609,9 +617,9 @@ class GridSearchResult:
         - Called by :py:meth:`save`
         """
         state = self.state
-        final_file = self.combination.get_state_file_path()
+        final_file = self.combination.get_compressed_state_file_path()
         temp = tempfile.NamedTemporaryFile(mode='wb', delete=False, dir=final_file.parent)
-        with open(temp.name, "wb") as out:
+        with zstd.open(temp.name, "wb") as out:
             pickle.dump(state, out)
         temp.close()
         shutil.move(temp.name, final_file)
@@ -624,10 +632,10 @@ class GridSearchResult:
         - By default we do not load these, because it is too much overhad
         """
         if self.state is None:
-            final_file = self.combination.get_state_file_path()
+            final_file = self.combination.get_compressed_state_file_path()
             assert final_file.exists(), f"State file {final_file} not written - did your searcher call save(include_state=True)?"
             gc.disable()
-            with open(final_file, "rb") as inp:
+            with zstd.open(final_file, "rb") as inp:
                 self.state = pickle.load(inp)
             gc.enable()
         return self.state

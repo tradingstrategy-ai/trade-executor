@@ -928,7 +928,6 @@ class ExecutionLoop:
             # Backtesting
             next_tick = snap_to_next_tick(ts + datetime.timedelta(seconds=1), backtest_step, self.tick_offset)
 
-
             # If we have stop loss checks enabled on a separate price feed,
             # run backtest stop loss checks until the next time
             if universe.backtest_stop_loss_candles is not None:
@@ -963,7 +962,7 @@ class ExecutionLoop:
         # Validate the backtest state at the end.
         # We want to avoid situation where we have stored
         # non-serialisable types in the state
-        if not self.execution_context.grid_search:
+        if not (self.execution_context.grid_search or self.execution_context.optimiser):
             # Save time in grid seach of not doing unnecessary validation
             # (Very unlikely to break)
             validate_state_serialisation(state)
