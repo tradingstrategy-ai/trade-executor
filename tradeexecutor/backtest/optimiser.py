@@ -203,6 +203,10 @@ class OptimiserResult:
         """How many of the results were directly read from the disk and not calculated on this run."""
         return len([r for r in self.results if r.result.cached])
 
+    def get_failed_count(self) -> int:
+        """How many backtest runs failed with an exception."""
+        return len([r for r in self.results if r.result.exception is not None])
+
 
 class ObjectiveWrapper:
     """Middleware between Optimiser and TS frameworks.
