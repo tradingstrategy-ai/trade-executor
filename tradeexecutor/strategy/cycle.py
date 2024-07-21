@@ -71,6 +71,12 @@ class CycleDuration(enum.Enum):
     #: Run `decide_trades()` for every 24h hours
     cycle_1d = "1d"
 
+    #: Run `decide_trades()` for every 2 days
+    cycle_2d = "2d"
+
+    #: Run `decide_trades()` for every 2 days
+    cycle_3d = "3d"
+
     #: Run `decide_trades()` for every 4 days
     cycle_4d = "4d"
 
