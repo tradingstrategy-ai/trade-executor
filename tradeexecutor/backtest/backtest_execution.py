@@ -372,8 +372,8 @@ class BacktestExecution(ExecutionModel):
             try:
                 executed_quantity, executed_reserve, executed_collateral_allocation, executed_collateral_consumption = self.simulate_trade(ts, state, idx, trade)
             except Exception as e:
-                logger.error("Simulating %d. trade %s failed: %s", idx+1, trade.get_short_label(), e)
-                logger.exception(e)
+                logger.info("Simulating %d. trade %s failed: %s", idx+1, trade.get_short_label(), e)
+                #logger.exception(e)
                 raise BacktestExecutionFailed(f"Trade #{idx+1} out of {len(trades)} trades failed") from e
 
             # TODO: Use colleteral values here

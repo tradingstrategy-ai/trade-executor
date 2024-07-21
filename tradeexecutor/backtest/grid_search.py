@@ -1156,7 +1156,10 @@ def perform_grid_search(
 
 
 def create_grid_search_failed_result(combination, state, exception: Exception) -> GridSearchResult:
-    """Create a result for a crashed backtest."""
+    """Create a result for a crashed backtest.
+
+    - The whole backtest is invalid - invalidate results and create empty returns
+    """
 
     # A lot of dance to avoid division by zero errors when creating metrics table
     index = pd.DatetimeIndex([pd.Timestamp(1970, 1, 1), pd.Timestamp(1970, 1, 2)])
@@ -1225,6 +1228,7 @@ def run_grid_search_backtest(
     max_workers: int = 0,
     ignore_wallet_errors=False,
 ) -> GridSearchResult:
+    """Run a single backtest grid search/optimiser."""
     assert isinstance(universe, TradingStrategyUniverse), f"Received {universe}"
 
     if name is None:
