@@ -1543,6 +1543,6 @@ def get_grid_search_result_path(
         notebook_name = os.path.basename(notebook_name)
 
     assert type(notebook_name) == str
-    path = os.path.expanduser(f"~/.cache/trading-strategy/grid-search/{notebook_name}")
+    path = os.path.expanduser(f"~/.cache/tradingstrategy/grid-search/{notebook_name}")
     os.makedirs(path, exist_ok=True)
     return Path(path)
