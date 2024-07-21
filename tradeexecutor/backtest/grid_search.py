@@ -254,14 +254,14 @@ class GridCombination:
         """
         return self.result_path.joinpath(self.get_relative_result_path()) / "metricks.joblib.gz"
 
-    def get_state_file_path(self) -> Path:
-        """Get the state file for the results.
-
-        - We use pickle over JSON here as other apps do not read this data
-
-        - Pickle is faster https://stackoverflow.com/a/39607169/315168
-        """
-        return self.get_full_result_path() / "state.pickle"
+    # def get_state_file_path(self) -> Path:
+    #     """Get the state file for the results.
+    #
+    #     - We use pickle over JSON here as other apps do not read this data
+    #
+    #     - Pickle is faster https://stackoverflow.com/a/39607169/315168
+    #     """
+    #     return self.get_full_result_path() / "state.pickle"
 
     def get_compressed_state_file_path(self) -> Path:
         """Get the state file that is compresed
