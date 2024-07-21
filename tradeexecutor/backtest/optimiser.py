@@ -207,6 +207,13 @@ class OptimiserResult:
         """How many backtest runs failed with an exception."""
         return len([r for r in self.results if r.result.exception is not None])
 
+    def get_filtered_count(self) -> int:
+        """How many of the results were filtered out by result filter.
+
+        See :py:func:`perform_optimisation`
+        """
+        return len([r for r in self.results if r.filtered])
+
 
 class ObjectiveWrapper:
     """Middleware between Optimiser and TS frameworks.
