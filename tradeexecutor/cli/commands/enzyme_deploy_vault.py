@@ -86,6 +86,7 @@ def enzyme_deploy_vault(
     simulate: bool = Option(False, envvar="SIMULATE", help="Simulate deployment using Anvil mainnet work, when doing manual deployment testing."),
     etherscan_api_key: Optional[str] = Option(None, envvar="ETHERSCAN_API_KEY", help="Etherscan API key need to verify the contracts on a production deployment."),
     one_delta: bool = Option(False, envvar="ONE_DELTA", help="Whitelist 1delta interaction with GuardV0 smart contract."),
+    aave: bool = Option(False, envvar="AAVE", help="Whitelist Aave aUSDC deposits"),
 ):
     """Deploy a new Enzyme vault.
 
@@ -225,6 +226,7 @@ def enzyme_deploy_vault(
             etherscan_api_key=etherscan_api_key if not simulate else None,  # Only verify when not simulating
             production=production,
             one_delta=one_delta,
+            aave=aave,
         )
 
     except Exception as e:
