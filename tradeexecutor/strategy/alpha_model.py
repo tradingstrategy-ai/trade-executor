@@ -596,11 +596,24 @@ class AlphaModel:
         top_signals = heapq.nlargest(count, filtered_signals, key=lambda s: s.raw_weight)
         self.signals = {s.pair.internal_id: s for s in top_signals}
 
-    def normalise_weights(self):
+    def normalise_weights(self, max_weight=1.0):
+        """Normalise weights to 0...1 scale.
+
+        After normalising, we can allocate the positionts `normalised_weight * portfolio equity`.
+
+        :param max_weight:
+            Do not allow equity allocation to exceed this % for any asset.
+
+            This may happen if you have a portfolio of max assets of 10,
+            but due to market conditions there is signal only for 1-2 pairs.
+            `max_weight` caps the asset allocation, preventing too concentrated
+            positions.
+
+        """
         raw_weights = {s.pair.internal_id: s.raw_weight for s in self.signals.values()}
         normalised = normalise_weights(raw_weights)
         for pair_id, normal_weight in normalised.items():
-            self.signals[pair_id].normalised_weight = normal_weight
+            self.signals[pair_id].normalised_weight = min(normal_weight, max_weight)
 
     def assign_weights(self, method=weight_by_1_slash_n):
         """Convert raw signals to their portfolio weight counterparts.
