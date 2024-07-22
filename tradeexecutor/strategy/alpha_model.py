@@ -599,8 +599,10 @@ class AlphaModel:
     def normalise_weights(self, max_weight=1.0):
         """Normalise weights to 0...1 scale.
 
+        After normalising, we can allocate the positionts `normalised_weight * portfolio equity`.
+
         :param max_weight:
-            Do not allow equity allocation to exceed this % for any of the assets.
+            Do not allow equity allocation to exceed this % for any asset.
 
             This may happen if you have a portfolio of max assets of 10,
             but due to market conditions there is signal only for 1-2 pairs.
