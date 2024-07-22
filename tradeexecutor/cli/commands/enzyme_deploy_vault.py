@@ -237,7 +237,7 @@ def enzyme_deploy_vault(
 
         raise RuntimeError(f"Deployment failed. Hot wallet: {hot_wallet.address}, denomination asset: {denomination_token.address}") from e
 
-    if vault_record_file:
+    if vault_record_file and (not simulate):
         # Make a small file, mostly used to communicate with unit tests
         with open(vault_record_file, "wt") as out:
             vault_record = {
@@ -258,6 +258,8 @@ def enzyme_deploy_vault(
             }
             json.dump(vault_record, out, indent=4)
         logger.info("Wrote %s for vault details", os.path.abspath(vault_record_file))
+    else:
+        logger.info("Skipping record file because of simulation")
 
     logger.info("Vault environment variables for trade-executor init command:\n%s", pformat(vault.get_deployment_info()))
 
