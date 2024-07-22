@@ -8,6 +8,7 @@
 import textwrap
 import warnings
 from dataclasses import dataclass
+from enum import Enum
 from typing import List
 
 import numpy as np
@@ -297,6 +298,12 @@ def visualise_heatmap_2d(
         df[parameter_2] = df[parameter_2].astype(str)
 
     df = df.pivot(index=parameter_1, columns=parameter_2, values=metric)
+
+    # Get rid of class name in enums for presentation
+    def enum_to_value(x):
+        return x.value if isinstance(x, Enum) else x
+
+    df = df.applymap(enum_to_value)
 
     # Format percents inside the cells and mouse hovers
     if metric in PERCENT_COLS:
