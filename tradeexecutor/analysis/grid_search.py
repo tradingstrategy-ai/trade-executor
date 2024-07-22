@@ -222,6 +222,12 @@ def render_grid_search_result_table(results: pd.DataFrame | list[GridSearchResul
         # # https://stackoverflow.com/a/12080042/315168
         format_dict[v] = "{0:g}"
 
+    # Get rid of class name in enums for presentation
+    def enum_to_value(x):
+        return x.value if isinstance(x, Enum) else x
+
+    df = df.applymap(enum_to_value)
+
     formatted = df.style.background_gradient(
         axis = 0,
         subset = value_cols,
@@ -298,12 +304,6 @@ def visualise_heatmap_2d(
         df[parameter_2] = df[parameter_2].astype(str)
 
     df = df.pivot(index=parameter_1, columns=parameter_2, values=metric)
-
-    # Get rid of class name in enums for presentation
-    def enum_to_value(x):
-        return x.value if isinstance(x, Enum) else x
-
-    df = df.applymap(enum_to_value)
 
     # Format percents inside the cells and mouse hovers
     if metric in PERCENT_COLS:
