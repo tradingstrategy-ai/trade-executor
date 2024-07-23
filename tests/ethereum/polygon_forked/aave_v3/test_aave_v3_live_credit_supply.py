@@ -43,6 +43,7 @@ pytestmark = pytest.mark.skipif(
 )
 
 
+@pytest.mark.skip(reason="This test is replaced by mainnet fork test")
 def test_aave_v3_live_credit_supply_open_and_close(
     logger,
     web3: Web3,
