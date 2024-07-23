@@ -74,6 +74,8 @@ def default_supported_routers(strategy_universe: TradingStrategyUniverse) -> Set
     based on loaded trading pairs.
     """
     exchanges = strategy_universe.data_universe.exchange_universe
+    chain_id = strategy_universe.get_single_chain()
+
     assert exchanges.get_exchange_count() < 5, "Exchanges might not be configured correctly"
     configs = set()
     for xc in exchanges.exchanges.values():
@@ -86,20 +88,21 @@ def default_supported_routers(strategy_universe: TradingStrategyUniverse) -> Set
 
     # Enabled 1delta if lending candles are available
     if strategy_universe.data_universe.lending_candles:
-        configs.add(
-            ProtocolRoutingId(
-                router_name="1delta",
-                exchange_slug="uniswap-v3",
-                lending_protocol_slug="aave",
+        if chain_id == ChainId.polygon.value:
+            configs.add(
+                ProtocolRoutingId(
+                    router_name="1delta",
+                    exchange_slug="uniswap-v3",
+                    lending_protocol_slug="aave",
+                )
             )
-        )
-
-        configs.add(
-            ProtocolRoutingId(
-                router_name="aave-v3",
-                exchange_slug="uniswap-v3",
-                lending_protocol_slug="aave_v3",
+        else:
+            configs.add(
+                ProtocolRoutingId(
+                    router_name="aave-v3",
+                    exchange_slug="uniswap-v3",
+                    lending_protocol_slug="aave_v3",
+                )
             )
-        )
 
     return configs

@@ -9,6 +9,8 @@ from web3 import Web3
 from eth_defi.aave_v3.deployment import fetch_deployment as fetch_aave_deployment
 from eth_defi.uniswap_v3.deployment import fetch_deployment as fetch_uniswap_v3_deployment
 from eth_defi.one_delta.deployment import fetch_deployment as fetch_1delta_deployment
+from eth_defi.aave_v3.constants import AAVE_V3_DEPLOYMENTS
+from eth_defi.one_delta.constants import ONE_DELTA_DEPLOYMENTS
 
 from tradingstrategy.chain import ChainId
 from tradingstrategy.exchange import ExchangeUniverse, ExchangeType
@@ -142,7 +144,11 @@ def create_1delta_adapter(
     assert len(strategy_universe.data_universe.chains) == 1
     assert len(strategy_universe.reserve_assets) == 1
     chain_id = strategy_universe.get_single_chain()
+    chain_slug = chain_id.get_slug()
     reserve_asset = strategy_universe.get_reserve_asset()
+
+    assert chain_slug in AAVE_V3_DEPLOYMENTS, f"Chain {chain_slug} not supported for Aave v3"
+    assert chain_slug in ONE_DELTA_DEPLOYMENTS, f"Chain {chain_slug} not supported for 1delta"
 
     uniswap_v3_deployment = fetch_uniswap_v3_deployment(
         web3,
@@ -154,16 +160,16 @@ def create_1delta_adapter(
 
     aave_v3_deployment = fetch_aave_deployment(
         web3,
-        pool_address="0x794a61358D6845594F94dc1DB02A252b5b4814aD",
-        data_provider_address="0x69FA688f1Dc47d4B5d8029D5a35FB7a548310654",
-        oracle_address="0xb023e699F5a33916Ea823A16485e259257cA8Bd1",
+        pool_address=AAVE_V3_DEPLOYMENTS[chain_slug]["pool"],
+        data_provider_address=AAVE_V3_DEPLOYMENTS[chain_slug]["data_provider"],
+        oracle_address=AAVE_V3_DEPLOYMENTS[chain_slug]["oracle"],
     )
 
     one_delta_deployment = fetch_1delta_deployment(
         web3,
-        flash_aggregator_address="0x74E95F3Ec71372756a01eB9317864e3fdde1AC53",
-        broker_proxy_address="0x74E95F3Ec71372756a01eB9317864e3fdde1AC53",
-        quoter_address="0x36de3876ad1ef477e8f6d98EE9a162926f00463A",
+        flash_aggregator_address=ONE_DELTA_DEPLOYMENTS[chain_slug]["broker_proxy"],
+        broker_proxy_address=ONE_DELTA_DEPLOYMENTS[chain_slug]["broker_proxy"],
+        quoter_address=ONE_DELTA_DEPLOYMENTS[chain_slug]["quoter"],
     )
 
     address_map = {
@@ -219,13 +225,16 @@ def create_aave_v3_adapter(
     assert len(strategy_universe.data_universe.chains) == 1
     assert len(strategy_universe.reserve_assets) == 1
     chain_id = strategy_universe.get_single_chain()
+    chain_slug = chain_id.get_slug()
     reserve_asset = strategy_universe.get_reserve_asset()
+
+    assert chain_slug in AAVE_V3_DEPLOYMENTS, f"Chain {chain_slug} not supported for Aave v3"
 
     aave_v3_deployment = fetch_aave_deployment(
         web3,
-        pool_address="0x794a61358D6845594F94dc1DB02A252b5b4814aD",
-        data_provider_address="0x69FA688f1Dc47d4B5d8029D5a35FB7a548310654",
-        oracle_address="0xb023e699F5a33916Ea823A16485e259257cA8Bd1",
+        pool_address=AAVE_V3_DEPLOYMENTS[chain_slug]["pool"],
+        data_provider_address=AAVE_V3_DEPLOYMENTS[chain_slug]["data_provider"],
+        oracle_address=AAVE_V3_DEPLOYMENTS[chain_slug]["oracle"],
     )
 
     address_map = {
