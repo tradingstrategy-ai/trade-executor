@@ -104,7 +104,7 @@ class EnzymeVaultSyncModel(SyncModel):
                 payment_forwarder=vault_payment_forwarder_address,
             )
         except Exception as e:
-            raise RuntimeError(f"Could not fetch Enzyme vault data for {vault_address}") from e
+            raise RuntimeError(f"Could not fetch Enzyme vault data for {vault_address}: {e}") from e
         self.scan_chunk_size = scan_chunk_size
         self.only_chain_listener = only_chain_listener
         self.hot_wallet = hot_wallet
