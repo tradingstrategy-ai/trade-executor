@@ -266,6 +266,7 @@ def correct_accounts(
         unknown_token_receiver=unknown_token_receiver,  # Send any unknown tokens to the hot wallet of the trade-executor
         block_identifier=block_number,
         block_timestamp=block_timestamp,
+        pair_universe=universe.data_universe.pairs,
     )
     balance_updates = list(balance_updates)
     logger.info(f"We did {len(corrections)} accounting corrections, of which {len(balance_updates)} internal state balance updates, new block height is {block_number:,} at {block_timestamp}")

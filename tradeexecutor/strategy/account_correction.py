@@ -33,6 +33,7 @@ from tradeexecutor.state.portfolio import Portfolio
 from tradeexecutor.state.repair import close_position_with_empty_trade
 from tradeexecutor.strategy.dust import DEFAULT_DUST_EPSILON, get_dust_epsilon_for_pair, get_dust_epsilon_for_asset, DEFAULT_RELATIVE_EPSILON, \
     get_relative_epsilon_for_asset
+from tradeexecutor.strategy.trading_strategy_universe import translate_trading_pair
 from tradingstrategy.pair import PandasPairUniverse
 
 from tradeexecutor.state.balance_update import BalanceUpdate, BalanceUpdatePositionType, BalanceUpdateCause
@@ -60,6 +61,20 @@ class AccountingCorrectionCause(enum.Enum):
 
     #: aUSDC, etc.
     rebase = "rebase"
+
+
+class UnknownTokenPositionFix(enum.Enum):
+    """How to fix tokens we see in the wallet, but for which we do not have a position open in the state."""
+
+    #: Try to match the token with a spot position
+    #:
+    #: Open a new spot position with a fix trade for the token
+    #:
+    open_new_spot_position = "open_new_spot_position"
+
+    #: Attempt to transfer unknown tokens to the hot wallet
+    transfer_away = "tranfer_away"
+
 
 
 class AccountingCorrectionAborted(Exception):
@@ -475,6 +490,8 @@ def correct_accounts(
     unknown_token_receiver: HexAddress | str | None = None,
     block_identifier: BlockIdentifier = None,
     block_timestamp: datetime.datetime = None,
+    token_fix_method=UnknownTokenPositionFix.open_new_spot_position,
+    pair_universe: PandasPairUniverse | None = None,
 ) -> Iterable[BalanceUpdate]:
     """Apply the accounting corrections on the state (internal ledger).
 
@@ -514,12 +531,23 @@ def correct_accounts(
         # but we do not have code to open new positions yet.
         # Just deal with it by transferring away.
         if position is None:
-            logger.info("Asset transfer without position: %s", correction)
-            transfer_away_assets_without_position(
-                correction,
-                unknown_token_receiver,
-                tx_builder,
-            )
+            if token_fix_method == UnknownTokenPositionFix.transfer_away:
+                logger.info("Transfer away token without open position: %s", correction)
+                transfer_away_assets_without_position(
+                    correction,
+                    unknown_token_receiver,
+                    tx_builder,
+                )
+            elif token_fix_method == UnknownTokenPositionFix.open_new_spot_position:
+                logger.info("Open a new spot position in the state to match our wallet balance: %s", correction)
+                open_missing_position(
+                    pair_universe,
+                    state,
+                    correction,
+                )
+            else:
+                raise NotImplementedError()
+
         elif closed:
             logger.info("Asset transfer with closed position: %s", correction)
             # We have tokens on a closed position.
@@ -611,6 +639,41 @@ def transfer_away_assets_without_position(
     logger.info("Broadcasted %s", tx_hash.hex())
     assert_transaction_success_with_explanation(web3, tx_hash)
     logger.info("Fix tx %s complete", tx_hash.hex())
+
+
+
+def open_missing_position(
+    pair_universe: PandasPairUniverse,
+    state: State,
+    correction: AccountingBalanceCheck,
+):
+    """Open a missing spot position.
+
+    - Assume the token belongs to a spot position which we attempted to open,
+      but state update failed (tx went eventually thru).
+
+    """
+    assert correction.position is None
+
+    # Find all pairs that could match our
+    # asset we hold
+    matching_pairs = []
+    for raw_pair in pair_universe.iterate_pairs():
+        trading_pair = translate_trading_pair(raw_pair)
+        if trading_pair.base == correction.asset:
+            matching_pairs.append(trading_pair)
+
+    if len(matching_pairs) == 0:
+        raise RuntimeError(f"Could not find any spot pair for asset {correction.asset} for correction {correction}")
+
+    assert len(matching_pairs) == 1, f"Found multiple matching trading pairs for asset {correction.asset}, correction {correction}, {matching_pairs}"
+
+    pair = matching_pairs[0]
+    assert pair.is_spot(), f"Not spot: {pair}"
+
+    # Craft a trade to match the position
+    import ipdb ; ipdb.set_trace()
+
 
 
 def check_accounts(
