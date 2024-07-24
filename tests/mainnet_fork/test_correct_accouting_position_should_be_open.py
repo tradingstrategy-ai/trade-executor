@@ -4,6 +4,7 @@
 
 - Archive node needed
 """
+import logging
 import os.path
 import secrets
 from pathlib import Path
@@ -34,7 +35,7 @@ def anvil(request: FixtureRequest) -> AnvilLaunch:
     try:
         yield anvil
     finally:
-        anvil.close()
+        anvil.close(log_level=logging.INFO)
 
 
 @pytest.fixture()
@@ -76,10 +77,10 @@ def environment(
         "LOG_LEVEL": "disabled",
         # "CONFIRMATION_BLOCK_COUNT": "0",  # Needed for test backend, Anvil
         "TRADING_STRATEGY_API_KEY": os.environ["TRADING_STRATEGY_API_KEY"],
-        "VAULT_ADDRESS": "0x85091fF4fb529B8F8B3D63810ddB8ddC9913cD62",
-        "VAULT_ADAPTER_ADDRESS": "0x0EFA7fcd31e07aa774d37013Ec3f3b658C89572d",
-        "VAULT_PAYMENT_FORWARDER_ADDRESS": "0x06843Ac92D1902D8fA9013cD9923AA4A448F3E32",
-        "VAULT_DEPLOYMENT_BLOCK_NUMBER": "59155136",
+        "VAULT_ADDRESS": "0x773C9f40a7aeCcB307dFFFD237Fc55e649bf375a",
+        "VAULT_ADAPTER_ADDRESS": "0xf2be1e782a8512BEC56515c8b879a2BF0dC030A2",
+        "VAULT_PAYMENT_FORWARDER_ADDRESS": "0x7424DaceaC1F64c266B85f9C43A0e0851EdB3234",
+        "VAULT_DEPLOYMENT_BLOCK_NUMBER": "20362579",
     }
     return environment
 
@@ -87,18 +88,17 @@ def environment(
 def test_correct_account_missing_open_spot_position(
     environment: dict,
 ):
-    """Perform a test trade on Enzyme vault via CLI.
+    """Fix missing WBTC spot position.
 
-    - Use MATIC-ETH-USDC strategy
-
-    - The vault is deployed via `enzyme-deploy-vault`
-
-    - The deployer configures a guard for the vault
-
-    - We do the checks and then perform a test trade on the vault for all trading pairs
-
-    - See docs for the workflow https://tradingstrategy.ai/docs/deployment/vault-deployment.html
+    - Trade to open position was executed, but state was not written
     """
 
     with mock.patch.dict('os.environ', environment, clear=True):
-        app(["check-accounts"], standalone_mode=False)
+        with pytest.raises(SystemExit) as sys_exit:
+            app(["check-accounts"], standalone_mode=False)
+        assert sys_exit.value.code == 1
+
+    with mock.patch.dict('os.environ', environment, clear=True):
+        with pytest.raises(SystemExit) as sys_exit:
+            app(["correct-accounts"], standalone_mode=False)
+        assert sys_exit.value.code == 0
