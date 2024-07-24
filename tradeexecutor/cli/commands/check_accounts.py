@@ -157,7 +157,7 @@ def check_accounts(
     universe = universe_model.construct_universe(
         datetime.datetime.utcnow(),
         execution_context.mode,
-        UniverseOptions()
+        UniverseOptions(history_period=mod.get_live_trading_history_period()),
     )
 
     logger.info("Universe contains %d pairs", universe.data_universe.pairs.get_count())
