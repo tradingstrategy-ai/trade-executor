@@ -54,3 +54,6 @@ monitor.db
 
 # Python profiler dumps
 *.cprof
+
+# Created by test_correct_account_missing_open_spot_position
+tests/mainnet_fork/*backup*json

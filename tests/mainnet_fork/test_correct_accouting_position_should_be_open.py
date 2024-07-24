@@ -66,7 +66,6 @@ def environment(
     """Passed to init and start commands as environment variables"""
     # Set up the configuration for the live trader
     environment = {
-        "EXECUTOR_ID": "test_enzyme_guard_perform_test_trade",
         "STRATEGY_FILE": strategy_file.as_posix(),
         "PRIVATE_KEY": "0x" + secrets.token_bytes(32).hex(),
         "JSON_RPC_ANVIL": anvil.json_rpc_url,
@@ -93,11 +92,16 @@ def test_correct_account_missing_open_spot_position(
     - Trade to open position was executed, but state was not written
     """
 
+    # TODO: How to cache data download between separate commands
+    # to speed up the test a bit
+
+    # Accounting is detect to be incorrect
     with mock.patch.dict('os.environ', environment, clear=True):
         with pytest.raises(SystemExit) as sys_exit:
             app(["check-accounts"], standalone_mode=False)
         assert sys_exit.value.code == 1
 
+    # Fix issued
     with mock.patch.dict('os.environ', environment, clear=True):
         with pytest.raises(SystemExit) as sys_exit:
             app(["correct-accounts"], standalone_mode=False)
