@@ -12,13 +12,9 @@ from unittest import mock
 import pytest
 from _pytest.fixtures import FixtureRequest
 
-from eth_defi.chain import install_chain_middleware
-from eth_defi.hotwallet import HotWallet
 from eth_defi.provider.anvil import AnvilLaunch, launch_anvil
-from web3 import Web3, HTTPProvider
 
 from tradeexecutor.cli.commands.app import app
-from tradeexecutor.state.state import State
 
 
 pytestmark = pytest.mark.skipif(not os.environ.get("JSON_RPC_ETHEREUM") or not os.environ.get("TRADING_STRATEGY_API_KEY"), reason="Set JSON_RPC_ETHEREUM and TRADING_STRATEGY_API_KEY environment variables to run this test")
@@ -39,14 +35,6 @@ def anvil(request: FixtureRequest) -> AnvilLaunch:
         yield anvil
     finally:
         anvil.close()
-
-
-@pytest.fixture()
-def web3(anvil: AnvilLaunch) -> Web3:
-    web3 = Web3(HTTPProvider(anvil.json_rpc_url, request_kwargs={"timeout": 2}))
-    web3.middleware_onion.clear()
-    install_chain_middleware(web3)
-    return web3
 
 
 @pytest.fixture()
