@@ -357,7 +357,7 @@ class EthereumExecution(ExecutionModel):
                     source=tx.details,
                 )
                 txs.add(signed_tx)
-                logger.info("Broadcasting transaction %s for trade\n:%s", signed_tx.hash.hex(), t)
+                logger.info("Broadcasting transaction %s, nonce %s, for trade\n:%s", signed_tx.hash.hex(), signed_tx.nonce, t)
                 tx_map[signed_tx.hash.hex()] = (t, tx)
 
             t.mark_broadcasted(datetime.datetime.utcnow(), rebroadcast=rebroadcast)
