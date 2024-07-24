@@ -326,7 +326,7 @@ class AaveV3Routing(EthereumRoutingModel):
         quote_token_details = fetch_erc20_details(web3, pricing_pair.quote.checksum_address)
         reserve = trade.reserve_currency
         tx = get_swap_transactions(trade)
-        aave_v3_deployment = fetch_aave_v3_deployment(web3, ZERO_ADDRESS_STR, ZERO_ADDRESS_STR, ZERO_ADDRESS_STR)
+        aave_v3_deployment = fetch_aave_v3_deployment(web3, tx.contract_address, ZERO_ADDRESS_STR, ZERO_ADDRESS_STR)
 
         tx_dict = tx.get_transaction()
         receipt = receipts[HexBytes(tx.tx_hash)]
@@ -345,9 +345,7 @@ class AaveV3Routing(EthereumRoutingModel):
                 trade_operation=TradeOperation.OPEN if trade.is_buy() else TradeOperation.CLOSE,
             )
 
-            if isinstance(result, TradeSuccess):
-                price = 1
-                
+            if isinstance(result, TradeSuccess):                
                 if trade.is_buy():
                     executed_amount = result.amount_in / Decimal(10 ** base_token_details.decimals)
                     executed_reserve = executed_amount
@@ -356,8 +354,6 @@ class AaveV3Routing(EthereumRoutingModel):
                     executed_reserve = -executed_amount
 
                 assert executed_amount != 0, f"Executed amount {executed_amount}, executed_reserve: {executed_reserve}"
-
-                logger.info("1delta routing\nPlanned: %f\nExecuted: %f", trade.planned_reserve, executed_reserve)
 
                 # Mark as success
                 state.mark_trade_success(
