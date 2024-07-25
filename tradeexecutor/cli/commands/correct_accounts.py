@@ -73,7 +73,6 @@ def correct_accounts(
     test_evm_uniswap_v2_init_code_hash: Optional[str] = shared_options.test_evm_uniswap_v2_init_code_hash,
     unit_testing: bool = shared_options.unit_testing,
 
-
     chain_settle_wait_seconds: float = Option(60.0, "--chain-settle-wait-seconds", envvar="CHAIN_SETTLE_WAIT_SECONDS", help="How long we wait after the account correction to see if our broadcasted transactions fixed the issue."),
     skip_save: bool = Option(False, "--skip-save", envvar="SKIP_SAVE", help="Do not update state file. Useful for testing."),
 
@@ -208,8 +207,13 @@ def correct_accounts(
     )
 
     runner = run_description.runner
-    routing_state, pricing_model, valuation_method = runner.setup_routing(universe)
+    if mod.is_version_greater_or_equal_than(0, 5, 0):
+        routing_state, pricing_model, valuation_method = runner.setup_routing(universe)
+    else:
+        # Legacy unit test compatibility
+        routing_state = pricing_model = valuation_method = None
 
+    logger.info("Engine version: %s", mod.trading_strategy_engine_version)
     logger.info("Universe contains %d pairs", universe.data_universe.pairs.get_count())
     logger.info("Reserve assets are: %s", universe.reserve_assets)
     logger.info("Pricing model is: %s", pricing_model)
