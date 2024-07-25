@@ -6,6 +6,7 @@ import os
 import shutil
 import sys
 import time
+from _decimal import Decimal
 from pathlib import Path
 from typing import Optional
 
@@ -18,7 +19,7 @@ from eth_defi.provider.broken_provider import get_almost_latest_block_number
 
 from tradeexecutor.strategy.account_correction import correct_accounts as _correct_accounts, check_accounts
 from .app import app
-from ..bootstrap import prepare_executor_id, create_web3_config, create_sync_model, create_state_store, create_client, backup_state
+from ..bootstrap import prepare_executor_id, create_web3_config, create_sync_model, create_state_store, create_client, backup_state, create_execution_and_sync_model
 from ..log import setup_logging
 from ...ethereum.enzyme.tx import EnzymeTransactionBuilder
 from ...ethereum.enzyme.vault import EnzymeVaultSyncModel
@@ -53,7 +54,9 @@ def correct_accounts(
     asset_management_mode: AssetManagementMode = shared_options.asset_management_mode,
     vault_address: Optional[str] = shared_options.vault_address,
     vault_adapter_address: Optional[str] = shared_options.vault_adapter_address,
+    vault_payment_forwarder: Optional[str] = shared_options.vault_payment_forwarder,
     vault_deployment_block_number: Optional[int] = shared_options.vault_deployment_block_number,
+
 
     json_rpc_binance: Optional[str] = shared_options.json_rpc_binance,
     json_rpc_polygon: Optional[str] = shared_options.json_rpc_polygon,
@@ -70,8 +73,8 @@ def correct_accounts(
     test_evm_uniswap_v2_init_code_hash: Optional[str] = shared_options.test_evm_uniswap_v2_init_code_hash,
     unit_testing: bool = shared_options.unit_testing,
 
-
     chain_settle_wait_seconds: float = Option(60.0, "--chain-settle-wait-seconds", envvar="CHAIN_SETTLE_WAIT_SECONDS", help="How long we wait after the account correction to see if our broadcasted transactions fixed the issue."),
+    skip_save: bool = Option(False, "--skip-save", envvar="SKIP_SAVE", help="Do not update state file. Useful for testing."),
 
 ):
     """Correct accounting errors in the internal ledger of the trade executor.
@@ -164,23 +167,38 @@ def correct_accounts(
     )
     assert client is not None, "You need to give details for TradingStrategy.ai client"
 
-    execution_context = ExecutionContext(mode=ExecutionMode.one_off)
-
+    execution_context = ExecutionContext(
+        mode=ExecutionMode.one_off,
+        engine_version=mod.trading_strategy_engine_version,
+    )
     strategy_factory = make_factory_from_strategy_mod(mod)
 
+    execution_model, sync_model, valuation_model_factory, pricing_model_factory = create_execution_and_sync_model(
+        asset_management_mode=asset_management_mode,
+        private_key=private_key,
+        web3config=web3config,
+        confirmation_timeout=datetime.timedelta(seconds=60),
+        vault_address=vault_address,
+        vault_adapter_address=vault_adapter_address,
+        routing_hint=mod.trade_routing,
+        confirmation_block_count=0,
+        max_slippage=0,
+        min_gas_balance=Decimal(0),
+        vault_payment_forwarder_address=vault_payment_forwarder,
+    )
+
     run_description: StrategyExecutionDescription = strategy_factory(
-        execution_model=None,
+        execution_model=execution_model,
         execution_context=execution_context,
-        sync_model=None,
-        valuation_model_factory=None,
-        pricing_model_factory=None,
-        approval_model=None,
+        sync_model=sync_model,
+        valuation_model_factory=valuation_model_factory,
+        pricing_model_factory=pricing_model_factory,
         client=client,
         run_state=RunState(),
         timed_task_context_manager=execution_context.timed_task_context_manager,
+        approval_model=None,
     )
 
-    #
     universe_model: TradingStrategyUniverseModel = run_description.universe_model
     universe = universe_model.construct_universe(
         datetime.datetime.utcnow(),
@@ -188,8 +206,17 @@ def correct_accounts(
         UniverseOptions(history_period=mod.get_live_trading_history_period()),
     )
 
+    runner = run_description.runner
+    if mod.is_version_greater_or_equal_than(0, 5, 0):
+        routing_state, pricing_model, valuation_method = runner.setup_routing(universe)
+    else:
+        # Legacy unit test compatibility
+        routing_state = pricing_model = valuation_method = None
+
+    logger.info("Engine version: %s", mod.trading_strategy_engine_version)
     logger.info("Universe contains %d pairs", universe.data_universe.pairs.get_count())
     logger.info("Reserve assets are: %s", universe.reserve_assets)
+    logger.info("Pricing model is: %s", pricing_model)
 
     assert len(universe.reserve_assets) == 1, "Need exactly one reserve asset"
 
@@ -197,11 +224,8 @@ def correct_accounts(
         # Running correct-account on clean init()
         # Need to add reserves now, because we have missed the original deposit event
         logger.info("Reserve configuration not detected, adding %s", universe.reserve_assets)
-
         assert len(universe.reserve_assets) > 0
-
         reserve_asset = universe.reserve_assets[0]
-
         if not state.portfolio.reserves:
             state.portfolio.initialise_reserves(reserve_asset)
 
@@ -266,11 +290,15 @@ def correct_accounts(
         unknown_token_receiver=unknown_token_receiver,  # Send any unknown tokens to the hot wallet of the trade-executor
         block_identifier=block_number,
         block_timestamp=block_timestamp,
+        strategy_universe=universe,
+        pricing_model=pricing_model,
     )
     balance_updates = list(balance_updates)
     logger.info(f"We did {len(corrections)} accounting corrections, of which {len(balance_updates)} internal state balance updates, new block height is {block_number:,} at {block_timestamp}")
 
-    store.sync(state)
+    if not skip_save:
+        store.sync(state)
+
     web3config.close()
 
     # Shortcut here

@@ -127,6 +127,10 @@ class TradeFlag(enum.Enum):
     #:
     triggered = "triggered"
 
+    #: The trade was made to associate unknown tokens to a position
+    #:
+    missing_position_repair = "missing_position_repair"
+
 
 @dataclass_json
 @dataclass()
@@ -477,7 +481,11 @@ class TradeExecution:
     #: - This is used to mark position closed in accounting correction,
     #:   although the trade itself does not carry any value
     #:
-    repaired_trade_id: Optional[datetime.datetime] = None
+    #: - **Not** set by `open_missing_position()`, instead :py:attr:`flags` is used
+    #:
+    #: - See :py:meth:`is_repair_trade`
+    #:
+    repaired_trade_id: Optional[int] = None
 
     #: Related TradePricing instance
     #:
@@ -855,25 +863,15 @@ class TradeExecution:
 
         See also :py:meth:`is_repair_trade`.
         """
-        return self.repaired_trade_id is not None
-
-    def is_executed(self) -> bool:
-        """Did this trade ever execute."""
-        return self.executed_at is not None
+        return self.repaired_trade_id is not None or TradeFlag.missing_position_repair in self.flags
 
     def is_repair_needed(self) -> bool:
         """This trade needs repair, but is not repaired yet."""
         return self.is_failed() and not self.is_repaired()
 
-    def is_repair_trade(self) -> bool:
-        """This trade is fixes a frozen position and counters another trade.
-        """
-        return self.repaired_trade_id is not None
-
-    def is_repair_trade(self) -> bool:
-        """This trade is fixes a frozen position and counters another trade.
-        """
-        return self.repaired_trade_id is not None
+    def is_executed(self) -> bool:
+        """Did this trade ever execute."""
+        return self.executed_at is not None
 
     def is_accounting_correction(self) -> bool:
         """This trade is an accounting correction.

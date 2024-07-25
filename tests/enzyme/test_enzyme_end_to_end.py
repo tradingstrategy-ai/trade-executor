@@ -634,3 +634,4 @@ def test_enzyme_correct_accounts_for_closed_position(
         with pytest.raises(SystemExit) as e:
             cli.main(args=["correct-accounts"])
         assert e.value.code == 0
+

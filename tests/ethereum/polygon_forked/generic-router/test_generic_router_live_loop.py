@@ -203,7 +203,8 @@ def test_generic_router_spot_and_short_strategy_manual_tick(
         ExecutionMode.real_trading
     )
     assert len(portfolio.open_positions) == 1
-    
+
+    # TODO: Now idea what this is but it is broken
     tolerance = 1e-5
     assert position.loan.get_borrow_interest() == pytest.approx(1.4861359925126336, abs=tolerance)
     tolerance = 1e-4

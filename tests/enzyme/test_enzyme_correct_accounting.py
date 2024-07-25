@@ -34,7 +34,7 @@ from tradeexecutor.state.reserve import ReservePosition
 from tradeexecutor.state.state import State
 from tradeexecutor.statistics.core import calculate_statistics
 from tradeexecutor.strategy.asset import get_relevant_assets, build_expected_asset_map
-from tradeexecutor.strategy.account_correction import calculate_account_corrections, AccountingCorrectionCause, correct_accounts
+from tradeexecutor.strategy.account_correction import calculate_account_corrections, AccountingCorrectionCause, correct_accounts, UnknownTokenPositionFix
 from tradeexecutor.strategy.execution_context import ExecutionMode
 from tradeexecutor.testing.ethereumtrader_uniswap_v2 import UniswapV2TestTrader
 
@@ -494,6 +494,7 @@ def test_enzyme_correct_accounting_no_open_position(
         interactive=False,
         tx_builder=tx_builder,
         unknown_token_receiver=user_1,
+        token_fix_method=UnknownTokenPositionFix.transfer_away,
     )
     balance_updates = list(balance_updates)
     assert len(balance_updates) == 0
