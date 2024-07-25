@@ -121,6 +121,7 @@ def create_execution_model(
     Choose between Uniswap v2 and v3 trade routing.
     """
 
+    logger.info("create_execution_model(): confirmation_timeout: %s", confirmation_timeout)
     # TODO: user_supplied_routing_model can be uni v3 as well
     if routing_hint is None or routing_hint.is_uniswap_v2() or routing_hint == TradeRouting.user_supplied_routing_model:
         logger.info("Uniswap v2 like exchange. Routing hint is %s", routing_hint)

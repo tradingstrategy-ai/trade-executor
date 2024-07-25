@@ -21,16 +21,17 @@ logger = logging.getLogger(__name__)
 class UniswapV2Execution(EthereumExecution):
     """Run order execution on a single Uniswap v2 style exchanges."""
 
-    def __init__(self,
-                 tx_builder: TransactionBuilder,
-                 min_balance_threshold=Decimal("0.5"),
-                 confirmation_block_count=6,
-                 confirmation_timeout=datetime.timedelta(minutes=5),
-                 max_slippage: float = 0.01,
-                 stop_on_execution_failure=True,
-                 swap_gas_fee_limit=2_000_000,
-                 mainnet_fork=False,
-                 ):
+    def __init__(
+        self,
+        tx_builder: TransactionBuilder,
+        min_balance_threshold=Decimal("0.5"),
+        confirmation_block_count=6,
+        confirmation_timeout=datetime.timedelta(minutes=5),
+        max_slippage: float = 0.01,
+        stop_on_execution_failure=True,
+        swap_gas_fee_limit=2_000_000,
+        mainnet_fork=False,
+    ):
         """
         :param web3:
             Web3 connection used for this instance

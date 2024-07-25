@@ -53,7 +53,7 @@ def refresh_run_state(
     # Even if the strategy has no action yet (deposits, trades)
     # we need to calculate these statistics, as this will
     # calculate the backtested metrics using in strategy summary tiles
-    logger.info("refresh_run_state() - calculating summary statistics")
+    logger.info("refresh_run_state() - calculating summary statistics, visualisations are %s", visualisation)
     stats = calculate_summary_statistics(
         state,
         execution_context.mode,
@@ -70,7 +70,7 @@ def refresh_run_state(
     # Strategy charts
     if visualisation:
         assert universe, "Candle data must be available to update visualisations"
-        logger.info("Updating the strategy techical charts")
+        logger.info("Updating the strategy technical charts")
         redraw_visualisations(run_state, state, universe, execution_context)
     else:
         logger.info("Visualisation disabled - technical charts are not updated")
