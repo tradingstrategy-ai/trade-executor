@@ -84,7 +84,8 @@ class StrategyRunner(abc.ABC):
         unit_testing=False,
         trade_settle_wait=None,
         parameters: StrategyParameters = None,
-        create_indicators: CreateIndicatorsProtocol = None,
+        create_indicators: CreateIndicatorsProtocol = None,\
+        visualisation=True,
     ):
         """
         :param engine_version:
@@ -112,6 +113,7 @@ class StrategyRunner(abc.ABC):
         self.routing_model_factory = routing_model_factory
         self.parameters = parameters
         self.create_indicators = create_indicators
+        self.visualisation = visualisation
 
         # We need 60 seconds wait to read balances
         # after trades only on a real trading,

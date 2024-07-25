@@ -179,6 +179,9 @@ class PandasTraderRunner(StrategyRunner):
                     pair_count
                     )
 
+        if not self.visualisation:
+            logger.info("Visualisation disabled with VISUALISATION environment variable")
+
         execution_context = self.execution_context
 
         if universe.is_empty():
