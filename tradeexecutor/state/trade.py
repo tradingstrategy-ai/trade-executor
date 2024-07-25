@@ -127,6 +127,10 @@ class TradeFlag(enum.Enum):
     #:
     triggered = "triggered"
 
+    #: The trade was made to associate unknown tokens to a position
+    #:
+    missing_position_repair = "missing_position_repair"
+
 
 @dataclass_json
 @dataclass()
@@ -477,7 +481,9 @@ class TradeExecution:
     #: - This is used to mark position closed in accounting correction,
     #:   although the trade itself does not carry any value
     #:
-    repaired_trade_id: Optional[datetime.datetime] = None
+    #: - Set to -1 if unknown (missing position), see `open_missing_position()`
+    #:
+    repaired_trade_id: Optional[int] = None
 
     #: Related TradePricing instance
     #:

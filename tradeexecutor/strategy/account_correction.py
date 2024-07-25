@@ -31,9 +31,12 @@ from tradeexecutor.ethereum.tx import TransactionBuilder
 from tradeexecutor.state.generic_position import GenericPosition
 from tradeexecutor.state.portfolio import Portfolio
 from tradeexecutor.state.repair import close_position_with_empty_trade
+from tradeexecutor.state.trade import TradeFlag, TradeExecution
 from tradeexecutor.strategy.dust import DEFAULT_DUST_EPSILON, get_dust_epsilon_for_pair, get_dust_epsilon_for_asset, DEFAULT_RELATIVE_EPSILON, \
     get_relative_epsilon_for_asset
-from tradeexecutor.strategy.trading_strategy_universe import translate_trading_pair
+from tradeexecutor.strategy.pandas_trader.position_manager import PositionManager
+from tradeexecutor.strategy.pricing_model import PricingModel
+from tradeexecutor.strategy.trading_strategy_universe import translate_trading_pair, TradingStrategyUniverse
 from tradingstrategy.pair import PandasPairUniverse
 
 from tradeexecutor.state.balance_update import BalanceUpdate, BalanceUpdatePositionType, BalanceUpdateCause
@@ -491,7 +494,8 @@ def correct_accounts(
     block_identifier: BlockIdentifier = None,
     block_timestamp: datetime.datetime = None,
     token_fix_method=UnknownTokenPositionFix.open_new_spot_position,
-    pair_universe: PandasPairUniverse | None = None,
+    strategy_universe: TradingStrategyUniverse | None = None,
+    pricing_model: PricingModel | None = None,
 ) -> Iterable[BalanceUpdate]:
     """Apply the accounting corrections on the state (internal ledger).
 
@@ -541,8 +545,9 @@ def correct_accounts(
             elif token_fix_method == UnknownTokenPositionFix.open_new_spot_position:
                 logger.info("Open a new spot position in the state to match our wallet balance: %s", correction)
                 open_missing_position(
-                    pair_universe,
+                    strategy_universe,
                     state,
+                    pricing_model,
                     correction,
                 )
             else:
@@ -643,17 +648,26 @@ def transfer_away_assets_without_position(
 
 
 def open_missing_position(
-    pair_universe: PandasPairUniverse,
+    strategy_universe: TradingStrategyUniverse,
     state: State,
+    pricing_model: PricingModel,
     correction: AccountingBalanceCheck,
-):
+) -> TradeExecution:
     """Open a missing spot position.
 
     - Assume the token belongs to a spot position which we attempted to open,
       but state update failed (tx went eventually thru).
 
     """
-    assert correction.position is None
+
+
+    logger.info("Fixing missing open position: %s", correction)
+
+    assert isinstance(strategy_universe, TradingStrategyUniverse)
+    assert correction.position is None, "open_missing_position(): this can be only applied to assets that do not match known open position"
+    assert pricing_model is not None, "Pricing model must be given to give the initial value of created positions"
+
+    pair_universe = strategy_universe.data_universe.pairs
 
     # Find all pairs that could match our
     # asset we hold
@@ -671,9 +685,41 @@ def open_missing_position(
     pair = matching_pairs[0]
     assert pair.is_spot(), f"Not spot: {pair}"
 
-    # Craft a trade to match the position
-    import ipdb ; ipdb.set_trace()
+    quantity = correction.quantity
+    assert quantity > 0
 
+    notes = f"Creating an account correction position for tokens that did not have open position: {correction}"
+
+    timestamp = datetime.datetime.utcnow()
+    position_manager = PositionManager(timestamp, strategy_universe, state, pricing_model)
+
+    value = pricing_model.get_mid_price(timestamp, pair) * float(quantity)
+    assert position_manager.get_current_position_for_pair(pair) is None
+
+    trades = position_manager.open_spot(
+        pair,
+        value,
+        notes=notes,
+    )
+    assert len(trades) == 1
+    trade = trades[0]
+
+    position = position_manager.get_current_position_for_pair(pair)
+    position.add_notes_message(notes)
+
+    trade.flags |= {TradeFlag.missing_position_repair, TradeFlag.open}
+    trade.repaired_trade_id = -1
+    assert trade.is_repair_trade()
+
+    trade.executed_quantity = quantity
+    trade.executed_reserve = value
+    trade.executed_at = timestamp
+    assert trade.is_executed()
+    assert trade.is_success()
+
+    logger.info("Fixed. Generated trade: %s", trade)
+
+    return trade
 
 
 def check_accounts(
