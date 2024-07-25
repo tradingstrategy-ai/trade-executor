@@ -20,7 +20,10 @@ from tradeexecutor.strategy.valuation import ValuationModelFactory
 
 
 class StrategyFactory(Protocol):
-    """A callable that creates a new strategy when loaded from an external script."""
+    """A callable that creates a new strategy when loaded from an external script.
+
+    For the current implementation see `make_factory_from_strategy_mod()`.
+    """
 
     # Only accept kwargs as per https://www.python.org/dev/peps/pep-3102/
     def __call__(

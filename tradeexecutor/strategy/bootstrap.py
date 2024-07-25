@@ -108,6 +108,7 @@ def make_factory_from_strategy_mod(mod: StrategyModuleInformation) -> StrategyFa
             routing_model: RoutingModel | None = None,
             create_indicators: CreateIndicatorsProtocol | None = None,
             parameters: StrategyParameters | None = None,
+            visualisation=True,
             **kwargs) -> StrategyExecutionDescription:
 
         # Migration assert
@@ -155,9 +156,15 @@ def make_factory_from_strategy_mod(mod: StrategyModuleInformation) -> StrategyFa
             unit_testing=execution_context.mode.is_unit_testing(),
             create_indicators=create_indicators,
             parameters=parameters,
+            visualisation=visualisation,
         )
 
-        logger.info("Starting strategy runner in execution mode %s:\n%s", execution_context.mode.name, runner.__class__.__name__)
+        logger.info(
+            "Starting strategy runner in execution mode %s:\n%s\nVisualisations are: %s",
+            execution_context.mode.name,
+            runner.__class__.__name__,
+            visualisation,
+        )
 
         return StrategyExecutionDescription(
             universe_model=universe_model,
