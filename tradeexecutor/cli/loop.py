@@ -1313,6 +1313,7 @@ class ExecutionLoop:
             run_state=self.run_state,
             create_indicators=self.create_indicators,
             parameters=self.parameters,
+            visualisation=self.visulisation,
         )
 
         self.init_live_run_state(run_description)
