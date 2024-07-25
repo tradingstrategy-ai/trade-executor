@@ -1065,7 +1065,10 @@ class TradeAnalysis:
                     # credit supply should only be here
                     grouped_duration = _get_new_grouped_duration_and_append(grouped_duration, position)
             else:
-                raise ValueError("previous_position_closed_at is None. This should not happen.")
+                # raise ValueError("previous_position_closed_at is None. This should not happen.")
+                # Happens for manually fixed trades
+                logger.warning("Detected bad previous_position_closed_at: %s", position)
+                previous_position_closed_at = position.closed_at
 
             _positions.append(position)
             last_closed_position_info = {
