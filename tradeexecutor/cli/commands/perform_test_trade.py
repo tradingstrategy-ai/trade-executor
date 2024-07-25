@@ -56,6 +56,7 @@ def perform_test_trade(
     max_slippage: float = shared_options.max_slippage,
 
     confirmation_block_count: int = shared_options.confirmation_block_count,
+    confirmation_timeout: int = shared_options.confirmation_timeout,
 
     # Test EVM backend when running e2e tests
     test_evm_uniswap_v2_router: Optional[str] = shared_options.test_evm_uniswap_v2_router,
@@ -118,7 +119,7 @@ def perform_test_trade(
         asset_management_mode=asset_management_mode,
         private_key=private_key,
         web3config=web3config,
-        confirmation_timeout=datetime.timedelta(seconds=60),
+        confirmation_timeout=datetime.timedelta(seconds=confirmation_timeout),
         confirmation_block_count=confirmation_block_count,
         min_gas_balance=min_gas_balance,
         max_slippage=max_slippage,

@@ -78,6 +78,7 @@ test_evm_uniswap_v2_init_code_hash: Optional[str] = Option(None, envvar="TEST_EV
 
 
 confirmation_block_count = Option(2, envvar="CONFIRMATION_BLOCK_COUNT", help="How many blocks we wait before we consider transaction receipt a final. Set to zero for automining testing backends (EthereumTester, Anvil).")
+confirmation_timeout = Option(900, envvar="CONFIRMATION_TIMEOUT", help="How many seconds to wait for transaction batches to confirm"),
 
 unit_testing = Option(False, "--unit-testing", envvar="UNIT_TESTING", help="The trade executor is called under the unit testing mode. No caches are purged. Some special flags are set and checks are skipped.")
 

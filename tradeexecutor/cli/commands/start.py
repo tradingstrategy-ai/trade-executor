@@ -89,8 +89,8 @@ def start(
     json_rpc_anvil: Optional[str] = shared_options.json_rpc_anvil,
 
     gas_price_method: Optional[GasPriceMethod] = typer.Option(None, envvar="GAS_PRICE_METHOD", help="How to set the gas price for Ethereum transactions. After the Berlin hardfork Ethereum mainnet introduced base + tip cost gas model. Leave out to autodetect."),
-    confirmation_timeout: int = typer.Option(900, envvar="CONFIRMATION_TIMEOUT", help="How many seconds to wait for transaction batches to confirm"),
     confirmation_block_count: int = shared_options.confirmation_block_count,
+    confirmation_timeout: int = shared_options.confirmation_timeout,
     private_key: Optional[str] = shared_options.private_key,
     min_gas_balance: Optional[float] = shared_options.min_gas_balance,
     gas_balance_warning_level: Optional[float] = typer.Option(25.0, envvar="GAS_BALANCE_WARNING_LEVEL", help="If hot wallet gas level falls below this amount of tokens, issue a low gas warning."),
