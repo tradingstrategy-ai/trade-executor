@@ -70,7 +70,10 @@ def refresh_run_state(
     # Strategy charts
     if visualisation:
         assert universe, "Candle data must be available to update visualisations"
+        logger.info("Updating the strategy techical charts")
         redraw_visualisations(run_state, state, universe, execution_context)
+    else:
+        logger.info("Visualisation disabled - technical charts are not updated")
 
     # Set gas level warning
     if sync_model is not None:
