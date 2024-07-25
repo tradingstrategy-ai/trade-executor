@@ -75,6 +75,7 @@ def correct_accounts(
 
 
     chain_settle_wait_seconds: float = Option(60.0, "--chain-settle-wait-seconds", envvar="CHAIN_SETTLE_WAIT_SECONDS", help="How long we wait after the account correction to see if our broadcasted transactions fixed the issue."),
+    skip_save: bool = Option(False, "--skip-save", envvar="SKIP_SAVE", help="Do not update state file. Useful for testing."),
 
 ):
     """Correct accounting errors in the internal ledger of the trade executor.
@@ -291,7 +292,9 @@ def correct_accounts(
     balance_updates = list(balance_updates)
     logger.info(f"We did {len(corrections)} accounting corrections, of which {len(balance_updates)} internal state balance updates, new block height is {block_number:,} at {block_timestamp}")
 
-    store.sync(state)
+    if not skip_save:
+        store.sync(state)
+
     web3config.close()
 
     # Shortcut here

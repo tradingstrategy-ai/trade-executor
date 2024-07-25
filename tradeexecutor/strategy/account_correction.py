@@ -708,7 +708,6 @@ def open_missing_position(
     position.add_notes_message(notes)
 
     trade.flags |= {TradeFlag.missing_position_repair, TradeFlag.open}
-    trade.repaired_trade_id = -1
     assert trade.is_repair_trade()
 
     trade.executed_quantity = quantity
@@ -718,7 +717,8 @@ def open_missing_position(
     assert trade.is_success()
 
     logger.info("Fixed. Generated trade: %s", trade)
-
+    assert position.is_open()
+    assert position.get_quantity() == quantity, f"Mismatch: {position.get_quantity()} vs {quantity}"
     return trade
 
 

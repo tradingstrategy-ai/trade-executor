@@ -82,6 +82,7 @@ def environment(
         "VAULT_ADAPTER_ADDRESS": "0xf2be1e782a8512BEC56515c8b879a2BF0dC030A2",
         "VAULT_PAYMENT_FORWARDER_ADDRESS": "0x7424DaceaC1F64c266B85f9C43A0e0851EdB3234",
         "VAULT_DEPLOYMENT_BLOCK_NUMBER": "20362579",
+        "SKIP_SAVE": "true",
     }
     return environment
 
