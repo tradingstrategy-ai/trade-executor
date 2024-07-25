@@ -157,6 +157,7 @@ class ExecutionLoop:
             sync_treasury_on_startup=False,
             create_indicators: CreateIndicatorsProtocol = None,
             parameters: StrategyParameters = None,
+            visulisation: bool = True,
     ):
         """See main.py for details."""
 
@@ -228,6 +229,7 @@ class ExecutionLoop:
         # We hide once-downloaded universe here for live loop
         # tests that perform live trading against forked chain in a fast cycle (1s)
         self.unit_testing_universe: StrategyExecutionUniverse | None = None
+        self.visulisation = visulisation
 
     def is_backtest(self) -> bool:
         """Are we doing a backtest execution."""
