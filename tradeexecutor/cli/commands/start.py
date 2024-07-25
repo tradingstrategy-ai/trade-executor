@@ -211,8 +211,6 @@ def start(
 
         cache_path = prepare_cache(id, cache_path, unit_testing)
 
-        confirmation_timeout = datetime.timedelta(seconds=confirmation_timeout)
-
         if asset_management_mode in (AssetManagementMode.hot_wallet, AssetManagementMode.dummy, AssetManagementMode.enzyme):
             web3config = create_web3_config(
                 json_rpc_binance=json_rpc_binance,
@@ -268,10 +266,21 @@ def start(
         if min_gas_balance:
             min_gas_balance = Decimal(min_gas_balance)
 
+
+        if confirmation_timeout == 60 and web3config.get_default().eth.chain_id == 1:
+            # TODO: Haack
+            # Ethereum mainnet needs much longer confirmation timeout,
+            # don't let the default 60 seconds slip in
+            confirmation_timeout = 900
+
+        confirmation_timeout = datetime.timedelta(seconds=confirmation_timeout)
+
         if unit_testing:
             # Do not let Ganache to wait for too long
             # because likely Ganache has simply crashed on background
             confirmation_timeout = datetime.timedelta(seconds=30)
+
+        logger.info("Transaction confirmation timeout set to %s", confirmation_timeout)
 
         execution_model, sync_model, valuation_model_factory, pricing_model_factory = create_execution_and_sync_model(
             asset_management_mode=asset_management_mode,
