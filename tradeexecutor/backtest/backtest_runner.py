@@ -738,6 +738,7 @@ def run_backtest_inline(
     max_workers=8,
     grid_search=False,
     execution_context=standalone_backtest_execution_context,
+    execution_test_hook: ExecutionTestHook | None = None,
 ) -> BacktestResult:
     """Run backtests for given decide_trades and create_trading_universe functions.
 
@@ -1010,6 +1011,7 @@ def run_backtest_inline(
         client,
         allow_missing_fees=True,
         execution_context=execution_context,
+        execution_test_hook=execution_test_hook,
     )
 
     result.diagnostics_data["wallet"] = wallet
