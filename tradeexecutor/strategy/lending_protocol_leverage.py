@@ -100,7 +100,7 @@ def update_credit_supply_loan(
     )
 
     # also adjust amount in collateral_interest
-    loan.collateral_interest.adjust(quantity)
+    loan.collateral_interest.adjust(quantity, epsilon=COLLATERAL_EPSILON)
 
     # Sanity check
     loan.check_health()
