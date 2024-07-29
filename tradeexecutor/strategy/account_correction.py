@@ -518,7 +518,7 @@ def correct_accounts(
         for c in corrections:
             print("Correction needed:", c)
 
-        print(f"Any tokens that cannot be assigned to an open position will be send to {unknown_token_receiver}")
+        # print(f"Any tokens that cannot be assigned to an open position will be send to {unknown_token_receiver}")
         confirmation = input("Attempt to repair [y/n]").lower()
         if confirmation != "y":
             raise AccountingCorrectionAborted()
@@ -544,7 +544,7 @@ def correct_accounts(
                 )
             elif token_fix_method == UnknownTokenPositionFix.open_new_spot_position:
                 logger.info("Open a new spot position in the state to match our wallet balance: %s", correction)
-                open_missing_position(
+                open_missing_spot_position(
                     strategy_universe,
                     state,
                     pricing_model,
@@ -554,17 +554,31 @@ def correct_accounts(
                 raise NotImplementedError()
 
         elif closed:
-            logger.info("Asset transfer with closed position: %s", correction)
-            # We have tokens on a closed position.
-            # Likely we have a failure, we closed position internally,
-            # but the selling trade failed to execute.
-            # Alternatively we reopenend a position,
-            # but the buying trade failed to execute.
-            transfer_away_assets_without_position(
-                correction,
-                unknown_token_receiver,
-                tx_builder,
-            )
+
+            if token_fix_method == UnknownTokenPositionFix.open_new_spot_position:
+                logger.info("Closed position detected with tokens left. Open a new spot position in the state to match our wallet balance: %s", correction)
+                open_missing_spot_position(
+                    strategy_universe,
+                    state,
+                    pricing_model,
+                    correction,
+                )
+
+            elif token_fix_method == UnknownTokenPositionFix.transfer_away:
+
+                logger.info("Asset transfer with closed position: %s", correction)
+                # We have tokens on a closed position.
+                # Likely we have a failure, we closed position internally,
+                # but the selling trade failed to execute.
+                # Alternatively we reopenend a position,
+                # but the buying trade failed to execute.
+                transfer_away_assets_without_position(
+                    correction,
+                    unknown_token_receiver,
+                    tx_builder,
+                )
+            else:
+                raise NotImplementedError(f"Does not know how to fix {token_fix_method} for position {correction}")
         else:
             logger.info("Internal state balance fix: %s", correction)
             # Change open position balance to match the on-chain balance
@@ -647,7 +661,7 @@ def transfer_away_assets_without_position(
 
 
 
-def open_missing_position(
+def open_missing_spot_position(
     strategy_universe: TradingStrategyUniverse,
     state: State,
     pricing_model: PricingModel,
