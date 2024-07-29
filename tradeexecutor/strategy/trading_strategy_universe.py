@@ -20,7 +20,7 @@ from typing import List, Optional, Callable, Tuple, Set, Dict, Iterable, Collect
 import pandas as pd
 
 from tradeexecutor.state.types import JSONHexAddress, Percent
-from tradingstrategy.lending import LendingReserveUniverse, LendingReserveDescription, LendingCandleType, LendingCandleUniverse, UnknownLendingReserve, LendingProtocolType
+from tradingstrategy.lending import LendingReserveUniverse, LendingReserveDescription, LendingCandleType, LendingCandleUniverse, UnknownLendingReserve, LendingProtocolType, LendingReserve
 from tradingstrategy.token import Token
 from tradingstrategy.candle import GroupedCandleUniverse
 from tradingstrategy.chain import ChainId
@@ -573,6 +573,18 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
         """
         for p in self.data_universe.pairs.iterate_pairs():
             yield translate_trading_pair(p)
+
+    def iterate_credit_for_reserve(self) -> Iterable[TradingPairIdentifier]:
+        """Iterate over all available credit supply pairs.
+
+        - We can deposit our reserve and get aToken for interest
+        """
+        strategy_reserve = self.get_reserve_asset()
+        for lending_reserve in self.data_universe.lending_reserves.iterate_reserves():
+            yield translate_credit_reserve(
+                lending_reserve,
+                strategy_reserve
+            )
 
     def create_single_pair_universe(
             dataset: Dataset,
@@ -1183,17 +1195,14 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
         assert reserve.get_asset().address == reserve_asset.address
 
         underlying = translate_token(reserve.get_asset())
-        atoken = translate_token(reserve.get_atoken(), underlying=underlying)
+        atoken = reserve.get_atoken()
+        # atoken = translate_token(reserve.get_atoken(), underlying=underlying)
 
-        return TradingPairIdentifier(
+        return translate_credit_reserve(
             atoken,
-            underlying,
-            pool_address=reserve.asset_address,
-            exchange_address=reserve.asset_address,
-            internal_id=reserve.reserve_id,
-            kind=TradingPairKind.credit_supply,
+            reserve_asset,
         )
-    
+
     def get_shorting_pair(self, pair: TradingPairIdentifier) -> TradingPairIdentifier:
         """Get the shorting pair from trading pair
 
@@ -1319,7 +1328,9 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
 
         :param asset:
             Specify the asset to get the rate for
-            If none, use the reserve asset
+            If none, use the reserve asset.
+
+            Must be non-wrapped, not aToken.
 
         :param timestamp:
             Specify timestamp to get the rate for
@@ -1717,6 +1728,47 @@ def translate_trading_pair(pair: DEXPair) -> TradingPairIdentifier:
         fee=fee,
         reverse_token_order=pair.token0_symbol != pair.base_token_symbol,
         exchange_name=pair.exchange_name,
+    )
+
+
+def translate_credit_reserve(
+    lending_reserve: Token | LendingReserve,
+    strategy_reserve: AssetIdentifier,
+) -> TradingPairIdentifier:
+    """Translate lending protocol reserve from client download to the trade executor.
+
+    :param lending_reserve:
+        Raw Token data from Trading Strategy Client
+
+    :param reverse:
+        The trading universe reserve asset
+    """
+
+    if isinstance(lending_reserve, Token):
+        # TODO: Legacy path, do not use
+        # Assume atoken
+        internal_id = strategy_reserve.internal_id
+        atoken = lending_reserve
+    elif isinstance(lending_reserve, LendingReserve):
+        internal_id = lending_reserve.reserve_id
+        atoken = lending_reserve.get_atoken()
+        assert lending_reserve.asset_address == strategy_reserve.address, f"Mismatch: {lending_reserve.asset_address}, {strategy_reserve.address}"
+    else:
+        raise NotImplementedError(f"Cannot handle {lending_reserve}")
+
+    assert isinstance(atoken, Token)
+    assert isinstance(strategy_reserve, AssetIdentifier)
+
+    underlying = strategy_reserve
+    atoken = translate_token(atoken, underlying=underlying)
+
+    return TradingPairIdentifier(
+        atoken,
+        underlying,
+        pool_address=strategy_reserve.address,  # TODO: Now using reserve asset
+        exchange_address=strategy_reserve.address,  # TODO: Now using reserve asset
+        internal_id=internal_id,
+        kind=TradingPairKind.credit_supply,
     )
 
 
