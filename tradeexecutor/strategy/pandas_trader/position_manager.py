@@ -1266,6 +1266,90 @@ class PositionManager:
 
         return [trade]
     
+    def adjust_credit_supply_position(
+        self,
+        position: TradingPosition,
+        new_value: USDollarAmount,
+        trade_type: TradeType = TradeType.rebalance,
+        flags: Set[TradeFlag] | None = None,
+        notes: str | None = None,
+    ) -> List[TradeExecution]:
+        """Increase/decrease credit supply position.
+
+        - Credit position is already open
+
+        - The amount of position is changing
+
+        - Any excess collateral is returned to cash reserves,
+          any new collateral is moved for the cash reserves to the short
+
+        :param position:
+            Position to adjust.
+
+            Must be a credit supply position.
+
+        :param new_value:
+            The allocated collateral for this position after the trade in US Dollar reserves.
+
+        :return:
+            New trades to be executed
+        """
+        assert isinstance(position, TradingPosition), f"Got: {position.__class__}: {position}"
+
+        assert position.is_credit_supply()
+        assert position.is_open(), "Cannot adjust closed credit position"
+        assert position.loan is not None, f"Position did not have existing loan structure: {position}"
+        assert new_value > 0, "Cannot use adjust_credit_supply_position() to close credit position"
+
+        value = position.get_value()
+        delta = new_value - value
+
+        if abs(delta) == 0:
+            logger.info("Change is abs zero for %s", position.pair)
+            return []
+
+        lending_reserve_identifier = self.strategy_universe.get_credit_supply_pair()
+        reserve_asset = self.strategy_universe.get_reserve_asset()
+        
+        logger.info(
+            "Adjusting credit supply position for %s, delta %f USD, using reserve %s",
+            position,
+            delta,
+            lending_reserve_identifier,
+        )
+
+        if delta > 0:
+            # Increase the position
+            _, adjust_trade, _ = self.state.supply_credit(
+                self.timestamp,
+                lending_reserve_identifier,
+                collateral_quantity=Decimal(delta),
+                trade_type=trade_type,
+                reserve_currency=reserve_asset,
+                collateral_asset_price=1.0,
+                flags={TradeFlag.increase},
+            )
+
+        else:
+            # Reduce the position
+            _, adjust_trade, _ = self.state.supply_credit(
+                self.timestamp,
+                lending_reserve_identifier,
+                collateral_quantity=Decimal(delta),
+                trade_type=trade_type,
+                reserve_currency=reserve_asset,
+                collateral_asset_price=1.0,
+                flags={TradeFlag.reduce},
+            )
+
+        if notes:
+            assert type(notes) == str
+            position.add_notes_message(notes)
+            adjust_trade.add_note(notes)
+
+        return [adjust_trade]
+
+    
     def open_short(
         self,
         pair: Union[DEXPair, TradingPairIdentifier],
