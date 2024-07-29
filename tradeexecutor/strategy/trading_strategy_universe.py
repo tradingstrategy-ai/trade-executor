@@ -1194,12 +1194,9 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
         # Sanity check
         assert reserve.get_asset().address == reserve_asset.address
 
-        underlying = translate_token(reserve.get_asset())
-        atoken = reserve.get_atoken()
         # atoken = translate_token(reserve.get_atoken(), underlying=underlying)
-
         return translate_credit_reserve(
-            atoken,
+            reserve,
             reserve_asset,
         )
 
@@ -1732,7 +1729,7 @@ def translate_trading_pair(pair: DEXPair) -> TradingPairIdentifier:
 
 
 def translate_credit_reserve(
-    lending_reserve: Token | LendingReserve,
+    lending_reserve: LendingReserve,
     strategy_reserve: AssetIdentifier,
 ) -> TradingPairIdentifier:
     """Translate lending protocol reserve from client download to the trade executor.
@@ -1744,22 +1741,25 @@ def translate_credit_reserve(
         The trading universe reserve asset
     """
 
-    if isinstance(lending_reserve, Token):
-        # TODO: Legacy path, do not use
-        # Assume atoken
-        internal_id = strategy_reserve.internal_id
-        atoken = lending_reserve
-    elif isinstance(lending_reserve, LendingReserve):
-        internal_id = lending_reserve.reserve_id
-        atoken = lending_reserve.get_atoken()
-        assert lending_reserve.asset_address == strategy_reserve.address, f"Mismatch: {lending_reserve.asset_address}, {strategy_reserve.address}"
-    else:
-        raise NotImplementedError(f"Cannot handle {lending_reserve}")
+    assert isinstance(lending_reserve, LendingReserve)
+    internal_id = lending_reserve.reserve_id
+    atoken = lending_reserve.get_atoken()
 
     assert isinstance(atoken, Token)
     assert isinstance(strategy_reserve, AssetIdentifier)
 
-    underlying = strategy_reserve
+    lending_reserve_underlying = translate_token(lending_reserve.get_asset())
+
+    # TODO: This is the hack fix when Polygon renamed
+    # token symbol USDC -> USDC.e
+    # In this case
+    # Reserve asset: AssetIdentifier(chain_id=137, address='0x2791bca1f2de4661ed88a30c99a7a9449aa84174', token_symbol='USDC', decimals=6, internal_id=None, info_url=None, underlying=None, type=None, liquidation_threshold=None)
+    # Underlying: AssetIdentifier(chain_id=137, address='0x2791bca1f2de4661ed88a30c99a7a9449aa84174', token_symbol='USDC.e', decimals=6, internal_id=None, info_url=None, underlying=None, type=<AssetType.token: 'token'>, liquidation_threshold=None)
+    if lending_reserve.asset_symbol == "USDC.e":
+        underlying = reserve_asset = lending_reserve_underlying
+    else:
+        underlying = strategy_reserve
+
     atoken = translate_token(atoken, underlying=underlying)
 
     return TradingPairIdentifier(
