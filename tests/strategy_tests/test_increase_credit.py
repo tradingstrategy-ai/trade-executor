@@ -1,4 +1,4 @@
-"""Gradully increase credit position when new cash is deposited in."""
+"""Gradually increase credit position when new cash is deposited in."""
 
 import datetime
 import random
@@ -130,6 +130,9 @@ def decide_trades(input: StrategyInput) -> List[TradeExecution]:
     # Since first cycle we should have a credit supply position open
     if input.cycle >= 2:
         assert position_manager.get_current_position_for_pair(credit_supply_pair) is not None
+    else:
+        # First cycle
+        assert position_manager.get_current_position_for_pair(credit_supply_pair) is None
 
     trades = position_manager.open_credit_supply_position_for_reserves(
         cash * 0.98,
