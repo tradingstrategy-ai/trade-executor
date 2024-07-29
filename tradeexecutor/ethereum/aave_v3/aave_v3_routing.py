@@ -105,7 +105,7 @@ class AaveV3RoutingState(EthereumRoutingState):
             trade_flags,
         )
 
-        if TradeFlag.open in trade_flags:
+        if TradeFlag.open in trade_flags or TradeFlag.increase in trade_flags:
             assert reserve_amount > 0
 
             _, bound_func = supply(
@@ -114,6 +114,16 @@ class AaveV3RoutingState(EthereumRoutingState):
                 amount=reserve_amount,
                 wallet_address=self.tx_builder.get_token_delivery_address(),
             )
+
+        elif TradeFlag.reduce in trade_flags:
+            
+            bound_func = withdraw(
+                aave_v3_deployment=aave_v3_deployment,
+                token=quote_token,
+                amount=abs(reserve_amount),
+                wallet_address=self.tx_builder.get_token_delivery_address(),
+            )
+
         elif TradeFlag.close in trade_flags:
             bound_func = withdraw(
                 aave_v3_deployment=aave_v3_deployment,

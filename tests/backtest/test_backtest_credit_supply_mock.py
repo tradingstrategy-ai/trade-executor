@@ -218,7 +218,7 @@ def test_backtest_open_and_close_credit_supply_mock_data(
     assert interest_events[0].asset == ausdc
 
     assert credit_position.calculate_accrued_interest_quantity(ausdc) == Decimal('2.67867669078453209820816')  # Non-denormalised interest
-    assert interest.last_token_amount == Decimal('10002.67867669078453209820816')
+    assert interest.last_token_amount == Decimal('0')
     assert interest.last_accrued_interest == Decimal('2.67867669078453209820816')
 
     assert credit_position.get_quantity() == Decimal('0')  # Closed positions do not have quantity left

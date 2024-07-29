@@ -88,16 +88,19 @@ def update_credit_supply_loan(
     assert position.pair.is_credit_supply()
 
     if mode == "plan":
-        reserve_quantity = trade.planned_quantity
+        quantity = trade.planned_quantity
     else:
-        reserve_quantity = trade.executed_quantity
+        quantity = trade.executed_quantity
 
     loan.collateral.change_quantity_and_value(
-        reserve_quantity,
+        quantity,
         trade.reserve_currency_exchange_rate,
         timestamp,
         allow_negative=True,
     )
+
+    # also adjust amount in collateral_interest
+    loan.collateral_interest.adjust(quantity, epsilon=COLLATERAL_EPSILON)
 
     # Sanity check
     loan.check_health()
