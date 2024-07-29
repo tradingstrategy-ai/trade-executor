@@ -17,7 +17,7 @@ from eth_defi.hotwallet import HotWallet
 from eth_defi.provider.anvil import mine
 from eth_defi.provider.broken_provider import get_almost_latest_block_number
 
-from tradeexecutor.strategy.account_correction import correct_accounts as _correct_accounts, check_accounts
+from tradeexecutor.strategy.account_correction import correct_accounts as _correct_accounts, check_accounts, UnknownTokenPositionFix
 from .app import app
 from ..bootstrap import prepare_executor_id, create_web3_config, create_sync_model, create_state_store, create_client, backup_state, create_execution_and_sync_model
 from ..log import setup_logging
@@ -75,6 +75,7 @@ def correct_accounts(
 
     chain_settle_wait_seconds: float = Option(60.0, "--chain-settle-wait-seconds", envvar="CHAIN_SETTLE_WAIT_SECONDS", help="How long we wait after the account correction to see if our broadcasted transactions fixed the issue."),
     skip_save: bool = Option(False, "--skip-save", envvar="SKIP_SAVE", help="Do not update state file. Useful for testing."),
+    transfer_away: bool = Option(False, "--transfer-away", envvar="TRANSFER_AWAY", help="For tokens without assigned position, scoop them to the hot wallet instead of trying to construct a new position"),
 
 ):
     """Correct accounting errors in the internal ledger of the trade executor.
@@ -292,6 +293,7 @@ def correct_accounts(
         block_timestamp=block_timestamp,
         strategy_universe=universe,
         pricing_model=pricing_model,
+        token_fix_method=UnknownTokenPositionFix.transfer_away if transfer_away else UnknownTokenPositionFix.open_missing_position,
     )
     balance_updates = list(balance_updates)
     logger.info(f"We did {len(corrections)} accounting corrections, of which {len(balance_updates)} internal state balance updates, new block height is {block_number:,} at {block_timestamp}")

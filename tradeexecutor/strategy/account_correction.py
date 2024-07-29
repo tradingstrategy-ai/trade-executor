@@ -73,7 +73,7 @@ class UnknownTokenPositionFix(enum.Enum):
     #:
     #: Open a new spot position with a fix trade for the token
     #:
-    open_new_spot_position = "open_new_spot_position"
+    open_missing_position = "open_missing_position"
 
     #: Attempt to transfer unknown tokens to the hot wallet
     transfer_away = "tranfer_away"
@@ -493,7 +493,7 @@ def correct_accounts(
     unknown_token_receiver: HexAddress | str | None = None,
     block_identifier: BlockIdentifier = None,
     block_timestamp: datetime.datetime = None,
-    token_fix_method=UnknownTokenPositionFix.open_new_spot_position,
+    token_fix_method=UnknownTokenPositionFix.open_missing_position,
     strategy_universe: TradingStrategyUniverse | None = None,
     pricing_model: PricingModel | None = None,
 ) -> Iterable[BalanceUpdate]:
@@ -542,7 +542,7 @@ def correct_accounts(
                     unknown_token_receiver,
                     tx_builder,
                 )
-            elif token_fix_method == UnknownTokenPositionFix.open_new_spot_position:
+            elif token_fix_method == UnknownTokenPositionFix.open_missing_position:
                 logger.info("Open a new position in the state to match our wallet balance: %s", correction)
                 open_missing_position(
                     strategy_universe,
@@ -555,7 +555,7 @@ def correct_accounts(
 
         elif closed:
 
-            if token_fix_method == UnknownTokenPositionFix.open_new_spot_position:
+            if token_fix_method == UnknownTokenPositionFix.open_missing_position:
                 logger.info("Closed position detected with tokens left. Open a new position in the state to match our wallet balance: %s", correction)
                 open_missing_position(
                     strategy_universe,
@@ -805,22 +805,22 @@ def open_missing_position(
     assert (correction.position is None) or (correction.position.is_closed()) , "open_missing_credit_position(): this can be only applied to assets that do not match known open position"
     assert pricing_model is not None, "Pricing model must be given to give the initial value of created positions"
 
-    if correction.position.is_credit_supply():
+    credit = correction.asset.is_credit()
+
+    if credit:
         position, trade = open_missing_credit_position(
             strategy_universe,
             state,
             pricing_model,
             correction,
         )
-    elif correction.position.is_spot():
+    else:
         position, trade = open_missing_spot_position(
             strategy_universe,
             state,
             pricing_model,
             correction,
         )
-    else:
-        raise NotImplementedError(f"Cannot correct: {correction}")
 
     assert trade.is_repair_trade()
     assert trade.is_executed()
@@ -828,12 +828,10 @@ def open_missing_position(
 
     quantity = position.get_quantity()
 
-    logger.info("Fixed. Generated trade: %s", trade)
+    logger.info("Fixed %s. Generated trade: %s, position: %s", correction, trade, position)
     assert position.is_open()
     assert position.get_quantity() == quantity, f"Mismatch: {position.get_quantity()} vs {quantity}"
     return trade
-
-
 
 
 def check_accounts(
