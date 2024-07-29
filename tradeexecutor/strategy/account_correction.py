@@ -773,15 +773,11 @@ def open_missing_credit_position(
     )
     assert len(trades) == 1
     trade = trades[0]
-
-    assert trade.pair == pair
-
-    position = position_manager.get_current_position_for_pair(pair)
-    position.add_notes_message(notes)
-
-    trade.flags |= {TradeFlag.missing_position_repair, TradeFlag.open}
+    assert trade.pair == pair  # Check we are still honouring our only lending reserve
 
     # Build Loan and Collateral data structures by hand
+    position = position_manager.get_current_position_for_pair(pair)
+    trade.flags |= {TradeFlag.missing_position_repair, TradeFlag.open}
     trade.executed_quantity = quantity
     trade.executed_at = timestamp
     trade.executed_loan_update = trade.planned_loan_update
@@ -791,7 +787,6 @@ def open_missing_credit_position(
     position.loan.collateral.last_interest_rate = interest_rate
     position.loan.last_pricing_at = timestamp
     position.loan.last_usd_price = value
-
     return position, trade
 
 
