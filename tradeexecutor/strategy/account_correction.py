@@ -543,8 +543,8 @@ def correct_accounts(
                     tx_builder,
                 )
             elif token_fix_method == UnknownTokenPositionFix.open_new_spot_position:
-                logger.info("Open a new spot position in the state to match our wallet balance: %s", correction)
-                open_missing_spot_position(
+                logger.info("Open a new position in the state to match our wallet balance: %s", correction)
+                open_missing_position(
                     strategy_universe,
                     state,
                     pricing_model,
@@ -556,8 +556,8 @@ def correct_accounts(
         elif closed:
 
             if token_fix_method == UnknownTokenPositionFix.open_new_spot_position:
-                logger.info("Closed position detected with tokens left. Open a new spot position in the state to match our wallet balance: %s", correction)
-                open_missing_spot_position(
+                logger.info("Closed position detected with tokens left. Open a new position in the state to match our wallet balance: %s", correction)
+                open_missing_position(
                     strategy_universe,
                     state,
                     pricing_model,
@@ -734,6 +734,105 @@ def open_missing_spot_position(
     assert position.is_open()
     assert position.get_quantity() == quantity, f"Mismatch: {position.get_quantity()} vs {quantity}"
     return trade
+
+
+def open_missing_credit_position(
+    strategy_universe: TradingStrategyUniverse,
+    state: State,
+    pricing_model: PricingModel,
+    correction: AccountingBalanceCheck,
+) -> TradeExecution:
+    """Open a missing spot position.
+
+    - Assume the token belongs to a spot position which we attempted to open,
+      but state update failed (tx went eventually thru).
+
+    """
+
+
+    logger.info("Fixing missing open position: %s", correction)
+
+    assert isinstance(strategy_universe, TradingStrategyUniverse)
+    assert correction.position is None, "open_missing_position(): this can be only applied to assets that do not match known open position"
+    assert pricing_model is not None, "Pricing model must be given to give the initial value of created positions"
+
+    pair_universe = strategy_universe.data_universe.pairs
+
+    # Find all pairs that could match our
+    # asset we hold
+    matching_pairs = []
+    for raw_pair in pair_universe.iterate_pairs():
+        trading_pair = translate_trading_pair(raw_pair)
+        if trading_pair.base == correction.asset:
+            matching_pairs.append(trading_pair)
+
+    if len(matching_pairs) == 0:
+        raise RuntimeError(f"Could not find any spot pair for asset {correction.asset} for correction {correction}")
+
+    assert len(matching_pairs) == 1, f"Found multiple matching trading pairs for asset {correction.asset}, correction {correction}, {matching_pairs}"
+
+    pair = matching_pairs[0]
+    assert pair.is_spot(), f"Not spot: {pair}"
+
+    quantity = correction.quantity
+    assert quantity > 0
+
+    notes = f"Creating an account correction position for tokens that did not have open position: {correction}"
+
+    timestamp = datetime.datetime.utcnow()
+    position_manager = PositionManager(timestamp, strategy_universe, state, pricing_model)
+
+    value = pricing_model.get_mid_price(timestamp, pair) * float(quantity)
+    assert position_manager.get_current_position_for_pair(pair) is None
+
+    trades = position_manager.open_spot(
+        pair,
+        value,
+        notes=notes,
+    )
+    assert len(trades) == 1
+    trade = trades[0]
+
+    position = position_manager.get_current_position_for_pair(pair)
+    position.add_notes_message(notes)
+
+    trade.flags |= {TradeFlag.missing_position_repair, TradeFlag.open}
+    assert trade.is_repair_trade()
+
+    trade.executed_quantity = quantity
+    trade.executed_reserve = value
+    trade.executed_at = timestamp
+    assert trade.is_executed()
+    assert trade.is_success()
+
+    logger.info("Fixed. Generated trade: %s", trade)
+    assert position.is_open()
+    assert position.get_quantity() == quantity, f"Mismatch: {position.get_quantity()} vs {quantity}"
+    return trade
+
+
+def open_missing_position(
+    strategy_universe: TradingStrategyUniverse,
+    state: State,
+    pricing_model: PricingModel,
+    correction: AccountingBalanceCheck,
+):
+    if correction.position.is_credit():
+        open_missing_credit_position(
+            strategy_universe,
+            state,
+            pricing_model,
+            correction,
+        )
+    elif correction.position.is_spot():
+        open_missing_spot_position(
+            strategy_universe,
+            state,
+            pricing_model,
+            correction,
+        )
+    else:
+        raise NotImplementedError(f"Cannot correct: {correction}")
 
 
 def check_accounts(
