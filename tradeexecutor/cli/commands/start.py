@@ -497,6 +497,7 @@ def start(
         sync_treasury_on_startup=sync_treasury_on_startup,
         create_indicators=mod.create_indicators,
         parameters=mod.parameters,
+        visulisation=visulisation,
     )
 
     # Crash gracefully at the start up if our main loop cannot set itself up
