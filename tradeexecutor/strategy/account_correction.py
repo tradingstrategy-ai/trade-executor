@@ -73,7 +73,7 @@ class UnknownTokenPositionFix(enum.Enum):
     #:
     #: Open a new spot position with a fix trade for the token
     #:
-    open_new_spot_position = "open_new_spot_position"
+    open_missing_position = "open_missing_position"
 
     #: Attempt to transfer unknown tokens to the hot wallet
     transfer_away = "tranfer_away"
@@ -493,7 +493,7 @@ def correct_accounts(
     unknown_token_receiver: HexAddress | str | None = None,
     block_identifier: BlockIdentifier = None,
     block_timestamp: datetime.datetime = None,
-    token_fix_method=UnknownTokenPositionFix.open_new_spot_position,
+    token_fix_method=UnknownTokenPositionFix.open_missing_position,
     strategy_universe: TradingStrategyUniverse | None = None,
     pricing_model: PricingModel | None = None,
 ) -> Iterable[BalanceUpdate]:
@@ -518,7 +518,7 @@ def correct_accounts(
         for c in corrections:
             print("Correction needed:", c)
 
-        print(f"Any tokens that cannot be assigned to an open position will be send to {unknown_token_receiver}")
+        # print(f"Any tokens that cannot be assigned to an open position will be send to {unknown_token_receiver}")
         confirmation = input("Attempt to repair [y/n]").lower()
         if confirmation != "y":
             raise AccountingCorrectionAborted()
@@ -542,8 +542,8 @@ def correct_accounts(
                     unknown_token_receiver,
                     tx_builder,
                 )
-            elif token_fix_method == UnknownTokenPositionFix.open_new_spot_position:
-                logger.info("Open a new spot position in the state to match our wallet balance: %s", correction)
+            elif token_fix_method == UnknownTokenPositionFix.open_missing_position:
+                logger.info("Open a new position in the state to match our wallet balance: %s", correction)
                 open_missing_position(
                     strategy_universe,
                     state,
@@ -554,17 +554,31 @@ def correct_accounts(
                 raise NotImplementedError()
 
         elif closed:
-            logger.info("Asset transfer with closed position: %s", correction)
-            # We have tokens on a closed position.
-            # Likely we have a failure, we closed position internally,
-            # but the selling trade failed to execute.
-            # Alternatively we reopenend a position,
-            # but the buying trade failed to execute.
-            transfer_away_assets_without_position(
-                correction,
-                unknown_token_receiver,
-                tx_builder,
-            )
+
+            if token_fix_method == UnknownTokenPositionFix.open_missing_position:
+                logger.info("Closed position detected with tokens left. Open a new position in the state to match our wallet balance: %s", correction)
+                open_missing_position(
+                    strategy_universe,
+                    state,
+                    pricing_model,
+                    correction,
+                )
+
+            elif token_fix_method == UnknownTokenPositionFix.transfer_away:
+
+                logger.info("Asset transfer with closed position: %s", correction)
+                # We have tokens on a closed position.
+                # Likely we have a failure, we closed position internally,
+                # but the selling trade failed to execute.
+                # Alternatively we reopenend a position,
+                # but the buying trade failed to execute.
+                transfer_away_assets_without_position(
+                    correction,
+                    unknown_token_receiver,
+                    tx_builder,
+                )
+            else:
+                raise NotImplementedError(f"Does not know how to fix {token_fix_method} for position {correction}")
         else:
             logger.info("Internal state balance fix: %s", correction)
             # Change open position balance to match the on-chain balance
@@ -647,12 +661,12 @@ def transfer_away_assets_without_position(
 
 
 
-def open_missing_position(
+def open_missing_spot_position(
     strategy_universe: TradingStrategyUniverse,
     state: State,
     pricing_model: PricingModel,
     correction: AccountingBalanceCheck,
-) -> TradeExecution:
+) -> tuple[TradingPosition, TradeExecution]:
     """Open a missing spot position.
 
     - Assume the token belongs to a spot position which we attempted to open,
@@ -662,10 +676,6 @@ def open_missing_position(
 
 
     logger.info("Fixing missing open position: %s", correction)
-
-    assert isinstance(strategy_universe, TradingStrategyUniverse)
-    assert correction.position is None, "open_missing_position(): this can be only applied to assets that do not match known open position"
-    assert pricing_model is not None, "Pricing model must be given to give the initial value of created positions"
 
     pair_universe = strategy_universe.data_universe.pairs
 
@@ -708,15 +718,117 @@ def open_missing_position(
     position.add_notes_message(notes)
 
     trade.flags |= {TradeFlag.missing_position_repair, TradeFlag.open}
-    assert trade.is_repair_trade()
 
     trade.executed_quantity = quantity
     trade.executed_reserve = value
     trade.executed_at = timestamp
+
+    return position, trade
+
+
+def open_missing_credit_position(
+    strategy_universe: TradingStrategyUniverse,
+    state: State,
+    pricing_model: PricingModel,
+    correction: AccountingBalanceCheck,
+) -> tuple[TradingPosition, TradeExecution]:
+    """Open a missing spot position.
+
+    - Assume the token belongs to a spot position which we attempted to open,
+      but state update failed (tx went eventually thru).
+
+    """
+
+
+    logger.info("Fixing missing open position: %s", correction)
+
+    # Find all pairs that could match our
+    # asset we hold
+    matching_pairs = []
+    for trading_pair in strategy_universe.iterate_credit_for_reserve():
+        if trading_pair.base == correction.asset:
+            matching_pairs.append(trading_pair)
+
+    if len(matching_pairs) == 0:
+        raise RuntimeError(f"Could not find any credit pair for asset {correction.asset} for correction {correction}")
+
+    assert len(matching_pairs) == 1, f"Found multiple matching trading pairs for asset {correction.asset}, correction {correction}, {matching_pairs}"
+
+    pair = matching_pairs[0]
+    assert pair.is_credit_supply(), f"Not credit: {pair}"
+
+    quantity = correction.quantity
+    assert quantity > 0
+
+    notes = f"Creating an account correction position for tokens that did not have open position: {correction}"
+
+    timestamp = datetime.datetime.utcnow()
+    position_manager = PositionManager(timestamp, strategy_universe, state, pricing_model)
+    interest_rate = strategy_universe.get_latest_supply_apr(pair.quote, timestamp)
+    value = float(quantity)  # Assume USD loan
+
+    trades = position_manager.open_credit_supply_position_for_reserves(
+        amount=value,
+        notes=notes,
+    )
+    assert len(trades) == 1
+    trade = trades[0]
+    assert trade.pair == pair  # Check we are still honouring our only lending reserve
+
+    # Build Loan and Collateral data structures by hand
+    position = position_manager.get_current_position_for_pair(pair)
+    trade.flags |= {TradeFlag.missing_position_repair, TradeFlag.open}
+    trade.executed_quantity = quantity
+    trade.executed_at = timestamp
+    trade.executed_loan_update = trade.planned_loan_update
+    position.loan = trade.planned_loan_update
+    position.loan.collateral.quantity = quantity
+    position.loan.collateral.interest_rate_at_open = interest_rate
+    position.loan.collateral.last_interest_rate = interest_rate
+    position.loan.last_pricing_at = timestamp
+    position.loan.last_usd_price = value
+    return position, trade
+
+
+def open_missing_position(
+    strategy_universe: TradingStrategyUniverse,
+    state: State,
+    pricing_model: PricingModel,
+    correction: AccountingBalanceCheck,
+):
+    """"We have tokens for a trading pair, but no position is closed.
+
+    - Fix by initialising a new open position
+    """
+
+    assert isinstance(strategy_universe, TradingStrategyUniverse)
+    assert (correction.position is None) or (correction.position.is_closed()) , "open_missing_credit_position(): this can be only applied to assets that do not match known open position"
+    assert pricing_model is not None, "Pricing model must be given to give the initial value of created positions"
+
+    credit = correction.asset.is_credit()
+
+    if credit:
+        position, trade = open_missing_credit_position(
+            strategy_universe,
+            state,
+            pricing_model,
+            correction,
+        )
+    else:
+        position, trade = open_missing_spot_position(
+            strategy_universe,
+            state,
+            pricing_model,
+            correction,
+        )
+
+    assert trade.is_repair_trade()
     assert trade.is_executed()
     assert trade.is_success()
 
-    logger.info("Fixed. Generated trade: %s", trade)
+    quantity = position.get_quantity()
+
+    logger.info("Fixed %s. Generated trade: %s, position: %s", correction, trade, position)
     assert position.is_open()
     assert position.get_quantity() == quantity, f"Mismatch: {position.get_quantity()} vs {quantity}"
     return trade

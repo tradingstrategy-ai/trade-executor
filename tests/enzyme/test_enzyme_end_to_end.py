@@ -562,7 +562,7 @@ def test_enzyme_live_trading_reset_deposits(
         assert e.value.code == 0
 
 
-def test_enzyme_correct_accounts_for_closed_position(
+def test_enzyme_correct_accounts_for_closed_position_transfer_away(
     environment: dict,
     state_file: Path,
     usdc: Contract,
@@ -630,6 +630,8 @@ def test_enzyme_correct_accounts_for_closed_position(
 
     # Correct accounts,
     # we have one closed position for WETH
+    environment = environment.copy()
+    environment["TRANSFER_AWAY"] = "true"
     with patch.dict(os.environ, environment, clear=True):
         with pytest.raises(SystemExit) as e:
             cli.main(args=["correct-accounts"])

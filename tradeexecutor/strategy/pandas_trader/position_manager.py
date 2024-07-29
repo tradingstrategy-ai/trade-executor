@@ -1229,6 +1229,7 @@ class PositionManager:
         self,
         amount: USDollarAmount,
         flags: Set[TradeFlag] | None = None,
+        notes: str | None = None,
     ) -> List[TradeExecution]:
         """Move reserve currency to a credit supply position.
 
@@ -1240,7 +1241,6 @@ class PositionManager:
         """
 
         assert self.strategy_universe is not None, f"PositionManager.strategy_universe not set, data_universe is {self.data_universe}"
-
         assert self.strategy_universe.has_lending_data(), "open_credit_supply_position_for_reserves(): lending data not loaded"
 
         lending_reserve_identifier = self.strategy_universe.get_credit_supply_pair()
@@ -1249,7 +1249,7 @@ class PositionManager:
             flags = set()
         flags = {TradeFlag.open} | flags
 
-        _, trade, _ = self.state.supply_credit(
+        position, trade, _ = self.state.supply_credit(
             self.timestamp,
             lending_reserve_identifier,
             collateral_quantity=Decimal(amount),
@@ -1258,6 +1258,11 @@ class PositionManager:
             collateral_asset_price=1.0,
             flags=flags,
         )
+
+        if notes:
+            assert type(notes) == str
+            position.add_notes_message(notes)
+            trade.add_note(notes)
 
         return [trade]
     
