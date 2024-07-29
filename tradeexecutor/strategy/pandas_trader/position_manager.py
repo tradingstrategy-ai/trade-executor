@@ -1349,6 +1349,34 @@ class PositionManager:
 
         return [adjust_trade]
 
+    def add_cash_to_credit_supply(
+        self,
+        cash: USDollarAmount,
+    ) -> list[TradeExecution]:
+        """Deposit the cash to the strategy's default credit position.
+
+        - Put the amount of the cash into the credit position
+
+        - Switch between :py:meth:`open_credit_supply_position_for_reserves` and
+          :py:meth:`adjust_credit_supply_position`
+
+        - Cannot reduce the credit position
+
+        :param cash:
+            The amount of USDC to deposit to Aave
+
+        :return:
+            Trades done
+        """
+        pair = self.strategy_universe.get_credit_supply_pair()
+        assert pair is not None, "The default credit supply position not configured correctly for the strategy universe"
+        assert cash > 0, f"Got cash: {cash}"
+        existing_position = self.get_current_position_for_pair(pair)
+        if existing_position is not None:
+            new_value = existing_position.get_value() + cash
+            return self.adjust_credit_supply_position(existing_position, new_value)
+        else:
+            return self.open_credit_supply_position_for_reserves(cash)
     
     def open_short(
         self,

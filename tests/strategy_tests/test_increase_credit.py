@@ -134,7 +134,7 @@ def decide_trades(input: StrategyInput) -> List[TradeExecution]:
         # First cycle
         assert position_manager.get_current_position_for_pair(credit_supply_pair) is None
 
-    trades = position_manager.open_credit_supply_position_for_reserves(
+    trades = position_manager.add_cash_to_credit_supply(
         cash * 0.98,
     )
 
