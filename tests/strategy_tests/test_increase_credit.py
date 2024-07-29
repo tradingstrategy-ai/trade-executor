@@ -178,5 +178,6 @@ def test_increase_credit(
 
     position = next(iter(portfolio.open_positions.values()))
     assert position.is_credit_supply()
-    assert len(position.trades) == 151
+    cycles_skipped = 29  # On how many days we did not get any deposits
+    assert len(position.trades) == 151 - cycles_skipped
 

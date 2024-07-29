@@ -1352,6 +1352,7 @@ class PositionManager:
     def add_cash_to_credit_supply(
         self,
         cash: USDollarAmount,
+        min_usd_threshold: USDollarAmount=1.0,
     ) -> list[TradeExecution]:
         """Deposit the cash to the strategy's default credit position.
 
@@ -1362,8 +1363,24 @@ class PositionManager:
 
         - Cannot reduce the credit position
 
+        Example:
+
+        .. code-block:: python
+
+            trades = position_manager.add_cash_to_credit_supply(
+                cash * 0.98,
+            )
+
+            return trades
+
+
         :param cash:
             The amount of USDC to deposit to Aave
+
+        :param min_usd_threshold:
+            If cash to add is below this threshold do nothing.
+
+            Filter out dust / no new deposit actions.
 
         :return:
             Trades done
@@ -1371,6 +1388,11 @@ class PositionManager:
         pair = self.strategy_universe.get_credit_supply_pair()
         assert pair is not None, "The default credit supply position not configured correctly for the strategy universe"
         assert cash > 0, f"Got cash: {cash}"
+
+        if cash < min_usd_threshold:
+            # No new deposit or only dust, don't generate extra trades
+            return []
+
         existing_position = self.get_current_position_for_pair(pair)
         if existing_position is not None:
             new_value = existing_position.get_value() + cash
