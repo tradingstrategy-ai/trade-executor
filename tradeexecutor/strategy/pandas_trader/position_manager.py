@@ -1349,6 +1349,62 @@ class PositionManager:
 
         return [adjust_trade]
 
+    def add_cash_to_credit_supply(
+        self,
+        cash: USDollarAmount,
+        min_usd_threshold: USDollarAmount=1.0,
+    ) -> list[TradeExecution]:
+        """Deposit the cash to the strategy's default credit position.
+
+        - Put the amount of the cash into the credit position
+
+        - Switch between :py:meth:`open_credit_supply_position_for_reserves` and
+          :py:meth:`adjust_credit_supply_position`, so we do not need to know
+          if we have an existing credit supply open
+
+        - Cannot reduce the credit position
+
+        Example:
+
+        .. code-block:: python
+
+            trades = position_manager.add_cash_to_credit_supply(
+                cash * 0.98,
+            )
+
+            return trades
+
+
+        :param cash:
+            The amount of USDC to deposit to Aave
+
+        :param min_usd_threshold:
+            If cash to add is below this threshold do nothing.
+
+            Filter out dust / no new deposit actions.
+
+        :return:
+            Trades done
+        """
+        pair = self.strategy_universe.get_credit_supply_pair()
+        assert pair is not None, "The default credit supply position not configured correctly for the strategy universe"
+        assert cash > 0, f"Got cash: {cash}"
+
+        logger.info("Allocating cash for credit, cash %f, threshold %f", cash, min_usd_threshold)
+
+        if cash < min_usd_threshold:
+            # No new deposit or only dust, don't generate extra trades
+            logger.info("Under threshold")
+            return []
+
+        existing_position = self.get_current_position_for_pair(pair)
+        if existing_position is not None:
+            new_value = existing_position.get_value() + cash
+            logger.info("Adjusting the existing credit position")
+            return self.adjust_credit_supply_position(existing_position, new_value)
+        else:
+            logger.info("Opening a new credit position")
+            return self.open_credit_supply_position_for_reserves(cash)
     
     def open_short(
         self,
