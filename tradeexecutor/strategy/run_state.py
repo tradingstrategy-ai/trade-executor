@@ -249,12 +249,12 @@ class RunState:
         Special fields like source code and images are not exported.
         """
         self_copy = copy.deepcopy(self)
-        
+
         self_copy.source_code = None
         self_copy.visualisation = None
         self_copy.read_only_state_copy = None
 
-        return RunState(**self_copy.to_dict())
+        return self_copy
 
     def on_save_hook(self, state: State):
         """Called by JSONStateStore.sync()"""
