@@ -171,8 +171,8 @@ def test_run_state(logger, server_url):
 
     # Not exported
     assert data["source_code"] is None
-    assert data["visualisation"]["large_image"] is None
-    assert data["visualisation"]["small_image"] is None
+    assert data["visualisation"] is None
+    assert data["read_only_state_copy"] is None
 
     # Version info is there
     assert data["version"]["tag"] == "v1"
