@@ -7,7 +7,6 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional, TypedDict
 
-import dataclasses_json
 from dataclasses_json import dataclass_json
 from tblib import Traceback
 
@@ -249,11 +248,13 @@ class RunState:
 
         Special fields like source code and images are not exported.
         """
-        data = self.to_dict()
-        del data["source_code"]
-        del data["visualisation"]
-        del data["read_only_state_copy"]
-        return RunState(**data)
+        self_copy = copy.deepcopy(self)
+
+        self_copy.source_code = None
+        self_copy.visualisation = None
+        self_copy.read_only_state_copy = None
+
+        return self_copy
 
     def on_save_hook(self, state: State):
         """Called by JSONStateStore.sync()"""
