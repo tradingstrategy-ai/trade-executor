@@ -333,9 +333,18 @@ def create_metadata(
         if vault.deployment.contracts.fund_value_calculator is None:
             # Hot fix for Polygon
             # TODO: Fix properly
-            on_chain_data.smart_contracts.update({
-                "fund_value_calculator": "0xcdf038Dd3b66506d2e5378aee185b2f0084B7A33",
-            })
+
+            match vault.web3.eth.chain_id:
+                case 137:
+                    on_chain_data.smart_contracts.update({
+                        "fund_value_calculator": "0xcdf038Dd3b66506d2e5378aee185b2f0084B7A33",
+                    })
+                case 1:
+                    on_chain_data.smart_contracts.update({
+                        "fund_value_calculator": "0x490e64E0690b4aa481Fb02255aED3d052Bad7BF1",
+                    })
+                case _:
+                    raise NotImplementedError(f"Chain {vault.web3.eth.chain_id}")
 
     if backtest_result is not None:
         backtested_state = State.read_json_file(backtest_result)
