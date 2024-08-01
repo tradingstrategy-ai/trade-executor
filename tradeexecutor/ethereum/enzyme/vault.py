@@ -97,6 +97,7 @@ class EnzymeVaultSyncModel(SyncModel):
         self.web3 = web3
         self.reorg_mon = reorg_mon
         try:
+
             self.vault = Vault.fetch(
                 web3,
                 vault_address,
