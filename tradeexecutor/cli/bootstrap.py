@@ -332,10 +332,9 @@ def create_metadata(
 
         if vault.deployment.contracts.fund_value_calculator is None:
             # Hot fix for Polygon
-            # TODO: Fix properly
-
+            # TODO: Fix properly, legacy
             match vault.web3.eth.chain_id:
-                case 137:
+                case 137 | 31337:
                     on_chain_data.smart_contracts.update({
                         "fund_value_calculator": "0xcdf038Dd3b66506d2e5378aee185b2f0084B7A33",
                     })
