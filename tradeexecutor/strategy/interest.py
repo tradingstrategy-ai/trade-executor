@@ -589,7 +589,10 @@ def record_interest_rate(
         if p.is_credit_supply():
             loan = p.loan
 
-            last_interest_rate = universe.get_latest_supply_apr(timestamp=timestamp) / 100
+            last_interest_rate = universe.get_latest_supply_apr(
+                timestamp=timestamp,
+                tolerance=datetime.timedelta(days=7),
+            ) / 100
             assert 0 < last_interest_rate < 1
 
             logger.info("Recording interest rate %f for %s at %s", last_interest_rate, p, timestamp)

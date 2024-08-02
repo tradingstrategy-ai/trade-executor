@@ -1320,6 +1320,7 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
         self,
         asset: AssetIdentifier | None = None,
         timestamp: datetime.datetime | None = None,
+        tolerance: datetime.timedelta | None = None,
     ) -> float:
         """Get the latest supply APR for the lending asset.
 
@@ -1333,11 +1334,21 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
             Specify timestamp to get the rate for
             If none, return the latest rate
 
+        :param tolerance:
+            Lookback tolerance with stale data.
+
+            Default to 1 days if not given.
+
         :return:
             Latest supply APR rate
         """
         if not asset:
             asset = self.get_reserve_asset()
+
+        if isinstance(tolerance, datetime.datetime):
+            tolerance = tolerance
+        else:
+            tolerance = pd.Timedelta(days=1)
 
         # Will raise exception if not available
         lending_reserve = self.data_universe.lending_reserves.get_by_chain_and_address(
@@ -1346,7 +1357,6 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
         )
 
         if timestamp:
-            tolerance = pd.Timedelta(days=2)
             try:
                 rate, _ = self.data_universe.lending_candles.supply_apr.get_single_rate(
                     lending_reserve,
