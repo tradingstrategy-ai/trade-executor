@@ -403,7 +403,7 @@ def apply_accounting_correction(
     if isinstance(position, TradingPosition):
         position_type = BalanceUpdatePositionType.open_position
         position_id = correction.position.position_id
-        assert position.is_spot(), f"Correction not yet implemented for leveraged positions"
+        assert position.is_spot() or position.is_credit(), f"Correction not yet implemented for all position types, got {position}"
         logger.info("Correcting spot %s, asset %s, %f -> %f", position.get_human_readable_name(), asset, correction.expected_amount, correction.actual_amount)
         # assert position.is_open(), f"Cannot correct already closed positions, got {position}"
     elif isinstance(position, ReservePosition):
