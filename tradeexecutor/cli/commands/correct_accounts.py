@@ -286,13 +286,15 @@ def correct_accounts(
     if len(credit_positions) > 0:
         logger.info("Credit positions detected, syncing interest before applying accounting checks")
         for p in credit_positions:
-            logger.info(" - Position %s", p)
+            logger.info(" - Position: %s", p)
         # Sync missing credit
-        sync_model.sync_interests(
+        balances_updates = sync_model.sync_interests(
             state,
             universe,
             pricing_model,
         )
+        for bu in balances_updates:
+            logger.info("  - Balance update: %s", bu)
 
     balance_updates = _correct_accounts(
         state,
