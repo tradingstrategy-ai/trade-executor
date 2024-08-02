@@ -282,6 +282,21 @@ def correct_accounts(
     hot_wallet.sync_nonce(web3)
     logger.info("Hot wallet nonce is %d", hot_wallet.current_nonce)
 
+    credit_positions = [p.is_credit_supply() for p in state.portfolio.get_open_and_frozen_positions()]
+    if len(credit_positions) > 0:
+        logger.info("Credit positions detected, syncing interest before applying accounting checks")
+        for p in credit_positions:
+            logger.info(" - Position: %s", p)
+        # Sync missing credit
+        balances_updates = sync_model.sync_interests(
+            datetime.datetime.utcnow(),
+            state,
+            universe,
+            pricing_model,
+        )
+        for bu in balances_updates:
+            logger.info("  - Balance update: %s", bu)
+
     balance_updates = _correct_accounts(
         state,
         corrections,

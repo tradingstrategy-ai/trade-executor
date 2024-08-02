@@ -426,6 +426,15 @@ class EnzymeVaultSyncModel(SyncModel):
         universe: TradingStrategyUniverse,
         pricing_model: PricingModel,
     ) -> List[BalanceUpdate]:
+        """Sync interests events.
+
+        - Read interest gained onchain
+
+        - Apply it to your state
+
+        :return:
+            The list of applied interest change events
+        """
 
         return sync_interests(
             web3=self.web3,
