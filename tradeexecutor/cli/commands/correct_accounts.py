@@ -284,18 +284,23 @@ def correct_accounts(
 
     credit_positions = [p for p in state.portfolio.get_open_and_frozen_positions() if p.is_credit_supply()]
     if len(credit_positions) > 0:
-        logger.info("Credit positions detected, syncing interest before applying accounting checks")
-        for p in credit_positions:
-            logger.info(" - Position: %s", p)
-        # Sync missing credit
-        balances_updates = sync_model.sync_interests(
-            timestamp=datetime.datetime.utcnow(),  # None = live
-            state=state,
-            universe=universe,
-            pricing_model=pricing_model,
-        )
-        for bu in balances_updates:
-            logger.info("  - Balance update: %s", bu)
+        try:
+            logger.info("Credit positions detected, syncing interest before applying accounting checks")
+            for p in credit_positions:
+                logger.info(" - Position: %s", p)
+            # Sync missing credit
+            balances_updates = sync_model.sync_interests(
+                timestamp=datetime.datetime.utcnow(),  # None = live
+                state=state,
+                universe=universe,
+                pricing_model=pricing_model,
+            )
+            for bu in balances_updates:
+                logger.info("  - Balance update: %s", bu)
+        except Exception as e:
+            logger.info("correct-accounts: could not sync interest %s", e)
+            raise
+
 
     balance_updates = _correct_accounts(
         state,
