@@ -1345,8 +1345,8 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
         if not asset:
             asset = self.get_reserve_asset()
 
-        if isinstance(tolerance, datetime.datetime):
-            tolerance = tolerance
+        if isinstance(tolerance, (datetime.timedelta, pd.Timedelta)):
+            tolerance = pd.Timedelta(tolerance)
         else:
             tolerance = pd.Timedelta(days=1)
 
