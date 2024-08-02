@@ -289,6 +289,7 @@ def correct_accounts(
             logger.info(" - Position: %s", p)
         # Sync missing credit
         balances_updates = sync_model.sync_interests(
+            datetime.datetime.utcnow(),
             state,
             universe,
             pricing_model,
