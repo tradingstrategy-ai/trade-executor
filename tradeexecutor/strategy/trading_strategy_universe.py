@@ -1320,7 +1320,7 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
         self,
         asset: AssetIdentifier | None = None,
         timestamp: datetime.datetime | None = None,
-        tolerance: datetime.timedelta | None = None,
+        tolerance: datetime.timedelta = datetime.timedelta(days=1),
     ) -> float:
         """Get the latest supply APR for the lending asset.
 
