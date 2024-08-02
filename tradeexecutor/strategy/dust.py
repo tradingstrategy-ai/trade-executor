@@ -62,7 +62,7 @@ def get_dust_epsilon_for_asset(asset: AssetIdentifier) -> Decimal:
         return Decimal(10 ** -7)
     elif asset.token_symbol in ("USDC", "USDC.e"):
         return Decimal(0.1)
-    elif asset.token_symbol in ("aPolUSDC", ):
+    elif asset.token_symbol in ("aPolUSDC", "aEthUSDC"):
         return Decimal(0.1)
     else:
         return DEFAULT_DUST_EPSILON
