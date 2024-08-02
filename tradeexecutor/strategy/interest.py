@@ -577,10 +577,13 @@ def record_interest_rate(
 ):
     """Record interest rate at the time opening position.
 
-    Currently support only credit supply positions
+    - Currently support only credit supply positions
+    - Sets `interest_rate_at_open` if not set yet
     """
     assert isinstance(universe, TradingStrategyUniverse)
     assert universe.has_lending_data()
+
+    logger.info("Filling missing interest rate information")
 
     for p in state.portfolio.get_open_and_frozen_positions():
         if p.is_credit_supply():
@@ -641,7 +644,7 @@ def sync_interests(
         return []
 
     logger.info(
-        "Starting hot wallet interest distribution operation at: %s, previous update %s, syncing %s",
+        "Starting interest distribution operation at: %s, previous update %s, syncing %s",
         timestamp,
         previous_update_at,
         duration,

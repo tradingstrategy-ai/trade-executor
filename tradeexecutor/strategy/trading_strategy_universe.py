@@ -1346,12 +1346,16 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
         )
 
         if timestamp:
-            rate, _ = self.data_universe.lending_candles.supply_apr.get_single_rate(
-                lending_reserve,
-                timestamp,
-                data_lag_tolerance=pd.Timedelta(days=1),
-            )
-            return rate
+            tolerance = pd.Timedelta(days=2)
+            try:
+                rate, _ = self.data_universe.lending_candles.supply_apr.get_single_rate(
+                    lending_reserve,
+                    timestamp,
+                    data_lag_tolerance=tolerance,
+                )
+                return rate
+            except Exception as e:
+                raise RuntimeError(f"get_latest_supply_apr() failed, timestamp: {timestamp}, lending reserve: {lending_reserve}, asset: {asset}, tolerance: {tolerance}") from e
 
         # get last available rate
         df = self.data_universe.lending_candles.supply_apr.get_rates_by_reserve(lending_reserve)
