@@ -48,10 +48,8 @@ def test_eth_btc_momentum_credit(
 ):
     """Backtest the strategy with a short period.
 
-    - Ensure credit handling code does not crash outright
+    - Ensure credit handling code does not crash outright and we open backtest supply positions
     """
-
-    # Accounting is detect to be incorrect
     with mock.patch.dict('os.environ', environment, clear=True):
         app(["backtest"], standalone_mode=False)
 
