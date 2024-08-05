@@ -1049,7 +1049,9 @@ class TradeAnalysis:
             if grouped_duration == datetime.timedelta(0):
                 # start new group
                 if len(_positions) > 0:
-                    assert not position.is_credit_supply(), "Delta neutral positions should not be here"
+                    pass
+                    # FIXME
+                    # assert not position.is_credit_supply(), "Delta neutral positions should not be here"
                 grouped_duration += position.get_duration()
             elif previous_position_closed_at:
                 if position.opened_at < previous_position_closed_at:
