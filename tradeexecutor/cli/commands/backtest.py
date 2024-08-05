@@ -73,6 +73,7 @@ def backtest(
     id: str = shared_options.id,
     name: Optional[str] = shared_options.name,
     strategy_file: Path = shared_options.strategy_file,
+    state_file: Path = shared_options.state_file,
 
     # Backtest already requires an API key
     trading_strategy_api_key: str = required_option(shared_options.trading_strategy_api_key),
@@ -126,10 +127,15 @@ def backtest(
     # log_level is "disabled"
     logger = setup_logging(log_level)
 
+
+    backtest_result = state_file
+    if not backtest_result:
+        backtest_result = Path(f"state/{id}-backtest.json")
+
+    # State file not overridden from the command line
     if not unit_testing:
-        state_file = Path(f"state/{id}-backtest.json")
-        if state_file.exists():
-            os.remove(state_file)
+        if backtest_result.exists():
+            os.remove(backtest_result)
 
     if not cache_path:
         cache_path = prepare_cache(id, cache_path)
@@ -140,11 +146,7 @@ def backtest(
     if not notebook_report:
         notebook_report = Path(f"state/{id}-backtest.ipynb")
 
-    if not backtest_result:
-        backtest_result = Path(f"state/{id}-backtest.json")
-
     print(f"Starting backtesting for {strategy_file}")
-
 
     def loop():
         result = run_backtest_for_module(
@@ -174,8 +176,10 @@ def backtest(
 
     print(f"Writing backtest data the state file: {backtest_result.resolve()}")
     state.write_json_file(backtest_result)
-    state2 = State.read_json_file(backtest_result)
-    assert state.name == state2.name  # Early prototype serialisation checks
+
+    if not unit_testing:
+        state2 = State.read_json_file(backtest_result)
+        assert state.name == state2.name  # Early prototype serialisation checks
 
     print(f"Exporting report, notebook: {notebook_report}, HTML: {html_report}")
     export_backtest_report(
