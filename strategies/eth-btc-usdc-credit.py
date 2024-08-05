@@ -16,6 +16,7 @@ To backtest this strategy module locally:
 To see the backtest for longer history, refer to the notebook doing backtest with Binance data.
 """
 import datetime
+import os
 
 import pandas_ta
 import pandas as pd
@@ -54,8 +55,8 @@ class Parameters:
     """
 
     cycle_duration = CycleDuration.cycle_1d  # Run decide_trades() every 8h
-    source_time_bucket = TimeBucket.d1  # Use 1h candles as the raw data
-    target_time_bucket = TimeBucket.d1  # Create synthetic 8h candles
+    candle_time_bucket = TimeBucket.d1  # Use 1h candles as the raw data
+    # target_time_bucket = TimeBucket.d1  # Create synthetic 8h candles
     clock_shift_bars = 0  # Do not do shifted candles
 
     rsi_bars = 8  # Number of bars to calculate RSI for each tradingbar
@@ -92,8 +93,13 @@ class Parameters:
     backtest_start = datetime.datetime(2023, 8, 1)
     backtest_end = datetime.datetime(2024, 3, 15)
     stop_loss_time_bucket = TimeBucket.h1  # use 1h close as the stop loss signal
-    use_credit = True  # Allow us to flip credit usage on/off in backtesting to more easily test different scenarios
     backtest_trading_fee = 0.0030  # Switch to QuickSwap 30 BPS free from the default Binance 5 BPS fee
+    use_credit = True  # Allow us to flip credit usage on/off in backtesting to more easily test different scenarios
+
+    if os.environ.get("USE_BINANCE"):
+        use_binance = os.environ["USE_BINANCE"].lower() == "true"  # Integration test override
+    else:
+        use_binance = True  # Allow us to flip credit usage on/off in backtesting to more easily test different scenarios
 
 
 def calculate_eth_btc(strategy_universe: TradingStrategyUniverse, mode: ExecutionMode):
@@ -155,7 +161,7 @@ def create_indicators(
     """
     indicators = IndicatorSet()
     mode = execution_context.mode  # Switch between live trading and backtesting pairs
-    upsample = parameters.target_time_bucket
+    upsample = parameters.candle_time_bucket  # We do not perform upsample in this strategy
     shift = parameters.clock_shift_bars
     indicators.add(
         "rsi", calculate_resampled_rsi,
@@ -164,7 +170,7 @@ def create_indicators(
     indicators.add(
         "eth_btc",
         calculate_resampled_eth_btc,
-        {"upsample": parameters.target_time_bucket, "mode": mode, "shift": shift},
+        {"upsample": upsample, "mode": mode, "shift": shift},
         source=IndicatorSource.strategy_universe
     )
     indicators.add(
@@ -194,7 +200,7 @@ def decide_trades(
     indicators = input.indicators
     shift = parameters.clock_shift_bars
     clock_shift = pd.Timedelta(hours=1) * shift
-    upsample = parameters.target_time_bucket
+    upsample = parameters.candle_time_bucket
     mode = input.execution_context.mode
     our_pairs = get_strategy_trading_pairs(mode)
 
@@ -459,11 +465,11 @@ def get_lending_reserves(mode: ExecutionMode) -> list[LendingReserveDescription]
         # and Aave v3 in live execution (more liquid market)
         if mode.is_backtesting():
             lending_reserves = [
-                (ChainId.ethereum, LendingProtocolType.aave_v2, "USDC"),
+                (ChainId.polygon, LendingProtocolType.aave_v2, "USDC"),
             ]
         else:
             lending_reserves = [
-                (ChainId.ethereum, LendingProtocolType.aave_v3, "USDC"),
+                (ChainId.polygon, LendingProtocolType.aave_v3, "USDC"),
             ]
 
     return lending_reserves
@@ -499,9 +505,11 @@ def create_trading_universe(
     else:
 
         if execution_context.live_trading or execution_context.mode == ExecutionMode.preflight_check:
+            # Live trading
             start_at, end_at = None, None
             required_history_period=Parameters.required_history_period
         else:
+            # Create backtest trading universe
             required_history_period = None
             start_at=universe_options.start_at
             end_at=universe_options.end_at
@@ -523,7 +531,9 @@ def create_trading_universe(
         strategy_universe = TradingStrategyUniverse.create_from_dataset(
             dataset,
             forward_fill=True,
+            reserve_asset="0x2791bca1f2de4661ed88a30c99a7a9449aa84174"  # USDC.e on Polygon
         )
+
     return strategy_universe
 
 

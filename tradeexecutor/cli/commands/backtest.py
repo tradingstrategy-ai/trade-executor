@@ -90,6 +90,9 @@ def backtest(
     html_report: Optional[Path] = shared_options.html_report,
 
     python_profile_report: Optional[Path] = Option(None, envvar="PYTHON_PROFILE_REPORT", help="Write a Python cprof file to check where backtest spends time"),
+
+    # backtest_start: Optional[Path] = Option(None, envvar="PYTHON_PROFILE_REPORT", help="Override backtest start date"),
+    # backtest_end: Optional[Path] = Option(None, envvar="PYTHON_PROFILE_REPORT", help="Override backtest end date"),
     ):
     """Backtest a given strategy module.
 

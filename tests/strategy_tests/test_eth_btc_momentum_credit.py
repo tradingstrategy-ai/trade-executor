@@ -1,7 +1,11 @@
 """Run quick smoke test on eth-btc-usdc-credit strategy."""
+import os
+from pathlib import Path
 from unittest import mock
 
 import pytest
+
+from tradeexecutor.cli.commands.app import app
 
 
 @pytest.fixture()
@@ -23,9 +27,13 @@ def environment(
         "ASSET_MANAGEMENT_MODE": "enzyme",
         "UNIT_TESTING": "true",
         "LOG_LEVEL": "disabled",
+
         # "LOG_LEVEL": "info",
         # "CONFIRMATION_BLOCK_COUNT": "0",  # Needed for test backend, Anvil
         "TRADING_STRATEGY_API_KEY": os.environ["TRADING_STRATEGY_API_KEY"],
+
+        # Force to use DEX + lending data in the backtest
+        "USE_BINANCE": "false",
     }
     return environment
 

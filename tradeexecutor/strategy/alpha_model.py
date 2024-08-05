@@ -542,7 +542,7 @@ class AlphaModel:
         """
 
         assert pair is not None
-        assert pair.is_spot()
+        assert pair.is_spot(), f"Expected spot pair, got {pair}"
 
         if pair.internal_id in self.signals:
             self.signals[pair.internal_id].old_weight = old_weight
