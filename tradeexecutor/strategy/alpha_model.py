@@ -988,3 +988,24 @@ def format_signals(
     df = pd.DataFrame(data, columns=["Core pair", "Signal", "Value adj", "Norm weight", "Old weight", "Flipping", "Trade as", "Old trade as"])
     df = df.set_index("Core pair")
     return df
+
+
+def calculate_required_new_cash(trades: list[TradeExecution]) -> USDollarAmount:
+    """How much cash we need to cover the positions to run the rebalance.
+
+    - Calculate the cash needed to open the positions
+
+    - The cash can come from cash in hand,
+      credit supply
+
+    - We ignore: The closing of previous positions,
+      as these asset sales will release new cash
+
+    :return:
+        The amount of cash needed from cash reserves or credit supplies
+        to run the rebalance
+    """
+
+    assert all([t.is_spot() for t in trades]), "Shorts not supported yet"
+    diff = sum([t.get_value() for t in trades])
+    return diff

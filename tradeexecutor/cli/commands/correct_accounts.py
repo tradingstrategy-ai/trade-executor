@@ -2,8 +2,6 @@
 
 """
 import datetime
-import os
-import shutil
 import sys
 import time
 from _decimal import Decimal
@@ -14,12 +12,11 @@ from tabulate import tabulate
 from typer import Option
 
 from eth_defi.hotwallet import HotWallet
-from eth_defi.provider.anvil import mine
 from eth_defi.provider.broken_provider import get_almost_latest_block_number
 
 from tradeexecutor.strategy.account_correction import correct_accounts as _correct_accounts, check_accounts, UnknownTokenPositionFix
 from .app import app
-from ..bootstrap import prepare_executor_id, create_web3_config, create_sync_model, create_state_store, create_client, backup_state, create_execution_and_sync_model
+from ..bootstrap import prepare_executor_id, create_web3_config, create_sync_model, create_state_storecreate_client, backup_state, create_execution_and_sync_model
 from ..log import setup_logging
 from ...ethereum.enzyme.tx import EnzymeTransactionBuilder
 from ...ethereum.enzyme.vault import EnzymeVaultSyncModel
@@ -41,7 +38,6 @@ from ...utils.blockchain import get_block_timestamp
 @app.command()
 def correct_accounts(
     id: str = shared_options.id,
-    name: str = shared_options.name,
 
     strategy_file: Path = shared_options.strategy_file,
     state_file: Optional[Path] = shared_options.state_file,
@@ -284,13 +280,13 @@ def correct_accounts(
 
     credit_positions = [p for p in state.portfolio.get_open_and_frozen_positions() if p.is_credit_supply()]
     if len(credit_positions) > 0:
+        # Sync missing credit
         try:
             logger.info("Credit positions detected, syncing interest before applying accounting checks")
             for p in credit_positions:
                 logger.info(" - Position: %s", p)
-            # Sync missing credit
             balances_updates = sync_model.sync_interests(
-                timestamp=datetime.datetime.utcnow(),  # None = live
+                timestamp=datetime.datetime.utcnow(),
                 state=state,
                 universe=universe,
                 pricing_model=pricing_model,
@@ -300,7 +296,6 @@ def correct_accounts(
         except Exception as e:
             logger.info("correct-accounts: could not sync interest %s", e)
             raise
-
 
     balance_updates = _correct_accounts(
         state,
