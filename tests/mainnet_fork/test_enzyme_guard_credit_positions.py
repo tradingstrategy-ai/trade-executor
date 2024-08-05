@@ -5,6 +5,7 @@ import secrets
 from pathlib import Path
 from unittest import mock
 
+import flaky
 import pytest
 
 from eth_account import Account
@@ -210,6 +211,7 @@ def test_enzyme_guard_credit_positions(
         "VAULT_DEPLOYMENT_BLOCK_NUMBER": str(vault_info["block_number"] - github_hack),
         "VAULT_ADAPTER_ADDRESS": vault_info["generic_adapter"],
         "VAULT_PAYMENT_FORWARDER_ADDRESS": vault_info["usdc_payment_forwarder"],
+        "MAX_DATA_DELAY_MINUTES": "120",  # Allow 2h stale datag
     })
 
     with mock.patch.dict('os.environ', environment, clear=True):

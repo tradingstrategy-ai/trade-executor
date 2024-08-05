@@ -542,7 +542,7 @@ class AlphaModel:
         """
 
         assert pair is not None
-        assert pair.is_spot()
+        assert pair.is_spot(), f"Expected spot pair, got {pair}"
 
         if pair.internal_id in self.signals:
             self.signals[pair.internal_id].old_weight = old_weight
@@ -629,15 +629,30 @@ class AlphaModel:
         for pair_id, raw_weight in weights.items():
             self.signals[pair_id].raw_weight = raw_weight
 
-    def update_old_weights(self, portfolio: Portfolio):
+    def update_old_weights(
+        self,
+        portfolio: Portfolio,
+        portfolio_pairs: list[TradingPairIdentifier] | None=None,
+    ):
         """Update the old weights of the last strategy cycle to the alpha model.
 
         - Update % of portfolio weight of an asset
 
         - Update USD portfolio value of an asset
+
+        :param portfolio_pairs:
+            Only consider these pairs part of portifolio trading.
+
+            You can use this to exclude credit positions from the portfolio trading.
         """
         total = portfolio.get_position_equity_and_loan_nav()
         for position in portfolio.open_positions.values():
+
+            # Pair is excluded
+            if portfolio_pairs:
+                if position.pair not in portfolio_pairs:
+                    continue
+
             value = position.get_value()
             weight = value / total
             self.set_old_weight(
@@ -988,3 +1003,24 @@ def format_signals(
     df = pd.DataFrame(data, columns=["Core pair", "Signal", "Value adj", "Norm weight", "Old weight", "Flipping", "Trade as", "Old trade as"])
     df = df.set_index("Core pair")
     return df
+
+
+def calculate_required_new_cash(trades: list[TradeExecution]) -> USDollarAmount:
+    """How much cash we need to cover the positions to run the rebalance.
+
+    - Calculate the cash needed to open the positions
+
+    - The cash can come from cash in hand,
+      credit supply
+
+    - We ignore: The closing of previous positions,
+      as these asset sales will release new cash
+
+    :return:
+        The amount of cash needed from cash reserves or credit supplies
+        to run the rebalance
+    """
+
+    assert all([t.is_spot() for t in trades]), "Shorts not supported yet"
+    diff = sum([t.get_value() for t in trades])
+    return diff
