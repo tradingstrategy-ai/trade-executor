@@ -90,6 +90,7 @@ class Parameters:
     # Backtesting only
     #
 
+    initial_cash = 10_000
     backtest_start = datetime.datetime(2023, 8, 1)
     backtest_end = datetime.datetime(2024, 3, 15)
     stop_loss_time_bucket = TimeBucket.h1  # use 1h close as the stop loss signal
@@ -252,7 +253,9 @@ def decide_trades(
     # Trading logic
     #
 
-    for pair in [btc_pair, eth_pair]:
+    volatile_pairs = [btc_pair, eth_pair]
+
+    for pair in volatile_pairs:
 
         #
         # Regime filter
@@ -324,7 +327,7 @@ def decide_trades(
     alpha_model.select_top_signals(2)
     alpha_model.assign_weights(weight_passthrouh)
     alpha_model.normalise_weights()
-    alpha_model.update_old_weights(state.portfolio)
+    alpha_model.update_old_weights(state.portfolio, portfolio_pairs=volatile_pairs)
     portfolio = position_manager.get_current_portfolio()
     portfolio_target_value = portfolio.get_total_equity() * parameters.allocation
     alpha_model.calculate_target_positions(position_manager, portfolio_target_value)

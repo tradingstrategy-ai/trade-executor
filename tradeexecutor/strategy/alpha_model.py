@@ -629,15 +629,30 @@ class AlphaModel:
         for pair_id, raw_weight in weights.items():
             self.signals[pair_id].raw_weight = raw_weight
 
-    def update_old_weights(self, portfolio: Portfolio):
+    def update_old_weights(
+        self,
+        portfolio: Portfolio,
+        portfolio_pairs: list[TradingPairIdentifier] | None=None,
+    ):
         """Update the old weights of the last strategy cycle to the alpha model.
 
         - Update % of portfolio weight of an asset
 
         - Update USD portfolio value of an asset
+
+        :param portfolio_pairs:
+            Only consider these pairs part of portifolio trading.
+
+            You can use this to exclude credit positions from the portfolio trading.
         """
         total = portfolio.get_position_equity_and_loan_nav()
         for position in portfolio.open_positions.values():
+
+            # Pair is excluded
+            if portfolio_pairs:
+                if position.pair not in portfolio_pairs:
+                    continue
+
             value = position.get_value()
             weight = value / total
             self.set_old_weight(

@@ -239,6 +239,7 @@ def export_backtest_report(
         try:
             ep.preprocess(nb, {'metadata': {'path': '.'}})
         except CellExecutionError as e:
+            print(e)
             raise BacktestReportRunFailed(f"Could not run backtest reporter for {name}") from e
 
         logger.info("Notebook executed")

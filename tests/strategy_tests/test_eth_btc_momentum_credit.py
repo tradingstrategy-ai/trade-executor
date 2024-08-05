@@ -48,7 +48,5 @@ def test_eth_btc_momentum_credit(
 
     # Accounting is detect to be incorrect
     with mock.patch.dict('os.environ', environment, clear=True):
-        with pytest.raises(SystemExit) as sys_exit:
-            app(["backtest"], standalone_mode=False)
-        assert sys_exit.value.code == 0
+        app(["backtest"], standalone_mode=False)
 
