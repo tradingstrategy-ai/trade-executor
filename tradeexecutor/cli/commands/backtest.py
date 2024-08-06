@@ -84,7 +84,6 @@ def backtest(
     unit_testing: bool = shared_options.unit_testing,
 
     # Unsorted options
-    backtest_result: Optional[Path] = shared_options.backtest_result,
     cache_path: Optional[Path] = shared_options.cache_path,
 
     notebook_report: Optional[Path] = shared_options.notebook_report,

@@ -310,7 +310,7 @@ def test_cli_backtest(
         "LOG_LEVEL": "disabled",
         "HTML_REPORT":  html_result,
         "NOTEBOOK_REPORT":  notebook_result,
-        "BACKTEST_RESULT":  backtest_result,
+        "STATE_FILE":  backtest_result,
     }
 
     cli = get_command(app)

@@ -56,7 +56,7 @@ json_rpc_anvil = Option(None, envvar="JSON_RPC_ANVIL", help="Anvil JSON-RPC url.
 
 state_file = Option(None, envvar="STATE_FILE", help="JSON file where we serialise the execution state. If not given defaults to state/{executor-id}.json for live trade execution, state/{executor-id}-backtest.json for the backtest results.")
 
-backtest_result = Option(None, envvar="BACKTEST_RESULT", help="JSON file that contains the results of an earlier backtest run. Needed for the web server to display backtest information. If not given defaults to state/{executor-id}-backtest.json is assumed when the webhook server is started.")
+backtest_result = Option(None, envvar="BACKTEST_RESULT", help="State JSON file that contains the results of an earlier backtest run. Needed for the web server to display backtest information. If not given defaults to state/{executor-id}-backtest.json is assumed when the webhook server is started.")
 
 notebook_report = Option(None, envvar="NOTEBOOK_REPORT", help="Jupyter Notebook file where the store the notebook results. If not given defaults to state/{executor-id}-backtest.ipynb.")
 html_report = Option(None, envvar="HTML_REPORT", help="HTML file where the store the notebook results. If not given defaults to state/{executor-id}-backtest.html.")
