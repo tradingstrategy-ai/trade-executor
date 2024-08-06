@@ -97,6 +97,7 @@ def update_interest(
     # assert asset.underlying.is_stablecoin(), f"Credit supply is currently supported for stablecoin assets with 1:1 USD price assumption. Got: {asset}"
 
     previous_update_at = interest.last_event_at
+    previous_block = interest.last_updated_block_number
     old_balance = interest.last_token_amount
     gained_interest = new_token_amount - old_balance
     usd_value = float(new_token_amount) * asset_price
@@ -110,12 +111,13 @@ def update_interest(
 
     logger.log(
         log_level,
-        "update_interest(), new token amount: %s, old balance: %s, gained interest tokens: %s, position new USD value: %s, previous update at %s",
+        "update_interest(), new token amount: %s, old balance: %s, gained interest tokens: %s, position new USD value: %s, previous update at %s, prevous block %s",
         new_token_amount,
         old_balance,
         gained_interest,
         usd_value,
-        previous_update_at
+        previous_update_at,
+        previous_block
     )
 
     gained_interest_percent = gained_interest / old_balance
