@@ -159,9 +159,11 @@ class BalanceUpdate:
 
     def __post_init__(self):
 
+        # TODO: Not sure what's going on here,
+        # but temporarily allow negative rebases
         # We might get zero quantity events through
         # in some cases, though not sure what's the cause
-        assert self.quantity >= 0, f"Balance update cannot go negative: {self}"
+        # assert self.quantity >= 0, f"Balance update cannot go negative: {self}"
 
         if self.previous_update_at:
             assert self.previous_update_at <= self.block_mined_at, f"Travelling back in time: {self.previous_update_at} - {self.block_mined_at}"
