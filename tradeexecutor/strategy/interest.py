@@ -101,7 +101,15 @@ def update_interest(
     gained_interest = new_token_amount - old_balance
     usd_value = float(new_token_amount) * asset_price
 
-    logger.info(
+    # TODO: Not sure we zero/negative rebalances could happen, but
+    # log them as warning for now
+    if gained_interest <= 0:
+        log_level = logging.WARNING
+    else:
+        log_level = logging.INFO
+
+    logger.log(
+        log_level,
         "update_interest(), new token amount: %s, old balance: %s, gained interest tokens: %s, position new USD value: %s, previous update at %s",
         new_token_amount,
         old_balance,
