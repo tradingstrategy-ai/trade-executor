@@ -851,29 +851,40 @@ class StrategyRunner(abc.ABC):
             logger.info(f"check_position_triggers() using block %s", end_block)
 
         timestamp = datetime.datetime.utcnow()
+        universe = cast(TradingStrategyUniverse, universe)
 
         with self.timed_task_context_manager("check_position_triggers"):
 
-            # We need to sync interest before we can check accouts
+            # We need to sync interest before we can run check accouts,
+            # as otherwise it will
             with self.timed_task_context_manager("sync_interest_before_triggers"):
                 interest_events = self.sync_model.sync_interests(
                     timestamp,
                     state,
-                    cast(TradingStrategyUniverse, universe),
-                    self.pricing_model,
+                    universe,
+                    stop_loss_pricing_model,
                 )
                 logger.info("Generated %d sync interest events", len(interest_events))
 
-            # Sync treasure before the trigger checks
             with self.timed_task_context_manager("sync_portfolio_before_triggers"):
-                self.check_accounts(universe, state, report_only=True, end_block=end_block)
-                self.sync_portfolio(clock, universe, state, debug_details, end_block=end_block, long_short_metrics_latest=long_short_metrics_latest)
+                # Sync treasure before the trigger checks
+                self.sync_portfolio(
+                    clock,
+                    universe,
+                    state,
+                    debug_details,
+                    end_block=end_block,
+                    long_short_metrics_latest=long_short_metrics_latest,
+                )
 
-            # Check that our on-chain balances are good
-            with self.timed_task_context_manager("check_accounts_position_triggers"):
-                if self.execution_context.mode.is_live_trading():
-                    logger.info("Position trigger pre-trade accounts balance check")
-                self.check_accounts(universe, state, end_block=end_block)
+            # Check that our accounting is intact before proceeding
+            with self.timed_task_context_manager("check_accounts_before_triggers"):
+                self.check_accounts(
+                    universe,
+                    state,
+                    report_only=True,
+                    end_block=end_block
+                )
 
             # We use PositionManager.close_position()
             # to generate trades to close stop loss positions
@@ -885,11 +896,8 @@ class StrategyRunner(abc.ABC):
             )
 
             triggered_trades = check_position_triggers(position_manager)
-
             triggered_trades = post_process_trade_decision(state, triggered_trades)
-
             approved_trades = self.approval_model.confirm_trades(state, triggered_trades)
-
             if approved_trades:
                 logger.info("Executing %d stop loss/take profit trades at %s", len(approved_trades), clock)
                 self.execution_model.execute_trades(
