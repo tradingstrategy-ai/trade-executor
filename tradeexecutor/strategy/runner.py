@@ -174,13 +174,13 @@ class StrategyRunner(abc.ABC):
         return self.execution_context.mode.is_live_trading() or self.execution_context.mode == ExecutionMode.unit_testing_trading
 
     def sync_portfolio(
-            self,
-            strategy_cycle_or_trigger_check_ts: datetime.datetime,
-            universe: StrategyExecutionUniverse,
-            state: State,
-            debug_details: dict,
-            end_block: BlockNumber | NoneType = None,
-            long_short_metrics_latest: StatisticsTable | None = None,
+        self,
+        strategy_cycle_or_trigger_check_ts: datetime.datetime,
+        universe: StrategyExecutionUniverse,
+        state: State,
+        debug_details: dict,
+        end_block: BlockNumber | NoneType = None,
+        long_short_metrics_latest: StatisticsTable | None = None,
     ):
         """Adjust portfolio balances based on the external events.
 
@@ -850,7 +850,19 @@ class StrategyRunner(abc.ABC):
             # Only log in live execution
             logger.info(f"check_position_triggers() using block %s", end_block)
 
+        timestamp = datetime.datetime.utcnow()
+
         with self.timed_task_context_manager("check_position_triggers"):
+
+            # We need to sync interest before we can check accouts
+            with self.timed_task_context_manager("sync_interest_before_triggers"):
+                interest_events = self.sync_model.sync_interests(
+                    timestamp,
+                    state,
+                    cast(TradingStrategyUniverse, universe),
+                    self.pricing_model,
+                )
+                logger.info("Generated %d sync interest events", len(interest_events))
 
             # Sync treasure before the trigger checks
             with self.timed_task_context_manager("sync_portfolio_before_triggers"):
