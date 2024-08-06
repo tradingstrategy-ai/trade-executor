@@ -31,19 +31,16 @@ Example how to manually test:
 
 import json
 import logging
-import os.path
 import sys
 from pathlib import Path
-from pprint import pformat
 from typing import Optional
 
 from typer import Option
 
 from eth_defi.abi import get_deployed_contract
-from eth_defi.deploy import deploy_contract
-from eth_defi.enzyme.deployment import POLYGON_DEPLOYMENT, EnzymeDeployment, ETHEREUM_DEPLOYMENT
 from eth_defi.enzyme.generic_adapter_vault import deploy_guard as _deploy_guard
 from eth_defi.hotwallet import HotWallet
+from eth_defi.uniswap_v2.utils import ZERO_ADDRESS
 from tradeexecutor.cli.guard import generate_whitelist
 from tradeexecutor.monkeypatch.web3 import construct_sign_and_send_raw_middleware
 from tradingstrategy.chain import ChainId
@@ -80,6 +77,7 @@ def deploy_guard(
     vault_adapter_address: Optional[str] = shared_options.vault_address,
 
     report_file: Optional[Path] = Option(None, envvar="REPORT_FILE", help="JSON file path where we wrote information about the deployment"),
+    update_generic_adapter: Optional[bool] = Option(False, envvar="UPDATE_GENERIC_ADAPTER", help="Perform transaction to update the generic adapter contract to use the new guard deployment. The private key must be the generic adapter owner for this to work."),
 
 ):
     """Deploy a new Guard smart contract.
@@ -121,11 +119,18 @@ def deploy_guard(
 
     if vault_address:
         assert vault_adapter_address, f"Both vault_address and vault_adapter_address must be given"
+        vault = get_deployed_contract(web3, f"enzyme/VaultLib.json", vault_address)
+        generic_adapter = get_deployed_contract(web3, f"GuardedGenericAdapter.json", vault_adapter_address)
+        # Check that given smart cotnracts look good
+        comptroller = vault.functions.getAccessor().call()
+        assert comptroller != ZERO_ADDRESS
+        assert generic_adapter.functions.whitelistedVault().call() != ZERO_ADDRESS
         allow_sender = vault_adapter_address
         allow_receiver = vault_address
     else:
         allow_receiver = None
         allow_sender = None
+        generic_adapter = None
 
     # Check the chain is online
     logger.info(f"  Chain id is {web3.eth.chain_id:,}")
@@ -180,6 +185,10 @@ def deploy_guard(
             allow_sender=allow_sender,
         )
 
+        if update_generic_adapter:
+            assert generic_adapter is not None, "VAULT_ADAPTER_ADDRESS mpt given"
+
+
     except Exception as e:
 
         logger.error("Failed to deploy, is_mainnet_fork(): %s", web3config.is_mainnet_fork())
@@ -207,4 +216,3 @@ def deploy_guard(
     logger.info("All ok")
 
     web3config.close()
-

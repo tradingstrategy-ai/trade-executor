@@ -707,6 +707,7 @@ def test_enzyme_perform_test_trade_with_redeployed_guard(
     env["VAULT_ADDRESS"] = vault.address
     env["VAULT_ADAPTER_ADDRESS"] = vault.generic_adapter.address
     env["REPORT_FILE"] = report_file
+    env["UPDATE_GENERIC_ADAPTER"] = "true"
 
     cli = get_command(app)
 
@@ -732,9 +733,14 @@ def test_enzyme_perform_test_trade_with_redeployed_guard(
 
     # Check the deployed address look somewhat correct
     report_data = json.load(report_file.open("rt"))
+    vault = Vault.fetch(
+        web3,
+        vault_address=vault.address,
+        generic_adapter_address=vault.generic_adapter.address,
+    )
     assert report_data["allow_receiver"] == vault.address
     assert report_data["allow_sender"] == vault.generic_adapter.address
-    assert report_data["guard"] == vault.address
+    assert report_data["guard"] == vault.guard_contract.address
 
     with patch.dict(os.environ, env, clear=True):
         cli.main(args=["perform-test-trade"], standalone_mode=False)
