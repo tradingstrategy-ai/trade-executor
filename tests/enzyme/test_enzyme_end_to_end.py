@@ -638,7 +638,6 @@ def test_enzyme_correct_accounts_for_closed_position_transfer_away(
         assert e.value.code == 0
 
 
-@pytest.mark.slow_test_group
 def test_deploy_guard_standalone(
     environment: dict,
     web3: Web3,
@@ -659,7 +658,6 @@ def test_deploy_guard_standalone(
         app(["deploy-guard"], standalone_mode=False)
 
 
-@pytest.mark.slow_test_group
 def test_deploy_guard_for_vault(
     environment: dict,
     web3: Web3,
