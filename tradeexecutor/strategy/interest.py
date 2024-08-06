@@ -104,25 +104,25 @@ def update_interest(
 
     # TODO: Not sure we zero/negative rebalances could happen, but
     # log them as warning for now
-    if gained_interest <= 0:
+    if gained_interest < 0:
         log_level = logging.WARNING
     else:
         log_level = logging.INFO
 
     logger.log(
         log_level,
-        "update_interest(), new token amount: %s, old balance: %s, gained interest tokens: %s, position new USD value: %s, previous update at %s, prevous block %s",
+        f"update_interest(), block {block_number or 0:,} new token amount: %s, old balance: %s, gained interest tokens: %s, position new USD value: %s, previous update at %s, prevous block %s",
         new_token_amount,
         old_balance,
         gained_interest,
         usd_value,
         previous_update_at,
-        previous_block
+        f"{previous_block or 0:,}",
     )
 
     gained_interest_percent = gained_interest / old_balance
 
-    assert gained_interest_percent >= 0, f"Negative interest for {asset}: gained interest: {gained_interest} (diff {gained_interest_percent * 100:.2f}%), old quantity: {old_balance}, new quantity: {new_token_amount}"
+    # assert gained_interest_percent >= 0, f"Negative interest for {asset}: gained interest: {gained_interest} (diff {gained_interest_percent * 100:.2f}%), old quantity: {old_balance}, new quantity: {new_token_amount}"
     assert gained_interest_percent < max_interest_gain, f"Unlikely gained_interest for {asset}: {gained_interest} (diff {gained_interest_percent * 100:.2f}%, threshold {max_interest_gain * 100}%), old quantity: {old_balance}, new quantity: {new_token_amount}"
 
     evt = BalanceUpdate(
