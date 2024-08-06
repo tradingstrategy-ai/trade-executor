@@ -123,7 +123,7 @@ def update_interest(
     gained_interest_percent = gained_interest / old_balance
 
     # assert gained_interest_percent >= 0, f"Negative interest for {asset}: gained interest: {gained_interest} (diff {gained_interest_percent * 100:.2f}%), old quantity: {old_balance}, new quantity: {new_token_amount}"
-    assert gained_interest_percent < max_interest_gain, f"Unlikely gained_interest for {asset}: {gained_interest} (diff {gained_interest_percent * 100:.2f}%, threshold {max_interest_gain * 100}%), old quantity: {old_balance}, new quantity: {new_token_amount}"
+    assert abs(gained_interest_percent) < max_interest_gain, f"Unlikely gained_interest for {asset}: {gained_interest} (diff {gained_interest_percent * 100:.2f}%, threshold {max_interest_gain * 100}%), old quantity: {old_balance}, new quantity: {new_token_amount}"
 
     evt = BalanceUpdate(
         balance_update_id=event_id,
