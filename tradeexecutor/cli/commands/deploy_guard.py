@@ -77,7 +77,9 @@ def deploy_guard(
     aave: bool = Option(False, envvar="AAVE", help="Whitelist Aave aUSDC deposits"),
 
     vault_address: Optional[str] = shared_options.vault_address,
-    vault_adapter_address: Optional[str] = shared_options.vault_adapter_address,
+    vault_adapter_address: Optional[str] = shared_options.vault_address,
+
+    report_file: Optional[Path] = Option(None, envvar="REPORT_FILE", help="JSON file path where we wrote information about the deployment"),
 
 ):
     """Deploy a new Guard smart contract.
@@ -191,6 +193,17 @@ def deploy_guard(
         raise RuntimeError(f"Deployment failed. Hot wallet: {hot_wallet.address}, denomination asset: {denomination_token.address}\n{e}") from e
 
     logger.info("Guard deployed at %s", guard.address)
+
+    # Used to expose info to unit testing
+    if report_file:
+        with report_file.open("wt") as out:
+            data = {
+                "guard": guard.address,
+                "allow_receiver": allow_receiver,
+                "allow_sender": allow_sender,
+            }
+            json.dump(data, out)
+
     logger.info("All ok")
 
     web3config.close()

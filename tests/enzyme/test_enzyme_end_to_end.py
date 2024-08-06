@@ -681,3 +681,67 @@ def test_deploy_guard_for_vault(
 
     with patch.dict(os.environ, env, clear=True):
         app(["deploy-guard"], standalone_mode=False)
+
+
+def test_enzyme_perform_test_trade_with_redeployed_guard(
+    environment: dict,
+    web3: Web3,
+    state_file: Path,
+    usdc: Contract,
+    weth: Contract,
+    vault: Vault,
+    deployer: HexAddress,
+    enzyme_deployment: EnzymeDeployment,
+    weth_usdc_trading_pair: TradingPairIdentifier,
+    tmp_path,
+):
+    """Perform a test trade on Enzymy vault via CLI.
+
+    - Use deploy-guard to deploy a new guard for the vault
+
+    - If the guard deployment is broken, the test trade should not success
+    """
+
+    report_file = tmp_path / "guard.json"
+    env = environment.copy()
+    env["VAULT_ADDRESS"] = vault.address
+    env["VAULT_ADAPTER_ADDRESS"] = vault.generic_adapter.address
+    env["REPORT_FILE"] = report_file
+
+    cli = get_command(app)
+
+    # Deposit some USDC to start
+    deposit_amount = 500 * 10**6
+    tx_hash = usdc.functions.approve(vault.comptroller.address, deposit_amount).transact({"from": deployer})
+    assert_transaction_success_with_explanation(web3, tx_hash)
+    tx_hash = vault.comptroller.functions.buyShares(deposit_amount, 1).transact({"from": deployer})
+    assert_transaction_success_with_explanation(web3, tx_hash)
+    assert usdc.functions.balanceOf(vault.address).call() == deposit_amount
+    logger.info("Deposited %d %s at block %d", deposit_amount, usdc.address, web3.eth.block_number)
+
+    # Check we have a deposit event
+    logs = vault.comptroller.events.SharesBought.get_logs()
+    logger.info("Got logs %s", logs)
+    assert len(logs) == 1
+
+    with patch.dict(os.environ, env, clear=True):
+        cli.main(args=["init"], standalone_mode=False)
+
+    with patch.dict(os.environ, env, clear=True):
+        cli.main(args=["deploy-guard"], standalone_mode=False)
+
+    # Check the deployed address look somewhat correct
+    report_data = json.load(report_file.open("rt"))
+    assert report_data["allow_receiver"] == vault.address
+    assert report_data["allow_sender"] == vault.generic_adapter.address
+    assert report_data["guard"] == vault.address
+
+    with patch.dict(os.environ, env, clear=True):
+        cli.main(args=["perform-test-trade"], standalone_mode=False)
+
+    assert usdc.functions.balanceOf(vault.address).call() < deposit_amount, "No deposits where spent; trades likely did not happen"
+
+    # Check the resulting state and see we made some trade for trading fee losses
+    with state_file.open("rt") as inp:
+        state: State = State.from_json(inp.read())
+        assert len(list(state.portfolio.get_all_trades())) == 2
