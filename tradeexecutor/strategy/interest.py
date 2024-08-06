@@ -111,7 +111,7 @@ def update_interest(
 
     logger.log(
         log_level,
-        f"update_interest(), block {block_number or 0:,} new token amount: %s, old balance: %s, gained interest tokens: %s, position new USD value: %s, previous update at %s, prevous block %s",
+        f"update_interest(), block {block_number or 0:,}, new token amount: %s, old balance: %s, gained interest tokens: %s, position new USD value: %s, previous update at %s, previous block at %s",
         new_token_amount,
         old_balance,
         gained_interest,
