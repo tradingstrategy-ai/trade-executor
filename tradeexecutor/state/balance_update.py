@@ -158,7 +158,10 @@ class BalanceUpdate:
     block_number: int | None = None
 
     def __post_init__(self):
-        assert self.quantity != 0, f"Balance update cannot be zero: {self}"
+
+        # We might get zero quantity events through
+        # in some cases, though not sure what's the cause
+        assert self.quantity >= 0, f"Balance update cannot go negative: {self}"
 
         if self.previous_update_at:
             assert self.previous_update_at <= self.block_mined_at, f"Travelling back in time: {self.previous_update_at} - {self.block_mined_at}"

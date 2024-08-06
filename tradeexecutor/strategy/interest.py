@@ -97,10 +97,18 @@ def update_interest(
     # assert asset.underlying.is_stablecoin(), f"Credit supply is currently supported for stablecoin assets with 1:1 USD price assumption. Got: {asset}"
 
     previous_update_at = interest.last_event_at
-
     old_balance = interest.last_token_amount
     gained_interest = new_token_amount - old_balance
     usd_value = float(new_token_amount) * asset_price
+
+    logger.info(
+        "update_interest(), new token amount: %s, old balance: %s, gained interest tokens: %s, position new USD value: %s, previous update at %s",
+        new_token_amount,
+        old_balance,
+        gained_interest,
+        usd_value,
+        previous_update_at
+    )
 
     gained_interest_percent = gained_interest / old_balance
 
@@ -454,7 +462,7 @@ def accrue_interest(
 
     assert interest_distribution.duration > ZERO_TIMEDELTA, f"Tried to distribute interest for negative timespan {interest_distribution.start} - {interest_distribution.end}"
 
-    block_number_str = f"{block_number,}" if block_number else "<no block>"
+    block_number_str = f"{block_number:,}" if block_number else "<no block>"
     logger.info(f"accrue_interest({block_timestamp}, {block_number_str})")
 
     part_of_year = interest_distribution.duration / aave_financial_year
