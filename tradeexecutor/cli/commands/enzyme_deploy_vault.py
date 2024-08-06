@@ -237,6 +237,8 @@ def enzyme_deploy_vault(
             # Try to get some useful debug info from Anvil
             web3config.close(logging.ERROR)
 
+        logger.exception(e)  # TODO: Typer does not display this exception?
+
         raise RuntimeError(f"Deployment failed. Hot wallet: {hot_wallet.address}, denomination asset: {denomination_token.address}.\n{e}") from e
 
     if vault_record_file and (not simulate):
