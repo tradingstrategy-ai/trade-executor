@@ -11,7 +11,11 @@ app = typer.Typer(
     name="Trade Executor",
     context_settings={
         "max_content_width": shutil.get_terminal_size().columns
-    }
+    },
+    # Typer swallows nested exceptions
+    # https://github.com/tiangolo/typer/issues/129
+    pretty_exceptions_enable=False,
+    pretty_exceptions_show_locals=False,
 )
 
 
