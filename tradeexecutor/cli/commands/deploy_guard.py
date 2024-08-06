@@ -7,10 +7,6 @@ Example how to manually test:
 .. code-block:: shell
 
     export SIMULATE=true
-    export FUND_NAME="Up only and then more"
-    export FUND_SYMBOL="UP"
-    export TERMS_OF_SERVICE_ADDRESS="0x24BB78E70bE0fC8e93Ce90cc8A586e48428Ff515"
-    export VAULT_RECORD_FILE="/tmp/sample-vault-deployment.json"
     export OWNER_ADDRESS="0x238B0435F69355e623d99363d58F7ba49C408491"
 
     #
@@ -31,7 +27,6 @@ Example how to manually test:
     # Is Polygonscan.com API key, passed to Forge
     export ETHERSCAN_API_KEY=
 
-    trade-executor enzyme-deploy-vault
 """
 
 import json
@@ -47,9 +42,8 @@ from typer import Option
 from eth_defi.abi import get_deployed_contract
 from eth_defi.deploy import deploy_contract
 from eth_defi.enzyme.deployment import POLYGON_DEPLOYMENT, EnzymeDeployment, ETHEREUM_DEPLOYMENT
-from eth_defi.enzyme.generic_adapter_vault import deploy_vault_with_generic_adapter
+from eth_defi.enzyme.generic_adapter_vault import deploy_guard as _deploy_guard
 from eth_defi.hotwallet import HotWallet
-from eth_defi.token import fetch_erc20_details
 from tradeexecutor.cli.guard import generate_whitelist
 from tradeexecutor.monkeypatch.web3 import construct_sign_and_send_raw_middleware
 from tradingstrategy.chain import ChainId
@@ -73,10 +67,7 @@ def deploy_guard(
 
     denomination_asset: Optional[str] = Option(None, envvar="DENOMINATION_ASSET", help="Stablecoin asset used for vault denomination"),
     owner_address: Optional[str] = Option(None, envvar="OWNER_ADDRESS", help="The protocol or multisig address that is set as the owner of the vault"),
-    terms_of_service_address: Optional[str] = Option(None, envvar="TERMS_OF_SERVICE_ADDRESS", help="The address of the terms of service smart contract"),
     whitelisted_assets: Optional[str] = Option(..., envvar="WHITELISTED_ASSETS", help="Space separarted list of ERC-20 addresses this vault can trade. Denomination asset does not need to be whitelisted separately."),
-
-    vault_address: Optional[str] = Option(None, envvar="VAULT_ADDRESS", help="Address of the Enzyme vault to associate the guard with"),
 
     unit_testing: bool = shared_options.unit_testing,
     production: bool = Option(False, envvar="PRODUCTION", help="Set production metadata flag true for the deployment."),
@@ -85,6 +76,8 @@ def deploy_guard(
     one_delta: bool = Option(False, envvar="ONE_DELTA", help="Whitelist 1delta interaction with GuardV0 smart contract."),
     aave: bool = Option(False, envvar="AAVE", help="Whitelist Aave aUSDC deposits"),
 
+    vault_address: Optional[str] = shared_options.vault_address,
+    vault_adapter_address: Optional[str] = shared_options.vault_adapter_address,
 
 ):
     """Deploy a new Guard smart contract.
@@ -121,26 +114,21 @@ def deploy_guard(
     web3.middleware_onion.add(construct_sign_and_send_raw_middleware(hot_wallet.account))
 
     # Build the list of whitelisted assets GuardV0 allows us to trade
-    whitelisted_asset_details, usdc = generate_whitelist(web3, whitelisted_assets)
+    whitelisted_asset_details = generate_whitelist(web3, whitelisted_assets)
+    denomination_token = whitelisted_asset_details[0]
 
-    # No other supported Enzyme deployments
-    match chain_id:
-        case ChainId.ethereum:
-            deployment_info = ETHEREUM_DEPLOYMENT
-            enzyme_deployment = EnzymeDeployment.fetch_deployment(web3, ETHEREUM_DEPLOYMENT, deployer=hot_wallet.address)
-            denomination_token = fetch_erc20_details(web3, deployment_info["usdc"])
-            one_delta = False
-        case ChainId.polygon:
-            deployment_info = POLYGON_DEPLOYMENT
-            enzyme_deployment = EnzymeDeployment.fetch_deployment(web3, POLYGON_DEPLOYMENT, deployer=hot_wallet.address)
-            denomination_token = fetch_erc20_details(web3, deployment_info["usdc"])
-            one_delta = True
-        case _:
-            raise NotImplementedError()
+    if vault_address:
+        assert vault_adapter_address, f"Both vault_address and vault_adapter_address must be given"
+        allow_sender = vault_adapter_address
+        allow_receiver = vault_address
+    else:
+        allow_receiver = None
+        allow_sender = None
 
     # Check the chain is online
     logger.info(f"  Chain id is {web3.eth.chain_id:,}")
     logger.info(f"  Latest block is {web3.eth.block_number:,}")
+    logger.info(f"  Vault is {web3.eth.block_number:,}")
 
     asset_manager_address = hot_wallet.address
 
@@ -176,17 +164,18 @@ def deploy_guard(
             print("Aborted")
             sys.exit(1)
     try:
-        guard = deploy_guard(
-            enzyme_deployment,
-            hot_wallet,
+        guard = _deploy_guard(
+            web3=web3,
+            deployer=hot_wallet,
             asset_manager=hot_wallet.address,
             owner=owner_address,
             denomination_asset=denomination_token.contract,
             whitelisted_assets=whitelisted_asset_details,
             etherscan_api_key=etherscan_api_key if not simulate else None,  # Only verify when not simulating
-            production=production,
             one_delta=one_delta,
             aave=aave,
+            allow_receiver=allow_receiver,
+            allow_sender=allow_sender,
         )
 
     except Exception as e:
@@ -197,9 +186,11 @@ def deploy_guard(
             # Try to get some useful debug info from Anvil
             web3config.close(logging.ERROR)
 
-        raise RuntimeError(f"Deployment failed. Hot wallet: {hot_wallet.address}, denomination asset: {denomination_token.address}") from e
+        logger.exception(e)  # TODO: Typer workaround
 
-    logger("Guard deployed at %s", guard.address)
+        raise RuntimeError(f"Deployment failed. Hot wallet: {hot_wallet.address}, denomination asset: {denomination_token.address}\n{e}") from e
+
+    logger.info("Guard deployed at %s", guard.address)
     logger.info("All ok")
 
     web3config.close()

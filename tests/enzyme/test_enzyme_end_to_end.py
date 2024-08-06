@@ -637,3 +637,49 @@ def test_enzyme_correct_accounts_for_closed_position_transfer_away(
             cli.main(args=["correct-accounts"])
         assert e.value.code == 0
 
+
+@pytest.mark.slow_test_group
+def test_deploy_guard_standalone(
+    environment: dict,
+    web3: Web3,
+    state_file: Path,
+    usdc: Contract,
+    weth: Contract,
+    deployer: HexAddress,
+):
+    """Deploy GuardV0 smart contract standalone.
+
+    - Don't associate with any vault
+    """
+
+    env = environment.copy()
+    env["WHITELISTED_ASSETS"] = " ".join([usdc.address, weth.address])
+
+    with patch.dict(os.environ, env, clear=True):
+        app(["deploy-guard"], standalone_mode=False)
+
+
+@pytest.mark.slow_test_group
+def test_deploy_guard_for_vault(
+    environment: dict,
+    web3: Web3,
+    state_file: Path,
+    usdc: Contract,
+    weth: Contract,
+    vault: Vault,
+    deployer: HexAddress,
+):
+    """Deploy GuardV0 smart contract for an existing vault.
+
+    - Update guard to use the vault, and vault generic adapter use the guard
+    """
+
+    env = environment.copy()
+    env.update({
+        "VAULT_ADDRESS": vault.address,
+        "VAULT_ADAPTER_ADDRESS": vault.generic_adapter.address,
+        "WHITELISTED_ASSETS": " ".join([usdc.address, weth.address]),
+    })
+
+    with patch.dict(os.environ, env, clear=True):
+        app(["deploy-guard"], standalone_mode=False)
