@@ -443,7 +443,12 @@ def accrue_interest(
 
     """
 
-    assert interest_distribution.duration > ZERO_TIMEDELTA, f"Tried to distribute interest for zero timespan {interest_distribution.start} - {interest_distribution.end}"
+
+    if interest_distribution.duration == ZERO_TIMEDELTA:
+        logger.info("accrue_interest(): Interest distribution duration zero, we probably got called twice in a row")
+        return
+
+    assert interest_distribution.duration > ZERO_TIMEDELTA, f"Tried to distribute interest for negative timespan {interest_distribution.start} - {interest_distribution.end}"
 
     block_number_str = f"{block_number,}" if block_number else "<no block>"
     logger.info(f"accrue_interest({block_timestamp}, {block_number_str})")

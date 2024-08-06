@@ -858,13 +858,15 @@ class StrategyRunner(abc.ABC):
             # We need to sync interest before we can run check accouts,
             # as otherwise it will
             with self.timed_task_context_manager("sync_interest_before_triggers"):
-                interest_events = self.sync_model.sync_interests(
-                    timestamp,
-                    state,
-                    universe,
-                    stop_loss_pricing_model,
-                )
-                logger.info("Generated %d sync interest events", len(interest_events))
+                if not self.execution_context.mode.is_backtesting():
+                    # Only run in live execution to speed up backtesting
+                    interest_events = self.sync_model.sync_interests(
+                        timestamp,
+                        state,
+                        universe,
+                        stop_loss_pricing_model,
+                    )
+                    logger.info("Generated %d sync interest events", len(interest_events))
 
             with self.timed_task_context_manager("sync_portfolio_before_triggers"):
                 # Sync treasure before the trigger checks
