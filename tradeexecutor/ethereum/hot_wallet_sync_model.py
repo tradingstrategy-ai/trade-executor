@@ -21,9 +21,6 @@ from tradeexecutor.state.state import State
 from tradeexecutor.state.types import BlockNumber
 from tradeexecutor.strategy.sync_model import SyncModel, OnChainBalance
 from tradeexecutor.strategy.interest import (
-    prepare_interest_distribution,
-    accrue_interest,
-    record_interest_rate,
     sync_interests,
 )
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse

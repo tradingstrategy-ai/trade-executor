@@ -104,7 +104,7 @@ def update_interest(
 
     gained_interest_percent = gained_interest / old_balance
 
-    assert gained_interest_percent > 0, f"Negative interest for {asset}: {gained_interest} (diff {gained_interest_percent * 100:.2f}%), old quantity: {old_balance}, new quantity: {new_token_amount}"
+    assert gained_interest_percent >= 0, f"Negative interest for {asset}: gained interest: {gained_interest} (diff {gained_interest_percent * 100:.2f}%), old quantity: {old_balance}, new quantity: {new_token_amount}"
     assert gained_interest_percent < max_interest_gain, f"Unlikely gained_interest for {asset}: {gained_interest} (diff {gained_interest_percent * 100:.2f}%, threshold {max_interest_gain * 100}%), old quantity: {old_balance}, new quantity: {new_token_amount}"
 
     evt = BalanceUpdate(
@@ -377,7 +377,7 @@ def distribute_interest_for_assets(
         An event
      """
 
-    asset_total = operation.asset_interest_data[asset.get_identifier()].total
+    previous_asset_total = operation.asset_interest_data[asset.get_identifier()].total
 
     # Either there has not be really any change over time (too fast refresh rate)
     # or this is unit test against mainnet fork where we cannot speed up the time.
@@ -385,12 +385,16 @@ def distribute_interest_for_assets(
     # because balance update can not be zero.
     # We also may encounter negative updates < epsilon due to the rounding
     # errors.
-    interest_accrued = new_amount - asset_total
-    logger.info("Interest accrued for %s: %s, %s, %s", asset, interest_accrued, new_amount, asset_total)
-    if abs(interest_accrued) >= INTEREST_EPSILON:
-
-        assert interest_accrued >= 0, f"Interest cannot go negative: {interest_accrued}, our epsilon is {INTEREST_EPSILON}"
-
+    interest_accrued_tokens = new_amount - previous_asset_total
+    logger.info(
+        "Interest accrued for asset: %s, interest accrued: %s, new amount: %s, previous asset total: %s",
+        asset,
+        interest_accrued_tokens,
+        new_amount,
+        previous_asset_total
+    )
+    if abs(interest_accrued_tokens) >= INTEREST_EPSILON:
+        assert interest_accrued_tokens >= 0, f"Interest cannot go negative: {interest_accrued_tokens}, our epsilon is {INTEREST_EPSILON}"
         for entry in operation.entries:
             if entry.asset == asset:
                 evt = distribute_to_entry(
@@ -398,7 +402,7 @@ def distribute_interest_for_assets(
                     state,
                     timestamp,
                     block_number,
-                    interest_accrued,
+                    interest_accrued_tokens,
                     max_interest_gain=max_interest_gain,
                 )
                 yield evt
@@ -428,7 +432,7 @@ def accrue_interest(
         The current on-chain balances at ``block_number``.
 
     :param block_number:
-        Last safe block read
+        The block number when we read the balances.
 
     :param block_timestamp:
         The timestamp of ``block_number``.
@@ -462,7 +466,14 @@ def accrue_interest(
         interest = float((new_balance - asset_interest_data.total) / asset_interest_data.total) / part_of_year
         asset_interest_data.effective_rate = interest
 
-        logger.info("Effective interest is %f for the asset %s, %s, %s", interest, asset, new_balance, asset_interest_data.total)
+        logger.info(
+            "Effective interest is %f (%f %%) for the asset %s, new_balance: %s, previous total: %s",
+            interest,
+            interest * 100,
+            asset,
+            new_balance,
+            asset_interest_data.total
+        )
 
         # We cannot generate interest events for zero updates,
         # as it breaks math
@@ -669,11 +680,11 @@ def sync_interests(
 
     # Then sync interest back from the chain
     block_identifier = get_almost_latest_block_number(web3)
-    balances = {}
+
     onchain_balances = fetch_address_balances(
         web3,
         wallet_address,
-        interest_distribution.assets,
+        list(interest_distribution.assets),
         filter_zero=True,
         block_number=block_identifier,
     )
@@ -684,7 +695,13 @@ def sync_interests(
     }
 
     # Then distribute gained interest (new atokens/vtokens) among positions
-    events_iter = accrue_interest(state, balances, interest_distribution, timestamp, None)
+    events_iter = accrue_interest(
+        state,
+        balances,
+        interest_distribution,
+        timestamp,
+        block_number=block_identifier
+    )
 
     events = list(events_iter)
 
