@@ -17,7 +17,7 @@ def walk_all_typer_options(app: Typer) -> Iterable[TyperOption]:
     Command groups not supported.
     """
     for info in app.registered_commands:
-        cmd = get_command_from_info(info)
+        cmd = get_command_from_info(info, pretty_exceptions_short=True, rich_markup_mode="markdown")
         for param in cmd.params:
             yield param
 
