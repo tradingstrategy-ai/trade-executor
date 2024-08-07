@@ -735,6 +735,7 @@ def test_deploy_guard_for_vault(
         app(["deploy-guard"], standalone_mode=False)
 
 
+@pytest.mark.skip(reason="Currently Enzyme does not way to update AdapterPolicy. Instead, the whole vault needs to be reconfigured with 7 days delay.")
 def test_enzyme_perform_test_trade_with_redeployed_guard(
     environment: dict,
     web3: Web3,

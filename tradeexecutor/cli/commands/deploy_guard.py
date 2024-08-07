@@ -227,8 +227,8 @@ def deploy_guard(
             whitelist_sender_receiver(
                 guard,
                 hot_wallet,
-                allow_receiver=vault.address,
-                allow_sender=generic_adapter.address,
+                allow_receiver=generic_adapter.address,
+                allow_sender=vault.address,
             )
         else:
             generic_adapter = None
