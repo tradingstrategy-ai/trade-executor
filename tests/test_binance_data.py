@@ -296,6 +296,38 @@ def test_create_binance_universe_multipair():
         )
 
 
+@pytest.mark.skipif(os.environ.get("GITHUB_ACTIONS", None) == "true", reason="No mock tests for this one")
+def test_create_binance_universe_bigger_date_range():
+    """Test reading cached candle data by downloading with a bigger date range."""
+
+    downloader = BinanceDownloader()
+    downloader.purge_all_cached_data()
+
+    _ = create_binance_universe(
+        ["ETHUSDT"],
+        candle_time_bucket = TimeBucket.h4,
+        start_at = datetime.datetime(2021, 1, 1),
+        end_at = datetime.datetime(2021, 1, 10),   
+        include_lending=True,
+        force_download=True,
+    )
+
+    strategy_universe = create_binance_universe(
+        ["ETHUSDT"],
+        candle_time_bucket = TimeBucket.h4,
+        start_at = datetime.datetime(2021, 1, 4),
+        end_at = datetime.datetime(2021, 1, 6),   
+        include_lending=True
+    )
+
+    candles_start, candles_end = strategy_universe.universe.candles.get_timestamp_range()
+    lending_start = strategy_universe.universe.lending_candles.variable_borrow_apr.df.index[0]
+    lending_end = strategy_universe.universe.lending_candles.variable_borrow_apr.df.index[-1]
+
+    assert candles_start == lending_start == datetime.datetime(2021, 1, 4, 0, 0)
+    assert candles_end == lending_end == datetime.datetime(2021, 1, 6, 0, 0)
+
+
 @pytest.mark.skipif(os.environ.get("GITHUB_ACTIONS", None) == "true" or os.environ.get("BINANCE_LENDING_DATA") == "false", reason="Github US servers are blocked by Binance with HTTP 451")
 def test_binance_multi_pair():
     """Check multipair resampling works."""
