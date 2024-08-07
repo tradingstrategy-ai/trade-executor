@@ -319,6 +319,15 @@ class CreateTradingUniverseProtocol(Protocol):
 
 
 @dataclass
+class Fees:
+    """Fees for the strategy."""
+    management_fee:float = 0
+    trading_strategy_protocol_fee:float = 0.02
+    strategy_developer_fee:float = 0.1
+    enzyme_protocol_fee:float = 0.0025
+
+
+@dataclass
 class StrategyModuleInformation:
     """Describe elements that we need to have in a strategy module.
 
@@ -447,6 +456,8 @@ class StrategyModuleInformation:
     #: See :py:class:`~tradeexecutor.strategy.parameters.StrategyParameters`.
     #:
     parameters: Optional[Type | StrategyParameters] = None
+
+    fees: Optional[Fees] = Fees()
 
     def __repr__(self):
         return f"<StrategyModuleInformation {self.path}>"
@@ -593,6 +604,8 @@ class StrategyModuleInformation:
             return val
 
         return None
+
+
 
 
 def parse_strategy_module(
