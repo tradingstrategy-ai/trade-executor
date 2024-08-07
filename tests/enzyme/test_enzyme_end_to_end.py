@@ -89,6 +89,29 @@ def hot_wallet(web3, deployer, user_1, usdc: Contract, vault: Vault) -> HotWalle
 
 
 @pytest.fixture()
+def enzyme_vault_contract(
+    web3,
+    deployer,
+    usdc,
+    user_1,
+    hot_wallet,
+    enzyme_deployment,
+) -> Contract:
+    """Create an example vault.
+
+    - USDC nominatead
+
+    - user_1 is the owner
+    """
+    comptroller_contract, vault_contract = enzyme_deployment.create_new_vault(
+        hot_wallet.address,
+        usdc,
+    )
+
+    return vault_contract
+
+
+@pytest.fixture()
 def strategy_file() -> Path:
     """Where do we load our strategy file."""
     return Path(os.path.dirname(__file__)) / "../../strategies/test_only" / "enzyme_end_to_end.py"
@@ -729,8 +752,8 @@ def test_enzyme_perform_test_trade_with_redeployed_guard(
     - If the guard deployment is broken, the test trade should not success
     """
 
-    owner = user_1
-    assert vault.get_owner() == owner
+
+    assert vault.get_owner() == hot_wallet.address
     report_file = tmp_path / "guard.json"
     env = environment.copy()
     env["VAULT_ADDRESS"] = vault.address
