@@ -50,6 +50,7 @@ from eth_defi.enzyme.deployment import POLYGON_DEPLOYMENT, EnzymeDeployment, ETH
 from eth_defi.enzyme.generic_adapter_vault import deploy_vault_with_generic_adapter
 from eth_defi.hotwallet import HotWallet
 from eth_defi.token import fetch_erc20_details
+from tradeexecutor.cli.guard import get_enzyme_deployment
 from tradeexecutor.monkeypatch.web3 import construct_sign_and_send_raw_middleware
 from tradingstrategy.chain import ChainId
 
@@ -74,7 +75,7 @@ def enzyme_deploy_vault(
     vault_record_file: Optional[Path] = Option(..., envvar="VAULT_RECORD_FILE", help="Store vault and comptroller addresses in this JSON file. It's important to write down all contract addresses."),
     fund_name: Optional[str] = Option(..., envvar="FUND_NAME", help="On-chain name for the fund shares"),
     fund_symbol: Optional[str] = Option(..., envvar="FUND_SYMBOL", help="On-chain token symbol for the fund shares"),
-    comptroller_lib: Optional[str] = Option(None, envvar="COMPTROLLER_LIB", help="Enzyme's ComptrollerLib address for custom deployments"),
+    comptroller_lib: Optional[str] = shared_options.comptroller_lib,
     denomination_asset: Optional[str] = Option(None, envvar="DENOMINATION_ASSET", help="Stablecoin asset used for vault denomination"),
 
     owner_address: Optional[str] = Option(None, envvar="OWNER_ADDRESS", help="The protocol or multisig address that is set as the owner of the vault"),
@@ -139,23 +140,13 @@ def enzyme_deploy_vault(
         # Will read from the chain
         usdc = None
 
-    # No other supported Enzyme deployments
-    match chain_id:
-        case ChainId.ethereum:
-            deployment_info = ETHEREUM_DEPLOYMENT
-            enzyme_deployment = EnzymeDeployment.fetch_deployment(web3, ETHEREUM_DEPLOYMENT, deployer=hot_wallet.address)
-            denomination_token = fetch_erc20_details(web3, deployment_info["usdc"])
-            one_delta = False
-        case ChainId.polygon:
-            deployment_info = POLYGON_DEPLOYMENT
-            enzyme_deployment = EnzymeDeployment.fetch_deployment(web3, POLYGON_DEPLOYMENT, deployer=hot_wallet.address)
-            denomination_token = fetch_erc20_details(web3, deployment_info["usdc"])
-            one_delta = True
-        case _:
-            assert comptroller_lib, f"You need to give Enzyme's ComptrollerLib address for a chain {chain_id}"
-            assert denomination_asset, f"You need to give denomination_asset for a chain {chain_id}"
-            enzyme_deployment = EnzymeDeployment.fetch_deployment(web3, {"comptroller_lib": comptroller_lib}, deployer=hot_wallet.address)
-            denomination_token = fetch_erc20_details(web3, denomination_asset)
+    enzyme_deployment = get_enzyme_deployment(
+        web3,
+        chain_id,
+        hot_wallet,
+        comptroller_lib=comptroller_lib
+    )
+    denomination_token = enzyme_deployment.usdc
 
     # Check the chain is online
     logger.info(f"  Chain id is {web3.eth.chain_id:,}")

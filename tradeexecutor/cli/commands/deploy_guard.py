@@ -38,10 +38,12 @@ from typing import Optional
 from typer import Option
 
 from eth_defi.abi import get_deployed_contract
-from eth_defi.enzyme.generic_adapter_vault import deploy_guard as _deploy_guard
+from eth_defi.enzyme.generic_adapter_vault import deploy_guard as _deploy_guard, deploy_generic_adapter_with_guard, whitelist_sender_receiver
+from eth_defi.enzyme.policy import update_adapter_policy
+from eth_defi.enzyme.vault import Vault
 from eth_defi.hotwallet import HotWallet
 from eth_defi.uniswap_v2.utils import ZERO_ADDRESS
-from tradeexecutor.cli.guard import generate_whitelist
+from tradeexecutor.cli.guard import generate_whitelist, get_enzyme_deployment
 from tradeexecutor.monkeypatch.web3 import construct_sign_and_send_raw_middleware
 from tradingstrategy.chain import ChainId
 
@@ -75,6 +77,7 @@ def deploy_guard(
 
     vault_address: Optional[str] = shared_options.vault_address,
     vault_adapter_address: Optional[str] = shared_options.vault_address,
+    comptroller_lib: Optional[str] = shared_options.comptroller_lib,
 
     report_file: Optional[Path] = Option(None, envvar="REPORT_FILE", help="JSON file path where we wrote information about the deployment"),
     update_generic_adapter: Optional[bool] = Option(False, envvar="UPDATE_GENERIC_ADAPTER", help="Perform transaction to update the generic adapter contract to use the new guard deployment. The private key must be the generic adapter owner for this to work."),
@@ -116,21 +119,6 @@ def deploy_guard(
     # Build the list of whitelisted assets GuardV0 allows us to trade
     whitelisted_asset_details = generate_whitelist(web3, whitelisted_assets)
     denomination_token = whitelisted_asset_details[0]
-
-    if vault_address:
-        assert vault_adapter_address, f"Both vault_address and vault_adapter_address must be given"
-        vault = get_deployed_contract(web3, f"enzyme/VaultLib.json", vault_address)
-        generic_adapter = get_deployed_contract(web3, f"GuardedGenericAdapter.json", vault_adapter_address)
-        # Check that given smart cotnracts look good
-        comptroller = vault.functions.getAccessor().call()
-        assert comptroller != ZERO_ADDRESS
-        assert generic_adapter.functions.whitelistedVault().call() != ZERO_ADDRESS
-        allow_sender = vault_adapter_address
-        allow_receiver = vault_address
-    else:
-        allow_receiver = None
-        allow_sender = None
-        generic_adapter = None
 
     # Check the chain is online
     logger.info(f"  Chain id is {web3.eth.chain_id:,}")
@@ -181,13 +169,39 @@ def deploy_guard(
             etherscan_api_key=etherscan_api_key if not simulate else None,  # Only verify when not simulating
             one_delta=one_delta,
             aave=aave,
-            allow_receiver=allow_receiver,
-            allow_sender=allow_sender,
         )
 
         if update_generic_adapter:
-            assert generic_adapter is not None, "VAULT_ADAPTER_ADDRESS mpt given"
 
+            enzyme_deployment = get_enzyme_deployment(
+                web3,
+                chain_id,
+                hot_wallet,
+                comptroller_lib=comptroller_lib
+            )
+            denomination_token = enzyme_deployment.usdc
+            vault = Vault.fetch(web3, vault_address)
+
+            generic_adapter = deploy_generic_adapter_with_guard(
+                enzyme_deployment,
+                hot_wallet,
+                vault,
+                guard,
+                etherscan_api_key,
+            )
+
+            update_adapter_policy(
+                vault,
+                generic_adapter,
+                hot_wallet
+            )
+
+            whitelist_sender_receiver(
+                allow_sender=generic_adapter.address,
+                allow_receiver=vault.address,
+            )
+        else:
+            generic_adapter = None
 
     except Exception as e:
 
@@ -201,15 +215,16 @@ def deploy_guard(
 
         raise RuntimeError(f"Deployment failed. Hot wallet: {hot_wallet.address}, denomination asset: {denomination_token.address}\n{e}") from e
 
-    logger.info("Guard deployed at %s", guard.address)
+    logger.info("GuardV0 deployed at %s", guard.address)
+    if generic_adapter:
+        logger.info("GuardedGenericAdapter deployed at %s", generic_adapter.address)
 
     # Used to expose info to unit testing
     if report_file:
         with report_file.open("wt") as out:
             data = {
                 "guard": guard.address,
-                "allow_receiver": allow_receiver,
-                "allow_sender": allow_sender,
+                "generic_adapter": generic_adapter.address,
             }
             json.dump(data, out)
 
