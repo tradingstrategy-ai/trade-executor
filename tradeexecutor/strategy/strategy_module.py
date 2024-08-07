@@ -318,13 +318,6 @@ class CreateTradingUniverseProtocol(Protocol):
             """
 
 
-@dataclass
-class Fees:
-    """Fees for the strategy."""
-    management_fee:float
-    trading_strategy_protocol_fee:float
-    strategy_developer_fee:float
-    enzyme_protocol_fee:float
 
 
 @dataclass
@@ -457,11 +450,12 @@ class StrategyModuleInformation:
     #:
     parameters: Optional[Type | StrategyParameters] = None
 
-    #: Fees class for the strategy.
+    #: Fees for the strategy.
     #:
-    #: This inclues management_fee, trading_strategy_protocol_fee
-    #: strategy_developer_fee, enzyme_protocol_fee
-    fees: Optional[Fees] = None
+    management_fee: Optional[float] = None
+    trading_strategy_protocol_fee: Optional[float] = None
+    strategy_developer_fee: Optional[float] = None
+    enzyme_protocol_fee: Optional[float] = None
 
     def __repr__(self):
         return f"<StrategyModuleInformation {self.path}>"
@@ -647,7 +641,10 @@ def parse_strategy_module(
         sort_priority=python_module_exports.get("sort_priority"),
         create_indicators=python_module_exports.get("create_indicators"),
         parameters=python_module_exports.get("parameters"),
-        fees=python_module_exports.get("fees"),
+        management_fee=python_module_exports.get("management_fee"),
+        trading_strategy_protocol_fee=python_module_exports.get("trading_strategy_protocol_fee"),
+        strategy_developer_fee=python_module_exports.get("strategy_developer_fee"),
+        enzyme_protocol_fee=python_module_exports.get("enzyme_protocol_fee"),
     )
 
 
