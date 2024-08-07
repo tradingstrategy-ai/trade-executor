@@ -218,8 +218,11 @@ def deploy_guard(
             )
 
             whitelist_sender_receiver(
-                allow_sender=generic_adapter.address,
+                web3,
+                guard,
+                hot_wallet,
                 allow_receiver=vault.address,
+                allow_sender=generic_adapter.address,
             )
         else:
             generic_adapter = None

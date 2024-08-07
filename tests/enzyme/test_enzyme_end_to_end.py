@@ -27,6 +27,7 @@ from eth_defi.enzyme.vault import Vault
 from eth_defi.hotwallet import HotWallet
 from eth_defi.trace import assert_transaction_success_with_explanation
 from eth_defi.uniswap_v2.deployment import UniswapV2Deployment
+from tradeexecutor.monkeypatch.web3 import construct_sign_and_send_raw_middleware
 
 from tradingstrategy.pair import PandasPairUniverse
 
@@ -67,7 +68,7 @@ def transfer_vault_ownership(
 
 
 @pytest.fixture
-def hot_wallet(web3, deployer, user_1, usdc: Contract, vault: Vault) -> HotWallet:
+def hot_wallet(web3, deployer, user_1, usdc: Contract) -> HotWallet:
     """Create hot wallet for the signing tests.
 
     Top is up with some gas money and 500 USDC.
@@ -81,9 +82,8 @@ def hot_wallet(web3, deployer, user_1, usdc: Contract, vault: Vault) -> HotWalle
     tx_hash = usdc.functions.transfer(wallet.address, 500 * 10**6).transact({"from": deployer})
     assert_transaction_success_with_explanation(web3, tx_hash)
 
-    # Promote the hot wallet to the asset manager
-    tx_hash = vault.vault.functions.addAssetManagers([account.address]).transact({"from": user_1})
-    assert_transaction_success_with_explanation(web3, tx_hash)
+    # Add to the local signer chain
+    web3.middleware_onion.add(construct_sign_and_send_raw_middleware(account))
 
     return wallet
 
@@ -94,7 +94,7 @@ def enzyme_vault_contract(
     deployer,
     usdc,
     user_1,
-    hot_wallet,
+    hot_wallet: HotWallet,
     enzyme_deployment,
 ) -> Contract:
     """Create an example vault.
@@ -107,6 +107,10 @@ def enzyme_vault_contract(
         hot_wallet.address,
         usdc,
     )
+
+    # Promote the hot wallet to the asset manager
+    tx_hash = vault_contract.functions.addAssetManagers([hot_wallet.address]).transact({"from": hot_wallet.address})
+    assert_transaction_success_with_explanation(web3, tx_hash)
 
     return vault_contract
 
@@ -765,7 +769,7 @@ def test_enzyme_perform_test_trade_with_redeployed_guard(
     env["ALLOWED_ADAPTERS_POLICY"] = enzyme_deployment.contracts.allowed_adapters_policy.address
 
     # We need to be vault owner to update the generic adapter policy
-    transfer_vault_ownership(vault, hot_wallet.address)
+    # transfer_vault_ownership(vault, hot_wallet.address)
 
     cli = get_command(app)
 
