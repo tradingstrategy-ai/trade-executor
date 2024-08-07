@@ -1,4 +1,4 @@
-"""Vault security related common functions"""
+"""Vault security related common functions for CLI commands"""
 from web3 import Web3
 
 from eth_defi.enzyme.deployment import EnzymeDeployment, ETHEREUM_DEPLOYMENT, POLYGON_DEPLOYMENT
