@@ -321,10 +321,10 @@ class CreateTradingUniverseProtocol(Protocol):
 @dataclass
 class Fees:
     """Fees for the strategy."""
-    management_fee:float = 0
-    trading_strategy_protocol_fee:float = 0.02
-    strategy_developer_fee:float = 0.1
-    enzyme_protocol_fee:float = 0.0025
+    management_fee:float
+    trading_strategy_protocol_fee:float
+    strategy_developer_fee:float
+    enzyme_protocol_fee:float
 
 
 @dataclass
@@ -461,7 +461,7 @@ class StrategyModuleInformation:
     #:
     #: This inclues management_fee, trading_strategy_protocol_fee
     #: strategy_developer_fee, enzyme_protocol_fee
-    fees: Optional[Fees] = field(default_factory=Fees)
+    fees: Optional[Fees] = None
 
     def __repr__(self):
         return f"<StrategyModuleInformation {self.path}>"
@@ -647,6 +647,7 @@ def parse_strategy_module(
         sort_priority=python_module_exports.get("sort_priority"),
         create_indicators=python_module_exports.get("create_indicators"),
         parameters=python_module_exports.get("parameters"),
+        fees=python_module_exports.get("fees"),
     )
 
 
