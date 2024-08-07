@@ -146,7 +146,8 @@ def enzyme_deploy_vault(
         hot_wallet,
         comptroller_lib=comptroller_lib
     )
-    denomination_token = enzyme_deployment.usdc
+    denomination_token = whitelisted_asset_details[0]
+    # import ipdb ; ipdb.set_trace()
 
     # Check the chain is online
     logger.info(f"  Chain id is {web3.eth.chain_id:,}")
@@ -228,9 +229,9 @@ def enzyme_deploy_vault(
             # Try to get some useful debug info from Anvil
             web3config.close(logging.ERROR)
 
-        logger.exception(e)  # TODO: Typer does not display this exception?
+        logger.exception(e)  # The fancy traceback formatter does not do nested
 
-        raise RuntimeError(f"Deployment failed. Hot wallet: {hot_wallet.address}, denomination asset: {denomination_token.address}.\n{e}") from e
+        raise RuntimeError(f"Deployment failed. Hot wallet: {hot_wallet.address}.\nException: {e}") from e
 
     if vault_record_file and (not simulate):
         # Make a small file, mostly used to communicate with unit tests
