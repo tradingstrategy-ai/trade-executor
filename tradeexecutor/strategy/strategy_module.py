@@ -3,7 +3,7 @@ import datetime
 import inspect
 import logging
 import runpy
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from types import NoneType
 from typing import Callable, Dict, Protocol, List, Optional, Union, Set, Type
@@ -457,7 +457,11 @@ class StrategyModuleInformation:
     #:
     parameters: Optional[Type | StrategyParameters] = None
 
-    fees: Optional[Fees] = Fees()
+    #: Fees class for the strategy.
+    #:
+    #: This inclues management_fee, trading_strategy_protocol_fee
+    #: strategy_developer_fee, enzyme_protocol_fee
+    fees: Optional[Fees] = field(default_factory=Fees)
 
     def __repr__(self):
         return f"<StrategyModuleInformation {self.path}>"
