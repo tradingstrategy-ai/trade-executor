@@ -78,6 +78,7 @@ def deploy_guard(
     vault_address: Optional[str] = shared_options.vault_address,
     vault_adapter_address: Optional[str] = shared_options.vault_address,
     comptroller_lib: Optional[str] = shared_options.comptroller_lib,
+    allowed_adapters_policy: Optional[str] = Option(None, envvar="ALLOWED_ADAPTERS_POLICY", help="Pass Enzyme contract addreses"),
 
     report_file: Optional[Path] = Option(None, envvar="REPORT_FILE", help="JSON file path where we wrote information about the deployment"),
     update_generic_adapter: Optional[bool] = Option(False, envvar="UPDATE_GENERIC_ADAPTER", help="Perform transaction to update the generic adapter contract to use the new guard deployment. The private key must be the generic adapter owner for this to work."),
@@ -177,10 +178,19 @@ def deploy_guard(
                 web3,
                 chain_id,
                 hot_wallet,
-                comptroller_lib=comptroller_lib
+                comptroller_lib=comptroller_lib,
+                allowed_adapters_policy=allowed_adapters_policy,
             )
+
             denomination_token = enzyme_deployment.usdc
-            vault = Vault.fetch(web3, vault_address)
+            vault = Vault.fetch(
+                web3,
+                vault_address,
+                extra_addresses={
+                    "comptroller_lib": comptroller_lib,
+                    "allowed_adapters_policy": allowed_adapters_policy,
+                }
+            )
 
             generic_adapter = deploy_generic_adapter_with_guard(
                 enzyme_deployment,
@@ -188,6 +198,17 @@ def deploy_guard(
                 vault,
                 guard,
                 etherscan_api_key,
+            )
+
+            # TODO: Fix this so we do not need to fetch Vault twice
+            vault = Vault.fetch(
+                web3,
+                vault_address,
+                extra_addresses={
+                    "comptroller_lib": comptroller_lib,
+                    "allowed_adapters_policy": allowed_adapters_policy,
+                    "generic_adapter": generic_adapter.address,
+                }
             )
 
             update_adapter_policy(
@@ -213,7 +234,7 @@ def deploy_guard(
 
         logger.exception(e)  # TODO: Typer workaround
 
-        raise RuntimeError(f"Deployment failed. Hot wallet: {hot_wallet.address}, denomination asset: {denomination_token.address}\n{e}") from e
+        raise RuntimeError(f"Deployment failed. Hot wallet: {hot_wallet.address}\n{e}") from e
 
     logger.info("GuardV0 deployed at %s", guard.address)
     if generic_adapter:

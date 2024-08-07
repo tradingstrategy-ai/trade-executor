@@ -38,6 +38,7 @@ def get_enzyme_deployment(
     chain_id: ChainId,
     deployer: HotWallet,
     comptroller_lib: str | None = None,
+    allowed_adapters_policy: str | None = None,
 ) -> EnzymeDeployment:
     """
 
@@ -62,9 +63,17 @@ def get_enzyme_deployment(
             # denomination_token = fetch_erc20_details(web3, deployment_info["usdc"])
             one_delta = True
         case _:
+            # Local unit test deployment.
+            # Because addresses are random, they need to be explicitly passed
+            # to any command line command
             assert comptroller_lib, f"You need to give Enzyme's ComptrollerLib address for a chain {chain_id}"
-            #assert denomination_asset, f"You need to give denomination_asset for a chain {chain_id}"
-            enzyme_deployment = EnzymeDeployment.fetch_deployment(web3, {"comptroller_lib": comptroller_lib}, deployer=deployer.address)
-            #denomination_token = fetch_erc20_details(web3, denomination_asset)
+            enzyme_deployment = EnzymeDeployment.fetch_deployment(
+                web3,
+                {
+                    "comptroller_lib": comptroller_lib,
+                    "allowed_adapters_policy": allowed_adapters_policy,
+                },
+                deployer=deployer.address
+            )
 
     return enzyme_deployment

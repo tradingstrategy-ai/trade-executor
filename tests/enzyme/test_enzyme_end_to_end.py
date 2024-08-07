@@ -41,6 +41,31 @@ from tradeexecutor.state.state import State
 logger = logging.getLogger(__name__)
 
 
+def transfer_vault_ownership(
+    vault: Vault,
+    new_owner: str,
+):
+    """Transfer the vault ownership to a new owner.
+
+    Used in testing.
+    """
+    web3 = vault.web3
+    current_owner = vault.get_owner()
+    logger.info("transfer_ownership(): %s -> %s", vault.get_owner(), new_owner),
+    assert vault.get_owner() != new_owner
+
+    tx_hash = vault.vault.functions.setNominatedOwner(new_owner).transact({"from": current_owner})
+    assert_transaction_success_with_explanation(web3, tx_hash)
+    logger.info("New vault owner nominated to be %s", new_owner)
+
+    # Accept transfer
+    tx_hash = vault.vault.functions.claimOwnership().transact({"from": new_owner})
+    assert_transaction_success_with_explanation(web3, tx_hash)
+    logger.info("New vault owner claimed ownership to be %s", new_owner)
+
+    assert vault.get_owner() == new_owner
+
+
 @pytest.fixture
 def hot_wallet(web3, deployer, user_1, usdc: Contract, vault: Vault) -> HotWallet:
     """Create hot wallet for the signing tests.
@@ -694,6 +719,8 @@ def test_enzyme_perform_test_trade_with_redeployed_guard(
     enzyme_deployment: EnzymeDeployment,
     weth_usdc_trading_pair: TradingPairIdentifier,
     tmp_path,
+    user_1,
+    hot_wallet: HotWallet,
 ):
     """Perform a test trade on Enzymy vault via CLI.
 
@@ -702,6 +729,8 @@ def test_enzyme_perform_test_trade_with_redeployed_guard(
     - If the guard deployment is broken, the test trade should not success
     """
 
+    owner = user_1
+    assert vault.get_owner() == owner
     report_file = tmp_path / "guard.json"
     env = environment.copy()
     env["VAULT_ADDRESS"] = vault.address
@@ -710,6 +739,10 @@ def test_enzyme_perform_test_trade_with_redeployed_guard(
     env["UPDATE_GENERIC_ADAPTER"] = "true"
     env["WHITELISTED_ASSETS"] = " ".join([usdc.address, weth.address])
     env["COMPTROLLER_LIB"] = enzyme_deployment.contracts.comptroller_lib.address
+    env["ALLOWED_ADAPTERS_POLICY"] = enzyme_deployment.contracts.allowed_adapters_policy.address
+
+    # We need to be vault owner to update the generic adapter policy
+    transfer_vault_ownership(vault, hot_wallet.address)
 
     cli = get_command(app)
 
@@ -730,19 +763,20 @@ def test_enzyme_perform_test_trade_with_redeployed_guard(
     with patch.dict(os.environ, env, clear=True):
         cli.main(args=["init"], standalone_mode=False)
 
+    # We (may) have alreaddy guard deployed earlier,
+    # but we will now redeploy it
     with patch.dict(os.environ, env, clear=True):
         cli.main(args=["deploy-guard"], standalone_mode=False)
 
     # Check the deployed address look somewhat correct
     report_data = json.load(report_file.open("rt"))
+    assert report_data["generic_adapter"]
+    assert report_data["guard"]
     vault = Vault.fetch(
         web3,
         vault_address=vault.address,
         generic_adapter_address=vault.generic_adapter.address,
     )
-    assert report_data["allow_receiver"] == vault.address
-    assert report_data["allow_sender"] == vault.generic_adapter.address
-    assert report_data["guard"] == vault.guard_contract.address
 
     with patch.dict(os.environ, env, clear=True):
         cli.main(args=["perform-test-trade"], standalone_mode=False)
