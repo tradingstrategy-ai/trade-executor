@@ -38,7 +38,7 @@ from typing import Optional
 from typer import Option
 
 from eth_defi.abi import get_deployed_contract
-from eth_defi.enzyme.generic_adapter_vault import deploy_guard as _deploy_guard, deploy_generic_adapter_with_guard, whitelist_sender_receiver
+from eth_defi.enzyme.generic_adapter_vault import deploy_guard as _deploy_guard, deploy_generic_adapter_with_guard, whitelist_sender_receiver, bind_vault
 from eth_defi.enzyme.policy import update_adapter_policy
 from eth_defi.enzyme.vault import Vault
 from eth_defi.hotwallet import HotWallet
@@ -195,7 +195,6 @@ def deploy_guard(
             generic_adapter = deploy_generic_adapter_with_guard(
                 enzyme_deployment,
                 hot_wallet,
-                vault,
                 guard,
                 etherscan_api_key,
             )
@@ -211,6 +210,14 @@ def deploy_guard(
                 }
             )
 
+            bind_vault(
+                generic_adapter,
+                vault.vault,
+                production,
+                "",
+                hot_wallet,
+            )
+
             update_adapter_policy(
                 vault,
                 generic_adapter,
@@ -218,7 +225,6 @@ def deploy_guard(
             )
 
             whitelist_sender_receiver(
-                web3,
                 guard,
                 hot_wallet,
                 allow_receiver=vault.address,
