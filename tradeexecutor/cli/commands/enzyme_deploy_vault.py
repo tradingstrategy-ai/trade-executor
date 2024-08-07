@@ -50,7 +50,7 @@ from eth_defi.enzyme.deployment import POLYGON_DEPLOYMENT, EnzymeDeployment, ETH
 from eth_defi.enzyme.generic_adapter_vault import deploy_vault_with_generic_adapter
 from eth_defi.hotwallet import HotWallet
 from eth_defi.token import fetch_erc20_details
-from tradeexecutor.cli.guard import get_enzyme_deployment
+from tradeexecutor.cli.guard import get_enzyme_deployment, generate_whitelist
 from tradeexecutor.monkeypatch.web3 import construct_sign_and_send_raw_middleware
 from tradingstrategy.chain import ChainId
 
@@ -124,21 +124,12 @@ def enzyme_deploy_vault(
     web3.middleware_onion.add(construct_sign_and_send_raw_middleware(hot_wallet.account))
 
     # Build the list of whitelisted assets GuardV0 allows us to trade
-    whitelisted_asset_details = []
-    for token_address in whitelisted_assets.split():
-        token_address = token_address.strip()
-        if token_address:
-            whitelisted_asset_details.append(fetch_erc20_details(web3, token_address))
-
+    if denomination_asset not in whitelisted_assets:
+        # Unit test legacy hack
+        whitelisted_assets = denomination_asset + " " + whitelisted_assets
+    whitelisted_asset_details = generate_whitelist(web3, whitelisted_assets)
     assert len(whitelisted_asset_details) >= 1, "You need to whitelist at least one token as a trading pair"
-
-    if whitelisted_asset_details[0].symbol == "USDC":
-        # Unit test path
-        usdc = whitelisted_asset_details[0].contract
-        whitelisted_asset_details = whitelisted_asset_details[1:]
-    else:
-        # Will read from the chain
-        usdc = None
+    denomination_token = whitelisted_asset_details[0]
 
     enzyme_deployment = get_enzyme_deployment(
         web3,
@@ -146,8 +137,6 @@ def enzyme_deploy_vault(
         hot_wallet,
         comptroller_lib=comptroller_lib
     )
-    denomination_token = whitelisted_asset_details[0]
-    # import ipdb ; ipdb.set_trace()
 
     # Check the chain is online
     logger.info(f"  Chain id is {web3.eth.chain_id:,}")
@@ -192,7 +181,7 @@ def enzyme_deploy_vault(
     if asset_manager_address != hot_wallet.address:
         logger.info("Asset manager is %s", asset_manager_address)
     else:
-        logger.warning("No separate asset manager role set: will use the current hot wallet as the asset manager")
+        logger.info("No separate asset manager role set: will use the current hot wallet as the asset manager for the vault")
 
     logger.info("-" * 80)
 

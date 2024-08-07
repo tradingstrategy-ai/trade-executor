@@ -198,8 +198,11 @@ def test_enzyme_guard_credit_positions(
     # Deposit some USDC to the vault to start
     deposit_amount = 500 * 10**6
     vault = Vault.fetch(web3, vault_info["vault"])
-    tx_hash = usdc.contract.functions.approve(vault_info["comptroller"], deposit_amount).transact({"from": hot_wallet.address})
+    tx_hash = usdc.contract.functions.approve(vault.comptroller.address, deposit_amount).transact({"from": hot_wallet.address})
     assert_transaction_success_with_explanation(web3, tx_hash)
+    assert usdc.contract.functions.balanceOf(hot_wallet.address).call() == deposit_amount
+    assert vault.denomination_token.address == usdc.address
+
     tx_hash = vault.comptroller.functions.buyShares(deposit_amount, 1).transact({"from": hot_wallet.address})
     assert_transaction_success_with_explanation(web3, tx_hash)
     assert usdc.contract.functions.balanceOf(vault.address).call() == deposit_amount
