@@ -9,10 +9,12 @@ from tradingstrategy.chain import ChainId
 SUPPORTED_DENOMINATION_TOKENS  = ("USDC", "USDC.e",)
 
 
-def generate_whitelist(web3, whitelisted_assets: list[str]) -> list[TokenDetails]:
+def generate_whitelist(web3, whitelisted_assets: str) -> list[TokenDetails]:
     """Look up token details we are about to whitelist.
 
-    :param whilisted_assets:
+    :param whitelisted_assets:
+        Space separated list.
+
         Assets to whitelist, first must be the vault denomination token.
 
     :return:
@@ -51,18 +53,18 @@ def get_enzyme_deployment(
     match chain_id:
         case ChainId.ethereum:
             deployment_info = ETHEREUM_DEPLOYMENT
-            enzyme_deployment = EnzymeDeployment.fetch_deployment(web3, ETHEREUM_DEPLOYMENT, deployer=hot_wallet.address)
+            enzyme_deployment = EnzymeDeployment.fetch_deployment(web3, ETHEREUM_DEPLOYMENT, deployer=deployer.address)
             #denomination_token = fetch_erc20_details(web3, deployment_info["usdc"])
             one_delta = False
         case ChainId.polygon:
             deployment_info = POLYGON_DEPLOYMENT
-            enzyme_deployment = EnzymeDeployment.fetch_deployment(web3, POLYGON_DEPLOYMENT, deployer=hot_wallet.address)
+            enzyme_deployment = EnzymeDeployment.fetch_deployment(web3, POLYGON_DEPLOYMENT, deployer=deployer.address)
             # denomination_token = fetch_erc20_details(web3, deployment_info["usdc"])
             one_delta = True
         case _:
             assert comptroller_lib, f"You need to give Enzyme's ComptrollerLib address for a chain {chain_id}"
             #assert denomination_asset, f"You need to give denomination_asset for a chain {chain_id}"
-            enzyme_deployment = EnzymeDeployment.fetch_deployment(web3, {"comptroller_lib": comptroller_lib}, deployer=hot_wallet.address)
+            enzyme_deployment = EnzymeDeployment.fetch_deployment(web3, {"comptroller_lib": comptroller_lib}, deployer=deployer.address)
             #denomination_token = fetch_erc20_details(web3, denomination_asset)
 
     return enzyme_deployment

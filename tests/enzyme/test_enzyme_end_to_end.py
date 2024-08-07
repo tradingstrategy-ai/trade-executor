@@ -706,8 +706,10 @@ def test_enzyme_perform_test_trade_with_redeployed_guard(
     env = environment.copy()
     env["VAULT_ADDRESS"] = vault.address
     env["VAULT_ADAPTER_ADDRESS"] = vault.generic_adapter.address
-    env["REPORT_FILE"] = report_file
+    env["REPORT_FILE"] = str(report_file)
     env["UPDATE_GENERIC_ADAPTER"] = "true"
+    env["WHITELISTED_ASSETS"] = " ".join([usdc.address, weth.address])
+    env["COMPTROLLER_LIB"] = enzyme_deployment.contracts.comptroller_lib.address
 
     cli = get_command(app)
 
