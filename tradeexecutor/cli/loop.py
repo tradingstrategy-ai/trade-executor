@@ -1228,7 +1228,7 @@ class ExecutionLoop:
             timezone=datetime.timezone.utc
         )
 
-        if self.cycle_duration.cycle_7d and self.max_cycles == None:
+        if self.cycle_duration == CycleDuration.cycle_7d and self.max_cycles == None:
             # Assume 7d without offset is Monday midnight
             logger.info("Live cycle set to trigger Monday midnight")
             # https://apscheduler.readthedocs.io/en/3.x/modules/triggers/cron.htmlgit-ad
