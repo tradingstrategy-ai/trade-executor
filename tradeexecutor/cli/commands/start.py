@@ -136,6 +136,8 @@ def start(
     sync_treasury_on_startup: bool = typer.Option(True, "--sync-treasury-on-startup", envvar="SYNC_TREASURY_ON_STARTUP", help="Sync treasury events before starting any trading"),
     visulisation: bool = typer.Option(True, "--visualisation", envvar="VISUALISATION", help="Disable generation of charts using Kaleido library. Helps with issues with broken installations"),
 
+    run_single_cycle: bool = typer.Option(True, "--run-single-cycle", envvar="RUN_SINGLE_CYCLE", help="Run a single strategy decision cycle and exist, regardless of the current pending state."),
+
     # Logging
     log_level: str = shared_options.log_level,
 
@@ -445,7 +447,7 @@ def start(
                 )
 
         if mod.parameters:
-            logger.info(
+            logger.trade(
                 "Starting with strategy parameters:\n%s",
                 dump_parameters(mod.parameters)
             )
@@ -469,6 +471,13 @@ def start(
     # docker-compose kill command
     if not unit_testing:
         faulthandler.enable()
+
+    # Force run a single cycle
+    if run_single_cycle:
+        max_cycles = 1
+        trade_immediately = True
+    else:
+        trade_immediately = False
 
     loop = ExecutionLoop(
         name=name,

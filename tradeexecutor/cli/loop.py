@@ -1053,6 +1053,7 @@ class ExecutionLoop:
         # The first trade will be execute immediately, despite the time offset or tick
         if self.trade_immediately:
             ts = datetime.datetime.now()
+            logger.info("Trade immediately triggered, using timestamp %s, cycle is %d", ts, cycle)
             universe = self.tick(ts, self.cycle_duration, state, cycle, live=True)
 
         def die(exc: Exception):
@@ -1158,7 +1159,7 @@ class ExecutionLoop:
             # Used e.g. test_strategy_cycle_trigger.py
             if self.max_cycles is not None:
                 if cycle >= self.max_cycles:
-                    logger.info(("Max cycles reached"))
+                    logger.info("Max cycles reached. Cycle %d, max %d", cycle, self.max_cycles)
                     scheduler.shutdown(wait=False)
 
             run_state.completed_cycle = cycle
