@@ -1225,14 +1225,36 @@ class ExecutionLoop:
         # that could then be additional source of bugs.
         scheduler = BlockingScheduler(executors=executors, timezone=datetime.timezone.utc)
 
-        # Core live trade execution loop
-        scheduler.add_job(
-            live_cycle,
-            'interval',
-            seconds=self.cycle_duration.to_timedelta().total_seconds(),
-            start_date=start_time + tick_offset,
-            misfire_grace_time = None,  # Will always run the job no matter how late it is
-        )
+        if self.cycle_duration.cycle_7d:
+            # Assume 7d without offset is Monday midnight
+            logger.info("Live cycle set to trigger Monday midnight")
+            scheduler.add_job(
+                live_cycle,
+                'interval',
+                day_of_week=0,
+                hour=0,
+                minute=0,
+                second=0,
+                seconds=self.cycle_duration.to_timedelta().total_seconds(),
+                start_date=start_time + tick_offset,
+                misfire_grace_time = None,  # Will always run the job no matter how late it is
+            )
+        else:
+            # Core live trade execution loop
+            seconds = self.cycle_duration.to_timedelta().total_seconds()
+            logger.info(
+                "Live cycle set to trigger seconds %d, start time %s, offset %s",
+                seconds,
+                start_time,
+                tick_offset
+            )
+            scheduler.add_job(
+                live_cycle,
+                'interval',
+                seconds=seconds,
+                start_date=start_time + tick_offset,
+                misfire_grace_time = None,  # Will always run the job no matter how late it is
+            )
 
         if self.stats_refresh_frequency not in (datetime.timedelta(0), None):
             scheduler.add_job(
