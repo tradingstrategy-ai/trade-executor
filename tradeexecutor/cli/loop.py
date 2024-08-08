@@ -1237,7 +1237,6 @@ class ExecutionLoop:
                 minute=0,
                 second=0,
                 seconds=self.cycle_duration.to_timedelta().total_seconds(),
-                start_date=start_time + tick_offset,
                 misfire_grace_time = None,  # Will always run the job no matter how late it is
             )
         else:
