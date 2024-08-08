@@ -478,7 +478,6 @@ def start(
         trade_immediately = True
     else:
         logger.info("No immediate trade set up, max cycles is %s", max_cycles)
-        trade_immediately = False
 
     loop = ExecutionLoop(
         name=name,
