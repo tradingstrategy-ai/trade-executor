@@ -1223,15 +1223,18 @@ class ExecutionLoop:
         # Any task blocks other tasks - there is no parallerism or multithread support at the moment.
         # Multithread support would need making the architecture more complex with various locks
         # that could then be additional source of bugs.
-        scheduler = BlockingScheduler(executors=executors, timezone=datetime.timezone.utc)
+        scheduler = BlockingScheduler(
+            executors=executors,
+            timezone=datetime.timezone.utc
+        )
 
-        if self.cycle_duration.cycle_7d:
+        if self.cycle_duration.cycle_7d and self.max_cycles != 1:
             # Assume 7d without offset is Monday midnight
             logger.info("Live cycle set to trigger Monday midnight")
             # https://apscheduler.readthedocs.io/en/3.x/modules/triggers/cron.htmlgit-ad
             scheduler.add_job(
                 live_cycle,
-                'interval',
+                'cron',  # Use fixed timepoint instead of internal
                 day_of_week=0,
                 hour=0,
                 minute=0,
