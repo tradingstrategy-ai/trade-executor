@@ -1,4 +1,4 @@
-"""enzyme-deploy-vault CLI command.
+"""deploy-guard CLI command.
 
 See :ref:`vault deployment` for the full documentation how to use this command.
 
@@ -7,10 +7,6 @@ Example how to manually test:
 .. code-block:: shell
 
     export SIMULATE=true
-    export FUND_NAME="Up only and then more"
-    export FUND_SYMBOL="UP"
-    export TERMS_OF_SERVICE_ADDRESS="0x24BB78E70bE0fC8e93Ce90cc8A586e48428Ff515"
-    export VAULT_RECORD_FILE="/tmp/sample-vault-deployment.json"
     export OWNER_ADDRESS="0x238B0435F69355e623d99363d58F7ba49C408491"
 
     #
@@ -31,26 +27,23 @@ Example how to manually test:
     # Is Polygonscan.com API key, passed to Forge
     export ETHERSCAN_API_KEY=
 
-    trade-executor enzyme-deploy-vault
 """
 
 import json
 import logging
-import os.path
 import sys
 from pathlib import Path
-from pprint import pformat
 from typing import Optional
 
 from typer import Option
 
 from eth_defi.abi import get_deployed_contract
-from eth_defi.deploy import deploy_contract
-from eth_defi.enzyme.deployment import POLYGON_DEPLOYMENT, EnzymeDeployment, ETHEREUM_DEPLOYMENT
-from eth_defi.enzyme.generic_adapter_vault import deploy_vault_with_generic_adapter
+from eth_defi.enzyme.generic_adapter_vault import deploy_guard as _deploy_guard, deploy_generic_adapter_with_guard, whitelist_sender_receiver, bind_vault
+from eth_defi.enzyme.policy import update_adapter_policy
+from eth_defi.enzyme.vault import Vault
 from eth_defi.hotwallet import HotWallet
-from eth_defi.token import fetch_erc20_details
-from tradeexecutor.cli.guard import get_enzyme_deployment, generate_whitelist
+from eth_defi.uniswap_v2.utils import ZERO_ADDRESS
+from tradeexecutor.cli.guard import generate_whitelist, get_enzyme_deployment
 from tradeexecutor.monkeypatch.web3 import construct_sign_and_send_raw_middleware
 from tradingstrategy.chain import ChainId
 
@@ -61,7 +54,7 @@ from tradeexecutor.cli.log import setup_logging
 
 
 @app.command()
-def enzyme_deploy_vault(
+def deploy_guard(
     log_level: str = shared_options.log_level,
     json_rpc_binance: Optional[str] = shared_options.json_rpc_binance,
     json_rpc_polygon: Optional[str] = shared_options.json_rpc_polygon,
@@ -71,15 +64,8 @@ def enzyme_deploy_vault(
     json_rpc_anvil: Optional[str] = shared_options.json_rpc_anvil,
     private_key: str = shared_options.private_key,
 
-    # Vault options
-    vault_record_file: Optional[Path] = Option(..., envvar="VAULT_RECORD_FILE", help="Store vault and comptroller addresses in this JSON file. It's important to write down all contract addresses."),
-    fund_name: Optional[str] = Option(..., envvar="FUND_NAME", help="On-chain name for the fund shares"),
-    fund_symbol: Optional[str] = Option(..., envvar="FUND_SYMBOL", help="On-chain token symbol for the fund shares"),
-    comptroller_lib: Optional[str] = shared_options.comptroller_lib,
     denomination_asset: Optional[str] = Option(None, envvar="DENOMINATION_ASSET", help="Stablecoin asset used for vault denomination"),
-
     owner_address: Optional[str] = Option(None, envvar="OWNER_ADDRESS", help="The protocol or multisig address that is set as the owner of the vault"),
-    terms_of_service_address: Optional[str] = Option(None, envvar="TERMS_OF_SERVICE_ADDRESS", help="The address of the terms of service smart contract"),
     whitelisted_assets: Optional[str] = Option(..., envvar="WHITELISTED_ASSETS", help="Space separarted list of ERC-20 addresses this vault can trade. Denomination asset does not need to be whitelisted separately."),
 
     unit_testing: bool = shared_options.unit_testing,
@@ -88,13 +74,21 @@ def enzyme_deploy_vault(
     etherscan_api_key: Optional[str] = Option(None, envvar="ETHERSCAN_API_KEY", help="Etherscan API key need to verify the contracts on a production deployment."),
     one_delta: bool = Option(False, envvar="ONE_DELTA", help="Whitelist 1delta interaction with GuardV0 smart contract."),
     aave: bool = Option(False, envvar="AAVE", help="Whitelist Aave aUSDC deposits"),
+
+    vault_address: Optional[str] = shared_options.vault_address,
+    vault_adapter_address: Optional[str] = shared_options.vault_address,
+    comptroller_lib: Optional[str] = shared_options.comptroller_lib,
+    allowed_adapters_policy: Optional[str] = Option(None, envvar="ALLOWED_ADAPTERS_POLICY", help="Pass Enzyme contract addreses"),
+
+    report_file: Optional[Path] = Option(None, envvar="REPORT_FILE", help="JSON file path where we wrote information about the deployment"),
+    update_generic_adapter: Optional[bool] = Option(False, envvar="UPDATE_GENERIC_ADAPTER", help="Perform transaction to update the generic adapter contract to use the new guard deployment. The private key must be the generic adapter owner for this to work."),
+
 ):
-    """Deploy a new Enzyme vault.
+    """Deploy a new Guard smart contract.
 
-    Deploys a new Enzyme vault that is configured to be run with Trading Strategy Protocol.
+    - Can be assigned to Enzyme vault
 
-    Multiple contracts will be deployed and verified in a blockchain explorer.
-    The vault is configured with custom guard, deposit and terms of service contracts.
+    - Can be assigned to a standalone multisig
     """
 
     logger = setup_logging(log_level)
@@ -124,33 +118,13 @@ def enzyme_deploy_vault(
     web3.middleware_onion.add(construct_sign_and_send_raw_middleware(hot_wallet.account))
 
     # Build the list of whitelisted assets GuardV0 allows us to trade
-    if denomination_asset not in whitelisted_assets:
-        # Unit test legacy hack
-        whitelisted_assets = denomination_asset + " " + whitelisted_assets
     whitelisted_asset_details = generate_whitelist(web3, whitelisted_assets)
-    assert len(whitelisted_asset_details) >= 1, "You need to whitelist at least one token as a trading pair"
     denomination_token = whitelisted_asset_details[0]
-
-    enzyme_deployment = get_enzyme_deployment(
-        web3,
-        chain_id,
-        hot_wallet,
-        comptroller_lib=comptroller_lib
-    )
 
     # Check the chain is online
     logger.info(f"  Chain id is {web3.eth.chain_id:,}")
     logger.info(f"  Latest block is {web3.eth.block_number:,}")
-
-    if terms_of_service_address is not None:
-        terms_of_service = get_deployed_contract(
-            web3,
-            "terms-of-service/TermsOfService.json",
-            terms_of_service_address,
-        )
-        terms_of_service.functions.latestTermsOfServiceVersion().call()  # Check ABI matches or crash
-    else:
-        terms_of_service = None
+    logger.info(f"  Vault is {web3.eth.block_number:,}")
 
     asset_manager_address = hot_wallet.address
 
@@ -161,16 +135,11 @@ def enzyme_deploy_vault(
         logger.info("Simulation deployment")
     else:
         logger.info("Ready to deploy")
+
     logger.info("-" * 80)
     logger.info("Deployer hot wallet: %s", hot_wallet.address)
     logger.info("Deployer balance: %f, nonce %d", hot_wallet.get_native_currency_balance(web3), hot_wallet.current_nonce)
-    logger.info("Enzyme FundDeployer: %s", enzyme_deployment.contracts.fund_deployer.address)
-    if enzyme_deployment.usdc is not None:
-        logger.info("USDC: %s", enzyme_deployment.usdc.address)
-    logger.info("Terms of service: %s", terms_of_service.address if terms_of_service else "-")
-    logger.info("Fund: %s (%s)", fund_name, fund_symbol)
     logger.info("Whitelisted assets: %s", ", ".join([a.symbol for a in whitelisted_asset_details]))
-
     logger.info("Whitelisting 1delta and Aave: %s", one_delta)
 
     if owner_address != hot_wallet.address:
@@ -181,7 +150,7 @@ def enzyme_deploy_vault(
     if asset_manager_address != hot_wallet.address:
         logger.info("Asset manager is %s", asset_manager_address)
     else:
-        logger.info("No separate asset manager role set: will use the current hot wallet as the asset manager for the vault")
+        logger.info("No separate asset manager role set: will use the current hot wallet as the asset manager")
 
     logger.info("-" * 80)
 
@@ -191,24 +160,78 @@ def enzyme_deploy_vault(
             print("Aborted")
             sys.exit(1)
     try:
-        # Currently assumes HotWallet = asset manager
-        # as the trade-executor that deploys the vault is going to
-        # the assset manager for this vault
-        vault = deploy_vault_with_generic_adapter(
-            enzyme_deployment,
-            hot_wallet,
+        guard = _deploy_guard(
+            web3=web3,
+            deployer=hot_wallet,
             asset_manager=hot_wallet.address,
             owner=owner_address,
-            terms_of_service=terms_of_service,
             denomination_asset=denomination_token.contract,
-            fund_name=fund_name,
-            fund_symbol=fund_symbol,
             whitelisted_assets=whitelisted_asset_details,
             etherscan_api_key=etherscan_api_key if not simulate else None,  # Only verify when not simulating
-            production=production,
             one_delta=one_delta,
             aave=aave,
         )
+
+        if update_generic_adapter:
+
+            enzyme_deployment = get_enzyme_deployment(
+                web3,
+                chain_id,
+                hot_wallet,
+                comptroller_lib=comptroller_lib,
+                allowed_adapters_policy=allowed_adapters_policy,
+            )
+
+            denomination_token = enzyme_deployment.usdc
+            vault = Vault.fetch(
+                web3,
+                vault_address,
+                extra_addresses={
+                    "comptroller_lib": comptroller_lib,
+                    "allowed_adapters_policy": allowed_adapters_policy,
+                }
+            )
+
+            generic_adapter = deploy_generic_adapter_with_guard(
+                enzyme_deployment,
+                hot_wallet,
+                guard,
+                etherscan_api_key,
+            )
+
+            # TODO: Fix this so we do not need to fetch Vault twice
+            vault = Vault.fetch(
+                web3,
+                vault_address,
+                extra_addresses={
+                    "comptroller_lib": comptroller_lib,
+                    "allowed_adapters_policy": allowed_adapters_policy,
+                    "generic_adapter": generic_adapter.address,
+                }
+            )
+
+            bind_vault(
+                generic_adapter,
+                vault.vault,
+                production,
+                "",
+                hot_wallet,
+            )
+
+            update_adapter_policy(
+                vault,
+                generic_adapter,
+                hot_wallet
+            )
+
+            whitelist_sender_receiver(
+                guard,
+                hot_wallet,
+                allow_receiver=generic_adapter.address,
+                allow_sender=vault.address,
+            )
+        else:
+            generic_adapter = None
 
     except Exception as e:
 
@@ -218,35 +241,23 @@ def enzyme_deploy_vault(
             # Try to get some useful debug info from Anvil
             web3config.close(logging.ERROR)
 
-        logger.exception(e)  # The fancy traceback formatter does not do nested
+        logger.exception(e)  # TODO: Typer workaround
 
-        raise RuntimeError(f"Deployment failed. Hot wallet: {hot_wallet.address}.\nException: {e}") from e
+        raise RuntimeError(f"Deployment failed. Hot wallet: {hot_wallet.address}\n{e}") from e
 
-    if vault_record_file and (not simulate):
-        # Make a small file, mostly used to communicate with unit tests
-        with open(vault_record_file, "wt") as out:
-            vault_record = {
-                "fund_name": fund_name,
-                "fund_symbol": fund_symbol,
-                "vault": vault.address,
-                "comptroller": vault.comptroller.address,
-                "generic_adapter": vault.generic_adapter.address,
-                "block_number": vault.deployed_at_block,
-                "usdc_payment_forwarder": vault.payment_forwarder.address,
-                "guard": vault.guard_contract.address,
-                "deployer": hot_wallet.address,
-                "denomination_token": denomination_token.address,
-                "terms_of_service": terms_of_service_address,
-                "whitelisted_assets": whitelisted_assets,
-                "asset_manager_address": asset_manager_address,
-                "owner_address": owner_address,
+    logger.info("GuardV0 deployed at %s", guard.address)
+    if generic_adapter:
+        logger.info("GuardedGenericAdapter deployed at %s", generic_adapter.address)
+
+    # Used to expose info to unit testing
+    if report_file:
+        with report_file.open("wt") as out:
+            data = {
+                "guard": guard.address,
+                "generic_adapter": generic_adapter.address,
             }
-            json.dump(vault_record, out, indent=4)
-        logger.info("Wrote %s for vault details", os.path.abspath(vault_record_file))
-    else:
-        logger.info("Skipping record file because of simulation")
+            json.dump(data, out)
 
-    logger.info("Vault environment variables for trade-executor init command:\n%s", pformat(vault.get_deployment_info()))
+    logger.info("All ok")
 
     web3config.close()
-

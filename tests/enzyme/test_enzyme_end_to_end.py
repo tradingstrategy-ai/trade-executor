@@ -27,6 +27,7 @@ from eth_defi.enzyme.vault import Vault
 from eth_defi.hotwallet import HotWallet
 from eth_defi.trace import assert_transaction_success_with_explanation
 from eth_defi.uniswap_v2.deployment import UniswapV2Deployment
+from tradeexecutor.monkeypatch.web3 import construct_sign_and_send_raw_middleware
 
 from tradingstrategy.pair import PandasPairUniverse
 
@@ -41,8 +42,33 @@ from tradeexecutor.state.state import State
 logger = logging.getLogger(__name__)
 
 
+def transfer_vault_ownership(
+    vault: Vault,
+    new_owner: str,
+):
+    """Transfer the vault ownership to a new owner.
+
+    Used in testing.
+    """
+    web3 = vault.web3
+    current_owner = vault.get_owner()
+    logger.info("transfer_ownership(): %s -> %s", vault.get_owner(), new_owner),
+    assert vault.get_owner() != new_owner
+
+    tx_hash = vault.vault.functions.setNominatedOwner(new_owner).transact({"from": current_owner})
+    assert_transaction_success_with_explanation(web3, tx_hash)
+    logger.info("New vault owner nominated to be %s", new_owner)
+
+    # Accept transfer
+    tx_hash = vault.vault.functions.claimOwnership().transact({"from": new_owner})
+    assert_transaction_success_with_explanation(web3, tx_hash)
+    logger.info("New vault owner claimed ownership to be %s", new_owner)
+
+    assert vault.get_owner() == new_owner
+
+
 @pytest.fixture
-def hot_wallet(web3, deployer, user_1, usdc: Contract, vault: Vault) -> HotWallet:
+def hot_wallet(web3, deployer, user_1, usdc: Contract) -> HotWallet:
     """Create hot wallet for the signing tests.
 
     Top is up with some gas money and 500 USDC.
@@ -56,11 +82,37 @@ def hot_wallet(web3, deployer, user_1, usdc: Contract, vault: Vault) -> HotWalle
     tx_hash = usdc.functions.transfer(wallet.address, 500 * 10**6).transact({"from": deployer})
     assert_transaction_success_with_explanation(web3, tx_hash)
 
-    # Promote the hot wallet to the asset manager
-    tx_hash = vault.vault.functions.addAssetManagers([account.address]).transact({"from": user_1})
-    assert_transaction_success_with_explanation(web3, tx_hash)
+    # Add to the local signer chain
+    web3.middleware_onion.add(construct_sign_and_send_raw_middleware(account))
 
     return wallet
+
+
+@pytest.fixture()
+def enzyme_vault_contract(
+    web3,
+    deployer,
+    usdc,
+    user_1,
+    hot_wallet: HotWallet,
+    enzyme_deployment,
+) -> Contract:
+    """Create an example vault.
+
+    - USDC nominatead
+
+    - user_1 is the owner
+    """
+    comptroller_contract, vault_contract = enzyme_deployment.create_new_vault(
+        hot_wallet.address,
+        usdc,
+    )
+
+    # Promote the hot wallet to the asset manager
+    tx_hash = vault_contract.functions.addAssetManagers([hot_wallet.address]).transact({"from": hot_wallet.address})
+    assert_transaction_success_with_explanation(web3, tx_hash)
+
+    return vault_contract
 
 
 @pytest.fixture()
@@ -637,3 +689,129 @@ def test_enzyme_correct_accounts_for_closed_position_transfer_away(
             cli.main(args=["correct-accounts"])
         assert e.value.code == 0
 
+
+def test_deploy_guard_standalone(
+    environment: dict,
+    web3: Web3,
+    state_file: Path,
+    usdc: Contract,
+    weth: Contract,
+    deployer: HexAddress,
+):
+    """Deploy GuardV0 smart contract standalone.
+
+    - Don't associate with any vault
+    """
+
+    env = environment.copy()
+    env["WHITELISTED_ASSETS"] = " ".join([usdc.address, weth.address])
+
+    with patch.dict(os.environ, env, clear=True):
+        app(["deploy-guard"], standalone_mode=False)
+
+
+def test_deploy_guard_for_vault(
+    environment: dict,
+    web3: Web3,
+    state_file: Path,
+    usdc: Contract,
+    weth: Contract,
+    vault: Vault,
+    deployer: HexAddress,
+):
+    """Deploy GuardV0 smart contract for an existing vault.
+
+    - Update guard to use the vault, and vault generic adapter use the guard
+    """
+
+    env = environment.copy()
+    env.update({
+        "VAULT_ADDRESS": vault.address,
+        "VAULT_ADAPTER_ADDRESS": vault.generic_adapter.address,
+        "WHITELISTED_ASSETS": " ".join([usdc.address, weth.address]),
+    })
+
+    with patch.dict(os.environ, env, clear=True):
+        app(["deploy-guard"], standalone_mode=False)
+
+
+@pytest.mark.skip(reason="Currently Enzyme does not way to update AdapterPolicy. Instead, the whole vault needs to be reconfigured with 7 days delay.")
+def test_enzyme_perform_test_trade_with_redeployed_guard(
+    environment: dict,
+    web3: Web3,
+    state_file: Path,
+    usdc: Contract,
+    weth: Contract,
+    vault: Vault,
+    deployer: HexAddress,
+    enzyme_deployment: EnzymeDeployment,
+    weth_usdc_trading_pair: TradingPairIdentifier,
+    tmp_path,
+    user_1,
+    hot_wallet: HotWallet,
+):
+    """Perform a test trade on Enzymy vault via CLI.
+
+    - Use deploy-guard to deploy a new guard for the vault
+
+    - If the guard deployment is broken, the test trade should not success
+    """
+
+
+    assert vault.get_owner() == hot_wallet.address
+    report_file = tmp_path / "guard.json"
+    env = environment.copy()
+    env["VAULT_ADDRESS"] = vault.address
+    env["VAULT_ADAPTER_ADDRESS"] = vault.generic_adapter.address
+    env["REPORT_FILE"] = str(report_file)
+    env["UPDATE_GENERIC_ADAPTER"] = "true"
+    env["WHITELISTED_ASSETS"] = " ".join([usdc.address, weth.address])
+    env["COMPTROLLER_LIB"] = enzyme_deployment.contracts.comptroller_lib.address
+    env["ALLOWED_ADAPTERS_POLICY"] = enzyme_deployment.contracts.allowed_adapters_policy.address
+
+    # We need to be vault owner to update the generic adapter policy
+    # transfer_vault_ownership(vault, hot_wallet.address)
+
+    cli = get_command(app)
+
+    # Deposit some USDC to start
+    deposit_amount = 500 * 10**6
+    tx_hash = usdc.functions.approve(vault.comptroller.address, deposit_amount).transact({"from": deployer})
+    assert_transaction_success_with_explanation(web3, tx_hash)
+    tx_hash = vault.comptroller.functions.buyShares(deposit_amount, 1).transact({"from": deployer})
+    assert_transaction_success_with_explanation(web3, tx_hash)
+    assert usdc.functions.balanceOf(vault.address).call() == deposit_amount
+    logger.info("Deposited %d %s at block %d", deposit_amount, usdc.address, web3.eth.block_number)
+
+    # Check we have a deposit event
+    logs = vault.comptroller.events.SharesBought.get_logs()
+    logger.info("Got logs %s", logs)
+    assert len(logs) == 1
+
+    with patch.dict(os.environ, env, clear=True):
+        cli.main(args=["init"], standalone_mode=False)
+
+    # We (may) have alreaddy guard deployed earlier,
+    # but we will now redeploy it
+    with patch.dict(os.environ, env, clear=True):
+        cli.main(args=["deploy-guard"], standalone_mode=False)
+
+    # Check the deployed address look somewhat correct
+    report_data = json.load(report_file.open("rt"))
+    assert report_data["generic_adapter"]
+    assert report_data["guard"]
+    vault = Vault.fetch(
+        web3,
+        vault_address=vault.address,
+        generic_adapter_address=vault.generic_adapter.address,
+    )
+
+    with patch.dict(os.environ, env, clear=True):
+        cli.main(args=["perform-test-trade"], standalone_mode=False)
+
+    assert usdc.functions.balanceOf(vault.address).call() < deposit_amount, "No deposits where spent; trades likely did not happen"
+
+    # Check the resulting state and see we made some trade for trading fee losses
+    with state_file.open("rt") as inp:
+        state: State = State.from_json(inp.read())
+        assert len(list(state.portfolio.get_all_trades())) == 2

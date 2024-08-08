@@ -423,11 +423,11 @@ def enzyme_deployment(
 
 @pytest.fixture()
 def enzyme_vault_contract(
-        web3,
-        deployer,
-        usdc,
-        user_1,
-        enzyme_deployment,
+    web3,
+    deployer,
+    usdc,
+    user_1,
+    enzyme_deployment,
 ) -> Contract:
     """Create an example vault.
 
