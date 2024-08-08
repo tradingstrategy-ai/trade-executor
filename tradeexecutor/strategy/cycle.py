@@ -158,6 +158,12 @@ class CycleDuration(enum.Enum):
         """Convert from OHLCV time frame."""
         return CycleDuration(bucket.value)
 
+    def get_timing_offset(self) -> str | pd.DateOffset:
+        """What's the base offset for this cycle.
+
+        """
+
+
 
 def round_datetime_up(
         ts: datetime.datetime,
