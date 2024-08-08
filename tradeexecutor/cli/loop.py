@@ -1053,6 +1053,7 @@ class ExecutionLoop:
         # The first trade will be execute immediately, despite the time offset or tick
         if self.trade_immediately:
             ts = datetime.datetime.now()
+            logger.info("Trade immediately triggered, using timestamp %s, cycle is %d", ts, cycle)
             universe = self.tick(ts, self.cycle_duration, state, cycle, live=True)
 
         def die(exc: Exception):
@@ -1158,7 +1159,7 @@ class ExecutionLoop:
             # Used e.g. test_strategy_cycle_trigger.py
             if self.max_cycles is not None:
                 if cycle >= self.max_cycles:
-                    logger.info(("Max cycles reached"))
+                    logger.info("Max cycles reached. Cycle %d, max %d", cycle, self.max_cycles)
                     scheduler.shutdown(wait=False)
 
             run_state.completed_cycle = cycle
@@ -1222,16 +1223,40 @@ class ExecutionLoop:
         # Any task blocks other tasks - there is no parallerism or multithread support at the moment.
         # Multithread support would need making the architecture more complex with various locks
         # that could then be additional source of bugs.
-        scheduler = BlockingScheduler(executors=executors, timezone=datetime.timezone.utc)
-
-        # Core live trade execution loop
-        scheduler.add_job(
-            live_cycle,
-            'interval',
-            seconds=self.cycle_duration.to_timedelta().total_seconds(),
-            start_date=start_time + tick_offset,
-            misfire_grace_time = None,  # Will always run the job no matter how late it is
+        scheduler = BlockingScheduler(
+            executors=executors,
+            timezone=datetime.timezone.utc
         )
+
+        if self.cycle_duration == CycleDuration.cycle_7d and self.max_cycles == None:
+            # Assume 7d without offset is Monday midnight
+            logger.info("Live cycle set to trigger Monday midnight")
+            # https://apscheduler.readthedocs.io/en/3.x/modules/triggers/cron.htmlgit-ad
+            scheduler.add_job(
+                live_cycle,
+                'cron',  # Use fixed timepoint instead of internal
+                day_of_week=0,
+                hour=0,
+                minute=0,
+                second=0,
+                misfire_grace_time = None,  # Will always run the job no matter how late it is
+            )
+        else:
+            # Core live trade execution loop
+            seconds = self.cycle_duration.to_timedelta().total_seconds()
+            logger.info(
+                "Live cycle set to trigger seconds %d, start time %s, offset %s",
+                seconds,
+                start_time,
+                tick_offset
+            )
+            scheduler.add_job(
+                live_cycle,
+                'interval',
+                seconds=seconds,
+                start_date=start_time + tick_offset,
+                misfire_grace_time = None,  # Will always run the job no matter how late it is
+            )
 
         if self.stats_refresh_frequency not in (datetime.timedelta(0), None):
             scheduler.add_job(

@@ -289,6 +289,34 @@ def test_enzyme_live_trading_start(
     assert weth_balance == pytest.approx(10**18 * 0.03112978758721282)
 
 
+# This is slow for some reason as the test itself executes fast, but pytest takes forever to shutdown
+@pytest.mark.slow_test_group
+def test_enzyme_live_trading_run_single_cycle(
+    environment: dict,
+    state_file: Path,
+    usdc: Contract,
+    weth: Contract,
+    vault: Vault,
+    deployer: HexAddress,
+):
+    """Run Enzyme vaulted strategy using --run_single_cycle"""
+
+    result = run_init(environment)
+    assert result.exit_code == 0
+
+    # Deposit some money in the vault
+    usdc.functions.approve(vault.comptroller.address, 500 * 10**6).transact({"from": deployer})
+    vault.comptroller.functions.buyShares(500 * 10**6, 1).transact({"from": deployer})
+
+    # Run strategy for a single cycle
+    env = environment.copy()
+    env["RUN_SINGLE_CYCLE"] = "true"
+    del env["MAX_CYCLES"]
+    cli = get_command(app)
+    with patch.dict(os.environ, env, clear=True):
+        cli.main(args=["start"], standalone_mode=False)
+
+
 @pytest.mark.slow_test_group
 def test_enzyme_deploy_vault(
     environment: dict,

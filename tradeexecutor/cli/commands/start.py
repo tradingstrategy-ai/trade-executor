@@ -41,6 +41,7 @@ from ...strategy.cycle import CycleDuration
 from ...strategy.default_routing_options import TradeRouting
 from ...strategy.execution_context import ExecutionContext, ExecutionMode
 from ...strategy.execution_model import AssetManagementMode
+from ...strategy.parameters import dump_parameters
 from ...strategy.routing import RoutingModel
 from ...strategy.run_state import RunState
 from ...strategy.strategy_cycle_trigger import StrategyCycleTrigger
@@ -134,6 +135,8 @@ def start(
     check_accounts: bool = typer.Option(True, "--check-accounts", envvar="CHECK_ACCOUNTS", help="Do extra accounting checks to track mismatch balances"),
     sync_treasury_on_startup: bool = typer.Option(True, "--sync-treasury-on-startup", envvar="SYNC_TREASURY_ON_STARTUP", help="Sync treasury events before starting any trading"),
     visulisation: bool = typer.Option(True, "--visualisation", envvar="VISUALISATION", help="Disable generation of charts using Kaleido library. Helps with issues with broken installations"),
+
+    run_single_cycle: bool = typer.Option(False, "--run-single-cycle", envvar="RUN_SINGLE_CYCLE", help="Run a single strategy decision cycle and exist, regardless of the current pending state."),
 
     # Logging
     log_level: str = shared_options.log_level,
@@ -443,6 +446,12 @@ def start(
                     engine_version=mod.trading_strategy_engine_version,
                 )
 
+        if mod.parameters:
+            logger.trade(
+                "Starting with strategy parameters:\n%s",
+                dump_parameters(mod.parameters)
+            )
+
         logger.info(
             "Starting %s, with execution mode: %s, unit testing is %s, version is %s",
             name,
@@ -462,6 +471,13 @@ def start(
     # docker-compose kill command
     if not unit_testing:
         faulthandler.enable()
+
+    # Force run a single cycle
+    if run_single_cycle:
+        max_cycles = 1
+        trade_immediately = True
+    else:
+        logger.info("No immediate trade set up, max cycles is %s", max_cycles)
 
     loop = ExecutionLoop(
         name=name,
