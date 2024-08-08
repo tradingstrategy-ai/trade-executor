@@ -1228,6 +1228,7 @@ class ExecutionLoop:
         if self.cycle_duration.cycle_7d:
             # Assume 7d without offset is Monday midnight
             logger.info("Live cycle set to trigger Monday midnight")
+            # https://apscheduler.readthedocs.io/en/3.x/modules/triggers/cron.htmlgit-ad
             scheduler.add_job(
                 live_cycle,
                 'interval',
