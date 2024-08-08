@@ -41,6 +41,7 @@ from ...strategy.cycle import CycleDuration
 from ...strategy.default_routing_options import TradeRouting
 from ...strategy.execution_context import ExecutionContext, ExecutionMode
 from ...strategy.execution_model import AssetManagementMode
+from ...strategy.parameters import dump_parameters
 from ...strategy.routing import RoutingModel
 from ...strategy.run_state import RunState
 from ...strategy.strategy_cycle_trigger import StrategyCycleTrigger
@@ -442,6 +443,12 @@ def start(
                     timed_task_context_manager=timed_task,
                     engine_version=mod.trading_strategy_engine_version,
                 )
+
+        if mod.parameters:
+            logger.info(
+                "Starting with strategy parameters:\n%s",
+                dump_parameters(mod.parameters)
+            )
 
         logger.info(
             "Starting %s, with execution mode: %s, unit testing is %s, version is %s",
