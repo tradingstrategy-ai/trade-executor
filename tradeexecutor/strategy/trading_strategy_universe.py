@@ -2208,13 +2208,13 @@ def load_partial_data(
         if execution_context.mode.is_live_trading():
             for pair_id in list(our_pair_ids)[0:5]:
                 pair_candles = candles[candles["pair_id"] == pair_id]
-                if len(pair_candles.index) > 0:
-                    first_at = min(pair_candles.index)
-                    last_at = max(pair_candles.index)
+                if len(pair_candles) > 0:
+                    first_at = min(pair_candles["timestamp"])
+                    last_at = max(pair_candles["timestamp"])
                     duration = last_at - first_at
                     duration_weeks = duration / pd.Timedelta(days=7)
                     logger.info(
-                        "Pair id: %d, candle count: %d, first %s, last %s, duration %s, duration (weeks) %s",
+                        "Pair id: %d, candle count: %d, first: %s, last: %s, duration: %s, duration (weeks): %s",
                         pair_id,
                         len(pair_candles),
                         first_at,
