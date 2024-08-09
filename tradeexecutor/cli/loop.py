@@ -1286,6 +1286,7 @@ class ExecutionLoop:
 
         single_shot = self.trade_immediately and self.max_cycles == 1
 
+        # Avoid starting a scheduler if we do --run-single-cycle
         if not single_shot:
             try:
                 # https://github.com/agronholm/apscheduler/discussions/683
