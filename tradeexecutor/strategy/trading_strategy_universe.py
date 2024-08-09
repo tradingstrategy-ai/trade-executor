@@ -2102,6 +2102,14 @@ def load_partial_data(
     # or how many days of historical data we ask for
     data_load_start_at = start_at or (datetime.datetime.utcnow() - required_history_period)
 
+    logger.info(
+        "load_partial_data(): data_load_start_at: %s, start_at: %s, end_at: %s, required_history_period: %s",
+        data_load_start_at,
+        start_at,
+        end_at,
+        required_history_period,
+    )
+
     with execution_context.timed_task_context_manager("load_partial_pair_data", time_bucket=time_bucket.value):
 
         exchange_universe = client.fetch_exchange_universe()
