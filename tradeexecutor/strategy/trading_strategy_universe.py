@@ -2206,7 +2206,7 @@ def load_partial_data(
         # Colllect some debug data for the first 5 pairs
         # to diagnose data loding problems
         if execution_context.mode.is_live_trading():
-            for pair_id in our_pair_ids[0:5]:
+            for pair_id in list(our_pair_ids)[0:5]:
                 pair_candles = candles[candles["pair_id"] == pair_id]
                 if pair_candles.index:
                     first_at = min(pair_candles.index)
