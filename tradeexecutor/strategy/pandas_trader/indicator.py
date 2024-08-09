@@ -292,6 +292,20 @@ class IndicatorDefinition:
         try:
             input_fixed = _flatten_index(input)
             ret = self.func(input_fixed, **self._fix_parameters_for_function_signature(resolver, pair))
+
+            # Some debug logging
+            if ret is None:
+                diagnostics_text = "<none>"
+            else:
+                diagnostics_text = f"{len(ret)} rows"
+
+            logger.info(
+                "Indicator: %s, pair: %s, data: %s",
+                self.name,
+                pair.get_ticker(),
+                diagnostics_text,
+            )
+
             return self._check_good_return_value(ret)
         except Exception as e:
             raise IndicatorCalculationFailed(f"Could not calculate indicator {self.name} ({self.func}) for parameters {self.parameters}, input data is {len(input)} rows: {e}, pair is {pair}") from e
