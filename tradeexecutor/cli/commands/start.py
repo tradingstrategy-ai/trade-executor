@@ -475,6 +475,7 @@ def start(
     # Force run a single cycle
     if run_single_cycle:
         max_cycles = 1
+        sync_treasury_on_startup = True
         trade_immediately = True
     else:
         logger.info("No immediate trade set up, max cycles is %s", max_cycles)
