@@ -419,7 +419,7 @@ class ExecutionLoop:
         }
 
         logger.trade(
-            "Performing strategy tick #%d for timestamp %s, cycle length is %s, trigger time was %s, live trading is %s, trading univese is %s, version %s",
+            "Performing strategy tick #%d for timestamp %s, cycle length is %s, trigger time was %s, live trading is %s, trading univese is %s, version %s, max cycles %d",
              cycle,
              ts,
              cycle_duration.value,
@@ -427,6 +427,7 @@ class ExecutionLoop:
              live,
              existing_universe,
             self.execution_context.engine_version,
+            self.max_cycles,
         )
 
         if existing_universe is None:
@@ -1283,18 +1284,21 @@ class ExecutionLoop:
         version_info = self.run_state.version
         logger.trade(str(version_info))
 
-        try:
-            # https://github.com/agronholm/apscheduler/discussions/683
-            scheduler.start()
-        except KeyboardInterrupt:
-            # https://github.com/agronholm/apscheduler/issues/338
-            scheduler.shutdown(wait=False)
-            raise
-        except Exception as e:
-            logger.error("Scheduler raised an exception %s", e)
-            raise
+        single_shot = self.trade_immediately and self.max_cycles == 1
 
-        logger.info("Scheduler finished - down the live trading loop")
+        if not single_shot:
+            try:
+                # https://github.com/agronholm/apscheduler/discussions/683
+                scheduler.start()
+            except KeyboardInterrupt:
+                # https://github.com/agronholm/apscheduler/issues/338
+                scheduler.shutdown(wait=False)
+                raise
+            except Exception as e:
+                logger.error("Scheduler raised an exception %s", e)
+                raise
+
+            logger.info("Scheduler finished - down the live trading loop")
 
         if crash_exception:
             raise LiveSchedulingTaskFailed("trade-executor closed because one of the scheduled tasks failed") from crash_exception
