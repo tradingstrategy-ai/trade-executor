@@ -2190,6 +2190,17 @@ def load_partial_data(
             lending_reserve_universe = None
             lending_candles = None
 
+        logger.info(
+            "load_partial_data() complete: time bucket: %s",
+            time_bucket,
+        )
+
+        # Colllect some debug data for the first 5 pairs
+        # to diagnose data loding problems
+        for pair_id in our_pair_ids[0:5]:
+            pair_candles = candles[candles["pair_id"] == pair_id]
+            logger.info("Pair id: %d, candle count: %d", pair_id, len(pair_candles))
+
         return Dataset(
             time_bucket=time_bucket,
             exchanges=our_exchange_universe,

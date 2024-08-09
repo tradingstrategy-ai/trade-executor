@@ -471,8 +471,18 @@ class ExecutionLoop:
         # Modify tick() to take these as argument
         routing_state, pricing_model, valuation_model = self.runner.setup_routing(universe)
 
+        if self.execution_context.mode.is_live_trading():
+            # In live trading, the interest follows clock
+            # (chain blocks)
+            interest_timestamp = datetime.datetime.utcnow()
+            logger.info("Doing live trading interest sync at %s", interest_timestamp)
+        else:
+            # In backtesting do discreet steps
+            interest_timestamp = ts
+            logger.info("Doing backtesitng interest sync at %s", interest_timestamp)
+
         interest_events = self.sync_model.sync_interests(
-            ts,
+            interest_timestamp,
             state,
             cast(TradingStrategyUniverse, universe),
             pricing_model,
