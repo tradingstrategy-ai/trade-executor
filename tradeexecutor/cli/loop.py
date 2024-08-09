@@ -471,7 +471,7 @@ class ExecutionLoop:
         # Modify tick() to take these as argument
         routing_state, pricing_model, valuation_model = self.runner.setup_routing(universe)
 
-        if self.execution_context.mode.is_live_trading():
+        if self.execution_context.mode.is_live_trading() and not (self.execution_context.mode == ExecutionMode.simulated_trading):
             # In live trading, the interest follows clock
             # (chain blocks)
             interest_timestamp = datetime.datetime.utcnow()

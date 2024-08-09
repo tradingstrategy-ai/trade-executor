@@ -1365,7 +1365,7 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
                 )
                 return rate
             except Exception as e:
-                raise RuntimeError(f"get_latest_supply_apr() failed, timestamp: {timestamp}, lending reserve: {lending_reserve}, asset: {asset}, tolerance: {tolerance}") from e
+                raise RuntimeError(f"get_latest_supply_apr() failed, timestamp: {timestamp}, lending reserve: {lending_reserve}, asset: {asset}, tolerance: {tolerance}\nException: {e}") from e
 
         # get last available rate
         df = self.data_universe.lending_candles.supply_apr.get_rates_by_reserve(lending_reserve)
