@@ -185,6 +185,7 @@ class ExecutionLoop:
         self.sync_treasury_on_startup = sync_treasury_on_startup
         self.store = store
         self.name = name
+        self.trade_immediately = trade_immediately
 
         self.backtest_start = backtest_start
         self.backtest_end = backtest_end
@@ -435,7 +436,7 @@ class ExecutionLoop:
             # trade cycles.
 
             # Refresh the trading universe for this cycle
-            if self.strategy_cycle_trigger == StrategyCycleTrigger.cycle_offset:
+            if self.strategy_cycle_trigger == StrategyCycleTrigger.cycle_offset or self.trade_immediately:
                 logger.info("Creating new universe from the scratch using create_trading_universe()")
                 universe = self.universe_model.construct_universe(
                     ts,
@@ -984,8 +985,6 @@ class ExecutionLoop:
         assert not self.is_backtest()
         assert self.backtest_start is None
         assert self.backtest_end is None
-
-        ts = datetime.datetime.utcnow()
 
         # Start the watchdog process killer
         watchdog_registry = create_watchdog_registry(WatchdogMode.thread_based)
