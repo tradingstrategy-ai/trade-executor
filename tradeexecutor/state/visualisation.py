@@ -277,7 +277,8 @@ class Plot:
         assert isinstance(value, (float, NoneType)), f"Got {value} ({value.__class__})"
         timestamp = convert_and_validate_timestamp_as_int(timestamp)
         logger.info("Plotting %s at %s: %s", self.name, timestamp, value)
-        assert timestamp not in self.points, f"Plot {self.name} aleady has point for timestamp {timestamp}"
+        # This condition is untrue if we run --run-single-cycle twice to debug the strategy
+        # assert timestamp not in self.points, f"Plot {self.name} aleady has point for timestamp {timestamp}"
         self.points[timestamp] = value
 
     def get_last_value(self) -> float:
