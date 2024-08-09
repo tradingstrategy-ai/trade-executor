@@ -2208,7 +2208,7 @@ def load_partial_data(
         if execution_context.mode.is_live_trading():
             for pair_id in list(our_pair_ids)[0:5]:
                 pair_candles = candles[candles["pair_id"] == pair_id]
-                if pair_candles.index:
+                if len(pair_candles.index) > 0:
                     first_at = min(pair_candles.index)
                     last_at = max(pair_candles.index)
                     duration = last_at - first_at
