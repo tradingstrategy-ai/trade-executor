@@ -387,13 +387,20 @@ class StrategyInputIndicators:
             # E.g. portfolio data with missing values
             return None
 
-        if data_delay_tolerance == "auto":
-            ts = ts.floor(time_frame)
-            data_delay_tolerance = time_frame
+        if time_frame == pd.Timedelta(days=7):
+            # TODO: Hot fix for weekly timeframe
+            floored = ts.floor("W")
+            shifted_ts = floored - pd.Timedelta(days=7)
+            logger.info("get_indicator_value(): weekly hack, floored %s, shifted %s", floored, shifted_ts)
+        else:
 
-        shifted_ts = ts + time_frame*index + clock_shift
+            if data_delay_tolerance == "auto":
+                ts = ts.floor(time_frame)
+                data_delay_tolerance = time_frame
 
-        # First try direct timestamp hit.
+            shifted_ts = ts + time_frame*index + clock_shift
+
+            # First try direct timestamp hit.
         # This is the case for any normal strategies,
         # where time-series data and decision cycles have the equal indexes
         try:

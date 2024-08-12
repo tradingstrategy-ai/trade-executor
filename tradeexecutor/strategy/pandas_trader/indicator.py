@@ -300,7 +300,7 @@ class IndicatorDefinition:
                 diagnostics_text = f"{len(ret)} rows"
 
             logger.info(
-                "Indicator: %s, pair: %s, data: %s",
+                "Indicator calculated: %s, pair: %s, data: %s",
                 self.name,
                 pair.get_ticker(),
                 diagnostics_text,
