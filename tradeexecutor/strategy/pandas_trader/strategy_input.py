@@ -387,11 +387,14 @@ class StrategyInputIndicators:
             # E.g. portfolio data with missing values
             return None
 
+        weekly_hack = False
         if time_frame == pd.Timedelta(days=7):
             # TODO: Hot fix for weekly timeframe
             floored = ts.to_period("W").start_time
             shifted_ts = floored - pd.Timedelta(days=7)
+            data_delay_tolerance = pd.Timedelta(days=14)
             logger.info("get_indicator_value(): weekly hack, floored %s, shifted %s", floored, shifted_ts)
+            weekly_hack = True
         else:
 
             if data_delay_tolerance == "auto":
@@ -406,6 +409,9 @@ class StrategyInputIndicators:
         try:
             value = series[shifted_ts]
         except KeyError:
+
+            if weekly_hack:
+                logger.info("Could not look weekly value: %s at %s", series, shifted_ts)
 
             if shifted_ts > series.index[-1]:
                 # The data series has ended before the timestamp,
