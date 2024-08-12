@@ -1430,7 +1430,7 @@ def group_indicators(task_args: list[CalculateTaskArguments]) -> dict[int, list[
 
 def calculate_indicators(
     strategy_universe: TradingStrategyUniverse,
-    storage: DiskIndicatorStorage,
+    storage: IndicatorStorage,
     indicators: IndicatorSet | None,
     execution_context: ExecutionContext,
     remaining: set[IndicatorKey],

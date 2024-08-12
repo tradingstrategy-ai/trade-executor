@@ -93,7 +93,6 @@ def run_backtest_for_module(
     logger.info("Backtest starts at %s", backtest_start_at)
 
     indicator_storage = DiskIndicatorStorage(Path(client.transport.cache_path) / "indicators", universe_key=universe.get_cache_key())
-
     inside_ipython = any(frame for frame in inspect.stack() if frame.function == "start_ipython")
 
     if not max_workers:
