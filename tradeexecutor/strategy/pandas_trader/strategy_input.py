@@ -460,6 +460,10 @@ class StrategyInputIndicators:
         assert not isinstance(value, pd.Series), "Duplicate DatetimeIndex entries detected for: {name} {column} {pair}"
 
         if pd.isna(value):
+
+            if weekly_hack:
+                logger.info("weekly_hack(): Read NA: %s", value)
+
             return None
 
         return value
