@@ -12,6 +12,7 @@ To start a console in shell with `docker-compose.yml` set up:
 
 """
 import datetime
+import itertools
 from decimal import Decimal
 from pathlib import Path
 from typing import Optional
@@ -39,6 +40,8 @@ from ...strategy.bootstrap import make_factory_from_strategy_mod
 from ...strategy.description import StrategyExecutionDescription
 from ...strategy.execution_context import ExecutionContext, ExecutionMode
 from ...strategy.execution_model import AssetManagementMode
+from ...strategy.pandas_trader.indicator import DiskIndicatorStorage, MemoryIndicatorStorage, prepare_indicators, calculate_indicators
+from ...strategy.pandas_trader.strategy_input import StrategyInputIndicators
 from ...strategy.run_state import RunState
 from ...strategy.strategy_module import read_strategy_module
 from ...strategy.trading_strategy_universe import TradingStrategyUniverseModel
@@ -47,14 +50,19 @@ from ...utils.timer import timed_task
 
 
 def launch_console(bindings: dict):
-    """Start IPython session"""
+    """Start IPython session.
+
+    Assume line length of 130.
+    """
 
     print('')
     print('Following classes and objects are added to the interactive interpreter without import:')
     for var, val in bindings.items():
-        line = "{key:30}: {value}".format(
+        str_value = str(val)
+        str_value = str_value[0:100] + "..." if len(str_value) > 60 else str_value
+        line = "{key:25}: {value}".format(
             key=var,
-            value=str(val).replace('\n', ' ').replace('\r', ' ')
+            value=str_value.replace('\n', ' ').replace('\r', ' ')
         )
         print(line)
     print('')
@@ -266,6 +274,37 @@ def console(
         backtested_state=backtested_state,
     )
 
+    if mod.create_indicators:
+        # If the strategy uses indicators calculate and expose them to the console
+        #
+        assert mod.parameters, "You need to have Parameters class if create_indicators is specified"
+        indicator_storage = MemoryIndicatorStorage(universe_key=universe.get_cache_key())
+        indicator_set = prepare_indicators(
+            mod.create_indicators,
+            mod.parameters,
+            universe,
+            execution_context,
+            timestamp=datetime.datetime.utcnow()
+        )
+        indicators_needed = set(indicator_set.generate_combinations(universe))
+        indicator_result_map = calculate_indicators(
+            universe,
+            indicator_storage,
+            indicator_set,
+            execution_context=execution_context,
+            remaining=indicators_needed,
+            max_workers=1,  # Max_workers=1 to enable easier debug
+        )
+        indicators = StrategyInputIndicators(
+            strategy_universe=universe,
+            available_indicators=indicator_set,
+            indicator_results=indicator_result_map,
+            timestamp=None,
+        )
+    else:
+        indicator_storage = indicator_set = indicator_result_map = indicators = None
+
+
     # Set up the default objects
     # availalbe in the interactive session
     bindings = {
@@ -291,7 +330,17 @@ def console(
         "strategy_module": mod,
         "run_state": run_state,
         "backtested_state": backtested_state,
+        "indicator_storage": indicator_storage,
+        "indicator_set": indicator_set,
+        "indicator_result_map": indicator_result_map,
+        "indicators": indicators,
     }
+
+
+    # Expose pairs to console as well
+    for pair in itertools.islice(universe.iterate_pairs(), 5):
+        name = pair.get_ticker().lower().replace("-", "_")
+        bindings[name] = pair
 
     if not unit_testing:
         launch_console(bindings)

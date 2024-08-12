@@ -828,3 +828,5 @@ def _calculate_and_cache_candle_width(index: pd.DatetimeIndex | pd.MultiIndex) -
         _time_frame_cache[key] = value
 
     return value
+
+
