@@ -389,7 +389,7 @@ class StrategyInputIndicators:
 
         if time_frame == pd.Timedelta(days=7):
             # TODO: Hot fix for weekly timeframe
-            floored = ts.floor("W")
+            floored = ts.to_period("W").start_time
             shifted_ts = floored - pd.Timedelta(days=7)
             logger.info("get_indicator_value(): weekly hack, floored %s, shifted %s", floored, shifted_ts)
         else:
