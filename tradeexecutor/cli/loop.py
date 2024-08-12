@@ -419,7 +419,7 @@ class ExecutionLoop:
         }
 
         logger.trade(
-            "Performing strategy tick #%d for timestamp %s, cycle length is %s, trigger time was %s, live trading is %s, trading univese is %s, version %s",
+            "Performing strategy tick #%d for timestamp %s, cycle length is %s, trigger time was %s, live trading is %s, trading univese is %s, version %s, max cycles %d",
              cycle,
              ts,
              cycle_duration.value,
@@ -427,6 +427,7 @@ class ExecutionLoop:
              live,
              existing_universe,
             self.execution_context.engine_version,
+            self.max_cycles,
         )
 
         if existing_universe is None:
@@ -470,8 +471,18 @@ class ExecutionLoop:
         # Modify tick() to take these as argument
         routing_state, pricing_model, valuation_model = self.runner.setup_routing(universe)
 
+        if self.execution_context.mode.is_live_trading() and not (self.execution_context.mode == ExecutionMode.simulated_trading):
+            # In live trading, the interest follows clock
+            # (chain blocks)
+            interest_timestamp = datetime.datetime.utcnow()
+            logger.info("Doing live trading interest sync at %s", interest_timestamp)
+        else:
+            # In backtesting do discreet steps
+            interest_timestamp = ts
+            logger.info("Doing backtesitng interest sync at %s", interest_timestamp)
+
         interest_events = self.sync_model.sync_interests(
-            ts,
+            interest_timestamp,
             state,
             cast(TradingStrategyUniverse, universe),
             pricing_model,
@@ -1283,18 +1294,22 @@ class ExecutionLoop:
         version_info = self.run_state.version
         logger.trade(str(version_info))
 
-        try:
-            # https://github.com/agronholm/apscheduler/discussions/683
-            scheduler.start()
-        except KeyboardInterrupt:
-            # https://github.com/agronholm/apscheduler/issues/338
-            scheduler.shutdown(wait=False)
-            raise
-        except Exception as e:
-            logger.error("Scheduler raised an exception %s", e)
-            raise
+        single_shot = self.trade_immediately and self.max_cycles == 1
 
-        logger.info("Scheduler finished - down the live trading loop")
+        # Avoid starting a scheduler if we do --run-single-cycle
+        if not single_shot:
+            try:
+                # https://github.com/agronholm/apscheduler/discussions/683
+                scheduler.start()
+            except KeyboardInterrupt:
+                # https://github.com/agronholm/apscheduler/issues/338
+                scheduler.shutdown(wait=False)
+                raise
+            except Exception as e:
+                logger.error("Scheduler raised an exception %s", e)
+                raise
+
+            logger.info("Scheduler finished - down the live trading loop")
 
         if crash_exception:
             raise LiveSchedulingTaskFailed("trade-executor closed because one of the scheduled tasks failed") from crash_exception
