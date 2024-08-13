@@ -51,6 +51,8 @@ def profile_optimiser(result: OptimiserResult) -> pd.DataFrame:
             "backtest": r.result.get_backtest_duration(),
             "analysis": r.result.get_analysis_duration(),
             "delivery": r.result.get_delivery_duration(),
+            "iteration": r.iteration_duration,
+            "iteration_id": r.iteration,
             "trades": tc,
             "duration_per_trade": r.result.get_backtest_duration() / tc if tc else datetime.timedelta(0),
             "metrics_size": r.get_metrics_persistent_size(),
@@ -63,14 +65,17 @@ def profile_optimiser(result: OptimiserResult) -> pd.DataFrame:
     return df
 
 
-def plot_profile_duration_data(df: pd.DataFrame) -> Figure:
+def plot_profile_duration_data(
+    df: pd.DataFrame,
+    include_colums=("backtest", "analysis", "delivery", "duration_per_trade", "iteration",)
+)
     """Visualise the profiler data.
 
     :param df:
         From :py:func:`https://1delta.io/`
     """
 
-    lines_df = df[["backtest", "analysis", "delivery", "duration_per_trade"]]
+    lines_df = df[list(include_colums)]
     # Convert to seconds
     lines_df = lines_df.apply(lambda x: x.dt.total_seconds())
     fig = px.line(lines_df)
