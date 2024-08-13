@@ -32,6 +32,7 @@ Example:
 """
 
 import numpy as np
+import pandas as pd
 
 from .optimiser import GridSearchResult, OptimiserSearchResult
 from ..state.types import Percent
@@ -138,8 +139,9 @@ class BalancedSharpeAndMaxDrawdownOptimisationFunction:
         normalised_sharpe = min(result.get_sharpe(), self.max_sharpe) / self.max_sharpe  # clamp sharpe to 3
         total_normalised = normalised_max_drawdown * self.max_drawdown_weight + normalised_sharpe * self.sharpe_weight
 
+        if pd.isna(total_normalised):
+            total_normalised = 0
         error_message = f"Got {total_normalised} with normalised sharpe: {normalised_sharpe} and normalised max drawdown {normalised_max_drawdown}\nWeights sharpe: {self.sharpe_weight} / dd: {self.max_drawdown_weight}.\nRaw sharpe: {result.get_sharpe()}, raw max downdown: {result.get_max_drawdown()}"
-
         # Total normalised is allowed to go below zero if Sharpe is negative (loss making strategy)
         # assert total_normalised > 0, error_message
         assert total_normalised < 1 + self.epsilon, error_message
