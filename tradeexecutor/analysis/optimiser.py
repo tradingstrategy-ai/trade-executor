@@ -38,7 +38,7 @@ def analyse_optimiser_result(
     else:
         valid_result_result = result.results
 
-    top_chunk = [r.result for r in result.results[0:max_search_results]]
+    top_chunk = [r.result for r in valid_result_result]
 
     # min_positions_threshold should have taken care by optimiser filter earlier
     return analyse_grid_search_result(top_chunk, min_positions_threshold=0)
