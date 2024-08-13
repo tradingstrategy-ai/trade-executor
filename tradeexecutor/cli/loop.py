@@ -419,7 +419,7 @@ class ExecutionLoop:
         }
 
         logger.trade(
-            "Performing strategy tick #%d for timestamp %s, cycle length is %s, trigger time was %s, live trading is %s, trading univese is %s, version %s, max cycles %d",
+            "Performing strategy tick #%d for timestamp %s, cycle length is %s, trigger time was %s, live trading is %s, trading univese is %s, version %s, max cycles %s",
              cycle,
              ts,
              cycle_duration.value,
