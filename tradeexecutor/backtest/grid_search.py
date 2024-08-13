@@ -407,6 +407,15 @@ class GridSearchResult:
     #:
     exception: Exception | None = None
 
+    #: When this test was started
+    start_at: datetime.datetime | None = None
+
+    #: When this test ended
+    backtest_end_at: datetime.datetime | None = None
+
+    #: When we completed the analysis
+    analysis_end_at: datetime.datetime | None = None
+
     def __hash__(self):
         return self.combination.__hash__()
 
@@ -555,6 +564,12 @@ class GridSearchResult:
     def get_trade_count(self) -> int:
         """How many trades this strategy made."""
         return self.summary.total_trades
+
+    def get_backtest_duration(self) -> datetime.timedelta:
+        return self.backtest_end_at - self.start_at
+
+    def get_analysis_duration(self) -> datetime.timedelta:
+        return self.backtest_end_at - self.analysis_end_at
 
     @staticmethod
     def has_result(combination: GridCombination):
@@ -1245,6 +1260,8 @@ def run_grid_search_backtest(
     if cycle_debug_data is None:
         cycle_debug_data = {}
 
+    backtest_start = datetime.datetime.utcnow()
+
     universe_range = universe.data_universe.candles.get_timestamp_range()
     if not start_at:
         start_at = universe_range[0]
@@ -1319,6 +1336,8 @@ def run_grid_search_backtest(
         tb = traceback.format_exc()
         raise RuntimeError(f"Running a grid search combination failed:\n{combination}\nThe original exception was: {e}\n{tb}") from e
 
+    backtest_end = datetime.datetime.utcnow()
+
     # Portfolio performance
     equity = calculate_equity_curve(state)
     returns = calculate_returns(equity)
@@ -1334,6 +1353,8 @@ def run_grid_search_backtest(
     analysis = build_trade_analysis(state.portfolio)
     summary = analysis.calculate_summary_statistics()
 
+    analysis_end = datetime.datetime.utcnow()
+
     res = GridSearchResult(
         combination=combination,
         state=state,
@@ -1343,6 +1364,9 @@ def run_grid_search_backtest(
         equity_curve=equity,
         returns=returns,
         initial_cash=state.portfolio.get_initial_cash(),
+        start_at=backtest_start,
+        backtest_end_at=backtest_end,
+        analysis_end_at=analysis_end,
     )
 
     # Double check we have not broken QuantStats again
