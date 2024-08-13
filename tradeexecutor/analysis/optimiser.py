@@ -12,6 +12,7 @@ from tradeexecutor.backtest.optimiser import OptimiserSearchResult, OptimiserRes
 def analyse_optimiser_result(
     result: OptimiserResult,
     max_search_results=100,
+    exclude_filtered=True,
 ) -> pd.DataFrame:
     """Create a table of optimiser searched space + their results.
 
@@ -19,12 +20,23 @@ def analyse_optimiser_result(
       this will also output the optimised search variable in the output table
 
     See :py:func:`tradeexecutor.analysis.grid_search.analyse_grid_search_result`.
+
+    :param exclude_filtered:
+        Do not display the result rows for the rows that did not pass the result filter check
+
+    :return:
+        Displayable data frame
     """
 
     # Merge grid search result with optimised search value,
     # because these are not stored with grid search result
     for res in result.results:
         res.result.optimiser_search_value = res.get_original_value()
+
+    if exclude_filtered:
+        valid_result_result = [r for r in result.results if not r.filtered]
+    else:
+        valid_result_result = result.results
 
     top_chunk = [r.result for r in result.results[0:max_search_results]]
 
