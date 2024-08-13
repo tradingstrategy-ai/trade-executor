@@ -111,6 +111,18 @@ class OptimiserSearchResult:
         """Could not calculate a value."""
         return self.value is not None
 
+    def get_metrics_persistent_size(self) -> int:
+        """Get the size of stored metrics."""
+        path = self.combination.get_metrics_pickle_path()
+        assert path.exists(), f"GridSearchResult {path} does not exist"
+        return path.stat().st_size
+
+    def get_state_size(self) -> int:
+        """Get the size of stored state."""
+        path = self.combination.get_compressed_state_file_path()
+        assert path.exists(), f"GridSearchResult {path} does not exist"
+        return path.stat().st_size
+
 
 class SearchFunction(typing.Protocol):
     """The function definition for the optimiser search function.
@@ -332,6 +344,7 @@ class ObjectiveWrapper:
 
         opt_result.combination = combination
         logger.info("Optimiser for combination %s resulted to %s, exception is %s, exiting child process", combination, opt_result.value, result.exception)
+        opt_result.result = None  # Main thread needs to dehydrate
         return opt_result
 
 

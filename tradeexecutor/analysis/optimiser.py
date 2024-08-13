@@ -1,4 +1,10 @@
+"""Optimiser analytics and charting."""
+import datetime
+
 import pandas as pd
+from plotly.graph_objs import Figure
+import plotly.express as px
+
 
 from tradeexecutor.analysis.grid_search import analyse_grid_search_result
 from tradeexecutor.backtest.optimiser import OptimiserSearchResult, OptimiserResult
@@ -27,9 +33,10 @@ def analyse_optimiser_result(
     return analyse_grid_search_result(top_chunk, min_positions_threshold=0)
 
 
-
 def profile_optimiser(result: OptimiserResult) -> pd.DataFrame:
     """Create a DataFrame of optimiser run result.
+
+    Mainly used to track if/why optimiser slows down in long runs.
 
     - Indexed by result id.
     - Durations
@@ -38,11 +45,16 @@ def profile_optimiser(result: OptimiserResult) -> pd.DataFrame:
     data = []
     r: OptimiserSearchResult
     for r in sorted_result:
+        tc = r.result.get_trade_count()
         data.append({
             "start_at": r.result.start_at,
             "backtest": r.result.get_backtest_duration(),
             "analysis": r.result.get_analysis_duration(),
-            "trades": r.result.get_trade_count(),
+            "delivery": r.result.get_delivery_duration(),
+            "trades": tc,
+            "duration_per_trade": r.result.get_backtest_duration() / tc if tc else datetime.timedelta(0),
+            "metrics_size": r.get_metrics_persistent_size(),
+            "state_size": r.get_state_size(),
             # "delivery": r.result.get_delivery_duration(),
         })
 
@@ -51,3 +63,16 @@ def profile_optimiser(result: OptimiserResult) -> pd.DataFrame:
     return df
 
 
+def plot_profile_duration_data(df: pd.DataFrame) -> Figure:
+    """Visualise the profiler data.
+
+    :param df:
+        From :py:func:`https://1delta.io/`
+    """
+
+    lines_df = df[["backtest", "analysis", "delivery", "duration_per_trade"]]
+    # Convert to seconds
+    lines_df = lines_df.apply(lambda x: x.dt.total_seconds())
+    fig = px.line(lines_df)
+    fig.update_layout(title="Profiled optimiser performance")
+    return fig
