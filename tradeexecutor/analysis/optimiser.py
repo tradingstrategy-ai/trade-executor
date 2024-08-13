@@ -34,5 +34,20 @@ def profile_optimiser(result: OptimiserResult) -> pd.DataFrame:
     - Indexed by result id.
     - Durations
     """
+    sorted_result =  sorted(result.results, key=lambda r: r.result.start_at)
+    data = []
+    r: OptimiserSearchResult
+    for r in sorted_result:
+        data.append({
+            "start_at": r.result.start_at,
+            "backtest": r.result.get_backtest_duration(),
+            "analysis": r.result.get_analysis_duration(),
+            "trades": r.result.get_trade_count(),
+            # "delivery": r.result.get_delivery_duration(),
+        })
+
+    df = pd.DataFrame(data)
+    df = df.set_index("start_at")
+    return df
 
 

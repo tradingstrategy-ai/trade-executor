@@ -652,8 +652,8 @@ def perform_optimisation(
 
             result: OptimiserSearchResult
             for result in y:
-                result.result.delivered_to_main_thread_at = datetime.datetime.utcnow()
                 result.hydrate()  # Load grid search result data from the disk
+                result.result.delivered_to_main_thread_at = datetime.datetime.utcnow()
                 all_results.append(result)
 
             best_so_far: OptimiserSearchResult = min([r for r in all_results if not r.filtered], default=None)  # Get the best value for "bull days matched"

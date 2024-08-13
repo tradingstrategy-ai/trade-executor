@@ -416,7 +416,8 @@ class GridSearchResult:
     #: When we completed the analysis
     analysis_end_at: datetime.datetime | None = None
 
-    #: When we the main thread received this object (unpickled)
+    #: When we the main thread received this object (unpickled).
+    #:
     delivered_to_main_thread_at: datetime.datetime | None = None
 
     def __hash__(self):
@@ -573,6 +574,9 @@ class GridSearchResult:
 
     def get_analysis_duration(self) -> datetime.timedelta:
         return self.backtest_end_at - self.analysis_end_at
+
+    def get_delivery_duration(self) -> datetime.timedelta:
+        return self.analysis_end_at - self.delivered_to_main_thread_at
 
     @staticmethod
     def has_result(combination: GridCombination):
