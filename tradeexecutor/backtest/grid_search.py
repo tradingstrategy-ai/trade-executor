@@ -576,7 +576,7 @@ class GridSearchResult:
         return self.analysis_end_at - self.backtest_end_at
 
     def get_delivery_duration(self) -> datetime.timedelta:
-        return self.analysis_end_at - self.delivered_to_main_thread_at
+        return self.delivered_to_main_thread_at - self.analysis_end_at
 
     @staticmethod
     def has_result(combination: GridCombination):

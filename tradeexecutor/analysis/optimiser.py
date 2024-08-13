@@ -2,7 +2,6 @@
 import datetime
 
 import pandas as pd
-from plotly.graph_objs import Figure
 import plotly.express as px
 
 
@@ -68,7 +67,7 @@ def profile_optimiser(result: OptimiserResult) -> pd.DataFrame:
 def plot_profile_duration_data(
     df: pd.DataFrame,
     include_colums=("backtest", "analysis", "delivery", "duration_per_trade", "iteration",)
-)
+):
     """Visualise the profiler data.
 
     :param df:
@@ -79,5 +78,22 @@ def plot_profile_duration_data(
     # Convert to seconds
     lines_df = lines_df.apply(lambda x: x.dt.total_seconds())
     fig = px.line(lines_df)
-    fig.update_layout(title="Profiled optimiser performance")
+    fig.update_layout(title="Profiled optimiser durations of subsections")
+    return fig
+
+
+def plot_profile_size_data(
+    df: pd.DataFrame,
+    include_colums=("metrics_size", "state_size")
+):
+    """Visualise the profiler data.
+
+    :param df:
+        From :py:func:`https://1delta.io/`
+    """
+
+    lines_df = df[list(include_colums)]
+    # Convert to seconds
+    fig = px.line(lines_df)
+    fig.update_layout(title="Profiled optimiser file sizes")
     return fig
