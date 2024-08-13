@@ -477,6 +477,7 @@ def perform_optimisation(
     bad_result_value=0,
     draw_visualisation=False,
     ignore_wallet_errors=True,
+    base_estimator="gp",
 ) -> OptimiserResult:
     """Search different strategy parameters using an optimiser.
 
@@ -559,6 +560,21 @@ def perform_optimisation(
         instead of crashing the whole strategy run, mark down these backtest results
         as zero profit.
 
+    :param base_estimator:
+        The base estimator used by scikit-optimise.
+
+        "gp" for Gaussian process.
+
+        "rf" for Random Forest.
+
+        "et" for Extra Trees
+
+        "gbrt" for Gradient Boosting Regression Tree.
+
+        https://scikit-optimize.github.io/dev/modules/minimize_functions.html#minimize-functions
+
+        https://scikit-optimize.github.io/dev/modules/generated/skopt.learning.ExtraTreesRegressor.html?highlight=extra%20trees#skopt-learning-extratreesregressor
+
     :return:
         Grid search results for different combinations.
 
@@ -596,7 +612,7 @@ def perform_optimisation(
     optimizer = Optimizer(
         dimensions=search_space,
         random_state=1,
-        base_estimator='gp'  # gp stands for Gaussian Process
+        base_estimator=base_estimator,
     )
 
     # Set up a joblib processor using multiprocessing (forking)
