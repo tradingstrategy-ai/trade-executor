@@ -322,7 +322,8 @@ class ObjectiveWrapper:
 
             # Apply result filter and zero out the value for optimiser if needed
             if not self.result_filter(result):
-                opt_result.value = self.filtered_result_value
+                opt_result.value = self.filtered_result_value  # Zero out the actual value so optimiser knows this is a bad path
+                opt_result.filtered = True  # Tell the caller that this is a filtered result and should not be displayed by default
 
         else:
             # The backtest crashed with an exception,
@@ -514,6 +515,8 @@ def perform_optimisation(
         Filter bad strategies.
 
         Try to avoid strategies that open too few trades or are otherwise not viable.
+
+        Strategies that do not pass may be still returned, but the result `filtered` flag is set on.
 
     :param bad_result_value:
         What placeholder value we use for the optimiser when `result_filter` does not like the outcome.
