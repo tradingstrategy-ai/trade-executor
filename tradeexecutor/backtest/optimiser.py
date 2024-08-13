@@ -55,6 +55,7 @@ class OptimiserSearchResult:
     - Passing data from :py:func:`perform_optimisation` to the notebook
     """
 
+
     #: The raw value of the search function we are optimising
     value: float
 
@@ -78,6 +79,16 @@ class OptimiserSearchResult:
     #: See `result_filter` in :py:func:`perform_optimisation`
     #:
     filtered: bool = False
+
+    #: How long it took to run this iteration
+    #:
+    #: Filled by main thread
+    iteration_duration: datetime.timedelta | None = None
+
+    #: Iteration id
+    #:
+    #: Filled by main thread
+    iteration: int = None
 
     def __repr__(self):
         return f"<OptimiserSearchResult {self.combination} = {self.get_original_value()}>"
@@ -110,6 +121,18 @@ class OptimiserSearchResult:
     def is_valid(self) -> bool:
         """Could not calculate a value."""
         return self.value is not None
+
+    def get_metrics_persistent_size(self) -> int:
+        """Get the size of stored metrics."""
+        path = self.combination.get_metrics_pickle_path()
+        assert path.exists(), f"GridSearchResult {path} does not exist"
+        return path.stat().st_size
+
+    def get_state_size(self) -> int:
+        """Get the size of stored state."""
+        path = self.combination.get_compressed_state_file_path()
+        assert path.exists(), f"GridSearchResult {path} does not exist"
+        return path.stat().st_size
 
 
 class SearchFunction(typing.Protocol):
@@ -332,6 +355,7 @@ class ObjectiveWrapper:
 
         opt_result.combination = combination
         logger.info("Optimiser for combination %s resulted to %s, exception is %s, exiting child process", combination, opt_result.value, result.exception)
+        opt_result.result = None  # Main thread needs to dehydrate
         return opt_result
 
 
@@ -619,6 +643,9 @@ def perform_optimisation(
 
     with tqdm(total=iterations, desc=f"Optimising {name}, search space is {len(search_space)} variables, using {max_workers} CPUs") as progress_bar:
         for i in range(0, iterations):
+
+            iteration_started = datetime.datetime.utcnow()
+
             with warnings.catch_warnings():
                 # Ignore warning when we too close to optimal:
                 # UserWarning: The objective has been evaluated at point [7, 10] before, using random point [23, 21]
@@ -650,9 +677,14 @@ def perform_optimisation(
             # and unpack our data structure
             optimizer.tell(x, filtered_y)
 
+            iteration_duration = datetime.datetime.utcnow() - iteration_started
+
             result: OptimiserSearchResult
             for result in y:
                 result.hydrate()  # Load grid search result data from the disk
+                result.result.delivered_to_main_thread_at = datetime.datetime.utcnow()
+                result.iteration_duration = iteration_duration
+                result.iteration = i
                 all_results.append(result)
 
             best_so_far: OptimiserSearchResult = min([r for r in all_results if not r.filtered], default=None)  # Get the best value for "bull days matched"
