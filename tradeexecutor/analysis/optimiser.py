@@ -27,3 +27,12 @@ def analyse_optimiser_result(
     return analyse_grid_search_result(top_chunk, min_positions_threshold=0)
 
 
+
+def profile_optimiser(result: OptimiserResult) -> pd.DataFrame:
+    """Create a DataFrame of optimiser run result.
+
+    - Indexed by result id.
+    - Durations
+    """
+
+
