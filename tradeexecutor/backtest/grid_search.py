@@ -416,6 +416,9 @@ class GridSearchResult:
     #: When we completed the analysis
     analysis_end_at: datetime.datetime | None = None
 
+    #: When we the main thread received this object (unpickled)
+    delivered_to_main_thread_at: datetime.datetime | None = None
+
     def __hash__(self):
         return self.combination.__hash__()
 

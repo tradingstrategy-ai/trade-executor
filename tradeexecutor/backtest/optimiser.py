@@ -652,6 +652,7 @@ def perform_optimisation(
 
             result: OptimiserSearchResult
             for result in y:
+                result.result.delivered_to_main_thread_at = datetime.datetime.utcnow()
                 result.hydrate()  # Load grid search result data from the disk
                 all_results.append(result)
 
