@@ -378,6 +378,12 @@ class StrategyInputIndicators:
         """
 
         series = self.resolve_indicator_data(name, column, pair)
+
+        if len(series) == 0:
+            # Empty array -> probably could not calculate the indicator
+            # at all because not enough data
+            return None
+
         ts = self.timestamp
 
         time_frame = _calculate_and_cache_candle_width(series.index)
