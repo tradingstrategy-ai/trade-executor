@@ -747,7 +747,7 @@ class EnzymeVaultSyncModel(SyncModel):
 
         owner = vault.vault.functions.getOwner().call()
         if owner != hot_wallet.address:
-            assert vault.vault.functions.isAssetManager(hot_wallet.address).call(), f"Address is not set up as Enzyme asset manager: {hot_wallet.address}, owner is {owner}"
+            assert vault.vault.functions.isAssetManager(hot_wallet.address).call(), f"Address is not set up as Enzyme asset manager: {hot_wallet.address}, owner is {owner}, isAssetManager() returns false"
 
     def reset_deposits(self, state: State):
         """Clear out pending withdrawals/deposits events."""

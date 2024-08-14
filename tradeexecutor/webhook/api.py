@@ -34,7 +34,7 @@ def web_home(request: Request):
     url = request.application_url
     run_state: RunState = request.registry["run_state"]
     # https://angrybirds.fandom.com/wiki/The_Flock
-    return Response(f'Chuck the Trade Executor, running strategy {run_state.executor_id}, version {run_state.version.tag}, our URL is {url}\nFor more information see https://tradingstrategy.ai\nRemember to play Angry Birds.', content_type="text/plain")
+    return Response(f'Trade Executor daemon of Trading Strategy\nRunning strategy {run_state.executor_id}, version {run_state.version.tag}, our URL is {url}\nFor more information and questions, come to talk to us https://tradingstrategy.ai/community', content_type="text/plain")
 
 
 @view_config(route_name='web_ping', renderer='json', permission='view')
