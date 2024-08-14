@@ -75,7 +75,7 @@ def test_home(logger, server_url):
     assert resp.status_code == 200
     # Chuck the Trade Executor server, version 0.1.0, our URL is http://127.0.0.1:5000
     assert resp.headers["content-type"] == "text/plain; charset=UTF-8"
-    assert "Chuck the Trade Executor" in resp.text
+    assert "Trade Executor daemon of Trading Strategy" in resp.text
 
 
 def test_ping(logger,server_url):
