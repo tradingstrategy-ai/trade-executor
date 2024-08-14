@@ -71,11 +71,6 @@ def close_all(
 
     cache_path = prepare_cache(id, cache_path)
 
-    execution_context = ExecutionContext(
-        mode=ExecutionMode.preflight_check,
-        timed_task_context_manager=timed_task
-    )
-
     web3config = create_web3_config(
         json_rpc_binance=json_rpc_binance,
         json_rpc_polygon=json_rpc_polygon,
@@ -133,6 +128,12 @@ def close_all(
         logger.info("Simulating test trades")
 
     interactive = not (unit_testing or simulate)
+
+    execution_context = ExecutionContext(
+        mode=ExecutionMode.one_off,
+        timed_task_context_manager=timed_task,
+        engine_version=mod.trading_strategy_engine_version,
+    )
 
     # Set up the strategy engine
     factory = make_factory_from_strategy_mod(mod)
