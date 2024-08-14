@@ -25,7 +25,7 @@ from tradeexecutor.state.state import State
 from tradeexecutor.state.trade import TradeExecution
 from tradeexecutor.strategy.cycle import CycleDuration
 from tradeexecutor.strategy.default_routing_options import TradeRouting
-from tradeexecutor.strategy.execution_context import ExecutionContext
+from tradeexecutor.strategy.execution_context import ExecutionContext, ExecutionMode
 from tradeexecutor.strategy.factory import StrategyFactory
 from tradeexecutor.strategy.pricing_model import PricingModel
 from tradeexecutor.strategy.reserve_currency import ReserveCurrency
@@ -562,8 +562,19 @@ class StrategyModuleInformation:
         assert self.backtest_end is not None, f"BACKTEST_END variable is not set in the strategy module {self.path}"
         assert self.initial_cash is not None, f"INITIAL_CASH variable is not set in the strategy module {self.path}"
 
-    def get_universe_options(self) -> UniverseOptions:
+    def get_universe_options(self, mode: ExecutionMode | None = None) -> UniverseOptions:
         """What backtest range or live trading history period this strategy defaults to."""
+
+        # Choose by our execution mode
+        if mode:
+            if mode.is_backtesting():
+                return UniverseOptions(start_at=self.backtest_start, end_at=self.backtest_end)
+            elif mode.is_live_trading():
+                return UniverseOptions(history_period=self.get_live_trading_history_period())
+            else:
+                raise NotImplementedError(f"get_universe_options() confused: {mode}")
+
+        # TODO: This really does not work, as we can have either range or live trading
         return UniverseOptions(start_at=self.backtest_start, end_at=self.backtest_end, history_period=self.get_live_trading_history_period())
 
     def get_default_chain_id(self) -> ChainId:
