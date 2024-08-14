@@ -76,6 +76,7 @@ def web_metadata(request: Request):
         crashed_at=run_state.crashed_at,
         badges=metadata.badges,
         tags=metadata.tags,
+        fees=metadata.fees,
     )
 
     # Catch NaN's and other data JavaScript cannot eat

@@ -92,10 +92,11 @@ def test_metadata(logger, server_url):
     data = resp.json()
     assert data["name"] == "Foobar"
     assert data["short_description"] == "Short desc"
-    assert data["executor_running"] == True
+    assert data["executor_running"] is True
     assert data["crashed_at"] is None
     assert data["badges"] == ["polygon", "metamask", "eth", "usdc"]
     assert data["tags"] == ["beta"]
+    assert data["fees"] == {}
 
 
 def test_cors(logger, server_url):
