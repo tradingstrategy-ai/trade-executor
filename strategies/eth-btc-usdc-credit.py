@@ -92,7 +92,7 @@ class Parameters:
 
     initial_cash = 10_000
     backtest_start = datetime.datetime(2023, 8, 1)
-    backtest_end = datetime.datetime(2024, 3, 15)
+    backtest_end = datetime.datetime(2024, 8, 10)
     stop_loss_time_bucket = TimeBucket.h1  # use 1h close as the stop loss signal
     backtest_trading_fee = 0.0030  # Switch to QuickSwap 30 BPS free from the default Binance 5 BPS fee
     use_credit = True  # Allow us to flip credit usage on/off in backtesting to more easily test different scenarios

@@ -6,8 +6,10 @@ from typing import List
 import pandas as pd
 import pandas_ta
 import pytest
+from plotly.graph_objs import Figure
 from skopt import space
 
+from tradeexecutor.analysis.optimiser import profile_optimiser, plot_profile_duration_data
 from tradeexecutor.backtest.optimiser import prepare_optimiser_parameters, perform_optimisation, OptimiserResult
 from tradeexecutor.backtest.optimiser_functions import optimise_profit
 from tradeexecutor.state.trade import TradeExecution
@@ -198,6 +200,13 @@ def test_perform_optimisation_engine_v5_single_worker(
     )
 
     assert isinstance(result, OptimiserResult)
+
+    # See the profile function runs
+    profile_df = profile_optimiser(result)
+    assert isinstance(profile_df, pd.DataFrame)
+
+    fig = plot_profile_duration_data(profile_df)
+    assert isinstance(fig, Figure)
 
 
 def test_perform_optimisation_engine_v5_multi_worker(

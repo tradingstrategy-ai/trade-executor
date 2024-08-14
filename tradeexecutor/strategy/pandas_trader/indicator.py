@@ -297,10 +297,12 @@ class IndicatorDefinition:
             if ret is None:
                 diagnostics_text = "<none>"
             else:
-                last_value = ret.iloc[-1]
-                last_value_at = ret.index[-1]
-                diagnostics_text = f"{len(ret)} rows, last value {last_value}, at {last_value_at}"
-
+                if len(ret) >= 1:
+                    last_value = ret.iloc[-1]
+                    last_value_at = ret.index[-1]
+                    diagnostics_text = f"{len(ret)} rows, last value {last_value}, at {last_value_at}"
+                else:
+                    diagnostics_text = f"{ret}"
 
             logger.info(
                 "Indicator calculated: %s, pair: %s, data: %s",
