@@ -150,13 +150,16 @@ def close_all(
         run_state=RunState(),
     )
 
+    universe_options = mod.get_universe_options()
+
     # We construct the trading universe to know what's our reserve asset
     universe_model: TradingStrategyUniverseModel = run_description.universe_model
     ts = datetime.datetime.utcnow()
     universe = universe_model.construct_universe(
         ts,
-        ExecutionMode.preflight_check,
-        UniverseOptions())
+        execution_context.mode,
+        universe_options
+    )
 
     runner = run_description.runner
     routing_state, pricing_model, valuation_method = runner.setup_routing(universe)
