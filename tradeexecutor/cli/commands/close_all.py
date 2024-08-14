@@ -55,7 +55,7 @@ def close_all(
     test_evm_uniswap_v2_init_code_hash: Optional[str] = shared_options.test_evm_uniswap_v2_init_code_hash,
 
     unit_testing: bool = shared_options.unit_testing,
-
+    simulate: bool = shared_options.simulate,
 ):
     """Close all open positions.
 
@@ -83,6 +83,7 @@ def close_all(
         json_rpc_ethereum=json_rpc_ethereum,
         json_rpc_anvil=json_rpc_anvil,
         json_rpc_arbitrum=json_rpc_arbitrum,
+        simulate=True,
     )
 
     if not web3config.has_any_connection():
@@ -124,6 +125,15 @@ def close_all(
     assert not store.is_pristine(), f"Strategy state file does not exist: {state_file}"
     state = store.load()
 
+    if simulate:
+        def break_sync(x):
+            raise NotImplementedError("Cannot save state when simulating")
+        store.sync = break_sync
+
+        logger.info("Simulating test trades")
+
+    interactive = not (unit_testing or simulate)
+
     # Set up the strategy engine
     factory = make_factory_from_strategy_mod(mod)
     run_description: StrategyExecutionDescription = factory(
@@ -159,10 +169,11 @@ def close_all(
         universe,
         runner.routing_model,
         routing_state,
-        interactive=not unit_testing,
+        interactive=interactive,
     )
 
     # Store the test trade data in the strategy history
-    store.sync(state)
+    if not simulate:
+        store.sync(state)
 
     logger.info("All ok")

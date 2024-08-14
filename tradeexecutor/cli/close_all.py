@@ -33,15 +33,15 @@ class CloseAllAborted(Exception):
 
 
 def close_all(
-        web3: Web3,
-        execution_model: ExecutionModel,
-        pricing_model: PricingModel,
-        sync_model: SyncModel,
-        state: State,
-        universe: TradingStrategyUniverse,
-        routing_model: RoutingModel,
-        routing_state: RoutingState,
-        interactive=True,
+    web3: Web3,
+    execution_model: ExecutionModel,
+    pricing_model: PricingModel,
+    sync_model: SyncModel,
+    state: State,
+    universe: TradingStrategyUniverse,
+    routing_model: RoutingModel,
+    routing_state: RoutingState,
+    interactive=True,
 ):
     """Close all positions.
 
