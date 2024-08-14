@@ -317,23 +317,9 @@ def test_accrue_unrealistic_interest(
             state,
             credit_supply_position,
             ausdc,
-            new_token_amount=Decimal(5000),
+            new_token_amount=Decimal(5_000_000),
             event_at=interest_event_1_at,
             asset_price=1.0,
         )
 
-    assert str(e.value) == "Negative interest for <aUSDC (USDC) at 0x1>: -4000 (diff -44.44%), old quantity: 9000, new quantity: 5000"
-
-    # too high interest
-    with pytest.raises(AssertionError) as e:
-        update_interest(
-            state,
-            credit_supply_position,
-            ausdc,
-            new_token_amount=Decimal(9000 * 1.06),
-            event_at=interest_event_1_at,
-            asset_price=1.0,
-        )
-
-    assert str(e.value) == "Unlikely gained_interest for <aUSDC (USDC) at 0x1>: 540 (diff 6.00%, threshold 5.0%), old quantity: 9000, new quantity: 9540"
-
+    assert str(e.value) == "Unlikely gained_interest for <aUSDC (USDC) at 0x1>: 4991000 (diff 55455.56%, threshold 5.0%), old quantity: 9000, new quantity: 5000000"

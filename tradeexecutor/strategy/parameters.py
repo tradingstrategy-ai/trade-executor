@@ -5,6 +5,7 @@
 import datetime
 from typing import Tuple, Iterable, TypedDict
 
+from tabulate import tabulate
 from web3.datastructures import MutableAttributeDict
 
 from tradeexecutor.state.types import USDollarAmount
@@ -251,3 +252,16 @@ class StrategyParameters(MutableAttributeDict):
         """
         return StrategyParameters(other_parameters)
 
+
+
+def dump_parameters(parameters: StrategyParameters) -> str:
+    """Format strategy parameters for the output."""
+
+    assert isinstance(parameters, StrategyParameters), f"Got {parameters}"
+
+    data = [[key, value] for key, value in parameters.iterate_parameters()]
+    out = tabulate(
+        data,
+        headers=("Parameter", "Value"),
+    )
+    return out

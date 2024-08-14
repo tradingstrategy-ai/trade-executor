@@ -1365,7 +1365,7 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
                 )
                 return rate
             except Exception as e:
-                raise RuntimeError(f"get_latest_supply_apr() failed, timestamp: {timestamp}, lending reserve: {lending_reserve}, asset: {asset}, tolerance: {tolerance}") from e
+                raise RuntimeError(f"get_latest_supply_apr() failed, timestamp: {timestamp}, lending reserve: {lending_reserve}, asset: {asset}, tolerance: {tolerance}\nException: {e}") from e
 
         # get last available rate
         df = self.data_universe.lending_candles.supply_apr.get_rates_by_reserve(lending_reserve)
@@ -2102,6 +2102,14 @@ def load_partial_data(
     # or how many days of historical data we ask for
     data_load_start_at = start_at or (datetime.datetime.utcnow() - required_history_period)
 
+    logger.info(
+        "load_partial_data(): data_load_start_at: %s, start_at: %s, end_at: %s, required_history_period: %s",
+        data_load_start_at,
+        start_at,
+        end_at,
+        required_history_period,
+    )
+
     with execution_context.timed_task_context_manager("load_partial_pair_data", time_bucket=time_bucket.value):
 
         exchange_universe = client.fetch_exchange_universe()
@@ -2189,6 +2197,33 @@ def load_partial_data(
         else:
             lending_reserve_universe = None
             lending_candles = None
+
+        logger.info(
+            "load_partial_data() complete: time bucket: %s",
+            time_bucket,
+        )
+
+        # Colllect some debug data for the first 5 pairs
+        # to diagnose data loding problems
+        if execution_context.mode.is_live_trading():
+            for pair_id in list(our_pair_ids)[0:5]:
+                pair_candles = candles[candles["pair_id"] == pair_id]
+                if len(pair_candles) > 0:
+                    first_at = min(pair_candles["timestamp"])
+                    last_at = max(pair_candles["timestamp"])
+                    duration = last_at - first_at
+                    duration_weeks = duration / pd.Timedelta(days=7)
+                    logger.info(
+                        "Pair id: %d, candle count: %d, first: %s, last: %s, duration: %s, duration (weeks): %s",
+                        pair_id,
+                        len(pair_candles),
+                        first_at,
+                        last_at,
+                        duration,
+                        duration_weeks
+                    )
+                else:
+                    logger.warning("Pair %d no data", pair_id)
 
         return Dataset(
             time_bucket=time_bucket,

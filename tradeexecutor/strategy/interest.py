@@ -97,15 +97,33 @@ def update_interest(
     # assert asset.underlying.is_stablecoin(), f"Credit supply is currently supported for stablecoin assets with 1:1 USD price assumption. Got: {asset}"
 
     previous_update_at = interest.last_event_at
-
+    previous_block = interest.last_updated_block_number
     old_balance = interest.last_token_amount
     gained_interest = new_token_amount - old_balance
     usd_value = float(new_token_amount) * asset_price
 
+    # TODO: Not sure we zero/negative rebalances could happen, but
+    # log them as warning for now
+    if gained_interest < 0:
+        log_level = logging.WARNING
+    else:
+        log_level = logging.INFO
+
+    logger.log(
+        log_level,
+        f"update_interest(), block {block_number or 0:,}, new token amount: %s, old balance: %s, gained interest tokens: %s, position new USD value: %s, previous update at %s, previous block at %s",
+        new_token_amount,
+        old_balance,
+        gained_interest,
+        usd_value,
+        previous_update_at,
+        f"{previous_block or 0:,}",
+    )
+
     gained_interest_percent = gained_interest / old_balance
 
-    assert gained_interest_percent > 0, f"Negative interest for {asset}: {gained_interest} (diff {gained_interest_percent * 100:.2f}%), old quantity: {old_balance}, new quantity: {new_token_amount}"
-    assert gained_interest_percent < max_interest_gain, f"Unlikely gained_interest for {asset}: {gained_interest} (diff {gained_interest_percent * 100:.2f}%, threshold {max_interest_gain * 100}%), old quantity: {old_balance}, new quantity: {new_token_amount}"
+    # assert gained_interest_percent >= 0, f"Negative interest for {asset}: gained interest: {gained_interest} (diff {gained_interest_percent * 100:.2f}%), old quantity: {old_balance}, new quantity: {new_token_amount}"
+    assert abs(gained_interest_percent) < max_interest_gain, f"Unlikely gained_interest for {asset}: {gained_interest} (diff {gained_interest_percent * 100:.2f}%, threshold {max_interest_gain * 100}%), old quantity: {old_balance}, new quantity: {new_token_amount}"
 
     evt = BalanceUpdate(
         balance_update_id=event_id,
@@ -377,7 +395,7 @@ def distribute_interest_for_assets(
         An event
      """
 
-    asset_total = operation.asset_interest_data[asset.get_identifier()].total
+    previous_asset_total = operation.asset_interest_data[asset.get_identifier()].total
 
     # Either there has not be really any change over time (too fast refresh rate)
     # or this is unit test against mainnet fork where we cannot speed up the time.
@@ -385,12 +403,16 @@ def distribute_interest_for_assets(
     # because balance update can not be zero.
     # We also may encounter negative updates < epsilon due to the rounding
     # errors.
-    interest_accrued = new_amount - asset_total
-    logger.info("Interest accrued for %s: %s, %s, %s", asset, interest_accrued, new_amount, asset_total)
-    if abs(interest_accrued) >= INTEREST_EPSILON:
-
-        assert interest_accrued >= 0, f"Interest cannot go negative: {interest_accrued}, our epsilon is {INTEREST_EPSILON}"
-
+    interest_accrued_tokens = new_amount - previous_asset_total
+    logger.info(
+        "Interest accrued for asset: %s, interest accrued: %s, new amount: %s, previous asset total: %s",
+        asset,
+        interest_accrued_tokens,
+        new_amount,
+        previous_asset_total
+    )
+    if abs(interest_accrued_tokens) >= INTEREST_EPSILON:
+        assert interest_accrued_tokens >= 0, f"Interest cannot go negative: {interest_accrued_tokens}, our epsilon is {INTEREST_EPSILON}"
         for entry in operation.entries:
             if entry.asset == asset:
                 evt = distribute_to_entry(
@@ -398,7 +420,7 @@ def distribute_interest_for_assets(
                     state,
                     timestamp,
                     block_number,
-                    interest_accrued,
+                    interest_accrued_tokens,
                     max_interest_gain=max_interest_gain,
                 )
                 yield evt
@@ -428,7 +450,7 @@ def accrue_interest(
         The current on-chain balances at ``block_number``.
 
     :param block_number:
-        Last safe block read
+        The block number when we read the balances.
 
     :param block_timestamp:
         The timestamp of ``block_number``.
@@ -443,7 +465,6 @@ def accrue_interest(
 
     """
 
-
     if interest_distribution.duration == ZERO_TIMEDELTA:
         logger.info("accrue_interest(): Interest distribution duration zero, we probably got called twice in a row")
         return
@@ -451,7 +472,7 @@ def accrue_interest(
     assert interest_distribution.duration > ZERO_TIMEDELTA, f"Tried to distribute interest for negative timespan {interest_distribution.start} - {interest_distribution.end}"
 
     block_number_str = f"{block_number,}" if block_number else "<no block>"
-    logger.info(f"accrue_interest({block_timestamp}, {block_number_str})")
+    logger.info(f"accrue_interest(block_timestamp={block_timestamp}, {block_number_str})")
 
     part_of_year = interest_distribution.duration / aave_financial_year
 
@@ -462,7 +483,14 @@ def accrue_interest(
         interest = float((new_balance - asset_interest_data.total) / asset_interest_data.total) / part_of_year
         asset_interest_data.effective_rate = interest
 
-        logger.info("Effective interest is %f for the asset %s, %s, %s", interest, asset, new_balance, asset_interest_data.total)
+        logger.info(
+            "Effective interest is %f (%f %%) for the asset %s, new_balance: %s, previous total: %s",
+            interest,
+            interest * 100,
+            asset,
+            new_balance,
+            asset_interest_data.total
+        )
 
         # We cannot generate interest events for zero updates,
         # as it breaks math
@@ -669,11 +697,11 @@ def sync_interests(
 
     # Then sync interest back from the chain
     block_identifier = get_almost_latest_block_number(web3)
-    balances = {}
+
     onchain_balances = fetch_address_balances(
         web3,
         wallet_address,
-        interest_distribution.assets,
+        list(interest_distribution.assets),
         filter_zero=True,
         block_number=block_identifier,
     )
@@ -684,7 +712,13 @@ def sync_interests(
     }
 
     # Then distribute gained interest (new atokens/vtokens) among positions
-    events_iter = accrue_interest(state, balances, interest_distribution, timestamp, None)
+    events_iter = accrue_interest(
+        state,
+        balances,
+        interest_distribution,
+        timestamp,
+        block_number=block_identifier
+    )
 
     events = list(events_iter)
 

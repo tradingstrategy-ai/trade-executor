@@ -292,9 +292,26 @@ class IndicatorDefinition:
         try:
             input_fixed = _flatten_index(input)
             ret = self.func(input_fixed, **self._fix_parameters_for_function_signature(resolver, pair))
+
+            # Some debug logging
+            if ret is None:
+                diagnostics_text = "<none>"
+            else:
+                last_value = ret.iloc[-1]
+                last_value_at = ret.index[-1]
+                diagnostics_text = f"{len(ret)} rows, last value {last_value}, at {last_value_at}"
+
+
+            logger.info(
+                "Indicator calculated: %s, pair: %s, data: %s",
+                self.name,
+                pair.get_ticker(),
+                diagnostics_text,
+            )
+
             return self._check_good_return_value(ret)
         except Exception as e:
-            raise IndicatorCalculationFailed(f"Could not calculate indicator {self.name} ({self.func}) for parameters {self.parameters}, input data is {len(input)} rows: {e}") from e
+            raise IndicatorCalculationFailed(f"Could not calculate indicator {self.name} ({self.func}) for parameters {self.parameters}, input data is {len(input)} rows: {e}, pair is {pair}") from e
 
     def calculate_by_pair_ohlcv(self, candles: pd.DataFrame, pair: TradingPairIdentifier, resolver: "IndicatorDependencyResolver") -> pd.DataFrame | pd.Series:
         """Calculate the underlying OHCLV indicator value.
@@ -1413,7 +1430,7 @@ def group_indicators(task_args: list[CalculateTaskArguments]) -> dict[int, list[
 
 def calculate_indicators(
     strategy_universe: TradingStrategyUniverse,
-    storage: DiskIndicatorStorage,
+    storage: IndicatorStorage,
     indicators: IndicatorSet | None,
     execution_context: ExecutionContext,
     remaining: set[IndicatorKey],

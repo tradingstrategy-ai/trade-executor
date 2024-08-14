@@ -85,3 +85,6 @@ unit_testing = Option(False, "--unit-testing", envvar="UNIT_TESTING", help="The 
 pair: Optional[str] = Option(None, "--pair", envvar="PAIR", help="Must be specified for a multipair universe.")
 
 all_pairs: Optional[str] = Option(None, "--all-pairs", envvar="ALL_PAIRS", help="Whether to perform a test trade for each pair in the universe. If not given, then the pair option must be specified.")
+
+
+comptroller_lib = Option(None, envvar="COMPTROLLER_LIB", help="Enzyme's ComptrollerLib address for custom deployments")

@@ -68,7 +68,7 @@ def test_main_loop_crash_with_catch(
     with patch.dict(os.environ, env, clear=True):
         with pytest.raises(Exception) as e:
             cli.main(args=["start"])
-        assert str(e.value) == "Boom"
+        assert str(e.value) == "Boom", f"The received main loop exception was : {e}"
 
 
 @flaky.flaky(max_runs=5)

@@ -185,6 +185,7 @@ class ExecutionLoop:
         self.sync_treasury_on_startup = sync_treasury_on_startup
         self.store = store
         self.name = name
+        self.trade_immediately = trade_immediately
 
         self.backtest_start = backtest_start
         self.backtest_end = backtest_end
@@ -418,7 +419,7 @@ class ExecutionLoop:
         }
 
         logger.trade(
-            "Performing strategy tick #%d for timestamp %s, cycle length is %s, trigger time was %s, live trading is %s, trading univese is %s, version %s",
+            "Performing strategy tick #%d for timestamp %s, cycle length is %s, trigger time was %s, live trading is %s, trading univese is %s, version %s, max cycles %s",
              cycle,
              ts,
              cycle_duration.value,
@@ -426,6 +427,7 @@ class ExecutionLoop:
              live,
              existing_universe,
             self.execution_context.engine_version,
+            self.max_cycles,
         )
 
         if existing_universe is None:
@@ -435,7 +437,7 @@ class ExecutionLoop:
             # trade cycles.
 
             # Refresh the trading universe for this cycle
-            if self.strategy_cycle_trigger == StrategyCycleTrigger.cycle_offset:
+            if self.strategy_cycle_trigger == StrategyCycleTrigger.cycle_offset or self.trade_immediately:
                 logger.info("Creating new universe from the scratch using create_trading_universe()")
                 universe = self.universe_model.construct_universe(
                     ts,
@@ -469,8 +471,18 @@ class ExecutionLoop:
         # Modify tick() to take these as argument
         routing_state, pricing_model, valuation_model = self.runner.setup_routing(universe)
 
+        if self.execution_context.mode.is_live_trading() and not (self.execution_context.mode == ExecutionMode.simulated_trading):
+            # In live trading, the interest follows clock
+            # (chain blocks)
+            interest_timestamp = datetime.datetime.utcnow()
+            logger.info("Doing live trading interest sync at %s", interest_timestamp)
+        else:
+            # In backtesting do discreet steps
+            interest_timestamp = ts
+            logger.info("Doing backtesitng interest sync at %s", interest_timestamp)
+
         interest_events = self.sync_model.sync_interests(
-            ts,
+            interest_timestamp,
             state,
             cast(TradingStrategyUniverse, universe),
             pricing_model,
@@ -985,8 +997,6 @@ class ExecutionLoop:
         assert self.backtest_start is None
         assert self.backtest_end is None
 
-        ts = datetime.datetime.utcnow()
-
         # Start the watchdog process killer
         watchdog_registry = create_watchdog_registry(WatchdogMode.thread_based)
         start_background_watchdog(watchdog_registry)
@@ -1053,6 +1063,7 @@ class ExecutionLoop:
         # The first trade will be execute immediately, despite the time offset or tick
         if self.trade_immediately:
             ts = datetime.datetime.now()
+            logger.info("Trade immediately triggered, using timestamp %s, cycle is %d", ts, cycle)
             universe = self.tick(ts, self.cycle_duration, state, cycle, live=True)
 
         def die(exc: Exception):
@@ -1158,7 +1169,7 @@ class ExecutionLoop:
             # Used e.g. test_strategy_cycle_trigger.py
             if self.max_cycles is not None:
                 if cycle >= self.max_cycles:
-                    logger.info(("Max cycles reached"))
+                    logger.info("Max cycles reached. Cycle %d, max %d", cycle, self.max_cycles)
                     scheduler.shutdown(wait=False)
 
             run_state.completed_cycle = cycle
@@ -1222,16 +1233,40 @@ class ExecutionLoop:
         # Any task blocks other tasks - there is no parallerism or multithread support at the moment.
         # Multithread support would need making the architecture more complex with various locks
         # that could then be additional source of bugs.
-        scheduler = BlockingScheduler(executors=executors, timezone=datetime.timezone.utc)
-
-        # Core live trade execution loop
-        scheduler.add_job(
-            live_cycle,
-            'interval',
-            seconds=self.cycle_duration.to_timedelta().total_seconds(),
-            start_date=start_time + tick_offset,
-            misfire_grace_time = None,  # Will always run the job no matter how late it is
+        scheduler = BlockingScheduler(
+            executors=executors,
+            timezone=datetime.timezone.utc
         )
+
+        if self.cycle_duration == CycleDuration.cycle_7d and self.max_cycles == None:
+            # Assume 7d without offset is Monday midnight
+            logger.info("Live cycle set to trigger Monday midnight")
+            # https://apscheduler.readthedocs.io/en/3.x/modules/triggers/cron.htmlgit-ad
+            scheduler.add_job(
+                live_cycle,
+                'cron',  # Use fixed timepoint instead of internal
+                day_of_week=0,
+                hour=0,
+                minute=0,
+                second=0,
+                misfire_grace_time = None,  # Will always run the job no matter how late it is
+            )
+        else:
+            # Core live trade execution loop
+            seconds = self.cycle_duration.to_timedelta().total_seconds()
+            logger.info(
+                "Live cycle set to trigger seconds %d, start time %s, offset %s",
+                seconds,
+                start_time,
+                tick_offset
+            )
+            scheduler.add_job(
+                live_cycle,
+                'interval',
+                seconds=seconds,
+                start_date=start_time + tick_offset,
+                misfire_grace_time = None,  # Will always run the job no matter how late it is
+            )
 
         if self.stats_refresh_frequency not in (datetime.timedelta(0), None):
             scheduler.add_job(
@@ -1259,18 +1294,22 @@ class ExecutionLoop:
         version_info = self.run_state.version
         logger.trade(str(version_info))
 
-        try:
-            # https://github.com/agronholm/apscheduler/discussions/683
-            scheduler.start()
-        except KeyboardInterrupt:
-            # https://github.com/agronholm/apscheduler/issues/338
-            scheduler.shutdown(wait=False)
-            raise
-        except Exception as e:
-            logger.error("Scheduler raised an exception %s", e)
-            raise
+        single_shot = self.trade_immediately and self.max_cycles == 1
 
-        logger.info("Scheduler finished - down the live trading loop")
+        # Avoid starting a scheduler if we do --run-single-cycle
+        if not single_shot:
+            try:
+                # https://github.com/agronholm/apscheduler/discussions/683
+                scheduler.start()
+            except KeyboardInterrupt:
+                # https://github.com/agronholm/apscheduler/issues/338
+                scheduler.shutdown(wait=False)
+                raise
+            except Exception as e:
+                logger.error("Scheduler raised an exception %s", e)
+                raise
+
+            logger.info("Scheduler finished - down the live trading loop")
 
         if crash_exception:
             raise LiveSchedulingTaskFailed("trade-executor closed because one of the scheduled tasks failed") from crash_exception
