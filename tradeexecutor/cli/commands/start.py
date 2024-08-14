@@ -14,8 +14,10 @@ from queue import Queue
 from typing import Optional
 
 import typer
+import runpy
 
 from eth_defi.gas import GasPriceMethod
+from tradeexecutor.strategy.strategy_module import parse_strategy_module
 from tradingstrategy.chain import ChainId
 from tradingstrategy.client import Client
 from tradingstrategy.testing.uniswap_v2_mock_client import UniswapV2MockClient
@@ -331,6 +333,13 @@ def start(
         if not notebook_report and backtest_result:
             notebook_report = Path(f"state/{id}-backtest.ipynb")
 
+        fees = dict(
+            management_fee=mod.management_fee,
+            trading_strategy_protocol_fee=mod.trading_strategy_protocol_fee,
+            strategy_developer_fee=mod.strategy_developer_fee,
+            enzyme_protocol_fee=mod.enzyme_protocol_fee,
+        )
+
         metadata = create_metadata(
             name,
             short_description,
@@ -347,6 +356,7 @@ def start(
             tags=mod.tags,
             hot_wallet=sync_model.get_hot_wallet(),
             sort_priority=mod.sort_priority,
+            fees=fees,
         )
 
         # Start the queue that relays info from the web server to the strategy executor

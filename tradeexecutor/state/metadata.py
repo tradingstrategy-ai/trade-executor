@@ -177,6 +177,16 @@ class Metadata:
     #: Higher = the strategy apppears in the frontend first.
     sort_priority: int = 0
 
+    #: Fees for this strategy
+    #: In the format
+    #: {
+    #:     management_fee,
+    #:     trading_strategy_protocol_fee,
+    #:     strategy_developer_fee,
+    #:     enzyme_protocol_fee,
+    #: }
+    fees: Dict[str, float] = field(default_factory=dict)
+
     @staticmethod
     def create_dummy() -> "Metadata":
         return Metadata(
