@@ -493,6 +493,11 @@ class StrategySummary:
     #:
     tags: Set[StrategyTag] = field(default_factory=set)
 
+    #: Fees charged by the strategy
+    #:
+    #: See `Metadata.fees` for description.
+    #:
+    fees: Dict[str, float] = field(default_factory=dict)
 
 #: Help links for different metrics
 _KEY_METRIC_HELP = {
