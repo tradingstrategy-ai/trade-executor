@@ -522,7 +522,7 @@ class GridSearchResult:
         :return:
             0 if not available (the strategy made no trades).
         """
-        sortino = self.get_metric("sortino")
+        sortino = self.get_metric("Sortino")
         if pd.notna(sortino) and sortino != "-":
             assert type(sortino) in (float, int), f"Got {type(sortino)} {sortino}"
             return sortino
