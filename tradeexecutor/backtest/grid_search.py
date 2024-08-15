@@ -516,6 +516,18 @@ class GridSearchResult:
             return sharpe
         return 0.0
 
+    def get_sortino(self) -> float:
+        """Get the Sortino ratio of this grid search result.
+
+        :return:
+            0 if not available (the strategy made no trades).
+        """
+        sortino = self.get_metric("sortino")
+        if pd.notna(sortino) and sortino != "-":
+            assert type(sortino) in (float, int), f"Got {type(sortino)} {sortino}"
+            return sortino
+        return 0.0
+
     def get_max_drawdown(self) -> Percent | NAType:
         """Get the maximum drawdown.
 
