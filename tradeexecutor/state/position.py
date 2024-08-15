@@ -1656,7 +1656,7 @@ class TradingPosition(GenericPosition):
         The profit is scaled to the % of the position size relative to the portfolio
         to account for max capital allocation for the position.
 
-        - TODO: This does not work for positions that have capital added over time
+        - TODO: This does not work for positions that have capital added over time or strategies that have overlapping positions
 
         See :ref:`profitability` for more details.
 

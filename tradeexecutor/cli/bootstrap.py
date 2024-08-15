@@ -306,6 +306,7 @@ def create_metadata(
     tags: Optional[Set[StrategyTag]] = None,
     hot_wallet: Optional[HotWallet] = None,
     sort_priority=0,
+    fees=None,
 ) -> Metadata:
     """Create metadata object from the configuration variables."""
 
@@ -365,6 +366,7 @@ def create_metadata(
         badges=Metadata.parse_badges_configuration(badges),
         tags=tags or set(),  # Always fill empty set
         sort_priority=sort_priority,
+        fees=fees,
     )
 
     return metadata

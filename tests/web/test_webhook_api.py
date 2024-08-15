@@ -52,6 +52,12 @@ def server_url(store):
         True,
         badges=Metadata.parse_badges_configuration("polygon, metamask, eth, usdc"),
         tags={StrategyTag.beta},
+        fees=dict(
+            management_fee="0.00%",
+            trading_strategy_protocol_fee="0.02%",
+            strategy_developer_fee="0.1%",
+            enzyme_protocol_fee="0.0025%",
+        )
     )
 
     # Inject some fake files for the backtest content
@@ -75,7 +81,7 @@ def test_home(logger, server_url):
     assert resp.status_code == 200
     # Chuck the Trade Executor server, version 0.1.0, our URL is http://127.0.0.1:5000
     assert resp.headers["content-type"] == "text/plain; charset=UTF-8"
-    assert "Trading Strategy" in resp.text
+    assert "Trade Executor daemon of Trading Strategy" in resp.text
 
 
 def test_ping(logger,server_url):
@@ -92,10 +98,16 @@ def test_metadata(logger, server_url):
     data = resp.json()
     assert data["name"] == "Foobar"
     assert data["short_description"] == "Short desc"
-    assert data["executor_running"] == True
+    assert data["executor_running"] is True
     assert data["crashed_at"] is None
     assert data["badges"] == ["polygon", "metamask", "eth", "usdc"]
     assert data["tags"] == ["beta"]
+    assert data["fees"] == dict(
+        management_fee="0.00%",
+        trading_strategy_protocol_fee="0.02%",
+        strategy_developer_fee="0.1%",
+        enzyme_protocol_fee="0.0025%",
+    )
 
 
 def test_cors(logger, server_url):

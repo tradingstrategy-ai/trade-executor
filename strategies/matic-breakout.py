@@ -39,7 +39,10 @@ from tradingstrategy.timebucket import TimeBucket
 from tradingstrategy.utils.groupeduniverse import resample_price_series
 
 trading_strategy_engine_version = "0.5"
-
+management_fee="0.00%"
+trading_strategy_protocol_fee="0.02%"
+strategy_developer_fee="0.1%"
+enzyme_protocol_fee="0.0025%"
 
 class Parameters:
     """Parameteres for this strategy.
@@ -83,6 +86,8 @@ class Parameters:
     stop_loss_time_bucket = TimeBucket.m15  # use 1h close as the stop loss signal
     backtest_trading_fee = 0.0005  # Switch to QuickSwap 30 BPS free from the default Binance 5 BPS fee
     initial_cash = 10_000
+
+    
 
 
 def get_strategy_trading_pairs(execution_mode: ExecutionMode) -> list[HumanReadableTradingPairDescription]:

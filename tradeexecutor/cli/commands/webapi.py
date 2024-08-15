@@ -101,6 +101,13 @@ def webapi(
     if state_file:
         store = create_state_store(Path(state_file))
 
+    fees = dict(
+        management_fee=mod.management_fee,
+        trading_strategy_protocol_fee=mod.trading_strategy_protocol_fee,
+        strategy_developer_fee=mod.strategy_developer_fee,
+        enzyme_protocol_fee=mod.enzyme_protocol_fee,
+    )
+
     metadata = create_metadata(
         name,
         short_description,
@@ -109,6 +116,7 @@ def webapi(
         AssetManagementMode.dummy,
         chain_id=mod.get_default_chain_id(),
         vault=None,
+        fees=fees,
     )
 
     # Start the queue that relays info from the web server to the strategy executor

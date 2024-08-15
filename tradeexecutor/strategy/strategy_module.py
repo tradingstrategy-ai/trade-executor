@@ -3,7 +3,7 @@ import datetime
 import inspect
 import logging
 import runpy
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from types import NoneType
 from typing import Callable, Dict, Protocol, List, Optional, Union, Set, Type
@@ -318,6 +318,8 @@ class CreateTradingUniverseProtocol(Protocol):
             """
 
 
+
+
 @dataclass
 class StrategyModuleInformation:
     """Describe elements that we need to have in a strategy module.
@@ -447,6 +449,13 @@ class StrategyModuleInformation:
     #: See :py:class:`~tradeexecutor.strategy.parameters.StrategyParameters`.
     #:
     parameters: Optional[Type | StrategyParameters] = None
+
+    #: Fees for the strategy.
+    #:
+    management_fee: Optional[str] = None
+    trading_strategy_protocol_fee: Optional[str] = None
+    strategy_developer_fee: Optional[str] = None
+    enzyme_protocol_fee: Optional[str] = None
 
     def __repr__(self):
         return f"<StrategyModuleInformation {self.path}>"
@@ -606,6 +615,8 @@ class StrategyModuleInformation:
         return None
 
 
+
+
 def parse_strategy_module(
         path,
         python_module_exports: dict,
@@ -641,6 +652,10 @@ def parse_strategy_module(
         sort_priority=python_module_exports.get("sort_priority"),
         create_indicators=python_module_exports.get("create_indicators"),
         parameters=python_module_exports.get("parameters"),
+        management_fee=python_module_exports.get("management_fee"),
+        trading_strategy_protocol_fee=python_module_exports.get("trading_strategy_protocol_fee"),
+        strategy_developer_fee=python_module_exports.get("strategy_developer_fee"),
+        enzyme_protocol_fee=python_module_exports.get("enzyme_protocol_fee"),
     )
 
 
