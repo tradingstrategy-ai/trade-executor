@@ -185,7 +185,7 @@ class Metadata:
     #:     strategy_developer_fee,
     #:     enzyme_protocol_fee,
     #: }
-    fees: Dict[str, float] = field(default_factory=dict)
+    fees: Dict[str, str] = field(default_factory=dict)
 
     @staticmethod
     def create_dummy() -> "Metadata":

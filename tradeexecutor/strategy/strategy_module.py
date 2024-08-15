@@ -452,10 +452,10 @@ class StrategyModuleInformation:
 
     #: Fees for the strategy.
     #:
-    management_fee: Optional[float] = None
-    trading_strategy_protocol_fee: Optional[float] = None
-    strategy_developer_fee: Optional[float] = None
-    enzyme_protocol_fee: Optional[float] = None
+    management_fee: Optional[str] = None
+    trading_strategy_protocol_fee: Optional[str] = None
+    strategy_developer_fee: Optional[str] = None
+    enzyme_protocol_fee: Optional[str] = None
 
     def __repr__(self):
         return f"<StrategyModuleInformation {self.path}>"
