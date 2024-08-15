@@ -55,7 +55,7 @@ def close_all(
     test_evm_uniswap_v2_init_code_hash: Optional[str] = shared_options.test_evm_uniswap_v2_init_code_hash,
 
     unit_testing: bool = shared_options.unit_testing,
-
+    simulate: bool = shared_options.simulate,
 ):
     """Close all open positions.
 
@@ -71,11 +71,6 @@ def close_all(
 
     cache_path = prepare_cache(id, cache_path)
 
-    execution_context = ExecutionContext(
-        mode=ExecutionMode.preflight_check,
-        timed_task_context_manager=timed_task
-    )
-
     web3config = create_web3_config(
         json_rpc_binance=json_rpc_binance,
         json_rpc_polygon=json_rpc_polygon,
@@ -83,6 +78,7 @@ def close_all(
         json_rpc_ethereum=json_rpc_ethereum,
         json_rpc_anvil=json_rpc_anvil,
         json_rpc_arbitrum=json_rpc_arbitrum,
+        simulate=True,
     )
 
     if not web3config.has_any_connection():
@@ -124,6 +120,21 @@ def close_all(
     assert not store.is_pristine(), f"Strategy state file does not exist: {state_file}"
     state = store.load()
 
+    if simulate:
+        def break_sync(x):
+            raise NotImplementedError("Cannot save state when simulating")
+        store.sync = break_sync
+
+        logger.info("Simulating test trades")
+
+    interactive = not (unit_testing or simulate)
+
+    execution_context = ExecutionContext(
+        mode=ExecutionMode.one_off,
+        timed_task_context_manager=timed_task,
+        engine_version=mod.trading_strategy_engine_version,
+    )
+
     # Set up the strategy engine
     factory = make_factory_from_strategy_mod(mod)
     run_description: StrategyExecutionDescription = factory(
@@ -139,13 +150,16 @@ def close_all(
         run_state=RunState(),
     )
 
+    universe_options = mod.get_universe_options(execution_context.mode)
+
     # We construct the trading universe to know what's our reserve asset
     universe_model: TradingStrategyUniverseModel = run_description.universe_model
     ts = datetime.datetime.utcnow()
     universe = universe_model.construct_universe(
         ts,
-        ExecutionMode.preflight_check,
-        UniverseOptions())
+        execution_context.mode,
+        universe_options
+    )
 
     runner = run_description.runner
     routing_state, pricing_model, valuation_method = runner.setup_routing(universe)
@@ -159,10 +173,11 @@ def close_all(
         universe,
         runner.routing_model,
         routing_state,
-        interactive=not unit_testing,
+        interactive=interactive,
     )
 
     # Store the test trade data in the strategy history
-    store.sync(state)
+    if not simulate:
+        store.sync(state)
 
     logger.info("All ok")

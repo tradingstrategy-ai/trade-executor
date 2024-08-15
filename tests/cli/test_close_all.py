@@ -64,6 +64,7 @@ def environment(
         "TEST_EVM_UNISWAP_V2_FACTORY": uniswap_v2.factory.address,
         "TEST_EVM_UNISWAP_V2_INIT_CODE_HASH": uniswap_v2.init_code_hash,
         "CONFIRMATION_BLOCK_COUNT": "0",  # Needed for test backend, Anvil
+        "PATH": os.environ["PATH"],
     }
     return environment
 
@@ -111,3 +112,42 @@ def test_close_all(
 
     state = State.read_json_file(state_file)
     assert len(state.portfolio.open_positions) == 0
+
+
+
+def test_close_all_simulate(
+    environment: dict,
+    state_file: Path,
+):
+    """Perform close-all --simulate command"""
+
+    environment = environment.copy()
+
+    # trade-executor init
+    cli = get_command(app)
+    with patch.dict(os.environ, environment, clear=True):
+        with pytest.raises(SystemExit) as e:
+            cli.main(args=["init"])
+        assert e.value.code == 0
+
+    # trade-executor perform-test-trade --buy-only
+    cli = get_command(app)
+    with patch.dict(os.environ, environment, clear=True):
+        with pytest.raises(SystemExit) as e:
+            cli.main(args=["perform-test-trade", "--buy-only"])
+        assert e.value.code == 0
+
+    state = State.read_json_file(state_file)
+    assert len(state.portfolio.open_positions) == 1
+
+    environment["SIMULATE"] = "true"
+
+    # trade-executor close-all
+    cli = get_command(app)
+    with patch.dict(os.environ, environment, clear=True):
+        with pytest.raises(SystemExit) as e:
+            cli.main(args=["close-all"])
+        assert e.value.code == 0
+
+    state = State.read_json_file(state_file)
+    assert len(state.portfolio.open_positions) == 1
