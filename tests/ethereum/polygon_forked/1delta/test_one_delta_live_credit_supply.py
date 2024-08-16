@@ -451,3 +451,265 @@ def test_one_delta_live_credit_supply_mixed_with_spot(
     assert len(state.portfolio.open_positions) == 1
     spot_position = state.portfolio.open_positions[2]
     assert spot_position.portfolio_value_at_open == pytest.approx(10000.0003)
+
+
+def test_one_delta_live_credit_supply_open_and_increase(
+    logger,
+    web3: Web3,
+    hot_wallet: HotWallet,
+    trading_strategy_universe: TradingStrategyUniverse,
+    one_delta_routing_model: OneDeltaRouting,
+    uniswap_v3_deployment: UniswapV3Deployment,
+    usdc: Contract, 
+    weth: Contract,
+    asset_usdc,
+):
+    """Live 1delta trade.
+
+    - Sets up a simple strategy that open and close a credit supply position
+
+    - Start the strategy, check that the trading account is funded
+
+    - Advance to cycle 1 and make sure the credit supply position is opened
+
+    - Advance to cycle 2 and make sure the credit supply position is increased
+    """
+
+    def decide_trades(
+        timestamp: pd.Timestamp,
+        strategy_universe: TradingStrategyUniverse,
+        state: State,
+        pricing_model: PricingModel,
+        cycle_debug_data: dict
+    ) -> List[TradeExecution]:
+        """Opens a credit supply position and increase it."""
+        
+        pair = strategy_universe.universe.pairs.get_single()
+
+        # Open for 1,000 USD
+        position_size = 1000.00
+
+        trades = []
+
+        position_manager = PositionManager(timestamp, strategy_universe, state, pricing_model)
+
+        if not position_manager.is_any_credit_supply_position_open():
+            trades += position_manager.open_credit_supply_position_for_reserves(position_size)
+        else:
+            position = position_manager.get_current_credit_supply_position()
+            trades += position_manager.adjust_credit_supply_position(position, position_size * 2)
+
+        return trades
+
+    routing_model = one_delta_routing_model
+
+    # Sanity check for the trading universe
+    pair_universe = trading_strategy_universe.data_universe.pairs
+    routing_model.perform_preflight_checks_and_logging(pair_universe)
+
+    # Set up an execution loop we can step through
+    state = State()
+    loop = set_up_simulated_execution_loop_one_delta(
+        web3=web3,
+        decide_trades=decide_trades,
+        universe=trading_strategy_universe,
+        state=state,
+        wallet_account=hot_wallet.account,
+        routing_model=routing_model,
+    )
+    loop.runner.run_state = RunState()  # Needed for visualisations
+    loop.runner.accounting_checks = True
+
+    ts = get_latest_block_timestamp(web3)
+
+    loop.tick(
+        ts,
+        loop.cycle_duration,
+        state,
+        cycle=1,
+        live=True,
+    )
+
+    loop.update_position_valuations(
+        ts,
+        state,
+        trading_strategy_universe,
+        ExecutionMode.real_trading
+    )
+
+    loop.runner.check_accounts(trading_strategy_universe, state)
+
+    assert len(state.portfolio.open_positions) == 1
+
+    # After the first tick, we should have synced our reserves and opened the first position
+    usdc_id = f"{web3.eth.chain_id}-{usdc.address.lower()}"
+    assert state.portfolio.reserves[usdc_id].quantity == 9000
+
+    position = state.portfolio.open_positions[1]
+    assert position.get_quantity() == pytest.approx(Decimal(1000))
+    assert position.get_value() == pytest.approx(1000)
+    old_col_value = position.loan.get_collateral_value()
+    assert old_col_value == pytest.approx(1000)
+    assert position.loan.get_collateral_interest() == 0
+    
+    for i in range(100):
+        mine(web3)
+
+    # trade another cycle to close the position
+    ts = get_latest_block_timestamp(web3)
+    strategy_cycle_timestamp = snap_to_next_tick(ts, loop.cycle_duration)
+
+    loop.tick(
+        ts,
+        loop.cycle_duration,
+        state,
+        cycle=2,
+        live=True,
+        strategy_cycle_timestamp=strategy_cycle_timestamp,
+    )
+
+    loop.update_position_valuations(
+        ts,
+        state,
+        trading_strategy_universe,
+        ExecutionMode.real_trading
+    )
+
+    loop.runner.check_accounts(trading_strategy_universe, state)
+
+    assert len(state.portfolio.open_positions) == 1
+    position = state.portfolio.open_positions[1]
+    assert position.get_quantity() == pytest.approx(Decimal(2000))
+    assert position.get_value() == pytest.approx(2000)
+    assert position.loan.get_collateral_value() == pytest.approx(2000)
+
+
+def test_one_delta_live_credit_supply_open_and_reduce(
+    logger,
+    web3: Web3,
+    hot_wallet: HotWallet,
+    trading_strategy_universe: TradingStrategyUniverse,
+    one_delta_routing_model: OneDeltaRouting,
+    uniswap_v3_deployment: UniswapV3Deployment,
+    usdc: Contract, 
+    weth: Contract,
+    asset_usdc,
+):
+    """Live 1delta trade.
+
+    - Sets up a simple strategy that open and close a credit supply position
+
+    - Start the strategy, check that the trading account is funded
+
+    - Advance to cycle 1 and make sure the credit supply position is opened
+
+    - Advance to cycle 2 and make sure the credit supply position is reduced
+    """
+
+    def decide_trades(
+        timestamp: pd.Timestamp,
+        strategy_universe: TradingStrategyUniverse,
+        state: State,
+        pricing_model: PricingModel,
+        cycle_debug_data: dict
+    ) -> List[TradeExecution]:
+        """Opens a credit supply position and reduce it."""
+        
+        pair = strategy_universe.universe.pairs.get_single()
+
+        # Open for 1,000 USD
+        position_size = 1000.00
+
+        trades = []
+
+        position_manager = PositionManager(timestamp, strategy_universe, state, pricing_model)
+
+        if not position_manager.is_any_credit_supply_position_open():
+            trades += position_manager.open_credit_supply_position_for_reserves(position_size)
+        else:
+            position = position_manager.get_current_credit_supply_position()
+            trades += position_manager.adjust_credit_supply_position(position, 800)
+
+        return trades
+
+    routing_model = one_delta_routing_model
+
+    # Sanity check for the trading universe
+    pair_universe = trading_strategy_universe.data_universe.pairs
+    routing_model.perform_preflight_checks_and_logging(pair_universe)
+
+    # Set up an execution loop we can step through
+    state = State()
+    loop = set_up_simulated_execution_loop_one_delta(
+        web3=web3,
+        decide_trades=decide_trades,
+        universe=trading_strategy_universe,
+        state=state,
+        wallet_account=hot_wallet.account,
+        routing_model=routing_model,
+    )
+    loop.runner.run_state = RunState()  # Needed for visualisations
+    loop.runner.accounting_checks = True
+
+    ts = get_latest_block_timestamp(web3)
+
+    loop.tick(
+        ts,
+        loop.cycle_duration,
+        state,
+        cycle=1,
+        live=True,
+    )
+
+    loop.update_position_valuations(
+        ts,
+        state,
+        trading_strategy_universe,
+        ExecutionMode.real_trading
+    )
+
+    loop.runner.check_accounts(trading_strategy_universe, state)
+
+    assert len(state.portfolio.open_positions) == 1
+
+    # After the first tick, we should have synced our reserves and opened the first position
+    usdc_id = f"{web3.eth.chain_id}-{usdc.address.lower()}"
+    assert state.portfolio.reserves[usdc_id].quantity == 9000
+
+    position = state.portfolio.open_positions[1]
+    assert position.get_quantity() == pytest.approx(Decimal(1000))
+    assert position.get_value() == pytest.approx(1000)
+    old_col_value = position.loan.get_collateral_value()
+    assert old_col_value == pytest.approx(1000)
+    assert position.loan.get_collateral_interest() == 0
+    
+    for i in range(100):
+        mine(web3)
+
+    # trade another cycle to close the position
+    ts = get_latest_block_timestamp(web3)
+    strategy_cycle_timestamp = snap_to_next_tick(ts, loop.cycle_duration)
+
+    loop.tick(
+        ts,
+        loop.cycle_duration,
+        state,
+        cycle=2,
+        live=True,
+        strategy_cycle_timestamp=strategy_cycle_timestamp,
+    )
+
+    loop.update_position_valuations(
+        ts,
+        state,
+        trading_strategy_universe,
+        ExecutionMode.real_trading
+    )
+
+    loop.runner.check_accounts(trading_strategy_universe, state)
+
+    assert len(state.portfolio.open_positions) == 1
+    position = state.portfolio.open_positions[1]
+    assert position.get_quantity() == pytest.approx(Decimal(800))
+    assert position.get_value() == pytest.approx(800)
+    assert position.loan.get_collateral_value() == pytest.approx(800)
