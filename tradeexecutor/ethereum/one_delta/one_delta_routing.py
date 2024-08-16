@@ -240,6 +240,7 @@ class OneDeltaRoutingState(EthereumRoutingState):
     ):
         base_token, quote_token = get_base_quote(self.web3, target_pair.get_pricing_pair(), target_pair.get_pricing_pair().quote)
         atoken = get_token_for_asset(self.web3, target_pair.base)
+        token_delivery_address = self.tx_builder.get_token_delivery_address()
 
         if check_balances:
             self.check_has_enough_tokens(quote_token, reserve_amount)
@@ -253,14 +254,22 @@ class OneDeltaRoutingState(EthereumRoutingState):
 
         price_helper = OneDeltaPriceHelper(one_delta)
 
-        if TradeFlag.open in trade_flags:
+        if TradeFlag.open in trade_flags or TradeFlag.increase in trade_flags:
             assert reserve_amount > 0
 
             bound_func = supply(
                 one_delta_deployment=one_delta,
                 token=quote_token,
                 amount=reserve_amount,
-                wallet_address=self.tx_builder.get_token_delivery_address(),
+                wallet_address=token_delivery_address,
+            )
+        elif TradeFlag.reduce in trade_flags:
+            bound_func = withdraw(
+                one_delta_deployment=one_delta,
+                token=quote_token,
+                atoken=atoken,
+                amount=abs(reserve_amount),
+                wallet_address=token_delivery_address,
             )
         elif TradeFlag.close in trade_flags:
             bound_func = withdraw(
@@ -268,7 +277,7 @@ class OneDeltaRoutingState(EthereumRoutingState):
                 token=quote_token,
                 atoken=atoken,
                 amount=MAX_AMOUNT,
-                wallet_address=self.tx_builder.get_token_delivery_address(),
+                wallet_address=token_delivery_address,
             )
         else:
             raise ValueError(f"Wrong trade flags used: {trade_flags}")
