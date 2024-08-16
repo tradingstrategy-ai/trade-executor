@@ -13,7 +13,9 @@ on:
 
 jobs:
   client-side-test-suite:
-    runs-on: ubuntu-latest
+#    runs-on: ubuntu-latest
+    runs-on:
+      group: selfhost
     steps:
       - uses: actions/checkout@v3
         with:

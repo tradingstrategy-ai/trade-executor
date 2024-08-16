@@ -10,7 +10,8 @@ jobs:
   slow-test-suite:
     timeout-minutes: 40
     runs-on:
-      group: Beefy runners
+#      group: Beefy runners
+      group: selfhost
     steps:
       - uses: actions/checkout@v3
         with:

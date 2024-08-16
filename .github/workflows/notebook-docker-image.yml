@@ -16,7 +16,9 @@ on:
 
 jobs:
   notebook-docker-image:
-    runs-on: ubuntu-latest
+#    runs-on: ubuntu-latest
+    runs-on:
+      group: selfhost
     if: github.event_name == 'push' && contains(github.ref, 'refs/tags/v')
     env:
       REGISTRY: ghcr.io

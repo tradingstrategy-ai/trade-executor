@@ -10,8 +10,10 @@ jobs:
   automated-test-suite:
     timeout-minutes: 40
     # Use paid faster Github Actions runner
+#    runs-on:
+#      group: Beefy runners
     runs-on:
-      group: Beefy runners
+      group: selfhost
     steps:
       - uses: actions/checkout@v3
         with:
@@ -85,7 +87,9 @@ jobs:
           key: ${{ steps.unit-test-dataset.outputs.cache-primary-key }}
 
   build:
-    runs-on: ubuntu-latest
+#    runs-on: ubuntu-latest
+    runs-on:
+      group: selfhost
     # needs: automated-test-suite
     # Only build on tag push or branch push with rc-* prefix
     if: (github.event_name == 'push' && contains(github.ref, 'refs/tags/v')) || startsWith(github.head_ref, 'rc-')
