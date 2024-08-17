@@ -1628,6 +1628,11 @@ class TradingPosition(GenericPosition):
     def get_unrealised_profit_pct(self) -> Percent:
         """Get the current profit of this position, minus any netflow.
 
+        .. warning::
+
+            This function is only tested for spot positions with a single trade.
+            It may fail to calculate other kind of positions.
+
         - Calculate based on avg buy and sell
 
         - For the unrealised portion, calculate the expected close
@@ -1639,13 +1644,15 @@ class TradingPosition(GenericPosition):
         :return:
             Estimated position profit in percent, based on avg trade prices.
 
+            E.g. if the position gained 100 USD -> 110 USD return 0.1.
+
             If profit cannot be calculated yet (zero trades executed),
             return 0.
         """
 
-        realised_profit = self.get_realised_profit_usd()
+        realised_profit = self.get_unrealised_profit_usd()
         if realised_profit is None:
-            return 0
+            realised_profit = 0
 
         if self.is_long():
             total_bought = self.get_total_bought_usd()

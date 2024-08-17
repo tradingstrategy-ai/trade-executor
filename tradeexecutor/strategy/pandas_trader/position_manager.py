@@ -1204,6 +1204,19 @@ class PositionManager:
         trailing=False,
     ):
         """Update the stop loss for the current position.
+
+        Example:
+
+        .. code-block:: python
+
+            profit_pct = position.get_unrealised_profit_pct() or 0
+            if profit_pct > parameters.trailing_stop_loss_activation_level:
+                new_trailing_stop_loss = close_price - atr_trailing_stop_loss * parameters.trailing_stop_loss_activation_fract
+                position_manager.update_stop_loss(
+                    position,
+                    new_trailing_stop_loss,
+                    trailing=True,
+                )
         
         :param position:
             Position to update. For multipair strategies, providing this parameter is strongly recommended.
