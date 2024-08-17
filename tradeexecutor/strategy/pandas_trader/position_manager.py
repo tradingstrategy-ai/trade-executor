@@ -1198,7 +1198,11 @@ class PositionManager:
         price = pricing_model.get_mid_price(timestamp, pair)
         return float(dollar_amount / price)
 
-    def update_stop_loss(self, position: TradingPosition, stop_loss: USDollarAmount):
+    def update_stop_loss(
+        self, position: TradingPosition,
+        stop_loss: USDollarAmount,
+        trailing=False,
+    ):
         """Update the stop loss for the current position.
         
         :param position:
@@ -1207,9 +1211,25 @@ class PositionManager:
         :param stop_loss:
             Stop loss in US dollar terms
 
+        :param trailing:
+            Only update the stop loss if the new stop loss gives better profit than the previous one.
+
+            E.g. for spot position move stop loss only higher.
+
         :param mid_price:
             Mid price of the pair (https://tradingstrategy.ai/glossary/mid-price). Provide when possible for most complete statistical analysis. In certain cases, it may not be easily available, so it's optional.
         """
+
+        if trailing:
+            assert position.is_spot(), f"update_stop_loss() only implemented for spot now"
+
+            if stop_loss <= position.stop_loss:
+                logger.info(
+                    "Trailing stop loss update skipped. Old: %s, new: %s",
+                    position.stop_loss,
+                    stop_loss,
+                )
+                return
 
         pair = position.pair.get_pricing_pair()
         mid_price =  self.pricing_model.get_mid_price(self.timestamp, pair)

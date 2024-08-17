@@ -1637,18 +1637,26 @@ class TradingPosition(GenericPosition):
         - :py:meth:`get_realised_profit_percent`
 
         :return:
-            Estimated position profit in percet, based on avg trade prices
+            Estimated position profit in percent, based on avg trade prices.
+
+            If profit cannot be calculated yet (zero trades executed),
+            return 0.
         """
+
+        realised_profit = self.get_realised_profit_usd()
+        if realised_profit is None:
+            return 0
+
         if self.is_long():
             total_bought = self.get_total_bought_usd()
             if total_bought == 0:
                 return 0
-            return self.get_realised_profit_usd()/total_bought
+            return realised_profit/total_bought
         else:
             total_sold = self.get_total_sold_usd()
             if total_sold == 0:
                 return 0
-            return self.get_realised_profit_usd()/total_sold
+            return realised_profit/total_sold
 
     def get_size_relative_realised_profit_percent(self) -> Percent:
         """Calculated life-time profit over this position.
@@ -1698,6 +1706,7 @@ class TradingPosition(GenericPosition):
 
     def get_duration(self) -> datetime.timedelta | None:
         """How long this position was held.
+
         :return: None if the position is still open
         """
         if self.is_closed():
