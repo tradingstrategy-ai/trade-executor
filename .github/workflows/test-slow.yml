@@ -48,6 +48,7 @@ jobs:
       - name: Install pnpm
         run: |
           SHELL="/bin/bash"
+          export SHELL
           curl -fsSL https://get.pnpm.io/install.sh | env PNPM_VERSION=7.27.1 sh -
           PNPM_HOME="/home/runner/.local/share/pnpm"
           # https://docs.github.com/en/actions/using-workflows/workflow-commands-for-github-actions#adding-a-system-path
