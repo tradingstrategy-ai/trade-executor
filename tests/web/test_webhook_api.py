@@ -102,9 +102,9 @@ def test_metadata(logger, server_url):
     assert data["badges"] == ["polygon", "metamask", "eth", "usdc"]
     assert data["tags"] == ["beta"]
     assert data["fees"] == dict(
-        management_fee="0.00%",
-        trading_strategy_protocol_fee="0.02%",
-        strategy_developer_fee="0.1%",
+        management_fee=0.00,
+        trading_strategy_protocol_fee=0.02,
+        strategy_developer_fee=0.05,
     )
 
 
