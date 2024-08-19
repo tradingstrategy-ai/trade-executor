@@ -549,7 +549,7 @@ class StrategyInputIndicators:
         )
         return df[column]
     
-    def get_historical_price_series(
+    def get_recent_price_series(
         self,
         column: str = "close",
         pair: TradingPairIdentifier | HumanReadableTradingPairDescription | None = None,
