@@ -38,7 +38,7 @@ from tradingstrategy.pair import HumanReadableTradingPairDescription
 from tradingstrategy.timebucket import TimeBucket
 from tradingstrategy.utils.groupeduniverse import resample_price_series
 
-trading_strategy_engine_version = 0.5
+trading_strategy_engine_version = "0.5"
 management_fee=0.00
 trading_strategy_protocol_fee=0.02
 strategy_developer_fee=0.1
