@@ -1198,18 +1198,55 @@ class PositionManager:
         price = pricing_model.get_mid_price(timestamp, pair)
         return float(dollar_amount / price)
 
-    def update_stop_loss(self, position: TradingPosition, stop_loss: USDollarAmount):
-        """Update the stop loss for the current position.
+    def update_stop_loss(
+        self, position: TradingPosition,
+        stop_loss: USDollarAmount,
+        trailing=False,
+    ):
+        """Update the stop loss for the given position.
+
+        Example:
+
+        .. code-block:: python
+
+            profit_pct = position.get_unrealised_profit_pct() or 0
+            if profit_pct > parameters.trailing_stop_loss_activation_level - 1:
+                new_trailing_stop_loss = close_price - atr_trailing_stop_loss * parameters.trailing_stop_loss_activation_fract
+                position_manager.update_stop_loss(
+                    position,
+                    new_trailing_stop_loss,
+                    trailing=True,
+                )
         
         :param position:
-            Position to update. For multipair strategies, providing this parameter is strongly recommended.
+            Position to update.
+
+            For multipair strategies, this parameter is always needed.
 
         :param stop_loss:
             Stop loss in US dollar terms
 
+        :param trailing:
+            Only update the stop loss if the new stop loss gives better profit than the previous one.
+
+            For manual trailing stop loss management, instead of using a fixed percent value.
+
+            E.g. for spot position move stop loss only higher.
+
         :param mid_price:
             Mid price of the pair (https://tradingstrategy.ai/glossary/mid-price). Provide when possible for most complete statistical analysis. In certain cases, it may not be easily available, so it's optional.
         """
+
+        if trailing:
+            assert position.is_spot(), f"update_stop_loss() only implemented for spot now"
+
+            if stop_loss <= position.stop_loss:
+                logger.info(
+                    "Trailing stop loss update skipped. Old: %s, new: %s",
+                    position.stop_loss,
+                    stop_loss,
+                )
+                return
 
         pair = position.pair.get_pricing_pair()
         mid_price =  self.pricing_model.get_mid_price(self.timestamp, pair)

@@ -22,6 +22,7 @@ from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniv
 from tradingstrategy.candle import CandleSampleUnavailable
 from tradingstrategy.liquidity import LiquidityDataUnavailable
 from tradingstrategy.pair import HumanReadableTradingPairDescription
+from tradingstrategy.timebucket import TimeBucket
 from tradingstrategy.utils.time import get_prior_timestamp, ZERO_TIMEDELTA
 
 logger = logging.getLogger(__name__)
@@ -73,6 +74,10 @@ class StrategyInputIndicators:
     #: Stored here, so we do not need to pass it explicitly in API.
     #:
     timestamp: pd.Timestamp | None = None
+
+    #: Strategy cycle duration hint
+    #:
+    # cycle_duration: CycleDuration | None = None
 
     def __post_init__(self):
         assert type(self.indicator_results) == dict
@@ -386,7 +391,7 @@ class StrategyInputIndicators:
 
         ts = self.timestamp
 
-        time_frame = _calculate_and_cache_candle_width(series.index)
+        time_frame = _calculate_and_cache_candle_width_df(series)
 
         if time_frame is None:
             # Bad data.
@@ -824,6 +829,7 @@ class StrategyInput:
 
 _time_frame_cache = cachetools.Cache(maxsize=SERIES_CACHE_SIZE)
 
+
 def _calculate_and_cache_candle_width(index: pd.DatetimeIndex | pd.MultiIndex) -> pd.Timedelta | None:
     """Get the evenly timestamped index candle/time bar width.
 
@@ -852,5 +858,18 @@ def _calculate_and_cache_candle_width(index: pd.DatetimeIndex | pd.MultiIndex) -
         _time_frame_cache[key] = value
 
     return value
+
+
+def _calculate_and_cache_candle_width_df(df: pd.DatetimeIndex | pd.Series) -> pd.Timedelta | None:
+    """Handles DataFrame and Series objects with time_bucket hints.
+    """
+
+    time_bucket = df.attrs.get("time_bucket")
+    if time_bucket is not None:
+        return time_bucket.to_pandas_timedelta()
+
+    return _calculate_and_cache_candle_width(df.index)
+
+
 
 
