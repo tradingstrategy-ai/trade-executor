@@ -30,10 +30,9 @@ trade_routing = TradeRouting.user_supplied_routing_model
 trading_strategy_cycle = CycleDuration.cycle_1s
 reserve_currency = ReserveCurrency.usdc
 
-management_fee="0.01%"
-trading_strategy_protocol_fee="0.01%"
-strategy_developer_fee="0.01%"
-enzyme_protocol_fee="0.01%"
+management_fee=0.01
+trading_strategy_protocol_fee=0.01
+strategy_developer_fee=0.01
 
 def decide_trades(
         timestamp: pd.Timestamp,

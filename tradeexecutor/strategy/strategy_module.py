@@ -455,7 +455,6 @@ class StrategyModuleInformation:
     management_fee: Optional[str] = None
     trading_strategy_protocol_fee: Optional[str] = None
     strategy_developer_fee: Optional[str] = None
-    enzyme_protocol_fee: Optional[str] = None
 
     def __repr__(self):
         return f"<StrategyModuleInformation {self.path}>"
@@ -655,7 +654,6 @@ def parse_strategy_module(
         management_fee=python_module_exports.get("management_fee"),
         trading_strategy_protocol_fee=python_module_exports.get("trading_strategy_protocol_fee"),
         strategy_developer_fee=python_module_exports.get("strategy_developer_fee"),
-        enzyme_protocol_fee=python_module_exports.get("enzyme_protocol_fee"),
     )
 
 

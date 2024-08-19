@@ -183,7 +183,6 @@ class Metadata:
     #:     management_fee,
     #:     trading_strategy_protocol_fee,
     #:     strategy_developer_fee,
-    #:     enzyme_protocol_fee,
     #: }
     fees: Dict[str, str] = field(default_factory=dict)
 

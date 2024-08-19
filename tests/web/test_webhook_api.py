@@ -53,10 +53,9 @@ def server_url(store):
         badges=Metadata.parse_badges_configuration("polygon, metamask, eth, usdc"),
         tags={StrategyTag.beta},
         fees=dict(
-            management_fee="0.00%",
-            trading_strategy_protocol_fee="0.02%",
-            strategy_developer_fee="0.1%",
-            enzyme_protocol_fee="0.0025%",
+            management_fee=0.00,
+            trading_strategy_protocol_fee=0.02,
+            strategy_developer_fee=0.05,
         )
     )
 
@@ -106,7 +105,6 @@ def test_metadata(logger, server_url):
         management_fee="0.00%",
         trading_strategy_protocol_fee="0.02%",
         strategy_developer_fee="0.1%",
-        enzyme_protocol_fee="0.0025%",
     )
 
 
