@@ -15,8 +15,10 @@ from typing import Optional
 
 import typer
 import runpy
+import runpy
 
 from eth_defi.gas import GasPriceMethod
+from tradeexecutor.strategy.strategy_module import parse_strategy_module
 from tradeexecutor.strategy.strategy_module import parse_strategy_module
 from tradingstrategy.chain import ChainId
 from tradingstrategy.client import Client
@@ -340,7 +342,6 @@ def start(
             management_fee=mod.management_fee,
             trading_strategy_protocol_fee=mod.trading_strategy_protocol_fee,
             strategy_developer_fee=mod.strategy_developer_fee,
-            enzyme_protocol_fee=mod.enzyme_protocol_fee,
         )
 
         metadata = create_metadata(

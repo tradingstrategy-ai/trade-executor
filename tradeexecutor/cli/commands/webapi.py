@@ -105,7 +105,6 @@ def webapi(
         management_fee=mod.management_fee,
         trading_strategy_protocol_fee=mod.trading_strategy_protocol_fee,
         strategy_developer_fee=mod.strategy_developer_fee,
-        enzyme_protocol_fee=mod.enzyme_protocol_fee,
     )
 
     metadata = create_metadata(
