@@ -548,6 +548,24 @@ class StrategyInputIndicators:
             pair.internal_id,
         )
         return df[column]
+    
+    def get_historical_price_series(
+        self,
+        column: str = "close",
+        pair: TradingPairIdentifier | HumanReadableTradingPairDescription | None = None,
+    ):
+        """Similar to get_price_series, but only returns the past data.
+        
+        :param column: Which column to get, default to "close",
+        :param pair: Which pair to get, default to the single pair in the strategy universe.
+        :return: Price series up to the current timestamp.
+        """
+        assert self.timestamp, f"StrategyInputIndicators.timestamp is None. prepare_decision_cycle() not called, or you are outside a decide_trades() function."
+
+        price_series = self.get_price_series(column, pair)
+
+        return price_series.loc[:self.timestamp]
+
 
     def get_indicator_dataframe(
         self,
