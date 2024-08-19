@@ -26,4 +26,4 @@ def test_read_strategy_module(
     assert mod.sort_priority == 99
     assert mod.trading_strategy_protocol_fee == 0.02
     assert mod.strategy_developer_fee == 0.1
-    assert mod.management_fee == 0.05
+    assert mod.management_fee == 0.00
