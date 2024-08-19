@@ -49,6 +49,11 @@ def optimise_sharpe(result: GridSearchResult) -> OptimiserSearchResult:
     return OptimiserSearchResult(-result.get_sharpe(), negative=True)
 
 
+def optimise_sortino(result: GridSearchResult) -> OptimiserSearchResult:
+    """Search for the best Sortino value."""
+    return OptimiserSearchResult(-result.get_sortino(), negative=True)
+
+
 def optimise_win_rate(result: GridSearchResult) -> OptimiserSearchResult:
     """Search for the best trade win rate."""
     return OptimiserSearchResult(-result.get_win_rate(), negative=True)

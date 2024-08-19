@@ -86,7 +86,7 @@ class Parameters:
     backtest_trading_fee = 0.0005  # Switch to QuickSwap 30 BPS free from the default Binance 5 BPS fee
     initial_cash = 10_000
 
-    
+
 
 
 def get_strategy_trading_pairs(execution_mode: ExecutionMode) -> list[HumanReadableTradingPairDescription]:
