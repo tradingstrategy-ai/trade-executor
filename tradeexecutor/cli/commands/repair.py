@@ -6,6 +6,7 @@ as it is pretty hard to drive to the test point.
 import datetime
 from pathlib import Path
 from typing import Optional
+from typer import Option
 
 from . import shared_options
 from .app import app
@@ -57,6 +58,7 @@ def repair(
     test_evm_uniswap_v2_factory: Optional[str] = shared_options.test_evm_uniswap_v2_factory,
     test_evm_uniswap_v2_init_code_hash: Optional[str] = shared_options.test_evm_uniswap_v2_init_code_hash,
     unit_testing: bool = shared_options.unit_testing,
+    auto_approve: bool = Option(False, envvar="AUTO_APPROVE", help="Approve the repair trade without asking for confirmation"),
 ):
     """Repair broken state.
 
@@ -160,13 +162,15 @@ def repair(
         run_state=RunState(),
     )
 
+    universe_options = mod.get_universe_options(execution_context.mode)
+
     # We construct the trading universe to know what's our reserve asset
     universe_model: TradingStrategyUniverseModel = run_description.universe_model
     ts = datetime.datetime.utcnow()
     universe = universe_model.construct_universe(
         ts,
         ExecutionMode.preflight_check,
-        UniverseOptions()
+        universe_options
     )
 
     runner = run_description.runner
@@ -176,7 +180,7 @@ def repair(
     #
     # First trades that have txs missing
     #
-    repair_tx_not_generated(state, interactive=True)
+    repair_tx_not_generated(state, interactive=(not auto_approve))
 
     #
     # Second fix txs that have unresolved state
@@ -208,7 +212,7 @@ def repair(
     report = repair_trades(
         state,
         attempt_repair=True,
-        interactive=True,
+        interactive=(not auto_approve),
     )
 
     store.sync(state)

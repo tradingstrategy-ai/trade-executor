@@ -122,11 +122,13 @@ def repair_trade(portfolio: Portfolio, t: TradeExecution) -> TradeExecution:
 
     # Unwind capital allocation
     if t.is_buy():
-        portfolio.adjust_reserves(
-            t.reserve_currency,
-            +t.planned_reserve,
-            f"Repairing position {p}",
-        )
+        if not t.is_credit_supply():
+            # only need to adjust reserve for spot trades
+            portfolio.adjust_reserves(
+                t.reserve_currency,
+                +t.planned_reserve,
+                f"Repairing position {p}",
+            )
         t.planned_reserve = 0
 
     return c
@@ -458,17 +460,20 @@ def repair_tx_not_generated(state: State, interactive=True):
         confirm = input("Confirm repair with counter trades [y/n]? ")
         if confirm.lower() != "y":
             raise RepairAborted()
+    else:
+        print("Auto-approve is active, repairing trades")
 
     repair_trades_generated = [repair_tx_missing(portfolio, t) for t in tx_missing_trades]
-    if interactive:
-        print("Counter-trades:")
-        for t in repair_trades_generated:
-            position = portfolio.get_position_by_id(t.position_id)
-            print("Position ", position)
-            print("Trade that was repaired ", portfolio.get_trade_by_id(t.repaired_trade_id))
-            print("Repair trade ", t)
-            print("-")
+    
+    print("Counter-trades:")
+    for t in repair_trades_generated:
+        position = portfolio.get_position_by_id(t.position_id)
+        print("Position ", position)
+        print("Trade that was repaired ", portfolio.get_trade_by_id(t.repaired_trade_id))
+        print("Repair trade ", t)
+        print("-")
 
+    if interactive:
         confirm = input("Looks fixed [y/n]? ")
         if confirm.lower() != "y":
             raise RepairAborted()
