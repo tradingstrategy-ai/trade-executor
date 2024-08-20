@@ -120,6 +120,10 @@ def close_all(
     for p in open_positions:
         logger.info("  Position: %s, quantity %s", p, p.get_quantity())
 
+        trading_quantity = p.get_available_trading_quantity()
+        quantity = p.get_quantity()
+        assert trading_quantity == quantity, f"Position quantity vs. available trading quantity mismatch. Probably unexecuted trades? {quantity} vs. {trading_quantity}"
+
     if interactive:
         confirmation = input("Attempt to cloes positions [y/n]").lower()
         if confirmation != "y":
@@ -128,6 +132,7 @@ def close_all(
     for p in open_positions:
         # Create trades to open the position
         logger.info("Closing position %s", p)
+
         trades = position_manager.close_position(p)
 
         assert len(trades) == 1
