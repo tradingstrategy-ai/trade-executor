@@ -14,7 +14,7 @@ from typer import Option
 from eth_defi.hotwallet import HotWallet
 from eth_defi.provider.broken_provider import get_almost_latest_block_number
 
-from tradeexecutor.strategy.account_correction import correct_accounts as _correct_accounts, check_accounts, UnknownTokenPositionFix
+from tradeexecutor.strategy.account_correction import correct_accounts as _correct_accounts, check_accounts, UnknownTokenPositionFix, check_state_internal_coherence
 from .app import app
 from ..bootstrap import prepare_executor_id, create_web3_config, create_sync_model, create_client, backup_state, create_execution_and_sync_model
 from ..log import setup_logging
@@ -256,6 +256,8 @@ def correct_accounts(
 
     if len(corrections) == 0:
         logger.info("No account corrections found")
+
+    check_state_internal_coherence(state)
 
     if isinstance(sync_model, EnzymeVaultSyncModel):
         vault = sync_model.vault

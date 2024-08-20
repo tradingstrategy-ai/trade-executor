@@ -925,3 +925,13 @@ def check_accounts(
     df = df.fillna("")
     df = df.replace({pd.NaT: ""})
     return clean, df
+
+
+def check_state_internal_coherence(state: State):
+    """Check that we do not have any positions with non-executed trades."""
+
+    for p in state.portfolio.get_open_and_frozen_positions():
+        quantity = p.get_quantity()
+        trading_quantity = p.get_available_trading_quantity()
+        assert quantity == trading_quantity, f"Position {p}, quantity {quantity}, available for trading {trading_quantity}, probably unexecuted trades. You need to run repair command first."
+
