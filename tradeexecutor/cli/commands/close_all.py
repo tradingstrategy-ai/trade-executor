@@ -78,7 +78,7 @@ def close_all(
         json_rpc_ethereum=json_rpc_ethereum,
         json_rpc_anvil=json_rpc_anvil,
         json_rpc_arbitrum=json_rpc_arbitrum,
-        simulate=True,
+        simulate=simulate,
     )
 
     if not web3config.has_any_connection():
