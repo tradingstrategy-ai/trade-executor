@@ -131,7 +131,7 @@ def close_all(
 
         trading_quantity = p.get_available_trading_quantity()
         quantity = p.get_quantity()
-        assert f"Position quantiy vs. available trading quantity mismatch. Probably unexecuted trades? {quantity} vs. {trading_quantity}"
+        assert trading_quantity == quantity, f"Position quantiy vs. available trading quantity mismatch. Probably unexecuted trades? {quantity} vs. {trading_quantity}"
 
         trades = position_manager.close_position(p)
 
