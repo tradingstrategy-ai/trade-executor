@@ -674,7 +674,6 @@ def open_missing_spot_position(
 
     """
 
-
     logger.info("Fixing missing open position: %s", correction)
 
     pair_universe = strategy_universe.data_universe.pairs
@@ -690,9 +689,17 @@ def open_missing_spot_position(
     if len(matching_pairs) == 0:
         raise RuntimeError(f"Could not find any spot pair for asset {correction.asset} for correction {correction}")
 
-    assert len(matching_pairs) == 1, f"Found multiple matching trading pairs for asset {correction.asset}, correction {correction}, {matching_pairs}"
+    #
+    # We can have a strategy where the same base token is on multiple pairs,
+    # then assume we get can one with the lowest fees
+    #
+    if len(matching_pairs) > 1:
+        logger.warning(f"Found multiple matching trading pairs for asset {correction.asset}, correction {correction}, {matching_pairs}")
+        pair = sorted(matching_pairs, key=lambda tp: tp.fee)
+        logger.warning(f"Will pick one with the highest fees: {pair}")
+    else:
+        pair = matching_pairs[0]
 
-    pair = matching_pairs[0]
     assert pair.is_spot(), f"Not spot: {pair}"
 
     quantity = correction.quantity
