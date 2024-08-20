@@ -1142,22 +1142,22 @@ class TradingPosition(GenericPosition):
     def get_average_buy(self) -> Optional[USDollarAmount]:
         """Calculate average buy price.
 
-        :return: None if no buys
+        :return: ``0.0`` if no buys
         """
         q = float(self.get_buy_quantity())
         if not q:
-            return None
+            return 0.0
         return self.get_total_bought_usd() / q
 
     def get_average_sell(self) -> Optional[USDollarAmount]:
         """Calculate average buy price.
 
         :return:
-            ``None`` if no sell trades that would have completed successfully
+            ``0.0`` if no sell trades that would have completed successfully
         """
         q = float(self.get_sell_quantity())
-        if q == 0:
-            return None
+        if not q:
+            return 0.0
         return self.get_total_sold_usd() / q
 
     def get_price_at_open(self) -> USDollarAmount:
@@ -1232,8 +1232,8 @@ class TradingPosition(GenericPosition):
 
         if self.is_reduced():
             if self.is_spot_market():
-                sells = self.get_average_sell() or 0.0
-                buys = self.get_average_buy() or 0.0
+                sells = self.get_average_sell()
+                buys = self.get_average_buy()
                 sell_unit = self.get_sell_quantity()
                 if sell_unit != 0:
                     trade_profit = (sells - buys) * float(sell_unit)
@@ -1243,10 +1243,11 @@ class TradingPosition(GenericPosition):
                     trade_profit = 0
             else:
 
-                # Need to fix for frozen positions
-                #  trade_profit = (self.get_average_sell() - self.get_average_buy()) * float(self.get_buy_quantity())
-                # TypeError: unsupported operand type(s) for -: 'float' and 'NoneType'
-                trade_profit = (self.get_average_sell() - self.get_average_buy()) * float(self.get_buy_quantity())
+                sells = self.get_average_sell()
+                buys = self.get_average_buy()
+                buy_quantity = self.get_buy_quantity()
+                
+                trade_profit = (sells - buys) * float(buy_quantity)
         else:
             # No closes yet, only unrealised PnL
             trade_profit = 0.0
