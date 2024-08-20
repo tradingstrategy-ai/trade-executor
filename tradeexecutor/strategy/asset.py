@@ -157,6 +157,9 @@ def get_asset_amounts(p: TradingPosition) -> List[Tuple[AssetIdentifier, Decimal
             (p.pair.quote, p.loan.get_collateral_quantity()),
         ]
     if p.is_credit_supply():
+        # Some frozen positions might not have loan
+        if not p.loan:
+            return []
         return [
             (p.pair.base, p.loan.get_collateral_quantity()),
         ]

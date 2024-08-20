@@ -979,7 +979,8 @@ class TradingPosition(GenericPosition):
                     planned_quantity = quantity
                     planned_reserve = abs(quantity * Decimal(assumed_price))
             case TradingPairKind.credit_supply:
-                assert reserve, "You must give reserve"
+                if trade_type != TradeType.repair:
+                    assert reserve, "You must give reserve"
                 assert quantity, "You must give quantity"
                 planned_reserve = reserve
                 planned_quantity = quantity
@@ -1023,16 +1024,19 @@ class TradingPosition(GenericPosition):
         if pair.kind.is_interest_accruing():
             if pair.kind == TradingPairKind.credit_supply:
                 assert pair.kind == TradingPairKind.credit_supply, "Only credit supply supported for now"
-                if self.loan is None:
-                    assert trade.is_buy(), "Opening credit position is modelled as buy"
-                    trade.planned_loan_update = create_credit_supply_loan(self, trade, strategy_cycle_at)
+                if trade_type != TradeType.repair:
+                    if self.loan is None:
+                        assert trade.is_buy(), "Opening credit position is modelled as buy"
+                        trade.planned_loan_update = create_credit_supply_loan(self, trade, strategy_cycle_at)
+                    else:
+                        trade.planned_loan_update = update_credit_supply_loan(
+                            self.loan.clone(),
+                            self,
+                            trade,
+                            strategy_cycle_at,
+                        )
                 else:
-                    trade.planned_loan_update = update_credit_supply_loan(
-                        self.loan.clone(),
-                        self,
-                        trade,
-                        strategy_cycle_at,
-                    )
+                    print("Repair trade, no loan update or creation")
 
             elif pair.kind.is_leverage():
                 assert pair.get_lending_protocol() == LendingProtocolType.aave_v3, "Unsupported protocol"
