@@ -66,12 +66,13 @@ class EthereumRoutingState(RoutingState):
     but are specific for each cycle.
     """
 
-    def __init__(self,
-                 pair_universe: PandasPairUniverse,
-                 tx_builder: Optional[TransactionBuilder] = None,
-                 swap_gas_limit=2_000_000,
-                 web3: Optional[Web3] = None,
-                 ):
+    def __init__(
+        self,
+         pair_universe: PandasPairUniverse,
+         tx_builder: Optional[TransactionBuilder] = None,
+         swap_gas_limit=2_000_000,
+         web3: Optional[Web3] = None,
+    ):
         """
 
         :param pair_universe:
@@ -275,6 +276,7 @@ class EthereumRoutingState(RoutingState):
         holding_address = self.tx_builder.get_erc_20_balance_address()
         token = fetch_erc20_details(web3, asset.address)
         on_chain_balance = token.contract.functions.balanceOf(holding_address).call()
+
         if on_chain_balance < required_amount:
             # Check if we are within epsilon
             if (required_amount - on_chain_balance) / required_amount < epsilon:
@@ -282,7 +284,7 @@ class EthereumRoutingState(RoutingState):
                 return on_chain_balance
             else:
                 if not check_balances:
-                    logger.info("For %s we have on-chain: %d < required: %d, but we skip balance check since check_balances=False", asset, on_chain_balance, required_amount)
+                    logger.warning("For %s we have on-chain: %d < required: %d, but we skip balance check since check_balances=False", asset, on_chain_balance, required_amount)
                     return required_amount
                 
                 raise OutOfBalance(
