@@ -695,7 +695,7 @@ def open_missing_spot_position(
     #
     if len(matching_pairs) > 1:
         logger.warning(f"Found multiple matching trading pairs for asset {correction.asset}, correction {correction}, {matching_pairs}")
-        pair = sorted(matching_pairs, key=lambda tp: tp.fee)
+        pair = sorted(matching_pairs, key=lambda tp: tp.fee)[0]
         logger.warning(f"Will pick one with the lowest fees: {pair}")
     else:
         pair = matching_pairs[0]
