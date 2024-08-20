@@ -118,7 +118,7 @@ def close_all(
     assert len(open_positions) > 0, "Strategy does not have any open positions to close"
 
     for p in open_positions:
-        logger.info("  Position: %s", p)
+        logger.info("  Position: %s, quantity %s", p, p.get_quantity())
 
     if interactive:
         confirmation = input("Attempt to cloes positions [y/n]").lower()
