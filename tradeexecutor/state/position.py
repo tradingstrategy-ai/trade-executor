@@ -1241,6 +1241,13 @@ class TradingPosition(GenericPosition):
                     # We do not have successful sells (trades failed) so the
                     # realised profit is zero
                     trade_profit = 0
+            
+            elif self.is_credit_supply():
+
+                # NOTE: assume that credit position is using stablecoins
+                # so the price wouldn't change overtime
+                trade_profit = 0
+
             else:
 
                 sells = self.get_average_sell()
