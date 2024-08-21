@@ -17,12 +17,12 @@ from eth_defi.provider.anvil import AnvilLaunch, launch_anvil
 from tradeexecutor.cli.commands.app import app
 
 
-pytestmark = pytest.mark.skipif(not os.environ.get("JSON_RPC_POLYGON") or not os.environ.get("TRADING_STRATEGY_API_KEY"), reason="Set JSON_RPC_ETHEREUM and TRADING_STRATEGY_API_KEY environment variables to run this test")
+pytestmark = pytest.mark.skipif(not os.environ.get("JSON_RPC_POLYGON") or not os.environ.get("TRADING_STRATEGY_API_KEY"), reason="Set JSON_RPC_POLYGON and TRADING_STRATEGY_API_KEY environment variables to run this test")
 
 
 @pytest.fixture()
 def anvil(request: FixtureRequest) -> AnvilLaunch:
-    """Do Ethereum mainnet fork from the damaged situation."""
+    """Do mainnet fork from the damaged situation."""
 
     mainnet_rpc = os.environ["JSON_RPC_POLYGON"]
 
@@ -39,24 +39,20 @@ def anvil(request: FixtureRequest) -> AnvilLaunch:
 
 
 @pytest.fixture()
-def state_file() -> Path:
-    """A sample of a state file where we should have an open spot position for WBTC.
-
-    - This position was not opened due to Alchemy JSON-RPC error
-    """
+def state_file(tmp_path) -> Path:
+    """Because we modifty state file when fixing it, we need to make a working copy from the master copy."""
     p = Path(os.path.join(os.path.dirname(__file__), "credit-position-broken-redemption.json"))
     assert p.exists(), f"{p} missing"
-    return p
-
-
-@pytest.fixture()
-def strategy_file(tmp_path) -> Path:
-    """Because we modifty state file when fixing it, we need to make a working copy from the master copy."""
-    p = Path(os.path.join(os.path.dirname(__file__), "..", "..", "strategies", "test_only", "enzyme-polygon-eth-breakout.py"))
-    assert p.exists(), f"{p.resolve()} missing"
     working_copy = tmp_path / "test-copy.state.json"
     shutil.copyfile(p, working_copy)
     return working_copy
+
+
+@pytest.fixture()
+def strategy_file() -> Path:
+    p = Path(os.path.join(os.path.dirname(__file__), "..", "..", "strategies", "test_only", "enzyme-polygon-eth-breakout.py"))
+    assert p.exists(), f"{p.resolve()} missing"
+    return p
 
 
 @pytest.fixture()
