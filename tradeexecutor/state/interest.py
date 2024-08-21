@@ -126,5 +126,15 @@ class Interest:
 
         assert self.last_token_amount >= 0, f"last_token_amount cannot go negative. Got {self.last_token_amount} on {self}, delta was {delta}, epsilon was {epsilon}"
 
+    def reset(self, amount: Decimal):
+        """Reset the loan token amount.
+
+        - Used in the manual account correction
+
+        """
+        self.last_token_amount = amount
+        assert self.last_token_amount >= 0, f"last_token_amount cannot go negative. Got {self.last_token_amount} on {self}, delta was {delta}, epsilon was {epsilon}"
+
+
 
 

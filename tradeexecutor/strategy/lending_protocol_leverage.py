@@ -283,3 +283,36 @@ def update_short_loan(
             raise LiquidationRisked(f"If the planned loan leveraged trade for {position} would go through, the position would be immediately liquidated") from e
 
     return loan
+
+
+def reset_credit_supply_loan(
+    position: "tradeexecutor.state.position.TradingPosition",
+    timestamp: datetime.datetime,
+    quantity: Decimal,
+    reserve_currency_exchange_rate=1.0,
+):
+    """Reset interest tracking on a loan.
+
+    - When manual account correction is executed
+
+    See also :py:func:`update_credit_supply_loan`.
+    """
+
+    assert position.pair.is_credit_supply()
+
+    loan = position.loan
+
+    loan.collateral.change_quantity_and_value(
+        quantity,
+        reserve_currency_exchange_rate,
+        timestamp,
+        allow_negative=True,
+    )
+
+    # also adjust amount in collateral_interest
+    loan.collateral_interest.reset(quantity)
+
+    # Sanity check
+    loan.check_health()
+
+    return loan
