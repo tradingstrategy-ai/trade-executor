@@ -70,6 +70,10 @@ class Interest:
     #:
     interest_payments: Decimal = ZERO_DECIMAL
 
+    #: If we repair/reset this interest tracked, when this happened.
+    #:
+    reset_at: datetime.datetime | None = None
+
     def __repr__(self):
         return f"<Interest, current principal + interest {self.last_token_amount}, current tracked interest gains {self.last_accrued_interest}>"
 
@@ -126,13 +130,24 @@ class Interest:
 
         assert self.last_token_amount >= 0, f"last_token_amount cannot go negative. Got {self.last_token_amount} on {self}, delta was {delta}, epsilon was {epsilon}"
 
-    def reset(self, amount: Decimal):
+    def reset(
+        self,
+        amount: Decimal,
+        block_timestamp: datetime.datetime,
+        block_number: BlockNumber,
+    ):
         """Reset the loan token amount.
 
         - Used in the manual account correction
 
         """
         self.last_token_amount = amount
+        self.last_updated_at = datetime.datetime.utcnow()
+        self.last_event_at = block_timestamp
+        self.last_accrued_interest = Decimal(0)
+        self.last_updated_block_number = block_number
+        self.interest_payments = Decimal(0)
+        self.reset_at = datetime.datetime.utcnow()
         assert self.last_token_amount >= 0, f"last_token_amount cannot go negative. Got {self.last_token_amount} on {self}, delta was {delta}, epsilon was {epsilon}"
 
 

@@ -305,7 +305,7 @@ def prepare_interest_distribution(
                 if not p.is_credit_supply():
                     assert not p.is_long(), f"Cannot handle position: {p}"
                 underlying = asset.get_pricing_asset()
-                assert underlying.is_stablecoin(), f"Asset is collateral but not stablecoin based: {asset}"
+                assert underlying.is_stablecoin(), f"Asset is collateral but not stablecoin based: {asset}. Unsupported yet."
                 price = 1.0
             else:
                 price_structure = pricing_model.get_sell_price(
