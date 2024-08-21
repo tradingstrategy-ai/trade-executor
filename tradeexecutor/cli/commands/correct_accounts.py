@@ -71,6 +71,7 @@ def correct_accounts(
 
     chain_settle_wait_seconds: float = Option(60.0, "--chain-settle-wait-seconds", envvar="CHAIN_SETTLE_WAIT_SECONDS", help="How long we wait after the account correction to see if our broadcasted transactions fixed the issue."),
     skip_save: bool = Option(False, "--skip-save", envvar="SKIP_SAVE", help="Do not update state file. Useful for testing."),
+    skip_interest: bool = Option(False, "--skip-interest", envvar="SKIP_INTEREST", help="Do not do interest distribution. If an position balance is fixed down due to redemption, this is useful."),
     transfer_away: bool = Option(False, "--transfer-away", envvar="TRANSFER_AWAY", help="For tokens without assigned position, scoop them to the hot wallet instead of trying to construct a new position"),
 
 ):
@@ -280,24 +281,27 @@ def correct_accounts(
     hot_wallet.sync_nonce(web3)
     logger.info("Hot wallet nonce is %d", hot_wallet.current_nonce)
 
-    credit_positions = [p for p in state.portfolio.get_open_and_frozen_positions() if p.is_credit_supply()]
-    if len(credit_positions) > 0:
-        # Sync missing credit
-        try:
-            logger.info("Credit positions detected, syncing interest before applying accounting checks")
-            for p in credit_positions:
-                logger.info(" - Position: %s", p)
-            balances_updates = sync_model.sync_interests(
-                timestamp=datetime.datetime.utcnow(),
-                state=state,
-                universe=universe,
-                pricing_model=pricing_model,
-            )
-            for bu in balances_updates:
-                logger.info("  - Balance update: %s", bu)
-        except Exception as e:
-            logger.info("correct-accounts: could not sync interest %s", e)
-            raise
+    if not skip_interest:
+        credit_positions = [p for p in state.portfolio.get_open_and_frozen_positions() if p.is_credit_supply()]
+        if len(credit_positions) > 0:
+            # Sync missing credit
+            try:
+                logger.info("Credit positions detected, syncing interest before applying accounting checks")
+                for p in credit_positions:
+                    logger.info(" - Position: %s", p)
+                balances_updates = sync_model.sync_interests(
+                    timestamp=datetime.datetime.utcnow(),
+                    state=state,
+                    universe=universe,
+                    pricing_model=pricing_model,
+                )
+                for bu in balances_updates:
+                    logger.info("  - Balance update: %s", bu)
+            except Exception as e:
+                logger.info("correct-accounts: could not sync interest %s", e)
+                raise
+    else:
+        logger.info("Interest distribution skipped")
 
     balance_updates = _correct_accounts(
         state,
