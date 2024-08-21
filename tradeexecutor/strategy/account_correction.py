@@ -34,6 +34,7 @@ from tradeexecutor.state.repair import close_position_with_empty_trade
 from tradeexecutor.state.trade import TradeFlag, TradeExecution
 from tradeexecutor.strategy.dust import DEFAULT_DUST_EPSILON, get_dust_epsilon_for_pair, get_dust_epsilon_for_asset, DEFAULT_RELATIVE_EPSILON, \
     get_relative_epsilon_for_asset
+from tradeexecutor.strategy.lending_protocol_leverage import reset_credit_supply_loan
 from tradeexecutor.strategy.pandas_trader.position_manager import PositionManager
 from tradeexecutor.strategy.pricing_model import PricingModel
 from tradeexecutor.strategy.trading_strategy_universe import translate_trading_pair, TradingStrategyUniverse
@@ -468,6 +469,14 @@ def apply_accounting_correction(
             assert position.get_quantity() > 0, \
                 f"Spoit position should have positive quantity, got {position} with {position.get_quantity()}\n" \
                 f"Accounting correction is: {correction}"
+
+        if position.is_credit_supply():
+            reset_credit_supply_loan(
+                position,
+                timestamp=correction.timestamp,
+                quantity=correction.actual_amount,
+                block_number=correction.block_number,
+            )
 
     elif isinstance(position, ReservePosition):
         # No fancy method to correct reserves

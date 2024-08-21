@@ -715,6 +715,16 @@ class AssetWithTrackedValue:
         if self.quantity < 0:
             self.quantity = Decimal(0)
 
+    def reset(self, quantity: Decimal):
+        """Reset the loan quantity.
+
+        See also :py:func:`tradeexecutor.strategy.lending_protocol_leverage.reset_credit_supply_loan`.
+        """
+        assert isinstance(quantity, Decimal)
+        self.quantity = quantity
+        self.interest_rate_at_open = None
+        self.last_interest_rate = None
+
 
 
 
