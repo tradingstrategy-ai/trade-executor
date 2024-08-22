@@ -616,6 +616,24 @@ class Visualisation:
     ) -> pd.Series:
         """Get plot data for charts and tables.
 
+        Example from a backtesting notebook:
+
+        .. code-block:: python
+
+            import plotly.express as px
+
+            visualisation = state.visualisation
+
+            df = pd.DataFrame({
+                "assets_available": visualisation.get_series("assets_available"),
+                "assets_chosen": visualisation.get_series("assets_chosen")
+            })
+
+            fig = px.line(df, title='Assets tradeable vs. chosen to the basket')
+            fig.update_yaxes(title="Number of assets")
+            fig.update_xaxes(title="Time")
+            fig.show()
+
         :param name:
             Same as in :py:func:`plot_indicator`
 
