@@ -117,7 +117,7 @@ def normalise_weights(weights: Dict[PairInternalId, Weight]) -> Dict[PairInterna
 
 
 def weight_by_1_slash_n(alpha_signals: Dict[PairInternalId, Signal]) -> Dict[PairInternalId, Weight]:
-    """Use 1/N weighting system to generate portfolio weightings from the raw alpha signals.
+    """Use 1/N (position) weighting system to generate portfolio weightings from the raw alpha signals.
 
     - The highest alpha gets portfolio allocation 1/1
 
@@ -137,6 +137,48 @@ def weight_by_1_slash_n(alpha_signals: Dict[PairInternalId, Signal]) -> Dict[Pai
     for idx, tuple in enumerate(sorted_alpha, 1):
         pair_id, alpha = tuple
         weighed_signals[pair_id] = 1 / idx
+    return weighed_signals
+
+
+def weight_by_1_slash_signal(alpha_signals: Dict[PairInternalId, Signal]) -> Dict[PairInternalId, Weight]:
+    """Use 1/signal weighting system to generate portfolio weightings from the raw alpha signals.
+
+    - All signals are weighted 1/signal
+
+    - Higher the signal, smaller the weight
+
+    - E.g. volatility weighted (more volatility, less alloaction)
+
+    Example:
+
+    .. code-block:: python
+
+        alpha_model = AlphaModel(timestamp)
+
+        available_pairs = get_included_pairs_per_month(input)
+        top_pairs = available_pairs[0:parameters.max_pairs_per_month]
+
+        assets_chosen_count = 0
+
+        for pair in top_pairs:
+
+            volatility = indicators.get_indicator_value("volatility", pair=pair)
+            if volatility is None:
+                # Back buffer has not filled up yet with enough data,
+                # skip to the next pair
+                continue
+
+            if volatility >= parameters.minimum_volatility_threshold:
+                # Include this pair for the ranking for each tick
+                alpha_model.set_signal(
+                    pair,
+                    volatility,
+                )
+                assets_chosen_count += 1
+    """
+    weighed_signals = {}
+    for id, value in alpha_signals.items():
+        weighed_signals[id] = 1 / value
     return weighed_signals
 
 

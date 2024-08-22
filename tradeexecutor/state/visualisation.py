@@ -334,7 +334,9 @@ class Visualisation:
     It is not used in any trading, but can help and visualize
     trade backtesting and execution.
 
-    See :py:meth:`plot_indicator` for usage.
+    - See :py:meth:`plot_indicator` for how to draw plots inside `decide_trades()`
+
+    - See :py:func:`get_series` how to extract data for charting as :py:class:`pd.Series`.
     """
 
     #: Messages for each strategy cycle.
@@ -607,5 +609,24 @@ class Visualisation:
     def get_total_points(self) -> int:
         """Get number of data points stored in all plots."""
         return sum([len(p.points) for p in self.plots.values()])
-        
 
+    def get_series(
+        self,
+        name: str,
+    ) -> pd.Series:
+        """Get plot data for charts and tables.
+
+        :param name:
+            Same as in :py:func:`plot_indicator`
+
+        :return:
+            Pandas series with DateTimeIndex and float values.
+        """
+        plot = self.plots.get(name)
+        assert plot is not None, f"No plot named {name}, we have {list(self.plots.keys())}"
+        timestamps = list(plot.points.keys())
+        values = plot.points.values()
+        datetime_index = pd.to_datetime(timestamps, unit='s')
+        series = pd.Series(values, index=datetime_index)
+        return series
+        

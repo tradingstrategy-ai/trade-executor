@@ -212,3 +212,7 @@ def test_visualise_strategy_state(
     # using a web brower
     if os.environ.get("SHOW_IMAGE"):
         open_plotly_figure_in_browser(image)
+
+    # Test raw data access
+    series = state.visualisation.get_series("Slow EMA")
+    assert len(series) > 0
