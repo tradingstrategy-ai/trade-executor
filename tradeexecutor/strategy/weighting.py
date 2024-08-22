@@ -117,7 +117,7 @@ def normalise_weights(weights: Dict[PairInternalId, Weight]) -> Dict[PairInterna
 
 
 def weight_by_1_slash_n(alpha_signals: Dict[PairInternalId, Signal]) -> Dict[PairInternalId, Weight]:
-    """Use 1/N weighting system to generate portfolio weightings from the raw alpha signals.
+    """Use 1/N (position) weighting system to generate portfolio weightings from the raw alpha signals.
 
     - The highest alpha gets portfolio allocation 1/1
 
@@ -137,6 +137,21 @@ def weight_by_1_slash_n(alpha_signals: Dict[PairInternalId, Signal]) -> Dict[Pai
     for idx, tuple in enumerate(sorted_alpha, 1):
         pair_id, alpha = tuple
         weighed_signals[pair_id] = 1 / idx
+    return weighed_signals
+
+
+def weight_by_1_slash_signal(alpha_signals: Dict[PairInternalId, Signal]) -> Dict[PairInternalId, Weight]:
+    """Use 1/signal weighting system to generate portfolio weightings from the raw alpha signals.
+
+    - All signals are weighted 1/signal
+
+    - Higher the signal, smaller the weight
+
+    - E.g. volatility weighted (more volatility, less alloaction)
+    """
+    weighed_signals = {}
+    for id, value in alpha_signals.items():
+        weighed_signals[id] = 1 / value
     return weighed_signals
 
 

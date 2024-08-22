@@ -29,11 +29,16 @@ SPECIAL_SERIES_ATTRIBUTES = {"name", "colour", "curve", "period"}
 #:
 #: See :py:func:`tradeexecutor.visual.bnechmark.visualise_equity_curves`
 #:
+#:
+#: See https://community.plotly.com/t/plotly-colours-list/11730/3
+#:
 DEFAULT_BENCHMARK_COLOURS = {
     "BTC": "orange",
     "ETH": "blue",
     "MATIC": "purple",
     "ARB": "red",
+    "DOGE": "darkorange",
+    "PEPE": "darkmagenta",
     "All cash": "black",
     "Strategy": "green",
 }

@@ -557,10 +557,11 @@ class AlphaModel:
                 old_pair=old_synthetic_pair,
             )
 
-    def select_top_signals(self,
-                           count: int,
-                           threshold=0.0,
-                           ):
+    def select_top_signals(
+        self,
+        count: int,
+        threshold=0.0,
+    ):
         """Chooses top signals.
 
         Choose trading pairs to the next rebalance by their signal strength.
