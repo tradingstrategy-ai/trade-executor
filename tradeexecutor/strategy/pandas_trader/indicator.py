@@ -1351,10 +1351,11 @@ class IndicatorDependencyResolver:
     ) -> pd.Series | pd.DataFrame:
         """Read data from another indicator.
 
-        -The indicator must be
+        -The indicator must be prepared in `create_indicators()` earlier,
+         and then calculated
 
         :param name:
-            Indicator name
+            Indicator name, as given to `IndicatorSet.add()`.
 
         :param parameters:
             If the dependent indicator has multiple versions
@@ -1362,6 +1363,9 @@ class IndicatorDependencyResolver:
 
         :param column:
             Column name for multi-column indicators.
+
+            Use when the indicator is :py:class:`pandas.DataFrame` instead
+            of :py:class:`pandas.Series`.
 
             Set to string `all` to get the whole DataFrame.
 
@@ -1373,7 +1377,6 @@ class IndicatorDependencyResolver:
         :return:
             The indicator data as is was saved on the disk
         """
-
         key = self.match_indicator(
             name,
             pair,

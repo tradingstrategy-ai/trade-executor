@@ -122,10 +122,20 @@ class ExecutionMode(enum.Enum):
 class ExecutionContext:
     """Information about the strategy execution environment.
 
-    This is passed to `create_trading_universe` and couple of other
-    functions and they can determine and take action based
-    the mode of strategy execution. For example,
-    we may load pair and candle data differently in live trading.
+    Execution context helps the strategy to decide different code paths,
+    whether we are doing backtesting, live trading and what is the
+    target Trading Strategy engine version.
+
+    - This is passed to `create_trading_universe` and other
+      functions. they can determine and take action based
+      the mode of strategy execution. For example,
+      we may load pair and candle data differently in live trading.
+      See :py:attr:`mode`.
+
+    - Some function signatures have been made better, but we still
+      need to maintain backwards compatibility, see :py:attr:`engine_version`.
+
+    - We also pass the Python profiler hook :py:attr:`timed_task_context_manager`.
 
     Example how to create for backtests:
 
