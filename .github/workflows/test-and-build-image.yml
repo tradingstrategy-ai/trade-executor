@@ -60,6 +60,11 @@ jobs:
         run: |          
           poetry install --no-interaction --all-extras
 
+        - name: Install required libraries using pip
+        run: |
+          .venv/bin/pip install --upgrade pip
+          .venv/bin/pip install --upgrade pyopenssl
+
       # Run testa parallel, do not run slow tests before Docker image build.
       # Note that we limit concurrency to 2 workers as 4 workers crashed without an error message on Github CI.
       # I suspect out of memory situation that is not reported to the user.
