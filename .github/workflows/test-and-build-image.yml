@@ -20,7 +20,7 @@ jobs:
           submodules: 'recursive'
 
       - name: Set up Python 3.11
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v4
         with:
           python-version: "3.11"
 
@@ -59,11 +59,11 @@ jobs:
         if: steps.cached-poetry-dependencies.outputs.cache-hit != 'true'
         run: |          
           poetry install --no-interaction --all-extras
-
-        - name: Install required libraries using pip
+      
+      - name: Install required libraries using pip
         run: |
           .venv/bin/pip install --upgrade pip
-          .venv/bin/pip install --upgrade pyopenssl
+          .venv/bin/pip install --upgrade pyopenssl          
 
       # Run testa parallel, do not run slow tests before Docker image build.
       # Note that we limit concurrency to 2 workers as 4 workers crashed without an error message on Github CI.
