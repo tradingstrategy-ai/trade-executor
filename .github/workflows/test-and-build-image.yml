@@ -57,7 +57,8 @@ jobs:
 
       - name: Install dependencies
         if: steps.cached-poetry-dependencies.outputs.cache-hit != 'true'
-        run: |          
+        run: |         
+          rm -rf .venv 
           poetry install --no-interaction --all-extras
       
       - name: Install required libraries using pip
