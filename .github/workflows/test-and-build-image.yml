@@ -27,16 +27,16 @@ jobs:
       - name: Install system dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y libssl-dev libffi-dev python3-dev
+          sudo apt-get install -y libssl-dev libffi-dev python3.11-dev build-essential
 
       - name: Set environment variables
         run: |
           export LD_LIBRARY_PATH=/home/runner/_work/_tool/Python/3.11.9/x64/lib
           export PYTHONHOME=/home/runner/_work/_tool/Python/3.11.9/x64
           export PYTHONPATH=/home/runner/_work/_tool/Python/3.11.9/x64/lib/python3.11
-          echo $LD_LIBRARY_PATH
-          echo $PYTHONHOME
-          echo $PYTHONPATH
+          echo "LD_LIBRARY_PATH=$LD_LIBRARY_PATH" >> $GITHUB_ENV
+          echo "PYTHONHOME=$PYTHONHOME" >> $GITHUB_ENV
+          echo "PYTHONPATH=$PYTHONPATH" >> $GITHUB_ENV
 
       - name: Install Poetry
         uses: snok/install-poetry@v1
