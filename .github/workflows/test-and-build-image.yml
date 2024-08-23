@@ -23,6 +23,20 @@ jobs:
         uses: actions/setup-python@v4
         with:
           python-version: "3.11"
+      
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libssl-dev libffi-dev python3-dev
+
+      - name: Set environment variables
+        run: |
+          export LD_LIBRARY_PATH=/home/runner/_work/_tool/Python/3.11.9/x64/lib
+          export PYTHONHOME=/home/runner/_work/_tool/Python/3.11.9/x64
+          export PYTHONPATH=/home/runner/_work/_tool/Python/3.11.9/x64/lib/python3.11
+          echo $LD_LIBRARY_PATH
+          echo $PYTHONHOME
+          echo $PYTHONPATH
 
       - name: Install Poetry
         uses: snok/install-poetry@v1
@@ -47,6 +61,7 @@ jobs:
           path: |
             /tmp/trading-strategy-tests
           key: ${{ runner.os }}-unit-test-dataset
+
 
       # Needed for Anvil
       - name: Install Foundry
