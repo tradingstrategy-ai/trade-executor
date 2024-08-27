@@ -43,7 +43,7 @@ First study the example code
 **Note**: The project is under active development. We recommend any developers to use Github master branch
 for installations.
 
-As as dependency line for Poetry `pyproject.yml`:
+As dependency line for Poetry `pyproject.yml`:
 
 ```toml
 [tool.poetry.dependencies]
