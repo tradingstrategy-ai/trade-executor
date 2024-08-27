@@ -1065,7 +1065,11 @@ class ExecutionLoop:
                 state,
                 reserve_assets,
             )
-            self.store.sync(state)
+            
+            if not self.simulate:
+                self.store.sync(state)
+            else:
+                logger.info("Simulation, no state changes")
 
         logger.info("Performing startup accounting check")
         self.runner.check_accounts(

@@ -488,6 +488,10 @@ def start(
         if not run_single_cycle:
             raise RuntimeError("Simulation mode is only supported with --run-single-cycle at the moment")
 
+        def break_sync(x):
+            raise NotImplementedError("Cannot save state when simulating")
+        store.sync = break_sync
+        
         logger.info("Simulating single cycle")
 
     # Force run a single cycle
