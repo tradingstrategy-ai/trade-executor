@@ -134,7 +134,7 @@ def analyse_grid_search_result(
     :return:
         Table of grid search combinations
     """
-    assert len(results) > 0, "No results"
+    assert len(results) > 0, "analyse_grid_search_result(): the result set is empty - likely none of the backtested strategies made any trades"
     rows = [analyse_combination(r, min_positions_threshold) for r in results]
     df = pd.DataFrame(rows)
 

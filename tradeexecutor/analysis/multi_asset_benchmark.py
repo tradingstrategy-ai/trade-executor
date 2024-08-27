@@ -28,7 +28,9 @@ DEFAULT_BENCHMARK_ASSETS = [
     "WMATIC",
     "MATIC",
     "ARB",
-    "WARB"
+    "WARB",
+    "SOL",
+    "WSOL",
 ]
 
 

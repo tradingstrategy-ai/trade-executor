@@ -36,9 +36,12 @@ DEFAULT_BENCHMARK_COLOURS = {
     "BTC": "orange",
     "ETH": "blue",
     "MATIC": "purple",
+    "SOL": "lightblue",
     "ARB": "red",
     "DOGE": "darkorange",
     "PEPE": "darkmagenta",
+    "AAVE": "#F289DA",
+    "MKR": "#1AAB9B",
     "All cash": "black",
     "Strategy": "green",
 }

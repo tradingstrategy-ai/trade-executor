@@ -40,6 +40,9 @@ def analyse_optimiser_result(
 
     top_chunk = [r.result for r in valid_result_result[0:max_search_results]]
 
+    if len(result.results) > 0 and len(valid_result_result) == 0:
+        raise AssertionError(f"No optimsier results for analysis where left after dropping backtests that did not pass perform_optimisation(result_filter)")
+
     # min_positions_threshold should have taken care by optimiser filter earlier
     return analyse_grid_search_result(top_chunk, min_positions_threshold=0)
 

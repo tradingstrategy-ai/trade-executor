@@ -199,6 +199,10 @@ class OptimiserResult:
     #: Allows to peek into raw indicator data if we need to.
     indicator_storage: DiskIndicatorStorage
 
+    def is_empty(self) -> bool:
+        """The optimiser run generated zero results."""
+        return len(self.results) == 0
+
     @staticmethod
     def determine_result_path(result_path: Path | None, parameters: StrategyParameters) -> Path:
         """Generate result path or use the exiting."""

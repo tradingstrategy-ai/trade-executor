@@ -5,6 +5,7 @@
 import datetime
 from typing import Tuple, Iterable, TypedDict
 
+from skopt.space import Dimension
 from tabulate import tabulate
 from web3.datastructures import MutableAttributeDict
 
@@ -220,6 +221,9 @@ class StrategyParameters(MutableAttributeDict):
         """Create parameter dict out from a class object.
 
         - Convert inlined class-style strategy parameter input to dictionary
+
+        TODO: Write separate methdods `from_class_for_backtest`, `from_class_for_grid_search`, `from_class_for_optimiser`,
+        as we cannot otherwisde detect all human input errors.
 
         :param grid_search:
             Make grid-search style parameters.
