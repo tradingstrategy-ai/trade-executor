@@ -158,7 +158,6 @@ class ExecutionLoop:
             create_indicators: CreateIndicatorsProtocol = None,
             parameters: StrategyParameters = None,
             visulisation: bool = True,
-            simulate: bool = False,
     ):
         """See main.py for details."""
 
@@ -232,7 +231,6 @@ class ExecutionLoop:
         # tests that perform live trading against forked chain in a fast cycle (1s)
         self.unit_testing_universe: StrategyExecutionUniverse | None = None
         self.visulisation = visulisation
-        self.simulate = simulate
 
     def is_backtest(self) -> bool:
         """Are we doing a backtest execution."""
@@ -267,9 +265,7 @@ class ExecutionLoop:
                 # Create empty state and save it
                 state = store.create(self.name)
                 state.name = self.name
-
-                if not self.simulate:
-                    store.sync(state)
+                store.sync(state)
             else:
                 logger.info("Loading state file %s", store)
                 state = store.load()
@@ -534,11 +530,7 @@ class ExecutionLoop:
             # save the state if we are going to crash
             # in statistics calculations, so we have a trace
             # of broadcasted transactions
-            if not self.simulate:
-                self.store.sync(state)
-            else:
-                logger.info("Simulation, no state changes")
-            
+            self.store.sync(state)
 
             # Perform post-execution accounting check
             # only if we had any trades
@@ -572,10 +564,7 @@ class ExecutionLoop:
         state.perform_integrity_check()
 
         # Store the current state to disk
-        if not self.simulate:
-            self.store.sync(state)
-        else:
-            logger.info("Simulation, no state changes")
+        self.store.sync(state)
 
         if extra_debug_data is not None:
             debug_details.update(extra_debug_data)
@@ -625,10 +614,7 @@ class ExecutionLoop:
         state.perform_integrity_check()
 
         # Store the current state to disk
-        if not self.simulate:
-            self.store.sync(state)
-        else:
-            logger.info("Simulation, no state changes")
+        self.store.sync(state)
 
     def extract_long_short_stats_from_state(self, state) -> StatisticsTable:
         """Extracts the latest long short metrics from the state and execution loop
@@ -695,10 +681,7 @@ class ExecutionLoop:
         state.perform_integrity_check()
 
         # Store the current state to disk
-        if not self.simulate:
-            self.store.sync(state)
-        else:
-            logger.info("Simulation, no state changes")
+        self.store.sync(state)
 
         return trades
 
@@ -1066,10 +1049,7 @@ class ExecutionLoop:
                 reserve_assets,
             )
             
-            if not self.simulate:
-                self.store.sync(state)
-            else:
-                logger.info("Simulation, no state changes")
+            self.store.sync(state)
 
         logger.info("Performing startup accounting check")
         self.runner.check_accounts(
