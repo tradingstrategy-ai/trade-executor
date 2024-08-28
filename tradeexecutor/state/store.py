@@ -127,6 +127,20 @@ class JSONFileStore(StateStore):
         return super().create(name)
 
 
+class SimulateStore(JSONFileStore):
+    """Store backend used in trade simulations.
+
+    - Never persist this store, as the generated txs and their hashes exist
+      only in the local simulated chain memory
+    """
+
+    def sync(self, state: State):
+        """No-op - never write a file."""
+
+        if self.on_save:
+            self.on_save(state)
+
+
 class NoneStore(StateStore):
     """Store that is not persistent.
 
