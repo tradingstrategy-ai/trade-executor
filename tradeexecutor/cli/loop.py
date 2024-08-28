@@ -154,7 +154,7 @@ class ExecutionLoop:
             check_accounts: Optional[bool] = None,
             minimum_data_lookback_range: Optional[datetime.timedelta] = None,
             universe_options: Optional[UniverseOptions] = None,
-            sync_treasury_on_startup=False,
+            sync_treasury_on_startup: bool = False,
             create_indicators: CreateIndicatorsProtocol = None,
             parameters: StrategyParameters = None,
             visulisation: bool = True,
@@ -1048,6 +1048,7 @@ class ExecutionLoop:
                 state,
                 reserve_assets,
             )
+            
             self.store.sync(state)
 
         logger.info("Performing startup accounting check")

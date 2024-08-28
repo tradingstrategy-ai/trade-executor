@@ -36,7 +36,7 @@ from tradeexecutor.ethereum.web3config import Web3Config
 from tradeexecutor.monkeypatch.dataclasses_json import patch_dataclasses_json
 from tradeexecutor.state.metadata import Metadata, OnChainData
 from tradeexecutor.state.state import State
-from tradeexecutor.state.store import JSONFileStore, StateStore
+from tradeexecutor.state.store import JSONFileStore, SimulateStore
 from tradeexecutor.strategy.default_routing_options import TradeRouting
 from tradeexecutor.strategy.generic.generic_router import GenericRouting
 from tradeexecutor.strategy.pricing_model import PricingModelFactory
@@ -242,9 +242,10 @@ def create_approval_model(approval_type: ApprovalType) -> ApprovalModel:
         raise NotImplementedError()
 
 
-def create_state_store(state_file: Path) -> JSONFileStore:
-    store = JSONFileStore(state_file)
-    return store
+def create_state_store(state_file: Path, simulate: bool = False) -> JSONFileStore | SimulateStore:
+    if simulate:
+        return SimulateStore(state_file)
+    return JSONFileStore(state_file)
 
 
 def prepare_cache(
