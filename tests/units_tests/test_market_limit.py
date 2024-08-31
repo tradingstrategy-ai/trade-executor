@@ -142,7 +142,6 @@ def test_market_limit_executed(
     # Moves position from open to pending
     position_manager.set_market_limit_trigger(
         trades,
-        TriggerType.market_limit,
         price=1900,
         expires_at=None,
     )
@@ -205,7 +204,6 @@ def test_market_limit_expires(
     # Moves position from open to pending
     position_manager.set_market_limit_trigger(
         trades,
-        TriggerType.market_limit,
         price=5000,
         expires_at=datetime.datetime(2021, 6, 3),
     )

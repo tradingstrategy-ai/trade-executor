@@ -847,9 +847,11 @@ class ExecutionLoop:
 
         assert backtest_step != CycleDuration.cycle_unknown
 
+        # Fix out some legacy data passing
+        assert not isinstance(self.backtest_start, pd.Timestamp), f"Expected *not* pandas.Timestamp, got {self.backtest_start.__class__}: {self.backtest_start}"
+        assert not isinstance(self.backtest_end, pd.Timestamp), f"Expected *not* pandas.Timestamp, got {self.backtest_end.__class__}: {self.backtest_end}"
+
         assert isinstance(self.backtest_start, datetime.datetime)
-        assert not isinstance(self.backtest_start, pd.Timestamp), f"Expected pandas.Timestamp, got {self.backtest_start.__class__}: {self.backtest_start}"
-        assert not isinstance(self.backtest_end, pd.Timestamp)
         assert isinstance(self.backtest_end, datetime.datetime)
         assert self.backtest_start < self.backtest_end
         if universe.backtest_stop_loss_candles is not None:

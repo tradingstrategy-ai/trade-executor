@@ -174,8 +174,8 @@ def test_market_limit_take_profit_strategy(strategy_universe, tmp_path):
     """
 
     class Parameters:
-        backtest_start = strategy_universe.data_universe.candles.get_timestamp_range()[0]
-        backtest_end = strategy_universe.data_universe.candles.get_timestamp_range()[1]
+        backtest_start = strategy_universe.data_universe.candles.get_timestamp_range()[0].to_pydatetime()
+        backtest_end = strategy_universe.data_universe.candles.get_timestamp_range()[1].to_pydatetime()
         initial_cash = 10_0000
         cycle_duration = CycleDuration.cycle_1d
 
