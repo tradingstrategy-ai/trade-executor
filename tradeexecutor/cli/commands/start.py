@@ -14,8 +14,6 @@ from queue import Queue
 from typing import Optional
 
 import typer
-import runpy
-import runpy
 
 from eth_defi.gas import GasPriceMethod
 from tradeexecutor.strategy.strategy_module import parse_strategy_module
@@ -142,6 +140,8 @@ def start(
 
     run_single_cycle: bool = typer.Option(False, "--run-single-cycle", envvar="RUN_SINGLE_CYCLE", help="Run a single strategy decision cycle and exist, regardless of the current pending state."),
 
+    simulate: bool = shared_options.simulate,
+
     # Logging
     log_level: str = shared_options.log_level,
 
@@ -151,7 +151,7 @@ def start(
     notebook_report: Optional[Path] = shared_options.notebook_report,
     html_report: Optional[Path] = shared_options.html_report,
     cache_path: Optional[Path] = shared_options.cache_path,
-    ):
+):
     """Launch Trade Executor instance."""
     global logger
 
@@ -228,6 +228,7 @@ def start(
                 json_rpc_arbitrum=json_rpc_arbitrum,
                 gas_price_method=gas_price_method,
                 unit_testing=unit_testing,
+                simulate=simulate,
             )
 
             if not web3config.has_any_connection():
@@ -306,7 +307,7 @@ def start(
         approval_model = create_approval_model(approval_type)
 
         if state_file:
-            store = create_state_store(Path(state_file))
+            store = create_state_store(Path(state_file), simulate=simulate)
         else:
             # Backtests do not have persistent state
             if asset_management_mode == AssetManagementMode.backtest:
@@ -482,6 +483,12 @@ def start(
     # docker-compose kill command
     if not unit_testing:
         faulthandler.enable()
+
+    if simulate:
+        if not run_single_cycle:
+            raise RuntimeError("Simulation mode is only supported with --run-single-cycle at the moment")
+        
+        logger.info("Simulating single cycle")
 
     # Force run a single cycle
     if run_single_cycle:

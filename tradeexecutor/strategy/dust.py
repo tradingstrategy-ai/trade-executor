@@ -23,7 +23,7 @@ DEFAULT_DUST_EPSILON = Decimal(10 ** -4)
 
 #: The default % we allow the balance to drift before we consider it a mismatch.
 #:
-#: Set to 50 BPS
+#: Set to 5 BPS
 #:
 DEFAULT_RELATIVE_EPSILON = 5 * 10 ** -4
 
@@ -78,6 +78,10 @@ def get_relative_epsilon_for_asset(asset: AssetIdentifier) -> Percent:
         Maximum amount of units we consider "zero".
 
     """
+    if asset.token_symbol in ("aPolUSDC", "USDC"):
+        # Temp allow 0.5% tolerance
+        return 0.005
+    
     # 5 BPS
     return DEFAULT_RELATIVE_EPSILON
 
