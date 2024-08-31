@@ -1813,3 +1813,37 @@ def validate_function_kwargs(func: Callable, kwargs: dict):
         if our_param not in allowed_params:
             raise IndicatorFunctionSignatureMismatch(f"Function {func} does not take argument {our_param}. Available arguments are: {allowed_params}.")
 
+
+_empty_series = pd.Series([], dtype="float64")
+
+
+def wrap_nones(f: Callable) -> Callable:
+    """Turn None return values to empty pandsa Series.
+
+    - This is a function decorator that wraps :py:mod:`pandas_ta`
+      technical indicator functinos
+
+    - Many of these functions return ``None`` instead of empty
+      series when having not enough data
+
+    - We wrap these to empty Pandas series
+
+    - This is used with :py:meth:`IndicatorSet.add`
+
+    :return:
+        A function that `returns pd.Series([])` on `None`
+    """
+
+    def wrapped(*args, **kwargs) -> pd.Series | pd.DataFrame:
+        ret = f(*args, **kwargs)
+        if ret is None:
+            return _empty_series
+        return ret
+
+    # https://stackoverflow.com/a/42422050/315168
+    wrapped.__signature__ = inspect.signature(f)
+
+    return wrapped
+
+
+
