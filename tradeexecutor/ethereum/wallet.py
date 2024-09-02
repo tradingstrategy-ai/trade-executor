@@ -162,6 +162,7 @@ def perform_gas_level_checks(
     gas = raw_gas / (10**18)
 
     run_state.hot_wallet_gas = gas
+    run_state.hot_wallet_address = hot_wallet.address
 
     if hot_wallet_gas_warning_level is not None:
         if gas < hot_wallet_gas_warning_level:
