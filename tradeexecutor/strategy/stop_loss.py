@@ -101,7 +101,7 @@ def check_position_triggers(
     for p in itertools.chain(open_positions, pending_positions):
 
         if not p.has_trigger_conditions():
-            # This position does not have take profit/stop loss set
+            # This position does not have take profit/stop loss set/other
             continue
 
         assert any([
@@ -109,7 +109,7 @@ def check_position_triggers(
             p.is_short() and p.is_leverage(),
         ]), "Trigger only supports long and leveraged short positions"
 
-        size = p.get_quantity()
+        size = p.get_quantity(planned=True)
 
         if size == 0 and not p.pending_trades:
             logger.warning("Encountered open position without token quantity: %s. Quantity is %s.", p, size)
@@ -181,7 +181,6 @@ def check_position_triggers(
                 trigger_type = TradeType.take_profit
                 trigger_price = p.take_profit
                 trades.extend(position_manager.close_position(p, TradeType.take_profit))
-            
 
         # Check we need to close position for stop loss
         if p.stop_loss:
@@ -198,16 +197,20 @@ def check_position_triggers(
             # Stop loss/take profit hardcoded not triggered
             # Check for other triggers
             triggered_trades = check_flexible_triggers(ts, p, mid_price)
+
             if triggered_trades:
                 trades += triggered_trades
                 trigger_type = TradeType.flexible_trigger
+                size = triggered_trades[0].planned_quantity  # Trigged trade gets its amount from the trade instance, not position (full stop loss close)
         else:
             # Stop loss/take profit was triggered,
             # remove remaining triggers
             expire_remaining_triggers(ts, p)
 
         if trigger_type:
-            # We got triggered
+            # We got triggered by hardcoded stop loss or check_flexible_triggers(),
+            # Write some report
+            # TODO: If we have multiple trades, report all
             expected_sell_price = pricing_model.get_sell_price(ts, spot_pair, abs(size))
             report_position_triggered(
                 p,
