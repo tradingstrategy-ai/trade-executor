@@ -640,7 +640,7 @@ class ExecutionLoop:
           state: State,
           universe: TradingStrategyUniverse
     ) -> List[TradeExecution]:
-        """Run stop loss price checks.
+        """Run stop loss/take profit/market limit price checks.
 
         Used for live stop loss check; backtesting
         uses optimised :py:meth:`run_backtest_stop_loss_checks`.
@@ -683,6 +683,16 @@ class ExecutionLoop:
         # Store the current state to disk
         self.store.sync(state)
 
+        if trades:
+            # Recalculate statistics if we got any executed trades
+            update_statistics(
+                datetime.datetime.utcnow(),
+                state.stats,
+                state.portfolio,
+                ExecutionMode.real_trading,
+                strategy_cycle_or_wall_clock=ts,
+                long_short_metrics_latest=long_short_metrics_latest,
+            )
         return trades
 
     def warm_up_backtest(self) -> TradingStrategyUniverse:
@@ -721,6 +731,8 @@ class ExecutionLoop:
 
         Here we use the finer grade data to check the stop losses
         on a given time period.
+
+        For live trading see :py:meth:`check-position_triggers`
 
         :param start_ts:
             When to start testing (exclusive).
@@ -790,6 +802,20 @@ class ExecutionLoop:
                 routing_state,
                 long_short_metrics_latest=long_short_metrics_latest,
             )
+
+            if trades:
+                # Recalculate statistics if we got any executed trades.
+                # This gives value_at_open statitics for each position that are needed
+                # to calculate weights later.
+                update_statistics(
+                    datetime.datetime.utcnow(),
+                    state.stats,
+                    state.portfolio,
+                    self.execution_context.mode,
+                    strategy_cycle_or_wall_clock=ts,
+                    long_short_metrics_latest=long_short_metrics_latest,
+                )
+
             for t in trades:
                 if t.is_stop_loss():
                     sl += 1

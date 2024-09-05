@@ -56,15 +56,17 @@ class DummyExecutionModel(ExecutionModel):
           for checking real-time stop loss
         """
 
-    def execute_trades(self,
-                       ts: datetime.datetime,
-                       state: State,
-                       trades: List[TradeExecution],
-                       routing_model: RoutingModel,
-                       routing_state: RoutingState,
-                       max_slippage=0.005,
-                       check_balances=False,
-                       ):
+    def execute_trades(
+        self,
+        ts: datetime.datetime,
+        state: State,
+        trades: List[TradeExecution],
+        routing_model: RoutingModel,
+        routing_state: RoutingState,
+        max_slippage=0.005,
+        check_balances=False,
+        triggered=False,
+    ):
         """Execute the trades determined by the algo on a designed Uniswap v2 instance.
 
         :param ts:

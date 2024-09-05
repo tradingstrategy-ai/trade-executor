@@ -171,6 +171,14 @@ class TradingPosition(GenericPosition):
     #: trades. ("Max value at the risk")
     portfolio_value_at_open: Optional[USDollarAmount] = None
 
+    #: Timestamp when this position was set pending for a market limit.
+    #:
+    #: Cleared back to `None` if the position opens.
+    #:
+    #: See also :py:meth:`is_pending`
+    #:
+    pending_since_at: Optional[datetime.datetime] = None
+
     #: Trigger a stop loss if this price is reached,
     #:
     #: We use mid-price as the trigger price.
@@ -275,7 +283,9 @@ class TradingPosition(GenericPosition):
     liquidation_price: USDollarAmount | None = None
 
     def __repr__(self):
-        if self.is_open():
+        if self.is_pending():
+            return f"<Pending position #{self.position_id} {self.pair} ${self.get_value()}>"
+        elif self.is_open():
             return f"<Open position #{self.position_id} {self.pair} ${self.get_value()}>"
         else:
             return f"<Closed position #{self.position_id} {self.pair} ${self.get_first_trade().get_value()}>"
@@ -469,6 +479,15 @@ class TradingPosition(GenericPosition):
         """This position is currently having non-zero losses."""
         return self.get_total_profit_usd() < 0
 
+    def is_pending(self) -> bool:
+        """This position is waiting for a condition to trigger to make it open.
+
+        - The position is hyphotetical in `pending_positions` list
+
+        - Will realise if market limit is reached
+        """
+        return self.pending_since_at is not None
+
     def has_executed_trades(self) -> bool:
         """This position represents actual holdings and has executed trades on it.
 
@@ -573,6 +592,11 @@ class TradingPosition(GenericPosition):
 
         # Always convert zero to decimal
         return Decimal(s)
+
+    def get_pending_quantity(self) -> Decimal:
+        """Get the quantity locked up in market limit trades."""
+        q = sum_decimal([t.get_position_quantity() for t in self.pending_trades.values() if t.is_success() or t.is_planned()])
+        return q
 
     def get_redeemed(self) -> Decimal:
         """Get amount of position reduced via in-kind redemptions.

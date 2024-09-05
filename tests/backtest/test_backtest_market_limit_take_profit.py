@@ -16,6 +16,7 @@ from tradeexecutor.backtest.backtest_pricing import BacktestPricing
 from tradeexecutor.backtest.backtest_routing import BacktestRoutingModel
 from tradeexecutor.cli.log import setup_pytest_logging
 from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier
+from tradeexecutor.statistics.summary import calculate_summary_statistics
 from tradeexecutor.strategy.pandas_trader.indicator import IndicatorSet
 from tradeexecutor.strategy.pandas_trader.strategy_input import StrategyInput
 from tradeexecutor.strategy.strategy_module import StrategyParameters
@@ -130,41 +131,69 @@ def create_indicators(timestamp: datetime.datetime, parameters: StrategyParamete
 
 
 def decide_trades(input: StrategyInput) -> List[TradeExecution]:
+    """Example decide_trades function using market limits and partial take profits."""
     position_manager = input.get_position_manager()
     pair = input.get_default_pair()
     cash = input.state.portfolio.get_cash()
     indicators = input.indicators
+    portfolio = input.state.portfolio
 
     midnight_price = indicators.get_price()
     if midnight_price is None:
-        # We have not the previous day price available at the first cycle
+        # Skip cycle 1
+        # We do not have the previous day price available at the first cycle
         return []
 
-    # Set market limit if we break above level during the day,
-    # with a conditional open position
-    trades = position_manager.open_spot(
-        pair=pair,
-        value=cash,
-    )
-    position = position_manager.get_current_position_for_pair(pair)
-    total_quantity = position.get_quantity(planned=True)
+    # Only set a trigger open if we do not have any position open/pending yet
+    if not position_manager.get_current_position_for_pair(pair, pending=True):
 
-    # Moves from opening positions to pending positions
-    position_manager.set_market_limit_trigger(
-        trades,
-        price=midnight_price * 1.01,  # If we cross 1% during the next 24h we open a position
-        expires_at=input.timestamp + pd.Timedelta(hours=24),
-    )
+        position_manager.log(f"Setting up a new market limit trigger position for {pair}")
 
-    # Set two take profits to 1.5% and 2%
-    position_manager.prepare_take_profit_trades(
-        position,
-        [
-            (midnight_price * 1.015, total_quantity * 2 / 3, False),
-            (midnight_price * 1.02, total_quantity * 1 / 3, True),
-        ]
-    )
-    return trades
+        # Set market limit if we break above level during the day,
+        # with a conditional open position
+        position, pending_trades = position_manager.open_spot_with_market_limit(
+            pair=pair,
+            value=cash*0.99,  # Cannot do 100% because of floating point rounding errors
+            trigger_price=midnight_price * 1.01,
+            expires_at=input.timestamp + pd.Timedelta(hours=24),
+            notes="Market limit test open trade",
+        )
+
+        assert len(portfolio.pending_positions) == 1
+        assert len(portfolio.open_positions) == 0
+
+        # We do not know the accurage quantity we need to close,
+        # because of occuring slippage,
+        # but we use the close flag below to close the remaining]
+        # amount
+        total_quantity = position.get_pending_quantity()
+        assert total_quantity > 0
+
+        # Set two take profits to 1.5% and 2% price increase
+        # First will close 2/3 of position
+        # The second will close the remaining position
+        position_manager.prepare_take_profit_trades(
+            position,
+            [
+                (midnight_price * 1.015, -total_quantity * 2 / 3, False),
+                (midnight_price * 1.02, -total_quantity * 1 / 3, True),
+            ]
+        )
+
+    else:
+        position_manager.log("Existing position pending - do not create new")
+
+    if input.cycle == 2:
+        # Check that the trade decision logic above worked correctly.
+        # At this stage, we should not yet have an open position.
+        assert len(portfolio.pending_positions) == 1
+        assert len(portfolio.open_positions) == 0
+        assert len(portfolio.closed_positions) == 0
+
+    # We return zero trades here, as all of trades we have constructed
+    # are pending for a trigger, and do not need to be executed
+    # on this decision cycle
+    return []
 
 
 def test_market_limit_take_profit_strategy(strategy_universe, tmp_path):
@@ -175,7 +204,7 @@ def test_market_limit_take_profit_strategy(strategy_universe, tmp_path):
 
     class Parameters:
         backtest_start = strategy_universe.data_universe.candles.get_timestamp_range()[0].to_pydatetime()
-        backtest_end = strategy_universe.data_universe.candles.get_timestamp_range()[1].to_pydatetime()
+        backtest_end = strategy_universe.data_universe.candles.get_timestamp_range()[0].to_pydatetime()  + datetime.timedelta(days=4)
         initial_cash = 10_0000
         cycle_duration = CycleDuration.cycle_1d
 
@@ -192,5 +221,11 @@ def test_market_limit_take_profit_strategy(strategy_universe, tmp_path):
     )
 
     state = result.state
-    assert len(result.diagnostics_data) == 214  # Entry for each day + few extras
-    assert len(state.portfolio.closed_positions) == 0
+    assert len(result.diagnostics_data) == 6  # Entry for each day + few extras
+    assert len(state.portfolio.closed_positions) == 3
+
+    calculate_summary_statistics(
+        state,
+        ExecutionMode.unit_testing_trading,
+        now_=datetime.datetime.utcnow(),
+    )

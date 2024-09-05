@@ -89,7 +89,7 @@ class Trigger:
     triggered_at: datetime.datetime | None = None
 
     def __repr__(self):
-        return f"<Trigger {self.type.value} {self.condition.value} at {self.price} expires at {self.expires_at} with size {self.relative_size}>"
+        return f"<Trigger {self.type.value} {self.condition.value} at {self.price} expires at {self.expires_at}>"
 
     def __post_init__(self):
         if self.expires_at is not None:

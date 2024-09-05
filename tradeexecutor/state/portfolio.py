@@ -196,9 +196,21 @@ class Portfolio:
 
         return None
 
-    def get_all_positions(self) -> Iterable[TradingPosition]:
-        """Get open, closed and frozen, positions."""
-        return chain(self.open_positions.values(), self.closed_positions.values(), self.frozen_positions.values())
+    def get_all_positions(self, pending=False) -> Iterable[TradingPosition]:
+        """Get open, closed and frozen, positions.
+
+        :param pending:
+            Include hypotethical market limit positions.
+        """
+        if pending:
+            return chain(
+                self.open_positions.values(),
+                self.closed_positions.values(),
+                self.frozen_positions.values(),
+                self.pending_positions.values(),
+            )
+        else:
+            return chain(self.open_positions.values(), self.closed_positions.values(), self.frozen_positions.values())
 
     def get_open_loans(self) -> Iterable[Loan]:
         """Get loans across all positions."""
@@ -239,6 +251,18 @@ class Portfolio:
         assert isinstance(pair, TradingPairIdentifier)
         pos: TradingPosition
         for pos in self.open_positions.values():
+            if pos.pair.get_identifier() == pair.get_identifier():
+                return pos
+        return None
+
+    def get_pending_position_for_pair(self, pair: TradingPairIdentifier) -> Optional[TradingPosition]:
+        """Get pending position for a trading pair.
+
+        - Used to check if we already have market limit ready for a pair
+        """
+        assert isinstance(pair, TradingPairIdentifier)
+        pos: TradingPosition
+        for pos in self.pending_positions.values():
             if pos.pair.get_identifier() == pair.get_identifier():
                 return pos
         return None
@@ -339,20 +363,38 @@ class Portfolio:
         self.next_position_id += 1
         return p
 
-    def get_position_by_trading_pair(self, pair: TradingPairIdentifier) -> Optional[TradingPosition]:
+    def get_position_by_trading_pair(
+        self,
+        pair: TradingPairIdentifier,
+        pending=False,
+    ) -> Optional[TradingPosition]:
         """Get open position by a trading pair smart contract address identifier.
 
-        For Uniswap-likes we use the pool address as the persistent identifier
-        for each trading pair.
+        - Get the first open position for a trading pair
+
+        - Optioonally check
+
+        - Frozen positions not included
+
+        See also
+
+        - :py:func:`get_pending_position_for_pair`
+
+        - :py:func:`get_open_position_for_pair`
+
+        :param pending:
+            Check also pending positions that wait market limit open and are not yet triggered
+
         """
+
+        if pending:
+            pending_position = self.get_pending_position_for_pair(pair)
+            if pending_position:
+                return pending_position
+
         # https://stackoverflow.com/a/2364277/315168
         return next((p for p in self.open_positions.values() if p.pair == pair), None)
-        #for p in self.open_positions.values():
-            # TODO: Check with
-            # if p.pair.pool_address.lower() == pair.pool_address.lower():
-        #    if p.pair == pair:
-        #        return p
-        #return None
+
 
     def get_existing_open_position_by_trading_pair(self, pair: TradingPairIdentifier) -> Optional[TradingPosition]:
         """Get a position by a trading pair smart contract address identifier.
@@ -397,6 +439,7 @@ class Portfolio:
         planned_collateral_consumption: Optional[Decimal] = None,
         planned_collateral_allocation: Optional[Decimal] = None,
         flags: Optional[Set[TradeFlag]] = None,
+        pending=False,
     ) -> Tuple[TradingPosition, TradeExecution, bool]:
         """Create a trade.
 
@@ -462,6 +505,11 @@ class Portfolio:
             Slippage tolerance for this trade.
 
             See :py:attr:`tradeexecutor.state.trade.TradeExecution.slippage_tolerance` for details.
+
+        :param pending:
+            Do not generate a new open position.
+
+            Used when adding take profit triggers to market limit position.
 
         :return:
             Tuple of entries
@@ -665,8 +713,18 @@ class Portfolio:
         """Get the value of the portfolio based on the latest pricing."""
         return sum([p.get_total_profit_usd() for p in self.closed_positions.values()])
 
-    def find_position_for_trade(self, trade) -> Optional[TradingPosition]:
-        """Find a position that a trade belongs for."""
+    def find_position_for_trade(self, trade, pending=False) -> Optional[TradingPosition]:
+        """Find a position that a trade belongs for.
+
+        :param pending:
+            Include pending positions (not yet trading for market limit)
+        """
+
+        if pending:
+            pending_position = self.pending_positions.get(trade.position_id)
+            if pending_position:
+                return pending_position
+
         return self.get_position_by_id(trade.position_id)
 
     def get_reserve_position(self, asset: AssetIdentifier) -> ReservePosition:

@@ -131,6 +131,7 @@ class ExecutionModel(abc.ABC):
         max_slippage=0.005,
         check_balances=False,
         rebroadcast=False,
+        triggered=False,
     ):
         """Execute the trades determined by the algo on a designed Uniswap v2 instance.
 
@@ -167,6 +168,9 @@ class ExecutionModel(abc.ABC):
             but their status is unknown.
 
             See :py:mod:`tradeexecutor.ethereum.rebroadcast`.
+
+        :param triggered:
+            Was this execution initiated from stop loss etc. triggers
         """
 
     @abc.abstractmethod

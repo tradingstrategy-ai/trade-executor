@@ -327,13 +327,16 @@ class BacktestExecution(ExecutionModel):
 
         return executed_quantity, executed_reserve, executed_collateral_allocation, executed_collateral_consumption
 
-    def execute_trades(self,
-                       ts: datetime.datetime,
-                       state: State,
-                       trades: List[TradeExecution],
-                       routing_model: BacktestRoutingModel,
-                       routing_state: BacktestRoutingState,
-                       check_balances=False):
+    def execute_trades(
+        self,
+        ts: datetime.datetime,
+        state: State,
+        trades: List[TradeExecution],
+        routing_model: BacktestRoutingModel,
+        routing_state: BacktestRoutingState,
+        check_balances=False,
+        triggered=False,
+    ):
         """Execute the trades on a simulated environment.
 
         Calculates price impact based on historical data
@@ -346,7 +349,7 @@ class BacktestExecution(ExecutionModel):
         assert isinstance(routing_model, (BacktestRoutingModel, GenericRouting))
         assert isinstance(routing_state, (BacktestRoutingState, GenericRoutingState))
 
-        state.start_execution_all(ts, trades, max_slippage=0)
+        state.start_execution_all(ts, trades, max_slippage=0, triggered=triggered)
 
         routing_model.setup_trades(
             routing_state,
@@ -373,7 +376,6 @@ class BacktestExecution(ExecutionModel):
                 executed_quantity, executed_reserve, executed_collateral_allocation, executed_collateral_consumption = self.simulate_trade(ts, state, idx, trade)
             except Exception as e:
                 logger.info("Simulating %d. trade %s failed: %s", idx+1, trade.get_short_label(), e)
-                #logger.exception(e)
                 raise BacktestExecutionFailed(f"Trade #{idx+1} out of {len(trades)} trades failed") from e
 
             # TODO: Use colleteral values here

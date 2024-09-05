@@ -162,12 +162,12 @@ def calculate_statistics(
 
 
 def update_statistics(
-        clock: datetime.datetime,
-        stats: Statistics,
-        portfolio: Portfolio,
-        execution_mode: ExecutionMode,
-        strategy_cycle_or_wall_clock: datetime.datetime | None = None,
-        long_short_metrics_latest: StatisticsTable | None = None,
+    clock: datetime.datetime,
+    stats: Statistics,
+    portfolio: Portfolio,
+    execution_mode: ExecutionMode,
+    strategy_cycle_or_wall_clock: datetime.datetime | None = None,
+    long_short_metrics_latest: StatisticsTable | None = None,
 ):
     """Update statistics in a portfolio.
 
