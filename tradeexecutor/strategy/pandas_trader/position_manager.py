@@ -2091,13 +2091,48 @@ class PositionManager:
             so make sure there is enough rounding error left. The take profit
             with the closing flag set will always execute the remaining quantity.
 
+        Example how to set 24h cloes after opening:
+
+        .. code-block:: python
+
+            # Set market limit if we break above level during the day,
+            # with a conditional open position
+            position, pending_trades = position_manager.open_spot_with_market_limit(
+                pair=pair,
+                value=cash*0.99,  # Cannot do 100% because of floating point rounding errors
+                trigger_price=midnight_price * 1.01,
+                expires_at=input.timestamp + pd.Timedelta(hours=24),
+            )
+
+            # We do not know the accurage quantity we need to close,
+            # because of occuring slippage,
+            # but we use the close flag below to close the remaining]
+            # amount
+            total_quantity = position.get_pending_quantity()
+
+            # Fully close 24h after opening
+            position_manager.prepare_take_profit_trades(
+                position,
+                [
+                    (datetime.timedelta(hours=24), -total_quantity, True),
+                ]
+            )
+
         :param position:
             The trading position
 
         :param levels:
-            Tuples of (price, quantity).
+            Tuples of (price | time, quantity, full close).
+
+            The trigger level may be price or time.
+
+            - float: US dollar mid price
+            - datetime: absolute time
+            - timedelta: relative to the opening time of the position
 
             Quantity must be negative when closing spot positions.
+
+            The last member is True if the position should be fully closed, False otherwise.
 
         :return:
             Prepared trades.
