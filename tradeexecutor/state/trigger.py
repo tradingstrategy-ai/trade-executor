@@ -29,6 +29,9 @@ class TriggerType(enum.Enum):
     market_limit = "market_limit"
 
     #: Execute take profit and partially close position
+    #:
+    #: This is also used when closing the position with time (e.g. 24h since open)
+    #:
     take_profit_partial = "take_profit_partial"
 
     #: Execute take profit and close position fully
@@ -45,7 +48,7 @@ class TriggerCondition(enum.Enum):
 
     #: Execute regardless of a price when deadline reached.
     #:
-    #: E.g. close after 1 day.
+    #: E.g. close after midnight.
     #:
     timed_absolute = "timed_absolute"
 
@@ -154,7 +157,7 @@ class Trigger:
         market_price: USDollarPrice,
         timestamp: datetime.datetime,
         position_open_time: datetime.datetime,
-) -> bool:
+    ) -> bool:
         """Is the given price triggering a tride."""
 
         match self.condition:

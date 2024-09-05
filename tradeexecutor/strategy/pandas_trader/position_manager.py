@@ -1941,10 +1941,10 @@ class PositionManager:
             assert condition, f"Could not figure trigger condition for {trigger_type} on {position}"
 
             trigger = Trigger(
-                trigger_type,
-                condition,
-                price,
-                expires_at
+                type=trigger_type,
+                condition=condition,
+                price=price,
+                expires_at=expires_at
             )
 
             trade.triggers.append(trigger)
