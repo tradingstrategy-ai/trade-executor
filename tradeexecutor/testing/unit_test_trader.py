@@ -100,7 +100,7 @@ class UnitTestTrader:
             self.native_token_price)
         return position, trade
 
-    def set_perfectly_executed(self, trade: TradeExecution):
+    def set_perfectly_executed(self, trade: TradeExecution, triggered=False):
         """Sets trade to a executed state.
 
         - There are no checks whether the wallet contains relevant balances or not
@@ -109,7 +109,7 @@ class UnitTestTrader:
         # 2. Capital allocation
         txid = hex(self.nonce)
         nonce = self.nonce
-        self.state.start_execution(self.ts, trade, txid, nonce, underflow_check=False)
+        self.state.start_execution(self.ts, trade, txid, nonce, underflow_check=False, triggered=triggered)
 
         # 3. broadcast
         self.nonce += 1

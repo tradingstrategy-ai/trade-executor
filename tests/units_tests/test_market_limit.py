@@ -13,6 +13,7 @@ from tradeexecutor.state.reserve import ReservePosition
 from tradeexecutor.state.state import State
 from tradeexecutor.state.trade import TradeStatus
 from tradeexecutor.state.trigger import TriggerType, TriggerCondition
+from tradeexecutor.strategy.execution_context import unit_test_execution_context
 from tradeexecutor.strategy.pandas_trader.indicator import IndicatorSet
 from tradeexecutor.strategy.pandas_trader.position_manager import PositionManager
 from tradeexecutor.strategy.parameters import StrategyParameters
@@ -164,7 +165,7 @@ def test_market_limit_executed(
     # We are not yet in trigger threshold
     assert position.last_token_price < 1900  # 1823.4539999999997
 
-    executed_trades = check_position_triggers(position_manager)
+    executed_trades = check_position_triggers(position_manager, unit_test_execution_context)
     assert len(executed_trades) == 0
 
     # Fast-forward time to the moment when market price
@@ -172,7 +173,7 @@ def test_market_limit_executed(
     position_manager.timestamp = datetime.datetime(2021, 7, 4)
     assert position_manager.pricing_model.get_mid_price(position_manager.timestamp, pair) == pytest.approx(2499.642153569536)
 
-    executed_trades = check_position_triggers(position_manager)
+    executed_trades = check_position_triggers(position_manager, unit_test_execution_context)
     assert len(executed_trades) == 1
     assert executed_trades[0] == trade
 
@@ -216,7 +217,7 @@ def test_market_limit_expires(
     assert len(position.pending_trades) == 1
     assert len(position.expired_trades) == 0
 
-    executed_trades = check_position_triggers(position_manager)
+    executed_trades = check_position_triggers(position_manager, unit_test_execution_context)
     assert len(executed_trades) == 0
     assert len(position.pending_trades) == 1  # Did not expire yet
 
@@ -224,7 +225,7 @@ def test_market_limit_expires(
     position_manager.timestamp = datetime.datetime(2021, 6, 4)
     assert position_manager.pricing_model.get_mid_price(position_manager.timestamp, pair) < 5000
 
-    executed_trades = check_position_triggers(position_manager)
+    executed_trades = check_position_triggers(position_manager, unit_test_execution_context)
     assert len(executed_trades) == 0
 
     assert trade.activated_trigger is None
@@ -300,7 +301,7 @@ def test_partial_take_profit(
     # We are not within take profit level yet
     assert position.last_token_price == pytest.approx(1823.4539999999997)
 
-    executed_trades = check_position_triggers(position_manager)
+    executed_trades = check_position_triggers(position_manager, unit_test_execution_context)
     assert len(executed_trades) == 0
 
     # Fast-forward time to the moment when market price
@@ -309,12 +310,12 @@ def test_partial_take_profit(
     assert position_manager.pricing_model.get_mid_price(position_manager.timestamp, pair) == pytest.approx(1929.8436337926182)
 
     # Check that the first trade triggers, and execute it
-    triggered_trades = check_position_triggers(position_manager)
+    triggered_trades = check_position_triggers(position_manager, unit_test_execution_context)
     assert len(triggered_trades) == 1
     t = triggered_trades[0]
     assert t.planned_quantity == pytest.approx(-half_quantity)
     assert position.get_quantity() == pytest.approx(total_quantity)
-    trader.set_perfectly_executed(t)
+    trader.set_perfectly_executed(t, triggered=True)
     assert t.is_sell()
     assert t.is_success()
     assert t.executed_quantity == pytest.approx(-half_quantity)
@@ -328,12 +329,12 @@ def test_partial_take_profit(
     # Trigger the remaining take profit and close the position
     position_manager.timestamp = datetime.datetime(2021, 8, 1)
     assert position_manager.pricing_model.get_mid_price(position_manager.timestamp, pair) == pytest.approx(3302.7545979895194)
-    triggered_trades = check_position_triggers(position_manager)
+    triggered_trades = check_position_triggers(position_manager, unit_test_execution_context)
     assert len(triggered_trades) == 1
     t = triggered_trades[0]
     assert t.planned_quantity == pytest.approx(-half_quantity)
     assert position.get_quantity() == pytest.approx(half_quantity)
-    trader.set_perfectly_executed(t)
+    trader.set_perfectly_executed(t, triggered=True)
     assert t.is_sell()
     assert t.is_success()
     assert t.executed_quantity == pytest.approx(-half_quantity)

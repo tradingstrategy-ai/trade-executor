@@ -2083,6 +2083,7 @@ class PositionManager:
 
         - If you want to reset the take profit triggers you need to call `TODO`
 
+        - For usage see :py:meth:`open_spot_with_market_limit`.
 
         .. note ::
 
@@ -2156,6 +2157,8 @@ class PositionManager:
             # Because this trade does not run or trigger on this decideion cycle,
             # we add it to the list of pending trades
             position.pending_trades[trade.trade_id] = trade
+
+            trades.append(trade)
 
         return trades
 
