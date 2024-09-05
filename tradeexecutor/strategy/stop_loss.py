@@ -258,7 +258,7 @@ def check_trigger_hit(
             if p.is_pending() and trigger.type == TriggerType.take_profit_partial:
                 # Cannot take profit on positions that have not opened yet.
                 # Probably messed up price levels.
-                logger.info(
+                logger.warning(
                     "Pending position take profit: trigged %s hit on pending positions %s",
                     trigger,
                     p
@@ -288,7 +288,12 @@ def check_flexible_triggers(
     mid_price: USDollarPrice,
     execution_context: ExecutionContext,
 ) -> List[TradeExecution]:
-    """Check for custom trigger conditions."""
+    """Check for custom trigger conditions.
+
+    - Market limit
+
+    - Partial take profit
+    """
 
     # We can hit two partial stop losses in one cycle
     triggered_trades = []
