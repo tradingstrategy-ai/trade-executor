@@ -38,7 +38,12 @@ def logger(request):
 
 @pytest.fixture(scope="module")
 def synthetic_universe() -> TradingStrategyUniverse:
-    """Create ETH-USDC universe with random price data."""
+    """Create ETH-USDC universe with only increasing price.
+
+    - Close price increase 1% every day
+
+    - Allows to test take profits reliably
+    """
 
     start_at = datetime.datetime(2021, 6, 1)
     end_at = datetime.datetime(2022, 1, 1)

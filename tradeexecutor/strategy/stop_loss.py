@@ -307,19 +307,18 @@ def check_flexible_triggers(
 
         # We can only have one trade triggering per check
         if triggered_trades:
-            return triggered_trades
+            break
 
-    # Then check for expires triggers and whether this trade
-    # needs to be moved to the expires list.
-    # If the trade was triggered, all other triggers are automatically expired
-    # with the above.
-    if not triggered_trades:
+        # Then check for expires triggers and whether this trade
+        # needs to be moved to the expires list.
+        # If the trade was triggered, all other triggers are automatically expired
+        # with the above.
         for trigger in trade.triggers:
             if trigger.is_expired(timestamp):
                 logger.info("check_flexible_triggers(%s): trade expired %", timestamp, trade)
                 update_trigger_expired(timestamp, trigger, p, trade)
 
-    return []
+    return triggered_trades
 
 
 def update_trade_triggered(

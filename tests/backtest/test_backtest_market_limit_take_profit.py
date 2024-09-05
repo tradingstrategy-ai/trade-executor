@@ -43,10 +43,12 @@ def logger(request):
     return setup_pytest_logging(request, mute_requests=False)
 
 
-
 @pytest.fixture(scope="module")
 def strategy_universe() -> TradingStrategyUniverse:
-    """Create ETH-USDC universe with random price data."""
+    """Create ETH-USDC universe with only increasing data.
+
+    - Close price increase 1% every hour
+    """
 
     start_at = datetime.datetime(2021, 6, 1)
     end_at = datetime.datetime(2022, 1, 1)
@@ -81,7 +83,7 @@ def strategy_universe() -> TradingStrategyUniverse:
         start_at,
         end_at,
         pair_id=weth_usdc.internal_id,
-        daily_drift=(1.01, 1.01),  # Close price increase 1% every day
+        daily_drift=(1.01, 1.01),
         high_drift=1.05,
         low_drift=0.90,
         random_seed=1,
@@ -223,7 +225,10 @@ def test_market_limit_take_profit_strategy(strategy_universe, tmp_path):
     state = result.state
     assert len(result.diagnostics_data) == 6  # Entry for each day + few extras
     assert len(state.portfolio.closed_positions) == 3
+    assert len(state.portfolio.pending_positions) == 0
+    assert len(state.portfolio.open_positions) == 0
 
+    # Check these do not crash on market limit positions
     calculate_summary_statistics(
         state,
         ExecutionMode.unit_testing_trading,
