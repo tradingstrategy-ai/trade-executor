@@ -2108,18 +2108,11 @@ class PositionManager:
         assert position.is_spot(), "Currently spot is only supported market type"
         assert not position.is_closed()
 
-        # Position planned size may be zero if it is about to open with a market limit order
-        # assert position.get_quantity(planned=True) > 0, f"Got bad quantity: {position.get_quantity()}"
-
         pair = position.pair
         trades = []
 
         for level in levels:
 
-            price = level[0]
-            if type(price) == int:
-                price = float(price)
-            assert type(price) == float, f"Take-profit price must be as float, got {type(price)}"
             quantity = level[1]
             assert isinstance(level[1], Decimal), f"Take-profit amount must be Decimal, got {type(quantity)}"
 
@@ -2144,15 +2137,35 @@ class PositionManager:
             assert len(per_level_trades) == 1
             trade = per_level_trades[0]
 
-            # Add take profit trigger
-            trade.triggers = [
-                Trigger(
+            checker = level[0]
+
+            if isinstance(checker, datetime.datetime):
+                trigger = Trigger(
                     type=TriggerType.take_profit_partial,
-                    price=price,
+                    triggering_at=checker,
+                    condition=TriggerCondition.timed_absolute,
+                    expires_at=None,
+                )
+            elif isinstance(checker, datetime.timedelta):
+                trigger = Trigger(
+                    type=TriggerType.take_profit_partial,
+                    triggering_at_delta=checker,
+                    condition=TriggerCondition.timed_relative_to_open,
+                    expires_at=None,
+                )
+            elif isinstance(checker, float):
+                # US Dollar level
+                trigger = Trigger(
+                    type=TriggerType.take_profit_partial,
+                    price=float(checker),
                     condition=TriggerCondition.cross_above,
                     expires_at=None,
                 )
-            ]
+            else:
+                raise NotImplementedError(f"Unknown level definition {level} for {trade}")
+
+            # Add take profit trigger
+            trade.triggers.append(trigger)
 
             # Because this trade does not run or trigger on this decideion cycle,
             # we add it to the list of pending trades

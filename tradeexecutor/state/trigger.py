@@ -22,7 +22,7 @@ from tradingstrategy.types import USDollarAmount, Percent
 #: - Quantity in base asset units
 #: - Close flag: True if this trade should close the position
 #:
-PartialTradeLevel: TypeAlias = tuple[USDollarAmount, Decimal, bool]
+PartialTradeLevel: TypeAlias = tuple[USDollarAmount | datetime.timedelta | datetime.datetime, Decimal, bool]
 
 
 class TriggerType(enum.Enum):
@@ -36,8 +36,22 @@ class TriggerType(enum.Enum):
 
 
 class TriggerCondition(enum.Enum):
+
+    #: Market mid-price goes above a level
     cross_above = "cross_above"
+
+    #: Market mid-price below above a level
     cross_below = "cross_below"
+
+    #: Execute regardless of a price when deadline reached.
+    #:
+    #: E.g. close after 1 day.
+    #:
+    timed_absolute = "timed_absolute"
+
+    #: Close based on opening time
+    #:
+    timed_relative_to_open = "timed_relative_to_open"
 
 
 
@@ -75,10 +89,22 @@ class Trigger:
     condition: TriggerCondition
 
     #: When to take action
-    price: USDollarAmount | None
+    price: USDollarAmount | None = None
+
+    #: Always executed at a certain time.
+    #:
+    #: See `TriggerType.timed_absolute`
+    #:
+    triggering_at: datetime.datetime | None = None
+
+    #: Always executed at a certain time.
+    #:
+    #: See `TriggerType.timed_relative_to_open`
+    #:
+    triggering_at_delta: datetime.timedelta | None = None
 
     #: After expiration, this trade execution is removed from the hanging queue
-    expires_at: datetime.datetime | None
+    expires_at: datetime.datetime | None = None
 
     #: When this trigger was marked as expired
     expired_at: datetime.datetime | None = None
@@ -101,6 +127,12 @@ class Trigger:
         if self.price is not None:
             assert type(self.price) == float, f"Price not a float: {type(self.price)}"
 
+        if self.triggering_at:
+            assert isinstance(self.triggering_at, datetime.datetime)
+
+        if self.triggering_at_delta:
+            assert isinstance(self.triggering_at_delta, datetime.timedelta)
+
         assert isinstance(self.type, TriggerType)
         assert isinstance(self.condition, TriggerCondition)
 
@@ -117,15 +149,27 @@ class Trigger:
         """This trigged is already executed."""
         return self.triggered_at is not None
 
-    def is_triggering(self, market_price: USDollarPrice) -> bool:
+    def is_triggering(
+        self,
+        market_price: USDollarPrice,
+        timestamp: datetime.datetime,
+        position_open_time: datetime.datetime,
+) -> bool:
         """Is the given price triggering a tride."""
 
-        if self.condition == TriggerCondition.cross_above:
-            if market_price >= self.price:
-                return True
-        else:
-            if market_price <= self.price:
-                return True
+        match self.condition:
+            case TriggerCondition.cross_above:
+                if market_price >= self.price:
+                    return True
+            case TriggerCondition.cross_below:
+                if market_price <= self.price:
+                    return True
+            case TriggerCondition.timed_absolute:
+                return timestamp > self.triggering_at
+            case TriggerCondition.timed_relative_to_open:
+                return timestamp > position_open_time + self.triggering_at_delta
+            case _:
+                raise NotImplementedError(f"Unknown condition: {self}")
 
         return False
 

@@ -198,7 +198,64 @@ def decide_trades(input: StrategyInput) -> List[TradeExecution]:
     return []
 
 
-def test_market_limit_take_profit_strategy(strategy_universe, tmp_path):
+def time_closed_decide_trades(input: StrategyInput) -> List[TradeExecution]:
+    """Same as above, but with timed closes."""
+
+    position_manager = input.get_position_manager()
+    pair = input.get_default_pair()
+    cash = input.state.portfolio.get_cash()
+    indicators = input.indicators
+    portfolio = input.state.portfolio
+
+    midnight_price = indicators.get_price()
+    if midnight_price is None:
+        # Skip cycle 1
+        # We do not have the previous day price available at the first cycle
+        return []
+
+    # Only set a trigger open if we do not have any position open/pending yet
+    if not position_manager.get_current_position_for_pair(pair, pending=True):
+
+        position_manager.log(f"Setting up a new market limit trigger position for {pair}")
+
+        # Set market limit if we break above level during the day,
+        # with a conditional open position
+        position, pending_trades = position_manager.open_spot_with_market_limit(
+            pair=pair,
+            value=cash*0.99,  # Cannot do 100% because of floating point rounding errors
+            trigger_price=midnight_price * 1.01,
+            expires_at=input.timestamp + pd.Timedelta(hours=24),
+            notes="Market limit test open trade",
+        )
+
+        assert len(portfolio.pending_positions) == 1
+        assert len(portfolio.open_positions) == 0
+
+        # We do not know the accurage quantity we need to close,
+        # because of occuring slippage,
+        # but we use the close flag below to close the remaining]
+        # amount
+        total_quantity = position.get_pending_quantity()
+        assert total_quantity > 0
+
+        # Fully close 24h after opening
+        position_manager.prepare_take_profit_trades(
+            position,
+            [
+                (datetime.timedelta(hours=24), -total_quantity, True),
+            ]
+        )
+
+    else:
+        position_manager.log("Existing position pending - do not create new")
+
+    # We return zero trades here, as all of trades we have constructed
+    # are pending for a trigger, and do not need to be executed
+    # on this decision cycle
+    return []
+
+
+def test_market_limit_take_profit_strategy_price_level(strategy_universe, tmp_path):
     """Test DecideTradesProtocolV4
 
     - Check that StrategyInput is passed correctly in backtesting (only backtesting, not live trading)
@@ -234,3 +291,42 @@ def test_market_limit_take_profit_strategy(strategy_universe, tmp_path):
         ExecutionMode.unit_testing_trading,
         now_=datetime.datetime.utcnow(),
     )
+
+
+def test_market_limit_take_profit_strategy_since_open(strategy_universe, tmp_path):
+    """Test DecideTradesProtocolV4
+
+    - Close open positions 24h after opening
+    """
+
+    class Parameters:
+        backtest_start = strategy_universe.data_universe.candles.get_timestamp_range()[0].to_pydatetime()
+        backtest_end = strategy_universe.data_universe.candles.get_timestamp_range()[0].to_pydatetime()  + datetime.timedelta(days=4)
+        initial_cash = 10_0000
+        cycle_duration = CycleDuration.cycle_1d
+
+    # Run the test
+    result = run_backtest_inline(
+        client=None,
+        decide_trades=time_closed_decide_trades,
+        create_indicators=create_indicators,
+        universe=strategy_universe,
+        reserve_currency=ReserveCurrency.usdc,
+        engine_version="0.5",
+        parameters=StrategyParameters.from_class(Parameters),
+        mode=ExecutionMode.unit_testing,
+    )
+
+    state = result.state
+    assert len(result.diagnostics_data) == 6  # Entry for each day + few extras
+    assert len(state.portfolio.closed_positions) == 1
+    assert len(state.portfolio.pending_positions) == 0
+    assert len(state.portfolio.open_positions) == 1
+
+    # Check these do not crash on market limit positions
+    calculate_summary_statistics(
+        state,
+        ExecutionMode.unit_testing_trading,
+        now_=datetime.datetime.utcnow(),
+    )
+

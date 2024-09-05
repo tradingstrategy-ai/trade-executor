@@ -253,7 +253,7 @@ def check_trigger_hit(
                 mid_price,
             )
 
-        if trigger.is_triggering(mid_price):
+        if trigger.is_triggering(mid_price, timestamp, p.opened_at):
 
             if p.is_pending() and trigger.type == TriggerType.take_profit_partial:
                 # Cannot take profit on positions that have not opened yet.
