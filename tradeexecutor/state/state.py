@@ -289,6 +289,7 @@ class State:
         planned_collateral_consumption: Optional[Decimal] = None,
         planned_collateral_allocation: Optional[Decimal] = None,
         flags: Optional[Set[TradeFlag]] = None,
+        pending=False,
     ) -> Tuple[TradingPosition, TradeExecution, bool]:
         """Creates a request for a new trade.
 
@@ -380,6 +381,11 @@ class State:
 
             A flag used with leveraged positions.
 
+        :param pending:
+            Do not generate a new open position.
+
+            Used when adding take profit triggers to market limit position.
+
         :return:
             Tuple of entries
 
@@ -429,6 +435,7 @@ class State:
             planned_collateral_consumption=planned_collateral_consumption,
             planned_collateral_allocation=planned_collateral_allocation,
             flags=flags,
+            pending=pending,
         )
 
         return position, trade, created
@@ -627,12 +634,13 @@ class State:
         return position, trade, created
 
     def start_execution(
-            self,
-            ts: datetime.datetime,
-            trade: TradeExecution,
-            txid: str | None = None,
-            nonce: int | None = None,
-            underflow_check=False,
+        self,
+        ts: datetime.datetime,
+        trade: TradeExecution,
+        txid: str | None = None,
+        nonce: int | None = None,
+        underflow_check=False,
+        triggered=False,
         ):
         """Update our balances and mark the trade execution as started.
 
@@ -656,11 +664,23 @@ class State:
         :param nonce:
             Legacy. Do not use.
 
+        :param triggered:
+            True if this execution is from stop loss trigger checks, otherwise from decision trades cycle.
+
         """
 
         assert trade.get_status() == TradeStatus.planned, f"start_execution(): received a trade with status {trade.get_status()}: {trade}"
 
-        position = self.portfolio.find_position_for_trade(trade)
+        if not triggered:
+            assert TradeFlag.triggered not in trade.flags, f"Got a trigger trade for execution: {trade}, {trade.flags}.\n" \
+                                                           f"This is not needed: The trade will be automatically executed when the trigger hits.\n" \
+                                                           f"You do not need to return triggered trades from decide_trades"
+
+            position = self.portfolio.find_position_for_trade(trade)
+        else:
+            # Consider market limit opens
+            position = self.portfolio.find_position_for_trade(trade, pending=True)
+
         assert position, f"Trade does not belong to an open position {trade}"
 
         # Legacy check
@@ -723,7 +743,7 @@ class State:
         - If this was the final trade of the position, mark the position closed
         """
 
-        position = self.portfolio.find_position_for_trade(trade)
+        position = self.portfolio.find_position_for_trade(trade, pending=True)
 
         if trade.is_spot():
             if trade.is_buy():
@@ -808,6 +828,14 @@ class State:
         if trade.is_long():
             raise NotImplementedError()
 
+        if position.is_pending():
+            # Position has now executed trades.
+            # It can be no longer pending.
+            logger.info("Position moving from pending -> open: %s", position)
+            self.portfolio.open_positions[position.position_id] = position
+            del self.portfolio.pending_positions[position.position_id]
+            position.pending_since_at = None
+
         if position.can_be_closed():
 
             self.portfolio.close_position(position, executed_at)
@@ -871,7 +899,7 @@ class State:
         position_ids = set()
         trade_ids = set()
 
-        for p in self.portfolio.get_all_positions():
+        for p in self.portfolio.get_all_positions(pending=True):
             assert p.position_id not in position_ids, f"Position id reuse {p.position_id}"
             position_ids.add(p.position_id)
             for t in p.trades.values():
@@ -888,13 +916,15 @@ class State:
         for pos_stat_id in self.stats.positions.keys():
             assert pos_stat_id in position_ids, f"Stats had position id {pos_stat_id} for which actual trades are missing"
 
-    def start_execution_all(self,
-                            ts: datetime.datetime,
-                            trades: List[TradeExecution],
-                            max_slippage: float=None,
-                            underflow_check=False,
-                            rebroadcast=False,
-                            ):
+    def start_execution_all(
+        self,
+        ts: datetime.datetime,
+        trades: List[TradeExecution],
+        max_slippage: float=None,
+        underflow_check=False,
+        rebroadcast=False,
+        triggered=False,
+    ):
         """Mark a bunch of trades ready to go.
 
         Update any internal accounting of capital allocation from reseves to trades.
@@ -927,7 +957,7 @@ class State:
 
         for t in trades:
 
-            self.start_execution(ts, t)
+            self.start_execution(ts, t, triggered=triggered)
 
             if max_slippage is not None:
                 t.planned_max_slippage = max_slippage

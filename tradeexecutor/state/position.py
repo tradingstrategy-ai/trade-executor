@@ -6,6 +6,7 @@ import pprint
 import warnings
 from dataclasses import dataclass, field, asdict
 from decimal import Decimal
+from itertools import chain
 
 from typing import Dict, Optional, List, Iterable, Tuple, Set
 
@@ -20,6 +21,7 @@ from tradeexecutor.state.interest import Interest
 from tradeexecutor.state.loan import Loan
 from tradeexecutor.state.trade import TradeType, TradeFlag
 from tradeexecutor.state.trade import TradeExecution
+from tradeexecutor.state.trigger import Trigger
 from tradeexecutor.state.types import USDollarAmount, BPS, USDollarPrice, Percent, LeverageMultiplier, LegacyDataException
 from tradeexecutor.state.valuation import ValuationUpdate
 from tradeexecutor.strategy.dust import get_dust_epsilon_for_pair
@@ -130,6 +132,17 @@ class TradingPosition(GenericPosition):
     #: trade_id -> Trade map
     trades: Dict[int, TradeExecution] = field(default_factory=dict)
 
+    #: List of trigger trades waiting to be taken
+    #: trade_id -> Trade map
+    #:
+    #: SEe also old style :py:attr:`stop_loss`, :py:attr:`trailing_stop_loss`, :py:attr:`trigged_updates`.
+    #:
+    pending_trades: Dict[int, TradeExecution] = field(default_factory=dict)
+
+    #: List of trigger trades that have expried
+    #: trade_id -> Trade map
+    expired_trades: Dict[int, TradeExecution] = field(default_factory=dict)
+
     #: When this position was closed
     #:
     #: Execution time of the trade or wall-clock time if not available.
@@ -157,6 +170,14 @@ class TradingPosition(GenericPosition):
     #: This can be later used to analyse the risk of the
     #: trades. ("Max value at the risk")
     portfolio_value_at_open: Optional[USDollarAmount] = None
+
+    #: Timestamp when this position was set pending for a market limit.
+    #:
+    #: Cleared back to `None` if the position opens.
+    #:
+    #: See also :py:meth:`is_pending`
+    #:
+    pending_since_at: Optional[datetime.datetime] = None
 
     #: Trigger a stop loss if this price is reached,
     #:
@@ -219,6 +240,8 @@ class TradingPosition(GenericPosition):
     #: For example, for trailing stop loss, there is no record added,
     #: if the price did not move upwards, causing the stop loss level to move.
     #:
+    #: See also py:attr:`pending_trades` where new-style partial take profit trades are placed.
+    #:
     trigger_updates: List[TriggerPriceUpdate] = field(default_factory=list)
 
     #: Valuation updates.
@@ -260,7 +283,9 @@ class TradingPosition(GenericPosition):
     liquidation_price: USDollarAmount | None = None
 
     def __repr__(self):
-        if self.is_open():
+        if self.is_pending():
+            return f"<Pending position #{self.position_id} {self.pair} ${self.get_value()}>"
+        elif self.is_open():
             return f"<Open position #{self.position_id} {self.pair} ${self.get_value()}>"
         else:
             return f"<Closed position #{self.position_id} {self.pair} ${self.get_first_trade().get_value()}>"
@@ -367,7 +392,7 @@ class TradingPosition(GenericPosition):
 
         Considers unexecuted trades.
         """
-        return next(iter(self.trades.values()))
+        return next(iter(chain(self.trades.values(), self.pending_trades.values())))
 
     def get_last_trade(self) -> TradeExecution:
         """Get the the last trade for this position.
@@ -378,7 +403,7 @@ class TradingPosition(GenericPosition):
 
     def is_spot(self) -> bool:
         """Is this a spot market position."""
-        assert len(self.trades) > 0, "Cannot determine if position is long or short because there are no trades"
+        assert len(self.trades) + len(self.pending_trades) > 0, "Cannot determine if position is long or short because there are no trades"
         return self.get_first_trade().is_spot()
 
     def is_long(self) -> bool:
@@ -388,7 +413,7 @@ class TradingPosition(GenericPosition):
 
         This includes spot buy.
         """
-        assert len(self.trades) > 0, "Cannot determine if position is long or short because there are no trades"
+        assert len(self.trades) + len(self.pending_trades) > 0, "Cannot determine if position is long or short because there are no trades"
         return self.pair.is_spot() or self.pair.is_long()
 
     def is_short(self) -> bool:
@@ -454,6 +479,15 @@ class TradingPosition(GenericPosition):
         """This position is currently having non-zero losses."""
         return self.get_total_profit_usd() < 0
 
+    def is_pending(self) -> bool:
+        """This position is waiting for a condition to trigger to make it open.
+
+        - The position is hyphotetical in `pending_positions` list
+
+        - Will realise if market limit is reached
+        """
+        return self.pending_since_at is not None
+
     def has_executed_trades(self) -> bool:
         """This position represents actual holdings and has executed trades on it.
 
@@ -466,8 +500,18 @@ class TradingPosition(GenericPosition):
         return False
 
     def has_trigger_conditions(self) -> bool:
-        """Does this position need to check for stop loss/take profit."""
-        return self.stop_loss is not None or self.take_profit is not None
+        """Does this position need to check for a trigger condition.
+
+        - stop loss/take profit hardcoded options
+
+        - other triggers
+
+        :return:
+            True if ewe need to check for the triggers in the trigger udpdate
+        """
+        return self.stop_loss is not None or \
+            self.take_profit is not None or \
+            self.pending_trades
 
     def get_executed_trades(self) -> Iterable[TradeExecution]:
         for t in self.trades.values():
@@ -500,7 +544,7 @@ class TradingPosition(GenericPosition):
         base = self.pair.base
         return sum_decimal([b.quantity for b in self.balance_updates.values() if b.asset == base])
 
-    def get_quantity(self) -> Decimal:
+    def get_quantity(self, planned=False) -> Decimal:
         """Get the tied up token quantity in all successfully executed trades.
 
         - Does not account for trades that are currently being executed (in started,
@@ -517,12 +561,18 @@ class TradingPosition(GenericPosition):
 
         - The accrued interest can be read from balance update events
 
+        :param planned:
+            Include the quantity of the planned trades that are going to be executed on this cycle.
+
         :return:
             Number of asset units held by this position.
 
             Rounded down to zero if the sum of
         """
-        trades = sum_decimal([t.get_position_quantity() for t in self.trades.values() if t.is_success()])
+        if planned:
+            trades = sum_decimal([t.get_position_quantity() for t in self.trades.values() if t.is_success() or t.is_planned()])
+        else:
+            trades = sum_decimal([t.get_position_quantity() for t in self.trades.values() if t.is_success()])
         direct_balance_updates = self.get_base_token_balance_update_quantity()
 
         # Because short position is modelled as negative quantity,
@@ -542,6 +592,11 @@ class TradingPosition(GenericPosition):
 
         # Always convert zero to decimal
         return Decimal(s)
+
+    def get_pending_quantity(self) -> Decimal:
+        """Get the quantity locked up in market limit trades."""
+        q = sum_decimal([t.get_position_quantity() for t in self.pending_trades.values() if t.is_success() or t.is_planned()])
+        return q
 
     def get_redeemed(self) -> Decimal:
         """Get amount of position reduced via in-kind redemptions.
@@ -579,7 +634,7 @@ class TradingPosition(GenericPosition):
         """Get the price of the base asset based on the latest valuation."""
         return self.last_token_price
 
-    def get_opening_price(self) -> USDollarAmount:
+    def get_opening_price(self) -> USDollarPrice:
         """Get the price when the position was opened.
 
         :return:
@@ -591,11 +646,15 @@ class TradingPosition(GenericPosition):
         first_trade = self.get_first_trade()
         return first_trade.executed_price or 0.0
 
-    def get_closing_price(self) -> USDollarAmount:
+    def get_closing_price(self) -> USDollarPrice:
         """Get the price when the position was closed."""
         assert self.has_executed_trades()
         last_trade = self.get_last_trade()
         return last_trade.executed_price
+
+    def get_current_price(self) -> USDollarPrice:
+        """Get the last recorded and cached market price for the position base asset."""
+        return self.last_token_price
 
     def get_quantity_old(self) -> Decimal:
         """How many asset units this position tolds.

@@ -4,12 +4,13 @@ import datetime
 import warnings
 from decimal import Decimal
 from io import StringIO
-from typing import List, Optional, Union, Literal, Set
+from typing import List, Optional, Union, Literal, Set, TypeAlias
 import logging
 
 import cachetools
 import pandas as pd
 
+from tradeexecutor.state.trigger import TriggerType, Trigger, TriggerCondition, PartialTradeLevel
 from tradeexecutor.utils.accuracy import QUANTITY_EPSILON
 from tradingstrategy.candle import CandleSampleUnavailable
 from tradingstrategy.pair import DEXPair, HumanReadableTradingPairDescription
@@ -20,8 +21,8 @@ from tradeexecutor.state.loan import LiquidationRisked
 from tradeexecutor.state.portfolio import Portfolio
 from tradeexecutor.state.position import TradingPosition, TriggerPriceUpdate
 from tradeexecutor.state.state import State
-from tradeexecutor.state.trade import TradeType, TradeExecution, TradeFlag
-from tradeexecutor.state.types import USDollarAmount, Percent, LeverageMultiplier
+from tradeexecutor.state.trade import TradeType, TradeExecution, TradeFlag, TradeStatus
+from tradeexecutor.state.types import USDollarAmount, Percent, LeverageMultiplier, USDollarPrice
 from tradeexecutor.strategy.pricing_model import PricingModel
 from tradeexecutor.strategy.trading_strategy_universe import translate_trading_pair, TradingStrategyUniverse
 from tradeexecutor.utils.leverage_calculations import LeverageEstimate
@@ -415,8 +416,15 @@ class PositionManager:
         """
         return self._get_single_open_position_for_kind("credit_supply")
 
-    def get_current_position_for_pair(self, pair: TradingPairIdentifier) -> Optional[TradingPosition]:
+    def get_current_position_for_pair(
+        self,
+        pair: TradingPairIdentifier,
+        pending=False,
+    ) -> Optional[TradingPosition]:
         """Get the current open position for a specific trading pair.
+
+        :param pending:
+            Check also pending positions that wait market limit open and are not yet triggered
 
         :return:
             Currently open trading position.
@@ -424,7 +432,7 @@ class PositionManager:
             If there is no open position return None.
 
         """
-        return self.state.portfolio.get_position_by_trading_pair(pair)
+        return self.state.portfolio.get_position_by_trading_pair(pair, pending=pending)
     
     def get_closed_positions_for_pair(
         self,
@@ -736,22 +744,31 @@ class PositionManager:
         if trade.is_buy():
             assert trade.planned_quantity > QUANTITY_EPSILON, f"Bad buy quantity: {trade}"
 
-        logger.info("Generated trade %s to open a spot position %s", trade.get_human_description(), position.get_human_readable_name())
+        logger.info(
+            "Generated trade %s\nTo open a spot position %s\nNotes: %s",
+            trade.get_human_description(),
+            position.get_human_readable_name(),
+            notes,
+        )
 
         return [trade]
 
-    def adjust_position(self,
-                        pair: TradingPairIdentifier,
-                        dollar_delta: USDollarAmount,
-                        quantity_delta: float,
-                        weight: float,
-                        stop_loss: Optional[Percent] = None,
-                        take_profit: Optional[Percent] = None,
-                        trailing_stop_loss: Optional[Percent] = None,
-                        slippage_tolerance: Optional[float] = None,
-                        override_stop_loss=False,
-                        notes: Optional[str] = None,
-                        ) -> List[TradeExecution]:
+    def adjust_position(
+        self,
+        pair: TradingPairIdentifier,
+        dollar_delta: USDollarAmount,
+        quantity_delta: float | Decimal,
+        weight: float,
+        stop_loss: Optional[Percent] = None,
+        take_profit: Optional[Percent] = None,
+        trailing_stop_loss: Optional[Percent] = None,
+        slippage_tolerance: Optional[float] = None,
+        override_stop_loss=False,
+        notes: Optional[str] = None,
+        flags: Optional[set[TradeFlag]] = None,
+        pending=False,
+        position: TradingPosition | None = None,
+    ) -> List[TradeExecution]:
         """Adjust holdings for a certain position.
 
         Used to rebalance positions.
@@ -792,7 +809,11 @@ class PositionManager:
             Currently only used to detect condition "sell all" instead of
             trying to match quantity/price conversion.
 
-            If unsure and buying, set to ``1``.
+            Relevant for portfolio construction strategies.
+
+            If unsure and buying, set to `1`.
+
+            If unsure and selling, set to `1`.
 
         :param stop_loss:
             Set the stop loss for the position.
@@ -822,6 +843,14 @@ class PositionManager:
 
             Used for diagnostics.
 
+        :param pending:
+            Do not generate a new open position.
+
+            Used when adding take profit triggers to market limit position.
+
+        :param position:
+            The existing position to be used with pending
+
         :return:
             List of trades to be executed to get to the desired
             position level.
@@ -829,6 +858,9 @@ class PositionManager:
         assert dollar_delta != 0
         assert weight <= 1, f"Target weight cannot be over one: {weight}"
         assert weight >= 0, f"Target weight cannot be negative: {weight}"
+
+        if pending:
+            assert position, f"For pending adjustments you need to give an existing position"
 
         try:
             if dollar_delta > 0:
@@ -874,6 +906,8 @@ class PositionManager:
                 pair_fee=price_structure.get_fee_percentage(),
                 slippage_tolerance=slippage_tolerance,
                 notes=notes,
+                pending=pending,
+                position=position,
             )
         else:
             # Sell
@@ -898,9 +932,12 @@ class PositionManager:
                 lp_fees_estimated=price_structure.get_total_lp_fees(),
                 slippage_tolerance=slippage_tolerance,
                 price_structure=price_structure,
+                flags=flags,
+                position=position,
+                pending=pending,
             )
 
-        assert trade.lp_fees_estimated > 0, f"LP fees estimated: {trade.lp_fees_estimated} - {trade}"
+        assert trade.lp_fees_estimated > 0, f"LP fees estimated: {trade.lp_fees_estimated} - {trade} - DEX fee data missing?"
 
         # Update stop loss for this position
         if stop_loss:
@@ -937,18 +974,24 @@ class PositionManager:
         notes: Optional[str] = None,
         slippage_tolerance: Optional[float] = None,
         flags: Set[TradeFlag] | None = None,
+        quantity: Decimal | None = None,
     ) -> List[TradeExecution]:
         """Close a single spot market trading position.
 
         See :py:meth:`close_position` for usage.
+
+        :param quantity:
+            Partially close the position
         """
 
         assert position.is_spot_market()
 
-        quantity_left = position.get_available_trading_quantity()
-
         pair = position.pair
-        quantity = quantity_left
+
+        quantity = quantity or position.get_available_trading_quantity()
+        if quantity:
+            assert quantity > 0, "Closing spot, quantity must be positive"
+
         price_structure = self.pricing_model.get_sell_price(self.timestamp, pair, quantity=quantity)
 
         reserve_asset, reserve_price = self.state.portfolio.get_default_reserve_asset()
@@ -987,7 +1030,6 @@ class PositionManager:
             price_structure=price_structure,
             closing=True,
             flags=flags,
-
         )
         assert position == position2, f"Somehow messed up the close_position() trade.\n" \
                                       f"Original position: {position}.\n" \
@@ -1857,6 +1899,316 @@ class PositionManager:
             raise LiquidationRisked(f"The position value adjust to new value {new_value}, delta {delta:+f} USD, delta {borrowed_quantity_delta:+f} {base_token}, would liquidate the position,") from e
 
         return [adjust_trade]
+
+    def set_market_limit_trigger(
+        self,
+        trades: List[TradeExecution],
+        price: USDollarPrice,
+        expires_at: datetime.datetime | None=None,
+    ):
+        """Set a trade to have a triggered execution.
+
+        - See :py:func:`open_spot_with_market_limit` for usage
+
+        - The created trade is not executed immediately, but later
+          when a trigger condition is meet
+
+        - Spot open supported only for now
+
+        :param trades:
+            List of trades to apply for
+        """
+
+        portfolio = self.state.portfolio
+
+        trigger_type = TriggerType.market_limit
+
+        for trade in trades:
+            assert isinstance(trade, TradeExecution)
+            assert trade.get_status() == TradeStatus.planned, f"Can only set triggers for planned trades: {trade}"
+            position = portfolio.get_position_by_id(trade.position_id)
+            assert position.is_open(), f"Cannot set trade trigger on a closed position: {position}"
+
+            condition = None
+
+            if position.is_long() or position.is_spot():
+                if trigger_type == TriggerType.market_limit:
+                    condition = TriggerCondition.cross_above
+            elif position.is_short():
+                if trigger_type == TriggerType.market_limit:
+                    condition = TriggerCondition.cross_below
+
+            assert condition, f"Could not figure trigger condition for {trigger_type} on {position}"
+
+            trigger = Trigger(
+                type=trigger_type,
+                condition=condition,
+                price=price,
+                expires_at=expires_at
+            )
+
+            trade.triggers.append(trigger)
+            trade.flags.add(TradeFlag.triggered)
+
+            if trigger_type == TriggerType.market_limit:
+                # As the position does not open on this decision cycle,
+                # move it to pending
+                assert position.position_id in portfolio.open_positions, f"Market limit can be only applied if the position is about to open"
+                del portfolio.open_positions[position.position_id]
+                portfolio.pending_positions[position.position_id] = position
+
+            # Move trade to pending, instead to be executed right away
+            del position.trades[trade.trade_id]
+            position.pending_trades[trade.trade_id] = trade
+            position.pending_since_at = datetime.datetime.utcnow()
+
+            logger.info("Added trade trigger: trade: %s, position: %s, trigger: %s", trade, position, trigger)
+
+    def open_spot_with_market_limit(
+        self,
+        pair: TradingPairIdentifier,
+        value: USDollarAmount,
+        trigger_price: USDollarPrice,
+        expires_at: pd.Timestamp,
+        notes: str | None = None,
+    ) -> tuple[TradingPosition, list[TradeExecution]]:
+        """Create a pending position open waiting for market limit
+
+        - This position does not open on this decision cycle, but is pending until the trigger threshold is reached
+
+        - The position will expire and may be never opened
+
+        Example:
+
+        .. code-block:: python
+
+            midnight_price = indicators.get_price()
+            if midnight_price is None:
+                # Skip cycle 1
+                # We do not have the previous day price available at the first cycle
+                return []
+
+            # Only set a trigger open if we do not have any position open/pending yet
+            if not position_manager.get_current_position_for_pair(pair, pending=True):
+
+                position_manager.log(f"Setting up a new market limit trigger position for {pair}")
+
+                # Set market limit if we break above level during the day,
+                # with a conditional open position
+                position, pending_trades = position_manager.open_spot_with_market_limit(
+                    pair=pair,
+                    value=cash*0.99,  # Cannot do 100% because of floating point rounding errors
+                    trigger_price=midnight_price * 1.01,
+                    expires_at=input.timestamp + pd.Timedelta(hours=24),
+                    notes="Market limit test open trade",
+                )
+
+                assert len(portfolio.pending_positions) == 1
+                assert len(portfolio.open_positions) == 0
+
+                # We do not know the accurage quantity we need to close,
+                # because of occuring slippage,
+                # but we use the close flag below to close the remaining]
+                # amount
+                total_quantity = position.get_pending_quantity()
+                assert total_quantity > 0
+
+                # Set two take profits to 1.5% and 2% price increase
+                # First will close 2/3 of position
+                # The second will close the remaining position
+                position_manager.prepare_take_profit_trades(
+                    position,
+                    [
+                        (midnight_price * 1.015, -total_quantity * 2 / 3, False),
+                        (midnight_price * 1.02, -total_quantity * 1 / 3, True),
+                    ]
+                )
+
+            else:
+                position_manager.log("Existing position pending - do not create new")
+
+        :param pair:
+            Trading pair
+
+        :param value:
+            Open amount in reserve currency
+        :param trigger_price:
+            In which price level we will trigger
+
+        :param expires_at:
+            When the market limit order expires
+
+        :param notes:
+            Human-readable notes on this
+
+        :return:
+            Tuple (Pending position, relevant market limit trades)
+        """
+
+        logger.info("Market limit open for %s", pair)
+
+        # Set market limit if we break above level during the day,
+        # with a conditional open position
+        market_limit_trades = self.open_spot(
+            pair=pair,
+            value=value,
+            notes=notes,
+        )
+
+        # We have now the draft TradingPosition instance available
+        position = self.get_current_position_for_pair(pair)
+
+        # Don't open this spot position yet, but make it triggered at 1% increase over daily close price.
+        # Moves from opening positions to pending positions:
+        # Open the position when this threshold is reached
+        self.set_market_limit_trigger(
+            market_limit_trades,
+            price=trigger_price,
+            expires_at=expires_at,
+        )
+        return position, market_limit_trades
+
+    def prepare_take_profit_trades(
+        self,
+        position: TradingPosition,
+        levels: list[PartialTradeLevel],
+    ) -> list[TradeExecution]:
+        """Set multiple take profit levels, and prepare trades for them.
+
+        - Populate `position.pending_trades` with triggered trades to
+          take profit when the price moves
+
+        - Any triggers are added on the top of the existing triggers,
+          no triggers are removed
+
+        - If you want to reset the take profit triggers you need to call `TODO`
+
+        - For usage see :py:meth:`open_spot_with_market_limit`.
+
+        .. note ::
+
+            Currently there might be a mismatch between planned quantity and executed quantity,
+            so make sure there is enough rounding error left. The take profit
+            with the closing flag set will always execute the remaining quantity.
+
+        Example how to set 24h cloes after opening:
+
+        .. code-block:: python
+
+            # Set market limit if we break above level during the day,
+            # with a conditional open position
+            position, pending_trades = position_manager.open_spot_with_market_limit(
+                pair=pair,
+                value=cash*0.99,  # Cannot do 100% because of floating point rounding errors
+                trigger_price=midnight_price * 1.01,
+                expires_at=input.timestamp + pd.Timedelta(hours=24),
+            )
+
+            # We do not know the accurage quantity we need to close,
+            # because of occuring slippage,
+            # but we use the close flag below to close the remaining]
+            # amount
+            total_quantity = position.get_pending_quantity()
+
+            # Fully close 24h after opening
+            position_manager.prepare_take_profit_trades(
+                position,
+                [
+                    (datetime.timedelta(hours=24), -total_quantity, True),
+                ]
+            )
+
+        :param position:
+            The trading position
+
+        :param levels:
+            Tuples of (price | time, quantity, full close).
+
+            The trigger level may be price or time.
+
+            - float: US dollar mid price
+            - datetime: absolute time
+            - timedelta: relative to the opening time of the position
+
+            Quantity must be negative when closing spot positions.
+
+            The last member is True if the position should be fully closed, False otherwise.
+
+        :return:
+            Prepared trades.
+
+            Stored in `position.pending_trades`.
+
+        """
+        assert position.is_spot(), "Currently spot is only supported market type"
+        assert not position.is_closed()
+
+        pair = position.pair
+        trades = []
+
+        for level in levels:
+
+            quantity = level[1]
+            assert isinstance(level[1], Decimal), f"Take-profit amount must be Decimal, got {type(quantity)}"
+
+            close_flag = level[2]
+            assert type(close_flag) == bool, f"Close flag must be bool: {close_flag}"
+
+            assert quantity < 0, f"Got bad spot take profit quantity for triggered take profit: {quantity}. Take profit quantities must be sell and negative."
+
+            dollar_delta = float(quantity) * position.get_current_price()
+            weight = 0 if close_flag else 1
+
+            per_level_trades = self.adjust_position(
+                pair,
+                dollar_delta=dollar_delta,
+                quantity_delta=quantity,  # Flip for short
+                flags={TradeFlag.partial_take_profit, TradeFlag.reduce, TradeFlag.triggered, TradeFlag.partial_take_profit},
+                weight=weight,
+                position=position,
+                pending=True,
+            )
+
+            assert len(per_level_trades) == 1
+            trade = per_level_trades[0]
+
+            checker = level[0]
+
+            if isinstance(checker, datetime.datetime):
+                trigger = Trigger(
+                    type=TriggerType.take_profit_partial,
+                    triggering_at=checker,
+                    condition=TriggerCondition.timed_absolute,
+                    expires_at=None,
+                )
+            elif isinstance(checker, datetime.timedelta):
+                trigger = Trigger(
+                    type=TriggerType.take_profit_partial,
+                    triggering_at_delta=checker,
+                    condition=TriggerCondition.timed_relative_to_open,
+                    expires_at=None,
+                )
+            elif isinstance(checker, float):
+                # US Dollar level
+                trigger = Trigger(
+                    type=TriggerType.take_profit_partial,
+                    price=float(checker),
+                    condition=TriggerCondition.cross_above,
+                    expires_at=None,
+                )
+            else:
+                raise NotImplementedError(f"Unknown level definition {level} for {trade}")
+
+            # Add take profit trigger
+            trade.triggers.append(trigger)
+
+            # Because this trade does not run or trigger on this decideion cycle,
+            # we add it to the list of pending trades
+            position.pending_trades[trade.trade_id] = trade
+
+            trades.append(trade)
+
+        return trades
 
     def log(self, msg: str, level=logging.INFO, prefix="{self.timestamp}: "):
         """Log debug info.

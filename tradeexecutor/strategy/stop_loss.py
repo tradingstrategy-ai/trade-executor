@@ -3,11 +3,15 @@
 Logic for managing position stop loss/take profit signals.
 """
 import datetime
+import itertools
 import logging
 from decimal import Decimal
 from io import StringIO
 from typing import List, Dict
 
+from tradeexecutor.state.trigger import Trigger, TriggerType
+from tradeexecutor.state.types import USDollarPrice
+from tradeexecutor.strategy.execution_context import ExecutionContext
 from tradingstrategy.candle import CandleSampleUnavailable
 
 from tradeexecutor.state.position import TradingPosition, TriggerPriceUpdate, CLOSED_POSITION_DUST_EPSILON
@@ -48,13 +52,16 @@ def report_position_triggered(
 
 
 def check_position_triggers(
-        position_manager: PositionManager,
+    position_manager: PositionManager,
+    execution_context: ExecutionContext,
 ) -> List[TradeExecution]:
     """Generate trades that depend on real-time price signals.
 
     - Stop loss
 
     - Take profit
+
+    - Any trade.triggers like market limit
 
     What does this do:
 
@@ -88,14 +95,20 @@ def check_position_triggers(
     state: State = position_manager.state
     pricing_model: PricingModel = position_manager.pricing_model
 
-    positions = state.portfolio.get_open_positions()
+    open_positions = state.portfolio.get_open_positions()
+    pending_positions = state.portfolio.pending_positions.values()
 
     trades = []
 
-    for p in positions:
+    if execution_context.mode.is_unit_testing():
+        # Only log in testing,
+        # because otherwise this is too verbose
+        logger.info("check_position_triggers(%s)", ts)
+
+    for p in itertools.chain(open_positions, pending_positions):
 
         if not p.has_trigger_conditions():
-            # This position does not have take profit/stop loss set
+            # This position does not have take profit/stop loss set/other
             continue
 
         assert any([
@@ -103,9 +116,9 @@ def check_position_triggers(
             p.is_short() and p.is_leverage(),
         ]), "Trigger only supports long and leveraged short positions"
 
-        size = p.get_quantity()
+        size = p.get_quantity(planned=True)
 
-        if size == 0:
+        if size == 0 and not p.pending_trades:
             logger.warning("Encountered open position without token quantity: %s. Quantity is %s.", p, size)
             continue
 
@@ -175,7 +188,6 @@ def check_position_triggers(
                 trigger_type = TradeType.take_profit
                 trigger_price = p.take_profit
                 trades.extend(position_manager.close_position(p, TradeType.take_profit))
-            
 
         # Check we need to close position for stop loss
         if p.stop_loss:
@@ -188,8 +200,24 @@ def check_position_triggers(
                 notes = f"Stoploss:{trigger_price} mid-price:{mid_price}"
                 trades.extend(position_manager.close_position(p, TradeType.stop_loss, notes=notes))
 
+        if not trigger_type:
+            # Stop loss/take profit hardcoded not triggered
+            # Check for other triggers
+            triggered_trades = check_flexible_triggers(ts, p, mid_price, execution_context)
+
+            if triggered_trades:
+                trades += triggered_trades
+                trigger_type = TradeType.flexible_trigger
+                size = triggered_trades[0].planned_quantity  # Trigged trade gets its amount from the trade instance, not position (full stop loss close)
+        else:
+            # Stop loss/take profit was triggered,
+            # remove remaining triggers
+            expire_remaining_triggers(ts, p)
+
         if trigger_type:
-            # We got triggered
+            # We got triggered by hardcoded stop loss or check_flexible_triggers(),
+            # Write some report
+            # TODO: If we have multiple trades, report all
             expected_sell_price = pricing_model.get_sell_price(ts, spot_pair, abs(size))
             report_position_triggered(
                 p,
@@ -199,7 +227,165 @@ def check_position_triggers(
                 expected_sell_price.price,
             )
 
+    if trades:
+        logger.info("check_position_triggers(%s): we got triggered trades %s", ts, trades)
+
     return trades
 
 
+def check_trigger_hit(
+    timestamp: datetime.datetime,
+    p: TradingPosition,
+    trade: TradeExecution,
+    mid_price: USDollarPrice,
+    execution_context: ExecutionContext,
+) -> list[TradeExecution]:
+    """See if any of the trades triggers activate."""
+    for trigger in trade.triggers:
+
+        if execution_context.mode.is_unit_testing():
+            # Verbose logging
+            logger.info(
+                "Checking trigger %s for trade %s on position #%d, mid price is %s",
+                trigger,
+                trade,
+                p.position_id,
+                mid_price,
+            )
+
+        if trigger.is_triggering(mid_price, timestamp, p.opened_at):
+
+            if p.is_pending() and trigger.type == TriggerType.take_profit_partial:
+                # Cannot take profit on positions that have not opened yet.
+                # Probably messed up price levels.
+                logger.warning(
+                    "Pending position take profit: trigged %s hit on pending positions %s",
+                    trigger,
+                    p
+                )
+                continue
+
+            update_trade_triggered(timestamp, p, trade, trigger)
+
+            if execution_context.mode.is_unit_testing():
+                # Verbose logging
+                logger.info(
+                    "Trigger hit %s",
+                    trigger,
+                )
+
+            # We can have only one trade to trigger per position per cycle,
+            # because otherwise it's going to be mess to clear out
+            # pending quantities
+            return [trade]
+
+    return []
+
+
+def check_flexible_triggers(
+    timestamp: datetime.datetime,
+    p: TradingPosition,
+    mid_price: USDollarPrice,
+    execution_context: ExecutionContext,
+) -> List[TradeExecution]:
+    """Check for custom trigger conditions.
+
+    - Market limit
+
+    - Partial take profit
+    """
+
+    # We can hit two partial stop losses in one cycle
+    triggered_trades = []
+
+    # Check for other triggers
+    for trade in list(p.pending_trades.values()):
+
+        # First check if any of the trigger activates
+        triggered_trades = check_trigger_hit(
+            timestamp,
+            p,
+            trade,
+            mid_price,
+            execution_context,
+        )
+
+        # We can only have one trade triggering per check
+        if triggered_trades:
+            break
+
+        # Then check for expires triggers and whether this trade
+        # needs to be moved to the expires list.
+        # If the trade was triggered, all other triggers are automatically expired
+        # with the above.
+        for trigger in trade.triggers:
+            if trigger.is_expired(timestamp):
+                logger.info("check_flexible_triggers(%s): trade expired %", timestamp, trade)
+                update_trigger_expired(timestamp, trigger, p, trade)
+
+    return triggered_trades
+
+
+def update_trade_triggered(
+    timestamp: datetime.datetime,
+    position: TradingPosition,
+    trade: TradeExecution,
+    trigger: Trigger,
+):
+    """Trade was triggered during the trigger check.
+
+    - Update data structures
+
+    - Activated trigger is set flagged
+
+    - All other triggers are moved to expires triggers list
+
+    - The trigger list is emptied, as the trade now moves to the execution
+    """
+
+    trigger.triggered_at = timestamp
+    trade.activated_trigger = trigger
+    trade.expired_triggers = [tr for tr in trade.triggers if tr != trigger]
+    for expired_tr in trade.expired_triggers:
+        expired_tr.expired_at = timestamp
+    trade.triggers = []
+
+    # Move trade to the execution list
+    del position.pending_trades[trade.trade_id]
+    position.trades[trade.trade_id] = trade
+
+
+def update_trigger_expired(
+    timestamp: datetime.datetime,
+    trigger: Trigger,
+    position: TradingPosition,
+    trade: TradeExecution,
+):
+    """Trigger is past its best before."""
+    trigger.expired_at = timestamp
+    trade.triggers.remove(trigger)
+    trade.expired_triggers.append(trigger)
+
+    # No triggers left on this trade, move to expired
+    if len(trade.triggers) == 0:
+        del position.pending_trades[trade.trade_id]
+        position.expired_trades[trade.trade_id] = trade
+
+
+def expire_remaining_triggers(
+    timestamp: datetime.datetime,
+    position: TradingPosition,
+):
+    """Position was closed/otherwise manipulated and we can clean up whatever triggers it had left."""
+
+    for trade in position.pending_trades.values():
+        for trigger in trade.triggers:
+            trigger.expired_at = timestamp
+            trade.triggers.remove(trigger)
+            trade.expired_triggers.append(trigger)
+
+            # No triggers left on this trade, move to expired
+            if len(trade.triggers) == 0:
+                del position.pending_trades[trade.trade_id]
+                position.expired_trades[trade.trade_id] = trade
 

@@ -390,6 +390,7 @@ class EthereumExecution(ExecutionModel):
         routing_state: RoutingState,
         check_balances=False,
         rebroadcast=False,
+        triggered=False,
     ):
 
         if self.web3.eth.chain_id not in (ChainId.ethereum_tester.value, ChainId.anvil.value):

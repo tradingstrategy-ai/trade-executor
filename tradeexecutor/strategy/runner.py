@@ -732,11 +732,12 @@ class StrategyRunner(abc.ABC):
                     # 1. PositionManager.open_spot() called
                     # 2. Trade is created
                     # 3. This trade is not returned
-                    raise RuntimeError(f"decide_trades() returned empty trade list, but new positions were added.\n"
-                                       f"This is likely a bug in your decide_trades() - remember to return trades list for any position modifications you do,\n"
-                                       f"and do not accidentally return empty list when you have made trades.\n"
-                                       f"Old positions before decide_trades(): {old_position_ids}\n"
-                                       f"New positions after decide_trades(): {new_position_ids}\n")
+                    if not state.portfolio.pending_positions:  # The strategy might have created market limit positions that do not open on this cycle
+                        raise RuntimeError(f"decide_trades() returned empty trade list, but new positions were added.\n"
+                                           f"This is likely a bug in your decide_trades() - remember to return trades list for any position modifications you do,\n"
+                                           f"and do not accidentally return empty list when you have made trades.\n"
+                                           f"Old positions before decide_trades(): {old_position_ids}\n"
+                                           f"New positions after decide_trades(): {new_position_ids}\n")
 
                 rebalance_trades = post_process_trade_decision(state, rebalance_trades)
 
@@ -897,7 +898,7 @@ class StrategyRunner(abc.ABC):
                 stop_loss_pricing_model,
             )
 
-            triggered_trades = check_position_triggers(position_manager)
+            triggered_trades = check_position_triggers(position_manager,self.execution_context)
             triggered_trades = post_process_trade_decision(state, triggered_trades)
             approved_trades = self.approval_model.confirm_trades(state, triggered_trades)
             if approved_trades:
@@ -908,7 +909,9 @@ class StrategyRunner(abc.ABC):
                     approved_trades,
                     self.routing_model,
                     routing_state,
-                    check_balances=False)
+                    check_balances=False,
+                    triggered=True,
+                )
 
             return approved_trades
 
