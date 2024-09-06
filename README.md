@@ -6,6 +6,15 @@
 
 **Note**: This is early beta software. [Please pop in to the Discord for any questions](https://tradingstrategy.ai/community). 
 
+Trading Strategy framework is a Python framework for algorithmic trading on decentralised exchanges. 
+
+- Download decentralised finance market data sets
+- Develop and backtest trading strategies in Jupyter Notebook
+- Live trade execution for onchain trading
+- Smart contract vault support for turning your trading strategy to a third-party investable vault
+
+The `trade-executor` library provides the trade execution and backtesting engine.
+
 ## Features
 
 - Only trading framework that has been built grounds up for [decentralised finance](https://tradingstrategy.ai/glossary/decentralised-finance)
