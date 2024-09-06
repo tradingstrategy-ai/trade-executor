@@ -28,6 +28,14 @@ USDollarPrice: TypeAlias = float
 #: See also :py:data:`Percent`.
 BPS: TypeAlias = float
 
+#: Basis points expressed as float
+#:
+#: 100 bps = 100
+#:
+#: See also :py:data:`BPS`.
+IntBPS: TypeAlias = int
+
+
 JSONHexAddress: TypeAlias = str
 
 JSONHexBytes: TypeAlias = str
