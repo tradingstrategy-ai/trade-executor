@@ -116,8 +116,9 @@ def decide_trades(input: StrategyInput) -> list[TradeExecution]:
         amount = position_manager.get_current_cash() * 0.01
         trades += position_manager.add_cash_to_credit_supply(amount)
     else:
-        amount = position_manager.get_current_cash() * 0.98
-        trades += position_manager.add_cash_to_credit_supply(amount)
+        if position_manager.get_current_cash() > 100_000:        
+            amount = position_manager.get_current_cash() * 0.98
+            trades += position_manager.add_cash_to_credit_supply(amount)
 
     return trades  # Return the list of trades we made in this cycle
 

@@ -76,31 +76,37 @@ def create_credit_supply_loan(
 def update_credit_supply_loan(
     loan: Loan,
     position: "tradeexecutor.state.position.TradingPosition",
-    trade: TradeExecution,
     timestamp: datetime.datetime,
+    trade: TradeExecution | None = None,
+    quantity_delta: Decimal = Decimal(0),
     mode: Literal["plan", "execute"] = "plan",
 ):
     """Close/increase/reduce credit supply loan.
 
     """
 
-    assert trade.is_credit_supply()
     assert position.pair.is_credit_supply()
-
-    if mode == "plan":
-        quantity = trade.planned_quantity
+    
+    if trade:
+        assert trade.is_credit_supply()
+        if mode == "plan":
+            quantity_delta = trade.planned_quantity
+        else:
+            quantity_delta = trade.executed_quantity
+        price = trade.reserve_currency_exchange_rate
     else:
-        quantity = trade.executed_quantity
+        assert quantity_delta != Decimal(0), "quantity_delta must be set if trade is not given"
+        price = loan.collateral.last_usd_price
 
     loan.collateral.change_quantity_and_value(
-        quantity,
-        trade.reserve_currency_exchange_rate,
+        quantity_delta,
+        price,
         timestamp,
         allow_negative=True,
     )
 
     # also adjust amount in collateral_interest
-    loan.collateral_interest.adjust(quantity, epsilon=COLLATERAL_EPSILON)
+    loan.collateral_interest.adjust(quantity_delta, epsilon=COLLATERAL_EPSILON)
 
     # Sanity check
     loan.check_health()

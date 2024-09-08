@@ -1089,10 +1089,10 @@ class TradingPosition(GenericPosition):
                         trade.planned_loan_update = create_credit_supply_loan(self, trade, strategy_cycle_at)
                     else:
                         trade.planned_loan_update = update_credit_supply_loan(
-                            self.loan.clone(),
-                            self,
-                            trade,
-                            strategy_cycle_at,
+                            loan=self.loan.clone(),
+                            position=self,
+                            trade=trade,
+                            timestamp=strategy_cycle_at,
                         )
                 else:
                     print("Repair trade, no loan update or creation")
