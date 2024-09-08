@@ -48,7 +48,7 @@ def test_load_lending_dataset(persistent_test_client: Client):
         (ChainId.polygon, LendingProtocolType.aave_v3, "USDC.e")
     )
     assert rates["open"][pd.Timestamp("2023-01-01")] == pytest.approx(0.6998308843795215)
-    assert rates["close"][pd.Timestamp("2023-01-01")] == pytest.approx(0.6589076823528996)
+    assert rates["close"][pd.Timestamp("2023-01-01")] == pytest.approx(0.7001845728826266)    
 
 
 def test_construct_trading_universe_with_lending(persistent_test_client: Client):
@@ -66,7 +66,7 @@ def test_construct_trading_universe_with_lending(persistent_test_client: Client)
     dataset = load_partial_data(
         client,
         execution_context=unit_test_execution_context,
-        time_bucket=TimeBucket.d1,
+        time_bucket=TimeBucket.d7,
         pairs=pairs,
         universe_options=default_universe_options,
         start_at=pd.Timestamp("2023-01-01"),
@@ -86,7 +86,12 @@ def test_construct_trading_universe_with_lending(persistent_test_client: Client)
         (ChainId.polygon, LendingProtocolType.aave_v3, "USDC.e")
     )
     assert rates["open"][pd.Timestamp("2023-01-01")] == pytest.approx(0.6998308843795215)
-    assert rates["close"][pd.Timestamp("2023-01-01")] == pytest.approx(0.6589076823528996)
+    assert rates["close"][pd.Timestamp("2023-01-01")] == pytest.approx(0.7001845728826266)
+
+    # check lending candles are in 1h bucket regardless of the trading pair bucket
+    supply_df = strategy_universe.data_universe.lending_candles.supply_apr.df.tail(2)
+    assert supply_df.iloc[0].timestamp == pd.Timestamp("2023-01-31 23:00:00")
+    assert supply_df.iloc[1].timestamp == pd.Timestamp("2023-02-01 00:00:00")
 
 
 def test_get_credit_supply_trading_pair(persistent_test_client: Client):

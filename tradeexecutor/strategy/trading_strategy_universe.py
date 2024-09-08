@@ -2187,7 +2187,7 @@ def load_partial_data(
 
             lending_candles_map = client.fetch_lending_candles_for_universe(
                 lending_reserve_universe,
-                bucket=time_bucket,
+                bucket=TimeBucket.h1,
                 candle_types=lending_candle_types,
                 start_time=data_load_start_at,
                 end_time=end_at,
