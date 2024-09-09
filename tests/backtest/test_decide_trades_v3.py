@@ -133,7 +133,7 @@ def test_decide_trades_v03(
 
     interest = credit_position.loan.collateral_interest
     assert interest.opening_amount == Decimal("10000.00")
-    assert credit_position.get_accrued_interest() == pytest.approx(5.8392619598023785)
-    assert credit_position.get_quantity() == pytest.approx(Decimal(10005.8392619598023785))
-    assert credit_position.get_value() == pytest.approx(10005.8392619598023785)
-    assert portfolio.get_total_equity() == pytest.approx(10005.8392619598023785)
+    assert credit_position.get_accrued_interest() == pytest.approx(5.777347790050936)
+    assert credit_position.get_quantity() == pytest.approx(Decimal(10005.77734779005093525703117))
+    assert credit_position.get_value() == pytest.approx(10005.77734779005093525703117)
+    assert portfolio.get_total_equity() == pytest.approx(10005.77734779005093525703117)

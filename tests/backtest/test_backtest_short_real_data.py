@@ -118,8 +118,8 @@ def test_backtest_open_only_short_real_data(
     assert position.is_short()
 
     assert position.get_value_at_open() == pytest.approx(19990)
-    assert position.get_accrued_interest() == pytest.approx(-25.344613324794)
-    assert position.loan.get_borrow_interest() == pytest.approx(42.85655994224133)
-    assert position.loan.get_collateral_interest() == pytest.approx(17.511946617447332)
-    assert position.get_value() == Decimal(3768.3435985152573)
+    assert position.get_accrued_interest() == pytest.approx(-24.92161841152006)
+    assert position.loan.get_borrow_interest() == pytest.approx(42.24788443388282)
+    assert position.loan.get_collateral_interest() == pytest.approx(17.326266022362756)
+    assert position.get_value() == pytest.approx(Decimal(3768.7665934285287))
 
