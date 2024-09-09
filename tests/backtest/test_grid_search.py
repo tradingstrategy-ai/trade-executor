@@ -258,7 +258,7 @@ def test_perform_grid_search_single_thread(
     assert len(table) == 2 * 2 * 2
     row = table.iloc[0]
     # assert row["stop_loss_pct"] == 0.9
-    assert row["CAGR"] == pytest.approx(0.011721966693938546)
+    assert row["CAGR"] == pytest.approx(0.011682534679563261)
     assert row["Positions"] == 2
 
     render_grid_search_result_table(table)

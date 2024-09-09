@@ -33,12 +33,12 @@ from tradeexecutor.state.state import State
 from tradeexecutor.state.balance_update import BalanceUpdate, BalanceUpdateCause, BalanceUpdatePositionType
 from tradeexecutor.state.sync import BalanceEventRef
 from tradeexecutor.state.types import BlockNumber
-from tradeexecutor.strategy.account_correction import check_accounts
 from tradeexecutor.strategy.sync_model import SyncModel, OnChainBalance
 from tradingstrategy.chain import ChainId
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
 from tradeexecutor.strategy.pricing_model import PricingModel
 from tradeexecutor.strategy.interest import sync_interests
+from tradeexecutor.strategy.lending_protocol_leverage import reset_credit_supply_loan, update_credit_supply_loan
 
 logger = logging.getLogger(__name__)
 
@@ -328,6 +328,15 @@ class EnzymeVaultSyncModel(SyncModel):
 
             events.append(evt)
 
+            if isinstance(position, TradingPosition) and position.is_credit_supply():
+                update_credit_supply_loan(
+                    loan=position.loan,
+                    position=position,
+                    quantity_delta=-quantity,
+                    timestamp=event.timestamp,
+                    mode="execute",
+                )
+
         return events
 
     def translate_and_apply_event(self, state: State, event: EnzymeBalanceEvent, strategy_cycle_ts: datetime.datetime) -> List[BalanceUpdate]:
@@ -417,7 +426,9 @@ class EnzymeVaultSyncModel(SyncModel):
         deployment.vault_token_name = self.vault.get_name()
         deployment.vault_token_symbol = self.vault.get_symbol()
         deployment.chain_id = ChainId(web3.eth.chain_id)
-        deployment.initialised_at = datetime.datetime.utcnow()
+
+        current_block = web3.eth.block_number
+        deployment.initialised_at = fetch_block_timestamp(web3, current_block)
 
     def sync_interests(
         self,
