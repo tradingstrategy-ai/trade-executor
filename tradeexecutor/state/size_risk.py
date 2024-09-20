@@ -59,7 +59,7 @@ class SizeRisk:
     capped: bool
 
     #: Block number if we use raw price data
-    block_number: BlockNumber | None
+    block_number: BlockNumber | None = None
 
     #: Venue mid price per token
     mid_price: USDollarPrice | None = None

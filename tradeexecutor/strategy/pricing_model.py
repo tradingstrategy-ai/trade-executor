@@ -2,14 +2,11 @@
 
 import abc
 import datetime
-from logging import getLogger
-from dataclasses import dataclass
 from decimal import Decimal, ROUND_DOWN
 from typing import Callable, Optional
 
 from tradeexecutor.state.identifier import TradingPairIdentifier
-from tradeexecutor.state.price_impact import PriceImpactEstimation
-from tradeexecutor.state.types import USDollarPrice, Percent, USDollarAmount
+from tradeexecutor.state.types import USDollarPrice, Percent, USDollarAmount, TokenAmount
 from tradeexecutor.strategy.execution_model import ExecutionModel
 from tradeexecutor.strategy.routing import RoutingModel
 from tradeexecutor.strategy.universe_model import StrategyExecutionUniverse
@@ -108,7 +105,7 @@ class PricingModel(abc.ABC):
         self,
         ts: datetime.datetime,
         pair: TradingPairIdentifier,
-) -> Optional[float]:
+    ) -> Optional[float]:
         """Estimate the trading/LP fees for a trading pair.
 
         This information can come either from the exchange itself (Uni v2 compatibles),
@@ -135,6 +132,50 @@ class PricingModel(abc.ABC):
             This can be different from zero fees.
         """
 
+    def get_usd_tvl(
+        self,
+        timestamp: datetime.datetime | None,
+        pair: TradingPairIdentifier
+    ) -> USDollarAmount:
+        """Get the TVL of a trading pair.
+
+        - Used by :py:class:`tradeexecutor.strategy.tvl_size_risk`.
+
+        - Assumes to use already-USD converted values
+
+        - Might be a misleading number for
+
+        - See also :py:meth:`get_quote_token_tvl`
+
+        - Optional: May not be available in all pricing model implementations
+
+        :return:
+            TVL in US dollar
+        """
+        raise NotImplementedError()
+
+    def get_quote_token_tvl(
+        self,
+        timestamp: datetime.datetime | None,
+        pair: TradingPairIdentifier
+    ) -> TokenAmount:
+        """Get the raw TVL of a trading pair.
+
+        - Used by :py:class:`tradeexecutor.strategy.tvl_size_risk`.
+
+        - Assumes to use raw data
+
+        - Uses only half of the liquidity - namely locked quote token like USDC or WETH
+
+        - This gives much more realistic estimation of a market depth than :py:meth:`get_usd_tvl`
+
+        - Optional: May not be available in all pricing model implementations
+
+        :return:
+            Quote token locked in a pool
+        """
+        raise NotImplementedError()
+
     def quantize_base_quantity(self, pair: TradingPairIdentifier, quantity: Decimal, rounding=ROUND_DOWN) -> Decimal:
         """Convert any base token quantity to the native token units by its ERC-20 decimals."""
         assert isinstance(pair, TradingPairIdentifier)
@@ -142,8 +183,8 @@ class PricingModel(abc.ABC):
         return Decimal(quantity).quantize((Decimal(10) ** Decimal(-decimals)), rounding=rounding)
 
     def set_trading_fee_override(
-            self,
-            trading_fee_override: Percent | None
+        self,
+        trading_fee_override: Percent | None
     ):
         """Set the trading fee override.
 
@@ -162,6 +203,53 @@ class PricingModel(abc.ABC):
             Set ``None`` to disable and use the trading fee from the source data.
         """
         raise NotImplementedError()
+
+
+class FixedPricing(PricingModel):
+    """Dummy pricing model that will always return the same price.
+
+    - Used in unit testing
+
+    - Same price for all pairs
+    """
+
+    def __init__(self, price: USDollarPrice, lp_fee: Percent):
+        self.price = price
+        self.lp_fee = lp_fee
+
+    def get_sell_price(self,
+                       ts: datetime.datetime,
+                       pair: TradingPairIdentifier,
+                       quantity: Optional[Decimal]) -> TradePricing:
+        return TradePricing(
+            price=self.price,
+            mid_price=self.price,
+            lp_fee=[self.lp_fee],
+        )
+
+    def get_buy_price(self,
+                      ts: datetime.datetime,
+                      pair: TradingPairIdentifier,
+                      reserve: Optional[Decimal]
+                      ) -> TradePricing:
+        return TradePricing(
+            price=self.price,
+            mid_price=self.price,
+            lp_fee=[self.lp_fee],
+        )
+
+    def get_mid_price(self,
+                      ts: datetime.datetime,
+                      pair: TradingPairIdentifier) -> USDollarPrice:
+        return self.price
+
+    def get_pair_fee(
+        self,
+        ts: datetime.datetime,
+        pair: TradingPairIdentifier,
+    ) -> Optional[float]:
+        return self.lp_fee
+
 
 
 #: This factory creates a new pricing model for each trade cycle.

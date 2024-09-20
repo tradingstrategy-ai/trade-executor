@@ -5,7 +5,7 @@ from decimal import Decimal
 
 from tradeexecutor.state.identifier import TradingPairIdentifier
 from tradeexecutor.state.size_risk import SizeRisk
-from tradeexecutor.state.types import USDollarAmount, Percent, TokenAmount
+from tradeexecutor.state.types import USDollarAmount, TokenAmount
 from tradeexecutor.strategy.pricing_model import PricingModel
 from tradeexecutor.strategy.size_risk_model import SizeRiskModel, SizingType
 

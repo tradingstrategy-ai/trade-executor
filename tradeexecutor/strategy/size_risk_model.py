@@ -29,7 +29,7 @@ class SizeRiskModel(abc.ABC):
         timestamp: datetime.datetime | None,
         pair: TradingPairIdentifier,
         asked_size: USDollarAmount,
-    ) -> TradeSize:
+    ) -> SizeRisk:
         pass
 
     @abc.abstractmethod

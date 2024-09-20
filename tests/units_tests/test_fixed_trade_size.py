@@ -1,7 +1,8 @@
 import pytest
 
-from tradeexecutor.backtest.backtest_price_impact import FixedCappedSizeBacktestPriceImpact
 from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier
+from tradeexecutor.strategy.fixed_size_risk import FixedSizeRiskModel
+from tradeexecutor.strategy.pricing_model import FixedPricing
 from tradeexecutor.testing.synthetic_ethereum_data import generate_random_ethereum_address
 from tradeexecutor.testing.synthetic_exchange_data import generate_exchange
 from tradingstrategy.chain import ChainId
@@ -46,25 +47,50 @@ def weth_usdc(mock_exchange, usdc, weth) -> TradingPairIdentifier:
     )
 
 
-def test_fixed_price_impact_buy(weth_usdc):
-    """Estimate a fixed price impact of 0.25%"""
 
-    estimator = FixedCappedSizeBacktestPriceImpact(
-        fixed_price_impact=0.25,
-        capped_size=None,
+@pytest.fixture(scope="module")
+def pricing_model(mock_exchange, usdc, weth) -> FixedPricing:
+    """Mock fixed price"""
+
+    return FixedPricing(1500, 0.01)
+
+
+
+def test_fixed_price_size_uncapped(
+    pricing_model,
+    weth_usdc
+):
+    """Do not limit trade sizes."""
+
+    estimator = FixedSizeRiskModel(
+        pricing_model,
     )
 
     estimate = estimator.get_acceptable_size_for_buy(
         None,
         weth_usdc,
-        acceptable_price_impact=0.50,
-        size=10_000,
+        10_000,
     )
 
-    assert estimate.estimated_price_impact == pytest.approx(0.25)
-    assert estimate.asked_size == pytest.approx(10_000)
-    assert estimate.accepted_size == pytest.approx(10_000)
+    assert estimate.asked_size == 10_000
+    assert estimate.accepted_size == 10_000
 
 
-def test_fixed_price_impact_buy_capped():
-    pass
+def test_fixed_price_impact_buy_capped(
+    pricing_model,
+    weth_usdc
+):
+    """Cap individual trade to a fixed size."""
+    estimator = FixedSizeRiskModel(
+        pricing_model,
+        per_trade_cap=5000,
+    )
+
+    estimate = estimator.get_acceptable_size_for_buy(
+        None,
+        weth_usdc,
+        10_000,
+    )
+
+    assert estimate.asked_size == 10_000
+    assert estimate.accepted_size == 5_000

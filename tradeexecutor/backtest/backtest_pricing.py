@@ -11,10 +11,9 @@ from tradeexecutor.backtest.backtest_execution import BacktestExecution
 from tradeexecutor.backtest.backtest_routing import BacktestRoutingModel
 from tradeexecutor.ethereum.uniswap_v2.uniswap_v2_routing import UniswapV2Routing
 from tradeexecutor.state.identifier import TradingPairIdentifier
-from tradeexecutor.state.price_impact import PriceImpactEstimation
 from tradeexecutor.strategy.execution_model import ExecutionModel
 
-from tradeexecutor.state.types import USDollarPrice, Percent, USDollarAmount
+from tradeexecutor.state.types import USDollarPrice, Percent
 from tradeexecutor.strategy.pricing_model import PricingModel
 from tradeexecutor.strategy.trade_pricing import TradePricing
 from tradeexecutor.strategy.routing import RoutingModel
