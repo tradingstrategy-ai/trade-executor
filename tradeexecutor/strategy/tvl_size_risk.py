@@ -1,4 +1,4 @@
-"""Fixed size and unlimited trade size risking."""
+"""TVL-based trade and position size risking."""
 import abc
 import datetime
 import enum
@@ -53,8 +53,10 @@ class BaseTVLSizeRiskModel(SizeRiskModel):
         pair: TradingPairIdentifier,
         asked_size: USDollarAmount,
     ) -> SizeRisk:
-        accepted_size = min(self.per_trade_cap, asked_size)
-        capped = accepted_size == self.per_trade_cap
+        tvl = self.get_tvl(timestamp, pair)
+        tvl_cap = tvl * self.per_trade_cap
+        accepted_size = min(tvl_cap, asked_size)
+        capped = accepted_size == tvl_cap
         return SizeRisk(
             timestamp=timestamp,
             type=SizingType.buy,
@@ -71,18 +73,23 @@ class BaseTVLSizeRiskModel(SizeRiskModel):
         pair: TradingPairIdentifier,
         asked_quantity: TokenAmount,
     ) -> SizeRisk:
+        assert isinstance(asked_quantity, Decimal)
         mid_price = self.pricing_model.get_mid_price(timestamp, pair)
         asked_value = asked_quantity * mid_price
-        max_value = max(self.per_trade_cap, asked_value)
+        tvl = self.get_tvl(timestamp, pair)
+        tvl_cap = tvl * self.per_trade_cap
+        max_value = min(tvl_cap, asked_value)
         capped = max_value == self.per_trade_cap
         accepted_quantity = Decimal(max_value / mid_price)
         return SizeRisk(
             timestamp=timestamp,
-            type=SizingType.buy,
+            type=SizingType.sell,
             pair=pair,
             path=[pair],
             asked_quantity=asked_quantity,
             accepted_quantity=accepted_quantity,
+            asked_size=asked_value,
+            accepted_size=max_value,
             capped=capped,
         )
 
@@ -92,8 +99,10 @@ class BaseTVLSizeRiskModel(SizeRiskModel):
         pair: TradingPairIdentifier,
         asked_value: USDollarAmount,
     ) -> SizeRisk:
-        accepted_size = min(self.per_position_cap, asked_value)
-        capped = accepted_size == self.per_position_cap
+        tvl = self.get_tvl(timestamp, pair)
+        tvl_cap = tvl * self.per_trade_cap
+        accepted_size = min(tvl_cap, asked_value)
+        capped = accepted_size == tvl_cap
         return SizeRisk(
             timestamp=timestamp,
             type=SizingType.hold,

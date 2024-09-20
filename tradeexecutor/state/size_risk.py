@@ -2,9 +2,12 @@
 import datetime
 import enum
 from dataclasses import dataclass
+from decimal import Decimal
+from types import NoneType
 from typing import Optional, List
 
 from dataclasses_json import dataclass_json
+from eth.vm.logic.block import timestamp
 
 from tradeexecutor.state.identifier import TradingPairIdentifier
 from tradeexecutor.state.types import Percent, BlockNumber, TokenAmount, USDollarAmount, USDollarPrice
@@ -44,7 +47,10 @@ class SizeRisk:
     """
 
     #: For which timepoint this price impact estimation was made
-    timestamp: datetime.datetime
+    #:
+    #: Can be set to None if not relevant.
+    #:
+    timestamp: datetime.datetime | None
 
     pair: TradingPairIdentifier
 
@@ -58,7 +64,7 @@ class SizeRisk:
     #: Was this trade hitting the maximum
     capped: bool
 
-    #: Block number if we use raw price data
+    #: Block number we used for onchain estimation
     block_number: BlockNumber | None = None
 
     #: Venue mid price per token
@@ -78,6 +84,13 @@ class SizeRisk:
 
     #: What was the capped size
     accepted_size: USDollarAmount | None = None
+
+    def __post_init__(self):
+        assert isinstance(self.timestamp, (datetime.datetime, NoneType)), f"Timestamp was {self.timestamp}"
+        if self.asked_quantity is not None:
+            assert isinstance(self.asked_quantity, Decimal)
+        if self.accepted_quantity is not None:
+            assert isinstance(self.accepted_quantity, Decimal)
 
     @property
     def cost(self) -> USDollarAmount:

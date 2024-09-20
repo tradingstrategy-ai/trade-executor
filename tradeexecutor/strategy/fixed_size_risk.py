@@ -60,14 +60,15 @@ class FixedSizeRiskModel(SizeRiskModel):
         pair: TradingPairIdentifier,
         asked_quantity: TokenAmount,
     ) -> SizeRisk:
+        assert isinstance(asked_quantity, Decimal)
         mid_price = self.pricing_model.get_mid_price(timestamp, pair)
         asked_value = asked_quantity * mid_price
-        max_value = max(self.per_trade_cap, asked_value)
+        max_value = min(self.per_trade_cap, asked_value)
         capped = max_value == self.per_trade_cap
         accepted_quantity = Decimal(max_value / mid_price)
         return SizeRisk(
             timestamp=timestamp,
-            type=SizingType.buy,
+            type=SizingType.sell,
             pair=pair,
             path=[pair],
             asked_quantity=asked_quantity,

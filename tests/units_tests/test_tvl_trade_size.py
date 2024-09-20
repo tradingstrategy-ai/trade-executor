@@ -3,9 +3,9 @@ from decimal import Decimal
 import pytest
 
 from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier
-from tradeexecutor.state.size_risk import SizeRisk, SizingType
-from tradeexecutor.strategy.fixed_size_risk import FixedSizeRiskModel
+from tradeexecutor.state.size_risk import SizingType
 from tradeexecutor.strategy.pricing_model import FixedPricing
+from tradeexecutor.strategy.tvl_size_risk import HistoricalUSDTVLSizeRiskModel
 from tradeexecutor.testing.synthetic_ethereum_data import generate_random_ethereum_address
 from tradeexecutor.testing.synthetic_exchange_data import generate_exchange
 from tradingstrategy.chain import ChainId
@@ -55,17 +55,21 @@ def weth_usdc(mock_exchange, usdc, weth) -> TradingPairIdentifier:
 def pricing_model(mock_exchange, usdc, weth) -> FixedPricing:
     """Mock fixed price"""
 
-    return FixedPricing(1500, 0.01)
+    return FixedPricing(
+        price=1500,
+        lp_fee=0.01,
+        tvl=150_000,
+    )
 
 
 
-def test_fixed_price_size_uncapped(
+def test_tvl_size_uncapped(
     pricing_model,
     weth_usdc
 ):
     """Do not limit trade sizes."""
 
-    estimator = FixedSizeRiskModel(
+    estimator = HistoricalUSDTVLSizeRiskModel(
         pricing_model,
     )
 
@@ -79,14 +83,15 @@ def test_fixed_price_size_uncapped(
     assert estimate.accepted_size == 10_000
 
 
-def test_fixed_price_impact_buy_capped(
+def test_tvl_size_capped_buy_sell_hold(
     pricing_model,
     weth_usdc
 ):
-    """Cap individual trade to a fixed size."""
-    estimator = FixedSizeRiskModel(
+    """Cap individual trade at 2% of TVL."""
+    estimator = HistoricalUSDTVLSizeRiskModel(
         pricing_model,
-        per_trade_cap=5000,
+        per_trade_cap=0.02,
+        per_position_cap=0.05,
     )
 
     estimate = estimator.get_acceptable_size_for_buy(
@@ -94,49 +99,26 @@ def test_fixed_price_impact_buy_capped(
         weth_usdc,
         10_000,
     )
-
     assert estimate.type == SizingType.buy
     assert estimate.asked_size == 10_000
-    assert estimate.accepted_size == 5_000
-
-
-def test_fixed_price_impact_sell_capped(
-    pricing_model,
-    weth_usdc
-):
-    """Cap individual sell to a fixed size."""
-    estimator = FixedSizeRiskModel(
-        pricing_model,
-        per_trade_cap=5000,
-    )
+    assert estimate.accepted_size == 3_000
 
     estimate = estimator.get_acceptable_size_for_sell(
         None,
         weth_usdc,
-        Decimal(5),
+        Decimal(3),  # 1 ETH = 1500
     )
-
     assert estimate.type == SizingType.sell
-    assert estimate.asked_quantity == 5
-    assert estimate.accepted_quantity == pytest.approx(Decimal("3.333334"))
-
-
-def test_fixed_price_impact_position_capped(
-    pricing_model,
-    weth_usdc
-):
-    """Cap individual position to a fixed size."""
-    estimator = FixedSizeRiskModel(
-        pricing_model,
-        per_trade_cap=5000,
-    )
+    assert estimate.asked_size == 4500
+    assert estimate.accepted_size == 3000
+    assert estimate.asked_quantity == 3
+    assert estimate.accepted_quantity == 2
 
     estimate = estimator.get_acceptable_size_for_position(
         None,
         weth_usdc,
-        50_000,
+        10_000,
     )
-
     assert estimate.type == SizingType.hold
-    assert estimate.asked_size == 50_000
-    assert estimate.accepted_size == 5000
+    assert estimate.asked_size == 10_000
+    assert estimate.accepted_size == 3_000

@@ -213,9 +213,10 @@ class FixedPricing(PricingModel):
     - Same price for all pairs
     """
 
-    def __init__(self, price: USDollarPrice, lp_fee: Percent):
+    def __init__(self, price: USDollarPrice, lp_fee: Percent, tvl: USDollarAmount | None = None):
         self.price = price
         self.lp_fee = lp_fee
+        self.tvl = tvl
 
     def get_sell_price(self,
                        ts: datetime.datetime,
@@ -249,6 +250,14 @@ class FixedPricing(PricingModel):
         pair: TradingPairIdentifier,
     ) -> Optional[float]:
         return self.lp_fee
+
+    def get_usd_tvl(
+        self,
+        timestamp: datetime.datetime | None,
+        pair: TradingPairIdentifier
+    ) -> USDollarAmount:
+        assert self.tvl
+        return self.tvl
 
 
 
