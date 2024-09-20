@@ -7,7 +7,7 @@
     so work here is much unfinished.
 
 """
-
+from decimal import DecimalTuple, Decimal
 #: Represents a US dollar amount used in valuation and prices.
 #: This type alias cannot be used for accounting. For accountable amounts always use Decimal.
 #: This type is only used for symboling that the function return value will be approximately
@@ -17,6 +17,13 @@ from typing import TypeAlias
 
 #: Dollar amount that does not need to be accurately amounted
 USDollarAmount: TypeAlias = float
+
+#: How many tokens we are about to buy/sell
+#:
+#: Decimal type should be configured to carry accuracy up to 18 decimals,
+#: but there is bound to be rounding errors so you need to always use an epsilon check.
+#:
+TokenAmount: TypeAlias = Decimal
 
 #: Dollar price that does not need to be accurately amounted
 USDollarPrice: TypeAlias = float

@@ -8,11 +8,13 @@ from decimal import Decimal, ROUND_DOWN
 from typing import Callable, Optional
 
 from tradeexecutor.state.identifier import TradingPairIdentifier
-from tradeexecutor.state.types import USDollarPrice, Percent
+from tradeexecutor.state.price_impact import PriceImpactEstimation
+from tradeexecutor.state.types import USDollarPrice, Percent, USDollarAmount
 from tradeexecutor.strategy.execution_model import ExecutionModel
 from tradeexecutor.strategy.routing import RoutingModel
 from tradeexecutor.strategy.universe_model import StrategyExecutionUniverse
 from tradeexecutor.strategy.trade_pricing import TradePricing
+
 
 
 class PricingModel(abc.ABC):
@@ -102,10 +104,11 @@ class PricingModel(abc.ABC):
         """
 
     @abc.abstractmethod
-    def get_pair_fee(self,
-                     ts: datetime.datetime,
-                     pair: TradingPairIdentifier,
-                     ) -> Optional[float]:
+    def get_pair_fee(
+        self,
+        ts: datetime.datetime,
+        pair: TradingPairIdentifier,
+) -> Optional[float]:
         """Estimate the trading/LP fees for a trading pair.
 
         This information can come either from the exchange itself (Uni v2 compatibles),
