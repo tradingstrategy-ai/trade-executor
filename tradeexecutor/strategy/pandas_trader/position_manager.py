@@ -10,12 +10,12 @@ import logging
 import cachetools
 import pandas as pd
 
-from tradeexecutor.state.trigger import TriggerType, Trigger, TriggerCondition, PartialTradeLevel
-from tradeexecutor.utils.accuracy import QUANTITY_EPSILON
 from tradingstrategy.candle import CandleSampleUnavailable
 from tradingstrategy.pair import DEXPair, HumanReadableTradingPairDescription
 from tradingstrategy.universe import Universe
 
+from tradeexecutor.state.trigger import TriggerType, Trigger, TriggerCondition, PartialTradeLevel
+from tradeexecutor.utils.accuracy import QUANTITY_EPSILON
 from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier, TradingPairKind
 from tradeexecutor.state.loan import LiquidationRisked
 from tradeexecutor.state.portfolio import Portfolio
@@ -36,6 +36,10 @@ logger = logging.getLogger(__name__)
 #:
 DEFAULT_TRADING_PAIR_CACHE = cachetools.Cache(maxsize=50000)
 
+
+#: The max slippage tolerance set for any trades if not overriden trade-by-trade basis.
+#: 1.7% or 170 BPS
+DEFAULT_SLIPPAGE_TOLERANCE = 0.017
 
 
 class NoSingleOpenPositionException(Exception):
@@ -153,7 +157,7 @@ class PositionManager:
         universe: Universe | TradingStrategyUniverse,
         state: State,
         pricing_model: PricingModel,
-        default_slippage_tolerance=0.017,
+        default_slippage_tolerance=DEFAULT_SLIPPAGE_TOLERANCE,
         trading_pair_cache=DEFAULT_TRADING_PAIR_CACHE,
     ):
 
@@ -1004,7 +1008,7 @@ class PositionManager:
             quantity,
             price_structure,
             position.get_unrealised_profit_usd(),
-            slippage_tolerance * 100,
+            slippage_tolerance,
         )
 
         if not flags:

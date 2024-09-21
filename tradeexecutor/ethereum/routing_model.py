@@ -21,6 +21,7 @@ from tradingstrategy.pair import PandasPairUniverse
 
 from tradeexecutor.strategy.universe_model import StrategyExecutionUniverse
 from tradeexecutor.ethereum.routing_state import EthereumRoutingState
+from tradeexecutor.utils.slippage import get_slippage_in_bps
 
 logger = logging.getLogger(__name__)
 
@@ -116,16 +117,15 @@ class EthereumRoutingModel(RoutingModel):
         )
 
         logger.info(
-            "Doing two way trade. Pair:%s\n Reserve:%s Adjusted reserve amount: %s Max slippage: %s BPS",
+            "Doing two way trade. Pair:%s\n Reserve:%s Adjusted reserve amount: %s Max slippage: %s",
             target_pair,
             reserve_asset,
             adjusted_reserve_amount,
-            max_slippage * 10_000 if max_slippage else "-")
+            max_slippage if max_slippage else "-",
+        )
 
-        if max_slippage:
-            # Validate slippage tolerance a bit
-            # Assume 5% is the max sane slippage tolerance
-            assert 0 < max_slippage <= 0.05, f"Received max_slippage: {max_slippage}"
+        # Validate slippage tolerance a bit
+        get_slippage_in_bps(max_slippage)
 
         trade_txs = routing_state.trade_on_router_two_way(
             uniswap,
@@ -251,16 +251,15 @@ class EthereumRoutingModel(RoutingModel):
         # )
 
         logger.info(
-            "Doing leverage short trade. Pair:%s\n Borrow asset:%s Adjusted reserve amount: %s Max slippage: %s BPS",
+            "Doing leverage short trade. Pair:%s\n Borrow asset:%s Adjusted reserve amount: %s Max slippage: %s",
             target_pair,
             target_pair.base,
             borrow_amount,
-            max_slippage * 10_000 if max_slippage else "-")
+            max_slippage,
+        )
 
-        if max_slippage:
-            # Validate slippage tolerance a bit
-            # Assume 5% is the max sane slippage tolerance
-            assert 0 < max_slippage <= 0.05, f"Received max_slippage: {max_slippage}"
+        # Validate slippage tolerance a bit
+        get_slippage_in_bps(max_slippage)
         
         trade_txs = routing_state.trade_on_one_delta(
             one_delta=one_delta,
@@ -405,7 +404,7 @@ class EthereumRoutingModel(RoutingModel):
 
             max_slippage = t.slippage_tolerance if t.slippage_tolerance is not None else DEFAULT_SLIPPAGE_TOLERANCE
 
-            logger.info("Slippage tolerance is: %f %%, expected asset deltas: %s", max_slippage * 100, asset_deltas)
+            logger.info("Slippage tolerance is: %f %%, expected asset deltas: %s", max_slippage, asset_deltas)
 
             # TODO: hack to bypass route_trade(), fix later
             if t.is_leverage() or t.is_credit_supply():

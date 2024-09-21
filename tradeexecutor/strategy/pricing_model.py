@@ -64,7 +64,7 @@ class PricingModel(abc.ABC):
                       pair: TradingPairIdentifier,
                       reserve: Optional[Decimal]
                       ) -> TradePricing:
-        """Get the sell price for an asset.
+        """Get the buy price for an asset.
 
         :param ts:
             When to get the price.

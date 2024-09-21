@@ -188,6 +188,11 @@ def wmatic(web3) -> TokenDetails:
 
 
 @pytest.fixture
+def wbtc(web3) -> TokenDetails:
+    return fetch_erc20_details(web3, "0x1bfd67037b42cf73acf2047067bd4f2c47d9bfd6")
+
+
+@pytest.fixture
 def price_helper(uniswap_v3_deployment):
     return UniswapV3PriceHelper(uniswap_v3_deployment)
 
@@ -211,6 +216,17 @@ def asset_weth(weth, chain_id) -> AssetIdentifier:
         weth.contract.address,
         weth.symbol,
         weth.decimals,
+    )
+
+
+@pytest.fixture
+def asset_wbtc(wbtc, chain_id) -> AssetIdentifier:
+    """Mock some assets"""
+    return AssetIdentifier(
+        chain_id,
+        wbtc.contract.address,
+        wbtc.symbol,
+        wbtc.decimals,
     )
 
 
@@ -265,6 +281,17 @@ def wmatic_usdc_spot_pair(quickswap_deployment, asset_usdc, asset_wmatic) -> Tra
         asset_wmatic,
         asset_usdc,
         "0x6e7a5fafcec6bb1e78bae2a1f0b612012bf14827",
+        quickswap_deployment.factory.address,
+        fee=0.003,
+    )
+
+
+@pytest.fixture
+def wbtc_weth_spot_pair(quickswap_deployment, asset_wbtc, asset_weth) -> TradingPairIdentifier:
+    return TradingPairIdentifier(
+        asset_wbtc,
+        asset_weth,
+        "0xdc9232e2df177d7a12fdff6ecbab114e2231198d",
         quickswap_deployment.factory.address,
         fee=0.003,
     )

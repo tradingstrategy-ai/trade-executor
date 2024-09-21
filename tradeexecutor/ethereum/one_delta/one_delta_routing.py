@@ -61,6 +61,7 @@ from tradeexecutor.ethereum.routing_state import (
 )
 from tradeexecutor.ethereum.routing_model import EthereumRoutingModel
 from tradeexecutor.ethereum.uniswap_v3.uniswap_v3_routing import get_uniswap_for_pair
+from tradeexecutor.utils.slippage import get_slippage_in_bps
 from tradeexecutor.utils.blockchain import get_block_timestamp
 
 logger = logging.getLogger(__name__)
@@ -130,7 +131,6 @@ class OneDeltaRoutingState(EthereumRoutingState):
         )
 
         pool_fee_raw = int(target_pair.get_pricing_pair().fee * 1_000_000)
-        slippage_bps = max_slippage * 10_000
         price_helper = OneDeltaPriceHelper(one_delta)
 
         if TradeFlag.open in trade_flags:
@@ -143,7 +143,7 @@ class OneDeltaRoutingState(EthereumRoutingState):
                 -borrow_amount,
                 [base_token.address, quote_token.address],
                 [pool_fee_raw],
-                slippage=slippage_bps,
+                slippage=get_slippage_in_bps(max_slippage),
             )
 
             bound_func = open_short_position(
@@ -182,7 +182,7 @@ class OneDeltaRoutingState(EthereumRoutingState):
                 -borrow_amount,
                 [base_token.address, quote_token.address],
                 [pool_fee_raw],
-                slippage=slippage_bps,
+                slippage=get_slippage_in_bps(max_slippage),
             )
 
             bound_func = open_short_position(
@@ -202,7 +202,7 @@ class OneDeltaRoutingState(EthereumRoutingState):
                 borrow_amount,
                 [base_token.address, quote_token.address],
                 [pool_fee_raw],
-                slippage=slippage_bps,
+                slippage=get_slippage_in_bps(max_slippage),
             )
 
             bound_func = reduce_short_position(
