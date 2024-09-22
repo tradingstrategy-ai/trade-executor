@@ -74,14 +74,19 @@ class BaseTVLSizeRiskModel(SizeRiskModel):
         tvl_cap = tvl * cap_pct
         accepted_size = min(tvl_cap, asked_size)
         capped = accepted_size == tvl_cap
+        diagnostics_data = {
+            "tvl": tvl,
+            "cap_pct": cap_pct,
+        }
         return SizeRisk(
             timestamp=timestamp,
-            type=SizingType.buy,
+            sizing_type=SizingType.buy,
             pair=pair,
             path=[pair],
             asked_size=asked_size,
             accepted_size=accepted_size,
             capped=capped,
+            diagnostics_data=diagnostics_data,
         )
 
     def get_acceptable_size_for_sell(
@@ -99,9 +104,13 @@ class BaseTVLSizeRiskModel(SizeRiskModel):
         max_value = min(tvl_cap, asked_value)
         capped = max_value == self.per_trade_cap
         accepted_quantity = Decimal(max_value / mid_price)
+        diagnostics_data = {
+            "tvl": tvl,
+            "cap_pct": cap_pct,
+        }
         return SizeRisk(
             timestamp=timestamp,
-            type=SizingType.sell,
+            sizing_type=SizingType.sell,
             pair=pair,
             path=[pair],
             asked_quantity=asked_quantity,
@@ -109,6 +118,7 @@ class BaseTVLSizeRiskModel(SizeRiskModel):
             asked_size=asked_value,
             accepted_size=max_value,
             capped=capped,
+            diagnostics_data=diagnostics_data,
         )
 
     def get_acceptable_size_for_position(
@@ -122,14 +132,19 @@ class BaseTVLSizeRiskModel(SizeRiskModel):
         tvl_cap = tvl * cap_pct
         accepted_size = min(tvl_cap, asked_value)
         capped = accepted_size == tvl_cap
+        diagnostics_data = {
+            "tvl": tvl,
+            "cap_pct": cap_pct,
+        }
         return SizeRisk(
             timestamp=timestamp,
-            type=SizingType.hold,
+            sizing_type=SizingType.hold,
             pair=pair,
             path=[pair],
             asked_size=asked_value,
             accepted_size=accepted_size,
             capped=capped,
+            diagnostics_data=diagnostics_data,
         )
 
     @abc.abstractmethod

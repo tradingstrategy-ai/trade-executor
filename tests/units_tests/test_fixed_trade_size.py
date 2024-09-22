@@ -95,7 +95,7 @@ def test_fixed_price_impact_buy_capped(
         10_000,
     )
 
-    assert estimate.type == SizingType.buy
+    assert estimate.sizing_type == SizingType.buy
     assert estimate.asked_size == 10_000
     assert estimate.accepted_size == 5_000
 
@@ -116,7 +116,7 @@ def test_fixed_price_impact_sell_capped(
         Decimal(5),
     )
 
-    assert estimate.type == SizingType.sell
+    assert estimate.sizing_type == SizingType.sell
     assert estimate.asked_quantity == 5
     assert estimate.accepted_quantity == pytest.approx(Decimal("3.333334"))
 
@@ -137,6 +137,6 @@ def test_fixed_price_impact_position_capped(
         50_000,
     )
 
-    assert estimate.type == SizingType.hold
+    assert estimate.sizing_type == SizingType.hold
     assert estimate.asked_size == 50_000
     assert estimate.accepted_size == 5000

@@ -46,7 +46,7 @@ class FixedSizeRiskModel(SizeRiskModel):
         capped = accepted_size == self.per_trade_cap
         return SizeRisk(
             timestamp=timestamp,
-            type=SizingType.buy,
+            sizing_type=SizingType.buy,
             pair=pair,
             path=[pair],
             asked_size=asked_size,
@@ -68,7 +68,7 @@ class FixedSizeRiskModel(SizeRiskModel):
         accepted_quantity = Decimal(max_value / mid_price)
         return SizeRisk(
             timestamp=timestamp,
-            type=SizingType.sell,
+            sizing_type=SizingType.sell,
             pair=pair,
             path=[pair],
             asked_quantity=asked_quantity,
@@ -86,7 +86,7 @@ class FixedSizeRiskModel(SizeRiskModel):
         capped = accepted_size == self.per_position_cap
         return SizeRisk(
             timestamp=timestamp,
-            type=SizingType.hold,
+            sizing_type=SizingType.hold,
             pair=pair,
             path=[pair],
             asked_size=asked_value,

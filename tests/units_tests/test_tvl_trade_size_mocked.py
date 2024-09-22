@@ -99,7 +99,7 @@ def test_tvl_size_capped_buy_sell_hold(
         weth_usdc,
         10_000,
     )
-    assert estimate.type == SizingType.buy
+    assert estimate.sizing_type == SizingType.buy
     assert estimate.asked_size == 10_000
     assert estimate.accepted_size == 3_000
 
@@ -108,7 +108,7 @@ def test_tvl_size_capped_buy_sell_hold(
         weth_usdc,
         Decimal(3),  # 1 ETH = 1500
     )
-    assert estimate.type == SizingType.sell
+    assert estimate.sizing_type == SizingType.sell
     assert estimate.asked_size == 4500
     assert estimate.accepted_size == 3000
     assert estimate.asked_quantity == 3
@@ -119,6 +119,6 @@ def test_tvl_size_capped_buy_sell_hold(
         weth_usdc,
         10_000,
     )
-    assert estimate.type == SizingType.hold
+    assert estimate.sizing_type == SizingType.hold
     assert estimate.asked_size == 10_000
     assert estimate.accepted_size == 3_000

@@ -222,7 +222,7 @@ def test_enzyme_live_trading_start_short_and_spot(
         assert t.slippage_tolerance == 0.02  # Set in enzyme_end_to_end.py strategy module
 
         tx = t.blockchain_transactions[0]
-        assert tx.type == BlockchainTransactionType.enzyme_vault
+        assert tx.sizing_type == BlockchainTransactionType.enzyme_vault
 
     # Check on-chain balances
     usdc_balance = usdc.functions.balanceOf(vault.vault.address).call()

@@ -1,19 +1,25 @@
-"""Price impact estimation."""
+"""Trade size risk estimation.
+
+- See :py:class:`SizeRisk`
+
+"""
 import datetime
 import enum
 from dataclasses import dataclass
 from decimal import Decimal
 from types import NoneType
-from typing import Optional, List
 
 from dataclasses_json import dataclass_json
-from eth.vm.logic.block import timestamp
 
 from tradeexecutor.state.identifier import TradingPairIdentifier
-from tradeexecutor.state.types import Percent, BlockNumber, TokenAmount, USDollarAmount, USDollarPrice
+from tradeexecutor.state.types import BlockNumber, TokenAmount, USDollarAmount, USDollarPrice
 
 
 class SizingType(enum.Enum):
+    """What kind of size risk the result is for.
+
+    - See :py:class:`SizeRisk`
+    """
 
     #: Individual trade, buy
     buy = "buy"
@@ -33,7 +39,8 @@ class SizeRisk:
     - Used by py:class:`~tradeexecutor.strategy.trade_sizer.TradeSizer`
       to return the estimations of the safe trade sizes (not too much price impact, not too much liquidity risk)
 
-    - Capture and save data about the price impact
+    - Capture and save data about the price impact, so we can diagnose this later.
+      Not just the result, but the variables that lead to the result.
 
     - Allows us to use this to cap the max position size
       when we enter to a position.
@@ -55,13 +62,16 @@ class SizeRisk:
     pair: TradingPairIdentifier
 
     #: Buy or sell
-    type: SizingType
+    sizing_type: SizingType
 
     #: Path of the trade
     #: One trade can have multiple swaps if there is an intermediary pair.
     path: list[TradingPairIdentifier]
 
-    #: Was this trade hitting the maximum
+    #: Was this trade hitting the maximum cap.
+    #:
+    #: This means the trade size was reduced due to risk.
+    #:
     capped: bool
 
     #: Block number we used for onchain estimation
@@ -85,31 +95,17 @@ class SizeRisk:
     #: What was the capped size
     accepted_size: USDollarAmount | None = None
 
+    #: Store various diagnostics data items ehre
+    #:
+    #: Each implementation can store e.g. percents
+    #:
+    diagnostics_data: dict | None = None
+
     def __post_init__(self):
         assert isinstance(self.timestamp, (datetime.datetime, NoneType)), f"Timestamp was {self.timestamp}"
         if self.asked_quantity is not None:
             assert isinstance(self.asked_quantity, Decimal)
         if self.accepted_quantity is not None:
             assert isinstance(self.accepted_quantity, Decimal)
-
-    @property
-    def cost(self) -> USDollarAmount:
-        """How much this trade costs us.
-
-        :return:
-            The cost of price impact in US dollar terms
-        """
-        return abs(self.accepted_size * self.mid_price - self.accepted_size * self.avg_price)
-
-    @property
-    def impact(self) -> Percent:
-        """What is the price impact of this trade.
-
-        :return:
-            Price impact as % of the trade.
-
-            0% = no impact.
-
-            1% =
-        """
-        return abs(self.avg_price - self.mid_price) / self.mid_price
+        if self.diagnostics_data is not None:
+            assert isinstance(self.diagnostics_data, dict)
