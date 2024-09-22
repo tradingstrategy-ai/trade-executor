@@ -23,7 +23,7 @@ from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifie
 from tradeexecutor.strategy.pandas_trader.indicator import IndicatorSet
 from tradeexecutor.strategy.pandas_trader.strategy_input import StrategyInput
 from tradeexecutor.strategy.strategy_module import StrategyParameters
-from tradeexecutor.strategy.tvl_size_risk import HistoricalUSDTVLSizeRiskModel
+from tradeexecutor.strategy.tvl_size_risk import USDTVLSizeRiskModel
 from tradeexecutor.testing.synthetic_ethereum_data import generate_random_ethereum_address
 from tradeexecutor.testing.synthetic_exchange_data import generate_exchange, generate_simple_routing_model
 from tradeexecutor.testing.synthetic_price_data import generate_ohlcv_candles, generate_tvl_candles
@@ -145,7 +145,7 @@ def decide_trades(input: StrategyInput) -> list[TradeExecution]:
     cash = input.state.portfolio.get_cash()
     timestamp = input.timestamp
 
-    size_risker = HistoricalUSDTVLSizeRiskModel(
+    size_risker = USDTVLSizeRiskModel(
         input.pricing_model,
         per_trade_cap=0.02,  # Cap trade to 2% of pool TVL
     )

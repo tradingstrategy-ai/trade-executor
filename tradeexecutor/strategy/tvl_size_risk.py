@@ -152,7 +152,7 @@ class BaseTVLSizeRiskModel(SizeRiskModel):
         """Read the TVL from the underlying pricing model."""
 
 
-class HistoricalUSDTVLSizeRiskModel(BaseTVLSizeRiskModel):
+class USDTVLSizeRiskModel(BaseTVLSizeRiskModel):
     """Estimate the trade size based historical USD TVL values.
 
     - Fast as we have preprocessed data available

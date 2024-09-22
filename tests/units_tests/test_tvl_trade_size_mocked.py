@@ -7,7 +7,7 @@ import pytest
 from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier
 from tradeexecutor.state.size_risk import SizingType
 from tradeexecutor.strategy.pricing_model import FixedPricing
-from tradeexecutor.strategy.tvl_size_risk import HistoricalUSDTVLSizeRiskModel
+from tradeexecutor.strategy.tvl_size_risk import USDTVLSizeRiskModel
 from tradeexecutor.testing.synthetic_ethereum_data import generate_random_ethereum_address
 from tradeexecutor.testing.synthetic_exchange_data import generate_exchange
 from tradingstrategy.chain import ChainId
@@ -71,7 +71,7 @@ def test_tvl_size_uncapped(
 ):
     """Do not limit trade sizes."""
 
-    estimator = HistoricalUSDTVLSizeRiskModel(
+    estimator = USDTVLSizeRiskModel(
         pricing_model,
     )
 
@@ -90,7 +90,7 @@ def test_tvl_size_capped_buy_sell_hold(
     weth_usdc
 ):
     """Cap individual trade at 2% of TVL."""
-    estimator = HistoricalUSDTVLSizeRiskModel(
+    estimator = USDTVLSizeRiskModel(
         pricing_model,
         per_trade_cap=0.02,
         per_position_cap=0.05,

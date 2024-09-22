@@ -16,6 +16,7 @@ from tradeexecutor.strategy.pandas_trader.strategy_input import StrategyInput
 from tradeexecutor.strategy.parameters import StrategyParameters
 from tradeexecutor.strategy.tag import StrategyTag
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse, load_partial_data
+from tradeexecutor.strategy.tvl_size_risk import USDTVLSizeRiskModel
 from tradeexecutor.strategy.universe_model import UniverseOptions
 from tradeexecutor.strategy.weighting import weight_passthrouh
 from tradeexecutor.utils.binance import create_binance_universe
@@ -55,7 +56,7 @@ class Parameters:
     regime_filter_ma_length = 200  # Bull/bear MA begime filter in days
     regime_filter_only_btc = 1   # Use BTC or per-pair regime filter
 
-    max_posistion_pool_allocation = 0.025  # Cap entires to 2.5% of the underlying pool size
+    per_position_cap_of_pool = 0.025  # Cap entires to 2.5% of the underlying pool size
     allocation = 0.98  # How much cash allocate for volatile positions
     rebalance_threshold = 0.275  # How much position mix % must change when we rebalance between two open positions
     initial_cash = 10_000  # Backtesting start cash
@@ -309,13 +310,21 @@ def decide_trades(
                    p.trailing_stop_loss_pct = parameters.trailing_stop_loss
 
     # Use alpha model and construct a portfolio of two assets
+    size_risker = USDTVLSizeRiskModel(
+        pricing_model=input.pricing_model,
+        per_position_cap=parameters.per_position_cap_of_pool,
+    )
     alpha_model.select_top_signals(2)
     alpha_model.assign_weights(weight_passthrouh)
     alpha_model.normalise_weights()
     alpha_model.update_old_weights(state.portfolio, portfolio_pairs=volatile_pairs)
     portfolio = position_manager.get_current_portfolio()
     portfolio_target_value = portfolio.get_total_equity() * parameters.allocation
-    alpha_model.calculate_target_positions(position_manager, portfolio_target_value)
+    alpha_model.calculate_target_positions(
+        position_manager,
+        portfolio_target_value,
+        size_risk_model=size_risker,
+    )
 
     trades = []
 
@@ -512,7 +521,8 @@ def create_trading_universe(
             end_at=end_at,
             stop_loss_time_bucket=Parameters.stop_loss_time_bucket,
             lending_reserves=lending_reserves,
-            required_history_period=required_history_period
+            required_history_period=required_history_period,
+            liquidity=True,
         )
 
         # Filter down to the single pair we are interested in
