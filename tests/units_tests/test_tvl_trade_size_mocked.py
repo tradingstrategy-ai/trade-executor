@@ -121,4 +121,6 @@ def test_tvl_size_capped_buy_sell_hold(
     )
     assert estimate.sizing_type == SizingType.hold
     assert estimate.asked_size == 10_000
-    assert estimate.accepted_size == 3_000
+    assert estimate.accepted_size == 7_500
+    assert estimate.diagnostics_data["cap_pct"] == 0.05
+    assert estimate.diagnostics_data["tvl"] == 150_000
