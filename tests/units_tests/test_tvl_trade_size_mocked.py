@@ -1,3 +1,5 @@
+"""TVL based trade size risk unit tests."""
+
 from decimal import Decimal
 
 import pytest
@@ -14,7 +16,7 @@ from tradingstrategy.exchange import Exchange
 
 @pytest.fixture(scope="module")
 def mock_chain_id() -> ChainId:
-    """Mock a chai id."""
+    """Mock a chain id."""
     return ChainId.ethereum
 
 

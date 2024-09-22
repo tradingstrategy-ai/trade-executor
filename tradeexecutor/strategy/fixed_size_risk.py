@@ -84,6 +84,9 @@ class FixedSizeRiskModel(SizeRiskModel):
     ) -> SizeRisk:
         accepted_size = min(self.per_position_cap, asked_value)
         capped = accepted_size == self.per_position_cap
+        diagnostics_data = {
+            "cap": self.per_position_cap,
+        }
         return SizeRisk(
             timestamp=timestamp,
             sizing_type=SizingType.hold,
@@ -92,5 +95,6 @@ class FixedSizeRiskModel(SizeRiskModel):
             asked_size=asked_value,
             accepted_size=accepted_size,
             capped=capped,
+            diagnostics_data=diagnostics_data,
         )
 

@@ -17,6 +17,7 @@ from tradeexecutor.backtest.backtest_execution import BacktestExecution
 from tradeexecutor.backtest.backtest_pricing import BacktestPricing
 from tradeexecutor.backtest.backtest_routing import BacktestRoutingModel, BacktestRoutingState
 from tradeexecutor.backtest.simulated_wallet import SimulatedWallet
+from tradeexecutor.state.size_risk import SizeRisk
 from tradeexecutor.state.state import State, TradeType
 from tradeexecutor.state.portfolio import Portfolio
 from tradeexecutor.state.position import TradingPosition
@@ -24,7 +25,9 @@ from tradeexecutor.state.trade import TradeExecution
 from tradeexecutor.state.blockhain_transaction import BlockchainTransaction
 from tradeexecutor.state.reserve import ReservePosition
 from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier
+from tradeexecutor.strategy import size_risk_model
 from tradeexecutor.strategy.alpha_model import AlphaModel
+from tradeexecutor.strategy.fixed_size_risk import FixedSizeRiskModel
 from tradeexecutor.strategy.pandas_trader.position_manager import PositionManager
 from tradeexecutor.strategy.pandas_trader.rebalance import get_existing_portfolio_weights, rebalance_portfolio_old, \
     get_weight_diffs
@@ -1199,3 +1202,100 @@ def test_alpha_model_normalise_weight_capped(
     assert t.is_planned()
     assert t.planned_price == pytest.approx(100.29999999999998)
     assert t.get_planned_value() == pytest.approx(15.769999999999998)
+
+
+def test_alpha_model_normalise_weight_size_risk(
+    single_asset_portfolio: Portfolio,
+    strategy_universe,
+    pricing_model,
+    weth_usdc: TradingPairIdentifier,
+    aave_usdc: TradingPairIdentifier,
+    start_ts,
+):
+    """"Cap the max allocation per asset using SizeRiskModel."""
+
+    portfolio = single_asset_portfolio
+
+    state = State(portfolio=portfolio)
+
+    # Check we have WETH-USDC open
+    position = state.portfolio.get_position_by_trading_pair(weth_usdc)
+    assert position.get_quantity() > 0
+    assert position.get_value() == pytest.approx(157.7)
+
+    # Create the PositionManager that
+    # will create buy/sell trades based on our
+    # trading universe and mock price feeds
+    position_manager = PositionManager(
+        start_ts + datetime.timedelta(days=1),  # Trade on t plus 1 day
+        strategy_universe.data_universe,
+        state,
+        pricing_model,
+    )
+
+    # Set the limits how large US-nominated positions can be.
+    # We use artificially low 40 USD per position here and
+    # both positions should be reduced to 40 USD.
+    size_risker = FixedSizeRiskModel(
+        pricing_model=pricing_model,
+        per_trade_cap=5000,  # Limit individual trades to 5000 USD
+        per_position_cap=40,  # Limit individual position sizes to 40 USD
+    )
+
+    # Try to Go 50% in to AAVE / 50% ETH
+    # but we will be capped
+    alpha_model = AlphaModel()
+    alpha_model.set_signal(aave_usdc, 0.5)
+    alpha_model.set_signal(weth_usdc, 0.5)
+    alpha_model.select_top_signals(9999)
+    alpha_model.assign_weights(method=weight_passthrouh)
+    alpha_model.normalise_weights()
+
+    # Load in old weight for each trading pair signal,
+    # so we can calculate the adjustment trade size
+    alpha_model.update_old_weights(state.portfolio)
+    assert alpha_model.get_signal_by_pair(weth_usdc).old_value == pytest.approx(157.7)
+
+    # Calculate how much dollar value we want each individual position to be on this strategy cycle,
+    # based on our total available equity
+    portfolio = position_manager.get_current_portfolio()
+    portfolio_target_value = portfolio.get_position_equity_and_loan_nav()
+    alpha_model.calculate_target_positions(
+        position_manager,
+        portfolio_target_value,
+        size_risk_model=size_risker,
+    )
+
+    # Check that signals are capped
+    for signal in alpha_model.iterate_signals():
+        assert isinstance(signal.position_size_risk, SizeRisk)
+        assert signal.position_size_risk.asked_size > 40
+        assert signal.position_size_risk.accepted_size == 40
+        assert signal.position_size_risk.diagnostics_data["cap"] == 40
+        assert signal.position_target == 40.0
+
+    # Shift portfolio from current positions to target positions
+    # determined by the alpha signals (momentum)
+    trades = alpha_model.generate_rebalance_trades_and_triggers(position_manager)
+
+    assert len(trades) == 2, f"Got trades: {trades}"
+
+    # Sells go first,
+    # sell ETH until we hit 40 USD
+    t = trades[0]
+    assert t.is_sell()
+    assert t.is_planned()
+    assert t.pair == weth_usdc
+    assert t.planned_price == pytest.approx(1664.99)
+    assert t.planned_quantity == pytest.approx(Decimal("-0.070479041916167661785408427022048272192478179931640625"))
+    assert t.get_planned_value() == pytest.approx(117.3468999999999)  # 157 - 117 = 40
+    assert isinstance(t.position_size_risk, SizeRisk)
+
+    # Buy comes next,
+    # buy Aave, enter max 40 USD
+    t = trades[1]
+    assert t.is_buy()
+    assert t.is_planned()
+    assert t.planned_price == pytest.approx(100.29999999999998)
+    assert t.get_planned_value() == pytest.approx(40)
+    assert isinstance(t.position_size_risk, SizeRisk)

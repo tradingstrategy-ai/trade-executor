@@ -12,6 +12,9 @@ from typing import Optional, Dict, Iterable, List
 import pandas as pd
 import numpy as np
 from dataclasses_json import dataclass_json
+
+from tradeexecutor.state.size_risk import SizeRisk
+from tradeexecutor.strategy.size_risk_model import SizeRiskModel
 from tradingstrategy.types import PrimaryKey
 
 from tradeexecutor.state.identifier import TradingPairIdentifier
@@ -231,6 +234,14 @@ class TradingPairSignal:
     #: Unset for spot.
     #:
     leverage: LeverageMultiplier | None = None
+
+    #: Information about the position size risk calculations.
+    #:
+    position_size_risk: SizeRisk | None = None
+
+    #: Information about the rebalancing trade size risk calculations.
+    #:
+    trade_size_risk: SizeRisk | None = None
 
     def __post_init__(self):
         assert isinstance(self.pair, TradingPairIdentifier)
@@ -600,7 +611,10 @@ class AlphaModel:
     def normalise_weights(self, max_weight=1.0):
         """Normalise weights to 0...1 scale.
 
-        After normalising, we can allocate the positionts `normalised_weight * portfolio equity`.
+        - After normalising, we can allocate the positionts `normalised_weight * portfolio equity`.
+
+        - See also :py:mod:`tradeexecutor.strategy.size_risk_model` to set per-pair
+          specific US dollar nominated settings for a position size
 
         :param max_weight:
             Do not allow equity allocation to exceed this % for any asset.
@@ -690,7 +704,12 @@ class AlphaModel:
 
         return diffs
 
-    def calculate_target_positions(self, position_manager: PositionManager, investable_equity: USDollarAmount):
+    def calculate_target_positions(
+        self,
+        position_manager: PositionManager,
+        investable_equity: USDollarAmount,
+        size_risk_model: SizeRiskModel | None = None,
+    ):
         """Calculate individual dollar amount for each position based on its normalised weight.
 
         - Sets the dollar value of the position
@@ -698,6 +717,17 @@ class AlphaModel:
         - Adjusts the existing dollar value of positions
 
         - Map the signal to a trading pair (spot, synthetic short pair, etc.)
+
+        :parma position_manager:
+            Used to genenerate TradeExecution instances
+
+        :param investable_equity:
+            How much cash we have if we convert the whole portfolio to cash.
+
+        :param size_risk_model:
+            Cap the position size by the underlying
+
+            Calls :py:meth:`SizeRiskModel.get_acceptable_size_for_position`.
         """
         # dollar_values = {pair_id: weight * investable_equity for pair_id, weight in diffs.items()}
 
@@ -705,7 +735,17 @@ class AlphaModel:
 
         for s in self.iterate_signals():
 
-            s.position_target = s.normalised_weight * investable_equity
+            if size_risk_model:
+                # We have a size risk model to cap the positions by the available liquidity
+                asked_target = s.normalised_weight * investable_equity
+                s.position_size_risk = size_risk_model.get_acceptable_size_for_position(
+                    self.timestamp,
+                    s.pair,
+                    asked_target,
+                )
+                s.position_target = s.position_size_risk.accepted_size
+            else:
+                s.position_target = s.normalised_weight * investable_equity
 
             s.synthetic_pair = self.map_pair_for_signal(position_manager, s)
 
@@ -969,6 +1009,10 @@ class AlphaModel:
                 logger.info("Rebalance trades generated for signal #%d for %s: %s", signal.signal_id, underlying.get_ticker(), trade_str)
             else:
                 logger.info("No trades generated for: %s", underlying.get_ticker())
+
+            # Include size risk info for diagnostics
+            for t in position_rebalance_trades:
+                t.position_size_risk = signal.position_size_risk
 
             trades += position_rebalance_trades
 

@@ -1,4 +1,4 @@
-"""Run quick smoke test on eth-btc-usdc-credit strategy."""
+"""Check trade sizes are capped on eth-btc-usdc-credit strategy."""
 import os
 from pathlib import Path
 from unittest import mock
@@ -12,7 +12,7 @@ from tradeexecutor.state.state import State
 @pytest.fixture()
 def strategy_file() -> Path:
     """The strategy module where the broken accounting happened."""
-    p = Path(os.path.join(os.path.dirname(__file__), "..", "..", "strategies", "eth-btc-usdc-credit.py"))
+    p = Path(os.path.join(os.path.dirname(__file__), "..", "..", "strategies", "eth-btc-usdc-size-risk.py"))
     assert p.exists(), f"{p.resolve()} missing"
     return p
 
@@ -42,13 +42,13 @@ def environment(
     return environment
 
 
-def test_eth_btc_momentum_trade_size(
+def test_eth_btc_trade_size(
     environment: dict,
     state_file: Path,
 ):
     """Backtest the strategy with a short period.
 
-    - Ensure that trade size works with alpha model
+    - Ensure credit handling code does not crash outright and we open backtest supply positions
     """
     with mock.patch.dict('os.environ', environment, clear=True):
         app(["backtest"], standalone_mode=False)

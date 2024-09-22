@@ -50,7 +50,13 @@ class SizeRisk:
       A position size is different from a trade size,
       as we may grow a larger position using a multiple trades to enter
 
-    See also :py:mod:`tradeexecutor.strategy.trade_pricing`.
+    See also
+
+    - :py:mod:`tradeexecutor.strategy.trade_pricing` for price impact / slippage analysis
+
+    - :py:func:`tradeexecutor.strategy.alpha_model.AlphaModel.normalise_weights` to have
+       portfolio specific weight % cap for each position
+
     """
 
     #: For which timepoint this price impact estimation was made

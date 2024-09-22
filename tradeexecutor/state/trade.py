@@ -17,6 +17,7 @@ from tradeexecutor.ethereum.revert import clean_revert_reason_message
 from tradeexecutor.state.blockhain_transaction import BlockchainTransaction
 from tradeexecutor.state.identifier import TradingPairIdentifier, AssetIdentifier
 from tradeexecutor.state.loan import Loan
+from tradeexecutor.state.size_risk import SizeRisk
 from tradeexecutor.state.trigger import Trigger, TriggerType
 from tradeexecutor.state.types import USDollarAmount, USDollarPrice, BPS, LeverageMultiplier
 from tradeexecutor.strategy.trade_pricing import TradePricing
@@ -604,6 +605,24 @@ class TradeExecution:
     #: Optional, to be more used in the future versions.
     #:
     exchange_name: Optional[str] = None
+
+    #: Trade size risking info.
+    #:
+    #: Cap the individual trade size.
+    #:
+    #: Store the estimation and diagnostics information
+    #: that went to size risking of this trade.
+    #:
+    trade_size_risk: Optional[SizeRisk] = None
+
+    #: Position size risking info.
+    #:
+    #: Cap the position size at the time when this trade was made.
+    #:
+    #: Store the estimation and diagnostics information
+    #: that went to size risking of this trade.
+    #:
+    position_size_risk: Optional[SizeRisk] = None
 
     def __repr__(self) -> str:
         """Python debug string representation.
