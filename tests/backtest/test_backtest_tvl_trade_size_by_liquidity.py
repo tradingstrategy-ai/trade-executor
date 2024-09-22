@@ -198,6 +198,9 @@ def test_tvl_trade_size_limit(strategy_universe, tmp_path):
     assert len(state.portfolio.open_positions) == 1
 
     for t in state.portfolio.get_all_trades():
-        assert t.get_volume() < 150_000
+        # We are limited to 2% of the pool size,
+        # or 150_000 * 0.02,
+        # add some rounding error
+        assert t.get_volume() <= 3050
 
 
