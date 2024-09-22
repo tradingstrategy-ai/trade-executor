@@ -299,6 +299,9 @@ class BacktestPricing(PricingModel):
             tolerance=self.data_delay_tolerance,
             kind="open"
         )
+
+        assert tvl is not None, "get_liquidity_with_tolerance() returned None: likely cause is that synthetic backtest data period mismatches backtest"
+
         return tvl
 
 

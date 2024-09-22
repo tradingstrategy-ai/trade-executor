@@ -78,5 +78,5 @@ class GenericPricing(PricingModel):
         timestamp: datetime.datetime | None,
         pair: TradingPairIdentifier
     ) -> USDollarAmount:
-        for config in self.pair_configurator.configs.values():
-            config.pricing_model.get_usd_tvl(timestamp, pair)
+        route = self.route(pair)
+        return route.get_usd_tvl(timestamp, pair)

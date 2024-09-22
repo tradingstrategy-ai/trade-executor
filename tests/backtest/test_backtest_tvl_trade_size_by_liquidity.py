@@ -40,13 +40,15 @@ def logger(request):
 def strategy_universe() -> TradingStrategyUniverse:
     """Create ETH-USDC universe with only increasing data.
 
+    - 1 months of data
+
     - Close price increase 1% every hour
 
     - Liquidity is a fixed 150,000 USD for the duration of the test
     """
 
     start_at = datetime.datetime(2021, 6, 1)
-    end_at = datetime.datetime(2022, 1, 1)
+    end_at = datetime.datetime(2021, 7, 1)
 
     # Set up fake assets
     mock_chain_id = ChainId.ethereum
@@ -137,7 +139,7 @@ def create_indicators(timestamp: datetime.datetime, parameters: StrategyParamete
 
 
 def decide_trades(input: StrategyInput) -> list[TradeExecution]:
-    """Example decide_trades function using market limits and partial take profits."""
+    """Example decide_trades function that opens a position with a trade size limit."""
     position_manager = input.get_position_manager()
     pair = input.get_default_pair()
     cash = input.state.portfolio.get_cash()
@@ -153,7 +155,10 @@ def decide_trades(input: StrategyInput) -> list[TradeExecution]:
         # Ask the size risk model what kind of estimation they give for this pair
         # and then cap the trade size based on this
         size_risk = size_risker.get_acceptable_size_for_buy(timestamp, pair, cash)
-        position_size = max(cash, size_risk.accepted_size)
+        # We never enter 100% position with out cash,
+        # as floating points do not work well with ERC-20 18 decimal accuracy
+        # and all kind of problematic rounding errors would happen.
+        position_size = min(cash * 0.99, size_risk.accepted_size)
         trades += position_manager.open_spot(
             pair,
             position_size
@@ -172,7 +177,7 @@ def test_tvl_trade_size_limit(strategy_universe, tmp_path):
     # Start with $1M cash, far exceeding the market size
     class Parameters:
         backtest_start = strategy_universe.data_universe.candles.get_timestamp_range()[0].to_pydatetime()
-        backtest_end = strategy_universe.data_universe.candles.get_timestamp_range()[0].to_pydatetime()  + datetime.timedelta(days=4)
+        backtest_end = strategy_universe.data_universe.candles.get_timestamp_range()[1].to_pydatetime()
         initial_cash = 1_000_000
         cycle_duration = CycleDuration.cycle_1d
 
@@ -189,8 +194,10 @@ def test_tvl_trade_size_limit(strategy_universe, tmp_path):
     )
 
     state = result.state
-    assert len(state.portfolio.closed_positions) == 3
-    assert len(state.portfolio.pending_positions) == 0
-    assert len(state.portfolio.open_positions) == 0
+    assert len(state.portfolio.closed_positions) == 14
+    assert len(state.portfolio.open_positions) == 1
+
+    for t in state.portfolio.get_all_trades():
+        assert t.get_volume() < 150_000
 
 

@@ -44,6 +44,7 @@ class EthereumBacktestPairConfigurator(PairConfigurator):
             strategy_universe.data_universe.candles,
             routing_model,
             data_delay_tolerance=self.data_delay_tolerance,
+            liquidity_universe=strategy_universe.data_universe.liquidity,
         )
 
         valuation_model = BacktestValuationModel(pricing_model)

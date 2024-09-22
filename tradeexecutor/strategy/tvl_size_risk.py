@@ -160,10 +160,12 @@ class HistoricalUSDTVLSizeRiskModel(BaseTVLSizeRiskModel):
     def get_tvl(self, timestamp: AnyTimestamp, pair: TradingPairIdentifier) -> USDollarAmount:
         """Read the TVL from the underlying pricing model."""
 
-        if isinstance(timestamp, datetime.datetime):
-            timestamp = pd.Timestamp(timestamp)
-
-        return self.pricing_model.get_usd_tvl(timestamp, pair)
+        tvl = self.pricing_model.get_usd_tvl(timestamp, pair)
+        assert tvl is not None, \
+            f"HistoricalUSDTVLSizeRiskModel.get_tvl(): Cannot read TVL value at {timestamp} for pair {pair}\n" \
+            f"Does the universe have liquidity data set up?\n" \
+            f"Pricing model is: {self.pricing_model}"
+        return tvl
 
 
 class QuoteTokenTVLSizeRiskModel(BaseTVLSizeRiskModel):
