@@ -7,13 +7,16 @@
     so work here is much unfinished.
 
 """
+import datetime
 from decimal import DecimalTuple, Decimal
+
 #: Represents a US dollar amount used in valuation and prices.
 #: This type alias cannot be used for accounting. For accountable amounts always use Decimal.
 #: This type is only used for symboling that the function return value will be approximately
 #: amount in the US dollar, mostly for being human readable purposes.
-from typing import TypeAlias
+from typing import TypeAlias, Union
 
+import pandas as pd
 
 #: Dollar amount that does not need to be accurately amounted
 USDollarAmount: TypeAlias = float
@@ -93,6 +96,12 @@ UnixTimestamp: TypeAlias = float
 #:
 LeverageMultiplier: TypeAlias = float
 
+#: Take either Pandas timestamp or normal timestamp as argument.
+#:
+#: We don't want to be tied to Pandas, but passing datetime.datetime around
+#: and doing conversions will also slow down the code a bit.
+#:
+AnyTimestamp: TypeAlias = Union[datetime.datetime, pd.Timestamp]
 
 class LegacyDataException(Exception):
     """We are dealing with old files and cannot complete this calculation because data points where not yet recorded."""

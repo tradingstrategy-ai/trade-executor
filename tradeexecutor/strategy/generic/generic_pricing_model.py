@@ -9,7 +9,7 @@ import pandas as pd
 from tradeexecutor.strategy.generic.pair_configurator import PairConfigurator
 
 from tradeexecutor.state.identifier import TradingPairIdentifier
-from tradeexecutor.state.types import USDollarPrice, Percent
+from tradeexecutor.state.types import USDollarPrice, Percent, USDollarAmount
 from tradeexecutor.strategy.pricing_model import PricingModel
 from tradeexecutor.strategy.trade_pricing import TradePricing
 
@@ -72,3 +72,11 @@ class GenericPricing(PricingModel):
         # TODO: Finish API description and such
         for config in self.pair_configurator.configs.values():
             config.pricing_model.set_trading_fee_override(trading_fee_override)
+
+    def get_usd_tvl(
+        self,
+        timestamp: datetime.datetime | None,
+        pair: TradingPairIdentifier
+    ) -> USDollarAmount:
+        for config in self.pair_configurator.configs.values():
+            config.pricing_model.get_usd_tvl(timestamp, pair)

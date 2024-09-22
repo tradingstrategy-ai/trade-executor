@@ -1,11 +1,10 @@
 """Size risk management to avoid too large trades and positions."""
 
 import abc
-import datetime
 
 from tradeexecutor.state.identifier import TradingPairIdentifier
 from tradeexecutor.state.size_risk import SizingType, SizeRisk
-from tradeexecutor.state.types import USDollarAmount
+from tradeexecutor.state.types import USDollarAmount, AnyTimestamp
 
 
 class SizeRiskModel(abc.ABC):
@@ -26,7 +25,7 @@ class SizeRiskModel(abc.ABC):
     @abc.abstractmethod
     def get_acceptable_size_for_buy(
         self,
-        timestamp: datetime.datetime | None,
+        timestamp: AnyTimestamp | None,
         pair: TradingPairIdentifier,
         asked_size: USDollarAmount,
     ) -> SizeRisk:
@@ -35,7 +34,7 @@ class SizeRiskModel(abc.ABC):
     @abc.abstractmethod
     def get_acceptable_size_for_sell(
         self,
-        timestamp: datetime.datetime | None,
+        timestamp: AnyTimestamp | None,
         pair: TradingPairIdentifier,
         asked_quantity: USDollarAmount,
     ) -> SizeRisk:
@@ -43,7 +42,7 @@ class SizeRiskModel(abc.ABC):
 
     def get_acceptable_size_for_position(
         self,
-        timestamp: datetime.datetime | None,
+        timestamp: AnyTimestamp | None,
         pair: TradingPairIdentifier,
         asked_value: USDollarAmount,
     ) -> SizeRisk:

@@ -144,7 +144,7 @@ def universe() -> TradingStrategyUniverse:
     weth_candles = generate_ohlcv_candles(time_bucket, start_at, end_at, pair_id=weth_usdc.internal_id)
     aave_candles = generate_ohlcv_candles(time_bucket, start_at, end_at, pair_id=aave_usdc.internal_id)
 
-    candle_universe = GroupedCandleUniverse.create_from_multiple_candle_datafarames([
+    candle_universe = GroupedCandleUniverse.create_from_multiple_candle_dataframes([
         weth_candles,
         aave_candles,
     ])

@@ -196,3 +196,51 @@ def load_ohlcv_parquet_file(path: Path, chain_id: ChainId, exchange_id: int, pai
 
     return df
 
+
+def generate_tvl_candles(
+    bucket: TimeBucket,
+    start: datetime.datetime,
+    end: datetime.datetime,
+    start_liquidity: USDollarAmount,
+    daily_drift=(0.95, 1.05),
+    high_drift=1.05,
+    low_drift=0.90,
+    random_seed=1,
+    pair_id=1,
+    exchange_id=1,
+) -> pd.DataFrame:
+    """Generate synthetic liquidity candles.
+
+    - Generate OHLC data for liquidity candles
+
+    Example:
+
+    .. code-block:: python
+
+        # Pool liquidity for this pair stays at fixed $150k
+        liquidity_candles = generate_tvl_candles(
+            time_bucket,
+            start_at,
+            end_at,
+            start_liquidity=150_000,
+            pair_id=weth_usdc.internal_id,
+            daily_drift=(1.00, 1.00),
+            high_drift=1.00,
+            low_drift=1.00,
+            random_seed=1,
+        )
+        liquidity_candles = GroupedLiquidityUniverse.create_from_single_pair_dataframe(liquidity_candles)
+
+    """
+    return generate_ohlcv_candles(
+        bucket=bucket,
+        start=start,
+        end=end,
+        start_price=start_liquidity,
+        daily_drift=daily_drift,
+        high_drift=high_drift,
+        low_drift=high_drift,
+        random_seed=random_seed,
+        pair_id=pair_id,
+        exchange_id=exchange_id,
+    )

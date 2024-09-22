@@ -4,9 +4,11 @@ import datetime
 import enum
 from decimal import Decimal
 
+import pandas as pd
+
 from tradeexecutor.state.identifier import TradingPairIdentifier
 from tradeexecutor.state.size_risk import SizeRisk
-from tradeexecutor.state.types import USDollarAmount, TokenAmount, USDollarPrice
+from tradeexecutor.state.types import USDollarAmount, TokenAmount, USDollarPrice, AnyTimestamp
 from tradeexecutor.strategy.pricing_model import PricingModel
 from tradeexecutor.strategy.routing import RoutingModel
 from tradeexecutor.strategy.size_risk_model import SizeRiskModel, SizingType
@@ -47,14 +49,29 @@ class BaseTVLSizeRiskModel(SizeRiskModel):
         self.per_trade_cap = per_trade_cap
         self.per_position_cap = per_position_cap
 
+    def get_pair_cap(self, pair: TradingPairIdentifier, sizing_type: SizingType) -> Percent:
+        """Get cap for an individual trade for a pair.
+
+        - Different pool types can have different caps because of CLMM has better
+          capital efficiency
+        """
+        match sizing_type:
+            case SizingType.buy | SizingType.sell:
+                return self.per_trade_cap
+            case SizingType.hold:
+                return self.per_position_cap
+            case _:
+                raise NotImplementedError()
+
     def get_acceptable_size_for_buy(
         self,
-        timestamp: datetime.datetime | None,
+        timestamp: AnyTimestamp | None,
         pair: TradingPairIdentifier,
         asked_size: USDollarAmount,
     ) -> SizeRisk:
         tvl = self.get_tvl(timestamp, pair)
-        tvl_cap = tvl * self.per_trade_cap
+        cap_pct = self.get_pair_cap(pair, SizingType.buy)
+        tvl_cap = tvl * cap_pct
         accepted_size = min(tvl_cap, asked_size)
         capped = accepted_size == tvl_cap
         return SizeRisk(
@@ -69,7 +86,7 @@ class BaseTVLSizeRiskModel(SizeRiskModel):
 
     def get_acceptable_size_for_sell(
         self,
-        timestamp: datetime.datetime | None,
+        timestamp: AnyTimestamp | None,
         pair: TradingPairIdentifier,
         asked_quantity: TokenAmount,
     ) -> SizeRisk:
@@ -77,7 +94,8 @@ class BaseTVLSizeRiskModel(SizeRiskModel):
         mid_price = self.pricing_model.get_mid_price(timestamp, pair)
         asked_value = asked_quantity * mid_price
         tvl = self.get_tvl(timestamp, pair)
-        tvl_cap = tvl * self.per_trade_cap
+        cap_pct = self.get_pair_cap(pair, SizingType.sell)
+        tvl_cap = tvl * cap_pct
         max_value = min(tvl_cap, asked_value)
         capped = max_value == self.per_trade_cap
         accepted_quantity = Decimal(max_value / mid_price)
@@ -95,12 +113,13 @@ class BaseTVLSizeRiskModel(SizeRiskModel):
 
     def get_acceptable_size_for_position(
         self,
-        timestamp: datetime.datetime | None,
+        timestamp: AnyTimestamp | None,
         pair: TradingPairIdentifier,
         asked_value: USDollarAmount,
     ) -> SizeRisk:
         tvl = self.get_tvl(timestamp, pair)
-        tvl_cap = tvl * self.per_trade_cap
+        cap_pct = self.get_pair_cap(pair, SizingType.hold)
+        tvl_cap = tvl * cap_pct
         accepted_size = min(tvl_cap, asked_value)
         capped = accepted_size == tvl_cap
         return SizeRisk(
@@ -114,7 +133,7 @@ class BaseTVLSizeRiskModel(SizeRiskModel):
         )
 
     @abc.abstractmethod
-    def get_tvl(self, timestamp: datetime.datetime | None, pair: TradingPairIdentifier) -> USDollarAmount:
+    def get_tvl(self, timestamp: AnyTimestamp | None, pair: TradingPairIdentifier) -> USDollarAmount:
         """Read the TVL from the underlying pricing model."""
 
 
@@ -138,8 +157,12 @@ class HistoricalUSDTVLSizeRiskModel(BaseTVLSizeRiskModel):
             per_position_cap
         )
 
-    def get_tvl(self, timestamp: datetime.datetime, pair: TradingPairIdentifier) -> USDollarAmount:
+    def get_tvl(self, timestamp: AnyTimestamp, pair: TradingPairIdentifier) -> USDollarAmount:
         """Read the TVL from the underlying pricing model."""
+
+        if isinstance(timestamp, datetime.datetime):
+            timestamp = pd.Timestamp(timestamp)
+
         return self.pricing_model.get_usd_tvl(timestamp, pair)
 
 

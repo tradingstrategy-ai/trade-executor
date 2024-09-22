@@ -13,12 +13,13 @@ from tradeexecutor.ethereum.uniswap_v2.uniswap_v2_routing import UniswapV2Routin
 from tradeexecutor.state.identifier import TradingPairIdentifier
 from tradeexecutor.strategy.execution_model import ExecutionModel
 
-from tradeexecutor.state.types import USDollarPrice, Percent
+from tradeexecutor.state.types import USDollarPrice, Percent, USDollarAmount, AnyTimestamp
 from tradeexecutor.strategy.pricing_model import PricingModel
 from tradeexecutor.strategy.trade_pricing import TradePricing
 from tradeexecutor.strategy.routing import RoutingModel
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse, translate_trading_pair
 from tradingstrategy.candle import GroupedCandleUniverse
+from tradingstrategy.liquidity import GroupedLiquidityUniverse
 from tradingstrategy.timebucket import TimeBucket
 
 logger = logging.getLogger(__name__)
@@ -50,6 +51,7 @@ class BacktestPricing(PricingModel):
             time_bucket: Optional[TimeBucket] = None,
             allow_missing_fees=False,
             trading_fee_override: float | None=None,
+            liquidity_universe: GroupedLiquidityUniverse | None = None,
         ):
         """
 
@@ -92,6 +94,11 @@ class BacktestPricing(PricingModel):
 
             See :py:meth:`set_trading_fee_override`.
 
+        :param liquidity_universe:
+            Used in TVL based position size limit.
+
+            See :py:mod:`tradeexecutor.strategy.tvl_size_risk`.
+
         """
 
         # TODO: Remove later - now to support some old code111
@@ -108,6 +115,7 @@ class BacktestPricing(PricingModel):
         self.time_bucket = time_bucket
         self.allow_missing_fees = allow_missing_fees
         self.trading_fee_override = trading_fee_override
+        self.liquidity_universe = liquidity_universe
 
     def __repr__(self):
         return f"<BacktestSimplePricingModel bucket: {self.time_bucket}, candles: {self.candle_universe}>"
@@ -273,6 +281,25 @@ class BacktestPricing(PricingModel):
             trading_fee_override: Percent | None
     ):
         self.trading_fee_override = trading_fee_override
+
+    def get_usd_tvl(
+        self,
+        timestamp: AnyTimestamp | None,
+        pair: TradingPairIdentifier
+    ) -> USDollarAmount:
+        """Get the available liquidity at the opening of the day."""
+        assert self.liquidity_universe is not None, "liquidity_universe not passed to BacktestPricing constructor"
+
+        if isinstance(timestamp, datetime.datetime):
+            timestamp = pd.Timestamp(timestamp)
+
+        tvl, when = self.liquidity_universe.get_liquidity_with_tolerance(
+            pair.internal_id,
+            timestamp,
+            tolerance=self.data_delay_tolerance,
+            kind="open"
+        )
+        return tvl
 
 
 def backtest_pricing_factory(
