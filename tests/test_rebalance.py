@@ -1340,8 +1340,8 @@ def test_alpha_model_normalise_weight_size_risk_partial(
     # both positions should be reduced to 50 USD.
     size_risker = FixedSizeRiskModel(
         pricing_model=pricing_model,
-        per_trade_cap=5000,  # Limit individual trades to 5000 USD
-        per_position_cap=50,  # Limit individual position sizes to 40 USD
+        per_trade_cap=5000,  # Not relevant for this test
+        per_position_cap=50,
     )
 
     # Calculate how much dollar value we want each individual position to be on this strategy cycle,
@@ -1349,12 +1349,12 @@ def test_alpha_model_normalise_weight_size_risk_partial(
     portfolio = position_manager.get_current_portfolio()
     portfolio_target_value = portfolio.get_position_equity_and_loan_nav()
 
-    # Try to go 30% Aave, 70% ETH
+    # Try to go 30% Aave, 70% ETH - cap is set to $50 per position.
     # Uncapped this would be
-    # 70% * 157 USD for ETH
+    # 70% * 157 USD for ETH = $110
     # 30% * 157 USD for Aave = $47.1
     # Only ETH position will be capped.
-    # The remaining equity from ETH position is distributed Aave position,
+    # The remaining equity from the capped ETH position is distributed Aave position,
     # so that Aave will be $47.1 -> $50.
     alpha_model = AlphaModel()
     alpha_model.set_signal(aave_usdc, 0.3)

@@ -129,6 +129,7 @@ def test_fixed_price_impact_position_capped(
     estimator = FixedSizeRiskModel(
         pricing_model,
         per_trade_cap=5000,
+        per_position_cap=5000,
     )
 
     estimate = estimator.get_acceptable_size_for_position(
