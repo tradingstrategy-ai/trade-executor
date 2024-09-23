@@ -850,7 +850,10 @@ class AlphaModel:
         for s in self.iterate_signals():
 
             # Might have been calculated earlier in normalise_weights() with size risk model
-            if not s.position_target:
+            if s.position_target is None:
+                assert investable_equity is not None, \
+                    f"signal.position_target not set in AlphaModel.normalised_weights(). You need to give AlphaModel.calculate_target_positions(investable_equity)\n" \
+                    f"Signal {s} lacks position_target\n"
                 s.position_target = s.normalised_weight * investable_equity
 
             s.synthetic_pair = self.map_pair_for_signal(position_manager, s)

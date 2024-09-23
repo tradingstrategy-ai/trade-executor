@@ -310,20 +310,21 @@ def decide_trades(
                    p.trailing_stop_loss_pct = parameters.trailing_stop_loss
 
     # Use alpha model and construct a portfolio of two assets
-    size_risker = USDTVLSizeRiskModel(
+    portfolio = position_manager.get_current_portfolio()
+    portfolio_target_value = portfolio.get_total_equity() * parameters.allocation
+    size_risk_model = USDTVLSizeRiskModel(
         pricing_model=input.pricing_model,
-        per_position_cap=parameters.per_position_cap_of_pool,
+        per_position_cap=parameters.per_position_cap_of_pool,  # This is how much % by all pool TVL we can allocate for a position
     )
     alpha_model.select_top_signals(2)
     alpha_model.assign_weights(weight_passthrouh)
-    alpha_model.normalise_weights()
+    alpha_model.normalise_weights(
+        investable_equity=portfolio_target_value,
+        size_risk_model=size_risk_model,
+    )
     alpha_model.update_old_weights(state.portfolio, portfolio_pairs=volatile_pairs)
-    portfolio = position_manager.get_current_portfolio()
-    portfolio_target_value = portfolio.get_total_equity() * parameters.allocation
     alpha_model.calculate_target_positions(
         position_manager,
-        portfolio_target_value,
-        size_risk_model=size_risker,
     )
 
     trades = []

@@ -73,7 +73,7 @@ class BaseTVLSizeRiskModel(SizeRiskModel):
         cap_pct = self.get_pair_cap(pair, SizingType.buy)
         tvl_cap = tvl * cap_pct
         accepted_size = min(tvl_cap, asked_size)
-        capped = accepted_size == tvl_cap
+        capped = bool(accepted_size == tvl_cap)
         diagnostics_data = {
             "tvl": tvl,
             "cap_pct": cap_pct,
@@ -102,7 +102,7 @@ class BaseTVLSizeRiskModel(SizeRiskModel):
         cap_pct = self.get_pair_cap(pair, SizingType.sell)
         tvl_cap = tvl * cap_pct
         max_value = min(tvl_cap, asked_value)
-        capped = max_value == self.per_trade_cap
+        capped = bool(max_value == self.per_trade_cap)
         accepted_quantity = Decimal(max_value / mid_price)
         diagnostics_data = {
             "tvl": tvl,
@@ -131,7 +131,7 @@ class BaseTVLSizeRiskModel(SizeRiskModel):
         cap_pct = self.get_pair_cap(pair, SizingType.hold)
         tvl_cap = tvl * cap_pct
         accepted_size = min(tvl_cap, asked_value)
-        capped = accepted_size == tvl_cap
+        capped = bool(accepted_size == tvl_cap)
         diagnostics_data = {
             "tvl": tvl,
             "cap_pct": cap_pct,

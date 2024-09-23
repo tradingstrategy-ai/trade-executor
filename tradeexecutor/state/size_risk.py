@@ -119,3 +119,7 @@ class SizeRisk:
         # We can never allocate more than we ask
         if self.asked_size:
             assert self.accepted_size <= self.asked_size
+
+        # Numpy madness
+        if self.capped is not None:
+            assert type(self.capped) == bool, f"Expected bool, got {self.capped.__class__}"

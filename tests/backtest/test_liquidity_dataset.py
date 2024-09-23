@@ -1,5 +1,5 @@
 """Load liquidity data"""
-import pytest
+
 import pandas as pd
 
 from tradingstrategy.chain import ChainId
