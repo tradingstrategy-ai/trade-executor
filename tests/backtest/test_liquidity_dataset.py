@@ -4,6 +4,7 @@ import pandas as pd
 
 from tradingstrategy.chain import ChainId
 from tradingstrategy.client import Client
+from tradingstrategy.liquidity import GroupedLiquidityUniverse
 from tradingstrategy.timebucket import TimeBucket
 
 from tradeexecutor.strategy.execution_context import unit_test_execution_context
@@ -30,6 +31,11 @@ def test_load_liquidity_dataset(persistent_test_client: Client):
         end_at=pd.Timestamp("2024-02-01"),
         liquidity=True,
     )
+
+    assert isinstance(dataset.liquidity, pd.DataFrame)
+    assert "timestamp" in dataset.liquidity.columns
+    assert "pair_id" in dataset.liquidity.columns
+    assert "volume" not in dataset.liquidity.columns  # For price data only
 
     # Liquidity data loaded
     assert len(dataset.pairs) == 2
@@ -61,8 +67,12 @@ def test_create_strategy_universe_with_liquidity(persistent_test_client):
     strategy_universe  = TradingStrategyUniverse.create_from_dataset(
         dataset=dataset,
         reserve_asset="USDC",
+        forward_fill=True,
     )
 
+    assert isinstance(strategy_universe.data_universe.liquidity, GroupedLiquidityUniverse)
+
+    # Check that we have liquidity data in the constructed universe
     assert strategy_universe.data_universe.liquidity.get_pair_count() == 2
     weth_usdc_uniswap = strategy_universe.get_pair_by_human_description(pairs[0])
     samples = strategy_universe.data_universe.liquidity.get_liquidity_samples_by_pair(weth_usdc_uniswap.internal_id)

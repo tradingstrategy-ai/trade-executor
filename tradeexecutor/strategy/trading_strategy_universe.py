@@ -1067,13 +1067,26 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
         else:
             stop_loss_candle_universe = None
 
+        if dataset.liquidity is not None:
+            assert isinstance(dataset.liquidity.index, pd.DatetimeIndex), f"Got {dataset.liquidity.index.__class__}"
+            liquidity_universe = GroupedLiquidityUniverse(
+                dataset.liquidity,
+                time_bucket=dataset.liquidity_time_bucket,
+                forward_fill=forward_fill,
+                index_automatically=False,
+            )
+            resampled_liquidity = None
+        else:
+            liquidity_universe = None
+            resampled_liquidity = None
+
         universe = Universe(
             time_bucket=dataset.time_bucket,
             chains={chain_id},
             pairs=pairs,
             candles=candle_universe,
-            liquidity=dataset.liquidity,
-            resampled_liquidity=dataset,
+            liquidity=liquidity_universe,
+            resampled_liquidity=resampled_liquidity,
             exchange_universe=dataset.exchanges,
             exchanges={e for e in dataset.exchanges.exchanges.values()},
             lending_candles=dataset.lending_candles,
