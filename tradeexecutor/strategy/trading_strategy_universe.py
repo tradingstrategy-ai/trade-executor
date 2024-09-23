@@ -2173,7 +2173,18 @@ def load_partial_data(
             stop_loss_candles = None
 
         if liquidity:
-            raise NotImplemented("Partial liquidity data loading is not yet supported")
+            liquidity_time_bucket = time_bucket
+            liquidity_progress_bar_desc = f"Loading TVL/liquidity data for {name}"
+            liquidity_df = client.fetch_tvl_by_pair_ids(
+                our_pair_ids,
+                time_bucket,
+                progress_bar_description=liquidity_progress_bar_desc,
+                start_time=data_load_start_at,
+                end_time=end_at,
+            )
+        else:
+            liquidity_time_bucket = None
+            liquidity_df = None
 
         if lending_reserves:
             if isinstance(lending_reserves, LendingReserveUniverse):
@@ -2230,7 +2241,8 @@ def load_partial_data(
             exchanges=our_exchange_universe,
             pairs=filtered_pairs_df,
             candles=candles,
-            liquidity=None,
+            liquidity=liquidity_df,
+            liquidity_time_bucket=liquidity_time_bucket,
             backtest_stop_loss_time_bucket=stop_loss_time_bucket,
             backtest_stop_loss_candles=stop_loss_candles,
             lending_reserves=lending_reserve_universe,
