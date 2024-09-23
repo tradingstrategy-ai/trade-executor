@@ -115,3 +115,7 @@ class SizeRisk:
             assert isinstance(self.accepted_quantity, Decimal)
         if self.diagnostics_data is not None:
             assert isinstance(self.diagnostics_data, dict)
+
+        # We can never allocate more than we ask
+        if self.asked_size:
+            assert self.accepted_size <= self.asked_size

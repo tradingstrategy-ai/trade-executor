@@ -7,7 +7,7 @@ import abc
 
 from tradeexecutor.state.identifier import TradingPairIdentifier
 from tradeexecutor.state.size_risk import SizingType, SizeRisk
-from tradeexecutor.state.types import USDollarAmount, AnyTimestamp
+from tradeexecutor.state.types import USDollarAmount, AnyTimestamp, Percent
 
 
 class SizeRiskModel(abc.ABC):
@@ -91,7 +91,17 @@ class SizeRiskModel(abc.ABC):
 
         - If the position size is exceeded start to reduce the position
 
-        - Default to the size you would allow with the
+        :param timestamp:
+            Historical timestamp.
+
+            Can be set to `None` for onchain reading backends,
+            and they will use the latest block number.
+
+        :param asked_value:
+            How large position we'd like to have in the US Dollar terms.
+
+        :return:
+            Size-risk adjusted estimation how large the position could be.
         """
         size = self.get_acceptable_size_for_buy(timestamp, pair, asked_value)
         size.sizing_type = SizingType.hold
