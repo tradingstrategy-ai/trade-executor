@@ -13,11 +13,11 @@ from math import isnan
 from typing import Dict, List, Optional, Tuple
 
 import pandas as pd
-from dataclasses_json import dataclass_json
 from pandas import DatetimeIndex
+from dataclasses_json import dataclass_json
 
-from tradeexecutor.state.types import Percent
 from tradingstrategy.types import USDollarAmount
+from tradeexecutor.state.types import Percent
 from tradeexecutor.analysis.trade_analyser import TradeSummary
 
 
@@ -60,6 +60,10 @@ class PositionStatistics:
         assert isinstance(self.calculated_at, datetime.datetime)
         assert isinstance(self.last_valuation_at, datetime.datetime)
         assert not isnan(self.profitability)
+
+    def to_dict(self) -> dict:
+        """Get data as a dictionary."""
+        return super().to_dict()
 
 
 @dataclass_json
@@ -144,6 +148,9 @@ class PortfolioStatistics:
         # Safety checks for the bad data
         if self.unrealised_profitability is not None:
             assert not pd.isna(self.unrealised_profitability)
+
+
+
 
 
 @dataclass_json
@@ -252,7 +259,22 @@ class Statistics:
         # Convert data to daily if we have to
         assert resampling_method == "max", f"Unsupported resamping method {resampling_method}"
         return s.resample(resampling_time).max()
-    
+
+    def get_position_statistics_as_dataframe(
+        self,
+        position_id: int,
+    ) -> pd.DataFrame:
+        """Convert position statistics history to a Pandas dataframe.
+
+        :return:
+            DataFrame object with DateTimeIndex
+        """
+        assert position_id in self.positions, f"We do not have statistics for position {position_id}"
+        rows = [ ps.to_dict() for ps in self.positions[position_id] ]
+        df = pd.DataFrame(rows)
+        df = df.set_index("calculated_at")
+        return df
+
     def get_naive_rolling_pnl_pct(self) -> float:
         """Get the naive rolling PnL percentage.
 
