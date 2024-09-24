@@ -789,6 +789,7 @@ class AlphaModel:
         self,
         portfolio: Portfolio,
         portfolio_pairs: list[TradingPairIdentifier] | None=None,
+        ignore_credit=True,
     ):
         """Update the old weights of the last strategy cycle to the alpha model.
 
@@ -800,9 +801,16 @@ class AlphaModel:
             Only consider these pairs part of portifolio trading.
 
             You can use this to exclude credit positions from the portfolio trading.
+
+        :param ignore_credit:
+            Automatically ignore credit positions.
         """
         total = portfolio.get_position_equity_and_loan_nav()
         for position in portfolio.open_positions.values():
+
+            if ignore_credit:
+                if position.is_credit_supply():
+                    continue
 
             # Pair is excluded
             if portfolio_pairs:

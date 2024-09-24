@@ -2024,3 +2024,16 @@ class TradingPosition(GenericPosition):
         else:
             raise AssertionError(f"Unsupported: {self}")
 
+    def get_annualised_credit_interest(self) -> Percent:
+        """Get the annualised interest for a credit position.
+
+        :return:
+            Annualised interest.
+
+            Return 0 if the position does not have a duration, or its still open.
+        """
+        assert self.is_credit_supply(), f"Only works with credit positions, got {self}"
+        duration = self.get_duration()
+        if duration is None:
+            return 0.0
+        return (self.get_claimed_interest() / self.get_value_at_open()) * datetime.timedelta(days=365) / duration

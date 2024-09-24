@@ -15,6 +15,7 @@ from types import NoneType
 from typing import List, Optional, Tuple, cast, Callable
 
 from eth_defi.provider.anvil import is_anvil, mine
+from tradeexecutor.backtest.backtest_execution import BacktestExecutionFailed
 from tradeexecutor.ethereum.ethereum_protocol_adapters import EthereumPairConfigurator
 from tradeexecutor.ethereum.tx import TransactionBuilder
 from tradeexecutor.state.store import StateStore
@@ -787,13 +788,25 @@ class StrategyRunner(abc.ABC):
                             logger.info("Syncing state before teh trade execution")
                             store.sync(state)
 
-                    self.execution_model.execute_trades(
-                        strategy_cycle_timestamp,
-                        state,
-                        approved_trades,
-                        self.routing_model,
-                        routing_state,
-                        check_balances=check_balances)
+                    try:
+                        self.execution_model.execute_trades(
+                            strategy_cycle_timestamp,
+                            state,
+                            approved_trades,
+                            self.routing_model,
+                            routing_state,
+                            check_balances=check_balances)
+                    except BacktestExecutionFailed as e:
+                        # Add more diagnostics info to the exception
+                        # to make strategy development easier
+                        msg = "execute_trades() failed - likely trying to have larger trades than having cash in hand.\n"
+                        msg += "Currently open positions:\n"
+                        for p in state.portfolio.open_positions.values():
+                            msg += f"{p}\n"
+                        msg += "Trade queue:\n"
+                        for t in approved_trades:
+                            msg += f"{t} - execution order {t.get_execution_sort_position() + 1}.\n"
+                        raise BacktestExecutionFailed(msg) from e
 
                 with self.timed_task_context_manager("post_execution"):
                     self.collect_post_execution_data(
