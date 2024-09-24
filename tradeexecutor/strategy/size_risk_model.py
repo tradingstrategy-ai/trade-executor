@@ -61,6 +61,45 @@ class SizeRiskModel(abc.ABC):
             else:
                 trades += position_manager.close_all()
             return trades
+
+    Example using :py:class:`AlphaModel` in `decide_trades()`:
+
+    .. code-block:: python
+
+        # Calculate how much dollar value we want each individual position to be on this strategy cycle,
+        # based on our total available equity
+        portfolio = position_manager.get_current_portfolio()
+        portfolio_target_value = portfolio.get_total_equity() * parameters.allocation
+
+        #
+        # Do 1/N weighting
+        #
+        # Select max_assets_in_portfolio assets in which we are going to invest
+        # Calculate a weight for ecah asset in the portfolio using 1/N method based on the raw signal
+        alpha_model.select_top_signals(parameters.max_assets_in_portfolio)
+        alpha_model.assign_weights(method=weight_by_1_slash_n)
+
+        #
+        # Normalise weights and cap the positions
+        #
+
+        size_risk_model = USDTVLSizeRiskModel(
+            pricing_model=input.pricing_model,
+            per_position_cap=parameters.per_position_cap_of_pool,  # This is how much % by all pool TVL we can allocate for a position
+        )
+
+        alpha_model.normalise_weights(
+            investable_equity=portfolio_target_value,
+            size_risk_model=size_risk_model,
+        )
+
+        # Load in old weight for each trading pair signal,
+        # so we can calculate the adjustment trade size
+        alpha_model.update_old_weights(
+            portfolio,
+            ignore_credit=True,
+        )
+        alpha_model.calculate_target_positions(position_manager)
     """
 
     @abc.abstractmethod
