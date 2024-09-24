@@ -50,6 +50,8 @@ def strategy_universe(
         (ChainId.polygon, "uniswap-v3", "WETH", "USDC", 0.0005),
         (ChainId.polygon, "quickswap", "WMATIC", "USDC", 0.0030),
         (ChainId.polygon, "uniswap-v3", "WMATIC", "USDC", 0.0005),
+        (ChainId.polygon, "quickswap", "WBTC", "WETH", 0.0030),
+        (ChainId.polygon, "quickswap", "WETH", "USDC", 0.0030),
     ]
 
     reverses = [

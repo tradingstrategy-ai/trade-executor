@@ -10,6 +10,7 @@ from eth_abi import decode
 
 from tradeexecutor.ethereum.revert import clean_revert_reason_message
 from tradeexecutor.state.trade import TradeExecution
+from tradeexecutor.utils.slippage import get_slippage_in_bps
 
 
 def _ftime(v: datetime.datetime) -> str:
@@ -161,7 +162,7 @@ def display_slippage(trades: Iterable[TradeExecution]) -> pd.DataFrame:
             #"Executed": _ftime(t.executed_at),
             # "Block": f"{block_number:,}" if block_number else "",
             "Lag": lag.total_seconds() if lag else np.NaN,
-            "Slippage tolerance": int(t.slippage_tolerance * 10000) if t.slippage_tolerance else np.NaN,
+            "Slippage tolerance": get_slippage_in_bps(t.slippage_tolerance) if t.slippage_tolerance else np.NaN,
             "amountIn": amount_in,
             "amountOut": amount_out,
             "Enzyme amountOut": enzyme_expected_amount,

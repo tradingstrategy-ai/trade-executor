@@ -118,7 +118,7 @@ def sand_matic_trading_pair(
     return TradingPairIdentifier(
         sand_asset,
         matic_asset,
-        "0x369582d2010b6ed950b571f4101e3bb9b554876f",  #  https://tradingstrategy.ai/trading-view/polygon/quickswap/sand-matic-2
+        "0x369582d2010b6ed950b571f4101e3bb9b554876f",  # https://tradingstrategy.ai/trading-view/polygon/quickswap/sand-matic
         internal_id=2000,
         internal_exchange_id=1000,
         exchange_address=quickswap.factory.address,
@@ -364,6 +364,7 @@ def test_simple_routing_three_leg_live(
     trades += position_manager.open_spot(
         sand_matic_trading_pair,
         Decimal(100_000),
+        slippage_tolerance=0.03,  # default tolerance 17bps is too small for this pool
     )
 
     execution_model.execute_trades(

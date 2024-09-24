@@ -36,6 +36,7 @@ from tradeexecutor.ethereum.routing_state import (
     get_base_quote_intermediary
 )
 from tradeexecutor.ethereum.routing_model import EthereumRoutingModel
+from tradeexecutor.utils.slippage import get_slippage_in_bps
  
 logger = logging.getLogger(__name__)
 
@@ -80,7 +81,7 @@ class UniswapV2RoutingState(EthereumRoutingState):
 
         if check_balances:
             self.check_has_enough_tokens(quote_token, reserve_amount)
-        
+
         if target_pair.fee:
             bps_fee = target_pair.fee * 10_000
             bound_swap_func = swap_with_slippage_protection(
@@ -89,7 +90,7 @@ class UniswapV2RoutingState(EthereumRoutingState):
                 base_token=base_token,
                 quote_token=quote_token,
                 amount_in=reserve_amount,
-                max_slippage=max_slippage * 10_000,  # In BPS
+                max_slippage=get_slippage_in_bps(max_slippage),
                 fee=bps_fee
             )
         else:
@@ -101,7 +102,7 @@ class UniswapV2RoutingState(EthereumRoutingState):
                 base_token=base_token,
                 quote_token=quote_token,
                 amount_in=reserve_amount,
-                max_slippage=max_slippage * 10_000,  # In BPS
+                max_slippage=get_slippage_in_bps(max_slippage),
             )
         
         return self.create_signed_transaction(
@@ -153,7 +154,7 @@ class UniswapV2RoutingState(EthereumRoutingState):
                 base_token=base_token,
                 quote_token=quote_token,
                 amount_in=reserve_amount,
-                max_slippage=max_slippage * 10_000,  # In BPS,
+                max_slippage=get_slippage_in_bps(max_slippage),
                 intermediate_token=intermediary_token,
                 fee = bps_fee
             )
@@ -166,7 +167,7 @@ class UniswapV2RoutingState(EthereumRoutingState):
                 base_token=base_token,
                 quote_token=quote_token,
                 amount_in=reserve_amount,
-                max_slippage=max_slippage * 10_000,  # In BPS,
+                max_slippage=get_slippage_in_bps(max_slippage),
                 intermediate_token=intermediary_token,
             )
 
