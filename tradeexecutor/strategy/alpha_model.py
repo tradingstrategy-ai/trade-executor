@@ -161,7 +161,11 @@ class TradingPairSignal:
     #: How many dollars we plan to invest on trading pair.
     #:
     #: Calculated by portfolio total investment equity * normalised weight * price.
-    position_target: USDollarAmount = 0.0
+    #:
+    #: Initialy set to None. Can be set either by :py:meth:`normalise_weights`
+    #: or `calculate_target_positions` depending on the risk model configuration.
+    #:
+    position_target: USDollarAmount | None = None
 
     #: How much we are going to increase/decrease the position on this strategy cycle.
     #:
