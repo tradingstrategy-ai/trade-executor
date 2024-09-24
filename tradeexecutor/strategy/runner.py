@@ -799,7 +799,7 @@ class StrategyRunner(abc.ABC):
                         self.execution_model.execute_trades(
                             strategy_cycle_timestamp,
                             state,
-                            approved_trades,
+                            sorted_approved_trades,
                             self.routing_model,
                             routing_state,
                             check_balances=check_balances)

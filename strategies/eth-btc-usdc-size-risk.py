@@ -340,10 +340,6 @@ def decide_trades(
                 min_usd_threshold=Parameters.aave_min_deposit_threshold_usd,
             )
 
-            # Order trades to a natural order, so we have always the correct cash in hand.
-    # Any credit market withdraw will be executed first, then sells, then buys and Aave deposits last.
-    trades.sort(key=lambda t: t.get_execution_sort_position())
-
     # Record alpha model state so we can later visualise our alpha model thinking better
     state.visualisation.add_calculations(timestamp, alpha_model.to_dict())
 
