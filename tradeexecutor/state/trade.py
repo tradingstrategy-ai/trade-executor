@@ -17,8 +17,9 @@ from tradeexecutor.ethereum.revert import clean_revert_reason_message
 from tradeexecutor.state.blockhain_transaction import BlockchainTransaction
 from tradeexecutor.state.identifier import TradingPairIdentifier, AssetIdentifier
 from tradeexecutor.state.loan import Loan
+from tradeexecutor.state.size_risk import SizeRisk
 from tradeexecutor.state.trigger import Trigger, TriggerType
-from tradeexecutor.state.types import USDollarAmount, USDollarPrice, BPS, LeverageMultiplier
+from tradeexecutor.state.types import USDollarAmount, USDollarPrice, BPS, LeverageMultiplier, Percent
 from tradeexecutor.strategy.trade_pricing import TradePricing
 from tradeexecutor.utils.accuracy import QUANTITY_EPSILON
 
@@ -605,6 +606,24 @@ class TradeExecution:
     #:
     exchange_name: Optional[str] = None
 
+    #: Trade size risking info.
+    #:
+    #: Cap the individual trade size.
+    #:
+    #: Store the estimation and diagnostics information
+    #: that went to size risking of this trade.
+    #:
+    trade_size_risk: Optional[SizeRisk] = None
+
+    #: Position size risking info.
+    #:
+    #: Cap the position size at the time when this trade was made.
+    #:
+    #: Store the estimation and diagnostics information
+    #: that went to size risking of this trade.
+    #:
+    position_size_risk: Optional[SizeRisk] = None
+
     def __repr__(self) -> str:
         """Python debug string representation.
 
@@ -1157,24 +1176,47 @@ class TradeExecution:
     def get_execution_sort_position(self) -> int:
         """When this trade should be executed.
 
+        Order the trades to a physical execution order,
+        so that we have always enough cash in hand, even though
+        we mix buys and sells that may get capital from other trades
+        on the cycle.
+
+        - Aave credit withdraw first
+
         - Closing trades should go first
 
         - Selling trades should go first
 
-        We need to execute sells first because we need to have cash in hand to execute buys.
+        - Buy trades with all cash in hand
+
+        - Aave credit supply last, so we put any exceed cash to Aave
 
         :return:
-            Sortable int
+            Sortable signed int.
+
+            Smaller goes first.
         """
 
+        credit_order_bump = 200_000_000
+        close_order_bump = 100_000_000
+
+        if self.is_credit_supply() and TradeFlag.close in self.flags:
+            # Always withdraw credit to cash in hand first,
+            # so we have cash to do the trades we want
+            return -self.trade_id - credit_order_bump
         if self.closing:
             # Close positions always first to release maximum cash
-            return -self.trade_id - 100_000_000
-        elif self.is_reduce():
+            return -self.trade_id - close_order_bump
+        elif (not self.is_credit_supply()) and self.is_reduce():
+            # Reduces any existing position to release cash.
             # Trades that release cash need to go before
-            # trades where we spend reserves
+            # trades where we spend reserves.
             return -self.trade_id
+        elif self.is_credit_supply() and TradeFlag.open in self.flags:
+            # As the last action, we supply exceed cash to Aave
+            return self.trade_id + credit_order_bump
         else:
+            # Other trades (buys) go by their running counter id
             return self.trade_id
 
     def get_decision_lag(self) -> datetime.timedelta:

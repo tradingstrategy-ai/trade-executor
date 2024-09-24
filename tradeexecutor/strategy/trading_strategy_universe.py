@@ -1067,13 +1067,26 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
         else:
             stop_loss_candle_universe = None
 
+        if dataset.liquidity is not None:
+            assert isinstance(dataset.liquidity.index, pd.DatetimeIndex), f"Got {dataset.liquidity.index.__class__}"
+            liquidity_universe = GroupedLiquidityUniverse(
+                dataset.liquidity,
+                time_bucket=dataset.liquidity_time_bucket,
+                forward_fill=forward_fill,
+                index_automatically=False,
+            )
+            resampled_liquidity = None
+        else:
+            liquidity_universe = None
+            resampled_liquidity = None
+
         universe = Universe(
             time_bucket=dataset.time_bucket,
             chains={chain_id},
             pairs=pairs,
             candles=candle_universe,
-            liquidity=dataset.liquidity,
-            resampled_liquidity=dataset,
+            liquidity=liquidity_universe,
+            resampled_liquidity=resampled_liquidity,
             exchange_universe=dataset.exchanges,
             exchanges={e for e in dataset.exchanges.exchanges.values()},
             lending_candles=dataset.lending_candles,
@@ -1928,6 +1941,7 @@ def load_partial_data(
     pairs: Collection[HumanReadableTradingPairDescription] | pd.DataFrame,
     universe_options: UniverseOptions,
     liquidity=False,
+    liquidity_time_bucket: TimeBucket | None = None,
     stop_loss_time_bucket: Optional[TimeBucket] = None,
     required_history_period: datetime.timedelta | None = None,
     lending_reserves: LendingReserveUniverse | Collection[LendingReserveDescription] | None = None,
@@ -2020,6 +2034,11 @@ def load_partial_data(
 
     :param liquidity:
         Set true to load liquidity data as well
+
+    :param liquidity_time_bucket:
+        Granularity of loaded TVL data.
+
+        If not given use `time_bucket`.
 
     :param lending_reverses:
         Set true to load lending reserve data as well
@@ -2173,7 +2192,18 @@ def load_partial_data(
             stop_loss_candles = None
 
         if liquidity:
-            raise NotImplemented("Partial liquidity data loading is not yet supported")
+            liquidity_time_bucket = liquidity_time_bucket or time_bucket
+            liquidity_progress_bar_desc = f"Loading TVL/liquidity data for {name}"
+            liquidity_df = client.fetch_tvl_by_pair_ids(
+                our_pair_ids,
+                liquidity_time_bucket,
+                progress_bar_description=liquidity_progress_bar_desc,
+                start_time=data_load_start_at,
+                end_time=end_at,
+            )
+        else:
+            liquidity_time_bucket = None
+            liquidity_df = None
 
         if lending_reserves:
             if isinstance(lending_reserves, LendingReserveUniverse):
@@ -2230,7 +2260,8 @@ def load_partial_data(
             exchanges=our_exchange_universe,
             pairs=filtered_pairs_df,
             candles=candles,
-            liquidity=None,
+            liquidity=liquidity_df,
+            liquidity_time_bucket=liquidity_time_bucket,
             backtest_stop_loss_time_bucket=stop_loss_time_bucket,
             backtest_stop_loss_candles=stop_loss_candles,
             lending_reserves=lending_reserve_universe,

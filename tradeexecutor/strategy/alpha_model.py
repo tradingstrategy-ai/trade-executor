@@ -2,7 +2,8 @@
 import datetime
 import heapq
 import logging
-from _decimal import Decimal
+
+from collections import Counter
 
 from dataclasses import dataclass, field
 from io import StringIO
@@ -12,6 +13,9 @@ from typing import Optional, Dict, Iterable, List
 import pandas as pd
 import numpy as np
 from dataclasses_json import dataclass_json
+
+from tradeexecutor.state.size_risk import SizeRisk
+from tradeexecutor.strategy.size_risk_model import SizeRiskModel
 from tradingstrategy.types import PrimaryKey
 
 from tradeexecutor.state.identifier import TradingPairIdentifier
@@ -20,7 +24,7 @@ from tradeexecutor.state.trade import TradeExecution, TradeType
 from tradeexecutor.state.types import PairInternalId, USDollarAmount, Percent, LeverageMultiplier
 
 from tradeexecutor.strategy.pandas_trader.position_manager import PositionManager
-from tradeexecutor.strategy.weighting import weight_by_1_slash_n, check_normalised_weights, normalise_weights, Signal
+from tradeexecutor.strategy.weighting import weight_by_1_slash_n, check_normalised_weights, normalise_weights, Signal, clip_to_normalised
 
 logger = logging.getLogger(__name__)
 
@@ -157,7 +161,11 @@ class TradingPairSignal:
     #: How many dollars we plan to invest on trading pair.
     #:
     #: Calculated by portfolio total investment equity * normalised weight * price.
-    position_target: USDollarAmount = 0.0
+    #:
+    #: Initially set to None. Can be set either by :py:meth:`AlphaModel.normalise_weights`
+    #: or `AlphaModel.calculate_target_positions` depending on the risk model configuration.
+    #:
+    position_target: USDollarAmount | None = None
 
     #: How much we are going to increase/decrease the position on this strategy cycle.
     #:
@@ -232,6 +240,23 @@ class TradingPairSignal:
     #:
     leverage: LeverageMultiplier | None = None
 
+    #: Information about the position size risk calculations.
+    #:
+    position_size_risk: SizeRisk | None = None
+
+    #: Information about the rebalancing trade size risk calculations.
+    #:
+    trade_size_risk: SizeRisk | None = None
+
+    #: Other data.
+    #:
+    #: Strategies can use this dict to store any custom
+    #: attributes related to this signal.
+    #:
+    #: All data should be JSON serialisable.
+    #:
+    other_data: dict = field(default_factory=dict)
+
     def __post_init__(self):
         assert isinstance(self.pair, TradingPairIdentifier)
         if type(self.signal) != float:
@@ -245,7 +270,7 @@ class TradingPairSignal:
             assert self.leverage > 0
 
     def __repr__(self):
-        return f"Signal #{self.signal_id} pair:{self.pair.get_ticker()} old weight:{self.old_weight:.4f} old value:{self.old_value:,} raw signal:{self.signal:.4f} normalised weight:{self.normalised_weight:.4f} new value:{self.position_target:,} adjust:{self.position_adjust_usd:,}"
+        return f"Signal #{self.signal_id} pair:{self.pair.get_ticker()} old weight:{self.old_weight:.4f} old value:{self.old_value:,} raw signal:{self.signal:.4f} normalised weight:{self.normalised_weight:.4f} new value:{self.position_target or 0:,} adjust:{self.position_adjust_usd:,}"
 
     def has_trades(self) -> bool:
         """Did/should this signal cause any trades to be executed.
@@ -394,8 +419,20 @@ class AlphaModel:
     #:
     signals: Dict[PairInternalId, TradingPairSignal] = field(default_factory=dict)
 
-    #: How much we can afford to invest on this cycle
-    investable_equity: Optional[USDollarAmount] = 0.0
+    #: How much we can afford to invest on this cycle.
+    #:
+    #: See also :py:attr:`accepted_investable_equity`
+    #:
+    investable_equity: Optional[USDollarAmount] = None
+
+    #: How much we can decide to invest, after calculating position size risk.
+    #:
+    #: Filled by :py:meth:`normalise_weights` and size risk model is used.
+    #:
+    #: See also :py:attr:`investable_equity`.
+    #:
+    #:
+    accepted_investable_equity: Optional[USDollarAmount] = None
 
     #: Determine the lower threshold for a position weight.
     #:
@@ -555,6 +592,7 @@ class AlphaModel:
                 old_weight=old_weight,
                 old_value=old_value,
                 old_pair=old_synthetic_pair,
+                position_target=0.0,
             )
 
     def select_top_signals(
@@ -597,24 +635,135 @@ class AlphaModel:
         top_signals = heapq.nlargest(count, filtered_signals, key=lambda s: s.raw_weight)
         self.signals = {s.pair.internal_id: s for s in top_signals}
 
-    def normalise_weights(self, max_weight=1.0):
+    def _normalise_weights_simple(
+        self,
+        max_weight=1.0):
+        """Normalises position weights between 0 and 1.
+
+        - Simple approach, do not deal with the US dollar size/liquidity risk
+        """
+        raw_weights = {s.pair.internal_id: s.raw_weight for s in self.signals.values()}
+        normalised = normalise_weights(raw_weights)
+        for pair_id, normal_weight in normalised.items():
+            self.signals[pair_id].normalised_weight = min(normal_weight, max_weight)
+
+    def _normalise_weights_size_risk(
+        self,
+        max_weight=1.0,
+        investable_equity: USDollarAmount | None = None,
+        size_risk_model: SizeRiskModel | None = None,
+    ):
+        """Normalises position weights between 0 and 1.
+
+        - Calculate dollar based position sizes and limit them by liquidity if needed
+        """
+        raw_weights = {s.pair.internal_id: s.raw_weight for s in self.signals.values()}
+
+        # First calculate raw normals
+        normalised = normalise_weights(raw_weights)
+
+        # We want to iterate from the largest signal to smallest,
+        # as we redistribute equity we cannot allocate in larger positions
+        normalised = Counter(normalised)
+
+        # For each signal, check if it exceeds
+        # US dollar based size risk bsaed on the current market conditions
+        total_accetable_investments = 0
+        equity_left = investable_equity
+        for pair_id, normal_weight in normalised.most_common():
+
+            # NOTE: Here we might have a conflict between given normal weight
+            # and size risk, because size risk may overallocate to a position
+            # if all positions are size-risked down
+            s = self.signals[pair_id]
+
+            assert s.raw_weight >= 0, "_normalise_weights_size_risk(): short or leverage not implemented"
+
+            concentration_capped_normal_weight = min(normal_weight, max_weight)
+            asked_position_size = concentration_capped_normal_weight * equity_left
+            size_risk = size_risk_model.get_acceptable_size_for_position(
+                self.timestamp,
+                s.pair,
+                asked_position_size
+            )
+
+            s.position_size_risk = size_risk
+            s.position_target = size_risk.accepted_size
+            total_accetable_investments += size_risk.accepted_size
+
+            # Distribute the remaining equity to other positions
+            # in the rebalance if we could not fully allocate this one
+            equity_left += (size_risk.asked_size - size_risk.accepted_size)
+
+        # Store our risk adjusted sizes
+        self.investable_equity = investable_equity
+        self.accepted_investable_equity = total_accetable_investments
+
+        # Recalculate normals based on size-risk adjusted USD values
+        clipped_weights = {}
+        for pair_id, normal_weight in normalised.items():
+            s = self.signals[pair_id]
+            clipped_weights[pair_id] = s.position_target / total_accetable_investments
+
+        # Make sure we sum to 1.0, not over,
+        # due to floating point issues
+        clipped_weights = clip_to_normalised(clipped_weights)
+
+        # Put clipped weights into the model
+        for pair_id, normal_weight in clipped_weights.items():
+            s = self.signals[pair_id]
+            s.normalised_weight = normal_weight
+
+        # Any remaining signal is set to zero
+        for s in self.signals.values():
+            if s.position_target is None:
+                s.position_target = 0.0
+
+    def normalise_weights(
+        self,
+        max_weight=1.0,
+        investable_equity: USDollarAmount | None = None,
+        size_risk_model: SizeRiskModel | None = None,
+    ):
         """Normalise weights to 0...1 scale.
 
-        After normalising, we can allocate the positionts `normalised_weight * portfolio equity`.
+        - Apply different risk-adjustments for the normalised positions sizes,
+          if given
+
+        - After normalising, we can allocate the positionts `normalised_weight * portfolio equity`.
+
+        - See also :py:mod:`tradeexecutor.strategy.size_risk_model` to set per-pair
+          specific US dollar nominated settings for a position size
 
         :param max_weight:
-            Do not allow equity allocation to exceed this % for any asset.
+            Do not allow equity allocation to exceed this % for a single asset.
+
+            Set to 1.0 to no portfolio concentrated risk considered.
 
             This may happen if you have a portfolio of max assets of 10,
             but due to market conditions there is signal only for 1-2 pairs.
             `max_weight` caps the asset allocation, preventing too concentrated
             positions.
 
+        :param size_risk_model:
+            Limit position sizes by the current market conditions.
+
+            E.g. Do not allow large positions that exceed available lit liquidity.
+
+        :param investable_equity:
+            Only needed if `size_risk_model` is given.
         """
-        raw_weights = {s.pair.internal_id: s.raw_weight for s in self.signals.values()}
-        normalised = normalise_weights(raw_weights)
-        for pair_id, normal_weight in normalised.items():
-            self.signals[pair_id].normalised_weight = min(normal_weight, max_weight)
+
+        if not size_risk_model:
+            # Easy path
+            self._normalise_weights_simple(max_weight)
+        else:
+            # Thinking harder
+            self._normalise_weights_size_risk(
+                max_weight=max_weight,
+                size_risk_model=size_risk_model,
+                investable_equity=investable_equity,
+            )
 
     def assign_weights(self, method=weight_by_1_slash_n):
         """Convert raw signals to their portfolio weight counterparts.
@@ -634,6 +783,7 @@ class AlphaModel:
         self,
         portfolio: Portfolio,
         portfolio_pairs: list[TradingPairIdentifier] | None=None,
+        ignore_credit=True,
     ):
         """Update the old weights of the last strategy cycle to the alpha model.
 
@@ -645,9 +795,16 @@ class AlphaModel:
             Only consider these pairs part of portifolio trading.
 
             You can use this to exclude credit positions from the portfolio trading.
+
+        :param ignore_credit:
+            Automatically ignore credit positions.
         """
         total = portfolio.get_position_equity_and_loan_nav()
         for position in portfolio.open_positions.values():
+
+            if ignore_credit:
+                if position.is_credit_supply():
+                    continue
 
             # Pair is excluded
             if portfolio_pairs:
@@ -690,7 +847,11 @@ class AlphaModel:
 
         return diffs
 
-    def calculate_target_positions(self, position_manager: PositionManager, investable_equity: USDollarAmount):
+    def calculate_target_positions(
+        self,
+        position_manager: PositionManager,
+        investable_equity: USDollarAmount | None = None,
+    ):
         """Calculate individual dollar amount for each position based on its normalised weight.
 
         - Sets the dollar value of the position
@@ -698,14 +859,29 @@ class AlphaModel:
         - Adjusts the existing dollar value of positions
 
         - Map the signal to a trading pair (spot, synthetic short pair, etc.)
+
+        :parma position_manager:
+            Used to genenerate TradeExecution instances
+
+        :param investable_equity:
+            How much cash we have if we convert the whole portfolio to cash.
+
+            Only needed to give now if size risk model not used with :py:meth:`normalise_weights`.
         """
         # dollar_values = {pair_id: weight * investable_equity for pair_id, weight in diffs.items()}
 
-        self.investable_equity = investable_equity
+        # This can be set by normalise_weights() if size risk model is sued
+        if self.investable_equity is None:
+            self.investable_equity = investable_equity
 
         for s in self.iterate_signals():
 
-            s.position_target = s.normalised_weight * investable_equity
+            # Might have been calculated earlier in normalise_weights() with size risk model
+            if s.position_target is None:
+                assert investable_equity is not None, \
+                    f"signal.position_target not set in AlphaModel.normalised_weights(). You need to give AlphaModel.calculate_target_positions(investable_equity)\n" \
+                    f"Signal {s} lacks position_target\n"
+                s.position_target = s.normalised_weight * investable_equity
 
             s.synthetic_pair = self.map_pair_for_signal(position_manager, s)
 
@@ -969,6 +1145,10 @@ class AlphaModel:
                 logger.info("Rebalance trades generated for signal #%d for %s: %s", signal.signal_id, underlying.get_ticker(), trade_str)
             else:
                 logger.info("No trades generated for: %s", underlying.get_ticker())
+
+            # Include size risk info for diagnostics
+            for t in position_rebalance_trades:
+                t.position_size_risk = signal.position_size_risk
 
             trades += position_rebalance_trades
 

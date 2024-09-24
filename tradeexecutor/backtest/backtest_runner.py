@@ -381,7 +381,12 @@ def setup_backtest_for_universe(
         pricing_model = GenericPricing(pair_configurator)
     else:
         # Set up execution and pricing
-        pricing_model = BacktestPricing(universe.data_universe.candles, routing_model, allow_missing_fees=allow_missing_fees)
+        pricing_model = BacktestPricing(
+            universe.data_universe.candles,
+            routing_model,
+            allow_missing_fees=allow_missing_fees,
+            liquidity_universe=universe.data_universe.liquidity,
+        )
 
     execution_model = BacktestExecution(wallet, max_slippage, stop_loss_data_available=stop_loss_data_available)
 
@@ -882,7 +887,7 @@ def run_backtest_inline(
         assert end_at, "You must give end_at if you give start_at"
     
     if end_at:
-        assert isinstance(end_at, datetime.datetime)
+        assert isinstance(end_at, datetime.datetime), f"Got: {end_at}"
         assert start_at, "You must give start_at if you give end_at"
 
     if universe:
@@ -911,7 +916,8 @@ def run_backtest_inline(
     else:
         setup_notebook_logging(log_level)
 
-    # Make sure no rounding bugs
+    # Increase Python Decimal arithmeic accuracy
+    # to deal with ERC-20 tokens
     setup_decimal_accuracy()
 
     wallet = SimulatedWallet()
@@ -950,6 +956,7 @@ def run_backtest_inline(
                 routing_model,
                 data_delay_tolerance=data_delay_tolerance,
                 allow_missing_fees=allow_missing_fees,
+                liquidity_universe=universe.data_universe.liquidity,
             )
     else:
         assert create_trading_universe, "Must give create_trading_universe if no universe given"
@@ -965,8 +972,7 @@ def run_backtest_inline(
     if indicator_storage is None and universe is not None:
         indicator_storage = DiskIndicatorStorage.create_default(universe)
 
-    # Backwardd compatibility for the code that never set execution context
-
+    # Backward compatibility for the code that never set execution context
     execution_context = dataclasses.replace(execution_context)
 
     if execution_context.engine_version != engine_version:

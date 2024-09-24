@@ -28,7 +28,7 @@ class BacktestTrader:
                  state: State,
                  universe: TradingStrategyUniverse,
                  execution_model: BacktestExecution,
-                 routing_model: BacktestRoutingModel,
+                routing_model: BacktestRoutingModel,
                  pricing_model: BacktestPricing,
                  ):
         self.state = state

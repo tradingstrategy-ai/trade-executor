@@ -59,7 +59,7 @@ from tradeexecutor.strategy.universe_model import UniverseOptions
 
 from tradeexecutor.analysis.advanced_metrics import calculate_advanced_metrics, AdvancedMetricsMode
 from tradeexecutor.analysis.trade_analyser import TradeSummary, build_trade_analysis
-from tradeexecutor.backtest.backtest_routing import BacktestRoutingIgnoredModel, OutOfBalance
+from tradeexecutor.backtest.backtest_routing import BacktestRoutingIgnoredModel
 from tradeexecutor.backtest.backtest_runner import run_backtest_inline
 from tradeexecutor.state.state import State
 from tradeexecutor.state.types import USDollarAmount, Percent
@@ -1335,8 +1335,16 @@ def run_grid_search_backtest(
                 max_workers=max_workers,
             )
         except BacktestExecutionFailed as bef:
-            # unnest
-            contains_oof = isinstance(bef.__cause__, OutOfSimulatedBalance) or isinstance(getattr(bef.__cause__, "__cause__", None), OutOfSimulatedBalance)
+            # unnest.
+            # ugly.
+            nest1 = isinstance(bef.__cause__, OutOfSimulatedBalance)
+            nest2 = isinstance(getattr(bef.__cause__, "__cause__", None), OutOfSimulatedBalance)
+            try:
+                nest3 = isinstance(bef.__cause__.__cause__.__cause__, OutOfSimulatedBalance)
+            except:
+                nest3 = False
+
+            contains_oof = nest1 or nest2 or nest3
             if ignore_wallet_errors and contains_oof:
                 #
                 # There is a bug in the backtest that tries to use more money

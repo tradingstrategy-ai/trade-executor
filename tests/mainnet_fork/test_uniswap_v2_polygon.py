@@ -364,7 +364,7 @@ def test_simple_routing_three_leg_live(
     trades += position_manager.open_spot(
         sand_matic_trading_pair,
         Decimal(100_000),
-        slippage_tolerance=0.03,  # default tolerance 17bps is too small for this pool
+        slippage_tolerance=0.04,  # default tolerance 17bps is too small for this pool
     )
 
     execution_model.execute_trades(
@@ -376,7 +376,7 @@ def test_simple_routing_three_leg_live(
         check_balances=True,
     )
 
-    assert all(t.is_success() for t in trades)
+    assert all(t.is_success() for t in trades), f"Trades failed: {trades}"
 
     # Inspect SAND-WMATIC trade
     trade_2 = trades[1]

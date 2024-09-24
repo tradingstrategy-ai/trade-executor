@@ -374,7 +374,7 @@ class BacktestExecution(ExecutionModel):
             # 3. Simulate tx broadcast
             try:
                 executed_quantity, executed_reserve, executed_collateral_allocation, executed_collateral_consumption = self.simulate_trade(ts, state, idx, trade)
-            except Exception as e:
+            except BacktestExecutionFailed as e:
                 logger.info("Simulating %d. trade %s failed: %s", idx+1, trade.get_short_label(), e)
                 raise BacktestExecutionFailed(f"Trade #{idx+1} out of {len(trades)} trades failed") from e
 
