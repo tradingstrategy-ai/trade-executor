@@ -248,6 +248,15 @@ class TradingPairSignal:
     #:
     trade_size_risk: SizeRisk | None = None
 
+    #: Other data.
+    #:
+    #: Strategies can use this dict to store any custom
+    #: attributes related to this signal.
+    #:
+    #: All data should be JSON serialisable.
+    #:
+    other_data: dict = field(default_factory=dict)
+
     def __post_init__(self):
         assert isinstance(self.pair, TradingPairIdentifier)
         if type(self.signal) != float:
