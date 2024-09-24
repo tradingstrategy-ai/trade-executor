@@ -35,7 +35,9 @@ def environment(
         "LOG_LEVEL": "disabled",
         "TRADING_STRATEGY_API_KEY": os.environ["TRADING_STRATEGY_API_KEY"],
         "USE_BINANCE": "false",  # Force to use DEX data for TVL and lending
-        "GENERATE_REPORT": "true"
+        "GENERATE_REPORT": "false"
+                           ""
+                           ""
     }
     return environment
 
@@ -57,11 +59,23 @@ def test_eth_btc_trade_size(
 
     state = State.read_json_file(state_file)
 
-    all_positions = list(state.portfolio.get_all_positions())
-    assert len(all_positions) == 10
-    for p in state.portfolio.get_all_positions():
-        print(p)
+    # Check we stay within some tolerance
+    for t in state.portfolio.get_all_trades():
+        position_size_risk = t.position_size_risk
 
-    # credit_positions = [p for p in state.portfolio.get_all_positions() if p.is_credit_supply()]
-    #assert len(credit_positions) >= 15  # TODO: Why this number varies - calendar?
+        if not t.pair.is_spot():
+            # Ignore credit supply/withdraw
+            continue
+
+        if not t.is_sell():
+            # Currently we store the size risk details only for trades increasing position,
+            # it might be missing for close trades
+            assert position_size_risk is not None, f"Trade lacks position size risk information: {t}"
+
+            # Check only entries / increases and they stay good compared to 100M cash
+            assert position_size_risk.accepted_size < 1_000_000
+
+    # Check we also get credit positions
+    credit_positions = [p for p in state.portfolio.get_all_positions() if p.is_credit_supply()]
+    assert len(credit_positions) == 39
 
