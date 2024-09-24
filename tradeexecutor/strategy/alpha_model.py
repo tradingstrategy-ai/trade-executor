@@ -2,7 +2,7 @@
 import datetime
 import heapq
 import logging
-from _decimal import Decimal
+
 from collections import Counter
 
 from dataclasses import dataclass, field
@@ -162,8 +162,8 @@ class TradingPairSignal:
     #:
     #: Calculated by portfolio total investment equity * normalised weight * price.
     #:
-    #: Initialy set to None. Can be set either by :py:meth:`normalise_weights`
-    #: or `calculate_target_positions` depending on the risk model configuration.
+    #: Initially set to None. Can be set either by :py:meth:`AlphaModel.normalise_weights`
+    #: or `AlphaModel.calculate_target_positions` depending on the risk model configuration.
     #:
     position_target: USDollarAmount | None = None
 
@@ -261,7 +261,7 @@ class TradingPairSignal:
             assert self.leverage > 0
 
     def __repr__(self):
-        return f"Signal #{self.signal_id} pair:{self.pair.get_ticker()} old weight:{self.old_weight:.4f} old value:{self.old_value:,} raw signal:{self.signal:.4f} normalised weight:{self.normalised_weight:.4f} new value:{self.position_target:,} adjust:{self.position_adjust_usd:,}"
+        return f"Signal #{self.signal_id} pair:{self.pair.get_ticker()} old weight:{self.old_weight:.4f} old value:{self.old_value:,} raw signal:{self.signal:.4f} normalised weight:{self.normalised_weight:.4f} new value:{self.position_target or 0:,} adjust:{self.position_adjust_usd:,}"
 
     def has_trades(self) -> bool:
         """Did/should this signal cause any trades to be executed.
@@ -576,6 +576,12 @@ class AlphaModel:
             self.signals[pair.internal_id].old_weight = old_weight
             self.signals[pair.internal_id].old_value = old_value
             self.signals[pair.internal_id].old_pair = old_synthetic_pair
+
+            # Dealing with SizeRiskModel that may have left
+            # unfilled signals if pairs we not part of this round
+            # of decide_trades()
+            if self.signals[pair.internal_id].position_target is None:
+                self.signals[pair.internal_id].position_target = 0
         else:
             self.signals[pair.internal_id] = TradingPairSignal(
                 pair=pair,
@@ -583,6 +589,7 @@ class AlphaModel:
                 old_weight=old_weight,
                 old_value=old_value,
                 old_pair=old_synthetic_pair,
+                position_target=0.0,
             )
 
     def select_top_signals(
@@ -703,6 +710,11 @@ class AlphaModel:
         for pair_id, normal_weight in clipped_weights.items():
             s = self.signals[pair_id]
             s.normalised_weight = normal_weight
+
+        # Any remaining signal is set to zero
+        for s in self.signals.values():
+            if s.position_target is None:
+                s.position_target = 0.0
 
     def normalise_weights(
         self,
