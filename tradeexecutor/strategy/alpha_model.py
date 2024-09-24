@@ -585,12 +585,6 @@ class AlphaModel:
             self.signals[pair.internal_id].old_weight = old_weight
             self.signals[pair.internal_id].old_value = old_value
             self.signals[pair.internal_id].old_pair = old_synthetic_pair
-
-            # Dealing with SizeRiskModel that may have left
-            # unfilled signals if pairs we not part of this round
-            # of decide_trades()
-            if self.signals[pair.internal_id].position_target is None:
-                self.signals[pair.internal_id].position_target = 0
         else:
             self.signals[pair.internal_id] = TradingPairSignal(
                 pair=pair,
