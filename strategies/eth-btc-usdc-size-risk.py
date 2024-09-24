@@ -76,12 +76,12 @@ class Parameters:
     # Backtesting only
     #
 
-    initial_cash = 10_000
-    backtest_start = datetime.datetime(2023, 8, 1)
+    initial_cash = 10_000_000 #  We use ridiculous 10M capital for testing
+    backtest_start = datetime.datetime(2022, 1, 1)
     backtest_end = datetime.datetime(2024, 9, 22)
     stop_loss_time_bucket = TimeBucket.h1  # use 1h close as the stop loss signal
     backtest_trading_fee = 0.0030  # Switch to QuickSwap 30 BPS free from the default Binance 5 BPS fee
-    use_credit = True  # Allow us to flip credit usage on/off in backtesting to more easily test different scenarios
+    use_credit = False  # Must be disabled because not enough history
 
     if os.environ.get("USE_BINANCE"):
         use_binance = os.environ["USE_BINANCE"].lower() == "true"  # Integration test override
@@ -438,13 +438,9 @@ def get_strategy_trading_pairs(execution_mode: ExecutionMode) -> list[HumanReada
         ]
 
     else:
-        # Live trading, backtesting DEX data
-
-        # Live trade
         trading_pairs = [
             (ChainId.polygon, "quickswap", "WBTC", "WETH", 0.0030),
-            (ChainId.polygon, "uniswap-v3", "WETH", "USDC", 0.0005),
-            (ChainId.polygon, "quickswap", "WETH", "USDC", 0.0030),  # keep this temporarily here for pricing
+            (ChainId.polygon, "quickswap", "WETH", "USDC", 0.0030),
         ]
 
     return trading_pairs
@@ -455,7 +451,7 @@ def get_lending_reserves(mode: ExecutionMode) -> list[LendingReserveDescription]
 
     use_binance = Parameters.use_binance
 
-    if use_binance:
+    if use_binance or (not Parameters.use_credit):
         # Credit interest is not available on Binance
         return []
     else:

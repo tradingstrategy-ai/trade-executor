@@ -91,8 +91,7 @@ def backtest(
 
     python_profile_report: Optional[Path] = Option(None, envvar="PYTHON_PROFILE_REPORT", help="Write a Python cprof file to check where backtest spends time"),
 
-    # backtest_start: Optional[Path] = Option(None, envvar="PYTHON_PROFILE_REPORT", help="Override backtest start date"),
-    # backtest_end: Optional[Path] = Option(None, envvar="PYTHON_PROFILE_REPORT", help="Override backtest end date"),
+    generate_report: Optional[bool] = Option(True, envvar="GENERATE_REPORT", help="Generate a HTML report file based on the template notebook. Disable to reduce unit test execution time."),
     ):
     """Backtest a given strategy module.
 
@@ -171,20 +170,25 @@ def backtest(
     # We should not be able let unnamed backtests through
     assert state.name
 
-    display_backtesting_results(state, strategy_universe=universe)
-
     print(f"Writing backtest data the state file: {backtest_result.resolve()}")
     state.write_json_file(backtest_result)
 
-    if not unit_testing:
-        state2 = State.read_json_file(backtest_result)
-        assert state.name == state2.name  # Early prototype serialisation checks
+    if generate_report:
 
-    print(f"Exporting report, notebook: {notebook_report}, HTML: {html_report}")
-    export_backtest_report(
-        state,
-        universe,
-        output_notebook=notebook_report,
-        output_html=html_report,
-    )
+        display_backtesting_results(state, strategy_universe=universe)
 
+        if not unit_testing:
+            state2 = State.read_json_file(backtest_result)
+            assert state.name == state2.name  # Early prototype serialisation checks
+
+        print(f"Exporting report")
+        print(f"Notebook: {notebook_report.resolve()}")
+        print(f"HTML: {html_report.resolve()}")
+        export_backtest_report(
+            state,
+            universe,
+            output_notebook=notebook_report,
+            output_html=html_report,
+        )
+    else:
+        print("Report generation skipped")

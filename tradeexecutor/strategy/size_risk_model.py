@@ -13,7 +13,9 @@ from tradeexecutor.state.types import USDollarAmount, AnyTimestamp, Percent
 class SizeRiskModel(abc.ABC):
     """Estimate an impact of a single trade.
 
-    - We are going to take a price impact hit when taking liquidity out of the market
+    - We are going to take a price impact hit when taking liquidity out of the market,
+      and sometimes this hit is too large, so we cannot trade an asset with the amount of capital we have
+      - this is call "capacity limited" in trading
 
     - Handle max sizes for individual trades and positions,
       so that we do not create trades or positions that are too big
