@@ -49,6 +49,8 @@ def test_eth_btc_trade_size(
 ):
     """Backtest the strategy with a short period.
 
+    - Do sample trading with a dummy strategy
+
     - Ensure credit handling code does not crash outright and we open backtest supply positions
 
     - The strategy module sets $10M as the backtest Parameters.initial_cash so it should be trade size limited a lot
@@ -77,5 +79,5 @@ def test_eth_btc_trade_size(
 
     # Check we also get credit positions
     credit_positions = [p for p in state.portfolio.get_all_positions() if p.is_credit_supply()]
-    assert len(credit_positions) == 39
+    assert len(credit_positions) == 11
 

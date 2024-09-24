@@ -78,7 +78,7 @@ class Parameters:
     # Backtesting only
     #
     backtest_start = datetime.datetime(2022, 5, 1)
-    backtest_end = datetime.datetime(2024, 9, 15)
+    backtest_end = datetime.datetime(2023, 2, 1)
     initial_cash = 100_000_000
     use_binance = False  # Binance does not have depth/TVL data so we cannot use it
 
