@@ -42,7 +42,7 @@ def environment(
     return environment
 
 
-def test_eth_btc_momentum_trade_size(
+def test_eth_btc_momentum_credit(
     environment: dict,
     state_file: Path,
 ):
