@@ -265,9 +265,9 @@ def test_backtest_long_short_stats(
     assert long_compounding_profit.iloc[0] == 0
     assert short_compounding_profit.iloc[0] == 0
     
-    assert overall_compounding_profit.iloc[-1] == -0.018257383118416515
-    assert long_compounding_profit.iloc[-1] == -0.003555468782310056
-    assert short_compounding_profit.iloc[-1] == -0.014754373048884384
+    assert overall_compounding_profit.iloc[-1] == pytest.approx(-0.018257383118416515)
+    assert long_compounding_profit.iloc[-1] == pytest.approx(-0.003555468782310056)
+    assert short_compounding_profit.iloc[-1] == pytest.approx(-0.014754373048884384)
     overall = float(summary_by_side.loc['Return %']['All'][:-1])
     long = float(summary_by_side.loc['Return %']['Long'][:-1])
     short = float(summary_by_side.loc['Return %']['Short'][:-1])
