@@ -1057,6 +1057,8 @@ def post_process_trade_decision(
 ):
     """Set any extra flags and do extra checks on trades.
 
+    - Called before trades are send to the execution
+
     - Mainly to deal with the fact that if trades close a final position on lending
 
     :param max_price_impact:
