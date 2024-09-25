@@ -1,6 +1,5 @@
 """Webhook stays alive after the trade execution loop crashes."""
 import os
-import random
 import secrets
 import subprocess
 import time
@@ -21,6 +20,9 @@ from tradeexecutor.cli.main import app
 logger = logging.getLogger(__name__)
 
 
+
+
+
 @pytest.fixture()
 def strategy_path() -> Path:
     """Where do we load our strategy file."""
@@ -36,6 +38,7 @@ def hot_wallet_private_key() -> HexBytes:
     return HexBytes(secrets.token_bytes(32))
 
 
+@pytest.mark.skipif(os.environ.get("BNB_CHAIN_JSON_RPC") is None, reason="Set BNB_CHAIN_JSON_RPC environment variable to Binance Smart Chain node to run this test")
 def test_main_loop_crash_with_catch(
     strategy_path,
     hot_wallet_private_key
