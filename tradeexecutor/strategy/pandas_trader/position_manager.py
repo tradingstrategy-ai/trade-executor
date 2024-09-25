@@ -912,6 +912,7 @@ class PositionManager:
                 notes=notes,
                 pending=pending,
                 position=position,
+                price_structure=price_structure,
             )
         else:
             # Sell

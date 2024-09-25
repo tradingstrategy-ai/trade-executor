@@ -15,7 +15,10 @@ from typer.testing import CliRunner
 from tradeexecutor.cli.main import app
 from tradeexecutor.state.state import State
 
-pytestmark = pytest.mark.skipif(os.environ.get("TRADING_STRATEGY_API_KEY") is None, reason="Set TRADING_STRATEGY_API_KEY environment variable to run this test module")
+pytestmark = pytest.mark.skipif(
+    os.environ.get("TRADING_STRATEGY_API_KEY") is None or os.environ.get("BNB_CHAIN_JSON_RPC") is None,
+    reason="Set TRADING_STRATEGY_API_KEY and BNB_CHAIN_JSON_RPC environment variable to run this test module"
+)
 
 
 @pytest.fixture(scope="session")

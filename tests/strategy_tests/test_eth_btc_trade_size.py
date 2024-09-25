@@ -6,7 +6,14 @@ from unittest import mock
 import pytest
 
 from tradeexecutor.cli.commands.app import app
+from tradeexecutor.cli.log import setup_pytest_logging
 from tradeexecutor.state.state import State
+
+
+@pytest.fixture(scope="module")
+def logger(request):
+    """Setup test logger."""
+    return setup_pytest_logging(request, mute_requests=False)
 
 
 @pytest.fixture()
@@ -36,14 +43,13 @@ def environment(
         "TRADING_STRATEGY_API_KEY": os.environ["TRADING_STRATEGY_API_KEY"],
         "USE_BINANCE": "false",  # Force to use DEX data for TVL and lending
         "GENERATE_REPORT": "false"
-                           ""
-                           ""
     }
     return environment
 
 
 @pytest.mark.slow_test_group
 def test_eth_btc_trade_size(
+    logger,
     environment: dict,
     state_file: Path,
 ):
@@ -61,6 +67,8 @@ def test_eth_btc_trade_size(
 
     state = State.read_json_file(state_file)
 
+    price_impact_tolerance_count = 0
+
     # Check we stay within some tolerance
     for t in state.portfolio.get_all_trades():
         position_size_risk = t.position_size_risk
@@ -77,7 +85,16 @@ def test_eth_btc_trade_size(
             # Check only entries / increases and they stay good compared to 100M cash
             assert position_size_risk.accepted_size < 1_000_000
 
+            # Check this was correctly filled in
+            if t.price_structure:
+                # TODO: Why not always filled?
+                # Make sure PositionManager passes trade.price_structure along
+                assert t.price_impact_tolerance == 0.03, f"price_impact_tolerance missing on {t}, price_structure: {t.price_structure}"
+                price_impact_tolerance_count += 1
+
     # Check we also get credit positions
     credit_positions = [p for p in state.portfolio.get_all_positions() if p.is_credit_supply()]
     assert len(credit_positions) == 11
+
+    assert price_impact_tolerance_count == 24
 

@@ -161,7 +161,7 @@ def test_short_flags(
     )
     trades = position_manager.close_all()
 
-    post_process_trade_decision(state, trades)
+    post_process_trade_decision(state, unit_test_execution_context, trades)
 
     # Only last trade has close_protocol_last
     assert TradeFlag.close in trades[0].flags

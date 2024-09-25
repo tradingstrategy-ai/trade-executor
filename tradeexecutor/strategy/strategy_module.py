@@ -16,6 +16,7 @@ import pandas
 import pandas as pd
 from web3.datastructures import AttributeDict, ReadableAttributeDict
 
+from tradeexecutor.state.types import Percent
 from tradeexecutor.strategy.engine_version import SUPPORTED_TRADING_STRATEGY_ENGINE_VERSIONS, TradingStrategyEngineVersion
 from tradeexecutor.strategy.pandas_trader.indicator import CreateIndicatorsProtocolV1, CreateIndicatorsProtocol
 from tradeexecutor.strategy.pandas_trader.strategy_input import StrategyInput
@@ -612,6 +613,13 @@ class StrategyModuleInformation:
             assert isinstance(val, (datetime.timedelta, NoneType)), f"Expected datetime, got {type(val)}: {val}"
             return val
 
+        return None
+
+    def get_max_price_impact(self) -> Percent | None:
+        if self.parameters:
+            val = self.parameters.get("max_price_impact")
+            assert isinstance(val, (float, NoneType)), f"Expected float, got {type(val)}: {val}"
+            return val
         return None
 
 

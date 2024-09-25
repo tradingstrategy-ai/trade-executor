@@ -420,9 +420,19 @@ class TradeExecution:
     #: If you are usinga vault-based trading, slippage tolerance must be always set
     #: to calculate the asset delta.
     #:
-    #: See also :py:meth:`calculate_asset_deltas`.
+    #: See also :py:meth:`calculate_asset_deltas` and :py:attr:`price_impact_tolerance`.
     #:
-    slippage_tolerance: Optional[float] = None
+    slippage_tolerance: Optional[Percent] = None
+
+    #: Price-impact tolerance check used for this trade.
+    #:
+    #: No need to manually fill - automatically filled from `Parameters.max_price_impact`.
+    #:
+    #: Filled in by `post_process_trade_decision()`.
+    #:
+    #: See also :py:attr:`slippage_tolerance`.
+    #:
+    price_impact_tolerance: Optional[Percent] = None
 
     #: LP fee % recorded before the execution starts.
     #:

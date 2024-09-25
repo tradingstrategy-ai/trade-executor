@@ -37,6 +37,7 @@ from tradeexecutor.monkeypatch.dataclasses_json import patch_dataclasses_json
 from tradeexecutor.state.metadata import Metadata, OnChainData
 from tradeexecutor.state.state import State
 from tradeexecutor.state.store import JSONFileStore, SimulateStore
+from tradeexecutor.state.types import Percent
 from tradeexecutor.strategy.default_routing_options import TradeRouting
 from tradeexecutor.strategy.generic.generic_router import GenericRouting
 from tradeexecutor.strategy.pricing_model import PricingModelFactory
@@ -108,13 +109,13 @@ def create_web3_config(
 
 
 def create_execution_model(
-        routing_hint: Optional[TradeRouting],
-        tx_builder: Optional[TransactionBuilder],
-        confirmation_timeout: datetime.timedelta,
-        confirmation_block_count: int,
-        max_slippage: float,
-        min_gas_balance: Optional[Decimal],
-        mainnet_fork=False,
+    routing_hint: Optional[TradeRouting],
+    tx_builder: Optional[TransactionBuilder],
+    confirmation_timeout: datetime.timedelta,
+    confirmation_block_count: int,
+    max_slippage: float,
+    min_gas_balance: Optional[Decimal],
+    mainnet_fork=False,
 ):
     """Set up the code transaction building logic.
 
@@ -166,17 +167,17 @@ def create_execution_model(
 
 
 def create_execution_and_sync_model(
-        asset_management_mode: AssetManagementMode,
-        private_key: str,
-        web3config: Web3Config,
-        confirmation_timeout: datetime.timedelta,
-        confirmation_block_count: int,
-        max_slippage: float,
-        min_gas_balance: Optional[Decimal],
-        vault_address: Optional[str],
-        vault_adapter_address: Optional[str],
-        vault_payment_forwarder_address: Optional[str],
-        routing_hint: Optional[TradeRouting] = None,
+    asset_management_mode: AssetManagementMode,
+    private_key: str,
+    web3config: Web3Config,
+    confirmation_timeout: datetime.timedelta,
+    confirmation_block_count: int,
+    max_slippage: float,
+    min_gas_balance: Optional[Decimal],
+    vault_address: Optional[str],
+    vault_adapter_address: Optional[str],
+    vault_payment_forwarder_address: Optional[str],
+    routing_hint: Optional[TradeRouting] = None,
 ) -> Tuple[ExecutionModel, SyncModel, ValuationModelFactory, PricingModelFactory]:
     """Set up the wallet sync and execution mode for the command line client."""
 

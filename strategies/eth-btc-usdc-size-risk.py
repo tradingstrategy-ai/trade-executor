@@ -67,6 +67,10 @@ class Parameters:
     #
     per_position_cap_of_pool = 0.025  # Cap entires to 2.5% of the underlying pool size
 
+    # We set this here to test this parameter,
+    # but current backtesting setup always assumes 0% price impact
+    max_price_impact = 0.03
+
     #
     # Live trading only
     #

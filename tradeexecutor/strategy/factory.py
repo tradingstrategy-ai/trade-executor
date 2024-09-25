@@ -7,6 +7,7 @@ from typing import Protocol, Optional
 
 from contextlib import AbstractContextManager
 
+from tradeexecutor.state.types import Percent
 from tradingstrategy.client import Client, BaseClient
 
 from tradeexecutor.strategy.sync_model import SyncMethodV0, SyncModel
@@ -36,6 +37,7 @@ class StrategyFactory(Protocol):
         timed_task_context_manager: AbstractContextManager,
         approval_model: ApprovalModel,
         routing_model: Optional[RoutingModel] = None,
+        max_price_impact: Percent | None = None,
         **kwargs) -> StrategyExecutionDescription:
         """
 

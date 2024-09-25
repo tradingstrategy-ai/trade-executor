@@ -19,7 +19,7 @@ from tradeexecutor.backtest.backtest_execution import BacktestExecutionFailed
 from tradeexecutor.ethereum.ethereum_protocol_adapters import EthereumPairConfigurator
 from tradeexecutor.ethereum.tx import TransactionBuilder
 from tradeexecutor.state.store import StateStore
-from tradeexecutor.state.types import BlockNumber
+from tradeexecutor.state.types import BlockNumber, Percent
 from tradeexecutor.statistics.core import update_statistics
 from tradeexecutor.statistics.statistics_table import StatisticsTable
 from tradeexecutor.strategy.account_correction import check_accounts, UnexpectedAccountingCorrectionIssue
@@ -40,6 +40,7 @@ from tradeexecutor.strategy.pandas_trader.position_manager import PositionManage
 from tradeexecutor.strategy.pricing_model import PricingModelFactory, PricingModel
 from tradeexecutor.strategy.routing import RoutingModel, RoutingState
 from tradeexecutor.strategy.stop_loss import check_position_triggers
+from tradeexecutor.strategy.trade_pricing import PriceImpactToleranceExceeded
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
 from tradeexecutor.strategy.universe_model import StrategyExecutionUniverse
 
@@ -87,6 +88,7 @@ class StrategyRunner(abc.ABC):
         parameters: StrategyParameters = None,
         create_indicators: CreateIndicatorsProtocol = None,\
         visualisation=True,
+        max_price_impact: Percent | None = None,
     ):
         """
         :param engine_version:
@@ -115,6 +117,7 @@ class StrategyRunner(abc.ABC):
         self.parameters = parameters
         self.create_indicators = create_indicators
         self.visualisation = visualisation
+        self.max_price_impact = max_price_impact
 
         # We need 60 seconds wait to read balances
         # after trades only on a real trading,
@@ -128,10 +131,11 @@ class StrategyRunner(abc.ABC):
             self.trade_settle_wait = trade_settle_wait
 
         logger.info(
-            "Created strategy runner %s, engine version %s, running mode %s",
+            "Created strategy runner: %s, engine version: %s, running mode: %s, max_price_impact: %s",
             self.__class__.__name__,
             self.execution_context.engine_version,
             self.execution_context.mode.name,
+            self.max_price_impact
         )
 
         # If planned and executed price is % off then
@@ -740,7 +744,12 @@ class StrategyRunner(abc.ABC):
                                            f"Old positions before decide_trades(): {old_position_ids}\n"
                                            f"New positions after decide_trades(): {new_position_ids}\n")
 
-                rebalance_trades = post_process_trade_decision(state, rebalance_trades)
+                rebalance_trades = post_process_trade_decision(
+                    state,
+                    execution_context,
+                    rebalance_trades,
+                    max_price_impact=self.max_price_impact,
+                )
 
                 # Log what our strategy decided
                 if self.is_progress_report_needed():
@@ -919,7 +928,12 @@ class StrategyRunner(abc.ABC):
             )
 
             triggered_trades = check_position_triggers(position_manager,self.execution_context)
-            triggered_trades = post_process_trade_decision(state, triggered_trades)
+            triggered_trades = post_process_trade_decision(
+                state,
+                self.execution_context,
+                triggered_trades,
+                max_price_impact=self.max_price_impact,
+            )
             approved_trades = self.approval_model.confirm_trades(state, triggered_trades)
             if approved_trades:
                 logger.info("Executing %d stop loss/take profit trades at %s", len(approved_trades), clock)
@@ -1035,20 +1049,61 @@ class StrategyRunner(abc.ABC):
             pass
 
 
-def post_process_trade_decision(state: State, trades: List[TradeExecution]):
-    """Set any extra flags on trades needed.
+def post_process_trade_decision(
+    state: State,
+    execution_context: ExecutionContext,
+    trades: List[TradeExecution],
+    max_price_impact: Percent | None = None,
+):
+    """Set any extra flags and do extra checks on trades.
 
     - Mainly to deal with the fact that if trades close a final position on lending
 
-    TODO: Currently we do not pass enough information in :py:class:`TradingPairIdentifier`
-    so here we take a hack shortcut to set close_protocol_all. W
+    :param max_price_impact:
+        What is the allowed maximum price impact of a single trade.
+
+        Trades must have their `trade.price_structure` data filled
+        to detect.
+
+    :raise PriceImpactToleranceExceeded:
+        If any of the trades is detected to have too much price impact.
     """
+
+    logger.info(
+        "post_process_trade_decision(): Post-processing %d trades, max_price_impact: %s",
+        len(trades),
+        max_price_impact,
+    )
 
     # TODO: Write a full logic here, only supports closing shorts now,
     # assuming everything lending is short
     lending_positions_open = [p for p in state.portfolio.open_positions.values() if p.is_leverage()]
     lending_position_closing_trades = [t for t in trades if t.pair.is_leverage() and TradeFlag.close in t.flags]
     assert len(lending_positions_open) >= len(lending_position_closing_trades), "We cannot close more than we have open"
+
+    # TODO: Currently we do not pass enough information in :py:class:`TradingPairIdentifier`
+    # so here we take a hack shortcut to set close_protocol_all.
     if len(lending_position_closing_trades) == len(lending_positions_open) and len(lending_positions_open) > 0:
         lending_position_closing_trades[-1].flags.add(TradeFlag.close_protocol_last)
+
+    if max_price_impact is not None:
+        for t in trades:
+            price_structure = t.price_structure
+
+            if execution_context.live_trading:
+                # TODO: Why not always filled?
+                # Make sure PositionManager passes trade.price_structure along
+                assert price_structure is not None, f"Live trading running, but trade missing price structure {t}"
+
+            if price_structure is not None:
+                impact = t.price_structure.get_price_impact()
+                if impact > max_price_impact:
+                    raise PriceImpactToleranceExceeded(
+                        f"Trade {t} has too much price impact\n"
+                        f"Maximum allowed: {max_price_impact * 100} %\n"
+                        f"Trade impact: {impact * 100} %\n"
+                        f"Trade pricing: {t.price_structure}\n"
+                    )
+                t.price_impact_tolerance = max_price_impact
+
     return trades

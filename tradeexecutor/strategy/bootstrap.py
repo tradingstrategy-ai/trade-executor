@@ -12,6 +12,7 @@ from contextlib import AbstractContextManager
 from pathlib import Path
 from typing import Optional
 
+from tradeexecutor.state.types import Percent
 from tradeexecutor.strategy.default_routing_options import TradeRouting
 from tradeexecutor.strategy.pandas_trader.indicator import CreateIndicatorsProtocolV1, CreateIndicatorsProtocol
 from tradeexecutor.strategy.parameters import StrategyParameters
@@ -109,6 +110,7 @@ def make_factory_from_strategy_mod(mod: StrategyModuleInformation) -> StrategyFa
             create_indicators: CreateIndicatorsProtocol | None = None,
             parameters: StrategyParameters | None = None,
             visualisation=True,
+            max_price_impact: Percent | None = None,
             **kwargs) -> StrategyExecutionDescription:
 
         # Migration assert
@@ -157,13 +159,15 @@ def make_factory_from_strategy_mod(mod: StrategyModuleInformation) -> StrategyFa
             create_indicators=create_indicators,
             parameters=parameters,
             visualisation=visualisation,
+            max_price_impact=max_price_impact,
         )
 
         logger.info(
-            "Starting strategy runner in execution mode %s:\n%s\nVisualisations are: %s",
+            "Starting strategy runner in execution mode %s:\n%s\nVisualisations are: %s\nmax_price_impact is: %s",
             execution_context.mode.name,
             runner.__class__.__name__,
             visualisation,
+            max_price_impact,
         )
 
         return StrategyExecutionDescription(
