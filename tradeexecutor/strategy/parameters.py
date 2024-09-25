@@ -9,7 +9,7 @@ from skopt.space import Dimension
 from tabulate import tabulate
 from web3.datastructures import MutableAttributeDict
 
-from tradeexecutor.state.types import USDollarAmount
+from tradeexecutor.state.types import USDollarAmount, Percent
 from tradeexecutor.strategy.cycle import CycleDuration
 from tradeexecutor.strategy.default_routing_options import TradeRouting
 
@@ -47,6 +47,20 @@ class CoreStrategyParameters(TypedDict):
     #: How much data load for each strategy cycle in live trading
     #:
     required_history_period: datetime.timedelta | None
+
+    #: Live trading setting for the maximum price impact.
+    #:
+    #: A tripwire check.
+    #:
+    #: If we exceed this price impact for any trade,
+    #: crash the trade-executor before executing the trades.
+    #: This is to protect the capital in the case
+    #: some pool liquidity action is funny when a major single
+    #: LP withdraws the liquidity.
+    #:
+    #: See :py:class:`PriceImpactToleranceExceeded`
+    #:
+    maximum_price_impact: Percent | None
 
 
 class StrategyParameters(MutableAttributeDict):

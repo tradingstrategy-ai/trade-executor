@@ -1,3 +1,5 @@
+"""Trade pricing and price impact."""
+
 import datetime
 from _decimal import Decimal
 from logging import getLogger
@@ -8,8 +10,27 @@ from tradeexecutor.state.identifier import TradingPairIdentifier
 from tradeexecutor.state.types import USDollarAmount, BPS, USDollarPrice
 from dataclasses_json import dataclass_json
 
+from tradingstrategy.types import Percent
 
 logger = getLogger(__name__)
+
+
+class PriceImpactToleranceExceeded(Exception):
+    """Crash the executor if we try accidentally pass in a trade with too much price impact.
+
+    Layers of price impact protection
+
+    - :py:class:`SizeRiskModel` estimates the cap of the trade,
+       resizes trades approriately
+
+    - :py:class:`PriceImpactToleranceExceeded` crashes the trade executor
+      if it detects a trade with too much impact going to the execution
+
+    - Enzyme smart contracts have CumulativeSlippageTolerance of 10% per week
+
+    - See :py:func:`post_process_trade_decision`
+    """
+
 
 
 @dataclass_json
@@ -164,7 +185,11 @@ class TradePricing:
                 raise ValueError("Swap involves fees from more than two pairs")
             
         logger.warning("some pairs in the trade have a fee of None")
-        return None 
+        return None
+
+    def get_price_impact(self) -> Percent:
+        """How far off we are from the mid-price with this trade."""
+        return abs((self.price - self.mid_price) / self.mid_price)
 
 
 def format_fees_percentage(fees: list[BPS]) -> str:
