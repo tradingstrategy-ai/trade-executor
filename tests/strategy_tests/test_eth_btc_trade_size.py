@@ -39,12 +39,10 @@ def environment(
         "STRATEGY_FILE": strategy_file.as_posix(),
         "STATE_FILE": state_file.as_posix(),
         "UNIT_TESTING": "true",
-        "LOG_LEVEL": "info",
+        "LOG_LEVEL": "disabled",
         "TRADING_STRATEGY_API_KEY": os.environ["TRADING_STRATEGY_API_KEY"],
         "USE_BINANCE": "false",  # Force to use DEX data for TVL and lending
         "GENERATE_REPORT": "false"
-                           ""
-                           ""
     }
     return environment
 
