@@ -746,6 +746,7 @@ class StrategyRunner(abc.ABC):
 
                 rebalance_trades = post_process_trade_decision(
                     state,
+                    execution_context,
                     rebalance_trades,
                     max_price_impact=self.max_price_impact,
                 )
@@ -929,6 +930,7 @@ class StrategyRunner(abc.ABC):
             triggered_trades = check_position_triggers(position_manager,self.execution_context)
             triggered_trades = post_process_trade_decision(
                 state,
+                self.execution_context,
                 triggered_trades,
                 max_price_impact=self.max_price_impact,
             )
@@ -1049,6 +1051,7 @@ class StrategyRunner(abc.ABC):
 
 def post_process_trade_decision(
     state: State,
+    execution_context: ExecutionContext,
     trades: List[TradeExecution],
     max_price_impact: Percent | None = None,
 ):
@@ -1085,7 +1088,12 @@ def post_process_trade_decision(
 
     if max_price_impact is not None:
         for t in trades:
-            if t.price_structure is not None:
+            price_structure = t.price_structure
+
+            if execution_context.live_trading:
+                assert price_structure is not None, f"Live trading running, but trade missing price structure {t}"
+
+            if price_structure is not None:
                 impact = t.price_structure.get_price_impact()
                 if impact > max_price_impact:
                     raise PriceImpactToleranceExceeded(

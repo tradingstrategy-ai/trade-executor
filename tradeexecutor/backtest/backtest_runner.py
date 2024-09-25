@@ -20,6 +20,7 @@ from tradeexecutor.backtest.backtest_sync import BacktestSyncModel
 from tradeexecutor.backtest.legacy_backtest_sync import BacktestSyncer
 from tradeexecutor.backtest.backtest_valuation import BacktestValuationModel
 from tradeexecutor.backtest.simulated_wallet import SimulatedWallet
+from tradeexecutor.cli.commands.shared_options import max_slippage
 from tradeexecutor.cli.log import setup_notebook_logging, setup_custom_log_levels, setup_strategy_logging
 from tradeexecutor.cli.loop import ExecutionLoop, ExecutionTestHook
 from tradeexecutor.ethereum.routing_data import get_routing_model, get_backtest_routing_model
@@ -199,6 +200,7 @@ class BacktestSetup:
             decide_trades=self.decide_trades,
             execution_context=execution_context,
             parameters=self.parameters,
+            max_price_impact=self.parameters.get("max_price_impact"),
         )
 
         return StrategyExecutionDescription(

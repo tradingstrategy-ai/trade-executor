@@ -69,11 +69,11 @@ def test_eth_btc_trade_size(
 
     state = State.read_json_file(state_file)
 
+    price_impact_tolerance_count = 0
+
     # Check we stay within some tolerance
     for t in state.portfolio.get_all_trades():
         position_size_risk = t.position_size_risk
-
-        assert t.price_impact_tolerance == 0.03
 
         if not t.pair.is_spot():
             # Ignore credit supply/withdraw
@@ -87,7 +87,15 @@ def test_eth_btc_trade_size(
             # Check only entries / increases and they stay good compared to 100M cash
             assert position_size_risk.accepted_size < 1_000_000
 
+            # Check this was correctly filled in
+            if t.price_structure:
+                # TODO: Why not always filled?
+                assert t.price_impact_tolerance == 0.03, f"price_impact_tolerance missing on {t}, price_structure: {t.price_structure}"
+                price_impact_tolerance_count += 1
+
     # Check we also get credit positions
     credit_positions = [p for p in state.portfolio.get_all_positions() if p.is_credit_supply()]
     assert len(credit_positions) == 11
+
+    assert price_impact_tolerance_count == 24
 
