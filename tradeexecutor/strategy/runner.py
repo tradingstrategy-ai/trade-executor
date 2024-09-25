@@ -792,7 +792,7 @@ class StrategyRunner(abc.ABC):
 
                         # Order trades to a natural order, so we have always the correct cash in hand.
                         # Any credit market withdraw will be executed first, then sells, then buys and Aave deposits last.
-                        sorted_approved_trades = sorted(approved_trades,key=lambda t: t.get_execution_sort_position())
+                        sorted_approved_trades = sorted(approved_trades, key=lambda t: t.get_execution_sort_position())
                         if approved_trades != sorted_approved_trades:
                             logger.info("Trades resorted to: %s", sorted_approved_trades)
 

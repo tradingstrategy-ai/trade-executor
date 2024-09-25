@@ -174,6 +174,17 @@ def test_generic_router_spot_and_short_strategy_manual_tick(
         cycle=1,
         live=True,
     )
+
+    # Some more debug details for the assert
+    if len(portfolio.open_positions) != 1:
+        for t in state.portfolio.get_all_trades():
+            print("Trade ", t)
+            for tx in t.blockchain_transactions:
+                print(tx)
+
+    #
+    # TODO: Crashes on dRPC
+    #
     assert len(portfolio.open_positions) == 1
     position = portfolio.open_positions[1]
     assert position.pair.is_short()
