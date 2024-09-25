@@ -16,31 +16,24 @@ from typing import Optional
 import typer
 
 from eth_defi.gas import GasPriceMethod
-from tradeexecutor.strategy.strategy_module import parse_strategy_module
-from tradeexecutor.strategy.strategy_module import parse_strategy_module
 from tradingstrategy.chain import ChainId
-from tradingstrategy.client import Client
-from tradingstrategy.testing.uniswap_v2_mock_client import UniswapV2MockClient
 from tradingstrategy.timebucket import TimeBucket
 
 from . import shared_options
-from .app import app, TRADE_EXECUTOR_VERSION
+from .app import app
 from ..bootstrap import prepare_executor_id, prepare_cache, create_web3_config, create_state_store, \
     create_execution_and_sync_model, create_metadata, create_approval_model, create_client
-from ..log import setup_logging, setup_discord_logging, setup_logstash_logging, setup_file_logging, \
-    setup_custom_log_levels
+from ..log import setup_logging, setup_discord_logging, setup_logstash_logging, setup_file_logging
 from ..loop import ExecutionLoop
 from ..result import display_backtesting_results
 from ..version_info import VersionInfo
 from ..watchdog import stop_watchdog
 from ...ethereum.enzyme.vault import EnzymeVaultSyncModel
-from ...ethereum.uniswap_v2.uniswap_v2_routing import UniswapV2Routing
 from ...state.state import State
 from ...state.store import NoneStore, JSONFileStore
 from ...strategy.approval import ApprovalType
 from ...strategy.bootstrap import import_strategy_file
 from ...strategy.cycle import CycleDuration
-from ...strategy.default_routing_options import TradeRouting
 from ...strategy.execution_context import ExecutionContext, ExecutionMode
 from ...strategy.execution_model import AssetManagementMode
 from ...strategy.parameters import dump_parameters
@@ -136,7 +129,7 @@ def start(
     key_metrics_backtest_cut_off_days: float = typer.Option(90, envvar="KEY_METRIC_BACKTEST_CUT_OFF_DAYS", help="How many days live data is collected until key metrics are switched from backtest to live trading based"),
     check_accounts: bool = typer.Option(True, "--check-accounts", envvar="CHECK_ACCOUNTS", help="Do extra accounting checks to track mismatch balances"),
     sync_treasury_on_startup: bool = typer.Option(True, "--sync-treasury-on-startup", envvar="SYNC_TREASURY_ON_STARTUP", help="Sync treasury events before starting any trading"),
-    visulisation: bool = typer.Option(True, "--visualisation", envvar="VISUALISATION", help="Disable generation of charts using Kaleido library. Helps with issues with broken installations"),
+    visualisation: bool = typer.Option(True, "--visualisation", envvar="VISUALISATION", help="Disable generation of charts using Kaleido library. Helps with issues with broken installations"),
 
     run_single_cycle: bool = typer.Option(False, "--run-single-cycle", envvar="RUN_SINGLE_CYCLE", help="Run a single strategy decision cycle and exist, regardless of the current pending state."),
 
@@ -532,7 +525,7 @@ def start(
         sync_treasury_on_startup=sync_treasury_on_startup,
         create_indicators=mod.create_indicators,
         parameters=mod.parameters,
-        visualisation=visulisation,
+        visualisation=visualisation,
         max_price_impact=mod.get_max_price_impact(),
     )
 

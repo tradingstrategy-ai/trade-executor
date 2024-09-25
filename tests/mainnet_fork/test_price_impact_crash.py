@@ -3,7 +3,6 @@ import json
 import os
 import secrets
 from pathlib import Path
-from unittest import mock
 
 import pytest
 
@@ -12,18 +11,15 @@ from eth_typing import HexAddress
 from hexbytes import HexBytes
 from web3 import Web3, HTTPProvider
 
-from eth_defi.provider.anvil import AnvilLaunch, launch_anvil, mine
+from eth_defi.provider.anvil import AnvilLaunch, launch_anvil
 from eth_defi.chain import install_chain_middleware
-from eth_defi.enzyme.vault import Vault
 from eth_defi.hotwallet import HotWallet
 from eth_defi.token import TokenDetails, fetch_erc20_details
 from eth_defi.trace import assert_transaction_success_with_explanation
-from eth_defi.event_reader.reorganisation_monitor import create_reorganisation_monitor
 
 from tradeexecutor.cli.main import app
 from tradeexecutor.monkeypatch.web3 import construct_sign_and_send_raw_middleware
-from tradeexecutor.state.state import State
-from tradeexecutor.ethereum.enzyme.vault import EnzymeVaultSyncModel
+from tradeexecutor.strategy.trade_pricing import PriceImpactToleranceExceeded
 
 
 pytestmark = pytest.mark.skipif(
@@ -182,8 +178,10 @@ def test_price_impact_crash(
 
     mocker.patch.dict("os.environ", environment, clear=True)
 
+    # Initialise state.json
     app(["init"], standalone_mode=False)
 
-    # run the strategy
-    app(["start"], standalone_mode=False)
+    # Run a single cycle of the strategy
+    with pytest.raises(PriceImpactToleranceExceeded):
+        app(["start"], standalone_mode=False)
 

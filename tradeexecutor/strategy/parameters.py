@@ -58,6 +58,9 @@ class CoreStrategyParameters(TypedDict):
     #: some pool liquidity action is funny when a major single
     #: LP withdraws the liquidity.
     #:
+    #: The parameter must be LP fee inclusive
+    #: e.g. for the 5 BPS pool ever set this value lower than `0.0005`.
+    #:
     #: See :py:class:`PriceImpactToleranceExceeded`
     #:
     maximum_price_impact: Percent | None

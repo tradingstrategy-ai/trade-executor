@@ -617,7 +617,7 @@ class StrategyModuleInformation:
 
     def get_max_price_impact(self) -> Percent | None:
         if self.parameters:
-            val = self.parameters.get("get_max_price_imapact")
+            val = self.parameters.get("max_price_impact")
             assert isinstance(val, (float, NoneType)), f"Expected float, got {type(val)}: {val}"
             return val
         return None
