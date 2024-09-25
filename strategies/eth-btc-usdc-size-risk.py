@@ -73,6 +73,7 @@ class Parameters:
     chain_id = ChainId.ethereum
     routing = TradeRouting.default  # Pick default routes for trade execution
     required_history_period = datetime.timedelta(hours=momentum_lookback_bars + 1)
+    maximum_price_impact = 0.03
 
     #
     # Backtesting only
