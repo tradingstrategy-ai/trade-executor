@@ -8,9 +8,11 @@ import pytest as pytest
 
 from eth_defi.balances import fetch_erc20_balances_by_token_list
 from eth_defi.token import TokenDetails
+
 from tradeexecutor.ethereum.execution import EthereumExecution
 from tradeexecutor.strategy.account_correction import calculate_account_corrections
 from tradeexecutor.strategy.asset import get_relevant_assets, build_expected_asset_map
+from tradeexecutor.strategy.execution_context import unit_test_execution_context
 from tradingstrategy.chain import ChainId
 from web3 import Web3
 
@@ -248,7 +250,11 @@ def test_generic_routing_close_position_across_markets(
         generic_pricing_model
     )
     trades = position_manager.close_all()
-    post_process_trade_decision(state, trades)
+    post_process_trade_decision(
+        state,
+        unit_test_execution_context,
+        trades,
+    )
 
     short_close = trades[-1]
     assert short_close.is_short()
