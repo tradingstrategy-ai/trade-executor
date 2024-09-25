@@ -25,6 +25,7 @@ from tradeexecutor.ethereum.enzyme.vault import EnzymeVaultSyncModel
 from tradeexecutor.ethereum.tx import TransactionBuilder
 from tradeexecutor.ethereum.wallet import perform_gas_level_checks
 from tradeexecutor.state.metadata import Metadata
+from tradeexecutor.state.types import Percent
 from tradeexecutor.statistics.in_memory_statistics import refresh_run_state
 from tradeexecutor.statistics.statistics_table import serialise_long_short_stats_as_json_table
 from tradeexecutor.strategy.account_correction import check_accounts, UnexpectedAccountingCorrectionIssue
@@ -157,7 +158,8 @@ class ExecutionLoop:
             sync_treasury_on_startup: bool = False,
             create_indicators: CreateIndicatorsProtocol = None,
             parameters: StrategyParameters = None,
-            visulisation: bool = True,
+            visualisation: bool = True,
+            max_price_impact: Percent | None = None,
     ):
         """See main.py for details."""
 
@@ -193,12 +195,12 @@ class ExecutionLoop:
         self.create_indicators = create_indicators
         self.parameters = parameters
 
+        # TODO: Spell out individual variables for type hinting support
         args = locals().copy()
         args.pop("self")
 
         assert "execution_context" in args, "execution_context required"
 
-        # TODO: Spell out individual variables for type hinting support
         self.__dict__.update(args)
 
         self.timed_task_context_manager = self.execution_context.timed_task_context_manager
@@ -230,7 +232,7 @@ class ExecutionLoop:
         # We hide once-downloaded universe here for live loop
         # tests that perform live trading against forked chain in a fast cycle (1s)
         self.unit_testing_universe: StrategyExecutionUniverse | None = None
-        self.visulisation = visulisation
+        self.visulisation = visualisation
 
     def is_backtest(self) -> bool:
         """Are we doing a backtest execution."""
@@ -1382,6 +1384,7 @@ class ExecutionLoop:
             create_indicators=self.create_indicators,
             parameters=self.parameters,
             visualisation=self.visulisation,
+            max_price_impact=self.max_price_impact,
         )
 
         self.init_live_run_state(run_description)

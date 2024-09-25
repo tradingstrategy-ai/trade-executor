@@ -6,7 +6,14 @@ from unittest import mock
 import pytest
 
 from tradeexecutor.cli.commands.app import app
+from tradeexecutor.cli.log import setup_pytest_logging
 from tradeexecutor.state.state import State
+
+
+@pytest.fixture(scope="module")
+def logger(request):
+    """Setup test logger."""
+    return setup_pytest_logging(request, mute_requests=False)
 
 
 @pytest.fixture()
@@ -32,7 +39,7 @@ def environment(
         "STRATEGY_FILE": strategy_file.as_posix(),
         "STATE_FILE": state_file.as_posix(),
         "UNIT_TESTING": "true",
-        "LOG_LEVEL": "disabled",
+        "LOG_LEVEL": "info",
         "TRADING_STRATEGY_API_KEY": os.environ["TRADING_STRATEGY_API_KEY"],
         "USE_BINANCE": "false",  # Force to use DEX data for TVL and lending
         "GENERATE_REPORT": "false"
@@ -44,6 +51,7 @@ def environment(
 
 @pytest.mark.slow_test_group
 def test_eth_btc_trade_size(
+    logger,
     environment: dict,
     state_file: Path,
 ):
@@ -64,6 +72,8 @@ def test_eth_btc_trade_size(
     # Check we stay within some tolerance
     for t in state.portfolio.get_all_trades():
         position_size_risk = t.position_size_risk
+
+        assert t.price_impact_tolerance == 0.03
 
         if not t.pair.is_spot():
             # Ignore credit supply/withdraw

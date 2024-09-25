@@ -86,12 +86,6 @@ def usdc(web3) -> TokenDetails:
 
 
 @pytest.fixture
-def ausdc(web3) -> TokenDetails:
-    """Get aPolUSDC on Polygon."""
-    return fetch_erc20_details(web3, "0x625E7708f30cA75bfd92586e17077590C60eb4cD", contract_name="aave_v3/AToken.json")
-
-
-@pytest.fixture
 def hot_wallet(
     web3,
     deployer,
@@ -133,12 +127,6 @@ def strategy_file() -> Path:
         / "price_impact_crash.py"
     )
 
-
-@pytest.fixture()
-def vault_record_file(tmp_path) -> Path:
-    return Path(tmp_path) / "vault-info.json"
-
-
 @pytest.fixture()
 def state_file(tmp_path) -> Path:
     """The state file for the tests.
@@ -157,7 +145,6 @@ def environment(
     hot_wallet: HotWallet,
     state_file: Path,
     strategy_file: Path,
-    vault_record_file: Path,
 ) -> dict:
     """Passed to init and start commands as environment variables"""
     # Set up the configuration for the live trader
@@ -173,7 +160,7 @@ def environment(
         "CONFIRMATION_BLOCK_COUNT": "0",  # Needed for test backend, Anvil
         "TRADING_STRATEGY_API_KEY": os.environ["TRADING_STRATEGY_API_KEY"],
         "PATH": os.environ["PATH"],  # Needs forge
-        "MAX_CYCLES": "3",  # Run decide_trades() max 2 times
+        "RUN_SINGLE_CYCLE": "true",  # Should crash on the first cycle
         "MAX_DATA_DELAY_MINUTES": str(24 * 60),
     }
     return environment

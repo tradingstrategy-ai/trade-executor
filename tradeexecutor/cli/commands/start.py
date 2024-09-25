@@ -532,7 +532,8 @@ def start(
         sync_treasury_on_startup=sync_treasury_on_startup,
         create_indicators=mod.create_indicators,
         parameters=mod.parameters,
-        visulisation=visulisation,
+        visualisation=visulisation,
+        max_price_impact=mod.get_max_price_impact(),
     )
 
     # Crash gracefully at the start up if our main loop cannot set itself up
