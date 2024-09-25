@@ -200,7 +200,7 @@ class BacktestSetup:
             decide_trades=self.decide_trades,
             execution_context=execution_context,
             parameters=self.parameters,
-            max_price_impact=self.parameters.get("max_price_impact"),
+            max_price_impact=self.parameters and self.parameters.get("max_price_impact"),
         )
 
         return StrategyExecutionDescription(

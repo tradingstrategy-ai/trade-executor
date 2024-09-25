@@ -90,6 +90,7 @@ def test_eth_btc_trade_size(
             # Check this was correctly filled in
             if t.price_structure:
                 # TODO: Why not always filled?
+                # Make sure PositionManager passes trade.price_structure along
                 assert t.price_impact_tolerance == 0.03, f"price_impact_tolerance missing on {t}, price_structure: {t.price_structure}"
                 price_impact_tolerance_count += 1
 

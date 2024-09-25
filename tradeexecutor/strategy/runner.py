@@ -1091,6 +1091,8 @@ def post_process_trade_decision(
             price_structure = t.price_structure
 
             if execution_context.live_trading:
+                # TODO: Why not always filled?
+                # Make sure PositionManager passes trade.price_structure along
                 assert price_structure is not None, f"Live trading running, but trade missing price structure {t}"
 
             if price_structure is not None:
