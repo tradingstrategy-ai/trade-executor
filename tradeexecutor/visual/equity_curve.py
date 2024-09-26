@@ -84,7 +84,6 @@ def calculate_equity_curve(
     # Happens in unit tests as we get a calculate event from deposit
     # and recalculatin at the same timestam
 
-    # ipdb> curve
     # 0
     # 2021-06-01 00:00:00.000000        0.000000
     # 2023-10-18 10:04:05.834542    10000.000000
@@ -243,8 +242,12 @@ def calculate_daily_returns(
 
     :returns:
         If valid state provided, returns are returned as calendar day (D) frequency, else None"""
-    
-    equity_curve = calculate_equity_curve(state, fill_time_gaps=True)
+
+    if state.backtest_data:
+        equity_curve = calculate_equity_curve(state, fill_time_gaps=True)
+    else:
+        # Legacy
+        equity_curve = calculate_equity_curve(state, fill_time_gaps=False)
     returns = calculate_aggregate_returns(equity_curve, freq=freq)
     return returns
 
