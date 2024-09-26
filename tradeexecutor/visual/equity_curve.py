@@ -225,7 +225,10 @@ def calculate_aggregate_returns(equity_curve: pd.Series, freq: str | pd.DateOffs
     return sampled.pct_change()
 
 
-def calculate_daily_returns(state: State, freq: pd.DateOffset | str= "D") -> (pd.Series | None):
+def calculate_daily_returns(
+    state: State,
+    freq: pd.DateOffset | str= "D",
+) -> (pd.Series | None):
     """Calculate daily returns of a backtested results.
 
     Used for advanced statistics.
@@ -241,7 +244,7 @@ def calculate_daily_returns(state: State, freq: pd.DateOffset | str= "D") -> (pd
     :returns:
         If valid state provided, returns are returned as calendar day (D) frequency, else None"""
     
-    equity_curve = calculate_equity_curve(state)
+    equity_curve = calculate_equity_curve(state, fill_time_gaps=True)
     returns = calculate_aggregate_returns(equity_curve, freq=freq)
     return returns
 

@@ -358,6 +358,8 @@ class TradeSummary:
     def help_links() -> dict[str, str]:
         return {
             "Trading period length": None,
+            "Trading start": None,
+            "Trading end": None,
             "Return %": "https://tradingstrategy.ai/glossary/aggregate-return",
             "Annualised return %": None,
             "Cash at start": None,
