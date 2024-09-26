@@ -772,6 +772,7 @@ class PositionManager:
         flags: Optional[set[TradeFlag]] = None,
         pending=False,
         position: TradingPosition | None = None,
+        trigger_price: USDollarPrice | None = None,
     ) -> List[TradeExecution]:
         """Adjust holdings for a certain position.
 
@@ -890,6 +891,10 @@ class PositionManager:
 
         price = price_structure.price
 
+        # use trigger price as planned_price
+        if trigger_price and pending:
+            price = trigger_price
+
         reserve_asset, reserve_price = self.state.portfolio.get_default_reserve_asset()
 
         slippage_tolerance = slippage_tolerance or self.default_slippage_tolerance
@@ -980,6 +985,8 @@ class PositionManager:
         slippage_tolerance: Optional[float] = None,
         flags: Set[TradeFlag] | None = None,
         quantity: Decimal | None = None,
+        pending: bool = False,
+        trigger_price: USDollarPrice | None = None,
     ) -> List[TradeExecution]:
         """Close a single spot market trading position.
 
@@ -993,11 +1000,16 @@ class PositionManager:
 
         pair = position.pair
 
-        quantity = quantity or position.get_available_trading_quantity()
+        quantity = quantity or position.get_available_trading_quantity(include_pending=pending)
         if quantity:
             assert quantity > 0, "Closing spot, quantity must be positive"
 
         price_structure = self.pricing_model.get_sell_price(self.timestamp, pair, quantity=quantity)
+        price = price_structure.price
+
+        # use trigger price as planned_price if available on pending trade
+        if trigger_price and pending:
+            price = trigger_price
 
         reserve_asset, reserve_price = self.state.portfolio.get_default_reserve_asset()
 
@@ -1022,7 +1034,7 @@ class PositionManager:
             pair,
             -quantity,  # Negative quantity = sell all
             None,
-            price_structure.price,
+            price,
             trade_type,
             reserve_asset,
             reserve_price,  # TODO: Harcoded stablecoin USD exchange rate
@@ -1035,12 +1047,13 @@ class PositionManager:
             price_structure=price_structure,
             closing=True,
             flags=flags,
+            pending=pending,
         )
         assert position == position2, f"Somehow messed up the close_position() trade.\n" \
                                       f"Original position: {position}.\n" \
                                       f"Trade's position: {position2}.\n" \
                                       f"Trade: {trade}\n" \
-                                      f"Quantity left: {quantity_left}\n" \
+                                      f"Quantity left: {quantity}\n" \
                                       f"Price structure: {price_structure}\n" \
                                       f"Reserve asset: {reserve_asset}\n"
 
@@ -1113,6 +1126,8 @@ class PositionManager:
         notes: Optional[str] = None,
         slippage_tolerance: Optional[float] = None,
         flags: Set[TradeFlag] | None = None,
+        pending: bool = False,
+        trigger_price: USDollarPrice | None = None,
     ) -> List[TradeExecution]:
         """Close a single position.
 
@@ -1145,7 +1160,8 @@ class PositionManager:
         # assert position.is_long(), "Only long supported for now"
         assert position.is_open(), f"Tried to close already closed position {position}"
 
-        quantity_left = position.get_available_trading_quantity()
+
+        quantity_left = position.get_available_trading_quantity(include_pending=pending)
 
         if quantity_left == 0:
             # We have already generated closing trades for this position earlier?
@@ -1175,8 +1191,13 @@ class PositionManager:
                 notes,
                 slippage_tolerance,
                 flags=flags,
+                pending=pending,
+                trigger_price=trigger_price,
             )
         elif position.is_credit_supply():
+
+            if pending:
+                raise NotImplementedError("Pending close credit positions is not yet supported")
 
             if trade_type is None:
                 trade_type = TradeType.rebalance
@@ -1187,6 +1208,9 @@ class PositionManager:
                 notes=notes,
             )
         elif position.is_short():
+            if pending:
+                raise NotImplementedError("Pending close short positions is not yet supported")
+            
             if trade_type is None:
                 trade_type = TradeType.rebalance
 
@@ -2164,21 +2188,8 @@ class PositionManager:
             dollar_delta = float(quantity) * position.get_current_price()
             weight = 0 if close_flag else 1
 
-            per_level_trades = self.adjust_position(
-                pair,
-                dollar_delta=dollar_delta,
-                quantity_delta=quantity,  # Flip for short
-                flags={TradeFlag.partial_take_profit, TradeFlag.reduce, TradeFlag.triggered, TradeFlag.partial_take_profit},
-                weight=weight,
-                position=position,
-                pending=True,
-            )
-
-            assert len(per_level_trades) == 1
-            trade = per_level_trades[0]
-
             checker = level[0]
-
+            trigger_price = None
             if isinstance(checker, datetime.datetime):
                 trigger = Trigger(
                     type=TriggerType.take_profit_partial,
@@ -2201,8 +2212,34 @@ class PositionManager:
                     condition=TriggerCondition.cross_above,
                     expires_at=None,
                 )
+                trigger_price = float(checker)
             else:
                 raise NotImplementedError(f"Unknown level definition {level} for {trade}")
+            
+            flags = {TradeFlag.partial_take_profit, TradeFlag.reduce, TradeFlag.triggered}
+            
+            # FIXME: temp hack to get market limit order working, fix this
+            if close_flag and not position.is_pending():
+                per_level_trades = self.close_position(
+                    position,
+                    flags=flags,
+                    pending=True,
+                    trigger_price=trigger_price,
+                )
+            else:
+                per_level_trades = self.adjust_position(
+                    pair,
+                    dollar_delta=dollar_delta,
+                    quantity_delta=quantity,  # Flip for short
+                    flags=flags,
+                    weight=weight,
+                    position=position,
+                    pending=True,
+                    trigger_price=trigger_price,
+                )
+
+            assert len(per_level_trades) == 1
+            trade = per_level_trades[0]
 
             # Add take profit trigger
             trade.triggers.append(trigger)

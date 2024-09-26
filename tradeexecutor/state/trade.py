@@ -89,6 +89,11 @@ class TradeStatus(enum.Enum):
     #:
     repair_entry = "repair_entry"
 
+    #: Trade is bound to triggers (like partial take profit) 
+    #: but all trigger was expired
+    #:
+    expired = "expired"
+
 
 class TradeFlag(enum.Enum):
     """Trade execution flags.
@@ -634,6 +639,10 @@ class TradeExecution:
     #:
     position_size_risk: Optional[SizeRisk] = None
 
+    #: Trade was expired since all triggers were expired
+    #:
+    expired_at: Optional[datetime.datetime] = None
+
     def __repr__(self) -> str:
         """Python debug string representation.
 
@@ -882,6 +891,10 @@ class TradeExecution:
     def is_take_profit(self) -> bool:
         """This trade is made to close take profit on a position."""
         return self.trade_type == TradeType.take_profit
+    
+    def is_partial_take_profit(self) -> bool:
+        """This trade is made to partial take profit on a position."""
+        return TradeFlag.partial_take_profit in self.flags
 
     def is_triggered(self) -> bool:
         """Was this trade based on a trigger signal."""
@@ -1003,6 +1016,8 @@ class TradeExecution:
             return TradeStatus.broadcasted
         elif self.started_at:
             return TradeStatus.started
+        elif self.expired_at:
+            return TradeStatus.expired 
         else:
             return TradeStatus.planned
 

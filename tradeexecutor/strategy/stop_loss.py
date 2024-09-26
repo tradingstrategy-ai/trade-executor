@@ -117,6 +117,7 @@ def check_position_triggers(
         ]), "Trigger only supports long and leveraged short positions"
 
         size = p.get_quantity(planned=True)
+        size_left = p.get_available_trading_quantity()
 
         if size == 0 and not p.pending_trades:
             logger.warning("Encountered open position without token quantity: %s. Quantity is %s.", p, size)
@@ -214,11 +215,10 @@ def check_position_triggers(
             # remove remaining triggers
             expire_remaining_triggers(ts, p)
 
-        if trigger_type:
             # We got triggered by hardcoded stop loss or check_flexible_triggers(),
             # Write some report
             # TODO: If we have multiple trades, report all
-            expected_sell_price = pricing_model.get_sell_price(ts, spot_pair, abs(size))
+            expected_sell_price = pricing_model.get_sell_price(ts, spot_pair, abs(size_left))
             report_position_triggered(
                 p,
                 trigger_type,
@@ -377,7 +377,7 @@ def expire_remaining_triggers(
     position: TradingPosition,
 ):
     """Position was closed/otherwise manipulated and we can clean up whatever triggers it had left."""
-
+    to_be_expired = []
     for trade in position.pending_trades.values():
         for trigger in trade.triggers:
             trigger.expired_at = timestamp
@@ -386,6 +386,10 @@ def expire_remaining_triggers(
 
             # No triggers left on this trade, move to expired
             if len(trade.triggers) == 0:
-                del position.pending_trades[trade.trade_id]
-                position.expired_trades[trade.trade_id] = trade
+                to_be_expired.append(trade)
 
+    # move to expired
+    for trade in to_be_expired:
+        trade.expired_at = timestamp
+        del position.pending_trades[trade.trade_id]
+        position.expired_trades[trade.trade_id] = trade
