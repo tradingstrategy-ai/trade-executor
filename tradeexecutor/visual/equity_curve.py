@@ -76,6 +76,9 @@ def calculate_equity_curve(
         if end != end_val:
             data.append((end, end_val))
 
+        # TODO: fill_time_gaps missing forward fill
+        # for slowly starting strategies
+
     # https://stackoverflow.com/a/66772284/315168
     df = pd.DataFrame(data).set_index(0)[1]
 

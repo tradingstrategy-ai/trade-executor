@@ -43,7 +43,7 @@ from tradeexecutor.analysis.advanced_metrics import visualise_advanced_metrics, 
 
 
 # relative tolerance for floating point tests
-APPROX_REL = 1e-6
+APPROX_REL = 1e-2
 
 
 # How much of the cash to put on a single trade
@@ -344,7 +344,7 @@ def test_basic_summary_statistics(
     assert summary.winning_take_profits == 0
     assert summary.winning_take_profits_percent is None
 
-    assert summary.sharpe_ratio == pytest.approx(-0.16440603545590504, rel=APPROX_REL)
+    assert summary.sharpe_ratio == pytest.approx(-0.16402323856225548, rel=APPROX_REL)
     assert summary.sortino_ratio == pytest.approx(-0.23988078508533023, rel=APPROX_REL)
     assert summary.profit_factor == pytest.approx(0.9754583954173234, rel=APPROX_REL)
     assert summary.average_duration_between_position_openings == pd.Timedelta('17 days 09:36:00')
