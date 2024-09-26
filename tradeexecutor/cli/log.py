@@ -96,6 +96,9 @@ def setup_logging(
     # By default, disable performance monitor logging
     logging.getLogger("tradeexecutor.utils.timer").setLevel(logging.WARNING)
 
+    # 2024-09-26 12:11:25 traitlets WARNING  Alternative text is missing on 3 image(s).
+    logging.getLogger("traitlets").setLevel(logging.ERROR)
+
     if in_memory_buffer:
         setup_in_memory_logging(logger)
 

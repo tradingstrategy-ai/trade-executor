@@ -19,7 +19,7 @@ from tradeexecutor.strategy.trade_pricing import TradePricing
 from tradeexecutor.strategy.routing import RoutingModel
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse, translate_trading_pair
 from tradingstrategy.candle import GroupedCandleUniverse
-from tradingstrategy.liquidity import GroupedLiquidityUniverse
+from tradingstrategy.liquidity import GroupedLiquidityUniverse, LiquidityDataUnavailable
 from tradingstrategy.timebucket import TimeBucket
 
 logger = logging.getLogger(__name__)
@@ -293,12 +293,16 @@ class BacktestPricing(PricingModel):
         if isinstance(timestamp, datetime.datetime):
             timestamp = pd.Timestamp(timestamp)
 
-        tvl, when = self.liquidity_universe.get_liquidity_with_tolerance(
-            pair.internal_id,
-            timestamp,
-            tolerance=self.data_delay_tolerance,
-            kind="open"
-        )
+        try:
+            tvl, when = self.liquidity_universe.get_liquidity_with_tolerance(
+                pair.internal_id,
+                timestamp,
+                tolerance=self.data_delay_tolerance,
+                kind="open"
+            )
+        except LiquidityDataUnavailable as e:
+            # Show the pair naem
+            raise LiquidityDataUnavailable(f"Could not read TVL/liquidity data for {pair} - see nested exception for details") from e
 
         assert tvl is not None, "get_liquidity_with_tolerance() returned None: likely cause is that synthetic backtest data period mismatches backtest"
 
