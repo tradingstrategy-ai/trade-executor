@@ -217,6 +217,12 @@ class TradeSummary:
     # Doesn't include credit supply (delta neutral) positions
     time_in_market_volatile: Optional[datetime.timedelta] = None
 
+    #: When the backtesting started
+    start_at: Optional[datetime.datetime] = None
+
+    #: When the backtesting started
+    end_at: Optional[datetime.datetime] = None
+
     def __post_init__(self):
         self.total_positions = self.won + self.lost + self.zero_loss + self.delta_neutral
         self.win_percent = calculate_percentage(self.won, self.total_positions)
@@ -268,6 +274,8 @@ class TradeSummary:
 
         human_data = {
             "Trading period length": as_duration(self.duration),
+            "Trading start": self.start_at,
+            "Trading end": self.end_at,
             "Return %": as_percent(self.return_percent),
             "Annualised return %": as_percent(self.annualised_return_percent),
             "Cash at start": as_dollar(self.initial_cash),
@@ -350,6 +358,8 @@ class TradeSummary:
     def help_links() -> dict[str, str]:
         return {
             "Trading period length": None,
+            "Trading start": None,
+            "Trading end": None,
             "Return %": "https://tradingstrategy.ai/glossary/aggregate-return",
             "Annualised return %": None,
             "Cash at start": None,
@@ -436,6 +446,8 @@ class TradeSummary:
             "Realised PnL": as_dollar(self.realised_profit),
             "Unrealised PnL": as_dollar(self.unrealised_profit) if self.unrealised_profit else as_dollar(0),
             "Trade period": as_duration(self.duration),
+            "Trade start": self.start_at,
+            "Trade end": self.end_at,
             "Time in market volatile": as_percent(self.time_in_market_volatile),
             "Total interest earned": as_dollar(self.total_claimed_interest),
             "Total funding cost": as_dollar(self.total_interest_paid_usd),
@@ -959,8 +971,11 @@ class TradeAnalysis:
         if state is None:
             # legacy
             strategy_duration = self.portfolio.get_trading_history_duration()
+            start_at = None
+            end_at = None
         else:
             strategy_duration = state.get_strategy_duration()
+            start_at, end_at = state.get_strategy_time_range()
         
         won = lost = zero_loss = stop_losses = take_profits = undecided = delta_neutral = 0
         open_value: USDollarAmount = 0
@@ -1274,6 +1289,8 @@ class TradeAnalysis:
             average_delta_neutral_profit_pc=average_delta_neutral_profit_pc,
             average_duration_of_delta_neutral_positions=average_duration_of_delta_neutral_positions,
             biggest_delta_neutral_pc=biggest_delta_neutral_pc,
+            start_at=start_at,
+            end_at=end_at,
         )
 
     @staticmethod

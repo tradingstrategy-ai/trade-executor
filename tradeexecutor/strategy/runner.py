@@ -119,6 +119,10 @@ class StrategyRunner(abc.ABC):
         self.visualisation = visualisation
         self.max_price_impact = max_price_impact
 
+        # Avoid fat fingering
+        if self.max_price_impact:
+            assert self.max_price_impact < 0.10, f"max_price_impact set to {self.max_price_impact * 100}%, are you sure this is correct?"
+
         # We need 60 seconds wait to read balances
         # after trades only on a real trading,
         # Anvil and test nodes are immune for this AFAIK

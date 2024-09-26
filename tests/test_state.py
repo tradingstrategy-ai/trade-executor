@@ -465,8 +465,7 @@ def test_statistics(usdc, weth_usdc, aave_usdc, start_ts):
         assert isinstance(all_value, str | None), f"Should be string. Got {type(all_value)} for key: {key}"
         assert isinstance(short_value, str | None), f"Should be string. Got {type(short_value)} for key: {key}"
         assert isinstance(long_value, str | None), f"Should be string. Got {type(long_value)} for key: {key}"
-    
-    
+
     assert len(stats.positions) == 2
     assert len(stats.closed_positions) == 0
     assert stats.get_latest_position_stats(1).quantity == pytest.approx(0.099)

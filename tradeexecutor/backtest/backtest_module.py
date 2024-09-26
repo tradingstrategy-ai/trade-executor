@@ -25,6 +25,7 @@ def run_backtest_for_module(
     trading_strategy_api_key: str = None,
     execution_context=standalone_backtest_execution_context,
     max_workers: int = None,
+    verbose=True,
 ) -> BacktestResult:
     """Run a backtest described in the strategy module.
 
@@ -42,6 +43,9 @@ def run_backtest_for_module(
 
     :param trading_strategy_api_key:
         If not given, attempt load from a setting file or environment
+
+    :param verbose:
+        Print CLI console output
 
     :return:
         (state, universe, diagnostics data tuple)
@@ -88,9 +92,16 @@ def run_backtest_for_module(
     assert mod.backtest_start, f"Strategy module does not set backtest_start"
     assert mod.backtest_end, f"Strategy module does not set backtest_end"
 
+    # Todo:
+
     # Don't start at T+0 because we have not any data for that day yet
     backtest_start_at = universe_options.start_at + mod.trading_strategy_cycle.to_timedelta()
+    backtest_end_at = mod.backtest_end
     logger.info("Backtest starts at %s", backtest_start_at)
+
+    if verbose:
+        print("Strategy universe OHLCV data is between", universe.data_universe.candles.get_timestamp_range())
+        print("Backtesting period is", backtest_start_at, backtest_end_at)
 
     indicator_storage = DiskIndicatorStorage(Path(client.transport.cache_path) / "indicators", universe_key=universe.get_cache_key())
     inside_ipython = any(frame for frame in inspect.stack() if frame.function == "start_ipython")
@@ -103,7 +114,7 @@ def run_backtest_for_module(
     backtest_setup = setup_backtest_for_universe(
         mod,
         start_at=backtest_start_at,
-        end_at=mod.backtest_end,
+        end_at=backtest_end_at,
         cycle_duration=mod.trading_strategy_cycle,
         initial_deposit=initial_cash,
         name=name,

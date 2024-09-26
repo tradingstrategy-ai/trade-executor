@@ -148,6 +148,8 @@ def create_summary_table(data: dict, column_names: list[str] | str | None = None
                 assert len(v) == list_length, f"If one value in the dict is a list, all values must be lists of the same length. Expected list of length {list_length}, got {v}"
             
             formatted_data[k] = format_values(v)
+        else:
+            formatted_data[k] = str(v)
 
         counter += 1
 

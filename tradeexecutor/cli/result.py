@@ -11,8 +11,8 @@ from tradeexecutor.analysis.multi_asset_benchmark import compare_strategy_backte
 
 
 def display_backtesting_results(
-        state: State,
-        strategy_universe: TradingStrategyUniverse = None
+    state: State,
+    strategy_universe: TradingStrategyUniverse = None
 ):
     """Print backtest result summary to terminal.
 
@@ -28,7 +28,7 @@ def display_backtesting_results(
     """
     analysis = build_trade_analysis(state.portfolio)
     try:
-        summary = analysis.calculate_summary_statistics()
+        summary = analysis.calculate_summary_statistics(state=state)
         display(summary.to_dataframe(format_headings=False))
     except Exception as e:
         print("Could not calculate summary:", e)

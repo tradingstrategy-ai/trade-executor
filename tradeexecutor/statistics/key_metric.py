@@ -248,7 +248,7 @@ def calculate_key_metrics(
         # as the base for calculations to ensure
         # sharpe/sortino/etc. stays compatible regardless of deposit flow
         if source == KeyMetricSource.backtesting:
-            equity_curve = calculate_equity_curve(source_state)
+            equity_curve = calculate_equity_curve(source_state, fill_time_gaps=True)
             returns = calculate_returns(equity_curve)
             daily_returns = calculate_daily_returns(source_state, "D")
             periods = 365

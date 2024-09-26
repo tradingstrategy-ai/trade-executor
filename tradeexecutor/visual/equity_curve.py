@@ -76,6 +76,9 @@ def calculate_equity_curve(
         if end != end_val:
             data.append((end, end_val))
 
+        # TODO: fill_time_gaps missing forward fill
+        # for slowly starting strategies
+
     # https://stackoverflow.com/a/66772284/315168
     df = pd.DataFrame(data).set_index(0)[1]
 
@@ -84,7 +87,6 @@ def calculate_equity_curve(
     # Happens in unit tests as we get a calculate event from deposit
     # and recalculatin at the same timestam
 
-    # ipdb> curve
     # 0
     # 2021-06-01 00:00:00.000000        0.000000
     # 2023-10-18 10:04:05.834542    10000.000000
@@ -225,7 +227,10 @@ def calculate_aggregate_returns(equity_curve: pd.Series, freq: str | pd.DateOffs
     return sampled.pct_change()
 
 
-def calculate_daily_returns(state: State, freq: pd.DateOffset | str= "D") -> (pd.Series | None):
+def calculate_daily_returns(
+    state: State,
+    freq: pd.DateOffset | str= "D",
+) -> (pd.Series | None):
     """Calculate daily returns of a backtested results.
 
     Used for advanced statistics.
@@ -240,8 +245,12 @@ def calculate_daily_returns(state: State, freq: pd.DateOffset | str= "D") -> (pd
 
     :returns:
         If valid state provided, returns are returned as calendar day (D) frequency, else None"""
-    
-    equity_curve = calculate_equity_curve(state)
+
+    if state.backtest_data:
+        equity_curve = calculate_equity_curve(state, fill_time_gaps=True)
+    else:
+        # Legacy
+        equity_curve = calculate_equity_curve(state, fill_time_gaps=False)
     returns = calculate_aggregate_returns(equity_curve, freq=freq)
     return returns
 
