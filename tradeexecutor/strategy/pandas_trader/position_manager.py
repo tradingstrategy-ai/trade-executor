@@ -1000,7 +1000,7 @@ class PositionManager:
 
         pair = position.pair
 
-        quantity = quantity or position.get_available_trading_quantity()
+        quantity = quantity or position.get_available_trading_quantity(include_pending=pending)
         if quantity:
             assert quantity > 0, "Closing spot, quantity must be positive"
 
@@ -1160,7 +1160,8 @@ class PositionManager:
         # assert position.is_long(), "Only long supported for now"
         assert position.is_open(), f"Tried to close already closed position {position}"
 
-        quantity_left = position.get_available_trading_quantity()
+
+        quantity_left = position.get_available_trading_quantity(include_pending=pending)
 
         if quantity_left == 0:
             # We have already generated closing trades for this position earlier?

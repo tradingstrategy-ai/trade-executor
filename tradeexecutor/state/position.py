@@ -611,7 +611,10 @@ class TradingPosition(GenericPosition):
         assert self.is_spot()
         return self.get_base_token_balance_update_quantity()
 
-    def get_available_trading_quantity(self) -> Decimal:
+    def get_available_trading_quantity(
+        self,
+        include_pending: bool = False,
+    ) -> Decimal:
         """Get token quantity still availble for the trades in this strategy cycle.
 
         This includes
@@ -624,7 +627,21 @@ class TradingPosition(GenericPosition):
         This gives you remaining token balance, even if there are some earlier
         sell orders that have not been executed yet.
         """
-        planned = sum([t.get_position_quantity() for t in self.trades.values() if t.is_planned()])  # Sell values sum to negative
+        
+        if include_pending:
+            planned = sum([
+                t.get_position_quantity() 
+                for t in self.trades.values() 
+                if t.is_planned()
+            ])
+        else:
+            # exclude partial tp trades
+            planned = sum([
+                t.get_position_quantity() 
+                for t in self.trades.values() 
+                if t.is_planned() and not t.is_partial_take_profit()
+            ])
+
         live = self.get_quantity()  # What was the position quantity before executing any of planned trades
         # Temporary logging to track down SAND token errors
         # logger.info("get_available_trading_quantity(): Figuring out available position size to trade. Planned quantity: %s, live quantity: %s", planned, live)

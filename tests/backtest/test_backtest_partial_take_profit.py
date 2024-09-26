@@ -33,7 +33,7 @@ from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniv
 from tradeexecutor.strategy.execution_context import ExecutionContext, ExecutionMode
 from tradeexecutor.strategy.cycle import CycleDuration
 from tradeexecutor.strategy.reserve_currency import ReserveCurrency
-from tradeexecutor.state.trade import TradeExecution
+from tradeexecutor.state.trade import TradeExecution, TradeStatus
 from tradingstrategy.universe import Universe
 from tradingstrategy.utils.groupeduniverse import resample_candles
 from tradeexecutor.state.trigger import TriggerType
@@ -206,7 +206,6 @@ def decide_trades_2(input: StrategyInput) -> List[TradeExecution]:
     parameters = input.parameters
 
     price = indicators.get_price()
-    print("Cycle", input.cycle, price)
     if price is None:
         # Skip cycle 1
         # We do not have the previous day price available at the first cycle
@@ -220,7 +219,6 @@ def decide_trades_2(input: StrategyInput) -> List[TradeExecution]:
         )
         
         if not has_take_profit_triggers:
-            print("Setting partial tp")
             opening_price = position.get_opening_price()
 
             total_quantity = position.get_quantity()
@@ -308,9 +306,7 @@ def test_partial_take_profit(strategy_universe):
 
 
 def test_partial_tp_and_trailing_sl(strategy_universe):
-    """Test partial take profit works and last trade fully close the position 
-    with correct quantity
-    """
+    """Test partial take profit works and should work well with (trailing) stop loss"""
 
     class Parameters:
         backtest_start = strategy_universe.data_universe.candles.get_timestamp_range()[0].to_pydatetime()
@@ -334,18 +330,29 @@ def test_partial_tp_and_trailing_sl(strategy_universe):
     # assert len(result.diagnostics_data) == 6  # Entry for each day + few extras
     assert len(state.portfolio.closed_positions) == 1
     assert len(state.portfolio.pending_positions) == 0
-
     
     closed_position = state.portfolio.closed_positions[1]
-    assert len(closed_position.trades) == 2
+    assert len(closed_position.trades) == 5
     assert closed_position.is_stop_loss()
 
-    trade = closed_position.trades[2]
-    print(trade.trade_type)
-    print(closed_position.trades[1], closed_position.trades[2])
-    # # check the planned price is the trigger_price
-    # assert last_trade.planned_price == pytest.approx(3438.5684016892783)
-    # assert last_trade.executed_price == pytest.approx(3438.5684016892783)
+    trades = closed_position.trades
+
+    assert trades[1].is_buy()
+    assert trades[1].get_status() == TradeStatus.success
+
+    # 1 partial tp hit
+    assert trades[2].is_sell() and trades[2].is_partial_take_profit()
+    assert trades[2].get_status() == TradeStatus.success
+
+    # 2 partial tp expired
+    assert trades[3].is_sell() and trades[2].is_partial_take_profit()
+    assert trades[3].get_status() == TradeStatus.expired
+    assert trades[4].is_sell() and trades[2].is_partial_take_profit()
+    assert trades[4].get_status() == TradeStatus.expired
+
+    # trailing sl hit
+    assert trades[5].is_stop_loss()
+    assert trades[5].get_status() == TradeStatus.success
 
     # Check these do not crash on market limit positions
     calculate_summary_statistics(
