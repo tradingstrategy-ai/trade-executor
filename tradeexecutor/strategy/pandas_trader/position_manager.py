@@ -2218,7 +2218,8 @@ class PositionManager:
             
             flags = {TradeFlag.partial_take_profit, TradeFlag.reduce, TradeFlag.triggered}
             
-            if close_flag:
+            # FIXME: temp hack to get market limit order working, fix this
+            if close_flag and not position.is_pending():
                 per_level_trades = self.close_position(
                     position,
                     flags=flags,
