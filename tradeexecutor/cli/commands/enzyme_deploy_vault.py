@@ -190,6 +190,13 @@ def enzyme_deploy_vault(
         if not confirm.lower().startswith("y"):
             print("Aborted")
             sys.exit(1)
+
+    # TODO: Hack
+    if chain_id == ChainId.arbitrum:
+        uniswap_v2 = False
+    else:
+        uniswap_v2 = True
+
     try:
         # Currently assumes HotWallet = asset manager
         # as the trade-executor that deploys the vault is going to
@@ -208,6 +215,7 @@ def enzyme_deploy_vault(
             production=production,
             one_delta=one_delta,
             aave=aave,
+            uniswap_v2=uniswap_v2,
         )
 
     except Exception as e:
