@@ -268,7 +268,7 @@ def enzyme_deploy_vault(
         logger.info("Skipping record file because of simulation")
 
     buf = StringIO()
-    for key, value in vault.get_deployment_info():
+    for key, value in vault.get_deployment_info().items():
         print(f"{key}={value}", file=buf)
 
     logger.info(
