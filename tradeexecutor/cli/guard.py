@@ -1,12 +1,12 @@
 """Vault security related common functions for CLI commands"""
 from web3 import Web3
 
-from eth_defi.enzyme.deployment import EnzymeDeployment, ETHEREUM_DEPLOYMENT, POLYGON_DEPLOYMENT
+from eth_defi.enzyme.deployment import EnzymeDeployment, ETHEREUM_DEPLOYMENT, POLYGON_DEPLOYMENT, ARBITRUM_DEPLOYMENT
 from eth_defi.hotwallet import HotWallet
 from eth_defi.token import fetch_erc20_details, TokenDetails
 from tradingstrategy.chain import ChainId
 
-SUPPORTED_DENOMINATION_TOKENS  = ("USDC", "USDC.e",)
+SUPPORTED_DENOMINATION_TOKENS  = ("USDC", "USDC.e", "USDT")
 
 
 def generate_whitelist(web3, whitelisted_assets: str) -> list[TokenDetails]:
@@ -29,7 +29,7 @@ def generate_whitelist(web3, whitelisted_assets: str) -> list[TokenDetails]:
             whitelisted_asset_details.append(fetch_erc20_details(web3, token_address))
 
     assert len(whitelisted_asset_details) >= 1, "You need to whitelist at least one token as a trading pair"
-    assert whitelisted_asset_details[0].symbol in SUPPORTED_DENOMINATION_TOKENS, f"Got {whitelisted_assets[0]}"
+    assert whitelisted_asset_details[0].symbol in SUPPORTED_DENOMINATION_TOKENS, f"Unsuppored denomination token for Enzyme: {whitelisted_assets[0]}"
     return whitelisted_asset_details
 
 
@@ -56,12 +56,12 @@ def get_enzyme_deployment(
             deployment_info = ETHEREUM_DEPLOYMENT
             enzyme_deployment = EnzymeDeployment.fetch_deployment(web3, ETHEREUM_DEPLOYMENT, deployer=deployer.address)
             #denomination_token = fetch_erc20_details(web3, deployment_info["usdc"])
-            one_delta = False
         case ChainId.polygon:
-            deployment_info = POLYGON_DEPLOYMENT
             enzyme_deployment = EnzymeDeployment.fetch_deployment(web3, POLYGON_DEPLOYMENT, deployer=deployer.address)
             # denomination_token = fetch_erc20_details(web3, deployment_info["usdc"])
-            one_delta = True
+        case ChainId.arbitrum:
+            enzyme_deployment = EnzymeDeployment.fetch_deployment(web3, ARBITRUM_DEPLOYMENT, deployer=deployer.address)
+            # denomination_token = fetch_erc20_details(web3, deployment_info["usdc"])
         case _:
             # Local unit test deployment.
             # Because addresses are random, they need to be explicitly passed

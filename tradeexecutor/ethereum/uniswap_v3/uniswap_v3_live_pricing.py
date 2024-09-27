@@ -254,16 +254,20 @@ class UniswapV3LivePricing(EthereumPricingModel):
             reserve_raw = target_pair.quote.convert_to_raw_amount(reserve)
             self.check_supported_quote_token(pair)
 
-            token_raw_received = estimate_buy_received_amount(
-                uniswap=self.get_uniswap(target_pair),
-                base_token_address=base_addr,
-                quote_token_address=quote_addr,
-                quantity=reserve_raw,
-                target_pair_fee=int(target_pair.fee * 1_000_000),
-                intermediate_token_address=intermediate_addr,
-                intermediate_pair_fee=int(intermediate_pair.fee * 1_000_000) if intermediate_pair else None,
-                block_identifier=block_number,
-            )
+            uniswap = self.get_uniswap(target_pair)
+            try:
+                token_raw_received = estimate_buy_received_amount(
+                    uniswap=uniswap,
+                    base_token_address=base_addr,
+                    quote_token_address=quote_addr,
+                    quantity=reserve_raw,
+                    target_pair_fee=int(target_pair.fee * 1_000_000),
+                    intermediate_token_address=intermediate_addr,
+                    intermediate_pair_fee=int(intermediate_pair.fee * 1_000_000) if intermediate_pair else None,
+                    block_identifier=block_number,
+                )
+            except ValueError as e:
+                raise ValueError(f"Could not read Uniswap price. Uniswap: {uniswap}, pair: {target_pair} - likely wrong chain configuration?") from e
 
             path = [quote_addr, base_addr] 
             

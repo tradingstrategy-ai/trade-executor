@@ -11,6 +11,7 @@ from typing import cast, List, Optional, Tuple, Iterable
 from eth_defi.event_reader.conversion import convert_jsonrpc_value_to_int
 from web3.types import BlockIdentifier
 
+from eth_defi.provider.anvil import is_anvil
 from eth_defi.provider.broken_provider import get_block_tip_latency, get_almost_latest_block_number
 from web3 import Web3, HTTPProvider
 
@@ -414,10 +415,18 @@ class EnzymeVaultSyncModel(SyncModel):
         tx_hash = deployment_event["transactionHash"]
         assert block_number > 1
 
-        # Get the block info to get the timestamp for the event
-        block_data = extract_timestamps_json_rpc(web3, block_number, block_number)
-        timestamp_unix = block_data[block_hash]
-        timestamp_dt = datetime.datetime.utcfromtimestamp(timestamp_unix)
+        # TODO: Anvil returns wrong block number in test_enzyme_vault_arbitrum
+        # Hack around Anvil bug?
+        if is_anvil(web3) and block_number < start_block:
+            block_number = start_block
+            timestamp_dt = datetime.datetime.utcnow()
+        else:
+            # Get the block info to get the timestamp for the event
+            block_data = extract_timestamps_json_rpc(web3, block_number, block_number)
+            assert block_hash in block_data, f"extract_timestamps_json_rpc() could not find data for block number {block_number:,}, last block is {web3.eth.block_number:,}"
+
+            timestamp_unix = block_data[block_hash]
+            timestamp_dt = datetime.datetime.utcfromtimestamp(timestamp_unix)
 
         deployment.address = self.vault.vault.address
         deployment.block_number = block_number
