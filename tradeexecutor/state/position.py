@@ -613,7 +613,7 @@ class TradingPosition(GenericPosition):
 
     def get_available_trading_quantity(
         self,
-        include_pending: bool = False,
+        include_pending_trades: bool = False,
     ) -> Decimal:
         """Get token quantity still availble for the trades in this strategy cycle.
 
@@ -627,15 +627,12 @@ class TradingPosition(GenericPosition):
         This gives you remaining token balance, even if there are some earlier
         sell orders that have not been executed yet.
         """
-        
-        if include_pending:
-            planned = sum([
-                t.get_position_quantity() 
-                for t in self.trades.values() 
-                if t.is_planned()
-            ])
+
+        if self.is_pending() or include_pending_trades:
+            planned = self.get_pending_quantity()
         else:
-            # exclude partial tp trades
+            # this will be checked when stoploss is triggered
+            # so we need to exclude pending trades (e.g. partial tp trades)
             planned = sum([
                 t.get_position_quantity() 
                 for t in self.trades.values() 
