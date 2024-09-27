@@ -38,6 +38,7 @@ import json
 import logging
 import os.path
 import sys
+from io import StringIO
 from pathlib import Path
 from pprint import pformat
 from typing import Optional
@@ -171,7 +172,8 @@ def enzyme_deploy_vault(
     logger.info("Fund: %s (%s)", fund_name, fund_symbol)
     logger.info("Whitelisted assets: %s", ", ".join([a.symbol for a in whitelisted_asset_details]))
 
-    logger.info("Whitelisting 1delta and Aave: %s", one_delta)
+    logger.info("Whitelisting 1delta: %s", one_delta)
+    logger.info("Whitelisting Aave: %s", aave)
 
     if owner_address != hot_wallet.address:
         logger.info("Ownership will be transferred to %s", owner_address)
@@ -254,7 +256,14 @@ def enzyme_deploy_vault(
     else:
         logger.info("Skipping record file because of simulation")
 
-    logger.info("Vault environment variables for trade-executor init command:\n%s", pformat(vault.get_deployment_info()))
+    buf = StringIO()
+    for key, value in vault.get_deployment_info():
+        print(f"{key}={value}", file=buf)
+
+    logger.info(
+        "Vault environment variables for trade-executor init command:\n%s",
+        buf.getvalue()
+    )
 
     web3config.close()
 
