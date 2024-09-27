@@ -78,10 +78,7 @@ def hot_wallet(
     usdt: TokenDetails,
     usdt_whale,
 ) -> HotWallet:
-    """Create hot wallet for the signing tests.
-
-    Top is up with some gas money and 500 USDC.
-    """
+    """Create hot wallet with a private key as we need to pass this key to forge, others commands."""
     wallet = HotWallet.create_for_testing(web3)
     tx_hash = usdt.contract.functions.transfer(wallet.address, 500 * 10**6).transact({"from": usdt_whale})
     assert_transaction_success_with_explanation(web3, tx_hash)
