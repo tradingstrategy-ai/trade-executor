@@ -175,6 +175,11 @@ def enzyme_deploy_vault(
     logger.info("Whitelisting 1delta: %s", one_delta)
     logger.info("Whitelisting Aave: %s", aave)
 
+    if etherscan_api_key:
+        logger.info("Etherscan API key: %s", etherscan_api_key)
+    else:
+        logger.error("Etherscan API key missing")
+
     if owner_address != hot_wallet.address:
         logger.info("Ownership will be transferred to %s", owner_address)
     else:
@@ -183,11 +188,16 @@ def enzyme_deploy_vault(
     if asset_manager_address != hot_wallet.address:
         logger.info("Asset manager is %s", asset_manager_address)
     else:
-        logger.info("No separate asset manager role set: will use the current hot wallet as the asset manager for the vault")
+        logger.info("Hot wallet set for the asset manager role")
 
     logger.info("-" * 80)
 
     if not (simulate or unit_testing):
+
+        # TODO: Move this bit somewhere else
+        if not etherscan_api_key:
+            raise RuntimeError("Etherscan API key needed for production deployments")
+
         confirm = input("Ok [y/n]? ")
         if not confirm.lower().startswith("y"):
             print("Aborted")
