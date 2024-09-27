@@ -108,6 +108,7 @@ def enzyme_deploy_vault(
         json_rpc_anvil=json_rpc_anvil,
         json_rpc_arbitrum=json_rpc_arbitrum,
         simulate=simulate,
+        mev_endpoint_disabled=True,
     )
 
     if not web3config.has_any_connection():

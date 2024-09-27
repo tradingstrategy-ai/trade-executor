@@ -64,6 +64,7 @@ class Web3Config:
         gas_price_method: Optional[GasPriceMethod] = None,
         unit_testing: bool=False,
         simulate: bool=False,
+        mev_endpoint_disabled: bool=False,
     ) -> MultiProviderWeb3:
         """Create a new Web3.py connection.
 
@@ -84,6 +85,9 @@ class Web3Config:
         :param simulate:
             Set up Anvil mainnet fork for transaction simulation.
 
+        :param mev_endpoint_disabled:
+            MEV endpoints do not work when deploying contracts with Forge.
+
         """
 
         assert type(configuration_line) == str, f"Got: {configuration_line.__class__}"
@@ -99,6 +103,13 @@ class Web3Config:
             web3.simulate = True
             configuration_line = anvil.json_rpc_url  # Override whatever configuration given earlier
         else:
+
+            if mev_endpoint_disabled:
+                configuration_items = configuration_line.split(" ")
+                configuration_items = [c for c in configuration_items if not c.startswith("mev+https://")]
+                configuration_line = " ".join(configuration_items)
+                logger.info("mev_endpoint_disabled: running with RPCs %s", configuration_line)
+
             web3 = create_multi_provider_web3(configuration_line)
 
         # Read numeric chain id from JSON-RPC
@@ -211,19 +222,24 @@ class Web3Config:
             assert web3.eth.chain_id == self.default_chain_id.value, f"Expected chain id {self.default_chain_id}, got {web3.eth.chain_id}"
 
     @classmethod
-    def setup_from_environment(cls,
-                               gas_price_method: Optional[GasPriceMethod],
-                               unit_testing: bool=False,
-                               simulate: bool=False,
-                               **kwargs) -> "Web3Config":
+    def setup_from_environment(
+        cls,
+       gas_price_method: Optional[GasPriceMethod],
+       unit_testing: bool=False,
+       simulate: bool=False,
+       mev_endpoint_disabled: bool=False,
+       **kwargs
+    ) -> "Web3Config":
         """Setup connections based on given RPC URLs.
 
         Read `JSON_RPC_BINANCE`, `JSON_RPC_POLYGON`, etc.
         environment variables.
 
+        :param mev_endpoint_disabled:
+            MEV endpoints do not work when deploying contracts with Forge.
+
         :param kwargs:
             {json_rpc_xxx: rpc URL} dict, as parsed by Typer.
-
         """
 
         web3config = Web3Config()
@@ -244,7 +260,13 @@ class Web3Config:
                 if simulate and simulation_already_created:
                     raise AssertionError(f"Simulation can be used only with one chain, got {kwargs}")
 
-                web3config.connections[chain_id] = Web3Config.create_web3(configuration_line, gas_price_method, unit_testing=unit_testing, simulate=simulate)
+                web3config.connections[chain_id] = Web3Config.create_web3(
+                    configuration_line,
+                    gas_price_method,
+                    unit_testing=unit_testing,
+                    simulate=simulate,
+                    mev_endpoint_disabled=mev_endpoint_disabled,
+                )
 
                 if simulate:
                     # TODO: Clean up API

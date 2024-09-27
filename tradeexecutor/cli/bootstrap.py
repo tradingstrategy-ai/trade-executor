@@ -75,24 +75,27 @@ def validate_executor_id(id: str):
 
 
 def create_web3_config(
-        json_rpc_binance,
-        json_rpc_polygon,
-        json_rpc_avalanche,
-        json_rpc_ethereum,
-        json_rpc_arbitrum,
-        json_rpc_anvil,
-        gas_price_method: Optional[GasPriceMethod] = None,
-        unit_testing: bool=False,
-        simulate: bool=False,
+    json_rpc_binance,
+    json_rpc_polygon,
+    json_rpc_avalanche,
+    json_rpc_ethereum,
+    json_rpc_arbitrum,
+    json_rpc_anvil,
+    gas_price_method: Optional[GasPriceMethod] = None,
+    unit_testing: bool=False,
+    simulate: bool=False,
+    mev_endpoint_disabled: bool=False,
 ) -> Web3Config:
     """Create Web3 connection to the live node we are executing against.
 
     :param simulate:
         Set up a mainnet fork with Anvil for transaction simulation.
 
+    :param mev_endpoint_disabled:
+        MEV endpoints do not work when deploying contracts with Forge.
+
     :return web3:
         Connect to any passed JSON RPC URL
-
     """
     web3config = Web3Config.setup_from_environment(
         gas_price_method,
@@ -104,6 +107,7 @@ def create_web3_config(
         json_rpc_anvil=json_rpc_anvil,
         unit_testing=unit_testing,
         simulate=simulate,
+        mev_endpoint_disabled=mev_endpoint_disabled,
     )
     return web3config
 
