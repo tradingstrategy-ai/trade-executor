@@ -267,7 +267,7 @@ class UniswapV3LivePricing(EthereumPricingModel):
                     block_identifier=block_number,
                 )
             except ValueError as e:
-                raise ValueError(f"Could not read Uniswap price. Uniswap: {uniswap}, pair: {target_pair} - likely wrong chain configuration?") from e
+                raise ValueError(f"Could not read Uniswap price\nUniswap: {uniswap}\nPair: {target_pair}\nChain: {uniswap.web3.eth.chain_id}\nLikely wrong chain configuration?") from e
 
             path = [quote_addr, base_addr] 
             

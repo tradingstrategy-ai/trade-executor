@@ -191,6 +191,7 @@ class Web3Config:
 
         Assumes exactly 1 node connection available.
         """
+
         assert self.default_chain_id, "No default chain id set"
         try:
             return self.connections[self.default_chain_id]

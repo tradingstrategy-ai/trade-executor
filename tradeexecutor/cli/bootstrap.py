@@ -345,6 +345,10 @@ def create_metadata(
                     on_chain_data.smart_contracts.update({
                         "fund_value_calculator": "0x490e64E0690b4aa481Fb02255aED3d052Bad7BF1",
                     })
+                case 42161:
+                    on_chain_data.smart_contracts.update({
+                        "fund_value_calculator": "0xea609eeb38d1ee8e8719597d47cc9276df9f8707",
+                    })
                 case _:
                     raise NotImplementedError(f"Chain {vault.web3.eth.chain_id}")
 

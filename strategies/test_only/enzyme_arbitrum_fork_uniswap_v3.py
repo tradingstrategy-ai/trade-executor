@@ -2,82 +2,81 @@
 
 - Run single cycle
 
-- Always buy on Uniswap
+- Always buy WETH-USDT on Uniswap
 """
 import datetime
-from typing import Dict, List
 
-import pandas as pd
+from tradeexecutor.strategy.pandas_trader.indicator import IndicatorSet
+from tradeexecutor.strategy.pandas_trader.strategy_input import StrategyInput
+from tradeexecutor.strategy.parameters import StrategyParameters
 from tradingstrategy.chain import ChainId
 
 from tradeexecutor.strategy.cycle import CycleDuration
 from tradeexecutor.strategy.default_routing_options import TradeRouting
 from tradeexecutor.strategy.execution_context import ExecutionContext
-from tradeexecutor.strategy.pricing_model import PricingModel
-from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse, load_pair_data_for_single_exchange
+from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse, load_pair_data_for_single_exchange, load_partial_data
 from tradeexecutor.strategy.universe_model import UniverseOptions
 from tradingstrategy.client import Client
 from tradingstrategy.timebucket import TimeBucket
-from tradingstrategy.universe import Universe
-
-from tradeexecutor.state.state import State
 from tradeexecutor.state.trade import TradeExecution
-from tradeexecutor.strategy.strategy_type import StrategyType
-from tradeexecutor.strategy.pandas_trader.position_manager import PositionManager
 from tradeexecutor.strategy.reserve_currency import ReserveCurrency
 
-trading_strategy_engine_version = "0.1"
-trading_strategy_type = StrategyType.managed_positions
-trade_routing = TradeRouting.default
-trading_strategy_cycle = CycleDuration.cycle_1s
-reserve_currency = ReserveCurrency.usdt
-candle_time_bucket = TimeBucket.d7
-trading_pair = (ChainId.arbitrum, "uniswap-v3", "WETH", "USDT", 0.0005)
+
+trading_strategy_engine_version = "0.5"
 
 
-def decide_trades(
-        timestamp: pd.Timestamp,
-        universe: Universe,
-        state: State,
-        pricing_model: PricingModel,
-        cycle_debug_data: Dict) -> List[TradeExecution]:
+class Parameters:
+    chain_id = ChainId.arbitrum
+    routing = TradeRouting.default
+    cycle_duration = CycleDuration.cycle_1s
+    reserve_currency = ReserveCurrency.usdt
+    candle_time_bucket = TimeBucket.d7
+    trading_pair = (ChainId.arbitrum, "uniswap-v3", "WETH", "USDT", 0.0005)
+    required_history_period = datetime.timedelta(weeks=2)
+    backtest_start = None
+    backtest_end = None
+    initial_cash = 10_000
 
-    position_manager = PositionManager(timestamp, universe, state, pricing_model, default_slippage_tolerance=0.02)
 
-    pair = universe.pairs.get_single()
-
-    assert pair.pair_id > 0
-    cash = state.portfolio.get_cash()
+def decide_trades(input: StrategyInput) -> list[TradeExecution]:
+    position_manager = input.get_position_manager()
+    pair = input.strategy_universe.get_single_pair()
+    cash = position_manager.get_current_cash()
     trades = []
     if not position_manager.is_any_open():
         position_size = 0.10
         buy_amount = cash * position_size
-        trades += position_manager.open_1x_long(pair, buy_amount)
-
+        trades += position_manager.open_spot(pair, buy_amount)
     return trades
 
 
 def create_trading_universe(
-        ts: datetime.datetime,
-        client: Client,
-        execution_context: ExecutionContext,
-        universe_options: UniverseOptions,
+    ts: datetime.datetime,
+    client: Client,
+    execution_context: ExecutionContext,
+    universe_options: UniverseOptions,
 ):
-    assert isinstance(client, Client), f"Looks like we are not running on the real data. Got: {client}"
-
-    # Download live data from the oracle
-    dataset = load_pair_data_for_single_exchange(
-        client,
-        time_bucket=candle_time_bucket,
-        pair_tickers=[trading_pair],
+    dataset = load_partial_data(
+        client=client,
+        time_bucket=Parameters.candle_time_bucket,
+        pairs=[Parameters.trading_pair],
         execution_context=execution_context,
         universe_options=universe_options,
+        required_history_period=Parameters.required_history_period,
     )
 
-    # Convert loaded data to a trading pair universe
-    universe = TradingStrategyUniverse.create_single_pair_universe(
+    universe = TradingStrategyUniverse.create_from_dataset(
         dataset,
-        pair=trading_pair,
+        reserve_asset="USDT",
     )
-
     return universe
+
+
+def create_indicators(
+    timestamp: datetime.datetime | None,
+    parameters: StrategyParameters,
+    strategy_universe: TradingStrategyUniverse,
+    execution_context: ExecutionContext
+):
+    indicators = IndicatorSet()
+    return indicators

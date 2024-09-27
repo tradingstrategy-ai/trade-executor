@@ -99,7 +99,7 @@ def enzyme(
 @pytest.fixture()
 def strategy_file() -> Path:
     """Where do we load our strategy file."""
-    return Path(os.path.dirname(__file__)) / ".." / ".." / "strategies" / "test_only" / "enzyme_polygon_fork_uniswap_v3.py"
+    return Path(os.path.dirname(__file__)) / ".." / ".." / "strategies" / "test_only" / "enzyme_arbitrum_fork_uniswap_v3.py"
 
 
 @pytest.fixture()
@@ -120,15 +120,16 @@ def environment(
         "NAME": "test_enzyme_vault_arbitrum_fork",
         "STRATEGY_FILE": strategy_file.as_posix(),
         "PRIVATE_KEY": hot_wallet.account.key.hex(),
-        "JSON_RPC_ANVIL": anvil.json_rpc_url,
+        "JSON_RPC_ARBITRUM": anvil.json_rpc_url,
         "STATE_FILE": state_file.as_posix(),
         "ASSET_MANAGEMENT_MODE": "enzyme",
         "UNIT_TESTING": "true",
         # "LOG_LEVEL": "info",  # Set to info to get debug data for the test run
-        "LOG_LEVEL": "info",
-        "SINGLE_CYCLE": "true",
+        "LOG_LEVEL": "disabled",
+        "RUN_SINGLE_CYCLE": "true",
         "TRADING_STRATEGY_API_KEY": TRADING_STRATEGY_API_KEY,
-        "PATH": os.environ["PATH"]  # Needs Forge bin
+        "PATH": os.environ["PATH"], # Needs Forge bin
+        "MAX_DATA_DELAY_MINUTES": str(10 * 60 * 24 * 365),  # 10 years or "disabled""
     }
     return environment
 
