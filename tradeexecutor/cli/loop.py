@@ -810,13 +810,12 @@ class ExecutionLoop:
                 # This gives value_at_open statitics for each position that are needed
                 # to calculate weights later.
                 update_statistics(
-                    datetime.datetime.utcnow(),
+                    ts,
                     state.stats,
                     state.portfolio,
                     self.execution_context.mode,
                     strategy_cycle_or_wall_clock=ts,
                     long_short_metrics_latest=long_short_metrics_latest,
-                    trades=trades
                 )
 
             for t in trades:

@@ -168,7 +168,6 @@ def update_statistics(
     execution_mode: ExecutionMode,
     strategy_cycle_or_wall_clock: datetime.datetime | None = None,
     long_short_metrics_latest: StatisticsTable | None = None,
-    trades=None
 ):
     """Update statistics in a portfolio.
 
@@ -211,16 +210,13 @@ def update_statistics(
     
     if long_short_metrics_latest:
         logger.info("Serialising long_short_metrics_latest")
-        stats.long_short_metrics_latest = long_short_metrics_latest
     
-    if trades:
-        # NOTE: temp to fix issue with broken equity curve
-        print(trades)
-    else:
-        new_stats = calculate_statistics(clock, portfolio, execution_mode)
-        stats.portfolio.append(new_stats.portfolio)
-        for position_id, position_stats in new_stats.positions.items():
-            stats.add_positions_stats(position_id, position_stats)
+    stats.long_short_metrics_latest = long_short_metrics_latest
+    
+    new_stats = calculate_statistics(clock, portfolio, execution_mode)
+    stats.portfolio.append(new_stats.portfolio)
+    for position_id, position_stats in new_stats.positions.items():
+        stats.add_positions_stats(position_id, position_stats)
 
     # Check if we have missing closed position statistics
     # by comparing which closed ids are missing from the stats list
