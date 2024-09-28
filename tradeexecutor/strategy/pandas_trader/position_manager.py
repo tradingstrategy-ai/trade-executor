@@ -934,7 +934,7 @@ class PositionManager:
                 pair=pair,
                 quantity=Decimal(quantity_delta),
                 reserve=None,
-                assumed_price=price_structure.price,
+                assumed_price=price,
                 trade_type=TradeType.rebalance,
                 reserve_currency=self.reserve_currency,
                 reserve_currency_price=reserve_price,
