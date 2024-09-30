@@ -637,10 +637,10 @@ class ExecutionLoop:
         return long_short_metrics_latest
 
     def check_position_triggers(
-          self,
-          ts: datetime.datetime,
-          state: State,
-          universe: TradingStrategyUniverse
+        self,
+        ts: datetime.datetime,
+        state: State,
+        universe: TradingStrategyUniverse
     ) -> List[TradeExecution]:
         """Run stop loss/take profit/market limit price checks.
 
@@ -810,7 +810,7 @@ class ExecutionLoop:
                 # This gives value_at_open statitics for each position that are needed
                 # to calculate weights later.
                 update_statistics(
-                    datetime.datetime.utcnow(),
+                    ts,
                     state.stats,
                     state.portfolio,
                     self.execution_context.mode,

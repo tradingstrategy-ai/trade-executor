@@ -934,7 +934,7 @@ class PositionManager:
                 pair=pair,
                 quantity=Decimal(quantity_delta),
                 reserve=None,
-                assumed_price=price_structure.price,
+                assumed_price=price,
                 trade_type=TradeType.rebalance,
                 reserve_currency=self.reserve_currency,
                 reserve_currency_price=reserve_price,
@@ -1000,7 +1000,7 @@ class PositionManager:
 
         pair = position.pair
 
-        quantity = quantity or position.get_available_trading_quantity(include_pending=pending)
+        quantity = quantity or position.get_available_trading_quantity(include_pending_trades=pending)
         if quantity:
             assert quantity > 0, "Closing spot, quantity must be positive"
 
@@ -1161,7 +1161,7 @@ class PositionManager:
         assert position.is_open(), f"Tried to close already closed position {position}"
 
 
-        quantity_left = position.get_available_trading_quantity(include_pending=pending)
+        quantity_left = position.get_available_trading_quantity(include_pending_trades=pending)
 
         if quantity_left == 0:
             # We have already generated closing trades for this position earlier?
@@ -2218,8 +2218,7 @@ class PositionManager:
             
             flags = {TradeFlag.partial_take_profit, TradeFlag.reduce, TradeFlag.triggered}
             
-            # FIXME: temp hack to get market limit order working, fix this
-            if close_flag and not position.is_pending():
+            if close_flag:
                 per_level_trades = self.close_position(
                     position,
                     flags=flags,

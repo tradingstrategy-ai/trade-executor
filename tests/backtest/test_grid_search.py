@@ -261,7 +261,7 @@ def test_perform_grid_search_single_thread(
     # Getting on Github:
     # Obtained: 0.011546587485546267
     # Expected: 0.011682534679563261 ± 1.2e-08
-    assert row["CAGR"] == pytest.approx(0.011536997940393867, rel=0.01)
+    assert row["CAGR"] == pytest.approx(0.06771955893113946)
     assert row["Positions"] == 2
 
     render_grid_search_result_table(table)

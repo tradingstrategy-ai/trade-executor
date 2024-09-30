@@ -266,6 +266,13 @@ def test_partial_take_profit(
     )
     assert len(opening_trades) == 1
 
+    # TODO: currently we don't support setting partial take profit for 
+    # pending / planned positions
+    # Execute the position open
+    trader = UnitTestTrader(state)
+    trader.set_perfectly_executed(opening_trades[0])
+    assert opening_trades[0].is_success()
+    
     # Set the two stage take profit for the position in preparation
     position = position_manager.get_current_position_for_pair(pair)
     total_quantity = position.get_quantity(planned=True)
@@ -296,12 +303,6 @@ def test_partial_take_profit(
     t = prepared_trades[1]
     trigger = t.triggers[0]
     assert trigger.price == pytest.approx(2500.0)
-
-    # Execute the position open
-    trader = UnitTestTrader(state)
-    trader.set_perfectly_executed(opening_trades[0])
-    assert opening_trades[0].is_success()
-    assert position.get_quantity() == pytest.approx(total_quantity)
 
     # We are not within take profit level yet
     assert position.last_token_price == pytest.approx(1823.4539999999997)

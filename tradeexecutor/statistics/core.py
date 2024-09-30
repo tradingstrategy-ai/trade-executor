@@ -212,7 +212,7 @@ def update_statistics(
         logger.info("Serialising long_short_metrics_latest")
     
     stats.long_short_metrics_latest = long_short_metrics_latest
-        
+    
     new_stats = calculate_statistics(clock, portfolio, execution_mode)
     stats.portfolio.append(new_stats.portfolio)
     for position_id, position_stats in new_stats.positions.items():
