@@ -34,6 +34,7 @@ from tradeexecutor.state.state import State
 from tradeexecutor.state.balance_update import BalanceUpdate, BalanceUpdateCause, BalanceUpdatePositionType
 from tradeexecutor.state.sync import BalanceEventRef
 from tradeexecutor.state.types import BlockNumber
+from tradeexecutor.strategy.dust import get_dust_epsilon_for_asset
 from tradeexecutor.strategy.sync_model import SyncModel, OnChainBalance
 from tradingstrategy.chain import ChainId
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
@@ -261,6 +262,24 @@ class EnzymeVaultSyncModel(SyncModel):
                 continue
 
             asset = translate_token_details(token_details)
+
+            amount = asset.convert_to_decimal(raw_amount)
+
+            # Check for dusty redemption.
+            # We may have already closed the position,
+            # but on Enzyme's books it is still open with dust left.
+            # In this case, any redemption request may attempt to redeem this dust.
+            # See test_enzyme_redeem_dust.
+            dust_epsilon = get_dust_epsilon_for_asset(asset)
+            if amount < dust_epsilon:
+                # Use warning so for now we will flag these issues better
+                logger.warning(
+                    f"Enzyme dust redemption detected and ignored.\n"
+                    f"Asset: {asset}\n"
+                    f"Epsilon: {dust_epsilon}\n"
+                    f"Amount: {amount}\n"
+                )
+                continue
 
             try:
                 position = self.get_related_position(portfolio, asset)

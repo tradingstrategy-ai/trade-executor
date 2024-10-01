@@ -14,12 +14,20 @@ from tradeexecutor.cli.main import app
 pytestmark = pytest.mark.skipif(not os.environ.get("JSON_RPC_POLYGON") or not os.environ.get("TRADING_STRATEGY_API_KEY"), reason="Set JSON_RPC_POLYGON and TRADING_STRATEGY_API_KEY environment variables to run this test")
 
 
+@pytest.fixture(scope="module")
+def end_block() -> int:
+    """The chain point of time when we simulate the events."""
+    block_time = 2
+    days = 6
+    return 62514843 - days*24*3600//block_time
+
+
 @pytest.fixture()
-def anvil(request: FixtureRequest) -> AnvilLaunch:
+def anvil(request: FixtureRequest, end_block) -> AnvilLaunch:
     mainnet_rpc = os.environ["JSON_RPC_POLYGON"]
     anvil = launch_anvil(
         mainnet_rpc,
-        fork_block_number=62513342,  # The timestamp on when the broken position was created
+        fork_block_number=end_block,  # The timestamp on when the broken position was created
     )
     try:
         yield anvil
@@ -48,6 +56,7 @@ def environment(
     anvil: AnvilLaunch,
     state_file: Path,
     strategy_file: Path,
+    end_block: int,
     ) -> dict:
     """Used by CLI commands, for setting up this test environment"""
     environment = {
@@ -58,14 +67,16 @@ def environment(
         "ASSET_MANAGEMENT_MODE": "enzyme",
         "UNIT_TESTING": "true",
         "UNIT_TEST_FORCE_ANVIL": "true",  # check-wallet command legacy hack
-        "LOG_LEVEL": "disabled",
-        # "LOG_LEVEL": "info",
+        # "LOG_LEVEL": "disabled",
+        "LOG_LEVEL": "info",
         "TRADING_STRATEGY_API_KEY": os.environ["TRADING_STRATEGY_API_KEY"],
         "VAULT_ADDRESS": "0xbba6B781e0BAC1798e4E715ef9b1113Bf2387544",
         "VAULT_ADAPTER_ADDRESS": "0x519f26bE61889656e83262ab56D75f00DFDAAEc1",
         "VAULT_PAYMENT_FORWARDER_ADDRESS": "0x638241c16aB5002298B24ED2F0074B4662042258",
         "VAULT_DEPLOYMENT_BLOCK_NUMBER": "60554042",
         "SKIP_SAVE": "true",
+        "PROCESS_REDEMPTION": "true",
+        "PROCESS_REDEMPTION_END_BLOCK_HINT": str(end_block),
     }
     return environment
 
@@ -89,8 +100,7 @@ def test_enzyme_redeem_dust(
     mocker.patch.dict("os.environ", environment, clear=True)
 
     with pytest.raises(SystemExit) as sys_exit:
-        app(["check-accounts"], standalone_mode=False)
-    assert sys_exit.value.code == 0
+        app(["repair"], standalone_mode=False)
 
     with pytest.raises(SystemExit) as sys_exit:
         app(["correct-accounts"], standalone_mode=False)

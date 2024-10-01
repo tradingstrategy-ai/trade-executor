@@ -73,6 +73,7 @@ def correct_accounts(
     skip_save: bool = Option(False, "--skip-save", envvar="SKIP_SAVE", help="Do not update state file. Useful for testing."),
     skip_interest: bool = Option(False, "--skip-interest", envvar="SKIP_INTEREST", help="Do not do interest distribution. If an position balance is fixed down due to redemption, this is useful."),
     process_redemption: bool = Option(False, "--process-redemption", envvar="PROCESS_REDEMPTION", help="Attempt to process deposit and redemption requests before correcting accounts."),
+    process_redemption_end_block_hint: int = Option(None, "--process-redemption-end-block-hint", envvar="PROCESS_REDEMPTION_END_BLOCK_HINT", help="Used in integration testing."),
     transfer_away: bool = Option(False, "--transfer-away", envvar="TRANSFER_AWAY", help="For tokens without assigned position, scoop them to the hot wallet instead of trying to construct a new position"),
 
 ):
@@ -306,8 +307,27 @@ def correct_accounts(
 
     if process_redemption:
         timestamp = datetime.datetime.utcnow()
-        logger.info("Processing deposits/redemptions, timestamp set to %s", timestamp)
+        reserve_assets = list(universe.reserve_assets)
 
+
+        if process_redemption_end_block_hint:
+            # Passed by unit tests so we are not going to scan the whole chain until today (wall clock time)
+            end_block = process_redemption_end_block_hint
+        else:
+            end_block = execution_model.get_safe_latest_block()
+
+        logger.info(
+            "Processing deposits/redemptions, timestamp set to %s, reserves are %s, end block is %d",
+            timestamp,
+            reserve_assets,
+            end_block,
+        )
+
+        sync_model.sync_treasury(
+            strategy_cycle_ts=timestamp,
+            state=state,
+            end_block=end_block,
+        )
     else:
         logger.info("Deposit/redemption distribution skipped")
 
