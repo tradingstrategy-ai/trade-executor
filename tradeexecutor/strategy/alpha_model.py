@@ -485,6 +485,30 @@ class AlphaModel:
             print(f"   Signal #{idx} {signal}", file=buf)
         return buf.getvalue()
 
+    def has_any_signal(self) -> bool:
+        """For this cycle, should we try to do any trades.
+
+        Any of the signals have non-zero value
+
+        :return:
+            True if alpha model should attempt to do some trades on this timestamp/cycle.
+
+            Trades could be still cancelled (zeroed out) by a risk model.
+        """
+        return any([s for s in self.signals.values() if s.signal != 0])
+
+    def has_any_position(self) -> bool:
+        """For this cycle, are we going to do any trades.
+
+        Some signals have :py:attr:`TradingSignal.position_target` set after the risk adjustments.
+
+        :return:
+            True if alpha model should attempt to do some trades on this timestamp/cycle.
+
+            Trades could be still cancelled (zeroed out) by a risk model.
+        """
+        return any([s for s in self.signals.values() if s.position_target != 0])
+
     def set_signal(
             self,
             pair: TradingPairIdentifier,
@@ -677,6 +701,8 @@ class AlphaModel:
             # if all positions are size-risked down
             s = self.signals[pair_id]
 
+            assert s.old_weight is not None, f"TradingSignal.old_weight is not available: {s} - remember to call AlphaModel.update_old_weights()"
+
             assert s.raw_weight >= 0, "_normalise_weights_size_risk(): short or leverage not implemented"
 
             concentration_capped_normal_weight = min(normal_weight, max_weight)
@@ -685,6 +711,14 @@ class AlphaModel:
                 self.timestamp,
                 s.pair,
                 asked_position_size
+            )
+
+            logger.info(
+                "Position size risk, pair: %s, asked: %s, accepted: %s, diagnostics: %s",
+                s.pair,
+                size_risk.asked_size,
+                size_risk.accepted_size,
+                size_risk.diagnostics_data,
             )
 
             s.position_size_risk = size_risk
@@ -764,6 +798,15 @@ class AlphaModel:
                 size_risk_model=size_risk_model,
                 investable_equity=investable_equity,
             )
+
+        # Risk model zeroed out everything so something is likely wrong
+        if self.has_any_signal() and not self.has_any_position():
+            logger.warning(
+                "normalise_weights() at %s had signal, but refuses to have any position target, all positions zeroed out by risk model",
+                self.timestamp,
+            )
+            for s in self.signals.values():
+                logger.warning("Signal %s", s)
 
     def assign_weights(self, method=weight_by_1_slash_n):
         """Convert raw signals to their portfolio weight counterparts.

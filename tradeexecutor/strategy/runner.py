@@ -1075,11 +1075,13 @@ def post_process_trade_decision(
         If any of the trades is detected to have too much price impact.
     """
 
-    logger.info(
-        "post_process_trade_decision(): Post-processing %d trades, max_price_impact: %s",
-        len(trades),
-        max_price_impact,
-    )
+    if not execution_context.mode.is_backtesting():
+        # Too noisy for backtesting
+        logger.info(
+            "post_process_trade_decision(): Post-processing %d trades, max_price_impact: %s",
+            len(trades),
+            max_price_impact,
+        )
 
     # TODO: Write a full logic here, only supports closing shorts now,
     # assuming everything lending is short
