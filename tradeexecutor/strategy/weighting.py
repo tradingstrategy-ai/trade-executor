@@ -110,6 +110,10 @@ def normalise_weights(weights: Dict[PairInternalId, Weight]) -> Dict[PairInterna
 
     total = sum(weights.values())
     normalised_weights = {}
+    if total == 0:
+        # Avoid division by zero
+        return normalised_weights
+
     for key, value in weights.items():
         normalised_weights[key] = value / total
 

@@ -1951,7 +1951,6 @@ def load_partial_data(
     name: str | None = None,
     candle_progress_bar_desc: str | None = None,
     lending_candle_progress_bar_desc: str | None = None,
-
 ) -> Dataset:
     """Load pair data for given trading pairs.
 
@@ -2009,15 +2008,6 @@ def load_partial_data(
     :param time_bucket:
         The candle time frame.
 
-    :param chain_id:
-        Which blockchain hosts our exchange
-
-    :param exchange_slug:
-        Which exchange hosts our trading pairs
-
-    :param exchange_slug:
-        Which exchange hosts our trading pairs
-
     :param pairs:
 
         List of trading pair tickers.
@@ -2027,10 +2017,13 @@ def load_partial_data(
         - Human-readable descriptions, see :py:attr:`tradingstrategy.pair.HumanReadableTradingPairDescription`.
         - Direct :py:class:`pandas.DataFrame` of pairs.
 
-    :param lending_reserves:
+    :param lending_resserves:
         Lending reserves for which you want to download the data.
 
         Either list of lending pool descriptions or preloaded lending universe.
+
+    :param lending_candle_types:
+        What lending data columns to load
 
     :param liquidity:
         Set true to load liquidity data as well
@@ -2040,8 +2033,11 @@ def load_partial_data(
 
         If not given use `time_bucket`.
 
-    :param lending_reverses:
+    :param lending_reserves:
         Set true to load lending reserve data as well
+
+    :lending_candle_types:
+        What lending data columns to load
 
     :param stop_loss_time_bucket:
         If set load stop loss trigger
