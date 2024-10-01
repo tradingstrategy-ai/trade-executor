@@ -195,10 +195,10 @@ class AccountingBalanceCheck:
 
 
 def is_relative_mismatch(
-        actual_amount,
-        expected_amount,
-        relative_epsilon,
-        dust_epsilon,
+    actual_amount: Decimal,
+    expected_amount: Decimal,
+    relative_epsilon: float | Decimal,
+    dust_epsilon: float | Decimal,
 ) -> bool:
     """Calculate if we are within the relative tolerance.
 
@@ -208,6 +208,9 @@ def is_relative_mismatch(
 
     - Relative % of the position size
     """
+
+    assert isinstance(actual_amount, Decimal), f"Got {type(actual_amount)}"
+    assert isinstance(expected_amount, Decimal), f"Got {type(expected_amount)}"
 
     # Accounting dust.
     # The position has been closed but we have left fractions of tokens on the account.

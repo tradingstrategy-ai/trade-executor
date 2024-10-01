@@ -295,7 +295,6 @@ def decide_trades(
     alpha_model.normalise_weights(
         investable_equity=portfolio_target_value,
         size_risk_model=size_risk_model,
-
     )
 
     # Load in old weight for each trading pair signal,
