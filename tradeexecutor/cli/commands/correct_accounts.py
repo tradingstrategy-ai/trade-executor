@@ -72,6 +72,7 @@ def correct_accounts(
     chain_settle_wait_seconds: float = Option(60.0, "--chain-settle-wait-seconds", envvar="CHAIN_SETTLE_WAIT_SECONDS", help="How long we wait after the account correction to see if our broadcasted transactions fixed the issue."),
     skip_save: bool = Option(False, "--skip-save", envvar="SKIP_SAVE", help="Do not update state file. Useful for testing."),
     skip_interest: bool = Option(False, "--skip-interest", envvar="SKIP_INTEREST", help="Do not do interest distribution. If an position balance is fixed down due to redemption, this is useful."),
+    process_redemption: bool = Option(False, "--process-redemption", envvar="PROCESS_REDEMPTION", help="Attempt to process deposit and redemption requests before correcting accounts."),
     transfer_away: bool = Option(False, "--transfer-away", envvar="TRANSFER_AWAY", help="For tokens without assigned position, scoop them to the hot wallet instead of trying to construct a new position"),
 
 ):
@@ -302,6 +303,13 @@ def correct_accounts(
                 raise
     else:
         logger.info("Interest distribution skipped")
+
+    if process_redemption:
+        timestamp = datetime.datetime.utcnow()
+        logger.info("Processing deposits/redemptions, timestamp set to %s", timestamp)
+
+    else:
+        logger.info("Deposit/redemption distribution skipped")
 
     balance_updates = _correct_accounts(
         state,
