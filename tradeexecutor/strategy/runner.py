@@ -1096,6 +1096,11 @@ def post_process_trade_decision(
 
     if max_price_impact is not None:
         for t in trades:
+
+            if t.is_credit_supply():
+                # Credit supply positions do not have price structure
+                continue
+
             price_structure = t.price_structure
 
             if execution_context.live_trading:
