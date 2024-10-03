@@ -94,6 +94,12 @@ class PandasTraderRunner(StrategyRunner):
                 parameters=self.parameters,
                 execution_context=self.execution_context,
             )
+
+            logger.info(
+                "Running decide_trades(), timestamp %s, cash in hand %s",
+                pd_timestamp,
+                input.get_position_manager().get_current_cash()
+            )
             return self.decide_trades(
                 input
             )
