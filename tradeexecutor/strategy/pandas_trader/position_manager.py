@@ -1498,7 +1498,16 @@ class PositionManager:
         assert pair is not None, "The default credit supply position not configured correctly for the strategy universe"
         assert cash > 0, f"Got cash: {cash}"
 
-        logger.info("Allocating cash for credit, cash %f, threshold %f", cash, min_usd_threshold)
+        # Live execution diagnostics logging
+        total_equity = self.state.portfolio.get_total_equity()
+        total_cash = self.state.portfolio.get_current_cash(),
+        logger.info(
+            "Allocating cash for credit, cash %f, threshold %f, total cash %f, total equity $f",
+            cash,
+            min_usd_threshold,
+            total_cash,
+            total_equity,
+        )
 
         if cash < min_usd_threshold:
             # No new deposit or only dust, don't generate extra trades

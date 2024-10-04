@@ -11,7 +11,7 @@ import datetime
 import pickle
 import textwrap
 from abc import abstractmethod
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import logging
 from math import isnan
 from pathlib import Path
@@ -181,13 +181,19 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
     #:
     price_data_delay_tolerance: datetime.timedelta | None = None
 
+    #: When this strategy object was created.
+    #:
+    #: Diagnostics info for caching issues.
+    #:
+    created_at: datetime.datetime = field(default_factory=datetime.datetime.utcnow)
+
     def __repr__(self):
         pair_count = self.data_universe.pairs.get_count()
         if pair_count <= 3:
             pair_tickers = [f"{p.base_token_symbol}-{p.quote_token_symbol}" for p in self.data_universe.pairs.iterate_pairs()]
-            return f"<TradingStrategyUniverse for {', '.join(pair_tickers)}>"
+            return f"<TradingStrategyUniverse for {', '.join(pair_tickers)}, created {self.created_at}>"
         else:
-            return f"<TradingStrategyUniverse for {self.data_universe.pairs.get_count()} pairs>"
+            return f"<TradingStrategyUniverse for {self.data_universe.pairs.get_count()} pairs, created {self.created_at}>"
 
     def __post_init__(self):
         """Check that we correctly constructed the instance."""
