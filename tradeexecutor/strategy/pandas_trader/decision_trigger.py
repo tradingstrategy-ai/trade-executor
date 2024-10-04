@@ -324,7 +324,7 @@ def wait_for_universe_data_availability_jsonl(
             if current_universe.has_lending_data():
                 lending_data = fetch_lending_data(
                     client,
-                    bucket,
+                    TimeBucket.h1,
                     wanted_timestamp,
                     current_universe.data_universe.lending_reserves,
                     required_history_period
