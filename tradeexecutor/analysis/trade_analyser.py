@@ -679,6 +679,7 @@ class TradeAnalysis:
 
             daily_returns = calculate_daily_returns(state, freq="D")
             equity_curve = calculate_equity_curve(state)
+
             original_returns = calculate_returns(equity_curve)
             compounding_returns = calculate_compounding_realised_trading_profitability(state)
 

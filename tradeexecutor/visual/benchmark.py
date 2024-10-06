@@ -763,7 +763,7 @@ def visualise_equity_curves(
 
         - colour: Plotly colour name
 
-        - curve: Equity curve type
+        - curve: Equity curve type. See :py:class:`CurveType`.
 
     :param height:
         Height in pixels
@@ -831,6 +831,7 @@ def visualise_equity_curves(
     ))
 
     return fig
+
 
 def visualise_portfolio_interest_curve(
     name: str,

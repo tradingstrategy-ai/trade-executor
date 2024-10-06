@@ -12,7 +12,7 @@ packages = [
     { include = "tradeexecutor" },
 ]
 [tool.poetry.dependencies]
-python = ">=3.10,<=3.12"
+python = ">=3.11,<=3.12"
 
 
 # Use these during development
@@ -108,6 +108,13 @@ google-auth =  {version="^2.32.0",  optional = true}
 zstandard = "^0.23.0"
 pytest-timeout = "^2.3.1"
 
+#
+# Demeter
+# https://github.com/zelos-alpha/demeter
+#
+
+# TODO: Disabled. Install wiht pip until dependency version incompatibilies are solved.
+# zelos-demeter = {version="^0.7.2",  optional = true}
 
 [tool.poetry.extras]
 
@@ -147,6 +154,11 @@ trendsspotter = [
 
 # for generating advanced statistical reports
 # quantstats = ["quantstats"]
+
+# Demeter LP backtesting integration
+demeter = [
+    "zelos-demeter",
+]
 
 [tool.poetry.dev-dependencies]
 pytest = "^7.2.2"

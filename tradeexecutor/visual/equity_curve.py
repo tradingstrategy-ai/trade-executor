@@ -123,8 +123,8 @@ def calculate_returns(equity_curve: pd.Series) -> pd.Series:
 
     if len(equity_curve) == 0:
         series = pd.Series([], index=pd.to_datetime([]), dtype='float64')
-
-    series = equity_curve.pct_change().fillna(0.0)
+    else:
+        series = equity_curve.pct_change().fillna(0.0)
 
     series.attrs = equity_curve.attrs.copy()
     series.attrs["curve"] = CurveType.returns
