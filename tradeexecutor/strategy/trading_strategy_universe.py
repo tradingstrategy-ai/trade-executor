@@ -1068,6 +1068,13 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
             stop_loss_candle_universe = None
 
         if dataset.liquidity is not None:
+
+            if isinstance(dataset.liquidity.index, pd.MultiIndex):
+                # The hack we had to do to in CachedHTTPTransport.fetch_tvl_by_pair_ids() because
+                # for some reason pd.concat() kept failing on Github.
+                # Goes from (pair_id, timestamp) -> (timestamp) index
+                dataset.liquidity = dataset.liquidity.reset_index(level=0, drop=True)
+
             assert isinstance(dataset.liquidity.index, pd.DatetimeIndex), f"Got {dataset.liquidity.index.__class__}"
             liquidity_universe = GroupedLiquidityUniverse(
                 dataset.liquidity,
