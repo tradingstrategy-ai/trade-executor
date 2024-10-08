@@ -19,6 +19,7 @@ import threading
 from abc import ABC, abstractmethod
 from collections import defaultdict
 
+from IPython import get_ipython
 from skopt.space import Dimension
 
 # Enable pickle patch that allows multiprocessing in notebooks
@@ -1369,10 +1370,11 @@ class IndicatorDependencyResolver:
                 series = dependency_resolver.get_indicator_data_pairs_combined("regime")
                 assert isinstance(series.index, pd.MultiIndex)
                 assert isinstance(series, pd.Series)
+                return series
                 # Change from pd.Series to pd.DataFrame with column "value"
-                df = series.to_frame(name='value')
-                assert df.columns == ["value"]
-                return df
+                # df = series.to_frame(name='value')
+                # assert df.columns == ["value"]
+                # return df
 
             def create_indicators(parameters: StrategyParameters, indicators: IndicatorSet, strategy_universe: TradingStrategyUniverse, execution_context: ExecutionContext):
                 indicators.add("regime", regime, {"length": parameters.fast_sma}, order=2)
@@ -1809,6 +1811,10 @@ def calculate_and_load_indicators_inline(
 
     """
 
+    # Hack to be able to run notebook with ipython from the command line
+    # https://stackoverflow.com/a/39662359/315168
+    ipython = get_ipython().__class__.__name__ == "TerminalInteractiveShell"
+
     # TODO: Eliminate circulates
     from tradeexecutor.strategy.pandas_trader.strategy_input import StrategyInputIndicators
 
@@ -1822,6 +1828,12 @@ def calculate_and_load_indicators_inline(
         assert indicator_set is None, f"Cannot give both indicator_set and create_indicators"
         indicator_set = prepare_indicators(create_indicators, parameters, strategy_universe, execution_context, timestamp=None)
 
+    if ipython:
+        # Unable to fork
+        max_workers = 1
+    else:
+        max_workers = get_safe_max_workers_count()
+
     indicator_result_map = calculate_and_load_indicators(
         strategy_universe=strategy_universe,
         storage=storage,
@@ -1829,6 +1841,7 @@ def calculate_and_load_indicators_inline(
         parameters=parameters,
         verbose=verbose,
         indicators=indicator_set,
+        max_workers=max_workers,
     )
 
     return StrategyInputIndicators(
