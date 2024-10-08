@@ -1692,6 +1692,7 @@ def calculate_and_load_indicators_inline(
     verbose=True,
     indicator_set: IndicatorSet | None = None,
     create_indicators: CreateIndicatorsProtocol = None,
+    storage: IndicatorStorage | None = None,
 ) -> "tradeexecutor.strategy.pandas_trader.strategy_input.StrategyInputIndicators":
     """Calculate indicators in the notebook itself, before starting the backtest.
 
@@ -1700,15 +1701,57 @@ def calculate_and_load_indicators_inline(
     - Useful for single iteration backtests
 
     - Useful for accessing indicator data if you do not need a backtest
+
+    Example:
+
+    .. code-block:: python
+
+        # Some example parameters we use to calculate indicators.
+        # E.g. RSI length
+        class Parameters:
+            rsi_length = 20
+            sma_long = 200
+            sma_short = 12
+
+        # Create indicators.
+        # Map technical indicator functions to their parameters, like length.
+        # You can also use hardcoded values, but we recommend passing in parameter dict,
+        # as this allows later to reuse the code for optimising/grid searches, etc.
+        def create_indicators(
+            timestamp,
+            parameters,
+            strategy_universe,
+            execution_context,
+        ) -> IndicatorSet:
+            indicator_set = IndicatorSet()
+            indicator_set.add("rsi", pandas_ta.rsi, {"length": parameters.rsi_length})
+            indicator_set.add("sma_long", pandas_ta.sma, {"length": parameters.sma_long})
+            indicator_set.add("sma_short", pandas_ta.sma, {"length": parameters.sma_short})
+            return indicator_set
+
+        # Calculate indicators - will spawn multiple worker processed,
+        # or load cached results from the disk
+        indicators = calculate_and_load_indicators_inline(
+            strategy_universe=strategy_universe,
+            parameters=StrategyParameters.from_class(Parameters),
+            create_indicators=create_indicators,
+        )
+
+        # From calculated indicators, read one indicator (RSI for BTC)
+        wbtc_usdc = strategy_universe.get_pair_by_human_description((ChainId.ethereum, "test-dex", "WBTC", "USDC"))
+        rsi = indicators.get_indicator_series("rsi", pair=wbtc_usdc)
+        assert len(rsi) == 214  # We have series data for 214 days
+
     """
 
     # TODO: Eliminate circulates
     from tradeexecutor.strategy.pandas_trader.strategy_input import StrategyInputIndicators
 
-    storage = DiskIndicatorStorage(
-        indicator_storage_path,
-        strategy_universe.get_cache_key()
-    )
+    if storage is None:
+        storage = DiskIndicatorStorage(
+            indicator_storage_path,
+            strategy_universe.get_cache_key()
+        )
 
     if create_indicators:
         assert indicator_set is None, f"Cannot give both indicator_set and create_indicators"
