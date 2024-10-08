@@ -1343,6 +1343,71 @@ class IndicatorDependencyResolver:
 
         return result
 
+    def get_indicator_data_pairs_combined(
+        self,
+        name: str,
+    ) -> pd.Series:
+        """Get a DataFrame that contains indicator data for all pairs combined.
+
+        - Allows to access the indicator data for all pairs as a combined dataframe.
+
+        Example:
+
+        .. code-block:: python
+
+            def regime(
+                close: pd.Series,
+                pair: TradingPairIdentifier,
+                length: int,
+                dependency_resolver: IndicatorDependencyResolver,
+            ) -> pd.Series:
+                fast_sma: pd.Series = dependency_resolver.get_indicator_data("fast_sma", pair=pair, parameters={"length": length})
+                return close > fast_sma
+
+            def multipair(universe: TradingStrategyUniverse, dependency_resolver: IndicatorDependencyResolver) -> pd.DataFrame:
+                # Test multipair data resolution
+                series = dependency_resolver.get_indicator_data_pairs_combined("regime")
+                assert isinstance(series.index, pd.MultiIndex)
+                assert isinstance(series, pd.Series)
+                # Change from pd.Series to pd.DataFrame with column "value"
+                df = series.to_frame(name='value')
+                assert df.columns == ["value"]
+                return df
+
+            def create_indicators(parameters: StrategyParameters, indicators: IndicatorSet, strategy_universe: TradingStrategyUniverse, execution_context: ExecutionContext):
+                indicators.add("regime", regime, {"length": parameters.fast_sma}, order=2)
+                indicators.add("multipair", multipair, {}, IndicatorSource.strategy_universe, order=3)
+
+        Output:
+
+        .. code-block:: text
+
+            pair_id  timestamp
+            1        2021-06-01    False
+                     2021-06-02    False
+                     2021-06-03    False
+                     2021-06-04    False
+                     2021-06-05    False
+                                   ...
+            2        2021-12-27     True
+                     2021-12-28     True
+                     2021-12-29    False
+                     2021-12-30    False
+                     2021-12-31    False
+
+        :param name:
+            An indicator that was previously calculated by its `order`.
+
+        :return:
+            DataFrame with MultiIndex (pair_id, timestamp)
+        """
+
+        series_map = {pair.internal_id: self.get_indicator_data(name, pair=pair) for pair in self.strategy_universe.iterate_pairs()}
+        series_list = list(series_map.values())
+        pair_ids = list(series_map.keys())
+        combined = pd.concat(series_list, keys=pair_ids, names=['pair_id', 'timestamp'])
+        return combined
+
     def get_indicator_data(
         self,
         name: str,

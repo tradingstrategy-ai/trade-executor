@@ -7,14 +7,14 @@ from pathlib import Path
 import pandas as pd
 import pandas_ta
 import pytest
-
+from pyasn1_modules.rfc3779 import id_pe_ipAddrBlocks
 
 from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier
 from tradeexecutor.strategy.execution_context import ExecutionContext, unit_test_execution_context, unit_test_trading_execution_context
 from tradeexecutor.strategy.pandas_trader.indicator import (
     IndicatorSet, DiskIndicatorStorage, IndicatorDefinition, IndicatorFunctionSignatureMismatch,
     calculate_and_load_indicators, IndicatorKey, IndicatorSource, IndicatorDependencyResolver,
-    IndicatorCalculationFailed, MemoryIndicatorStorage, calculate_and_load_indicators_inline, calculate_and_load_indicators_inline,
+    IndicatorCalculationFailed, MemoryIndicatorStorage, calculate_and_load_indicators_inline,
 )
 from tradeexecutor.strategy.pandas_trader.strategy_input import StrategyInputIndicators
 from tradeexecutor.strategy.parameters import StrategyParameters
@@ -793,9 +793,20 @@ def test_indicator_dependency_memory_storage(strategy_universe, mocker):
         fast_sma: pd.Series = dependency_resolver.get_indicator_data("fast_sma", pair=pair, parameters={"length": length})
         return close > fast_sma
 
+    def multipair(universe: TradingStrategyUniverse, dependency_resolver: IndicatorDependencyResolver) -> pd.DataFrame:
+        # Test multipair data resolution
+        series = dependency_resolver.get_indicator_data_pairs_combined("regime")
+        assert isinstance(series.index, pd.MultiIndex)
+        assert isinstance(series, pd.Series)
+        # Change from pd.Series to pd.DataFrame with column "value"
+        df = series.to_frame(name='value')
+        assert df.columns == ["value"]
+        return df
+
     def create_indicators(parameters: StrategyParameters, indicators: IndicatorSet, strategy_universe: TradingStrategyUniverse, execution_context: ExecutionContext):
         indicators.add("fast_sma", pandas_ta.sma, {"length": parameters.fast_sma}, order=1)
         indicators.add("regime", regime, {"length": parameters.fast_sma}, order=2)
+        indicators.add("multipair", multipair, {}, IndicatorSource.strategy_universe, order=3)
 
     class MyParameters:
         fast_sma = 20
@@ -815,7 +826,7 @@ def test_indicator_dependency_memory_storage(strategy_universe, mocker):
     wbtc_usdc = strategy_universe.get_pair_by_human_description((ChainId.ethereum, exchange.exchange_slug, "WBTC", "USDC"))
 
     keys = list(indicator_result.keys())
-    keys = sorted(keys, key=lambda k: (k.pair.internal_id, k.definition.name))  # Ensure we read set in deterministic order
+    keys = sorted(keys, key=lambda k: (k.pair.internal_id if k.pair else 9_999_999, k.definition.name))  # Ensure we read set in deterministic order
 
     # Check our pair x indicator matrix
     assert keys[0].pair== weth_usdc
@@ -831,7 +842,7 @@ def test_indicator_dependency_memory_storage(strategy_universe, mocker):
 
     for result in indicator_result.values():
         assert not result.cached
-        assert isinstance(result.data, pd.Series)
+        assert isinstance(result.data, (pd.Series, pd.DataFrame))
         assert len(result.data) > 0
 
     # Run with higher workers count should still work since it should force single thread

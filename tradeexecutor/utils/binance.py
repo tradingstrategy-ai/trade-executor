@@ -107,7 +107,7 @@ def fetch_binance_dataset(
         df, {symbol: pair for symbol, pair in zip(symbols, pairs)}
     )
 
-    candle_df["pair_id"].replace(spot_symbol_map, inplace=True)
+    candle_df["pair_id"] = candle_df["pair_id"].replace(spot_symbol_map)
 
     candle_universe, stop_loss_candle_universe = load_candle_universe_from_dataframe(
         df=candle_df,
