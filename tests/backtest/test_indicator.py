@@ -7,15 +7,14 @@ from pathlib import Path
 import pandas as pd
 import pandas_ta
 import pytest
-import futureproof
-import inspect
+from pyasn1_modules.rfc3779 import id_pe_ipAddrBlocks
 
 from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier
 from tradeexecutor.strategy.execution_context import ExecutionContext, unit_test_execution_context, unit_test_trading_execution_context
 from tradeexecutor.strategy.pandas_trader.indicator import (
     IndicatorSet, DiskIndicatorStorage, IndicatorDefinition, IndicatorFunctionSignatureMismatch,
-    calculate_and_load_indicators, IndicatorKey, IndicatorSource, IndicatorDependencyResolver, 
-    IndicatorOrderError, IndicatorCalculationFailed, MemoryIndicatorStorage,
+    calculate_and_load_indicators, IndicatorKey, IndicatorSource, IndicatorDependencyResolver,
+    IndicatorCalculationFailed, MemoryIndicatorStorage, calculate_and_load_indicators_inline,
 )
 from tradeexecutor.strategy.pandas_trader.strategy_input import StrategyInputIndicators
 from tradeexecutor.strategy.parameters import StrategyParameters
@@ -24,10 +23,8 @@ from tradeexecutor.strategy.universe_model import UniverseOptions
 from tradeexecutor.testing.synthetic_ethereum_data import generate_random_ethereum_address
 from tradeexecutor.testing.synthetic_exchange_data import generate_exchange
 from tradeexecutor.testing.synthetic_price_data import generate_multi_pair_candles
-from tradeexecutor.utils.python_function import hash_function
 from tradingstrategy.candle import GroupedCandleUniverse
 from tradingstrategy.chain import ChainId
-from tradingstrategy.pair import HumanReadableTradingPairDescription
 from tradingstrategy.timebucket import TimeBucket
 from tradingstrategy.universe import Universe
 
@@ -796,9 +793,20 @@ def test_indicator_dependency_memory_storage(strategy_universe, mocker):
         fast_sma: pd.Series = dependency_resolver.get_indicator_data("fast_sma", pair=pair, parameters={"length": length})
         return close > fast_sma
 
+    def multipair(universe: TradingStrategyUniverse, dependency_resolver: IndicatorDependencyResolver) -> pd.DataFrame:
+        # Test multipair data resolution
+        series = dependency_resolver.get_indicator_data_pairs_combined("regime")
+        assert isinstance(series.index, pd.MultiIndex)
+        assert isinstance(series, pd.Series)
+        # Change from pd.Series to pd.DataFrame with column "value"
+        df = series.to_frame(name='value')
+        assert df.columns == ["value"]
+        return df
+
     def create_indicators(parameters: StrategyParameters, indicators: IndicatorSet, strategy_universe: TradingStrategyUniverse, execution_context: ExecutionContext):
         indicators.add("fast_sma", pandas_ta.sma, {"length": parameters.fast_sma}, order=1)
         indicators.add("regime", regime, {"length": parameters.fast_sma}, order=2)
+        indicators.add("multipair", multipair, {}, IndicatorSource.strategy_universe, order=3)
 
     class MyParameters:
         fast_sma = 20
@@ -818,7 +826,7 @@ def test_indicator_dependency_memory_storage(strategy_universe, mocker):
     wbtc_usdc = strategy_universe.get_pair_by_human_description((ChainId.ethereum, exchange.exchange_slug, "WBTC", "USDC"))
 
     keys = list(indicator_result.keys())
-    keys = sorted(keys, key=lambda k: (k.pair.internal_id, k.definition.name))  # Ensure we read set in deterministic order
+    keys = sorted(keys, key=lambda k: (k.pair.internal_id if k.pair else 9_999_999, k.definition.name))  # Ensure we read set in deterministic order
 
     # Check our pair x indicator matrix
     assert keys[0].pair== weth_usdc
@@ -834,7 +842,7 @@ def test_indicator_dependency_memory_storage(strategy_universe, mocker):
 
     for result in indicator_result.values():
         assert not result.cached
-        assert isinstance(result.data, pd.Series)
+        assert isinstance(result.data, (pd.Series, pd.DataFrame))
         assert len(result.data) > 0
 
     # Run with higher workers count should still work since it should force single thread
@@ -851,4 +859,48 @@ def test_indicator_dependency_memory_storage(strategy_universe, mocker):
 
     assert logger_mock.call_count == 1
     assert logger_mock.call_args[0][0] == "MemoryIndicatorStorage does not support multiprocessing, setting max_workers and max_readers to 1"
-   
+
+
+def test_calculate_indicators_inline(strategy_universe):
+    """Test calculate_and_load_indicators_inline() """
+
+    # Some example parameters we use to calculate indicators.
+    # E.g. RSI length 
+    class Parameters:
+        rsi_length = 20
+        sma_long = 200
+        sma_short = 12
+
+    # Create indicators.
+    # Map technical indicator functions to their parameters, like length.
+    # You can also use hardcoded values, but we recommend passing in parameter dict,
+    # as this allows later to reuse the code for optimising/grid searches, etc.
+    def create_indicators(
+        timestamp,
+        parameters,
+        strategy_universe,
+        execution_context,
+    ) -> IndicatorSet:
+        indicator_set = IndicatorSet()
+        indicator_set.add("rsi", pandas_ta.rsi, {"length": parameters.rsi_length})
+        indicator_set.add("sma_long", pandas_ta.sma, {"length": parameters.sma_long})
+        indicator_set.add("sma_short", pandas_ta.sma, {"length": parameters.sma_short})
+        return indicator_set
+
+    # Calculate indicators - will spawn multiple worker processed,
+    # or load cached results from the disk
+    indicators = calculate_and_load_indicators_inline(
+        strategy_universe=strategy_universe,
+        parameters=StrategyParameters.from_class(Parameters),
+        create_indicators=create_indicators,
+    )
+
+    # From calculated indicators, read one indicator (RSI for BTC)
+    wbtc_usdc = strategy_universe.get_pair_by_human_description((ChainId.ethereum, "test-dex", "WBTC", "USDC"))
+    rsi = indicators.get_indicator_series("rsi", pair=wbtc_usdc)
+    assert len(rsi) == 214  # We have series data for 214 days
+
+
+
+
+

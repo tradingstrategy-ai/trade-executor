@@ -19,6 +19,7 @@ import threading
 from abc import ABC, abstractmethod
 from collections import defaultdict
 
+from IPython import get_ipython
 from skopt.space import Dimension
 
 # Enable pickle patch that allows multiprocessing in notebooks
@@ -48,11 +49,12 @@ import pandas as pd
 from tqdm_loggable.auto import tqdm
 
 from tradeexecutor.state.identifier import TradingPairIdentifier
-from tradeexecutor.strategy.execution_context import ExecutionContext
+from tradeexecutor.strategy.execution_context import ExecutionContext, notebook_execution_context
 from tradeexecutor.strategy.parameters import StrategyParameters
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse, UniverseCacheKey
 from tradeexecutor.utils.cpu import get_safe_max_workers_count
 from tradeexecutor.utils.python_function import hash_function
+from tradingstrategy.client import Client
 from tradingstrategy.pair import HumanReadableTradingPairDescription
 from tradingstrategy.utils.groupeduniverse import PairCandlesMissing
 
@@ -1342,6 +1344,72 @@ class IndicatorDependencyResolver:
 
         return result
 
+    def get_indicator_data_pairs_combined(
+        self,
+        name: str,
+    ) -> pd.Series:
+        """Get a DataFrame that contains indicator data for all pairs combined.
+
+        - Allows to access the indicator data for all pairs as a combined dataframe.
+
+        Example:
+
+        .. code-block:: python
+
+            def regime(
+                close: pd.Series,
+                pair: TradingPairIdentifier,
+                length: int,
+                dependency_resolver: IndicatorDependencyResolver,
+            ) -> pd.Series:
+                fast_sma: pd.Series = dependency_resolver.get_indicator_data("fast_sma", pair=pair, parameters={"length": length})
+                return close > fast_sma
+
+            def multipair(universe: TradingStrategyUniverse, dependency_resolver: IndicatorDependencyResolver) -> pd.DataFrame:
+                # Test multipair data resolution
+                series = dependency_resolver.get_indicator_data_pairs_combined("regime")
+                assert isinstance(series.index, pd.MultiIndex)
+                assert isinstance(series, pd.Series)
+                return series
+                # Change from pd.Series to pd.DataFrame with column "value"
+                # df = series.to_frame(name='value')
+                # assert df.columns == ["value"]
+                # return df
+
+            def create_indicators(parameters: StrategyParameters, indicators: IndicatorSet, strategy_universe: TradingStrategyUniverse, execution_context: ExecutionContext):
+                indicators.add("regime", regime, {"length": parameters.fast_sma}, order=2)
+                indicators.add("multipair", multipair, {}, IndicatorSource.strategy_universe, order=3)
+
+        Output:
+
+        .. code-block:: text
+
+            pair_id  timestamp
+            1        2021-06-01    False
+                     2021-06-02    False
+                     2021-06-03    False
+                     2021-06-04    False
+                     2021-06-05    False
+                                   ...
+            2        2021-12-27     True
+                     2021-12-28     True
+                     2021-12-29    False
+                     2021-12-30    False
+                     2021-12-31    False
+
+        :param name:
+            An indicator that was previously calculated by its `order`.
+
+        :return:
+            DataFrame with MultiIndex (pair_id, timestamp)
+        """
+
+        series_map = {pair.internal_id: self.get_indicator_data(name, pair=pair) for pair in self.strategy_universe.iterate_pairs()}
+        series_list = list(series_map.values())
+        pair_ids = list(series_map.keys())
+        combined = pd.concat(series_list, keys=pair_ids, names=['pair_id', 'timestamp'])
+        return combined
+
     def get_indicator_data(
         self,
         name: str,
@@ -1681,6 +1749,107 @@ def calculate_and_load_indicators(
         assert key in all_combinations
 
     return result
+
+
+def calculate_and_load_indicators_inline(
+    strategy_universe: TradingStrategyUniverse,
+    parameters: StrategyParameters,
+    indicator_storage_path=DEFAULT_INDICATOR_STORAGE_PATH,
+    execution_context: ExecutionContext = notebook_execution_context,
+    verbose=True,
+    indicator_set: IndicatorSet | None = None,
+    create_indicators: CreateIndicatorsProtocol = None,
+    storage: IndicatorStorage | None = None,
+) -> "tradeexecutor.strategy.pandas_trader.strategy_input.StrategyInputIndicators":
+    """Calculate indicators in the notebook itself, before starting the backtest.
+
+    - To be used within Jupyter Notebooks
+
+    - Useful for single iteration backtests
+
+    - Useful for accessing indicator data if you do not need a backtest
+
+    Example:
+
+    .. code-block:: python
+
+        # Some example parameters we use to calculate indicators.
+        # E.g. RSI length
+        class Parameters:
+            rsi_length = 20
+            sma_long = 200
+            sma_short = 12
+
+        # Create indicators.
+        # Map technical indicator functions to their parameters, like length.
+        # You can also use hardcoded values, but we recommend passing in parameter dict,
+        # as this allows later to reuse the code for optimising/grid searches, etc.
+        def create_indicators(
+            timestamp,
+            parameters,
+            strategy_universe,
+            execution_context,
+        ) -> IndicatorSet:
+            indicator_set = IndicatorSet()
+            indicator_set.add("rsi", pandas_ta.rsi, {"length": parameters.rsi_length})
+            indicator_set.add("sma_long", pandas_ta.sma, {"length": parameters.sma_long})
+            indicator_set.add("sma_short", pandas_ta.sma, {"length": parameters.sma_short})
+            return indicator_set
+
+        # Calculate indicators - will spawn multiple worker processed,
+        # or load cached results from the disk
+        indicators = calculate_and_load_indicators_inline(
+            strategy_universe=strategy_universe,
+            parameters=StrategyParameters.from_class(Parameters),
+            create_indicators=create_indicators,
+        )
+
+        # From calculated indicators, read one indicator (RSI for BTC)
+        wbtc_usdc = strategy_universe.get_pair_by_human_description((ChainId.ethereum, "test-dex", "WBTC", "USDC"))
+        rsi = indicators.get_indicator_series("rsi", pair=wbtc_usdc)
+        assert len(rsi) == 214  # We have series data for 214 days
+
+    """
+
+    # Hack to be able to run notebook with ipython from the command line
+    # https://stackoverflow.com/a/39662359/315168
+    ipython = get_ipython().__class__.__name__ == "TerminalInteractiveShell"
+
+    # TODO: Eliminate circulates
+    from tradeexecutor.strategy.pandas_trader.strategy_input import StrategyInputIndicators
+
+    if storage is None:
+        storage = DiskIndicatorStorage(
+            indicator_storage_path,
+            strategy_universe.get_cache_key()
+        )
+
+    if create_indicators:
+        assert indicator_set is None, f"Cannot give both indicator_set and create_indicators"
+        indicator_set = prepare_indicators(create_indicators, parameters, strategy_universe, execution_context, timestamp=None)
+
+    if ipython:
+        # Unable to fork
+        max_workers = 1
+    else:
+        max_workers = get_safe_max_workers_count()
+
+    indicator_result_map = calculate_and_load_indicators(
+        strategy_universe=strategy_universe,
+        storage=storage,
+        execution_context=execution_context,
+        parameters=parameters,
+        verbose=verbose,
+        indicators=indicator_set,
+        max_workers=max_workers,
+    )
+
+    return StrategyInputIndicators(
+        strategy_universe=strategy_universe,
+        indicator_results=indicator_result_map,
+        available_indicators=indicator_set,
+        timestamp=None,
+    )
 
 
 def warm_up_indicator_cache(
