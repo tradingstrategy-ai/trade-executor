@@ -7,15 +7,14 @@ from pathlib import Path
 import pandas as pd
 import pandas_ta
 import pytest
-import futureproof
-import inspect
+
 
 from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier
 from tradeexecutor.strategy.execution_context import ExecutionContext, unit_test_execution_context, unit_test_trading_execution_context
 from tradeexecutor.strategy.pandas_trader.indicator import (
     IndicatorSet, DiskIndicatorStorage, IndicatorDefinition, IndicatorFunctionSignatureMismatch,
-    calculate_and_load_indicators, IndicatorKey, IndicatorSource, IndicatorDependencyResolver, 
-    IndicatorOrderError, IndicatorCalculationFailed, MemoryIndicatorStorage,
+    calculate_and_load_indicators, IndicatorKey, IndicatorSource, IndicatorDependencyResolver,
+    IndicatorCalculationFailed, MemoryIndicatorStorage, calculate_and_load_indicators_inline, calculate_and_load_indicators_inline,
 )
 from tradeexecutor.strategy.pandas_trader.strategy_input import StrategyInputIndicators
 from tradeexecutor.strategy.parameters import StrategyParameters
@@ -24,10 +23,8 @@ from tradeexecutor.strategy.universe_model import UniverseOptions
 from tradeexecutor.testing.synthetic_ethereum_data import generate_random_ethereum_address
 from tradeexecutor.testing.synthetic_exchange_data import generate_exchange
 from tradeexecutor.testing.synthetic_price_data import generate_multi_pair_candles
-from tradeexecutor.utils.python_function import hash_function
 from tradingstrategy.candle import GroupedCandleUniverse
 from tradingstrategy.chain import ChainId
-from tradingstrategy.pair import HumanReadableTradingPairDescription
 from tradingstrategy.timebucket import TimeBucket
 from tradingstrategy.universe import Universe
 
@@ -851,4 +848,39 @@ def test_indicator_dependency_memory_storage(strategy_universe, mocker):
 
     assert logger_mock.call_count == 1
     assert logger_mock.call_args[0][0] == "MemoryIndicatorStorage does not support multiprocessing, setting max_workers and max_readers to 1"
-   
+
+
+def test_calculate_indicators_inline(strategy_universe):
+    """Test calculate_and_load_indicators_inline() """
+
+    class Parameters:
+        rsi_length=20
+        sma_long=200
+        sma_short=12
+
+    def create_indicators(
+        timestamp,
+        parameters: StrategyParameters,
+        strategy_universe,
+        execution_context,
+    ):
+        indicator_set = IndicatorSet()
+        indicator_set.add("rsi", pandas_ta.rsi, {"length": parameters.rsi_length})
+        indicator_set.add("sma_long", pandas_ta.sma, {"length": parameters.sma_long})
+        indicator_set.add("sma_short", pandas_ta.sma, {"length": parameters.sma_short})
+        return indicator_set
+
+    indicators = calculate_and_load_indicators_inline(
+        strategy_universe=strategy_universe,
+        parameters=StrategyParameters.from_class(Parameters),
+        create_indicators=create_indicators,
+    )
+
+    wbtc_usdc = strategy_universe.get_pair_by_human_description((ChainId.ethereum, "test-dex", "WBTC", "USDC"))
+    rsi = indicators.get_indicator_series("rsi", pair=wbtc_usdc)
+    assert len(rsi) == 214
+
+
+
+
+

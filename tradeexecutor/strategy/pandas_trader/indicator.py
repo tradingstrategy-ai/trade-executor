@@ -48,11 +48,12 @@ import pandas as pd
 from tqdm_loggable.auto import tqdm
 
 from tradeexecutor.state.identifier import TradingPairIdentifier
-from tradeexecutor.strategy.execution_context import ExecutionContext
+from tradeexecutor.strategy.execution_context import ExecutionContext, notebook_execution_context
 from tradeexecutor.strategy.parameters import StrategyParameters
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse, UniverseCacheKey
 from tradeexecutor.utils.cpu import get_safe_max_workers_count
 from tradeexecutor.utils.python_function import hash_function
+from tradingstrategy.client import Client
 from tradingstrategy.pair import HumanReadableTradingPairDescription
 from tradingstrategy.utils.groupeduniverse import PairCandlesMissing
 
@@ -1681,6 +1682,53 @@ def calculate_and_load_indicators(
         assert key in all_combinations
 
     return result
+
+
+def calculate_and_load_indicators_inline(
+    strategy_universe: TradingStrategyUniverse,
+    parameters: StrategyParameters,
+    indicator_storage_path=DEFAULT_INDICATOR_STORAGE_PATH,
+    execution_context: ExecutionContext = notebook_execution_context,
+    verbose=True,
+    indicator_set: IndicatorSet | None = None,
+    create_indicators: CreateIndicatorsProtocol = None,
+) -> "tradeexecutor.strategy.pandas_trader.strategy_input.StrategyInputIndicators":
+    """Calculate indicators in the notebook itself, before starting the backtest.
+
+    - To be used within Jupyter Notebooks
+
+    - Useful for single iteration backtests
+
+    - Useful for accessing indicator data if you do not need a backtest
+    """
+
+    # TODO: Eliminate circulates
+    from tradeexecutor.strategy.pandas_trader.strategy_input import StrategyInputIndicators
+
+    storage = DiskIndicatorStorage(
+        indicator_storage_path,
+        strategy_universe.get_cache_key()
+    )
+
+    if create_indicators:
+        assert indicator_set is None, f"Cannot give both indicator_set and create_indicators"
+        indicator_set = prepare_indicators(create_indicators, parameters, strategy_universe, execution_context, timestamp=None)
+
+    indicator_result_map = calculate_and_load_indicators(
+        strategy_universe=strategy_universe,
+        storage=storage,
+        execution_context=execution_context,
+        parameters=parameters,
+        verbose=verbose,
+        indicators=indicator_set,
+    )
+
+    return StrategyInputIndicators(
+        strategy_universe=strategy_universe,
+        indicator_results=indicator_result_map,
+        available_indicators=indicator_set,
+        timestamp=None,
+    )
 
 
 def warm_up_indicator_cache(
