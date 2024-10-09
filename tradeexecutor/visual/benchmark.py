@@ -316,14 +316,15 @@ def visualise_equity_curve_benchmark(
 
     else:
         # Legacy, gives mislaigned curves
-        first_portfolio_timestamp = portfolio_statistics[0].calculated_at
-        last_portfolio_timestamp = portfolio_statistics[-1].calculated_at
+        if portfolio_statistics is not None:
+            first_portfolio_timestamp = portfolio_statistics[0].calculated_at
+            last_portfolio_timestamp = portfolio_statistics[-1].calculated_at
 
-        if not start_at or start_at < first_portfolio_timestamp:
-            start_at = first_portfolio_timestamp
+            if not start_at or start_at < first_portfolio_timestamp:
+                start_at = first_portfolio_timestamp
 
-        if not end_at or end_at > last_portfolio_timestamp:
-            end_at = last_portfolio_timestamp
+            if not end_at or end_at > last_portfolio_timestamp:
+                end_at = last_portfolio_timestamp
 
     assert start_at is not None
     assert end_at is not None
@@ -334,12 +335,13 @@ def visualise_equity_curve_benchmark(
     if isinstance(end_at, datetime.datetime):
         end_at = pd.Timestamp(end_at)
 
-    scatter = visualise_portfolio_equity_curve(
-        name,
-        portfolio_statistics,
-        start_at=start_at.to_pydatetime(),
-    )
-    fig.add_trace(scatter)
+    if portfolio_statistics is not None:
+        scatter = visualise_portfolio_equity_curve(
+            name,
+            portfolio_statistics,
+            start_at=start_at.to_pydatetime(),
+        )
+        fig.add_trace(scatter)
 
     if all_cash:
         scatter = visualise_all_cash(start_at, end_at, all_cash)

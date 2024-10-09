@@ -901,6 +901,40 @@ def test_calculate_indicators_inline(strategy_universe):
     assert len(rsi) == 214  # We have series data for 214 days
 
 
+def test_get_indicators_combined(strategy_universe):
+    """Test get_indicator_data_pairs_combined() """
+
+    class Parameters:
+        rsi_length = 20
+
+    def create_indicators(
+        timestamp,
+        parameters,
+        strategy_universe,
+        execution_context,
+    ) -> IndicatorSet:
+        indicator_set = IndicatorSet()
+        indicator_set.add("rsi", pandas_ta.rsi, {"length": parameters.rsi_length})
+        return indicator_set
+
+    # Calculate indicators - will spawn multiple worker processed,
+    # or load cached results from the disk
+    indicators = calculate_and_load_indicators_inline(
+        strategy_universe=strategy_universe,
+        parameters=StrategyParameters.from_class(Parameters),
+        create_indicators=create_indicators,
+    )
+
+    series = indicators.get_indicator_data_pairs_combined("rsi")
+
+    assert isinstance(series, pd.Series)
+    assert isinstance(series.index, pd.MultiIndex)
+
+    pair_ids = series.index.get_level_values("pair_id")
+    assert list(pair_ids.unique()) == [1, 2]
+
+
+
 
 
 
