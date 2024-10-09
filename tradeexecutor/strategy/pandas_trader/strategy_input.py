@@ -6,6 +6,7 @@
 import logging
 from dataclasses import dataclass
 from functools import lru_cache
+from typing import Callable
 
 import cachetools
 import pandas as pd
@@ -674,6 +675,82 @@ class StrategyInputIndicators:
             raise NotImplementedError(f"Unknown indicator data type {type(data)}")
 
         return series
+
+    def get_indicator_data_pairs_combined(
+        self,
+        name: str,
+        pair_filter: Callable | None = None,
+    ) -> pd.Series:
+        """Get indicator data for all pairs in a single blob.
+
+        Example code:
+
+            class Parameters:
+                rsi_length = 20
+
+            def create_indicators(
+                timestamp,
+                parameters,
+                strategy_universe,
+                execution_context,
+            ) -> IndicatorSet:
+                indicator_set = IndicatorSet()
+                indicator_set.add("rsi", pandas_ta.rsi, {"length": parameters.rsi_length})
+                return indicator_set
+
+            # Calculate indicators - will spawn multiple worker processed,
+            # or load cached results from the disk
+            indicators = calculate_and_load_indicators_inline(
+                strategy_universe=strategy_universe,
+                parameters=StrategyParameters.from_class(Parameters),
+                create_indicators=create_indicators,
+            )
+
+            series = indicators.get_indicator_data_pairs_combined("rsi")
+            print(series)
+
+            assert isinstance(series, pd.Series)
+            assert isinstance(series.index, pd.MultiIndex)
+
+            pair_ids = series.index.get_level_values("pair_id")
+            assert list(pair_ids.unique()) == [1, 2]
+
+        Output:
+
+        .. code-block:: text
+
+            pair_id  timestamp
+            1        2021-06-01          NaN
+                     2021-06-02          NaN
+                     2021-06-03          NaN
+                     2021-06-04          NaN
+                     2021-06-05          NaN
+                                     ...
+            2        2021-12-27    54.956639
+                     2021-12-28    54.843694
+                     2021-12-29    48.713734
+                     2021-12-30    45.456219
+                     2021-12-31    49.308201
+
+        :param name:
+            Indicator name. Must be pd.Series based data.
+
+        :param pair_filter:
+            Function pair_filter(TradingPairIdentifier).
+
+            If give only include trading pairs for which this function returns True.
+
+        :return:
+            Series data with (pair_id, timestamp) index.
+        """
+        if pair_filter is not None:
+            series_map = {pair.internal_id: self.get_indicator_series(name, pair=pair) for pair in self.strategy_universe.iterate_pairs() if pair_filter(pair) is True}
+        else:
+            series_map = {pair.internal_id: self.get_indicator_series(name, pair=pair) for pair in self.strategy_universe.iterate_pairs()}
+        series_list = list(series_map.values())
+        pair_ids = list(series_map.keys())
+        combined = pd.concat(series_list, keys=pair_ids, names=['pair_id', 'timestamp'])
+        return combined
 
     def prepare_decision_cycle(self, cycle: int, timestamp: pd.Timestamp):
         """Called for each decision cycle by the framework..
