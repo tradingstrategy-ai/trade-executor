@@ -229,6 +229,60 @@ def get_quickswap_default_routing_parameters(
     }
 
 
+def get_sushi_default_routing_parameters(
+    reserve_currency: ReserveCurrency,
+) -> RoutingData:
+    """Generate routing using Sushi router. For Polygon chain.
+
+    TODO: Polish the interface of this function when we have more strategies
+    """
+    if reserve_currency == ReserveCurrency.usdc:
+        # https://tradingstrategy.ai/trading-view/ethereum/tokens/0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48
+        reserve_token_address = "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48".lower()
+
+        # For three way trades, which pools we can use
+        allowed_intermediary_pairs = {
+            # Route WETH through WETH/USDC pool,
+            # https://tradingstrategy.ai/trading-view/ethereum/sushi/eth-usdc
+            "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2": "0x397ff1542f962076d0bfe58ea045ffa2d347aca0",
+        }
+    elif reserve_currency == ReserveCurrency.usdt:
+        # https://tradingstrategy.ai/trading-view/ethereum/tokens/0xdac17f958d2ee523a2206206994597c13d831ec7
+        reserve_token_address = "0xdac17f958d2ee523a2206206994597c13d831ec7".lower()
+
+        # For three way trades, which pools we can use
+        allowed_intermediary_pairs = {
+            # Route WETH through WETH/USDT pool,
+            # https://tradingstrategy.ai/trading-view/ethereum/sushi/eth-usdt
+            "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2": "0x06da0fd433c1a5d7a4faa01111c044910a184553",
+        }
+    else:
+        raise NotImplementedError()
+
+    # Allowed exchanges as factory -> router pairs,
+    # by their smart contract addresses
+    # init_code_hash: https://etherscan.io/address/0xd9e1cE17f2641f24aE83637ab66a2cca9C378B9F#code#L103
+    factory_router_map = {
+        "0xC0AEe478e3658e2610c5F7A4A2E1777cE9e4f2Ac": (
+            "0xd9e1cE17f2641f24aE83637ab66a2cca9C378B9F",
+            "e18a34eb0e04b04f7a0ac29a6e80748dca96319b42c54d679cb821dca90c6303",
+        )
+    }
+
+    return {
+        "chain_id": ChainId.ethereum,
+        "factory_router_map": factory_router_map,
+        "allowed_intermediary_pairs": allowed_intermediary_pairs,
+        "reserve_token_address": reserve_token_address,
+        "quote_token_addresses": {
+            "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48", # USDC
+            "0xdac17f958d2ee523a2206206994597c13d831ec7", # USDT
+            "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2", # WETH
+        },
+        "trading_fee": UNISWAP_V2_FEE,
+    }
+
+
 def get_trader_joe_default_routing_parameters(
     reserve_currency: ReserveCurrency,
 ) -> RoutingData:
@@ -544,6 +598,8 @@ def get_uniswap_v2_compatible_routing_types():
         TradeRouting.quickswap_dai,
         TradeRouting.trader_joe_usdt,
         TradeRouting.trader_joe_usdc,
+        TradeRouting.sushi_usdc,
+        TradeRouting.sushi_usdt,
     }
 
 
@@ -565,6 +621,7 @@ def validate_reserve_currency(
         TradeRouting.pancakeswap_usdc,
         TradeRouting.quickswap_usdc,
         TradeRouting.trader_joe_usdc,
+        TradeRouting.sushi_usdc,
         TradeRouting.uniswap_v2_usdc,
         TradeRouting.uniswap_v3_usdc,
         TradeRouting.uniswap_v3_usdc_poly,
@@ -582,6 +639,7 @@ def validate_reserve_currency(
         TradeRouting.pancakeswap_usdt,
         TradeRouting.quickswap_usdt,
         TradeRouting.trader_joe_usdt,
+        TradeRouting.sushi_usdt,
         TradeRouting.uniswap_v2_usdt,
         TradeRouting.uniswap_v3_usdt,
         TradeRouting.uniswap_v3_usdt_poly,
@@ -673,6 +731,12 @@ def create_uniswap_v2_compatible_routing(
     }:
         # quickswap on polygon
         params = get_quickswap_default_routing_parameters(reserve_currency)
+    elif routing_type in {
+        TradeRouting.sushi_usdc,
+        TradeRouting.sushi_usdt,
+    }:
+        # sushi on ethereum mainnet
+        params = get_sushi_default_routing_parameters(reserve_currency)
     elif routing_type in {TradeRouting.trader_joe_usdc, TradeRouting.trader_joe_usdt}:
         # trader joe on avalanche
         params = get_trader_joe_default_routing_parameters(reserve_currency)

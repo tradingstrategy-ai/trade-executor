@@ -81,6 +81,20 @@ class TradeRouting(enum.Enum):
     #: - Open positions with WAVAX quote token.
     trader_joe_usdt = "trader_joe_usdt"
 
+    #: Two or three legged trades on Sushiswap on Ethereum mainnet
+    #:
+    #: - Open positions with USDC quote token.
+    #:
+    #: - Open positions with WETH quote token.
+    sushi_usdc = "sushi_usdc"
+
+    #: Two or three legged trades on Sushiswap on Ethereum mainnet
+    #:
+    #: - Open positions with USDT quote token.
+    #:
+    #: - Open positions with WETH quote token.
+    sushi_usdt = "sushi_usdt"
+
     #: Two or three legged trades on Uniswap v2 on Ethereum mainnet
     #:
     #: - Open positions with USDC quote token.
@@ -114,8 +128,6 @@ class TradeRouting(enum.Enum):
     #: - Open positions with USDT quote token.
     #:
     #: - Open positions with WETH quote token.
-    #:
-    #: - Open positions with USDC quote token.
     uniswap_v3_usdt = "uniswap_v3_usdt"
 
     #: Two or three legged trades on Uniswap v3 on Ethereum mainnet
@@ -123,8 +135,6 @@ class TradeRouting(enum.Enum):
     #: - Open positions with DAI quote token.
     #:
     #: - Open positions with WETH quote token.
-    #:
-    #: - Open positions with USDC quote token.
     uniswap_v3_dai = "uniswap_v3_dai"
 
     #: Two or three legged trades on Uniswap v3 on Ethereum mainnet
