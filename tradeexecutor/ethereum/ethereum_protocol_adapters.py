@@ -61,8 +61,16 @@ def create_uniswap_v2_adapter(
             TradeRouting.quickswap_usdc,
             ReserveCurrency.usdc,
         )
+    elif exchange.exchange_slug == "sushi":
+        routing_model = create_uniswap_v2_compatible_routing(
+            TradeRouting.sushi_usdc,
+            ReserveCurrency.usdc
+        )
     else:
-        raise NotImplementedError(f"Exchange not yet supported: {exchange}")
+        routing_model = create_uniswap_v2_compatible_routing(
+            TradeRouting.uniswap_v2_usdc,
+            ReserveCurrency.usdc
+        )
 
     pricing_model = UniswapV2LivePricing(
         web3,
