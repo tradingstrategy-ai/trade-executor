@@ -3,7 +3,7 @@
 #
 # See https://stackoverflow.com/a/71786211/315168 for the recipe
 #
-FROM python:3.10.8
+FROM python:3.11.10
 
 # Passed from Github Actions
 ARG GIT_VERSION_TAG=unspecified
@@ -17,7 +17,7 @@ ENV PYTHONDONTWRITEBYTECODE 1 \
 # node.js and g++ libssl1.0.0 libssl-dev needed for enzyme below - remove when enzyme dep has been factored out
 # https://github.com/nodejs/node-gyp/issues/1195#issuecomment-371954099
 RUN apt-get update && apt-get install -y curl jq ca-certificates gnupg
-RUN curl -sSL https://install.python-poetry.org | python - --version 1.8.2
+RUN curl -sSL https://install.python-poetry.org | python - --version 1.8.3
 
 ENV PATH="/root/.local/bin:$PATH"
 
