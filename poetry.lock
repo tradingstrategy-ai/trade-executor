@@ -5336,13 +5336,13 @@ cffi = {version = "*", markers = "implementation_name == \"pypy\""}
 
 [[package]]
 name = "quantstats"
-version = "0.0.59"
+version = "0.0.62"
 description = "Portfolio analytics for quants"
 optional = false
 python-versions = "*"
 files = [
-    {file = "QuantStats-0.0.59-py2.py3-none-any.whl", hash = "sha256:9cf6ac684427281b30be008dcaf193be164b16f6d852731ab5b96ede77262378"},
-    {file = "QuantStats-0.0.59.tar.gz", hash = "sha256:cbd235bf200606c4a55281990b47b0ac80623cce52f15a79e1076a690277268a"},
+    {file = "QuantStats-0.0.62-py2.py3-none-any.whl", hash = "sha256:5b549d41d9edb2260ddc437440acfbb4e89cfe5388bc614247d61ec19bcdff10"},
+    {file = "QuantStats-0.0.62.tar.gz", hash = "sha256:64d8fa6284599c70d407debafbbc368b0d03bc67374ffdb4b4a0d19b335ef965"},
 ]
 
 [package.dependencies]
@@ -7042,4 +7042,4 @@ web-server = ["WebTest", "openapi-core", "pyramid", "pyramid-openapi3", "waitres
 [metadata]
 lock-version = "2.0"
 python-versions = ">=3.11,<=3.12"
-content-hash = "b79d539e9e52540259b8ce7e960415391742ae6c6ad38886c3bd2b1330849032"
+content-hash = "bb056009f1743340264539b017a4a308df2a610adc32d649203f7fc4531e62e9"
