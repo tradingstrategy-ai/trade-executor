@@ -7,7 +7,6 @@ from pathlib import Path
 import pandas as pd
 import pandas_ta
 import pytest
-from pyasn1_modules.rfc3779 import id_pe_ipAddrBlocks
 
 from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier
 from tradeexecutor.strategy.execution_context import ExecutionContext, unit_test_execution_context, unit_test_trading_execution_context

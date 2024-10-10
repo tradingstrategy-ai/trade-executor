@@ -134,21 +134,23 @@ def _serialise_long_short_stats_as_json_table(
     analysis = build_trade_analysis(source_state.portfolio)
     summary = analysis.calculate_all_summary_stats_by_side(state=source_state, urls=True)  # TODO timebucket
 
+    summary = summary.copy()
+
     # correct erroneous values if live
     compounding_returns = None
     if source == KeyMetricSource.live_trading and source_state:
         compounding_returns = calculate_compounding_unrealised_trading_profitability(source_state)
-        summary.loc['Trading period length']['All'] = source_state.get_formatted_strategy_duration()
+        summary.loc['Trading period length', 'All'] = source_state.get_formatted_strategy_duration()
     
     if compounding_returns is not None and len(compounding_returns) > 0:
         daily_returns = calculate_non_cumulative_daily_returns(source_state)
         portfolio_return = compounding_returns.iloc[-1]
         annualised_return_percent = calculate_annualised_return(portfolio_return, calculation_window_end_at - calculation_window_start_at)
-        summary.loc['Return %']['All'] = format_value(as_percent(portfolio_return))
-        summary.loc['Annualised return %']['All'] = format_value(as_percent(annualised_return_percent))
+        summary.loc['Return %', 'All'] = format_value(as_percent(portfolio_return))
+        summary.loc['Annualised return %', 'All'] = format_value(as_percent(annualised_return_percent))
 
         max_drawdown = -calculate_max_drawdown(daily_returns)
-        summary.loc['Max drawdown']['All'] = format_value(as_percent(max_drawdown))
+        summary.loc['Max drawdown', 'All'] = format_value(as_percent(max_drawdown))
 
     key_metrics_map = {
         KeyMetricKind.trading_period_length: 'Trading period length',
@@ -215,8 +217,8 @@ def _serialise_long_short_stats_as_json_table(
 
             rows[key_metric_kind.value] = KeyMetric(
                 kind=key_metric_kind,
-                value={"All": metric_data[0], "Long": metric_data[1], "Short": metric_data[2]},
-                help_link=metric_data[3],
+                value={"All": metric_data.iloc[0], "Long": metric_data.iloc[1], "Short": metric_data.iloc[2]},
+                help_link=metric_data.iloc[3],
                 source=source,
                 calculation_window_start_at = calculation_window_start_at,
                 calculation_window_end_at = calculation_window_end_at,

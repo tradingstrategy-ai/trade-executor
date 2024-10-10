@@ -3,10 +3,13 @@ import logging
 import platform
 import time
 from queue import Queue
-import waitress
 
 from eth_defi.utils import is_localhost_port_listening
-from webtest.http import StopableWSGIServer
+
+import warnings
+with warnings.catch_warnings():
+    warnings.simplefilter("ignore")
+    from webtest.http import StopableWSGIServer
 
 from .app import create_pyramid_app
 from ..state.metadata import Metadata
