@@ -348,7 +348,7 @@ class PandasTraderRunner(StrategyRunner):
                     print(f"  Last candle at: {timestamp} UTC, market data and action lag: {lag}", file=buf)
                     if last_candle is not None:
                         print(f"  Price open:{last_candle['open']}", file=buf)
-                        print(f"  Close:{last_candle['close']}")
+                        print(f"  Close:{last_candle['close']}", file=buf)
 
                 # Draw indicators
                 for name, plot in visualisation.plots.items():

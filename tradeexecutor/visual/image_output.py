@@ -5,6 +5,7 @@
 - Used on a frontend for the performance charts, in Discord posts
 
 """
+import warnings
 from io import BytesIO
 
 import plotly.graph_objects as go
@@ -33,13 +34,20 @@ def render_plotly_figure_as_image_file(
     assert format in ["png", "svg"], "Format must be png or svg"
 
     stream = BytesIO()
-    figure.write_image(
-        stream,
-        format=format,
-        engine="kaleido",
-        width=width,
-        height=height,
-    )
+
+    with warnings.catch_warnings():
+        #   /Users/moo/Library/Caches/pypoetry/virtualenvs/trade-executor-kk5ZLC7w-py3.11/lib/python3.11/site-packages/kaleido/scopes/base.py:188: DeprecationWarning:
+        #
+        #   setDaemon() is deprecated, set the daemon attribute instead
+
+        warnings.simplefilter("ignore")
+        figure.write_image(
+            stream,
+            format=format,
+            engine="kaleido",
+            width=width,
+            height=height,
+        )
     data = stream.getvalue()
     stream.close()
     return data
