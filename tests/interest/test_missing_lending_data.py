@@ -1,5 +1,5 @@
 """Correctly handle gaps in lending data (no Aave activity, no lending candle)."""
-
+import warnings
 from typing import List, Dict
 from pandas_ta.overlap import ema
 from pandas_ta.momentum import rsi, stoch
@@ -135,7 +135,7 @@ def decide_trades(
 
     # Calculate RSI from candle close prices
     # https://tradingstrategy.ai/docs/programming/api/technical-analysis/momentum/help/pandas_ta.momentum.rsi.html#rsi
-    current_rsi = rsi(close_prices, length=RSI_LENGTH)[-1]
+    current_rsi = rsi(close_prices, length=RSI_LENGTH).iloc[-1]
 
     # Calculate Stochastic
     try:
@@ -152,9 +152,17 @@ def decide_trades(
                 return []
 
     # Calculate MFI (Money Flow Index)
-    mfi_series = mfi(
-        candles["high"], candles["low"], candles["close"], candles["volume"], length=17
-    )
+    with warnings.catch_warnings():
+        # Pandas 2.0 hack
+        #  tdf.loc[tdf["diff"] == 1, "+mf"] = raw_money_flow
+        # FutureWarning: Setting an item of incompatible dtype is deprecated and will raise an error in a future version of pandas. Value '[  49232.40376278   18944.37769333  140253.87353008   20198.58223039
+        #    80910.24155829  592340.20548335   43023.68515471  309655.74963533
+        #   284633.70414388 2330901.62747533]' has dtype incompatible with int64, please explicitly cast to a compatible dtype first.
+
+        warnings.simplefilter("ignore")
+        mfi_series = mfi(
+            candles["high"], candles["low"], candles["close"], candles["volume"] , length=17
+        )
 
     trades = []
 
