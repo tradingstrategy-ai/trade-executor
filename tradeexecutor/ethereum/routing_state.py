@@ -40,9 +40,21 @@ APPROVE_GAS_LIMITS = {
     # Arbitrum default gas limit is 500_000
     # and it is not enough
     ChainId.arbitrum.value: 850_000,
+    ChainId.polygon.value: 250_000,
+    ChainId.ethereum.value: 50_000,
 }
 
-DEFAULT_APPROVE_GAS_LIMIT = 250_000
+DEFAULT_APPROVE_GAS_LIMIT = 50_000
+
+#: How much maximum we can spend on a swap
+#:
+SWAP_GAS_LIMITS = {
+    ChainId.arbitrum.value: 200_000,
+    ChainId.polygon.value: 500_000,
+    ChainId.ethereum.value: 200_000,
+}
+
+DEFAULT_SWAP_GAS_LIMIT = 200_000
 
 
 deployment_types = UniswapV2Deployment | UniswapV3Deployment
@@ -68,10 +80,12 @@ class EthereumRoutingState(RoutingState):
 
     def __init__(
         self,
-         pair_universe: PandasPairUniverse,
-         tx_builder: Optional[TransactionBuilder] = None,
-         swap_gas_limit=2_000_000,
-         web3: Optional[Web3] = None,
+        pair_universe: PandasPairUniverse,
+        *,
+        tx_builder: Optional[TransactionBuilder] = None,
+        swap_gas_limit: int | None = None,
+        approve_gas_limit: int | None = None,
+        web3: Optional[Web3] = None,
     ):
         """
 
@@ -110,7 +124,12 @@ class EthereumRoutingState(RoutingState):
 
         # router -> erc-20 mappings
         self.approved_routes = defaultdict(set)
-        self.swap_gas_limit = swap_gas_limit
+
+        # set gas limits
+        if approve_gas_limit is None:
+            approve_gas_limit = APPROVE_GAS_LIMITS.get(self.tx_builder.chain_id, DEFAULT_APPROVE_GAS_LIMIT)
+        if swap_gas_limit is None:
+            swap_gas_limit = SWAP_GAS_LIMITS.get(self.tx_builder.chain_id, DEFAULT_SWAP_GAS_LIMIT)
         
     @abstractmethod
     def get_uniswap_for_pair():
@@ -210,16 +229,12 @@ class EthereumRoutingState(RoutingState):
         if erc_20.functions.allowance(approve_address, router_address).call() > 0:
             # already approved in previous execution cycle
             return []
-
-        # Gas limit for ERC-20 approve() may vary per chain,
-        # see Arbitrum
-        gas_limit = APPROVE_GAS_LIMITS.get(self.tx_builder.chain_id, DEFAULT_APPROVE_GAS_LIMIT)
         
         # Create infinite approval
         tx = self.tx_builder.sign_transaction(
             erc_20,
             erc_20.functions.approve(router_address, amount),
-            gas_limit=gas_limit,
+            gas_limit=self.approve_gas_limit,
             gas_price_suggestion=None,
             asset_deltas=[],
         )
@@ -227,12 +242,12 @@ class EthereumRoutingState(RoutingState):
         return [tx]
     
     def create_signed_transaction(
-            self,
-            contract: Contract,
-            swap_func: ContractFunction,
-            gas_limit: int,
-            asset_deltas: List[AssetDelta],
-            notes="",
+        self,
+        contract: Contract,
+        swap_func: ContractFunction,
+        gas_limit: int,
+        asset_deltas: List[AssetDelta],
+        notes="",
     ):
         signed_tx = self.tx_builder.sign_transaction(
             contract,

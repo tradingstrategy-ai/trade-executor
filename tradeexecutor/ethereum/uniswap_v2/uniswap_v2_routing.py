@@ -43,16 +43,16 @@ logger = logging.getLogger(__name__)
 
 class UniswapV2RoutingState(EthereumRoutingState):
 
-    def __init__(self,
-                 pair_universe: PandasPairUniverse,
-                 tx_builder: Optional[TransactionBuilder] = None,
-                 web3: Optional[Web3] = None,
-                 swap_gas_limit=2_000_000):
-        super().__init__(pair_universe=pair_universe,
-                         tx_builder=tx_builder,
-                         swap_gas_limit=swap_gas_limit,
-                         web3=web3)
-    
+    def __init__(
+        self,
+        pair_universe: PandasPairUniverse,
+        tx_builder: Optional[TransactionBuilder] = None,
+        web3: Optional[Web3] = None,
+        swap_gas_limit=None,
+        approve_gas_limit=None,
+    ):
+        super().__init__(pair_universe, tx_builder=tx_builder, swap_gas_limit=swap_gas_limit, approve_gas_limit=approve_gas_limit, web3=web3)
+        
     def __repr__(self):
         return f"<UniswapV2RoutingState Tx builder: {self.tx_builder} web3: {self.web3}>"
     
