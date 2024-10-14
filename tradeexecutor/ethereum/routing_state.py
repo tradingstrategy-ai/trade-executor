@@ -49,8 +49,8 @@ DEFAULT_APPROVE_GAS_LIMIT = 50_000
 #: How much maximum we can spend on a swap
 #:
 SWAP_GAS_LIMITS = {
-    ChainId.arbitrum.value: 200_000,
-    ChainId.polygon.value: 500_000,
+    ChainId.arbitrum.value: 1_000_000,
+    ChainId.polygon.value: 1_000_000,
     ChainId.ethereum.value: 200_000,
 }
 
@@ -115,21 +115,23 @@ class EthereumRoutingState(RoutingState):
         if tx_builder is not None:
             self.tx_builder = tx_builder
             self.web3 = self.tx_builder.web3
+            self.chain_id = self.tx_builder.chain_id
         else:
             # DummyExecution model does not have a wallet
             # and cannot build transactions
             self.tx_builder = None
             self.hot_wallet = None
             self.web3 = web3
+            self.chain_id = web3.eth.chain_id
 
         # router -> erc-20 mappings
         self.approved_routes = defaultdict(set)
 
         # set gas limits
         if approve_gas_limit is None:
-            approve_gas_limit = APPROVE_GAS_LIMITS.get(self.tx_builder.chain_id, DEFAULT_APPROVE_GAS_LIMIT)
+            self.approve_gas_limit = APPROVE_GAS_LIMITS.get(self.chain_id, DEFAULT_APPROVE_GAS_LIMIT)
         if swap_gas_limit is None:
-            swap_gas_limit = SWAP_GAS_LIMITS.get(self.tx_builder.chain_id, DEFAULT_SWAP_GAS_LIMIT)
+            self.swap_gas_limit = SWAP_GAS_LIMITS.get(self.chain_id, DEFAULT_SWAP_GAS_LIMIT)
         
     @abstractmethod
     def get_uniswap_for_pair():
