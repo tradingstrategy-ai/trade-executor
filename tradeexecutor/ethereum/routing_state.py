@@ -37,14 +37,13 @@ class OutOfBalance(Exception):
 #:
 #:
 APPROVE_GAS_LIMITS = {
-    # Arbitrum default gas limit is 500_000
-    # and it is not enough
+    # Arbitrum default gas limit is 500_000 and it is not enough
     ChainId.arbitrum.value: 850_000,
     ChainId.polygon.value: 250_000,
     ChainId.ethereum.value: 50_000,
 }
 
-DEFAULT_APPROVE_GAS_LIMIT = 50_000
+DEFAULT_APPROVE_GAS_LIMIT = 250_000
 
 #: How much maximum we can spend on a swap
 #:
@@ -54,7 +53,7 @@ SWAP_GAS_LIMITS = {
     ChainId.ethereum.value: 200_000,
 }
 
-DEFAULT_SWAP_GAS_LIMIT = 200_000
+DEFAULT_SWAP_GAS_LIMIT = 1_000_000
 
 
 deployment_types = UniswapV2Deployment | UniswapV3Deployment
