@@ -60,9 +60,10 @@ class AaveV3RoutingState(EthereumRoutingState):
         self,
         pair_universe: PandasPairUniverse,
         tx_builder: Optional[HotWalletTransactionBuilder]=None,
-        swap_gas_limit=2_000_000
+        swap_gas_limit=None,
+        approve_gas_limit=None,
     ):
-        super().__init__(pair_universe, tx_builder, swap_gas_limit)
+        super().__init__(pair_universe, tx_builder=tx_builder, swap_gas_limit=swap_gas_limit, approve_gas_limit=approve_gas_limit)
     
     def __repr__(self):
         return f"<OneDeltaRoutingState Tx builder: {self.tx_builder} web3: {self.web3}>"

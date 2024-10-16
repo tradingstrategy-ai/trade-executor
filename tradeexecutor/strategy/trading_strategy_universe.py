@@ -461,7 +461,8 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
         new_universe = Universe(
             time_bucket=u.time_bucket,
             chains=u.chains,
-            exchanges=u.exchanges,
+            exchanges=u.exchanges or set(),
+            exchange_universe=u.exchange_universe,
             pairs=u.pairs,
             candles=u.candles,
             liquidity=u.liquidity,
