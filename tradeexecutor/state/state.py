@@ -16,6 +16,7 @@ import pandas as pd
 from dataclasses_json import dataclass_json
 from dataclasses_json.core import _ExtendedEncoder
 
+from .other_data import OtherData
 from .sync import Sync
 from .identifier import AssetIdentifier, TradingPairIdentifier, TradingPairKind
 from .portfolio import Portfolio
@@ -182,6 +183,9 @@ class State:
     #: Data that is relevant only for backtest results,
     #: not live trading.
     backtest_data: BacktestData | None = None
+
+    #: Misc. backtesting variables settable by users
+    other_data: Optional[OtherData] = field(default_factory=OtherData)
 
     def __repr__(self):
         return f"<State for {self.name}>"
