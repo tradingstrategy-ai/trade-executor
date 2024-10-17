@@ -123,11 +123,7 @@ def create_indicators(timestamp: datetime.datetime, parameters: StrategyParamete
 
 
 def decide_trades(input: StrategyInput) -> list[TradeExecution]:
-    """Example decide_trades function that opens a position with a trade size limit."""
-    position_manager = input.get_position_manager()
-    pair = input.get_default_pair()
-    cash = input.state.portfolio.get_cash()
-    timestamp = input.timestamp
+    """Example of storing and loading custom variables."""
 
     cycle = input.cycle
     state = input.state
@@ -170,9 +166,6 @@ def test_other_data(strategy_universe, tmp_path):
 
     # Variables are readable after the backtest
     state = result.state
-    # We stored data for 29 days
-    assert len(state.other_data.data.keys()) == 29
-
-    # We can read historic values
-    assert state.other_data.data[1]["my_value"] == 1
+    assert len(state.other_data.data.keys()) == 29  # We stored data for 29 decide_trades cycles
+    assert state.other_data.data[1]["my_value"] == 1      # We can read historic values
 

@@ -28,6 +28,47 @@ class OtherData:
     - This can be used in live trade execution as well **with care**.
       Because of the underlying infrastructure may crash (blockchain halt, server crash)
       cycles might be skipped.
+
+    Example of storing and loading custom variables:
+
+    .. code-block:: python
+
+        def decide_trades(input: StrategyInput) -> list[TradeExecution]:
+            cycle = input.cycle
+            state = input.state
+
+            # Saving values by cycle
+            state.other_data.save(cycle, "my_value", 1)
+            state.other_data.save(cycle, "my_value_2", [1, 2])
+            state.other_data.save(cycle, "my_value_3", {1: 2})
+
+            if cycle >= 2:
+                # Loading latest values
+                assert state.other_data.load_latest("my_value") == 1
+                assert state.other_data.load_latest("my_value_2") == [1, 2]
+                assert state.other_data.load_latest("my_value_3") == {1: 2}
+
+            return []
+
+    You can also read these variables after the backtest is complete:
+
+    .. code-block::
+
+        result = run_backtest_inline(
+            client=None,
+            decide_trades=decide_trades,
+            create_indicators=create_indicators,
+            universe=strategy_universe,
+            reserve_currency=ReserveCurrency.usdc,
+            engine_version="0.5",
+            parameters=StrategyParameters.from_class(Parameters),
+            mode=ExecutionMode.unit_testing,
+        )
+
+        # Variables are readable after the backtest
+        state = result.state
+        assert len(state.other_data.data.keys()) == 29  # We stored data for 29 decide_trades cycles
+        assert state.other_data.data[1]["my_value"] == 1      # We can read historic values
     """
 
     #: Cycle number -> dict mapping
