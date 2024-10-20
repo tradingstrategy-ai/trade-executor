@@ -1,7 +1,6 @@
 """Add custom labels to trading pairs."""
 import datetime
 
-import pytest
 
 from tradeexecutor.strategy.default_routing_options import TradeRouting
 from tradeexecutor.strategy.universe_model import default_universe_options, UniverseOptions
@@ -9,9 +8,6 @@ from tradingstrategy.chain import ChainId
 from tradingstrategy.client import Client
 from tradingstrategy.timebucket import TimeBucket
 
-from tradeexecutor.backtest.backtest_pricing import BacktestPricing
-from tradeexecutor.backtest.backtest_routing import BacktestRoutingModel
-from tradeexecutor.cli.log import setup_pytest_logging
 from tradeexecutor.backtest.backtest_runner import run_backtest_inline
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse, load_partial_data
 from tradeexecutor.strategy.execution_context import ExecutionContext, ExecutionMode, unit_test_execution_context
@@ -21,7 +17,6 @@ from tradeexecutor.state.trade import TradeExecution
 from tradeexecutor.strategy.pandas_trader.indicator import IndicatorSet
 from tradeexecutor.strategy.pandas_trader.strategy_input import StrategyInput
 from tradeexecutor.strategy.strategy_module import StrategyParameters
-from tradeexecutor.testing.synthetic_exchange_data import generate_simple_routing_model
 
 
 
@@ -50,35 +45,19 @@ def create_trading_universe(
 
     strategy_universe = TradingStrategyUniverse.create_single_pair_universe(dataset)
 
+    # Warm up must be called before any tags are set
+    strategy_universe.warm_up_data()
+
     # Set custom labels on the token WETH on the trading pair
     weth_usdc = strategy_universe.get_pair_by_human_description(pairs[0])
     weth_usdc.base.set_tags({"L1", "EVM", "bluechip"})
 
     assert strategy_universe.data_universe.pairs.pair_map is not None, "Cache data structure missing?"
+
+    weth_usdc = strategy_universe.get_pair_by_human_description(pairs[0])
     assert len(weth_usdc.base.get_tags()) > 0
 
     return strategy_universe
-
-
-@pytest.fixture(scope="module")
-def logger(request):
-    """Setup test logger."""
-    return setup_pytest_logging(request, mute_requests=False)
-
-
-@pytest.fixture()
-def routing_model(synthetic_universe) -> BacktestRoutingModel:
-    return generate_simple_routing_model(synthetic_universe)
-
-
-@pytest.fixture()
-def pricing_model(synthetic_universe, routing_model) -> BacktestPricing:
-    pricing_model = BacktestPricing(
-        synthetic_universe.data_universe.candles,
-        routing_model,
-        allow_missing_fees=True,
-    )
-    return pricing_model
 
 
 def create_indicators(timestamp: datetime.datetime, parameters: StrategyParameters, strategy_universe: TradingStrategyUniverse, execution_context: ExecutionContext):
@@ -94,9 +73,12 @@ def decide_trades(input: StrategyInput) -> list[TradeExecution]:
             pass
 
         # Unit test asserts
-        import ipdb ; ipdb.set_trace()
-        assert pair.get_tags() == {"L1", "evm", "bluechip"}
-        assert pair.base.get_tags() == {"L1", "evm", "bluechip"}
+        assert pair.base.other_data is not None
+        assert pair.base.other_data is not {}
+        tags = pair.get_tags()
+        assert "L1" in tags
+        assert "EVM" in tags
+        assert "bluechip" in tags
 
     return []
 
@@ -134,8 +116,5 @@ def test_custom_tags(persistent_test_client, tmp_path):
         trade_routing=TradeRouting.uniswap_v2_usdc
     )
 
-    # Variables are readable after the backtest
-    state = result.state
-    assert len(state.other_data.data.keys()) == 29  # We stored data for 29 decide_trades cycles
-
+    # We can read tags after the backtest is complete
     assert "L1" in result.strategy_universe.get_single_pair().get_tags()

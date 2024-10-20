@@ -264,6 +264,8 @@ class AssetIdentifier:
 
         - Be wary of `AssetIdentifier` life time as it is passed by value, not be reference,
           so you cannot update instance data after it has been copied to open positions, etc.
+
+        - `translate_trading_pair()` is the critical method for understanding and managing identifier life times
         """
         assert type(tags) == set
         self.other_data["tags"] = tags
