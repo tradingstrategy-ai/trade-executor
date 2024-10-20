@@ -94,6 +94,7 @@ def decide_trades(input: StrategyInput) -> list[TradeExecution]:
             pass
 
         # Unit test asserts
+        import ipdb ; ipdb.set_trace()
         assert pair.get_tags() == {"L1", "evm", "bluechip"}
         assert pair.base.get_tags() == {"L1", "evm", "bluechip"}
 

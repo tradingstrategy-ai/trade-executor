@@ -78,7 +78,21 @@ class AssetIdentifier:
 
     As internal token_ids and pair_ids may be unstable, trading pairs and tokens are explicitly
     referred by their smart contract addresses when a strategy decision moves to the execution.
-    We duplicate data here to make sure we have a persistent record that helps to diagnose the sisues.
+    We duplicate data here to make sure we have a persistent record that helps to diagnose the issues.
+
+    Setting custom data:
+
+    - Both :py:class:`AssetIdentifier` and :py:class:`TradingPairIdentifier` offer :py:attr:`AssetIdentifier.other_data` allowing you to set custom attribtues.
+
+    - You must set these attributes in `create_trading_universe` function.
+
+    - For more information see `test_custom_labels`.
+
+    Example:
+
+    .. code-block:: python
+
+
     """
 
     #: See https://chainlist.org/
