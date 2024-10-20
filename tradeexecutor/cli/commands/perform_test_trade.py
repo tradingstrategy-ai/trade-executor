@@ -186,7 +186,10 @@ def perform_test_trade(
 
     try:
         if all_pairs:
+            logger.info("Testing all pairs, we have %d pairs", universe.get_pair_count())
             for pair in universe.data_universe.pairs.iterate_pairs():
+
+                logger.info("Making test trade for %s", pair)
 
                 _p = construct_identifier_from_pair(pair)
                 p = parse_pair_data(_p)

@@ -143,7 +143,6 @@ class AssetIdentifier:
                     # Do some trading logic for L1 tokens only
                     pass
 
-
             return []
 
 
