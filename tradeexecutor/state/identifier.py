@@ -116,6 +116,15 @@ class AssetIdentifier:
     #:
     liquidation_threshold: float | None = None
 
+    #: User storeable properties.
+    #:
+    #: You can add any of your own metadata on the assets here.
+    #:
+    #: Be wary of the life cycle of the instances. The life time of the class instances
+    #: tied to the trading universe that is recreated for every strategy cycle.
+    #:
+    other_data: Optional[dict] = None
+
     def __str__(self):
         if self.underlying:
             return f"<{self.token_symbol} ({self.underlying.token_symbol}) at {self.address}>"
@@ -205,6 +214,36 @@ class AssetIdentifier:
             then get the underlying, otherwise return self.
         """
         return self.underlying if self.underlying else self
+
+    def get_tags(self) -> set[str]:
+        """Return list of tags associated with this asset.
+
+        - Used in basket construction strategies
+
+        - Cen be source from CoinGecko, CoinMarketCap or hand labelled
+
+        - Is Python :py:class:`set`
+
+        - See also :py:meth:`TradingPairIdentifier.get_tags`
+
+        - See also :py:meth:`set_tags`
+
+        To set tags:
+
+            asset.other_data["tags"] = {"L1", "memecoin"}
+
+        :return:
+            For WETH return e.g. [`L1`, `bluechip`]
+        """
+        return self.other_data.get("tags", set())
+
+    def set_tags(self, tags: set[str]):
+        """Set tags for this asset.
+
+        - - See also :py:meth:`get_tags`
+        """
+        assert type(tags) == set
+        self.other_data["tags"] = tags
 
 
 class TradingPairKind(enum.Enum):
@@ -381,6 +420,15 @@ class TradingPairIdentifier:
     #: May or may not be filled.
     #:
     exchange_name: Optional[str] = None
+
+    #: User storeable properties.
+    #:
+    #: You can add any of your own metadata on the assets here.
+    #:
+    #: Be wary of the life cycle of the instances. The life time of the class instances
+    #: tied to the trading universe that is recreated for every strategy cycle.
+    #:
+    other_data: Optional[dict] = None
 
     def __post_init__(self):
         assert self.base.chain_id == self.quote.chain_id, "Cross-chain trading pairs are not possible"
@@ -586,6 +634,13 @@ class TradingPairIdentifier:
             assert self.underlying_spot_pair is not None, f"For a leveraged pair, we lack the price feed for the underlying spot: {self}"
             return self.underlying_spot_pair
         raise AssertionError(f"Cannot figure out how to get the underlying pricing pair for: {self}")
+
+    def get_tags(self) -> set[str]:
+        """Get tags asssociated with the base asset of this trading pair.
+
+        - See :py:meth:`AssetIdentifier.get_tags`
+        """
+        return self.underlying_spot_pair.base.get_tags()
 
 
 @dataclass_json
