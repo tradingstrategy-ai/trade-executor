@@ -1174,7 +1174,7 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
         reserve_token = None
         for p in pair_universe.iterate_pairs():
             if p.quote_token_symbol == reserve_token_symbol:
-                translated_pair = translate_trading_pair(p, cache=self.pair_cache)
+                translated_pair = translate_trading_pair(p)
                 reserve_token = translated_pair.quote
 
         assert reserve_token, f"Reserve token {reserve_token_symbol} missing the specified pair quote tokens of {reserve_token}"
