@@ -88,9 +88,63 @@ class AssetIdentifier:
 
     - For more information see `test_custom_labels`.
 
-    Example:
+    Example setting tags:
 
     .. code-block:: python
+
+        def create_trading_universe(
+            ts: datetime.datetime,
+            client: Client,
+            execution_context: ExecutionContext,
+            universe_options: UniverseOptions,
+        ) -> TradingStrategyUniverse:
+
+            assert universe_options.start_at
+
+            pairs = [
+                (ChainId.polygon, "uniswap-v3", "WETH", "USDC", 0.0005)
+            ]
+
+            dataset = load_partial_data(
+                client,
+                execution_context=unit_test_execution_context,
+                time_bucket=TimeBucket.d1,
+                pairs=pairs,
+                universe_options=default_universe_options,
+                start_at=universe_options.start_at,
+                end_at=universe_options.end_at,
+            )
+
+            strategy_universe = TradingStrategyUniverse.create_single_pair_universe(dataset)
+
+            # IMPORTANT
+            # Warm up must be called before any tags are set
+            strategy_universe.warm_up_data()
+
+            # Set custom labels on the token WETH on the trading pair
+            weth_usdc = strategy_universe.get_pair_by_human_description(pairs[0])
+            weth_usdc.base.set_tags({"L1", "EVM", "bluechip"})
+
+            assert strategy_universe.data_universe.pairs.pair_map is not None, "Cache data structure missing?"
+
+            weth_usdc = strategy_universe.get_pair_by_human_description(pairs[0])
+            assert len(weth_usdc.base.get_tags()) > 0
+
+            return strategy_universe
+
+    Example using tags:
+
+    .. code-block:: python
+
+        def decide_trades(input: StrategyInput) -> list[TradeExecution]:
+            # Show how to read pair and asset labels in decide_trade()
+            for pair in input.strategy_universe.iterate_pairs():
+                if "L1" in pair.get_tags():
+                    # Do some trading logic for L1 tokens only
+                    pass
+
+
+            return []
 
 
     """
