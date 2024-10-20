@@ -123,7 +123,9 @@ class AssetIdentifier:
     #: Be wary of the life cycle of the instances. The life time of the class instances
     #: tied to the trading universe that is recreated for every strategy cycle.
     #:
-    other_data: Optional[dict] = None
+    #: See also :py:meth:`get_tags`.
+    #:
+    other_data: Optional[dict] = field(default_factory=dict)
 
     def __str__(self):
         if self.underlying:
@@ -240,7 +242,14 @@ class AssetIdentifier:
     def set_tags(self, tags: set[str]):
         """Set tags for this asset.
 
-        - - See also :py:meth:`get_tags`
+        - See also :py:meth:`get_tags`
+
+        - See also :py:meth:`other_data`
+
+        - Must be called in `create_trading_universe`
+
+        - Be wary of `AssetIdentifier` life time as it is passed by value, not be reference,
+          so you cannot update instance data after it has been copied to open positions, etc.
         """
         assert type(tags) == set
         self.other_data["tags"] = tags
@@ -428,7 +437,7 @@ class TradingPairIdentifier:
     #: Be wary of the life cycle of the instances. The life time of the class instances
     #: tied to the trading universe that is recreated for every strategy cycle.
     #:
-    other_data: Optional[dict] = None
+    other_data: Optional[dict] = field(default_factory=dict)
 
     def __post_init__(self):
         assert self.base.chain_id == self.quote.chain_id, "Cross-chain trading pairs are not possible"
@@ -640,7 +649,8 @@ class TradingPairIdentifier:
 
         - See :py:meth:`AssetIdentifier.get_tags`
         """
-        return self.underlying_spot_pair.base.get_tags()
+        underlying = self.underlying_spot_pair or self
+        return underlying.base.get_tags()
 
 
 @dataclass_json

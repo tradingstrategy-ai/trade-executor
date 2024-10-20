@@ -169,5 +169,3 @@ def test_other_data(strategy_universe, tmp_path):
     assert len(state.other_data.data.keys()) == 29  # We stored data for 29 decide_trades cycles
     assert state.other_data.data[1]["my_value"] == 1      # We can read historic values
 
-
-labels to trading pairs."""
