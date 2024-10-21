@@ -82,13 +82,15 @@ class AssetIdentifier:
 
     Setting custom data:
 
-    - Both :py:class:`AssetIdentifier` and :py:class:`TradingPairIdentifier` offer :py:attr:`AssetIdentifier.other_data` allowing you to set custom attribtues.
+    - Both :py:class:`AssetIdentifier` and :py:class:`TradingPairIdentifier` offer :py:attr:`AssetIdentifier.other_data` allowing you to set custom attributes.
+
+    - Most useful of them is to categorise tokens with different tags, see :py:meth:`get_tags` and :py:meth:`set_tags`.
 
     - You must set these attributes in `create_trading_universe` function.
 
-    - For more information see `test_custom_labels`.
+    - For more usage examples see `test_custom_labels`.
 
-    Example setting tags:
+    A custom asset tagging example:
 
     .. code-block:: python
 
@@ -132,7 +134,7 @@ class AssetIdentifier:
 
             return strategy_universe
 
-    Example using tags:
+    Then how to read tag data and use it in trade decision making:
 
     .. code-block:: python
 
