@@ -78,7 +78,74 @@ class AssetIdentifier:
 
     As internal token_ids and pair_ids may be unstable, trading pairs and tokens are explicitly
     referred by their smart contract addresses when a strategy decision moves to the execution.
-    We duplicate data here to make sure we have a persistent record that helps to diagnose the sisues.
+    We duplicate data here to make sure we have a persistent record that helps to diagnose the issues.
+
+    Setting custom data:
+
+    - Both :py:class:`AssetIdentifier` and :py:class:`TradingPairIdentifier` offer :py:attr:`AssetIdentifier.other_data` allowing you to set custom attribtues.
+
+    - You must set these attributes in `create_trading_universe` function.
+
+    - For more information see `test_custom_labels`.
+
+    Example setting tags:
+
+    .. code-block:: python
+
+        def create_trading_universe(
+            ts: datetime.datetime,
+            client: Client,
+            execution_context: ExecutionContext,
+            universe_options: UniverseOptions,
+        ) -> TradingStrategyUniverse:
+
+            assert universe_options.start_at
+
+            pairs = [
+                (ChainId.polygon, "uniswap-v3", "WETH", "USDC", 0.0005)
+            ]
+
+            dataset = load_partial_data(
+                client,
+                execution_context=unit_test_execution_context,
+                time_bucket=TimeBucket.d1,
+                pairs=pairs,
+                universe_options=default_universe_options,
+                start_at=universe_options.start_at,
+                end_at=universe_options.end_at,
+            )
+
+            strategy_universe = TradingStrategyUniverse.create_single_pair_universe(dataset)
+
+            # IMPORTANT
+            # Warm up must be called before any tags are set
+            strategy_universe.warm_up_data()
+
+            # Set custom labels on the token WETH on the trading pair
+            weth_usdc = strategy_universe.get_pair_by_human_description(pairs[0])
+            weth_usdc.base.set_tags({"L1", "EVM", "bluechip"})
+
+            assert strategy_universe.data_universe.pairs.pair_map is not None, "Cache data structure missing?"
+
+            weth_usdc = strategy_universe.get_pair_by_human_description(pairs[0])
+            assert len(weth_usdc.base.get_tags()) > 0
+
+            return strategy_universe
+
+    Example using tags:
+
+    .. code-block:: python
+
+        def decide_trades(input: StrategyInput) -> list[TradeExecution]:
+            # Show how to read pair and asset labels in decide_trade()
+            for pair in input.strategy_universe.iterate_pairs():
+                if "L1" in pair.get_tags():
+                    # Do some trading logic for L1 tokens only
+                    pass
+
+            return []
+
+
     """
 
     #: See https://chainlist.org/
@@ -115,6 +182,17 @@ class AssetIdentifier:
     #: Set on aTokens that are used as collateral.
     #:
     liquidation_threshold: float | None = None
+
+    #: User storeable properties.
+    #:
+    #: You can add any of your own metadata on the assets here.
+    #:
+    #: Be wary of the life cycle of the instances. The life time of the class instances
+    #: tied to the trading universe that is recreated for every strategy cycle.
+    #:
+    #: See also :py:meth:`get_tags`.
+    #:
+    other_data: Optional[dict] = field(default_factory=dict)
 
     def __str__(self):
         if self.underlying:
@@ -205,6 +283,45 @@ class AssetIdentifier:
             then get the underlying, otherwise return self.
         """
         return self.underlying if self.underlying else self
+
+    def get_tags(self) -> set[str]:
+        """Return list of tags associated with this asset.
+
+        - Used in basket construction strategies
+
+        - Cen be source from CoinGecko, CoinMarketCap or hand labelled
+
+        - Is Python :py:class:`set`
+
+        - See also :py:meth:`TradingPairIdentifier.get_tags`
+
+        - See also :py:meth:`set_tags`
+
+        To set tags:
+
+            asset.other_data["tags"] = {"L1", "memecoin"}
+
+        :return:
+            For WETH return e.g. [`L1`, `bluechip`]
+        """
+        return self.other_data.get("tags", set())
+
+    def set_tags(self, tags: set[str]):
+        """Set tags for this asset.
+
+        - See also :py:meth:`get_tags`
+
+        - See also :py:meth:`other_data`
+
+        - Must be called in `create_trading_universe`
+
+        - Be wary of `AssetIdentifier` life time as it is passed by value, not be reference,
+          so you cannot update instance data after it has been copied to open positions, etc.
+
+        - `translate_trading_pair()` is the critical method for understanding and managing identifier life times
+        """
+        assert type(tags) == set
+        self.other_data["tags"] = tags
 
 
 class TradingPairKind(enum.Enum):
@@ -381,6 +498,15 @@ class TradingPairIdentifier:
     #: May or may not be filled.
     #:
     exchange_name: Optional[str] = None
+
+    #: User storeable properties.
+    #:
+    #: You can add any of your own metadata on the assets here.
+    #:
+    #: Be wary of the life cycle of the instances. The life time of the class instances
+    #: tied to the trading universe that is recreated for every strategy cycle.
+    #:
+    other_data: Optional[dict] = field(default_factory=dict)
 
     def __post_init__(self):
         assert self.base.chain_id == self.quote.chain_id, "Cross-chain trading pairs are not possible"
@@ -586,6 +712,14 @@ class TradingPairIdentifier:
             assert self.underlying_spot_pair is not None, f"For a leveraged pair, we lack the price feed for the underlying spot: {self}"
             return self.underlying_spot_pair
         raise AssertionError(f"Cannot figure out how to get the underlying pricing pair for: {self}")
+
+    def get_tags(self) -> set[str]:
+        """Get tags asssociated with the base asset of this trading pair.
+
+        - See :py:meth:`AssetIdentifier.get_tags`
+        """
+        underlying = self.underlying_spot_pair or self
+        return underlying.base.get_tags()
 
 
 @dataclass_json

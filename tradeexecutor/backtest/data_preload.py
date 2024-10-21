@@ -7,7 +7,7 @@ import pandas as pd
 from tradeexecutor.strategy.strategy_module import CreateTradingUniverseProtocol
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
 from tradingstrategy.client import Client, BaseClient
-from tradingstrategy.environment.jupyter import download_with_tqdm_progress_bar
+from tradingstrategy.environment.default_environment import download_with_tqdm_progress_bar
 
 from tradeexecutor.strategy.execution_context import ExecutionMode, ExecutionContext
 from tradeexecutor.strategy.universe_model import UniverseOptions

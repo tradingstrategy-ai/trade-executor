@@ -2,9 +2,11 @@
 
 """
 import datetime
+import logging
 from typing import Dict, List
 
 import pandas as pd
+from scipy.special.cython_special import log_ndtr
 
 from tradeexecutor.strategy.cycle import CycleDuration
 from tradeexecutor.strategy.default_routing_options import TradeRouting
@@ -32,6 +34,8 @@ trade_routing = TradeRouting.user_supplied_routing_model
 trading_strategy_cycle = CycleDuration.cycle_1s
 reserve_currency = ReserveCurrency.usdc
 
+
+logger = logging.getLogger(__name__)
 
 def decide_trades(
         timestamp: pd.Timestamp,
@@ -104,26 +108,23 @@ def create_trading_universe(
     pair: DEXPair = DEXPair.from_dict(pair_data.to_dict())
 
     # gets list of pair tickers and also reserve asset pair ticker
-    reserve_asset_address = client.get_default_quote_token_address()
-    reserve_asset_pair_ticker = None
     pairs: HumanReadableTradingPairDescription = []
     for row in dataset.pairs.itertuples():
         assert row.chain_id == pair.chain_id, "All pairs must be on the same chain"
         assert row.exchange_slug == pair.exchange_slug, "All pairs must be on the same exchange"
-        
+
+        if row.quote_token_symbol == "BOB":
+            # BOB is a pseudo stablecoin and does not work anymore
+            continue
+
+        logger.info("Adding pair %s", row)
         pairs.append([row.base_token_symbol, row.quote_token_symbol])
-
-        # find reserve asset ticker
-        if reserve_asset_address in {row.token0_address, row.token1_address}:
-            reserve_asset_pair_ticker = (row.base_token_symbol, row.quote_token_symbol)
-
-    assert reserve_asset_pair_ticker is not None, "Could not find reserve asset ticker"
 
     universe = TradingStrategyUniverse.create_limited_pair_universe(
         dataset,
         pair.chain_id,
         pair.exchange_slug,
         pairs,
-        reserve_asset_pair_ticker,
+        reserve_asset_pair_ticker=("WETH", "USDC",),
     )
     return universe

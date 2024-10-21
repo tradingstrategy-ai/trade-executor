@@ -11,7 +11,7 @@ import datetime
 import pickle
 import textwrap
 from abc import abstractmethod
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import logging
 from math import isnan
 from pathlib import Path
@@ -181,6 +181,14 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
     #:
     price_data_delay_tolerance: datetime.timedelta | None = None
 
+    #: Translated asset and trading pair identifier cache.
+    #:
+    #: - When called `asset.set_tags()` or setting `asset.other_data()` it is stored here.
+    #:
+    #: - See :py:meth:`warm_up_data`
+    #:
+    pair_cache: dict = field(default_factory=dict)
+
     def __repr__(self):
         pair_count = self.data_universe.pairs.get_count()
         if pair_count <= 3:
@@ -310,7 +318,7 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
         else:
             dex_pair = pair
 
-        return translate_trading_pair(dex_pair)
+        return translate_trading_pair(dex_pair, cache=self.pair_cache)
 
     def can_open_spot(
             self,
@@ -395,6 +403,16 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
             return value > 0
         except NoDataAvailable:
             return False
+
+    def warm_up_data(self):
+        """Make sure all data is properly
+
+        - Trading pair data must be preprocessed before we can call `set_tags()` or set `other_data`
+
+        - See :py:attr:`pair_cache` for details
+        """
+        for pair in self.iterate_pairs():
+            logger.info("Warmed up pair: %s", pair)
 
     def can_open_short(
         self,
@@ -565,7 +583,7 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
         """
         assert self.data_universe.exchange_universe, "You must set universe.exchange_universe to be able to use this method"
         pair = self.data_universe.pairs.get_pair_by_human_description(self.data_universe.exchange_universe, desc)
-        return translate_trading_pair(pair)
+        return translate_trading_pair(pair, cache=self.pair_cache)
 
     def iterate_pairs(self) -> Iterable[TradingPairIdentifier]:
         """Iterate over all available trading pairs.
@@ -573,7 +591,7 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
         - Different from :py:meth:`tradingstrategy.pair.PandasPairUniverse.iterate_pairs` as this yields `TradingPairIdentifier` instances
         """
         for p in self.data_universe.pairs.iterate_pairs():
-            yield translate_trading_pair(p)
+            yield translate_trading_pair(p, cache=self.pair_cache)
 
     def iterate_credit_for_reserve(self) -> Iterable[TradingPairIdentifier]:
         """Iterate over all available credit supply pairs.
@@ -832,7 +850,7 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
         pair = self.data_universe.pairs.get_pair_by_smart_contract(address)
         if not pair:
             return None
-        return translate_trading_pair(pair)
+        return translate_trading_pair(pair, cache=self.pair_cache)
 
     def get_single_pair(self) -> TradingPairIdentifier:
         """Get the single trading pair in this universe.
@@ -841,7 +859,7 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
             If we have more than one trading pair
         """
         pair = self.data_universe.pairs.get_single()
-        return translate_trading_pair(pair)
+        return translate_trading_pair(pair, cache=self.pair_cache)
 
     def get_single_chain(self) -> ChainId:
         """Get the single trading pair in this universe.
@@ -1691,7 +1709,7 @@ def translate_token(
     )
 
 
-def translate_trading_pair(pair: DEXPair) -> TradingPairIdentifier:
+def translate_trading_pair(pair: DEXPair, cache: dict | None = None) -> TradingPairIdentifier:
     """Translate trading pair from client download to the trade executor.
 
     Trading Strategy client uses compressed columnar data for pairs and tokens.
@@ -1707,7 +1725,19 @@ def translate_trading_pair(pair: DEXPair) -> TradingPairIdentifier:
 
 
     This is called when a trade is made: this is the moment when trade executor data format must be made available.
+
+    :param cache:
+        Cache of constructed objects.
+
+        Pair internal id -> TradingPairIdentifier
+
+        See :py:class:`tradingstrategy.state.identifier.AssetIdentifier` for life cycle notes.
     """
+
+    if cache is not None:
+        cached = cache.get(pair.pair_id)
+        if cached is not None:
+            return cached
 
     assert isinstance(pair, DEXPair), f"Expected DEXPair, got {type(pair)}"
     assert pair.base_token_decimals is not None, f"Base token missing decimals: {pair}"
@@ -1750,7 +1780,7 @@ def translate_trading_pair(pair: DEXPair) -> TradingPairIdentifier:
         else:
             fee = None
 
-    return TradingPairIdentifier(
+    pair = TradingPairIdentifier(
         base=base,
         quote=quote,
         pool_address=pair.address,
@@ -1761,6 +1791,11 @@ def translate_trading_pair(pair: DEXPair) -> TradingPairIdentifier:
         reverse_token_order=pair.token0_symbol != pair.base_token_symbol,
         exchange_name=pair.exchange_name,
     )
+
+    if cache is not None:
+        cache[pair.internal_id] = pair
+
+    return pair
 
 
 def translate_credit_reserve(
