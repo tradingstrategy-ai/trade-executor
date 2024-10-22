@@ -115,7 +115,7 @@ class IndicatorSource(enum.Enum):
     #:
     open_price = "open_price"
 
-    #: Calculate this indicator based on multipe data points (open, high, low, close, volume)
+    #: Calculate this indicator based on multiple data points (open, high, low, close, volume)
     #:
     #: Example indicators
     #:
@@ -125,6 +125,15 @@ class IndicatorSource(enum.Enum):
     #: which all are Pandas US dollar series. If parameters are not present they are discarded.
     #:
     ohlcv = "ohlcv"
+
+    #: Calculate this indicator based on OHLC liquidity data
+    #:
+    #: The indicator function can take arguments named: open, high, low, close
+    #: which all USD values for either TVL or XY liquidity depending on the trading pair.
+    #:
+    #: If strategy does not have liquidity data loaded, crash with exception.
+    #:
+    liquidity = "liquidity"
 
     #: This indicator is calculated once per the strategy universe
     #:
@@ -242,7 +251,6 @@ class IndicatorDefinition:
         for k, v in self.parameters.items():
             assert not isinstance(v, Dimension), f"Detected scikit-optimize Dimension as a parameter value: {k}: {v} - did you accidentally pass in optimiser search space to a single backtest"
 
-
     def get_function_body_hash(self) -> str:
         """Calculate the hash for the function code.
 
@@ -339,6 +347,52 @@ class IndicatorDefinition:
         input_fixed = _flatten_index(candles)
 
         needed_args = ("open", "high", "low", "close", "volume")
+        full_kwargs = {}
+        func_args = inspect.getfullargspec(self.func).args
+        for a in needed_args:
+            if a in func_args:
+                full_kwargs[a] = input_fixed[a]
+
+        if len(full_kwargs) == 0:
+            raise IndicatorCalculationFailed(f"Could not calculate OHLCV indicator {self.name} ({self.func}): does not take any of function arguments from {needed_args}")
+
+        fixed_params = self._fix_parameters_for_function_signature(resolver, pair)
+
+        full_kwargs.update(fixed_params)
+
+        try:
+            ret = self.func(**full_kwargs)
+            return self._check_good_return_value(ret)
+        except Exception as e:
+            raise IndicatorCalculationFailed(f"Could not calculate indicator {self.name} ({self.func}) for parameters {self.parameters}, candles is {len(candles)} rows, {candles.columns} columns\nThe original exception was: {e}") from e
+
+    def calculate_by_pair_liquidity(
+        self,
+        liquidity: pd.DataFrame,
+        pair: TradingPairIdentifier,
+        resolver: "IndicatorDependencyResolver",
+    ) -> pd.DataFrame | pd.Series:
+        """Calculate the underlying liquidity indicator value.
+
+        Assume function can take parameters: `open`, `high`, `low`, `close`,
+        or any combination of those.
+
+        :param input:
+            Raw OHCL liquidity data.
+
+        :return:
+            Single or multi series data.
+
+            - Multi-value indicators return DataFrame with multiple columns (BB).
+            - Single-value indicators return Series (RSI, SMA).
+
+        """
+
+        assert isinstance(liquidity, pd.DataFrame), f"OHLCV-based indicator function must be fed with a DataFrame"
+
+        input_fixed = _flatten_index(liquidity)
+
+        needed_args = ("open", "high", "low", "close")
         full_kwargs = {}
         func_args = inspect.getfullargspec(self.func).args
         for a in needed_args:
@@ -1063,6 +1117,10 @@ def _calculate_and_save_indicator_result(
                 case IndicatorSource.ohlcv:
                     input = strategy_universe.data_universe.candles.get_samples_by_pair(key.pair.internal_id)
                     data = indicator.calculate_by_pair_ohlcv(input, key.pair, resolver)
+                case IndicatorSource.liquidity:
+                    assert strategy_universe.has_liquidity_data(), f"Indicator {key.definition.name} wants liquidity data, but liquidity data not loaded"
+                    input = strategy_universe.data_universe.liquidity.get_samples_by_pair(key.pair.internal_id)
+                    data = indicator.calculate_by_pair_liquidity(input, key.pair, resolver)
                 case IndicatorSource.external_per_pair:
                     data = indicator.calculate_by_pair_external(key.pair, resolver)
                 case _:
@@ -1760,6 +1818,7 @@ def calculate_and_load_indicators_inline(
     indicator_set: IndicatorSet | None = None,
     create_indicators: CreateIndicatorsProtocol = None,
     storage: IndicatorStorage | None = None,
+    max_workers: int = None,
 ) -> "tradeexecutor.strategy.pandas_trader.strategy_input.StrategyInputIndicators":
     """Calculate indicators in the notebook itself, before starting the backtest.
 
@@ -1828,11 +1887,12 @@ def calculate_and_load_indicators_inline(
         assert indicator_set is None, f"Cannot give both indicator_set and create_indicators"
         indicator_set = prepare_indicators(create_indicators, parameters, strategy_universe, execution_context, timestamp=None)
 
-    if ipython:
-        # Unable to fork
-        max_workers = 1
-    else:
-        max_workers = get_safe_max_workers_count()
+    if max_workers is None:
+        if ipython:
+            # Unable to fork
+            max_workers = 1
+        else:
+            max_workers = get_safe_max_workers_count()
 
     indicator_result_map = calculate_and_load_indicators(
         strategy_universe=strategy_universe,

@@ -300,6 +300,11 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
         """
         return self.data_universe.lending_reserves is not None
 
+    def has_liquidity_data(self) -> bool:
+        """Is any liquidty data available.
+        """
+        return self.data_universe.liquidity is not None
+
     def get_trading_pair(self, pair: int | DEXPair) -> TradingPairIdentifier:
         """Get a pair by id or by its data description.
 
@@ -848,6 +853,13 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
     def get_pair_by_address(self, address: str) -> Optional[TradingPairIdentifier]:
         """Get a trading pair data by a smart contract address."""
         pair = self.data_universe.pairs.get_pair_by_smart_contract(address)
+        if not pair:
+            return None
+        return translate_trading_pair(pair, cache=self.pair_cache)
+
+    def get_pair_by_id(self, internal_id: int) -> Optional[TradingPairIdentifier]:
+        """Get a trading pair data by its internal id (pair_id)."""
+        pair = self.data_universe.pairs.get_pair_by_id(internal_id)
         if not pair:
             return None
         return translate_trading_pair(pair, cache=self.pair_cache)
@@ -2058,7 +2070,7 @@ def load_partial_data(
         Can be
 
         - Human-readable descriptions, see :py:attr:`tradingstrategy.pair.HumanReadableTradingPairDescription`.
-        - Direct :py:class:`pandas.DataFrame` of pairs.
+        - Direct :py:class:`pandas.DataFrame` of pairs, as returned by `Client.fetch_pair_universe`.
 
     :param lending_resserves:
         Lending reserves for which you want to download the data.
