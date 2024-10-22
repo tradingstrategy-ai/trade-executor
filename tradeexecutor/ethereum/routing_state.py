@@ -1,5 +1,6 @@
 """Route trades to different Uniswap v2 like exchanges."""
 
+import os
 import logging
 from collections import defaultdict
 from typing import List, Optional, Tuple
@@ -126,10 +127,20 @@ class EthereumRoutingState(RoutingState):
         # router -> erc-20 mappings
         self.approved_routes = defaultdict(set)
 
-        # set gas limits
-        if approve_gas_limit is None:
+        # set gas limits: 
+        # use provided via constructor -> environment variable -> default (chain-specific)
+        if approve_gas_limit:
+            self.approve_gas_limit = approve_gas_limit
+        elif os.environ.get("APPROVE_GAS_LIMIT"):
+            self.approve_gas_limit = int(os.environ.get("APPROVE_GAS_LIMIT"))
+        else:
             self.approve_gas_limit = APPROVE_GAS_LIMITS.get(self.chain_id, DEFAULT_APPROVE_GAS_LIMIT)
-        if swap_gas_limit is None:
+
+        if swap_gas_limit:
+            self.swap_gas_limit = swap_gas_limit
+        elif os.environ.get("SWAP_GAS_LIMIT"):
+            self.swap_gas_limit = int(os.environ.get("SWAP_GAS_LIMIT"))
+        else:
             self.swap_gas_limit = SWAP_GAS_LIMITS.get(self.chain_id, DEFAULT_SWAP_GAS_LIMIT)
         
     @abstractmethod
