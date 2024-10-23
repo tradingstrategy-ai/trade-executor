@@ -2136,7 +2136,7 @@ def load_partial_data(
 
     # Some sanity and safety check
     if len(pairs) >= 25:
-        logger.warning("This method is designed to load data for low number or trading pairs, got %d", len(pairs))
+        logger.warning("load_partial_data() method is designed to load data for low number or trading pairs, got %d - this might be slow", len(pairs))
 
     # Legacy compat
     if execution_context.mode.is_backtesting():

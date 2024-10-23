@@ -1809,6 +1809,7 @@ def calculate_and_load_indicators_inline(
         rsi = indicators.get_indicator_series("rsi", pair=wbtc_usdc)
         assert len(rsi) == 214  # We have series data for 214 days
 
+
     """
 
     # Hack to be able to run notebook with ipython from the command line
