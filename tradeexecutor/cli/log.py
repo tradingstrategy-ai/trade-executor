@@ -312,6 +312,65 @@ def setup_discord_logging(name: str, webhook_url: str, avatar_url: Optional[str]
     logging.getLogger().addHandler(discord_handler)
 
 
+def setup_telegram_logging(
+    telegram_api_key: str,
+    telegram_chat_id: str,
+) -> "telegram_bot_logger.TelegramMessageHandler":
+    """Setup Telegram logger.
+
+    Set up a Python logging handler based on `telegram_bot_logger <https://github.com/arynyklas/telegram_bot_logger>`__
+    to send trade output to a Telegram group chat.
+
+    .. note::s
+
+        This handler spawns a background thread. You need to call `handler.close` or your application won't exit.
+
+    **Manual testing instructions**.
+
+    Invite the bot to a group chat. Then send a message `/start @botname` to the bot in the group chat to activate it.
+
+    Then get chat id with:
+
+    .. code-block:: shell
+
+         curl https://api.telegram.org/bot$TELEGRAM_API_KEY/getUpdates | jq
+
+    Test with:
+
+    .. code-block:: shell
+
+        pytest --log-cli-level=info -k test_telegram_logging
+
+    - `More Telegram bot set up details <https://stackoverflow.com/questions/64990028/how-to-send-a-message-to-telegram-from-zapier/64990029#64990029>`__
+
+    """
+
+    assert telegram_api_key
+    assert telegram_chat_id
+
+    import telegram_bot_logger
+    from telegram_bot_logger.formatters import TelegramHTMLTextFormatter
+
+
+    formatter = TelegramHTMLTextFormatter()
+    formatter._EMOTICONS[logging.TRADE] = "💰"  # Patch in the custom log level
+    formatter._TAG_FORMAT = "" # Disable tags in the output
+    formatter._HEADER_FORMAT = "<pre>{emoticon} {message}{description}</pre>"  # Disable line no + module in the output
+
+    telegram_handler = telegram_bot_logger.TelegramMessageHandler(
+        bot_token=telegram_api_key,  # Required; bot's token from @BotFather
+        chat_ids=[
+            int(telegram_chat_id)
+        ],  #
+        format_type="text",
+        formatter=formatter,
+        level=logging.INFO,
+    )
+
+    logging.getLogger().addHandler(telegram_handler)
+    return telegram_handler
+
+
 def setup_logstash_logging(
         logstash_server: str,
         application_name: str,
