@@ -5997,8 +5997,8 @@ httpx = "*"
 [package.source]
 type = "git"
 url = "https://github.com/tradingstrategy-ai/telegram_bot_logger.git"
-reference = "HEAD"
-resolved_reference = "b2716b9407f66ebb490d4e59daebc381bd017070"
+reference = "patch-bleeding-edges"
+resolved_reference = "92650efb2607f16a6f614cc83cebb630a5fa7d99"
 
 [[package]]
 name = "tenacity"
@@ -7091,4 +7091,4 @@ web-server = ["WebTest", "openapi-core", "pyramid", "pyramid-openapi3", "waitres
 [metadata]
 lock-version = "2.0"
 python-versions = ">=3.11,<=3.12"
-content-hash = "ee4112edf1c7f30d6a670a92b630114dcb3a693aeca1962b3fd1b3fcfd6450e2"
+content-hash = "919bc63839295199cc30563a25c6fe060037c87a6147789f2f6d0ac5b789846f"
