@@ -1095,7 +1095,10 @@ class TradeAnalysis:
         sorted_positions: Iterable[Tuple[PrimaryKey, TradingPosition]],
     ) -> tuple[Percent, Percent, list]:
         
-        _, strategy_end = state.get_strategy_time_range()
+        if state:
+            _, strategy_end = state.get_strategy_time_range()
+        else:
+            return 0, 0, []
 
         duration = datetime.timedelta()
         volatile_duration = datetime.timedelta()
