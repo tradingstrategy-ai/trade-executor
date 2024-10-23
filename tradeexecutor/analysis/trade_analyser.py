@@ -774,21 +774,22 @@ class TradeAnalysis:
         return long_summary
 
     def calculate_summary_statistics_for_positions(
-            self,
-            time_bucket: Optional[TimeBucket],
-            state,
-            positions: Iterable[Tuple[PrimaryKey, TradingPosition]]
+        self,
+        time_bucket: Optional[TimeBucket],
+        state,
+        positions: Iterable[Tuple[PrimaryKey, TradingPosition]]
     ) -> TradeSummary:
-        """Calculate some statistics how our trades went.
+        """
+        Calculate some statistics how our trades went.
 
-            :param time_bucket:
-                Optional, used to display average duration as 'number of bars' instead of 'number of days'.
+        :param time_bucket:
+            Optional, used to display average duration as 'number of bars' instead of 'number of days'.
 
-            :param state:
-                Optional, should be specified if user would like to see advanced statistics
-            
-            :return:
-                TradeSummary instance
+        :param state:
+            Optional, should be specified if user would like to see advanced statistics
+        
+        :return:
+            TradeSummary instance
         """
 
         sorted_positions = sorted(positions, key=lambda position: position[1].opened_at)
@@ -796,149 +797,7 @@ class TradeAnalysis:
         if time_bucket is not None:
             assert isinstance(time_bucket, TimeBucket), "Not a valid time bucket"
 
-        def get_avg_profit_pct_check(trades: List | None):
-            return float(np.mean(trades)) if trades else None
-
-        def get_avg_trade_duration(duration_list: List | None):
-            if duration_list:
-                return pd.Timedelta(np.mean(duration_list))
-            else:
-                return pd.Timedelta(datetime.timedelta(0))
-
-        def func_check(lst, func):
-            return func(lst) if lst else None
-        
-        def _get_final_start_time(previous_position_closed_at, current_position_opened_at):
-            """Used in `time_in_market` calculation"""
-            if not previous_position_closed_at or current_position_opened_at > previous_position_closed_at:
-                return current_position_opened_at
-            else:
-                return previous_position_closed_at  # overlapping
-        
-        times_in_market_all = []
-        times_in_market_volatile = []  # excludes delta neutral positions
-        _positions = []
-
-        def _append_last_position(
-            grouped_duration: pd.Timedelta,
-            position: TradingPosition,
-            previous_position_closed_at: pd.Timedelta | None,
-            _position_duration: pd.Timedelta | None = None,
-        ) -> None:
-            """Last position has to be handled separately.
-            
-            :param grouped_duration:
-                - Duration of the previous group of positions. If `position` is closed and is overlapping with previous position, **will** include the current position's duration.
-                - Should never include credit supply positions (we calculate them separately)
-
-            :param position:
-                The last TradingPosition instance
-
-            :param previous_position_closed_at:
-                The closed_at timestamp of the previous position. Used to check for overlapping positions.
-            
-            :_position_duration:
-                Override the position's duration. Needed when doing calculations on open positions
-
-            :return:
-                None
-            """
-            if _position_duration:
-                assert position.is_open(), "Should be open position"
-            else:
-                assert position.is_closed(), "Should be closed position"
-            
-            if position.is_closed() and open_position_lock:
-                # already included when dealing with open position
-                return None
-
-            position_duration = _position_duration or position.get_duration()
-            
-            assert position_duration is not None, "position_duration should not be None here"
-            
-            if not previous_position_closed_at:
-                assert len(_positions) == (1 if position.is_closed() else 0), "Should be the only position"
-                assert grouped_duration == (position_duration if position.is_closed() else datetime.timedelta(0)), "Should be the only position"
-
-                times_in_market_all.append(position_duration)
-                if not position.is_credit_supply():
-                    times_in_market_volatile.append(position_duration)
-            elif previous_position_closed_at > position.opened_at:
-                # overlapping group
-                # TODO: See comments on line 1058
-                # assert not position.is_credit_supply(), "Delta neutral positions should not be here"
-                
-                if not position.closed_at:
-                    grouped_duration += position_duration
-                    times_in_market_all.append(grouped_duration)
-                    times_in_market_volatile.append(grouped_duration)
-                else:
-                    pass
-                    # already included if closed and overlapping
-                    # grouped_duration += position.closed_at - previous_position_closed_at
-            else:
-                # new group
-                if position.is_open():
-                    times_in_market_all.append(grouped_duration)
-                    times_in_market_volatile.append(grouped_duration)
-                else:
-                    pass
-                    # grouped_duration = position_duration if closed and not overlapping
-                times_in_market_all.append(position_duration)
-                if not position.is_credit_supply():
-                    times_in_market_volatile.append(position_duration)
-
-            # for safety
-            if last_closed_position_info:
-                last_closed_position_info["grouped_duration"] = datetime.timedelta(0)
-            
-            return None
-
-        def _get_new_grouped_duration_and_append(
-            grouped_duration: pd.Timedelta, 
-            position: TradingPosition, 
-        ) -> pd.Timedelta | None:
-            """Called when we have a new position or new group of overlapping positions. 
-            This new group should not be overlapping with any previous position
-            
-            Append position duration to `times_in_market_all` and `times_in_market_volatile` lists.
-            
-            :param grouped_duration:
-                - NB: does not include current position's duration. It is the duration of the previous group. (unlike in _append_last_position)
-                - Should never include credit supply positions (added separately to lists)
-
-            :param position:
-                The TradingPosition instance
-
-            :param _position_duration:
-                Override the position's duration. Needed when doing calculations on open positions
-
-            :param last_position:
-                Whether the provided position is the last open or last closed position chronologically
-                
-            :return:
-                The new grouped_duration that includes the current position's duration (unless it is credit supply). 
-            """
-            if len(_positions) > 1:
-                assert _positions[-1].closed_at <= position.opened_at, "Overlapping positions. Should not happen here"
-            
-            position_duration = position.get_duration()
-            assert position_duration is not None, "Position duration should be provided"
-            assert grouped_duration, "Grouped duration should not be Falsy here"
-
-            times_in_market_all.append(grouped_duration)
-            times_in_market_volatile.append(grouped_duration)
-
-            if position.is_credit_supply():
-                times_in_market_all.append(position_duration)
-                grouped_duration = datetime.timedelta(0) # don't include credit supply in new group
-            else:
-                grouped_duration = position_duration or datetime.timedelta(0)  # new group
-
-            return grouped_duration
-
         initial_cash = self.portfolio.get_initial_cash()
-
         uninvested_cash = self.portfolio.get_cash()                          
 
         # EthLisbon hack
@@ -958,7 +817,6 @@ class TradeAnalysis:
         loss_risk_at_open_pc = []
         realised_losses_pct = []
         interest_paid_usd = []
-        durations_between_positions = []
 
         biggest_winning_trade_pc = None
         biggest_losing_trade_pc = None
@@ -999,14 +857,6 @@ class TradeAnalysis:
         losing_stop_losses = 0
         winning_take_profits = 0
         losing_take_profits = 0
-
-        previous_position_opened_at = None
-        previous_position_closed_at = None
-        previous_position = None
-        last_closed_position_info = None
-        grouped_duration = datetime.timedelta(0)
-        open_position_lock = False
-
         total_claimed_interest = 0
 
         for pair_id, position in sorted_positions:
@@ -1029,9 +879,6 @@ class TradeAnalysis:
             for t in position.trades.values():
                 trade_volume += t.get_value()
             
-            if previous_position_opened_at is not None:
-                durations_between_positions.append(position.opened_at - previous_position_opened_at) 
-
             if position.is_credit_supply():
                 delta_neutral_cons += 1
             else:
@@ -1046,57 +893,9 @@ class TradeAnalysis:
                 open_value += position.get_value()
                 unrealised_profit_usd += position.get_unrealised_profit_usd()
                 undecided += 1
-                
-                # time in market for open positions
-                # only count the first open position for `time in market`
-                # otherwise double counting
-                if open_position_lock == False and state:
-                    strategy_start, strategy_end = state.get_strategy_time_range()
-
-                    if strategy_end:
-                        position_duration = strategy_end - position.opened_at
-                        _append_last_position(grouped_duration, position, previous_position_closed_at, position_duration)
-                        previous_position_closed_at = None
-                    open_position_lock = True
-
+            
+                # HIEU: why continue here?
                 continue
-
-            # time in market for closed positions
-            if grouped_duration == datetime.timedelta(0):
-                # start new group
-                if len(_positions) > 0:
-                    pass
-                    # FIXME
-                    # assert not position.is_credit_supply(), "Delta neutral positions should not be here"
-                grouped_duration += position.get_duration()
-            elif previous_position_closed_at:
-                if position.opened_at < previous_position_closed_at:
-                    # overlapping group
-                    # TODO: Check this condition again
-                    # AssertionError: Delta neutral positions should not overlap.
-                    # Current position: <Closed position #4 <Pair aUSDC-USDC credit_supply at 0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48 (0.0000% fee) on exchange 0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48> $2641.843508551401> was 2023-07-10 00:00:00 - 2023-09-18 00:00:00
-                    # Previous position: <Closed position #3 <Pair WETH-USDC spot_market_hold at 0x88e6a0c2ddd26feeb64f039a2c41296fcb3f5640 (0.0500% fee) on exchange uniswap-v3> $2540.7825849186183> was 2023-07-03 00:00:00 - 2023-08-17 16:00:00
-                    assert not (position.is_credit_supply() and previous_position.is_credit_supply()), f"Delta neutral positions should not overlap.\nCurrent position: {position} was {position.opened_at} - {position.closed_at}\nPrevious position: {previous_position} was {previous_position.opened_at} - {previous_position.closed_at}"
-                    grouped_duration += (position.closed_at - previous_position_closed_at)  
-                else:
-                    # end new group
-                    # credit supply should only be here
-                    grouped_duration = _get_new_grouped_duration_and_append(grouped_duration, position)
-            else:
-                # raise ValueError("previous_position_closed_at is None. This should not happen.")
-                # Happens for manually fixed trades
-                logger.warning("Detected bad previous_position_closed_at: %s", position)
-                previous_position_closed_at = position.closed_at
-
-            _positions.append(position)
-            last_closed_position_info = {
-                "grouped_duration": grouped_duration,
-                "position": position,
-                "previous_position_closed_at": previous_position_closed_at,
-            }
-            previous_position_opened_at = position.opened_at
-            previous_position_closed_at = position.closed_at
-            previous_position = position
 
             is_stop_loss = position.is_stop_loss()
             is_take_profit = position.is_take_profit()
@@ -1181,10 +980,6 @@ class TradeAnalysis:
                 # Bad input data / legacy data
                 max_pullback_pct = 0
 
-        if last_closed_position_info:
-            # add time in market for very last closed position
-             _append_last_position(**last_closed_position_info)
-
 
         all_trades = winning_trades + losing_trades + [0 for i in range(zero_loss)]
         average_trade = func_check(all_trades, avg)
@@ -1205,14 +1000,14 @@ class TradeAnalysis:
         median_interest_paid_usd = func_check(interest_paid_usd, median)
         max_interest_paid_usd = func_check(interest_paid_usd, max)
         min_interest_paid_usd = func_check(interest_paid_usd, min)
-        average_duration_between_position_openings = pd.to_timedelta(durations_between_positions).mean() if len(durations_between_positions) > 0 else datetime.timedelta(0)
 
         biggest_winning_trade_pc = func_check(winning_trades, max)
         biggest_losing_trade_pc = func_check(losing_trades, min)
         biggest_delta_neutral_pc = func_check(delta_neutral_positions, max)
+
+        time_in_market, time_in_market_volatile, durations_between_positions = self.calculate_time_in_market(state, sorted_positions)
         
-        time_in_market = pd.to_timedelta(times_in_market_all).sum()/strategy_duration if (len(times_in_market_all) > 0 and strategy_duration) else 0
-        time_in_market_volatile = pd.to_timedelta(times_in_market_volatile).sum()/strategy_duration if (len(times_in_market_volatile) > 0 and strategy_duration) else 0
+        average_duration_between_position_openings = pd.to_timedelta(durations_between_positions).mean() if len(durations_between_positions) > 0 else datetime.timedelta(0)
 
         all_durations = winning_trades_duration + losing_trades_duration + zero_loss_trades_duration
         average_duration_of_winning_trades = get_avg_trade_duration(winning_trades_duration)
@@ -1293,6 +1088,67 @@ class TradeAnalysis:
             start_at=start_at,
             end_at=end_at,
         )
+    
+    def calculate_time_in_market(
+        self,
+        state,
+        sorted_positions: Iterable[Tuple[PrimaryKey, TradingPosition]],
+    ) -> tuple[Percent, Percent, list]:
+        
+        if state:
+            _, strategy_end = state.get_strategy_time_range()
+            if not strategy_end:
+                return 0, 0, []    
+        else:
+            return 0, 0, []
+
+        duration = datetime.timedelta()
+        volatile_duration = datetime.timedelta()
+
+        for i in range(len(sorted_positions)):
+            current: TradingPosition = sorted_positions[i][1]
+            previous: TradingPosition = sorted_positions[i-1][1]
+            # print(current, current.opened_at, current.closed_at)
+
+            # assume current position should always be the last one
+            current_end = current.closed_at
+            if current.is_open():
+                current_end = strategy_end
+
+            delta = datetime.timedelta()
+            # overlapping
+            if i > 0 and current.opened_at < previous.closed_at:
+                delta = current_end - previous.closed_at
+            else:
+                # 1st position or not overlapping
+                delta = current_end - current.opened_at
+
+            # credit supply should not be included in volatile duration
+            duration += delta
+            if not current.is_credit_supply():
+                volatile_duration += delta
+                
+            if current.is_open():
+                # current open position should always be the last one
+                # so no need to continue
+                break
+
+        # add time between position openings in a separate loop for clarity
+        durations_between_positions = []
+        for i in range(len(sorted_positions)):
+            current: TradingPosition = sorted_positions[i][1]
+            previous: TradingPosition = sorted_positions[i-1][1]
+            if i > 0 and previous.opened_at:
+                durations_between_positions.append(current.opened_at - previous.opened_at)
+
+        strategy_duration = state.get_strategy_duration()
+        time_in_market = 0
+        time_in_market_volatile = 0
+        if strategy_duration:
+            time_in_market = duration / strategy_duration
+            time_in_market_volatile = volatile_duration / strategy_duration
+
+        return time_in_market, time_in_market_volatile, durations_between_positions
 
     @staticmethod
     def calculate_weighted_average_realised_profit(positions: Iterable[Tuple[PrimaryKey, TradingPosition]]):
@@ -1717,3 +1573,18 @@ def avg(lst: list[int]):
 
 def avg_timedelta(lst: list[pd.Timedelta]):
     return pd.Series(lst).mean()
+
+
+def get_avg_profit_pct_check(trades: List | None):
+    return float(np.mean(trades)) if trades else None
+
+
+def get_avg_trade_duration(duration_list: List | None):
+    if duration_list:
+        return pd.Timedelta(np.mean(duration_list))
+    else:
+        return pd.Timedelta(datetime.timedelta(0))
+
+
+def func_check(lst: list, func: Callable):
+    return func(lst) if lst else None
