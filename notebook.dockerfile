@@ -6,7 +6,7 @@
 
 # See official Python Docker images
 # https://hub.docker.com/_/python/
-FROM python:3.10.9-slim-buster
+FROM python:3.11.10-bullseye
 
 # pysha3 does not yet work on Python 3.11
 # FROM python:3.11.1-slim-buster
@@ -21,7 +21,7 @@ ENV PYTHONDONTWRITEBYTECODE 1 \
 
 RUN apt-get update \
     && apt-get install curl gcc -y \
-    && curl -sSL https://install.python-poetry.org | python - --version 1.3.1
+    && curl -sSL https://install.python-poetry.org | python - --version 1.8.1
 
 ENV PATH="/root/.local/bin:$PATH"
 
