@@ -3,7 +3,7 @@
 #
 
 # Use Microsoft specific base image
-ARG VARIANT="3.10-bullseye"
+ARG VARIANT="3.11.10-bullseye"
 FROM mcr.microsoft.com/vscode/devcontainers/python:0-${VARIANT}
 
 # Passed from Github Actions
@@ -16,7 +16,7 @@ ENV PYTHONDONTWRITEBYTECODE 1 \
 
 RUN apt-get update \
     && apt-get install curl gcc python3-docutils -y \
-    && curl -sSL https://install.python-poetry.org | python - --version 1.3.1
+    && curl -sSL https://install.python-poetry.org | python - --version 1.8.3
 
 ENV PATH="/root/.local/bin:$PATH"
 
