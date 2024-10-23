@@ -115,6 +115,7 @@ pytest-timeout = "^2.3.1"
 
 # TODO: Disabled. Install wiht pip until dependency version incompatibilies are solved.
 # zelos-demeter = {version="^0.7.2",  optional = true}
+telegram-bot-logger = {version = "^0.0.3.post0", optional = true}
 
 [tool.poetry.extras]
 
@@ -124,6 +125,7 @@ qstrader = ["trading-strategy-qstrader"]
 # Only needed when running live trades
 execution = [
     "python-logging-discord-handler",
+    "telegram-bot-logger",
     "python-logstash-tradingstrategy",
     "typer",
     "colorama",

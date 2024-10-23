@@ -312,6 +312,41 @@ def setup_discord_logging(name: str, webhook_url: str, avatar_url: Optional[str]
     logging.getLogger().addHandler(discord_handler)
 
 
+def setup_telegram_logging(
+    telegram_api_key: str,
+    telegram_chat_id: str,
+):
+    """Setup Telegram logger.
+
+    https://github.com/arynyklas/telegram_bot_logger
+
+    Invite the bot to a group chat. Then send a message `/start @botname` to the bot in the group chat to activate it.
+
+    Then get chat id with:
+
+    .. code-block:: shell
+
+         curl https://api.telegram.org/bot$TELEGRAM_API_KEY/getUpdates | jq
+    """
+    import telegram_bot_logger
+
+    telegram_handler = telegram_bot_logger.TelegramMessageHandler(
+        bot_token=telegram_api_key,  # Required; bot's token from @BotFather
+        chat_ids=[
+            telegram_chat_id
+        ],  #
+        format_type="text",
+        document_name_strategy="timestamp" or "TIMESTAMP" or telegram_bot_logger.formatters.DocumentNameStrategy.TIMESTAMP,  # Optional; used to define documents' names; also can be "ARGUMENT", by default it is "TIMESTAMP"
+    )
+
+    # Patch in the custom logo level
+    telegram_handler._EMOTICONS[logging.TRADE] = "💰"
+
+    telegram_handler.setLevel(logging.TRADE)
+    logging.getLogger().addHandler(telegram_handler)
+    return telegram_handler
+
+
 def setup_logstash_logging(
         logstash_server: str,
         application_name: str,

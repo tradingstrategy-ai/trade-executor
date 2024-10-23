@@ -23,7 +23,7 @@ from . import shared_options
 from .app import app
 from ..bootstrap import prepare_executor_id, prepare_cache, create_web3_config, create_state_store, \
     create_execution_and_sync_model, create_metadata, create_approval_model, create_client
-from ..log import setup_logging, setup_discord_logging, setup_logstash_logging, setup_file_logging
+from ..log import setup_logging, setup_discord_logging, setup_logstash_logging, setup_file_logging, setup_telegram_logging
 from ..loop import ExecutionLoop
 from ..result import display_backtesting_results
 from ..version_info import VersionInfo
@@ -95,6 +95,8 @@ def start(
     discord_webhook_url: Optional[str] = typer.Option(None, envvar="DISCORD_WEBHOOK_URL", help="Discord webhook URL for notifications"),
     logstash_server: Optional[str] = typer.Option(None, envvar="LOGSTASH_SERVER", help="LogStash server hostname where to send logs"),
     file_log_level: Optional[str] = typer.Option("info", envvar="FILE_LOG_LEVEL", help="Log file log level. The default log file is logs/id.log."),
+    telegram_api_key: Optional[str] = typer.Option(None, envvar="TELEGRAM_API_KEY", help="Telegram bot API key for Telegram logging"),
+    telegram_chat_id: Optional[str] = typer.Option(None, envvar="TELEGRAM_CHAT_ID", help="Telegram chat id where the bot will log. Group chats have negative id. Bot must receive command /start in the group chat before it can send messages there."),
 
     # Debugging and unit testing
     port_mortem_debugging: bool = typer.Option(False, "--post-mortem-debugging", envvar="POST_MORTEM_DEBUGGING", help="Launch ipdb debugger on a main loop crash to debug the exception"),
@@ -178,6 +180,12 @@ def start(
             name,
             webhook_url=discord_webhook_url,
             avatar_url=icon_url)
+
+    if telegram_api_key and asset_management_mode.is_live_trading():
+        setup_telegram_logging(
+            telegram_api_key,
+            telegram_chat_id,
+        )
 
     if logstash_server and asset_management_mode.is_live_trading():
         logger.info("Enabling Logstash logging to %s", logstash_server)
