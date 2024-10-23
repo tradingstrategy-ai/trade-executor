@@ -351,7 +351,7 @@ def setup_telegram_logging(
     import telegram_bot_logger
     from telegram_bot_logger.formatters import TelegramHTMLTextFormatter
 
-
+    # Fine tune our Telegram chat output
     formatter = TelegramHTMLTextFormatter()
     formatter._EMOTICONS[logging.TRADE] = "💰"  # Patch in the custom log level
     formatter._TAG_FORMAT = "" # Disable tags in the output
@@ -360,11 +360,11 @@ def setup_telegram_logging(
     telegram_handler = telegram_bot_logger.TelegramMessageHandler(
         bot_token=telegram_api_key,  # Required; bot's token from @BotFather
         chat_ids=[
-            int(telegram_chat_id)
-        ],  #
+            int(telegram_chat_id)  # Make sure group chat ids are integer
+        ],
         format_type="text",
         formatter=formatter,
-        level=logging.INFO,
+        level=logging.TRADE,
     )
 
     logging.getLogger().addHandler(telegram_handler)
