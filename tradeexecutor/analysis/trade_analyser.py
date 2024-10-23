@@ -1100,16 +1100,13 @@ class TradeAnalysis:
         duration = datetime.timedelta()
         volatile_duration = datetime.timedelta()
 
-        durations_between_positions = []
-
         for i in range(len(sorted_positions)):
             current: TradingPosition = sorted_positions[i][1]
-            # print(current, current.position_id, current.opened_at, current.closed_at)
             previous: TradingPosition = sorted_positions[i-1][1]
 
+            # assume current position should always be the last one
             current_end = current.closed_at
             if current.is_open():
-                # assume the opened position should always be the last one
                 current_end = strategy_end
 
             delta = datetime.timedelta()
@@ -1120,18 +1117,23 @@ class TradeAnalysis:
                 # 1st position or not overlapping
                 delta = current_end - current.opened_at
 
+            # credit supply should not be included in volatile duration
             duration += delta
             if not current.is_credit_supply():
-                # credit supply should not be included in volatile duration
                 volatile_duration += delta
-
-            # add time between position openings
-            if i > 0 and previous.opened_at:
-                durations_between_positions.append(current.opened_at - previous.opened_at) 
                 
             if current.is_open():
-                # assume the opened position should always be the last one
+                # current open position should always be the last one
+                # so no need to continue
                 break
+
+        # add time between position openings in a separate loop for clarity
+        durations_between_positions = []
+        for i in range(len(sorted_positions)):
+            current: TradingPosition = sorted_positions[i][1]
+            previous: TradingPosition = sorted_positions[i-1][1]
+            if i > 0 and previous.opened_at:
+                durations_between_positions.append(current.opened_at - previous.opened_at)
 
         strategy_duration = state.get_strategy_duration()
         time_in_market = 0
