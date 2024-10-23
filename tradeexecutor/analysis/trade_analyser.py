@@ -1097,6 +1097,8 @@ class TradeAnalysis:
         
         if state:
             _, strategy_end = state.get_strategy_time_range()
+            if not strategy_end:
+                return 0, 0, []    
         else:
             return 0, 0, []
 
@@ -1106,6 +1108,7 @@ class TradeAnalysis:
         for i in range(len(sorted_positions)):
             current: TradingPosition = sorted_positions[i][1]
             previous: TradingPosition = sorted_positions[i-1][1]
+            # print(current, current.opened_at, current.closed_at)
 
             # assume current position should always be the last one
             current_end = current.closed_at
