@@ -340,7 +340,7 @@ def setup_telegram_logging(
     )
 
     # Patch in the custom logo level
-    telegram_handler._EMOTICONS[logging.TRADE] = "💰"
+    # telegram_handler._EMOTICONS[logging.TRADE] = "💰"
 
     telegram_handler.setLevel(logging.TRADE)
     logging.getLogger().addHandler(telegram_handler)
