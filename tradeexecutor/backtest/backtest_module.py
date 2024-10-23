@@ -24,7 +24,7 @@ def run_backtest_for_module(
     cache_path: Path | None = None,
     trading_strategy_api_key: str = None,
     execution_context=standalone_backtest_execution_context,
-    max_workers: int = None,
+    max_workers: int | None = None,
     verbose=True,
 ) -> BacktestResult:
     """Run a backtest described in the strategy module.

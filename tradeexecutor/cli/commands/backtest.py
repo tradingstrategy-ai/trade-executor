@@ -92,7 +92,9 @@ def backtest(
     python_profile_report: Optional[Path] = Option(None, envvar="PYTHON_PROFILE_REPORT", help="Write a Python cprof file to check where backtest spends time"),
 
     generate_report: Optional[bool] = Option(True, envvar="GENERATE_REPORT", help="Generate a HTML report file based on the template notebook. Disable to reduce unit test execution time."),
-    ):
+
+    max_workers: Optional[int] = Option(None, envvar="MAX_WORKERS", help="Number of workers to use for parallel processing"),
+):
     """Backtest a given strategy module.
 
     - Run a backtest on a strategy module.
@@ -150,7 +152,8 @@ def backtest(
         result = run_backtest_for_module(
             strategy_file=strategy_file,
             trading_strategy_api_key=trading_strategy_api_key,
-            execution_context=standalone_backtest_execution_context
+            execution_context=standalone_backtest_execution_context,
+            max_workers=max_workers,
         )
         return result
 

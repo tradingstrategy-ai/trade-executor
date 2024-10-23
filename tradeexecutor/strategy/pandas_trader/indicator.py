@@ -1573,7 +1573,7 @@ def calculate_indicators(
         # Copy universe data to child processes only once when the child process is created
         #
         pickled_universe = pickle.dumps(strategy_universe)
-        logger.info("Doing a multiprocess indicator calculation, picked universe is %d bytes", len(pickled_universe))
+        logger.info("Doing a multiprocess indicator calculation, pickled universe is %d bytes", len(pickled_universe))
 
         # Set up a process pool executing structure
         executor = futureproof.ProcessPoolExecutor(max_workers=max_workers, initializer=_process_init, initargs=(pickled_universe,))

@@ -44,7 +44,7 @@ def format_trade(portfolio: Portfolio, trade: TradeExecution) -> List[str]:
     # Add existing balance
     if existing_position:
         lines += [
-            f"Exiting position: {existing_position}, with pre-trade balance: {existing_balance}"
+            f"Existing position: {existing_position}, with pre-trade balance: {existing_balance}"
         ]
     else:
         lines += [
