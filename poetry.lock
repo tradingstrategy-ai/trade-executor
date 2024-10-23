@@ -5983,17 +5983,22 @@ files = [
 ]
 
 [[package]]
-name = "telegram-bot-logger"
+name = "telegram_bot_logger"
 version = "0.0.3.post0"
 description = "It is a library that allows you to send logging logs to Telegram"
 optional = true
 python-versions = ">=3.7"
-files = [
-    {file = "telegram_bot_logger-0.0.3.post0-py2.py3-none-any.whl", hash = "sha256:8b4015a682df30ab3c18e4ea0135fc137afbb6a9a02d41d786a5bc41e7b75ab6"},
-]
+files = []
+develop = false
 
 [package.dependencies]
 httpx = "*"
+
+[package.source]
+type = "git"
+url = "https://github.com/tradingstrategy-ai/telegram_bot_logger.git"
+reference = "HEAD"
+resolved_reference = "b2716b9407f66ebb490d4e59daebc381bd017070"
 
 [[package]]
 name = "tenacity"
@@ -7086,4 +7091,4 @@ web-server = ["WebTest", "openapi-core", "pyramid", "pyramid-openapi3", "waitres
 [metadata]
 lock-version = "2.0"
 python-versions = ">=3.11,<=3.12"
-content-hash = "ad752d5c0aeb5f3d0ed3629afaa853b482701897d12e3e1697829a0cb8d6694d"
+content-hash = "ee4112edf1c7f30d6a670a92b630114dcb3a693aeca1962b3fd1b3fcfd6450e2"

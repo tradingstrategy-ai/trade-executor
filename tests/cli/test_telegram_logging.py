@@ -47,7 +47,7 @@ def test_telegram_logging():
 
     assert isinstance(handler, TelegramMessageHandler)
     assert handler.listener._thread is not None, "Queue thread crashed on background"
-    # import ipdb ; ipdb.set_trace()
+
     logger.trade("Test trade output (custom logging level)")
     assert handler.listener._thread is not None, "Queue thread crashed on background"
     logger.info("test INFO")
@@ -55,6 +55,23 @@ def test_telegram_logging():
     logger.warning("test WARNING")
     logger.error("test ERROR")
     logger.fatal("test FATAL")
+
+    logger.trade(
+        "Formatted content. Integer: %d, float %f, string %s",
+        1,
+        2.0,
+        "foobar"
+    )
+
+    logger.trade(
+        "Formatted content. Integer: %d, float %f, string %s - ARGS missing",
+    )
+
+    # Cannot be tested with sys.stdout logger installed
+    #  logger.trade(
+    #      "Formatted content. Integer: %d, float %f, string %s - ARGS bad",
+    #      1,
+    # # )
 
     logger.trade("""
     This is a multiline.
@@ -70,6 +87,14 @@ def test_telegram_logging():
     
     https://tradingstrategy.ai
     """)
+
+    try:
+        raise RuntimeError("Oh no exception")
+    except Exception as e:
+        logger.exception(e)
+
+    # Directly send message
+    handler.handler.send_text_message(int(TELEGRAM_CHAT_ID), "Final message")
 
     assert handler.listener._thread is not None
     handler.close()
