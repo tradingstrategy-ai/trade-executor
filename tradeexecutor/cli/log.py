@@ -278,6 +278,12 @@ def setup_custom_log_levels():
 
     This level is used to log trade execution to Discord etc.
     trader followed stream.
+
+    Add
+
+    - `logging.TRADE`: Log level for verbose trade output for Discord diagnostics
+
+    - `logging.TRADE_HIGH`: Log level made trade decisions
     """
 
     if hasattr(logging, "TRADE"):
@@ -285,14 +291,26 @@ def setup_custom_log_levels():
         return
 
     # https://www.programcreek.com/python/?code=dwavesystems%2Fdwave-hybrid%2Fdwave-hybrid-master%2Fhybrid%2F__init__.py
+
+    # Log level for verbose trade output for Discord diagnostics
     logging.TRADE = logging.INFO + 1  # Info is 20, TRADE is 21, Warning is 30
+
+    logging.TRADE_HIGH = logging.TRADE + 1
+
+    # Log level
     logging.addLevelName(logging.TRADE, "TRADE")
+    logging.addLevelName(logging.TRADE_HIGH, "TRADE_HIGH")
 
     def _trade(logger, message, *args, **kwargs):
         if logger.isEnabledFor(logging.TRADE):
             logger._log(logging.TRADE, message, args, **kwargs)
 
+    def _trade_high(logger, message, *args, **kwargs):
+        if logger.isEnabledFor(logging.TRADE_HIGH):
+            logger._log(logging.TRADE_HIGH, message, args, **kwargs)
+
     logging.Logger.trade = _trade
+    logging.Logger.trade_high = _trade_high
 
 
 def setup_discord_logging(name: str, webhook_url: str, avatar_url: Optional[str]=None):
@@ -364,7 +382,7 @@ def setup_telegram_logging(
         ],
         format_type="text",
         formatter=formatter,
-        level=logging.TRADE,
+        level=logging.TRADE_HIGH,
     )
 
     logging.getLogger().addHandler(telegram_handler)
