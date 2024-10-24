@@ -149,5 +149,3 @@ def test_fetch_tvl_in_decide_trades_broken(
 
     with pytest.raises(CurrencyConversionRateMissing):
         decide_trades(strategy_input)
-
-
