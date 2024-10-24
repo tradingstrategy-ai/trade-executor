@@ -84,7 +84,12 @@ class PandasTraderRunner(StrategyRunner):
             assert indicators is not None, "indicators not created when running trading_strategy_engine_version=0.5"
             indicators.prepare_decision_cycle(debug_details["cycle"], pd_timestamp)
 
-            assert isinstance(self.execution_model, EthereumExecution), f"Assumes EthereumExecution, so we can pass web3"
+            if isinstance(self.execution_model, EthereumExecution):
+                # Need by fetch_quote_token_tvls()
+                web3 = self.execution_model.web3
+            else:
+                # Backtesting, etc.
+                web3 = None
 
             input = StrategyInput(
                 cycle=debug_details["cycle"],
@@ -96,7 +101,7 @@ class PandasTraderRunner(StrategyRunner):
                 indicators=indicators,
                 parameters=self.parameters,
                 execution_context=self.execution_context,
-                web3=self.execution_model.web3,
+                web3=web3,
             )
 
             logger.info(
