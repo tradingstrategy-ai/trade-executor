@@ -283,7 +283,8 @@ def setup_custom_log_levels():
 
     - `logging.TRADE`: Log level for verbose trade output for Discord diagnostics
 
-    - `logging.TRADE_HIGH`: Log level made trade decisions
+    - `logging.TRADE_HIGH`: Log level made trade decisions - this only logs
+       successful trade decisions, not any errors. It is designed for the Teleegram bot.
     """
 
     if hasattr(logging, "TRADE"):
@@ -295,7 +296,7 @@ def setup_custom_log_levels():
     # Log level for verbose trade output for Discord diagnostics
     logging.TRADE = logging.INFO + 1  # Info is 20, TRADE is 21, Warning is 30
 
-    logging.TRADE_HIGH = logging.TRADE + 1
+    logging.TRADE_HIGH = logging.FATAL + 1
 
     # Log level
     logging.addLevelName(logging.TRADE, "TRADE")
