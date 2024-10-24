@@ -467,7 +467,7 @@ class StrategyRunner(abc.ABC):
         reserve: ReservePosition
         for reserve in state.portfolio.reserves.values():
             print(f"    {reserve.quantity:,.2f} {reserve.asset.token_symbol}", file=buf)
-        logger.trade(buf.getvalue())
+        logger.trade_high(buf.getvalue())
 
     def report_strategy_thinking(
         self,
@@ -767,7 +767,7 @@ class StrategyRunner(abc.ABC):
 
                 # Shortcut quit here if no trades are needed
                 if len(rebalance_trades) == 0:
-                    logger.trade("No action taken: strategy decided not to open or close any positions")
+                    logger.trade_high("No action taken: strategy decided not to open or close any positions")
                     return debug_details
 
                 # Ask user confirmation for any trades
