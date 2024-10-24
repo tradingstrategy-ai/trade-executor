@@ -18,11 +18,15 @@ def _fetch_uni_v2_v3_quote_token_tvl(
     web3: Web3,
     pair: TradingPairIdentifier,
 ) -> TokenAmount:
+
+    token_address = Web3.to_checksum_address(pair.quote.address)
+    pool_address = Web3.to_checksum_address(pair.pool_address)
+
     erc_20 = fetch_erc20_details(
         web3,
-        pair.quote.address,
+        token_address,
     )
-    tvl = erc_20.fetch_balance_of(pair.pool_address)
+    tvl = erc_20.fetch_balance_of(pool_address)
     return tvl
 
 
@@ -55,9 +59,12 @@ def fetch_quote_token_tvl_with_exchange_rate(
 
     quote_token_tvl = _fetch_uni_v2_v3_quote_token_tvl(web3, pair)
 
+    # float is fine for approxs
+    quote_token_tvl = float(quote_token_tvl)
+
     # The pair is volatile-USD, no currency conversion needed
     if is_stablecoin_like(pair.quote.token_symbol):
-        return float(quote_token_tvl)
+        return quote_token_tvl
 
     if pair.quote.address not in exchange_rates:
         raise CurrencyConversionRateMissing(f"TVL for {pair} is not in USD-nominated token, and exchange rate is missing. Rates are: {exchange_rates}")

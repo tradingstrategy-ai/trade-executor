@@ -8,7 +8,7 @@ import pytest
 from eth_defi.provider.multi_provider import create_multi_provider_web3
 from tradeexecutor.ethereum.tvl import fetch_quote_token_tvls
 from tradeexecutor.state.trade import TradeExecution
-from tradeexecutor.strategy.execution_context import unit_test_execution_context
+from tradeexecutor.strategy.execution_context import unit_test_execution_context, unit_test_trading_execution_context
 from tradeexecutor.strategy.pandas_trader.strategy_input import StrategyInputIndicators, StrategyInput
 from tradeexecutor.strategy.parameters import StrategyParameters
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse, load_partial_data
@@ -22,15 +22,12 @@ pytestmark = pytest.mark.skipif(not os.environ.get("JSON_RPC_ETHEREUM") or not o
 
 @pytest.fixture
 def web3():
-    """Set up a Web3 provider instance with a lot of workarounds for flaky nodes."""
-    return create_multi_provider_web3(os["JSON_RPC_ETHEREUM"])
+    return create_multi_provider_web3(os.environ["JSON_RPC_ETHEREUM"])
 
 
 @pytest.fixture()
 def strategy_universe(
     chain_id,
-    exchange_universe,
-    asset_usdc,
     persistent_test_client
 ) -> TradingStrategyUniverse:
     """Load volatile tokens + exchange rate pair."""
@@ -47,7 +44,7 @@ def strategy_universe(
 
     dataset = load_partial_data(
         persistent_test_client,
-        execution_context=unit_test_execution_context,
+        execution_context=unit_test_trading_execution_context,
         time_bucket=TimeBucket.d1,
         pairs=pairs,
         universe_options=UniverseOptions(history_period=pd.Timedelta("14d")),
@@ -58,9 +55,12 @@ def strategy_universe(
 
 
 def decide_trades(
-    input: StrategyInputIndicators,
+    input: StrategyInput,
 ) -> list[TradeExecution]:
-    """Read pair TVLs."""
+    """Read pair TVLs.
+
+    - Doesn't actually trade any
+    """
 
     all_pairs = list(input.strategy_universe.iterate_pairs())
     pair_tvls = fetch_quote_token_tvls(
@@ -70,7 +70,7 @@ def decide_trades(
     )
     for pair in all_pairs:
         tvl = pair_tvls[pair]
-        print(f"Pair {pair.get_ticker()}, quote token TVL {tvl}")
+        # print(f"Pair {pair.get_ticker()}, quote token TVL {tvl}")
         assert pair_tvls[pair] > 0
 
     return []
@@ -79,7 +79,6 @@ def decide_trades(
 
 def test_fetch_tvl_in_decide_trades(
     web3,
-    persistent_test_client,
     strategy_universe,
 ):
     """Check that we can directly get real-time TVL in the decide_trades().
@@ -89,12 +88,13 @@ def test_fetch_tvl_in_decide_trades(
 
     strategy_input = StrategyInput(
         cycle=1,
+        strategy_universe=strategy_universe,
         timestamp=pd.Timestamp.utcnow(),
-        parameters=StrategyParameters(),
+        parameters=StrategyParameters({}),
         state=None,
         indicators=None,
         pricing_model=None,
-        execution_context=unit_test_execution_context,
+        execution_context=unit_test_trading_execution_context,
         other_data={},
         web3=web3,
     )
