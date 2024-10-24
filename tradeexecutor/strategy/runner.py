@@ -889,19 +889,6 @@ class StrategyRunner(abc.ABC):
 
         with self.timed_task_context_manager("check_position_triggers"):
 
-            # We need to sync interest before we can run check accouts,
-            # as otherwise it will
-            with self.timed_task_context_manager("sync_interest_before_triggers"):
-                if not self.execution_context.mode.is_backtesting():
-                    # Only run in live execution to speed up backtesting
-                    interest_events = self.sync_model.sync_interests(
-                        timestamp,
-                        state,
-                        universe,
-                        stop_loss_pricing_model,
-                    )
-                    logger.info("Generated %d sync interest events", len(interest_events))
-
             with self.timed_task_context_manager("sync_portfolio_before_triggers"):
                 # Sync treasure before the trigger checks
                 self.sync_portfolio(
@@ -912,6 +899,19 @@ class StrategyRunner(abc.ABC):
                     end_block=end_block,
                     long_short_metrics_latest=long_short_metrics_latest,
                 )
+
+            # We need to sync interest before we can run check accounts
+            # but after sync treasury since new deposit / redemption can break the interest calculations
+            with self.timed_task_context_manager("sync_interest_before_triggers"):
+                if not self.execution_context.mode.is_backtesting():
+                    # Only run in live execution to speed up backtesting
+                    interest_events = self.sync_model.sync_interests(
+                        timestamp,
+                        state,
+                        universe,
+                        stop_loss_pricing_model,
+                    )
+                    logger.info("Generated %d sync interest events", len(interest_events))
 
             # Check that our accounting is intact before proceeding
             with self.timed_task_context_manager("check_accounts_before_triggers"):

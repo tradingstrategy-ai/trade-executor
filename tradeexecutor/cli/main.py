@@ -24,6 +24,7 @@ from .commands.retry import retry
 from .commands.visualise import visualise
 from .commands.init import init
 from .commands.webapi import webapi
+from .commands.check_position_triggers import check_position_triggers
 
 # Dummy export commands even though they are already registered
 # to make the linter happy
@@ -32,5 +33,5 @@ __all__ = [
     version, repair, console, init, reset, enzyme_asset_list, enzyme_deploy_vault,
     close_all, show_positions, backtest, correct_accounts, check_accounts, 
     reset_deposits, export, retry, visualise, webapi,
-    deploy_guard
+    deploy_guard, check_position_triggers,
 ]
