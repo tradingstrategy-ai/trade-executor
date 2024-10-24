@@ -108,12 +108,17 @@ def fetch_quote_token_tvls(
 ) -> dict[TradingPairIdentifier, USDollarAmount]:
     """Fetch real-time TVL of any trading pool.
 
-    - Get the locked in quote token amount in a bool
+    - Get the real-time quote token TVLs of a trading pool in USD
+
+    - Only works in live trading, not in backtesting, as we are using real time data
 
     - Quote token locked is a proxy for the real market depth,
       although the shape of the liquidity will vary
 
-    - Uniswap v2 and v3 area looked depending on the pool type
+    - This measurement is a different from TVL,
+      as TVL counts both sides of the pool and may be asymmetric for Uniswap v3
+
+    - Uniswap v2 and v3 supported
 
     - The quote token (WETH) is translated to the US dollars,
       using an approximation rate for some pair picked from strategy universe
@@ -121,6 +126,64 @@ def fetch_quote_token_tvls(
     .. note ::
 
         At the moment, Uniswap v2 and v3 pairs supported only.
+
+    Example how to cap trade size dynamically to the available real-time onchain liquidity:
+
+    .. code-block:: python
+
+        from tradeexecutor.ethereum.tvl import fetch_quote_token_tvls
+
+        class Parameters:
+            min_trade_size_usd = 5.00  # If the pair does not have enough real time quote token TVL, skip trades smaller than this
+            max_pool_ownership = 0.01  # Only do trades where we are less than 1% of the pool quote token TVL
+
+        def decide_trades(input):
+
+            # Prefetch TVLs for all pairs in a single go
+            if input.execution_context.mode.is_live_trading():
+                all_pairs = strategy_universe.iterate_pairs()
+                pair_tvls = fetch_quote_token_tvls(
+                    input.web3,
+                    input.strategy_universe,
+                    all_pairs,
+                )
+            else:
+                pair_tvls = None
+
+            #
+            # ... decisions go here ...
+            #
+            buy_amount = cash * parameters.allocation
+
+            if pair_tvls:
+                tvl = pair_tvls[pair]
+                pool_capped_usd = tvl * parameters.max_pool_ownership
+
+                if buy_amount > pool_capped_usd:
+                    logger.trade(
+                        "Pool quote token TVL %f USD, our cap %f USD, capping trade amount, cap percent %f",
+                        tvl,
+                        pool_capped_usd,
+                        parameters.max_pool_ownership,
+                    )
+                    buy_amount = pool_capped_usd
+
+            if buy_amount >= parameters.min_trade_size_usd:
+
+                logger.trade("Opening position for %s with %f USDC", pair, buy_amount)
+
+                trades += position_manager.open_spot(
+                    pair,
+                    value=buy_amount,
+                    stop_loss_pct=parameters.stop_loss_pct,
+                )
+            else:
+                logger.trade(
+                    "Skipping trade size %f USD, because it is below our minimum threshold %f USD",
+                    buy_amount,
+                    parameters.min_trade_size_usd,
+                )
+
 
     :param web3:
         Web3 connection to fetch the real time TVL

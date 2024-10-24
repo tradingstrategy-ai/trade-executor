@@ -298,6 +298,7 @@ def start(
                 if parameters.slippage_tolerance:
                     assert type(parameters.slippage_tolerance) == float
                     assert 0.0005 <= parameters.slippage_tolerance < 0.025, f"Slippage tolerance is {parameters.slippage_tolerance*100} % - check if the value is sane"
+                    logger.info("Using slippage tolerance %f", parameters.slippage_tolerance)
                     max_slippage = parameters.slippage_tolerance
 
         execution_model, sync_model, valuation_model_factory, pricing_model_factory = create_execution_and_sync_model(
