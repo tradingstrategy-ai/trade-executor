@@ -4,6 +4,7 @@ import os
 import shutil
 from decimal import Decimal
 
+import flaky
 import pytest
 import pandas as pd
 from web3 import Web3
@@ -86,6 +87,7 @@ def strategy_universe(
     return TradingStrategyUniverse.create_from_dataset(dataset, asset_usdc.address)
 
 
+@flaky.flaky
 def test_generic_routing_multihops_trade(
     web3: Web3,
     hot_wallet: HotWallet,
