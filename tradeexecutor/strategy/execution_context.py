@@ -239,10 +239,11 @@ class ExecutionContext:
         with different execution modes.
 
         :return:
-            True if we doing live trading or paper trading.
-             False if we are operating on backtesting data.
+            True if we doing live trading, one off operation, unit test live trade checks or paper trading.
+
+            False if we are operating on backtesting data, or unit testing.
         """
-        return self.mode in (ExecutionMode.real_trading, ExecutionMode.paper_trading, ExecutionMode.simulated_trading, ExecutionMode.data_preload)
+        return self.mode.is_live_trading()
 
 
 #: Shorthand for unit testing
