@@ -9,7 +9,7 @@ import pandas as pd
 import pytest
 
 from eth_defi.provider.multi_provider import create_multi_provider_web3
-from tradeexecutor.ethereum.tvl import fetch_quote_token_tvls
+from tradeexecutor.ethereum.tvl import fetch_quote_token_tvls, CurrencyConversionRateMissing
 from tradeexecutor.state.trade import TradeExecution
 from tradeexecutor.strategy.execution_context import unit_test_trading_execution_context
 from tradeexecutor.strategy.pandas_trader.strategy_input import StrategyInput
@@ -55,6 +55,29 @@ def strategy_universe(
 
     usdc = "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48"
     return TradingStrategyUniverse.create_from_dataset(dataset, usdc)
+
+
+@pytest.fixture()
+def strategy_universe_broken(
+    chain_id,
+    persistent_test_client
+) -> TradingStrategyUniverse:
+    """Missing currency conversion pair to USD."""
+
+    pairs = [
+        (ChainId.ethereum, "uniswap-v2", "PEPE", "WETH"),
+    ]
+
+    dataset = load_partial_data(
+        persistent_test_client,
+        execution_context=unit_test_trading_execution_context,
+        time_bucket=TimeBucket.d1,
+        pairs=pairs,
+        universe_options=UniverseOptions(history_period=pd.Timedelta("14d")),
+    )
+
+    weth = "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2"
+    return TradingStrategyUniverse.create_from_dataset(dataset, weth)
 
 
 def decide_trades(
@@ -103,5 +126,28 @@ def test_fetch_tvl_in_decide_trades(
     )
 
     decide_trades(strategy_input)
+
+
+def test_fetch_tvl_in_decide_trades_broken(
+    web3,
+    strategy_universe_broken,
+):
+    """We do not have a trading pair for WETH exchange rate."""
+
+    strategy_input = StrategyInput(
+        cycle=1,
+        strategy_universe=strategy_universe_broken,
+        timestamp=pd.Timestamp.utcnow(),
+        parameters=StrategyParameters({}),
+        state=None,
+        indicators=None,
+        pricing_model=None,
+        execution_context=unit_test_trading_execution_context,
+        other_data={},
+        web3=web3,
+    )
+
+    with pytest.raises(CurrencyConversionRateMissing):
+        decide_trades(strategy_input)
 
 
