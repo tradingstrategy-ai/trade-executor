@@ -98,7 +98,7 @@ class Web3Config:
             last_rpc = configuration_line.split(" ")[-1]
             logger.info(f"Simulating transactions with Anvil, forking from {last_rpc}")
             anvil = launch_anvil(last_rpc, attempts=1)
-            web3 = create_multi_provider_web3(anvil.json_rpc_url)
+            web3 = create_multi_provider_web3(anvil.json_rpc_url, switchover_noisiness=logging.TRADE)
             web3.anvil = anvil
             web3.simulate = True
             configuration_line = anvil.json_rpc_url  # Override whatever configuration given earlier
