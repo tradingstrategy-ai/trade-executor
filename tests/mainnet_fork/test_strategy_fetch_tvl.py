@@ -1,4 +1,7 @@
-"""Real-time TVL fetching."""
+"""Real-time TVL fetching.
+
+- Run decide_trades() with some pairs from Ethereum mainnet
+"""
 
 import os
 
@@ -8,11 +11,11 @@ import pytest
 from eth_defi.provider.multi_provider import create_multi_provider_web3
 from tradeexecutor.ethereum.tvl import fetch_quote_token_tvls
 from tradeexecutor.state.trade import TradeExecution
-from tradeexecutor.strategy.execution_context import unit_test_execution_context, unit_test_trading_execution_context
-from tradeexecutor.strategy.pandas_trader.strategy_input import StrategyInputIndicators, StrategyInput
+from tradeexecutor.strategy.execution_context import unit_test_trading_execution_context
+from tradeexecutor.strategy.pandas_trader.strategy_input import StrategyInput
 from tradeexecutor.strategy.parameters import StrategyParameters
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse, load_partial_data
-from tradeexecutor.strategy.universe_model import default_universe_options, UniverseOptions
+from tradeexecutor.strategy.universe_model import UniverseOptions
 from tradingstrategy.chain import ChainId
 from tradingstrategy.timebucket import TimeBucket
 
@@ -100,8 +103,5 @@ def test_fetch_tvl_in_decide_trades(
     )
 
     decide_trades(strategy_input)
-
-
-
 
 
