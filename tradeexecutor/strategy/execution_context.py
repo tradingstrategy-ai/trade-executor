@@ -95,6 +95,9 @@ class ExecutionMode(enum.Enum):
     def is_live_trading(self) -> bool:
         """Are we trading real time?
 
+        - For live trading, we are operating on real-time price feeds based on `required_history_period` distance,
+          instead of explicit start and end dates of backtesting
+
         - Preflight check is considered live trading, because strategy modules
           are not in backtesting when doing preflight checks
         """
@@ -235,13 +238,7 @@ class ExecutionContext:
     def live_trading(self) -> bool:
         """Are we doing live trading.
 
-        This is a bit trickier, as live trading itself can have different phases
-        with different execution modes.
-
-        :return:
-            True if we doing live trading, one off operation, unit test live trade checks or paper trading.
-
-            False if we are operating on backtesting data, or unit testing.
+        See :py:method:`ExecutionMode.is_live_trading`.
         """
         return self.mode.is_live_trading()
 
