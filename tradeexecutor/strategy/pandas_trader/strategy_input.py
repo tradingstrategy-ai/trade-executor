@@ -10,6 +10,7 @@ from typing import Callable
 
 import cachetools
 import pandas as pd
+from web3 import Web3
 
 from tradeexecutor.state.identifier import TradingPairIdentifier
 from tradeexecutor.state.state import State
@@ -830,6 +831,12 @@ class StrategyInput:
     #: - Is mutated in-place, but don't rely on this to work for live strategies
     #:
     other_data: dict
+
+    #: Web3 connection to the blockchain.
+    #:
+    #: For live trading only, to be used in real-time decision making based on onchain-data.
+    #:
+    web3: Web3 | None = None
 
     def get_position_manager(self) -> PositionManager:
         """Create a position manager instance to open/close trading positions in this decision cycle."""

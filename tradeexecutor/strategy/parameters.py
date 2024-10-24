@@ -65,6 +65,17 @@ class CoreStrategyParameters(TypedDict):
     #:
     maximum_price_impact: Percent | None
 
+    #: Live trading setting for the slippage tolerance.
+    #:
+    #: A tripwire check.
+    #:
+    #: This is the slippage tolerance we use in Uniswap swaps.
+    #: If the live trade execution exceeds this check,
+    #: the transaction will fail and the trade execution will
+    #: crash and wait for the manual inspection what happened.
+    #:
+    slippage_tolerance: Percent | None
+
 
 class StrategyParameters(MutableAttributeDict):
     """Strategy parameters.

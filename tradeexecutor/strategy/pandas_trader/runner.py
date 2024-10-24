@@ -8,6 +8,7 @@ import logging
 import pandas as pd
 
 from tradeexecutor.cli.discord import post_logging_discord_image
+from tradeexecutor.ethereum.execution import EthereumExecution
 from tradeexecutor.statistics.in_memory_statistics import refresh_live_strategy_images
 from tradeexecutor.strategy.pandas_trader.indicator import IndicatorSet, calculate_and_load_indicators, MemoryIndicatorStorage, call_create_indicators
 from tradeexecutor.strategy.pandas_trader.strategy_input import StrategyInput, StrategyInputIndicators
@@ -83,6 +84,13 @@ class PandasTraderRunner(StrategyRunner):
             assert indicators is not None, "indicators not created when running trading_strategy_engine_version=0.5"
             indicators.prepare_decision_cycle(debug_details["cycle"], pd_timestamp)
 
+            if isinstance(self.execution_model, EthereumExecution):
+                # Need by fetch_quote_token_tvls()
+                web3 = self.execution_model.web3
+            else:
+                # Backtesting, etc.
+                web3 = None
+
             input = StrategyInput(
                 cycle=debug_details["cycle"],
                 timestamp=pd_timestamp,
@@ -93,6 +101,7 @@ class PandasTraderRunner(StrategyRunner):
                 indicators=indicators,
                 parameters=self.parameters,
                 execution_context=self.execution_context,
+                web3=web3,
             )
 
             logger.info(
