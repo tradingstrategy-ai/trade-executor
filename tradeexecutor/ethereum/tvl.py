@@ -10,7 +10,8 @@ from tradingstrategy.stablecoin import is_stablecoin_like
 
 
 class CurrencyConversionRateMissing(Exception):
-    pass
+    """We cannot get TVL because the quote token needs to have an exchange rate loaded."""
+
 
 
 def _fetch_uni_v2_v3_quote_token_tvl(
