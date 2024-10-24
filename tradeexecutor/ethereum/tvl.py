@@ -112,6 +112,10 @@ def fetch_quote_token_tvls(
 
     - Only works in live trading, not in backtesting, as we are using real time data
 
+    - In theory, this logic allows you to trade arbitrary small pools and the lower limit
+      becomes transaction gas efficiency, as you start to lose more money tx fees
+      than you make profit from small trades
+
     - Quote token locked is a proxy for the real market depth,
       although the shape of the liquidity will vary
 
@@ -193,6 +197,9 @@ def fetch_quote_token_tvls(
 
     :param pairs:
         List of trading pairs for which we need TVL.
+
+    :return:
+        Mapping of (trading pair -> quote token TVL in USD)
     """
 
     # First will WETH, etc. conversion rates
