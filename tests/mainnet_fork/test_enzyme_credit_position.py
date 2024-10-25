@@ -299,7 +299,9 @@ def test_enzyme_credit_position_redemption(
     - Deposit 200k USDC
     - Run the strategy for 2 cycles
     - Redeem 50% of the credit position
+    - Run the strategy again for 1 cycle
     - Check accounts
+    - Make sure nothing crashes
     """
 
     mocker.patch.dict("os.environ", environment, clear=True)
@@ -366,3 +368,63 @@ def test_enzyme_credit_position_redemption(
 
         reserve_position = state.portfolio.get_default_reserve_position()
         assert reserve_position.get_value() == pytest.approx(1980)
+
+
+def test_enzyme_credit_position_redemption_check_triggers(
+    web3: Web3,
+    vault: Vault,
+    environment: dict,
+    state_file: Path,
+    hot_wallet: HotWallet,
+    usdc: TokenDetails,
+    ausdc: TokenDetails,
+    mocker,
+):
+    """
+    Test redemption in-kind for credit positions:
+
+    - Depioy vault
+    - Deposit 200k USDC
+    - Run the strategy for 2 cycles
+    - Redeem 50% of the credit position
+    - Run check position triggers and make sure it doesn't crash
+    """
+
+    mocker.patch.dict("os.environ", environment, clear=True)
+
+    app(["start"], standalone_mode=False)
+
+    with pytest.raises(SystemExit) as e:
+        app(["check-accounts"], standalone_mode=False)
+
+    # Check the resulting state
+    with state_file.open("rt") as inp:
+        state: State = State.from_json(inp.read())
+        assert len(list(state.portfolio.get_open_positions())) == 1
+        assert (
+            len(list(state.portfolio.get_all_trades())) == 2
+        )  # supply aPolUSDC, then increase
+
+        credit_position = state.portfolio.get_position_by_id(1)
+        assert credit_position.get_value() == pytest.approx(196040)
+
+    # check vault balance
+    assert usdc.contract.functions.balanceOf(vault.address).call() / 1e6 == pytest.approx(3960)
+    assert ausdc.contract.functions.balanceOf(vault.address).call() / 1e6 == pytest.approx(196040)
+
+    # mine a few blocks
+    for i in range(5):
+        mine(web3)
+
+    # redeem in kind 50%
+    tx_hash = vault.comptroller.functions.redeemSharesInKind(
+        hot_wallet.address, 100_000 * 10**18, [], []
+    ).transact({"from": hot_wallet.address})
+    assert_transaction_success_with_explanation(web3, tx_hash)
+
+    # mine a few blocks
+    for i in range(5):
+        mine(web3)
+
+    # with pytest.raises(SystemExit) as e:
+    app(["check-position-triggers"], standalone_mode=False)
