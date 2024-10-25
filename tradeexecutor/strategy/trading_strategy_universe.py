@@ -300,6 +300,18 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
         """
         return self.data_universe.lending_reserves is not None
 
+    def has_liquidity_data(self) -> bool:
+        """Is any liquidty data available.
+        """
+        return self.data_universe.liquidity is not None
+
+    def get_pair_by_id(self, internal_id: int) -> Optional[TradingPairIdentifier]:
+        """Get a trading pair data by its internal id (pair_id)."""
+        pair = self.data_universe.pairs.get_pair_by_id(internal_id)
+        if not pair:
+            return None
+        return translate_trading_pair(pair, cache=self.pair_cache)
+
     def get_trading_pair(self, pair: int | DEXPair) -> TradingPairIdentifier:
         """Get a pair by id or by its data description.
 
