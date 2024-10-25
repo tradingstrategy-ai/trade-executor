@@ -272,6 +272,7 @@ def wait_for_universe_data_availability_jsonl(
         required_history_period = current_universe.required_history_period
 
     max_diff = datetime.timedelta(0)
+    latest_timestamp = diff = None
 
     while datetime.datetime.utcnow() < deadline:
 

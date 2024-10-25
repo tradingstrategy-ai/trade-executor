@@ -4,13 +4,16 @@ Value positions based on their "dump" price on Uniswap,
 assuming we get the worst possible single trade execution.
 """
 import datetime
-from typing import Tuple
 
+from strategies.test_only.frozen_asset import logging
 from tradeexecutor.ethereum.eth_pricing_model import EthereumPricingModel
 from tradeexecutor.state.position import TradingPosition
-from tradeexecutor.state.types import USDollarAmount
 from tradeexecutor.state.valuation import ValuationUpdate
 from tradeexecutor.strategy.valuation import ValuationModel
+
+
+logger = logging.getLogger(__name__)
+
 
 
 class EthereumPoolRevaluator(ValuationModel):
@@ -55,7 +58,15 @@ class EthereumPoolRevaluator(ValuationModel):
 
             quantity = position.get_quantity()
             # Cannot do pricing for zero quantity
-            assert quantity > 0, f"Trying to value position with zero quantity: {position}, {ts}, {self.__class__.__name__}"
+
+            if quantity == 0:
+                # We can actually get zero quantity because if we buy some scam token
+                # that sets out wallet balance to zero.
+                # In these case, do not crash here.
+                # However this is an exceptional case, so let's be verbose about it.
+                logger.warning(f"Trying to value position with zero quantity: {position}, {ts}, {self.__class__.__name__}")
+
+            assert quantity >= 0, f"Trying to value position with non-positive quantity: {position}, {ts}, {self.__class__.__name__}"
 
             old_price = position.last_token_price
             price_structure = self.pricing_model.get_sell_price(ts, pair, quantity)
