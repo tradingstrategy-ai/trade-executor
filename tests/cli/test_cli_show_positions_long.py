@@ -22,5 +22,7 @@ def test_cli_show_positions_long(mocker):
     with redirect_stdout(f):
         app(["show-positions"], standalone_mode=False)
 
-    print(f.getvalue())
+    assert "Open positions" in f.getvalue()
+    assert "No frozen positions" in f.getvalue()
+
 
