@@ -17,9 +17,13 @@ from . import shared_options
 
 
 class PositionType(enum.Enum):
+    """What output we want from show-positions command."""
 
     #: Show only open positions
     open = "open"
+
+    #: Show only open positions
+    open_and_frozen = "open_and_frozen"
 
     #: Show all positions
     all = "all"
@@ -30,7 +34,7 @@ def show_positions(
     id: str = shared_options.id,
     state_file: Optional[Path] = shared_options.state_file,
     strategy_file: Optional[Path] = shared_options.optional_strategy_file,
-    position_type: PositionType = Option(PositionType.open.value, envvar="POSITION_TYPE", help="Which position types to display")
+    position_type: PositionType = Option(PositionType.open_and_frozen.value, envvar="POSITION_TYPE", help="Which position types to display")
 ):
     """Display trading positions from a state file.
 
@@ -54,21 +58,28 @@ def show_positions(
 
     print(f"Displaying positions and trades for state {state.name}")
     print(f"State last updated: {state.last_updated_at}")
+    print(f"Position flags: F=frozen, R=contains repairs, UE=unexpected trades, SL=stop loss triggered")
 
-    if position_type == PositionType.open:
-        print("Open positions")
-        df = display_positions(state.portfolio.open_positions.values())
-        # https://pypi.org/project/tabulate/
-        # https://stackoverflow.com/a/31885295/315168
+    print("Open positions")
+    df = display_positions(state.portfolio.open_positions.values())
+    # https://pypi.org/project/tabulate/
+    # https://stackoverflow.com/a/31885295/315168
+    if len(df) > 0:
         print(tabulate(df, headers='keys', tablefmt='rounded_outline'))
+    else:
+        print("No open positions")
+    print()
+
+    if position_type in (PositionType.all, PositionType.open_and_frozen):
+        print("Frozen positions")
+        df = display_positions(state.portfolio.frozen_positions.values())
+        if len(df) > 0:
+            print(tabulate(df, headers='keys', tablefmt='rounded_outline'))
+        else:
+            print("No frozen positions")
         print()
 
     if position_type == PositionType.all:
-        print("Frozen positions")
-        df = display_positions(state.portfolio.frozen_positions.values())
-        print(tabulate(df, headers='keys', tablefmt='rounded_outline'))
-
-        print()
         print("Closed positions")
         df = display_positions(state.portfolio.closed_positions.values())
         print(tabulate(df, headers='keys', tablefmt='rounded_outline'))
