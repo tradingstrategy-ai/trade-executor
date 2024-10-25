@@ -48,7 +48,7 @@ def display_positions(positions: Iterable[TradingPosition]) -> pd.DataFrame:
             flags.append("SL")
 
         items.append({
-            "Flags": ", ".join(flags),
+            "F": ", ".join(flags),
             "Ticker": p.pair.get_ticker(),
             # f"Size": p.get_quantity(),
             # "Profit": p.get_realised_profit_percent() * 100 if p.is_closed() else "",
@@ -74,7 +74,7 @@ def display_positions(positions: Iterable[TradingPosition]) -> pd.DataFrame:
                 f"Trade size": f"{t.get_position_quantity():,.2f}",
                 "Opened": _ftime(t.opened_at),
                 "Executed": _ftime(t.executed_at),
-                "Trade notes": "\n".join(text)[0:20],
+                "Notes": "\n".join(text)[0:20],
             })
 
     df = pd.DataFrame(items, index=idx)
