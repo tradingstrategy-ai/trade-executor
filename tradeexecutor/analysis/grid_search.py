@@ -81,12 +81,12 @@ def analyse_combination(
         # "Return": r.summary.return_percent,
         # "Return2": r.summary.annualised_return_percent,
         #"Annualised profit": clean(r.metrics.loc["Expected Yearly"][0]),
-        "CAGR": clean(r.metrics.loc["Annualised return (raw)"][0]),
-        "Max DD": clean(r.metrics.loc["Max Drawdown"][0]),
-        "Sharpe": clean(r.metrics.loc["Sharpe"][0]),
-        "Sortino": clean(r.metrics.loc["Sortino"][0]),
+        "CAGR": clean(r.metrics.loc["Annualised return (raw)"].iloc[0]),
+        "Max DD": clean(r.metrics.loc["Max Drawdown"].iloc[0]),
+        "Sharpe": clean(r.metrics.loc["Sharpe"].iloc[0]),
+        "Sortino": clean(r.metrics.loc["Sortino"].iloc[0]),
         # "Combination": r.combination.get_label(),
-        "Time in market": clean(r.metrics.loc["Time in Market"][0]),
+        "Time in market": clean(r.metrics.loc["Time in Market"].iloc[0]),
         "Win rate": clean(r.get_win_rate()),
         "Avg pos": r.summary.average_trade,  # Average position
         "Med pos": r.summary.median_trade,  # Median position
@@ -226,7 +226,11 @@ def render_grid_search_result_table(results: pd.DataFrame | list[GridSearchResul
     def enum_to_value(x):
         return x.value if isinstance(x, Enum) else x
 
-    df = df.applymap(enum_to_value)
+    if hasattr(df, "map"):
+        # Pandas 2+
+        df = df.map(enum_to_value)
+    else:
+        df = df.applymap(enum_to_value)
 
     formatted = df.style.background_gradient(
         axis = 0,
