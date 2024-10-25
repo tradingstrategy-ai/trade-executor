@@ -48,7 +48,7 @@ def display_positions(positions: Iterable[TradingPosition]) -> pd.DataFrame:
             flags.append("SL")
 
         items.append({
-            "F": ", ".join(flags),
+            "Flags": ", ".join(flags),
             "Ticker": p.pair.get_ticker(),
             # f"Size": p.get_quantity(),
             # "Profit": p.get_realised_profit_percent() * 100 if p.is_closed() else "",
@@ -61,6 +61,8 @@ def display_positions(positions: Iterable[TradingPosition]) -> pd.DataFrame:
             idx.append(p.position_id)
 
             flags = []
+
+            flags.append("T")
 
             if t.is_buy():
                 flags.append("B")
@@ -86,7 +88,8 @@ def display_positions(positions: Iterable[TradingPosition]) -> pd.DataFrame:
                 text.append(revert_reason)
 
             items.append({
-                "Flags": "-",
+                "Flags": ", ".join(flags),
+                "Ticker": "‎ ‎ ‎ ‎ ‎ ┗",
                 "Trade id": str(t.trade_id),  # Mixed NA/number column fix
                 "Price": f"{t.executed_price:.6f}" if t.executed_price else "-",
                 f"Trade size": f"{t.get_position_quantity():,.2f}",
