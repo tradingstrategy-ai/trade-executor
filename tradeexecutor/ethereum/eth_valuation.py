@@ -4,8 +4,8 @@ Value positions based on their "dump" price on Uniswap,
 assuming we get the worst possible single trade execution.
 """
 import datetime
+import logging
 
-from strategies.test_only.frozen_asset import logging
 from tradeexecutor.ethereum.eth_pricing_model import EthereumPricingModel
 from tradeexecutor.state.position import TradingPosition
 from tradeexecutor.state.valuation import ValuationUpdate
