@@ -1760,6 +1760,7 @@ def calculate_and_load_indicators_inline(
     indicator_set: IndicatorSet | None = None,
     create_indicators: CreateIndicatorsProtocol = None,
     storage: IndicatorStorage | None = None,
+    max_workers: int | Callable = get_safe_max_workers_count,
 ) -> "tradeexecutor.strategy.pandas_trader.strategy_input.StrategyInputIndicators":
     """Calculate indicators in the notebook itself, before starting the backtest.
 
@@ -1830,10 +1831,9 @@ def calculate_and_load_indicators_inline(
         indicator_set = prepare_indicators(create_indicators, parameters, strategy_universe, execution_context, timestamp=None)
 
     if ipython:
-        # Unable to fork
+        # Unable to fork when running on Ipython
+        logger.warning("IPython detected - forces calculate_and_load_indicators(max_workers=1)")
         max_workers = 1
-    else:
-        max_workers = get_safe_max_workers_count()
 
     indicator_result_map = calculate_and_load_indicators(
         strategy_universe=strategy_universe,
