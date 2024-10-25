@@ -50,15 +50,34 @@ def display_positions(positions: Iterable[TradingPosition]) -> pd.DataFrame:
         items.append({
             "Flags": ", ".join(flags),
             "Ticker": p.pair.get_ticker(),
-            f"Size {p.pair.base.token_symbol}": p.get_quantity(),
-            "Profit": p.get_realised_profit_percent() * 100 if p.is_closed() else "",
-            "Opened at": _ftime(p.opened_at),
-            "Closed at": _ftime(p.closed_at),
-            "Notes": p.notes,
+            # f"Size": p.get_quantity(),
+            # "Profit": p.get_realised_profit_percent() * 100 if p.is_closed() else "",
+            "Opened": _ftime(p.opened_at),
+            "Closed": _ftime(p.closed_at),
+            "Notes": (p.notes or "")[0:20],
         })
 
         for t in p.trades.values():
             idx.append(p.position_id)
+
+            flags = []
+
+            flags.append("T")
+
+            if t.is_buy():
+                flags.append("B")
+
+            if t.is_sell():
+                flags.append("S")
+
+            if t.is_stop_loss():
+                flags.append("SL")
+
+            if t.is_repair_trade():
+                flags.append("R2")
+
+            if t.is_repaired():
+                flags.append("R1")
 
             text = []
             if t.notes:
@@ -69,12 +88,14 @@ def display_positions(positions: Iterable[TradingPosition]) -> pd.DataFrame:
                 text.append(revert_reason)
 
             items.append({
+                "Flags": ", ".join(flags),
+                "Ticker": "‎ ‎ ‎ ‎ ‎ ┗",
                 "Trade id": str(t.trade_id),  # Mixed NA/number column fix
-                "Price": t.executed_price,
-                f"Trade size": t.get_position_quantity(),
-                "Trade opened": _ftime(t.opened_at),
-                "Trade executed": _ftime(t.executed_at),
-                "Trade notes": "\n".join(text),
+                "Price": f"{t.executed_price:.6f}" if t.executed_price else "-",
+                f"Trade size": f"{t.get_position_quantity():,.2f}",
+                "Opened": _ftime(t.opened_at),
+                "Executed": _ftime(t.executed_at),
+                "Notes": "\n".join(text)[0:20],
             })
 
     df = pd.DataFrame(items, index=idx)
