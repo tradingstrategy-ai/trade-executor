@@ -58,7 +58,8 @@ def show_positions(
 
     print(f"Displaying positions and trades for state {state.name}")
     print(f"State last updated: {state.last_updated_at}")
-    print(f"Position flags: F=frozen, R=contains repairs, UE=unexpected trades, SL=stop loss triggered")
+    print(f"Position flags: F = frozen, R = contains repairs, UE = unexpected trades, SL = stop loss triggered, - = trade")
+    print(f"Trade flags: B = buy, S = sell, SL = stop loss, R1 = repaired, R2 = repairing")
 
     print("Open positions")
     df = display_positions(state.portfolio.open_positions.values())
