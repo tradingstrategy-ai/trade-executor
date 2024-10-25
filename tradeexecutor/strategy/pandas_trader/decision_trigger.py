@@ -350,13 +350,13 @@ def wait_for_universe_data_availability_jsonl(
             )
 
         # Avoid excessive logging output if > 10 pairs
-        last_timestamps_log = last_timestamps_log[0:400]
+        last_timestamps_log_str = str(last_timestamps_log)[0:400]
 
         logger.info("Timestamp wanted %s, Completed pairs: %d, Incompleted pairs: %d, last candles %s, diff is %s, sleeping %s",
                     wanted_timestamp,
                     len(completed_pairs),
                     len(incompleted_pairs),
-                    last_timestamps_log,
+                    last_timestamps_log_str,
                     diff,
                     poll_delay)
 
