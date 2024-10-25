@@ -172,7 +172,11 @@ def start(
     # Don't touch any log levels, but
     # make sure we have logger.trading() available when
     # log_level is "disabled"
-    logger = setup_logging(log_level, in_memory_buffer=True)
+    logger = setup_logging(
+        log_level,
+        in_memory_buffer=True,
+        enable_trade_high=True,
+    )
 
     if discord_webhook_url and asset_management_mode.is_live_trading():
         # TODO: Move backtesting to its own console command

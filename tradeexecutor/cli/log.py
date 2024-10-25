@@ -27,8 +27,10 @@ _ring_buffer_handler: Optional[RingBufferHandler] = None
 
 
 def setup_logging(
-        log_level: None | str | int=logging.INFO,
-        in_memory_buffer=False) -> Logger:
+    log_level: None | str | int=logging.INFO,
+    in_memory_buffer=False,
+    enable_trade_high=False,
+) -> Logger:
     """Setup root logger and quiet some levels.
 
     :param log_level:
@@ -37,7 +39,7 @@ def setup_logging(
     :param in_memory_buffer:
         Setup in-memory log buffer used to fetch log messages to the frontend.
     """
-    setup_custom_log_levels()
+    setup_custom_log_levels(enable_trade_high=enable_trade_high)
 
     if log_level == "disabled":
         # Special unit test marker, don't mess with loggers
@@ -273,7 +275,9 @@ def setup_strategy_logging(default_log_level: str | int=logging.WARNING) -> logg
     return logger
 
 
-def setup_custom_log_levels():
+def setup_custom_log_levels(
+    enable_trade_high=False,
+):
     """Create a new logging level TRADE that is between INFO and WARNING.
 
     This level is used to log trade execution to Discord etc.
@@ -285,6 +289,9 @@ def setup_custom_log_levels():
 
     - `logging.TRADE_HIGH`: Log level made trade decisions - this only logs
        successful trade decisions, not any errors. It is designed for the Teleegram bot.
+
+    :param enable_trade_high:
+        Enable special TRADE_HIGH logging level in live trade execution.
     """
 
     if hasattr(logging, "TRADE"):
@@ -296,7 +303,12 @@ def setup_custom_log_levels():
     # Log level for verbose trade output for Discord diagnostics
     logging.TRADE = logging.INFO + 1  # Info is 20, TRADE is 21, Warning is 30
 
-    logging.TRADE_HIGH = logging.FATAL + 1
+    if enable_trade_high:
+        # A level that shows trade output but no errors in live exec
+        logging.TRADE_HIGH = logging.FATAL + 1
+    else:
+        # Otherwise the same as trade
+        logging.TRADE_HIGH = logging.TRADE + 1
 
     # Log level
     logging.addLevelName(logging.TRADE, "TRADE")
