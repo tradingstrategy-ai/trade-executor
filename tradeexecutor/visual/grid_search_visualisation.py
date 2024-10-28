@@ -288,7 +288,7 @@ def visualise_grid_single_rolling_metric(
     assert isinstance(df, pd.DataFrame)
 
     metric_name = df.attrs["metric_name"]
-    param_name = df.attrs["param_name"].capitalize()
+    param_name = df.attrs["param_name"].replace("_", " ").capitalize()
     lookback = df.attrs["lookback"]
 
     # Rename columns for human readable labels
