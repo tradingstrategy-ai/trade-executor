@@ -269,6 +269,7 @@ def calculate_rolling_metrics(
 
     df.attrs["metric_name"] = visualised_metric.name
     df.attrs["param_name"] = visualised_parameter
+    df.attrs["lookback"] = lookback
 
     return df
 
@@ -284,11 +285,14 @@ def visualise_grid_sharpe_for_parameter(
         Created by :py:func:`calculate_rolling_metrics`
     """
 
+    assert isinstance(df, pd.DataFrame)
+
     metric_name = df.attrs["metric_name"]
     param_name = df.attrs["param_name"].capitalize()
+    lookback = df.attrs["lookback"]
 
     # Rename columns for human readable labels
-    for col in df.colums:
+    for col in list(df.columns):
         df.rename(columns={col: f"{param_name} = {col}"}, inplace=True)
 
     # Create figure
@@ -307,7 +311,7 @@ def visualise_grid_sharpe_for_parameter(
 
     # Update layout
     fig.update_layout(
-        title=f"Rolling {metric_name} for {param_name} parameter",
+        title=f"Rolling {metric_name} for {param_name} parameter, with lookback of {lookback}",
         yaxis_title=metric_name,
         xaxis_title='Date',
         hovermode='x unified',
