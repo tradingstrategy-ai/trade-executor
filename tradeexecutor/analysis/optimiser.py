@@ -55,13 +55,13 @@ def profile_optimiser(result: OptimiserResult) -> pd.DataFrame:
     - Indexed by result id.
     - Durations
     """
-    sorted_result =  sorted(result.results, key=lambda r: r.result.start_at)
+    sorted_result =  sorted(result.results, key=lambda r: r.result.run_start_at)
     data = []
     r: OptimiserSearchResult
     for r in sorted_result:
         tc = r.result.get_trade_count()
         data.append({
-            "start_at": r.result.start_at,
+            "start_at": r.result.run_start_at,
             "backtest": r.result.get_backtest_duration(),
             "analysis": r.result.get_analysis_duration(),
             "delivery": r.result.get_delivery_duration(),

@@ -407,11 +407,25 @@ class GridSearchResult:
     #:
     exception: Exception | None = None
 
-    #: When this test was started
-    start_at: datetime.datetime | None = None
+    #: What was the backtesting period
+    #:
+    backtest_start: datetime.datetime | None = None
 
-    #: When this test ended
-    backtest_end_at: datetime.datetime | None = None
+    #: What was the backtesting period
+    #:
+    backtest_end: datetime.datetime | None = None
+
+    #: When this test was started.
+    #:
+    #: Wall clock time.
+    #:
+    run_start_at: datetime.datetime | None = None
+
+    #: When this test run ended.
+    #:
+    #: Wall clock time.
+    #:
+    run_end_at: datetime.datetime | None = None
 
     #: When we completed the analysis
     analysis_end_at: datetime.datetime | None = None
@@ -582,10 +596,10 @@ class GridSearchResult:
         return self.summary.total_trades
 
     def get_backtest_duration(self) -> datetime.timedelta:
-        return self.backtest_end_at - self.start_at
+        return self.run_end_at - self.run_start_at
 
     def get_analysis_duration(self) -> datetime.timedelta:
-        return self.analysis_end_at - self.backtest_end_at
+        return self.analysis_end_at - self.run_end_at
 
     def get_delivery_duration(self) -> datetime.timedelta:
         return self.delivered_to_main_thread_at - self.analysis_end_at
@@ -882,6 +896,7 @@ def run_grid_combination_multiprocess(
     data_retention: GridSearchDataRetention,
     indicator_storage_path = DEFAULT_INDICATOR_STORAGE_PATH,
     ignore_wallet_errors: bool = False,
+    verbose: bool = True,
 ):
     """Mutltiproecss runner.
 
@@ -889,6 +904,7 @@ def run_grid_combination_multiprocess(
 
     :param indicator_storage_path:
         Override for unit testing
+
     """
 
     from tradeexecutor.monkeypatch import cloudpickle_patch  # Enable pickle patch that allows multiprocessing in notebooks
@@ -1035,6 +1051,7 @@ def perform_grid_search(
     execution_context: ExecutionContext = grid_search_execution_context,
     indicator_storage: DiskIndicatorStorage | None = None,
     ignore_wallet_errors=False,
+    verbose=True,
 ) -> List[GridSearchResult]:
     """Search different strategy parameters over a grid.
 
@@ -1066,6 +1083,9 @@ def perform_grid_search(
 
     :param trading_strategy_engine_version:
         Which version of engine we are using.
+
+    :param verbose:
+        Disable progress bas
 
     :return:
         Grid search results for different combinations.
@@ -1154,11 +1174,17 @@ def perform_grid_search(
 
             # Too wide for Datalore notebooks
             # label = ", ".join(p.name for p in combinations[0].searchable_parameters)
-            with tqdm(total=len(task_args), desc=f"Searching") as progress_bar:
+
+            if verbose:
+                progress_bar = tqdm(total=len(task_args))
                 progress_bar.set_postfix({"processes": max_workers})
-                # Extract results from the parallel task queue
-                for task in tm.as_completed():
-                    results.append(task.result)
+            else:
+                progress_bar = None
+
+            # Extract results from the parallel task queue
+            for task in tm.as_completed():
+                results.append(task.result)
+                if verbose:
                     progress_bar.update()
         else:
             #
@@ -1382,6 +1408,8 @@ def run_grid_search_backtest(
 
     analysis_end = datetime.datetime.utcnow()
 
+    period = state.get_trading_time_range()
+
     res = GridSearchResult(
         combination=combination,
         state=state,
@@ -1391,9 +1419,11 @@ def run_grid_search_backtest(
         equity_curve=equity,
         returns=returns,
         initial_cash=state.portfolio.get_initial_cash(),
-        start_at=backtest_start,
-        backtest_end_at=backtest_end,
+        run_start_at=backtest_start,
+        run_end_at=backtest_end,
         analysis_end_at=analysis_end,
+        backtest_start=period[0],
+        backtest_end=period[1],
     )
 
     # Double check we have not broken QuantStats again
