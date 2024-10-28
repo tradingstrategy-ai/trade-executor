@@ -2301,13 +2301,13 @@ test = ["flaky", "ipyparallel", "pre-commit", "pytest (>=7.0)", "pytest-asyncio 
 
 [[package]]
 name = "ipython"
-version = "8.28.0"
+version = "8.29.0"
 description = "IPython: Productive Interactive Computing"
 optional = false
 python-versions = ">=3.10"
 files = [
-    {file = "ipython-8.28.0-py3-none-any.whl", hash = "sha256:530ef1e7bb693724d3cdc37287c80b07ad9b25986c007a53aa1857272dac3f35"},
-    {file = "ipython-8.28.0.tar.gz", hash = "sha256:0d0d15ca1e01faeb868ef56bc7ee5a0de5bd66885735682e8a322ae289a13d1a"},
+    {file = "ipython-8.29.0-py3-none-any.whl", hash = "sha256:0188a1bd83267192123ccea7f4a8ed0a78910535dbaa3f37671dca76ebd429c8"},
+    {file = "ipython-8.29.0.tar.gz", hash = "sha256:40b60e15b22591450eef73e40a027cf77bd652e757523eebc5bd7c7c498290eb"},
 ]
 
 [package.dependencies]
@@ -5008,13 +5008,13 @@ dev = ["pre-commit", "pytest-asyncio", "tox"]
 
 [[package]]
 name = "pytest-reverse"
-version = "1.7.0"
+version = "1.8.0"
 description = "Pytest plugin to reverse test order."
 optional = false
-python-versions = ">=3.8"
+python-versions = ">=3.9"
 files = [
-    {file = "pytest_reverse-1.7.0-py3-none-any.whl", hash = "sha256:37e83daac57eea3fb1cb718aa9ccdf9ca2ea8ac3645cb5bccf1c7ae25a8ad1d2"},
-    {file = "pytest_reverse-1.7.0.tar.gz", hash = "sha256:f943e5b9d253267569fd7ad237afc56b3e98ce9f6d2f6f3bb487b8c759e214fe"},
+    {file = "pytest_reverse-1.8.0-py3-none-any.whl", hash = "sha256:e31a2d0b51f2f8b6162aed268f853851f55c62ac445041a032740e985b0bc8c8"},
+    {file = "pytest_reverse-1.8.0.tar.gz", hash = "sha256:eb72ffd57cc91061e837b1d2c4522bfda58eaa83fc97147fd90f7929160e97ab"},
 ]
 
 [package.dependencies]
@@ -5831,17 +5831,17 @@ files = [
 
 [[package]]
 name = "sigfig"
-version = "1.3.3"
+version = "1.3.17"
 description = "Python library for rounding numbers (with expected results)"
 optional = false
-python-versions = "*"
+python-versions = "<4.0,>=3.6"
 files = [
-    {file = "sigfig-1.3.3-py3-none-any.whl", hash = "sha256:7df6dfc45d09ee7e43a9418e944fcf06f8654477af263e3f0c2bee4234d6a84e"},
-    {file = "sigfig-1.3.3.tar.gz", hash = "sha256:d6a720029c2fdb0f1413b14ba72f92db9ab95fe816d198fe7f6311d2bbdc5b61"},
+    {file = "sigfig-1.3.17-py3-none-any.whl", hash = "sha256:2b532bf7b12ba81603b273a406cfda35eda9b2329dc08dcd45ce45985ba8c631"},
+    {file = "sigfig-1.3.17.tar.gz", hash = "sha256:490fccae9ffcaa15377b215b1d8ddba0f33453053dd8d3a299bf0c5c954429a0"},
 ]
 
 [package.dependencies]
-SortedContainers = "*"
+sortedcontainers = ">=2.4.0,<3.0.0"
 
 [[package]]
 name = "six"
@@ -5998,7 +5998,7 @@ httpx = "*"
 type = "git"
 url = "https://github.com/tradingstrategy-ai/telegram_bot_logger.git"
 reference = "patch-bleeding-edges"
-resolved_reference = "92650efb2607f16a6f614cc83cebb630a5fa7d99"
+resolved_reference = "f2319de7f5a18dd69d9e92b09dc95f40ec241a83"
 
 [[package]]
 name = "tenacity"
@@ -6049,13 +6049,13 @@ files = [
 
 [[package]]
 name = "tinycss2"
-version = "1.3.0"
+version = "1.4.0"
 description = "A tiny CSS parser"
 optional = false
 python-versions = ">=3.8"
 files = [
-    {file = "tinycss2-1.3.0-py3-none-any.whl", hash = "sha256:54a8dbdffb334d536851be0226030e9505965bb2f30f21a4a82c55fb2a80fae7"},
-    {file = "tinycss2-1.3.0.tar.gz", hash = "sha256:152f9acabd296a8375fbca5b84c961ff95971fcfc32e79550c8df8e29118c54d"},
+    {file = "tinycss2-1.4.0-py3-none-any.whl", hash = "sha256:3a49cf47b7675da0b15d0c6e1df8df4ebd96e9394bb905a5775adb0d884c5289"},
+    {file = "tinycss2-1.4.0.tar.gz", hash = "sha256:10c0972f6fc0fbee87c3edb76549357415e94548c1ae10ebccdea16fb404a9b7"},
 ]
 
 [package.dependencies]
@@ -6132,7 +6132,7 @@ tqdm = ">4.64"
 
 [[package]]
 name = "trading-strategy"
-version = "0.24.3"
+version = "0.24.4"
 description = "Algorithmic trading data for cryptocurrencies and DEXes like Uniswap, Aave and PancakeSwap"
 optional = false
 python-versions = ">=3.10,<3.13"
@@ -6601,13 +6601,13 @@ files = [
 
 [[package]]
 name = "webob"
-version = "1.8.8"
+version = "1.8.9"
 description = "WSGI request and response object"
 optional = true
 python-versions = "!=3.0.*,!=3.1.*,!=3.2.*,>=2.7"
 files = [
-    {file = "WebOb-1.8.8-py2.py3-none-any.whl", hash = "sha256:b60ba63f05c0cf61e086a10c3781a41fcfe30027753a8ae6d819c77592ce83ea"},
-    {file = "webob-1.8.8.tar.gz", hash = "sha256:2abc1555e118fc251e705fc6dc66c7f5353bb9fbfab6d20e22f1c02b4b71bcee"},
+    {file = "WebOb-1.8.9-py2.py3-none-any.whl", hash = "sha256:45e34c58ed0c7e2ecd238ffd34432487ff13d9ad459ddfd77895e67abba7c1f9"},
+    {file = "webob-1.8.9.tar.gz", hash = "sha256:ad6078e2edb6766d1334ec3dee072ac6a7f95b1e32ce10def8ff7f0f02d56589"},
 ]
 
 [package.extras]
@@ -6747,13 +6747,13 @@ tests = ["PasteDeploy", "WSGIProxy2", "coverage", "pyquery", "pytest", "pytest-c
 
 [[package]]
 name = "werkzeug"
-version = "3.0.4"
+version = "3.0.6"
 description = "The comprehensive WSGI web application library."
 optional = true
 python-versions = ">=3.8"
 files = [
-    {file = "werkzeug-3.0.4-py3-none-any.whl", hash = "sha256:02c9eb92b7d6c06f31a782811505d2157837cea66aaede3e217c7c27c039476c"},
-    {file = "werkzeug-3.0.4.tar.gz", hash = "sha256:34f2371506b250df4d4f84bfe7b0921e4762525762bbd936614909fe25cd7306"},
+    {file = "werkzeug-3.0.6-py3-none-any.whl", hash = "sha256:1bc0c2310d2fbb07b1dd1105eba2f7af72f322e1e455f2f93c993bee8c8a5f17"},
+    {file = "werkzeug-3.0.6.tar.gz", hash = "sha256:a8dd59d4de28ca70471a34cba79bed5f7ef2e036a76b3ab0835474246eb41f8d"},
 ]
 
 [package.dependencies]
@@ -6871,13 +6871,13 @@ propcache = ">=0.2.0"
 
 [[package]]
 name = "yfinance"
-version = "0.2.46"
+version = "0.2.48"
 description = "Download market data from Yahoo! Finance API"
 optional = false
 python-versions = "*"
 files = [
-    {file = "yfinance-0.2.46-py2.py3-none-any.whl", hash = "sha256:371860d532cae76605195678a540e29382bfd0607f8aa61695f753e714916ffc"},
-    {file = "yfinance-0.2.46.tar.gz", hash = "sha256:a6e2a128915532a54b8f6614cfdb7a8c242d2386e05f95c89b15865b5d9c0352"},
+    {file = "yfinance-0.2.48-py2.py3-none-any.whl", hash = "sha256:eda797145faa4536595eb629f869d3616e58ed7e71de36856b19f1abaef71a5b"},
+    {file = "yfinance-0.2.48.tar.gz", hash = "sha256:1434cd8bf22f345fa27ef1ed82bfdd291c1bb5b6fe3067118a94e256aa90c4eb"},
 ]
 
 [package.dependencies]
@@ -7091,4 +7091,4 @@ web-server = ["WebTest", "openapi-core", "pyramid", "pyramid-openapi3", "waitres
 [metadata]
 lock-version = "2.0"
 python-versions = ">=3.11,<=3.12"
-content-hash = "919bc63839295199cc30563a25c6fe060037c87a6147789f2f6d0ac5b789846f"
+content-hash = "b1732eedbf40cf8c9fbb0aafb199d74138b9ebace4c04ad80b2feedd9c84af5e"
