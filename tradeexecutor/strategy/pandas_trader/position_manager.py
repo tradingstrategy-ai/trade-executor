@@ -1013,7 +1013,12 @@ class PositionManager:
 
         reserve_asset, reserve_price = self.state.portfolio.get_default_reserve_asset()
 
-        slippage_tolerance = slippage_tolerance or self.default_slippage_tolerance
+        if slippage_tolerance is not None:
+            trade_slippage_tolerance = slippage_tolerance
+        elif position.slippage_tolerance is not None:
+            trade_slippage_tolerance = position.slippage_tolerance
+        else:
+            trade_slippage_tolerance = self.default_slippage_tolerance
 
         logger.info(
             "Preparing to close position %s, quantity %s, pricing %s, profit %s, slippage tolerance: %f %%",
@@ -1021,7 +1026,7 @@ class PositionManager:
             quantity,
             price_structure,
             position.get_unrealised_profit_usd(),
-            slippage_tolerance,
+            trade_slippage_tolerance,
         )
 
         if not flags:
@@ -1043,7 +1048,7 @@ class PositionManager:
             lp_fees_estimated=price_structure.get_total_lp_fees(),
             planned_mid_price=price_structure.mid_price,
             position=position,
-            slippage_tolerance=slippage_tolerance,
+            slippage_tolerance=trade_slippage_tolerance,
             price_structure=price_structure,
             closing=True,
             flags=flags,

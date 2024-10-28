@@ -282,6 +282,10 @@ class TradingPosition(GenericPosition):
     #: 
     liquidation_price: USDollarAmount | None = None
 
+    #: Maximum allowed slippage percentage (0.0-100.0) when executing trades for this position.
+    #: If None, uses the default slippage tolerance from the strategy parameters.
+    slippage_tolerance: Optional[float] = None
+
     def __repr__(self):
         if self.is_pending():
             return f"<Pending position #{self.position_id} {self.pair} ${self.get_value()}>"
@@ -945,6 +949,9 @@ class TradingPosition(GenericPosition):
         #    assert reserve is None, "Quantity and reserve both cannot be given at the same time"
 
         pair = self.pair
+
+        if self.slippage_tolerance is None and slippage_tolerance is not None:
+            self.slippage_tolerance = slippage_tolerance
 
         if price_structure is not None:
             assert isinstance(price_structure, TradePricing)

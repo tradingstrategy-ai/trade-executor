@@ -188,7 +188,13 @@ def check_position_triggers(
             ]):
                 trigger_type = TradeType.take_profit
                 trigger_price = p.take_profit
-                trades.extend(position_manager.close_position(p, TradeType.take_profit))
+                slippage_tolerance = (
+                                    p.slippage_tolerance 
+                                    if p.slippage_tolerance is not None 
+                                    else position_manager.default_slippage_tolerance
+                                )
+                trades.extend(position_manager.close_position(p, TradeType.take_profit, slippage_tolerance=slippage_tolerance))
+
 
         # Check we need to close position for stop loss
         if p.stop_loss:
@@ -198,8 +204,14 @@ def check_position_triggers(
             ]):
                 trigger_type = TradeType.stop_loss
                 trigger_price = p.stop_loss
-                notes = f"Stoploss:{trigger_price} mid-price:{mid_price}"
-                trades.extend(position_manager.close_position(p, TradeType.stop_loss, notes=notes))
+                slippage_tolerance = (
+                                    p.slippage_tolerance 
+                                    if p.slippage_tolerance is not None 
+                                    else position_manager.default_slippage_tolerance
+                                )                
+                notes = f"Stoploss:{trigger_price} mid-price:{mid_price} slippage_tolerance:{slippage_tolerance}"
+                trades.extend(position_manager.close_position(p, TradeType.stop_loss, notes=notes, slippage_tolerance=slippage_tolerance))
+
 
         if not trigger_type:
             # Stop loss/take profit hardcoded not triggered
