@@ -114,7 +114,7 @@ pytest-timeout = "^2.3.1"
 #
 
 # TODO: Disabled. Install wiht pip until dependency version incompatibilies are solved.
-# zelos-demeter = {version="^0.7.2",  optional = true}
+ zelos-demeter = {version="^0.7.4",  optional = true}
 
 # https://github.com/arynyklas/telegram_bot_logger/pull/1
 telegram-bot-logger = {git = "https://github.com/tradingstrategy-ai/telegram_bot_logger.git", branch="patch-bleeding-edges", optional = true}

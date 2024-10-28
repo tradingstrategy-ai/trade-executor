@@ -23,7 +23,7 @@ logger = logging.getLogger(__name__)
 HumanPeriod: TypeAlias = pd.DateOffset | str
 
 
-class BenchmarkFunction(enum.Enum):
+class BenchmarkMetric(enum.Enum):
     sharpe = "sharpe"
 
 
@@ -122,7 +122,7 @@ def crunch(
     benchmarked_results: list[GridSearchResult],
     index: pd.DatetimeIndex,
     lookback: pd.Timedelta,
-    visualised_metric: BenchmarkFunction,
+    visualised_metric: BenchmarkMetric,
 ) -> pd.DataFrame:
     """Calculate raw results.
 
@@ -157,7 +157,7 @@ def calculate_rolling_metrics(
     fixed_parameters: dict,
     sample_freq: HumanPeriod="MS",
     lookback=pd.Timedelta(days=3*30),
-    visualised_metric=BenchmarkFunction.sharpe,
+    benchmarked_metric=BenchmarkMetric.sharpe,
 ) -> pd.DataFrame:
     """Calculate rolling metrics for grid search.
 
@@ -209,7 +209,7 @@ def calculate_rolling_metrics(
         len(grid_search_result),
     )
 
-    assert visualised_metric == BenchmarkFunction.sharpe, "Only sharpe supported at the moment"
+    assert benchmarked_metric == BenchmarkMetric.sharpe, "Only sharpe supported at the moment"
     assert len(grid_search_result) > 0
     first_result = grid_search_result[0]
 
@@ -264,17 +264,17 @@ def calculate_rolling_metrics(
         benchmarked_results=benchmarked_results,
         index=index,
         lookback=lookback,
-        visualised_metric=visualised_metric
+        visualised_metric=benchmarked_metric
     )
 
-    df.attrs["metric_name"] = visualised_metric.name
+    df.attrs["metric_name"] = benchmarked_metric.name
     df.attrs["param_name"] = visualised_parameter
     df.attrs["lookback"] = lookback
 
     return df
 
 
-def visualise_grid_sharpe_for_parameter(
+def visualise_grid_single_rolling_metric(
     df: pd.DataFrame,
     width=None,
     height=800,
