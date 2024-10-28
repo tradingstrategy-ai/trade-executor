@@ -2,16 +2,17 @@
 
 """
 import enum
-from dataclasses import dataclass
 from typing import Any
 import logging
 
 import numpy as np
 import pandas as pd
 from jedi.inference.gradual.typing import TypeAlias
-from plotly.graph_objs import Figure
 
-from eth_defi.event_reader.block_header import Timestamp
+from plotly.graph_objs import Figure
+import plotly.express as px
+import plotly.graph_objects as go
+
 from tradeexecutor.backtest.grid_search import GridSearchResult, GridCombination
 
 
@@ -267,14 +268,57 @@ def calculate_rolling_metrics(
     )
 
     df.attrs["metric_name"] = visualised_metric.name
+    df.attrs["param_name"] = visualised_parameter
 
     return df
 
 
 def visualise_grid_sharpe_for_parameter(
     df: pd.DataFrame,
+    width=None,
+    height=800,
 ) -> Figure:
     """Create an animation for a grid search parameter how results evolve over time.
 
+    :param df:
+        Created by :py:func:`calculate_rolling_metrics`
     """
+
+    metric_name = df.attrs["metric_name"]
+    param_name = df.attrs["param_name"].capitalize()
+
+    # Rename columns for human readable labels
+    for col in df.colums:
+        df.rename(columns={col: f"{param_name} = {col}"}, inplace=True)
+
+    # Create figure
+    fig = go.Figure()
+
+    # Add traces for each column
+    for column in df.columns:
+        fig.add_trace(
+            go.Scatter(
+                x=df.index,
+                y=df[column],
+                name=column,
+                mode='lines',
+            )
+        )
+
+    # Update layout
+    fig.update_layout(
+        title=f"Rolling {metric_name} for {param_name} parameter",
+        yaxis_title=metric_name,
+        xaxis_title='Date',
+        hovermode='x unified',
+        showlegend=True,
+        template='plotly_white',  # Clean white background
+        height=height,
+        width=width,
+    )
+
+    # Add range slider
+    # fig.update_xaxes(rangeslider_visible=True)
+
+    return fig
 

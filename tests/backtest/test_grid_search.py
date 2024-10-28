@@ -17,7 +17,7 @@ from tradeexecutor.strategy.pandas_trader.indicator import IndicatorSet, DiskInd
 from tradeexecutor.strategy.pandas_trader.strategy_input import StrategyInput
 from tradeexecutor.strategy.parameters import StrategyParameters
 from tradeexecutor.visual.grid_search import visualise_single_grid_search_result_benchmark, visualise_grid_search_equity_curves
-from tradeexecutor.visual.grid_search_visualisation import calculate_rolling_metrics, BenchmarkFunction
+from tradeexecutor.visual.grid_search_visualisation import calculate_rolling_metrics, BenchmarkFunction, visualise_grid_sharpe_for_parameter
 from tradingstrategy.candle import GroupedCandleUniverse
 from tradingstrategy.chain import ChainId
 from tradingstrategy.exchange import Exchange
@@ -900,9 +900,12 @@ def test_grid_search_visualisation(
     assert df.index[0] == pd.Timestamp("2021-06-1")
     assert df.index[-1] == pd.Timestamp("2021-12-1")
 
-    # pull out somes values
+    # pull out some values
     # (all negative sharpes, strategy does not make sense)
     assert df.loc["2021-07-01"][0.50] < 0
     assert df.loc["2021-07-01"][0.75] < 0
     assert df.loc["2021-07-01"][0.99] < 0
+
+    fig = visualise_grid_sharpe_for_parameter(df)
+    assert isinstance(fig, Figure)
 
