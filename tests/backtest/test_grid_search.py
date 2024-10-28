@@ -17,7 +17,9 @@ from tradeexecutor.strategy.pandas_trader.indicator import IndicatorSet, DiskInd
 from tradeexecutor.strategy.pandas_trader.strategy_input import StrategyInput
 from tradeexecutor.strategy.parameters import StrategyParameters
 from tradeexecutor.visual.grid_search import visualise_single_grid_search_result_benchmark, visualise_grid_search_equity_curves
-from tradeexecutor.visual.grid_search_visualisation import calculate_rolling_metrics, BenchmarkMetric, visualise_grid_single_rolling_metric
+from tradeexecutor.visual.grid_search_advanced import calculate_rolling_metrics, BenchmarkMetric, visualise_grid_single_rolling_metric
+
+from tradeexecutor.visual.grid_search_advanced import visualise_grid_rolling_metric_multi_chart
 from tradingstrategy.candle import GroupedCandleUniverse
 from tradingstrategy.chain import ChainId
 from tradingstrategy.exchange import Exchange
@@ -906,6 +908,15 @@ def test_grid_search_visualisation(
     assert df.loc["2021-07-01"][0.75] < 0
     assert df.loc["2021-07-01"][0.99] < 0
 
+    # Draw line chart over time
     fig = visualise_grid_single_rolling_metric(df)
+    assert isinstance(fig, Figure)
+
+    # Draw evolving series of charts as a sublot
+    fig = visualise_grid_rolling_metric_multi_chart(
+        df,
+        range_start="2021-07-01",
+        range_end="2021-09-01",
+    )
     assert isinstance(fig, Figure)
 
