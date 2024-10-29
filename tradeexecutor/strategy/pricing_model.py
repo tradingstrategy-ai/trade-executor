@@ -5,7 +5,6 @@ import datetime
 from decimal import Decimal, ROUND_DOWN
 from typing import Callable, Optional, Literal
 
-from strategies.test_only.pancakeswap import debug
 from tradeexecutor.state.identifier import TradingPairIdentifier
 from tradeexecutor.state.types import USDollarPrice, Percent, USDollarAmount, TokenAmount
 from tradeexecutor.strategy.execution_model import ExecutionModel

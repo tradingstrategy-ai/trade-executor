@@ -51,6 +51,7 @@ def create_trading_universe(
         universe_options=default_universe_options,
         start_at=universe_options.start_at,
         end_at=universe_options.end_at,
+        pair_extra_metadata=True,  # Enable loading of TokenSniffer data
     )
 
     strategy_universe = TradingStrategyUniverse.create_from_dataset(
@@ -116,8 +117,9 @@ def test_token_tax(strategy_universe, tmp_path):
         (ChainId.ethereum, "uniswap-v2", "TRUMP", "WETH")
     )
 
-    assert trump_weth.base.get_buy_tax() == pytest.approx(1.0)
-    assert trump_weth.base.get_sell_tax() == pytest.approx(1.0)
+    # Is accurate 1.0, as rounded to 2 decimals
+    assert trump_weth.get_buy_tax() == 1.0
+    assert trump_weth.get_sell_tax() == 1.0
 
     # Run the test
     result = run_backtest_inline(
@@ -133,4 +135,4 @@ def test_token_tax(strategy_universe, tmp_path):
     )
 
     state, universe, debug_dump = result
-    assert len(state.portfolio.closed_positions) == 15
+    assert len(state.portfolio.closed_positions) == 0
