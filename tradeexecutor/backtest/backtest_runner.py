@@ -20,10 +20,9 @@ from tradeexecutor.backtest.backtest_sync import BacktestSyncModel
 from tradeexecutor.backtest.legacy_backtest_sync import BacktestSyncer
 from tradeexecutor.backtest.backtest_valuation import BacktestValuationModel
 from tradeexecutor.backtest.simulated_wallet import SimulatedWallet
-from tradeexecutor.cli.commands.shared_options import max_slippage
 from tradeexecutor.cli.log import setup_notebook_logging, setup_custom_log_levels, setup_strategy_logging
 from tradeexecutor.cli.loop import ExecutionLoop, ExecutionTestHook
-from tradeexecutor.ethereum.routing_data import get_routing_model, get_backtest_routing_model
+from tradeexecutor.ethereum.routing_data import get_backtest_routing_model
 from tradeexecutor.state.state import State
 from tradeexecutor.state.store import NoneStore
 from tradeexecutor.state.types import USDollarAmount
@@ -34,7 +33,7 @@ from tradeexecutor.strategy.execution_context import ExecutionContext, Execution
 from tradeexecutor.strategy.generic.generic_pricing_model import GenericPricing
 from tradeexecutor.strategy.generic.generic_router import GenericRouting
 from tradeexecutor.strategy.pandas_trader.indicator import CreateIndicatorsProtocolV1, calculate_and_load_indicators, DiskIndicatorStorage, IndicatorSet, \
-    IndicatorKey, load_indicators, CreateIndicatorsProtocol, call_create_indicators, IndicatorResultMap
+    IndicatorKey, load_indicators, CreateIndicatorsProtocol, call_create_indicators
 from tradeexecutor.strategy.pandas_trader.runner import PandasTraderRunner
 from tradeexecutor.strategy.pandas_trader.strategy_input import StrategyInputIndicators
 from tradeexecutor.strategy.strategy_module import parse_strategy_module, \
@@ -875,7 +874,7 @@ def run_backtest_inline(
             assert not parameters.get("grid_search"), f"Grid search parameters were passed to a single backtest: {parameters}"
 
         # Override run_inline_backtest() default arg if strategy parameters are given
-        if parameters.slippage_tolerance:
+        if parameters.has_parameter("slippage_tolerance"):
             max_slippage = parameters.slippage_tolerance
 
     if start_at is None and end_at is None:
