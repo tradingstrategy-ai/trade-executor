@@ -845,7 +845,7 @@ class StrategyInput:
             self.strategy_universe,
             self.state,
             self.pricing_model,
-            default_slippage_tolerance=self.parameters.slippage_tolerance or DEFAULT_SLIPPAGE_TOLERANCE,
+            default_slippage_tolerance=self.parameters.get("slippage_tolerance") or DEFAULT_SLIPPAGE_TOLERANCE,
         )
 
     def get_default_pair(self) -> TradingPairIdentifier:
