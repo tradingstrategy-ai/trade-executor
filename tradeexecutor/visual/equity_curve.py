@@ -256,13 +256,19 @@ def calculate_daily_returns(
 
 
 def visualise_equity_curve(
-        returns: pd.Series,
-        title="Equity curve",
-        line_width=1.5,
+    returns: pd.Series,
+    title="Equity curve",
+    line_width=1.5,
 ) -> Figure:
-    """Draw equity curve, drawdown and daily returns using quantstats.
+    """Draw equity curve, drawdown and daily returns using Quantstats.
 
     `See Quantstats README for more details <https://github.com/ranaroussi/quantstats>`__.
+
+    See also
+
+    - :py:func:`tradeexecutor.visual.benchmark.visualise_equity_curve_benchmark`
+
+    - :py:func:`tradeexecutor.visual.grid_search.visualise_single_grid_search_result_benchmark`
 
     Example:
 
