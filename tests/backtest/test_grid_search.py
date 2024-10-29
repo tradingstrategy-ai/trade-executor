@@ -17,6 +17,9 @@ from tradeexecutor.strategy.pandas_trader.indicator import IndicatorSet, DiskInd
 from tradeexecutor.strategy.pandas_trader.strategy_input import StrategyInput
 from tradeexecutor.strategy.parameters import StrategyParameters
 from tradeexecutor.visual.grid_search import visualise_single_grid_search_result_benchmark, visualise_grid_search_equity_curves
+from tradeexecutor.visual.grid_search_advanced import calculate_rolling_metrics, BenchmarkMetric, visualise_grid_single_rolling_metric, visualise_grid_rolling_metric_heatmap
+
+from tradeexecutor.visual.grid_search_advanced import visualise_grid_rolling_metric_line_chart
 from tradingstrategy.candle import GroupedCandleUniverse
 from tradingstrategy.chain import ChainId
 from tradingstrategy.exchange import Exchange
@@ -826,3 +829,182 @@ def test_grid_out_of_balance(
     assert len(results) == 2
     for r in results:
         assert isinstance(r.exception, BacktestExecutionFailed)
+
+
+
+def test_grid_search_visualisation_line_chart(
+    strategy_universe,
+    indicator_storage,
+    tmp_path,
+):
+    """Advanced calculations and visualisation for grid search results.
+    """
+    class Parameters:
+        cycle_duration = CycleDuration.cycle_1d
+        initial_cash = 10_000
+        allocation = [0.50, 0.75, 0.99]
+        cycle_divider = [2, 3, 4]
+        foo_param = ["a", "b"]
+
+    def _decide_trades_flip_buy_sell(input: StrategyInput) -> list[TradeExecution]:
+        # Generate some random trades
+        position_manager = input.get_position_manager()
+        parameters = input.parameters
+        pair = input.strategy_universe.get_single_pair()
+        cash = position_manager.get_current_cash()
+        if input.cycle % parameters.cycle_divider == 0:
+            return position_manager.open_spot(pair, cash * parameters.allocation)
+        else:
+            if position_manager.is_any_open():
+                return position_manager.close_all()
+        return []
+
+    def create_indicators(timestamp: datetime.datetime, parameters: StrategyParameters, strategy_universe: TradingStrategyUniverse, execution_context: ExecutionContext):
+        # No indicators needed
+        return IndicatorSet()
+
+    combinations = prepare_grid_combinations(
+        Parameters,
+        tmp_path,
+        strategy_universe=strategy_universe,
+        create_indicators=create_indicators,
+        execution_context=ExecutionContext(mode=ExecutionMode.unit_testing, grid_search=True),
+    )
+
+    assert len(combinations) == 18
+
+    grid_search_results = perform_grid_search(
+        _decide_trades_flip_buy_sell,
+        strategy_universe,
+        combinations,
+        trading_strategy_engine_version="0.5",
+        indicator_storage=indicator_storage,
+        verbose=False,
+        multiprocess=True,
+    )
+
+    # Calculate rolling sharpe for each month
+    # x-axis: time
+    # y-axis: sharpe
+    # variables as line charts: allocation=0.50, allocation=0.75, allocation=0.99
+    # other variables are set to their fixed values
+    df = calculate_rolling_metrics(
+        grid_search_results,
+        visualised_parameters="allocation",
+        fixed_parameters={"cycle_divider": 2, "foo_param": "a"},
+        benchmarked_metric=BenchmarkMetric.sharpe,
+    )
+
+    assert isinstance(df, pd.DataFrame)
+    assert len(df) > 0
+
+    # Check range is right
+    assert df.index[0] == pd.Timestamp("2021-06-1")
+    assert df.index[-1] == pd.Timestamp("2021-12-1")
+
+
+    # pull out some values
+    # (all negative sharpes, strategy does not make sense)
+    assert df.loc["2021-07-01"][0.50] < 0
+    assert df.loc["2021-07-01"][0.75] < 0
+    assert df.loc["2021-07-01"][0.99] < 0
+
+    # Draw line chart over time
+    fig = visualise_grid_single_rolling_metric(df)
+    assert isinstance(fig, Figure)
+
+    # Draw evolving series of charts as a sublot
+    fig = visualise_grid_rolling_metric_line_chart(
+        df,
+        range_start="2021-07-01",
+        range_end="2021-09-01",
+    )
+    assert isinstance(fig, Figure)
+
+
+def test_grid_search_visualisation_heatmap(
+        strategy_universe,
+        indicator_storage,
+        tmp_path,
+):
+    """Advanced calculations and visualisation for grid search results.
+    """
+
+    class Parameters:
+        cycle_duration = CycleDuration.cycle_1d
+        initial_cash = 10_000
+        allocation = [0.50, 0.75, 0.99]
+        cycle_divider = [2, 3, 4]
+        foo_param = ["a", "b"]
+
+    def _decide_trades_flip_buy_sell(input: StrategyInput) -> list[TradeExecution]:
+        # Generate some random trades
+        position_manager = input.get_position_manager()
+        parameters = input.parameters
+        pair = input.strategy_universe.get_single_pair()
+        cash = position_manager.get_current_cash()
+        if input.cycle % parameters.cycle_divider == 0:
+            return position_manager.open_spot(pair, cash * parameters.allocation)
+        else:
+            if position_manager.is_any_open():
+                return position_manager.close_all()
+        return []
+
+    def create_indicators(timestamp: datetime.datetime, parameters: StrategyParameters, strategy_universe: TradingStrategyUniverse, execution_context: ExecutionContext):
+        # No indicators needed
+        return IndicatorSet()
+
+    combinations = prepare_grid_combinations(
+        Parameters,
+        tmp_path,
+        strategy_universe=strategy_universe,
+        create_indicators=create_indicators,
+        execution_context=ExecutionContext(mode=ExecutionMode.unit_testing, grid_search=True),
+    )
+
+    assert len(combinations) == 18
+
+    grid_search_results = perform_grid_search(
+        _decide_trades_flip_buy_sell,
+        strategy_universe,
+        combinations,
+        trading_strategy_engine_version="0.5",
+        indicator_storage=indicator_storage,
+        verbose=False,
+        multiprocess=True,
+    )
+
+    # Calculate rolling sharpe for each month
+    # x-axis: time
+    # y-axis: sharpe
+    # variables as line charts: allocation=0.50, allocation=0.75, allocation=0.99
+    # other variables are set to their fixed values
+    df = calculate_rolling_metrics(
+        grid_search_results,
+        visualised_parameters=("allocation", "foo_param"),
+        fixed_parameters={"cycle_divider": 2},
+        benchmarked_metric=BenchmarkMetric.sharpe,
+    )
+
+    assert isinstance(df, pd.DataFrame)
+    assert len(df) > 0
+
+    # Check range is right
+    assert df.index[0] == pd.Timestamp("2021-06-1")
+    assert df.index[-1] == pd.Timestamp("2021-12-1")
+
+    assert df.columns[0] == (0.5, "a")
+
+    # pull out some values
+    # (all negative sharpes, strategy does not make sense)
+    assert df.loc["2021-07-01"][(0.5, 'a')] < 0
+    assert df.loc["2021-07-01"][(0.5, 'b')] < 0
+    assert df.loc["2021-07-01"][(0.75, 'b')] < 0
+
+    # Draw evolving series of charts as a sublot
+    fig = visualise_grid_rolling_metric_heatmap(
+        df,
+        range_start="2021-07-01",
+        range_end="2021-09-01",
+    )
+    assert isinstance(fig, Figure)
