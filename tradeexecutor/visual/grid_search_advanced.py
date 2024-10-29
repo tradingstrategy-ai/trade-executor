@@ -535,9 +535,13 @@ def visualise_grid_rolling_metric_heatmap(
     charts_per_row=3,
     range_start=None,
     range_end=None,
-    discrete_paramaters=True,
+    discrete_parameters=True,
+    scale=(-2, 2),
+    colorscale='RdYlGn',
 ) -> Figure:
     """Create an "animation" for two grid search parameters how results evolve over time as a heatmap.
+
+    TODO: Visual Studio Code ignores any given height.
 
     :param df:
         Created by :py:func:`calculate_rolling_metrics`
@@ -555,8 +559,11 @@ def visualise_grid_rolling_metric_heatmap(
 
         Inclusive.
 
-    :param discrete_paramaters:
+    :param discrete_parameters:
         Measured parameters are category like, not linear.
+
+    :param scale:
+        Heatmap scale.
 
     :return:
         List of figure  s, one for each index timestamp.
@@ -576,7 +583,7 @@ def visualise_grid_rolling_metric_heatmap(
 
     lookback = df.attrs["lookback"]
 
-    total_rows = len(df.index) // charts_per_row + 1
+    total_rows = len(df.index) // charts_per_row + 2
 
     if total_rows == 1:
         charts_per_row = min(len(df.index), charts_per_row)
@@ -594,11 +601,15 @@ def visualise_grid_rolling_metric_heatmap(
             f"{timestamp}"
         )
 
+    height = height_per_row * total_rows + extra_height_margin
+
     fig = make_subplots(
-        rows=total_rows, cols=charts_per_row,
+        rows=total_rows,
+        cols=charts_per_row,
         subplot_titles=titles,
         horizontal_spacing=0.05,
-        vertical_spacing=0.05
+        vertical_spacing=0.05,
+        row_heights=[1 / total_rows for _ in range(total_rows)],
     )
 
     for idx, timestamp in enumerate(df.index):
@@ -617,48 +628,42 @@ def visualise_grid_rolling_metric_heatmap(
             i = index_levels[0].index(row_idx[0])
             j = index_levels[1].index(row_idx[1])
 
-            if discrete_paramaters:
-                z[i][j] = value
-            else:
-                z[i][j] = value
+            # Clamp values to our scale range
+            value = max(scale[0], value)
+            value = min(scale[1], value)
 
-        # Create the heatmap
-        if idx == 0:
-            trace = go.Heatmap(
-                z=z,
-                x=index_levels[1],  # Second index level for x-axis
-                y=index_levels[0],  # First index level for y-axis
-                colorscale='Blues',
-                # text=[[f'{val:.1f}%' for val in row] for row in z],
-                text=[],
-                #texttemplate='%{text}',
-                textfont={"size": 12},
-                showscale=True,
-                colorbar=None,
-            )
+            z[i][j] = value
+
+        if discrete_parameters:
+            x = [str(i) for i in index_levels[1]]
+            y = [str(i) for i in index_levels[0]]
         else:
-            trace = go.Heatmap(
-                z=z,
-                x=index_levels[1],  # Second index level for x-axis
-                y=index_levels[0],  # First index level for y-axis
-                colorscale='Blues',
-                # text=[[f'{val:.1f}%' for val in row] for row in z],
-                text=[],
-                #texttemplate='%{text}',
-                textfont={"size": 12},
-                showscale=False,
-                colorbar=None,
-            )
+            x = index_levels[1]
+            y = index_levels[1]
+
+        trace = go.Heatmap(
+            z=z,
+            x=x,
+            y=y,
+            colorscale=colorscale,  # https://plotly.com/python/colorscales/
+            # text=[[f'{val:.1f}%' for val in row] for row in z],
+            text=[],
+            #texttemplate='%{text}',
+            textfont={"size": 12},
+            showscale=True if idx == 0 else False,
+            colorbar=None,
+            zmin=scale[0],
+            zmax=scale[1],
+        )
+
         col = (idx % charts_per_row) + 1
         row = (idx // charts_per_row) + 1
         fig.add_trace(trace, row=row, col=col)
 
-    height = height_per_row * total_rows + extra_height_margin
-
     fig.update_layout(
         height=height,
         width=width,
-        title_text=f"{metric_name.capitalize()} for parameters {param_name} with lookback of {lookback}",
+        title_text=f"{metric_name.capitalize()} for parameters {param_name} with lookback of {lookback}, height {height}",
         title_x=0.5,
         showlegend=False
     )
@@ -670,7 +675,8 @@ def visualise_grid_rolling_metric_heatmap(
             r=0,  # right margin
             t=extra_height_margin,  # top margin
             b=0  # bottom margin
-        )
+        ),
+        autosize=False,  # Respect height_per_row
     )
     return fig
 
