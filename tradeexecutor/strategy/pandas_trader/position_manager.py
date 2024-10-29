@@ -690,7 +690,7 @@ class PositionManager:
 
         if not slippage_tolerance:
             slippage_tolerance = self.pricing_model.calculate_trade_adjusted_slippage_tolerance(
-                pair=pair,
+                pair=executor_pair,
                 direction="buy",
                 default_slippage_tolerance=self.default_slippage_tolerance,
             )
