@@ -535,6 +535,7 @@ def visualise_grid_rolling_metric_heatmap(
     charts_per_row=3,
     range_start=None,
     range_end=None,
+    discrete_paramaters=True,
 ) -> Figure:
     """Create an "animation" for two grid search parameters how results evolve over time as a heatmap.
 
@@ -554,6 +555,9 @@ def visualise_grid_rolling_metric_heatmap(
 
         Inclusive.
 
+    :param discrete_paramaters:
+        Measured parameters are category like, not linear.
+
     :return:
         List of figure  s, one for each index timestamp.
     """
@@ -567,8 +571,8 @@ def visualise_grid_rolling_metric_heatmap(
 
     metric_name = df.attrs["metric_name"]
     param_1 = df.attrs["param_name"][0]
-    param_2 = df.attrs["param_name"][0]
-    param_name = param_1.replace("_", " ").capitalize() + " and " + param_2.replace("_", " ").capitalize()
+    param_2 = df.attrs["param_name"][1]
+    param_name = f"""{param_1.replace("_", " ").capitalize()} (Y) and {param_2.replace("_", " ").capitalize()} (X)"""
 
     lookback = df.attrs["lookback"]
 
@@ -612,24 +616,39 @@ def visualise_grid_rolling_metric_heatmap(
         for row_idx, value in row_series.items():
             i = index_levels[0].index(row_idx[0])
             j = index_levels[1].index(row_idx[1])
-            z[i][j] = value
+
+            if discrete_paramaters:
+                z[i][j] = value
+            else:
+                z[i][j] = value
 
         # Create the heatmap
-        trace = go.Heatmap(
-            z=z,
-            x=index_levels[1],  # Second index level for x-axis
-            y=index_levels[0],  # First index level for y-axis
-            colorscale='Blues',
-            text=[[f'{val:.1f}%' for val in row] for row in z],
-            texttemplate='%{text}',
-            textfont={"size": 12},
-            showscale=True,
-            colorbar=dict(
-                title='Value',
-                titleside='right'
+        if idx == 0:
+            trace = go.Heatmap(
+                z=z,
+                x=index_levels[1],  # Second index level for x-axis
+                y=index_levels[0],  # First index level for y-axis
+                colorscale='Blues',
+                # text=[[f'{val:.1f}%' for val in row] for row in z],
+                text=[],
+                #texttemplate='%{text}',
+                textfont={"size": 12},
+                showscale=True,
+                colorbar=None,
             )
-        )
-
+        else:
+            trace = go.Heatmap(
+                z=z,
+                x=index_levels[1],  # Second index level for x-axis
+                y=index_levels[0],  # First index level for y-axis
+                colorscale='Blues',
+                # text=[[f'{val:.1f}%' for val in row] for row in z],
+                text=[],
+                #texttemplate='%{text}',
+                textfont={"size": 12},
+                showscale=False,
+                colorbar=None,
+            )
         col = (idx % charts_per_row) + 1
         row = (idx // charts_per_row) + 1
         fig.add_trace(trace, row=row, col=col)
