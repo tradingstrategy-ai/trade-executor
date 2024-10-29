@@ -100,6 +100,12 @@ class StrategyParameters(MutableAttributeDict):
         value = parameters.rsi_low
         value = parameters["rsi_low"]  # Are equal
 
+    If you are not sure if the parameter exists, you can still use `dict.get()` access:
+
+    .. code-block:: python
+
+        max_slippage = self.parameters.get("slippage_tolerance") or 0.0050
+
     Example parameter definition:
 
     .. code-block:: python
