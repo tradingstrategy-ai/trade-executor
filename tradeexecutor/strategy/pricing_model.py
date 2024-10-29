@@ -3,8 +3,9 @@
 import abc
 import datetime
 from decimal import Decimal, ROUND_DOWN
-from typing import Callable, Optional
+from typing import Callable, Optional, Literal
 
+from strategies.test_only.pancakeswap import debug
 from tradeexecutor.state.identifier import TradingPairIdentifier
 from tradeexecutor.state.types import USDollarPrice, Percent, USDollarAmount, TokenAmount
 from tradeexecutor.strategy.execution_model import ExecutionModel
@@ -203,6 +204,31 @@ class PricingModel(abc.ABC):
             Set ``None`` to disable and use the trading fee from the source data.
         """
         raise NotImplementedError()
+
+    def calculate_trade_adjusted_slippage_tolerance(
+        self,
+        pair: TradingPairIdentifier,
+        direction: Literal['buy', 'sell'],
+        default_slippage_tolerance: Percent,
+    ) -> float | None:
+        """Get slippage for a given trading pair, for a given trade.
+
+        - Mainly a hook to deal with :term:`token tax` tokens on spot market
+
+        - Make sure you have token tax data included with your `PandasPairUniverse`, see details at TODO.
+
+        :return:
+            Use `default_slippage_tolerance` if the token does not need special slippage.
+        """
+
+        assert default_slippage_tolerance is not None, "default_slippage_tolerance must be set"
+
+        if direction == "buy":
+            return default_slippage_tolerance + (pair.base.get_buy_tax() or 0)
+        elif direction == "sell":
+            return default_slippage_tolerance + (pair.base.get_sell_tax() or 0)
+
+        return default_slippage_tolerance
 
 
 class FixedPricing(PricingModel):
