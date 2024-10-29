@@ -1,5 +1,9 @@
 """Plot evolving sharpe ratio in grid search results.
 
+- Calculate rolling metrics using :py:func:`calculate_rolling_metrics`,
+  either for 1 parameter or 2 parameters visualisation
+
+- Visualise with :py:func:`visualise_grid_rolling_metric_heatmap` or :py:func:`visualise_grid_rolling_metric_line_chart`
 """
 import enum
 from typing import Any
@@ -28,6 +32,10 @@ class BenchmarkMetric(enum.Enum):
     sharpe = "sharpe"
 
 
+class BenchmarkVisualisationType(enum.Enum):
+    line_chart = "line_chart"
+    heatmap = "heatmap"
+
 
 def _calc_sharpe(
     backtest_start_at: pd.Timestamp,
@@ -39,12 +47,18 @@ def _calc_sharpe(
 
 
 def check_inputs(
-    visualised_parameter: str,
+    visualised_parameters: str | tuple[str, str],
     fixed_parameters: dict,
     combination: GridCombination,
 ):
     """Raise if we have a human error."""
-    parameter_name_list = [visualised_parameter] + list(fixed_parameters.keys())
+
+    if type(visualised_parameters) == str:
+        visualised_parameters = [visualised_parameters]
+    else:
+        visualised_parameters = list(visualised_parameters)
+
+    parameter_name_list = visualised_parameters + list(fixed_parameters.keys())
 
     for p in combination.searchable_parameters:
         if p.name not in parameter_name_list:
@@ -53,7 +67,7 @@ def check_inputs(
 
 
 def prepare_comparisons(
-    visualised_parameter: str,
+    visualised_parameters: str | tuple[str, str],
     fixed_parameters: dict,
     grid_search_results: list[GridSearchResult],
 ) -> tuple[list[GridSearchResult], list[Any]]:
@@ -80,7 +94,13 @@ def prepare_comparisons(
             continue
 
         x_axis.append(r)
-        uniq.add(param_map.get(visualised_parameter))
+        if type(visualised_parameters) == tuple:
+            assert len(visualised_parameters) == 2
+            uniq.add(
+                (param_map.get(visualised_parameters[0]), param_map.get(visualised_parameters[1]))
+            )
+        else:
+            uniq.add(param_map.get(visualised_parameters))
 
     uniq = sorted(list(uniq))
 
@@ -117,7 +137,7 @@ def calculate_sharpe_at_timestamps(
     return pd.Series(data, index=index)
 
 
-def crunch(
+def crunch_1d(
     visualised_parameter: str,
     unique_visualise_parameters: list[Any],
     benchmarked_results: list[GridSearchResult],
@@ -130,6 +150,8 @@ def crunch(
 
     TODO: Use rolling functions or not?
     """
+
+    assert type(visualised_parameter) == str
 
     data = {}
 
@@ -151,10 +173,56 @@ def crunch(
     return pd.DataFrame(data)
 
 
+def crunch_2d(
+    visualised_parameters: tuple[str, str],
+    unique_visualise_parameters: list[Any],
+    benchmarked_results: list[GridSearchResult],
+    index: pd.DatetimeIndex,
+    lookback: pd.Timedelta,
+    visualised_metric: BenchmarkMetric,
+) -> pd.DataFrame:
+    """Calculate raw results.
+
+
+    TODO: Use rolling functions or not?
+    """
+
+    assert type(visualised_parameters) == tuple
+    assert len(visualised_parameters) == 2
+
+    data = {}
+
+    param_name_1 = visualised_parameters[0]
+    param_name_2 = visualised_parameters[1]
+
+    for uniq_1, uniq_2 in unique_visualise_parameters:
+        logger.info(
+            "Calculating %s = %s, %s = %s",
+            param_name_1,
+            uniq_1,
+            param_name_2,
+            uniq_2
+        )
+        found = False
+        for res in benchmarked_results:
+            if res.combination.get_parameter(param_name_1) == uniq_1 and res.combination.get_parameter(param_name_2) == uniq_2:
+                returns = res.returns
+                sharpes = calculate_sharpe_at_timestamps(
+                    index=index,
+                    lookback=lookback,
+                    returns=returns,
+                )
+                # Pandas DataFrame allows tuples as column keys
+                data[(uniq_1, uniq_2)] = sharpes
+                found = True
+        assert found, f"Zero result match for {param_name_1} = {uniq_1} and {param_name_2} = {uniq_2}, we have {len(benchmarked_results)} results"
+
+    return pd.DataFrame(data)
+
 
 def calculate_rolling_metrics(
     grid_search_result: list[GridSearchResult],
-    visualised_parameter: str,
+    visualised_parameters: str | tuple[str, str],
     fixed_parameters: dict,
     sample_freq: HumanPeriod="MS",
     lookback=pd.Timedelta(days=3*30),
@@ -175,7 +243,7 @@ def calculate_rolling_metrics(
     - yaxis: sharpe ratios
     - x-axis: array of Ns
 
-    Example output:
+    Example output if using a single visualised parameter:
 
     .. code-block:: text
 
@@ -187,6 +255,23 @@ def calculate_rolling_metrics(
         2021-10-01 -1.849303 -1.604062 -1.841385
         2021-11-01 -3.792905 -3.924210 -3.784793
         2021-12-01 -4.156751 -4.186192 -4.148683
+
+    Example of 2d heatmap output:
+
+    .. code-block:: text
+
+                        0.50                0.75                0.99
+                           a         b         a         b         a         b
+        2021-06-01       NaN       NaN       NaN       NaN       NaN       NaN
+        2021-07-01 -7.565988 -7.565988 -5.788797 -5.788797 -7.554848 -7.554848
+        2021-08-01 -3.924643 -3.924643 -1.919256 -1.919256 -3.914840 -3.914840
+        2021-09-01 -1.807489 -1.807489 -1.050918 -1.050918 -1.798897 -1.798897
+        2021-10-01 -1.849303 -1.849303 -1.604062 -1.604062 -1.841385 -1.841385
+        2021-11-01 -3.792905 -3.792905 -3.924210 -3.924210 -3.784793 -3.784793
+        2021-12-01 -4.156751 -4.156751 -4.186192 -4.186192 -4.148683 -4.148683
+
+    :parma visualised_parameters:
+        Single parameter name for a line chart, two parameter name tuple for a heatmap.
 
     :param sample_freq:
         What is the frequency of calculating rolling value
@@ -219,13 +304,13 @@ def calculate_rolling_metrics(
     # backtest_start, backtest_end = first_result.universe_options.start_at, first_result.universe_options.end_at
 
     check_inputs(
-        visualised_parameter,
+        visualised_parameters,
         fixed_parameters,
         first_result.combination,
     )
 
     benchmarked_results, unique_visualise_parameters = prepare_comparisons(
-        visualised_parameter,
+        visualised_parameters,
         fixed_parameters,
         grid_search_result,
     )
@@ -259,18 +344,29 @@ def calculate_rolling_metrics(
 
     assert len(index) > 0, f"Could not generate index: {range_start} - {range_end}, freq {sample_freq}"
 
-    df = crunch(
-        visualised_parameter=visualised_parameter,
-        unique_visualise_parameters=unique_visualise_parameters,
-        benchmarked_results=benchmarked_results,
-        index=index,
-        lookback=lookback,
-        visualised_metric=benchmarked_metric
-    )
+    if type(visualised_parameters) == tuple:
+        df = crunch_2d(
+            visualised_parameters=visualised_parameters,
+            unique_visualise_parameters=unique_visualise_parameters,
+            benchmarked_results=benchmarked_results,
+            index=index,
+            lookback=lookback,
+            visualised_metric=benchmarked_metric
+        )
+    else:
+        df = crunch_1d(
+            visualised_parameter=visualised_parameters,
+            unique_visualise_parameters=unique_visualise_parameters,
+            benchmarked_results=benchmarked_results,
+            index=index,
+            lookback=lookback,
+            visualised_metric=benchmarked_metric
+        )
 
     df.attrs["metric_name"] = benchmarked_metric.name
-    df.attrs["param_name"] = visualised_parameter
+    df.attrs["param_name"] = visualised_parameters
     df.attrs["lookback"] = lookback
+    df.attrs["type"] = BenchmarkVisualisationType.heatmap if type(visualised_parameters) == tuple else BenchmarkVisualisationType.line_chart
 
     return df
 
@@ -287,6 +383,8 @@ def visualise_grid_single_rolling_metric(
     """
 
     assert isinstance(df, pd.DataFrame)
+
+    assert df.attrs["type"] == BenchmarkVisualisationType.line_chart
 
     metric_name = df.attrs["metric_name"]
     param_name = df.attrs["param_name"].replace("_", " ").capitalize()
@@ -328,7 +426,7 @@ def visualise_grid_single_rolling_metric(
     return fig
 
 
-def visualise_grid_rolling_metric_multi_chart(
+def visualise_grid_rolling_metric_line_chart(
     df: pd.DataFrame,
     width=1200,
     height_per_row=500,
@@ -337,7 +435,7 @@ def visualise_grid_rolling_metric_multi_chart(
     range_start=None,
     range_end=None,
 ) -> Figure:
-    """Create an "animation" for a grid search parameter how results evolve over time.
+    """Create an "animation" for a single grid search parameter how results evolve over time as a line chart.
 
     :param df:
         Created by :py:func:`calculate_rolling_metrics`
@@ -365,8 +463,8 @@ def visualise_grid_rolling_metric_multi_chart(
         df = df.loc[range_start:range_end]
 
     metric_name = df.attrs["metric_name"]
-    param_name = df.attrs["param_name"].replace("_", " ").capitalize()
     lookback = df.attrs["lookback"]
+    param_name = df.attrs["param_name"].replace("_", " ").capitalize()
 
     total_rows = len(df.index) // charts_per_row + 1
 
@@ -413,6 +511,135 @@ def visualise_grid_rolling_metric_multi_chart(
         height=height,
         width=width,
         title_text=f"{metric_name.capitalize()} for parameter {param_name} with lookback of {lookback}",
+        title_x=0.5,
+        showlegend=False
+    )
+
+    # You can also adjust the overall margins of the figure
+    fig.update_layout(
+        margin=dict(
+            l=0,  # left margin
+            r=0,  # right margin
+            t=extra_height_margin,  # top margin
+            b=0  # bottom margin
+        )
+    )
+    return fig
+
+
+def visualise_grid_rolling_metric_heatmap(
+    df: pd.DataFrame,
+    width=1200,
+    height_per_row=500,
+    extra_height_margin=100,
+    charts_per_row=3,
+    range_start=None,
+    range_end=None,
+) -> Figure:
+    """Create an "animation" for two grid search parameters how results evolve over time as a heatmap.
+
+    :param df:
+        Created by :py:func:`calculate_rolling_metrics`
+
+    :param charts_per_row:
+        How many mini charts display per Plotly row
+
+    :param range_start:
+        Visualise slice of full backtest period.
+
+        Inclusive.
+
+    :param range_end:
+        Visualise slice of full backtest period.
+
+        Inclusive.
+
+    :return:
+        List of figure  s, one for each index timestamp.
+    """
+
+    assert isinstance(df, pd.DataFrame)
+
+    assert df.attrs["type"] == BenchmarkVisualisationType.heatmap
+
+    if range_start is not None:
+        df = df.loc[range_start:range_end]
+
+    metric_name = df.attrs["metric_name"]
+    param_1 = df.attrs["param_name"][0]
+    param_2 = df.attrs["param_name"][0]
+    param_name = param_1.replace("_", " ").capitalize() + " and " + param_2.replace("_", " ").capitalize()
+
+    lookback = df.attrs["lookback"]
+
+    total_rows = len(df.index) // charts_per_row + 1
+
+    if total_rows == 1:
+        charts_per_row = min(len(df.index), charts_per_row)
+
+    logger.info(
+        "visualise_grid_rolling_metric_multi_chart(): entries %d, rows %d, cols %d",
+        len(df.index),
+        total_rows,
+        charts_per_row,
+    )
+
+    titles = []
+    for timestamp in df.index:
+        titles.append(
+            f"{timestamp}"
+        )
+
+    fig = make_subplots(
+        rows=total_rows, cols=charts_per_row,
+        subplot_titles=titles,
+        horizontal_spacing=0.05,
+        vertical_spacing=0.05
+    )
+
+    for idx, timestamp in enumerate(df.index):
+
+        # Get one row as one chart
+        row_series = df.loc[timestamp]
+
+        index_levels = [sorted(row_series.index.get_level_values(i).unique())
+                        for i in range(row_series.index.nlevels)]
+
+        # Create a 2D array for the heatmap
+        z = np.zeros((len(index_levels[0]), len(index_levels[1])))
+
+        # Fill the array with values from the series
+        for row_idx, value in row_series.items():
+            i = index_levels[0].index(row_idx[0])
+            j = index_levels[1].index(row_idx[1])
+            z[i][j] = value
+
+        # Create the heatmap
+        trace = go.Heatmap(
+            z=z,
+            x=index_levels[1],  # Second index level for x-axis
+            y=index_levels[0],  # First index level for y-axis
+            colorscale='Blues',
+            text=[[f'{val:.1f}%' for val in row] for row in z],
+            texttemplate='%{text}',
+            textfont={"size": 12},
+            showscale=True,
+            colorbar=dict(
+                title='Value',
+                titleside='right'
+            )
+        )
+
+        col = (idx % charts_per_row) + 1
+        row = (idx // charts_per_row) + 1
+        fig.add_trace(trace, row=row, col=col)
+
+    height = height_per_row * total_rows + extra_height_margin
+
+    fig.update_layout(
+        height=height,
+        width=width,
+        title_text=f"{metric_name.capitalize()} for parameters {param_name} with lookback of {lookback}",
         title_x=0.5,
         showlegend=False
     )
