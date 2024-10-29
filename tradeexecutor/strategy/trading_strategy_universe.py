@@ -1815,7 +1815,7 @@ def translate_trading_pair(dex_pair: DEXPair, cache: dict | None = None) -> Trad
         pair.other_data = dex_pair.other_data  # Pass by reference to save time
 
     if cache is not None:
-        cache[pair.internal_id] = dex_pair
+        cache[pair.internal_id] = pair
 
     return pair
 

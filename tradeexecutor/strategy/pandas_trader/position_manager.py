@@ -4,7 +4,7 @@ import datetime
 import warnings
 from decimal import Decimal
 from io import StringIO
-from typing import List, Optional, Union, Literal, Set, TypeAlias
+from typing import List, Optional, Union, Set
 import logging
 
 import cachetools
@@ -16,7 +16,7 @@ from tradingstrategy.universe import Universe
 
 from tradeexecutor.state.trigger import TriggerType, Trigger, TriggerCondition, PartialTradeLevel
 from tradeexecutor.utils.accuracy import QUANTITY_EPSILON
-from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier, TradingPairKind
+from tradeexecutor.state.identifier import TradingPairIdentifier
 from tradeexecutor.state.loan import LiquidationRisked
 from tradeexecutor.state.portfolio import Portfolio
 from tradeexecutor.state.position import TradingPosition, TriggerPriceUpdate
@@ -157,7 +157,7 @@ class PositionManager:
         universe: Universe | TradingStrategyUniverse,
         state: State,
         pricing_model: PricingModel,
-        default_slippage_tolerance=DEFAULT_SLIPPAGE_TOLERANCE,
+        default_slippage_tolerance=None,
         trading_pair_cache=DEFAULT_TRADING_PAIR_CACHE,
     ):
 
@@ -216,6 +216,10 @@ class PositionManager:
 
         self.state = state
         self.pricing_model = pricing_model
+
+        # Only legacy strategies should not have StrategyParameters.slippage_tolerance set
+        if default_slippage_tolerance is None:
+            default_slippage_tolerance = DEFAULT_SLIPPAGE_TOLERANCE
         self.default_slippage_tolerance = default_slippage_tolerance
 
         reserve_currency, reserve_price = state.portfolio.get_default_reserve_asset()
@@ -674,13 +678,22 @@ class PositionManager:
         if type(value) == float:
             value = Decimal(value)
 
-        price_structure = self.pricing_model.get_buy_price(self.timestamp, executor_pair, value)
+        try:
+            price_structure = self.pricing_model.get_buy_price(self.timestamp, executor_pair, value)
+        except Exception as e:
+            # TODO: Add nice exceptions
+            raise RuntimeError(f"pricing_model failed to get buy price at {self.timestamp} for {executor_pair}") from e
 
         assert type(price_structure.mid_price) == float
 
         reserve_asset, reserve_price = self.state.portfolio.get_default_reserve_asset()
 
-        slippage_tolerance = slippage_tolerance or self.default_slippage_tolerance
+        if not slippage_tolerance:
+            slippage_tolerance = self.pricing_model.calculate_trade_adjusted_slippage_tolerance(
+                pair=pair,
+                direction="buy",
+                default_slippage_tolerance=self.default_slippage_tolerance,
+            )
 
         if not flags:
             flags = set()
@@ -1013,7 +1026,12 @@ class PositionManager:
 
         reserve_asset, reserve_price = self.state.portfolio.get_default_reserve_asset()
 
-        slippage_tolerance = slippage_tolerance or self.default_slippage_tolerance
+        if slippage_tolerance is None:
+            slippage_tolerance = self.pricing_model.calculate_trade_adjusted_slippage_tolerance(
+                pair=pair,
+                direction="sell",
+                default_slippage_tolerance=self.default_slippage_tolerance,
+            )
 
         logger.info(
             "Preparing to close position %s, quantity %s, pricing %s, profit %s, slippage tolerance: %f %%",

@@ -1,6 +1,13 @@
 """Test token tax (buy tax, sell tax) inside decide_trades loop and stop loss.
 
+See
+
+- load_partial_data(pair_extra_metadata=True)
+
+- Parameters.slippage_tolerance
+
 """
+import itertools
 import os
 
 import datetime
@@ -47,6 +54,7 @@ def create_trading_universe(
         client,
         execution_context=unit_test_execution_context,
         time_bucket=TimeBucket.d1,
+        stop_loss_time_bucket=TimeBucket.h1,
         pairs=pairs,
         universe_options=default_universe_options,
         start_at=universe_options.start_at,
@@ -62,30 +70,54 @@ def create_trading_universe(
 
 
 @pytest.fixture()
-def strategy_universe(persistent_test_client: Client):
+def parameters() -> StrategyParameters:
+    class Parameters:
+        cycle_duration = CycleDuration.cycle_1d
+        initial_cash = 10_000
+        backtest_start = datetime.datetime(2024, 9, 1)
+        backtest_end = datetime.datetime(2024, 10, 1)
+        slippage_tolerance = 0.005  # Default slippage tolerance 0.5%
+    return StrategyParameters.from_class(Parameters)
+
+
+@pytest.fixture()
+def strategy_universe(persistent_test_client: Client, parameters: StrategyParameters):
     return create_trading_universe(
         datetime.datetime.now(),
         persistent_test_client,
         unit_test_execution_context,
-        UniverseOptions(start_at=datetime.datetime(2023, 1, 1), end_at=datetime.datetime(2023, 2, 1))
+        universe_options=UniverseOptions.from_strategy_parameters_class(parameters, unit_test_execution_context),
     )
-
 
 
 def decide_trades(input: StrategyInput) -> list[TradeExecution]:
     # Example decide trades that generates buy, sell and stop loss sell events for the given real price data
 
     position_manager = input.get_position_manager()
+    strategy_universe = input.strategy_universe
 
-    if input.cycle % 3 == 0:
-        # Set a buy
-        pass
+    assert position_manager.default_slippage_tolerance == 0.005
 
-    if position_manager.is_any_open():
+    trump_weth = strategy_universe.get_pair_by_human_description(
+        (ChainId.ethereum, "uniswap-v2", "TRUMP", "WETH")
+    )
+
+    trades = []
+
+    if not position_manager.is_any_open():
+        if input.cycle % 3 == 0:
+            # Set a buy
+            cash = position_manager.get_current_cash()
+            trades += position_manager.open_spot(
+                trump_weth,
+                value = cash * 0.99,
+                stop_loss_pct=0.99,  # Will trigger
+            )
+    else:
         # Natural sell
-        position_manager.close_all()
+        trades += position_manager.close_all()
 
-    return []
+    return trades
 
 
 def create_indicators(
@@ -98,17 +130,17 @@ def create_indicators(
     return indicator_set
 
 
-def test_token_tax(strategy_universe, tmp_path):
-    """Test DecideTradesProtocolV4
+def test_token_tax(
+    strategy_universe: TradingStrategyUniverse,
+    parameters: StrategyParameters,
+    tmp_path,
+):
+    """Buy/sell token tax is included in the slippage tolerance.
 
-    - Check that StrategyInput is passed correctly in backtesting (only backtesting, not live trading)
+    - PricingModel.calculate_trade_adjusted_slippage_tolerance is used to set slippage tolerance for all trades
+
+    - This accounts for the token tax
     """
-
-    class Parameters:
-        cycle_duration = CycleDuration.cycle_1d
-        initial_cash = 10_000
-        backtest_start = datetime.datetime(2024, 6, 1)
-        backtest_end = datetime.datetime(2024, 7, 1)
 
     indicator_storage = DiskIndicatorStorage(tmp_path, strategy_universe.get_cache_key())
 
@@ -118,8 +150,13 @@ def test_token_tax(strategy_universe, tmp_path):
     )
 
     # Is accurate 1.0, as rounded to 2 decimals
-    assert trump_weth.get_buy_tax() == 1.0
-    assert trump_weth.get_sell_tax() == 1.0
+    assert trump_weth.get_buy_tax() == 0.01
+    assert trump_weth.get_sell_tax() == 0.01
+
+    # We loaded OHLCV for TRUMP
+    candles = strategy_universe.data_universe.candles.get_candles_by_pair(trump_weth.internal_id)
+    assert candles is not None
+    assert len(candles) > 30
 
     # Run the test
     result = run_backtest_inline(
@@ -129,10 +166,24 @@ def test_token_tax(strategy_universe, tmp_path):
         universe=strategy_universe,
         reserve_currency=ReserveCurrency.usdc,
         engine_version="0.5",
-        parameters=StrategyParameters.from_class(Parameters),
+        parameters=parameters,
         mode=ExecutionMode.unit_testing,
         indicator_storage=indicator_storage,
     )
 
-    state, universe, debug_dump = result
-    assert len(state.portfolio.closed_positions) == 0
+    state = result.state
+
+    # Go through all trades we made and see they had correct
+    # slippage tolerance with tax included
+    buy_trades = [t for t in state.portfolio.get_all_trades() if t.is_buy()]
+    sell_trades = [t for t in state.portfolio.get_all_trades() if t.is_sell() and not t.is_stop_loss()]
+    stop_loss_sell_trades = [t for t in state.portfolio.get_all_trades() if t.is_sell() and t.is_stop_loss()]
+
+    assert len(buy_trades) > 0
+    assert len(sell_trades) > 0
+    assert len(stop_loss_sell_trades) > 0
+
+    for t in itertools.chain(buy_trades, sell_trades, stop_loss_sell_trades):
+        # Slippage tolerance is 1% buy/sell tax + our default slippage tolerance
+        assert t.slippage_tolerance == 0.01 + 0.005, f"Trade has bad slippage tolerance {t}"
+
