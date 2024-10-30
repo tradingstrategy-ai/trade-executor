@@ -1,9 +1,10 @@
 """Asset pricing model."""
 
+import logging
 import abc
 import datetime
 from decimal import Decimal, ROUND_DOWN
-from typing import Callable, Optional
+from typing import Callable, Optional, Literal
 
 from tradeexecutor.state.identifier import TradingPairIdentifier
 from tradeexecutor.state.types import USDollarPrice, Percent, USDollarAmount, TokenAmount
@@ -12,6 +13,8 @@ from tradeexecutor.strategy.routing import RoutingModel
 from tradeexecutor.strategy.universe_model import StrategyExecutionUniverse
 from tradeexecutor.strategy.trade_pricing import TradePricing
 
+
+logger = logging.getLogger(__name__)
 
 
 class PricingModel(abc.ABC):
@@ -203,6 +206,46 @@ class PricingModel(abc.ABC):
             Set ``None`` to disable and use the trading fee from the source data.
         """
         raise NotImplementedError()
+
+    def calculate_trade_adjusted_slippage_tolerance(
+        self,
+        pair: TradingPairIdentifier,
+        direction: Literal['buy', 'sell'],
+        default_slippage_tolerance: Percent,
+    ) -> float | None:
+        """Get slippage for a given trading pair, for a given trade.
+
+        - Mainly a hook to deal with :term:`token tax` tokens on spot market
+
+        - Make sure you have token tax data included with your `PandasPairUniverse`, see details in
+          :py:mod:`tradingstrategy.utils.token_extra_data` - otherwise token tax data is not available
+
+        - Override to add custom per-pair slippage handling
+
+        :return:
+            Use `default_slippage_tolerance` if the token does not need special slippage.
+        """
+
+        assert isinstance(pair, TradingPairIdentifier), f"Got {type(pair)} instead of TradingPairIdentifier"
+
+        assert default_slippage_tolerance is not None, "default_slippage_tolerance must be set"
+
+        if direction == "buy":
+            special_tolerance = pair.base.get_buy_tax()
+        elif direction == "sell":
+            special_tolerance = pair.base.get_sell_tax()
+        else:
+            raise NotImplementedError(f"Does not know: {direction}")
+
+        logger.info(
+            "Adjusting slippage tolerance for %s, direction %s, default: %s, special %s",
+            pair,
+            direction,
+            default_slippage_tolerance,
+            special_tolerance,
+        )
+
+        return default_slippage_tolerance + (special_tolerance or 0)
 
 
 class FixedPricing(PricingModel):

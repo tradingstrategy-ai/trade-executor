@@ -100,6 +100,12 @@ class StrategyParameters(MutableAttributeDict):
         value = parameters.rsi_low
         value = parameters["rsi_low"]  # Are equal
 
+    If you are not sure if the parameter exists, you can still use `dict.get()` access:
+
+    .. code-block:: python
+
+        max_slippage = self.parameters.get("slippage_tolerance") or 0.0050
+
     Example parameter definition:
 
     .. code-block:: python
@@ -215,6 +221,19 @@ class StrategyParameters(MutableAttributeDict):
         except AttributeError:
             all_params = ", ".join(key for key, val in self.iterate_parameters())
             raise AttributeError(f"Strategy parameters lacks parameter: {name}\nWe have: {all_params}")
+
+    def has_parameter(self, name: str) -> bool:
+        """Is a specific parameter set?.
+
+        Example:
+
+        .. code-block:: python
+
+            if parameters.has_parameter("slippage_tolerance"):
+                max_slippage = parameters.slippage_tolerance
+        """
+        assert type(name) == str
+        return name in self
 
     def iterate_parameters(self) -> Iterable[Tuple[str, any]]:
         """Iterate over parameter definitions."""

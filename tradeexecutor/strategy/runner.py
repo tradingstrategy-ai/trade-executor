@@ -929,9 +929,10 @@ class StrategyRunner(abc.ABC):
                 universe,
                 state,
                 stop_loss_pricing_model,
+                default_slippage_tolerance=self.parameters.get("slippage_tolerance") if self.parameters else None,
             )
 
-            triggered_trades = check_position_triggers(position_manager,self.execution_context)
+            triggered_trades = check_position_triggers(position_manager, self.execution_context)
             triggered_trades = post_process_trade_decision(
                 state,
                 self.execution_context,

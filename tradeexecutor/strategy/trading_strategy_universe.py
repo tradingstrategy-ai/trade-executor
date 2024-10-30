@@ -38,7 +38,8 @@ from tradingstrategy.utils.groupeduniverse import filter_for_pairs, NoDataAvaila
 from tradeexecutor.strategy.execution_context import ExecutionMode, ExecutionContext
 from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier, TradingPairKind, AssetType
 from tradeexecutor.strategy.universe_model import StrategyExecutionUniverse, UniverseModel, DataTooOld, UniverseOptions, default_universe_options
-
+from tradingstrategy.utils.token_extra_data import load_extra_metadata
+from tradingstrategy.utils.token_filter import add_base_quote_address_columns
 
 logger = logging.getLogger(__name__)
 
@@ -1721,7 +1722,7 @@ def translate_token(
     )
 
 
-def translate_trading_pair(pair: DEXPair, cache: dict | None = None) -> TradingPairIdentifier:
+def translate_trading_pair(dex_pair: DEXPair, cache: dict | None = None) -> TradingPairIdentifier:
     """Translate trading pair from client download to the trade executor.
 
     Trading Strategy client uses compressed columnar data for pairs and tokens.
@@ -1747,44 +1748,44 @@ def translate_trading_pair(pair: DEXPair, cache: dict | None = None) -> TradingP
     """
 
     if cache is not None:
-        cached = cache.get(pair.pair_id)
+        cached = cache.get(dex_pair.pair_id)
         if cached is not None:
             return cached
 
-    assert isinstance(pair, DEXPair), f"Expected DEXPair, got {type(pair)}"
-    assert pair.base_token_decimals is not None, f"Base token missing decimals: {pair}"
-    assert pair.quote_token_decimals is not None, f"Quote token missing decimals: {pair}"
+    assert isinstance(dex_pair, DEXPair), f"Expected DEXPair, got {type(dex_pair)}"
+    assert dex_pair.base_token_decimals is not None, f"Base token missing decimals: {dex_pair}"
+    assert dex_pair.quote_token_decimals is not None, f"Quote token missing decimals: {dex_pair}"
 
     base = AssetIdentifier(
-        chain_id=pair.chain_id.value,
-        address=pair.base_token_address,
-        token_symbol=pair.base_token_symbol,
-        decimals=pair.base_token_decimals,
+        chain_id=dex_pair.chain_id.value,
+        address=dex_pair.base_token_address,
+        token_symbol=dex_pair.base_token_symbol,
+        decimals=dex_pair.base_token_decimals,
     )
     quote = AssetIdentifier(
-        chain_id=pair.chain_id.value,
-        address=pair.quote_token_address,
-        token_symbol=pair.quote_token_symbol,
-        decimals=pair.quote_token_decimals,
+        chain_id=dex_pair.chain_id.value,
+        address=dex_pair.quote_token_address,
+        token_symbol=dex_pair.quote_token_symbol,
+        decimals=dex_pair.quote_token_decimals,
     )
 
-    if pair.fee and isnan(pair.fee):
+    if dex_pair.fee and isnan(dex_pair.fee):
         # Repair some broken data
         fee = None
     else:
         # Convert DEXPair.fee BPS to %
         # So, after this, fee can either be multiplier or None
-        if pair.fee is not None:
+        if dex_pair.fee is not None:
             # If BPS fee is set it must be more than 1 BPS.
             # Allow explicit fee = 0 in testing.
             # if pair.fee != 0:
             #     assert pair.fee > 1, f"DEXPair fee must be in BPS, got {pair.fee}"
 
             # can receive fee in bps or multiplier, but not raw form
-            if pair.fee >= 1:
-                fee = pair.fee / 10_000
+            if dex_pair.fee >= 1:
+                fee = dex_pair.fee / 10_000
             else:
-                fee = pair.fee
+                fee = dex_pair.fee
 
             # highest fee tier is currently 1% and lowest in 0.01%
             if fee != 0:
@@ -1795,14 +1796,25 @@ def translate_trading_pair(pair: DEXPair, cache: dict | None = None) -> TradingP
     pair = TradingPairIdentifier(
         base=base,
         quote=quote,
-        pool_address=pair.address,
-        internal_id=pair.pair_id,
-        info_url=pair.get_trading_pair_page_url(),
-        exchange_address=pair.exchange_address,
+        pool_address=dex_pair.address,
+        internal_id=dex_pair.pair_id,
+        info_url=dex_pair.get_trading_pair_page_url(),
+        exchange_address=dex_pair.exchange_address,
         fee=fee,
-        reverse_token_order=pair.token0_symbol != pair.base_token_symbol,
-        exchange_name=pair.exchange_name,
+        reverse_token_order=dex_pair.token0_symbol != dex_pair.base_token_symbol,
+        exchange_name=dex_pair.exchange_name,
     )
+
+    # Need to be loaded with load_extra_metadata()
+    if dex_pair.buy_tax and dex_pair.buy_tax < 900:
+        # 900+ are error codes for built-in internal token tax measurer
+        # that should be no longer used - don't bring over these error codes from DEXPair
+        pair.base.other_data["buy_tax"] = dex_pair.buy_tax
+        pair.base.other_data["sell_tax"] = dex_pair.sell_tax
+
+    # Need to be loaded with load_extra_metadata()
+    if dex_pair.other_data:
+        pair.other_data = dex_pair.other_data  # Pass by reference to save time
 
     if cache is not None:
         cache[pair.internal_id] = pair
@@ -2006,6 +2018,7 @@ def load_partial_data(
     name: str | None = None,
     candle_progress_bar_desc: str | None = None,
     lending_candle_progress_bar_desc: str | None = None,
+    pair_extra_metadata=False,
 ) -> Dataset:
     """Load pair data for given trading pairs.
 
@@ -2129,6 +2142,11 @@ def load_partial_data(
     :param lending_candle_progress_bar_desc:
         Override the default progress bar message
 
+    :param pair_extra_metadata:
+        Load TokenSniffer data, buy/sell tax and other extra metadata.
+
+        Slow and API endpoint severely limited. Use only if you are dealing with a limited number of pairs.
+
     :return:
         Datataset containing the requested data
 
@@ -2214,6 +2232,15 @@ def load_partial_data(
 
             # Eliminate the pairs we are not interested in from the database
             filtered_pairs_df = pairs_df.loc[pairs_df["pair_id"].isin(our_pair_ids)]
+
+        if pair_extra_metadata:
+            # Load token tax data
+            filtered_pairs_df = filtered_pairs_df.copy()
+            filtered_pairs_df = add_base_quote_address_columns(filtered_pairs_df)
+            filtered_pairs_df = load_extra_metadata(
+                pairs_df=filtered_pairs_df,
+                client=client,
+            )
 
         # Autogenerate names by the pair count
         if not name:

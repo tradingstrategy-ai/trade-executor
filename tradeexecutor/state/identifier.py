@@ -325,6 +325,25 @@ class AssetIdentifier:
         assert type(tags) == set
         self.other_data["tags"] = tags
 
+    def get_buy_tax(self) -> Percent | None:
+        """Get buy tax associated with this token if any.
+
+        .. note ::
+
+            This property should be per trading pair, but all other DEX systems use per token tax values.
+        """
+        return self.other_data.get("buy_tax")
+
+    def get_sell_tax(self) -> Percent | None:
+        """Get sell tax associated with this token if any.
+
+        .. note ::
+
+            This property should be per trading pair, but all other DEX systems use per token tax values.
+
+        """
+        return self.other_data.get("sell_tax")
+
 
 class TradingPairKind(enum.Enum):
     """What kind of trading position this is.
@@ -722,6 +741,25 @@ class TradingPairIdentifier:
         """
         underlying = self.underlying_spot_pair or self
         return underlying.base.get_tags()
+
+    def get_buy_tax(self) -> Percent | None:
+        """Get buy tax associated with this token if any.
+
+        .. note ::
+
+            This property should be per trading pair, but all other DEX systems use per token tax values.
+        """
+        return self.base.get_buy_tax()
+
+    def get_sell_tax(self) -> Percent | None:
+        """Get sell tax associated with this token if any.
+
+        .. note ::
+
+            This property should be per trading pair, but all other DEX systems use per token tax values.
+
+        """
+        return self.base.get_sell_tax()
 
 
 @dataclass_json

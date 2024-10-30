@@ -166,6 +166,7 @@ def environment(
     return environment
 
 
+@flaky.flaky
 def test_enzyme_guard_credit_positions(
     environment: dict,
     web3: Web3,

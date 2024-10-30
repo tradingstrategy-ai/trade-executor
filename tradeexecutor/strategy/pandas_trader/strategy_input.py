@@ -17,7 +17,7 @@ from tradeexecutor.state.state import State
 from tradeexecutor.state.types import USDollarPrice
 from tradeexecutor.strategy.execution_context import ExecutionContext
 from tradeexecutor.strategy.pandas_trader.indicator import IndicatorResultMap, IndicatorSet, IndicatorKey, IndicatorNotFound, InvalidForMultipairStrategy
-from tradeexecutor.strategy.pandas_trader.position_manager import PositionManager
+from tradeexecutor.strategy.pandas_trader.position_manager import PositionManager, DEFAULT_SLIPPAGE_TOLERANCE
 from tradeexecutor.strategy.parameters import StrategyParameters
 from tradeexecutor.strategy.pricing_model import PricingModel
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
@@ -844,7 +844,8 @@ class StrategyInput:
             self.timestamp,
             self.strategy_universe,
             self.state,
-            self.pricing_model
+            self.pricing_model,
+            default_slippage_tolerance=self.parameters.get("slippage_tolerance") or DEFAULT_SLIPPAGE_TOLERANCE,
         )
 
     def get_default_pair(self) -> TradingPairIdentifier:
