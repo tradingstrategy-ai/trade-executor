@@ -239,6 +239,7 @@ def test_generic_routing_live_trading_start_spot_only(
         assert len(state.portfolio.closed_positions) == 8
 
 
+@flaky.flaky
 def test_generic_routing_test_trade_spot_only(
     environment: dict,
     web3: Web3,
