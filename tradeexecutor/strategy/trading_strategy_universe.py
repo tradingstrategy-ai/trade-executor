@@ -1806,7 +1806,9 @@ def translate_trading_pair(dex_pair: DEXPair, cache: dict | None = None) -> Trad
     )
 
     # Need to be loaded with load_extra_metadata()
-    if dex_pair.buy_tax:
+    if dex_pair.buy_tax and dex_pair.buy_tax < 900:
+        # 900+ are error codes for built-in internal token tax measurer
+        # that should be no longer used - don't bring over these error codes from DEXPair
         pair.base.other_data["buy_tax"] = dex_pair.buy_tax
         pair.base.other_data["sell_tax"] = dex_pair.sell_tax
 

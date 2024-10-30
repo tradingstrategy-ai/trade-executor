@@ -220,6 +220,9 @@ class PositionManager:
         # Only legacy strategies should not have StrategyParameters.slippage_tolerance set
         if default_slippage_tolerance is None:
             default_slippage_tolerance = DEFAULT_SLIPPAGE_TOLERANCE
+
+        assert default_slippage_tolerance < 0.15, f"default_slippage_tolerance looks too high: {default_slippage_tolerance * 100} %"
+
         self.default_slippage_tolerance = default_slippage_tolerance
 
         reserve_currency, reserve_price = state.portfolio.get_default_reserve_asset()
@@ -1032,6 +1035,9 @@ class PositionManager:
                 direction="sell",
                 default_slippage_tolerance=self.default_slippage_tolerance,
             )
+
+        # Hardcoded safety check
+        assert slippage_tolerance < 0.33, f"Slippage tolerance does not look real {slippage_tolerance} for {pair}, sell tax is {pair.get_sell_tax()}"
 
         logger.info(
             "Preparing to close position %s, quantity %s, pricing %s, profit %s, slippage tolerance: %f %%",
