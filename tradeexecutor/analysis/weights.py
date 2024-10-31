@@ -53,21 +53,28 @@ def calculate_asset_weights(
 
 
 def visualise_weights(
-    df: pd.DataFrame,
+    weights_series: pd.Series,
     normalised=True,
     color_palette = colors.qualitative.Light24,
     template='plotly_light'
 ) -> Figure:
     """Draw a chart of weights."""
 
+    assert isinstance(weights_series, pd.Series)
+
+    # Unstack to create DataFrame with asset symbols as columns
+    df = weights_series.unstack(level=1)
+
     if normalised:
         df = df.div(df.sum(axis=1), axis=0) * 100
 
     fig = px.area(
         df,
-        title='Asset Weightings (simple)',
+        title='Asset weightings',
         labels={'index': 'Time', 'value': 'Percentage'},
         color_discrete_sequence=color_palette,
+        template=template,
     )
+    return fig
 
 

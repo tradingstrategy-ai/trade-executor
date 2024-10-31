@@ -4,8 +4,9 @@ import random
 
 import pandas as pd
 import pytest
+from plotly.graph_objs import Figure
 
-from tradeexecutor.analysis.weights import calculate_asset_weights
+from tradeexecutor.analysis.weights import calculate_asset_weights, visualise_weights
 from tradingstrategy.candle import GroupedCandleUniverse
 from tradingstrategy.chain import ChainId
 from tradingstrategy.liquidity import GroupedLiquidityUniverse
@@ -209,5 +210,6 @@ def test_visualise_weights(strategy_universe, tmp_path):
     assets = weights_series.index.get_level_values(0).unique()
     assert set(assets) == {"USDC", "WBTC", "WETH"}
 
-
+    fig = visualise_weights(weights_series)
+    assert isinstance(fig, Figure)
 
