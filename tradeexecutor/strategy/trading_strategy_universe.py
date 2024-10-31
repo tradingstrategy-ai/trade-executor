@@ -1117,7 +1117,6 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
                 forward_fill=forward_fill,
                 index_automatically=False,
             )
-            import ipdb ; ipdb.set_trace()
             resampled_liquidity = None
         else:
             liquidity_universe = None
