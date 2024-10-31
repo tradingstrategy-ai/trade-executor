@@ -38,7 +38,6 @@ def calculate_asset_weights(
             "value": ps.free_cash,
             } for ps in state.stats.portfolio]
 
-
     # Need to look up assets for every position
     position_asset_map = {p.position_id: p.pair.base.token_symbol for p in state.portfolio.get_all_positions()}
 

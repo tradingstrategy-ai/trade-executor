@@ -145,6 +145,7 @@ def calculate_statistics(
             calculated_at=clock,
             total_equity=portfolio.get_total_equity(),
             net_asset_value=portfolio.get_net_asset_value(),
+            free_cash=float(portfolio.get_cash()),
         )
 
     stats = TimestampedStatistics(
