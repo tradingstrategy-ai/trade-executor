@@ -29,8 +29,12 @@ def strategy_folder():
 
 @pytest.fixture(scope="session")
 def persistent_test_cache_path() -> str:
-    """The path where tests store and cache the downloaded datsets"""
-    return "/tmp/trading-strategy-tests"
+    """The path where tests store and cache the downloaded datsets.
+
+    - Matches one used in tradingstrategy.tests.conftest
+    """
+    path = os.path.expanduser("~/.cache/trading-strategy-tests")
+    return path
 
 
 @pytest.fixture(scope="session")

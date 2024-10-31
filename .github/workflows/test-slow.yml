@@ -56,6 +56,17 @@ jobs:
       - name: Prepare .sol source files
         run: |
             (cd deps/web3-ethereum-defi && make guard in-house)
+
+      # Speed up testing by not downloading integration test data from the production server
+      # https://github.com/actions/cache
+      # See conftest.persistent_test_client
+      - name: Cache datasetes
+        id: cache-datasets-load
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/trading-strategy-tests
+          key: cache-datasets
+
       # Run tests parallel by module
       - name: Run test scripts
         run: |
@@ -68,3 +79,10 @@ jobs:
           PYDEVD_DISABLE_FILE_VALIDATION: 1
           JSON_RPC_POLYGON: ${{ secrets.JSON_RPC_POLYGON }}
           JSON_RPC_POLYGON_ARCHIVE: ${{ secrets.JSON_RPC_POLYGON_ARCHIVE }}
+
+      - name: Save datasets
+        id: cache-datasets-save
+        uses: actions/cache/save@v4
+        with:
+          path: ~/.cache/trading-strategy-tests
+          key: cache-datasets

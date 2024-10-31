@@ -414,7 +414,10 @@ def strategy_universe(mock_exchange) -> TradingStrategyUniverse:
     candles_pepe_usdc = generate_ohlcv_candles(time_bucket, START_AT_DATA, END_AT, pair_id=pepe_usdc.internal_id, random_seed = 2)
     candles_bob_usdc = generate_ohlcv_candles(time_bucket, START_AT_DATA, END_AT, pair_id=bob_usdc.internal_id, random_seed = 4)
     
-    candle_universe = GroupedCandleUniverse.create_from_multiple_candle_dataframes([candles_weth_usdc, candles_pepe_usdc, candles_bob_usdc])
+    candle_universe = GroupedCandleUniverse.create_from_multiple_candle_dataframes(
+        [candles_weth_usdc, candles_pepe_usdc, candles_bob_usdc],
+        autoheal_pair_limit=0,
+    )
 
     universe = Universe(
         time_bucket=time_bucket,
