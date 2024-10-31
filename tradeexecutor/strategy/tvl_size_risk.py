@@ -12,6 +12,7 @@ from tradeexecutor.state.types import USDollarAmount, TokenAmount, USDollarPrice
 from tradeexecutor.strategy.pricing_model import PricingModel
 from tradeexecutor.strategy.routing import RoutingModel
 from tradeexecutor.strategy.size_risk_model import SizeRiskModel, SizingType
+from tradingstrategy.liquidity import LiquidityDataUnavailable
 from tradingstrategy.pair import PandasPairUniverse
 from tradingstrategy.types import Percent
 
@@ -165,21 +166,49 @@ class USDTVLSizeRiskModel(BaseTVLSizeRiskModel):
         pricing_model: PricingModel,
         per_trade_cap: Percent = UNLIMITED_CAP,
         per_position_cap: Percent = UNLIMITED_CAP,
+        missing_tvl_placeholder_usd: USDollarAmount = None,
     ):
+        """Create size-risk model.
+
+        :param pricing_model:
+            Pricing model is used to read TVL data (historical/real time)
+
+        :param per_trade_cap:
+            How many % of pool TVL on trade can be
+
+        :param per_position_cap:
+            How many % of pool TVL on trade can be
+
+        :parma missing_tvl_placeholder_usd:
+            If we do not have TVL data available, use this value as a fixed US value placeholder.
+
+            E.g. set to `250_000` to assume all unknown pools to have 250k TVL at any point of time.
+        """
         super().__init__(
             pricing_model,
             per_trade_cap,
             per_position_cap
         )
+        self.missing_tvl_placeholder = missing_tvl_placeholder_usd
 
     def get_tvl(self, timestamp: AnyTimestamp, pair: TradingPairIdentifier) -> USDollarAmount:
         """Read the TVL from the underlying pricing model."""
 
-        tvl = self.pricing_model.get_usd_tvl(timestamp, pair)
+        exc = None
+        try:
+            tvl = self.pricing_model.get_usd_tvl(timestamp, pair)
+        except LiquidityDataUnavailable as e:
+            if self.missing_tvl_placeholder:
+                tvl = self.missing_tvl_placeholder
+            else:
+                tvl = None
+                exc = e
+
         assert tvl is not None, \
             f"HistoricalUSDTVLSizeRiskModel.get_tvl(): Cannot read TVL value at {timestamp} for pair {pair}\n" \
             f"Does the universe have liquidity data set up?\n" \
-            f"Pricing model is: {self.pricing_model}"
+            f"Pricing model is: {self.pricing_model}\n" \
+            f"Exception was: {exc}\n"
         return tvl
 
 

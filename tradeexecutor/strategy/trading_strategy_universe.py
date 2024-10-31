@@ -1101,7 +1101,10 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
 
         if dataset.liquidity is not None:
 
-            if isinstance(dataset.liquidity.index, pd.MultiIndex):
+            if isinstance(dataset.liquidity.index, pd.Index):
+                # Unindexed data
+                dataset.liquidity = dataset.liquidity.set_index("timestamp", drop=False)
+            elif isinstance(dataset.liquidity.index, pd.MultiIndex):
                 # The hack we had to do to in CachedHTTPTransport.fetch_tvl_by_pair_ids() because
                 # for some reason pd.concat() kept failing on Github.
                 # Goes from (pair_id, timestamp) -> (timestamp) index
