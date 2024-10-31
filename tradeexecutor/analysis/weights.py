@@ -1,6 +1,10 @@
-"""Weight allocations of assets."""
-from dataclasses import dataclass
+"""Weight allocations of assets.
 
+- Visualise what the strategy portfolio consists of over time
+
+- See :py:func:`visualise_weights` for usage
+
+"""
 import pandas as pd
 from plotly.graph_objs import Figure
 import plotly.express as px
@@ -79,10 +83,11 @@ def visualise_weights(
 
     fig = px.area(
         df,
-        title='Asset weightings',
-        labels={'index': 'Time', 'value': 'Percentage'},
+        title='Asset weights (normalised)' if normalised else 'Asset weights (USD)',
+        labels={
+            'index': 'Time',
+            'value': '% of portfolio' if normalised else 'US dollar size',
+        },
         color_discrete_sequence=color_palette,
     )
     return fig
-
-

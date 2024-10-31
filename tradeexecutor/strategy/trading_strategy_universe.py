@@ -2168,7 +2168,7 @@ def load_partial_data(
     time_bucket = universe_options.candle_time_bucket_override or time_bucket
 
     # Some sanity and safety check
-    if len(pairs) >= 25:
+    if len(pairs) >= 250:
         logger.warning("load_partial_data() method is designed to load data for low number or trading pairs, got %d - this might be slow", len(pairs))
 
     # Legacy compat
@@ -2259,6 +2259,18 @@ def load_partial_data(
             start_time=data_load_start_at,
             end_time=end_at,
         )
+
+        candles_pairs = set(candles["pair_id"].unique())
+        asked_pairs = set(our_pair_ids)
+
+        if len(candles_pairs) != asked_pairs:
+            logger.warning(
+                "Data missing warning: We asked OHLCV data for %d trading pairs, but only got for %d pairs. This is usually because time period %s - %s does not have OHLCV data for all asked pairs.",
+                len(asked_pairs),
+                len(candles_pairs),
+                data_load_start_at,
+                end_at
+            )
 
         if stop_loss_time_bucket:
             stop_loss_desc = f"Loading stop loss/take profit granular trigger data for {name}"
