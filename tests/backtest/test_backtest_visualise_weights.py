@@ -5,6 +5,7 @@ import random
 import pandas as pd
 import pytest
 from plotly.graph_objs import Figure
+from pyasn1_modules.rfc6031 import id_pskc_deviceBinding
 
 from tradeexecutor.analysis.weights import calculate_asset_weights, visualise_weights
 from tradingstrategy.candle import GroupedCandleUniverse
@@ -207,7 +208,7 @@ def test_visualise_weights(strategy_universe, tmp_path):
     weights_series = calculate_asset_weights(state)
 
     assert isinstance(weights_series.index, pd.MultiIndex)
-    assets = weights_series.index.get_level_values(0).unique()
+    assets = weights_series.index.get_level_values(1).unique()
     assert set(assets) == {"USDC", "WBTC", "WETH"}
 
     fig = visualise_weights(weights_series)

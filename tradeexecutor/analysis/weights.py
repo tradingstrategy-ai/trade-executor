@@ -48,15 +48,24 @@ def calculate_asset_weights(
     df = pd.DataFrame(reserve_rows + position_rows)
     df['timestamp'] = pd.to_datetime(df['timestamp'], unit='s')
     df = df.sort_values(by='timestamp')
+
     df = df.set_index(["timestamp", "asset"])
-    return df["value"]
+    series = df["value"]
+
+    series_deduped = series[~series.index.duplicated(keep='last')]
+    # For each timestamp, we may have multiple entries of the same asset
+    # - in this case take the last one per asset.
+    # These may cause e.g. by simulated deposit events.
+    # 2021-06-01  USDC     1.000000e+06
+    #             WBTC     9.840778e+05
+    #             USDC     1.000000e+04
+    return series_deduped
 
 
 def visualise_weights(
     weights_series: pd.Series,
     normalised=True,
     color_palette = colors.qualitative.Light24,
-    template='plotly_light'
 ) -> Figure:
     """Draw a chart of weights."""
 
@@ -73,7 +82,6 @@ def visualise_weights(
         title='Asset weightings',
         labels={'index': 'Time', 'value': 'Percentage'},
         color_discrete_sequence=color_palette,
-        template=template,
     )
     return fig
 
