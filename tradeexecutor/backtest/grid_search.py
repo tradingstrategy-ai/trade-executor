@@ -1045,7 +1045,7 @@ def perform_grid_search(
     combinations: List[GridCombination],
     max_workers: int | Callable=get_safe_max_workers_count,
     reader_pool_size: int | Callable=get_safe_max_workers_count,
-    multiprocess=False,
+    multiprocess=True,
     trading_strategy_engine_version: TradingStrategyEngineVersion="0.3",
     data_retention: GridSearchDataRetention = GridSearchDataRetention.metrics_only,
     execution_context: ExecutionContext = grid_search_execution_context,
@@ -1138,6 +1138,9 @@ def perform_grid_search(
     if len(cached_results) == 0:
         print("No cached grid search results found from previous runs")
 
+    if verbose:
+        print(f"Starting grid search with {max_workers} workers, multi process is {multiprocess}")
+
     if max_workers > 1:
 
         # Do a parallel scan for the maximum speed
@@ -1178,13 +1181,14 @@ def perform_grid_search(
             if verbose:
                 progress_bar = tqdm(total=len(task_args))
                 progress_bar.set_postfix({"processes": max_workers})
+                progress_bar.display()
             else:
                 progress_bar = None
 
             # Extract results from the parallel task queue
             for task in tm.as_completed():
                 results.append(task.result)
-                if verbose:
+                if progress_bar:
                     progress_bar.update()
         else:
             #
