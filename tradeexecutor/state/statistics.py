@@ -10,19 +10,21 @@ import datetime
 from collections import defaultdict
 from dataclasses import field, dataclass
 from math import isnan
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple, Iterable
 
 import pandas as pd
 from pandas import DatetimeIndex
 from dataclasses_json import dataclass_json
 
+from tradeexecutor.state.identifier import TradingPairIdentifier, AssetIdentifier
 from tradingstrategy.types import USDollarAmount
-from tradeexecutor.state.types import Percent
+from tradeexecutor.state.types import Percent, UnixTimestamp
 from tradeexecutor.analysis.trade_analyser import TradeSummary
 
 
+
 @dataclass_json
-@dataclass
+@dataclass(slots=True)
 class PositionStatistics:
     """Time-series of statistics calculated for each open position.
 
@@ -67,7 +69,7 @@ class PositionStatistics:
 
 
 @dataclass_json
-@dataclass
+@dataclass(slots=True)
 class FinalPositionStatistics:
     """When position is closed, its final statistics are calculated.
 
@@ -88,7 +90,7 @@ class FinalPositionStatistics:
 
 
 @dataclass_json
-@dataclass
+@dataclass(slots=True)
 class PortfolioStatistics:
     """Portfolio statistics for each timepoint.
 
@@ -154,7 +156,7 @@ class PortfolioStatistics:
 
 
 @dataclass_json
-@dataclass
+@dataclass(slots=True)
 class Statistics:
     """Statistics for a trade execution state.
 

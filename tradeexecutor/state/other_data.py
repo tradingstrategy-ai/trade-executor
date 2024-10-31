@@ -90,7 +90,7 @@ class OtherData:
         assert type(name) == str, f"Got {name}"
         self.data[cycle][name] = value
 
-    def load_latest(self, name: str) -> JsonSerialisableObject | None:
+    def load_latest(self, name: str, default=None) -> JsonSerialisableObject | None:
         """Load the latest named value from the store.
 
         - Take the value whatever is the last cycle
@@ -99,4 +99,4 @@ class OtherData:
             If the last cycle did not store this var, then return `None`.
         """
         latest_cycle = self.get_latest_stored_cycle()
-        return self.data.get(latest_cycle).get(name, None)
+        return self.data.get(latest_cycle, {}).get(name, default)
