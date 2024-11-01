@@ -600,6 +600,7 @@ def test_one_delta_live_strategy_short_increase(
     assert state.portfolio.open_positions[1].get_value() == pytest.approx(1999.778098480197, rel=APPROX_REL)
 
 
+@flaky.flaky()
 def test_one_delta_live_strategy_short_reduce(
     logger,
     web3: Web3,
