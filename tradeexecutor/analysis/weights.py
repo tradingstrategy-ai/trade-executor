@@ -140,10 +140,11 @@ def calculate_weights_statistics(
     value = weights[max_idx]
 
     stats.append({
-        "Name": "Max position (USD)",
+        "Name": "Max position",
         "At": at,
         "Pair": pair,
         "Value": value,
+        "Unit": "USD",
     })
 
     min_idx = weights.idxmin()
@@ -151,19 +152,21 @@ def calculate_weights_statistics(
     value = weights[min_idx]
 
     stats.append({
-        "Name": "Min position (USD)",
+        "Name": "Min position",
         "At": at,
         "Pair": pair,
         "Value": value,
+        "Unit": "USD",
     })
 
     value = weights.mean()
 
     stats.append({
-        "Name": "Mean position (USD)",
+        "Name": "Mean position",
         "At": "",
         "Pair": "",
         "Value": value,
+        "Unit": "USD",
     })
 
     # Normalised
@@ -174,10 +177,11 @@ def calculate_weights_statistics(
     value = normalised[max_idx]
 
     stats.append({
-        "Name": "Max position (%)",
+        "Name": "Max position",
         "At": at,
         "Pair": pair,
         "Value": value,
+        "Unit": "%",
     })
 
     min_idx = normalised.idxmin()
@@ -185,24 +189,26 @@ def calculate_weights_statistics(
     value = normalised[min_idx]
 
     stats.append({
-        "Name": "Min position (%)",
+        "Name": "Min position",
         "At": at,
         "Pair": pair,
         "Value": value,
+        "Unit": "%",
     })
 
     value = normalised.mean()
 
     stats.append({
-        "Name": "Mean position (%)",
+        "Name": "Mean position",
         "At": "",
         "Pair": "",
         "Value": value,
+        "Unit": "%",
     })
 
     df = pd.DataFrame(stats)
 
-    df.set_index("Name")
+    df = df.set_index("Name")
     df["Value"] = df["Value"].apply(lambda x: "{:,.2f}".format(x))
     return df
 
