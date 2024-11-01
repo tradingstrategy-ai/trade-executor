@@ -73,12 +73,28 @@ def visualise_weights(
     normalised=True,
     color_palette = colors.qualitative.Light24,
     template="plotly_dark",
+    include_reserves=True,
 ) -> Figure:
-    """Draw a chart of weights."""
+    """Draw a chart of weights.
+
+    :param normalised:
+        Do 100% stacked chart over time
+
+    :param include_reserves:
+        Include reserve positions like USDC in the output.
+
+    :return:
+        Plotly chart
+    """
 
     assert isinstance(weights_series, pd.Series)
 
     reserve_asset_symbol = weights_series.attrs["reserve_asset_symbol"]
+
+    if not include_reserves:
+        # Filter out reserve position
+        reserve_asset_symbol = weights_series.attrs["reserve_asset_symbol"]
+        weights_series = weights_series[weights_series.index.get_level_values(1) != reserve_asset_symbol]
 
     def sort_key_reserve_first(col_name):
         if col_name == reserve_asset_symbol:
@@ -94,9 +110,14 @@ def visualise_weights(
     if normalised:
         df = df.div(df.sum(axis=1), axis=0) * 100
 
+    if include_reserves:
+        reserve_text = f"{reserve_asset_symbol} reserves included"
+    else:
+        reserve_text = f"{reserve_asset_symbol} reserves excluded"
+
     fig = px.area(
         df,
-        title='Asset weights (normalised)' if normalised else 'Asset weights (USD)',
+        title=f'Asset weights (%), {reserve_text}' if normalised else f'Asset weights (USD), {reserve_text}',
         labels={
             'index': 'Time',
             'value': '% of portfolio' if normalised else 'US dollar size',
