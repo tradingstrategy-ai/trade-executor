@@ -30,11 +30,11 @@ def calculate_asset_weights(
     """
 
     # Add cash rows
-    reserver_asset, price = state.portfolio.get_default_reserve_asset()
-    reserver_asset_symbol = reserver_asset.token_symbol
+    reserve_asset, price = state.portfolio.get_default_reserve_asset()
+    reserve_asset_symbol = reserve_asset.token_symbol
     reserve_rows = [{
             "timestamp": ps.calculated_at,
-            "asset": reserver_asset_symbol,
+            "asset": reserve_asset_symbol,
             "value": ps.free_cash,
             } for ps in state.stats.portfolio]
 
@@ -55,13 +55,16 @@ def calculate_asset_weights(
     df = df.set_index(["timestamp", "asset"])
     series = df["value"]
 
-    series_deduped = series[~series.index.duplicated(keep='last')]
     # For each timestamp, we may have multiple entries of the same asset
     # - in this case take the last one per asset.
     # These may cause e.g. by simulated deposit events.
     # 2021-06-01  USDC     1.000000e+06
     #             WBTC     9.840778e+05
     #             USDC     1.000000e+04
+    series_deduped = series[~series.index.duplicated(keep='last')]
+
+    # Pass to visualisation
+    series_deduped.attrs["reserve_asset_symbol"] = reserve_asset_symbol
     return series_deduped
 
 
@@ -69,13 +72,24 @@ def visualise_weights(
     weights_series: pd.Series,
     normalised=True,
     color_palette = colors.qualitative.Light24,
+    template="plotly_dark",
 ) -> Figure:
     """Draw a chart of weights."""
 
     assert isinstance(weights_series, pd.Series)
 
+    reserve_asset_symbol = weights_series.attrs["reserve_asset_symbol"]
+
+    def sort_key_reserve_first(col_name):
+        if col_name == reserve_asset_symbol:
+            return -1000, col_name
+        return 0, col_name
+
     # Unstack to create DataFrame with asset symbols as columns
     df = weights_series.unstack(level=1)
+
+    # Make sure reserve is always the lefmost column
+    df = df[sorted(df.columns, key=sort_key_reserve_first)]
 
     if normalised:
         df = df.div(df.sum(axis=1), axis=0) * 100
@@ -88,5 +102,108 @@ def visualise_weights(
             'value': '% of portfolio' if normalised else 'US dollar size',
         },
         color_discrete_sequence=color_palette,
+        template=template,
     )
+    fig.update_traces(fillcolor='#aaa', selector=dict(name=reserve_asset_symbol))
+    fig.update_traces(line_width=0)
     return fig
+
+
+def calculate_weights_statistics(
+    weights: pd.Series,
+) -> pd.DataFrame:
+    """Get statistics of weights during the portfolio construction.
+
+    - Cash positions are excluded
+
+    :param weights:
+        US Dollar weights as series of MultiIndex(timestamp, pair)
+
+    :return:
+        Human-readable table of statistics
+    """
+
+    assert isinstance(weights, pd.Series)
+    assert isinstance(weights.index, pd.MultiIndex)
+
+    stats = []
+
+    # Filter out reserve position
+    reserve_asset_symbol = weights.attrs["reserve_asset_symbol"]
+    weights = weights[weights.index.get_level_values(1) != reserve_asset_symbol]
+
+    # Filter out zero values
+    weights = weights[weights != 0]
+
+    max_idx = weights.idxmax()
+    at, pair = max_idx
+    value = weights[max_idx]
+
+    stats.append({
+        "Name": "Max position (USD)",
+        "At": at,
+        "Pair": pair,
+        "Value": value,
+    })
+
+    min_idx = weights.idxmin()
+    at, pair = min_idx
+    value = weights[min_idx]
+
+    stats.append({
+        "Name": "Min position (USD)",
+        "At": at,
+        "Pair": pair,
+        "Value": value,
+    })
+
+    value = weights.mean()
+
+    stats.append({
+        "Name": "Mean position (USD)",
+        "At": "",
+        "Pair": "",
+        "Value": value,
+    })
+
+    # Normalised
+    normalised = weights.groupby(level='timestamp').transform(lambda x: x / x.sum() * 100)
+
+    max_idx = normalised.idxmax()
+    at, pair = max_idx
+    value = normalised[max_idx]
+
+    stats.append({
+        "Name": "Max position (%)",
+        "At": at,
+        "Pair": pair,
+        "Value": value,
+    })
+
+    min_idx = normalised.idxmin()
+    at, pair = min_idx
+    value = normalised[min_idx]
+
+    stats.append({
+        "Name": "Min position (%)",
+        "At": at,
+        "Pair": pair,
+        "Value": value,
+    })
+
+    value = normalised.mean()
+
+    stats.append({
+        "Name": "Mean position (%)",
+        "At": "",
+        "Pair": "",
+        "Value": value,
+    })
+
+    df = pd.DataFrame(stats)
+
+    df.set_index("Name")
+    df["Value"] = df["Value"].apply(lambda x: "{:,.2f}".format(x))
+    return df
+
+

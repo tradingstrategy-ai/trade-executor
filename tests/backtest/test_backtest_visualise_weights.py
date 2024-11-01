@@ -7,7 +7,7 @@ import pytest
 from plotly.graph_objs import Figure
 from pyasn1_modules.rfc6031 import id_pskc_deviceBinding
 
-from tradeexecutor.analysis.weights import calculate_asset_weights, visualise_weights
+from tradeexecutor.analysis.weights import calculate_asset_weights, visualise_weights, calculate_weights_statistics
 from tradingstrategy.candle import GroupedCandleUniverse
 from tradingstrategy.chain import ChainId
 from tradingstrategy.liquidity import GroupedLiquidityUniverse
@@ -213,4 +213,7 @@ def test_visualise_weights(strategy_universe, tmp_path):
 
     fig = visualise_weights(weights_series)
     assert isinstance(fig, Figure)
+
+    weight_stats = calculate_weights_statistics(weights_series)
+    assert isinstance(weight_stats, pd.DataFrame)
 
