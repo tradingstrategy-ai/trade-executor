@@ -14,7 +14,7 @@ from tradeexecutor.state.state import State
 
 
 def calculate_asset_weights(
-    state: State,
+        state: State,
 ) -> pd.Series:
     """Get timeline of asset weights for a backtest.
 
@@ -33,20 +33,20 @@ def calculate_asset_weights(
     reserve_asset, price = state.portfolio.get_default_reserve_asset()
     reserve_asset_symbol = reserve_asset.token_symbol
     reserve_rows = [{
-            "timestamp": ps.calculated_at,
-            "asset": reserve_asset_symbol,
-            "value": ps.free_cash,
-            } for ps in state.stats.portfolio]
+        "timestamp": ps.calculated_at,
+        "asset": reserve_asset_symbol,
+        "value": ps.free_cash,
+    } for ps in state.stats.portfolio]
 
     # Need to look up assets for every position
     position_asset_map = {p.position_id: p.pair.base.token_symbol for p in state.portfolio.get_all_positions()}
 
     # Add position values
     position_rows = [{
-            "timestamp": ps.calculated_at,
-            "asset": position_asset_map[position_id],
-            "value": ps.value,
-        } for position_id, position_stats in state.stats.positions.items() for ps in position_stats]
+        "timestamp": ps.calculated_at,
+        "asset": position_asset_map[position_id],
+        "value": ps.value,
+    } for position_id, position_stats in state.stats.positions.items() for ps in position_stats]
 
     df = pd.DataFrame(reserve_rows + position_rows)
     df['timestamp'] = pd.to_datetime(df['timestamp'], unit='s')
@@ -69,11 +69,11 @@ def calculate_asset_weights(
 
 
 def visualise_weights(
-    weights_series: pd.Series,
-    normalised=True,
-    color_palette = colors.qualitative.Light24,
-    template="plotly_dark",
-    include_reserves=True,
+        weights_series: pd.Series,
+        normalised=True,
+        color_palette=colors.qualitative.Light24,
+        template="plotly_dark",
+        include_reserves=True,
 ) -> Figure:
     """Draw a chart of weights.
 
@@ -131,7 +131,7 @@ def visualise_weights(
 
 
 def calculate_weights_statistics(
-    weights: pd.Series,
+        weights: pd.Series,
 ) -> pd.DataFrame:
     """Get statistics of weights during the portfolio construction.
 
@@ -149,6 +149,8 @@ def calculate_weights_statistics(
 
     stats = []
 
+    source_weights = weights
+
     # Filter out reserve position
     reserve_asset_symbol = weights.attrs["reserve_asset_symbol"]
     weights = weights[weights.index.get_level_values(1) != reserve_asset_symbol]
@@ -161,7 +163,7 @@ def calculate_weights_statistics(
     value = weights[max_idx]
 
     stats.append({
-        "Name": "Max position",
+        "Name": f"Max position (excluding {reserve_asset_symbol})",
         "At": at,
         "Pair": pair,
         "Value": value,
@@ -173,7 +175,7 @@ def calculate_weights_statistics(
     value = weights[min_idx]
 
     stats.append({
-        "Name": "Min position",
+        "Name": f"Min position (excluding {reserve_asset_symbol})",
         "At": at,
         "Pair": pair,
         "Value": value,
@@ -183,14 +185,17 @@ def calculate_weights_statistics(
     value = weights.mean()
 
     stats.append({
-        "Name": "Mean position",
+        "Name": f"Mean position (excluding {reserve_asset_symbol})",
         "At": "",
         "Pair": "",
         "Value": value,
         "Unit": "USD",
     })
 
-    # Normalised
+    #
+    # Normalised weights
+    #
+
     normalised = weights.groupby(level='timestamp').transform(lambda x: x / x.sum() * 100)
 
     max_idx = normalised.idxmax()
@@ -198,7 +203,7 @@ def calculate_weights_statistics(
     value = normalised[max_idx]
 
     stats.append({
-        "Name": "Max position",
+        "Name": f"Max position (excluding {reserve_asset_symbol})",
         "At": at,
         "Pair": pair,
         "Value": value,
@@ -210,7 +215,7 @@ def calculate_weights_statistics(
     value = normalised[min_idx]
 
     stats.append({
-        "Name": "Min position",
+        "Name": f"Min position (excluding {reserve_asset_symbol})",
         "At": at,
         "Pair": pair,
         "Value": value,
@@ -220,7 +225,50 @@ def calculate_weights_statistics(
     value = normalised.mean()
 
     stats.append({
-        "Name": "Mean position",
+        "Name": f"Mean position (excluding {reserve_asset_symbol})",
+        "At": "",
+        "Pair": "",
+        "Value": value,
+        "Unit": "%",
+    })
+
+    #
+    # Same, but USDC included in the mix
+    #
+
+    normalised = source_weights \
+        [source_weights != 0] \
+        .groupby(level='timestamp') \
+        .transform(lambda x: x / x.sum() * 100)
+
+    max_idx = normalised.idxmax()
+    at, pair = max_idx
+    value = normalised[max_idx]
+
+    stats.append({
+        "Name": f"Max position (including {reserve_asset_symbol})",
+        "At": at,
+        "Pair": pair,
+        "Value": value,
+        "Unit": "%",
+    })
+
+    min_idx = normalised.idxmin()
+    at, pair = min_idx
+    value = normalised[min_idx]
+
+    stats.append({
+        "Name": f"Min position (including {reserve_asset_symbol})",
+        "At": at,
+        "Pair": pair,
+        "Value": value,
+        "Unit": "%",
+    })
+
+    value = normalised.mean()
+
+    stats.append({
+        "Name": f"Mean position (including {reserve_asset_symbol})",
         "At": "",
         "Pair": "",
         "Value": value,
@@ -232,5 +280,3 @@ def calculate_weights_statistics(
     df = df.set_index("Name")
     df["Value"] = df["Value"].apply(lambda x: "{:,.2f}".format(x))
     return df
-
-
