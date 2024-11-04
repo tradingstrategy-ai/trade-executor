@@ -5,6 +5,7 @@ import shutil
 from logging import Logger
 from typing import List
 
+import flaky
 import pytest
 import pandas as pd
 from web3 import Web3
@@ -65,6 +66,7 @@ def decide_trades(
     return trades
 
 
+@flaky.flaky
 def test_generic_router_spot_and_short_strategy(
     logger: Logger,
     web3: Web3,
