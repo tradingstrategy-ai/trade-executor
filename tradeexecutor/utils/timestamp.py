@@ -22,7 +22,7 @@ def convert_and_validate_timestamp(timestamp: Union[pd.Timestamp, datetime.datet
     else:
         raise RuntimeError(f"Unknown timestamp input: {timestamp}")
 
-    assert timestamp.tzinfo is None, f"All timestamps must be naive, got {timestamp.tzinfo}"
+    assert timestamp.tzinfo is None, f"All timestamps must be naive, got {timestamp} - make sure any JSON input does not contain bad timestamps"
 
     return timestamp
 
