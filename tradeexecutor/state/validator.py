@@ -87,11 +87,12 @@ def validate_state_value(name: str | int, val: object):
     if type(val) == int:
         if val > JS_MAX_INT:
             raise BadStateData(f"{name}: {val} ({type(val)} - larger than JavaScript max int")
-
-    if isinstance(val, BAD_VALUE_TYPES):
+    elif isinstance(val, datetime.datetime):
+        if val.tzinfo is not None:
+            raise BadStateData(f"{name}: {val} ({type(val)} - datetime must be naive, this one contains timezone info")
+    elif isinstance(val, BAD_VALUE_TYPES):
         raise BadStateData(f"{name}: {val} ({type(val)} - blacklisted value type")
-
-    if not isinstance(val, ALLOWED_VALUE_TYPES):
+    elif not isinstance(val, ALLOWED_VALUE_TYPES):
         raise BadStateData(f"{name}: {val} ({type(val)} - value type is not in supported serialisable types")
 
 
