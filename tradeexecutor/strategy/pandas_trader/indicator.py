@@ -224,11 +224,13 @@ class IndicatorDefinition:
         return self.name == other.name and self.parameters == other.parameters and self.source == other.source
 
     def __hash__(self):
-        # https://stackoverflow.com/a/5884123/315168
+
         try:
-            return hash((self.name, frozenset(self.parameters.items()), self.source))
+            items = frozenset(self.parameters.items())
+            args = (self.name, items, self.source)
+            return hash(args)
         except Exception as e:
-            raise RuntimeError(f"Could not hash {self}. If changing grid search to backtest, remember to change lists to single value. Exception is {e}")
+            raise RuntimeError(f"Could not hash {self}.\nIf changing grid search to backtest, remember to change lists to single value.\nIf changing backtest to grid search, do not call create_indicators() directly.\nException is {e}\nHashed items: {args}") from e
 
     def __post_init__(self):
         assert type(self.name) == str
@@ -1322,7 +1324,7 @@ class IndicatorDependencyResolver:
         if pair is not None:
             filtered_by_pair = [i for i in filtered_by_name if i.pair == pair]
             if len(filtered_by_pair) == 0:
-                raise IndicatorDependencyResolutionError(f"No indicator named {name}, for pair {pair}. {all_text}")
+                raise IndicatorDependencyResolutionError(f"No indicator named {name}, for pair {pair}. {all_text}.\nWe have {len(filtered_by_name)} match by {name}: {filtered_by_name if len(filtered_by_name) < 4 else '-'}\nParameters are: {parameters}")
         else:
             filtered_by_pair = filtered_by_name
 
@@ -1335,7 +1337,7 @@ class IndicatorDependencyResolver:
             filtered_by_parameters = filtered_by_pair
 
         if len(filtered_by_parameters) != 1:
-            raise IndicatorDependencyResolutionError(f"Multiple indicator results for named {name},\n for pair {pair},\n parameters {parameters}.\n{all_text}")
+            raise IndicatorDependencyResolutionError(f"Multiple indicator results for named {name},\n for pair {pair},\n parameters {parameters}.\n{all_text}\nfiltered_by_parameters is: {filtered_by_parameters}")
 
         result = filtered_by_parameters[0]
 
@@ -1347,6 +1349,7 @@ class IndicatorDependencyResolver:
     def get_indicator_data_pairs_combined(
         self,
         name: str,
+        parameters: dict | None = None,
     ) -> pd.Series:
         """Get a DataFrame that contains indicator data for all pairs combined.
 
@@ -1404,7 +1407,17 @@ class IndicatorDependencyResolver:
             DataFrame with MultiIndex (pair_id, timestamp)
         """
 
-        series_map = {pair.internal_id: self.get_indicator_data(name, pair=pair) for pair in self.strategy_universe.iterate_pairs()}
+        universal = False
+        try:
+            indicator = self.match_indicator(name)
+            universal = indicator.definition.source == IndicatorSource.strategy_universe
+        except Exception as e:
+            universal = False
+
+        if universal:
+            raise IndicatorCalculationFailed(f"get_indicator_data_pairs_combined() cannot be called if the indicator {name} is not pair based")
+
+        series_map = {pair.internal_id: self.get_indicator_data(name, pair=pair, parameters=parameters) for pair in self.strategy_universe.iterate_pairs()}
         series_list = list(series_map.values())
         pair_ids = list(series_map.keys())
         combined = pd.concat(series_list, keys=pair_ids, names=['pair_id', 'timestamp'])
