@@ -82,6 +82,7 @@ def check_universe(
         )
         universe_options = UniverseOptions.from_strategy_parameters_class(
             parameters,
+            execution_context,
         )
     else:
         universe_options = UniverseOptions()
@@ -91,7 +92,7 @@ def check_universe(
     if engine_version:
         if version.parse(engine_version) >= version.parse("0.5"):
             parameters = run_description.runner.parameters
-            assert parameters, "Engine version 0.5, but runner lacks parameters"
+            assert parameters, f"Engine version {engine_version}, but runner lacks decoded strategy parameters"
             assert "required_history_period" in parameters, f"Strategy lacks Parameters.required_history_period. We have {parameters}"
 
     # Deconstruct strategy input

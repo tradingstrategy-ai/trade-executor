@@ -32,6 +32,7 @@ def test_cli_check_universe(
         "CACHE_PATH": unit_test_cache_path,
         "LOG_LEVEL": "disabled",
         "UNIT_TESTING": "true",
+        "MAX_DATA_DELAY_MINUTES": "99999",
     }
 
     mocker.patch.dict("os.environ", environment, clear=True)
