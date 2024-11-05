@@ -4,7 +4,7 @@ import datetime
 from pathlib import Path
 from typing import Optional
 
-import typer
+from packaging import version
 
 from tradingstrategy.client import Client
 from .app import app
@@ -70,6 +70,13 @@ def check_universe(
         client=client,
         run_state=RunState(),
     )
+
+
+    engine_version = run_description.trading_strategy_engine_version
+    if engine_version:
+        if version.parse(engine_version) >= version.parse("0.5"):
+            parameters = run_description.runner.parameters
+            assert "required_history_period" in parameters, f"Strategy lacks Parameters.required_history_period. We have {parameters}"
 
     # Deconstruct strategy input
     universe_model: TradingStrategyUniverseModel = run_description.universe_model
