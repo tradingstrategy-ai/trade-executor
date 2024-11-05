@@ -681,6 +681,11 @@ class AlphaModel:
 
         - Calculate dollar based position sizes and limit them by liquidity if needed
         """
+
+        assert type(max_weight) == float, f"Got {type(max_weight)} instead of float"
+        if investable_equity is not None:
+            assert type(investable_equity) == float, f"Got {type(investable_equity)} instead of float"
+
         raw_weights = {s.pair.internal_id: s.raw_weight for s in self.signals.values()}
 
         # First calculate raw normals
@@ -694,6 +699,7 @@ class AlphaModel:
         # US dollar based size risk bsaed on the current market conditions
         total_accetable_investments = 0
         equity_left = investable_equity
+
         for pair_id, normal_weight in normalised.most_common():
 
             # NOTE: Here we might have a conflict between given normal weight
@@ -705,7 +711,10 @@ class AlphaModel:
 
             assert s.raw_weight >= 0, "_normalise_weights_size_risk(): short or leverage not implemented"
 
-            concentration_capped_normal_weight = min(normal_weight, max_weight)
+            try:
+                concentration_capped_normal_weight = min(normal_weight, max_weight)
+            except TypeError as e:
+                raise TypeError(f"Cannot min({normal_weight}, {max_weight})") from e
             asked_position_size = concentration_capped_normal_weight * equity_left
             size_risk = size_risk_model.get_acceptable_size_for_position(
                 self.timestamp,

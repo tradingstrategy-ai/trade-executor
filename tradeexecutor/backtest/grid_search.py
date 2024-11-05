@@ -141,7 +141,11 @@ class GridParameter:
         assert type(self.name) == str
 
     def __hash__(self):
-        return hash((self.name, self.value))
+        args = (self.name, self.value)
+        try:
+            return hash(args)
+        except TypeError as e:
+            raise TypeError(f"Cannot hash: {args}") from e
 
     def __eq__(self, other):
         return self.name == other.name and self.value == other.value

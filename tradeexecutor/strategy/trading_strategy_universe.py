@@ -1815,9 +1815,20 @@ def translate_trading_pair(dex_pair: DEXPair, cache: dict | None = None) -> Trad
         pair.base.other_data["buy_tax"] = dex_pair.buy_tax
         pair.base.other_data["sell_tax"] = dex_pair.sell_tax
 
-    # Need to be loaded with load_extra_metadata()
+    # Need to be loaded with load_extra_metadata().
     if dex_pair.other_data:
-        pair.other_data = dex_pair.other_data  # Pass by reference to save time
+        # Because other_data is very heavy, we should only copy fields we really care.
+        # Below are the whitelisted fields.
+        if "token_sniffer_data" in dex_pair.other_data:
+            pair.other_data = {
+                "token_sniffer_data": {
+                    "swap_simulation": dex_pair.other_data["token_sniffer_data"]["swap_simulation"],
+                    "score": dex_pair.other_data["token_sniffer_data"]["score"],
+                }
+            }
+        else:
+            # Skip other_data.top_pair_data
+            pass
 
     if cache is not None:
         cache[pair.internal_id] = pair

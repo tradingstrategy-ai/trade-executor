@@ -282,6 +282,7 @@ class StrategyInputIndicators:
         index: int = -1,
         clock_shift: pd.Timedelta = pd.Timedelta(hours=0),
         data_delay_tolerance: pd.Timedelta="auto",
+        na_conversion=True,
     ) -> float | None:
         """Read the available value of an indicator.
 
@@ -371,7 +372,12 @@ class StrategyInputIndicators:
 
             Set to `None` to always return indicator value for the exact timestamp match.
 
-            Set to `auto to try to figure out mismatch between indicator data and candle data automatically.s
+            Set to `auto to try to figure out mismatch between indicator data and candle data automatically.
+
+        :param na_conversion:
+            Automatically convert NA values to None.
+
+            Disable if your indicator data contains complex object values like lists.
 
         :return:
             The latest available indicator value.
@@ -472,12 +478,13 @@ class StrategyInputIndicators:
         # The input data was not properly cleaned up and has duplicated values for some dates/times
         assert not isinstance(value, pd.Series), "Duplicate DatetimeIndex entries detected for: {name} {column} {pair}"
 
-        if pd.isna(value):
+        if na_conversion:
+            if pd.isna(value):
 
-            if weekly_hack:
-                logger.info("weekly_hack(): Read NA: %s", value)
+                if weekly_hack:
+                    logger.info("weekly_hack(): Read NA: %s", value)
 
-            return None
+                return None
 
         return value
 

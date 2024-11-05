@@ -15,6 +15,7 @@ import pickle
 from pathlib import Path
 from unittest import mock
 
+import flaky
 import pytest
 from eth_account import Account
 
