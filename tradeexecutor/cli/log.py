@@ -399,6 +399,7 @@ def setup_telegram_logging(
     )
 
     logging.getLogger().addHandler(telegram_handler)
+    logging.getLogger().info("Telegram logging activated, chat id is %s", telegram_chat_id)
     return telegram_handler
 
 
