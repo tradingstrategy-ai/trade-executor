@@ -117,7 +117,7 @@ def test_setup_up_indicator_storage_per_pair(tmp_path, strategy_universe):
 
     # pandas_ta function signature changes in every releease
     assert str(ind_path).startswith(str(Path(tmp_path) / storage.universe_key))
-    assert str(ind_path).endswith("(length=21)-WETH-USDC.parquet")
+    assert str(ind_path).endswith("(length=21)-WETH-USDC-30.parquet"), f"Got: {ind_path}"
     # / "sma_dfc27ff4"
 
 
@@ -130,6 +130,7 @@ def test_setup_up_indicator_universe(tmp_path, strategy_universe):
         name="foobar",
         func=lambda length: pd.Series(),
         parameters={"length": 21},
+        source=IndicatorSource.strategy_universe,
     )
 
     key = IndicatorKey(None, ind)
@@ -160,7 +161,7 @@ def test_setup_up_indicator_storage_two_parameters(tmp_path, strategy_universe):
     # Signature changes in every pandas_ta release
     ind_path = storage.get_indicator_path(key)
     # assert ind_path == Path(tmp_path) / storage.universe_key / "sma_dfc27ff4(length=21,offset=1)-WETH-USDC.parquet"
-    assert str(ind_path).endswith("-WETH-USDC.parquet")
+    assert str(ind_path).endswith("-WETH-USDC-30.parquet"), f"Got: {ind_path}"
 
 
 

@@ -5,6 +5,7 @@ import secrets
 from pathlib import Path
 from unittest import mock
 
+import flaky
 import pytest
 
 from eth_account import Account
@@ -282,6 +283,8 @@ def test_enzyme_credit_positions_with_big_size(
         assert reserve_position.get_value() == pytest.approx(3960)
 
 
+# ERROR tests/mainnet_fork/test_enzyme_credit_position.py::test_enzyme_credit_position_redemption - requests.exceptions.ReadTimeout: HTTPConnectionPool(host='localhost', port=20415): Read timed out. (read timeout=10)
+@flaky.flaky
 def test_enzyme_credit_position_redemption(
     web3: Web3,
     vault: Vault,

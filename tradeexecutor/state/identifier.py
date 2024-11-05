@@ -562,7 +562,7 @@ class TradingPairIdentifier:
         return hash((self.base.address, self.quote.address, self.fee))
 
     def __eq__(self, other: "TradingPairIdentifier | None"):
-
+        # TODO: Include exchange slug in comparison
         if other is None:
             return False
 
