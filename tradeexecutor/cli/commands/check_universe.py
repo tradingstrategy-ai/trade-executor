@@ -1,6 +1,7 @@
 """check-universe command"""
 
 import datetime
+import logging
 from pathlib import Path
 from typing import Optional
 import typer
@@ -10,6 +11,7 @@ from packaging import version
 
 from tradingstrategy.client import Client
 from .app import app
+from .pair_mapping import construct_identifier_from_pair
 from ..bootstrap import prepare_executor_id, prepare_cache
 from ..log import setup_logging
 from ...strategy.bootstrap import import_strategy_file
@@ -42,6 +44,8 @@ def check_universe(
     id = prepare_executor_id(id, strategy_file)
 
     logger = setup_logging(log_level)
+    if log_level != "disabled":
+        assert logger.level <= logging.INFO, "Log level must be at least INFO to get output from this command"
 
     logger.info("Loading strategy file %s", strategy_file)
 
@@ -105,3 +109,10 @@ def check_universe(
     latest_candle_at = universe_model.check_data_age(ts, universe, max_data_delay)
     ago = datetime.datetime.utcnow() - latest_candle_at
     logger.info("Latest OHCLV candle is at: %s, %s ago", latest_candle_at, ago)
+
+    # Display trading pairs
+    for idx, pair in enumerate(universe.data_universe.pairs.iterate_pairs(), start=1):
+        command_line_pair_id = construct_identifier_from_pair(pair)
+        logger.info(f"Pair {idx}. {pair.get_ticker()}, identifier: {command_line_pair_id}")
+
+
