@@ -7,6 +7,7 @@ Here we define the abstract overview of routing.
 """
 import abc
 from typing import List, Optional, Dict
+import logging
 
 from hexbytes import HexBytes
 from web3 import Web3
@@ -16,10 +17,14 @@ from eth_defi.abi import get_deployed_contract
 from tradeexecutor.state.identifier import TradingPairIdentifier, AssetIdentifier
 from tradeexecutor.state.state import State
 from tradeexecutor.state.trade import TradeExecution
+from tradeexecutor.state.types import JSONHexAddress
 from tradeexecutor.strategy.universe_model import StrategyExecutionUniverse
 from tradeexecutor.strategy.trading_strategy_universe import translate_token, translate_trading_pair
 
 from tradingstrategy.pair import PandasPairUniverse, PairNotFoundError
+
+
+logger = logging.getLogger(__name__)
 
 
 class CannotRouteTrade(Exception):
@@ -64,7 +69,7 @@ class RoutingModel(abc.ABC):
     """
     
     def __init__(self,
-                 allowed_intermediary_pairs: dict[str, str],
+                 allowed_intermediary_pairs: dict[JSONHexAddress, JSONHexAddress],
                  reserve_token_address: str,
                  ):
         """
@@ -104,9 +109,20 @@ class RoutingModel(abc.ABC):
         assert reserve_token_address.lower() == reserve_token_address, f"reserve token address must be specified as lower case, got {reserve_token_address}"
 
         self.allowed_intermediary_pairs = self.convert_address_dict_to_lower(allowed_intermediary_pairs)
-        
+
         self.reserve_token_address = reserve_token_address
-    
+
+        logger.info("Initialised %s", self)
+        if self.allowed_intermediary_pairs:
+            for token_address, pair_address in self.allowed_intermediary_pairs.items():
+                logger.info(
+                    "Intermediate pair whitelisted. Token: %s, pair: %s",
+                    token_address,
+                    pair_address,
+                )
+        else:
+            logger.info("No intermediate pairs whitelisted")
+
     @staticmethod
     def convert_address_dict_to_lower(address_dict) -> dict:
         """Convert all key addresses to lowercase to avoid mix up with Ethereum address checksums"""
