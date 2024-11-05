@@ -17,9 +17,7 @@ To get started with indicators see examples in :py:class:`CreateIndicatorsProtoc
 import datetime
 import threading
 from abc import ABC, abstractmethod
-from collections import defaultdict
 
-import ipdb
 from IPython import get_ipython
 from skopt.space import Dimension
 
@@ -55,7 +53,6 @@ from tradeexecutor.strategy.parameters import StrategyParameters
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse, UniverseCacheKey
 from tradeexecutor.utils.cpu import get_safe_max_workers_count
 from tradeexecutor.utils.python_function import hash_function
-from tradingstrategy.client import Client
 from tradingstrategy.pair import HumanReadableTradingPairDescription
 from tradingstrategy.utils.groupeduniverse import PairCandlesMissing
 
