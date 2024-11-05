@@ -32,7 +32,10 @@ def check_universe(
     max_data_delay_minutes: int = typer.Option(24*60, envvar="MAX_DATA_DELAY_MINUTES", help="How fresh the OHCLV data for our strategy must be before failing"),
     log_level: str = shared_options.log_level,
 ):
-    """Checks that the trading universe is helthy for a given strategy."""
+    """Checks that the trading universe is healthy.
+
+    Check that we can call create_trading_universe() in the strategy module and it loads data correctly.
+    """
 
     global logger
 
