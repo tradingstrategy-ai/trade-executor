@@ -12,7 +12,7 @@ from ..bootstrap import prepare_executor_id, prepare_cache
 from ..log import setup_logging
 from ...strategy.bootstrap import import_strategy_file
 from ...strategy.description import StrategyExecutionDescription
-from ...strategy.execution_context import ExecutionContext, ExecutionMode
+from ...strategy.execution_context import ExecutionContext, ExecutionMode, preflight_execution_context
 from ...strategy.parameters import dump_parameters
 from ...strategy.run_state import RunState
 from ...strategy.trading_strategy_universe import TradingStrategyUniverseModel
@@ -53,10 +53,7 @@ def check_universe(
     )
     client.clear_caches()
 
-    execution_context = ExecutionContext(
-        mode=ExecutionMode.preflight_check,
-        timed_task_context_manager=timed_task
-    )
+    execution_context = preflight_execution_context
 
     max_data_delay = datetime.timedelta(minutes=max_data_delay_minutes)
 
@@ -78,6 +75,11 @@ def check_universe(
             "Strategy parameters:\n%s",
             dump_parameters(parameters)
         )
+        universe_options = UniverseOptions.from_strategy_parameters_class(
+            parameters,
+        )
+    else:
+        universe_options = UniverseOptions()
 
     engine_version = run_description.trading_strategy_engine_version
     if engine_version:
@@ -90,7 +92,7 @@ def check_universe(
 
     ts = datetime.datetime.utcnow()
     logger.info("Performing universe data check for timestamp %s", ts)
-    universe = universe_model.construct_universe(ts, ExecutionMode.preflight_check, UniverseOptions())
+    universe = universe_model.construct_universe(ts, execution_context.mode, universe_options)
 
     latest_candle_at = universe_model.check_data_age(ts, universe, max_data_delay)
     ago = datetime.datetime.utcnow() - latest_candle_at
