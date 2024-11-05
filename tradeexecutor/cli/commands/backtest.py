@@ -94,6 +94,8 @@ def backtest(
     generate_report: Optional[bool] = Option(True, envvar="GENERATE_REPORT", help="Generate a HTML report file based on the template notebook. Disable to reduce unit test execution time."),
 
     max_workers: Optional[int] = Option(None, envvar="MAX_WORKERS", help="Number of workers to use for parallel processing"),
+
+    extra_output: Optional[bool] = Option(False, envvar="EXTRA_OUTPUT", help="By default, info level is so verbose that running the backtest takes a long time. Give --extra-output to make sure you want to run info log level for a backtest."),
 ):
     """Backtest a given strategy module.
 
@@ -115,11 +117,14 @@ def backtest(
     if not name:
         name = f"{id} backtest"
 
+    if not extra_output:
+        log_level = logging.WARNING
+
     # Make sure
     # - We do not flood console with the messages
     # - There are no warnings in the resulting notebook file
     if not log_level:
-        log_level = logging.ERROR
+        log_level = logging.WARNING
 
     # Make sure unit tests run logs do not get polluted
     # Don't touch any log levels, but
