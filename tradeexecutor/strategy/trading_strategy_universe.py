@@ -2274,7 +2274,7 @@ def load_partial_data(
         candles_pairs = set(candles["pair_id"].unique())
         asked_pairs = set(our_pair_ids)
 
-        if len(candles_pairs) != asked_pairs:
+        if len(candles_pairs) != len(asked_pairs):
             logger.warning(
                 "Data missing warning: We asked OHLCV data for %d trading pairs, but only got for %d pairs. This is usually because time period %s - %s does not have OHLCV data for all asked pairs.",
                 len(asked_pairs),
