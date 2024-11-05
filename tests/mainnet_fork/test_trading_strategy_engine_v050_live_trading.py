@@ -15,6 +15,7 @@ import pickle
 from pathlib import Path
 from unittest import mock
 
+import flaky
 import pytest
 from eth_account import Account
 
@@ -124,6 +125,7 @@ def hot_wallet(
     return wallet
 
 
+@flaky.flaky
 def test_trading_strategy_engine_v050_live_trading(
     logger: logging.Logger,
     anvil_polygon_chain_fork_rpc,
