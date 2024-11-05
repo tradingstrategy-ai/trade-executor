@@ -562,12 +562,12 @@ class TradingPairIdentifier:
         return hash((self.base.address, self.quote.address, self.fee))
 
     def __eq__(self, other: "TradingPairIdentifier | None"):
-
+        # TODO: Include exchange slug in comparison
         if other is None:
             return False
 
         assert isinstance(other, TradingPairIdentifier), f"Got {other}"
-        return self.base == other.base and self.quote == other.quote
+        return self.base == other.base and self.quote == other.quote and self.fee == other.fee
 
     @property
     def chain_id(self) -> int:

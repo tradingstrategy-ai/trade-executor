@@ -5,6 +5,7 @@ import tempfile
 from pathlib import Path
 from queue import Queue
 
+import flaky
 import pytest
 import requests
 from eth_defi.utils import find_free_port
@@ -90,6 +91,8 @@ def test_ping(logger,server_url):
     assert resp.json() == {"ping": "pong"}
 
 
+# OSError: [Errno 98] Address already in use
+@flaky.flaky
 def test_metadata(logger, server_url):
     """Get executor metadata"""
     resp = requests.get(f"{server_url}/metadata")
