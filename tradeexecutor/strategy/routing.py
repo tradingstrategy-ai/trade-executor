@@ -163,9 +163,10 @@ class RoutingModel(abc.ABC):
         try:
             dex_pair = pair_universe.get_pair_by_smart_contract(intermediate_pair_contract_address)
             pne = None
-        except PairNotFoundError as pne:
+        except PairNotFoundError as e:
             # We have not trading pair data loaded for the intermediate pair
             dex_pair = None
+            pne = e
 
         assert dex_pair is not None, f"Intermediate pair not found: Pair universe did not contain pair for a pair contract address {intermediate_pair_contract_address}, quote token is {trading_pair.quote}:\n{pne}"
 
