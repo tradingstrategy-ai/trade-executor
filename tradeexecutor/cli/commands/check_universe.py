@@ -86,10 +86,12 @@ def check_universe(
     else:
         universe_options = UniverseOptions()
 
+    # Check that Parameters gives us period how much history we need
     engine_version = run_description.trading_strategy_engine_version
     if engine_version:
         if version.parse(engine_version) >= version.parse("0.5"):
             parameters = run_description.runner.parameters
+            assert parameters, "Engine version 0.5, but runner lacks parameters"
             assert "required_history_period" in parameters, f"Strategy lacks Parameters.required_history_period. We have {parameters}"
 
     # Deconstruct strategy input
