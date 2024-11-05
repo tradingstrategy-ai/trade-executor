@@ -13,6 +13,7 @@ from ..log import setup_logging
 from ...strategy.bootstrap import import_strategy_file
 from ...strategy.description import StrategyExecutionDescription
 from ...strategy.execution_context import ExecutionContext, ExecutionMode
+from ...strategy.parameters import dump_parameters
 from ...strategy.run_state import RunState
 from ...strategy.trading_strategy_universe import TradingStrategyUniverseModel
 from ...strategy.universe_model import UniverseOptions
@@ -71,6 +72,12 @@ def check_universe(
         run_state=RunState(),
     )
 
+    parameters = run_description.runner.parameters
+    if parameters:
+        logger.info(
+            "Strategy parameters:\n%s",
+            dump_parameters(parameters)
+        )
 
     engine_version = run_description.trading_strategy_engine_version
     if engine_version:
