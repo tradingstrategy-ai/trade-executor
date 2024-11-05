@@ -127,7 +127,6 @@ def backtest(
     # log_level is "disabled"
     logger = setup_logging(log_level)
 
-
     backtest_result = state_file
     if not backtest_result:
         backtest_result = Path(f"state/{id}-backtest.json")

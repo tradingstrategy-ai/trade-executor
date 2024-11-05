@@ -143,6 +143,10 @@ def make_factory_from_strategy_mod(mod: StrategyModuleInformation) -> StrategyFa
                     mod_info.trade_routing,
                     mod_info.reserve_currency)
 
+        if parameters is None:
+            # Get Parameters instance from the strategy module
+            parameters = mod_info.parameters
+
         runner = PandasTraderRunner(
             timed_task_context_manager=timed_task_context_manager,
             execution_model=execution_model,

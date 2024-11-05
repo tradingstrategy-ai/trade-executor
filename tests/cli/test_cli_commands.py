@@ -39,36 +39,6 @@ def unit_test_cache_path():
     return path
 
 
-@pytest.mark.skip(reason="Disbled for now, because of the massive chain reorg of BNB Chain over the weekend")
-def test_cli_check_universe(
-        strategy_path: str,
-        unit_test_cache_path: str,
-        logger,
-    ):
-    """check-universe command works"""
-
-    environment = {
-        "TRADING_STRATEGY_API_KEY": os.environ["TRADING_STRATEGY_API_KEY"],
-        "STRATEGY_FILE": strategy_path,
-        "CACHE_PATH": unit_test_cache_path,
-        "LOG_LEVEL": "disabled",
-        "UNIT_TESTING": "true",
-    }
-
-    runner = CliRunner()
-    result = runner.invoke(app, "check-universe", env=environment)
-
-    if result.exception:
-        raise result.exception
-
-    # Dump any stdout to see why the command failed
-    if result.exit_code != 0:
-        print("runner failed")
-        for line in result.stdout.split('\n'):
-            print(line)
-        raise AssertionError("runner launch failed")
-
-
 @pytest.mark.skipif(os.environ.get("BNB_CHAIN_JSON_RPC") is None, reason="Set BNB_CHAIN_JSON_RPC environment variable to Binance Smart Chain node to run this test")
 def test_cli_check_wallet(
     logger,

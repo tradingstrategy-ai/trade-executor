@@ -273,5 +273,12 @@ scikit_optimizer_context = ExecutionContext(
 # trade-execution console commands
 console_command_execution_context = ExecutionContext(ExecutionMode.real_trading)
 
+# trade-execution console commands
+one_off_execution_context = ExecutionContext(ExecutionMode.one_off)
+
+# trade-execution console commands
+preflight_execution_context = ExecutionContext(ExecutionMode.preflight_check)
+
+
 #: Shorthand for unit testing
 ExecutionContext.unit_test = unit_test_execution_context

@@ -4,6 +4,7 @@ import os
 import secrets
 from pathlib import Path
 
+import flaky
 import pytest
 
 from eth_account import Account
@@ -162,6 +163,8 @@ def environment(
     return environment
 
 
+# ERROR tests/mainnet_fork/test_price_impact_crash.py::test_price_impact_crash - requests.exceptions.ReadTimeout: HTTPConnectionPool(host='localhost', port=25535): Read timed out. (read timeout=10)
+@flaky.flaky
 def test_price_impact_crash(
     environment: dict,
     state_file: Path,
