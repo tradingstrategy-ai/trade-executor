@@ -111,6 +111,8 @@ def check_universe(
     logger.info("Latest OHCLV candle is at: %s, %s ago", latest_candle_at, ago)
 
     # Display trading pairs
+    logger.info("Trading pairs in the trading universe:")
+    logger.info("-" * 80)
     for idx, pair in enumerate(universe.data_universe.pairs.iterate_pairs(), start=1):
         command_line_pair_id = construct_identifier_from_pair(pair)
         logger.info(f"Pair {idx}. {pair.get_ticker()}, identifier: {command_line_pair_id}")
