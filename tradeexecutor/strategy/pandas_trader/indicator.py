@@ -435,7 +435,7 @@ class IndicatorKey:
         if pair is not None:
             # TODO: Include 3 letter exchange id to discriminate between uni v2 and uni v3
             if pair.fee != 0.30:
-                fee_slug = f"-{int(pair.fee * 100)}"
+                fee_slug = f"-{int(pair.fee * 10_000)}"
             else:
                 fee_slug = ""
             return f"{pair.base.token_symbol}-{pair.quote.token_symbol}{fee_slug}"

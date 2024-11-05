@@ -567,7 +567,7 @@ class TradingPairIdentifier:
             return False
 
         assert isinstance(other, TradingPairIdentifier), f"Got {other}"
-        return self.base == other.base and self.quote == other.quote
+        return self.base == other.base and self.quote == other.quote and self.fee == other.fee
 
     @property
     def chain_id(self) -> int:
