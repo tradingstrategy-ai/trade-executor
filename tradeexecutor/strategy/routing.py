@@ -19,7 +19,7 @@ from tradeexecutor.state.trade import TradeExecution
 from tradeexecutor.strategy.universe_model import StrategyExecutionUniverse
 from tradeexecutor.strategy.trading_strategy_universe import translate_token, translate_trading_pair
 
-from tradingstrategy.pair import PandasPairUniverse
+from tradingstrategy.pair import PandasPairUniverse, PairNotFoundError
 
 
 class CannotRouteTrade(Exception):
@@ -160,8 +160,13 @@ class RoutingModel(abc.ABC):
         if not intermediate_pair_contract_address:
             raise CannotRouteTrade(f"Does not know how to trade pair {trading_pair} - supported intermediate tokens are {list(self.allowed_intermediary_pairs.keys())}")
 
-        dex_pair = pair_universe.get_pair_by_smart_contract(intermediate_pair_contract_address)
-        assert dex_pair is not None, f"Pair universe did not contain pair for a pair contract address {intermediate_pair_contract_address}, quote token is {trading_pair.quote}"
+        try:
+            dex_pair = pair_universe.get_pair_by_smart_contract(intermediate_pair_contract_address)
+        except PairNotFoundError:
+            # We have not trading pair data loaded for the intermediate pair
+            dex_pair = None
+
+        assert dex_pair is not None, f"Intermediate pair not found: Pair universe did not contain pair for a pair contract address {intermediate_pair_contract_address}, quote token is {trading_pair.quote}"
 
         if intermediate_pair := translate_trading_pair(dex_pair):
             return trading_pair, intermediate_pair
