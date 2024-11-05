@@ -19,6 +19,7 @@ import threading
 from abc import ABC, abstractmethod
 from collections import defaultdict
 
+import ipdb
 from IPython import get_ipython
 from skopt.space import Dimension
 
@@ -428,9 +429,15 @@ class IndicatorKey:
     def __repr__(self):
         return f"<IndicatorKey {self.get_cache_key()}>"
 
-    def get_cache_id(self) -> str:
+    def get_pair_cache_id(self) -> str:
+        """Get unique value for this trading pair or 'universe' if there isn't one."""
         if self.pair is not None:
-            return self.pair.get_ticker()
+            # TODO: Include 3 letter exchange id to discriminate between uni v2 and uni v3
+            if self.pair.fee != 0.30:
+                fee_slug = f"-{int(self.pair.fee * 100)}"
+            else:
+                fee_slug = ""
+            return f"{self.base.token_symbol}-{self.quote.token_symbol}{fee_slug}"
         else:
             # Indicator calculated over the universe
             assert self.definition.source == IndicatorSource.strategy_universe
@@ -443,10 +450,8 @@ class IndicatorKey:
         return hash((self.pair, self.definition))
 
     def get_cache_key(self) -> str:
-        if self.pair:
-            slug = self.pair.get_ticker()
-        else:
-            slug = "universe"
+        """Get unique key that holds the cached value for the indicator function."""
+        slug = self.get_pair_cache_id()
 
         def norm_value(v):
             if isinstance(v, enum.Enum):
