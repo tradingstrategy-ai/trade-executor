@@ -1,14 +1,12 @@
 """perform-test-trade command"""
 
 import datetime
-import logging
 from pathlib import Path
 from typing import Optional
-import re
-import typer
 from typer import Option
 
 from .app import app
+from .pair_mapping import parse_pair_data, construct_identifier_from_pair
 from ..bootstrap import prepare_executor_id, prepare_cache, create_web3_config, create_state_store, \
     create_execution_and_sync_model, create_client
 from ..log import setup_logging
@@ -22,11 +20,8 @@ from ...strategy.execution_model import AssetManagementMode
 from ...strategy.run_state import RunState
 from ...strategy.strategy_module import read_strategy_module, StrategyModuleInformation
 from ...strategy.trading_strategy_universe import TradingStrategyUniverseModel
-from ...strategy.universe_model import UniverseOptions
 from ...utils.timer import timed_task
 from tradeexecutor.cli.commands import shared_options
-from tradingstrategy.chain import ChainId
-from tradingstrategy.pair import DEXPair
 
 
 @app.command()
@@ -187,6 +182,10 @@ def perform_test_trade(
     try:
         if all_pairs:
             logger.info("Testing all pairs, we have %d pairs", universe.get_pair_count())
+
+            if not simulate:
+                assert universe.get_pair_count() < 10, "Too many pairs to test"
+
             for pair in universe.data_universe.pairs.iterate_pairs():
 
                 logger.info("Making test trade for %s", pair)
@@ -238,52 +237,3 @@ def perform_test_trade(
     logger.info("All ok")
 
 
-def parse_pair_data(s: str):
-    """Extract pair data from string.
-    
-    :param s:
-        String in the format of: [(chain_id, exchange_slug, base_token, quote_token, fee)])], 
-        
-        where rate is optional.
-
-    :raises ValueError:
-        If the string is not in the correct format.
-    
-    :return:
-        Tuple of (chain_id, exchange_slug, base_token, quote_token, fee)"""
-    
-    try: 
-        # Extract the tuple
-        tuple_str = re.search(r'\((.*?)\)', s)[1]
-
-        # Split elements and remove leading/trailing whitespaces
-        elements = [e.strip() for e in tuple_str.split(',')]
-
-        if len(elements) not in {4, 5}:
-            raise ValueError()
-
-        # Process elements
-        chain_id = getattr(ChainId, elements[0].split('.')[-1])
-        exchange_slug = elements[1].strip('"')
-        base_token = elements[2].strip('"')
-        quote_token = elements[3].strip('"')
-        fee = float(elements[4]) if len(elements) > 4 else None
-
-    except:
-        raise ValueError(f'Invalid pair data: {s}. Tuple must be in the format of: (chain_id, exchange_slug, base_token, quote_token, fee), where fee is optional')
-
-    return (chain_id, exchange_slug, base_token, quote_token, fee)
-
-
-def construct_identifier_from_pair(pair: DEXPair) -> str:
-    """Construct pair identifier from pair data.
-    
-    :param pair:
-        Pair data as DEXPair.
-
-    :return:
-        Pair identifier string."""
-    
-    assert isinstance(pair, DEXPair), 'Pair must be of type DEXPair'
-
-    return f'({pair.chain_id.name}, "{pair.exchange_slug}", "{pair.base_token_symbol}", "{pair.quote_token_symbol}", {pair.fee/10_000})'

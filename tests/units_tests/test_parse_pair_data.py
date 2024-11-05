@@ -1,5 +1,5 @@
 import pytest
-from tradeexecutor.cli.commands.perform_test_trade import parse_pair_data
+from tradeexecutor.cli.commands.pair_mapping import parse_pair_data
 
 
 def test_parse_data_with_fee():
