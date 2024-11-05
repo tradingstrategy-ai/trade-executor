@@ -431,13 +431,14 @@ class IndicatorKey:
 
     def get_pair_cache_id(self) -> str:
         """Get unique value for this trading pair or 'universe' if there isn't one."""
-        if self.pair is not None:
+        pair = self.pair
+        if pair is not None:
             # TODO: Include 3 letter exchange id to discriminate between uni v2 and uni v3
-            if self.pair.fee != 0.30:
-                fee_slug = f"-{int(self.pair.fee * 100)}"
+            if pair.fee != 0.30:
+                fee_slug = f"-{int(pair.fee * 100)}"
             else:
                 fee_slug = ""
-            return f"{self.base.token_symbol}-{self.quote.token_symbol}{fee_slug}"
+            return f"{pair.base.token_symbol}-{pair.quote.token_symbol}{fee_slug}"
         else:
             # Indicator calculated over the universe
             assert self.definition.source == IndicatorSource.strategy_universe
