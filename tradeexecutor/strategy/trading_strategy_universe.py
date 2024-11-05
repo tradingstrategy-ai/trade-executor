@@ -424,8 +424,8 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
 
         - See :py:attr:`pair_cache` for details
         """
-        for pair in self.iterate_pairs():
-            logger.info("Warmed up pair: %s", pair)
+        # Loading pair from iterate_pairs() will build a persistent data structure for it
+        _ = [p for p in self.iterate_pairs()]
 
     def can_open_short(
         self,
