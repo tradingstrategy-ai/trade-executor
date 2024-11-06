@@ -2,26 +2,30 @@
 
 import abc
 import datetime
-from dataclasses import dataclass
+import functools
+import logging
 from decimal import Decimal, ROUND_DOWN
 from typing import Callable, Optional
 from web3 import Web3
 
-from tradeexecutor.state.identifier import TradingPairIdentifier
-from tradeexecutor.state.types import USDollarAmount, BPS, USDollarPrice
+from tradeexecutor.ethereum.tvl import fetch_uni_v2_v3_quote_token_tvl
+from tradeexecutor.state.identifier import TradingPairIdentifier, AssetIdentifier
+from tradeexecutor.state.types import USDollarAmount, TokenAmount
 from tradeexecutor.strategy.execution_model import ExecutionModel
 from tradeexecutor.strategy.routing import RoutingModel
 from tradeexecutor.strategy.universe_model import StrategyExecutionUniverse
 from tradeexecutor.strategy.trading_strategy_universe import translate_trading_pair
 from tradeexecutor.strategy.pricing_model import PricingModel
 from tradeexecutor.strategy.trade_pricing import TradePricing
-from tradeexecutor.strategy.dust import DEFAULT_DUST_EPSILON
 from tradeexecutor.ethereum.routing_model import EthereumRoutingModel
 
 from eth_defi.uniswap_v2.deployment import UniswapV2Deployment
 from eth_defi.uniswap_v3.deployment import UniswapV3Deployment
 
 from tradingstrategy.pair import PandasPairUniverse
+
+
+logger = logging.getLogger(__name__)
 
 
 deployment_types = (UniswapV2Deployment | UniswapV3Deployment)
@@ -73,7 +77,19 @@ class EthereumPricingModel(PricingModel):
         self.epsilon = epsilon
 
         assert isinstance(self.very_small_amount, Decimal)
-    
+
+    @functools.lru_cache(maxsize=4)
+    def _find_exchange_rate_usd_pair(
+        self,
+        token: AssetIdentifier,
+    ) -> TradingPairIdentifier:
+        """Find a trading pair we can use to convert quote token to USD."""
+        for pair in self.pair_universe.iterate_pairs():
+            if pair.base_token_address == token.address and pair.quote_token_symbol in ("USDT", "USDC"):
+                return translate_trading_pair(pair)
+
+        raise RuntimeError(f"Pair universe does not contain USDT/USDC pair for token: {token}")
+
     def get_pair_for_id(self, internal_id: int) -> Optional[TradingPairIdentifier]:
         """Look up a trading pair.
 
@@ -240,7 +256,59 @@ class EthereumPricingModel(PricingModel):
         :return:
             Price structure for the trade.
         """
-        
+
+    def get_usd_tvl(
+        self,
+        timestamp: datetime.datetime | None,
+        pair: TradingPairIdentifier
+    ) -> USDollarAmount:
+        """Get TVL in a pool.
+
+        - Read directly from Uniswap v2/v3 pool over JSON-RPC
+
+        - Convert to USD using some pair in our pair universe that provides /WETH exchange rate
+
+        :param timestamp:
+            Ignore, always get the latest.
+        """
+
+        quote_token_tvl = self.get_quote_token_tvl(timestamp, pair)
+
+        # No exchange rate needed
+        if pair.quote.is_stablecoin():
+            return float(quote_token_tvl)
+
+        # Find exchange rate pool
+        exchange_rate_pair = self._find_exchange_rate_usd_pair(pair.quote)
+
+        # Get price at the exchange rate pool
+        exchange_rate_price_data = self.get_buy_price(
+            timestamp,
+            exchange_rate_pair,
+            Decimal(1)
+        )
+
+        mid_price = exchange_rate_price_data.mid_price
+        logger.info("TVL exchange rate pair is %s, and rate is %s", pair, mid_price)
+        return float(mid_price) * float(quote_token_tvl)
+
+    def get_quote_token_tvl(
+        self,
+        timestamp: datetime.datetime | None,
+        pair: TradingPairIdentifier
+    ) -> TokenAmount:
+        """Get TVL in a pool.
+
+        - Read directly from Uniswap v2/v3 pool over JSON-RPC
+
+        :param timestamp:
+            Ignore, always get the latest.
+        """
+        logger.info("Fetching quote token TVL for %s", pair)
+        return fetch_uni_v2_v3_quote_token_tvl(
+            self.web3,
+            pair,
+        )
 
 #: This factory creates a new pricing model for each trade cycle.
 #: Pricing model depends on the trading universe that may change for each strategy tick,
