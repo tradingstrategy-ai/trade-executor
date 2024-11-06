@@ -471,14 +471,16 @@ def test_uniswap_v3_three_leg_sell_price_with_price_impact(
     assert mid_price == pytest.approx(339.9994284591918, rel=APPROX_REL)
 
 
-def test_uniswap_v3_usd_tvl(
+def test_uniswap_v3_quote_token_tvl(
     web3: Web3,
     uniswap_v3,
     exchange_universe,
     pair_universe: PandasPairUniverse,
     routing_model: UniswapV3Routing,
 ):
-    """Get USD TVL of a pool.
+    """Get quote token TVL of a pool.
+
+    - Get WETH amount of AAVE/WETH pool
     """
 
     pricing_model = UniswapV3LivePricing(web3, pair_universe, routing_model)
@@ -488,6 +490,32 @@ def test_uniswap_v3_usd_tvl(
         pair_universe.get_one_pair_from_pandas_universe(exchange.exchange_id, "AAVE", "WETH")
     )
 
-    token_tvl = pricing_model.get_usd_tvl(None, aave_weth)
+    token_tvl = pricing_model.get_quote_token_tvl(None, aave_weth)
+    assert isinstance(token_tvl, Decimal)
     assert token_tvl > 0
 
+
+def test_uniswap_v3_usd_token_tvl(
+    web3: Web3,
+    uniswap_v3,
+    exchange_universe,
+    pair_universe: PandasPairUniverse,
+    routing_model: UniswapV3Routing,
+):
+    """Get quote token TVL of a pool.
+
+    - Get USD rate of WETH amount of AAVE/WETH pool
+    """
+
+    pricing_model = UniswapV3LivePricing(web3, pair_universe, routing_model)
+
+    exchange = next(iter(exchange_universe.exchanges.values()))  # Get the first exchange from the universe
+    aave_weth = translate_trading_pair(
+        pair_universe.get_one_pair_from_pandas_universe(exchange.exchange_id, "AAVE", "WETH")
+    )
+
+    usd_tvl = pricing_model.get_usd_tvl(None, aave_weth)
+    token_tvl = pricing_model.get_quote_token_tvl(None, aave_weth)
+
+    assert type(usd_tvl) == float
+    assert usd_tvl > token_tvl  # /USD amount more than /ETH

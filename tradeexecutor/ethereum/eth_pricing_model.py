@@ -2,27 +2,30 @@
 
 import abc
 import datetime
-from dataclasses import dataclass
+import functools
+import logging
 from decimal import Decimal, ROUND_DOWN
 from typing import Callable, Optional
 from web3 import Web3
 
 from tradeexecutor.ethereum.tvl import fetch_uni_v2_v3_quote_token_tvl
-from tradeexecutor.state.identifier import TradingPairIdentifier
-from tradeexecutor.state.types import USDollarAmount, BPS, USDollarPrice, TokenAmount
+from tradeexecutor.state.identifier import TradingPairIdentifier, AssetIdentifier
+from tradeexecutor.state.types import USDollarAmount, TokenAmount
 from tradeexecutor.strategy.execution_model import ExecutionModel
 from tradeexecutor.strategy.routing import RoutingModel
 from tradeexecutor.strategy.universe_model import StrategyExecutionUniverse
 from tradeexecutor.strategy.trading_strategy_universe import translate_trading_pair
 from tradeexecutor.strategy.pricing_model import PricingModel
 from tradeexecutor.strategy.trade_pricing import TradePricing
-from tradeexecutor.strategy.dust import DEFAULT_DUST_EPSILON
 from tradeexecutor.ethereum.routing_model import EthereumRoutingModel
 
 from eth_defi.uniswap_v2.deployment import UniswapV2Deployment
 from eth_defi.uniswap_v3.deployment import UniswapV3Deployment
 
 from tradingstrategy.pair import PandasPairUniverse
+
+
+logger = logging.getLogger(__name__)
 
 
 deployment_types = (UniswapV2Deployment | UniswapV3Deployment)
@@ -74,7 +77,19 @@ class EthereumPricingModel(PricingModel):
         self.epsilon = epsilon
 
         assert isinstance(self.very_small_amount, Decimal)
-    
+
+    @functools.lru_cache(maxsize=4)
+    def _find_exchange_rate_usd_pair(
+        self,
+        token: AssetIdentifier,
+    ) -> TradingPairIdentifier:
+        """Find a trading pair we can use to convert quote token to USD."""
+        for pair in self.pair_universe.iterate_pairs():
+            if pair.base_token_address == token.address and pair.quote_token_symbol in ("USDT", "USDC"):
+                return translate_trading_pair(pair)
+
+        raise RuntimeError(f"Pair universe does not contain USDT/USDC pair for token: {token}")
+
     def get_pair_for_id(self, internal_id: int) -> Optional[TradingPairIdentifier]:
         """Look up a trading pair.
 
@@ -249,10 +264,29 @@ class EthereumPricingModel(PricingModel):
     ) -> USDollarAmount:
         """Get TVL in a pool.
 
+        - Convert to USD
+
         :param timestamp:
             Ignore, always get the latest.
         """
-        raise NotImplementedError()
+
+        quote_token_tvl = self.get_quote_token_tvl(timestamp, pair)
+
+        # No exchange rate needed
+        if pair.quote.is_stablecoin():
+            return float(quote_token_tvl)
+
+        # Find exchange rate pool
+        exchange_rate_pair = self._find_exchange_rate_usd_pair(pair.quote)
+
+        # Get price at the exchange rate pool
+        exchange_rate_price_data = self.get_buy_price(
+            timestamp,
+            exchange_rate_pair,
+            Decimal(1)
+        )
+
+        return float(exchange_rate_price_data.mid_price) * float(quote_token_tvl)
 
     def get_quote_token_tvl(
         self,
@@ -264,6 +298,7 @@ class EthereumPricingModel(PricingModel):
         :param timestamp:
             Ignore, always get the latest.
         """
+        logger.info("Fetching quote token TVL for %s", pair)
         return fetch_uni_v2_v3_quote_token_tvl(
             self.web3,
             pair,
