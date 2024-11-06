@@ -40,6 +40,6 @@ def configure_max_slippage_tolerance(
         logger.info("Slippage tolerance not configured, using default %f", default_max_slippage)
         max_slippage = default_max_slippage
 
-    logger.info("Using slippage tolerance %f %", max_slippage * 100)
+    logger.info("Using slippage tolerance %f %%", max_slippage * 100)
 
     return max_slippage
