@@ -217,6 +217,14 @@ class UniswapV3Routing(EthereumRoutingModel):
         assert type(address_map) == dict
         self.address_map = self.convert_address_dict_to_lower(address_map)
 
+        logger.info(
+            "Initialised %s\nfactory_router_map: %s\nallowed_intermediary_pairs: %s\nReserve token: %s",
+            self,
+            self.address_map,
+            self.allowed_intermediary_pairs,
+            reserve_token_address,
+        )
+
     def create_routing_state(self,
                              universe: StrategyExecutionUniverse,
                              execution_details: dict) -> UniswapV3RoutingState:

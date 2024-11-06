@@ -290,8 +290,10 @@ class EthereumPricingModel(PricingModel):
         )
 
         mid_price = exchange_rate_price_data.mid_price
-        logger.info("TVL exchange rate pair is %s, and rate is %s", pair, mid_price)
-        return float(mid_price) * float(quote_token_tvl)
+
+        tvl = float(mid_price) * float(quote_token_tvl)
+        logger.info("TVL exchange rate pair is %s, and rate is %s, TVL is %s", pair, mid_price, tvl)
+        return tvl
 
     def get_quote_token_tvl(
         self,
