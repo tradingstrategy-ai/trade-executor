@@ -65,7 +65,7 @@ trading_strategy_api_key = Option(None, envvar="TRADING_STRATEGY_API_KEY", help=
 
 cache_path = Option(None, envvar="CACHE_PATH", help="Where to cache downloaded datasets on a local filesystem. If not given, default to cache/{executor-id}")
 
-max_slippage = Option(0.0025, envvar="MAX_SLIPPAGE", help="TODO: This is a legacy parameter and likely not be used by a trading strategy. Max slippage allowed per trade before failing. The default 0.0025 is 0.25% or 25 BPS.")
+max_slippage = Option(None, envvar="MAX_SLIPPAGE", help="Legacy. Do not use. See slippagep.py details.")
 
 min_gas_balance = Option(0.1, envvar="MIN_GAS_BALANCE", help="What is the minimum balance of gas token you need to have in your wallet. If the balance falls below this, abort by crashing and do not attempt to create transactions. Expressed in the native token e.g. ETH. The default option 0.1 means that if your hot wallet account is less than 0.1 ETH the trade executor aborts via crash.")
 
