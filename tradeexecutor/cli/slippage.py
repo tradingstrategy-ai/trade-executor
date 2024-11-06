@@ -31,10 +31,14 @@ def configure_max_slippage_tolerance(
         # Read max slippage from the strategy parameters if available
         parameters = mod.parameters
         if parameters:
-            if parameters.slippage_tolerance:
-                assert type(parameters.slippage_tolerance) == float
-                assert 0.0005 <= parameters.slippage_tolerance < 0.025, f"Slippage tolerance is {parameters.slippage_tolerance * 100} % - check if the value is sane"
-                max_slippage = parameters.slippage_tolerance
+            # Legacy Parameters lack slippage tolerance
+            slippage_tolerance = parameters.get("slippage_tolerance")
+            if slippage_tolerance:
+                assert type(slippage_tolerance) == float
+                assert 0.0005 <= slippage_tolerance < 0.025, f"Slippage tolerance is {slippage_tolerance * 100} % - check if the value is sane"
+                max_slippage = slippage_tolerance
+            else:
+                logger.warning("Parameters.slippage_tolerance missing - needed for live trading. Please add.")
 
     if not max_slippage:
         logger.info("Slippage tolerance not configured, using default %f", default_max_slippage)
