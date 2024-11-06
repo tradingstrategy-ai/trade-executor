@@ -157,7 +157,7 @@ class PositionManager:
         universe: Universe | TradingStrategyUniverse,
         state: State,
         pricing_model: PricingModel,
-        default_slippage_tolerance=None,
+        default_slippage_tolerance: Percent=None,
         trading_pair_cache=DEFAULT_TRADING_PAIR_CACHE,
     ):
 
@@ -224,7 +224,7 @@ class PositionManager:
         assert default_slippage_tolerance < 0.15, f"default_slippage_tolerance looks too high: {default_slippage_tolerance * 100} %"
         self.default_slippage_tolerance = default_slippage_tolerance
 
-        logger.info("Initialised PositionManager, slippage tolerance is %f", self.default_slippage_tolerance)
+        logger.info("Initialised PositionManager, default slippage tolerance is %f %%", self.default_slippage_tolerance * 100)
 
         reserve_currency, reserve_price = state.portfolio.get_default_reserve_asset()
 
