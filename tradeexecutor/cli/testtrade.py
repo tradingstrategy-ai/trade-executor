@@ -233,6 +233,7 @@ def make_test_trade(
             universe,
             state,
             pricing_model,
+            default_slippage_tolerance=max_slippage,
         )
 
         trades = position_manager.close_position(
@@ -281,6 +282,7 @@ def make_test_trade(
                 universe,
                 state,
                 pricing_model,
+                default_slippage_tolerance=max_slippage,
             )
 
             # Create trades to open the position
@@ -348,6 +350,7 @@ def make_test_trade(
             universe,
             state,
             pricing_model,
+            default_slippage_tolerance=max_slippage,
         )
 
         # Create trades to open the position
@@ -417,6 +420,7 @@ def make_test_trade(
                 universe,
                 state,
                 pricing_model,
+                default_slippage_tolerance=max_slippage,
             )
 
             # Create trades to open the position
@@ -478,6 +482,7 @@ def make_test_trade(
             universe,
             state,
             pricing_model,
+            default_slippage_tolerance=max_slippage,
         )
 
         # Create trades to open the position
