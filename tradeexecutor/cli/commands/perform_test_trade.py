@@ -10,6 +10,7 @@ from .pair_mapping import parse_pair_data, construct_identifier_from_pair
 from ..bootstrap import prepare_executor_id, prepare_cache, create_web3_config, create_state_store, \
     create_execution_and_sync_model, create_client
 from ..log import setup_logging
+from ..slippage import configure_max_slippage_tolerance
 from ..testtrade import make_test_trade
 from ...ethereum.routing_state import OutOfBalance
 from ...strategy.approval import UncheckedApprovalModel
@@ -110,16 +111,7 @@ def perform_test_trade(
 
     web3config.choose_single_chain()
 
-    if not max_slippage:
-        # Read max slippage from the strategy parameters if available
-        parameters = mod.parameters
-        if parameters:
-            if parameters.slippage_tolerance:
-                assert type(parameters.slippage_tolerance) == float
-                assert 0.0005 <= parameters.slippage_tolerance < 0.025, f"Slippage tolerance is {parameters.slippage_tolerance * 100} % - check if the value is sane"
-                max_slippage = parameters.slippage_tolerance
-
-    logger.info("Using slippage tolerance %f %", max_slippage * 100)
+    max_slippage = configure_max_slippage_tolerance(max_slippage, mod)
 
     execution_model, sync_model, valuation_model_factory, pricing_model_factory = create_execution_and_sync_model(
         asset_management_mode=asset_management_mode,
