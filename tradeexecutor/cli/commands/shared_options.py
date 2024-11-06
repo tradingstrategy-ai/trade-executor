@@ -29,7 +29,6 @@ id = Option(None, envvar="EXECUTOR_ID", help="Executor id used when programmatic
 
 name = Option(None, envvar="NAME", help="Executor name used in the web interface and notifications")
 
-log_level = Option(None, envvar="LOG_LEVEL", help="The Python default logging level. The defaults are 'info' is live execution, 'warning' if backtesting. Set 'disabled' in testing.")
 
 strategy_file = Option(..., envvar="STRATEGY_FILE", help="Python trading strategy module to use for running the strategy")
 optional_strategy_file = Option(None, envvar="STRATEGY_FILE", help="Python trading strategy module to use for running the strategy")
@@ -89,3 +88,11 @@ all_pairs: Optional[str] = Option(None, "--all-pairs", envvar="ALL_PAIRS", help=
 
 comptroller_lib = Option(None, envvar="COMPTROLLER_LIB", help="Enzyme's ComptrollerLib address for custom deployments.")
 simulate = Option(False, envvar="SIMULATE", help="Simulate transactions using Anvil mainnet fork. No new state file is written.")
+
+# Log options
+log_level = Option(None, envvar="LOG_LEVEL", help="The Python default logging level. The defaults are 'info' is live execution, 'warning' if backtesting. Set 'disabled' in testing.")
+discord_webhook_url = Option(None, envvar="DISCORD_WEBHOOK_URL", help="Discord webhook URL for notifications")
+logstash_server = Option(None, envvar="LOGSTASH_SERVER", help="LogStash server hostname where to send logs")
+file_log_level = Option("info", envvar="FILE_LOG_LEVEL", help="Log file log level. The default log file is logs/id.log.")
+telegram_api_key = Option(None, envvar="TELEGRAM_API_KEY", help="Telegram bot API key for Telegram logging")
+telegram_chat_id = Option(None, envvar="TELEGRAM_CHAT_ID", help="Telegram chat id where the bot will log. Group chats have negative id. Bot must receive command /start in the group chat before it can send messages there.")

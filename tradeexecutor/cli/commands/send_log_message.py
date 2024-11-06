@@ -7,8 +7,6 @@ import os
 from pathlib import Path
 from typing import Optional
 
-import typer
-
 
 from . import shared_options
 from .app import app
@@ -26,15 +24,16 @@ def send_log_message(
     strategy_file: Path = shared_options.strategy_file,
     # Logging
     log_level: str = shared_options.log_level,
-    discord_webhook_url: Optional[str] = typer.Option(None, envvar="DISCORD_WEBHOOK_URL", help="Discord webhook URL for notifications"),
-    logstash_server: Optional[str] = typer.Option(None, envvar="LOGSTASH_SERVER", help="LogStash server hostname where to send logs"),
-    file_log_level: Optional[str] = typer.Option("info", envvar="FILE_LOG_LEVEL", help="Log file log level. The default log file is logs/id.log."),
-    telegram_api_key: Optional[str] = typer.Option(None, envvar="TELEGRAM_API_KEY", help="Telegram bot API key for Telegram logging"),
-    telegram_chat_id: Optional[str] = typer.Option(None, envvar="TELEGRAM_CHAT_ID", help="Telegram chat id where the bot will log. Group chats have negative id. Bot must receive command /start in the group chat before it can send messages there."),
+    discord_webhook_url: Optional[str] = shared_options.discord_webhook_url,
+    logstash_server: Optional[str] = shared_options.logstash_server,
+    file_log_level: Optional[str] = shared_options.file_log_level,
+    telegram_api_key: Optional[str] = shared_options.telegram_api_key,
+    telegram_chat_id: Optional[str] = shared_options.telegram_chat_id,
+
 ):
     """Send a test messages across all configured loggers.
 
-    Allows to manually test if all loggers are correctly configured.
+    Allows to manually verify if all loggers are correctly configured.
     """
     global logger
 
@@ -91,5 +90,6 @@ def send_log_message(
     )
 
     logger.info(f"{name}: INFO log test message")
+    logger.trade(f"{name}: TRADE log test message")
     logger.trade_high(f"{name}: TRADE (HIGH) log test message")
 
