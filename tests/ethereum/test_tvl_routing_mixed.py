@@ -220,7 +220,7 @@ def test_tvl_routing_mixed(persistent_test_client, logger):
 
     - Setup routing model as the live executor would do
 
-    - Figure out what goes wrong when calling get_usd_tvl()
+    - Figure out what goes wrong when calling get_usd_tvl() when mixing Uniswap v2 and v3 pairs
     """
     client = persistent_test_client
 
@@ -232,7 +232,7 @@ def test_tvl_routing_mixed(persistent_test_client, logger):
     strategy_universe = create_trading_universe(
         None,
         client,
-        unit_test_trading_execution_context,
+        execution_context,
         universe_options=UniverseOptions.from_strategy_parameters_class(parameters, execution_context),
     )
 
@@ -285,6 +285,14 @@ def test_tvl_routing_mixed(persistent_test_client, logger):
     tvl_usd = pricing_model.get_usd_tvl(None, apu_weth)
     assert tvl_usd > 0
 
+    # Test second Uni v2 pair
+    apu_weth = strategy_universe.get_pair_by_human_description(
+        (ChainId.ethereum, "uniswap-v2", "WETH", "USDC")
+    )
+
+    tvl_usd = pricing_model.get_usd_tvl(None, apu_weth)
+    assert tvl_usd > 0
+
     # Test Uni v3 pair
     weth_usdc = strategy_universe.get_pair_by_human_description(
         (ChainId.ethereum, "uniswap-v3", "WETH", "USDC", 0.0005)
@@ -292,6 +300,15 @@ def test_tvl_routing_mixed(persistent_test_client, logger):
 
     tvl_usd = pricing_model.get_usd_tvl(None, weth_usdc)
     assert tvl_usd > 0
+
+    # Test second Uni v3 pair
+    weth_usdc = strategy_universe.get_pair_by_human_description(
+        (ChainId.ethereum, "uniswap-v3", "NEIRO", "WETH", 0.0030)
+    )
+
+    tvl_usd = pricing_model.get_usd_tvl(None, weth_usdc)
+    assert tvl_usd > 0
+
 
 
 
