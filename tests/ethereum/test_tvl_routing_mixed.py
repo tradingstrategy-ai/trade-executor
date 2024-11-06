@@ -220,7 +220,7 @@ def test_tvl_routing_mixed(persistent_test_client, logger):
 
     - Setup routing model as the live executor would do
 
-    - Figure out what goes wrong when calling get_usd_tvl() when mixing Uniswap v2 and v3 pairs
+    - Figure out what goes wrong when calling get_usd_tvl() and get_buy_price() when mixing Uniswap v2 and v3 pairs
     """
     client = persistent_test_client
 
@@ -283,8 +283,11 @@ def test_tvl_routing_mixed(persistent_test_client, logger):
     )
 
     tvl_usd = pricing_model.get_usd_tvl(None, pair)
-    print(pair, tvl_usd)
+    # print(pair, tvl_usd)
     assert tvl_usd > 0
+
+    price_structure = pricing_model.get_buy_price(None, pair, Decimal(1000.00))
+    assert price_structure is not None
 
     # Test second Uni v2 pair
     pair = strategy_universe.get_pair_by_human_description(
@@ -292,7 +295,7 @@ def test_tvl_routing_mixed(persistent_test_client, logger):
     )
 
     tvl_usd = pricing_model.get_usd_tvl(None, pair)
-    print(pair, tvl_usd)
+    # print(pair, tvl_usd)
     assert tvl_usd > 0
 
     # Test Uni v3 pair
@@ -301,7 +304,7 @@ def test_tvl_routing_mixed(persistent_test_client, logger):
     )
 
     tvl_usd = pricing_model.get_usd_tvl(None, pair)
-    print(pair, tvl_usd)
+    # print(pair, tvl_usd)
     assert tvl_usd > 0
 
     # Test second Uni v3 pair
@@ -310,7 +313,7 @@ def test_tvl_routing_mixed(persistent_test_client, logger):
     )
 
     tvl_usd = pricing_model.get_usd_tvl(None, pair)
-    print(pair, tvl_usd)
+    # print(pair, tvl_usd)
     assert tvl_usd > 0
 
     price_structure = pricing_model.get_buy_price(None, pair, Decimal(1000.00))
