@@ -181,6 +181,8 @@ def perform_test_trade(
 
     if simulate:
         logger.info("Simulating test trades")
+    else:
+        logger.info("Performing real trades")
 
     try:
         if all_pairs:

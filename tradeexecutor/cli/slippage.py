@@ -18,6 +18,13 @@ def configure_max_slippage_tolerance(
     - Command line value
 
     - Strategy module `Parameters` class
+
+    :param max_slippage:
+        From command line
+
+    :param mod:
+        From strategy module
+
     """
 
     if not max_slippage:
