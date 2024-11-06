@@ -220,7 +220,7 @@ def test_tvl_routing_mixed(persistent_test_client, logger):
 
     - Setup routing model as the live executor would do
 
-    - Figure out what goes wrong when calling get_usd_tvl() when mixing Uniswap v2 and v3 pairs
+    - Figure out what goes wrong when calling get_usd_tvl() and get_buy_price() when mixing Uniswap v2 and v3 pairs
     """
     client = persistent_test_client
 
@@ -278,36 +278,45 @@ def test_tvl_routing_mixed(persistent_test_client, logger):
     routing_state, pricing_model, valuation_model = runner.setup_routing(strategy_universe)
 
     # Test Uni v2 pair
-    apu_weth = strategy_universe.get_pair_by_human_description(
+    pair = strategy_universe.get_pair_by_human_description(
         (ChainId.ethereum, "uniswap-v2", "APU", "WETH")
     )
 
-    tvl_usd = pricing_model.get_usd_tvl(None, apu_weth)
+    tvl_usd = pricing_model.get_usd_tvl(None, pair)
+    # print(pair, tvl_usd)
     assert tvl_usd > 0
 
+    price_structure = pricing_model.get_buy_price(None, pair, Decimal(1000.00))
+    assert price_structure is not None
+
     # Test second Uni v2 pair
-    apu_weth = strategy_universe.get_pair_by_human_description(
+    pair = strategy_universe.get_pair_by_human_description(
         (ChainId.ethereum, "uniswap-v2", "WETH", "USDC")
     )
 
-    tvl_usd = pricing_model.get_usd_tvl(None, apu_weth)
+    tvl_usd = pricing_model.get_usd_tvl(None, pair)
+    # print(pair, tvl_usd)
     assert tvl_usd > 0
 
     # Test Uni v3 pair
-    weth_usdc = strategy_universe.get_pair_by_human_description(
+    pair = strategy_universe.get_pair_by_human_description(
         (ChainId.ethereum, "uniswap-v3", "WETH", "USDC", 0.0005)
     )
 
-    tvl_usd = pricing_model.get_usd_tvl(None, weth_usdc)
+    tvl_usd = pricing_model.get_usd_tvl(None, pair)
+    # print(pair, tvl_usd)
     assert tvl_usd > 0
 
     # Test second Uni v3 pair
-    weth_usdc = strategy_universe.get_pair_by_human_description(
+    pair = strategy_universe.get_pair_by_human_description(
         (ChainId.ethereum, "uniswap-v3", "NEIRO", "WETH", 0.0030)
     )
 
-    tvl_usd = pricing_model.get_usd_tvl(None, weth_usdc)
+    tvl_usd = pricing_model.get_usd_tvl(None, pair)
+    # print(pair, tvl_usd)
     assert tvl_usd > 0
+
+    price_structure = pricing_model.get_buy_price(None, pair, Decimal(1000.00))
 
 
 

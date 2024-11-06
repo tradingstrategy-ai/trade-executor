@@ -109,12 +109,14 @@ def create_uniswap_v3_adapter(
 
     exchange_universe = strategy_universe.data_universe.exchange_universe
 
+    allowed_intermediary_pairs = UNISWAP_V3_INTERMEDIATE.get(chain_id, {})
+
     # TODO: Add intermediate tokens
     routing_model = UniswapV3Routing(
         address_map=uniswap_v3_address_map,
         chain_id=chain_id,
         reserve_token_address=reserve_asset.address,
-        allowed_intermediary_pairs={},
+        allowed_intermediary_pairs=allowed_intermediary_pairs,
     )
 
     pricing_model = UniswapV3LivePricing(
@@ -329,3 +331,12 @@ class EthereumPairConfigurator(PairConfigurator):
 
     def match_router(self, pair: TradingPairIdentifier) -> ProtocolRoutingId:
         return default_match_router(self.strategy_universe, pair)
+
+
+UNISWAP_V3_INTERMEDIATE = {
+    ChainId.ethereum: {
+        # Route WETH through WETH-USDC 5 BPS
+        # https://tradingstrategy.ai/trading-view/ethereum/uniswap-v3/eth-usdc-fee-5
+        "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2": "0x88e6a0c2ddd26feeb64f039a2c41296fcb3f5640",
+    }
+}
