@@ -35,7 +35,7 @@ def configure_max_slippage_tolerance(
             slippage_tolerance = parameters.get("slippage_tolerance")
             if slippage_tolerance:
                 assert type(slippage_tolerance) == float
-                assert 0.0005 <= slippage_tolerance < 0.025, f"Slippage tolerance is {slippage_tolerance * 100} % - check if the value is sane"
+                assert 0.0005 <= slippage_tolerance < 0.08, f"Slippage tolerance is {slippage_tolerance * 100} % - check if the value is sane"
                 max_slippage = slippage_tolerance
             else:
                 logger.warning("Parameters.slippage_tolerance missing - needed for live trading. Please add.")
