@@ -377,11 +377,11 @@ def test_uniswap_v3_two_leg_sell_price_with_price_impact(
 
 
 def test_uniswap_v3_three_leg_buy_price_with_price_impact(
-        web3: Web3,
-        uniswap_v3,
-        exchange_universe,
-        pair_universe: PandasPairUniverse,
-        routing_model: UniswapV3Routing,
+    web3: Web3,
+    uniswap_v3,
+    exchange_universe,
+    pair_universe: PandasPairUniverse,
+    routing_model: UniswapV3Routing,
 ):
     """Three leg trade w/signficant price impact.
 
@@ -441,11 +441,11 @@ def test_uniswap_v3_three_leg_buy_price_with_price_impact(
 
 
 def test_uniswap_v3_three_leg_sell_price_with_price_impact(
-        web3: Web3,
-        uniswap_v3,
-        exchange_universe,
-        pair_universe: PandasPairUniverse,
-        routing_model: UniswapV3Routing,
+    web3: Web3,
+    uniswap_v3,
+    exchange_universe,
+    pair_universe: PandasPairUniverse,
+    routing_model: UniswapV3Routing,
 ):
     """Three leg sell w/signficant price impact.
 
@@ -469,3 +469,25 @@ def test_uniswap_v3_three_leg_sell_price_with_price_impact(
     mid_price = pricing_method.get_mid_price(datetime.datetime.utcnow(), pair)
     assert price_structure.price > mid_price
     assert mid_price == pytest.approx(339.9994284591918, rel=APPROX_REL)
+
+
+def test_uniswap_v3_usd_tvl(
+    web3: Web3,
+    uniswap_v3,
+    exchange_universe,
+    pair_universe: PandasPairUniverse,
+    routing_model: UniswapV3Routing,
+):
+    """Get USD TVL of a pool.
+    """
+
+    pricing_model = UniswapV3LivePricing(web3, pair_universe, routing_model)
+
+    exchange = next(iter(exchange_universe.exchanges.values()))  # Get the first exchange from the universe
+    aave_weth = translate_trading_pair(
+        pair_universe.get_one_pair_from_pandas_universe(exchange.exchange_id, "AAVE", "WETH")
+    )
+
+    token_tvl = pricing_model.get_usd_tvl(None, aave_weth)
+    assert token_tvl > 0
+

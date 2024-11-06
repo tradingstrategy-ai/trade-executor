@@ -7,8 +7,9 @@ from decimal import Decimal, ROUND_DOWN
 from typing import Callable, Optional
 from web3 import Web3
 
+from tradeexecutor.ethereum.tvl import fetch_uni_v2_v3_quote_token_tvl
 from tradeexecutor.state.identifier import TradingPairIdentifier
-from tradeexecutor.state.types import USDollarAmount, BPS, USDollarPrice
+from tradeexecutor.state.types import USDollarAmount, BPS, USDollarPrice, TokenAmount
 from tradeexecutor.strategy.execution_model import ExecutionModel
 from tradeexecutor.strategy.routing import RoutingModel
 from tradeexecutor.strategy.universe_model import StrategyExecutionUniverse
@@ -240,7 +241,33 @@ class EthereumPricingModel(PricingModel):
         :return:
             Price structure for the trade.
         """
-        
+
+    def get_usd_tvl(
+        self,
+        timestamp: datetime.datetime | None,
+        pair: TradingPairIdentifier
+    ) -> USDollarAmount:
+        """Get TVL in a pool.
+
+        :param timestamp:
+            Ignore, always get the latest.
+        """
+        raise NotImplementedError()
+
+    def get_quote_token_tvl(
+        self,
+        timestamp: datetime.datetime | None,
+        pair: TradingPairIdentifier
+    ) -> TokenAmount:
+        """Get TVL in a pool.
+
+        :param timestamp:
+            Ignore, always get the latest.
+        """
+        return fetch_uni_v2_v3_quote_token_tvl(
+            self.web3,
+            pair,
+        )
 
 #: This factory creates a new pricing model for each trade cycle.
 #: Pricing model depends on the trading universe that may change for each strategy tick,

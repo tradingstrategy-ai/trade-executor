@@ -14,7 +14,7 @@ class CurrencyConversionRateMissing(Exception):
 
 
 
-def _fetch_uni_v2_v3_quote_token_tvl(
+def fetch_uni_v2_v3_quote_token_tvl(
     web3: Web3,
     pair: TradingPairIdentifier,
 ) -> TokenAmount:
@@ -57,7 +57,7 @@ def fetch_quote_token_tvl_with_exchange_rate(
         address -> conversion raet mapping for WETH, others.
     """
 
-    quote_token_tvl = _fetch_uni_v2_v3_quote_token_tvl(web3, pair)
+    quote_token_tvl = fetch_uni_v2_v3_quote_token_tvl(web3, pair)
 
     # float is fine for approxs
     quote_token_tvl = float(quote_token_tvl)
