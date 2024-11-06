@@ -264,7 +264,9 @@ class EthereumPricingModel(PricingModel):
     ) -> USDollarAmount:
         """Get TVL in a pool.
 
-        - Convert to USD
+        - Read directly from Uniswap v2/v3 pool over JSON-RPC
+
+        - Convert to USD using some pair in our pair universe that provides /WETH exchange rate
 
         :param timestamp:
             Ignore, always get the latest.
@@ -286,7 +288,9 @@ class EthereumPricingModel(PricingModel):
             Decimal(1)
         )
 
-        return float(exchange_rate_price_data.mid_price) * float(quote_token_tvl)
+        mid_price = exchange_rate_price_data.mid_price
+        logger.info("TVL exchange rate pair is %s, and rate is %s", pair, mid_price)
+        return float(mid_price) * float(quote_token_tvl)
 
     def get_quote_token_tvl(
         self,
@@ -294,6 +298,8 @@ class EthereumPricingModel(PricingModel):
         pair: TradingPairIdentifier
     ) -> TokenAmount:
         """Get TVL in a pool.
+
+        - Read directly from Uniswap v2/v3 pool over JSON-RPC
 
         :param timestamp:
             Ignore, always get the latest.
