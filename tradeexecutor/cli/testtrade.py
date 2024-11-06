@@ -56,6 +56,7 @@ def make_test_trade(
     assert isinstance(sync_model, SyncModel)
     assert isinstance(universe, TradingStrategyUniverse)
     assert type(max_slippage) == float
+    assert max_slippage > 0, f"max_slippage not set"
 
     ts = datetime.datetime.utcnow()
 
