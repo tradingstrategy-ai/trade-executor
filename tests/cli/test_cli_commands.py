@@ -9,6 +9,7 @@ from unittest.mock import patch
 
 import nbformat
 import pytest
+from pyasn1_modules.rfc6031 import id_pskc_deviceBinding
 from typer.main import get_command
 from typer.testing import CliRunner
 
@@ -363,3 +364,22 @@ def test_cli_export(
     captured = capsys.readouterr()
     assert "export LOG_LEVEL" in captured.out
     assert "STRATEGY_FILE" in captured.out
+
+
+def test_cli_send_log_message(
+    logger,
+    strategy_path: str,
+    capsys,
+):
+    """send-log-message command does not crash"""
+
+    environment = {
+        "LOG_LEVEL": "disabled",
+        "STRATEGY_FILE": strategy_path,
+    }
+
+    cli = get_command(app)
+    with patch.dict(os.environ, environment, clear=True):
+        with pytest.raises(SystemExit) as e:
+            cli.main(args=["send-log-message"])
+        assert e.value.code == 0

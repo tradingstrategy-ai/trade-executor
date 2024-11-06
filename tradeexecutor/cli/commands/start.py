@@ -93,11 +93,12 @@ def start(
     gas_balance_warning_level: Optional[float] = typer.Option(25.0, envvar="GAS_BALANCE_WARNING_LEVEL", help="If hot wallet gas level falls below this amount of tokens, issue a low gas warning."),
 
     # Logging
-    discord_webhook_url: Optional[str] = typer.Option(None, envvar="DISCORD_WEBHOOK_URL", help="Discord webhook URL for notifications"),
-    logstash_server: Optional[str] = typer.Option(None, envvar="LOGSTASH_SERVER", help="LogStash server hostname where to send logs"),
-    file_log_level: Optional[str] = typer.Option("info", envvar="FILE_LOG_LEVEL", help="Log file log level. The default log file is logs/id.log."),
-    telegram_api_key: Optional[str] = typer.Option(None, envvar="TELEGRAM_API_KEY", help="Telegram bot API key for Telegram logging"),
-    telegram_chat_id: Optional[str] = typer.Option(None, envvar="TELEGRAM_CHAT_ID", help="Telegram chat id where the bot will log. Group chats have negative id. Bot must receive command /start in the group chat before it can send messages there."),
+    log_level: str = shared_options.log_level,
+    discord_webhook_url: Optional[str] = shared_options.discord_webhook_url,
+    logstash_server: Optional[str] = shared_options.logstash_server,
+    file_log_level: Optional[str] = shared_options.file_log_level,
+    telegram_api_key: Optional[str] = shared_options.telegram_api_key,
+    telegram_chat_id: Optional[str] = shared_options.telegram_chat_id,
 
     # Debugging and unit testing
     port_mortem_debugging: bool = typer.Option(False, "--post-mortem-debugging", envvar="POST_MORTEM_DEBUGGING", help="Launch ipdb debugger on a main loop crash to debug the exception"),
@@ -137,9 +138,6 @@ def start(
     run_single_cycle: bool = typer.Option(False, "--run-single-cycle", envvar="RUN_SINGLE_CYCLE", help="Run a single strategy decision cycle and exist, regardless of the current pending state."),
 
     simulate: bool = shared_options.simulate,
-
-    # Logging
-    log_level: str = shared_options.log_level,
 
     # Various file configurations
     state_file: Optional[Path] = shared_options.state_file,
