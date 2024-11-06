@@ -1,17 +1,21 @@
 """Pricing model that multiplexes requests to different protocols."""
 
+import logging
 import datetime
 from _decimal import Decimal
-from typing import Dict, Optional
+from typing import Optional
 
 import pandas as pd
 
 from tradeexecutor.strategy.generic.pair_configurator import PairConfigurator
 
 from tradeexecutor.state.identifier import TradingPairIdentifier
-from tradeexecutor.state.types import USDollarPrice, Percent, USDollarAmount
+from tradeexecutor.state.types import USDollarPrice, Percent, USDollarAmount, TokenAmount
 from tradeexecutor.strategy.pricing_model import PricingModel
 from tradeexecutor.strategy.trade_pricing import TradePricing
+
+
+logger = logging.getLogger(__name__)
 
 
 class GenericPricing(PricingModel):
@@ -78,5 +82,15 @@ class GenericPricing(PricingModel):
         timestamp: datetime.datetime | None,
         pair: TradingPairIdentifier
     ) -> USDollarAmount:
+        # TODO: Temporary debug
         route = self.route(pair)
+        logger.info("get_usd_tvl(): routing %s to %s", pair, route)
         return route.get_usd_tvl(timestamp, pair)
+
+    def get_quote_token_tvl(
+        self,
+        timestamp: datetime.datetime | None,
+        pair: TradingPairIdentifier
+    ) -> TokenAmount:
+        route = self.route(pair)
+        return route.get_quote_token_tvl(timestamp, pair)
