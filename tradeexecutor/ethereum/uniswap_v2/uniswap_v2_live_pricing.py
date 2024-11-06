@@ -180,7 +180,10 @@ class UniswapV2LivePricing(EthereumPricingModel):
 
         base_addr, quote_addr, intermediate_addr = route_tokens(target_pair, intermediate_pair)
 
-        uniswap = get_uniswap_for_pair(self.web3, self.routing_model.factory_router_map, target_pair)
+        try:
+            uniswap = get_uniswap_for_pair(self.web3, self.routing_model.factory_router_map, target_pair)
+        except Exception as e:
+            raise RuntimeError(f"We do not have Uniswap router configured for pair {target_pair}, factory_router_map is {self.routing_model.factory_router_map}") from e
         
         fee = self.get_pair_fee(ts, pair)
         assert fee is not None, f"Uniswap v2 fee data missing: exchange:{uniswap} pair:{pair}"

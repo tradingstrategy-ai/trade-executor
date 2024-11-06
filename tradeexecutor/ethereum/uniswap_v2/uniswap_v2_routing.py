@@ -412,7 +412,11 @@ def get_uniswap_for_pair(web3: Web3, factory_router_map: dict, target_pair: Trad
     """Get a router for a trading pair."""
     assert target_pair.exchange_address, f"Exchange address missing for {target_pair}"
     factory_address = Web3.to_checksum_address(target_pair.exchange_address)
-    router_address, init_code_hash = factory_router_map[factory_address.lower()]
+
+    try:
+        router_address, init_code_hash = factory_router_map[factory_address.lower()]
+    except KeyError as e:
+        raise KeyError(f"Cannot find router and init_code_hash for factory: {factory_address.lower()}") from e
 
     try:
         return fetch_deployment(
