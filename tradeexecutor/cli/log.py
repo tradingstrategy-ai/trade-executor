@@ -385,6 +385,7 @@ def setup_telegram_logging(
     # Fine tune our Telegram chat output
     formatter = TelegramHTMLTextFormatter()
     formatter._EMOTICONS[logging.TRADE] = "💰"  # Patch in the custom log level
+    formatter._EMOTICONS[logging.TRADE_HIGH] = "💰"  # Patch in the custom log level
     formatter._TAG_FORMAT = "" # Disable tags in the output
     formatter._HEADER_FORMAT = "{emoticon} {message} {description}"  # Disable line no + module in the output
 
