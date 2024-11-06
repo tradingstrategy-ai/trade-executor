@@ -242,6 +242,14 @@ class UniswapV2Routing(EthereumRoutingModel):
 
         self.trading_fee = trading_fee
 
+        logger.info(
+            "Initialised %s\nfactory_router_map: %s\nallowed_intermediary_pairs: %s\nfee: %s",
+            self,
+            self.factory_router_map,
+            self.allowed_intermediary_pairs,
+            self.trading_fee,
+        )
+
     def get_default_trading_fee(self) -> Optional[float]:
         return self.trading_fee
 
