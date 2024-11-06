@@ -4,7 +4,7 @@ from tradeexecutor.state.types import Percent, BPS, IntBPS
 def get_slippage_in_bps(
     slippage: Percent,
     max_sane_slippage: Percent = 0.05,
-) -> BPS:
+) -> IntBPS:
     """Validate and convert slippage to BPS
     
     :param slippage:
@@ -17,8 +17,10 @@ def get_slippage_in_bps(
 
     :return:
         Slippage as 10_000 points.
+
+        0.1% = 100.
     """
 
     assert 0 < slippage <= max_sane_slippage, f"Slippage should be between 0 and {max_sane_slippage}"
 
-    return slippage * 100
+    return slippage * 10_000
