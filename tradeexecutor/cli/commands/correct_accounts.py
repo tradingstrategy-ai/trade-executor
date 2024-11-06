@@ -276,8 +276,10 @@ def correct_accounts(
         if isinstance(sync_model, EnzymeVaultSyncModel):
             unknown_token_receiver = sync_model.get_hot_wallet().address
 
-    if not unknown_token_receiver:
-        raise RuntimeError(f"unknown_token_receiver missing and cannot deduct from the config. Please give one on the command line.")
+    # TODO: No longer needed as unknown tokens should be mapped to a new opened spot position
+    #
+    # if not unknown_token_receiver:
+    #    raise RuntimeError(f"unknown_token_receiver missing and cannot deduct from the config. Please give one on the command line.")
 
     assert hot_wallet is not None
     hot_wallet.sync_nonce(web3)
