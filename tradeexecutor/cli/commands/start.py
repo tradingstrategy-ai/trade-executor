@@ -42,6 +42,7 @@ from ...strategy.routing import RoutingModel
 from ...strategy.run_state import RunState
 from ...strategy.strategy_cycle_trigger import StrategyCycleTrigger
 from ...strategy.strategy_module import read_strategy_module, StrategyModuleInformation
+from ...strategy.universe_model import UniverseOptions
 from ...utils.timer import timed_task
 from ...webhook.server import create_webhook_server
 
@@ -219,7 +220,6 @@ def start(
                     if state_file.exists():
                         os.remove(state_file)
 
-
         cache_path = prepare_cache(id, cache_path, unit_testing)
 
         if asset_management_mode in (AssetManagementMode.hot_wallet, AssetManagementMode.dummy, AssetManagementMode.enzyme):
@@ -277,7 +277,6 @@ def start(
 
         if min_gas_balance:
             min_gas_balance = Decimal(min_gas_balance)
-
 
         if confirmation_timeout == 60 and web3config.get_default().eth.chain_id == 1:
             # TODO: Haack
@@ -437,6 +436,7 @@ def start(
 
         logger.trade("%s (%s): trade execution starting", name, id)
 
+        universe_options = None
         if backtest_start:
 
             assert asset_management_mode == AssetManagementMode.backtest, f"Expected backtest mode, got {asset_management_mode}"
@@ -458,11 +458,15 @@ def start(
                     engine_version=mod.trading_strategy_engine_version,
                 )
             else:
+                # Live trading
                 execution_context = ExecutionContext(
                     mode=ExecutionMode.real_trading,
                     timed_task_context_manager=timed_task,
                     engine_version=mod.trading_strategy_engine_version,
                 )
+                if mod.parameters:
+                    universe_options = UniverseOptions.from_strategy_parameters_class(mod.parameters, execution_context)
+                    logger.info("UniverseOptions set to: %s", universe_options)
 
         if mod.parameters:
             logger.trade(
@@ -540,6 +544,7 @@ def start(
         parameters=mod.parameters,
         visualisation=visualisation,
         max_price_impact=mod.get_max_price_impact(),
+        universe_options=universe_options,
     )
 
     # Crash gracefully at the start up if our main loop cannot set itself up
