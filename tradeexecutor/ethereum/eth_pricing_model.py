@@ -82,10 +82,11 @@ class EthereumPricingModel(PricingModel):
     def _find_exchange_rate_usd_pair(
         self,
         token: AssetIdentifier,
+        exchange_address: str,
     ) -> TradingPairIdentifier:
         """Find a trading pair we can use to convert quote token to USD."""
         for pair in self.pair_universe.iterate_pairs():
-            if pair.base_token_address == token.address and pair.quote_token_symbol in ("USDT", "USDC"):
+            if pair.base_token_address == token.address and pair.quote_token_symbol in ("USDT", "USDC") and pair.exchange_address == exchange_address:
                 return translate_trading_pair(pair)
 
         raise RuntimeError(f"Pair universe does not contain USDT/USDC pair for token: {token}")
@@ -279,7 +280,7 @@ class EthereumPricingModel(PricingModel):
             return float(quote_token_tvl)
 
         # Find exchange rate pool
-        exchange_rate_pair = self._find_exchange_rate_usd_pair(pair.quote)
+        exchange_rate_pair = self._find_exchange_rate_usd_pair(pair.quote, exchange_address=pair.exchange_address)
 
         # Get price at the exchange rate pool
         exchange_rate_price_data = self.get_buy_price(

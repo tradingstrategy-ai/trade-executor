@@ -1,6 +1,7 @@
 """Map trades to different routing backends based on their type."""
 
 from typing import Dict, TypeAlias, List, Tuple
+import logging
 
 from web3 import Web3
 
@@ -10,6 +11,8 @@ from tradeexecutor.strategy.generic.pair_configurator import PairConfigurator
 from tradeexecutor.strategy.routing import RoutingModel, RoutingState
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
 
+
+logger = logging.getLogger(__name__)
 
 #: Router name to router implementation mapping
 #:
@@ -56,6 +59,7 @@ class GenericRouting(RoutingModel):
         pair_configurator: PairConfigurator | None,
     ):
         self.pair_configurator = pair_configurator
+        logger.info("Initialised %s", self)
 
     def is_initialised(self) -> bool:
         return self.pair_configurator is not None
@@ -102,8 +106,6 @@ class GenericRouting(RoutingModel):
         """
 
         assert isinstance(state, GenericRoutingState)
-
-        strategy_universe = state.strategy_universe
 
         for t in trades:
             routing_id = self.pair_configurator.match_router(t.pair)

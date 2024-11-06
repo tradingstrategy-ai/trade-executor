@@ -504,8 +504,8 @@ class StrategyRunner(abc.ABC):
         """
 
     def setup_routing(
-            self,
-            universe: StrategyExecutionUniverse,
+        self,
+        universe: StrategyExecutionUniverse,
     ) -> Tuple[RoutingState, PricingModel, ValuationModel]:
         """Setups routing state for this cycle.
 
