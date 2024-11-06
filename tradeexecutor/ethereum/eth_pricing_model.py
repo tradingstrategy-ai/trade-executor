@@ -54,13 +54,14 @@ class EthereumPricingModel(PricingModel):
     Used by UniswapV2LivePricing and UniswapV3LivePricing
     """
 
-    def __init__(self,
-                 web3: Web3,
-                 pair_universe: PandasPairUniverse,
-                 routing_model: EthereumRoutingModel,
-                 very_small_amount: Decimal,
-                 epsilon: Optional[float] = LP_FEE_VALIDATION_EPSILON,
-                 ):
+    def __init__(
+        self,
+        web3: Web3,
+        pair_universe: PandasPairUniverse,
+        routing_model: EthereumRoutingModel,
+        very_small_amount: Decimal,
+        epsilon: Optional[float] = LP_FEE_VALIDATION_EPSILON,
+    ):
 
         assert isinstance(web3, Web3)
         assert isinstance(pair_universe, PandasPairUniverse), f"Expected PandasPairUniverse, got {pair_universe.__class__}"

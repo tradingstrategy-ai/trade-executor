@@ -8,6 +8,7 @@ from web3 import Web3
 
 from tradeexecutor.ethereum.enzyme.vault import EnzymeVaultSyncModel
 from tradeexecutor.state.trade import TradeFlag
+from tradeexecutor.state.types import Percent
 from tradeexecutor.statistics.core import update_statistics
 from tradeexecutor.statistics.statistics_table import serialise_long_short_stats_as_json_table
 from tradeexecutor.strategy.execution_context import ExecutionMode
@@ -38,6 +39,7 @@ def make_test_trade(
     universe: TradingStrategyUniverse,
     routing_model: RoutingModel,
     routing_state: RoutingState,
+    max_slippage: Percent,
     amount=Decimal("1.0"),
     pair: HumanReadableTradingPairDescription | None = None,
     buy_only: bool = False,
@@ -54,6 +56,8 @@ def make_test_trade(
 
     assert isinstance(sync_model, SyncModel)
     assert isinstance(universe, TradingStrategyUniverse)
+    assert type(max_slippage) == float
+    assert max_slippage > 0, f"max_slippage not set"
 
     ts = datetime.datetime.utcnow()
 
@@ -147,6 +151,7 @@ def make_test_trade(
         universe,
         state,
         pricing_model,
+        default_slippage_tolerance=max_slippage,
     )
 
     # The message left on the test positions and trades

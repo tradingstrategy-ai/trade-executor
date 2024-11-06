@@ -53,13 +53,14 @@ class UniswapV2LivePricing(EthereumPricingModel):
     - `About ask and bid <https://www.investopedia.com/terms/b/bid-and-ask.asp>`_:
     """
 
-    def __init__(self,
-                 web3: Web3,
-                 pair_universe: PandasPairUniverse,
-                 routing_model: UniswapV2Routing,
-                 very_small_amount=Decimal("0.10"),
-                 epsilon: Optional[float] = LP_FEE_VALIDATION_EPSILON,
-                 ):
+    def __init__(
+        self,
+        web3: Web3,
+        pair_universe: PandasPairUniverse,
+        routing_model: UniswapV2Routing,
+        very_small_amount=Decimal("0.10"),
+        epsilon: Optional[float] = LP_FEE_VALIDATION_EPSILON,
+    ):
 
         assert isinstance(routing_model, UniswapV2Routing)
 
@@ -73,18 +74,18 @@ class UniswapV2LivePricing(EthereumPricingModel):
             epsilon,
         )
 
-        
     def get_uniswap(self, target_pair: TradingPairIdentifier) -> UniswapV2Deployment:
         """Helper function to speed up Uniswap v2 deployment resolution."""
         if target_pair not in self.uniswap_cache:
             self.uniswap_cache[target_pair] = get_uniswap_for_pair(self.web3, self.routing_model.factory_router_map, target_pair)
         return self.uniswap_cache[target_pair]
 
-    def get_sell_price(self,
-                       ts: datetime.datetime,
-                       pair: TradingPairIdentifier,
-                       quantity: Optional[Decimal],
-                       ) -> TradePricing:
+    def get_sell_price(
+        self,
+        ts: datetime.datetime,
+        pair: TradingPairIdentifier,
+        quantity: Optional[Decimal],
+    ) -> TradePricing:
         """Get live price on Uniswap."""
 
         if quantity is None:
