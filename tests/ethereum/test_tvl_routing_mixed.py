@@ -3,22 +3,26 @@
 - Copied from ethereum-memecoin-vol-basket.py
 
 """
+
 import datetime
 import os
 import secrets
+from dataclasses import asdict
 from decimal import Decimal
 
+import pandas as pd
 import pytest
 from hexbytes import HexBytes
 
 from tradeexecutor.cli.bootstrap import create_execution_and_sync_model, create_web3_config
-from tradeexecutor.cli.commands.shared_options import json_rpc_ethereum
+from tradeexecutor.cli.log import setup_pytest_logging
 from tradeexecutor.strategy.approval import UncheckedApprovalModel
 from tradeexecutor.strategy.cycle import CycleDuration
 from tradeexecutor.strategy.default_routing_options import TradeRouting
-from tradeexecutor.strategy.execution_context import ExecutionContext, unit_test_execution_context, unit_test_trading_execution_context
+from tradeexecutor.strategy.execution_context import ExecutionContext, unit_test_trading_execution_context
 from tradeexecutor.strategy.execution_model import AssetManagementMode
 from tradeexecutor.strategy.pandas_trader.runner import PandasTraderRunner
+from tradeexecutor.strategy.parameters import StrategyParameters
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse, load_partial_data
 from tradeexecutor.strategy.universe_model import UniverseOptions
 from tradeexecutor.utils.timer import timed_task
@@ -28,10 +32,11 @@ from tradingstrategy.client import Client
 from tradingstrategy.pair import PandasPairUniverse
 from tradingstrategy.timebucket import TimeBucket
 from tradingstrategy.utils.token_extra_data import filter_scams
+from tradingstrategy.utils.token_filter import deduplicate_pairs_by_volume
 
 JSON_RPC_ETHEREUM = os.environ.get("JSON_RPC_ETHEREUM")
 
-pytestmark = pytest.mark.skipif(not JSON_RPC_ETHEREUM, "Give JSON_RPC_ETHEREUM to run")
+pytestmark = pytest.mark.skipif(not JSON_RPC_ETHEREUM, reason="Give JSON_RPC_ETHEREUM to run")
 
 #: Assets used in routing and buy-and-hold benchmark values for our strategy, but not traded by this strategy.
 SUPPORTING_PAIRS = [
@@ -186,7 +191,7 @@ def create_trading_universe(
     strategy_universe = TradingStrategyUniverse.create_from_dataset(
         dataset,
         reserve_asset="0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48",  # USDC
-        forward_fill=True,  # We got very gappy data from low liquid DEX coins
+        forward_fill=False,  # We got very gappy data from low liquid DEX coins
     )
 
     # Tag benchmark/routing pairs tokens so they can be separated from the rest of the tokens
@@ -204,28 +209,50 @@ def create_trading_universe(
     return strategy_universe
 
 
+@pytest.fixture(scope="module")
+def logger(request):
+    """Setup test logger."""
+    return setup_pytest_logging(request, mute_requests=False)
 
-def test_tvl_routing_mixed(persistent_test_client):
-    """Don't crash when getting TVL for APU/WETH"""
+
+def test_tvl_routing_mixed(persistent_test_client, logger):
+    """Don't crash when getting TVL for APU/WETH.
+
+    - Setup routing model as the live executor would do
+
+    - Figure out what goes wrong when calling get_usd_tvl()
+    """
     client = persistent_test_client
+
+    parameters = StrategyParameters.from_class(Parameters)
+
+    execution_context = ExecutionContext(**asdict(unit_test_trading_execution_context))
+    execution_context.engine_version = "0.5"
 
     strategy_universe = create_trading_universe(
         None,
         client,
         unit_test_trading_execution_context,
-        universe_options=UniverseOptions.from_strategy_parameters_class(Parameters),
+        universe_options=UniverseOptions.from_strategy_parameters_class(parameters, execution_context),
     )
 
     web3config = create_web3_config(
         json_rpc_ethereum=JSON_RPC_ETHEREUM,
+        json_rpc_binance=None,
+        json_rpc_polygon=None,
+        json_rpc_avalanche=None,
+        json_rpc_arbitrum=None,
+        json_rpc_anvil=None,
     )
+
+    web3config.set_default_chain(ChainId.ethereum)
 
     execution_model, sync_model, valuation_model_factory, pricing_model_factory = create_execution_and_sync_model(
         asset_management_mode=AssetManagementMode.hot_wallet,
-        private_key="0x" + HexBytes(secrets.token_bytes(32)).hex(),
+        private_key=HexBytes(secrets.token_bytes(32)).hex(),
         web3config=web3config,
-        confirmation_timeout=60,
-        confirmation_block_count=50,
+        confirmation_timeout=datetime.timedelta(seconds=1),
+        confirmation_block_count=0,
         max_slippage=0.1,
         min_gas_balance=Decimal(0),
         vault_address=None,
@@ -243,18 +270,28 @@ def test_tvl_routing_mixed(persistent_test_client):
         pricing_model_factory=pricing_model_factory,
         routing_model=None,  # Automatically generated later
         decide_trades=lambda x: x,
-        execution_context=unit_test_trading_execution_context,
+        execution_context=execution_context,
         trade_settle_wait=datetime.timedelta(seconds=1),
         unit_testing=True,
     )
 
     routing_state, pricing_model, valuation_model = runner.setup_routing(strategy_universe)
 
-    import ipdb ; ipdb.set_trace()
+    # Test Uni v2 pair
     apu_weth = strategy_universe.get_pair_by_human_description(
         (ChainId.ethereum, "uniswap-v2", "APU", "WETH")
     )
 
+    tvl_usd = pricing_model.get_usd_tvl(None, apu_weth)
+    assert tvl_usd > 0
+
+    # Test Uni v3 pair
+    weth_usdc = strategy_universe.get_pair_by_human_description(
+        (ChainId.ethereum, "uniswap-v3", "WETH", "USDC", 0.0005)
+    )
+
+    tvl_usd = pricing_model.get_usd_tvl(None, weth_usdc)
+    assert tvl_usd > 0
 
 
 
