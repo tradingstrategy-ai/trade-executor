@@ -38,6 +38,7 @@ def make_test_trade(
     universe: TradingStrategyUniverse,
     routing_model: RoutingModel,
     routing_state: RoutingState,
+    max_slippage: float,
     amount=Decimal("1.0"),
     pair: HumanReadableTradingPairDescription | None = None,
     buy_only: bool = False,
@@ -54,6 +55,7 @@ def make_test_trade(
 
     assert isinstance(sync_model, SyncModel)
     assert isinstance(universe, TradingStrategyUniverse)
+    assert type(max_slippage) == float
 
     ts = datetime.datetime.utcnow()
 
@@ -147,6 +149,7 @@ def make_test_trade(
         universe,
         state,
         pricing_model,
+        default_slippage_tolerance=max_slippage,
     )
 
     # The message left on the test positions and trades
