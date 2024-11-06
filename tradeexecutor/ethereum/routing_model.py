@@ -27,7 +27,7 @@ logger = logging.getLogger(__name__)
 
 
 #: Use 1% slippage tolerance if we somehow miss a vaue
-DEFAULT_SLIPPAGE_TOLERANCE = 0.01
+DEFAULT_SLIPPAGE_TOLERANCE: Percent = 0.01
 
 
 class EthereumRoutingModel(RoutingModel):
@@ -290,7 +290,7 @@ class EthereumRoutingModel(RoutingModel):
               target_pair: TradingPairIdentifier,
               reserve_asset: AssetIdentifier,
               reserve_asset_amount: int,  # Raw amount of the reserve asset
-              max_slippage: float=0.01,
+              max_slippage: Percent=0.01,
               check_balances=False,
               intermediary_pair: Optional[TradingPairIdentifier] = None,
               asset_deltas: Optional[List[AssetDelta]] = None,
@@ -326,7 +326,7 @@ class EthereumRoutingModel(RoutingModel):
                     target_pair,
                     reserve_asset,
                     reserve_asset_amount,
-                    max_slippage,
+                    max_slippage * 100,
         )
 
         self.pre_trade_assertions(reserve_asset_amount, max_slippage, target_pair, reserve_asset)
@@ -404,7 +404,7 @@ class EthereumRoutingModel(RoutingModel):
 
             max_slippage = t.slippage_tolerance if t.slippage_tolerance is not None else DEFAULT_SLIPPAGE_TOLERANCE
 
-            logger.info("Slippage tolerance is: %f %%, expected asset deltas: %s", max_slippage, asset_deltas)
+            logger.info("Slippage tolerance is: %f %%, expected asset deltas: %s", max_slippage * 100, asset_deltas)
 
             # TODO: hack to bypass route_trade(), fix later
             if t.is_leverage() or t.is_credit_supply():
