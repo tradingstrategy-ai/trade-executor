@@ -917,6 +917,13 @@ class PositionManager:
         slippage_tolerance = slippage_tolerance or self.default_slippage_tolerance
 
         if dollar_delta > 0:
+
+            slippage_tolerance = self.pricing_model.calculate_trade_adjusted_slippage_tolerance(
+                pair=pair,
+                direction="buy",
+                default_slippage_tolerance=slippage_tolerance,
+            )
+
             # Buy
             position, trade, created = self.state.create_trade(
                 self.timestamp,
@@ -939,6 +946,12 @@ class PositionManager:
         else:
             # Sell
             # Convert dollar amount to quantity of the last known price
+
+            slippage_tolerance = self.pricing_model.calculate_trade_adjusted_slippage_tolerance(
+                pair=pair,
+                direction="sell",
+                default_slippage_tolerance=slippage_tolerance,
+            )
 
             assert quantity_delta is not None
             assert quantity_delta < 0, f"Received non-negative sell quantity {quantity_delta} for {pair}"
