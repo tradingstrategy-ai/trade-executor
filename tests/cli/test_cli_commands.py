@@ -363,3 +363,25 @@ def test_cli_export(
     captured = capsys.readouterr()
     assert "export LOG_LEVEL" in captured.out
     assert "STRATEGY_FILE" in captured.out
+
+
+def test_cli_send_log_message(
+        logger,
+        strategy_path: str,
+        unit_test_cache_path: str,
+        capsys,
+    ):
+    """send-log-message command does not crash"""
+
+    environment = {
+        "LOG_LEVEL": "disabled",
+    }
+
+    cli = get_command(app)
+    with patch.dict(os.environ, environment, clear=True):
+        with pytest.raises(SystemExit) as e:
+            cli.main(args=["send=log-message"])
+        assert e.value.code == 0
+
+    captured = capsys.readouterr()
+    assert "log test message" in captured.out
