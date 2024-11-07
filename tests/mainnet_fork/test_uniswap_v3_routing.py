@@ -928,3 +928,94 @@ def test_stateful_routing_two_leg_multi_node_broadcast(
 
     # On-chain balance is zero after the sell
     assert eth_token.functions.balanceOf(hot_wallet.address).call() == 0
+
+
+
+def test_stateful_routing_two_leg_multi_node_broadcast_force_mev_blocker(
+    pair_universe,
+    hot_wallet,
+    usdc_asset,
+    matic_asset,
+    eth_asset,
+    eth_token,
+    routing_model,
+    eth_usdc_trading_pair,
+    state: State,
+    execution_model: UniswapV3Execution,
+    anvil_polygon_chain_fork: str,
+):
+    """Broadcast MEV blocker txs.
+
+    - Otherwise the same as test_stateful_routing_two_legs
+    """
+
+    execution_model.force_sequential_broadcast = True
+
+    providers = [
+        HTTPProvider(anvil_polygon_chain_fork),
+        HTTPProvider(anvil_polygon_chain_fork),
+    ]
+
+    providers[0].middlewares.clear()
+    providers[1].middlewares.clear()
+    web3 = Web3(FallbackProvider(providers))
+    web3.middleware_onion.clear()
+
+    # Prepare a transaction builder
+    tx_builder = HotWalletTransactionBuilder(web3, hot_wallet)
+
+    execution_model.tx_builder = tx_builder
+
+    routing_state = UniswapV3RoutingState(pair_universe, tx_builder)
+
+    trader = PairUniverseTestTrader(state)
+
+    # Buy eth via usdc -> polygon pool for 100 USD
+    trades = [trader.buy(eth_usdc_trading_pair, Decimal(100))]
+
+    t = trades[0]
+    assert t.is_buy()
+    assert t.reserve_currency == usdc_asset
+    assert t.pair == eth_usdc_trading_pair
+
+    state.start_execution_all(datetime.datetime.utcnow(), trades)
+    routing_model.execute_trades_internal(
+        pair_universe, routing_state, trades, check_balances=True
+    )
+    execution_model.broadcast_and_resolve_mev_blocker(routing_model, state, trades, stop_on_execution_failure=True)
+
+    # Check all all trades and transactions completed
+    for t in trades:
+        assert t.is_success()
+        for tx in t.blockchain_transactions:
+            assert tx.is_success()
+
+    # We received the tokens we bought
+    assert eth_token.functions.balanceOf(hot_wallet.address).call() > 0
+
+    eth_position: TradingPosition = state.portfolio.open_positions[1]
+    assert eth_position
+
+    # Buy eth via usdc -> polygon pool for 100 USD
+    trades = [trader.sell(eth_usdc_trading_pair, eth_position.get_quantity())]
+
+    t = trades[0]
+    assert t.is_sell()
+    assert t.reserve_currency == usdc_asset
+    assert t.pair == eth_usdc_trading_pair
+    assert t.planned_quantity == -eth_position.get_quantity()
+
+    state.start_execution_all(datetime.datetime.utcnow(), trades)
+    routing_model.execute_trades_internal(
+        pair_universe, routing_state, trades, check_balances=True
+    )
+    execution_model.broadcast_and_resolve_mev_blocker(routing_model, state, trades, stop_on_execution_failure=True)
+
+    # Check all all trades and transactions completed
+    for t in trades:
+        assert t.is_success()
+        for tx in t.blockchain_transactions:
+            assert tx.is_success()
+
+    # On-chain balance is zero after the sell
+    assert eth_token.functions.balanceOf(hot_wallet.address).call() == 0
