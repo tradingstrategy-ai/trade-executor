@@ -43,6 +43,7 @@ from ...strategy.execution_context import ExecutionContext, ExecutionMode
 from ...strategy.execution_model import AssetManagementMode
 from ...strategy.pandas_trader.indicator import DiskIndicatorStorage, MemoryIndicatorStorage, prepare_indicators, calculate_indicators
 from ...strategy.pandas_trader.strategy_input import StrategyInputIndicators
+from ...strategy.parameters import dump_parameters
 from ...strategy.run_state import RunState
 from ...strategy.strategy_module import read_strategy_module
 from ...strategy.trading_strategy_universe import TradingStrategyUniverseModel
@@ -196,6 +197,13 @@ def console(
 
     logger.info("Valuation model factory is %s, pricing model factory is %s", valuation_model_factory, pricing_model_factory)
 
+    parameters = mod.parameters
+    if parameters:
+        universe_options = UniverseOptions.from_strategy_parameters_class(parameters, execution_context)
+        dump_parameters(parameters)
+    else:
+        universe_options = UniverseOptions()
+
     # Set up the strategy engine
     factory = make_factory_from_strategy_mod(mod)
     run_description: StrategyExecutionDescription = factory(
@@ -219,7 +227,8 @@ def console(
     universe = universe_model.construct_universe(
         ts,
         ExecutionMode.preflight_check,
-        UniverseOptions())
+        universe_options,
+    )
 
     # Get all tokens from the universe
     reserve_assets = universe.reserve_assets

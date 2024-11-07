@@ -128,4 +128,3 @@ def display_reserve_position_events(position: ReservePosition) -> pd.DataFrame:
     df = df.fillna("")
     df = df.replace({pd.NaT: ""})
     return df
-
