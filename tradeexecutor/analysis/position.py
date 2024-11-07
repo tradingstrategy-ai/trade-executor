@@ -54,7 +54,7 @@ def display_positions(positions: Iterable[TradingPosition]) -> pd.DataFrame:
             # "Profit": p.get_realised_profit_percent() * 100 if p.is_closed() else "",
             "Opened": _ftime(p.opened_at),
             "Closed": _ftime(p.closed_at),
-            "Qty": p.get_quantity(),
+            "Size": f"{p.get_quantity():,.4f}",
             "Notes": (p.notes or "")[0:20],
         })
 
@@ -93,7 +93,7 @@ def display_positions(positions: Iterable[TradingPosition]) -> pd.DataFrame:
                 "Ticker": "‎ ‎ ‎ ‎ ‎ ┗",
                 "Trade id": str(t.trade_id),  # Mixed NA/number column fix
                 "Price": f"{t.executed_price:.6f}" if t.executed_price else "-",
-                f"Trade size": f"{t.get_position_quantity():,.2f}",
+                f"Size": f"{t.get_position_quantity():,.4f}",
                 "Opened": _ftime(t.opened_at),
                 "Executed": _ftime(t.executed_at),
                 "Notes": "\n".join(text)[0:20],

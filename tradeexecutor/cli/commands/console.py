@@ -347,7 +347,6 @@ def console(
         "indicators": indicators,
     }
 
-
     # Expose pairs to console as well
     for pair in itertools.islice(universe.iterate_pairs(), 5):
         name = pair.get_ticker().lower().replace("-", "_")
