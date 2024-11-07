@@ -311,62 +311,63 @@ class EthereumExecution(ExecutionModel):
 
         mev_blocker = get_mev_blocker_provider(web3)
 
-        if mev_blocker or self.force_sequential_broadcast:
-            # Special path needed on Ethereum mainnet and MEV Blocker
-            logger.info(
-                "MEV blocker/sequential tx enabled broadcast, mev blocker: %s, sequential: %s",
-                mev_blocker,
-                self.force_sequential_broadcast,
-            )
+        assert mev_blocker or self.force_sequential_broadcast
 
-            if not mev_blocker:
-                # Anvil test path
-                mev_blocker = web3.provider
+        # Special path needed on Ethereum mainnet and MEV Blocker
+        logger.info(
+            "MEV blocker/sequential tx enabled broadcast, mev blocker: %s, sequential: %s",
+            mev_blocker,
+            self.force_sequential_broadcast,
+        )
 
-            # Broadcast and resolve one by one
-            for t in trades:
+        if not mev_blocker:
+            # Anvil test path
+            mev_blocker = web3.provider
 
-                current_trade_tx_map = {}
-                current_trade_receipts = {}
+        # Broadcast and resolve one by one
+        for t in trades:
 
-                for tx in t.blockchain_transactions:
+            current_trade_tx_map = {}
+            current_trade_receipts = {}
 
-                    logger.info(
-                        "MEV blocker resolve, tx: %s, nonce %d, trade: #%d, timeout %s",
-                        tx.hash.hex(),
-                        tx.nonce,
-                        t.trade_id,
-                        confirmation_timeout,
-                    )
+            for tx in t.blockchain_transactions:
 
-                    signed_tx = SignedTransactionWithNonce(
-                        rawTransaction=HexBytes(tx.signed_bytes),
-                        hash=HexBytes(tx.tx_hash),
-                        r=0,  # Not needed in this stage
-                        s=0,  # Not needed in this stage
-                        v=0,  # Not needed in this stage
-                        address=tx.from_address,
-                        nonce=tx.nonce,
-                        source=tx.details,
-                    )
-
-                    receipts  = wait_and_broadcast_multiple_nodes_mev_blocker(
-                        mev_blocker,
-                        [signed_tx],
-                        max_timeout=confirmation_timeout,
-                    )
-
-                    current_trade_tx_map[signed_tx.hash] = (t, tx)
-                    current_trade_receipts.update(receipts)
-
-                self.resolve_trades(
-                    datetime.datetime.now(),
-                    routing_model,
-                    state,
-                    current_trade_tx_map,
-                    current_trade_receipts,
-                    stop_on_execution_failure=stop_on_execution_failure
+                logger.info(
+                    "MEV blocker resolve, tx: %s, nonce %d, trade: #%d, timeout %s",
+                    tx.hash.hex(),
+                    tx.nonce,
+                    t.trade_id,
+                    confirmation_timeout,
                 )
+
+                signed_tx = SignedTransactionWithNonce(
+                    rawTransaction=HexBytes(tx.signed_bytes),
+                    hash=HexBytes(tx.tx_hash),
+                    r=0,  # Not needed in this stage
+                    s=0,  # Not needed in this stage
+                    v=0,  # Not needed in this stage
+                    address=tx.from_address,
+                    nonce=tx.nonce,
+                    source=tx.details,
+                )
+
+                receipts  = wait_and_broadcast_multiple_nodes_mev_blocker(
+                    mev_blocker,
+                    [signed_tx],
+                    max_timeout=confirmation_timeout,
+                )
+
+                current_trade_tx_map[signed_tx.hash] = (t, tx)
+                current_trade_receipts.update(receipts)
+
+            self.resolve_trades(
+                datetime.datetime.now(),
+                routing_model,
+                state,
+                current_trade_tx_map,
+                current_trade_receipts,
+                stop_on_execution_failure=stop_on_execution_failure
+            )
 
     def broadcast_and_resolve_multiple_nodes(
         self,
