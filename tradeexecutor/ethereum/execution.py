@@ -305,6 +305,10 @@ class EthereumExecution(ExecutionModel):
         """Sequential broadcast of txs.
 
         - Cannot broadcast another tx until previous is confirmed
+
+        - For each trade, broadcast each transaction one by one
+
+        - After all transactions of the trade are complete, resolve the trade
         """
 
         web3 = self.web3
