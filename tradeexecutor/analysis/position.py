@@ -54,6 +54,7 @@ def display_positions(positions: Iterable[TradingPosition]) -> pd.DataFrame:
             # "Profit": p.get_realised_profit_percent() * 100 if p.is_closed() else "",
             "Opened": _ftime(p.opened_at),
             "Closed": _ftime(p.closed_at),
+            "Qty": p.get_quantity(),
             "Notes": (p.notes or "")[0:20],
         })
 
