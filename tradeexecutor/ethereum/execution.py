@@ -498,14 +498,11 @@ class EthereumExecution(ExecutionModel):
             rebroadcast=rebroadcast,
         )
 
-        if isinstance(self.web3.provider, (FallbackProvider, MEVBlockerProvider)) or self.force_sequential_broadcast:
+        if isinstance(self.web3.provider, MEVBlockerProvider) or self.force_sequential_broadcast:
             self.broadcast_and_resolve_mev_blocker(
                 routing_model,
                 state,
                 trades,
-                confirmation_timeout=self.confirmation_timeout,
-                confirmation_block_count=self.confirmation_block_count,
-                rebroadcast=rebroadcast,
             )
         elif isinstance(self.web3.provider, (FallbackProvider)):
             # Multi node broadcast
