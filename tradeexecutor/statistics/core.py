@@ -51,10 +51,12 @@ def calculate_position_statistics(clock: datetime.datetime, position: TradingPos
 
     value = position.get_value()
 
-    if position.is_open() and not position.is_repaired():
+    # TODO: Ignore. Common occurence. Position may lack open value if it was never properly opened.
+    #
+    #if position.is_open() and not position.is_repaired():
         # Normally opened positions should always have some value
-        if value == 0:
-            logger.warning(f"Position {position} reported value {value}. Last token price: {position.last_token_price}. Last reserve price: {position.last_reserve_price}")
+    #if value == 0:
+    #        logger.warning(f"Position {position} reported value {value}. Last token price: {position.last_token_price}. Last reserve price: {position.last_reserve_price}")
 
     stats = PositionStatistics(
         calculated_at=clock,
