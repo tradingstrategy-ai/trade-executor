@@ -13,7 +13,7 @@ from .app import app
 from ..bootstrap import prepare_executor_id, create_state_store, create_execution_and_sync_model, prepare_cache, create_web3_config, create_client
 from ..log import setup_logging
 from ...ethereum.rebroadcast import rebroadcast_all
-from ...state.repair import repair_trades, repair_tx_not_generated
+from ...state.repair import repair_trades, repair_tx_not_generated, repair_zero_quantity
 from ...strategy.approval import UncheckedApprovalModel
 from ...strategy.bootstrap import make_factory_from_strategy_mod
 from ...strategy.description import StrategyExecutionDescription
@@ -182,7 +182,6 @@ def repair(
     #
     repair_tx_not_generated(state, interactive=(not auto_approve))
 
-
     #
     # Second fix txs that have unresolved state
     #
@@ -204,6 +203,14 @@ def repair(
             logger.info("Transaction %s", tx)
 
     store.sync(state)
+
+    #
+    # Repair positions that failed to open, have 0 quanttiy
+    #
+    repair_zero_quantity(
+        state,
+        interactive=(not auto_approve),
+    )
 
     #
     # Then resolve trade status based whether

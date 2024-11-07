@@ -6,6 +6,8 @@ import sys
 from pathlib import Path
 from typing import Optional
 
+import typer
+
 from eth_defi.hotwallet import HotWallet
 from tabulate import tabulate
 
@@ -14,6 +16,7 @@ from .app import app
 from ..bootstrap import prepare_executor_id, create_web3_config, create_sync_model, create_state_store, create_client
 from ..log import setup_logging
 from ...ethereum.enzyme.vault import EnzymeVaultSyncModel
+from ...state.state import UncleanState
 from ...strategy.bootstrap import make_factory_from_strategy_mod
 from ...strategy.description import StrategyExecutionDescription
 from ...strategy.execution_context import ExecutionContext, ExecutionMode
@@ -54,6 +57,7 @@ def check_accounts(
     test_evm_uniswap_v2_factory: Optional[str] = shared_options.test_evm_uniswap_v2_factory,
     test_evm_uniswap_v2_init_code_hash: Optional[str] = shared_options.test_evm_uniswap_v2_init_code_hash,
     unit_testing: bool = shared_options.unit_testing,
+    raise_on_unclean: bool = typer.Option(False, envvar="RAISE_ON_UNCLEAN", help="Raise an exception if unclean. Unit test option."),
 ):
     """Check that state internal ledger matches on chain balances.
 
@@ -184,7 +188,13 @@ def check_accounts(
 
     if clean:
         logger.info("All accounts match:\n%s", output)
-        sys.exit(0)
+        if not raise_on_unclean:
+            sys.exit(0)
+        else:
+            logger.info("Unit test exit - nothing to be do ne")
     else:
-        logger.warning("Accounts do not match:\n%s", output)
-        sys.exit(1)
+        if raise_on_unclean:
+            raise UncleanState("Accounts do not match:\n%s", output)
+        else:
+            logger.warning("Accounts do not match:\n%s", output)
+            sys.exit(1)

@@ -8,6 +8,7 @@ from _decimal import Decimal
 from pathlib import Path
 from typing import Optional
 
+import typer
 from tabulate import tabulate
 from typer import Option
 
@@ -22,6 +23,7 @@ from ...ethereum.enzyme.tx import EnzymeTransactionBuilder
 from ...ethereum.enzyme.vault import EnzymeVaultSyncModel
 from ...ethereum.hot_wallet_sync_model import HotWalletSyncModel
 from ...ethereum.tx import HotWalletTransactionBuilder
+from ...state.state import UncleanState
 from ...strategy.bootstrap import make_factory_from_strategy_mod
 from ...strategy.account_correction import calculate_account_corrections
 from ...strategy.description import StrategyExecutionDescription
@@ -75,7 +77,7 @@ def correct_accounts(
     process_redemption: bool = Option(False, "--process-redemption", envvar="PROCESS_REDEMPTION", help="Attempt to process deposit and redemption requests before correcting accounts."),
     process_redemption_end_block_hint: int = Option(None, "--process-redemption-end-block-hint", envvar="PROCESS_REDEMPTION_END_BLOCK_HINT", help="Used in integration testing."),
     transfer_away: bool = Option(False, "--transfer-away", envvar="TRANSFER_AWAY", help="For tokens without assigned position, scoop them to the hot wallet instead of trying to construct a new position"),
-
+    raise_on_unclean: bool = typer.Option(False, envvar="RAISE_ON_UNCLEAN", help="Raise an exception if unclean. Unit test option."),
 ):
     """Correct accounting errors in the internal ledger of the trade executor.
 
@@ -376,8 +378,13 @@ def correct_accounts(
 
     if clean:
         logger.info(f"Accounts after the correction match for block {block_number:,}:\n%s", output)
-        sys.exit(0)
+        if not raise_on_unclean:
+            sys.exit(0)
+        else:
+            logger.info("Unit test exit - nothing to be done")
     else:
         logger.error("Accounts still broken after the correction")
         logger.info("\n" + output)
-        sys.exit(1)
+        if not raise_on_unclean:
+            sys.exit(1)
+        raise UncleanState(output)
