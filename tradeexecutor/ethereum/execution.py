@@ -52,16 +52,18 @@ logger = logging.getLogger(__name__)
 class EthereumExecution(ExecutionModel):
     """Run order execution on a single Uniswap v2 style exchanges."""
 
-    def __init__(self,
-                 tx_builder: TransactionBuilder,
-                 min_balance_threshold=Decimal("0.5"),
-                 confirmation_block_count=6,
-                 confirmation_timeout=datetime.timedelta(minutes=5),
-                 max_slippage: float = 0.01,
-                 stop_on_execution_failure=True,
-                 swap_gas_fee_limit=2_000_000,
-                 mainnet_fork=False,
-                 ):
+    def __init__(
+        self,
+        tx_builder: TransactionBuilder,
+        min_balance_threshold=Decimal("0.5"),
+        confirmation_block_count=6,
+        confirmation_timeout=datetime.timedelta(minutes=5),
+        max_slippage: float = 0.01,
+        stop_on_execution_failure=True,
+        swap_gas_fee_limit=2_000_000,
+        mainnet_fork=False,
+        force_sequential_broadcast=False,
+    ):
         """
         :param tx_builder:
             Hot wallet instance used for this execution
@@ -97,12 +99,14 @@ class EthereumExecution(ExecutionModel):
         self.swap_gas_fee_limit = swap_gas_fee_limit
         self.max_slippage = max_slippage
         self.mainnet_fork = mainnet_fork
+        self.force_sequential_broadcast = force_sequential_broadcast
         logger.info(
-            "Execution model %s created.\n confirmation_block_count: %s, confirmation_timeout: %s, mainnet_fork: %s",
+            "Execution model %s created.\n confirmation_block_count: %s, confirmation_timeout: %s, mainnet_fork: %s, force_sequential_broadcast: %s",
             self.__class__.__name__,
             self.confirmation_block_count,
             self.confirmation_timeout,
-            self.mainnet_fork
+            self.mainnet_fork,
+            self.force_sequential_broadcast,
         )
 
     @property
@@ -290,6 +294,80 @@ class EthereumExecution(ExecutionModel):
             receipts,
             stop_on_execution_failure=stop_on_execution_failure)
 
+    def broadcast_and_resolve_mev_blocker(
+        self,
+        routing_model: RoutingModel,
+        state: State,
+        trades: List[TradeExecution],
+        confirmation_timeout: datetime.timedelta = datetime.timedelta(minutes=1),
+        stop_on_execution_failure=False,
+    ):
+        """Sequential broadcast of txs.
+
+        - Cannot broadcast another tx until previous is confirmed
+        """
+
+        web3 = self.web3
+
+        mev_blocker = get_mev_blocker_provider(web3)
+
+        if mev_blocker or self.force_sequential_broadcast:
+            # Special path needed on Ethereum mainnet and MEV Blocker
+            logger.info(
+                "MEV blocker/sequential tx enabled broadcast, mev blocker: %s, sequential: %s",
+                mev_blocker,
+                self.force_sequential_broadcast,
+            )
+
+            if not mev_blocker:
+                # Anvil test path
+                mev_blocker = web3.provider
+
+            # Broadcast and resolve one by one
+            for t in trades:
+
+                current_trade_tx_map = {}
+                current_trade_receipts = {}
+
+                for tx in t.blockchain_transactions:
+
+                    logger.info(
+                        "MEV blocker resolve, tx: %s, nonce %d, trade: #%d, timeout %s",
+                        tx.hash.hex(),
+                        tx.nonce,
+                        t.trade_id,
+                        confirmation_timeout,
+                    )
+
+                    signed_tx = SignedTransactionWithNonce(
+                        rawTransaction=HexBytes(tx.signed_bytes),
+                        hash=HexBytes(tx.tx_hash),
+                        r=0,  # Not needed in this stage
+                        s=0,  # Not needed in this stage
+                        v=0,  # Not needed in this stage
+                        address=tx.from_address,
+                        nonce=tx.nonce,
+                        source=tx.details,
+                    )
+
+                    receipts  = wait_and_broadcast_multiple_nodes_mev_blocker(
+                        mev_blocker,
+                        [signed_tx],
+                        max_timeout=confirmation_timeout,
+                    )
+
+                    current_trade_tx_map[signed_tx.hash] = (t, tx)
+                    current_trade_receipts.update(receipts)
+
+                self.resolve_trades(
+                    datetime.datetime.now(),
+                    routing_model,
+                    state,
+                    current_trade_tx_map,
+                    current_trade_receipts,
+                    stop_on_execution_failure=stop_on_execution_failure
+                )
+
     def broadcast_and_resolve_multiple_nodes(
         self,
         routing_model: RoutingModel,
@@ -362,27 +440,16 @@ class EthereumExecution(ExecutionModel):
 
             t.mark_broadcasted(datetime.datetime.utcnow(), rebroadcast=rebroadcast)
 
-        mev_blocker = get_mev_blocker_provider(web3)
-
-        if mev_blocker:
-            # Special path needed on Ethereum mainnet and MEV Blocker
-            logger.info("MEV blocker tx enabled broadcast")
-            receipts  = wait_and_broadcast_multiple_nodes_mev_blocker(
-                mev_blocker,
-                txs,
-                max_timeout=confirmation_timeout,
-            )
-        else:
-            logger.info("Normal tx broadcast")
-            receipts = wait_and_broadcast_multiple_nodes(
-                web3,
-                txs,
-                max_timeout=confirmation_timeout,
-                confirmation_block_count=confirmation_block_count,
-                node_switch_timeout=datetime.timedelta(minutes=1),  # Rebroadcast every 1 minute
-                check_nonce_validity=not rebroadcast,
-                mine_blocks=self.mainnet_fork,
-            )
+        logger.info("Normal tx broadcast")
+        receipts = wait_and_broadcast_multiple_nodes(
+            web3,
+            txs,
+            max_timeout=confirmation_timeout,
+            confirmation_block_count=confirmation_block_count,
+            node_switch_timeout=datetime.timedelta(minutes=1),  # Rebroadcast every 1 minute
+            check_nonce_validity=not rebroadcast,
+            mine_blocks=self.mainnet_fork,
+        )
 
         self.resolve_trades(
             datetime.datetime.now(),
@@ -424,7 +491,16 @@ class EthereumExecution(ExecutionModel):
             rebroadcast=rebroadcast,
         )
 
-        if isinstance(self.web3.provider, (FallbackProvider, MEVBlockerProvider)):
+        if isinstance(self.web3.provider, (FallbackProvider, MEVBlockerProvider)) or self.force_sequential_broadcast:
+            self.broadcast_and_resolve_mev_blocker(
+                routing_model,
+                state,
+                trades,
+                confirmation_timeout=self.confirmation_timeout,
+                confirmation_block_count=self.confirmation_block_count,
+                rebroadcast=rebroadcast,
+            )
+        elif isinstance(self.web3.provider, (FallbackProvider)):
             # Multi node broadcast
             self.broadcast_and_resolve_multiple_nodes(
                 routing_model,

@@ -322,7 +322,11 @@ class UniswapV3Routing(EthereumRoutingModel):
         uniswap = self.mock_partial_deployment_for_analysis(web3, swap_tx.contract_address)
 
         tx_dict = swap_tx.get_transaction()
-        receipt = receipts[HexBytes(swap_tx.tx_hash)]
+
+        try:
+            receipt = receipts[HexBytes(swap_tx.tx_hash)]
+        except KeyError as e:
+            raise KeyError(f"Could not find hash: {swap_tx.tx_hash} in {receipts}") from e
 
         input_args = swap_tx.get_actual_function_input_args()
 
