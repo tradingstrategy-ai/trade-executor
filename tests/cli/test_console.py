@@ -14,7 +14,7 @@ def test_cli_console_2(
     persistent_test_cache_path: str,
     mocker,
     ):
-    """console command, with ne strategy"""
+    """Check console CLI opens with a new style strategy with a complex universe and indicator setup."""
 
     strategy_path = os.path.join(os.path.dirname(__file__), "..", "..", "strategies", "test_only", "ethereum-memecoin-vol-basket.py")
 

@@ -1026,7 +1026,7 @@ def _load_indicator_result(storage: DiskIndicatorStorage, key: IndicatorKey) -> 
 
 
 def _calculate_and_save_indicator_result(
-    storage: DiskIndicatorStorage,
+    storage: DiskIndicatorStorage | MemoryIndicatorStorage,
     key: IndicatorKey,
     all_indicators: set[IndicatorKey],
 ) -> IndicatorResult | None:
@@ -1035,6 +1035,10 @@ def _calculate_and_save_indicator_result(
     - Mark missing data as empty Series
 
     """
+    assert isinstance(storage, IndicatorStorage), f"Got {type(storage)}"
+    assert isinstance(key, IndicatorKey), f"Got {type(key)}"
+    assert type(all_indicators) == set, f"Got {type(all_indicators)}"
+
     global _universe
 
     # Picked result
@@ -1043,8 +1047,6 @@ def _calculate_and_save_indicator_result(
     assert strategy_universe is not None, "Process global _universe not set"
 
     current_dependency_order = key.definition.dependency_order
-
-    assert all_indicators is not None
 
     resolver = IndicatorDependencyResolver(
         strategy_universe,

@@ -303,6 +303,7 @@ def console(
             indicator_set,
             execution_context=execution_context,
             remaining=indicators_needed,
+            all_combinations=indicators_needed,
             max_workers=1,  # Max_workers=1 to enable easier debug
         )
         indicators = StrategyInputIndicators(
