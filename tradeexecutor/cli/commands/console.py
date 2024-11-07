@@ -340,6 +340,7 @@ def console(
         "strategy_module": mod,
         "run_state": run_state,
         "backtested_state": backtested_state,
+        "parameters": parameters,
         "indicator_storage": indicator_storage,
         "indicator_set": indicator_set,
         "indicator_result_map": indicator_result_map,
