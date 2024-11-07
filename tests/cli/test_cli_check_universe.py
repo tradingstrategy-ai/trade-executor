@@ -4,18 +4,17 @@ from pathlib import Path
 import pytest
 
 from tradeexecutor.cli.main import app
+from tradingstrategy.client import Client
 
 
 @pytest.fixture(scope="session")
-def unit_test_cache_path():
+def unit_test_cache_path(persistent_test_cache_path):
     """Where unit tests  cache files.
 
     We have special path for CLI tests to make sure CLI tests
     always do fresh downloads.
     """
-    path = os.path.join(os.path.dirname(__file__), "/tmp/cli_tests")
-    os.makedirs(path, exist_ok=True)
-    return path
+    return persistent_test_cache_path
 
 
 def test_cli_check_universe(
