@@ -84,6 +84,7 @@ class EthereumPoolRevaluator(ValuationModel):
                 new_value=new_value,
                 old_price=old_price,
                 new_price=new_price,
+                quantity=quantity,
             )
         
         elif position.is_credit_supply():

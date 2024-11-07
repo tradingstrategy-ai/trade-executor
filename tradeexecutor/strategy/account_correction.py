@@ -470,7 +470,7 @@ def apply_accounting_correction(
             assert position.is_closed()
         else:
             assert position.get_quantity() > 0, \
-                f"Spoit position should have positive quantity, got {position} with {position.get_quantity()}\n" \
+                f"Spot position should have positive quantity, got {position} with {position.get_quantity()}\n" \
                 f"Accounting correction is: {correction}"
 
         if position.is_credit_supply():

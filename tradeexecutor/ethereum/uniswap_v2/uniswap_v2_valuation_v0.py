@@ -56,6 +56,7 @@ class UniswapV2PoolValuationMethodV0(ValuationModel):
             new_value=new_value,
             old_price=old_price,
             new_price=new_price,
+            quantity=quantity,
         )
 
         position.valuation_updates.append(evt)

@@ -481,3 +481,33 @@ def repair_tx_not_generated(state: State, interactive=True):
     return repair_trades_generated
 
 
+def repair_zero_quantity(state: State, interactive=True):
+    """Scan for positions that failed to open and need to be cleaned up."""
+    zero_quantity_positions = [p for p in state.portfolio.get_open_positions() if p.get_quantity() == 0]
+    if not zero_quantity_positions:
+        print("No zero quantity positions found")
+        return
+
+    print("Positions with zero quantity that need to be fixed")
+    for p in zero_quantity_positions:
+        print("   ", p)
+
+    if interactive:
+        confirm = input("Fix [y/n]? ")
+        if confirm.lower() != "y":
+            raise RepairAborted()
+
+    portfolio = state.portfolio
+    repair_trades_generated = []
+    for p in zero_quantity_positions:
+        # The position has gone to zero
+        if p.can_be_closed():
+            # In a lot of places we assume that a position with 1 trade cannot be closed
+            # Make a 0-sized trade so that we know the position is closed
+            t = close_position_with_empty_trade(portfolio, p)
+            logger.info("Position %s closed with a trade %s", p, t)
+            assert p.is_closed()
+
+            repair_trades_generated.append(t)
+
+    return repair_trades_generated

@@ -1,6 +1,7 @@
 """Position valuations."""
 import datetime
 from dataclasses import dataclass
+from decimal import Decimal
 
 from dataclasses_json import dataclass_json
 
@@ -68,4 +69,7 @@ class ValuationUpdate:
     #: See `revalue_portfolio()`.
     #:
     mark_down_to_zero: bool | None = None
+
+    #: What was the quantity of the position at the time of valuation
+    quantity: Decimal | None = None
 
