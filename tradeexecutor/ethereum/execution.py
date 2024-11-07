@@ -338,7 +338,7 @@ class EthereumExecution(ExecutionModel):
 
                 logger.info(
                     "MEV blocker resolve, tx: %s, nonce %d, trade: #%d, timeout %s",
-                    tx.hash.hex(),
+                    tx.tx_hash,
                     tx.nonce,
                     t.trade_id,
                     confirmation_timeout,
@@ -361,8 +361,10 @@ class EthereumExecution(ExecutionModel):
                     max_timeout=confirmation_timeout,
                 )
 
-                current_trade_tx_map[signed_tx.hash] = (t, tx)
+                current_trade_tx_map[signed_tx.hash.hex()] = (t, tx)
                 current_trade_receipts.update(receipts)
+
+            t.mark_broadcasted(datetime.datetime.utcnow(), rebroadcast=False)
 
             self.resolve_trades(
                 datetime.datetime.now(),
@@ -614,7 +616,10 @@ def update_confirmation_status(
         # First update the state of all transactions,
         # as we now have receipt for them
         for tx_hash, receipt in receipts.items():
-            trade, tx = tx_map[tx_hash.hex()]
+            try:
+                trade, tx = tx_map[tx_hash.hex()]
+            except KeyError as e:
+                raise KeyError(f"{tx_hash.hex()} not in map keys: {list(tx_map.keys())}") from e
             # Update the transaction confirmation status
             status = receipt["status"] == 1
             block_number = receipt["blockNumber"]
