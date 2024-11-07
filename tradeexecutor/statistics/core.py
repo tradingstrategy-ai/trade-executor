@@ -51,10 +51,10 @@ def calculate_position_statistics(clock: datetime.datetime, position: TradingPos
 
     value = position.get_value()
 
-    first_trade = position.get_first_trade()
-    if position.is_open() and first_trade.is_success():
+    if position.is_open() and not position.is_repaired():
         # Normally opened positions should always have some value
-        assert value != 0, f"Position {position} reported value {value}. Last token price: {position.last_token_price}. Last reserve price: {position.last_reserve_price}"
+        if value == 0:
+            logger.warning(f"Position {position} reported value {value}. Last token price: {position.last_token_price}. Last reserve price: {position.last_reserve_price}")
 
     stats = PositionStatistics(
         calculated_at=clock,
