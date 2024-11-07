@@ -44,7 +44,7 @@ def format_trade(portfolio: Portfolio, trade: TradeExecution) -> List[str]:
         planned_price = 0
 
     lines = [
-        f"{trade_type:5} #{trade.trade_id} {pair.get_human_description()} v:${trade.get_planned_value():,.2f} p:${planned_price:,.4f} q:{abs(trade.get_position_quantity())} {pair.base.token_symbol} {existing_text}",
+        f"{trade_type:5} #{trade.trade_id} {pair.get_human_description()} v:${trade.get_planned_value():,.2f} p:${planned_price:,.4f}/{pair.base.token_symbol} q:{abs(trade.get_position_quantity())} {pair.base.token_symbol} {existing_text}",
     ]
 
     # Add existing balance
