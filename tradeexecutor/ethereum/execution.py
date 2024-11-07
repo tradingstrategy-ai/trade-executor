@@ -299,7 +299,7 @@ class EthereumExecution(ExecutionModel):
         routing_model: RoutingModel,
         state: State,
         trades: List[TradeExecution],
-        confirmation_timeout: datetime.timedelta = datetime.timedelta(minutes=1),
+        confirmation_timeout: datetime.timedelta = datetime.timedelta(minutes=10),
         stop_on_execution_failure=False,
     ):
         """Sequential broadcast of txs.
@@ -319,9 +319,10 @@ class EthereumExecution(ExecutionModel):
 
         # Special path needed on Ethereum mainnet and MEV Blocker
         logger.info(
-            "MEV blocker/sequential tx enabled broadcast, mev blocker: %s, sequential: %s",
+            "MEV blocker/sequential tx enabled broadcast, mev blocker: %s, sequential: %s, timeout %s",
             mev_blocker,
             self.force_sequential_broadcast,
+            confirmation_timeout,
         )
 
         if not mev_blocker:
