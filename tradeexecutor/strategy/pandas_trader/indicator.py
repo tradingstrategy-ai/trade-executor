@@ -1044,6 +1044,8 @@ def _calculate_and_save_indicator_result(
 
     current_dependency_order = key.definition.dependency_order
 
+    assert all_indicators is not None
+
     resolver = IndicatorDependencyResolver(
         strategy_universe,
         all_indicators,
