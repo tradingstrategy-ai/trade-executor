@@ -19,10 +19,10 @@ from eth_defi.deploy import get_or_create_contract_registry
 from eth_defi.gas import GasPriceSuggestion, apply_gas, estimate_gas_fees
 from eth_defi.hotwallet import HotWallet, SignedTransactionWithNonce
 from eth_defi.provider.fallback import FallbackProvider
-from eth_defi.provider.mev_blocker import MEVBlockerProvider
+from eth_defi.provider.mev_blocker import MEVBlockerProvider, get_mev_blocker_provider
 from eth_defi.token import fetch_erc20_details, TokenDetails
 from eth_defi.confirmation import wait_transactions_to_complete, \
-    broadcast_and_wait_transactions_to_complete, broadcast_transactions, wait_and_broadcast_multiple_nodes
+    broadcast_and_wait_transactions_to_complete, broadcast_transactions, wait_and_broadcast_multiple_nodes, wait_and_broadcast_multiple_nodes_mev_blocker
 from eth_defi.trace import trace_evm_transaction, print_symbolic_trace
 from eth_defi.uniswap_v2.deployment import UniswapV2Deployment, FOREVER_DEADLINE
 from eth_defi.revert_reason import fetch_transaction_revert_reason
@@ -362,15 +362,27 @@ class EthereumExecution(ExecutionModel):
 
             t.mark_broadcasted(datetime.datetime.utcnow(), rebroadcast=rebroadcast)
 
-        receipts = wait_and_broadcast_multiple_nodes(
-            web3,
-            txs,
-            max_timeout=confirmation_timeout,
-            confirmation_block_count=confirmation_block_count,
-            node_switch_timeout=datetime.timedelta(minutes=1),  # Rebroadcast every 1 minute
-            check_nonce_validity=not rebroadcast,
-            mine_blocks=self.mainnet_fork,
-        )
+        mev_blocker = get_mev_blocker_provider(web3)
+
+        if mev_blocker:
+            # Special path needed on Ethereum mainnet and MEV Blocker
+            logger.info("MEV blocker tx enabled broadcast")
+            receipts  = wait_and_broadcast_multiple_nodes_mev_blocker(
+                mev_blocker,
+                txs,
+                max_timeout=confirmation_timeout,
+            )
+        else:
+            logger.info("Normal tx broadcast")
+            receipts = wait_and_broadcast_multiple_nodes(
+                web3,
+                txs,
+                max_timeout=confirmation_timeout,
+                confirmation_block_count=confirmation_block_count,
+                node_switch_timeout=datetime.timedelta(minutes=1),  # Rebroadcast every 1 minute
+                check_nonce_validity=not rebroadcast,
+                mine_blocks=self.mainnet_fork,
+            )
 
         self.resolve_trades(
             datetime.datetime.now(),
