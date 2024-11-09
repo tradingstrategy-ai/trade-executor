@@ -344,10 +344,17 @@ UNISWAP_V3_INTERMEDIATE = {
         # https://tradingstrategy.ai/trading-view/ethereum/uniswap-v3/eth-usdc-fee-5
         "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2": "0x88e6a0c2ddd26feeb64f039a2c41296fcb3f5640",
     },
-
     ChainId.base: {
         # Route WETH through WETH-USDC 5 BPS
         # https://coinmarketcap.com/dexscan/base/0xd0b53d9277642d899df5c87a3966a349a798f224/
         "0x4200000000000000000000000000000000000006": "0xd0b53d9277642d899df5c87a3966a349a798f224",
-    }
+    },
+    ChainId.polygon: {
+        # Route WMATIC through USDC:WMATIC fee 0.05% pool,
+        # https://tradingstrategy.ai/trading-view/polygon/uniswap-v3/matic-usdc-fee-5
+        "0x0d500b1d8e8ef31e21c99d1db9a6444d3adf1270": "0xa374094527e1673a86de625aa59517c5de346d32",
+        # Route WETH through USDC:WETH fee 0.05% pool,
+        # https://tradingstrategy.ai/trading-view/polygon/uniswap-v3/eth-usdc-fee-5
+        "0x7ceb23fd6bc0add59e62ac25578270cff1b9f619": "0x45dda9cb7c25131df268515131f647d726f50608",
+    },
 }
