@@ -110,7 +110,7 @@ def strategy_universe(
     return TradingStrategyUniverse.create_from_dataset(dataset, asset_usdc.address)
 
 
-@flaky.flaky
+# @flaky.flaky
 def test_generic_routing_multihops_trade(
     web3: Web3,
     hot_wallet: HotWallet,
@@ -119,6 +119,7 @@ def test_generic_routing_multihops_trade(
     generic_pricing_model: GenericPricing,
     asset_usdc: AssetIdentifier,
     asset_wbtc: AssetIdentifier,
+    asset_wmatic: AssetIdentifier,
     wbtc_weth_spot_pair: TradingPairIdentifier,
     weth_usdc_spot_pair: TradingPairIdentifier,
     wmatic_weth_spot_pair: TradingPairIdentifier,
@@ -219,7 +220,6 @@ def test_generic_routing_multihops_trade(
     assert len(state.portfolio.open_positions) == 2
 
     p = state.portfolio.open_positions[2]
-    print(p)
     assert p.get_opening_price() == pytest.approx(0.8526643063862225)
 
     # Check our wallet holds all tokens we expect.
@@ -231,8 +231,10 @@ def test_generic_routing_multihops_trade(
         {
             asset_usdc.address,
             asset_wbtc.address,
+            asset_wmatic.address,
         },
         decimalise=True,
     )
     assert 0 < balances[asset_wbtc.address] < 1000, f"Got balance: {balances}"
-    assert balances[asset_usdc.address] == pytest.approx(9_500), f"Got balance: {balances}"
+    assert 0 < balances[asset_wmatic.address] < 1000, f"Got balance: {balances}"
+    assert balances[asset_usdc.address] == pytest.approx(9_000), f"Got balance: {balances}"

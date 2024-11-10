@@ -349,7 +349,7 @@ class UniswapV3Routing(EthereumRoutingModel):
             if trade.is_buy():
                 assert path[0] == reserve.address, f"Was expecting the route path to start with reserve token {reserve}, got path {result.path}"
 
-                price = result.get_human_price(quote_token_details.address == result.token0.address)
+                price = result.get_human_price(base_token_details.address == result.token1.address)
                 executed_reserve = result.amount_in / Decimal(10 ** reserve.decimals)
                 executed_amount = result.amount_out / Decimal(10 ** base_token_details.decimals)
 
@@ -359,7 +359,7 @@ class UniswapV3Routing(EthereumRoutingModel):
                 # Ordered other way around
                 assert path[0] == base_token_details.address.lower(), f"Path is {path}, base token is {base_token_details}"
                 assert path[-1] == reserve.address
-                price = result.get_human_price(quote_token_details.address == result.token0.address)
+                price = result.get_human_price(base_token_details.address == result.token0.address)
                 executed_amount = -result.amount_in / Decimal(10 ** base_token_details.decimals)
                 executed_reserve = result.amount_out / Decimal(10 ** reserve.decimals)
 
