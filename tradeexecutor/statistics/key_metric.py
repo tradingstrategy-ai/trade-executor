@@ -271,6 +271,9 @@ def calculate_key_metrics(
         yield KeyMetric.create_metric(KeyMetricKind.sharpe, source, sharpe, calculation_window_start_at, calculation_window_end_at, KeyMetricCalculationMethod.historical_data)
 
         sortino = calculate_sortino(daily_returns, periods=periods)
+        # NOTE: temp fix for sortino being Inf
+        if np.isnan(sortino) or np.isinf(sortino):
+            sortino = None
         yield KeyMetric.create_metric(KeyMetricKind.sortino, source, sortino, calculation_window_start_at, calculation_window_end_at, KeyMetricCalculationMethod.historical_data)
 
         # Flip the sign of the max drawdown

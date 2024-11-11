@@ -27,7 +27,10 @@ from ...state.state import State
 from ...strategy.execution_model import AssetManagementMode
 from ...strategy.run_state import RunState
 from ...strategy.strategy_module import read_strategy_module, StrategyModuleInformation
+from ...statistics.in_memory_statistics import refresh_run_state
 from ...webhook.server import create_pyramid_app
+from ...strategy.execution_context import ExecutionContext, ExecutionMode
+from ...strategy.cycle import CycleDuration
 
 
 logger = logging.getLogger(__name__)
@@ -128,6 +131,13 @@ def webapi(
     # Set up read-only state sync
     if not store.is_pristine():
         run_state.read_only_state_copy = store.load()
+
+    refresh_run_state(
+        run_state,
+        store.load(),
+        ExecutionContext(mode=ExecutionMode.unit_testing),
+        cycle_duration=mod.parameters.cycle_duration,
+    )
 
     app = create_pyramid_app(
         http_username,
