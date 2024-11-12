@@ -65,7 +65,7 @@ jobs:
       # tests/**/test*.py -> workaround issues by scanning tests folder in git submodules and importing them (even if not running)
       - name: Run test scripts
         run: |
-            poetry run pytest --tb=native --durations=20 -m "not slow_test_group" --timeout=300
+            poetry run pytest --tb=native --dist loadscope -n 6 --durations=20 -m "not slow_test_group" --timeout=300
         env:
           TRADING_STRATEGY_API_KEY: ${{ secrets.TRADING_STRATEGY_API_KEY }}
           BNB_CHAIN_JSON_RPC: ${{ secrets.BNB_CHAIN_JSON_RPC }}
