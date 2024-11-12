@@ -1095,7 +1095,14 @@ class ExecutionLoop:
         if self.trade_immediately:
             ts = datetime.datetime.now()
             logger.info("Trade immediately triggered, using timestamp %s, cycle is %d", ts, cycle)
-            universe = self.tick(ts, self.cycle_duration, state, cycle, live=True)
+            universe = self.tick(
+                ts,
+                self.cycle_duration,
+                state,
+                cycle,
+                live=True,
+                existing_universe=universe,
+            )
 
         def die(exc: Exception):
             # Shutdown the scheduler and mark an clean exit
