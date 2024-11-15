@@ -30,6 +30,7 @@ from eth_defi.revert_reason import fetch_transaction_revert_reason
 
 from tradingstrategy.chain import ChainId
 from tradeexecutor.ethereum.tx import TransactionBuilder
+from tradeexecutor.ethereum.swap import report_failure
 from tradeexecutor.state.state import State
 from tradeexecutor.state.trade import TradeExecution, TradeStatus
 from tradeexecutor.state.blockhain_transaction import BlockchainTransaction
@@ -356,24 +357,30 @@ class EthereumExecution(ExecutionModel):
                     source=tx.details,
                 )
 
-                receipts  = wait_and_broadcast_multiple_nodes_mev_blocker(
-                    mev_blocker,
-                    [signed_tx],
-                    max_timeout=confirmation_timeout,
-                )
+                try:
+                    receipts = wait_and_broadcast_multiple_nodes_mev_blocker(
+                        mev_blocker,
+                        [signed_tx],
+                        max_timeout=confirmation_timeout,
+                    )
+                except Exception as e:
+                    report_failure(datetime.datetime.utcnow(), state, t, stop_on_execution_failure)
+                    break
 
                 current_trade_tx_map[signed_tx.hash.hex()] = (t, tx)
                 current_trade_receipts.update(receipts)
 
-            t.mark_broadcasted(datetime.datetime.utcnow(), rebroadcast=False)
+            else:
+                # No problem with broadcasting, we got receipts
+                t.mark_broadcasted(datetime.datetime.utcnow(), rebroadcast=False)
 
-            self.resolve_trades(
-                datetime.datetime.now(),
-                routing_model,
-                state,
-                current_trade_tx_map,
-                current_trade_receipts,
-                stop_on_execution_failure=stop_on_execution_failure
+                self.resolve_trades(
+                    datetime.datetime.now(),
+                    routing_model,
+                    state,
+                    current_trade_tx_map,
+                    current_trade_receipts,
+                    stop_on_execution_failure=stop_on_execution_failure
             )
 
     def broadcast_and_resolve_multiple_nodes(
@@ -504,6 +511,8 @@ class EthereumExecution(ExecutionModel):
                 routing_model,
                 state,
                 trades,
+                # explicitly set to False here to keep execution going
+                stop_on_execution_failure=False,
             )
         elif isinstance(self.web3.provider, (FallbackProvider)):
             # Multi node broadcast
