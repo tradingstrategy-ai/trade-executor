@@ -1368,7 +1368,7 @@ class TradeExecution:
         self.executed_collateral_consumption = executed_collateral_consumption
 
     def mark_failed(self, failed_at: datetime.datetime):
-        assert self.get_status() == TradeStatus.broadcasted
+        assert self.get_status() in (TradeStatus.broadcasted, TradeStatus.started), f"Cannot mark trade failed if it is not broadcasted or started. Current status: {self.get_status()}"
         assert failed_at.tzinfo is None
         self.failed_at = failed_at
 
