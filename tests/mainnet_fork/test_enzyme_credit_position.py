@@ -27,11 +27,14 @@ from tradeexecutor.state.state import State
 from tradeexecutor.ethereum.enzyme.vault import EnzymeVaultSyncModel
 
 
-pytestmark = pytest.mark.skipif(
-    not os.environ.get("JSON_RPC_POLYGON")
-    or not os.environ.get("TRADING_STRATEGY_API_KEY"),
-    reason="Set POLYGON_JSON_RPC and TRADING_STRATEGY_API_KEY environment variables to run this test",
-)
+pytestmark = [
+    pytest.mark.skipif(
+        not os.environ.get("JSON_RPC_POLYGON")
+        or not os.environ.get("TRADING_STRATEGY_API_KEY"),
+        reason="Set POLYGON_JSON_RPC and TRADING_STRATEGY_API_KEY environment variables to run this test",
+    ),
+    pytest.mark.slow_test_group,
+]
 
 
 @pytest.fixture()
