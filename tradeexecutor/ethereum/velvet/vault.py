@@ -65,17 +65,17 @@ class VelvetVaultSyncModel(HotWalletSyncModel):
 
     def __init__(
         self,
-        web3: Web3,
+        vault: VelvetVault,
         hot_wallet: HotWallet,
-        spec: VaultSpec,
         reserve_asset: AssetIdentifier,
     ):
-        self.vault = VelvetVault(
-            web3=web3,
-            spec=spec,
-        )
+        self.vault = vault
         self.reserve_asset = reserve_asset
         self.hot_wallet = hot_wallet
+
+    @property
+    def web3(self):
+        return self.vault.web3
 
     @property
     def portfolio_address(self) -> HexAddress:
