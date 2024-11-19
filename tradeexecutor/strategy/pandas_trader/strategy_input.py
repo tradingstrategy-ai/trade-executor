@@ -497,6 +497,10 @@ class StrategyInputIndicators:
     ) -> pd.Series | None:
         """Get the whole indicator data series.
 
+        - Get for a single pair
+
+        - See :py:meth:`get_indicator_data_pairs_combined` if you want to get data for all pairs as a single serie
+
         By default, return data that is only available before the current timestamp.
 
         :param unlimited:
@@ -575,11 +579,8 @@ class StrategyInputIndicators:
         :return: Price series up to the current timestamp.
         """
         assert self.timestamp, f"StrategyInputIndicators.timestamp is None. prepare_decision_cycle() not called, or you are outside a decide_trades() function."
-
         price_series = self.get_price_series(column, pair)
-
         return price_series.loc[:self.timestamp]
-
 
     def get_indicator_dataframe(
         self,
@@ -690,6 +691,8 @@ class StrategyInputIndicators:
         pair_filter: Callable | None = None,
     ) -> pd.Series:
         """Get indicator data for all pairs in a single blob.
+
+        - See :py:meth:`get_indicator_series` to get data for a single trading pair
 
         Example code:
 
