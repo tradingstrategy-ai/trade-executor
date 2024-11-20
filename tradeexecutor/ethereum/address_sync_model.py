@@ -10,7 +10,6 @@ from web3.types import BlockIdentifier
 from eth_defi.provider.broken_provider import get_almost_latest_block_number
 from tradeexecutor.ethereum.onchain_balance import fetch_address_balances
 from tradeexecutor.state.balance_update import BalanceUpdate
-from tradeexecutor.state.sync import BalanceEventRef
 from tradingstrategy.chain import ChainId
 from tradeexecutor.ethereum.wallet import sync_reserves
 from tradeexecutor.state.identifier import AssetIdentifier

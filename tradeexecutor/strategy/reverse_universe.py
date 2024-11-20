@@ -7,6 +7,9 @@ import datetime
 import enum
 from typing import Set, Tuple
 
+import pandas as pd
+
+from tradeexecutor.state.identifier import TradingPairIdentifier
 from tradingstrategy.candle import GroupedCandleUniverse
 from tradingstrategy.chain import ChainId
 from tradingstrategy.client import Client
@@ -14,7 +17,7 @@ from tradingstrategy.client import Client
 from tradeexecutor.state.state import State
 from tradeexecutor.state.types import ZeroExAddress
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
-from tradingstrategy.exchange import Exchange
+from tradingstrategy.exchange import Exchange, ExchangeUniverse
 from tradingstrategy.pair import PandasPairUniverse
 from tradingstrategy.timebucket import TimeBucket
 from tradingstrategy.universe import Universe
@@ -34,11 +37,11 @@ class DataRangeMode(enum.Enum):
 
 
 def reverse_trading_universe_from_state(
-        state: State,
-        client: Client,
-        time_bucket: TimeBucket,
-        overlook_period: datetime.timedelta = datetime.timedelta(days=7),
-        data_range_mode: DataRangeMode = DataRangeMode.trades,
+    state: State,
+    client: Client,
+    time_bucket: TimeBucket,
+    overlook_period: datetime.timedelta = datetime.timedelta(days=7),
+    data_range_mode: DataRangeMode = DataRangeMode.trades,
 ) -> TradingStrategyUniverse:
     """Reverse-engineer trading universe from an existing execution state.
 
@@ -155,3 +158,42 @@ def reverse_trading_universe_from_state(
     )
 
     return ts_universe
+
+
+def create_universe_from_trading_pair_identifiers(
+    pairs: list[TradingPairIdentifier],
+    exchange_universe: ExchangeUniverse,
+) -> PandasPairUniverse:
+    """Create pair universe from a list of pair identifiers.
+
+    - Used in tests to set up pair universes when we cannot yet downlaod data from the oracle
+    """
+
+    counter = 0
+    def allocate_pair_id():
+        nonlocal counter
+        counter += 1
+        return counter
+
+    data = [
+        {
+            "pair_id": allocate_pair_id(),
+            "chain_id": t.chain_id,
+            "exchange_id": exchange_universe.get_by_chain_and_factory(ChainId(t.chain_id), t.exchange_address),
+            "address": t.pool_address,
+            "token0_address": t.base.address,
+            "token1_address": t.quote.address,
+            "token0_symbol": t.base.token_symbol,
+            "token1_symbol": t.quote.token_symbol,
+            "dex_type": exchange_universe.get_by_chain_and_factory(ChainId(t.chain_id), t.exchange_address).exchange_type,
+            "token0_decimals": t.base.decimals,
+            "token1_decimals": t.quote.decimals,
+            "exchange_slug": exchange_universe.get_by_chain_and_factory(ChainId(t.chain_id), t.exchange_address).exchange_slug,
+            "exchange_address": t.exchange_address,
+            "pair_slug": f"{t.base.token_symbol}-{t.quote.token_symbol}",
+        } for t in pairs
+    ]
+    df = pd.DataFrame(data)
+    return PandasPairUniverse(df, exchange_universe=exchange_universe)
+
+

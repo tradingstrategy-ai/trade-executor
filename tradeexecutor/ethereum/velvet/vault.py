@@ -1,4 +1,4 @@
-"""Enzyme vaults integration."""
+"""Velvet vault integration."""
 
 import logging
 import datetime
@@ -48,20 +48,19 @@ from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniv
 from tradeexecutor.strategy.pricing_model import PricingModel
 from tradeexecutor.strategy.interest import sync_interests
 from tradeexecutor.strategy.lending_protocol_leverage import reset_credit_supply_loan, update_credit_supply_loan
+from tradingstrategy.pair import PandasPairUniverse
 
 logger = logging.getLogger(__name__)
 
 
-class UnknownAsset(Exception):
-    """Cannot map redemption asset to any known position"""
-
-
-class RedemptionFailure(Exception):
-    """Cannot map redemption asset to any known position"""
-
-
 class VelvetVaultSyncModel(AddressSyncModel):
-    """Update Velvet vault balances."""
+    """Update Velvet vault balances.
+
+    - Velvet smart contract automatically converts any deposits into position balances.
+      User can deposit any token, but those tokens will get traded into open positions.
+
+    - Velvet does only in-kind redemptions
+    """
 
     def __init__(
         self,
@@ -117,7 +116,8 @@ class VelvetVaultSyncModel(AddressSyncModel):
         return VelvetTransactionBuilder(self.vault, self.hot_wallet)
 
     def sync_initial(
-        self, state: State,
+        self,
+        state: State,
         reserve_asset: AssetIdentifier | None = None,
         reserve_token_price: USDollarPrice | None = None,
         **kwargs,
@@ -131,3 +131,14 @@ class VelvetVaultSyncModel(AddressSyncModel):
         deployment = state.sync.deployment
         deployment.vault_token_name = self.vault.name
         deployment.vault_token_symbol = self.vault.token_symbol
+
+    def sync_positions(
+        self,
+        state: State,
+        pair_universe: PandasPairUniverse,
+    ):
+        """Detect any position balance changes due to deposit/redemptions of vault users.
+
+        - Velvet directly trades any incoming tokens to user balances
+        """
+        pass

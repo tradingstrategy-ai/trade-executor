@@ -8,7 +8,13 @@ from eth_defi.provider.anvil import AnvilLaunch, fork_network_anvil
 from eth_defi.provider.multi_provider import create_multi_provider_web3
 from eth_defi.vault.base import VaultSpec
 from eth_defi.velvet import VelvetVault
-from tradeexecutor.state.identifier import AssetIdentifier
+
+from tradingstrategy.chain import ChainId
+from tradingstrategy.exchange import ExchangeUniverse, Exchange, ExchangeType
+from tradingstrategy.pair import PandasPairUniverse
+
+from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier
+from tradeexecutor.strategy.reverse_universe import create_universe_from_trading_pair_identifiers
 
 
 JSON_RPC_BASE = os.environ.get("JSON_RPC_BASE", "https://mainnet.base.org")
@@ -83,3 +89,55 @@ def base_usdc(base_test_reserve_asset) -> AssetIdentifier:
         decimals=6,
         token_symbol="USDC",
     )
+
+@pytest.fixture(scope='module')
+def base_doginme(base_test_volatile_asset) -> AssetIdentifier:
+    """DogInMe"""
+    return AssetIdentifier(
+        chain_id=8453,
+        address=base_test_volatile_asset,
+        decimals=18,
+        token_symbol="DogInMe",
+    )
+
+
+
+@pytest.fixture
+def velvet_test_vault_pair_universe(
+    base_usdc,
+    base_doginme,
+) -> PandasPairUniverse:
+    """Define pair universe of USDC and DogMeIn assets, trading on Uni v3 on Base.
+
+    """
+
+    exchange_universe = ExchangeUniverse(
+        exchanges={
+            1: Exchange(
+                chain_id=ChainId(8453),
+                chain_slug="base",
+                exchange_id=1,
+                exchange_slug="uniswap-v3",
+                address="0x33128a8fC17869897dcE68Ed026d694621f6FDfD",
+                exchange_type=ExchangeType.uniswap_v3,
+                pair_count=1,
+            )
+        }
+    )
+
+    # https://www.coingecko.com/en/coins/doginme
+    # https://app.uniswap.org/explore/tokens/base/0x6921b130d297cc43754afba22e5eac0fbf8db75b
+    trading_pair = TradingPairIdentifier(
+        base=base_doginme,
+        quote=base_usdc,
+        pool_address="0x6921b130d297cc43754afba22e5eac0fbf8db75b",
+        # https://docs.uniswap.org/contracts/v3/reference/deployments/base-deployments
+        exchange_address="0x33128a8fC17869897dcE68Ed026d694621f6FDfD",
+    )
+
+    universe = create_universe_from_trading_pair_identifiers(
+        [trading_pair],
+        exchange_universe=exchange_universe,
+    )
+    return universe
+
