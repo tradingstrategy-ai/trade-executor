@@ -12,7 +12,7 @@ from web3.contract import Contract
 from eth_defi.token import create_token
 from tradeexecutor.ethereum.wallet import sync_reserves
 from tradeexecutor.state.state import State
-from tradeexecutor.testing.dummy_wallet import  apply_sync_events
+from tradeexecutor.ethereum.reserve_update import apply_sync_events
 from tradeexecutor.state.portfolio import Portfolio
 from tradeexecutor.state.identifier import AssetIdentifier
 

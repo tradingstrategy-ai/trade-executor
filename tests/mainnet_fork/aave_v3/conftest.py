@@ -31,7 +31,7 @@ from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniv
 from tradeexecutor.strategy.universe_model import default_universe_options
 from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier, TradingPairKind, AssetType
 from tradeexecutor.ethereum.wallet import sync_reserves
-from tradeexecutor.testing.dummy_wallet import apply_sync_events
+from tradeexecutor.ethereum.reserve_update import apply_sync_events
 from tradeexecutor.state.state import State
 
 

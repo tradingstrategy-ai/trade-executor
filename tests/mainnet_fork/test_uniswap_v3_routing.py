@@ -39,7 +39,7 @@ from tradeexecutor.ethereum.uniswap_v3.uniswap_v3_routing import (
 )
 from tradeexecutor.ethereum.uniswap_v3.uniswap_v3_execution import UniswapV3Execution
 from tradeexecutor.ethereum.wallet import sync_reserves
-from tradeexecutor.testing.dummy_wallet import apply_sync_events
+from tradeexecutor.ethereum.reserve_update import apply_sync_events
 from tradeexecutor.state.portfolio import Portfolio
 from tradeexecutor.state.state import State
 from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier

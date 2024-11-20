@@ -40,7 +40,7 @@ from tradeexecutor.state.reserve import ReservePosition
 from tradeexecutor.state.state import State
 from tradeexecutor.state.balance_update import BalanceUpdate, BalanceUpdateCause, BalanceUpdatePositionType
 from tradeexecutor.state.sync import BalanceEventRef
-from tradeexecutor.state.types import BlockNumber, JSONHexAddress
+from tradeexecutor.state.types import BlockNumber, JSONHexAddress, USDollarPrice
 from tradeexecutor.strategy.dust import get_dust_epsilon_for_asset
 from tradeexecutor.strategy.sync_model import SyncModel, OnChainBalance
 from tradingstrategy.chain import ChainId
@@ -60,14 +60,13 @@ class RedemptionFailure(Exception):
     """Cannot map redemption asset to any known position"""
 
 
-class VelvetVaultSyncModel(HotWalletSyncModel):
+class VelvetVaultSyncModel(AddressSyncModel):
     """Update Velvet vault balances."""
 
     def __init__(
         self,
         vault: VelvetVault,
         hot_wallet: HotWallet | None,
-        reserve_asset: AssetIdentifier,
     ):
         """Connect to a Velvet vault for syncing the strategy positions and reserves.
 
@@ -83,8 +82,10 @@ class VelvetVaultSyncModel(HotWalletSyncModel):
             The vault reserve asset
         """
         self.vault = vault
-        self.reserve_asset = reserve_asset
         self.hot_wallet = hot_wallet
+
+    def __repr__(self):
+        return f"<VelvetVaultSyncModel for vault {self.vault.name} ({self.vault_address})>"
 
     @property
     def web3(self):
@@ -109,12 +110,24 @@ class VelvetVaultSyncModel(HotWalletSyncModel):
     def chain_id(self) -> ChainId:
         return ChainId(self.vault.spec.chain_id)
 
-    def __repr__(self):
-        return f"<VelvetVaultSyncModel for vault {self.vault_address}>"
-
     def get_token_storage_address(self) -> Optional[str]:
         return self.vault_address
 
     def create_transaction_builder(self) -> VelvetTransactionBuilder:
         return VelvetTransactionBuilder(self.vault, self.hot_wallet)
 
+    def sync_initial(
+        self, state: State,
+        reserve_asset: AssetIdentifier | None = None,
+        reserve_token_price: USDollarPrice | None = None,
+        **kwargs,
+    ):
+        super().sync_initial(
+            state=state,
+            reserve_asset=reserve_asset,
+            reserve_token_price=reserve_token_price,
+        )
+
+        deployment = state.sync.deployment
+        deployment.vault_token_name = self.vault.name
+        deployment.vault_token_symbol = self.vault.token_symbol

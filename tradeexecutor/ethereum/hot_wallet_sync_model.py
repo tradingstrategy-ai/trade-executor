@@ -26,7 +26,7 @@ from tradeexecutor.strategy.interest import (
 )
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
 from tradeexecutor.strategy.pricing_model import PricingModel
-from tradeexecutor.testing.dummy_wallet import apply_sync_events
+from tradeexecutor.ethereum.reserve_update import apply_sync_events
 from tradingstrategy.utils.time import ZERO_TIMEDELTA
 
 

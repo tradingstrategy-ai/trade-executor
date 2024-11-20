@@ -118,6 +118,18 @@ class BalanceEventRef:
     #:
     usd_value: Optional[USDollarAmount]
 
+    @staticmethod
+    def from_balance_update_event(evt: BalanceUpdate) -> "BalanceEventRef":
+        """Create a reference to a balance update event stored elsewhere in the state."""
+        ref = BalanceEventRef(
+            balance_event_id=evt.balance_update_id,
+            strategy_cycle_included_at=evt.strategy_cycle_included_at,
+            cause=evt.cause,
+            position_type=evt.position_type,
+            position_id=evt.position_id,
+            usd_value=evt.usd_value,
+        )
+        return ref
 
 @dataclass_json
 @dataclass
@@ -141,7 +153,7 @@ class Treasury:
     #: 0 = not scanned yet
     last_block_scanned: Optional[int] = None
 
-    #: List of refernces to all balance update events.
+    #: List of refences to all balance update events.
     #:
     #: The actual balance update content is stored on the position itself.
     balance_update_refs: List[BalanceEventRef] = field(default_factory=list)

@@ -25,7 +25,7 @@ from tradeexecutor.ethereum.execution import get_held_assets
 from tradeexecutor.ethereum.uniswap_v3.uniswap_v3_execution import get_current_price
 from tradeexecutor.ethereum.universe import create_pair_universe
 from tradeexecutor.ethereum.wallet import sync_reserves
-from tradeexecutor.testing.dummy_wallet import  apply_sync_events
+from tradeexecutor.ethereum.reserve_update import apply_sync_events
 from tradeexecutor.state.state import State
 from tradeexecutor.state.trade import TradeStatus
 from tradeexecutor.state.portfolio import Portfolio

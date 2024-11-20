@@ -33,7 +33,7 @@ from tradeexecutor.ethereum.tx import HotWalletTransactionBuilder
 from tradeexecutor.ethereum.uniswap_v2.uniswap_v2_routing import UniswapV2RoutingState, UniswapV2Routing, OutOfBalance
 from tradeexecutor.ethereum.uniswap_v2.uniswap_v2_execution import UniswapV2Execution
 from tradeexecutor.ethereum.wallet import sync_reserves
-from tradeexecutor.testing.dummy_wallet import apply_sync_events
+from tradeexecutor.ethereum.reserve_update import apply_sync_events
 from tradeexecutor.state.portfolio import Portfolio
 from tradeexecutor.state.state import State
 from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier

@@ -8,7 +8,7 @@ from tradeexecutor.backtest.simulated_wallet import SimulatedWallet
 from tradeexecutor.ethereum.wallet import ReserveUpdateEvent
 from tradeexecutor.state.identifier import AssetIdentifier
 from tradeexecutor.state.state import State
-from tradeexecutor.testing.dummy_wallet import apply_sync_events
+from tradeexecutor.ethereum.reserve_update import apply_sync_events
 
 
 class BacktestSyncer:
