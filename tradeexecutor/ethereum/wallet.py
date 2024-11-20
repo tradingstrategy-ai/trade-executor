@@ -66,14 +66,16 @@ def update_wallet_balances(
 
 
 def sync_reserves(
-        web3: Web3,
-        clock: datetime.datetime,
-        wallet_address: HexAddress,
-        current_reserves: List[ReservePosition],
-        supported_reserve_currencies: List[AssetIdentifier],
-        block_identifier: BlockIdentifier = None,
+    web3: Web3,
+    clock: datetime.datetime,
+    wallet_address: HexAddress,
+    current_reserves: List[ReservePosition],
+    supported_reserve_currencies: List[AssetIdentifier],
+    block_identifier: BlockIdentifier = None,
 ) -> List[ReserveUpdateEvent]:
     """Check the address for any incoming stablecoin transfers to see how much cash we have."""
+
+    assert supported_reserve_currencies, f"Supported reserve currency address empty when syncing: {wallet_address}"
 
     our_chain_id = web3.eth.chain_id
 

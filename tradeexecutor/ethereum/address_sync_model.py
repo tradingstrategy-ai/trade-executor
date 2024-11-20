@@ -14,7 +14,7 @@ from tradingstrategy.chain import ChainId
 from tradeexecutor.ethereum.wallet import sync_reserves
 from tradeexecutor.state.identifier import AssetIdentifier
 from tradeexecutor.state.state import State
-from tradeexecutor.state.types import BlockNumber
+from tradeexecutor.state.types import BlockNumber, JSONHexAddress
 from tradeexecutor.strategy.sync_model import SyncModel, OnChainBalance
 from tradeexecutor.strategy.interest import (
     sync_interests,
@@ -31,15 +31,22 @@ class AddressSyncModel(SyncModel):
     """Sync vault/wallet address by polling its list of assests"""
 
     @abstractmethod
-    def get_token_storage_address(self) -> Optional[str]:
-        pass
+    def get_token_storage_address(self) -> Optional[JSONHexAddress]:
+        """Which is the onchain address having our token balances."""
+
+    @abstractmethod
+    def get_main_address(self) -> Optional[JSONHexAddress]:
+        """Which is the onchain address that identifies this wallet/vault deployment.
+
+        See also :py:meth:`get_token_storage_address`
+        """
 
     def sync_initial(self, state: State, **kwargs):
         """Set u[ initial sync details."""
         web3 = self.web3
         deployment = state.sync.deployment
         deployment.chain_id = ChainId(web3.eth.chain_id)
-        deployment.address = self.hot_wallet.address
+        deployment.address = self.get_main_address()
         deployment.block_number = web3.eth.block_number
         deployment.tx_hash = None
         deployment.block_mined_at = datetime.datetime.utcnow()
@@ -61,20 +68,24 @@ class AddressSyncModel(SyncModel):
 
         # TODO: This code is not production ready - use with care
         # Needs legacy cleanup
-        logger.info("Hot wallet treasury sync starting for %s", self.hot_wallet.address)
+        address = self.get_token_storage_address()
+        logger.info("AddressSyncModel treasury sync starting for token hold address %s", address)
+        assert address, f"Token storage address is None on {self}"
         current_reserves = list(state.portfolio.reserves.values())
+        block_number = get_almost_latest_block_number(self.web3)
         events = sync_reserves(
             self.web3,
             strategy_cycle_ts,
-            self.hot_wallet.address,
+            address,
             current_reserves,
-            supported_reserves
+            supported_reserves,
+            block_identifier=block_number,
         )
         apply_sync_events(state, events)
         treasury = state.sync.treasury
         treasury.last_updated_at = datetime.datetime.utcnow()
         treasury.last_cycle_at = strategy_cycle_ts
-        treasury.last_block_scanned = self.web3.eth.block_number
+        treasury.last_block_scanned = block_number
         treasury.balance_update_refs = []  # Broken - wrong event type
         logger.info(f"Hot wallet sync done, the last block is now {treasury.last_block_scanned:,}")
         return []

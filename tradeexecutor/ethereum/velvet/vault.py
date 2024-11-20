@@ -40,7 +40,7 @@ from tradeexecutor.state.reserve import ReservePosition
 from tradeexecutor.state.state import State
 from tradeexecutor.state.balance_update import BalanceUpdate, BalanceUpdateCause, BalanceUpdatePositionType
 from tradeexecutor.state.sync import BalanceEventRef
-from tradeexecutor.state.types import BlockNumber
+from tradeexecutor.state.types import BlockNumber, JSONHexAddress
 from tradeexecutor.strategy.dust import get_dust_epsilon_for_asset
 from tradeexecutor.strategy.sync_model import SyncModel, OnChainBalance
 from tradingstrategy.chain import ChainId
@@ -66,9 +66,22 @@ class VelvetVaultSyncModel(HotWalletSyncModel):
     def __init__(
         self,
         vault: VelvetVault,
-        hot_wallet: HotWallet,
+        hot_wallet: HotWallet | None,
         reserve_asset: AssetIdentifier,
     ):
+        """Connect to a Velvet vault for syncing the strategy positions and reserves.
+
+        :param vault:
+            Velvet low level Python interface
+
+        :param hot_wallet:
+            Asset manager private key who can perform trades.
+
+            Leave empty if you only perform reads.
+
+        :param reserve_asset:
+            The vault reserve asset
+        """
         self.vault = vault
         self.reserve_asset = reserve_asset
         self.hot_wallet = hot_wallet
@@ -84,6 +97,13 @@ class VelvetVaultSyncModel(HotWalletSyncModel):
     @property
     def vault_address(self) -> HexAddress:
         return self.vault.info["vaultAddress"]
+
+    def get_main_address(self) -> Optional[JSONHexAddress]:
+        """Which is the onchain address that identifies this wallet/vault deployment.
+
+        See also :py:meth:`get_token_storage_address`
+        """
+        return self.vault_address
 
     @property
     def chain_id(self) -> ChainId:
