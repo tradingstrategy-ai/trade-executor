@@ -3,8 +3,6 @@
 import os
 import shutil
 import datetime
-import secrets
-import logging
 from decimal import Decimal
 from typing import List
 
@@ -12,33 +10,26 @@ import pytest
 from eth_account import Account
 from eth_typing import HexAddress, HexStr
 from eth_account.signers.local import LocalAccount
-from hexbytes import HexBytes
 
 from tradeexecutor.ethereum.tx import HotWalletTransactionBuilder
 from tradingstrategy.pair import PandasPairUniverse
-from web3 import EthereumTesterProvider, Web3
-from web3.contract import Contract
+from web3 import Web3
 
-from eth_defi.uniswap_v2.utils import ZERO_ADDRESS
 from eth_defi.hotwallet import HotWallet
-from eth_defi.token import create_token, fetch_erc20_details
+from eth_defi.token import fetch_erc20_details
 from eth_defi.uniswap_v3.deployment import UniswapV3Deployment, fetch_deployment as fetch_uniswap_v3_deployment
 from eth_defi.uniswap_v3.price import UniswapV3PriceHelper
-from eth_defi.uniswap_v3.utils import get_default_tick_range
 from eth_defi.aave_v3.deployment import AaveV3Deployment, fetch_deployment as fetch_aave_deployment
 from eth_defi.one_delta.deployment import OneDeltaDeployment
 from eth_defi.one_delta.deployment import fetch_deployment as fetch_1delta_deployment
 from eth_defi.provider.multi_provider import create_multi_provider_web3
 from eth_defi.provider.anvil import fork_network_anvil, mine
 
-from tradeexecutor.ethereum.execution import get_held_assets
-from tradeexecutor.ethereum.uniswap_v3.uniswap_v3_execution import get_current_price
 from tradeexecutor.ethereum.universe import create_pair_universe
 from tradeexecutor.ethereum.wallet import sync_reserves
-from tradeexecutor.ethereum.reserve_update import apply_sync_events
+from tradeexecutor.ethereum.balance_update import apply_reserve_update_events
 from tradeexecutor.state.state import State
 from tradeexecutor.state.trade import TradeStatus
-from tradeexecutor.state.portfolio import Portfolio
 from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier, AssetType, TradingPairKind
 from tradeexecutor.testing.ethereumtrader_one_delta import OneDeltaTestTrader
 from tradeexecutor.testing.unit_test_trader import UnitTestTrader
@@ -292,7 +283,7 @@ def state(web3, hot_wallet, asset_usdc, usdc) -> State:
         web3, datetime.datetime.utcnow(), hot_wallet.address, [], [asset_usdc]
     )
     assert len(events) > 0
-    apply_sync_events(state, events)
+    apply_reserve_update_events(state, events)
     reserve_currency, exchange_rate = state.portfolio.get_default_reserve_asset()
     assert reserve_currency == asset_usdc
     return state

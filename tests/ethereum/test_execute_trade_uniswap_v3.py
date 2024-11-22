@@ -25,10 +25,9 @@ from tradeexecutor.ethereum.execution import get_held_assets
 from tradeexecutor.ethereum.uniswap_v3.uniswap_v3_execution import get_current_price
 from tradeexecutor.ethereum.universe import create_pair_universe
 from tradeexecutor.ethereum.wallet import sync_reserves
-from tradeexecutor.ethereum.reserve_update import apply_sync_events
+from tradeexecutor.ethereum.balance_update import apply_reserve_update_events
 from tradeexecutor.state.state import State
 from tradeexecutor.state.trade import TradeStatus
-from tradeexecutor.state.portfolio import Portfolio
 from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier
 from tradeexecutor.testing.ethereumtrader_uniswap_v3 import UniswapV3TestTrader
 from tradeexecutor.testing.unit_test_trader import UnitTestTrader
@@ -247,7 +246,7 @@ def state(web3, hot_wallet, asset_usdc) -> State:
         web3, datetime.datetime.utcnow(), hot_wallet.address, [], [asset_usdc]
     )
     assert len(events) > 0
-    apply_sync_events(state, events)
+    apply_reserve_update_events(state, events)
     reserve_currency, exchange_rate = state.portfolio.get_default_reserve_asset()
     assert reserve_currency == asset_usdc
     return state

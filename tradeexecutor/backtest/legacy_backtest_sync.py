@@ -8,7 +8,7 @@ from tradeexecutor.backtest.simulated_wallet import SimulatedWallet
 from tradeexecutor.ethereum.wallet import ReserveUpdateEvent
 from tradeexecutor.state.identifier import AssetIdentifier
 from tradeexecutor.state.state import State
-from tradeexecutor.ethereum.reserve_update import apply_sync_events
+from tradeexecutor.ethereum.balance_update import apply_reserve_update_events
 
 
 class BacktestSyncer:
@@ -58,7 +58,7 @@ class BacktestSyncer:
             self.wallet.update_balance(reserve_token.address, self.initial_deposit_amount)
 
             # Update state
-            apply_sync_events(state, [evt])
+            apply_reserve_update_events(state, [evt])
 
             return [evt]
         else:

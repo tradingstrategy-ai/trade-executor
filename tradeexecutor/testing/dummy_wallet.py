@@ -8,7 +8,7 @@ import datetime
 from decimal import Decimal
 from typing import List
 
-from tradeexecutor.ethereum.reserve_update import apply_sync_events
+from tradeexecutor.ethereum.balance_update import apply_reserve_update_events
 from tradeexecutor.ethereum.wallet import ReserveUpdateEvent
 from tradeexecutor.state.portfolio import Portfolio
 from tradeexecutor.state.identifier import AssetIdentifier
@@ -44,7 +44,7 @@ class DummyWalletSyncer:
             )
 
             # Update state
-            apply_sync_events(portfolio, [evt])
+            apply_reserve_update_events(portfolio, [evt])
 
             return [evt]
         else:

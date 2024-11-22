@@ -30,6 +30,7 @@ def test_velvet_sync_positions(
     assert pair_universe.get_count() == 1
 
     sync_model = VelvetVaultSyncModel(
+        pair_universe=pair_universe,
         vault=base_example_vault,
         hot_wallet=None,
     )

@@ -19,15 +19,8 @@ from tradeexecutor.ethereum.tx import HotWalletTransactionBuilder
 from tradeexecutor.ethereum.wallet import sync_reserves
 from tradeexecutor.state.identifier import AssetIdentifier
 from tradeexecutor.state.state import State
-from tradeexecutor.state.types import BlockNumber
-from tradeexecutor.strategy.sync_model import SyncModel, OnChainBalance
-from tradeexecutor.strategy.interest import (
-    sync_interests,
-)
-from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
-from tradeexecutor.strategy.pricing_model import PricingModel
-from tradeexecutor.ethereum.reserve_update import apply_sync_events
-from tradingstrategy.utils.time import ZERO_TIMEDELTA
+from tradeexecutor.ethereum.balance_update import apply_reserve_update_events
+
 
 
 logger = logging.getLogger(__name__)
@@ -73,6 +66,6 @@ def EthereumHotWalletReserveSyncer(
     """
     raise NotImplementedError()
     events = sync_reserves(self.web3, strategy_cycle_ts, self.tx_builder.address, [], supported_reserves)
-    apply_sync_events(state.portfolio, events)
+    apply_reserve_update_events(state.portfolio, events)
     return events
 

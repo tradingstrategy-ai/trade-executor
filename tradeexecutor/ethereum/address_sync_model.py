@@ -21,7 +21,7 @@ from tradeexecutor.strategy.interest import (
 )
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
 from tradeexecutor.strategy.pricing_model import PricingModel
-from tradeexecutor.ethereum.reserve_update import apply_sync_events
+from tradeexecutor.ethereum.balance_update import apply_reserve_update_events
 
 logger = logging.getLogger(__name__)
 
@@ -109,7 +109,7 @@ class AddressSyncModel(SyncModel):
         )
 
         # Map ReserveUpdateEvent (internal transitory) to BalanceUpdate events (persistent)
-        balance_update_events = apply_sync_events(state, events)
+        balance_update_events = apply_reserve_update_events(state, events)
 
         treasury = state.sync.treasury
         treasury.last_updated_at = datetime.datetime.utcnow()
