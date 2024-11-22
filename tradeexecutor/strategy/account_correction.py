@@ -383,9 +383,9 @@ def calculate_account_corrections(
 
 
 def apply_accounting_correction(
-        state: State,
-        correction: AccountingBalanceCheck,
-        strategy_cycle_included_at: datetime.datetime | None,
+    state: State,
+    correction: AccountingBalanceCheck,
+    strategy_cycle_included_at: datetime.datetime | None,
 ):
     """Update the state to reflect the true on-chain balances."""
 

@@ -49,6 +49,7 @@ def test_velvet_sync_positions(
 
     # Sync DogInMe
     sync_model.sync_positions(
+        datetime.datetime.utcnow(),
         state,
         pair_universe=pair_universe,
     )

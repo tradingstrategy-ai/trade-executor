@@ -10,44 +10,20 @@ from typing import cast, List, Optional, Tuple, Iterable
 
 from eth_typing import HexAddress
 
-from eth_defi.event_reader.conversion import convert_jsonrpc_value_to_int
-from web3.types import BlockIdentifier
-
-from eth_defi.provider.anvil import is_anvil
-from eth_defi.provider.broken_provider import get_block_tip_latency, get_almost_latest_block_number
-from web3 import Web3, HTTPProvider
-
-from eth_defi.chain import fetch_block_timestamp, has_graphql_support
-from eth_defi.enzyme.events import fetch_vault_balance_events, EnzymeBalanceEvent, Deposit, Redemption, fetch_vault_balances
-from eth_defi.enzyme.vault import Vault
-from eth_defi.event_reader.lazy_timestamp_reader import extract_timestamps_json_rpc_lazy, LazyTimestampContainer
-from eth_defi.event_reader.reader import read_events, Web3EventReader, extract_events, extract_timestamps_json_rpc
-from eth_defi.event_reader.reorganisation_monitor import ReorganisationMonitor
+from eth_defi.balances import fetch_erc20_balances_multicall
 from eth_defi.hotwallet import HotWallet
-from eth_defi.vault.base import VaultSpec
 from eth_defi.velvet import VelvetVault
 from tradeexecutor.ethereum.address_sync_model import AddressSyncModel
+from tradeexecutor.ethereum.balance_update import apply_balance_update_events
 
-from tradeexecutor.ethereum.enzyme.tx import EnzymeTransactionBuilder
-from tradeexecutor.ethereum.hot_wallet_sync_model import HotWalletSyncModel
-from tradeexecutor.ethereum.onchain_balance import fetch_address_balances
-from tradeexecutor.ethereum.token import translate_token_details
+from tradeexecutor.ethereum.token import create_spot_token_map_potential_positions
 from tradeexecutor.ethereum.velvet.tx import VelvetTransactionBuilder
-from tradeexecutor.state.portfolio import Portfolio
 from tradeexecutor.state.identifier import AssetIdentifier
-from tradeexecutor.state.position import TradingPosition
-from tradeexecutor.state.reserve import ReservePosition
 from tradeexecutor.state.state import State
-from tradeexecutor.state.balance_update import BalanceUpdate, BalanceUpdateCause, BalanceUpdatePositionType
-from tradeexecutor.state.sync import BalanceEventRef
 from tradeexecutor.state.types import BlockNumber, JSONHexAddress, USDollarPrice
-from tradeexecutor.strategy.dust import get_dust_epsilon_for_asset
-from tradeexecutor.strategy.sync_model import SyncModel, OnChainBalance
+from tradeexecutor.strategy.asset import build_expected_asset_map
 from tradingstrategy.chain import ChainId
-from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
-from tradeexecutor.strategy.pricing_model import PricingModel
-from tradeexecutor.strategy.interest import sync_interests
-from tradeexecutor.strategy.lending_protocol_leverage import reset_credit_supply_loan, update_credit_supply_loan
+
 from tradingstrategy.pair import PandasPairUniverse
 
 logger = logging.getLogger(__name__)
@@ -64,6 +40,7 @@ class VelvetVaultSyncModel(AddressSyncModel):
 
     def __init__(
         self,
+        pair_universe: PandasPairUniverse,
         vault: VelvetVault,
         hot_wallet: HotWallet | None,
     ):
@@ -80,6 +57,7 @@ class VelvetVaultSyncModel(AddressSyncModel):
         :param reserve_asset:
             The vault reserve asset
         """
+        self.pair_universe = pair_universe
         self.vault = vault
         self.hot_wallet = hot_wallet
 
@@ -134,11 +112,30 @@ class VelvetVaultSyncModel(AddressSyncModel):
 
     def sync_positions(
         self,
+        timestamp: datetime.datetime,
         state: State,
         pair_universe: PandasPairUniverse,
     ):
         """Detect any position balance changes due to deposit/redemptions of vault users.
 
         - Velvet directly trades any incoming tokens to user balances
+
+        - USDC/reserve token is synced by :py:meth:`sync_treasury`
         """
-        pass
+
+        logger.info("Velvet sync_positions()")
+
+        # assets = get_relevant_assets(pair_universe, reserve_assets, state)
+        asset_to_position = build_expected_asset_map(state.portfolio, pair_universe=pair_universe)
+
+        balances = self.fetch_onchain_balances(
+            list(asset_to_position.keys())
+        )
+
+        # Apply any deposit/redemptions on positions
+        apply_balance_update_events(
+            timestamp,
+            state,
+            balances,
+            asset_to_position,
+        )

@@ -57,6 +57,7 @@ class BalanceUpdate:
     - Interest payments. There will be one event per rebase asset per a trading position.
       See :py:meth:`tradeexecutor.strategy.sync_model.SyncModel.sync_interests`.
 
+
     Events are stored in :py:class:`TradingPosition` and :py:class:`ReservePosition` by their id.
 
     Events are referred in :py:class:`tradeexecutor.sync.Treasury`.

@@ -142,7 +142,7 @@ class AddressSyncModel(SyncModel):
 
         return fetch_address_balances(
             self.web3,
-            self.get_hot_wallet().address,
+            self.get_token_storage_address(),
             assets,
             filter_zero=filter_zero,
             block_number=block_identifier,

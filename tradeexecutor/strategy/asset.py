@@ -180,7 +180,7 @@ def build_expected_asset_map(
     portfolio: Portfolio,
     pair_universe: PandasPairUniverse = None,
     universe_enumaration_threshold=20,
-) -> Dict[AssetIdentifier, AssetToPositionsMapping]:
+) -> dict[AssetIdentifier, AssetToPositionsMapping]:
     """Get list of tokens that the portfolio should hold.
 
     - Open and frozen positions have :py:class:`AssetToPositionsMapping` set to the executed balance
