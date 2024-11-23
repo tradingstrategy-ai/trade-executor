@@ -180,6 +180,7 @@ def build_expected_asset_map(
     portfolio: Portfolio,
     pair_universe: PandasPairUniverse = None,
     universe_enumaration_threshold=20,
+    ignore_reserve=False,
 ) -> dict[AssetIdentifier, AssetToPositionsMapping]:
     """Get list of tokens that the portfolio should hold.
 
@@ -201,19 +202,23 @@ def build_expected_asset_map(
 
         Prevent denial of service on open-ended universes > 100 pairs.
 
+    :param ignore_reserve:
+        Do not include reserve asset in the set
+
     :return:
         Token -> (Amount, positions hold across mappings)
     """
 
     mappings: Dict[AssetIdentifier, AssetToPositionsMapping] = {}
 
-    r: ReservePosition
-    for r in portfolio.reserves.values():
-        if r.asset not in mappings:
-            mappings[r.asset] = AssetToPositionsMapping(asset=r.asset)
+    if not ignore_reserve:
+        r: ReservePosition
+        for r in portfolio.reserves.values():
+            if r.asset not in mappings:
+                mappings[r.asset] = AssetToPositionsMapping(asset=r.asset)
 
-        mappings[r.asset].positions.add(r)
-        mappings[r.asset].quantity += r.quantity
+            mappings[r.asset].positions.add(r)
+            mappings[r.asset].quantity += r.quantity
 
     for p in portfolio.get_open_and_frozen_positions():
         for asset, amount in get_asset_amounts(p):
@@ -242,6 +247,8 @@ def build_expected_asset_map(
         if pair_universe.get_count() < universe_enumaration_threshold:
             for dex_pair in pair_universe.iterate_pairs():
                 p = translate_trading_pair(dex_pair)
+                # Catch some bad pairs
+                assert p.base.token_symbol, f"Token symbol missing: {p}"
                 for asset in get_onchain_assets(p):
                     if asset not in mappings:
                         mappings[asset] = AssetToPositionsMapping(asset=asset)

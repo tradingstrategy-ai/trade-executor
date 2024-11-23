@@ -37,6 +37,10 @@ class BalanceUpdateCause(enum.Enum):
     #:
     correction = "correction"
 
+    #: Velvet capital which puts deposits/redemptions directly to open positions
+    #:
+    vault_inflow = "vault_inflow"
+
 
 class BalanceUpdatePositionType(enum.Enum):
     reserve = "reserve"

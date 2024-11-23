@@ -179,13 +179,15 @@ def create_universe_from_trading_pair_identifiers(
         {
             "pair_id": allocate_pair_id(),
             "chain_id": t.chain_id,
-            "exchange_id": exchange_universe.get_by_chain_and_factory(ChainId(t.chain_id), t.exchange_address),
+            "exchange_id": exchange_universe.get_by_chain_and_factory(ChainId(t.chain_id), t.exchange_address).exchange_id,
             "address": t.pool_address,
             "token0_address": t.base.address,
             "token1_address": t.quote.address,
             "token0_symbol": t.base.token_symbol,
             "token1_symbol": t.quote.token_symbol,
-            "dex_type": exchange_universe.get_by_chain_and_factory(ChainId(t.chain_id), t.exchange_address).exchange_type,
+            "base_token_symbol": t.base.token_symbol,
+            "quote_token_symbol": t.quote.token_symbol,
+            "dex_type": exchange_universe.get_by_chain_and_factory(ChainId(t.chain_id), t.exchange_address).exchange_type.value,
             "token0_decimals": t.base.decimals,
             "token1_decimals": t.quote.decimals,
             "exchange_slug": exchange_universe.get_by_chain_and_factory(ChainId(t.chain_id), t.exchange_address).exchange_slug,
@@ -194,6 +196,7 @@ def create_universe_from_trading_pair_identifiers(
         } for t in pairs
     ]
     df = pd.DataFrame(data)
-    return PandasPairUniverse(df, exchange_universe=exchange_universe)
+    universe = PandasPairUniverse(df, exchange_universe=exchange_universe)
+    return universe
 
 

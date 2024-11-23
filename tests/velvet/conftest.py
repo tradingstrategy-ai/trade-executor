@@ -72,7 +72,7 @@ def base_test_reserve_asset() -> HexAddress:
 @pytest.fixture(scope='module')
 def base_test_volatile_asset() -> HexAddress:
     """DogInMe"""
-    return "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913"
+    return "0x6921B130D297cc43754afba22e5EAc0FBf8Db75b"
 
 
 @pytest.fixture()
@@ -102,7 +102,7 @@ def base_doginme(base_test_volatile_asset) -> AssetIdentifier:
 
 
 
-@pytest.fixture
+@pytest.fixture(scope='module')
 def velvet_test_vault_pair_universe(
     base_usdc,
     base_doginme,
@@ -125,12 +125,16 @@ def velvet_test_vault_pair_universe(
         }
     )
 
+    # USDC pool has zero liquidity on Base
+    # https://app.uniswap.org/explore/tokens/base/0x6921b130d297cc43754afba22e5eac0fbf8db75b
+    # https://app.uniswap.org/explore/pools/base/0x386298ce505067CA53e8a70FE82E12ff1dA7cc38
+
     # https://www.coingecko.com/en/coins/doginme
     # https://app.uniswap.org/explore/tokens/base/0x6921b130d297cc43754afba22e5eac0fbf8db75b
     trading_pair = TradingPairIdentifier(
         base=base_doginme,
         quote=base_usdc,
-        pool_address="0x6921b130d297cc43754afba22e5eac0fbf8db75b",
+        pool_address="0x386298ce505067CA53e8a70FE82E12ff1dA7cc38",
         # https://docs.uniswap.org/contracts/v3/reference/deployments/base-deployments
         exchange_address="0x33128a8fC17869897dcE68Ed026d694621f6FDfD",
     )

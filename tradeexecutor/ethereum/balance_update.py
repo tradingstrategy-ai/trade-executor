@@ -118,7 +118,7 @@ def perform_balance_update(
     position: TradingPosition,
     ab: OnChainBalance,
     mapping: AssetToPositionsMapping,
-):
+) -> BalanceUpdate:
     """
 
     - Very similar to `calculate_account_corrections`
@@ -126,7 +126,7 @@ def perform_balance_update(
 
     logger.info("Applying balance update fo%s  position %s", ab, position)
 
-    assert isinstance(position, TradingPosition)
+    assert isinstance(position, TradingPosition), f"{type(position)} is not a TradingPosition"
     assert position.is_spot()
 
     strategy_timestamp = timestamp
@@ -147,7 +147,7 @@ def perform_balance_update(
     evt = BalanceUpdate(
         balance_update_id=event_id,
         position_type=BalanceUpdatePositionType.open_position,
-        cause=BalanceUpdateCause.correction,
+        cause=BalanceUpdateCause.vault_inflow,
         asset=asset,
         block_mined_at=event_timestamp,
         strategy_cycle_included_at=strategy_timestamp,
@@ -177,20 +177,23 @@ def perform_balance_update(
         logger.info("Position %s closed with a trade %s", position, t)
         assert position.is_closed()
 
+    return evt
+
 
 def apply_balance_update_events(
     timestamp: datetime.datetime,
     state: State,
     asset_balances: Iterable[OnChainBalance],
     asset_to_position: dict[AssetIdentifier, AssetToPositionsMapping],
-):
+) -> list[BalanceUpdate]:
     """Apply generic balance change events.
 
-    - Used for Velvet in-kind deposit/withdrawal
+    - Used for Velvet in-kind deposit/withdrawal flows
 
     - Reserve position is handled separately by :py:func:`apply_reserve_update_events`
     """
 
+    events = []
     block_number = None
     for ab in asset_balances:
 
@@ -204,13 +207,14 @@ def apply_balance_update_events(
             continue
         elif mapping.is_one_to_one_asset_to_position():
             position = mapping.get_only_position()
-            perform_balance_update(
+            evt = perform_balance_update(
                 timestamp,
                 state,
                 position,
                 ab,
                 mapping,
             )
+            events.append(evt)
         else:
             raise NotImplementedError(f"Has multiple positions per asset: {ab}")
 
@@ -220,3 +224,5 @@ def apply_balance_update_events(
         accounting = state.sync.accounting
         accounting.last_updated_at = datetime.datetime.utcnow()
         accounting.last_block_scanned = block_number
+
+    return events

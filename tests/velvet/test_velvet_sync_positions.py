@@ -6,10 +6,59 @@ import pytest
 from eth_defi.velvet import VelvetVault
 from tradeexecutor.ethereum.velvet.vault import VelvetVaultSyncModel
 from tradeexecutor.state.identifier import AssetIdentifier
+from tradeexecutor.state.portfolio import Portfolio
 
 from tradeexecutor.state.state import State
+from tradeexecutor.strategy.asset import build_expected_asset_map
+from tradeexecutor.strategy.trading_strategy_universe import translate_trading_pair
 from tradingstrategy.pair import PandasPairUniverse
 
+
+
+def test_check_velvet_universe(
+    velvet_test_vault_pair_universe: PandasPairUniverse,
+):
+    """Check we have good universe to map pairs to positions."""
+    pair_universe = velvet_test_vault_pair_universe
+    for pair in pair_universe.iterate_pairs():
+        assert pair.base_token_symbol, f"Got {pair}"
+        assert pair.quote_token_symbol, f"Got {pair}"
+
+
+def test_velvet_fetch_balances(
+    base_example_vault: VelvetVault,
+    velvet_test_vault_pair_universe: PandasPairUniverse,
+):
+    """Check we fetch balances for onchain positions correctly.
+
+    - Read DogInMe balance onchain
+    """
+
+    pair_universe = velvet_test_vault_pair_universe
+
+    sync_model = VelvetVaultSyncModel(
+        pair_universe=pair_universe,
+        vault=base_example_vault,
+        hot_wallet=None,
+    )
+
+    asset_to_position_map = build_expected_asset_map(
+        Portfolio(),
+        pair_universe=pair_universe,
+        ignore_reserve=True,
+    )
+
+    pair = translate_trading_pair(pair_universe.get_single())
+    dog_in_me = pair.base
+
+    balances = sync_model.fetch_onchain_balances(
+        list(asset_to_position_map.keys())
+    )
+
+    balance_map = {a.asset: a for a in balances}
+
+    onchain_balance_data = balance_map[dog_in_me]
+    assert onchain_balance_data.amount > 0
 
 
 def test_velvet_sync_positions(
@@ -49,8 +98,11 @@ def test_velvet_sync_positions(
     assert portfolio.get_cash() == pytest.approx(2.674828)
 
     # Sync DogInMe
-    sync_model.sync_positions(
+    events = sync_model.sync_positions(
         datetime.datetime.utcnow(),
         state,
         pair_universe=pair_universe,
     )
+
+    # This should have mapped 1 open DogInMe position
+    assert len(events) == 1

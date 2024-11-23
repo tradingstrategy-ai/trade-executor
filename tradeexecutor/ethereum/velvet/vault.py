@@ -123,19 +123,34 @@ class VelvetVaultSyncModel(AddressSyncModel):
         - USDC/reserve token is synced by :py:meth:`sync_treasury`
         """
 
-        logger.info("Velvet sync_positions()")
-
         # assets = get_relevant_assets(pair_universe, reserve_assets, state)
-        asset_to_position = build_expected_asset_map(state.portfolio, pair_universe=pair_universe)
+        asset_to_position_map = build_expected_asset_map(
+            state.portfolio,
+            pair_universe=pair_universe,
+            ignore_reserve=True,
+        )
+
+        logger.info(
+            "Velvet sync_positions(), %d assets to consider",
+            len(asset_to_position_map),
+        )
+
+        # Some sample output
+        for key, value in list(asset_to_position_map.items())[:5]:
+            logger.info("Asset %s: %s", key, value)
 
         balances = self.fetch_onchain_balances(
-            list(asset_to_position.keys())
+            list(asset_to_position_map.keys())
         )
 
         # Apply any deposit/redemptions on positions
-        apply_balance_update_events(
+        events = apply_balance_update_events(
             timestamp,
             state,
             balances,
-            asset_to_position,
+            asset_to_position_map,
         )
+
+        return events
+
+
