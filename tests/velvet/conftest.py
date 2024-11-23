@@ -1,4 +1,10 @@
+"""Test fixtures for Velvet tests.
+
+- Uses Base mainnet onchain vault in testing (forked), as Velvet lacks any kind of test support
+"""
+
 import os
+from typing import cast
 
 import pytest
 from eth_typing import HexAddress
@@ -8,6 +14,10 @@ from eth_defi.provider.anvil import AnvilLaunch, fork_network_anvil
 from eth_defi.provider.multi_provider import create_multi_provider_web3
 from eth_defi.vault.base import VaultSpec
 from eth_defi.velvet import VelvetVault
+from tradeexecutor.ethereum.ethereum_protocol_adapters import create_uniswap_v3_adapter
+from tradeexecutor.ethereum.uniswap_v3.uniswap_v3_live_pricing import UniswapV3LivePricing
+from tradeexecutor.strategy.generic.pair_configurator import ProtocolRoutingId
+from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse, translate_token
 
 from tradingstrategy.chain import ChainId
 from tradingstrategy.exchange import ExchangeUniverse, Exchange, ExchangeType
@@ -15,6 +25,8 @@ from tradingstrategy.pair import PandasPairUniverse
 
 from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier
 from tradeexecutor.strategy.reverse_universe import create_universe_from_trading_pair_identifiers
+from tradingstrategy.timebucket import TimeBucket
+from tradingstrategy.universe import Universe
 
 
 JSON_RPC_BASE = os.environ.get("JSON_RPC_BASE", "https://mainnet.base.org")
@@ -137,6 +149,7 @@ def velvet_test_vault_pair_universe(
         pool_address="0x386298ce505067CA53e8a70FE82E12ff1dA7cc38",
         # https://docs.uniswap.org/contracts/v3/reference/deployments/base-deployments
         exchange_address="0x33128a8fC17869897dcE68Ed026d694621f6FDfD",
+        fee=0.0100,
     )
 
     universe = create_universe_from_trading_pair_identifiers(
@@ -145,3 +158,46 @@ def velvet_test_vault_pair_universe(
     )
     return universe
 
+
+@pytest.fixture(scope='module')
+def velvet_test_vault_strategy_universe(
+    velvet_test_vault_pair_universe,
+    base_usdc,
+) -> TradingStrategyUniverse:
+    """Contains pairs and exchanges"""
+
+    universe = Universe(
+        chains={ChainId.base},
+        time_bucket=TimeBucket.not_applicable,  # Not used, only live price checks done
+        exchange_universe=velvet_test_vault_pair_universe.exchange_universe,
+        pairs=velvet_test_vault_pair_universe,
+    )
+
+    usdc = velvet_test_vault_pair_universe.get_token(base_usdc.address)
+
+    return TradingStrategyUniverse(
+        data_universe=universe,
+        reserve_assets={translate_token(usdc)},
+    )
+
+
+@pytest.fixture()
+def velvet_test_vault_pricing_model(
+    web3,
+    velvet_test_vault_strategy_universe,
+) -> UniswapV3LivePricing:
+    """Uses Uni v3 onchain pricing, needed when generating spot positions for new tokens detected."""
+
+    routing_id = ProtocolRoutingId(
+        router_name="uniswap-v3",
+        exchange_slug="uniswap-v3",
+    )
+
+    # Should autopick Uniswap v3 on Base
+    routing_config = create_uniswap_v3_adapter(
+        web3,
+        strategy_universe=velvet_test_vault_strategy_universe,
+        routing_id=routing_id,
+    )
+
+    return cast(UniswapV3LivePricing, routing_config.pricing_model)

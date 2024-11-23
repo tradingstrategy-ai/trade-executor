@@ -11,6 +11,7 @@ from eth_defi.uniswap_v3.deployment import fetch_deployment as fetch_uniswap_v3_
 from eth_defi.one_delta.deployment import fetch_deployment as fetch_1delta_deployment
 from eth_defi.aave_v3.constants import AAVE_V3_DEPLOYMENTS
 from eth_defi.one_delta.constants import ONE_DELTA_DEPLOYMENTS
+from tradeexecutor.ethereum.routing_data import base_uniswap_v3_address_map
 
 from tradingstrategy.chain import ChainId
 from tradingstrategy.exchange import ExchangeUniverse, ExchangeType
@@ -107,13 +108,17 @@ def create_uniswap_v3_adapter(
     chain_id = strategy_universe.get_single_chain()
     reserve_asset = strategy_universe.get_reserve_asset()
 
-    exchange_universe = strategy_universe.data_universe.exchange_universe
-
     allowed_intermediary_pairs = UNISWAP_V3_INTERMEDIATE.get(chain_id, {})
+
+    if chain_id == ChainId.base:
+        # Special case for Base chain
+        address_map = base_uniswap_v3_address_map
+    else:
+        address_map = uniswap_v3_address_map
 
     # TODO: Add intermediate tokens
     routing_model = UniswapV3Routing(
-        address_map=uniswap_v3_address_map,
+        address_map=address_map,
         chain_id=chain_id,
         reserve_token_address=reserve_asset.address,
         allowed_intermediary_pairs=allowed_intermediary_pairs,

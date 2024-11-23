@@ -203,9 +203,15 @@ def apply_balance_update_events(
         if len(mapping.positions) == 0:
             # This asset does not have open our closed positions,
             # but is present in the trading universe
-            logger.info("No mapping for asset: %s", ab.asset)
-            continue
-        elif mapping.is_one_to_one_asset_to_position():
+            logger.info("No mapping for asset: %s, amount: %s", ab.asset, ab.amount)
+
+            if ab.amount == 0:
+                continue
+
+            # Detected tokens onchain, but we do not have an open position yet
+
+
+        if mapping.is_one_to_one_asset_to_position():
             position = mapping.get_only_position()
             evt = perform_balance_update(
                 timestamp,

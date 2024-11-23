@@ -58,7 +58,19 @@ uniswap_v3_address_map = {
     "quoter": "0xb27308f9F90D607463bb33eA1BeBb41C27CE5AB6"
     # "router02":"0x68b3465833fb72A70ecDF485E0e4C7bD8665Fc45",
     # "quoterV2":"0x61fFE014bA17989E743c5F6cB21bF9697530B21e"
-} 
+}
+
+# Base Uniswap v3 seem to have different deployment addresses
+#
+# https://docs.uniswap.org/contracts/v3/reference/deployments/base-deployments
+base_uniswap_v3_address_map = {
+    "factory": "0x33128a8fC17869897dcE68Ed026d694621f6FDfD",
+    "router": "0x2626664c2603336E57B271c5C0b26F421741e481",
+    "position_manager": "0x03a520b32C04BF3bEEf7BEb72E919cf822Ed34f1",
+    "quoter": "0x3d4e44Eb1374240CE5F1B871ab261CD16335B76a"
+    # "router02":"0x68b3465833fb72A70ecDF485E0e4C7bD8665Fc45",
+    # "quoterV2":"0x61fFE014bA17989E743c5F6cB21bF9697530B21e"
+}
 
 
 class RoutingData(TypedDict):
@@ -762,7 +774,8 @@ def create_uniswap_v2_compatible_routing(
 
 
 def create_uniswap_v3_compatible_routing(
-    routing_type: TradeRouting, reserve_currency: ReserveCurrency
+    routing_type: TradeRouting,
+    reserve_currency: ReserveCurrency
 ) -> UniswapV3Routing:
     """Set up Uniswap v3 compatible routing.
     Not recommended to use by itself, because it doesn't validate reserve currency.
@@ -798,7 +811,8 @@ def create_uniswap_v3_compatible_routing(
 
 
 def create_compatible_routing(
-    routing_type: TradeRouting, reserve_currency: ReserveCurrency
+    routing_type: TradeRouting,
+    reserve_currency: ReserveCurrency
 ):
     """Create compatible routing.
 

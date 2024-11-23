@@ -4,6 +4,7 @@ import datetime
 import pytest
 
 from eth_defi.velvet import VelvetVault
+from tradeexecutor.ethereum.uniswap_v3.uniswap_v3_live_pricing import UniswapV3LivePricing
 from tradeexecutor.ethereum.velvet.vault import VelvetVaultSyncModel
 from tradeexecutor.state.identifier import AssetIdentifier
 from tradeexecutor.state.portfolio import Portfolio
@@ -23,6 +24,27 @@ def test_check_velvet_universe(
     for pair in pair_universe.iterate_pairs():
         assert pair.base_token_symbol, f"Got {pair}"
         assert pair.quote_token_symbol, f"Got {pair}"
+
+
+def test_check_price_on_base_uniswap_v3(
+    velvet_test_vault_pricing_model: UniswapV3LivePricing,
+    velvet_test_vault_pair_universe: PandasPairUniverse,
+):
+    """Check that we have a good price feed."""
+
+    pair_universe = velvet_test_vault_pair_universe
+    pricing_model = velvet_test_vault_pricing_model
+
+    pair = translate_trading_pair(pair_universe.get_single())
+
+    # Read DogMeIn/USDC pool price
+    # Note this pool lacks liquidity, so we do not care about the value
+    mid_price = pricing_model.get_mid_price(
+        datetime.datetime.utcnow(),
+        pair,
+    )
+
+    assert mid_price > 0
 
 
 def test_velvet_fetch_balances(
@@ -101,7 +123,7 @@ def test_velvet_sync_positions(
     events = sync_model.sync_positions(
         datetime.datetime.utcnow(),
         state,
-        pair_universe=pair_universe,
+        pair_universe=pair_universe ,
     )
 
     # This should have mapped 1 open DogInMe position

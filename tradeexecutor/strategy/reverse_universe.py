@@ -193,6 +193,7 @@ def create_universe_from_trading_pair_identifiers(
             "exchange_slug": exchange_universe.get_by_chain_and_factory(ChainId(t.chain_id), t.exchange_address).exchange_slug,
             "exchange_address": t.exchange_address,
             "pair_slug": f"{t.base.token_symbol}-{t.quote.token_symbol}",
+            "fee": int(t.fee * 10_000),
         } for t in pairs
     ]
     df = pd.DataFrame(data)

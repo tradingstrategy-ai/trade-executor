@@ -2,25 +2,19 @@
 
 import logging
 import datetime
-import pprint
-from _decimal import Decimal
-from functools import partial
-from types import NoneType
-from typing import cast, List, Optional, Tuple, Iterable
+from typing import Optional
 
 from eth_typing import HexAddress
 
-from eth_defi.balances import fetch_erc20_balances_multicall
 from eth_defi.hotwallet import HotWallet
 from eth_defi.velvet import VelvetVault
 from tradeexecutor.ethereum.address_sync_model import AddressSyncModel
 from tradeexecutor.ethereum.balance_update import apply_balance_update_events
 
-from tradeexecutor.ethereum.token import create_spot_token_map_potential_positions
 from tradeexecutor.ethereum.velvet.tx import VelvetTransactionBuilder
 from tradeexecutor.state.identifier import AssetIdentifier
 from tradeexecutor.state.state import State
-from tradeexecutor.state.types import BlockNumber, JSONHexAddress, USDollarPrice
+from tradeexecutor.state.types import JSONHexAddress, USDollarPrice
 from tradeexecutor.strategy.asset import build_expected_asset_map
 from tradingstrategy.chain import ChainId
 
