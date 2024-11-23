@@ -1,6 +1,5 @@
 """Test Velvet sync model."""
 import datetime
-from xml.dom.xmlbuilder import DOMImplementationLS
 
 import pytest
 
