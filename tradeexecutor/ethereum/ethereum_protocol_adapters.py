@@ -343,5 +343,11 @@ UNISWAP_V3_INTERMEDIATE = {
         # Route WETH through WETH-USDC 5 BPS
         # https://tradingstrategy.ai/trading-view/ethereum/uniswap-v3/eth-usdc-fee-5
         "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2": "0x88e6a0c2ddd26feeb64f039a2c41296fcb3f5640",
+    },
+
+    ChainId.base: {
+        # Route WETH through WETH-USDC 5 BPS
+        # https://coinmarketcap.com/dexscan/base/0xd0b53d9277642d899df5c87a3966a349a798f224/
+        "0x4200000000000000000000000000000000000006": "0xd0b53d9277642d899df5c87a3966a349a798f224",
     }
 }

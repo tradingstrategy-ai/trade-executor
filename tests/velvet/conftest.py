@@ -113,11 +113,22 @@ def base_doginme(base_test_volatile_asset) -> AssetIdentifier:
     )
 
 
+@pytest.fixture(scope='module')
+def base_weth() -> AssetIdentifier:
+    """WETH"""
+    return AssetIdentifier(
+        chain_id=8453,
+        address="0x4200000000000000000000000000000000000006",
+        decimals=18,
+        token_symbol="WETH",
+    )
+
 
 @pytest.fixture(scope='module')
 def velvet_test_vault_pair_universe(
     base_usdc,
     base_doginme,
+    base_weth,
 ) -> PandasPairUniverse:
     """Define pair universe of USDC and DogMeIn assets, trading on Uni v3 on Base.
 
@@ -137,23 +148,25 @@ def velvet_test_vault_pair_universe(
         }
     )
 
-    # USDC pool has zero liquidity on Base
-    # https://app.uniswap.org/explore/tokens/base/0x6921b130d297cc43754afba22e5eac0fbf8db75b
-    # https://app.uniswap.org/explore/pools/base/0x386298ce505067CA53e8a70FE82E12ff1dA7cc38
-
-    # https://www.coingecko.com/en/coins/doginme
-    # https://app.uniswap.org/explore/tokens/base/0x6921b130d297cc43754afba22e5eac0fbf8db75b
     trading_pair = TradingPairIdentifier(
         base=base_doginme,
-        quote=base_usdc,
-        pool_address="0x386298ce505067CA53e8a70FE82E12ff1dA7cc38",
-        # https://docs.uniswap.org/contracts/v3/reference/deployments/base-deployments
+        quote=base_weth,
+        pool_address="0xADE9BcD4b968EE26Bed102dd43A55f6A8c2416df",
         exchange_address="0x33128a8fC17869897dcE68Ed026d694621f6FDfD",
         fee=0.0100,
     )
 
+    # https://coinmarketcap.com/dexscan/base/0xd0b53d9277642d899df5c87a3966a349a798f224/
+    weth_usdc = TradingPairIdentifier(
+        base=base_weth,
+        quote=base_usdc,
+        pool_address="0xd0b53d9277642d899df5c87a3966a349a798f224",
+        exchange_address="0x33128a8fC17869897dcE68Ed026d694621f6FDfD",
+        fee=0.0005,
+    )
+
     universe = create_universe_from_trading_pair_identifiers(
-        [trading_pair],
+        [trading_pair, weth_usdc],
         exchange_universe=exchange_universe,
     )
     return universe

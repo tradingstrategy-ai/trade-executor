@@ -1,5 +1,6 @@
 """Test Velvet sync model."""
 import datetime
+from xml.dom.xmlbuilder import DOMImplementationLS
 
 import pytest
 
@@ -11,9 +12,9 @@ from tradeexecutor.state.portfolio import Portfolio
 
 from tradeexecutor.state.state import State
 from tradeexecutor.strategy.asset import build_expected_asset_map
-from tradeexecutor.strategy.trading_strategy_universe import translate_trading_pair
+from tradeexecutor.strategy.trading_strategy_universe import translate_trading_pair, TradingStrategyUniverse
+from tradingstrategy.chain import ChainId
 from tradingstrategy.pair import PandasPairUniverse
-
 
 
 def test_check_velvet_universe(
@@ -21,6 +22,9 @@ def test_check_velvet_universe(
 ):
     """Check we have good universe to map pairs to positions."""
     pair_universe = velvet_test_vault_pair_universe
+
+    assert pair_universe.get_count() == 2
+
     for pair in pair_universe.iterate_pairs():
         assert pair.base_token_symbol, f"Got {pair}"
         assert pair.quote_token_symbol, f"Got {pair}"
@@ -28,14 +32,16 @@ def test_check_velvet_universe(
 
 def test_check_price_on_base_uniswap_v3(
     velvet_test_vault_pricing_model: UniswapV3LivePricing,
-    velvet_test_vault_pair_universe: PandasPairUniverse,
+    velvet_test_vault_strategy_universe: PandasPairUniverse,
 ):
     """Check that we have a good price feed."""
 
-    pair_universe = velvet_test_vault_pair_universe
+    strategy_universe = velvet_test_vault_strategy_universe
     pricing_model = velvet_test_vault_pricing_model
 
-    pair = translate_trading_pair(pair_universe.get_single())
+    pair_desc = (ChainId.base, "uniswap-v3", "DogInMe", "WETH", 0.01)
+
+    pair = strategy_universe.get_pair_by_human_description(pair_desc)
 
     # Read DogMeIn/USDC pool price
     # Note this pool lacks liquidity, so we do not care about the value
@@ -70,7 +76,10 @@ def test_velvet_fetch_balances(
         ignore_reserve=True,
     )
 
-    pair = translate_trading_pair(pair_universe.get_single())
+    pair_desc = (ChainId.base, "uniswap-v3", "DogInMe", "WETH", 0.01)
+    pair = translate_trading_pair(
+        pair_universe.get_pair_by_human_description(pair_desc),
+    )
     dog_in_me = pair.base
 
     balances = sync_model.fetch_onchain_balances(
@@ -83,10 +92,11 @@ def test_velvet_fetch_balances(
     assert onchain_balance_data.amount > 0
 
 
-def test_velvet_sync_positions(
+def test_velvet_sync_positions_initial(
     base_example_vault: VelvetVault,
     base_usdc: AssetIdentifier,
-    velvet_test_vault_pair_universe: PandasPairUniverse,
+    velvet_test_vault_strategy_universe: TradingStrategyUniverse,
+    velvet_test_vault_pricing_model: UniswapV3LivePricing,
 ):
     """Sync velvet open positions
 
@@ -97,8 +107,10 @@ def test_velvet_sync_positions(
     - Capture DogMeIn open position
     """
 
-    pair_universe = velvet_test_vault_pair_universe
-    assert pair_universe.get_count() == 1
+    strategy_universe = velvet_test_vault_strategy_universe
+    pair_universe = strategy_universe.data_universe.pairs
+    pricing_model = velvet_test_vault_pricing_model
+    assert pair_universe.get_count() == 2
 
     sync_model = VelvetVaultSyncModel(
         pair_universe=pair_universe,
@@ -119,12 +131,16 @@ def test_velvet_sync_positions(
     sync_model.sync_treasury(cycle, state)
     assert portfolio.get_cash() == pytest.approx(2.674828)
 
-    # Sync DogInMe
+    # Sync DogInMe - creates initial position no event generated
     events = sync_model.sync_positions(
         datetime.datetime.utcnow(),
         state,
-        pair_universe=pair_universe ,
+        strategy_universe=strategy_universe,
+        pricing_model=pricing_model,
     )
+    assert len(events) == 0
 
-    # This should have mapped 1 open DogInMe position
-    assert len(events) == 1
+    # We have DogInMe position
+    assert len(portfolio.open_positions) == 1
+    dog_in_me_pos =  portfolio.open_positions[1]
+    assert dog_in_me_pos.get_value() > 0

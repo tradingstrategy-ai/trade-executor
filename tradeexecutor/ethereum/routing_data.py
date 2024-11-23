@@ -27,9 +27,9 @@ that gives the users the choices for the trade routing options in their strategy
 """
 from typing import TypedDict, List
 
+from eth_defi.uniswap_v3.constants import UNISWAP_V3_DEPLOYMENTS
 from tradingstrategy.chain import ChainId
 
-from tradeexecutor.backtest.backtest_generic_router import EthereumBacktestPairConfigurator
 from tradeexecutor.backtest.backtest_routing import BacktestRoutingModel, BacktestRoutingIgnoredModel
 from tradeexecutor.ethereum.uniswap_v2.uniswap_v2_routing import UniswapV2Routing
 from tradeexecutor.ethereum.uniswap_v3.uniswap_v3_routing import UniswapV3Routing
@@ -60,17 +60,9 @@ uniswap_v3_address_map = {
     # "quoterV2":"0x61fFE014bA17989E743c5F6cB21bF9697530B21e"
 }
 
-# Base Uniswap v3 seem to have different deployment addresses
-#
+# Base Uniswap v3 seem to have different deployment addresses and needs to have quoter_v2 flag set
 # https://docs.uniswap.org/contracts/v3/reference/deployments/base-deployments
-base_uniswap_v3_address_map = {
-    "factory": "0x33128a8fC17869897dcE68Ed026d694621f6FDfD",
-    "router": "0x2626664c2603336E57B271c5C0b26F421741e481",
-    "position_manager": "0x03a520b32C04BF3bEEf7BEb72E919cf822Ed34f1",
-    "quoter": "0x3d4e44Eb1374240CE5F1B871ab261CD16335B76a"
-    # "router02":"0x68b3465833fb72A70ecDF485E0e4C7bD8665Fc45",
-    # "quoterV2":"0x61fFE014bA17989E743c5F6cB21bF9697530B21e"
-}
+base_uniswap_v3_address_map = UNISWAP_V3_DEPLOYMENTS["base"]
 
 
 class RoutingData(TypedDict):

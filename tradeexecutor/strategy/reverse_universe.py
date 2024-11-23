@@ -1,6 +1,6 @@
 """Universe reverse loading.
 
-Load trading universe from candles, not vice versa.
+- Generate trading universe from onchain data or manually written addresses, instead of loading it from the server.
 
 """
 import datetime
@@ -199,5 +199,3 @@ def create_universe_from_trading_pair_identifiers(
     df = pd.DataFrame(data)
     universe = PandasPairUniverse(df, exchange_universe=exchange_universe)
     return universe
-
-

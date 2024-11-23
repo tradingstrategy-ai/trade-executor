@@ -6,6 +6,7 @@
 import datetime
 from typing import List, Iterable
 
+from tradeexecutor.cli.commands.shared_options import private_key
 from tradeexecutor.ethereum.wallet import ReserveUpdateEvent, logger
 from tradeexecutor.state.balance_update import BalanceUpdate, BalanceUpdateCause, BalanceUpdatePositionType
 from tradeexecutor.state.identifier import AssetIdentifier
@@ -14,9 +15,11 @@ from tradeexecutor.state.repair import close_position_with_empty_trade
 from tradeexecutor.state.reserve import ReservePosition
 from tradeexecutor.state.state import State
 from tradeexecutor.state.sync import BalanceEventRef
-from tradeexecutor.strategy.account_correction import calculate_account_corrections
+from tradeexecutor.strategy.account_correction import calculate_account_corrections, open_missing_spot_position, open_missing_spot_position_direct
 from tradeexecutor.strategy.asset import build_expected_asset_map, AssetToPositionsMapping
+from tradeexecutor.strategy.pricing_model import PricingModel
 from tradeexecutor.strategy.sync_model import OnChainBalance
+from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
 from tradingstrategy.pair import PandasPairUniverse
 
 
@@ -182,7 +185,9 @@ def perform_balance_update(
 
 def apply_balance_update_events(
     timestamp: datetime.datetime,
+    strategy_universe: TradingStrategyUniverse,
     state: State,
+    pricing_model: PricingModel,
     asset_balances: Iterable[OnChainBalance],
     asset_to_position: dict[AssetIdentifier, AssetToPositionsMapping],
 ) -> list[BalanceUpdate]:
@@ -209,9 +214,17 @@ def apply_balance_update_events(
                 continue
 
             # Detected tokens onchain, but we do not have an open position yet
-
-
-        if mapping.is_one_to_one_asset_to_position():
+            logger.info("Opening missing posistion for: %s, ab.asset")
+            position = open_missing_spot_position_direct(
+                strategy_universe=strategy_universe,
+                state=state,
+                pricing_model=pricing_model,
+                timestamp=timestamp,
+                asset=ab.asset,
+                quantity=ab.amount,
+            )
+            logger.info("New position created: %s", position)
+        elif mapping.is_one_to_one_asset_to_position():
             position = mapping.get_only_position()
             evt = perform_balance_update(
                 timestamp,

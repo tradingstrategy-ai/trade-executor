@@ -405,6 +405,7 @@ def get_uniswap_for_pair(web3: Web3, address_map: dict, target_pair: TradingPair
     router_address = Web3.to_checksum_address(address_map["router"])
     position_manager_address = Web3.to_checksum_address(address_map["position_manager"])
     quoter_address = Web3.to_checksum_address(address_map["quoter"])
+    quoter_v2 = address_map.get("quoter_v2")
 
     try:
         return fetch_deployment(
@@ -412,7 +413,8 @@ def get_uniswap_for_pair(web3: Web3, address_map: dict, target_pair: TradingPair
             factory_address,
             router_address,
             position_manager_address,
-            quoter_address
+            quoter_address,
+            quoter_v2=quoter_v2,
         )
     except ContractLogicError as e:
         raise RuntimeError(f"Could not fetch deployment data for router address {router_address} (factory {factory_address}) - data is likely wrong") from e

@@ -16,6 +16,8 @@ from tradeexecutor.state.identifier import AssetIdentifier
 from tradeexecutor.state.state import State
 from tradeexecutor.state.types import JSONHexAddress, USDollarPrice
 from tradeexecutor.strategy.asset import build_expected_asset_map
+from tradeexecutor.strategy.pricing_model import PricingModel
+from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
 from tradingstrategy.chain import ChainId
 
 from tradingstrategy.pair import PandasPairUniverse
@@ -108,7 +110,8 @@ class VelvetVaultSyncModel(AddressSyncModel):
         self,
         timestamp: datetime.datetime,
         state: State,
-        pair_universe: PandasPairUniverse,
+        strategy_universe: TradingStrategyUniverse,
+        pricing_model: PricingModel,
     ):
         """Detect any position balance changes due to deposit/redemptions of vault users.
 
@@ -120,7 +123,7 @@ class VelvetVaultSyncModel(AddressSyncModel):
         # assets = get_relevant_assets(pair_universe, reserve_assets, state)
         asset_to_position_map = build_expected_asset_map(
             state.portfolio,
-            pair_universe=pair_universe,
+            pair_universe=strategy_universe.data_universe.pairs,
             ignore_reserve=True,
         )
 
@@ -140,7 +143,9 @@ class VelvetVaultSyncModel(AddressSyncModel):
         # Apply any deposit/redemptions on positions
         events = apply_balance_update_events(
             timestamp,
+            strategy_universe,
             state,
+            pricing_model,
             balances,
             asset_to_position_map,
         )
