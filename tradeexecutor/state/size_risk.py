@@ -12,7 +12,7 @@ from types import NoneType
 from dataclasses_json import dataclass_json
 
 from tradeexecutor.state.identifier import TradingPairIdentifier
-from tradeexecutor.state.types import BlockNumber, TokenAmount, USDollarAmount, USDollarPrice
+from tradeexecutor.state.types import BlockNumber, TokenAmount, USDollarAmount, USDollarPrice, Percent
 
 
 class SizingType(enum.Enum):
@@ -123,3 +123,13 @@ class SizeRisk:
         # Numpy madness
         if self.capped is not None:
             assert type(self.capped) == bool, f"Expected bool, got {self.capped.__class__}"
+
+    def get_relative_capped_amount(self) -> Percent:
+        """How much % we get from the size we asked.
+
+        :return:
+            How much money we could deploy % of we wanted to deploy.
+
+            E.g. if the lit liquidity limits us to deploy $500 instead of $1000, return 0.5.
+        """
+        return self.accepted_size / self.asked_size
