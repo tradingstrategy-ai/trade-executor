@@ -2,8 +2,9 @@
 
 from typing import List, Iterable
 
-from eth_defi.balances import fetch_erc20_balances_multicall
+from eth_defi.balances import fetch_erc20_balances_multicall, fetch_erc20_balances_by_token_list
 from eth_defi.chain import fetch_block_timestamp
+from eth_defi.provider.anvil import is_anvil, is_mainnet_fork
 from eth_defi.provider.broken_provider import get_block_tip_latency
 from eth_defi.token import fetch_erc20_details
 from eth_typing import HexAddress
@@ -49,12 +50,26 @@ def fetch_address_balances(
     timestamp = fetch_block_timestamp(web3, block_number)
 
     token_addresses = [asset.address for asset in assets]
-    balances = fetch_erc20_balances_multicall(
-        web3,
-        address,
-        token_addresses,
-        block_identifier=block_number,
-    )
+
+    # Multicall not deployed on local test chains
+    disable_multicall = is_anvil(web3) and not is_mainnet_fork(web3)
+
+    if disable_multicall:
+        balances = fetch_erc20_balances_by_token_list(
+            web3,
+            address,
+            token_addresses,
+            block_identifier=block_number,
+            decimalise=True,
+        )
+    else:
+        balances = fetch_erc20_balances_multicall(
+            web3,
+            address,
+            token_addresses,
+            block_identifier=block_number,
+            decimalise=True,
+        )
 
     for asset in assets:
         amount = balances[asset.address]

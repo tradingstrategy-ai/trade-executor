@@ -143,3 +143,50 @@ def test_velvet_sync_positions_initial(
     assert len(portfolio.open_positions) == 1
     dog_in_me_pos =  portfolio.open_positions[1]
     assert dog_in_me_pos.get_value() > 0
+
+
+
+def test_velvet_sync_positions_deposit(
+    base_example_vault: VelvetVault,
+    base_usdc: AssetIdentifier,
+    velvet_test_vault_strategy_universe: TradingStrategyUniverse,
+    velvet_test_vault_pricing_model: UniswapV3LivePricing,
+):
+    """Sync velvet open positions
+
+    - Do initial deposit scan.
+
+    - Capture the initial USDC in the vault as a treasury
+
+    - Capture DogMeIn open position
+    """
+
+    strategy_universe = velvet_test_vault_strategy_universe
+    pair_universe = strategy_universe.data_universe.pairs
+    pricing_model = velvet_test_vault_pricing_model
+
+    sync_model = VelvetVaultSyncModel(
+        pair_universe=pair_universe,
+        vault=base_example_vault,
+        hot_wallet=None,
+    )
+
+    state = State()
+    portfolio = state.portfolio
+
+    # Sync USDC
+    sync_model.sync_initial(
+        state,
+        reserve_asset=base_usdc,
+        reserve_token_price=1.0,
+    )
+    # Sync DogInMe - creates initial position no event generated
+    events = sync_model.sync_positions(
+        datetime.datetime.utcnow(),
+        state,
+        strategy_universe=strategy_universe,
+        pricing_model=pricing_model,
+    )
+
+    # We have DogInMe position + cash
+    assert len(portfolio.open_positions) == 1
