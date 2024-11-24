@@ -508,6 +508,10 @@ class AlphaModel:
             print(f"   Signal #{idx} {signal}", file=buf)
         return buf.getvalue()
 
+    def get_allocated_value(self) -> USDollarAmount:
+        """How much we have money allocated on signals."""
+        return sum(s.position_target for s in self.signals.values())
+
     def has_any_signal(self) -> bool:
         """For this cycle, should we try to do any trades.
 
@@ -742,8 +746,7 @@ class AlphaModel:
                 concentration_capped_normal_weight = min(normal_weight, max_weight)
 
                 if concentration_capped_normal_weight != normal_weight:
-                    s.flags |= TradingPairSignalFlags.capped_by_concentration
-
+                    s.flags.add(TradingPairSignalFlags.capped_by_concentration)
 
             except TypeError as e:
                 raise TypeError(f"Cannot min({normal_weight}, {max_weight})") from e
@@ -756,7 +759,7 @@ class AlphaModel:
             )
 
             if size_risk.capped:
-                s.flags |= TradingPairSignalFlags.capped_by_pool_size
+                s.flags.add(TradingPairSignalFlags.capped_by_pool_size)
 
             logger.info(
                 "Position size risk, pair: %s, asked: %s, accepted: %s, diagnostics: %s",
@@ -1085,7 +1088,7 @@ class AlphaModel:
             )
             for s in self.iterate_signals():
                 s.position_adjust_ignored = True
-                s.flags |= TradingPairSignalFlags.max_adjust_too_small
+                s.flags.add(TradingPairSignalFlags.max_adjust_too_small)
             return []
 
         #  TODO: Break this massive for if spagetti to sub-functions
@@ -1129,7 +1132,7 @@ class AlphaModel:
                 trade_size = abs(dollar_diff)
                 if trade_size < invidiual_rebalance_min_threshold:
                     logger.info("Individual trade size too small, trade size is %s, our threshold %s", trade_size, invidiual_rebalance_min_threshold)
-                    s.flags |= TradingPairSignalFlags.individual_trade_size_too_small
+                    ssignal.flags.add(TradingPairSignalFlags.individual_trade_size_too_small)
                     continue
 
             if False:
@@ -1158,7 +1161,7 @@ class AlphaModel:
                             notes=f"Closing position, because the signal weight is below close position weight threshold: {signal}"
                         )
                         signal.position_id = current_position.position_id
-                        signal.flags |= TradingPairSignalFlags.closed
+                        signal.flags.add(TradingPairSignalFlags.closed)
                     else:
                         logger.info("Zero signal, but no position to close")
                         signal.position_adjust_ignored = True

@@ -1,6 +1,7 @@
 """A strategy runner that executes Trading Strategy Pandas type strategies."""
 
 import datetime
+import textwrap
 from io import StringIO
 from typing import List, Optional
 import logging
@@ -21,6 +22,7 @@ from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniv
 from tradeexecutor.state.state import State
 from tradeexecutor.state.trade import TradeExecution
 from tradeexecutor.strategy.runner import StrategyRunner, PreflightCheckFailed
+from tradeexecutor.utils.timestamp import convert_and_validate_timestamp_as_int
 from tradeexecutor.visual.image_output import render_plotly_figure_as_image_file
 from tradeexecutor.visual.strategy_state import draw_single_pair_strategy_state, draw_multi_pair_strategy_state
 
@@ -311,6 +313,14 @@ class PandasTraderRunner(StrategyRunner):
             for name, plot in visualisation.plots.items():
                 value = plot.get_last_value()
                 print(f"  {name}: {value}", file=buf)
+
+            # Print the thinking message decide_trades() can add with
+            # visualisation.add_message()
+            unix_timestamp = convert_and_validate_timestamp_as_int(strategy_cycle_timestamp)
+            messages = visualisation.messages.get(unix_timestamp)
+            if messages:
+                thinking_message = messages[0]
+                print(textwrap.indent(thinking_message, "    "))
 
             logger.trade(buf.getvalue())
 

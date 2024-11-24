@@ -383,12 +383,18 @@ class Visualisation:
             assert isinstance(pair, TradingPairIdentifier), f"Unexpected pair type, got {pair} of type {type(pair)}"
             self.pair_ids.append(pair.internal_id)
 
-    def add_message(self,
-                    timestamp: datetime.datetime,
-                    content: str):
+    def add_message(
+        self,
+        timestamp: datetime.datetime,
+        content: str
+    ):
         """Write a debug message.
 
-        - Each message is associated to a different timepoint.
+        - Each message is associated to a different timepoint
+
+        - Multiple messages per timepoint are possible
+
+        - The first message is in strategy thinking Discord/Telegram logging output for each cycle
 
         :param timestamp:
             The current strategy cycle timestamp
@@ -397,6 +403,7 @@ class Visualisation:
             The contents of the message
 
         """
+        assert type(content) == str, f"Got {type(content)}"
         timestamp = convert_and_validate_timestamp_as_int(timestamp)
         timepoint_messages = self.messages.get(timestamp, list())
         timepoint_messages.append(content)
