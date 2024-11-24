@@ -10,7 +10,6 @@ To run these tests, we need to connect to BNB Chain:
 """
 
 import datetime
-import logging
 import os
 from decimal import Decimal
 
@@ -33,15 +32,11 @@ from tradeexecutor.ethereum.tx import HotWalletTransactionBuilder
 from tradeexecutor.ethereum.uniswap_v2.uniswap_v2_routing import UniswapV2RoutingState, UniswapV2Routing, OutOfBalance
 from tradeexecutor.ethereum.uniswap_v2.uniswap_v2_execution import UniswapV2Execution
 from tradeexecutor.ethereum.wallet import sync_reserves
-from tradeexecutor.testing.dummy_wallet import apply_sync_events
-from tradeexecutor.state.portfolio import Portfolio
+from tradeexecutor.ethereum.balance_update import apply_reserve_update_events
 from tradeexecutor.state.state import State
 from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier
 from tradeexecutor.state.position import TradingPosition
-
 from tradeexecutor.cli.log import setup_pytest_logging
-
-# https://docs.pytest.org/en/latest/how-to/skipping.html#skip-all-test-functions-of-a-class-or-module
 from tradeexecutor.strategy.trading_strategy_universe import create_pair_universe_from_code
 from tradeexecutor.testing.pairuniversetrader import PairUniverseTestTrader
 from tradingstrategy.chain import ChainId
@@ -267,7 +262,7 @@ def state(web3, hot_wallet, usdt_asset) -> State:
         web3, datetime.datetime.utcnow(), hot_wallet.address, [], [usdt_asset]
     )
     assert len(events) > 0
-    apply_sync_events(state, events)
+    apply_reserve_update_events(state, events)
     reserve_currency, exchange_rate = state.portfolio.get_default_reserve_asset()
     assert reserve_currency == usdt_asset
     return state

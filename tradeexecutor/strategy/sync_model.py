@@ -132,10 +132,10 @@ class SyncModel(ABC):
 
     @abstractmethod
     def fetch_onchain_balances(
-            self,
-            assets: Collection[AssetIdentifier],
-            filter_zero=True,
-            block_identifier: BlockIdentifier = None,
+        self,
+        assets: Collection[AssetIdentifier],
+        filter_zero=True,
+        block_identifier: BlockIdentifier = None,
     ) -> Iterable[OnChainBalance]:
         """Read the on-chain asset details.
 

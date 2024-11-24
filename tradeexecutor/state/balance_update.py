@@ -37,6 +37,10 @@ class BalanceUpdateCause(enum.Enum):
     #:
     correction = "correction"
 
+    #: Velvet capital which puts deposits/redemptions directly to open positions
+    #:
+    vault_inflow = "vault_inflow"
+
 
 class BalanceUpdatePositionType(enum.Enum):
     reserve = "reserve"
@@ -56,6 +60,7 @@ class BalanceUpdate:
 
     - Interest payments. There will be one event per rebase asset per a trading position.
       See :py:meth:`tradeexecutor.strategy.sync_model.SyncModel.sync_interests`.
+
 
     Events are stored in :py:class:`TradingPosition` and :py:class:`ReservePosition` by their id.
 

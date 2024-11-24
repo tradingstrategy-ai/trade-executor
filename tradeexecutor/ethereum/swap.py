@@ -46,6 +46,7 @@ def report_failure(
     state: State,
     trade: TradeExecution,
     stop_on_execution_failure: bool,
+    exception: Exception = None,
 ) -> None:
     """What to do if trade fails.
 
@@ -80,7 +81,9 @@ def report_failure(
                 raise TradeExecutionFailed(f"Could not execute a trade: {trade}.\n"
                                            f"Transaction failed: {tx}\n"
                                            f"Other succeeded transactions: {success_txs}\n"
-                                           f"Stack trace:{tx.stack_trace}")
+                                           f"Stack trace: {tx.stack_trace}\n"
+                                           f"Python exception: {exception}"
+                                           )
             else:
                 success_txs.append(tx)
 

@@ -51,6 +51,14 @@ class TooSmallTrade(Exception):
     """
 
 
+class ReserveAlreadyInitialised(Exception):
+    pass
+
+
+class ReserveMissing(Exception):
+    pass
+
+
 @dataclass_json
 @dataclass
 class Portfolio:
@@ -751,7 +759,9 @@ class Portfolio:
             If there is not exactly one reserve position
         """
         positions = list(self.reserves.values())
-        assert len(positions) == 1, f"Had {len(positions)} reserve position"
+        if len(positions) != 1:
+            raise ReserveMissing(f"Had {len(positions)} reserve position")
+
         return positions[0]
 
     def get_reserve_assets(self) -> List[AssetIdentifier]:
@@ -1033,19 +1043,21 @@ class Portfolio:
                 already_iterated_pairs.add(p.pair)
                 yield p.pair
 
-    def initialise_reserves(self, asset: AssetIdentifier):
+    def initialise_reserves(self, asset: AssetIdentifier) -> ReservePosition:
         """Create the initial reserve currency list.
 
         Currently we assume there can be only one reserve currency.
         """
         assert len(self.reserves) == 0, "Reserves already initialised"
-        self.reserves[asset.address] = ReservePosition(
+        pos = ReservePosition(
             asset=asset,
             quantity=Decimal(0),
             last_sync_at=None,
             reserve_token_price=None,
             last_pricing_at=None,
         )
+        self.reserves[asset.get_identifier()] = pos
+        return pos
 
     def get_single_pair(self) -> TradingPairIdentifier:
         """Return the only trading pair a single pair strategy has been trading.

@@ -383,9 +383,9 @@ def calculate_account_corrections(
 
 
 def apply_accounting_correction(
-        state: State,
-        correction: AccountingBalanceCheck,
-        strategy_cycle_included_at: datetime.datetime | None,
+    state: State,
+    correction: AccountingBalanceCheck,
+    strategy_cycle_included_at: datetime.datetime | None,
 ):
     """Update the state to reflect the true on-chain balances."""
 
@@ -672,12 +672,13 @@ def transfer_away_assets_without_position(
     logger.info("Fix tx %s complete", tx_hash.hex())
 
 
-
-def open_missing_spot_position(
+def open_missing_spot_position_direct(
     strategy_universe: TradingStrategyUniverse,
     state: State,
     pricing_model: PricingModel,
-    correction: AccountingBalanceCheck,
+    timestamp: datetime.datetime,
+    asset: AssetIdentifier,
+    quantity: Decimal,
 ) -> tuple[TradingPosition, TradeExecution]:
     """Open a missing spot position.
 
@@ -686,7 +687,11 @@ def open_missing_spot_position(
 
     """
 
-    logger.info("Fixing missing open position: %s", correction)
+    logger.info(
+        "Fixing missing open position, asset: %s, quantity: %s",
+        asset,
+        quantity,
+    )
 
     pair_universe = strategy_universe.data_universe.pairs
 
@@ -695,18 +700,18 @@ def open_missing_spot_position(
     matching_pairs = []
     for raw_pair in pair_universe.iterate_pairs():
         trading_pair = translate_trading_pair(raw_pair)
-        if trading_pair.base == correction.asset:
+        if trading_pair.base == asset:
             matching_pairs.append(trading_pair)
 
     if len(matching_pairs) == 0:
-        raise RuntimeError(f"Could not find any spot pair for asset {correction.asset} for correction {correction}")
+        raise RuntimeError(f"Could not find any spot pair for asset {asset}")
 
     #
     # We can have a strategy where the same base token is on multiple pairs,
     # then assume we get can one with the lowest fees
     #
     if len(matching_pairs) > 1:
-        logger.warning(f"Found multiple matching trading pairs for asset {correction.asset}, correction {correction}, {matching_pairs}")
+        logger.warning(f"Found multiple matching trading pairs for asset {asset}, {matching_pairs}")
         pair = sorted(matching_pairs, key=lambda tp: tp.fee)[0]
         logger.warning(f"Will pick one with the lowest fees: {pair}")
     else:
@@ -714,12 +719,11 @@ def open_missing_spot_position(
 
     assert pair.is_spot(), f"Not spot: {pair}"
 
-    quantity = correction.quantity
+    quantity = quantity
     assert quantity > 0
 
-    notes = f"Creating an account correction position for tokens that did not have open position: {correction}"
+    notes = f"Creating a position for tokens that did not have open position: {asset}"
 
-    timestamp = datetime.datetime.utcnow()
     position_manager = PositionManager(timestamp, strategy_universe, state, pricing_model)
 
     value = pricing_model.get_mid_price(timestamp, pair) * float(quantity)
@@ -743,6 +747,30 @@ def open_missing_spot_position(
     trade.executed_at = timestamp
 
     return position, trade
+
+
+def open_missing_spot_position(
+    strategy_universe: TradingStrategyUniverse,
+    state: State,
+    pricing_model: PricingModel,
+    correction: AccountingBalanceCheck,
+) -> tuple[TradingPosition, TradeExecution]:
+    """Open a missing spot position.
+
+    - Assume the token belongs to a spot position which we attempted to open,
+      but state update failed (tx went eventually thru).
+
+    """
+    logger.info("Open missing spot position for correction: %s", correction)
+    timestamp = datetime.datetime.utcnow()
+    return open_missing_spot_position_direct(
+        strategy_universe,
+        state,
+        pricing_model,
+        timestamp,
+        correction.asset,
+        correction.quantity,
+    )
 
 
 def open_missing_credit_position(
@@ -807,6 +835,7 @@ def open_missing_credit_position(
     position.loan.last_pricing_at = timestamp
     position.loan.last_usd_price = value
     return position, trade
+
 
 
 def open_missing_position(

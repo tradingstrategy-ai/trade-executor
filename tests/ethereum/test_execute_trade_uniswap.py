@@ -23,7 +23,7 @@ from tradeexecutor.ethereum.execution import get_held_assets
 from tradeexecutor.ethereum.uniswap_v2.uniswap_v2_execution import get_current_price
 from tradeexecutor.ethereum.universe import create_pair_universe
 from tradeexecutor.ethereum.wallet import sync_reserves
-from tradeexecutor.testing.dummy_wallet import  apply_sync_events
+from tradeexecutor.ethereum.balance_update import apply_reserve_update_events
 from tradeexecutor.state.state import State
 from tradeexecutor.state.trade import TradeStatus
 from tradeexecutor.state.portfolio import Portfolio
@@ -203,7 +203,7 @@ def portfolio() -> Portfolio:
 def state(portfolio, web3, hot_wallet, start_ts, supported_reserves) -> State:
     state = State(portfolio=portfolio)
     events = sync_reserves(web3, start_ts, hot_wallet.address, [], supported_reserves)
-    apply_sync_events(state, events)
+    apply_reserve_update_events(state, events)
     return state
 
 

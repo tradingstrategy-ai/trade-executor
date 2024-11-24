@@ -1,7 +1,6 @@
 """Fixtures to set up Ethereum mainnet fork generic router for uniswap v3 + aave v3"""
 
 import os
-import datetime
 import pandas as pd
 import pytest as pytest
 from web3 import Web3
@@ -29,10 +28,8 @@ from tradeexecutor.strategy.generic.generic_router import GenericRouting
 from tradeexecutor.strategy.generic.generic_pricing_model import GenericPricing
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse, load_partial_data
 from tradeexecutor.strategy.universe_model import default_universe_options
-from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier, TradingPairKind, AssetType
-from tradeexecutor.ethereum.wallet import sync_reserves
-from tradeexecutor.testing.dummy_wallet import apply_sync_events
-from tradeexecutor.state.state import State
+from tradeexecutor.state.identifier import AssetIdentifier
+
 
 
 

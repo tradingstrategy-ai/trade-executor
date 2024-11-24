@@ -16,9 +16,6 @@ from decimal import Decimal
 import flaky
 import pytest
 from eth_account import Account
-from eth_defi.provider.anvil import fork_network_anvil
-from eth_defi.chain import install_chain_middleware
-from eth_defi.abi import get_deployed_contract
 from eth_defi.confirmation import wait_transactions_to_complete
 from eth_typing import HexAddress, HexStr
 from web3 import Web3, HTTPProvider
@@ -39,21 +36,14 @@ from tradeexecutor.ethereum.uniswap_v3.uniswap_v3_routing import (
 )
 from tradeexecutor.ethereum.uniswap_v3.uniswap_v3_execution import UniswapV3Execution
 from tradeexecutor.ethereum.wallet import sync_reserves
-from tradeexecutor.testing.dummy_wallet import apply_sync_events
-from tradeexecutor.state.portfolio import Portfolio
+from tradeexecutor.ethereum.balance_update import apply_reserve_update_events
 from tradeexecutor.state.state import State
-from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier
+from tradeexecutor.state.identifier import TradingPairIdentifier
 from tradeexecutor.state.position import TradingPosition
-
-from tradeexecutor.cli.log import setup_pytest_logging
-
-
-# https://docs.pytest.org/en/latest/how-to/skipping.html#skip-all-test-functions-of-a-class-or-module
 from tradeexecutor.strategy.trading_strategy_universe import (
     create_pair_universe_from_code,
 )
 from tradeexecutor.testing.pairuniversetrader import PairUniverseTestTrader
-from tradeexecutor.testing.pytest_helpers import is_failed_test
 from tradingstrategy.chain import ChainId
 from tradingstrategy.pair import PandasPairUniverse
 
@@ -220,7 +210,7 @@ def state(web3, hot_wallet, usdc_asset) -> State:
         web3, datetime.datetime.utcnow(), hot_wallet.address, [], [usdc_asset]
     )
     assert len(events) > 0
-    apply_sync_events(state, events)
+    apply_reserve_update_events(state, events)
     reserve_currency, exchange_rate = state.portfolio.get_default_reserve_asset()
     assert reserve_currency == usdc_asset
     return state

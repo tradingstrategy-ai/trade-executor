@@ -364,6 +364,7 @@ class EthereumExecution(ExecutionModel):
                         max_timeout=confirmation_timeout,
                     )
                 except Exception as e:
+                    logger.error("MEV blocker failed to broadcast: %s", e)
                     report_failure(datetime.datetime.utcnow(), state, t, stop_on_execution_failure)
                     break
 

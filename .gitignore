@@ -58,3 +58,6 @@ monitor.db
 
 # Created by test_correct_account_missing_open_spot_position
 tests/mainnet_fork/*backup*json
+
+# Lagoon initial prototype files
+scripts/lagoon/*.env

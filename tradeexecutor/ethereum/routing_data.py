@@ -27,9 +27,9 @@ that gives the users the choices for the trade routing options in their strategy
 """
 from typing import TypedDict, List
 
+from eth_defi.uniswap_v3.constants import UNISWAP_V3_DEPLOYMENTS
 from tradingstrategy.chain import ChainId
 
-from tradeexecutor.backtest.backtest_generic_router import EthereumBacktestPairConfigurator
 from tradeexecutor.backtest.backtest_routing import BacktestRoutingModel, BacktestRoutingIgnoredModel
 from tradeexecutor.ethereum.uniswap_v2.uniswap_v2_routing import UniswapV2Routing
 from tradeexecutor.ethereum.uniswap_v3.uniswap_v3_routing import UniswapV3Routing
@@ -58,7 +58,11 @@ uniswap_v3_address_map = {
     "quoter": "0xb27308f9F90D607463bb33eA1BeBb41C27CE5AB6"
     # "router02":"0x68b3465833fb72A70ecDF485E0e4C7bD8665Fc45",
     # "quoterV2":"0x61fFE014bA17989E743c5F6cB21bF9697530B21e"
-} 
+}
+
+# Base Uniswap v3 seem to have different deployment addresses and needs to have quoter_v2 flag set
+# https://docs.uniswap.org/contracts/v3/reference/deployments/base-deployments
+base_uniswap_v3_address_map = UNISWAP_V3_DEPLOYMENTS["base"]
 
 
 class RoutingData(TypedDict):
@@ -762,7 +766,8 @@ def create_uniswap_v2_compatible_routing(
 
 
 def create_uniswap_v3_compatible_routing(
-    routing_type: TradeRouting, reserve_currency: ReserveCurrency
+    routing_type: TradeRouting,
+    reserve_currency: ReserveCurrency
 ) -> UniswapV3Routing:
     """Set up Uniswap v3 compatible routing.
     Not recommended to use by itself, because it doesn't validate reserve currency.
@@ -798,7 +803,8 @@ def create_uniswap_v3_compatible_routing(
 
 
 def create_compatible_routing(
-    routing_type: TradeRouting, reserve_currency: ReserveCurrency
+    routing_type: TradeRouting,
+    reserve_currency: ReserveCurrency
 ):
     """Create compatible routing.
 

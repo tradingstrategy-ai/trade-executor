@@ -19,7 +19,7 @@ from tradeexecutor.strategy.interest import prepare_interest_distribution, \
 from tradeexecutor.strategy.pricing_model import PricingModel
 from tradeexecutor.strategy.sync_model import SyncModel, OnChainBalance
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
-from tradeexecutor.testing.dummy_wallet import apply_sync_events
+from tradeexecutor.ethereum.balance_update import apply_reserve_update_events
 from tradingstrategy.chain import ChainId
 from tradingstrategy.utils.time import ZERO_TIMEDELTA
 
@@ -120,7 +120,7 @@ class BacktestSyncModel(SyncModel):
                 )
             )
 
-        balance_update_events = apply_sync_events(state, reserve_update_events)
+        balance_update_events = apply_reserve_update_events(state, reserve_update_events)
 
         # Clear our pending funding simulation events
         self.fund_flow_queue = []

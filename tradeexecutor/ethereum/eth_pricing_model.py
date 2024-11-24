@@ -105,9 +105,11 @@ class EthereumPricingModel(PricingModel):
     def check_supported_quote_token(self, pair: TradingPairIdentifier):
         assert pair.quote.address == self.routing_model.reserve_token_address, f"Quote token {self.routing_model.reserve_token_address} not supported for pair {pair}, pair tokens are {pair.base.address} - {pair.quote.address}"
         
-    def get_mid_price(self,
-                      ts: datetime.datetime,
-                      pair: TradingPairIdentifier) -> USDollarAmount:
+    def get_mid_price(
+        self,
+        ts: datetime.datetime,
+        pair: TradingPairIdentifier
+    ) -> USDollarAmount:
         """Get the mid price from Uniswap pool.
 
         Gets tricky, because we calculate dollar mid-price, not
