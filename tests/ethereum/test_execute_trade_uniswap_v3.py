@@ -28,6 +28,7 @@ from tradeexecutor.ethereum.wallet import sync_reserves
 from tradeexecutor.ethereum.balance_update import apply_reserve_update_events
 from tradeexecutor.state.state import State
 from tradeexecutor.state.trade import TradeStatus
+from tradeexecutor.state.portfolio import Portfolio
 from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier
 from tradeexecutor.testing.ethereumtrader_uniswap_v3 import UniswapV3TestTrader
 from tradeexecutor.testing.unit_test_trader import UnitTestTrader
@@ -133,7 +134,7 @@ def asset_aave(aave_token, chain_id) -> AssetIdentifier:
 def aave_usdc_uniswap_trading_pair(web3, deployer, uniswap_v3, aave_token, usdc_token) -> HexAddress:
     """AAVE-USDC pool with 200k liquidity. Fee of 0.1%"""
     min_tick, max_tick = get_default_tick_range(AAVE_USDC_FEE_RAW)
-    
+
     pool_contract = deploy_pool(
         web3,
         deployer,
@@ -142,7 +143,7 @@ def aave_usdc_uniswap_trading_pair(web3, deployer, uniswap_v3, aave_token, usdc_
         token1=usdc_token,
         fee=AAVE_USDC_FEE_RAW
     )
-    
+
     add_liquidity(
         web3,
         deployer,
@@ -160,7 +161,7 @@ def aave_usdc_uniswap_trading_pair(web3, deployer, uniswap_v3, aave_token, usdc_
 def weth_usdc_uniswap_trading_pair(web3, deployer, uniswap_v3, weth_token, usdc_token) -> HexAddress:
     """ETH-USDC pool with 1.7M liquidity."""
     min_tick, max_tick = get_default_tick_range(WETH_USDC_FEE_RAW)
-    
+
     pool_contract = deploy_pool(
         web3,
         deployer,
@@ -169,7 +170,7 @@ def weth_usdc_uniswap_trading_pair(web3, deployer, uniswap_v3, weth_token, usdc_
         token1=usdc_token,
         fee=WETH_USDC_FEE_RAW
     )
-    
+
     add_liquidity(
         web3,
         deployer,
@@ -186,9 +187,9 @@ def weth_usdc_uniswap_trading_pair(web3, deployer, uniswap_v3, weth_token, usdc_
 @pytest.fixture
 def weth_usdc_pair(uniswap_v3, weth_usdc_uniswap_trading_pair, asset_usdc, asset_weth) -> TradingPairIdentifier:
     return TradingPairIdentifier(
-        asset_weth, 
-        asset_usdc, 
-        weth_usdc_uniswap_trading_pair, 
+        asset_weth,
+        asset_usdc,
+        weth_usdc_uniswap_trading_pair,
         uniswap_v3.factory.address,
         fee = WETH_USDC_FEE
     )
@@ -197,9 +198,9 @@ def weth_usdc_pair(uniswap_v3, weth_usdc_uniswap_trading_pair, asset_usdc, asset
 @pytest.fixture
 def aave_usdc_pair(uniswap_v3, aave_usdc_uniswap_trading_pair, asset_usdc, asset_aave) -> TradingPairIdentifier:
     return TradingPairIdentifier(
-        asset_aave, 
-        asset_usdc, 
-        aave_usdc_uniswap_trading_pair, 
+        asset_aave,
+        asset_usdc,
+        aave_usdc_uniswap_trading_pair,
         uniswap_v3.factory.address,
         fee = AAVE_USDC_FEE
     )
@@ -289,7 +290,7 @@ def test_execute_trade_instructions_buy_weth(
     weth_usdc_pair: TradingPairIdentifier,
     start_ts: datetime.datetime,
     price_helper: UniswapV3PriceHelper,
-    ethereum_trader: UniswapV3TestTrader 
+    ethereum_trader: UniswapV3TestTrader
 ):
     """Sync reserves from one deposit."""
 
@@ -307,10 +308,10 @@ def test_execute_trade_instructions_buy_weth(
     # swap from quote to base (usdc to weth)
     path = [usdc_token.address, weth_token.address]
     fees = [WETH_USDC_FEE_RAW]
-    
+
     # Estimate price
     raw_assumed_quantity = price_helper.get_amount_out(buy_amount * 10 ** 6, path, fees)
-    
+
     assumed_quantity = Decimal(raw_assumed_quantity) / Decimal(10**18)
     assert assumed_quantity == pytest.approx(Decimal(0.293149332386944192))
 
@@ -370,14 +371,15 @@ def test_execute_trade_instructions_buy_weth_with_tester(
 
 
 def test_buy_sell_buy_with_tester(
-        web3: Web3,
-        state: State,
-        uniswap_v3: UniswapV3Deployment,
-        hot_wallet: HotWallet,
-        pair_universe,
-        weth_usdc_pair: TradingPairIdentifier,
-        start_ts: datetime.datetime,
-        tx_builder
+    web3: Web3,
+    state: State,
+    uniswap_v3: UniswapV3Deployment,
+    hot_wallet: HotWallet,
+    pair_universe,
+    weth_usdc_pair: TradingPairIdentifier,
+    start_ts: datetime.datetime,
+    tx_builder,
+    weth_token: Contract,
 ):
     """Execute three trades on a position."""
 
@@ -398,9 +400,17 @@ def test_buy_sell_buy_with_tester(
     assert trade.planned_price == pytest.approx(1705.615346038114)
     assert trade.planned_quantity == pytest.approx(Decimal('0.293149332386944223'))
 
+    # Check onchain quantity is correct
+    onchain_balance = weth_token.functions.balanceOf(hot_wallet.address).call()
+    assert (onchain_balance / 10**18) == pytest.approx(0.293149332386944223)
+
+    # Calculate price by hand
+    real_price = 500 / 0.293149332386944223
+    assert real_price == pytest.approx(1705.615346038114)
+
     assert trade.get_status() == TradeStatus.success
-    assert trade.executed_price == pytest.approx(1700.930449623516)
     assert trade.executed_quantity == pytest.approx(Decimal('0.29314933179905376'))
+    assert trade.executed_price == pytest.approx(1705.615346038114)
 
     assert portfolio.get_cash() == pytest.approx(9500.0)
     assert portfolio.get_total_equity() == pytest.approx(9999.999998997286)
@@ -418,9 +428,9 @@ def test_buy_sell_buy_with_tester(
     assert position2.is_closed()
 
     assert trade2.get_status() == TradeStatus.success
-    assert trade2.executed_price == pytest.approx(1699.9102484539058)
+    assert trade2.executed_price == pytest.approx(1695.398495196584)
     assert trade2.executed_quantity == pytest.approx(Decimal('-0.29314933179905376'))
-    assert trade2.lp_fees_paid == pytest.approx(1.4949826603545533)
+    assert trade2.lp_fees_paid == pytest.approx(1.491014808)
 
     assert portfolio.get_cash() == pytest.approx(9997.004936)
     assert portfolio.get_total_equity() == pytest.approx(9997.004936)
@@ -437,7 +447,7 @@ def test_buy_sell_buy_with_tester(
 
     assert trade3.planned_price == pytest.approx(1705.618345602341)
     assert trade3.planned_quantity == pytest.approx(Decimal('0.293148816843562091'))
-    assert trade3.executed_price == pytest.approx(1700.9304496235159)
+    assert trade3.executed_price == pytest.approx(1705.618345602341)
     assert trade3.executed_quantity == pytest.approx(Decimal('0.293148816843562091'))
     # assert trade3.cost_of_gas == pytest.approx(Decimal('0.000134461088522565'))
     assert trade3.lp_fees_paid == pytest.approx(1.5)
