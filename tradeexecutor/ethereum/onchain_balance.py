@@ -6,7 +6,7 @@ from eth_defi.balances import fetch_erc20_balances_multicall, fetch_erc20_balanc
 from eth_defi.chain import fetch_block_timestamp
 from eth_defi.provider.anvil import is_anvil, is_mainnet_fork
 from eth_defi.provider.broken_provider import get_block_tip_latency
-from eth_defi.token import fetch_erc20_details
+
 from eth_typing import HexAddress
 from web3 import Web3
 
