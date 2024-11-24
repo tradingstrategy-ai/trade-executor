@@ -174,6 +174,8 @@ def decide_trades(
     # Record alpha model state so we can later visualise our alpha model thinking better
     state.visualisation.add_calculations(timestamp, alpha_model.to_dict())
 
+    state.visualisation.add_message(timestamp, f"Trade count: {len(trades)}")
+
     return trades
 
 

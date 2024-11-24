@@ -200,3 +200,9 @@ def test_trading_fee_analysis(
     pair_fee_summary = create_pair_trading_fee_summary_table(fee_analysis)
     assert pair_fee_summary.iloc[0].name == ("AAVE-WETH", "buy")
 
+
+def test_message_tail(state):
+    """Get messages decide_trades() left around"""
+    tail_messages = state.visualisation.get_messages_tail(5)
+    assert len(tail_messages) == 5
+
