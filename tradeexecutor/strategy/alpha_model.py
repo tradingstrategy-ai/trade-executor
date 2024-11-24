@@ -1,5 +1,6 @@
 """Alpha model and portfolio construction model related logic."""
 import datetime
+import enum
 import heapq
 import logging
 
@@ -36,6 +37,26 @@ def _get_next_id():
     global _signal_id_counter
     _signal_id_counter += 1
     return _signal_id_counter
+
+
+class TradingPairSignalFlags(enum.Enum):
+    """Diagnostics flags set on trading signal to understand better the decision making process."""
+
+    #: This signal was capped by the lit liquidity pool risk.
+    capped_by_pool_size = "capped_by_pool_size"
+
+    #: This signal was capped by the concentration risk.
+    capped_by_concentration = "capped_by_concentration"
+
+    #: No trades were made because the maximum difference in old and new portfolio is not meaningful.
+    #: Set on every signak.
+    max_adjust_too_small = "max_adjust_too_small"
+
+    #: This pair was not adjusted because the trade to rebalance would be too small dollar wise
+    individual_trade_size_too_small = "individual_trade_size_too_small"
+
+    #: This signal led to closing the position (signal went to zero)
+    closed = "closed"
 
 
 @dataclass_json
@@ -256,6 +277,8 @@ class TradingPairSignal:
     #: All data should be JSON serialisable.
     #:
     other_data: dict = field(default_factory=dict)
+
+    flags: set[TradingPairSignalFlags] = field(default_factory=set)
 
     def __post_init__(self):
         assert isinstance(self.pair, TradingPairIdentifier)
@@ -495,7 +518,11 @@ class AlphaModel:
 
             Trades could be still cancelled (zeroed out) by a risk model.
         """
-        return any([s for s in self.signals.values() if s.signal != 0])
+        return any(s for s in self.signals.values() if s.signal != 0)
+
+    def get_signal_count(self) -> int:
+        """How many signals we have generated in this cycle."""
+        return len([s for s in self.signals.values() if s.signal != 0])
 
     def has_any_position(self) -> bool:
         """For this cycle, are we going to do any trades.
@@ -507,7 +534,7 @@ class AlphaModel:
 
             Trades could be still cancelled (zeroed out) by a risk model.
         """
-        return any([s for s in self.signals.values() if s.position_target != 0])
+        return any(s for s in self.signals.values() if s.position_target != 0)
 
     def set_signal(
             self,
@@ -713,14 +740,23 @@ class AlphaModel:
 
             try:
                 concentration_capped_normal_weight = min(normal_weight, max_weight)
+
+                if concentration_capped_normal_weight != normal_weight:
+                    s.flags |= TradingPairSignalFlags.capped_by_concentration
+
+
             except TypeError as e:
                 raise TypeError(f"Cannot min({normal_weight}, {max_weight})") from e
+
             asked_position_size = concentration_capped_normal_weight * equity_left
             size_risk = size_risk_model.get_acceptable_size_for_position(
                 self.timestamp,
                 s.pair,
                 asked_position_size
             )
+
+            if size_risk.capped:
+                s.flags |= TradingPairSignalFlags.capped_by_pool_size
 
             logger.info(
                 "Position size risk, pair: %s, asked: %s, accepted: %s, diagnostics: %s",
@@ -1049,6 +1085,7 @@ class AlphaModel:
             )
             for s in self.iterate_signals():
                 s.position_adjust_ignored = True
+                s.flags |= TradingPairSignalFlags.max_adjust_too_small
             return []
 
         #  TODO: Break this massive for if spagetti to sub-functions
@@ -1092,6 +1129,7 @@ class AlphaModel:
                 trade_size = abs(dollar_diff)
                 if trade_size < invidiual_rebalance_min_threshold:
                     logger.info("Individual trade size too small, trade size is %s, our threshold %s", trade_size, invidiual_rebalance_min_threshold)
+                    s.flags |= TradingPairSignalFlags.individual_trade_size_too_small
                     continue
 
             if False:
@@ -1120,6 +1158,7 @@ class AlphaModel:
                             notes=f"Closing position, because the signal weight is below close position weight threshold: {signal}"
                         )
                         signal.position_id = current_position.position_id
+                        signal.flags |= TradingPairSignalFlags.closed
                     else:
                         logger.info("Zero signal, but no position to close")
                         signal.position_adjust_ignored = True
@@ -1208,6 +1247,24 @@ class AlphaModel:
 
         # Return all rebalance trades
         return trades
+
+    def get_flag_diagnostics_data(self) -> dict:
+        """Get statistics explanation to add to the report of alpha model thinking.
+
+        - See what diagnostics flags :py:class:`TradingPairSignalFlags` we have set on our generated signals
+
+        :return:
+            Dict of [flag, count]
+        """
+
+        result = Counter()
+
+        for flag in TradingPairSignalFlags:
+            for signal in self.signals.values():
+                if flag in signal.flags:
+                    result[flag] += 1
+
+        return result
 
 
 def format_signals(

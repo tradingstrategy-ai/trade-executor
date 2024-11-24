@@ -163,6 +163,10 @@ def decide_trades(
     portfolio_target_value = portfolio.get_total_equity() * value_allocated_to_positions
     alpha_model.calculate_target_positions(position_manager, portfolio_target_value)
 
+    # Added for tests
+    diagnostics = alpha_model.get_flag_diagnostics_data()
+    assert type(diagnostics) == dict
+
     # Shift portfolio from current positions to target positions
     # determined by the alpha signals (momentum)
     trades = alpha_model.generate_rebalance_trades_and_triggers(position_manager)
