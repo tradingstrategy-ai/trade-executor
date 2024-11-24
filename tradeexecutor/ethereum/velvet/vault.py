@@ -36,7 +36,6 @@ class VelvetVaultSyncModel(AddressSyncModel):
 
     def __init__(
         self,
-        pair_universe: PandasPairUniverse,
         vault: VelvetVault,
         hot_wallet: HotWallet | None,
     ):
@@ -53,7 +52,6 @@ class VelvetVaultSyncModel(AddressSyncModel):
         :param reserve_asset:
             The vault reserve asset
         """
-        self.pair_universe = pair_universe
         self.vault = vault
         self.hot_wallet = hot_wallet
 

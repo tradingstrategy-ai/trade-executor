@@ -64,7 +64,6 @@ def test_velvet_fetch_balances(
     pair_universe = velvet_test_vault_pair_universe
 
     sync_model = VelvetVaultSyncModel(
-        pair_universe=pair_universe,
         vault=base_example_vault,
         hot_wallet=None,
     )
@@ -112,7 +111,6 @@ def test_velvet_sync_positions_initial(
     assert pair_universe.get_count() == 2
 
     sync_model = VelvetVaultSyncModel(
-        pair_universe=pair_universe,
         vault=base_example_vault,
         hot_wallet=None,
     )
@@ -166,7 +164,6 @@ def test_velvet_sync_positions_deposit(
     pricing_model = velvet_test_vault_pricing_model
 
     sync_model = VelvetVaultSyncModel(
-        pair_universe=pair_universe,
         vault=base_example_vault,
         hot_wallet=None,
     )
