@@ -179,7 +179,11 @@ class EnzymeVaultSyncModel(SyncModel):
 
         """
         assert len(portfolio.reserves) == 1, "Safety check"
-        reserve_position = portfolio.get_reserve_position(asset)
+        try:
+            reserve_position = portfolio.get_reserve_position(asset)
+        except KeyError:
+            reserve_position = None
+
         if reserve_position is not None:
             return reserve_position
 
