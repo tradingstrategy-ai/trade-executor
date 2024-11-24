@@ -1132,7 +1132,7 @@ class AlphaModel:
                 trade_size = abs(dollar_diff)
                 if trade_size < invidiual_rebalance_min_threshold:
                     logger.info("Individual trade size too small, trade size is %s, our threshold %s", trade_size, invidiual_rebalance_min_threshold)
-                    ssignal.flags.add(TradingPairSignalFlags.individual_trade_size_too_small)
+                    signal.flags.add(TradingPairSignalFlags.individual_trade_size_too_small)
                     continue
 
             if False:
