@@ -1,3 +1,5 @@
+"""Helpers to deal with formatting text messages in decide_trades() diagnostics output"""
+
 import re
 
 

@@ -457,6 +457,12 @@ class AlphaModel:
     #:
     accepted_investable_equity: Optional[USDollarAmount] = None
 
+    #: How much money we left on a table because of the size risk on the positions
+    #:
+    #: Applies to lit pool size, not to concentration risk.
+    #:
+    size_risk_discarded_value: Optional[USDollarAmount] = None
+
     #: Determine the lower threshold for a position weight.
     #:
     #: Clean up "dust" by explicitly closing positions if they fall too small.
@@ -493,12 +499,12 @@ class AlphaModel:
         """
         return self.get_signal_by_pair_id(pair.internal_id)
 
-    def get_signals_sorted_by_weight(self) -> Iterable[TradingPairSignal]:
+    def get_signals_sorted_by_weight(self, reverse=True) -> Iterable[TradingPairSignal]:
         """Get the signals sorted by the weight.
 
         Return the highest weight first.
         """
-        return sorted(self.signals.values(), key=lambda s: s.raw_weight, reverse=True)
+        return sorted(self.signals.values(), key=lambda s: s.raw_weight, reverse=reverse)
 
     def get_debug_print(self) -> str:
         """Present the alpha model in a format suitable for the console."""
@@ -731,6 +737,8 @@ class AlphaModel:
         total_accetable_investments = 0
         equity_left = investable_equity
 
+        total_missed_investments = 0
+
         for pair_id, normal_weight in normalised.most_common():
 
             # NOTE: Here we might have a conflict between given normal weight
@@ -761,6 +769,8 @@ class AlphaModel:
             if size_risk.capped:
                 s.flags.add(TradingPairSignalFlags.capped_by_pool_size)
 
+            total_missed_investments += (size_risk.asked_size - size_risk.accepted_size)
+
             logger.info(
                 "Position size risk, pair: %s, asked: %s, accepted: %s, diagnostics: %s",
                 s.pair,
@@ -780,6 +790,7 @@ class AlphaModel:
         # Store our risk adjusted sizes
         self.investable_equity = investable_equity
         self.accepted_investable_equity = total_accetable_investments
+        self.size_risk_discarded_value = total_missed_investments
 
         # Recalculate normals based on size-risk adjusted USD values
         clipped_weights = {}
