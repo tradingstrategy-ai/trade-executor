@@ -165,7 +165,7 @@ def decide_trades(
 
     # Added for tests
     diagnostics = alpha_model.get_flag_diagnostics_data()
-    assert type(diagnostics) == dict
+    assert isinstance(diagnostics, dict)
 
     # Shift portfolio from current positions to target positions
     # determined by the alpha signals (momentum)
