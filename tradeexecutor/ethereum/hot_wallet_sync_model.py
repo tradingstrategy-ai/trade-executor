@@ -12,6 +12,7 @@ from eth_defi.provider.broken_provider import get_almost_latest_block_number
 from tradeexecutor.ethereum.address_sync_model import AddressSyncModel
 from tradeexecutor.ethereum.onchain_balance import fetch_address_balances
 from tradeexecutor.state.balance_update import BalanceUpdate
+from tradeexecutor.state.types import JSONHexAddress
 from tradingstrategy.chain import ChainId
 from web3 import Web3
 
@@ -46,6 +47,9 @@ class HotWalletSyncModel(AddressSyncModel):
         return self.hot_wallet
 
     def get_token_storage_address(self) -> Optional[str]:
+        return self.hot_wallet.address
+
+    def get_main_address(self) -> Optional[JSONHexAddress]:
         return self.hot_wallet.address
 
     def resync_nonce(self):
