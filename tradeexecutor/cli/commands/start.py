@@ -618,13 +618,20 @@ def start(
             )
             raise
         else:
-            # Execution is dead.
-            # Sleep forever, let the webhook still serve the requests.
-            logger.error(
-                "Main loop terminated. Entering to the web server wait mode. Run-time version was:\n%s",
-                run_state.version,
-            )
-            time.sleep(3600*24*365)
+
+            if run_single_cycle:
+                logger.error(
+                    "run_single_cycle active - exiting after a crash"
+                )
+            else:
+
+                # Execution is dead.
+                # Sleep forever, let the webhook still serve the requests.
+                logger.error(
+                    "Main loop terminated. Entering to the web server wait mode. Run-time version was:\n%s",
+                    run_state.version,
+                )
+                time.sleep(3600*24*365)
     finally:
         if server:
             logger.info("Closing the web server")
