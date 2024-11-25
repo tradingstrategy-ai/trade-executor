@@ -85,11 +85,12 @@ class EthereumPricingModel(PricingModel):
         exchange_address: str,
     ) -> TradingPairIdentifier:
         """Find a trading pair we can use to convert quote token to USD."""
+        logger.info("Finding exchange rate pair for exchange: %s, token:%s", exchange_address, token)
         for pair in self.pair_universe.iterate_pairs():
             if pair.base_token_address == token.address and pair.quote_token_symbol in ("USDT", "USDC") and pair.exchange_address == exchange_address:
                 return translate_trading_pair(pair)
 
-        raise RuntimeError(f"Pair universe does not contain USDT/USDC pair for token: {token}")
+        raise RuntimeError(f"Pair universe does not contain stablecoin pair for token: {token} to do three hop trades")
 
     def get_pair_for_id(self, internal_id: int) -> Optional[TradingPairIdentifier]:
         """Look up a trading pair.
