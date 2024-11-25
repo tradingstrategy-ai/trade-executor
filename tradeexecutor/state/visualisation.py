@@ -383,12 +383,18 @@ class Visualisation:
             assert isinstance(pair, TradingPairIdentifier), f"Unexpected pair type, got {pair} of type {type(pair)}"
             self.pair_ids.append(pair.internal_id)
 
-    def add_message(self,
-                    timestamp: datetime.datetime,
-                    content: str):
+    def add_message(
+        self,
+        timestamp: datetime.datetime,
+        content: str
+    ):
         """Write a debug message.
 
-        - Each message is associated to a different timepoint.
+        - Each message is associated to a different timepoint
+
+        - Multiple messages per timepoint are possible
+
+        - The first message is in strategy thinking Discord/Telegram logging output for each cycle
 
         :param timestamp:
             The current strategy cycle timestamp
@@ -397,10 +403,27 @@ class Visualisation:
             The contents of the message
 
         """
+        assert type(content) == str, f"Got {type(content)}"
         timestamp = convert_and_validate_timestamp_as_int(timestamp)
         timepoint_messages = self.messages.get(timestamp, list())
         timepoint_messages.append(content)
         self.messages[timestamp] = timepoint_messages
+
+    def get_messages_tail(self, count: int) -> dict[datetime.datetime, str]:
+        """Get N latest messages.
+
+        - If there are multiple messages per timepoint get only one
+        """
+        message_tuples = sorted(self.messages.items(), key=lambda x: x[0], reverse=True)
+        result = {}
+        for msg_data in message_tuples[0:count]:
+            unix_time = msg_data[0]
+            messages = msg_data[1]
+            if messages:
+                timestamp = datetime.datetime.utcfromtimestamp(unix_time)
+                result[timestamp] = messages[0]
+
+        return result
 
     def add_calculations(
         self,
