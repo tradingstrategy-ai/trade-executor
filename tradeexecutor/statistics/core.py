@@ -89,7 +89,7 @@ def calculate_closed_position_statistics(
             # TODO:
             # We should really abort here with an exception
             # but we have some legacy data that prevents this
-            logger.warning(f"PositionStatistics lacked value at open for {position}.\n"
+            logger.info(f"PositionStatistics lacked value at open for {position}.\n"
                            f"Stats:\n"
                            f"{position_stats}")
 

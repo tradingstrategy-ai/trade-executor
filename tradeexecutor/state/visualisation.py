@@ -517,7 +517,7 @@ class Visualisation:
             The plot label
 
         :param kind:
-            The plot typre
+            The plot type
 
         :param value:
             Current value e.g. price as USD
