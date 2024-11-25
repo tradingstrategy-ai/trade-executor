@@ -285,6 +285,8 @@ class TradingPosition(GenericPosition):
     def __repr__(self):
         if self.is_pending():
             return f"<Pending position #{self.position_id} {self.pair} ${self.get_value()}>"
+        elif self.is_frozen():
+            return f"<Frozen position #{self.position_id} {self.pair} ${self.get_value()}>"
         elif self.is_open():
             return f"<Open position #{self.position_id} {self.pair} ${self.get_value()}>"
         else:
