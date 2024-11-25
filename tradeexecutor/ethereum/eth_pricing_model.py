@@ -283,7 +283,10 @@ class EthereumPricingModel(PricingModel):
             return float(quote_token_tvl)
 
         # Find exchange rate pool
-        exchange_rate_pair = self._find_exchange_rate_usd_pair(pair.quote, exchange_address=pair.exchange_address)
+        try:
+            exchange_rate_pair = self._find_exchange_rate_usd_pair(pair.quote, exchange_address=pair.exchange_address)
+        except Exception as e:
+            raise RuntimeError(f"Did not find exchange rate pair for non-stablecoin pair: {pair}") from e
 
         # Get price at the exchange rate pool
         exchange_rate_price_data = self.get_buy_price(
