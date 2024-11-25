@@ -77,7 +77,6 @@ class EthereumPoolRevaluator(ValuationModel):
             else:
                 # Frozen positions may get quantity as zero?
                 new_price = 0
-                old_value = 0
                 new_value = 0
 
             evt = ValuationUpdate(
