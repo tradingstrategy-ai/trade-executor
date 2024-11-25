@@ -69,12 +69,16 @@ class EthereumPoolRevaluator(ValuationModel):
             assert quantity >= 0, f"Trying to value position with non-positive quantity: {position}, {ts}, {self.__class__.__name__}"
 
             old_price = position.last_token_price
-            price_structure = self.pricing_model.get_sell_price(ts, pair, quantity)
-
-            new_price = price_structure.price
-
             old_value = position.get_value()
-            new_value = position.revalue_base_asset(ts, float(new_price))
+            if quantity != 0:
+                price_structure = self.pricing_model.get_sell_price(ts, pair, quantity)
+                new_price = price_structure.price
+                new_value = position.revalue_base_asset(ts, float(new_price))
+            else:
+                # Frozen positions may get quantity as zero?
+                new_price = 0
+                old_value = 0
+                new_value = 0
 
             evt = ValuationUpdate(
                 created_at=ts,
