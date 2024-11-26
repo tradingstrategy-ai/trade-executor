@@ -320,7 +320,7 @@ class PandasTraderRunner(StrategyRunner):
             messages = visualisation.messages.get(unix_timestamp)
             if messages:
                 thinking_message = messages[0]
-                print(textwrap.indent(thinking_message, "    "))
+                logger.trade(textwrap.indent(thinking_message, "    "))
 
             logger.trade(buf.getvalue())
 
