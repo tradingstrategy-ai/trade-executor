@@ -464,9 +464,10 @@ def start(
                     timed_task_context_manager=timed_task,
                     engine_version=mod.trading_strategy_engine_version,
                 )
-                if mod.parameters:
-                    universe_options = UniverseOptions.from_strategy_parameters_class(mod.parameters, execution_context)
-                    logger.info("UniverseOptions set to: %s", universe_options)
+
+            if mod.parameters:
+                universe_options = UniverseOptions.from_strategy_parameters_class(mod.parameters, execution_context)
+                logger.info("UniverseOptions set to: %s", universe_options)
 
         if mod.parameters:
             logger.trade(

@@ -13,9 +13,11 @@ from web3 import Web3
 
 from eth_defi.hotwallet import HotWallet
 from eth_defi.provider.anvil import AnvilLaunch, launch_anvil
+from eth_defi.provider.multi_provider import create_multi_provider_web3
 from eth_defi.token import TokenDetails, fetch_erc20_details
 from eth_defi.trace import assert_transaction_success_with_explanation
 from tradeexecutor.cli.commands.app import app
+from tradeexecutor.state.state import State
 
 JSON_RPC_ETHEREUM = os.environ.get("JSON_RPC_ETHEREUM")
 TRADING_STRATEGY_API_KEY = os.environ.get("TRADING_STRATEGY_API_KEY")
@@ -39,6 +41,12 @@ def anvil(usdc_whale) -> AnvilLaunch:
         yield anvil
     finally:
         anvil.close()
+
+
+@pytest.fixture()
+def web3(anvil) -> Web3:
+    web3 = create_multi_provider_web3(anvil.json_rpc_url)
+    return web3
 
 
 @pytest.fixture()
@@ -99,8 +107,8 @@ def environment(
     state_file,
 ):
     environment = {
-        "EXECUTOR_ID": "test_enzyme_vault_arbitrum_fork",
-        "NAME": "test_enzyme_vault_arbitrum_fork",
+        "EXECUTOR_ID": "test_memecoin_index",
+        "NAME": "test_memecoin_index",
         "STRATEGY_FILE": strategy_file.as_posix(),
         "PRIVATE_KEY": hot_wallet.account.key.hex(),
         "JSON_RPC_ETHEREUM": anvil.json_rpc_url,
@@ -122,12 +130,26 @@ def test_ethereum_mainnet_fork_memecoin_index(
     environment: dict,
     user_1,
     mocker,
+    state_file,
 ):
     """Run a single cycle of Memecoin index strategy to see everything works.
 
+    - Run against known block height of Ethereum mainnet
+
     - Ensure the strategy decide_trades loop does not crash
+
+    - The test is not exactly stable, as blockchain is in a historical state,
+      but loaded market data is the latest. There is no way to simulate
+      "load live market data but in the point of history" because it would defeat
+      the purpose of loading live data. When the test starts keep falling,
+      just fix and bump the block height forward.
     """
     cli = get_command(app)
     mocker.patch.dict("os.environ", environment, clear=True)
     cli.main(args=["init"], standalone_mode=False)
     cli.main(args=["start"], standalone_mode=False)
+
+    state = State.read_json_file(state_file)
+    assert len(state.visualisation.get_messages_tail(5)) == 1
+
+

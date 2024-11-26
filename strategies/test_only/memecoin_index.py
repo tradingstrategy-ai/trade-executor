@@ -42,6 +42,7 @@ from tradingstrategy.types import TokenSymbol
 from tradeexecutor.state.identifier import TradingPairIdentifier
 from tradeexecutor.utils.dedent import dedent_any
 
+
 #
 # Strategy parametrers
 #
@@ -51,7 +52,9 @@ trading_strategy_engine_version = "0.5"
 
 
 class Parameters:
+
     id = "ethereum-memecoin-vol-basket"
+
 
     # We trade 1h candle
     candle_time_bucket = TimeBucket.h1
@@ -75,7 +78,7 @@ class Parameters:
     individual_rebalance_min_threshold_usd = 10  # Don't make buys less than this amount
     min_volatility_threshold = 0.02  # Set to have Sharpe ratio threshold for the inclusion
     per_position_cap_of_pool = 0.01  # Never own more than % of the lit liquidity of the trading pool
-    max_concentration = 0.50  # How large % can one asset be in a portfolio once
+    max_concentration = 0.50 # How large % can one asset be in a portfolio once
 
     #
     # Inclusion criteria parameters:
@@ -89,7 +92,7 @@ class Parameters:
     rolling_volume_bars = pd.Timedelta("7d") // candle_time_bucket.to_timedelta()
     rolling_liquidity_bars = pd.Timedelta("7d") // candle_time_bucket.to_timedelta()
     ewm_span = 200  # How many bars to use in exponential moving average for trailing sharpe smoothing
-    min_volume = 200_000  # USD
+    min_volume = 200_000   # USD
     min_liquidity = 200_000  # USD
     min_token_sniffer_score = 30  # Scam filter
 
@@ -104,10 +107,9 @@ class Parameters:
     # Live only
     #
     routing = TradeRouting.default
-    required_history_period = datetime.timedelta(days=2 * 14 + 1)
+    required_history_period = datetime.timedelta(days=2*14 + 1)
     slippage_tolerance = 0.0060  # 0.6%
     assummed_liquidity_when_data_missings = 10_000
-
 
 #
 # Trading universe
@@ -121,12 +123,15 @@ SUPPORTING_PAIRS = [
     # (ChainId.ethereum, "uniswap-v2", "WETH", "USDC", 0.0030),  # TODO: Needed until we have universal routing
 ]
 
+#: Which pair we use as the volatility benchmark for the inclusion criteria
+VOLATILITY_BENCHMARK_PAIR = (ChainId.ethereum, "uniswap-v2", "WETH", "USDC")
+
 
 def create_trading_universe(
-        timestamp: datetime.datetime,
-        client: Client,
-        execution_context: ExecutionContext,
-        universe_options: UniverseOptions,
+    timestamp: datetime.datetime,
+    client: Client,
+    execution_context: ExecutionContext,
+    universe_options: UniverseOptions,
 ) -> TradingStrategyUniverse:
     """Create the trading universe.
 
@@ -223,13 +228,12 @@ def create_trading_universe(
 
     return strategy_universe
 
-
 #
 # Strategy logic
 #
 
 def decide_trades(
-        input: StrategyInput
+    input: StrategyInput
 ) -> list[TradeExecution]:
     """For each strategy tick, generate the list of trades."""
     parameters = input.parameters
@@ -247,8 +251,7 @@ def decide_trades(
         na_conversion=False,
     )
 
-    btc_desc = (ChainId.ethereum, "uniswap-v3", "WBTC", "USDT")
-    btc_pair = strategy_universe.get_pair_by_human_description(btc_desc)
+    btc_pair = strategy_universe.get_pair_by_human_description(VOLATILITY_BENCHMARK_PAIR)
     btc_vol = indicators.get_indicator_value("volatility_ewm", pair=btc_pair)
 
     max_vol = (0, None)  # Diagnostics
@@ -388,8 +391,8 @@ def decide_trades(
 #
 
 def trailing_sharpe(
-        close: pd.Series,
-        window_length_bars: int
+    close: pd.Series,
+    window_length_bars: int
 ) -> pd.Series:
     """Calculate trailing 30d or so returns / standard deviation.
 
@@ -409,11 +412,11 @@ def trailing_sharpe(
 
 
 def trailing_sharpe_ewm(
-        close: pd.Series,
-        window_length_bars: int,
-        ewm_span: float,
-        pair: TradingPairIdentifier,
-        dependency_resolver: IndicatorDependencyResolver,
+    close: pd.Series,
+    window_length_bars: int,
+    ewm_span: float,
+    pair: TradingPairIdentifier,
+    dependency_resolver: IndicatorDependencyResolver,
 ) -> pd.Series:
     """Expontentially weighted moving average for Sharpe.
 
@@ -442,7 +445,7 @@ def volatility_ewm(close: pd.Series, window_length_bars: int) -> pd.Series:
     # We are operating on 1h candles, 14d window
     price_diff = close.pct_change()
     rolling_std = price_diff.rolling(window=window_length_bars).std()
-    ewm = rolling_std.ewm(span=14 * 8)
+    ewm = rolling_std.ewm(span=14*8)
     return ewm.mean()
 
 
@@ -470,14 +473,14 @@ def rolling_liquidity_avg(close: pd.Series, window_length_bars: int) -> pd.Serie
     - Used in inclusion criteria
     """
     rolling_liquidity_close = close.rolling(window=window_length_bars).mean()
-    return rolling_liquidity_close
+    return  rolling_liquidity_close
 
 
 def volume_inclusion_criteria(
-        strategy_universe: TradingStrategyUniverse,
-        min_volume: USDollarAmount,
-        window_length_bars: int,
-        dependency_resolver: IndicatorDependencyResolver,
+    strategy_universe: TradingStrategyUniverse,
+    min_volume: USDollarAmount,
+    window_length_bars: int,
+    dependency_resolver: IndicatorDependencyResolver,
 ) -> pd.Series:
     """Calculate pair volume inclusion criteria.
 
@@ -508,10 +511,10 @@ def volume_inclusion_criteria(
 
 
 def included_pair_count(
-        strategy_universe: TradingStrategyUniverse,
-        min_volume: USDollarAmount,
-        window_length_bars: int,
-        dependency_resolver: IndicatorDependencyResolver
+    strategy_universe: TradingStrategyUniverse,
+    min_volume: USDollarAmount,
+    window_length_bars: int,
+    dependency_resolver: IndicatorDependencyResolver
 ) -> pd.Series:
     """Included pairs is a combination of available pairs and inclusion criteria.
 
@@ -528,10 +531,10 @@ def included_pair_count(
 
 
 def create_indicators(
-        timestamp: datetime.datetime | None,
-        parameters: StrategyParameters,
-        strategy_universe: TradingStrategyUniverse,
-        execution_context: ExecutionContext
+    timestamp: datetime.datetime | None,
+    parameters: StrategyParameters,
+    strategy_universe: TradingStrategyUniverse,
+    execution_context: ExecutionContext
 ):
     """Create indicator descriptions.
 
@@ -561,12 +564,14 @@ def create_indicators(
         IndicatorSource.close_price,
     )
 
+
     indicator_set.add(
         "volatility_ewm",
         volatility_ewm,
         {"window_length_bars": parameters.rebalance_volalitity_bars},
         IndicatorSource.close_price,
     )
+
 
     indicator_set.add(
         "mean_returns",
@@ -640,7 +645,7 @@ The strategy attempts to:
     3. Remain fully invested subject to Liquidity Constraints. A Cash position will emerge if liquidity constraints require < 100% investment.
     4. Any cash position will be invested in Ethena's USDe.
     5. Rebalance every 4 hours.
-
+    
 ## Index eligibility criteria
 
 Liquidity Contraints:
@@ -651,7 +656,7 @@ Liquidity Contraints:
         b. Volatility Filtering: An Index Constituent must have volatility >= the volatility of Bitcoin (`Volatility(BTC/USDC, t)`) in addition to being greater than 10% annualised volatilty.
 
 ## Index weighting
-
+        
 Volatility Scaling of the Weights:
     - The weights of the Index Constituents are scaled for volatility.
     - The Volatility of each Index Constituent (`i`) at the current time (`t`) is calculated using the previous Volatility Estimator `Volatility(i, t) = VolatilityEstimator(i, t - 1) * sqrt(365 * DailyObservations)`. This is annualised for ease of analysis.
