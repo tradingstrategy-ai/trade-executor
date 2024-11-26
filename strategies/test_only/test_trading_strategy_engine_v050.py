@@ -54,6 +54,7 @@ class Parameters:
     initial_cash = 10_000
     time_bucket = TimeBucket.d1
     rsi_length = 21
+    required_history_period = datetime.timedelta(days=1)
 
 
 def decide_trades(
