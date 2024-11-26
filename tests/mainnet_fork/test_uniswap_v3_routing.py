@@ -960,6 +960,9 @@ def test_stateful_routing_two_leg_multi_node_broadcast_force_mev_blocker(
 
     trader = PairUniverseTestTrader(state)
 
+    nonce = web3.eth.get_transaction_count(hot_wallet.address)
+    assert nonce == 0
+
     # Buy eth via usdc -> polygon pool for 100 USD
     trades = [trader.buy(eth_usdc_trading_pair, Decimal(100))]
 
