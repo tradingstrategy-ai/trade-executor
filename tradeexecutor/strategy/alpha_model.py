@@ -463,6 +463,23 @@ class AlphaModel:
     #:
     size_risk_discarded_value: Optional[USDollarAmount] = None
 
+    #: The largest position adjust in this cycle.
+    #:
+    #: What is the largest USD value any individual position would change in this cycle.
+    #:
+    #: Diagnostics output value.
+    #:
+    #: If this is below :py:attr:`position_adjust_threshold`, no any rebalance was made.
+    #:
+    max_position_adjust_usd: Optional[USDollarAmount] = None
+
+    #: What as the position adjust threshold in this cycle.
+    #:
+    #: Diagnostics output value.
+    #:
+    #: If this is above :py:attr:`max_position_adjust_usd`, no any rebalance was made.
+    position_adjust_threshold_usd: Optional[USDollarAmount] = None
+
     #: Determine the lower threshold for a position weight.
     #:
     #: Clean up "dust" by explicitly closing positions if they fall too small.
@@ -545,6 +562,18 @@ class AlphaModel:
             Trades could be still cancelled (zeroed out) by a risk model.
         """
         return any(s for s in self.signals.values() if s.position_target != 0)
+
+    def is_rebalance_triggered(self) -> bool:
+        """Did the consistency of the portfolio change enough in this cycle to do a rebalance.
+
+        - Individual trades might be still considered individually too small to perform
+        """
+        assert self.max_position_adjust_usd is not None, "Call generate_rebalance_trades_and_triggers() first"
+        if self.max_position_adjust_usd == 0:
+            # No volatile signals
+            return False
+        assert self.position_adjust_threshold_usd, "Call generate_rebalance_trades_and_triggers() first"
+        return self.max_position_adjust_usd >= self.position_adjust_threshold_usd
 
     def set_signal(
             self,
@@ -1091,6 +1120,8 @@ class AlphaModel:
         #    Signal #2 Signal #225 pair:BTC-USDT old weight:0.3885 old value:5,893.356489256234 raw signal:17.7803 normalised weight:0.3556 new value:5,395.091179617347 adjust:-498.26530963888763
 
         max_diff = max((abs(s.position_adjust_usd) for s in self.iterate_signals()), default=0)
+        self.max_position_adjust_usd = max_diff
+        self.position_adjust_threshold_usd = min_trade_threshold
         if max_diff < min_trade_threshold:
             logger.info(
                 "Total adjust difference is %f USD, our threshold is %f USD, ignoring all the trades",

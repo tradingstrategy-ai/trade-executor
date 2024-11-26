@@ -31,6 +31,7 @@ from tradingstrategy.pair import DEXPair, PandasPairUniverse, resolve_pairs_base
     filter_for_exchanges, filter_for_quote_tokens, StablecoinFilteringMode, filter_for_stablecoins, \
     HumanReadableTradingPairDescription, filter_for_chain, filter_for_base_tokens, filter_for_exchange, filter_for_trading_fee
 from tradingstrategy.timebucket import TimeBucket
+from tradingstrategy.transport.cache import OHLCVCandleType
 from tradingstrategy.types import TokenSymbol, NonChecksummedAddress
 from tradingstrategy.universe import Universe
 from tradingstrategy.utils.groupeduniverse import filter_for_pairs, NoDataAvailable
@@ -2023,6 +2024,7 @@ def load_partial_data(
     universe_options: UniverseOptions,
     liquidity=False,
     liquidity_time_bucket: TimeBucket | None = None,
+    liquidity_query_type: OHLCVCandleType = OHLCVCandleType.tvl_v1,
     stop_loss_time_bucket: Optional[TimeBucket] = None,
     required_history_period: datetime.timedelta | None = None,
     lending_reserves: LendingReserveUniverse | Collection[LendingReserveDescription] | None = None,
@@ -2114,6 +2116,11 @@ def load_partial_data(
         Granularity of loaded TVL data.
 
         If not given use `time_bucket`.
+
+    :param liquidity_query_type:
+        Whether to use new-style or old-style data for TVL.
+
+        See :py:class:`OHLCVCandleType` for details.
 
     :param lending_reserves:
         Set true to load lending reserve data as well
@@ -2304,6 +2311,7 @@ def load_partial_data(
                 progress_bar_description=liquidity_progress_bar_desc,
                 start_time=data_load_start_at,
                 end_time=end_at,
+                query_type=liquidity_query_type,
             )
         else:
             liquidity_time_bucket = None
