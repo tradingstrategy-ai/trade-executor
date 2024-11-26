@@ -837,6 +837,10 @@ class IndicatorResult:
     def definition(self) -> IndicatorDefinition:
         return self.indicator_key.definition
 
+    def get_generation_error_message(self) -> str | None:
+        """Get error message if we somehow failed to generate this data."""
+        return self.data.attrs.get("error")
+
 
 IndicatorResultMap: TypeAlias = dict[IndicatorKey, IndicatorResult]
 
@@ -1078,13 +1082,15 @@ def _calculate_and_save_indicator_result(
                     raise NotImplementedError(f"Unsupported input source {key.pair} {key.definition} {indicator.source}")
 
             if data is None:
-                logger.warning("Indicator %s generated empty data for pair %s. Input data length is %d candles.", key.definition.name, key.pair, len(input))
+                error_message = f"Indicator {key.definition.name} generated empty data for pair {key.pair}. Input data length is {len(input)} rows."
+                logger.warning(error_message)
                 data = pd.Series(dtype="float64", index=pd.DatetimeIndex([]))
+                data.attrs["error"] = error_message
 
         except PairCandlesMissing as e:
-            logger.warning("Indicator data %s not generated for pair %s because of lack of OHLCV data. Exception %s", key.definition.name, key.pair, e)
+            logger.info("Indicator data %s not generated for pair %s because of lack of OHLCV data. Exception %s", key.definition.name, key.pair, e)
             data = pd.Series(dtype="float64", index=pd.DatetimeIndex([]))
-
+            data.attrs["error"] = str(e)
 
     else:
         # Calculate indicator over the whole universe
