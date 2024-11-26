@@ -463,6 +463,23 @@ class AlphaModel:
     #:
     size_risk_discarded_value: Optional[USDollarAmount] = None
 
+    #: The largest position adjust in this cycle.
+    #:
+    #: What is the largest USD value any individual position would change in this cycle.
+    #:
+    #: Diagnostics output value.
+    #:
+    #: If this is below :py:attr:`position_adjust_threshold`, no any rebalance was made.
+    #:
+    max_position_adjust_usd: Optional[USDollarAmount] = None
+
+    #: What as the position adjust threshold in this cycle.
+    #:
+    #: Diagnostics output value.
+    #:
+    #: If this is above :py:attr:`max_position_adjust_usd`, no any rebalance was made.
+    position_adjust_threshold_usd: Optional[USDollarAmount] = None
+
     #: Determine the lower threshold for a position weight.
     #:
     #: Clean up "dust" by explicitly closing positions if they fall too small.
@@ -545,6 +562,15 @@ class AlphaModel:
             Trades could be still cancelled (zeroed out) by a risk model.
         """
         return any(s for s in self.signals.values() if s.position_target != 0)
+
+    def is_rebalance_triggered(self) -> bool:
+        """Did the consistency of the portfolio change enough in this cycle to do a rebalance.
+
+        - Individual trades might be still considered individually too small to perform
+        """
+        assert self.max_position_adjust_usd
+        assert self.position_adjust_threshold_usd
+        return self.position_adjust_threshold_usd >= self.max_position_adjust_usd
 
     def set_signal(
             self,
@@ -1100,6 +1126,8 @@ class AlphaModel:
             for s in self.iterate_signals():
                 s.position_adjust_ignored = True
                 s.flags.add(TradingPairSignalFlags.max_adjust_too_small)
+            self.max_position_adjust_usd = max_diff
+            self.position_adjust_threshold_usd = min_trade_threshold
             return []
 
         #  TODO: Break this massive for if spagetti to sub-functions
