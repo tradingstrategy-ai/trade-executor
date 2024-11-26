@@ -60,6 +60,28 @@ def wbtc_weth_spot_pair(quickswap_deployment, asset_wbtc, asset_weth) -> Trading
     )
 
 
+@pytest.fixture
+def wmatic_weth_spot_pair(uniswap_v3_deployment, asset_wmatic, asset_weth) -> TradingPairIdentifier:
+    return TradingPairIdentifier(
+        asset_wmatic,
+        asset_weth,
+        "0x86f1d8390222a3691c28938ec7404a1661e618e0",
+        uniswap_v3_deployment.factory.address,
+        fee=0.0005,
+    )
+
+
+@pytest.fixture
+def weth_usdc_spot_pair(uniswap_v3_deployment, asset_usdc, asset_weth) -> TradingPairIdentifier:
+    return TradingPairIdentifier(
+        asset_weth,
+        asset_usdc,
+        "0x45dda9cb7c25131df268515131f647d726f50608",
+        uniswap_v3_deployment.factory.address,
+        fee=0.0005,
+    )
+
+
 @pytest.fixture()
 def strategy_universe(
     asset_usdc,
@@ -69,6 +91,7 @@ def strategy_universe(
 
     pairs = [
         (ChainId.polygon, "quickswap", "WBTC", "WETH", 0.003),
+        (ChainId.polygon, "uniswap-v3", "WMATIC", "WETH", 0.0005),
         (ChainId.polygon, "uniswap-v3", "WETH", "USDC", 0.0005),
         (ChainId.polygon, "quickswap", "WETH", "USDC", 0.003),
     ]
@@ -87,7 +110,7 @@ def strategy_universe(
     return TradingStrategyUniverse.create_from_dataset(dataset, asset_usdc.address)
 
 
-@flaky.flaky
+# @flaky.flaky
 def test_generic_routing_multihops_trade(
     web3: Web3,
     hot_wallet: HotWallet,
@@ -96,11 +119,18 @@ def test_generic_routing_multihops_trade(
     generic_pricing_model: GenericPricing,
     asset_usdc: AssetIdentifier,
     asset_wbtc: AssetIdentifier,
+    asset_wmatic: AssetIdentifier,
     wbtc_weth_spot_pair: TradingPairIdentifier,
     weth_usdc_spot_pair: TradingPairIdentifier,
+    wmatic_weth_spot_pair: TradingPairIdentifier,
     execution_model: EthereumExecution,
 ):
-    """Open Quickswap position using 3-way trade: USDC -> WETH -> WBTC."""
+    """
+    Open Quickswap position using 3-way trade: USDC -> WETH -> WBTC.
+    Make sure the trade is routed correctly in Quickswap although
+    there is an Uniswap V3 pair available.
+    NOTE: at the moment, we do not route support mixed route yet.
+    """
 
     routing_model = generic_routing_model
 
@@ -161,6 +191,37 @@ def test_generic_routing_multihops_trade(
 
     assert len(state.portfolio.open_positions) == 1
 
+    p = state.portfolio.open_positions[1]
+    assert p.get_opening_price() == pytest.approx(42392.42498236475)
+
+    # Check that we have enough USDC to buy MATIC
+    wmatic_price = generic_pricing_model.get_buy_price(
+        datetime.datetime.utcnow(),
+        wmatic_weth_spot_pair,
+        Decimal(500),
+    )
+    assert wmatic_price.price == pytest.approx(0.8526643063862225)
+    
+    # Buy MATIC on Uniswap V3, route through WETH
+    trades = position_manager.open_spot(
+        wmatic_weth_spot_pair,
+        500.0,
+    )
+    execution_model.execute_trades(
+        datetime.datetime.utcnow(),
+        state,
+        trades,
+        routing_model,
+        routing_state,
+        check_balances=True,
+    )
+    assert all([t.is_success() for t in trades])
+
+    assert len(state.portfolio.open_positions) == 2
+
+    p = state.portfolio.open_positions[2]
+    assert p.get_opening_price() == pytest.approx(0.8526643063862225)
+
     # Check our wallet holds all tokens we expect.
     # Note that these are live prices from mainnet,
     # so we do a ranged check.
@@ -170,8 +231,10 @@ def test_generic_routing_multihops_trade(
         {
             asset_usdc.address,
             asset_wbtc.address,
+            asset_wmatic.address,
         },
         decimalise=True,
     )
     assert 0 < balances[asset_wbtc.address] < 1000, f"Got balance: {balances}"
-    assert balances[asset_usdc.address] == pytest.approx(9_500), f"Got balance: {balances}"
+    assert 0 < balances[asset_wmatic.address] < 1000, f"Got balance: {balances}"
+    assert balances[asset_usdc.address] == pytest.approx(9_000), f"Got balance: {balances}"
