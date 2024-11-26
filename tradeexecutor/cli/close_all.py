@@ -14,6 +14,7 @@ from web3 import Web3
 from tradeexecutor.analysis.position import display_positions
 from tradeexecutor.ethereum.enzyme.vault import EnzymeVaultSyncModel
 from tradeexecutor.strategy.sync_model import SyncModel
+from tradingstrategy.types import Percent
 from tradingstrategy.universe import Universe
 from tradingstrategy.pair import HumanReadableTradingPairDescription
 
@@ -41,6 +42,7 @@ def close_all(
     universe: TradingStrategyUniverse,
     routing_model: RoutingModel,
     routing_state: RoutingState,
+    slippage_tolerance: Percent,
     interactive=True,
 ):
     """Close all positions.
@@ -104,6 +106,7 @@ def close_all(
         universe.data_universe,
         state,
         pricing_model,
+        default_slippage_tolerance=slippage_tolerance,
     )
 
     # The message left on the positions that were closed
