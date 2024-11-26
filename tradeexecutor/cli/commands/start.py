@@ -623,6 +623,7 @@ def start(
                 logger.error(
                     "run_single_cycle active - exiting after a crash"
                 )
+                raise
             else:
 
                 # Execution is dead.

@@ -573,7 +573,7 @@ class AlphaModel:
             # No volatile signals
             return False
         assert self.position_adjust_threshold_usd, "Call generate_rebalance_trades_and_triggers() first"
-        return self.position_adjust_threshold_usd >= self.max_position_adjust_usd
+        return self.max_position_adjust_usd >= self.position_adjust_threshold_usd
 
     def set_signal(
             self,
