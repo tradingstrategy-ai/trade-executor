@@ -173,6 +173,7 @@ def close_all(
         universe,
         runner.routing_model,
         routing_state,
+        slippage_tolerance=mod.parameters.get("slippage_tolerance") or 0.01,
         interactive=interactive,
     )
 
