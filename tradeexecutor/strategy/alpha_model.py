@@ -568,8 +568,11 @@ class AlphaModel:
 
         - Individual trades might be still considered individually too small to perform
         """
-        assert self.max_position_adjust_usd
-        assert self.position_adjust_threshold_usd
+        assert self.max_position_adjust_usd is not None, "Call generate_rebalance_trades_and_triggers() first"
+        if self.max_position_adjust_usd == 0:
+            # No volatile signals
+            return False
+        assert self.position_adjust_threshold_usd, "Call generate_rebalance_trades_and_triggers() first"
         return self.position_adjust_threshold_usd >= self.max_position_adjust_usd
 
     def set_signal(
@@ -1117,6 +1120,8 @@ class AlphaModel:
         #    Signal #2 Signal #225 pair:BTC-USDT old weight:0.3885 old value:5,893.356489256234 raw signal:17.7803 normalised weight:0.3556 new value:5,395.091179617347 adjust:-498.26530963888763
 
         max_diff = max((abs(s.position_adjust_usd) for s in self.iterate_signals()), default=0)
+        self.max_position_adjust_usd = max_diff
+        self.position_adjust_threshold_usd = min_trade_threshold
         if max_diff < min_trade_threshold:
             logger.info(
                 "Total adjust difference is %f USD, our threshold is %f USD, ignoring all the trades",
@@ -1126,8 +1131,6 @@ class AlphaModel:
             for s in self.iterate_signals():
                 s.position_adjust_ignored = True
                 s.flags.add(TradingPairSignalFlags.max_adjust_too_small)
-            self.max_position_adjust_usd = max_diff
-            self.position_adjust_threshold_usd = min_trade_threshold
             return []
 
         #  TODO: Break this massive for if spagetti to sub-functions

@@ -167,12 +167,12 @@ def decide_trades(
     diagnostics = alpha_model.get_flag_diagnostics_data()
     assert isinstance(diagnostics, dict)
 
-    rebalanced = alpha_model.is_rebalance_triggered()
-    assert rebalanced in (True, False)
-
     # Shift portfolio from current positions to target positions
     # determined by the alpha signals (momentum)
     trades = alpha_model.generate_rebalance_trades_and_triggers(position_manager)
+
+    rebalanced = alpha_model.is_rebalance_triggered()
+    assert rebalanced in (True, False)
 
     # Record alpha model state so we can later visualise our alpha model thinking better
     state.visualisation.add_calculations(timestamp, alpha_model.to_dict())
