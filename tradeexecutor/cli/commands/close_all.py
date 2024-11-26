@@ -164,6 +164,12 @@ def close_all(
     runner = run_description.runner
     routing_state, pricing_model, valuation_method = runner.setup_routing(universe)
 
+    # Set slippge tolerance from the strategy file
+    slippage_tolerance = 0.01
+    if mod:
+        if mod.parameters:
+            slippage_tolerance = mod.parameters.get("slippage_tolerance", 0.01)
+
     _close_all(
         web3config.get_default(),
         execution_model,
@@ -173,7 +179,7 @@ def close_all(
         universe,
         runner.routing_model,
         routing_state,
-        slippage_tolerance=mod.parameters.get("slippage_tolerance", 0.01) if mod else 0.01,
+        slippage_tolerance=slippage_tolerance,
         interactive=interactive,
     )
 
