@@ -10,7 +10,6 @@ from typing import List, Dict, Set, Tuple
 
 from eth_account.datastructures import SignedTransaction
 
-from eth_defi.provider.anvil import is_anvil, mine
 from eth_defi.provider.broken_provider import get_almost_latest_block_number
 from eth_typing import HexAddress, HexStr
 from hexbytes import HexBytes
