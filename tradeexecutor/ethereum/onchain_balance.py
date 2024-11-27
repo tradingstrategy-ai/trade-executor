@@ -3,9 +3,8 @@
 import logging
 from typing import List, Iterable
 
-from eth_defi.balances import fetch_erc20_balances_multicall, fetch_erc20_balances_by_token_list
+from eth_defi.balances import fetch_erc20_balances_fallback
 from eth_defi.chain import fetch_block_timestamp
-from eth_defi.provider.anvil import is_anvil, is_mainnet_fork
 from eth_defi.provider.broken_provider import get_block_tip_latency
 
 from eth_typing import HexAddress
@@ -55,38 +54,13 @@ def fetch_address_balances(
 
     token_addresses = [asset.address for asset in assets]
 
-    # Multicall not deployed on local test chains
-    disable_multicall = is_anvil(web3) and not is_mainnet_fork(web3)
-
-    if disable_multicall:
-        balances = fetch_erc20_balances_by_token_list(
-            web3,
-            address,
-            token_addresses,
-            block_identifier=block_number,
-            decimalise=True,
-        )
-    else:
-        try:
-            balances = fetch_erc20_balances_multicall(
-                web3,
-                address,
-                token_addresses,
-                block_identifier=block_number,
-                decimalise=True,
-            )
-        except Exception as e:
-            # RPC failure - multicall error cannot be handled gracefully.
-            # Try something better.
-            # https://github.com/banteg/multicall.py/issues/103
-            logger.error("fetch_erc20_balances_multicall() failed with %s, falling back to single call processing of balance fetches", e, exc_info=e)
-            balances = fetch_erc20_balances_by_token_list(
-                web3,
-                address,
-                token_addresses,
-                block_identifier=block_number,
-                decimalise=True,
-            )
+    balances = fetch_erc20_balances_fallback(
+        web3,
+        address,
+        token_addresses,
+        block_identifier=block_number,
+        decimalise=True,
+    )
 
     for asset in assets:
         amount = balances[asset.address]

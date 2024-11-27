@@ -66,13 +66,7 @@ def web3(anvil_base_fork) -> Web3:
 @pytest.fixture(scope='module')
 def base_test_vault_spec() -> VaultSpec:
     """Vault https://dapp.velvet.capital/ManagerVaultDetails/0x205e80371f6d1b33dff7603ca8d3e92bebd7dc25"""
-    return VaultSpec(1, "0x205e80371f6d1b33dff7603ca8d3e92bebd7dc25")
-
-
-@pytest.fixture(scope='module')
-def base_test_vault_spec() -> VaultSpec:
-    """Vault https://dapp.velvet.capital/ManagerVaultDetails/0x205e80371f6d1b33dff7603ca8d3e92bebd7dc25"""
-    return VaultSpec(1, "0x205e80371f6d1b33dff7603ca8d3e92bebd7dc25")
+    return VaultSpec(8453, "0x205e80371f6d1b33dff7603ca8d3e92bebd7dc25")
 
 
 @pytest.fixture(scope='module')
