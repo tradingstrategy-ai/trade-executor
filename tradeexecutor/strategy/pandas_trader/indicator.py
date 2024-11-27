@@ -136,10 +136,6 @@ class IndicatorSource(enum.Enum):
     #:
     external_per_pair = "external_per_pair"
 
-    #: The indicator takes strategy universe + all earlier indicators as an input.
-    #:
-    earlier_indicators = "earlier_indicators"
-
     def is_per_pair(self) -> bool:
         """This indicator is calculated to all trading pairs."""
         return self in (IndicatorSource.open_price, IndicatorSource.close_price, IndicatorSource.ohlcv, IndicatorSource.external_per_pair)
@@ -294,25 +290,6 @@ class IndicatorDefinition:
         try:
             input_fixed = _flatten_index(input)
             ret = self.func(input_fixed, **self._fix_parameters_for_function_signature(resolver, pair))
-
-            # Some debug logging
-            if ret is None:
-                diagnostics_text = "<none>"
-            else:
-                if len(ret) >= 1:
-                    last_value = ret.iloc[-1]
-                    last_value_at = ret.index[-1]
-                    diagnostics_text = f"{len(ret)} rows, last value {last_value}, at {last_value_at}"
-                else:
-                    diagnostics_text = f"{ret}"
-
-            logger.info(
-                "Indicator calculated: %s, pair: %s, data: %s",
-                self.name,
-                pair.get_ticker(),
-                diagnostics_text,
-            )
-
             return self._check_good_return_value(ret)
         except Exception as e:
             raise IndicatorCalculationFailed(f"Could not calculate indicator {self.name} ({self.func}) for parameters {self.parameters}, input data is {len(input)} rows: {e}, pair is {pair}") from e
@@ -412,7 +389,7 @@ class IndicatorKey:
 
     #: Trading pair if this indicator is specific to a pair
     #:
-    #: Note if this indicator is for the whole strategy
+    #: `None` if this indicator is for the whole universe, using everything as an input.
     #:
     pair: TradingPairIdentifier | None
 
@@ -837,6 +814,10 @@ class IndicatorResult:
     def definition(self) -> IndicatorDefinition:
         return self.indicator_key.definition
 
+    def get_generation_error_message(self) -> str | None:
+        """Get error message if we somehow failed to generate this data."""
+        return self.data.attrs.get("error")
+
 
 IndicatorResultMap: TypeAlias = dict[IndicatorKey, IndicatorResult]
 
@@ -1078,26 +1059,43 @@ def _calculate_and_save_indicator_result(
                     raise NotImplementedError(f"Unsupported input source {key.pair} {key.definition} {indicator.source}")
 
             if data is None:
-                logger.warning("Indicator %s generated empty data for pair %s. Input data length is %d candles.", key.definition.name, key.pair, len(input))
+                error_message = f"Indicator {key.definition.name} generated empty data for pair {key.pair}. Input data length is {len(input)} rows."
+                logger.warning(error_message)
                 data = pd.Series(dtype="float64", index=pd.DatetimeIndex([]))
+                data.attrs["error"] = error_message
 
         except PairCandlesMissing as e:
-            logger.warning("Indicator data %s not generated for pair %s because of lack of OHLCV data. Exception %s", key.definition.name, key.pair, e)
+            logger.info("Indicator data %s not generated for pair %s because of lack of OHLCV data. Exception %s", key.definition.name, key.pair, e)
             data = pd.Series(dtype="float64", index=pd.DatetimeIndex([]))
-
+            data.attrs["error"] = str(e)
 
     else:
         # Calculate indicator over the whole universe
         match indicator.source:
             case IndicatorSource.strategy_universe:
                 data = indicator.calculate_universe(strategy_universe, resolver)
-            case IndicatorSource.earlier_indicators:
-                data = indicator.calculate_earlier_indicators(strategy_universe, resolver)
             case _:
                 raise NotImplementedError(f"Unsupported input source {key.pair} {key.definition} {indicator.source}")
 
     assert data is not None, f"Indicator function {indicator.name} ({indicator.func}) did not return any result, received Python None instead"
 
+    # Some debug logging
+    if data is None:
+        diagnostics_text = "<none>"
+    else:
+        if len(data) >= 1:
+            last_value = data.iloc[-1]
+            last_value_at = data.index[-1]
+            diagnostics_text = f"{len(data)} rows, last value {last_value}, at {last_value_at}"
+        else:
+            diagnostics_text = f"{data}"
+
+    logger.info(
+        "Indicator calculated: %s, pair: %s, data: %s",
+        key.definition.name,
+        key.pair.get_ticker() if key.pair else "<universe>",
+        diagnostics_text,
+    )
     result = storage.save(key, data)
     return result
 
