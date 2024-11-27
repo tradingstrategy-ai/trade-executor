@@ -24,7 +24,7 @@ TRADING_STRATEGY_API_KEY = os.environ.get("TRADING_STRATEGY_API_KEY")
 
 pytestmark = pytest.mark.skipif(
     (not JSON_RPC_ETHEREUM or not TRADING_STRATEGY_API_KEY),
-     reason="Set JSON_RPC_ARBITRUM and TRADING_STRATEGY_API_KEY needed to run this test"
+     reason="Set JSON_RPC_ETHEREUM and TRADING_STRATEGY_API_KEY needed to run this test"
 )
 
 
@@ -46,6 +46,7 @@ def anvil(usdc_whale) -> AnvilLaunch:
 @pytest.fixture()
 def web3(anvil) -> Web3:
     web3 = create_multi_provider_web3(anvil.json_rpc_url)
+    assert web3.eth.chain_id == 1
     return web3
 
 
@@ -80,7 +81,10 @@ def hot_wallet(
     usdc: TokenDetails,
     usdc_whale,
 ) -> HotWallet:
-    """Create hot wallet with a private key as we need to pass this key to forge, others commands."""
+    """Create hot wallet with a private key as we need to pass this key to forge, others commands.
+
+    - Top up with 500 USDC
+    """
     wallet = HotWallet.create_for_testing(web3)
     tx_hash = usdc.contract.functions.transfer(wallet.address, 500 * 10**6).transact({"from": usdc_whale})
     assert_transaction_success_with_explanation(web3, tx_hash)
@@ -131,6 +135,9 @@ def test_ethereum_mainnet_fork_memecoin_index(
     user_1,
     mocker,
     state_file,
+    usdc,
+    hot_wallet,
+    web3,
 ):
     """Run a single cycle of Memecoin index strategy to see everything works.
 
@@ -144,6 +151,17 @@ def test_ethereum_mainnet_fork_memecoin_index(
       the purpose of loading live data. When the test starts keep falling,
       just fix and bump the block height forward.
     """
+
+    # Anvil is unbelieveable piece of crap and somehow fails the tx with nonce 0 that is approve.
+    # We just manually approve infinity at the start of the test.
+    # tx = usdc.contract.functions.approve("0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D", 2**32 - 1).build_transaction({
+    #     "from": hot_wallet.address,
+    # })
+    # hot_wallet.fill_in_gas_price(web3, tx)
+    # signed = hot_wallet.sign_transaction_with_new_nonce(tx)
+    # tx_hash = web3.eth.send_raw_transaction(signed.rawTransaction)
+    # assert_transaction_success_with_explanation(web3, tx_hash)
+
     cli = get_command(app)
     mocker.patch.dict("os.environ", environment, clear=True)
     cli.main(args=["init"], standalone_mode=False)
@@ -151,5 +169,6 @@ def test_ethereum_mainnet_fork_memecoin_index(
 
     state = State.read_json_file(state_file)
     assert len(state.visualisation.get_messages_tail(5)) == 1
+    assert len(state.portfolio.frozen_positions) == 0
 
 

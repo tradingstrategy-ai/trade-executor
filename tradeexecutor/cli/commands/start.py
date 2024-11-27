@@ -289,7 +289,7 @@ def start(
         if unit_testing:
             # Do not let Ganache to wait for too long
             # because likely Ganache has simply crashed on background
-            confirmation_timeout = datetime.timedelta(seconds=30)
+            confirmation_timeout = datetime.timedelta(seconds=60)
 
         logger.info("Transaction confirmation timeout set to %s", confirmation_timeout)
 

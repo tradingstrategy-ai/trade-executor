@@ -314,14 +314,6 @@ class PandasTraderRunner(StrategyRunner):
                 value = plot.get_last_value()
                 print(f"  {name}: {value}", file=buf)
 
-            # Print the thinking message decide_trades() can add with
-            # visualisation.add_message()
-            unix_timestamp = convert_and_validate_timestamp_as_int(strategy_cycle_timestamp)
-            messages = visualisation.messages.get(unix_timestamp)
-            if messages:
-                thinking_message = messages[0]
-                logger.trade(textwrap.indent(thinking_message, "    "))
-
             logger.trade(buf.getvalue())
 
             small_image = self.run_state.visualisation.small_image_png
@@ -338,7 +330,7 @@ class PandasTraderRunner(StrategyRunner):
             print("Strategy thinking", file=buf)
             print(f"  Strategy cycle #{cycle}: {strategy_cycle_timestamp} UTC, now is {datetime.datetime.utcnow()}", file=buf)
 
-            for pair_id, candles in universe.data_universe.candles.get_all_pairs():
+            for pair_id, candles in universe.data_universe.candles.get_all_pairs(max_count=3):
                 
                 pair = universe.data_universe.pairs.get_pair_by_id(pair_id)
                 pair_slug = f"{pair.base_token_symbol} / {pair.quote_token_symbol}"
@@ -391,6 +383,13 @@ class PandasTraderRunner(StrategyRunner):
             else:
                 logger.info(f"Strategy visualisation not posted to Discord because pair count of {universe.get_pair_count()} is greater than 5.")
 
+        # Print the thinking message decide_trades() can add with
+        # visualisation.add_message()
+        unix_timestamp = convert_and_validate_timestamp_as_int(strategy_cycle_timestamp)
+        messages = visualisation.messages.get(unix_timestamp)
+        if messages:
+            thinking_message = messages[0]
+            logger.trade(textwrap.indent(thinking_message, "    "))
 
     def calculate_live_indicators(
         self,

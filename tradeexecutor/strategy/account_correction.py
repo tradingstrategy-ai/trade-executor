@@ -957,13 +957,13 @@ def check_accounts(
         items.append({
             "Address": c.asset.address,
             "Position": position_label,
-            "Actual amount": c.actual_amount,
-            "Expected amount": c.expected_amount,
-            "Diff": c.quantity,
+            "Actual amount": f"{c.actual_amount:.6f}",
+            "Expected amount": f"{c.expected_amount:.6f}",
+            "Diff": f"{c.quantity:.4f}",
             "Dusty": "Y" if dust else "N",
             "Mismatch": mismatch_str if c.mismatch else "N",
-            "Dust epsilon": c.dust_epsilon,
-            "Relative epsilon": c.relative_epsilon,
+            "Dust epsilon": f"{c.dust_epsilon:.4f}",
+            "Relative epsilon": f"{c.relative_epsilon:.4f}"
         })
 
         if c.mismatch:
