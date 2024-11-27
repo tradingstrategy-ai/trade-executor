@@ -2,13 +2,22 @@
 import datetime
 
 import pytest
+from eth_typing import HexAddress
+from web3 import Web3
 
+from eth_defi.token import TokenDetails
+from eth_defi.trace import assert_transaction_success_with_explanation
 from eth_defi.velvet import VelvetVault
 
 from tradeexecutor.ethereum.velvet.vault import VelvetVaultSyncModel
 from tradeexecutor.state.identifier import AssetIdentifier
 from tradeexecutor.state.portfolio import ReserveMissing
 from tradeexecutor.state.state import State
+
+
+
+
+
 
 
 def test_velvet_treasury_initialise(
@@ -51,7 +60,6 @@ def test_velvet_treasury_initialise(
     # Process the initial deposits
     cycle = datetime.datetime.utcnow()
     events = sync_model.sync_treasury(cycle, state)
-
     assert len(events) == 1
     assert treasury.last_block_scanned > 0
     assert treasury.last_updated_at is not None
@@ -67,3 +75,48 @@ def test_velvet_treasury_initialise(
 
     # Check we account USDC correctly
     assert portfolio.get_cash() == pytest.approx(2.674828)
+
+
+def test_velvet_deposit(
+    web3: Web3,
+    base_example_vault: VelvetVault,
+    base_usdc: AssetIdentifier,
+    deposit_user,
+    base_test_reserve_asset: HexAddress,
+):
+    """Sync Velvet deposit"""
+
+    sync_model = VelvetVaultSyncModel(
+        vault=base_example_vault,
+        hot_wallet=None,
+    )
+
+    state = State()
+    portfolio = state.portfolio
+
+    sync_model.sync_initial(
+        state,
+        reserve_asset=base_usdc,
+        reserve_token_price=1.0,
+    )
+    assert len(portfolio.reserves) == 1  # USDC added as the reserve asset
+
+    # Process the initial deposits
+    cycle = datetime.datetime.utcnow()
+    events = sync_model.sync_treasury(cycle, state)
+    assert len(events) == 1
+    assert portfolio.get_cash() == pytest.approx(2.674828)
+
+    #
+    # Process additional deposits
+    #
+
+    # Prepare the deposit tx payload
+    tx_data = sync_model.vault.prepare_deposit_with_enso(
+        from_=deposit_user,
+        deposit_token_address=base_test_reserve_asset,
+        amount=5 * 10**6,
+    )
+    tx_hash = web3.eth.send_transaction(tx_data)
+    assert_transaction_success_with_explanation(web3, tx_hash)
+
