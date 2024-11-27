@@ -506,8 +506,10 @@ def volume_inclusion_criteria(
     mask = filtered_series >= min_volume
 
     # Turn to a series of lists
-    series = mask.groupby(level='timestamp').apply(lambda x: x.index.get_level_values('pair_id').tolist())
-    return series
+    data = mask.groupby(level='timestamp').apply(lambda x: x.index.get_level_values('pair_id').tolist())
+
+
+    return data
 
 
 def included_pair_count(
