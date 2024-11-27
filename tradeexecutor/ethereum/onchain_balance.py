@@ -1,5 +1,6 @@
 """On-chain live balance reader"""
 
+import logging
 from typing import List, Iterable
 
 from eth_defi.balances import fetch_erc20_balances_multicall, fetch_erc20_balances_by_token_list
@@ -12,6 +13,9 @@ from web3 import Web3
 
 from tradeexecutor.state.identifier import AssetIdentifier
 from tradeexecutor.strategy.sync_model import OnChainBalance
+
+
+logger = logging.getLogger(__name__)
 
 
 def fetch_address_balances(
@@ -63,13 +67,26 @@ def fetch_address_balances(
             decimalise=True,
         )
     else:
-        balances = fetch_erc20_balances_multicall(
-            web3,
-            address,
-            token_addresses,
-            block_identifier=block_number,
-            decimalise=True,
-        )
+        try:
+            balances = fetch_erc20_balances_multicall(
+                web3,
+                address,
+                token_addresses,
+                block_identifier=block_number,
+                decimalise=True,
+            )
+        except Exception as e:
+            # RPC failure - multicall error cannot be handled gracefully.
+            # Try something better.
+            # https://github.com/banteg/multicall.py/issues/103
+            logger.error("fetch_erc20_balances_multicall() failed with %s, falling back to single call processing of balance fetches", e, exc_info=e)
+            balances = fetch_erc20_balances_by_token_list(
+                web3,
+                address,
+                token_addresses,
+                block_identifier=block_number,
+                decimalise=True,
+            )
 
     for asset in assets:
         amount = balances[asset.address]
