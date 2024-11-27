@@ -226,7 +226,11 @@ def build_expected_asset_map(
                 mappings[asset] = AssetToPositionsMapping(asset=asset)
             mappings[asset].positions.add(p)
             mappings[asset].quantity += amount
-            logger.info("Open/frozen position #%d has asset %s for %f", p.position_id, asset.token_symbol, amount)
+            if p.is_frozen():
+                position_type = "Frozen"
+            else:
+                position_type = "Open"
+            logger.info("%s position #%d has asset %s for %f", position_type, p.position_id, asset.token_symbol, amount)
 
     # Map closed positions as expected 0 asset amount
     #

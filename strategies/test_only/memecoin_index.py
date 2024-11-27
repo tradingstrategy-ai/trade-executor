@@ -74,7 +74,7 @@ class Parameters:
     min_asset_universe = 10  # How many assets we need in the asset universe to start running the index
     max_assets_in_portfolio = 99  # How many assets our basket can hold once
     allocation = 0.99  # Allocate all cash to volatile pairs
-    min_rebalance_trade_threshold_pct = 0.10  # % of portfolio composition must change before triggering rebalacne
+    min_rebalance_trade_threshold_pct = 0.04  # % of portfolio composition must change before triggering rebalacne
     individual_rebalance_min_threshold_usd = 10  # Don't make buys less than this amount
     min_volatility_threshold = 0.02  # Set to have Sharpe ratio threshold for the inclusion
     per_position_cap_of_pool = 0.01  # Never own more than % of the lit liquidity of the trading pool
@@ -243,6 +243,10 @@ def decide_trades(
     indicators = input.indicators
     strategy_universe = input.strategy_universe
 
+    # Check we have correct mainnet USDC as the reserve
+    reserve_pos = state.portfolio.get_default_reserve_position()
+    assert reserve_pos.asset.address == "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48", f"Got: {reserve_pos.asset.address}"
+
     # Build signals for each pair
     alpha_model = AlphaModel(timestamp)
 
@@ -345,7 +349,7 @@ def decide_trades(
         report = dedent_any(f"""
         Rebalanced: {'👍' if alpha_model.is_rebalance_triggered() else '👎'}
         Max position value change: {alpha_model.max_position_adjust_usd:,.2f} USD
-        Rebalance threshold: {alpha_model.position_adjust_threshold_usd}:,.2f USD
+        Rebalance threshold: {alpha_model.position_adjust_threshold_usd:,.2f} USD
         Trades decided: {len(trades)}
         Pairs total: {strategy_universe.data_universe.pairs.get_count()}
         Pairs meeting volume inclusion criteria: {len(volume_inclusion_criteria_pairs)}
@@ -358,10 +362,11 @@ def decide_trades(
         Discarted allocation because of lack of lit liquidity: {alpha_model.size_risk_discarded_value:,.2f} USD
         BTC volatility: {btc_vol}        
         Most volatility pair: {max_vol_pair.get_ticker() if max_vol_pair else '-'}
-        Most volatility pair vol: {max_vol[0]}
-        Most volatility pair signal value: {max_vol_signal.signal if max_vol_signal else '-'}
-        Most volatility pair signal weight: {max_vol_signal.raw_weight if max_vol_signal else '-'}
-        Most volatility pair signal weight (normalised): {max_vol_signal.normalised_weight * 100 if max_vol_signal else '-'} % (got {max_vol_signal.position_size_risk.get_relative_capped_amount() * 100 if max_vol_signal else '-'} % of asked size)
+        Most volatility vol: {max_vol[0]}
+        Most volatility signal value: {max_vol_signal.signal if max_vol_signal else '-'}
+        Most volatility signal weight: {max_vol_signal.raw_weight if max_vol_signal else '-'}
+        Most volatility signal weight (normalised): {max_vol_signal.normalised_weight * 100 if max_vol_signal else '-'} % (got {max_vol_signal.position_size_risk.get_relative_capped_amount() * 100 if max_vol_signal else '-'} % of asked size)
+        Most volatility allocation: {max_vol_signal.position_target:,.2f} USD
         """)
 
         if top_signal:
@@ -373,6 +378,7 @@ def decide_trades(
             Top signal value: {top_signal.signal}
             Top signal weight: {top_signal.raw_weight}
             Top signal weight (normalised): {top_signal.normalised_weight * 100:.2f} % (got {top_signal.position_size_risk.get_relative_capped_amount() * 100:.2f} % of asked size)
+            Top signal allocation: {top_signal.position_target:,.2f} USD
             """)
 
         for flag, count in alpha_model.get_flag_diagnostics_data().items():

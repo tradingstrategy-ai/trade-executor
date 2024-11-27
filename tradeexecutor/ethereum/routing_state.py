@@ -41,7 +41,7 @@ APPROVE_GAS_LIMITS = {
     # Arbitrum default gas limit is 500_000 and it is not enough
     ChainId.arbitrum.value: 850_000,
     ChainId.polygon.value: 250_000,
-    ChainId.ethereum.value: 50_000,
+    ChainId.ethereum.value: 250_000,
 }
 
 DEFAULT_APPROVE_GAS_LIMIT = 250_000
@@ -51,7 +51,7 @@ DEFAULT_APPROVE_GAS_LIMIT = 250_000
 SWAP_GAS_LIMITS = {
     ChainId.arbitrum.value: 1_000_000,
     ChainId.polygon.value: 1_000_000,
-    ChainId.ethereum.value: 200_000,
+    ChainId.ethereum.value: 750_000,
 }
 
 DEFAULT_SWAP_GAS_LIMIT = 1_000_000
@@ -240,8 +240,11 @@ class EthereumRoutingState(RoutingState):
 
         if erc_20.functions.allowance(approve_address, router_address).call() > 0:
             # already approved in previous execution cycle
+            logger.info("approve() - already approved: ERC-20: %s, router: %s", erc_20.address, router_address)
             return []
-        
+
+        logger.info("approve(), ERC-20: %s, router: %s", erc_20.address, router_address)
+
         # Create infinite approval
         tx = self.tx_builder.sign_transaction(
             erc_20,

@@ -9,6 +9,8 @@ from itertools import chain
 from typing import List, Dict, Set, Tuple
 
 from eth_account.datastructures import SignedTransaction
+
+from eth_defi.provider.anvil import is_anvil, mine
 from eth_defi.provider.broken_provider import get_almost_latest_block_number
 from eth_typing import HexAddress, HexStr
 from hexbytes import HexBytes
@@ -315,8 +317,7 @@ class EthereumExecution(ExecutionModel):
         web3 = self.web3
 
         mev_blocker = get_mev_blocker_provider(web3)
-
-        assert mev_blocker or self.force_sequential_broadcast
+        # assert mev_blocker or self.force_sequential_broadcast
 
         # Special path needed on Ethereum mainnet and MEV Blocker
         logger.info(
@@ -507,7 +508,9 @@ class EthereumExecution(ExecutionModel):
             rebroadcast=rebroadcast,
         )
 
-        if isinstance(self.web3.provider, MEVBlockerProvider) or self.force_sequential_broadcast:
+        force_sequential_broadcast = self.force_sequential_broadcast
+
+        if isinstance(self.web3.provider, MEVBlockerProvider) or force_sequential_broadcast:
             self.broadcast_and_resolve_mev_blocker(
                 routing_model,
                 state,
@@ -632,10 +635,15 @@ def update_confirmation_status(
             status = receipt["status"] == 1
             block_number = receipt["blockNumber"]
             logger.info(
-                f"Resolved tx %s as %s at block {block_number:,} for trade\n%s",
-                tx_hash.hex(),
+                f"Resolved as %s tx nonce: %d, hash: %s, function: %s(), contract %s, gas limit %s, block {block_number:,} for trade %s",
                 "success" if status else "reverted",
+                tx.nonce,
+                tx_hash.hex(),
+                tx.function_selector,
+                tx.get_gas_limit(),
+                tx.contract_address,
                 trade)
+
             reason = None
             stack_trace = None
 
@@ -812,6 +820,9 @@ def approve_tokens(
         assert amount > 0, f"Got a non-positive approval {token_address}: {amount}"
 
         token = get_deployed_contract(web3, "IERC20.json", token_address)
+
+        logger.info("approve() ERC20: %s, amount: %s, to router: %s", token_address, deployment.router.address, amount)
+
         tx = token.functions.approve(
             deployment.router.address,
             amount,
@@ -857,6 +868,8 @@ def approve_infinity(
         assert amount > 0, f"Got a non-positive approval {token_address}: {amount}"
 
         token = get_deployed_contract(web3, "IERC20.json", token_address)
+
+        logger.info("approve() infinity, ERC20: %s, to router: %s", token.address, deployment.router.address)
         tx = token.functions.approve(
             deployment.router.address,
             amount,

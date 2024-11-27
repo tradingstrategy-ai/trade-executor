@@ -391,7 +391,6 @@ class PandasTraderRunner(StrategyRunner):
             thinking_message = messages[0]
             logger.trade(textwrap.indent(thinking_message, "    "))
 
-
     def calculate_live_indicators(
         self,
         timestamp: datetime.datetime,

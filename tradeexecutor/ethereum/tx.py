@@ -303,10 +303,11 @@ class HotWalletTransactionBuilder(TransactionBuilder):
         signed_tx = self.hot_wallet.sign_transaction_with_new_nonce(tx)
 
         logger.info(
-            "Signed transactions using gas fee method %s for %s, tx's nonce is %d",
+            "Signed transactions using gas fee method %s for %s, tx's nonce is %d, gas limit %d",
             gas_price_suggestion,
             args_bound_func.fn_name,
             signed_tx.nonce,
+            gas_limit,
         )
 
         signed_bytes = signed_tx.rawTransaction.hex()
