@@ -191,7 +191,12 @@ def create_trading_universe(
     )
 
     # Scam filter using TokenSniffer
-    pairs_df = filter_scams(pairs_df, client, min_token_sniffer_score=Parameters.min_token_sniffer_score)
+    pairs_df = filter_scams(
+        pairs_df,
+        client,
+        min_token_sniffer_score=Parameters.min_token_sniffer_score,
+        drop_token_tax=True,
+    )
     pairs_df = pairs_df.sort_values("volume", ascending=False)
 
     uni_v2 = pairs_df.loc[pairs_df["exchange_slug"] == "uniswap-v2"]
