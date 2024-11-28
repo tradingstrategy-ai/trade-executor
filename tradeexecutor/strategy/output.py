@@ -99,7 +99,7 @@ def format_position(
 
     lines = [
         f"{symbol} #{position.position_id} {position.pair.get_human_description()} {position_label} value: ${position.get_value():,.2f}, {allocation:.2f}% of portfolio",
-        f"profit: {(position.get_total_profit_percent() * 100): .2f} % ({position.get_total_profit_usd():, .4f} USD)",
+        f"profit: {(position.get_total_profit_percent() * 100):.2f} % ({position.get_total_profit_usd():,.4f} USD)",
         f"duration: {duration}",
     ]
 
