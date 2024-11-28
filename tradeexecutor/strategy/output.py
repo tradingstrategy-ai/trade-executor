@@ -3,9 +3,11 @@
 from io import StringIO
 from typing import List, Iterable
 
+from tradeexecutor.state.identifier import TradingPairKind
 from tradeexecutor.state.portfolio import Portfolio
 from tradeexecutor.state.position import TradingPosition
 from tradeexecutor.state.trade import TradeExecution
+from tradeexecutor.state.types import USDollarAmount
 
 #: See setup_discord_logging()
 DISCORD_BREAK_CHAR = "…"
@@ -63,7 +65,12 @@ def format_trade(portfolio: Portfolio, trade: TradeExecution) -> List[str]:
     return lines
 
 
-def format_position(position: TradingPosition, up_symbol="🌲", down_symbol="🔻") -> List[str]:
+def format_position(
+    position: TradingPosition,
+    total_equity: USDollarAmount,
+    up_symbol="🌲",
+    down_symbol="🔻",
+) -> List[str]:
     """Write a position status line to logs.
 
     Position can be open/closed.
@@ -79,26 +86,37 @@ def format_position(position: TradingPosition, up_symbol="🌲", down_symbol="�
     base_token_ticker = position.pair.base.token_symbol
     position_kind = position.pair.kind.value
 
-    lines =[
-        f"{symbol} #{position.position_id} {position.pair.get_human_description()} {position_kind} value: ${position.get_value():,.2f}, size: {abs(position.get_quantity()):,.4f}, {base_token_ticker} profit: {(position.get_total_profit_percent()*100):.2f}% ({position.get_total_profit_usd():,.4f} USD)"
-    ]
+    position_labels = {
+        TradingPairKind.spot_market_hold: "spot",
+        TradingPairKind.lending_protocol_short: "short",
+        TradingPairKind.credit_supply: "credit",
+    }
 
-    if position.has_executed_trades():
-        price_diff = position.get_current_price() - position.get_opening_price()
-        lines.append(f"   current price: ${position.get_current_price():,.8f}, opened: ${position.get_opening_price():,.8f}, diff: {price_diff:,.8f} USD")
-        lines.append(f"   last tx: {position.get_last_tx_hash()}")
+    position_label = position_labels.get(position_kind, "<unknown position type>")
+
+    allocation = position.get_value() / total_equity
+    duration = position.get_duration()
+
+    lines = [
+        f"{symbol} #{position.position_id} {position.pair.get_human_description()} {position_label} value: ${position.get_value():,.2f}, {allocation:.2f}% of portfolio",
+        f"profit: {(position.get_total_profit_percent() * 100):.2f} % ({position.get_total_profit_usd():,.4f} USD)",
+        f"duration: {duration}",
+    ]
 
     if position.is_frozen():
         last_trade = "buy" if position.get_last_trade().is_buy() else "sell"
         lines.append(f"   last trade: {last_trade}, freeze reason: {position.get_freeze_reason()}")
 
-    if link:
-        lines.append(f"   link: {link}")
-
     return lines
 
 
-def output_positions(positions: Iterable[TradingPosition], buf: StringIO, empty_message="No positions", break_after=4):
+def output_positions(
+    positions: Iterable[TradingPosition],
+    total_equity: USDollarAmount,
+    buf: StringIO,
+    empty_message="No positions",
+    break_after=4,
+):
     """Write info on multiple trading positions formatted for Python logging system.
 
     :break_after:
@@ -107,13 +125,16 @@ def output_positions(positions: Iterable[TradingPosition], buf: StringIO, empty_
 
     :return: A plain text string as a log message, suitable for Discord logging
     """
+
+    assert type(total_equity) == float
+
     positions = list(positions)
 
     if len(positions) > 0:
         position: TradingPosition
 
         for idx, position in enumerate(positions):
-            for line in format_position(position):
+            for line in format_position(position, total_equity):
                 print("    " + line, file=buf)
 
             if (idx + 1) % break_after == 0:
