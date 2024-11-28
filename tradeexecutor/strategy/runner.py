@@ -451,14 +451,14 @@ class StrategyRunner(abc.ABC):
         print("", file=buf)
         print(f"- Cash: ${portfolio.get_cash():,.2f} ({portfolio.get_cash() / total_equity:.2f%})", file=buf)
 
-        print(DISCORD_BREAK_CHAR, file=buf)
+        # print(DISCORD_BREAK_CHAR, file=buf)
 
         if len(portfolio.open_positions) > 0:
             print(f"Opened/open positions:", file=buf)
             print("", file=buf)
             output_positions(portfolio.open_positions.values(), buf)
 
-            print(DISCORD_BREAK_CHAR, file=buf)
+            # print(DISCORD_BREAK_CHAR, file=buf)
         else:
             logger.info("No positions opened")
 
@@ -467,7 +467,7 @@ class StrategyRunner(abc.ABC):
             print(f"Closed positions:", file=buf)
             output_positions(closed_positions, buf)
 
-            print(DISCORD_BREAK_CHAR, file=buf)
+            # print(DISCORD_BREAK_CHAR, file=buf)
         else:
             logger.info("The clock tick %s did not close any positions", clock)
 
