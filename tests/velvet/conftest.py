@@ -12,6 +12,7 @@ from web3 import Web3
 
 from eth_defi.provider.anvil import AnvilLaunch, fork_network_anvil
 from eth_defi.provider.multi_provider import create_multi_provider_web3
+from eth_defi.token import fetch_erc20_details, TokenDetails
 from eth_defi.vault.base import VaultSpec
 from eth_defi.velvet import VelvetVault
 from tradeexecutor.ethereum.ethereum_protocol_adapters import create_uniswap_v3_adapter
@@ -40,14 +41,16 @@ def vault_owner() -> HexAddress:
 
 @pytest.mark.skipif(not JSON_RPC_BASE, reason="JSON_RPC_BASE is needed to run mainnet fork tets")
 @pytest.fixture()
-def anvil_base_fork(request, vault_owner) -> AnvilLaunch:
+def anvil_base_fork(request, vault_owner, deposit_user) -> AnvilLaunch:
     """Create a testable fork of live BNB chain.
 
     :return: JSON-RPC URL for Web3
     """
     launch = fork_network_anvil(
         JSON_RPC_BASE,
-        unlocked_addresses=[vault_owner],
+        unlocked_addresses=[vault_owner, deposit_user],
+        # Cannot use fork_block_number with live Enso API :(
+        # fork_block_number=22_978_054,  # Keep block height stable for tests
     )
     try:
         yield launch
@@ -66,13 +69,7 @@ def web3(anvil_base_fork) -> Web3:
 @pytest.fixture(scope='module')
 def base_test_vault_spec() -> VaultSpec:
     """Vault https://dapp.velvet.capital/ManagerVaultDetails/0x205e80371f6d1b33dff7603ca8d3e92bebd7dc25"""
-    return VaultSpec(1, "0x205e80371f6d1b33dff7603ca8d3e92bebd7dc25")
-
-
-@pytest.fixture(scope='module')
-def base_test_vault_spec() -> VaultSpec:
-    """Vault https://dapp.velvet.capital/ManagerVaultDetails/0x205e80371f6d1b33dff7603ca8d3e92bebd7dc25"""
-    return VaultSpec(1, "0x205e80371f6d1b33dff7603ca8d3e92bebd7dc25")
+    return VaultSpec(8453, "0x205e80371f6d1b33dff7603ca8d3e92bebd7dc25")
 
 
 @pytest.fixture(scope='module')
@@ -92,6 +89,12 @@ def base_example_vault(web3, base_test_vault_spec: VaultSpec) -> VelvetVault:
     return VelvetVault(web3, base_test_vault_spec)
 
 
+@pytest.fixture()
+def deposit_user() -> HexAddress:
+    """A user that has preapproved 5 USDC deposit for the vault above, no approve(0 needed."""
+    return "0x7612A94AafF7a552C373e3124654C1539a4486A8"
+
+
 @pytest.fixture(scope='module')
 def base_usdc(base_test_reserve_asset) -> AssetIdentifier:
     """USDC"""
@@ -101,6 +104,13 @@ def base_usdc(base_test_reserve_asset) -> AssetIdentifier:
         decimals=6,
         token_symbol="USDC",
     )
+
+
+@pytest.fixture()
+def base_usdc_token(web3, base_usdc) -> TokenDetails:
+    """USDC"""
+    return fetch_erc20_details(web3, base_usdc.address)
+
 
 @pytest.fixture(scope='module')
 def base_doginme(base_test_volatile_asset) -> AssetIdentifier:

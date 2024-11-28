@@ -75,6 +75,7 @@ def test_cli_check_wallet(
         raise AssertionError("runner launch failed")
 
 
+@pytest.mark.skip(reason="Feature disabled")
 def test_cli_legacy_backtest_no_wrap(
         logger,
         strategy_path: str,
@@ -105,6 +106,7 @@ def test_cli_legacy_backtest_no_wrap(
         assert e.value.code == 0
 
 
+@pytest.mark.skip(reason="Feature disabled")
 def test_cli_legacy_backtest(
         logger,
         strategy_path: str,

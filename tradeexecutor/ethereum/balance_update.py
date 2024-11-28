@@ -212,7 +212,7 @@ def apply_balance_update_events(
                 continue
 
             # Detected tokens onchain, but we do not have an open position yet
-            logger.info("Opening missing posistion for: %s, ab.asset")
+            logger.info("Opening missing position for: %s", ab.asset)
             position = open_missing_spot_position_direct(
                 strategy_universe=strategy_universe,
                 state=state,
