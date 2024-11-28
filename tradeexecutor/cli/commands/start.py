@@ -179,9 +179,10 @@ def start(
     )
 
     if backtest_start or backtest_end:
+        # Disable legacy backtest method
         logger.error("start --backtest-start or --backtest-end are no longer supported.")
         logger.error("Please use separate backtest command instead of start command.")
-        sys.exit(1)
+        raise NotImplementedError()
 
     if discord_webhook_url and asset_management_mode.is_live_trading():
         # TODO: Move backtesting to its own console command
