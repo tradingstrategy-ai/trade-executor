@@ -393,6 +393,7 @@ class StrategyRunner(abc.ABC):
         print("", file=buf)
         print(f"Total equity: ${portfolio.get_total_equity():,.2f}, in cash: ${portfolio.get_cash():,.2f}", file=buf)
         print(f"Life-time positions: {portfolio.next_position_id - 1}, trades: {portfolio.next_trade_id - 1}", file=buf)
+
         print(DISCORD_BREAK_CHAR, file=buf)
 
         if len(portfolio.open_positions) > 0:
@@ -437,10 +438,18 @@ class StrategyRunner(abc.ABC):
     def report_after_execution(self, clock: datetime.datetime, universe: StrategyExecutionUniverse, state: State, debug_details: dict):
         buf = StringIO()
         portfolio = state.portfolio
-        
+
+        total_equity = portfolio.get_total_equity()
+        if total_equity == 0:
+            # Should not never happen, but just be prepared
+            total_equity = 0.00001
+
+
         print("Portfolio status (after rebalance)", file=buf)
         print("", file=buf)
-        print(f"Total equity: ${portfolio.get_total_equity():,.2f}, Cash: ${portfolio.get_cash():,.2f}", file=buf)
+        print(f"- Total equity: ${total_equity:,.2f}", file = buf)
+        print("", file=buf)
+        print(f"- Cash: ${portfolio.get_cash():,.2f} ({portfolio.get_cash() / total_equity:.2f%})", file=buf)
 
         print(DISCORD_BREAK_CHAR, file=buf)
 
@@ -462,11 +471,6 @@ class StrategyRunner(abc.ABC):
         else:
             logger.info("The clock tick %s did not close any positions", clock)
 
-        print("Reserves:", file=buf)
-        print("", file=buf)
-        reserve: ReservePosition
-        for reserve in state.portfolio.reserves.values():
-            print(f"    {reserve.quantity:,.2f} {reserve.asset.token_symbol}", file=buf)
         logger.trade_high(buf.getvalue())
 
     def report_strategy_thinking(
