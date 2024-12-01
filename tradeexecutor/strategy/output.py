@@ -1,5 +1,5 @@
 """Helpers for outputting strategy execution information to Python logging and Discord."""
-
+from datetime import datetime
 from io import StringIO
 from typing import List, Iterable
 
@@ -84,7 +84,7 @@ def format_position(
         link = ""
 
     base_token_ticker = position.pair.base.token_symbol
-    position_kind = position.pair.kind.value
+    position_kind = position.pair.kind
 
     position_labels = {
         TradingPairKind.spot_market_hold: "spot",
@@ -95,7 +95,11 @@ def format_position(
     position_label = position_labels.get(position_kind, "<unknown position type>")
 
     allocation = position.get_value() / total_equity
-    duration = position.get_duration()
+
+    if position.is_open():
+        duration = position.get_duration()
+    else:
+        duration = datetime.datetime.utcnow() - position.opened_at
 
     lines = [
         f"{symbol} #{position.position_id} {position.pair.get_human_description()} {position_label} value: ${position.get_value():,.2f}, {allocation:.2f}% of portfolio",

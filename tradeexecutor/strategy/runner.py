@@ -449,7 +449,8 @@ class StrategyRunner(abc.ABC):
         print("", file=buf)
         print(f"- Total equity: ${total_equity:,.2f}", file = buf)
         print("", file=buf)
-        print(f"- Cash: ${portfolio.get_cash():,.2f} ({portfolio.get_cash() / total_equity:.2f}%)", file=buf)
+        print(f"- Cash: ${portfolio.get_cash():,.2f} ({portfolio.get_cash() / total_equity * 100:.2f}%)", file=buf)
+        print("", file=buf)
 
         # print(DISCORD_BREAK_CHAR, file=buf)
 
