@@ -1,5 +1,5 @@
 """Helpers for outputting strategy execution information to Python logging and Discord."""
-from datetime import datetime
+import datetime
 from io import StringIO
 from typing import List, Iterable
 
@@ -83,7 +83,6 @@ def format_position(
     else:
         link = ""
 
-    base_token_ticker = position.pair.base.token_symbol
     position_kind = position.pair.kind
 
     position_labels = {
