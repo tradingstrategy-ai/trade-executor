@@ -104,7 +104,7 @@ class EthereumRoutingModel(RoutingModel):
         
         # TODO find better way of doing this. Use inheritance?
         if hasattr(uniswap, "router"):
-            txs = routing_state.ensure_token_approved(token_address, uniswap.router.address)
+            txs = routing_state.ensure_token_approved(token_address, uniswap.quoter.address)
         elif hasattr(uniswap, "swap_router"):
             txs = routing_state.ensure_token_approved(token_address, uniswap.swap_router.address)
         else:
@@ -170,7 +170,7 @@ class EthereumRoutingModel(RoutingModel):
         
         # TODO find better way of doing this. Use inheritance?
         if hasattr(uniswap, "router"):
-            txs = routing_state.ensure_token_approved(token_address, uniswap.router.address)
+            txs = routing_state.ensure_token_approved(token_address, uniswap.quoter.address)
         elif hasattr(uniswap, "swap_router"):
             txs = routing_state.ensure_token_approved(token_address, uniswap.swap_router.address)
         else:

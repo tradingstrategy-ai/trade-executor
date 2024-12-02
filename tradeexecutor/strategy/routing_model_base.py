@@ -98,7 +98,7 @@ class RoutingModelBase(RoutingModel):
         """
         uniswap = routing_state.get_uniswap_for_pair(self.factory_router_map, target_pair)
         token_address = reserve_asset.address
-        txs = routing_state.ensure_token_approved(token_address, uniswap.router.address)
+        txs = routing_state.ensure_token_approved(token_address, uniswap.quoter.address)
         txs += routing_state.trade_on_router_two_way(
             uniswap,
             target_pair,
@@ -127,7 +127,7 @@ class RoutingModelBase(RoutingModel):
         """
         uniswap = routing_state.get_uniswap_for_pair(self.factory_router_map, target_pair)
         token_address = reserve_asset.address
-        txs = routing_state.ensure_token_approved(token_address, uniswap.router.address)
+        txs = routing_state.ensure_token_approved(token_address, uniswap.quoter.address)
         txs += routing_state.trade_on_router_three_way(
             uniswap,
             target_pair,

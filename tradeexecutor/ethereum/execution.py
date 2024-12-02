@@ -23,7 +23,7 @@ from eth_defi.provider.fallback import FallbackProvider
 from eth_defi.provider.mev_blocker import MEVBlockerProvider, get_mev_blocker_provider
 from eth_defi.token import fetch_erc20_details, TokenDetails
 from eth_defi.confirmation import wait_transactions_to_complete, \
-    broadcast_and_wait_transactions_to_complete, broadcast_transactions, wait_and_broadcast_multiple_nodes, wait_and_broadcast_multiple_nodes_mev_blocker
+    broadcast_and_wait_transactions_to_complete, broadcast_transactions, wait_and_broadcast_multiple_nodes, wait_and_broadcast_multiple_nodes_mev_blocker, OutOfGasFunds
 from eth_defi.trace import trace_evm_transaction, print_symbolic_trace
 from eth_defi.uniswap_v2.deployment import UniswapV2Deployment, FOREVER_DEADLINE
 from eth_defi.revert_reason import fetch_transaction_revert_reason
@@ -318,6 +318,7 @@ class EthereumExecution(ExecutionModel):
         mev_blocker = get_mev_blocker_provider(web3)
         # assert mev_blocker or self.force_sequential_broadcast
 
+
         # Special path needed on Ethereum mainnet and MEV Blocker
         logger.info(
             "MEV blocker/sequential tx enabled broadcast, mev blocker: %s, sequential: %s, timeout %s",
@@ -356,6 +357,12 @@ class EthereumExecution(ExecutionModel):
                     nonce=tx.nonce,
                     source=tx.details,
                 )
+
+                # Fail if we have many txs and looks like we are low on gas.
+                # This is additional check for perform_gas_level_check() that is only a warning
+                gas_balance = web3.eth.get_balance(tx.from_address)
+                if gas_balance < self.min_balance_threshold * 10**18:
+                    raise OutOfGasFunds(f"Out of gas - do not attempt to broadcast transactions. {tx.from_address} gas balance is {gas_balance/10**18}, needed {self.min_balance_threshold}")
 
                 try:
                     receipts = wait_and_broadcast_multiple_nodes_mev_blocker(
