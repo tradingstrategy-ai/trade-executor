@@ -61,7 +61,11 @@ def anvil_base_fork(request, vault_owner, deposit_user) -> AnvilLaunch:
 
 @pytest.fixture()
 def web3(anvil_base_fork) -> Web3:
-    web3 = create_multi_provider_web3(anvil_base_fork.json_rpc_url)
+    web3 = create_multi_provider_web3(
+        anvil_base_fork.json_rpc_url,
+        retries=0,  # eth_sendTransaction retry spoils the tests
+        default_http_timeout=(2, 60),  # Anvil is slow with eth_sendTransaction
+    )
     assert web3.eth.chain_id == 8453
     return web3
 

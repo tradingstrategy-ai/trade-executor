@@ -1,19 +1,35 @@
-"""Test Velvet sync model."""
+"""Test Velvet sync model.
+
+- Handle special Velvet deposit/redemption model
+"""
 import datetime
+from decimal import Decimal
 
 import pytest
+from eth_typing import HexAddress
+from web3 import Web3
 
+from eth_defi.token import TokenDetails
+from eth_defi.trace import assert_transaction_success_with_explanation
 from eth_defi.velvet import VelvetVault
+
 from tradeexecutor.ethereum.uniswap_v3.uniswap_v3_live_pricing import UniswapV3LivePricing
 from tradeexecutor.ethereum.velvet.vault import VelvetVaultSyncModel
+from tradeexecutor.state.balance_update import BalanceUpdateCause
 from tradeexecutor.state.identifier import AssetIdentifier
 from tradeexecutor.state.portfolio import Portfolio
-
 from tradeexecutor.state.state import State
 from tradeexecutor.strategy.asset import build_expected_asset_map
 from tradeexecutor.strategy.trading_strategy_universe import translate_trading_pair, TradingStrategyUniverse
 from tradingstrategy.chain import ChainId
 from tradingstrategy.pair import PandasPairUniverse
+
+
+
+@pytest.fixture()
+def deposit_user() -> HexAddress:
+    """A user that has preapproved 5 USDC deposit for the vault above, no approve(0 needed."""
+    return "0x7612A94AafF7a552C373e3124654C1539a4486A8"
 
 
 def test_check_velvet_universe(
@@ -143,25 +159,32 @@ def test_velvet_sync_positions_initial(
     assert dog_in_me_pos.get_value() > 0
 
 
-
 def test_velvet_sync_positions_deposit(
+    web3: Web3,
     base_example_vault: VelvetVault,
     base_usdc: AssetIdentifier,
+    base_doginme: AssetIdentifier,
     velvet_test_vault_strategy_universe: TradingStrategyUniverse,
     velvet_test_vault_pricing_model: UniswapV3LivePricing,
+    base_usdc_token: TokenDetails,
+    deposit_user: HexAddress,
 ):
     """Sync velvet open positions
 
     - Do initial deposit scan.
 
-    - Capture the initial USDC in the vault as a treasury
+    - Capture the initial USDC in the vault
 
-    - Capture DogMeIn open position
+    - Velvet distributes USDC to all open positions
+
+    - See all positions get the increase
     """
 
+    vault = base_example_vault
     strategy_universe = velvet_test_vault_strategy_universe
     pair_universe = strategy_universe.data_universe.pairs
     pricing_model = velvet_test_vault_pricing_model
+    usdc_contract = base_usdc_token.contract
 
     sync_model = VelvetVaultSyncModel(
         vault=base_example_vault,
@@ -171,14 +194,18 @@ def test_velvet_sync_positions_deposit(
     state = State()
     portfolio = state.portfolio
 
-    # Sync USDC
+    # Get the initial positions
     sync_model.sync_initial(
         state,
         reserve_asset=base_usdc,
         reserve_token_price=1.0,
     )
-    # Sync DogInMe - creates initial position no event generated
-    events = sync_model.sync_positions(
+    sync_model.sync_treasury(
+        datetime.datetime.utcnow(),
+        state,
+        supported_reserves=state.portfolio.get_reserve_assets(),
+    )
+    sync_model.sync_positions(
         datetime.datetime.utcnow(),
         state,
         strategy_universe=strategy_universe,
@@ -187,3 +214,67 @@ def test_velvet_sync_positions_deposit(
 
     # We have DogInMe position + cash
     assert len(portfolio.open_positions) == 1
+    assert len(state.portfolio.get_reserve_assets()) == 1
+    assert state.portfolio.get_cash() == pytest.approx(2.674828)
+    assert portfolio.open_positions[1].get_quantity() == pytest.approx(Decimal(580.917745152826802993))
+
+    # Do velvet deposit
+
+    # Velvet deposit manager on Base,
+    # the destination of allowance
+    deposit_manager = "0xe4e23120a38c4348D7e22Ab23976Fa0c4Bf6e2ED"
+
+    # Check there is ready-made manual approve() waiting onchain
+    allowance = usdc_contract.functions.allowance(
+        Web3.to_checksum_address(deposit_user),
+        Web3.to_checksum_address(deposit_manager),
+        ).call()
+    assert allowance == 5 * 10**6
+
+    # Prepare the deposit tx payload
+    tx_data = vault.prepare_deposit_with_enso(
+        from_=deposit_user,
+        deposit_token_address=usdc_contract.address,
+        amount=5 * 10**6,
+    )
+    tx_hash = web3.eth.send_transaction(tx_data)
+    assert_transaction_success_with_explanation(web3, tx_hash)
+
+    # Velvet will split 5 USDC between the open DogInMe position
+    # and the cash position
+
+    # Check USDC update
+    events = sync_model.sync_treasury(
+        datetime.datetime.utcnow(),
+        state,
+        supported_reserves=state.portfolio.get_reserve_assets(),
+    )
+    assert len(events) == 1
+    evt = events[0]
+    assert evt.balance_update_id == 2
+    assert evt.chain_id == 8453
+    assert evt.previous_update_at is None
+    assert evt.quantity > 2
+    assert evt.tx_hash is None  # poll mode does not get txs
+    assert evt.cause == BalanceUpdateCause.deposit
+    assert evt.asset == base_usdc
+    assert state.portfolio.get_cash() > 3
+
+    # Check DogInMe update,
+    # quantity has increased
+    events = sync_model.sync_positions(
+        datetime.datetime.utcnow(),
+        state,
+        strategy_universe=strategy_universe,
+        pricing_model=pricing_model,
+    )
+    assert len(events) == 1
+    evt = events[0]
+    assert evt.balance_update_id == 3
+    assert evt.chain_id == 8453
+    assert evt.old_balance == pytest.approx(Decimal("1514.789494722202946726"))
+    assert evt.quantity > 100  # Depends on market conditions
+    assert 0 < evt.usd_value < 1
+    assert evt.cause == BalanceUpdateCause.vault_inflow
+    assert evt.asset == base_doginme
+    assert state.portfolio.open_positions[1].get_quantity() > 600

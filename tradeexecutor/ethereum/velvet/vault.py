@@ -94,6 +94,7 @@ class VelvetVaultSyncModel(AddressSyncModel):
         reserve_token_price: USDollarPrice | None = None,
         **kwargs,
     ):
+        """Set ups sync starting point"""
         super().sync_initial(
             state=state,
             reserve_asset=reserve_asset,

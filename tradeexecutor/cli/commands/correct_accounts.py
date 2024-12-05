@@ -157,6 +157,13 @@ def correct_accounts(
 
     mod: StrategyModuleInformation = read_strategy_module(strategy_file)
 
+    slippage_tolerance = 0.013
+    if mod:
+        if mod.parameters:
+            slippage_tolerance = mod.parameters.get("slippage_tolerance", 0.013)
+
+    logger.info("Using slippage tolerance: %f", slippage_tolerance)
+
     client, routing_model = create_client(
         mod=mod,
         web3config=web3config,
@@ -184,7 +191,7 @@ def correct_accounts(
         vault_adapter_address=vault_adapter_address,
         routing_hint=mod.trade_routing,
         confirmation_block_count=0,
-        max_slippage=0,
+        max_slippage=slippage_tolerance,
         min_gas_balance=Decimal(0),
         vault_payment_forwarder_address=vault_payment_forwarder,
     )
