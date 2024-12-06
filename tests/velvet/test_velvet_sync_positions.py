@@ -20,6 +20,7 @@ from tradeexecutor.state.identifier import AssetIdentifier
 from tradeexecutor.state.portfolio import Portfolio
 from tradeexecutor.state.state import State
 from tradeexecutor.strategy.asset import build_expected_asset_map
+from tradeexecutor.strategy.pricing_model import PricingModel
 from tradeexecutor.strategy.trading_strategy_universe import translate_trading_pair, TradingStrategyUniverse
 from tradingstrategy.chain import ChainId
 from tradingstrategy.pair import PandasPairUniverse
@@ -38,7 +39,7 @@ def test_check_velvet_universe(
     """Check we have good universe to map pairs to positions."""
     pair_universe = velvet_test_vault_pair_universe
 
-    assert pair_universe.get_count() == 2
+    assert pair_universe.get_count() == 4
 
     for pair in pair_universe.iterate_pairs():
         assert pair.base_token_symbol, f"Got {pair}"
@@ -46,13 +47,13 @@ def test_check_velvet_universe(
 
 
 def test_check_price_on_base_uniswap_v3(
-    velvet_test_vault_pricing_model: UniswapV3LivePricing,
+    velvet_pricing_model: PricingModel,
     velvet_test_vault_strategy_universe: PandasPairUniverse,
 ):
     """Check that we have a good price feed."""
 
     strategy_universe = velvet_test_vault_strategy_universe
-    pricing_model = velvet_test_vault_pricing_model
+    pricing_model = velvet_pricing_model
 
     pair_desc = (ChainId.base, "uniswap-v3", "DogInMe", "WETH", 0.01)
 
@@ -110,7 +111,7 @@ def test_velvet_sync_positions_initial(
     base_example_vault: VelvetVault,
     base_usdc: AssetIdentifier,
     velvet_test_vault_strategy_universe: TradingStrategyUniverse,
-    velvet_test_vault_pricing_model: UniswapV3LivePricing,
+    velvet_pricing_model: PricingModel,
 ):
     """Sync velvet open positions
 
@@ -123,8 +124,8 @@ def test_velvet_sync_positions_initial(
 
     strategy_universe = velvet_test_vault_strategy_universe
     pair_universe = strategy_universe.data_universe.pairs
-    pricing_model = velvet_test_vault_pricing_model
-    assert pair_universe.get_count() == 2
+    pricing_model = velvet_pricing_model
+    assert pair_universe.get_count() == 4
 
     sync_model = VelvetVaultSyncModel(
         vault=base_example_vault,
@@ -165,7 +166,7 @@ def test_velvet_sync_positions_deposit(
     base_usdc: AssetIdentifier,
     base_doginme: AssetIdentifier,
     velvet_test_vault_strategy_universe: TradingStrategyUniverse,
-    velvet_test_vault_pricing_model: UniswapV3LivePricing,
+    velvet_pricing_model: PricingModel,
     base_usdc_token: TokenDetails,
     deposit_user: HexAddress,
 ):
@@ -183,7 +184,7 @@ def test_velvet_sync_positions_deposit(
     vault = base_example_vault
     strategy_universe = velvet_test_vault_strategy_universe
     pair_universe = strategy_universe.data_universe.pairs
-    pricing_model = velvet_test_vault_pricing_model
+    pricing_model = velvet_pricing_model
     usdc_contract = base_usdc_token.contract
 
     sync_model = VelvetVaultSyncModel(
@@ -287,7 +288,7 @@ def test_velvet_sync_positions_redeem(
     base_usdc: AssetIdentifier,
     base_doginme: AssetIdentifier,
     velvet_test_vault_strategy_universe: TradingStrategyUniverse,
-    velvet_test_vault_pricing_model: UniswapV3LivePricing,
+    velvet_pricing_model: PricingModel,
     base_usdc_token: TokenDetails,
     existing_shareholder: HexAddress,
 ):
@@ -303,7 +304,7 @@ def test_velvet_sync_positions_redeem(
     vault = base_example_vault
     strategy_universe = velvet_test_vault_strategy_universe
     pair_universe = strategy_universe.data_universe.pairs
-    pricing_model = velvet_test_vault_pricing_model
+    pricing_model = velvet_pricing_model
     usdc_contract = base_usdc_token.contract
 
     sync_model = VelvetVaultSyncModel(
