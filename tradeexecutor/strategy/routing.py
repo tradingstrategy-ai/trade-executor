@@ -10,9 +10,6 @@ from typing import List, Optional, Dict
 import logging
 
 from hexbytes import HexBytes
-from web3 import Web3
-from web3.contract import Contract
-from eth_defi.abi import get_deployed_contract
 
 from tradeexecutor.state.identifier import TradingPairIdentifier, AssetIdentifier
 from tradeexecutor.state.state import State
@@ -150,10 +147,15 @@ class RoutingModel(abc.ABC):
                 token_data_msg = f"Tokens are:\n"
                 for token in pair_universe.get_all_tokens():
                     token_data_msg += f"  {token}\n"
-            assert reserve_token, f"Pair universe does not contain our reserve asset {self.reserve_token_address}\n{token_data_msg}"
+            assert reserve_token, f"Pair universe does not contain our reserve asset {self.reserve_token_address}\n{token_data_msg}\nWe are {self}"
         return translate_token(reserve_token)
      
-    def route_pair(self, pair_universe: PandasPairUniverse, trading_pair: TradingPairIdentifier) -> tuple[TradingPairIdentifier, Optional[TradingPairIdentifier]]:
+    def route_pair(
+        self,
+        pair_universe: PandasPairUniverse,
+        trading_pair: TradingPairIdentifier,
+        require_same_dex=True,
+    ) -> tuple[TradingPairIdentifier, Optional[TradingPairIdentifier]]:
         """Return Uniswap routing information (path components) for a trading pair.
 
         For three-way pairs, figure out the intermedia step.

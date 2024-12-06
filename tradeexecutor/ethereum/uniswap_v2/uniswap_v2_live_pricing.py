@@ -8,6 +8,7 @@ import datetime
 from decimal import Decimal
 from typing import Optional, Dict
 
+from IPython.testing.plugin.pytest_ipdoctest import ipdoctest_namespace
 from web3 import Web3
 
 from eth_defi.uniswap_v2.deployment import UniswapV2Deployment
@@ -183,7 +184,7 @@ class UniswapV2LivePricing(EthereumPricingModel):
         try:
             uniswap = get_uniswap_for_pair(self.web3, self.routing_model.factory_router_map, target_pair)
         except Exception as e:
-            raise RuntimeError(f"We do not have Uniswap router configured for pair {target_pair}, factory_router_map is {self.routing_model.factory_router_map}") from e
+            raise RuntimeError(f"We do not have Uniswap router configured for pair {target_pair} on exchange {target_pair.exchange_address}, factory_router_map is {self.routing_model.factory_router_map}") from e
         
         fee = self.get_pair_fee(ts, pair)
         assert fee is not None, f"Uniswap v2 fee data missing: exchange:{uniswap} pair:{pair}"
@@ -215,8 +216,9 @@ class UniswapV2LivePricing(EthereumPricingModel):
         
         if intermediate_pair:
             fee2 = self.get_pair_fee(ts, intermediate_pair)
-            assert fee2 == fee, "Pairs for Uniswap V2 should have same fee"
-            
+
+            assert fee2 == fee, f"Pairs for Uniswap V2 should have same fee. Intermediate has: {fee2}, expected {fee}. Pair {intermediate_pair}"
+
             # TODO: Verify calculation
             mid_price = price * (1 - fee) * (1 - fee)
             

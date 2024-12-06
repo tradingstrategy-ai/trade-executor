@@ -211,8 +211,14 @@ class AssetManagementMode(enum.Enum):
     #: Server-side normal Ethereum private eky account
     hot_wallet = "hot_wallet"
 
-    #: Trading using Enzyme Protocol pool, single oracle mode
+    #: Trading using Enzyme Protocol vault, single oracle mode
     enzyme = "enzyme"
+
+    #: Trading using Velvet Capital vault, single oracle mode
+    velvet = "velvet"
+
+    #: Trading using Lagoon Protocol vault, single oracle mode
+    lagoon = "lagoon"
 
     #: Simulate execution using backtest data
     #:
@@ -227,7 +233,7 @@ class AssetManagementMode(enum.Enum):
 
         Are we executing against a blockchain (including test chains).
         """
-        return self in (AssetManagementMode.hot_wallet, AssetManagementMode.enzyme,)
+        return self in (AssetManagementMode.hot_wallet, AssetManagementMode.enzyme, AssetManagementMode.velvet, AssetManagementMode.lagoon)
 
 
 

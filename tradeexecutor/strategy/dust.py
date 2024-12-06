@@ -18,7 +18,7 @@ from tradeexecutor.state.types import Percent
 #: we cannot use relative comparison near zero values.
 #:
 #:
-DEFAULT_DUST_EPSILON = Decimal(10 ** -4)
+DEFAULT_DUST_EPSILON = Decimal(10 ** -10)
 
 
 #: The default % we allow the balance to drift before we consider it a mismatch.
