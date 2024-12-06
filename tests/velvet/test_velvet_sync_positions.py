@@ -237,7 +237,7 @@ def test_velvet_sync_positions_deposit(
         from_=deposit_user,
         deposit_token_address=usdc_contract.address,
         amount=5 * 10**6,
-        slippage=0.05,
+        slippage=0.10,
     )
     tx_hash = web3.eth.send_transaction(tx_data)
     assert_transaction_success_with_explanation(web3, tx_hash)
