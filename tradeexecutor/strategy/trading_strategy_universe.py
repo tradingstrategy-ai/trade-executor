@@ -1793,7 +1793,7 @@ def translate_trading_pair(dex_pair: DEXPair, cache: dict | None = None) -> Trad
 
             # highest fee tier is currently 1% and lowest in 0.01%
             if fee != 0:
-                assert 0.0001 <= fee <= 0.01, "bug in converting fee to multiplier, make sure bps"
+                assert 0.0001 <= fee <= 0.01, f"bug in converting fee to multiplier, make sure bps, got fee {fee}"
         else:
             fee = None
 

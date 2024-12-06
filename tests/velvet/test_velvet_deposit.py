@@ -82,7 +82,7 @@ def test_velvet_sync_deposit(
     base_usdc: AssetIdentifier,
     base_doginme: AssetIdentifier,
     deposit_user,
-    base_test_reserve_asset: HexAddress,
+        base_usdc_address: HexAddress,
     velvet_test_vault_strategy_universe: TradingStrategyUniverse,
     velvet_test_vault_pricing_model: PricingModel,
     base_usdc_token: TokenDetails,
@@ -141,7 +141,7 @@ def test_velvet_sync_deposit(
 
     tx_data = sync_model.vault.prepare_deposit_with_enso(
         from_=deposit_user,
-        deposit_token_address=base_test_reserve_asset,
+        deposit_token_address=base_usdc_address,
         amount=4 * 10**6,
     )
     tx_hash = web3.eth.send_transaction(tx_data)

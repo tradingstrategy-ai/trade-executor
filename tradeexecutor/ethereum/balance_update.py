@@ -148,12 +148,12 @@ def perform_balance_update(
     evt = BalanceUpdate(
         balance_update_id=event_id,
         position_type=BalanceUpdatePositionType.open_position,
-        cause=BalanceUpdateCause.vault_inflow,
+        cause=BalanceUpdateCause.vault_flow,
         asset=asset,
         block_mined_at=event_timestamp,
         strategy_cycle_included_at=strategy_timestamp,
         chain_id=asset.chain_id,
-        old_balance=actual_amount,
+        old_balance=expected_amount,
         usd_value=usd_value,
         quantity=diff,
         owner_address=None,
@@ -198,6 +198,7 @@ def apply_balance_update_events(
 
     events = []
     block_number = None
+
     for ab in asset_balances:
 
         asset = ab.asset

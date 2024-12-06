@@ -94,6 +94,7 @@ class VelvetVaultSyncModel(AddressSyncModel):
         reserve_token_price: USDollarPrice | None = None,
         **kwargs,
     ):
+        """Set ups sync starting point"""
         super().sync_initial(
             state=state,
             reserve_asset=reserve_asset,
@@ -135,8 +136,12 @@ class VelvetVaultSyncModel(AddressSyncModel):
             logger.info("Asset %s: %s", key, value)
 
         balances = self.fetch_onchain_balances(
-            list(asset_to_position_map.keys())
+            list(asset_to_position_map.keys()),
+            filter_zero=False,
         )
+
+        balances = list(balances)
+        logger.info("We have balances for %s assets", len(balances))
 
         # Apply any deposit/redemptions on positions
         events = apply_balance_update_events(
@@ -147,6 +152,8 @@ class VelvetVaultSyncModel(AddressSyncModel):
             balances,
             asset_to_position_map,
         )
+
+        logger.info("Generated %d events", len(events))
 
         return events
 

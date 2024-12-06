@@ -27,6 +27,7 @@ that gives the users the choices for the trade routing options in their strategy
 """
 from typing import TypedDict, List
 
+from eth_defi.uniswap_v2.constants import UNISWAP_V2_DEPLOYMENTS
 from eth_defi.uniswap_v3.constants import UNISWAP_V3_DEPLOYMENTS
 from tradingstrategy.chain import ChainId
 
@@ -344,6 +345,7 @@ def get_trader_joe_default_routing_parameters(
 
 def get_uniswap_v2_default_routing_parameters(
     reserve_currency: ReserveCurrency,
+    chain_id: ChainId = None,
 ) -> RoutingData:
     """Generate routing using Uniswap v2 router.
 
@@ -352,14 +354,22 @@ def get_uniswap_v2_default_routing_parameters(
 
     if reserve_currency == ReserveCurrency.usdc:
         # https://tradingstrategy.ai/trading-view/ethereum/tokens/0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48
-        reserve_token_address = "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48".lower()
 
-        # For three way trades, which pools we can use
-        allowed_intermediary_pairs = {
-            # Route WETH through USDC:WETH pool,
-            # https://tradingstrategy.ai/trading-view/ethereum/uniswap-v2/eth-usdc
-            "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2": "0xb4e16d0168e52d35cacd2c6185b44281ec28c9dc",
-        }
+        if chain_id == ChainId.base:
+            reserve_token_address = "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913".lower()
+            # https://app.uniswap.org/explore/pools/base/0x88A43bbDF9D098eEC7bCEda4e2494615dfD9bB9C
+            allowed_intermediary_pairs = {
+                "0x4200000000000000000000000000000000000006": "0x88A43bbDF9D098eEC7bCEda4e2494615dfD9bB9C",
+            }
+        else:
+            reserve_token_address = "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48".lower()
+
+            # For three way trades, which pools we can use
+            allowed_intermediary_pairs = {
+                # Route WETH through USDC:WETH pool,
+                # https://tradingstrategy.ai/trading-view/ethereum/uniswap-v2/eth-usdc
+                "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2": "0xb4e16d0168e52d35cacd2c6185b44281ec28c9dc",
+            }
     elif reserve_currency == ReserveCurrency.usdt:
         # https://tradingstrategy.ai/trading-view/ethereum/tokens/0xdac17f958d2ee523a2206206994597c13d831ec7
         reserve_token_address = "0xdac17f958d2ee523a2206206994597c13d831ec7".lower()
@@ -383,31 +393,54 @@ def get_uniswap_v2_default_routing_parameters(
     else:
         raise NotImplementedError()
 
-    # Allowed exchanges as factory -> router pairs,
-    # by their smart contract addresses
-    # https://docs.uniswap.org/protocol/V2/reference/smart-contracts/factory
-    # https://github.com/Uniswap/v2-core/issues/102
-    # init_code_hash: https://etherscan.io/address/0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D#code#L700
-    factory_router_map = {
-        "0x5C69bEe701ef814a2B6a3EDD4B1652CB9cc5aA6f": (
-            "0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D",
-            "96e8ac4277198ff8b6f785478aa9a39f403cb768dd02cbee326c3e7da348845f",
-        )
-    }
+    if chain_id == ChainId.base:
+        base = UNISWAP_V2_DEPLOYMENTS["base"]
+        factory_router_map = {
+            base["factory"]: (
+                base["router"],
+                base["init_code_hash"],
+            )
+        }
 
-    return {
-        "chain_id": ChainId.ethereum,
-        "factory_router_map": factory_router_map,
-        "allowed_intermediary_pairs": allowed_intermediary_pairs,
-        "reserve_token_address": reserve_token_address,
-        # USDC, WETH, USDT
-        "quote_token_addresses": {
-            "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
-            "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",
-            "0xdac17f958d2ee523a2206206994597c13d831ec7",
-        },
-        "trading_fee": UNISWAP_V2_FEE,
-    }
+        return {
+            "chain_id": ChainId.base,
+            "factory_router_map": factory_router_map,
+            "allowed_intermediary_pairs": allowed_intermediary_pairs,
+            "reserve_token_address": reserve_token_address,
+            "quote_token_addresses": {
+                "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913", # USDC
+                "0x4200000000000000000000000000000000000006",  # WETH
+            },
+            "trading_fee": UNISWAP_V2_FEE,
+        }
+
+    else:
+
+        # Allowed exchanges as factory -> router pairs,
+        # by their smart contract addresses
+        # https://docs.uniswap.org/protocol/V2/reference/smart-contracts/factory
+        # https://github.com/Uniswap/v2-core/issues/102
+        # init_code_hash: https://etherscan.io/address/0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D#code#L700
+        factory_router_map = {
+            "0x5C69bEe701ef814a2B6a3EDD4B1652CB9cc5aA6f": (
+                "0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D",
+                "96e8ac4277198ff8b6f785478aa9a39f403cb768dd02cbee326c3e7da348845f",
+            )
+        }
+
+        return {
+            "chain_id": ChainId.ethereum,
+            "factory_router_map": factory_router_map,
+            "allowed_intermediary_pairs": allowed_intermediary_pairs,
+            "reserve_token_address": reserve_token_address,
+            # USDC, WETH, USDT
+            "quote_token_addresses": {
+                "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+                "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",
+                "0xdac17f958d2ee523a2206206994597c13d831ec7",
+            },
+            "trading_fee": UNISWAP_V2_FEE,
+        }
 
 
 def get_uniswap_v3_ethereum_default_routing_parameters(
@@ -706,20 +739,27 @@ def get_backtest_routing_model(
 
 
 def create_uniswap_v2_compatible_routing(
-    routing_type: TradeRouting, reserve_currency: ReserveCurrency
+    routing_type: TradeRouting,
+    reserve_currency: ReserveCurrency,
+    chain_id: ChainId = None,
 ) -> UniswapV2Routing:
     """Set up Uniswap v2 compatible routing.
     Not recommended to use by itself, because it doesn't validate reserve currency.
     Rather use create_compatible_routing
 
     :param routing_type:
-    TradeRouting type
+        TradeRouting type
 
     :param reserve_currency:
-    Reservecurrency type
+        Reservecurrency type
+
+    :param chain_id:
+        Define routing parameters for chains.
+
+        Base is different.s
 
     :returns:
-    UniswapV2SimpleRoutingModel"""
+        UniswapV2SimpleRoutingModel"""
 
     if routing_type in {
         TradeRouting.pancakeswap_busd,
@@ -750,7 +790,7 @@ def create_uniswap_v2_compatible_routing(
         TradeRouting.uniswap_v2_dai,
     }:
         # uniswap v2 on eth
-        params = get_uniswap_v2_default_routing_parameters(reserve_currency)
+        params = get_uniswap_v2_default_routing_parameters(reserve_currency, chain_id)
     else:
         raise NotImplementedError()
 
