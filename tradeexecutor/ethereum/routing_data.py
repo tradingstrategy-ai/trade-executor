@@ -345,7 +345,7 @@ def get_trader_joe_default_routing_parameters(
 
 def get_uniswap_v2_default_routing_parameters(
     reserve_currency: ReserveCurrency,
-    chain_id: ChainId,
+    chain_id: ChainId = None,
 ) -> RoutingData:
     """Generate routing using Uniswap v2 router.
 
