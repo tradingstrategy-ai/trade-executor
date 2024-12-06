@@ -41,14 +41,14 @@ def vault_owner() -> HexAddress:
 
 @pytest.mark.skipif(not JSON_RPC_BASE, reason="JSON_RPC_BASE is needed to run mainnet fork tets")
 @pytest.fixture()
-def anvil_base_fork(request, vault_owner, deposit_user) -> AnvilLaunch:
+def anvil_base_fork(request, vault_owner, deposit_user, existing_shareholder) -> AnvilLaunch:
     """Create a testable fork of live BNB chain.
 
     :return: JSON-RPC URL for Web3
     """
     launch = fork_network_anvil(
         JSON_RPC_BASE,
-        unlocked_addresses=[vault_owner, deposit_user],
+        unlocked_addresses=[vault_owner, deposit_user, existing_shareholder],
         # Cannot use fork_block_number with live Enso API :(
         # fork_block_number=22_978_054,  # Keep block height stable for tests
     )
@@ -95,7 +95,7 @@ def base_example_vault(web3, base_test_vault_spec: VaultSpec) -> VelvetVault:
 
 @pytest.fixture()
 def deposit_user() -> HexAddress:
-    """A user that has preapproved 5 USDC deposit for the vault above, no approve(0 needed."""
+    """A user that has preapproved 5 USDC deposit for the vault above, no approve() needed."""
     return "0x7612A94AafF7a552C373e3124654C1539a4486A8"
 
 
@@ -125,6 +125,12 @@ def base_doginme(base_test_volatile_asset) -> AssetIdentifier:
         decimals=18,
         token_symbol="DogInMe",
     )
+
+
+@pytest.fixture()
+def base_doginme_token(web3, base_doginme) -> TokenDetails:
+    """DogInMe"""
+    return fetch_erc20_details(web3, base_doginme.address)
 
 
 @pytest.fixture(scope='module')
