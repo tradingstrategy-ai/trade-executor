@@ -236,6 +236,7 @@ def test_velvet_sync_positions_deposit(
         from_=deposit_user,
         deposit_token_address=usdc_contract.address,
         amount=5 * 10**6,
+        slippage=0.05,
     )
     tx_hash = web3.eth.send_transaction(tx_data)
     assert_transaction_success_with_explanation(web3, tx_hash)
@@ -272,7 +273,7 @@ def test_velvet_sync_positions_deposit(
     evt = events[0]
     assert evt.balance_update_id == 3
     assert evt.chain_id == 8453
-    assert evt.old_balance == pytest.approx(Decimal("1514.789494722202946726"))
+    assert evt.old_balance == pytest.approx(Decimal(580.917745152826802993))
     assert evt.quantity > 100  # Depends on market conditions
     assert 0 < evt.usd_value < 1
     assert evt.cause == BalanceUpdateCause.vault_flow
