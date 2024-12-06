@@ -39,7 +39,10 @@ class BalanceUpdateCause(enum.Enum):
 
     #: Velvet capital which puts deposits/redemptions directly to open positions
     #:
-    vault_inflow = "vault_inflow"
+    #: Positive quantities are for deposits, negative quantities are for redemptions.
+    #:
+    vault_flow = "vault_flow"
+
 
 
 class BalanceUpdatePositionType(enum.Enum):
@@ -113,10 +116,12 @@ class BalanceUpdate:
     #:
     old_balance: Decimal
 
-    #: How much this deposit/redemption was worth
+    #: How much this deposit/redemption was worth.
     #:
     #: Used for deposit/redemption inflow/outflow calculation.
     #: This is the asset value from our internal price keeping at the time of the event.
+    #:
+    #: Positive for deposits, negative for redemptions.
     #:
     usd_value: USDollarAmount
 

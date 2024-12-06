@@ -39,6 +39,17 @@ def vault_owner() -> HexAddress:
     return "0x0c9db006f1c7bfaa0716d70f012ec470587a8d4f"
 
 
+@pytest.fixture()
+def existing_shareholder() -> HexAddress:
+    """A user that has shares for the vault that can be redeemed.
+
+    - This user has a pre-approved approve() to withdraw all shares
+
+    https://basescan.org/token/0x205e80371f6d1b33dff7603ca8d3e92bebd7dc25#balances
+    """
+    return "0x0C9dB006F1c7bfaA0716D70F012EC470587a8D4F"
+
+
 @pytest.mark.skipif(not JSON_RPC_BASE, reason="JSON_RPC_BASE is needed to run mainnet fork tets")
 @pytest.fixture()
 def anvil_base_fork(request, vault_owner, deposit_user, existing_shareholder) -> AnvilLaunch:
