@@ -741,20 +741,25 @@ def get_backtest_routing_model(
 def create_uniswap_v2_compatible_routing(
     routing_type: TradeRouting,
     reserve_currency: ReserveCurrency,
-    chain_id: ChainId,
+    chain_id: ChainId = None,
 ) -> UniswapV2Routing:
     """Set up Uniswap v2 compatible routing.
     Not recommended to use by itself, because it doesn't validate reserve currency.
     Rather use create_compatible_routing
 
     :param routing_type:
-    TradeRouting type
+        TradeRouting type
 
     :param reserve_currency:
-    Reservecurrency type
+        Reservecurrency type
+
+    :param chain_id:
+        Define routing parameters for chains.
+
+        Base is different.s
 
     :returns:
-    UniswapV2SimpleRoutingModel"""
+        UniswapV2SimpleRoutingModel"""
 
     if routing_type in {
         TradeRouting.pancakeswap_busd,
