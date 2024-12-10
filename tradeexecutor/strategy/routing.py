@@ -11,12 +11,16 @@ import logging
 
 from hexbytes import HexBytes
 
+from eth_defi.trade import TradeSuccess
+from eth_defi.velvet.analysis import analyse_trade_by_receipt_generic
+from tradeexecutor.ethereum.swap import report_failure
 from tradeexecutor.state.identifier import TradingPairIdentifier, AssetIdentifier
 from tradeexecutor.state.state import State
 from tradeexecutor.state.trade import TradeExecution
 from tradeexecutor.state.types import JSONHexAddress
 from tradeexecutor.strategy.universe_model import StrategyExecutionUniverse
 from tradeexecutor.strategy.trading_strategy_universe import translate_token, translate_trading_pair
+from tradeexecutor.utils.blockchain import get_block_timestamp
 
 from tradingstrategy.pair import PandasPairUniverse, PairNotFoundError
 
@@ -65,10 +69,11 @@ class RoutingModel(abc.ABC):
     Used directly by BacktestRoutingModel and indirectly (through EthereumRoutingModel) by UniswapV2SimpleRoutingModel and UniswapV3SimpleRoutingModel
     """
     
-    def __init__(self,
-                 allowed_intermediary_pairs: dict[JSONHexAddress, JSONHexAddress],
-                 reserve_token_address: str,
-                 ):
+    def __init__(
+        self,
+        allowed_intermediary_pairs: dict[JSONHexAddress, JSONHexAddress],
+        reserve_token_address: str,
+    ):
         """
         
         
@@ -223,11 +228,12 @@ class RoutingModel(abc.ABC):
 
     @abc.abstractmethod
     def setup_trades(
-            self,
-            state: RoutingState,
-            trades: List[TradeExecution],
-            check_balances=False,
-            rebroadcast=False,
+        self,
+        state: State,
+        routing_state: RoutingState,
+        trades: List[TradeExecution],
+        check_balances=False,
+        rebroadcast=False,
     ):
         """Setup the trades decided by a strategy.
 
@@ -258,21 +264,15 @@ class RoutingModel(abc.ABC):
         receipts: Dict[HexBytes, dict],
         stop_on_execution_failure=False,
     ):
-        """Post-trade
+        """Post-trade executed price analysis.
 
-        - Read on-chain data about the execution success and performance
-
-        - Mark trade succeed or failed
+        - Read on-chain data about the tx receipt of Enso swap
 
         :param state:
             Strategy state
 
         :param web3:
             Web3 connection.
-
-            TODO: Breaks abstraction. Figure better way to pass
-            this around later. Maybe create an Ethereum-specific
-            routing parent class?
 
         :param trade:
             Trade executed in this execution batch
@@ -286,5 +286,6 @@ class RoutingModel(abc.ABC):
             Raise an error if the trade failed.
 
             Used in unit testing.
+
         """
         raise NotImplementedError()

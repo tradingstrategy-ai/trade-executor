@@ -1,17 +1,18 @@
 """Velvet's vault transaction construction."""
 
 import logging
+from pprint import pformat
 from typing import List, Optional
 from decimal import Decimal
 
 from web3.contract.contract import Contract, ContractFunction
 
-from eth_defi.gas import GasPriceSuggestion
+from eth_defi.gas import GasPriceSuggestion, apply_gas
 from eth_defi.hotwallet import HotWallet
 
 from eth_defi.tx import AssetDelta
 from eth_defi.velvet import VelvetVault
-from tradeexecutor.ethereum.tx import TransactionBuilder
+from tradeexecutor.ethereum.tx import TransactionBuilder, HotWalletTransactionBuilder
 from tradeexecutor.state.blockhain_transaction import BlockchainTransaction, BlockchainTransactionType, JSONAssetDelta
 from tradeexecutor.state.pickle_over_json import encode_pickle_over_json
 
@@ -19,6 +20,10 @@ logger = logging.getLogger(__name__)
 
 
 class VelvetTransactionBuilder(TransactionBuilder):
+    """A thin wrapper to built Enso transactions.
+
+    - Takes Enso API payload and signs it with the asset manager private key
+    """
 
     def __init__(
         self,
@@ -27,11 +32,7 @@ class VelvetTransactionBuilder(TransactionBuilder):
     ):
         super().__init__(vault.web3)
         self.vault = vault
-
-    @property
-    def hot_wallet(self) -> HotWallet:
-        """Get the underlying web3 connection."""
-        return self.vault_controlled_wallet.hot_wallet
+        self.hot_wallet = hot_wallet
 
     def init(self):
         self.hot_wallet.sync_nonce(self.web3)
@@ -55,29 +56,59 @@ class VelvetTransactionBuilder(TransactionBuilder):
         """
         return self.hot_wallet.get_native_currency_balance(self.web3)
 
-    def sign_transaction(
+    def sign_transaction_data(
         self,
-        tx_data: dict,
+        tx: dict,
+        asset_deltas: Optional[List[AssetDelta]] = None,
         notes: str = "",
     ) -> BlockchainTransaction:
+        """Sign a transaction with the hot wallet private key.
 
-        signed_tx = self.hot_wallet.sign_transaction_with_new_nonce(tx_data)
-        signed_bytes = signed_tx.rawTransaction
+        - Handle signing Enso payload and preparing it for broadcast
+
+        - Gas limit and price come from Enso API
+
+        See also :py:meth:`sign_transaction`.
+        """
+
+        assert isinstance(tx, dict), f"Expected dict, got {type(tx)}"
+
+        logger.info(
+            "Preparing to sign:\n%s",
+            pformat(tx)
+        )
+
+        signed_tx = self.hot_wallet.sign_transaction_with_new_nonce(tx)
+
+        signed_bytes = signed_tx.rawTransaction.hex()
+
+        if asset_deltas is None:
+            asset_deltas = []
 
         return BlockchainTransaction(
-            type=BlockchainTransactionType.enzyme_vault,
             chain_id=self.chain_id,
             from_address=self.hot_wallet.address,
-            contract_address=tx_data["address"],
+            contract_address=None,
             function_selector=None,
             transaction_args=None,
             args=None,
             wrapped_args=None,
-            wrapped_function_selector=None,
             signed_bytes=signed_bytes,
             signed_tx_object=encode_pickle_over_json(signed_tx),
             tx_hash=signed_tx.hash.hex(),
             nonce=signed_tx.nonce,
-            details=tx_data,
+            details=tx,
+            asset_deltas=[JSONAssetDelta.from_asset_delta(a) for a in asset_deltas],
             notes=notes,
         )
+
+    def sign_transaction(
+        self,
+        contract: Contract,
+        args_bound_func: ContractFunction,
+        gas_limit: Optional[int] = None,
+        gas_price_suggestion: Optional[GasPriceSuggestion] = None,
+        asset_deltas: Optional[List[AssetDelta]] = None,
+        notes: str = "",
+    ) -> BlockchainTransaction:
+        raise NotImplementedError("Velvet vaults do not support arbitrary transactions")

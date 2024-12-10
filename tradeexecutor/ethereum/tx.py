@@ -273,15 +273,18 @@ class HotWalletTransactionBuilder(TransactionBuilder):
         return self.hot_wallet.get_native_currency_balance(self.web3)
 
     def sign_transaction(
-            self,
-            contract: Contract,
-            args_bound_func: ContractFunction,
-            gas_limit: Optional[int] = None,
-            gas_price_suggestion: Optional[GasPriceSuggestion] = None,
-            asset_deltas: Optional[List[AssetDelta]] = None,
-            notes: str = "",
+        self,
+        contract: Contract,
+        args_bound_func: ContractFunction,
+        gas_limit: Optional[int] = None,
+        gas_price_suggestion: Optional[GasPriceSuggestion] = None,
+        asset_deltas: Optional[List[AssetDelta]] = None,
+        notes: str = "",
     ) -> BlockchainTransaction:
-        """Sign a transaction with the hot wallet private key."""
+        """Sign a transaction with the hot wallet private key.
+
+        See also :py:meth:`sign_transaction_data`.
+        """
 
         assert isinstance(contract, Contract), f"Expected Contract, got {contract}"
         assert isinstance(args_bound_func, ContractFunction), f"Expected ContractFunction, got {args_bound_func}"
