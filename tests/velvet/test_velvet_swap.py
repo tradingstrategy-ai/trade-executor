@@ -1,5 +1,6 @@
 """Execute trades using Velvet vault and Enso."""
 import datetime
+import os
 from decimal import Decimal
 
 import pytest
@@ -8,6 +9,7 @@ from eth_defi.token import TokenDetails
 
 from eth_defi.velvet import VelvetVault
 from tradeexecutor.ethereum.uniswap_v2.uniswap_v2_live_pricing import UniswapV2LivePricing
+from tradeexecutor.ethereum.velvet.execution import VelvetExecution
 from tradeexecutor.ethereum.velvet.vault import VelvetVaultSyncModel
 from tradeexecutor.ethereum.velvet.velvet_enso_routing import VelvetEnsoRouting
 from tradingstrategy.pair import PandasPairUniverse
@@ -20,26 +22,10 @@ from tradeexecutor.strategy.pandas_trader.position_manager import PositionManage
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
 
 
-
-@pytest.fixture()
-def routing_model() -> VelvetEnsoRouting:
-    return VelvetEnsoRouting()
-
-
-@pytest.fixture()
-def pricing_model(
-    web3,
-    uniswap_v2,
-    pair_universe: PandasPairUniverse,
-    routing_model
-) -> UniswapV2LivePricing:
-    pricing_model = UniswapV2LivePricing(
-        web3,
-        pair_universe,
-        routing_model,
-    )
-    return pricing_model
-
+pytestmark = pytest.mark.skipif(
+    not os.environ.get("VELVET_VAULT_OWNER_PRIVATE_KEY"),
+    reason="Need to set VELVET_VAULT_OWNER_PRIVATE_KEY to a specific private key to run this test"
+)
 
 
 @pytest.fixture()
@@ -98,6 +84,8 @@ def test_velvet_intent_based_open_position_uniswap_v2(
     velvet_pricing_model: UniswapV2LivePricing,
     base_usdc_token: TokenDetails,
     state_with_starting_positions: State,
+    velvet_execution_model: VelvetExecution,
+    velvet_routing_model: VelvetEnsoRouting,
 ):
     """Perform an intent-based swap
 
@@ -112,6 +100,8 @@ def test_velvet_intent_based_open_position_uniswap_v2(
 
     state = state_with_starting_positions
     strategy_universe = velvet_test_vault_strategy_universe
+    execution_model = velvet_execution_model
+    routing_model = velvet_routing_model
 
     position_manager = PositionManager(
         datetime.datetime.utcnow(),
@@ -123,9 +113,22 @@ def test_velvet_intent_based_open_position_uniswap_v2(
 
     pair = strategy_universe.get_pair_by_human_description((ChainId.base, "uniswap-v2", "SKI", "WETH"))
 
-    position_manager.open_spot(
+    trades = position_manager.open_spot(
         pair=pair,
         value=1.0  # USDC
     )
 
+    # Setup routing state for the approvals of this cycle
+    routing_state_details = execution_model.get_routing_state_details()
+    routing_state = routing_model.create_routing_state(strategy_universe, routing_state_details)
 
+    execution_model.initialize()
+
+    execution_model.execute_trades(
+        datetime.datetime.utcnow(),
+        state,
+        trades,
+        routing_model,
+        routing_state,
+        check_balances=True,
+    )

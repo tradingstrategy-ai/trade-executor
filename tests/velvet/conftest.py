@@ -10,14 +10,19 @@ import pytest
 from eth_typing import HexAddress
 from web3 import Web3
 
+from eth_defi.hotwallet import HotWallet
 from eth_defi.provider.anvil import AnvilLaunch, fork_network_anvil
 from eth_defi.provider.multi_provider import create_multi_provider_web3
 from eth_defi.token import fetch_erc20_details, TokenDetails
 from eth_defi.vault.base import VaultSpec
 from eth_defi.velvet import VelvetVault
 from tradeexecutor.ethereum.ethereum_protocol_adapters import create_uniswap_v3_adapter, EthereumPairConfigurator
+from tradeexecutor.ethereum.tx import HotWalletTransactionBuilder
 from tradeexecutor.ethereum.uniswap_v2.uniswap_v2_live_pricing import UniswapV2LivePricing
 from tradeexecutor.ethereum.uniswap_v3.uniswap_v3_live_pricing import UniswapV3LivePricing
+from tradeexecutor.ethereum.velvet.execution import VelvetExecution
+from tradeexecutor.ethereum.velvet.tx import VelvetTransactionBuilder
+from tradeexecutor.ethereum.velvet.velvet_enso_routing import VelvetEnsoRouting
 from tradeexecutor.strategy.generic.generic_pricing_model import GenericPricing
 from tradeexecutor.strategy.generic.pair_configurator import ProtocolRoutingId
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse, translate_token
@@ -326,3 +331,46 @@ def velvet_pricing_model(
     return GenericPricing(
         pair_configurator,
     )
+
+
+@pytest.fixture()
+def execution_model(
+    web3,
+    hot_wallet: HotWallet,
+) -> VelvetExecution:
+    """Set EthereumExecutionModel in Base fork testing mode."""
+    execution_model = VelvetExecution(
+        HotWalletTransactionBuilder(web3, hot_wallet),
+        mainnet_fork=True,
+        confirmation_block_count=0,
+    )
+    return execution_model
+
+
+@pytest.fixture()
+def velvet_execution_model(
+    web3: Web3,
+    base_example_vault: VelvetVault,
+) -> VelvetExecution:
+    """Set EthereumExecutionModel in Base fork testing mode."""
+
+    private_key = os.environ["VELVET_VAULT_OWNER_PRIVATE_KEY"]
+    hot_wallet = HotWallet.from_private_key(private_key)
+    execution_model = VelvetExecution(
+        vault=base_example_vault,
+        tx_builder=VelvetTransactionBuilder(base_example_vault, hot_wallet),
+        mainnet_fork=True,
+        confirmation_block_count=0,
+    )
+    return execution_model
+
+
+@pytest.fixture()
+def velvet_routing_model() -> VelvetEnsoRouting:
+    """Create a routing model that trades Uniswap v2, v3 and 1delta + Aave.
+
+    Live Polygon deployment addresses.
+    """
+
+    # Uses default router choose function
+    return VelvetEnsoRouting()

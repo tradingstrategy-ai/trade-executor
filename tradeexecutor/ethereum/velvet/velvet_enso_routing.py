@@ -6,6 +6,7 @@ from eth_defi.velvet import VelvetVault
 from tradeexecutor.ethereum.velvet.tx import VelvetTransactionBuilder
 from tradeexecutor.state.blockhain_transaction import BlockchainTransaction
 from tradeexecutor.state.trade import TradeExecution
+from tradeexecutor.state.types import JSONHexAddress
 from tradeexecutor.strategy.routing import RoutingState, RoutingModel
 from tradeexecutor.strategy.universe_model import StrategyExecutionUniverse
 from tradingstrategy.pair import PandasPairUniverse
@@ -21,7 +22,7 @@ class VelvetEnsoRoutingState(RoutingState):
         tx_builder: VelvetTransactionBuilder,
     ):
         self.vault = vault
-        self.tx_builder = tx_builder()
+        self.tx_builder = tx_builder
 
 
 class VelvetEnsoRouting(RoutingModel):
@@ -54,7 +55,9 @@ class VelvetEnsoRouting(RoutingModel):
         self,
         state: VelvetEnsoRoutingState,
         trade: TradeExecution,
+        remaining_tokens: set[JSONHexAddress],
     ) -> BlockchainTransaction:
+        """Prepare swap payload from Velvet centralised API."""
         assert trade.is_spot(), "Velvet only supports spot trades"
 
         assert trade.slippage_tolerance, "TradeExecution.slippage_tolerance must be set with Velvet"
@@ -71,12 +74,13 @@ class VelvetEnsoRouting(RoutingModel):
         tx_data = vault.prepare_swap_with_enso(
             token_in=token_in.address,
             token_out=token_out.address,
+            swap_amount=trade.get_raw_planned_quantity(),
             slippage=trade.slippage_tolerance,
-            remaining_tokens=set(),
+            remaining_tokens=remaining_tokens,
             swap_all=trade.closing,
         )
-        blockchain_transaction = tx_builder.sign_transaction(
-            tx_data=tx_data,
+        blockchain_transaction = tx_builder.sign_transaction_data(
+            tx_data,
             notes=trade.notes,
         )
         return blockchain_transaction
@@ -88,6 +92,18 @@ class VelvetEnsoRouting(RoutingModel):
         check_balances=False,
         rebroadcast=False,
     ):
-        for t in trades:
-            t.blockchain_transactions = [self.swap(t)]
 
+        for trade in trades:
+            assert trade.is_spot(), "Velvet only supports spot trades"
+
+        # Calculate what tokens we will have after this trade batch is complete
+        remaining_tokens = {t.pair.base.address for t in trades if not t.closing}
+
+        logger.info(
+            "Preparing %s trades for Enso execution, we will have %d tokens remaining",
+            len(trades),
+            len(remaining_tokens),
+        )
+
+        for t in trades:
+            t.blockchain_transactions = [self.swap(state, t, remaining_tokens)]
