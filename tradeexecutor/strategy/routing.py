@@ -69,10 +69,11 @@ class RoutingModel(abc.ABC):
     Used directly by BacktestRoutingModel and indirectly (through EthereumRoutingModel) by UniswapV2SimpleRoutingModel and UniswapV3SimpleRoutingModel
     """
     
-    def __init__(self,
-                 allowed_intermediary_pairs: dict[JSONHexAddress, JSONHexAddress],
-                 reserve_token_address: str,
-                 ):
+    def __init__(
+        self,
+        allowed_intermediary_pairs: dict[JSONHexAddress, JSONHexAddress],
+        reserve_token_address: str,
+    ):
         """
         
         
@@ -227,11 +228,12 @@ class RoutingModel(abc.ABC):
 
     @abc.abstractmethod
     def setup_trades(
-            self,
-            state: RoutingState,
-            trades: List[TradeExecution],
-            check_balances=False,
-            rebroadcast=False,
+        self,
+        state: State,
+        routing_state: RoutingState,
+        trades: List[TradeExecution],
+        check_balances=False,
+        rebroadcast=False,
     ):
         """Setup the trades decided by a strategy.
 
@@ -284,53 +286,6 @@ class RoutingModel(abc.ABC):
             Raise an error if the trade failed.
 
             Used in unit testing.
+
         """
-
-        assert trade.is_spot()
-        assert len(trade.blockchain_transactions) == 1, "Enso trade can have only a single physical tx per trade"
-
-        tx = trade.blockchain_transactions[0]
-        tx_hash = tx.tx_hash
-        receipt = receipts[HexBytes(tx_hash)]
-
-        result = analyse_trade_by_receipt_generic(
-            web3,
-            tx_hash=tx_hash,
-            tx_receipt=receipt,
-            intent_based=True,
-        )
-
-        ts = get_block_timestamp(web3, receipt["blockNumber"])
-
-        base = trade.pair.base
-        quote = trade.pair.quote
-
-        if isinstance(result, TradeSuccess):
-
-            if trade.is_buy():
-                executed_reserve = quote.convert_to_decimal(result["amount_in"])
-                executed_amount = base.convert_to_decimal(result["amount_out"])
-                price = result.get_human_price(reverse_token_order=True)
-            else:
-                executed_amount = base.convert_to_decimal(result["amount_in"])
-                executed_reserve = quote.convert_to_decimal(result["amount_out"])
-                price = result.get_human_price(reverse_token_order=False)
-
-            logger.info(f"Executed: {executed_amount} {trade.pair.base.token_symbol}, {executed_reserve} {trade.pair.quote.token_symbol}")
-
-            lp_fee_paid = result.lp_fee_paid  # Always set to None
-
-            # Mark as success
-            state.mark_trade_success(
-                ts,
-                trade,
-                executed_price=float(price),
-                executed_amount=executed_amount,
-                executed_reserve=executed_reserve,
-                lp_fees=lp_fee_paid,
-                native_token_price=0,
-                cost_of_gas=float(result.get_cost_of_gas()),
-            )
-        else:
-            # Trade failed
-            report_failure(ts, state, trade, stop_on_execution_failure)
+        raise NotImplementedError()

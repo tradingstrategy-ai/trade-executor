@@ -1,13 +1,20 @@
 """Perform spot token swaps for Velvet vault using Enso's intent engine."""
 
 import logging
-from typing import cast
+from typing import cast, Dict
 
+from hexbytes import HexBytes
+
+from eth_defi.timestamp import get_block_timestamp
+from eth_defi.trade import TradeSuccess
 from eth_defi.velvet import VelvetVault
+from eth_defi.velvet.analysis import analyse_trade_by_receipt_generic
+from tradeexecutor.ethereum.swap import report_failure
 from tradeexecutor.ethereum.velvet.tx import VelvetTransactionBuilder
 from tradeexecutor.state.blockhain_transaction import BlockchainTransaction
 from tradeexecutor.state.identifier import AssetIdentifier
 from tradeexecutor.state.interest_distribution import AssetInterestData
+from tradeexecutor.state.state import State
 from tradeexecutor.state.trade import TradeExecution
 from tradeexecutor.state.types import JSONHexAddress
 from tradeexecutor.strategy.routing import RoutingState, RoutingModel
@@ -19,7 +26,10 @@ logger = logging.getLogger(__name__)
 
 
 class VelvetEnsoRoutingState(RoutingState):
+    """Capture trade executor state what we need for one strategy cycle of Enso routing.
 
+    - Not much to do here - Enso swaps are stateless (no approves needed)
+    """
     def __init__(
         self,
         vault: VelvetVault,
@@ -36,12 +46,13 @@ class VelvetEnsoRoutingState(RoutingState):
 
 class VelvetEnsoRouting(RoutingModel):
     """Use Velvet's Enso integration for performing trades.
-    """
 
-    def __init__(
-        self,
-    ):
-        pass
+    .. note ::
+
+        We use routing parameters ``reserve_token_address`` and ``allowed_intermediary_pairs``
+        only in safety trip asserts, as Enso takes care of all routing.
+
+    """
 
     def create_routing_state(
         self,
@@ -65,12 +76,13 @@ class VelvetEnsoRouting(RoutingModel):
         self,
         state: VelvetEnsoRoutingState,
         trade: TradeExecution,
-        remaining_tokens: set[JSONHexAddress],
+        remaining_tokens: list[JSONHexAddress],
     ) -> BlockchainTransaction:
         """Prepare swap payload from Velvet centralised API."""
-        assert trade.is_spot(), "Velvet only supports spot trades"
 
+        assert trade.is_spot(), "Velvet only supports spot trades"
         assert trade.slippage_tolerance, "TradeExecution.slippage_tolerance must be set with Velvet"
+        assert trade.pair.quote.address in self.allowed_intermediary_pairs or trade.pair.quote.address == self.reserve_token_address, f"Unsupported quote token: {trade.pair}"
 
         # Enso does routing for as, we only care about USDC and the target token
         reserve_asset = state.strategy_universe.get_reserve_asset()
@@ -109,24 +121,117 @@ class VelvetEnsoRouting(RoutingModel):
 
     def setup_trades(
         self,
-        state: VelvetEnsoRoutingState,
+        state: State,
+        routing_state: VelvetEnsoRoutingState,
         trades: list[TradeExecution],
         check_balances=False,
         rebroadcast=False,
     ):
 
+        logger.info(
+            "Preparing %s trades for Enso execution",
+            len(trades),
+        )
+
         for trade in trades:
             assert trade.is_spot(), "Velvet only supports spot trades"
 
         # Calculate what tokens we will have after this trade batch is complete
-        remaining_tokens = {t.pair.base.address for t in trades if not t.closing}
-        remaining_tokens.add(state.get_reserve_asset().address)
-
-        logger.info(
-            "Preparing %s trades for Enso execution, we will have %d tokens remaining",
-            len(trades),
-            len(remaining_tokens),
-        )
+        remaining_tokens = {p.pair.base for p in state.portfolio.get_open_and_frozen_positions()}
+        remaining_tokens.add(routing_state.get_reserve_asset())
 
         for t in trades:
-            t.blockchain_transactions = [self.swap(state, t, remaining_tokens)]
+            if t.closing:
+                remaining_tokens.discard(t)
+
+            logger.info(
+                "Preparing trade %s, remaining tokens %s",
+                t,
+                ", ".join(t.token_symbol for t in remaining_tokens),
+
+            )
+            remaining_token_addresses = [t.address for t in remaining_tokens]
+            t.blockchain_transactions = [self.swap(routing_state, t, remaining_token_addresses)]
+
+
+    def settle_trade(
+        self,
+        web3,
+        state: State,
+        trade: TradeExecution,
+        receipts: Dict[HexBytes, dict],
+        stop_on_execution_failure=False,
+    ):
+        """Post-trade executed price analysis.
+
+        - Read on-chain data about the tx receipt of Enso swap
+
+        :param state:
+            Strategy state
+
+        :param web3:
+            Web3 connection.
+
+        :param trade:
+            Trade executed in this execution batch
+
+        :param receipts:
+            Blockchain receipts we received in this execution batch.
+
+            Hash -> receipt mapping.
+
+        :param stop_on_execution_failure:
+            Raise an error if the trade failed.
+
+            Used in unit testing.
+
+        """
+
+        assert trade.is_spot()
+        assert len(trade.blockchain_transactions) == 1, "Enso trade can have only a single physical tx per trade"
+
+        tx = trade.blockchain_transactions[0]
+        tx_hash = tx.tx_hash
+        receipt = receipts[HexBytes(tx_hash)]
+
+        result = analyse_trade_by_receipt_generic(
+            web3,
+            tx_hash=tx_hash,
+            tx_receipt=receipt,
+            intent_based=True,
+        )
+
+        ts = get_block_timestamp(web3, receipt["blockNumber"])
+
+        base = trade.pair.base
+        quote = trade.pair.quote
+
+        if isinstance(result, TradeSuccess):
+            if trade.is_buy():
+                executed_reserve = quote.convert_to_decimal(result.amount_in)
+                executed_amount = base.convert_to_decimal(result.amount_out)
+                price = result.get_human_price(reverse_token_order=True)
+                import ipdb ; ipdb.set_trace()
+            else:
+                executed_amount = base.convert_to_decimal(result.amount_in)
+                executed_reserve = quote.convert_to_decimal(result.amount_out)
+                price = result.get_human_price(reverse_token_order=False)
+
+            logger.info(f"Executed: {executed_amount} {trade.pair.base.token_symbol}, {executed_reserve} {trade.pair.quote.token_symbol}")
+
+            lp_fee_paid = result.lp_fee_paid  # Always set to None
+
+            # Mark as success
+            state.mark_trade_success(
+                ts,
+                trade,
+                executed_price=float(price),
+                executed_amount=executed_amount,
+                executed_reserve=executed_reserve,
+                lp_fees=lp_fee_paid,
+                native_token_price=0,
+                cost_of_gas=float(result.get_cost_of_gas()),
+            )
+        else:
+            # Trade failed
+            report_failure(ts, state, trade, stop_on_execution_failure)

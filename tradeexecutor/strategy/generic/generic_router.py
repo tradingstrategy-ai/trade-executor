@@ -90,11 +90,12 @@ class GenericRouting(RoutingModel):
         return GenericRoutingState(universe, substates)
 
     def setup_trades(
-            self,
-            state: GenericRoutingState,
-            trades: List[TradeExecution],
-            check_balances=False,
-            rebroadcast=False,
+        self,
+        state: State,
+        routing_state: GenericRoutingState,
+        trades: List[TradeExecution],
+        check_balances=False,
+        rebroadcast=False,
     ):
         """Route trades.
 
@@ -118,8 +119,9 @@ class GenericRouting(RoutingModel):
 
             router_state = state.state_map[protocol_config.routing_id.router_name]
             router.setup_trades(
-                router_state,
-                [t],
+                state=state,
+                routing_state=router_state,
+                trades=[t],
                 check_balances=check_balances,
                 rebroadcast=rebroadcast,
             )

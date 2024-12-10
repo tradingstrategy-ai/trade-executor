@@ -16,6 +16,7 @@ from eth_defi.provider.multi_provider import create_multi_provider_web3
 from eth_defi.token import fetch_erc20_details, TokenDetails
 from eth_defi.vault.base import VaultSpec
 from eth_defi.velvet import VelvetVault
+from strategies.test_only.frozen_asset import allowed_intermediary_pairs
 from tradeexecutor.ethereum.ethereum_protocol_adapters import create_uniswap_v3_adapter, EthereumPairConfigurator
 from tradeexecutor.ethereum.tx import HotWalletTransactionBuilder
 from tradeexecutor.ethereum.uniswap_v2.uniswap_v2_live_pricing import UniswapV2LivePricing
@@ -383,11 +384,12 @@ def velvet_execution_model(
 
 
 @pytest.fixture()
-def velvet_routing_model() -> VelvetEnsoRouting:
-    """Create a routing model that trades Uniswap v2, v3 and 1delta + Aave.
-
-    Live Polygon deployment addresses.
+def velvet_routing_model(base_weth, base_usdc) -> VelvetEnsoRouting:
+    """Create Enso routing model.
     """
 
     # Uses default router choose function
-    return VelvetEnsoRouting()
+    return VelvetEnsoRouting(
+        reserve_token_address=base_usdc.address,
+        allowed_intermediary_pairs={base_weth.address: "0xd0b53d9277642d899df5c87a3966a349a798f224"},  # WETH
+    )
