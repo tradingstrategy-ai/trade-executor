@@ -148,7 +148,10 @@ def base_doginme(base_doginme_address) -> AssetIdentifier:
 
 @pytest.fixture(scope='module')
 def base_ski(base_doginme_address) -> AssetIdentifier:
-    """SKI - SkiMask"""
+    """SKI - SkiMask.
+
+    https://app.uniswap.org/explore/tokens/base/0x768be13e1680b5ebe0024c42c896e3db59ec0149
+    """
     return AssetIdentifier(
         chain_id=8453,
         address="0x768BE13e1680b5ebE0024C42c896E3dB59ec0149",

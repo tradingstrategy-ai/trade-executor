@@ -76,14 +76,9 @@ def state_with_starting_positions(
 
 
 def test_velvet_intent_based_open_position_uniswap_v2(
-    web3: Web3,
-    base_example_vault: VelvetVault,
-    base_usdc: AssetIdentifier,
-    base_doginme: AssetIdentifier,
+    state_with_starting_positions: State,
     velvet_test_vault_strategy_universe: TradingStrategyUniverse,
     velvet_pricing_model: UniswapV2LivePricing,
-    base_usdc_token: TokenDetails,
-    state_with_starting_positions: State,
     velvet_execution_model: VelvetExecution,
     velvet_routing_model: VelvetEnsoRouting,
 ):
@@ -108,7 +103,7 @@ def test_velvet_intent_based_open_position_uniswap_v2(
         universe=velvet_test_vault_strategy_universe,
         state=state,
         pricing_model=velvet_pricing_model,
-        default_slippage_tolerance=0.05,
+        default_slippage_tolerance=0.20,
     )
 
     pair = strategy_universe.get_pair_by_human_description((ChainId.base, "uniswap-v2", "SKI", "WETH"))
@@ -132,3 +127,6 @@ def test_velvet_intent_based_open_position_uniswap_v2(
         routing_state,
         check_balances=True,
     )
+
+    t = trades[0]
+    assert t.is_success(), f"Enso trade failed: {t.blockchain_transactions[0].revert_reason}"

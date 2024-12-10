@@ -11,8 +11,9 @@ from tradeexecutor.strategy.routing import RoutingState
 
 logger = logging.getLogger(__name__)
 
+
 class VelvetExecution(EthereumExecution):
-    """Execution model that is paired with Enso intents."""
+    """Execution model that is paired with Enso intents and Velvet vault."""
 
     def __init__(self, vault: VelvetVault, **kwargs):
         assert isinstance(vault, VelvetVault)

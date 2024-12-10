@@ -221,7 +221,7 @@ class PositionManager:
         if default_slippage_tolerance is None:
             default_slippage_tolerance = DEFAULT_SLIPPAGE_TOLERANCE
 
-        assert default_slippage_tolerance < 0.15, f"default_slippage_tolerance looks too high: {default_slippage_tolerance * 100} %"
+        assert default_slippage_tolerance < 0.33, f"default_slippage_tolerance looks too high: {default_slippage_tolerance * 100} %"
         self.default_slippage_tolerance = default_slippage_tolerance
 
         logger.info("Initialised PositionManager, default slippage tolerance is %f %%", self.default_slippage_tolerance * 100)

@@ -11,12 +11,16 @@ import logging
 
 from hexbytes import HexBytes
 
+from eth_defi.trade import TradeSuccess
+from eth_defi.velvet.analysis import analyse_trade_by_receipt_generic
+from tradeexecutor.ethereum.swap import report_failure
 from tradeexecutor.state.identifier import TradingPairIdentifier, AssetIdentifier
 from tradeexecutor.state.state import State
 from tradeexecutor.state.trade import TradeExecution
 from tradeexecutor.state.types import JSONHexAddress
 from tradeexecutor.strategy.universe_model import StrategyExecutionUniverse
 from tradeexecutor.strategy.trading_strategy_universe import translate_token, translate_trading_pair
+from tradeexecutor.utils.blockchain import get_block_timestamp
 
 from tradingstrategy.pair import PandasPairUniverse, PairNotFoundError
 
@@ -258,21 +262,15 @@ class RoutingModel(abc.ABC):
         receipts: Dict[HexBytes, dict],
         stop_on_execution_failure=False,
     ):
-        """Post-trade
+        """Post-trade executed price analysis.
 
-        - Read on-chain data about the execution success and performance
-
-        - Mark trade succeed or failed
+        - Read on-chain data about the tx receipt of Enso swap
 
         :param state:
             Strategy state
 
         :param web3:
             Web3 connection.
-
-            TODO: Breaks abstraction. Figure better way to pass
-            this around later. Maybe create an Ethereum-specific
-            routing parent class?
 
         :param trade:
             Trade executed in this execution batch
@@ -287,4 +285,52 @@ class RoutingModel(abc.ABC):
 
             Used in unit testing.
         """
-        raise NotImplementedError()
+
+        assert trade.is_spot()
+        assert len(trade.blockchain_transactions) == 1, "Enso trade can have only a single physical tx per trade"
+
+        tx = trade.blockchain_transactions[0]
+        tx_hash = tx.tx_hash
+        receipt = receipts[HexBytes(tx_hash)]
+
+        result = analyse_trade_by_receipt_generic(
+            web3,
+            tx_hash=tx_hash,
+            tx_receipt=receipt,
+            intent_based=True,
+        )
+
+        ts = get_block_timestamp(web3, receipt["blockNumber"])
+
+        base = trade.pair.base
+        quote = trade.pair.quote
+
+        if isinstance(result, TradeSuccess):
+
+            if trade.is_buy():
+                executed_reserve = quote.convert_to_decimal(result["amount_in"])
+                executed_amount = base.convert_to_decimal(result["amount_out"])
+                price = result.get_human_price(reverse_token_order=True)
+            else:
+                executed_amount = base.convert_to_decimal(result["amount_in"])
+                executed_reserve = quote.convert_to_decimal(result["amount_out"])
+                price = result.get_human_price(reverse_token_order=False)
+
+            logger.info(f"Executed: {executed_amount} {trade.pair.base.token_symbol}, {executed_reserve} {trade.pair.quote.token_symbol}")
+
+            lp_fee_paid = result.lp_fee_paid  # Always set to None
+
+            # Mark as success
+            state.mark_trade_success(
+                ts,
+                trade,
+                executed_price=float(price),
+                executed_amount=executed_amount,
+                executed_reserve=executed_reserve,
+                lp_fees=lp_fee_paid,
+                native_token_price=0,
+                cost_of_gas=float(result.get_cost_of_gas()),
+            )
+        else:
+            # Trade failed
+            report_failure(ts, state, trade, stop_on_execution_failure)
