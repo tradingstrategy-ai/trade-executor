@@ -11,7 +11,7 @@ from eth_typing import HexAddress
 from web3 import Web3
 
 from eth_defi.hotwallet import HotWallet
-from eth_defi.provider.anvil import AnvilLaunch, fork_network_anvil
+from eth_defi.provider.anvil import AnvilLaunch, fork_network_anvil, make_anvil_custom_rpc_request
 from eth_defi.provider.multi_provider import create_multi_provider_web3
 from eth_defi.token import fetch_erc20_details, TokenDetails
 from eth_defi.vault.base import VaultSpec
@@ -79,13 +79,27 @@ def anvil_base_fork(request, vault_owner, deposit_user, existing_shareholder) ->
 
 @pytest.fixture()
 def web3(anvil_base_fork) -> Web3:
-    web3 = create_multi_provider_web3(
-        anvil_base_fork.json_rpc_url,
-        retries=0,  # eth_sendTransaction retry spoils the tests
-        default_http_timeout=(2, 60),  # Anvil is slow with eth_sendTransaction
-    )
-    assert web3.eth.chain_id == 8453
-    return web3
+    tenderly_fork_rpc = os.environ.get("JSON_RPC_TENDERLY", None)
+
+    if tenderly_fork_rpc:
+        web3 = create_multi_provider_web3(tenderly_fork_rpc)
+        snapshot = make_anvil_custom_rpc_request(web3, "evm_snapshot")
+        try:
+            yield web3
+        finally:
+            # Revert Tenderly testnet back to its original state
+            # https://docs.tenderly.co/forks/guides/testing/reset-transactions-after-completing-the-test
+            make_anvil_custom_rpc_request(web3, "evm_revert", [snapshot])
+    else:
+        # Anvil
+        web3 = create_multi_provider_web3(
+            anvil_base_fork.json_rpc_url,
+            default_http_timeout=(2, 60),
+            retries=0,  # Tests will fail if we need to retry eth_sendTransaction
+        )
+        assert web3.eth.chain_id == 8453
+        yield web3
+
 
 
 @pytest.fixture(scope='module')
