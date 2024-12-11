@@ -74,7 +74,7 @@ jobs:
           JSON_RPC_POLYGON: ${{ secrets.JSON_RPC_POLYGON }}
           JSON_RPC_POLYGON_ARCHIVE: ${{ secrets.JSON_RPC_POLYGON_ARCHIVE }}
           # Special private key needed for Velvet integration tests
-          VELVET_VAULT_OWNER_PRIVATE_KEY: ${{ secrets.JSON_RPC_POLYGON_ARCHIVE }}
+          VELVET_VAULT_OWNER_PRIVATE_KEY: ${{ secrets.VELVET_VAULT_OWNER_PRIVATE_KEY }}
 
       - name: Save datasets
         id: cache-datasets-save
