@@ -2,6 +2,7 @@ import logging
 from typing import Type
 
 from eth_defi.tx import AssetDelta
+from tradeexecutor.state.state import State
 from tradeexecutor.state.types import Percent
 from tradeexecutor.strategy.routing import RoutingModel
 from typing import Dict, List, Optional, Tuple
@@ -500,11 +501,12 @@ class EthereumRoutingModel(RoutingModel):
         # We can start to execute transactions.
 
     def setup_trades(
-            self,
-            routing_state: EthereumRoutingState,
-            trades: List[TradeExecution],
-            check_balances=False,
-            rebroadcast=False,
+        self,
+        state: State,
+        routing_state: EthereumRoutingState,
+        trades: List[TradeExecution],
+        check_balances=False,
+        rebroadcast=False,
     ):
         """Strategy and live execution connection.
 
@@ -552,7 +554,6 @@ class EthereumRoutingModel(RoutingModel):
         assert isinstance(universe, TradingStrategyUniverse)
         assert universe is not None, "Universe is required"
         assert universe.data_universe.pairs is not None, "Pairs are required"
-
 
         tx_builder = execution_details.get("tx_builder")
         if tx_builder is not None:
