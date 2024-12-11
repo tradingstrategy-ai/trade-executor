@@ -166,6 +166,14 @@ def base_ski() -> AssetIdentifier:
     """SKI - SkiMask.
 
     https://app.uniswap.org/explore/tokens/base/0x768be13e1680b5ebe0024c42c896e3db59ec0149
+
+    .. warning::
+
+        Has weird tax "cooling off period"
+
+        https://basescan.org/address/0x768BE13e1680b5ebE0024C42c896E3dB59ec0149#code
+
+
     """
     return AssetIdentifier(
         chain_id=8453,

@@ -205,19 +205,19 @@ class VelvetEnsoRouting(RoutingModel):
 
         base = trade.pair.base
         quote = trade.pair.quote
+        reserve, rate = state.portfolio.get_default_reserve_asset()
 
         if isinstance(result, TradeSuccess):
             if trade.is_buy():
-                executed_reserve = quote.convert_to_decimal(result.amount_in)
+                executed_reserve = reserve.convert_to_decimal(result.amount_in)
                 executed_amount = base.convert_to_decimal(result.amount_out)
                 price = result.get_human_price(reverse_token_order=True)
-                import ipdb ; ipdb.set_trace()
             else:
                 executed_amount = base.convert_to_decimal(result.amount_in)
-                executed_reserve = quote.convert_to_decimal(result.amount_out)
+                executed_reserve = reserve.convert_to_decimal(result.amount_out)
                 price = result.get_human_price(reverse_token_order=False)
 
-            logger.info(f"Executed: {executed_amount} {trade.pair.base.token_symbol}, {executed_reserve} {trade.pair.quote.token_symbol}")
+            logger.info(f"Executed: {executed_amount} {trade.pair.base.token_symbol} - {trade.pair.quote.token_symbol}, using reserve {executed_reserve} {reserve.token_symbol}")
 
             lp_fee_paid = result.lp_fee_paid  # Always set to None
 

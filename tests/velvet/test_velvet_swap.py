@@ -69,7 +69,7 @@ def state_with_starting_positions(
     return state
 
 
-def test_ski_weth_price(
+def test_keycat_weth_price(
     velvet_test_vault_strategy_universe: TradingStrategyUniverse,
     velvet_pricing_model: GenericPricing,
 ):
@@ -111,7 +111,7 @@ def test_velvet_intent_based_open_position_uniswap_v2(
 
     - Do initial deposit scan. Capture the initial USDC and DogInMe in the vault.
 
-    - Prepare a trade execution
+    - Prepare a trade execution on KEYCAT Uniswap v2
 
     - Execute it
 
@@ -131,7 +131,7 @@ def test_velvet_intent_based_open_position_uniswap_v2(
         default_slippage_tolerance=0.20,
     )
 
-    pair = strategy_universe.get_pair_by_human_description((ChainId.base, "uniswap-v2", "SKI", "WETH"))
+    pair = strategy_universe.get_pair_by_human_description((ChainId.base, "uniswap-v2", "KEYCAT", "WETH"))
 
     trades = position_manager.open_spot(
         pair=pair,
@@ -140,7 +140,6 @@ def test_velvet_intent_based_open_position_uniswap_v2(
     t = trades[0]
 
     assert t.planned_reserve == pytest.approx(Decimal(1.0))
-    import ipdb ; ipdb.set_trace()
 
     # Setup routing state for the approvals of this cycle
     routing_state_details = execution_model.get_routing_state_details()
@@ -160,6 +159,6 @@ def test_velvet_intent_based_open_position_uniswap_v2(
     # Ski price
     # https://app.uniswap.org/explore/tokens/base/0x768be13e1680b5ebe0024c42c896e3db59ec0149
     assert t.is_success(), f"Enso trade failed: {t.blockchain_transactions[0].revert_reason}"
-    assert 0 < t.executed_price < 1  # 0.2779559931232687
-    assert t.executed_quantity == 0
-    assert t.executed_reserve == pytest.approx(1.0)
+    assert 0 < t.executed_price < 1
+    assert t.executed_quantity > 10  # 129 as writing of this
+    assert t.executed_reserve == pytest.approx(Decimal(1))
