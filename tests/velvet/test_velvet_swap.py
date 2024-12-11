@@ -73,7 +73,7 @@ def test_keycat_weth_price(
     velvet_test_vault_strategy_universe: TradingStrategyUniverse,
     velvet_pricing_model: GenericPricing,
 ):
-    """See we correctly quote SKI/WETH pair price in USDC.
+    """See we correctly quote KEYCAT/WETH pair price in USDC.
 
     - We want all prices quoted in dollars
     """
@@ -156,8 +156,6 @@ def test_velvet_intent_based_open_position_uniswap_v2(
         check_balances=True,
     )
 
-    # Ski price
-    # https://app.uniswap.org/explore/tokens/base/0x768be13e1680b5ebe0024c42c896e3db59ec0149
     assert t.is_success(), f"Enso trade failed: {t.blockchain_transactions[0].revert_reason}"
     assert 0 < t.executed_price < 1
     assert t.executed_quantity > 10  # 129 as writing of this
@@ -223,8 +221,6 @@ def test_velvet_intent_based_reduce_position_uniswap_v3(
         check_balances=True,
     )
 
-    # Ski price
-    # https://app.uniswap.org/explore/tokens/base/0x768be13e1680b5ebe0024c42c896e3db59ec0149
     assert t.is_success(), f"Enso trade failed: {t.blockchain_transactions[0].revert_reason}"
     assert 0 < t.executed_price < 1
     assert t.executed_quantity == pytest.approx(Decimal('-290.458872576413401496'))
@@ -262,7 +258,6 @@ def test_velvet_intent_based_close_position_uniswap_v3(
     t = trades[0]
     assert t.is_sell()
     assert 0 < t.planned_reserve < 1
-    # Setup routing state for the approvals of this cycle
     routing_state_details = execution_model.get_routing_state_details()
     routing_state = routing_model.create_routing_state(strategy_universe, routing_state_details)
 
@@ -277,8 +272,6 @@ def test_velvet_intent_based_close_position_uniswap_v3(
         check_balances=True,
     )
 
-    # Ski price
-    # https://app.uniswap.org/explore/tokens/base/0x768be13e1680b5ebe0024c42c896e3db59ec0149
     assert t.is_success(), f"Enso trade failed: {t.blockchain_transactions[0].revert_reason}"
     assert 0 < t.executed_price < 1
     assert t.executed_quantity == pytest.approx(Decimal('-580.917745152826802993'))
@@ -345,8 +338,6 @@ def test_velvet_intent_based_increase_position_uniswap_v3(
         check_balances=True,
     )
 
-    # Ski price
-    # https://app.uniswap.org/explore/tokens/base/0x768be13e1680b5ebe0024c42c896e3db59ec0149
     assert t.is_success(), f"Enso trade failed: {t.blockchain_transactions[0].revert_reason}"
     assert 0 < t.executed_price < 1
     assert t.executed_quantity > 100
