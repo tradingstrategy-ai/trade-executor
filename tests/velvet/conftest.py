@@ -426,6 +426,9 @@ def velvet_execution_model(
     """Set EthereumExecutionModel in Base fork testing mode."""
 
     private_key = os.environ["VELVET_VAULT_OWNER_PRIVATE_KEY"]
+
+    assert not private_key.startswith("http"), f"Github WTF: {private_key}"
+
     hot_wallet = HotWallet.from_private_key(private_key)
     execution_model = VelvetExecution(
         vault=base_example_vault,
