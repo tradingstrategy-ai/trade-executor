@@ -357,6 +357,7 @@ def test_velvet_sync_positions_redeem(
     tx_hash = web3.eth.send_transaction(tx_data)
     assert_transaction_success_with_explanation(web3, tx_hash)
 
+
     #
     # Sync positions after a full redemption
     #
