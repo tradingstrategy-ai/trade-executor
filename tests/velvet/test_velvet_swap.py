@@ -5,7 +5,6 @@ from decimal import Decimal
 
 import pytest
 
-from tradeexecutor.ethereum.uniswap_v2.uniswap_v2_live_pricing import UniswapV2LivePricing
 from tradeexecutor.ethereum.velvet.execution import VelvetExecution
 from tradeexecutor.ethereum.velvet.vault import VelvetVaultSyncModel
 from tradeexecutor.ethereum.velvet.velvet_enso_routing import VelvetEnsoRouting
@@ -80,16 +79,25 @@ def test_ski_weth_price(
     """
     strategy_universe = velvet_test_vault_strategy_universe
     pricing_model = velvet_pricing_model
-    pair = strategy_universe.get_pair_by_human_description((ChainId.base, "uniswap-v2", "SKI", "WETH"))
+
+    pair = strategy_universe.get_pair_by_human_description((ChainId.base, "uniswap-v2", "KEYCAT", "WETH"))
+    weth = pair.quote
+
+    weth_price = pricing_model.get_exchange_rate(
+        datetime.datetime.utcnow(),
+        weth,
+    )
+
+    assert 2000 < weth_price < 10_000
 
     price = pricing_model.get_mid_price(datetime.datetime.utcnow(), pair)
-    assert 0.05 < price < 0.3
+    assert 0.001 < price < 0.3
 
     price_structure = pricing_model.get_buy_price(datetime.datetime.utcnow(), pair, Decimal(1.0))
-    assert 0.05 < price_structure.price < 0.3
+    assert 0.001 < price_structure.price < 0.3
 
     price_structure = pricing_model.get_sell_price(datetime.datetime.utcnow(), pair, Decimal(1.0))
-    assert 0.05 < price_structure.price < 0.3
+    assert 0.001 < price_structure.price < 0.3
 
 
 def test_velvet_intent_based_open_position_uniswap_v2(

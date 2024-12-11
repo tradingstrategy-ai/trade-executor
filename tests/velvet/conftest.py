@@ -162,7 +162,7 @@ def base_doginme(base_doginme_address) -> AssetIdentifier:
 
 
 @pytest.fixture(scope='module')
-def base_ski(base_doginme_address) -> AssetIdentifier:
+def base_ski() -> AssetIdentifier:
     """SKI - SkiMask.
 
     https://app.uniswap.org/explore/tokens/base/0x768be13e1680b5ebe0024c42c896e3db59ec0149
@@ -173,6 +173,21 @@ def base_ski(base_doginme_address) -> AssetIdentifier:
         decimals=18,
         token_symbol="SKI",
     )
+
+
+@pytest.fixture(scope='module')
+def base_keycat() -> AssetIdentifier:
+    """KEYCAT
+
+    https://dexscreener.com/base/0x377feeed4820b3b28d1ab429509e7a0789824fca
+    """
+    return AssetIdentifier(
+        chain_id=8453,
+        address="0x9a26F5433671751C3276a065f57e5a02D2817973",
+        decimals=18,
+        token_symbol="KEYCAT",
+    )
+
 
 
 @pytest.fixture()
@@ -198,6 +213,7 @@ def velvet_test_vault_pair_universe(
     base_doginme,
     base_weth,
     base_ski,
+    base_keycat,
 ) -> PandasPairUniverse:
     """Define pair universe of USDC and DogMeIn assets, trading on Uni v3 on Base.
 
@@ -243,6 +259,14 @@ def velvet_test_vault_pair_universe(
         fee=0.0030,
     )
 
+    trading_pair_2_uniswap_v2 = TradingPairIdentifier(
+        base=base_keycat,
+        quote=base_weth,
+        pool_address="0x377FeeeD4820B3B28D1ab429509e7A0789824fCA",
+        exchange_address="0x8909Dc15e40173Ff4699343b6eB8132c65e18eC6",  # Uniswap v2 factory on Base
+        fee=0.0030,
+    )
+
     # https://coinmarketcap.com/dexscan/base/0xd0b53d9277642d899df5c87a3966a349a798f224/
     weth_usdc_uniswap_v3 = TradingPairIdentifier(
         base=base_weth,
@@ -262,7 +286,13 @@ def velvet_test_vault_pair_universe(
     )
 
     universe = create_universe_from_trading_pair_identifiers(
-        [trading_pair_uniswap_v3, trading_pair_uniswap_v2, weth_usdc_uniswap_v3, weth_usdc_uniswap_v2],
+        [
+            trading_pair_uniswap_v3,
+            trading_pair_uniswap_v2,
+            weth_usdc_uniswap_v3,
+            weth_usdc_uniswap_v2,
+            trading_pair_2_uniswap_v2
+        ],
         exchange_universe=exchange_universe,
     )
     return universe
@@ -337,7 +367,8 @@ def velvet_uniswap_v2_pricing(
 @pytest.fixture()
 def velvet_pricing_model(
     web3: Web3,
-    velvet_test_vault_strategy_universe
+    velvet_test_vault_strategy_universe,
+    base_weth,
 ) -> GenericPricing:
     """Mixed Uniswap v2 and v3 pairs on Base."""
 
@@ -346,8 +377,15 @@ def velvet_pricing_model(
         velvet_test_vault_strategy_universe,
     )
 
+    weth_usdc = velvet_test_vault_strategy_universe.get_pair_by_human_description(
+        (ChainId.base, "uniswap-v3", "WETH", "USDC", 0.0005),
+    )
+
     return GenericPricing(
         pair_configurator,
+        exchange_rate_pairs={
+            base_weth: weth_usdc,
+        }
     )
 
 
