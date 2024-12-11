@@ -106,7 +106,8 @@ class GenericRouting(RoutingModel):
           by using the corresponding router
         """
 
-        assert isinstance(state, GenericRoutingState)
+        assert isinstance(state, State)
+        assert isinstance(routing_state, GenericRoutingState)
 
         for t in trades:
             routing_id = self.pair_configurator.match_router(t.pair)
@@ -117,7 +118,7 @@ class GenericRouting(RoutingModel):
             # in the post-trade analysis which route this trade took
             t.route = protocol_config.routing_id.router_name
 
-            router_state = state.state_map[protocol_config.routing_id.router_name]
+            router_state = routing_state.state_map[protocol_config.routing_id.router_name]
             router.setup_trades(
                 state=state,
                 routing_state=router_state,
