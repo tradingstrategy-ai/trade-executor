@@ -2,7 +2,7 @@
 
 - Different visualisation tools to compare grid search results
 """
-from typing import List
+from typing import List, Callable
 
 import pandas as pd
 import plotly.graph_objects as go
@@ -109,8 +109,6 @@ def visualise_single_grid_search_result_benchmark(
     return fig
 
 
-
-
 def visualise_grid_search_equity_curves(
     results: List[GridSearchResult],
     name: str | None = None,
@@ -119,6 +117,8 @@ def visualise_grid_search_equity_curves(
     colour=None,
     log_y=False,
     alpha=0.7,
+    label_func: Callable = None,
+    annotation_xshift=200,
 ) -> Figure:
     """Draw multiple equity curves in the same chart.
 
@@ -128,15 +128,39 @@ def visualise_grid_search_equity_curves(
 
     - Benchmark against hold all cash
 
+    TODO: A lot of parameter descriptions are not up-to-date.
+
     .. note ::
 
         Only good up to ~hundreds results. If more than thousand result, rendering takes too long time.
+
+    Example that draws equity curve comparison with custom labels:
+
+    .. code-block:: python
+
+        from tradeexecutor.visual.grid_search_basic import visualise_grid_search_equity_curves
+        from tradeexecutor.analysis.multi_asset_benchmark import get_benchmark_data
+
+        # Automatically create BTC and ETH buy and hold benchmark if present
+        # in the trading universe
+        benchmark_indexes = get_benchmark_data(
+            strategy_universe,
+            cumulative_with_initial_cash=Parameters.initial_cash,
+        )
+
+        fig = visualise_grid_search_equity_curves(
+            grid_search_results,
+            benchmark_indexes=benchmark_indexes,
+            log_y=False,
+            label_func=lambda x: f"Decision cycle {x.get_parameter('cycle_duration').value}, CARG {x.get_cagr():.0%}, Sharpe {x.get_sharpe():.1f}",
+        )
+        fig.show()
 
     Example that draws equity curves of a grid search results.
 
     .. code-block:: python
 
-        from tradeexecutor.visual.grid_search import visualise_grid_search_equity_curves
+        from tradeexecutor.visual.grid_search_basic import visualise_grid_search_equity_curves
         from tradeexecutor.analysis.multi_asset_benchmark import get_benchmark_data
 
         # Automatically create BTC and ETH buy and hold benchmark if present
@@ -194,36 +218,17 @@ def visualise_grid_search_equity_curves(
         We need to use a logarithmic Y axis so that we can compare the performance
         early in the strateg and late in the strategy.
 
+    :param label_func:
+        Create custom legend to compare
+
     """
-    def generate_broad_bluered_colors(num_colors, alpha):
-        """
-        Generate a list of RGBA colors along a broad blue-purple-red color scale.
 
-        Parameters:
-        num_colors (int): Number of colors to generate.
-        alpha (float): Alpha value for the colors (0 to 1).
-
-        Returns:
-        list: List of RGBA color tuples.
-        """
-        colors = []
-        for i in range(num_colors):
-            ratio = i / (num_colors - 1)
-            if ratio < 0.7:
-                red = int(255 * (1.5 * ratio))
-                blue = 255
-            else:
-                red = 255
-                blue = int(255 * (2 * (1 - ratio)))
-            green = max(0, int(255 * (1 - abs(ratio - 0.7) * 2)))
-            color = (red, green, blue, alpha)
-            colors.append(f"rgba{color}")
-        return colors
-
+    if name is None:
+        name = "Grid search equity curve comparison"
 
     fig = Figure()
 
-    colors = generate_broad_bluered_colors(len(results), alpha)
+    colors = _generate_grey_alpha(len(results))
 
     results = order_grid_search_results_by_metric(results)
 
@@ -231,6 +236,12 @@ def visualise_grid_search_equity_curves(
         curve = result.equity_curve
         label = result.get_truncated_label()
         template =_get_hover_template(result)
+
+        if label_func is not None:
+            text = label_func(result)
+        else:
+            text = None
+
         scatter = Scatter(
             x=curve.index,
             y=curve,
@@ -238,10 +249,26 @@ def visualise_grid_search_equity_curves(
             name="",  # Hides hover legend, use hovertext only
             line=dict(color=colors.pop(0)),
             showlegend=False,
-            hovertemplate=template,
-            hovertext=None,
         )
         fig.add_trace(scatter)
+
+        if text:
+            text_color = "red"
+            fig.add_annotation(
+                x=curve.index[-1],
+                y=curve.iloc[-1],
+                text=text,
+                showarrow=True,
+                arrowhead=2,
+                arrowsize=1,
+                arrowwidth=2,
+                arrowcolor=text_color,
+                ax=20 + annotation_xshift,
+                ay=-20,
+                font=dict(size=12, color=text_color, weight='bold'),
+                xshift=0,  # Small shift to avoid overlap with line end
+                yshift=0
+            )
 
     if benchmark_indexes is not None:
         for benchmark_name, curve in benchmark_indexes.items():
@@ -275,3 +302,41 @@ def visualise_grid_search_equity_curves(
     ))
 
     return fig
+
+
+def _generate_broad_bluered_colors(num_colors, alpha):
+    """
+    Generate a list of RGBA colors along a broad blue-purple-red color scale.
+
+    Parameters:
+    num_colors (int): Number of colors to generate.
+    alpha (float): Alpha value for the colors (0 to 1).
+
+    Returns:
+    list: List of RGBA color tuples.
+    """
+    colors = []
+    for i in range(num_colors):
+        ratio = i / (num_colors - 1)
+        if ratio < 0.7:
+            red = int(255 * (1.5 * ratio))
+            blue = 255
+        else:
+            red = 255
+            blue = int(255 * (2 * (1 - ratio)))
+        green = max(0, int(255 * (1 - abs(ratio - 0.7) * 2)))
+        color = (red, green, blue, alpha)
+        colors.append(f"rgba{color}")
+    return colors
+
+
+def _generate_grey_alpha(num_colors):
+    colors = []
+    for i in range(num_colors):
+        red = 33 + 128 * i / num_colors
+        green = red
+        blue = red
+        alpha = red
+        color = (red, green, blue, alpha)
+        colors.append(f"rgba{color}")
+    return colors

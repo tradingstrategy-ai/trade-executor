@@ -596,7 +596,11 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
 
         """
         assert self.data_universe.exchange_universe, "You must set universe.exchange_universe to be able to use this method"
-        pair = self.data_universe.pairs.get_pair_by_human_description(self.data_universe.exchange_universe, desc)
+        try:
+            pair = self.data_universe.pairs.get_pair_by_human_description(self.data_universe.exchange_universe, desc)
+        except Exception as e:
+            # TODO: Have a better exception here
+            raise RuntimeError(f"Failed to look up: {desc}") from e
         return translate_trading_pair(pair, cache=self.pair_cache)
 
     def iterate_pairs(self) -> Iterable[TradingPairIdentifier]:

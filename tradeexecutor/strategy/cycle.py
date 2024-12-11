@@ -127,6 +127,18 @@ class CycleDuration(enum.Enum):
     #: Alias
     unknown = cycle_unknown
 
+    def __lt__(self, other: "CycleDuration") -> bool:
+        return self.to_timedelta() < other.to_timedelta()
+
+    def __le__(self, other: "CycleDuration") -> bool:
+        return self.to_timedelta() <= other.to_timedelta()
+
+    def __gt__(self, other: "CycleDuration") -> bool:
+        return self.to_timedelta() > other.to_timedelta()
+
+    def __ge__(self, other: "CycleDuration") -> bool:
+        return self.to_timedelta() >= other.to_timedelta()
+
     def to_timedelta(self) -> datetime.timedelta:
         """Get the duration of the strategy cycle as Python timedelta object."""
         return _TICK_DURATIONS[self]

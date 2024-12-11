@@ -141,7 +141,14 @@ class GridParameter:
         assert type(self.name) == str
 
     def __hash__(self):
-        args = (self.name, self.value)
+
+        value = self.value
+
+        # Support category = {"Memes"} notation
+        if type(value) == set:
+            value = tuple(value)
+
+        args = (self.name, value)
         try:
             return hash(args)
         except TypeError as e:
