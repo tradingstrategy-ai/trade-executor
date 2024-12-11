@@ -810,6 +810,16 @@ class PositionManager:
 
         .. code-block:: python
 
+            pair = strategy_universe.get_pair_by_human_description((ChainId.base, "uniswap-v3", "DogInMe", "WETH"))
+            position = position_manager.get_current_position_for_pair(pair)
+            trades = position_manager.close_position(position)
+            t = trades[0]
+            assert t.is_sell()
+
+        Example how to increase position:
+
+        .. code-block:: python
+
 
 
         .. warning ::
