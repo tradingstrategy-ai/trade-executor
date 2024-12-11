@@ -221,7 +221,7 @@ class PositionManager:
         if default_slippage_tolerance is None:
             default_slippage_tolerance = DEFAULT_SLIPPAGE_TOLERANCE
 
-        assert default_slippage_tolerance < 0.15, f"default_slippage_tolerance looks too high: {default_slippage_tolerance * 100} %"
+        assert default_slippage_tolerance < 0.33, f"default_slippage_tolerance looks too high: {default_slippage_tolerance * 100} %"
         self.default_slippage_tolerance = default_slippage_tolerance
 
         logger.info("Initialised PositionManager, default slippage tolerance is %f %%", self.default_slippage_tolerance * 100)
@@ -805,6 +805,22 @@ class PositionManager:
         If the rebalance is sell (`dollar_amount_delta` is negative),
         then calculate the quantity of the asset to sell based
         on the latest available market price on the position.
+
+        Example how to partially reduce position:
+
+        .. code-block:: python
+
+            pair = strategy_universe.get_pair_by_human_description((ChainId.base, "uniswap-v3", "DogInMe", "WETH"))
+            position = position_manager.get_current_position_for_pair(pair)
+            trades = position_manager.close_position(position)
+            t = trades[0]
+            assert t.is_sell()
+
+        Example how to increase position:
+
+        .. code-block:: python
+
+
 
         .. warning ::
 

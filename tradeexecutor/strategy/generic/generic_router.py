@@ -90,11 +90,12 @@ class GenericRouting(RoutingModel):
         return GenericRoutingState(universe, substates)
 
     def setup_trades(
-            self,
-            state: GenericRoutingState,
-            trades: List[TradeExecution],
-            check_balances=False,
-            rebroadcast=False,
+        self,
+        state: State,
+        routing_state: GenericRoutingState,
+        trades: List[TradeExecution],
+        check_balances=False,
+        rebroadcast=False,
     ):
         """Route trades.
 
@@ -105,7 +106,8 @@ class GenericRouting(RoutingModel):
           by using the corresponding router
         """
 
-        assert isinstance(state, GenericRoutingState)
+        assert isinstance(state, State)
+        assert isinstance(routing_state, GenericRoutingState)
 
         for t in trades:
             routing_id = self.pair_configurator.match_router(t.pair)
@@ -116,10 +118,11 @@ class GenericRouting(RoutingModel):
             # in the post-trade analysis which route this trade took
             t.route = protocol_config.routing_id.router_name
 
-            router_state = state.state_map[protocol_config.routing_id.router_name]
+            router_state = routing_state.state_map[protocol_config.routing_id.router_name]
             router.setup_trades(
-                router_state,
-                [t],
+                state=state,
+                routing_state=router_state,
+                trades=[t],
                 check_balances=check_balances,
                 rebroadcast=rebroadcast,
             )

@@ -13,12 +13,14 @@ from web3 import Web3
 
 from eth_defi.uniswap_v2.deployment import UniswapV2Deployment
 from eth_defi.uniswap_v2.fees import estimate_buy_received_amount_raw, estimate_sell_received_amount_raw
+from eth_defi.uniswap_v2.pair import fetch_pair_details
 
 from tradeexecutor.ethereum.uniswap_v2.uniswap_v2_execution import UniswapV2Execution
 from tradeexecutor.ethereum.uniswap_v2.uniswap_v2_execution_v0 import UniswapV2ExecutionModelVersion0
 from tradeexecutor.ethereum.uniswap_v2.uniswap_v2_routing import UniswapV2Routing, route_tokens, get_uniswap_for_pair
 from tradeexecutor.ethereum.eth_pricing_model import EthereumPricingModel, LP_FEE_VALIDATION_EPSILON
 from tradeexecutor.state.identifier import TradingPairIdentifier
+from tradeexecutor.state.types import USDollarAmount
 from tradeexecutor.strategy.dummy import DummyExecutionModel
 from tradeexecutor.strategy.execution_model import ExecutionModel
 from tradeexecutor.strategy.trade_pricing import TradePricing
@@ -81,6 +83,19 @@ class UniswapV2LivePricing(EthereumPricingModel):
             self.uniswap_cache[target_pair] = get_uniswap_for_pair(self.web3, self.routing_model.factory_router_map, target_pair)
         return self.uniswap_cache[target_pair]
 
+    # def get_mid_price(
+    #     self,
+    #     ts: datetime.datetime,
+    #     pair: TradingPairIdentifier
+    # ) -> USDollarAmount:
+    #     # uniswap = self.get_uniswap(pair)
+    #     pair = fetch_pair_details(
+    #         self.web3,
+    #         pair.pool_address,
+    #         reverse_token_order=pair.reverse_token_order,
+    #     )
+    #     return float(pair.get_current_mid_price())
+
     def get_sell_price(
         self,
         ts: datetime.datetime,
@@ -117,7 +132,6 @@ class UniswapV2LivePricing(EthereumPricingModel):
             fee=bps_fee,
         )
 
-        
         if intermediate_pair:
             received = intermediate_pair.quote.convert_to_decimal(received_raw)
             
@@ -143,8 +157,7 @@ class UniswapV2LivePricing(EthereumPricingModel):
             mid_price = price / (1 - fee)
             
             path = [target_pair]
-            
-        
+
         lp_fee = float(quantity) * total_fee_pct
             
         assert price <= mid_price, f"Bad pricing: {price}, {mid_price}"
@@ -188,7 +201,7 @@ class UniswapV2LivePricing(EthereumPricingModel):
         
         fee = self.get_pair_fee(ts, pair)
         assert fee is not None, f"Uniswap v2 fee data missing: exchange:{uniswap} pair:{pair}"
-        
+
         # In three token trades, be careful to use the correct reserve token
         if intermediate_pair:
             reserve_raw = intermediate_pair.quote.convert_to_raw_amount(reserve)

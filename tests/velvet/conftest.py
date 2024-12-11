@@ -10,14 +10,20 @@ import pytest
 from eth_typing import HexAddress
 from web3 import Web3
 
-from eth_defi.provider.anvil import AnvilLaunch, fork_network_anvil
+from eth_defi.hotwallet import HotWallet
+from eth_defi.provider.anvil import AnvilLaunch, fork_network_anvil, make_anvil_custom_rpc_request
 from eth_defi.provider.multi_provider import create_multi_provider_web3
 from eth_defi.token import fetch_erc20_details, TokenDetails
 from eth_defi.vault.base import VaultSpec
 from eth_defi.velvet import VelvetVault
+from strategies.test_only.frozen_asset import allowed_intermediary_pairs
 from tradeexecutor.ethereum.ethereum_protocol_adapters import create_uniswap_v3_adapter, EthereumPairConfigurator
+from tradeexecutor.ethereum.tx import HotWalletTransactionBuilder
 from tradeexecutor.ethereum.uniswap_v2.uniswap_v2_live_pricing import UniswapV2LivePricing
 from tradeexecutor.ethereum.uniswap_v3.uniswap_v3_live_pricing import UniswapV3LivePricing
+from tradeexecutor.ethereum.velvet.execution import VelvetExecution
+from tradeexecutor.ethereum.velvet.tx import VelvetTransactionBuilder
+from tradeexecutor.ethereum.velvet.velvet_enso_routing import VelvetEnsoRouting
 from tradeexecutor.strategy.generic.generic_pricing_model import GenericPricing
 from tradeexecutor.strategy.generic.pair_configurator import ProtocolRoutingId
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse, translate_token
@@ -74,13 +80,27 @@ def anvil_base_fork(request, vault_owner, deposit_user, existing_shareholder) ->
 
 @pytest.fixture()
 def web3(anvil_base_fork) -> Web3:
-    web3 = create_multi_provider_web3(
-        anvil_base_fork.json_rpc_url,
-        retries=0,  # eth_sendTransaction retry spoils the tests
-        default_http_timeout=(2, 60),  # Anvil is slow with eth_sendTransaction
-    )
-    assert web3.eth.chain_id == 8453
-    return web3
+    tenderly_fork_rpc = os.environ.get("JSON_RPC_TENDERLY", None)
+
+    if tenderly_fork_rpc:
+        web3 = create_multi_provider_web3(tenderly_fork_rpc)
+        snapshot = make_anvil_custom_rpc_request(web3, "evm_snapshot")
+        try:
+            yield web3
+        finally:
+            # Revert Tenderly testnet back to its original state
+            # https://docs.tenderly.co/forks/guides/testing/reset-transactions-after-completing-the-test
+            make_anvil_custom_rpc_request(web3, "evm_revert", [snapshot])
+    else:
+        # Anvil
+        web3 = create_multi_provider_web3(
+            anvil_base_fork.json_rpc_url,
+            default_http_timeout=(2, 60),
+            retries=0,  # Tests will fail if we need to retry eth_sendTransaction
+        )
+        assert web3.eth.chain_id == 8453
+        yield web3
+
 
 
 @pytest.fixture(scope='module')
@@ -142,8 +162,19 @@ def base_doginme(base_doginme_address) -> AssetIdentifier:
 
 
 @pytest.fixture(scope='module')
-def base_ski(base_doginme_address) -> AssetIdentifier:
-    """SKI - SkiMask"""
+def base_ski() -> AssetIdentifier:
+    """SKI - SkiMask.
+
+    https://app.uniswap.org/explore/tokens/base/0x768be13e1680b5ebe0024c42c896e3db59ec0149
+
+    .. warning::
+
+        Has weird tax "cooling off period"
+
+        https://basescan.org/address/0x768BE13e1680b5ebE0024C42c896E3dB59ec0149#code
+
+
+    """
     return AssetIdentifier(
         chain_id=8453,
         address="0x768BE13e1680b5ebE0024C42c896E3dB59ec0149",
@@ -152,9 +183,31 @@ def base_ski(base_doginme_address) -> AssetIdentifier:
     )
 
 
+@pytest.fixture(scope='module')
+def base_keycat() -> AssetIdentifier:
+    """KEYCAT
+
+    - Uniswap v2
+
+    https://dexscreener.com/base/0x377feeed4820b3b28d1ab429509e7a0789824fca
+    """
+    return AssetIdentifier(
+        chain_id=8453,
+        address="0x9a26F5433671751C3276a065f57e5a02D2817973",
+        decimals=18,
+        token_symbol="KEYCAT",
+    )
+
+
+
 @pytest.fixture()
 def base_doginme_token(web3, base_doginme) -> TokenDetails:
-    """DogInMe"""
+    """DogInMe.
+
+    - Uniswap v3
+
+    https://app.uniswap.org/explore/tokens/base/0x6921b130d297cc43754afba22e5eac0fbf8db75b
+    """
     return fetch_erc20_details(web3, base_doginme.address)
 
 
@@ -175,6 +228,7 @@ def velvet_test_vault_pair_universe(
     base_doginme,
     base_weth,
     base_ski,
+    base_keycat,
 ) -> PandasPairUniverse:
     """Define pair universe of USDC and DogMeIn assets, trading on Uni v3 on Base.
 
@@ -220,6 +274,14 @@ def velvet_test_vault_pair_universe(
         fee=0.0030,
     )
 
+    trading_pair_2_uniswap_v2 = TradingPairIdentifier(
+        base=base_keycat,
+        quote=base_weth,
+        pool_address="0x377FeeeD4820B3B28D1ab429509e7A0789824fCA",
+        exchange_address="0x8909Dc15e40173Ff4699343b6eB8132c65e18eC6",  # Uniswap v2 factory on Base
+        fee=0.0030,
+    )
+
     # https://coinmarketcap.com/dexscan/base/0xd0b53d9277642d899df5c87a3966a349a798f224/
     weth_usdc_uniswap_v3 = TradingPairIdentifier(
         base=base_weth,
@@ -239,7 +301,13 @@ def velvet_test_vault_pair_universe(
     )
 
     universe = create_universe_from_trading_pair_identifiers(
-        [trading_pair_uniswap_v3, trading_pair_uniswap_v2, weth_usdc_uniswap_v3, weth_usdc_uniswap_v2],
+        [
+            trading_pair_uniswap_v3,
+            trading_pair_uniswap_v2,
+            weth_usdc_uniswap_v3,
+            weth_usdc_uniswap_v2,
+            trading_pair_2_uniswap_v2
+        ],
         exchange_universe=exchange_universe,
     )
     return universe
@@ -314,7 +382,8 @@ def velvet_uniswap_v2_pricing(
 @pytest.fixture()
 def velvet_pricing_model(
     web3: Web3,
-    velvet_test_vault_strategy_universe
+    velvet_test_vault_strategy_universe,
+    base_weth,
 ) -> GenericPricing:
     """Mixed Uniswap v2 and v3 pairs on Base."""
 
@@ -323,6 +392,60 @@ def velvet_pricing_model(
         velvet_test_vault_strategy_universe,
     )
 
+    weth_usdc = velvet_test_vault_strategy_universe.get_pair_by_human_description(
+        (ChainId.base, "uniswap-v3", "WETH", "USDC", 0.0005),
+    )
+
     return GenericPricing(
         pair_configurator,
+        exchange_rate_pairs={
+            base_weth: weth_usdc,
+        }
+    )
+
+
+@pytest.fixture()
+def execution_model(
+    web3,
+    hot_wallet: HotWallet,
+) -> VelvetExecution:
+    """Set EthereumExecutionModel in Base fork testing mode."""
+    execution_model = VelvetExecution(
+        HotWalletTransactionBuilder(web3, hot_wallet),
+        mainnet_fork=True,
+        confirmation_block_count=0,
+    )
+    return execution_model
+
+
+@pytest.fixture()
+def velvet_execution_model(
+    web3: Web3,
+    base_example_vault: VelvetVault,
+) -> VelvetExecution:
+    """Set EthereumExecutionModel in Base fork testing mode."""
+
+    private_key = os.environ["VELVET_VAULT_OWNER_PRIVATE_KEY"]
+
+    assert not private_key.startswith("http"), f"Github WTF: {private_key}"
+
+    hot_wallet = HotWallet.from_private_key(private_key)
+    execution_model = VelvetExecution(
+        vault=base_example_vault,
+        tx_builder=VelvetTransactionBuilder(base_example_vault, hot_wallet),
+        mainnet_fork=True,
+        confirmation_block_count=0,
+    )
+    return execution_model
+
+
+@pytest.fixture()
+def velvet_routing_model(base_weth, base_usdc) -> VelvetEnsoRouting:
+    """Create Enso routing model.
+    """
+
+    # Uses default router choose function
+    return VelvetEnsoRouting(
+        reserve_token_address=base_usdc.address,
+        allowed_intermediary_pairs={base_weth.address: "0xd0b53d9277642d899df5c87a3966a349a798f224"},  # WETH
     )

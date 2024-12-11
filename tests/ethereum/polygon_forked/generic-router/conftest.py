@@ -124,10 +124,10 @@ def generic_valuation_model(
 
 @pytest.fixture()
 def execution_model(
-        web3,
-        hot_wallet: HotWallet,
-        exchange_universe: ExchangeUniverse,
-        weth_usdc_spot_pair,
+    web3,
+    hot_wallet: HotWallet,
+    exchange_universe: ExchangeUniverse,
+    weth_usdc_spot_pair,
 ) -> EthereumExecution:
     """Set EthereumExecutionModel in mainnet fork testing mode."""
     execution_model = EthereumExecution(

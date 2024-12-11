@@ -304,12 +304,12 @@ class UniswapV3Routing(EthereumRoutingModel):
         )
 
     def settle_trade(
-            self,
-            web3: Web3,
-            state: State,
-            trade: TradeExecution,
-            receipts: Dict[str, dict],
-            stop_on_execution_failure=False,
+        self,
+        web3: Web3,
+        state: State,
+        trade: TradeExecution,
+        receipts: Dict[str, dict],
+        stop_on_execution_failure=False,
     ):
 
         logger.info(f"Settling Uniswap v3 trade: #{trade.trade_id}")

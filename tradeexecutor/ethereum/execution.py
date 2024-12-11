@@ -508,8 +508,9 @@ class EthereumExecution(ExecutionModel):
             )
 
         routing_model.setup_trades(
-            routing_state,
-            trades,
+            state=state,
+            routing_state=routing_state,
+            trades=trades,
             check_balances=check_balances,
             rebroadcast=rebroadcast,
         )
