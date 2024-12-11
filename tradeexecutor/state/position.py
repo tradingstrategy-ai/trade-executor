@@ -24,7 +24,7 @@ from tradeexecutor.state.trade import TradeExecution
 from tradeexecutor.state.trigger import Trigger
 from tradeexecutor.state.types import USDollarAmount, BPS, USDollarPrice, Percent, LeverageMultiplier, LegacyDataException
 from tradeexecutor.state.valuation import ValuationUpdate
-from tradeexecutor.strategy.dust import get_dust_epsilon_for_pair
+from tradeexecutor.strategy.dust import get_dust_epsilon_for_pair, get_close_epsilon_for_pair
 from tradeexecutor.strategy.lending_protocol_leverage import create_short_loan, update_short_loan, create_credit_supply_loan, update_credit_supply_loan
 from tradeexecutor.strategy.trade_pricing import TradePricing
 from tradeexecutor.utils.accuracy import sum_decimal, QUANTITY_EPSILON
@@ -1165,7 +1165,7 @@ class TradingPosition(GenericPosition):
 
         Perform additional check for token amount dust caused by rounding errors.
         """
-        epsilon = get_dust_epsilon_for_pair(self.pair)
+        epsilon = get_close_epsilon_for_pair(self.pair)
         quantity = self.get_quantity()
         return abs(quantity) <= epsilon
 

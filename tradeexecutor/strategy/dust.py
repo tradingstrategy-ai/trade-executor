@@ -28,9 +28,31 @@ DEFAULT_DUST_EPSILON = Decimal(10 ** -10)
 DEFAULT_RELATIVE_EPSILON = 5 * 10 ** -4
 
 
+#: When to close 1delta positions
+ONE_DELTA_CLOSE_EPSILON = 1 * 10**-4
+
 
 def get_dust_epsilon_for_pair(pair: TradingPairIdentifier) -> Decimal:
     """Get the dust threshold for a trading pair.
+
+    See also :py:func:`get_close_epsilon_for_pair`.
+
+    :param pair:
+        Trading pair identifier.
+
+    :return:
+        Maximum amount of units we consider "zero".
+
+    """
+    return get_dust_epsilon_for_asset(pair.base)
+
+
+def get_close_epsilon_for_pair(pair: TradingPairIdentifier) -> Decimal:
+    """Get the close threshold for a trading pair.
+
+    - Currently same as dust epsilon
+
+    See also :py:func:`get_dust_epsilon_for_pair`.
 
     :param pair:
         Trading pair identifier.
@@ -64,6 +86,9 @@ def get_dust_epsilon_for_asset(asset: AssetIdentifier) -> Decimal:
         return Decimal(0.1)
     elif asset.token_symbol in ("aPolUSDC", "aEthUSDC"):
         return Decimal(0.1)
+    elif "variableDebt" in asset.token_symbol:
+        # 1delta closing epsilon higher than default
+        return ONE_DELTA_CLOSE_EPSILON
     else:
         return DEFAULT_DUST_EPSILON
 

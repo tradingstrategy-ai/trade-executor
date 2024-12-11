@@ -54,13 +54,16 @@ def decide_trades(
     spot_eth = pairs.get_pair_by_human_description((ChainId.polygon, "uniswap-v3", "WETH", "USDC", 0.0005))
 
     if position_manager.is_any_open():
+        position_manager.log("Closing all")
         trades += position_manager.close_all()
 
     if cycle % 2 == 0:
         # Spot day
+        position_manager.log("Opening spot")
         trades += position_manager.open_spot(spot_eth, 100.0)
     else:
         # Short day
+        position_manager.log("Opening short")
         trades += position_manager.open_short(spot_eth, 150.0)
 
     return trades
@@ -227,7 +230,7 @@ def test_generic_router_spot_and_short_strategy_manual_tick(
     loop.runner.check_accounts(strategy_universe, state)  # Check that on-chain balances reflect what we expect
 
     #
-    # Cycle #2, close short open spot
+    # Cycle #2, close short, open spot
     #
     ts += datetime.timedelta(days=1)
     mine(web3, to_int_unix_timestamp(ts))
@@ -238,6 +241,10 @@ def test_generic_router_spot_and_short_strategy_manual_tick(
         cycle=2,
         live=True,
     )
+
+    for t in portfolio.get_all_trades():
+        assert t.is_success(), f"Trade failed when doing cycle #2: {t}"
+
     assert len(portfolio.open_positions) == 1
     assert len(portfolio.closed_positions) == 1
     position = portfolio.open_positions[2]

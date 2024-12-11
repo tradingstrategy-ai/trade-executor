@@ -867,7 +867,13 @@ class State:
                     trade.paid_interest = position.loan.repay_interest()
 
         else:
-            logger.info("Position #%d still open after a trade: %s", position.position_id, trade.get_short_label())
+            logger.info(
+                "Position #%d still open after a trade: %s, quantity: %s, quantity w/planning: %s",
+                position.position_id,
+                trade.get_short_label(),
+                position.get_quantity(),
+                position.get_quantity(planned=True),
+            )
 
     def mark_trade_failed(self, failed_at: datetime.datetime, trade: TradeExecution):
         """Unroll the allocated capital."""
