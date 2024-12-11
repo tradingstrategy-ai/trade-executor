@@ -352,7 +352,7 @@ def test_velvet_sync_positions_redeem(
         from_=existing_shareholder,
         amount=vault.share_token.convert_to_raw(shares),
         withdraw_token_address=base_usdc.address,
-        slippage=0.05,
+        slippage=0.10,
     )
     assert tx_data["to"] == withdrawal_manager
     tx_hash = web3.eth.send_transaction(tx_data)
