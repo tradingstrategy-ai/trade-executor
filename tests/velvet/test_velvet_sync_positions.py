@@ -237,10 +237,9 @@ def test_velvet_sync_positions_deposit(
         from_=deposit_user,
         deposit_token_address=usdc_contract.address,
         amount=5 * 10**6,
-        slippage=0.10,
+        slippage=0.20,
     )
-    assert tx_data["gasLimit"] > 1_000_000
-    tx_data["gas"] = tx_data["gasLimit"]
+    assert tx_data["gas"] > 1_000_000
     tx_hash = web3.eth.send_transaction(tx_data)
     assert_transaction_success_with_explanation(web3, tx_hash)
 

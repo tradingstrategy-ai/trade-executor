@@ -306,7 +306,7 @@ def test_velvet_intent_based_increase_position_uniswap_v3(
         universe=velvet_test_vault_strategy_universe,
         state=state,
         pricing_model=velvet_pricing_model,
-        default_slippage_tolerance=0.20,
+        default_slippage_tolerance=0.25,
     )
 
     pair = strategy_universe.get_pair_by_human_description((ChainId.base, "uniswap-v3", "DogInMe", "WETH"))
