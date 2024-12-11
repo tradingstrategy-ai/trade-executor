@@ -352,9 +352,11 @@ class BacktestExecution(ExecutionModel):
         state.start_execution_all(ts, trades, max_slippage=0, triggered=triggered)
 
         routing_model.setup_trades(
+            state,
             routing_state,
             trades,
-            check_balances=check_balances)
+            check_balances=check_balances
+        )
 
         # Check that backtest does not try to execute stop loss / take profit
         # trades when data is not available
