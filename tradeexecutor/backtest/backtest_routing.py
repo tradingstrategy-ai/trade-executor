@@ -8,6 +8,7 @@ from typing import Dict, List, Optional, Tuple
 from tradeexecutor.backtest.simulated_wallet import SimulatedWallet
 from tradeexecutor.state.blockhain_transaction import BlockchainTransaction
 from tradeexecutor.state.identifier import TradingPairIdentifier, AssetIdentifier
+from tradeexecutor.state.state import State
 from tradeexecutor.state.trade import TradeExecution
 from tradeexecutor.strategy.routing import RoutingModel, RoutingState
 from tradeexecutor.ethereum.routing_model import EthereumRoutingModel
@@ -100,10 +101,13 @@ class BacktestRoutingModel(RoutingModel):
             )
         ]
 
-    def setup_trades(self,
-                     routing_state: BacktestRoutingState,
-                     trades: List[TradeExecution],
-                     check_balances=False):
+    def setup_trades(
+        self,
+        state: State,
+        routing_state: BacktestRoutingState,
+        trades: List[TradeExecution],
+        check_balances=False
+    ):
         """Strategy and live execution connection.
 
         Turns abstract strategy trades to real blockchain transactions.
