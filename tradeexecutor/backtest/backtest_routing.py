@@ -216,6 +216,7 @@ class BacktestRoutingIgnoredModel(BacktestRoutingModel):
 
     def setup_trades(
         self,
+        state: State,
         routing_state: BacktestRoutingState,
         trades: List[TradeExecution],
         check_balances=False,
