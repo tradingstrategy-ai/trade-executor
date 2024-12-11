@@ -39,7 +39,7 @@ def test_check_velvet_universe(
     """Check we have good universe to map pairs to positions."""
     pair_universe = velvet_test_vault_pair_universe
 
-    assert pair_universe.get_count() == 4
+    assert pair_universe.get_count() == 5
 
     for pair in pair_universe.iterate_pairs():
         assert pair.base_token_symbol, f"Got {pair}"
@@ -125,7 +125,7 @@ def test_velvet_sync_positions_initial(
     strategy_universe = velvet_test_vault_strategy_universe
     pair_universe = strategy_universe.data_universe.pairs
     pricing_model = velvet_pricing_model
-    assert pair_universe.get_count() == 4
+    assert pair_universe.get_count() == 5
 
     sync_model = VelvetVaultSyncModel(
         vault=base_example_vault,
@@ -239,6 +239,8 @@ def test_velvet_sync_positions_deposit(
         amount=5 * 10**6,
         slippage=0.10,
     )
+    assert tx_data["gasLimit"] > 1_000_000
+    tx_data["gas"] = tx_data["gasLimit"]
     tx_hash = web3.eth.send_transaction(tx_data)
     assert_transaction_success_with_explanation(web3, tx_hash)
 
