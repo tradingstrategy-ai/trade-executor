@@ -1831,6 +1831,8 @@ def calculate_and_load_indicators_inline(
 
     """
 
+    assert not parameters.is_grid_search(), "calculate_and_load_indicators_inline() is designed to work only with single backtests"
+
     # Hack to be able to run notebook with ipython from the command line
     # https://stackoverflow.com/a/39662359/315168
     ipython = get_ipython().__class__.__name__ == "TerminalInteractiveShell"

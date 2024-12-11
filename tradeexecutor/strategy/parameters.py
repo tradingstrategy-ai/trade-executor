@@ -244,6 +244,8 @@ class StrategyParameters(MutableAttributeDict):
 
         As opposite to the grid search.
         """
+
+        # TODO: Does this do what we want it to do?
         for key, value in self.iterate_parameters():
             if type(value) == list:
                 return True
@@ -253,6 +255,10 @@ class StrategyParameters(MutableAttributeDict):
 
         Search over multiple values.
         """
+
+        if self.get("grid_search"):
+            return True
+
         return not self.is_single_run()
 
     def validate_backtest(self):
