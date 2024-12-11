@@ -162,3 +162,70 @@ def test_velvet_intent_based_open_position_uniswap_v2(
     assert 0 < t.executed_price < 1
     assert t.executed_quantity > 10  # 129 as writing of this
     assert t.executed_reserve == pytest.approx(Decimal(1))
+
+
+
+def test_velvet_intent_based_reduce_position_uniswap_v3(
+    state_with_starting_positions: State,
+    velvet_test_vault_strategy_universe: TradingStrategyUniverse,
+    velvet_pricing_model: GenericPricing,
+    velvet_execution_model: VelvetExecution,
+    velvet_routing_model: VelvetEnsoRouting,
+):
+    """Perform an intent-based swap
+
+    - Do initial deposit scan. Capture the initial USDC and DogInMe in the vault.
+
+    - Prepare sell existing DogInMe position partially
+
+    - Execute it
+    """
+
+    state = state_with_starting_positions
+    strategy_universe = velvet_test_vault_strategy_universe
+    execution_model = velvet_execution_model
+    routing_model = velvet_routing_model
+
+    position_manager = PositionManager(
+        datetime.datetime.utcnow(),
+        universe=velvet_test_vault_strategy_universe,
+        state=state,
+        pricing_model=velvet_pricing_model,
+        default_slippage_tolerance=0.20,
+    )
+
+    pair = strategy_universe.get_pair_by_human_description((ChainId.base, "uniswap-v3", "DogInMe", "WETH"))
+    position = position_manager.get_current_position_for_pair(pair)
+    quantity_to_reduce = position.get_quantity() / Decimal(2)
+    dollar_delta = position.get_value() * float(quantity_to_reduce / position.get_quantity())
+    trades = position_manager.adjust_position(
+        pair=pair,
+        dollar_delta=-dollar_delta,
+        quantity_delta=-quantity_to_reduce,
+        weight=1,
+    )
+    t = trades[0]
+    assert t.is_sell()
+    assert 0 < t.planned_reserve < 1
+    assert t.planned_quantity == pytest.approx(Decimal(-290.458872576413401496))
+    # Setup routing state for the approvals of this cycle
+    routing_state_details = execution_model.get_routing_state_details()
+    routing_state = routing_model.create_routing_state(strategy_universe, routing_state_details)
+
+    execution_model.initialize()
+
+    execution_model.execute_trades(
+        datetime.datetime.utcnow(),
+        state,
+        trades,
+        routing_model,
+        routing_state,
+        check_balances=True,
+    )
+
+    # Ski price
+    # https://app.uniswap.org/explore/tokens/base/0x768be13e1680b5ebe0024c42c896e3db59ec0149
+    assert t.is_success(), f"Enso trade failed: {t.blockchain_transactions[0].revert_reason}"
+    assert 0 < t.executed_price < 1
+    assert t.executed_quantity == pytest.approx(Decimal('-290.458872576413401496'))
+    assert t.executed_reserve > 0

@@ -806,6 +806,12 @@ class PositionManager:
         then calculate the quantity of the asset to sell based
         on the latest available market price on the position.
 
+        Example how to partially reduce position:
+
+        .. code-block:: python
+
+
+
         .. warning ::
 
             Adjust position cannot be used to close an existing position, because

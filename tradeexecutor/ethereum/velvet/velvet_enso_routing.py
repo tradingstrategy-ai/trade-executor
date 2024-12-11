@@ -93,15 +93,16 @@ class VelvetEnsoRouting(RoutingModel):
         else:
             token_in = trade.pair.base
             token_out = reserve_asset
-            swap_amount = trade.get_raw_planned_quantity()
+            swap_amount = -trade.get_raw_planned_quantity()
 
         vault = state.vault
         tx_builder = state.tx_builder
 
         logger.info(
-            "Preparing Enso swap %s -> %s, slippage tolerance %f",
+            "Preparing Enso swap %s -> %s, amount %s, slippage tolerance %f",
             token_in.token_symbol,
             token_out.token_symbol,
+            swap_amount,
             trade.slippage_tolerance,
         )
 
@@ -213,7 +214,7 @@ class VelvetEnsoRouting(RoutingModel):
                 executed_amount = base.convert_to_decimal(result.amount_out)
                 price = result.get_human_price(reverse_token_order=True)
             else:
-                executed_amount = base.convert_to_decimal(result.amount_in)
+                executed_amount = -base.convert_to_decimal(result.amount_in)
                 executed_reserve = reserve.convert_to_decimal(result.amount_out)
                 price = result.get_human_price(reverse_token_order=False)
 

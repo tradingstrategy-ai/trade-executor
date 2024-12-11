@@ -187,6 +187,8 @@ def base_ski() -> AssetIdentifier:
 def base_keycat() -> AssetIdentifier:
     """KEYCAT
 
+    - Uniswap v2
+
     https://dexscreener.com/base/0x377feeed4820b3b28d1ab429509e7a0789824fca
     """
     return AssetIdentifier(
@@ -200,7 +202,12 @@ def base_keycat() -> AssetIdentifier:
 
 @pytest.fixture()
 def base_doginme_token(web3, base_doginme) -> TokenDetails:
-    """DogInMe"""
+    """DogInMe.
+
+    - Uniswap v3
+
+    https://app.uniswap.org/explore/tokens/base/0x6921b130d297cc43754afba22e5eac0fbf8db75b
+    """
     return fetch_erc20_details(web3, base_doginme.address)
 
 
