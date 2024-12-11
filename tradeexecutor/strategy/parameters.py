@@ -239,27 +239,15 @@ class StrategyParameters(MutableAttributeDict):
         """Iterate over parameter definitions."""
         return self.items()
 
-    def is_single_run(self) -> bool:
-        """Are these parameters for a single backtest run.
-
-        As opposite to the grid search.
-        """
-
-        # TODO: Does this do what we want it to do?
-        for key, value in self.iterate_parameters():
-            if type(value) == list:
-                return True
-
     def is_grid_search(self) -> bool:
         """Are these parameters for a grid search.
 
         Search over multiple values.
         """
-
         if self.get("grid_search"):
             return True
 
-        return not self.is_single_run()
+        return False
 
     def validate_backtest(self):
         """Do a basic validation for backtesting parameters."""
