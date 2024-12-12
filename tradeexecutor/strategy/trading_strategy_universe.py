@@ -1037,6 +1037,7 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
         dataset: Dataset,
         reserve_asset: JSONHexAddress | TokenSymbol=None,
         forward_fill=False,
+        forward_fill_until: datetime.datetime | None = None,
     ):
         """Create a universe from loaded dataset.
 
@@ -1089,10 +1090,16 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
             reserve_asset_token = pairs.get_token_by_symbol(reserve_asset)
             reserve_asset = translate_token(reserve_asset_token)
 
+        if forward_fill:
+            if forward_fill_until is None:
+                forward_fill_until = dataset.end_at
+            assert forward_fill_until is not None, f"forward_fill set, not forward_fill_until not set or not available in dataset"
+
         candle_universe = GroupedCandleUniverse(
             dataset.candles,
             forward_fill=forward_fill,
-            time_bucket=dataset.time_bucket
+            time_bucket=dataset.time_bucket,
+            forward_fill_until=forward_fill_until,
         )
 
         if dataset.backtest_stop_loss_candles is not None:
@@ -1100,6 +1107,7 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
                 dataset.backtest_stop_loss_candles,
                 forward_fill=forward_fill,
                 time_bucket=dataset.backtest_stop_loss_time_bucket,
+                forward_fill_until=forward_fill_until,
             )
         else:
             stop_loss_candle_universe = None
