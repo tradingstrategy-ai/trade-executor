@@ -287,6 +287,7 @@ def test_velvet_sync_positions_deposit(
     assert state.portfolio.open_positions[1].get_quantity() > 600
 
 
+@pytest.mark.skipif(CI, reason="Skipped on continuous integration due to Velvet/Enso stability issues")
 def test_velvet_sync_positions_redeem(
     web3: Web3,
     base_example_vault: VelvetVault,

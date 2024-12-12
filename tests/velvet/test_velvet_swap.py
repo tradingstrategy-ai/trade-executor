@@ -167,7 +167,7 @@ def test_velvet_intent_based_open_position_uniswap_v2(
     assert t.executed_reserve == pytest.approx(Decimal(1))
 
 
-
+@pytest.mark.skipif(CI, reason="Skipped on continuous integration due to Velvet/Enso stability issues")
 def test_velvet_intent_based_reduce_position_uniswap_v3(
     state_with_starting_positions: State,
     velvet_test_vault_strategy_universe: TradingStrategyUniverse,
@@ -232,6 +232,7 @@ def test_velvet_intent_based_reduce_position_uniswap_v3(
     assert t.executed_reserve > 0
 
 
+@pytest.mark.skipif(CI, reason="Skipped on continuous integration due to Velvet/Enso stability issues")
 def test_velvet_intent_based_close_position_uniswap_v3(
     state_with_starting_positions: State,
     velvet_test_vault_strategy_universe: TradingStrategyUniverse,
