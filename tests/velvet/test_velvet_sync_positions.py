@@ -3,6 +3,7 @@
 - Handle special Velvet deposit/redemption model
 """
 import datetime
+import os
 from decimal import Decimal
 
 import pytest
@@ -25,6 +26,7 @@ from tradingstrategy.chain import ChainId
 from tradingstrategy.pair import PandasPairUniverse
 
 
+#: Detect Github Actions
 CI = os.environ.get("CI", None) is not None
 
 
