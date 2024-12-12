@@ -1093,6 +1093,12 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
         if forward_fill:
             if forward_fill_until is None:
                 forward_fill_until = dataset.end_at
+
+            if forward_fill_until is None:
+                # Legacy unit test backwards compatibiltiy
+                logger.warning("forward_fill_until could not be determined, assuming legacy test path and does the slow method")
+                forward_fill_until = dataset.candles["timestamp"].max()
+
             logger.info("Forward filling trading data to %s", forward_fill_until)
             assert forward_fill_until is not None, f"forward_fill set, not forward_fill_until not set or not available in dataset"
 
