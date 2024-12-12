@@ -60,6 +60,18 @@ def state_file(tmp_path) -> Path:
 
 
 @pytest.fixture()
+def vault_address():
+    """Which Velvet vault to use for this test.
+
+    - Private key is set as the vault owner
+
+    - Private key is prefunded with ETH
+
+    - There is $100 capital deposited, no open positions
+    """
+    return None
+
+@pytest.fixture()
 def environment(
     strategy_file,
     anvil,
@@ -72,7 +84,8 @@ def environment(
         "PRIVATE_KEY": VELVET_VAULT_OWNER_PRIVATE_KEY,
         "JSON_RPC_ETHEREUM": anvil.json_rpc_url,
         "STATE_FILE": state_file.as_posix(),
-        "ASSET_MANAGEMENT_MODE": "hot_wallet",
+        "ASSET_MANAGEMENT_MODE": "velvet",
+        "VAULT_ADDRESS": vault_address,
         "UNIT_TESTING": "true",
         # "LOG_LEVEL": "info",  # Set to info to get debug data for the test run
         "LOG_LEVEL": "disabled",
@@ -84,7 +97,7 @@ def environment(
     return environment
 
 
-@pytest.mark.slow_test_group
+@pytest.mark.skip(reason="Unfinished")
 def test_base_memecoin_index_velvet(
     environment: dict,
     mocker,

@@ -286,6 +286,7 @@ def test_velvet_intent_based_close_position_uniswap_v3(
     assert len(state.portfolio.closed_positions) == 1
 
 
+@pytest.mark.skipif(CI, reason="Skipped on continuous integration due to Velvet/Enso stability issues")
 def test_velvet_intent_based_increase_position_uniswap_v3(
     state_with_starting_positions: State,
     velvet_test_vault_strategy_universe: TradingStrategyUniverse,
