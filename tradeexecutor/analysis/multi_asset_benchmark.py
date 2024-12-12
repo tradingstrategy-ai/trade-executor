@@ -20,7 +20,7 @@ from tradingstrategy.types import TokenSymbol
 
 
 #: What is the priority of buy-and-hold assets to shown in the benchmarks
-DEFAULT_BENCHMARK_ASSETS = [
+DEFAULT_BENCHMARK_ASSETS = (
     "BTC",
     "WBTC",
     "ETH",
@@ -31,7 +31,7 @@ DEFAULT_BENCHMARK_ASSETS = [
     "WARB",
     "SOL",
     "WSOL",
-]
+)
 
 
 def _find_benchmark_pair(strategy_universe: TradingStrategyUniverse, token_symbol: TokenSymbol) -> TradingPairIdentifier | None:
@@ -267,6 +267,7 @@ def compare_strategy_backtest_to_multiple_assets(
     display=False,
     asset_count=3,
     verbose=True,
+    interesting_assets=DEFAULT_BENCHMARK_ASSETS,
 ) -> pd.DataFrame:
     """Backtest comparison of strategy against buy and hold assets.
 
@@ -304,6 +305,7 @@ def compare_strategy_backtest_to_multiple_assets(
         max_count=asset_count,
         include_price_series=True,
         start_at=start_at,
+        interesting_assets=interesting_assets,
     )
 
     portfolios = pd.DataFrame(
