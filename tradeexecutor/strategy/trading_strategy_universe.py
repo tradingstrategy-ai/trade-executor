@@ -1093,6 +1093,7 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
         if forward_fill:
             if forward_fill_until is None:
                 forward_fill_until = dataset.end_at
+            logger.info("Forward filling trading data to %s", forward_fill_until)
             assert forward_fill_until is not None, f"forward_fill set, not forward_fill_until not set or not available in dataset"
 
         candle_universe = GroupedCandleUniverse(
