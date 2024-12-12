@@ -13,7 +13,6 @@ from eth_defi.token import TokenDetails
 from eth_defi.trace import assert_transaction_success_with_explanation
 from eth_defi.velvet import VelvetVault
 
-from tradeexecutor.ethereum.uniswap_v3.uniswap_v3_live_pricing import UniswapV3LivePricing
 from tradeexecutor.ethereum.velvet.vault import VelvetVaultSyncModel
 from tradeexecutor.state.balance_update import BalanceUpdateCause
 from tradeexecutor.state.identifier import AssetIdentifier
@@ -25,6 +24,8 @@ from tradeexecutor.strategy.trading_strategy_universe import translate_trading_p
 from tradingstrategy.chain import ChainId
 from tradingstrategy.pair import PandasPairUniverse
 
+
+CI = os.environ.get("CI", None) is not None
 
 
 @pytest.fixture()
@@ -160,6 +161,7 @@ def test_velvet_sync_positions_initial(
     assert dog_in_me_pos.get_value() > 0
 
 
+@pytest.mark.skipif(CI, reason="Skipped on continuous integration due to Velvet/Enso stability issues")
 def test_velvet_sync_positions_deposit(
     web3: Web3,
     base_example_vault: VelvetVault,
