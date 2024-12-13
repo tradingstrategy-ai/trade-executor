@@ -98,7 +98,7 @@ class Parameters:
     #
     # Backtesting only
     #
-    backtest_start = datetime.datetime(2022, 8, 15)
+    backtest_start = datetime.datetime(2024, 9, 15)
     backtest_end = datetime.datetime(2024, 12, 10)
     initial_cash = 10_000
 

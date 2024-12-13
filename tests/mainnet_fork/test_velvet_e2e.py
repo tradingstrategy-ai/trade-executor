@@ -146,7 +146,20 @@ def test_velvet_perform_test_trade(
         assert t.is_success()
 
 
-@pytest.mark.skip(reason="Unfinished")
+def test_velvet_backtest(
+    environment: dict,
+    mocker,
+    state_file,
+    web3,
+):
+    """Run backtest using a Velvet vault strat."""
+
+    cli = get_command(app)
+    mocker.patch.dict("os.environ", environment, clear=True)
+    cli.main(args=["init"], standalone_mode=False)
+    cli.main(args=["backtest"], standalone_mode=False)
+
+
 def test_base_memecoin_index_velvet_single_cycle(
     environment: dict,
     mocker,
