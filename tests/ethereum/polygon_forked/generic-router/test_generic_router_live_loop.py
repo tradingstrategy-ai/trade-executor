@@ -297,5 +297,3 @@ def test_generic_router_spot_and_short_strategy_manual_tick(
     assert len(portfolio.open_positions) == 1
 
     loop.runner.check_accounts(strategy_universe, state)  # Check that on-chain balances reflect what we expect
-
-

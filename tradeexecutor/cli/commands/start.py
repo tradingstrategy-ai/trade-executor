@@ -229,7 +229,7 @@ def start(
 
         cache_path = prepare_cache(id, cache_path, unit_testing)
 
-        if asset_management_mode.is_live_trading():
+        if asset_management_mode.is_live_trading() or asset_management_mode == AssetManagementMode.dummy:
             web3config = create_web3_config(
                 json_rpc_binance=json_rpc_binance,
                 json_rpc_polygon=json_rpc_polygon,
