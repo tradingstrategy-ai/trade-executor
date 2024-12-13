@@ -28,7 +28,7 @@ def test_cli_check_universe(
     environment = {
         "TRADING_STRATEGY_API_KEY": os.environ["TRADING_STRATEGY_API_KEY"],
         "STRATEGY_FILE": strategy_path.as_posix(),
-        "CACHE_PATH": tmp_path,
+        "CACHE_PATH": tmp_path.as_posix(),
         "LOG_LEVEL": "disabled",
         "UNIT_TESTING": "true",
         "MAX_DATA_DELAY_MINUTES": "99999",
