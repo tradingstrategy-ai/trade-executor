@@ -1,6 +1,4 @@
-"""Test Memecoin index strategy on the mainnet fork.
-
-"""
+"""Test CLI command and strateggy running with Velvet Capital vault."""
 
 import os
 from pathlib import Path
@@ -89,8 +87,8 @@ def environment(
         "ASSET_MANAGEMENT_MODE": "velvet",
         "VAULT_ADDRESS": vault_address,
         "UNIT_TESTING": "true",
-        "LOG_LEVEL": "info",  # Set to info to get debug data for the test run
-        # "LOG_LEVEL": "disabled",
+        # "LOG_LEVEL": "info",  # Set to info to get debug data for the test run
+        "LOG_LEVEL": "disabled",
         "RUN_SINGLE_CYCLE": "true",
         "TRADING_STRATEGY_API_KEY": TRADING_STRATEGY_API_KEY,
         "MAX_DATA_DELAY_MINUTES": str(10 * 60 * 24 * 365),  # 10 years or "disabled""
