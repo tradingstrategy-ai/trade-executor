@@ -82,7 +82,7 @@ confirmation_timeout = Option(900, envvar="CONFIRMATION_TIMEOUT", help="How many
 
 unit_testing = Option(False, "--unit-testing", envvar="UNIT_TESTING", help="The trade executor is called under the unit testing mode. No caches are purged. Some special flags are set and checks are skipped.")
 
-pair: Optional[str] = Option(None, "--pair", envvar="PAIR", help="Must be specified for a multipair universe.")
+pair: Optional[str] = Option(None, "--pair", envvar="PAIR", help="A trading pair to be tested. Must be in format (chain_id, exchange_slug, base_token, quote_token, fee). Example: (base, uniswap-v3, KEYCAT, WETH, 0.0030).")
 
 all_pairs: Optional[str] = Option(None, "--all-pairs", envvar="ALL_PAIRS", help="Whether to perform a test trade for each pair in the universe. If not given, then the pair option must be specified.")
 

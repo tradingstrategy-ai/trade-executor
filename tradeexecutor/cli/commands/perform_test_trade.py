@@ -13,11 +13,15 @@ from ..log import setup_logging
 from ..slippage import configure_max_slippage_tolerance
 from ..testtrade import make_test_trade
 from ...ethereum.routing_state import OutOfBalance
+from ...ethereum.velvet.execution import VelvetExecution
+from ...ethereum.velvet.vault import VelvetVaultSyncModel
+from ...ethereum.velvet.velvet_enso_routing import VelvetEnsoRouting
 from ...strategy.approval import UncheckedApprovalModel
 from ...strategy.bootstrap import make_factory_from_strategy_mod
 from ...strategy.description import StrategyExecutionDescription
 from ...strategy.execution_context import ExecutionContext, ExecutionMode
 from ...strategy.execution_model import AssetManagementMode
+from ...strategy.generic.generic_pricing_model import GenericPricing
 from ...strategy.run_state import RunState
 from ...strategy.strategy_module import read_strategy_module, StrategyModuleInformation
 from ...strategy.trading_strategy_universe import TradingStrategyUniverseModel
@@ -137,6 +141,7 @@ def perform_test_trade(
         test_evm_uniswap_v2_router=test_evm_uniswap_v2_router,
         test_evm_uniswap_v2_init_code_hash=test_evm_uniswap_v2_init_code_hash,
         clear_caches=False,
+        asset_management_mode=asset_management_mode,
     )
     assert client is not None, "You need to give details for TradingStrategy.ai client"
 
@@ -146,13 +151,14 @@ def perform_test_trade(
     store = create_state_store(Path(state_file))
 
     if store.is_pristine():
-        assert name, "Strategy state file has not been createad. You must pass strategy name to create."
+        assert name, "Strategy state file has not been created. You must pass strategy name to create."
         state = store.create(name)
     else:
         state = store.load()
 
     # Set up the strategy engine
     factory = make_factory_from_strategy_mod(mod)
+
     run_description: StrategyExecutionDescription = factory(
         execution_model=execution_model,
         execution_context=execution_context,
@@ -162,7 +168,7 @@ def perform_test_trade(
         pricing_model_factory=pricing_model_factory,
         approval_model=UncheckedApprovalModel(),
         client=client,
-        routing_model=routing_model,
+        routing_model=routing_model,  # None unless test EVM
         run_state=RunState(),
     )
 
@@ -184,6 +190,15 @@ def perform_test_trade(
         logger.info("Simulating test trades")
     else:
         logger.info("Performing real trades")
+
+    # Trip wire for Velvet integration, as Velvet needs its special Enso path
+    if asset_management_mode == AssetManagementMode.velvet:
+        assert isinstance(execution_model, VelvetExecution), f"Got: {execution_model}"
+        assert isinstance(sync_model, VelvetVaultSyncModel), f"Got: {sync_model}"
+        assert isinstance(pricing_model, GenericPricing), f"Got: {pricing_model}"
+        # TODO: Clean up this parameter passing in some point
+        assert isinstance(runner.routing_model, VelvetEnsoRouting), f"Got: {runner.routing_model}"
+        assert routing_model is None, f"Got: {routing_model}"
 
     try:
         if all_pairs:

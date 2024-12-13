@@ -17,6 +17,13 @@ from web3 import Web3
 
 from eth_defi.vault.base import VaultSpec
 from eth_defi.velvet import VelvetVault
+from tradeexecutor.ethereum.velvet.velvet_enso_routing import VelvetEnsoRouting
+
+from tradingstrategy.chain import ChainId
+from tradingstrategy.client import BaseClient, Client
+from tradingstrategy.testing.uniswap_v2_mock_client import UniswapV2MockClient
+
+
 from tradeexecutor.backtest.backtest_execution import BacktestExecution
 from tradeexecutor.backtest.backtest_pricing import backtest_pricing_factory
 from tradeexecutor.backtest.backtest_sync import BacktestSyncModel
@@ -36,28 +43,26 @@ from tradeexecutor.ethereum.uniswap_v2.uniswap_v2_valuation import uniswap_v2_se
 from tradeexecutor.ethereum.uniswap_v3.uniswap_v3_execution import UniswapV3Execution
 from tradeexecutor.ethereum.uniswap_v3.uniswap_v3_live_pricing import uniswap_v3_live_pricing_factory
 from tradeexecutor.ethereum.uniswap_v3.uniswap_v3_valuation import uniswap_v3_sell_valuation_factory
+from tradeexecutor.ethereum.velvet.execution import VelvetExecution
 from tradeexecutor.ethereum.velvet.vault import VelvetVaultSyncModel
 from tradeexecutor.ethereum.web3config import Web3Config
 from tradeexecutor.monkeypatch.dataclasses_json import patch_dataclasses_json
 from tradeexecutor.state.metadata import Metadata, OnChainData
 from tradeexecutor.state.state import State
 from tradeexecutor.state.store import JSONFileStore, SimulateStore
-from tradeexecutor.state.types import Percent
 from tradeexecutor.strategy.default_routing_options import TradeRouting
+from tradeexecutor.strategy.generic.generic_pricing_model import  EthereumGenericPricingFactory
 from tradeexecutor.strategy.generic.generic_router import GenericRouting
+from tradeexecutor.strategy.generic.generic_valuation import  GenericValuationModelFactory
 from tradeexecutor.strategy.pricing_model import PricingModelFactory
 from tradeexecutor.strategy.routing import RoutingModel
 from tradeexecutor.strategy.strategy_module import StrategyModuleInformation
 from tradeexecutor.strategy.tag import StrategyTag
 from tradeexecutor.strategy.sync_model import SyncModel, DummySyncModel
 from tradeexecutor.strategy.valuation import ValuationModelFactory
-from tradeexecutor.testing.dummy_wallet import DummyWalletSyncer
 from tradeexecutor.strategy.approval import UncheckedApprovalModel, ApprovalType, ApprovalModel
 from tradeexecutor.strategy.dummy import DummyExecutionModel
 from tradeexecutor.strategy.execution_model import AssetManagementMode, ExecutionModel
-from tradingstrategy.chain import ChainId
-from tradingstrategy.client import BaseClient, Client
-from tradingstrategy.testing.uniswap_v2_mock_client import UniswapV2MockClient
 
 logger = logging.getLogger(__name__)
 
@@ -120,11 +125,13 @@ def create_web3_config(
 
 
 def create_execution_model(
+    asset_management_mode: AssetManagementMode,
     routing_hint: Optional[TradeRouting],
     tx_builder: Optional[TransactionBuilder],
     confirmation_timeout: datetime.timedelta,
     confirmation_block_count: int,
     max_slippage: float,
+    sync_model: SyncModel,
     min_gas_balance: Optional[Decimal],
     mainnet_fork=False,
 ):
@@ -135,7 +142,22 @@ def create_execution_model(
 
     logger.info("create_execution_model(): confirmation_timeout: %s", confirmation_timeout)
     # TODO: user_supplied_routing_model can be uni v3 as well
-    if routing_hint is None or routing_hint.is_uniswap_v2() or routing_hint == TradeRouting.user_supplied_routing_model:
+    if asset_management_mode == AssetManagementMode.velvet:
+        # Velvet vaults are hardcoded to use Enzo
+        assert isinstance(sync_model, VelvetVaultSyncModel)
+        logger.info("Velvet + Enso execution model")
+        execution_model = VelvetExecution(
+            vault=sync_model.vault,
+            tx_builder=tx_builder,
+            confirmation_timeout = confirmation_timeout,
+            confirmation_block_count = confirmation_block_count,
+            max_slippage = max_slippage,
+            min_balance_threshold = min_gas_balance,
+            mainnet_fork = mainnet_fork,
+        )
+        valuation_model_factory = GenericValuationModelFactory()
+        pricing_model_factory = EthereumGenericPricingFactory(sync_model.web3)
+    elif routing_hint is None or routing_hint.is_uniswap_v2() or routing_hint == TradeRouting.user_supplied_routing_model:
         logger.info("Uniswap v2 like exchange. Routing hint is %s", routing_hint)
         execution_model = UniswapV2Execution(
             tx_builder,
@@ -202,7 +224,7 @@ def create_execution_and_sync_model(
         pricing_model_factory = uniswap_v2_live_pricing_factory
         sync_model = DummySyncModel()
         return execution_model, sync_model, valuation_model_factory, pricing_model_factory
-    elif asset_management_mode in (AssetManagementMode.hot_wallet, AssetManagementMode.enzyme, AssetManagementMode.velvet):
+    elif asset_management_mode.is_live_trading():
         assert private_key, "Private key is needed for live trading"
         web3 = web3config.get_default()
         hot_wallet = HotWallet.from_private_key(private_key)
@@ -223,6 +245,7 @@ def create_execution_and_sync_model(
         )
 
         execution_model, valuation_model_factory, pricing_model_factory = create_execution_model(
+            asset_management_mode=asset_management_mode,
             routing_hint=routing_hint,
             tx_builder=sync_model.create_transaction_builder(),
             confirmation_timeout=confirmation_timeout,
@@ -230,6 +253,7 @@ def create_execution_and_sync_model(
             max_slippage=max_slippage,
             min_gas_balance=min_gas_balance,
             mainnet_fork=web3config.is_mainnet_fork(),
+            sync_model=sync_model,
         )
         return execution_model, sync_model, valuation_model_factory, pricing_model_factory
 
@@ -451,14 +475,15 @@ def create_sync_model(
 
 
 def create_client(
-        mod: StrategyModuleInformation,
-        web3config: Web3Config,
-        trading_strategy_api_key: Optional[str],
-        cache_path: Optional[Path],
-        test_evm_uniswap_v2_factory: Optional[str],
-        test_evm_uniswap_v2_router: Optional[str],
-        test_evm_uniswap_v2_init_code_hash: Optional[str],
-        clear_caches: bool,
+    mod: StrategyModuleInformation,
+    web3config: Web3Config,
+    trading_strategy_api_key: Optional[str],
+    cache_path: Optional[Path],
+    test_evm_uniswap_v2_factory: Optional[str],
+    test_evm_uniswap_v2_router: Optional[str],
+    test_evm_uniswap_v2_init_code_hash: Optional[str],
+    clear_caches: bool,
+    asset_management_mode: AssetManagementMode | None = None,
 ) -> Tuple[BaseClient | None, RoutingModel | None]:
     """Create a Trading Strategy client instance.
 
@@ -512,10 +537,16 @@ def create_client(
         # This run does not need to download any data
         pass
 
+    # TODO: Move this to its own function
     if mod.trade_routing == TradeRouting.default:
-        # We eill call GenericRouting.initialise() later with pair universe data loaded
-        logger.info("Using GenericRouting for Ethereum chains")
-        routing_model = GenericRouting(pair_configurator=None)
+
+        if asset_management_mode == AssetManagementMode.velvet:
+            # Will be created later?
+            routing_model = None
+        else:
+            # We eill call GenericRouting.initialise() later with pair universe data loaded
+            logger.info("Using GenericRouting for Ethereum chains")
+            routing_model = GenericRouting(pair_configurator=None)
 
     return client, routing_model
 
@@ -546,3 +577,4 @@ def backup_state(state_file: Path | str, backup_suffix="backup") -> Tuple[JSONFi
 
     state = store.load()
     return store, state
+

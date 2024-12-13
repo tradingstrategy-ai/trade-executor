@@ -135,7 +135,7 @@ def check_wallet(
         routing_hint=mod.trade_routing,
     )
 
-    assert asset_management_mode in (AssetManagementMode.hot_wallet, AssetManagementMode.enzyme), F"Cannot perform check wallet for non-real modes"
+    assert asset_management_mode.is_live_trading(), f"Cannot perform check wallet for non-real modes"
     assert sync_model, f"sync_model not set up"
     assert sync_model.get_hot_wallet(), f"sync_model {sync_model} lacks hot wallet"
 

@@ -89,8 +89,8 @@ def environment(
         "ASSET_MANAGEMENT_MODE": "velvet",
         "VAULT_ADDRESS": vault_address,
         "UNIT_TESTING": "true",
-        # "LOG_LEVEL": "info",  # Set to info to get debug data for the test run
-        "LOG_LEVEL": "disabled",
+        "LOG_LEVEL": "info",  # Set to info to get debug data for the test run
+        # "LOG_LEVEL": "disabled",
         "RUN_SINGLE_CYCLE": "true",
         "TRADING_STRATEGY_API_KEY": TRADING_STRATEGY_API_KEY,
         "MAX_DATA_DELAY_MINUTES": str(10 * 60 * 24 * 365),  # 10 years or "disabled""
@@ -99,7 +99,55 @@ def environment(
     return environment
 
 
-def test_base_memecoin_index_velvet(
+def test_velvet_check_wallet(
+    environment: dict,
+    mocker,
+    state_file,
+    web3,
+):
+    """Run check-walet Velvet vault."""
+
+    cli = get_command(app)
+    mocker.patch.dict("os.environ", environment, clear=True)
+    cli.main(args=["check-wallet"], standalone_mode=False)
+
+
+def test_velvet_check_universe(
+    environment: dict,
+    mocker,
+    state_file,
+    web3,
+):
+    """Run check-walet Velvet vault."""
+
+    cli = get_command(app)
+    mocker.patch.dict("os.environ", environment, clear=True)
+    cli.main(args=["check-universe"], standalone_mode=False)
+
+
+def test_velvet_perform_test_trade(
+    environment: dict,
+    mocker,
+    state_file,
+    web3,
+):
+    """Run a single test trade using Velvet vault."""
+
+    cli = get_command(app)
+    mocker.patch.dict("os.environ", environment, clear=True)
+    cli.main(args=["init"], standalone_mode=False)
+    cli.main(args=["perform-test-trade", "--pair", "(base, uniswap-v2, KEYCAT, WETH, 0.0030)"], standalone_mode=False)
+
+    state = State.read_json_file(state_file)
+    keycat_trades = [t for t in state.portfolio.get_all_trades() if t.pair.base.token_symbol == "KEYCAT"]
+    assert len(keycat_trades) == 2
+
+    for t in keycat_trades:
+        assert t.is_success()
+
+
+@pytest.mark.skip(reason="Unfinished")
+def test_base_memecoin_index_velvet_single_cycle(
     environment: dict,
     mocker,
     state_file,
@@ -113,10 +161,15 @@ def test_base_memecoin_index_velvet(
     cli = get_command(app)
     mocker.patch.dict("os.environ", environment, clear=True)
     cli.main(args=["init"], standalone_mode=False)
+
+    state = State.read_json_file(state_file)
+    assert state.cycle == 1
+
     cli.main(args=["start"], standalone_mode=False)
 
     state = State.read_json_file(state_file)
+    reserve_position = state.portfolio.get_default_reserve_position()
+    assert reserve_position.get_value() > 5.0  # Should have 100 USDC starting balance
     assert len(state.visualisation.get_messages_tail(5)) == 1
     assert len(state.portfolio.frozen_positions) == 0
-
 

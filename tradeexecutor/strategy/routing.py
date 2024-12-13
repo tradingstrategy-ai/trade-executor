@@ -128,7 +128,7 @@ class RoutingModel(abc.ABC):
     @staticmethod
     def convert_address_dict_to_lower(address_dict) -> dict:
         """Convert all key addresses to lowercase to avoid mix up with Ethereum address checksums"""
-        return {k.lower(): v for k, v in address_dict.items()}
+        return {k.lower(): v.lower() if type(v) == str else v for k, v in address_dict.items()}
     
     @staticmethod
     def pre_trade_assertions(reserve_asset_amount: int, max_slippage: float, target_pair: TradingPairIdentifier, reserve_asset: AssetIdentifier) -> None:

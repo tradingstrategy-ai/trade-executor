@@ -7,11 +7,12 @@ from typing import Optional
 
 import pandas as pd
 
+from tradeexecutor.ethereum.ethereum_protocol_adapters import EthereumPairConfigurator
 from tradeexecutor.strategy.generic.pair_configurator import PairConfigurator
 
 from tradeexecutor.state.identifier import TradingPairIdentifier, AssetIdentifier
 from tradeexecutor.state.types import USDollarPrice, Percent, USDollarAmount, TokenAmount
-from tradeexecutor.strategy.pricing_model import PricingModel
+from tradeexecutor.strategy.pricing_model import PricingModel, PricingModelFactory
 from tradeexecutor.strategy.trade_pricing import TradePricing
 
 
@@ -130,3 +131,22 @@ class GenericPricing(PricingModel):
     ) -> TokenAmount:
         route = self.route(pair)
         return route.get_quote_token_tvl(timestamp, pair)
+
+
+class EthereumGenericPricingFactory(PricingModelFactory):
+    """Create Ethereum pricing routing tables.
+
+    - Support Uniswap v2 and v3 routing in a mixed environment
+    """
+    def __init__(self, web3):
+        self.web3 = web3
+
+    def __call__(
+        self,
+        execution_model,
+        universe,
+        routing_model,
+    ):
+        pair_configurator = EthereumPairConfigurator(self.web3, universe)
+        return GenericPricing(pair_configurator)
+

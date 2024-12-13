@@ -74,6 +74,13 @@ class SyncModel(ABC):
         # By default not any checks are needed
         return True
 
+    def has_position_sync(self) -> bool:
+        """Do we need to sync positions when we sync treasuty.
+
+        - See :py:class:`VelvetVaultSyncModel`
+        """
+        return False
+
     @abstractmethod
     def get_token_storage_address(self) -> Optional[JSONHexAddress]:
         """Get the address where tokens are stored.
@@ -203,6 +210,22 @@ class SyncModel(ABC):
     def reset_deposits(self, state: State):
         """Clear out pending withdrawals/deposits events."""
         raise NotImplementedError()
+
+    def sync_positions(
+        self,
+        timestamp: datetime.datetime,
+        state: State,
+        strategy_universe: TradingStrategyUniverse,
+        pricing_model: PricingModel,
+    ) -> list[BalanceUpdate]:
+        """Detect any position balance changes due to deposit/redemptions of vault users.
+
+        - Velvet directly trades any incoming tokens to user balances
+
+        - USDC/reserve token is synced by :py:meth:`sync_treasury`
+        """
+
+
 
 
 class DummySyncModel(SyncModel):

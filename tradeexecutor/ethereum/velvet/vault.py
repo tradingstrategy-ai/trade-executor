@@ -12,6 +12,7 @@ from tradeexecutor.ethereum.address_sync_model import AddressSyncModel
 from tradeexecutor.ethereum.balance_update import apply_balance_update_events
 
 from tradeexecutor.ethereum.velvet.tx import VelvetTransactionBuilder
+from tradeexecutor.state.balance_update import BalanceUpdate
 from tradeexecutor.state.identifier import AssetIdentifier
 from tradeexecutor.state.state import State
 from tradeexecutor.state.types import JSONHexAddress, USDollarPrice
@@ -114,7 +115,7 @@ class VelvetVaultSyncModel(AddressSyncModel):
         state: State,
         strategy_universe: TradingStrategyUniverse,
         pricing_model: PricingModel,
-    ):
+    ) -> list[BalanceUpdate]:
         """Detect any position balance changes due to deposit/redemptions of vault users.
 
         - Velvet directly trades any incoming tokens to user balances

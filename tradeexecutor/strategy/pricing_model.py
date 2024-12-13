@@ -4,7 +4,7 @@ import logging
 import abc
 import datetime
 from decimal import Decimal, ROUND_DOWN
-from typing import Callable, Optional, Literal
+from typing import Callable, Optional, Literal, Protocol
 
 from tradeexecutor.state.identifier import TradingPairIdentifier
 from tradeexecutor.state.types import USDollarPrice, Percent, USDollarAmount, TokenAmount
@@ -304,8 +304,27 @@ class FixedPricing(PricingModel):
 
 
 
-#: This factory creates a new pricing model for each trade cycle.
-#: Pricing model depends on the trading universe that may change for each strategy tick,
-#: as new trading pairs appear.
-#: Thus, we need to reconstruct pricing model as the start of the each tick.
-PricingModelFactory = Callable[[ExecutionModel, StrategyExecutionUniverse, RoutingModel], PricingModel]
+
+# PricingModelFactory = Callable[[ExecutionModel, StrategyExecutionUniverse, RoutingModel], PricingModel]
+
+
+class PricingModelFactory(Protocol):
+    """Factory for creating pricing models.
+
+    - Factory gets called in the main loop after the trading universe is loaded
+
+    - We cannot create pricing model at the start of the application, because we do not have the universe loaded
+
+    This factory creates a new pricing model for each trade cycle.
+    Pricing model depends on the trading universe that may change for each strategy tick,
+    as new trading pairs appear.
+    Thus, we need to reconstruct pricing model as the start of the each tick.
+    """
+
+    def __call__(
+        self,
+        execution_model: ExecutionModel,
+        strategy_universe: StrategyExecutionUniverse,
+        routing_model: RoutingModel,
+    ):
+        pass
