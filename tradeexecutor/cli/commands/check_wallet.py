@@ -55,6 +55,7 @@ def check_wallet(
     json_rpc_polygon: Optional[str] = shared_options.json_rpc_polygon,
     json_rpc_ethereum: Optional[str] = shared_options.json_rpc_ethereum,
     json_rpc_avalanche: Optional[str] = shared_options.json_rpc_avalanche,
+    json_rpc_base: Optional[str] = shared_options.json_rpc_base,
     json_rpc_arbitrum: Optional[str] = shared_options.json_rpc_arbitrum,
     json_rpc_anvil: Optional[str] = shared_options.json_rpc_anvil,
 
@@ -92,7 +93,7 @@ def check_wallet(
         json_rpc_binance=json_rpc_binance,
         json_rpc_polygon=json_rpc_polygon,
         json_rpc_avalanche=json_rpc_avalanche,
-        json_rpc_ethereum=json_rpc_ethereum,
+        json_rpc_ethereum=json_rpc_ethereum, json_rpc_base=json_rpc_base, 
         json_rpc_anvil=json_rpc_anvil,
         json_rpc_arbitrum=json_rpc_arbitrum,
         unit_testing=unit_testing,
@@ -134,7 +135,7 @@ def check_wallet(
         routing_hint=mod.trade_routing,
     )
 
-    assert asset_management_mode in (AssetManagementMode.hot_wallet, AssetManagementMode.enzyme), F"Cannot perform check wallet for non-real modes"
+    assert asset_management_mode.is_live_trading(), f"Cannot perform check wallet for non-real modes"
     assert sync_model, f"sync_model not set up"
     assert sync_model.get_hot_wallet(), f"sync_model {sync_model} lacks hot wallet"
 

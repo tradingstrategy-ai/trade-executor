@@ -2,9 +2,12 @@
 import logging
 import datetime
 from decimal import Decimal
-from typing import Union
 
 from web3 import Web3
+
+from tradingstrategy.universe import Universe
+from tradingstrategy.pair import HumanReadableTradingPairDescription
+from tradingstrategy.exchange import ExchangeUniverse
 
 from tradeexecutor.ethereum.enzyme.vault import EnzymeVaultSyncModel
 from tradeexecutor.state.trade import TradeFlag
@@ -14,18 +17,12 @@ from tradeexecutor.statistics.statistics_table import serialise_long_short_stats
 from tradeexecutor.strategy.execution_context import ExecutionMode
 from tradeexecutor.strategy.sync_model import SyncModel
 from tradeexecutor.utils.accuracy import sum_decimal
-from tradingstrategy.universe import Universe
-from tradingstrategy.pair import HumanReadableTradingPairDescription
-from tradingstrategy.exchange import ExchangeUniverse
-
-from tradeexecutor.ethereum.hot_wallet_sync_model import EthereumHotWalletReserveSyncer
 from tradeexecutor.state.state import State
 from tradeexecutor.strategy.execution_model import ExecutionModel
 from tradeexecutor.strategy.pandas_trader.position_manager import PositionManager
 from tradeexecutor.strategy.pricing_model import PricingModel
 from tradeexecutor.strategy.routing import RoutingModel, RoutingState
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse, translate_trading_pair
-from tradeexecutor.statistics.statistics_table import StatisticsTable
 
 logger = logging.getLogger(__name__)
 
@@ -117,7 +114,16 @@ def make_test_trade(
         list(universe.reserve_assets),
     )
 
-    logger.info("We received balance update events: %s", balance_updates)
+    logger.info("sync_treasury() received balance update events: %s", balance_updates)
+
+    if sync_model.has_position_sync():
+        balance_updates = sync_model.sync_positions(
+            ts,
+            state,
+            universe,
+            pricing_model,
+        )
+        logger.info("sync_positions(): received balance update events: %s", balance_updates)
 
     vault_address = sync_model.get_vault_address()
     hot_wallet = sync_model.get_hot_wallet()

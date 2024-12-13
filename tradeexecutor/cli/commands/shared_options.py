@@ -46,11 +46,12 @@ asset_management_mode = Option(None, envvar="ASSET_MANAGEMENT_MODE", help="How d
 
 
 # Web3 connection options
-json_rpc_binance = Option(None, envvar="JSON_RPC_BINANCE", help=_gen_rpc_help("BNB Smart Chain"))
-json_rpc_polygon = Option(None, envvar="JSON_RPC_POLYGON", help=_gen_rpc_help("Polygon"))
-json_rpc_ethereum = Option(None, envvar="JSON_RPC_ETHEREUM", help=_gen_rpc_help("Ethereum"))
-json_rpc_avalanche = Option(None, envvar="JSON_RPC_AVALANCHE", help=_gen_rpc_help("Avalanche C-chain"))
-json_rpc_arbitrum = Option(None, envvar="JSON_RPC_ARBITRUM", help=_gen_rpc_help("Arbitrum One"))
+json_rpc_binance = Option(None, envvar="JSON_RPC_BINANCE", help=_gen_rpc_help("RPC: BNB Smart Chain"))
+json_rpc_polygon = Option(None, envvar="JSON_RPC_POLYGON", help=_gen_rpc_help("RPC: Polygon"))
+json_rpc_ethereum = Option(None, envvar="JSON_RPC_ETHEREUM", help=_gen_rpc_help("RPC: Ethereum"))
+json_rpc_avalanche = Option(None, envvar="JSON_RPC_AVALANCHE", help=_gen_rpc_help("RPC: Avalanche C-chain"))
+json_rpc_arbitrum = Option(None, envvar="JSON_RPC_ARBITRUM", help=_gen_rpc_help("RPC: Arbitrum One"))
+json_rpc_base = Option(None, envvar="JSON_RPC_BASE", help=_gen_rpc_help("RPC: Base"))
 json_rpc_anvil = Option(None, envvar="JSON_RPC_ANVIL", help="Anvil JSON-RPC url. Anvil from Foundry is only used in local development and is not a readl blockchain.")
 
 state_file = Option(None, envvar="STATE_FILE", help="JSON file where we serialise the execution state. If not given defaults to state/{executor-id}.json for live trade execution, state/{executor-id}-backtest.json for the backtest results.")
@@ -81,7 +82,7 @@ confirmation_timeout = Option(900, envvar="CONFIRMATION_TIMEOUT", help="How many
 
 unit_testing = Option(False, "--unit-testing", envvar="UNIT_TESTING", help="The trade executor is called under the unit testing mode. No caches are purged. Some special flags are set and checks are skipped.")
 
-pair: Optional[str] = Option(None, "--pair", envvar="PAIR", help="Must be specified for a multipair universe.")
+pair: Optional[str] = Option(None, "--pair", envvar="PAIR", help="A trading pair to be tested. Must be in format (chain_id, exchange_slug, base_token, quote_token, fee). Example: (base, uniswap-v3, KEYCAT, WETH, 0.0030).")
 
 all_pairs: Optional[str] = Option(None, "--all-pairs", envvar="ALL_PAIRS", help="Whether to perform a test trade for each pair in the universe. If not given, then the pair option must be specified.")
 

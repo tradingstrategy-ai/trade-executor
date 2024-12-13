@@ -301,7 +301,7 @@ class EthereumPairConfigurator(PairConfigurator):
     def __init__(
         self,
         web3: Web3,
-        strategy_universe: TradingStrategyUniverse,
+        strategy_universe: TradingStrategyUniverse | None,
     ):
         """Initialise pair configuration.
 

@@ -35,6 +35,7 @@ from tradingstrategy.chain import ChainId
 from tradingstrategy.client import Client
 from tradingstrategy.pair import PandasPairUniverse
 from tradingstrategy.timebucket import TimeBucket
+from tradingstrategy.transport.cache import OHLCVCandleType
 from tradingstrategy.utils.token_extra_data import filter_scams
 from tradingstrategy.utils.token_filter import deduplicate_pairs_by_volume
 from tradeexecutor.state.visualisation import PlotKind
@@ -97,7 +98,7 @@ class Parameters:
     #
     # Backtesting only
     #
-    backtest_start = datetime.datetime(2022, 8, 15)
+    backtest_start = datetime.datetime(2024, 9, 15)
     backtest_end = datetime.datetime(2024, 12, 10)
     initial_cash = 10_000
 
@@ -128,6 +129,7 @@ VOLATILITY_BENCHMARK_PAIR = (ChainId.ethereum, "uniswap-v2", "WETH", "USDC")
 #: Assets used in routing and buy-and-hold benchmark values for our strategy, but not traded by this strategy.
 SUPPORTING_PAIRS = [
     (ChainId.base, "uniswap-v2", "WETH", "USDC", 0.0030),
+    (ChainId.base, "uniswap-v3", "WETH", "USDC", 0.0005),
     (ChainId.base, "uniswap-v3", "cbBTC", "WETH", 0.0030),  # Only trading since October
 ]
 
@@ -136,10 +138,10 @@ VOL_PAIR = (ChainId.base, "uniswap-v2", "WETH", "USDC", 0.0030)
 
 
 def create_trading_universe(
-        timestamp: datetime.datetime,
-        client: Client,
-        execution_context: ExecutionContext,
-        universe_options: UniverseOptions,
+    timestamp: datetime.datetime,
+    client: Client,
+    execution_context: ExecutionContext,
+    universe_options: UniverseOptions,
 ) -> TradingStrategyUniverse:
     """Create the trading universe.
 

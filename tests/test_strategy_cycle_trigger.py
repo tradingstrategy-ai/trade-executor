@@ -12,6 +12,7 @@ To run:
 
 import os
 import pickle
+import datetime
 from pathlib import Path
 from unittest import mock
 
@@ -36,11 +37,15 @@ def logger(request):
     return setup_pytest_logging(request, mute_requests=False)
 
 
+temp_disable = datetime.datetime(2024, 12, 15)
+
+@pytest.mark.skipif(datetime.datetime.utcnow() < temp_disable, reason="Temporary disabled, oracle server having an issue")
 @pytest.mark.skipif(os.environ.get("SKIP_SLOW_TEST"), reason="Slow tests skipping enabled")
 @pytest.mark.slow_test_group
 def test_trading_data_availability_based_strategy_cycle_trigger(
-        logger,
-        strategy_path: Path,
+    logger,
+    strategy_path: Path,
+    tmp_path: Path,
     ):
     """Test live decision making triggers using trading data availability endpoint
 
@@ -67,7 +72,7 @@ def test_trading_data_availability_based_strategy_cycle_trigger(
         "RESET_STATE": "true",
         "ASSET_MANAGEMENT_MODE": "dummy",
         "STRATEGY_CYCLE_TRIGGER": "trading_pair_data_availability",
-        "CACHE_PATH": "/tmp/trading_data_availability_based_strategy_cycle_trigger",
+        "CACHE_PATH": tmp_path.as_posix(),
         "TRADING_STRATEGY_API_KEY": os.environ["TRADING_STRATEGY_API_KEY"],
         "DEBUG_DUMP_FILE": debug_dump_file,
         "CYCLE_DURATION": "1m",
@@ -75,7 +80,7 @@ def test_trading_data_availability_based_strategy_cycle_trigger(
         "MAX_POSITIONS": "2",
         "UNIT_TESTING": "true",
         "MAX_CYCLES": "1",
-        "LOG_LEVEL": "disabled",
+        "LOG_LEVEL": "info",
     }
 
     # Don't use CliRunner.invoke() here,
