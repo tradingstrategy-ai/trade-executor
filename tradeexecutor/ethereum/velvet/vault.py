@@ -70,16 +70,19 @@ class VelvetVaultSyncModel(AddressSyncModel):
     def vault_address(self) -> HexAddress:
         return self.vault.info["vaultAddress"]
 
+    @property
+    def chain_id(self) -> ChainId:
+        return ChainId(self.vault.spec.chain_id)
+
+    def get_hot_wallet(self) -> Optional[HotWallet]:
+        return self.hot_wallet
+
     def get_main_address(self) -> Optional[JSONHexAddress]:
         """Which is the onchain address that identifies this wallet/vault deployment.
 
         See also :py:meth:`get_token_storage_address`
         """
         return self.vault_address
-
-    @property
-    def chain_id(self) -> ChainId:
-        return ChainId(self.vault.spec.chain_id)
 
     def get_token_storage_address(self) -> Optional[str]:
         return self.vault_address

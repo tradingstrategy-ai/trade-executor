@@ -32,6 +32,7 @@ def enzyme_asset_list(
     json_rpc_polygon: Optional[str] = shared_options.json_rpc_polygon,
     json_rpc_avalanche: Optional[str] = shared_options.json_rpc_avalanche,
     json_rpc_ethereum: Optional[str] = shared_options.json_rpc_ethereum,
+    json_rpc_base: Optional[str] = shared_options.json_rpc_base,
     json_rpc_arbitrum: Optional[str] = shared_options.json_rpc_arbitrum,
     json_rpc_anvil: Optional[str] = shared_options.json_rpc_anvil,
     end_block: Optional[int] = Option(None, envvar="END_BLOCK", help="End block to scan. If not given default to the latest block.")
@@ -48,7 +49,7 @@ def enzyme_asset_list(
         json_rpc_binance=json_rpc_binance,
         json_rpc_polygon=json_rpc_polygon,
         json_rpc_avalanche=json_rpc_avalanche,
-        json_rpc_ethereum=json_rpc_ethereum,
+        json_rpc_ethereum=json_rpc_ethereum, json_rpc_base=json_rpc_base, 
         json_rpc_anvil=json_rpc_anvil,
         json_rpc_arbitrum=json_rpc_arbitrum,
     )

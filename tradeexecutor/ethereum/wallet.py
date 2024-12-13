@@ -158,6 +158,8 @@ def perform_gas_level_checks(
         True if the gas warning is going
     """
 
+    assert web3
+
     hot_wallet_gas_warning_level = hot_wallet_gas_warning_level or run_state.hot_wallet_gas_warning_level
 
     raw_gas = web3.eth.get_balance(hot_wallet.address)

@@ -83,6 +83,7 @@ def start(
     json_rpc_polygon: Optional[str] = shared_options.json_rpc_polygon,
     json_rpc_ethereum: Optional[str] = shared_options.json_rpc_ethereum,
     json_rpc_avalanche: Optional[str] = shared_options.json_rpc_avalanche,
+    json_rpc_base: Optional[str] = shared_options.json_rpc_base,
     json_rpc_arbitrum: Optional[str] = shared_options.json_rpc_arbitrum,
     json_rpc_anvil: Optional[str] = shared_options.json_rpc_anvil,
 
@@ -228,12 +229,13 @@ def start(
 
         cache_path = prepare_cache(id, cache_path, unit_testing)
 
-        if asset_management_mode in (AssetManagementMode.hot_wallet, AssetManagementMode.dummy, AssetManagementMode.enzyme):
+        if asset_management_mode.is_live_trading():
             web3config = create_web3_config(
                 json_rpc_binance=json_rpc_binance,
                 json_rpc_polygon=json_rpc_polygon,
                 json_rpc_avalanche=json_rpc_avalanche,
                 json_rpc_ethereum=json_rpc_ethereum,
+                json_rpc_base=json_rpc_base,
                 json_rpc_anvil=json_rpc_anvil,
                 json_rpc_arbitrum=json_rpc_arbitrum,
                 gas_price_method=gas_price_method,
@@ -300,6 +302,8 @@ def start(
         logger.info("Transaction confirmation timeout set to %s", confirmation_timeout)
 
         max_slippage = configure_max_slippage_tolerance(max_slippage, mod)
+
+        assert web3config is not None, "Web3 RPC configuration failed?"
 
         execution_model, sync_model, valuation_model_factory, pricing_model_factory = create_execution_and_sync_model(
             asset_management_mode=asset_management_mode,

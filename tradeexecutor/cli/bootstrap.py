@@ -5,7 +5,9 @@ import os
 import shutil
 from decimal import Decimal
 from pathlib import Path
-from typing import Optional, Tuple, Set
+from typing import Optional, Tuple, Set, cast
+
+from eth_typing import HexAddress
 
 from eth_defi.enzyme.vault import Vault
 from eth_defi.event_reader.reorganisation_monitor import create_reorganisation_monitor
@@ -13,6 +15,8 @@ from eth_defi.gas import GasPriceMethod
 from eth_defi.hotwallet import HotWallet
 from web3 import Web3
 
+from eth_defi.vault.base import VaultSpec
+from eth_defi.velvet import VelvetVault
 from tradeexecutor.backtest.backtest_execution import BacktestExecution
 from tradeexecutor.backtest.backtest_pricing import backtest_pricing_factory
 from tradeexecutor.backtest.backtest_sync import BacktestSyncModel
@@ -32,6 +36,7 @@ from tradeexecutor.ethereum.uniswap_v2.uniswap_v2_valuation import uniswap_v2_se
 from tradeexecutor.ethereum.uniswap_v3.uniswap_v3_execution import UniswapV3Execution
 from tradeexecutor.ethereum.uniswap_v3.uniswap_v3_live_pricing import uniswap_v3_live_pricing_factory
 from tradeexecutor.ethereum.uniswap_v3.uniswap_v3_valuation import uniswap_v3_sell_valuation_factory
+from tradeexecutor.ethereum.velvet.vault import VelvetVaultSyncModel
 from tradeexecutor.ethereum.web3config import Web3Config
 from tradeexecutor.monkeypatch.dataclasses_json import patch_dataclasses_json
 from tradeexecutor.state.metadata import Metadata, OnChainData
@@ -80,6 +85,7 @@ def create_web3_config(
     json_rpc_avalanche,
     json_rpc_ethereum,
     json_rpc_arbitrum,
+    json_rpc_base,
     json_rpc_anvil,
     gas_price_method: Optional[GasPriceMethod] = None,
     unit_testing: bool=False,
@@ -100,6 +106,7 @@ def create_web3_config(
     web3config = Web3Config.setup_from_environment(
         gas_price_method,
         json_rpc_ethereum=json_rpc_ethereum,
+        json_rpc_base=json_rpc_base,
         json_rpc_binance=json_rpc_binance,
         json_rpc_polygon=json_rpc_polygon,
         json_rpc_avalanche=json_rpc_avalanche,
@@ -195,7 +202,7 @@ def create_execution_and_sync_model(
         pricing_model_factory = uniswap_v2_live_pricing_factory
         sync_model = DummySyncModel()
         return execution_model, sync_model, valuation_model_factory, pricing_model_factory
-    elif asset_management_mode in (AssetManagementMode.hot_wallet, AssetManagementMode.enzyme):
+    elif asset_management_mode in (AssetManagementMode.hot_wallet, AssetManagementMode.enzyme, AssetManagementMode.velvet):
         assert private_key, "Private key is needed for live trading"
         web3 = web3config.get_default()
         hot_wallet = HotWallet.from_private_key(private_key)
@@ -407,12 +414,12 @@ def monkey_patch():
 
 
 def create_sync_model(
-        asset_management_mode: AssetManagementMode,
-        web3: Web3,
-        hot_wallet: HotWallet,
-        vault_address: Optional[str] = None,
-        vault_adapter_address: Optional[str] = None,
-        vault_payment_forwarder_address: Optional[str] = None,
+    asset_management_mode: AssetManagementMode,
+    web3: Web3,
+    hot_wallet: HotWallet,
+    vault_address: Optional[str] = None,
+    vault_adapter_address: Optional[str] = None,
+    vault_payment_forwarder_address: Optional[str] = None,
 ) -> SyncModel:
     match asset_management_mode:
         case AssetManagementMode.hot_wallet:
@@ -428,6 +435,16 @@ def create_sync_model(
                 generic_adapter_address=vault_adapter_address,
                 vault_payment_forwarder_address=vault_payment_forwarder_address,
                 scan_chunk_size=50_000,
+            )
+        case AssetManagementMode.velvet:
+            vault = VelvetVault(
+                web3,
+                VaultSpec(web3.eth.chain_id, cast(HexAddress, vault_address)),
+            )
+            vault.check_valid_contract()
+            return VelvetVaultSyncModel(
+                vault,
+                hot_wallet
             )
         case _:
             raise NotImplementedError()

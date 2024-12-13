@@ -26,13 +26,11 @@ pytestmark = pytest.mark.skipif(
 
 
 @pytest.fixture()
-def anvil(usdc_whale) -> AnvilLaunch:
+def anvil() -> AnvilLaunch:
     """Launch mainnet fork."""
 
     anvil = launch_anvil(
         fork_url=JSON_RPC_BASE,
-        unlocked_addresses=[usdc_whale],
-        fork_block_number=21_271_568,  # Keep test stable
     )
     try:
         yield anvil
@@ -43,7 +41,7 @@ def anvil(usdc_whale) -> AnvilLaunch:
 @pytest.fixture()
 def web3(anvil) -> Web3:
     web3 = create_multi_provider_web3(anvil.json_rpc_url)
-    assert web3.eth.chain_id == 1
+    assert web3.eth.chain_id == 8453
     return web3
 
 
@@ -69,20 +67,24 @@ def vault_address():
 
     - There is $100 capital deposited, no open positions
     """
-    return None
+    # https://dapp.velvet.capital/ManagerVaultDetails/0x2213a945a93c2aa10bf4b6f0cfb1db12dadc61ba
+    # https://basescan.org/address/0xc4db1ce83f6913cf667da4247aa0971dd0147349
+    return "0x2213a945a93c2aa10bf4b6f0cfb1db12dadc61ba"
+
 
 @pytest.fixture()
 def environment(
     strategy_file,
     anvil,
     state_file,
+    vault_address,
 ):
     environment = {
         "EXECUTOR_ID": "test_base_memecoin_inddex_velvet",
         "NAME": "test_base_memecoin_inddex_velvet",
         "STRATEGY_FILE": strategy_file.as_posix(),
         "PRIVATE_KEY": VELVET_VAULT_OWNER_PRIVATE_KEY,
-        "JSON_RPC_ETHEREUM": anvil.json_rpc_url,
+        "JSON_RPC_BASE": anvil.json_rpc_url,
         "STATE_FILE": state_file.as_posix(),
         "ASSET_MANAGEMENT_MODE": "velvet",
         "VAULT_ADDRESS": vault_address,
@@ -91,13 +93,12 @@ def environment(
         "LOG_LEVEL": "disabled",
         "RUN_SINGLE_CYCLE": "true",
         "TRADING_STRATEGY_API_KEY": TRADING_STRATEGY_API_KEY,
-        "PATH": os.environ["PATH"], # Needs Forge bin
         "MAX_DATA_DELAY_MINUTES": str(10 * 60 * 24 * 365),  # 10 years or "disabled""
+        "MIN_GAS_BALANCE": "0.005",
     }
     return environment
 
 
-@pytest.mark.skip(reason="Unfinished")
 def test_base_memecoin_index_velvet(
     environment: dict,
     mocker,
