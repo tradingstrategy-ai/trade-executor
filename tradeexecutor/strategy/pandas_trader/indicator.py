@@ -136,9 +136,27 @@ class IndicatorSource(enum.Enum):
     #:
     external_per_pair = "external_per_pair"
 
+    #: This indicator is based purely on the previously calculated indicators
+    #:
+    #: - For each pari
+    #: - No price data etc. used
+    #:
+    #: See :py:class:`IndicatorDependencyResolver`
+    #:
+    dependencies_only_per_pair = "dependencies_only_per_pair"
+
+    #: This indicator is based purely on the previously calculated indicators
+    #:
+    #: - Once per universe
+    #: - No price data etc. used
+    #:
+    #: See :py:class:`IndicatorDependencyResolver`
+    #:
+    dependencies_only_universe = "dependencies_only_universe"
+
     def is_per_pair(self) -> bool:
         """This indicator is calculated to all trading pairs."""
-        return self in (IndicatorSource.open_price, IndicatorSource.close_price, IndicatorSource.ohlcv, IndicatorSource.external_per_pair)
+        return self in (IndicatorSource.open_price, IndicatorSource.close_price, IndicatorSource.ohlcv, IndicatorSource.external_per_pair, IndicatorSource.dependencies_only_per_pair)
 
 
 def _flatten_index(series: pd.Series) -> pd.Series:
@@ -293,6 +311,25 @@ class IndicatorDefinition:
             return self._check_good_return_value(ret)
         except Exception as e:
             raise IndicatorCalculationFailed(f"Could not calculate indicator {self.name} ({self.func}) for parameters {self.parameters}, input data is {len(input)} rows: {e}, pair is {pair}") from e
+
+    def calculate_dependencies_only_per_pair(self, pair: TradingPairIdentifier, resolver: "IndicatorDependencyResolver") -> pd.DataFrame | pd.Series:
+        """Calculate the indicator value that only takes other indicators as input."""
+        assert self.dependency_order > 1, "Dependency-based indicator order cannot be first"
+        try:
+            ret = self.func( **self._fix_parameters_for_function_signature(resolver, pair))
+            return self._check_good_return_value(ret)
+        except Exception as e:
+            raise IndicatorCalculationFailed(f"Could not calculate indicator {self.name} ({self.func}) for parameters {self.parameters}, input data is {len(input)} rows: {e}, pair is {pair}") from e
+
+    def calculate_dependencies_only_per_universe(self, resolver: "IndicatorDependencyResolver") -> pd.DataFrame | pd.Series:
+        """Calculate the indicator value that only takes other indicators as input."""
+        assert self.dependency_order > 1, "Dependency-based indicator order cannot be first"
+        try:
+            ret = self.func( **self._fix_parameters_for_function_signature(resolver))
+            return self._check_good_return_value(ret)
+        except Exception as e:
+            raise IndicatorCalculationFailed(f"Could not calculate indicator {self.name} ({self.func}) for parameters {self.parameters}, input data is {len(input)} rows: {e}") from e
+
 
     def calculate_by_pair_ohlcv(self, candles: pd.DataFrame, pair: TradingPairIdentifier, resolver: "IndicatorDependencyResolver") -> pd.DataFrame | pd.Series:
         """Calculate the underlying OHCLV indicator value.
@@ -1055,6 +1092,8 @@ def _calculate_and_save_indicator_result(
                     data = indicator.calculate_by_pair_ohlcv(input, key.pair, resolver)
                 case IndicatorSource.external_per_pair:
                     data = indicator.calculate_by_pair_external(key.pair, resolver)
+                case IndicatorSource.dependencies_only_per_pair:
+                    data = indicator.calculate_dependencies_only_per_pair(key.pair, resolver)
                 case _:
                     raise NotImplementedError(f"Unsupported input source {key.pair} {key.definition} {indicator.source}")
 
@@ -1074,6 +1113,8 @@ def _calculate_and_save_indicator_result(
         match indicator.source:
             case IndicatorSource.strategy_universe:
                 data = indicator.calculate_universe(strategy_universe, resolver)
+            case IndicatorSource.dependencies_only_universe:
+                data = indicator.calculate_dependencies_only_per_universe(resolver)
             case _:
                 raise NotImplementedError(f"Unsupported input source {key.pair} {key.definition} {indicator.source}")
 
