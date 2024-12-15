@@ -1345,7 +1345,7 @@ class IndicatorDependencyResolver:
 
     def match_indicator(
         self,
-        name: str,
+        name: str | Callable,
         pair: TradingPairIdentifier | HumanReadableTradingPairDescription | None = None,
         parameters: dict | None = None,
     ) -> IndicatorKey:
@@ -1356,7 +1356,26 @@ class IndicatorDependencyResolver:
         - Check by name, pair and parameter
 
         - Make sure that the indicator defined is on a lower level than the current dependency order level
+
+        :param name:
+            The name of the indicator or its defining function.
+
+        :param pair:
+            Pair for which we look up the indicator value
+
+        :param parameters:
+            Parameters for which this indicator was calculated with.
+
+            We can have several instances of the same indicator in grid search.
+
+        :return:
+            IndicatorKey which we can use to look up the indicator data.
+
         """
+
+        if callable(name):
+            # Convert function to its name
+            name = name.__name__
 
         if len(self.all_indicators) > 8:
             all_text = f"We have total {len(self.all_indicators)} indicator keys across all pairs and grid combinations."
@@ -1394,7 +1413,7 @@ class IndicatorDependencyResolver:
 
     def get_indicator_data_pairs_combined(
         self,
-        name: str,
+        name: str | Callable,
         parameters: dict | None = None,
     ) -> pd.Series:
         """Get a DataFrame that contains indicator data for all pairs combined.
@@ -1471,7 +1490,7 @@ class IndicatorDependencyResolver:
 
     def get_indicator_data(
         self,
-        name: str,
+        name: str | Callable,
         column: str | None = None,
         pair: TradingPairIdentifier | HumanReadableTradingPairDescription | None = None,
         parameters: dict | None = None,

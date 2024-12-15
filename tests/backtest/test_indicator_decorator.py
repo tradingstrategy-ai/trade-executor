@@ -151,8 +151,8 @@ def test_indicator_decorator_order():
 
         - Return pd.Series with True/False valeus and DatetimeIndex
         """
-        slow_sma: pd.Series = dependency_resolver.get_indicator_data("slow_sma")
-        fast_sma: pd.Series = dependency_resolver.get_indicator_data("fast_sma")
+        slow_sma: pd.Series = dependency_resolver.get_indicator_data(slow_sma)
+        fast_sma: pd.Series = dependency_resolver.get_indicator_data(fast_sma)
         return fast_sma > slow_sma
 
     @indicators.define(dependencies=(slow_sma, fast_sma))
