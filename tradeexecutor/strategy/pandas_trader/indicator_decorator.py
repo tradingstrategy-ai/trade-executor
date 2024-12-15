@@ -1,6 +1,8 @@
 """Decorator syntax for indicators.
 
-- Allow shorter definition of indicators using Python deocators
+- Allow shorter definition of indicators using Python decorators, over the manual methods provided in :py:mod:`tradeexecutor.strategy.pandas_trade.indicator` module.
+
+- See :py:class:`IndicatorRegistry` for usage.
 
 
 """
@@ -17,10 +19,12 @@ from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniv
 
 
 class NotYetDefined(Exception):
+    """There is a dependency resolution order issue with indicators."""
     pass
 
 
 class ParameterMissing(Exception):
+    """Indicator asks for a parameter that is missing."""
     pass
 
 
@@ -68,7 +72,70 @@ def detect_source(func: Callable, source: IndicatorSource | None) -> IndicatorSo
 
 
 class IndicatorRegistry:
-    """Decorator-based helper class for defining strategy indicators."""
+    """Decorator-based helper class for defining strategy indicators.
+
+    Use ``@indicatores.define()`` decorator to create strategy technical indicators in your notebooks.
+
+    - Less typing than with manuaal ``indicator.add()`` syntax
+
+    - `Parameters` class members are automatically mapped to the function argument with the same name
+
+    - Indicators list other indicator functions they depend on using syntax ``@indicators.define(dependencies=(slow_sma, fast_sma))``,
+      this is automatically resolved to the current dependency resolution order when the indicator calulation order is determined.
+
+    Example:
+
+    .. code-block:: python
+
+        from tradeexecutor.strategy.pandas_trader.indicator_decorator import IndicatorRegistry
+
+        class Parameters:
+            rsi_length = 20
+
+        indicators = IndicatorRegistry()
+
+        @indicators.define()
+        def rsi(close, rsi_length):
+            return pandas_ta.rsi(close, rsi_length)
+
+        # Calculate indicators - will spawn multiple worker processed,
+        # or load cached results from the disk
+        parameters = StrategyParameters.from_class(Parameters)
+        indicators = calculate_and_load_indicators_inline(
+            strategy_universe=strategy_universe,
+            parameters=parameters,
+            create_indicators=indicators.create_indicators,
+        )
+
+    With indicators that depend on each other:
+
+    .. code-block:: python
+
+        class Parameters:
+            fast_ma_length = 7
+            slow_ma_length = 21
+
+        indicators = IndicatorRegistry()
+
+        @indicators.define()
+        def slow_sma(close, slow_ma_length):
+            return pandas_ta.sma(close, slow_ma_length)
+
+        @indicators.define()
+        def fast_sma(close, fast_ma_length):
+            return pandas_ta.sma(close, fast_ma_length)
+
+        @indicators.define(dependencies=(slow_sma, fast_sma))
+        def ma_crossover(
+            close: pd.Series,
+            pair: TradingPairIdentifier,
+            dependency_resolver: IndicatorDependencyResolver,
+        ) -> pd.Series:
+            slow_sma: pd.Series = dependency_resolver.get_indicator_data("slow_sma")
+            fast_sma: pd.Series = dependency_resolver.get_indicator_data("fast_sma")
+            return fast_sma > slow_sma
+
+    """
 
     def __init__(self):
         self.registry: dict[str, IndicatorDecoration] = {}
