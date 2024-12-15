@@ -12,7 +12,7 @@
 
 - Support external data sources
 
-To get started with indicators see examples in :py:class:`CreateIndicatorsProtocolV2`.
+To get started with indicators see examples in :py:mod:`tradeexecutor.strategy.pandas_trader.indicator_decorator`.
 """
 import datetime
 import threading
@@ -663,6 +663,12 @@ class CreateIndicatorsProtocolV2(Protocol):
 
     - If you wish to use data from earlier indicators calculations in later indicator calculations, see :py:class:`IndicatorDependencyResolver`
       for how to do it
+
+    .. note ::
+
+        For new examples of defining indicators, please see :py:mod:`tradeexecutor.strategy.pandas_trader.indicator_decorator`.
+        The examples below work too, but with Python decorator-based syntax you can make the code more reaadable
+        and shorter.
 
     Example for creating an Exponential Moving Average (EMA) indicator based on the `close` price.
     This example is for a grid search. Unless specified, indicators are assumed to be

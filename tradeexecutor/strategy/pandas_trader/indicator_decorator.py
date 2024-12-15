@@ -83,10 +83,13 @@ class IndicatorRegistry:
     - Indicators list other indicator functions they depend on using syntax ``@indicators.define(dependencies=(slow_sma, fast_sma))``,
       this is automatically resolved to the current dependency resolution order when the indicator calulation order is determined.
 
+    - Indicator data can be looked up by indicator function or its string name
+
     Example:
 
     .. code-block:: python
 
+        import pandas_ta
         from tradeexecutor.strategy.pandas_trader.indicator_decorator import IndicatorRegistry
 
         class Parameters:
@@ -111,6 +114,10 @@ class IndicatorRegistry:
 
     .. code-block:: python
 
+        import pandas_ta
+        from tradeexecutor.strategy.pandas_trader.indicator_decorator import IndicatorRegistry
+
+
         class Parameters:
             fast_ma_length = 7
             slow_ma_length = 21
@@ -131,7 +138,8 @@ class IndicatorRegistry:
             pair: TradingPairIdentifier,
             dependency_resolver: IndicatorDependencyResolver,
         ) -> pd.Series:
-            slow_sma: pd.Series = dependency_resolver.get_indicator_data("slow_sma")
+            # You can use name or function to look up previously calcualted indicators data
+            slow_sma: pd.Series = dependency_resolver.get_indicator_data(slow_sma)
             fast_sma: pd.Series = dependency_resolver.get_indicator_data("fast_sma")
             return fast_sma > slow_sma
 
@@ -143,16 +151,52 @@ class IndicatorRegistry:
     def define(
         self,
         source: IndicatorSource=None,
-        order=1,
+        order=None | int,
         dependencies: Iterable[Callable]=None,
     ):
+        """Function decorator to define indicator functions in your notebook.
+
+        For the usage see :py:class:`IndicatorRegistry`.
+
+        Short example:
+
+        .. code-block:: python
+
+            class Parameters:
+                slow_ma_length = 21
+
+            indicators = IndicatorRegistry()
+
+            @indicators.define()
+            def slow_sma(close, slow_ma_length):
+                return pandas_ta.sma(close, slow_ma_length)
+
+        :param source:
+            What kind of trading data this indicator needs as input.
+
+            - Per-pair
+            - World
+            - Raw data
+            - Data from earlier calculated indicators
+
+        :param order:
+            Manually define indicator order.
+
+            Not usually needed.
+
+        :param dependencies:
+            List of functions which result value this indicator consumes.
+
+            Needed with :py:attr:`~tradeexecutor.strategy.pandas_trader.indicator.IndicatorSource.dependencies_only_per_pair`
+            and :py:attr:`~tradeexecutor.strategy.pandas_trader.indicator.IndicatorSource.dependencies_only_universe`.
+        """
         def decorator(func):
             name = func.__name__
             self.registry[name] = IndicatorDecoration(
                 name=name,
                 func=func,
                 source=detect_source(func, source),
-                order=self.detect_order(func, dependencies),
+                order=order or self.detect_order(func, dependencies),
                 args=extract_args(func),
             )
 
@@ -165,6 +209,7 @@ class IndicatorRegistry:
         return decorator
 
     def detect_order(self, func: Callable, dependencies: set[Callable] | None) -> int:
+        """Automatically resolve the order of indicators."""
 
         if dependencies is None:
             return 1
@@ -188,6 +233,27 @@ class IndicatorRegistry:
         strategy_universe: TradingStrategyUniverse,
         execution_context: ExecutionContext,
     ) -> IndicatorSet:
+        """Hook function to be passed to :py:func:`calculate_and_load_indicators_inline`.
+
+        Example:
+
+        .. code-block:: python
+
+            indicators = IndicatorRegistry()
+
+            @indicators.define()
+            def rsi(close, rsi_length):
+                return pandas_ta.rsi(close, rsi_length)
+
+            # Calculate indicators - will spawn multiple worker processed,
+            # or load cached results from the disk
+            parameters = StrategyParameters.from_class(Parameters)
+            indicators = calculate_and_load_indicators_inline(
+                strategy_universe=strategy_universe,
+                parameters=parameters,
+                create_indicators=indicators.create_indicators,
+            )
+        """
         indicators = IndicatorSet()
         for name, definition in self.registry.items():
 
