@@ -192,6 +192,10 @@ def test_indicator_decorator_order():
         )
         return df
 
+    df = indicators.get_diagnostics()
+    # print("\n" + str(df))
+    assert len(df) == 6
+
     parameters = StrategyParameters.from_class(Parameters)
     indicator_set = indicators.create_indicators(
         timestamp=None,
@@ -207,4 +211,5 @@ def test_indicator_decorator_order():
     assert indicator_set.get_indicator("ma_crossover").dependency_order == 2
     assert indicator_set.get_indicator("ma_crossover").dependency_order == 2
     assert indicator_set.get_indicator("ma_universe").dependency_order == 3
+
 

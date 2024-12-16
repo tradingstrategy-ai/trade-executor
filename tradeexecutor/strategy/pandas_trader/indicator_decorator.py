@@ -10,7 +10,9 @@ import inspect
 from dataclasses import dataclass
 import datetime
 from functools import wraps
-from typing import Callable, Iterable
+from typing import Callable, Iterable, Sequence
+
+import pandas as pd
 
 from tradeexecutor.strategy.execution_context import ExecutionContext
 from tradeexecutor.strategy.pandas_trader.indicator import IndicatorSet, IndicatorSource, CreateIndicatorsProtocolV1, CreateIndicatorsProtocolV2
@@ -39,22 +41,37 @@ DEFAULT_INDICATOR_ARGUMENTS = {
 }
 
 
-@dataclass(slots=True)
+@dataclass(slots=True, frozen=True)
 class IndicatorDecoration:
+    """Internal struct capturing information we need about indicators."""
+
+    #: Indicator name
     name: str
+
+    #: Indicator function
     func: Callable
+
+    #: Source data type
     source: IndicatorSource | None
+
+    #: Linerised order for the parallel execution
     order: int
+
+    #: Name of function arguments sans :py:attr:`DEFAULT_INDICATOR_ARGUMENTS`
     args: set[str]
+
+    #: Dependencies needed to run this indicator
+    dependencies: list[Callable]
 
 
 def extract_args(func) -> set[str]:
+    """Get the names of Python function arguments."""
     signature = inspect.signature(func)
     return set(signature.parameters.keys()) - DEFAULT_INDICATOR_ARGUMENTS
 
 
 def detect_source(func: Callable, source: IndicatorSource | None) -> IndicatorSource:
-
+    """Based on indicator function arguments, detect what kind of data source it needs."""
     if source is not None:
         return source
 
@@ -151,8 +168,8 @@ class IndicatorRegistry:
     def define(
         self,
         source: IndicatorSource=None,
-        order=None | int,
-        dependencies: Iterable[Callable]=None,
+        order: None | int=None,
+        dependencies: Sequence[Callable]=None,
     ):
         """Function decorator to define indicator functions in your notebook.
 
@@ -191,15 +208,19 @@ class IndicatorRegistry:
             and :py:attr:`~tradeexecutor.strategy.pandas_trader.indicator.IndicatorSource.dependencies_only_universe`.
         """
         def decorator(func):
+            nonlocal dependencies
             name = func.__name__
+            dependencies = list(dependencies) if dependencies else []
+            resolved_order = order if order else self.detect_order(func, dependencies)
+
             self.registry[name] = IndicatorDecoration(
                 name=name,
                 func=func,
                 source=detect_source(func, source),
-                order=order or self.detect_order(func, dependencies),
+                order=resolved_order,
                 args=extract_args(func),
+                dependencies=dependencies,
             )
-
             @wraps(func)
             def wrapper(*args, **kwargs):
                 # Call the original function with the original arguments
@@ -208,8 +229,14 @@ class IndicatorRegistry:
 
         return decorator
 
-    def detect_order(self, func: Callable, dependencies: set[Callable] | None) -> int:
-        """Automatically resolve the order of indicators."""
+    def detect_order(self, func: Callable, dependencies: list[Callable]) -> int:
+        """Automatically resolve the order of indicators.
+
+        :return:
+            Linear order number for running the indicator.
+
+            Can be used to parallerise the process.
+        """
 
         if dependencies is None:
             return 1
@@ -223,7 +250,7 @@ class IndicatorRegistry:
                 raise NotYetDefined(f"Function {func} asks for dependency {dependency} which is not yet defined.\nWe have defined {already_defined}")
 
         dep_names = [func.__name__ for func in dependencies]
-        max_order = max((dec.order for dec in self.registry.values() if dec.name in dep_names), default=1)
+        max_order = max((dec.order for dec in self.registry.values() if dec.name in dep_names), default=0)
         return max_order + 1
 
     def create_indicators(
@@ -272,3 +299,24 @@ class IndicatorRegistry:
             )
 
         return indicators
+
+    def get_diagnostics(self) -> pd.DataFrame:
+        """Return a table that explains registered indicators.
+
+        :return:
+            Human-readable table
+        """
+
+        data = []
+        for entry in self.registry.values():
+            data.append({
+                "Order": entry.order,
+                "Name": entry.name,
+                "Source": entry.source.name,
+                "Dependencies": ", ".join(d.__name__ for d in entry.dependencies),
+            })
+
+        df = pd.DataFrame(data)
+        df = df.sort_values(by=["Order", "Name"])
+        df = df.set_index("Name")
+        return df
