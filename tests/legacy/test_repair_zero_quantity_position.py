@@ -55,7 +55,7 @@ def test_repair_zero_quantity_position(
         "JSON_RPC_ETHEREUM": anvil.json_rpc_url,
         "PRIVATE_KEY": "0x" + secrets.token_hex(32),
         "UNIT_TESTING": "true",
-        "LOG_LEVEL": "info",
+        "LOG_LEVEL": "disabled",
         "ASSET_MANAGEMENT_MODE": "hot_wallet",
         "RAISE_ON_UNCLEAN": "true",  # check-accounts should complete
         "AUTO_APPROVE": "true",

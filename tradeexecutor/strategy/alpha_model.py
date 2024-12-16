@@ -9,7 +9,7 @@ from collections import Counter
 from dataclasses import dataclass, field
 from io import StringIO
 from types import NoneType
-from typing import Optional, Dict, Iterable, List
+from typing import Optional, Dict, Iterable, List, Literal
 
 import pandas as pd
 import numpy as np
@@ -436,7 +436,6 @@ class AlphaModel:
     #: Pair internal id -> trading signal data.
     #:
     #: For signals chosen for the rebalance, e.g. top 5 long signals.
-    #:
     #:
     #: Set by :py:meth:`select_top_signals`
     #:
@@ -1314,6 +1313,7 @@ class AlphaModel:
 
 def format_signals(
     alpha_model: AlphaModel,
+    signal_type: Literal["chosen", "raw"] = "chosen",
 ) -> pd.DataFrame:
     """Debug helper used to develop the strategy.
 
@@ -1325,10 +1325,18 @@ def format_signals(
 
         from tradeexecutor.strategy.alpha_model import format_signals
 
-        alpha_model = state.visualisation.get_discardable_data("alpha_model")
+        alpha_model = state.visualisation.discardable_data["alpha_model"]
 
+        print("Chossen signals")
         df = format_signals(alpha_model)
         display(df)
+
+        print("All signals")
+        df = format_signals(alpha_model, signal_type="all")
+        display(df)
+
+    :param signal_type:
+        Show raw signals or only signals that survived filtering.
 
     :return:
         DataFrame containing a table for signals on this cycle
@@ -1336,17 +1344,25 @@ def format_signals(
 
     data = []
 
-    sorted_signals = sorted([s for s in alpha_model.signals.values()], key=lambda s: s.pair.base.token_symbol)
+    match signal_type:
+        case "chosen":
+            signals = alpha_model.signals.values()
+        case "all":
+            signals = alpha_model.raw_signals.values()
+        case _:
+            raise NotImplementedError()
+
+    sorted_signals = sorted([s   for s in signals], key=lambda s: s.pair.base.token_symbol)
     # print(f"{timestamp} cycle signals")
     for s in sorted_signals:
         pair = s.pair
-        synthetic_pair = s.synthetic_pair.get_ticker()
+        synthetic_pair = s.synthetic_pair.get_ticker() if s.synthetic_pair else "-"
         old_pair = s.old_pair.get_ticker() if s.old_pair else "-"
-        data.append((pair.get_ticker(), s.signal, s.position_adjust_usd, s.normalised_weight, s.old_weight, s.get_flip_label(), synthetic_pair, old_pair))
+        data.append((pair.get_ticker(), s.signal, s.position_target, s.position_adjust_usd, s.normalised_weight, s.old_weight, s.get_flip_label(), synthetic_pair, old_pair))
 
         #print(f"Pair: {pair.get_ticker()}, signal: {s.signal}")
 
-    df = pd.DataFrame(data, columns=["Core pair", "Signal", "Value adj", "Norm weight", "Old weight", "Flipping", "Trade as", "Old trade as"])
+    df = pd.DataFrame(data, columns=["Core pair", "Signal", "Target USD", "Value adj", "Norm weight", "Old weight", "Flipping", "Trade as", "Old trade as"])
     df = df.set_index("Core pair")
     return df
 
