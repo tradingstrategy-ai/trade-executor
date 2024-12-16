@@ -40,12 +40,12 @@ class PlotKind(enum.Enum):
 
     #: This plot is drawn on the top of the price graph
     technical_indicator_on_price = "technical_indicator_on_price"
-    
+
     #: This plot is drawn below the price graph as a separate chart.
     #:
     #:
     technical_indicator_detached = "technical_indicator_detached"
-    
+
     #: This plot is overlaid on a detached indicator plot.
     #:
     #:
@@ -133,7 +133,7 @@ class PlotShape(enum.Enum):
     #:
     #: See https://plotly.com/python/line-charts/?_ga=2.83222870.1162358725.1672302619-1029023258.1667666588#interpolation-with-line-plots
     horizontal_vertical = "hv"
-    
+
     #: Individually specified points.
     #: 
     #: Typically used for event indicators e.g. cross over of two lines.
@@ -233,10 +233,10 @@ class Plot:
     #: Alternative is horizontal-vertical which can be used for stop loss line. 
     #: See https://plotly.com/python/line-charts/?_ga=2.83222870.1162358725.1672302619-1029023258.1667666588#interpolation-with-line-plots
     plot_shape: Optional[PlotShape] = PlotShape.linear
-    
+
     #: If this plot is overlayed on top of a detached technical indicator, this is the name of the overlay it should be attached to.
-    detached_overlay_name: Optional[str]= None
-    
+    detached_overlay_name: Optional[str] = None
+
     #: Optional indicator to determine the size of the indicator. 
     #: 
     #: For a line, this is the width of the line. 
@@ -366,11 +366,19 @@ class Visualisation:
     #: strategy universe.
     pair_ids: list[PrimaryKey] = field(default_factory=list)
 
+    #: Data for which we only keep the last value.
+    #:
+    #: Most useful in unit test/backtest debugging.
+    #:
+    #: See :py:meth:`set_discardable_data`.
+    #:
+    discardable_data: Dict[str, Any] = field(default_factory=dict)
+
     def __repr__(self) -> str:
         plot_count = len(self.plots)
         point_count = sum([len(p.points) for p in self.plots.values()])
         return f"<Visualisation with {plot_count} plots and {point_count} data points>"
-    
+
     def set_visualised_pairs(self, pairs: list[TradingPairIdentifier]) -> None:
         """Set the trading pair for this plot.
 
@@ -384,9 +392,9 @@ class Visualisation:
             self.pair_ids.append(pair.internal_id)
 
     def add_message(
-        self,
-        timestamp: datetime.datetime,
-        content: str
+            self,
+            timestamp: datetime.datetime,
+            content: str
     ):
         """Write a debug message.
 
@@ -426,9 +434,9 @@ class Visualisation:
         return result
 
     def add_calculations(
-        self,
-        timestamp: datetime.datetime,
-        cycle_calculations: dict
+            self,
+            timestamp: datetime.datetime,
+            cycle_calculations: dict
     ):
         """Update strategy cycle calculations diagnostics.
 
@@ -460,20 +468,20 @@ class Visualisation:
         self.calculations[timestamp] = cycle_calculations
 
     def plot_indicator(
-        self,
-        timestamp: Union[datetime.datetime, pd.Timestamp],
-        name: str,
-        kind: PlotKind,
-        value: float,
-        colour: Optional[str] = None,
-        plot_shape: Optional[PlotShape] = PlotShape.linear,
-        detached_overlay_name: Optional[str] = None,
-        indicator_size: Optional[float] = None,
-        recording_time: Optional[RecordingTime] = RecordingTime.decision_making_time,
-        pair: Optional[TradingPairIdentifier] = None,
-        label: PlotLabel = PlotLabel.axis,
-        height: Optional[int]=None,
-        ):
+            self,
+            timestamp: Union[datetime.datetime, pd.Timestamp],
+            name: str,
+            kind: PlotKind,
+            value: float,
+            colour: Optional[str] = None,
+            plot_shape: Optional[PlotShape] = PlotShape.linear,
+            detached_overlay_name: Optional[str] = None,
+            indicator_size: Optional[float] = None,
+            recording_time: Optional[RecordingTime] = RecordingTime.decision_making_time,
+            pair: Optional[TradingPairIdentifier] = None,
+            label: PlotLabel = PlotLabel.axis,
+            height: Optional[int] = None,
+    ):
         """Add a value to the output data and diagram.
         
         Plots are stored by their name.
@@ -554,14 +562,14 @@ class Visualisation:
             """Get a helper message to help the user fix the error. 
             
             Theses errors show up while running the backtest, so we can point the user directly to decide_trades to fix the error."""
-            
+
             if not variable_name:
                 return ". You can adjust plot_indicator parameters in decide_trades to fix this error."
             else:
                 return f". You can adjust {variable_name} in plot_indicator parameters in decide_trades to fix this error."
 
         assert (
-            type(name) == str
+                type(name) == str
         ), f"Got name{name} of type {str(type(name))}" + _get_helper_message("name")
 
         # Convert numpy.float32 and numpy.float64 to serializable float instances,
@@ -571,7 +579,7 @@ class Visualisation:
                 value = float(value)
             except TypeError as e:
                 raise RuntimeError(f"Could not convert value {value} {value.__class__} to float" + _get_helper_message("value") + ". Make sure you provide a float or int, not a series, to plot_indicator.") from e
-            
+
             if pd.isna(value):
                 value = None
 
@@ -599,7 +607,7 @@ class Visualisation:
         plot.height = height
         self.plots[name] = plot
 
-    def get_timestamp_range(self, plot_name: Optional[str]=None) -> Tuple[Optional[datetime.datetime], Optional[datetime.datetime]]:
+    def get_timestamp_range(self, plot_name: Optional[str] = None) -> Tuple[Optional[datetime.datetime], Optional[datetime.datetime]]:
         """Get the time range for which we have data.
 
         :param plot_name:
@@ -634,8 +642,8 @@ class Visualisation:
         return sum([len(p.points) for p in self.plots.values()])
 
     def get_series(
-        self,
-        name: str,
+            self,
+            name: str,
     ) -> pd.Series:
         """Get plot data for charts and tables.
 
@@ -670,4 +678,7 @@ class Visualisation:
         datetime_index = pd.to_datetime(timestamps, unit='s')
         series = pd.Series(values, index=datetime_index)
         return series
-        
+
+    def set_discardable_data(self, key, value):
+        """Set data for which we only keep the last set."""
+        self.discardable_data[key] = value

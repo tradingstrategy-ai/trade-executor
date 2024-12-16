@@ -1319,6 +1319,17 @@ def format_signals(
 
     Print the signal state to the logging output.
 
+    Example:
+
+    .. code-block:: python
+
+        from tradeexecutor.strategy.alpha_model import format_signals
+
+        alpha_model = state.visualisation.get_discardable_data("alpha_model")
+
+        df = format_signals(alpha_model)
+        display(df)
+
     :return:
         DataFrame containing a table for signals on this cycle
     """
