@@ -1357,12 +1357,13 @@ def format_signals(
     for s in sorted_signals:
         pair = s.pair
         synthetic_pair = s.synthetic_pair.get_ticker() if s.synthetic_pair else "-"
+        asked_size = s.position_size_risk.asked_size if s.position_size_risk else "-"
         old_pair = s.old_pair.get_ticker() if s.old_pair else "-"
-        data.append((pair.get_ticker(), s.signal, s.position_target, s.position_adjust_usd, s.normalised_weight, s.old_weight, s.get_flip_label(), synthetic_pair, old_pair))
+        data.append((pair.get_ticker(), s.signal, s.position_target, asked_size, s.position_adjust_usd, s.normalised_weight, s.old_weight, s.get_flip_label(), synthetic_pair, old_pair))
 
         #print(f"Pair: {pair.get_ticker()}, signal: {s.signal}")
 
-    df = pd.DataFrame(data, columns=["Core pair", "Signal", "Target USD", "Value adj", "Norm weight", "Old weight", "Flipping", "Trade as", "Old trade as"])
+    df = pd.DataFrame(data, columns=["Core pair", "Signal", "Target USD", "Asked size", "Value adj", "Norm weight", "Old weight", "Flipping", "Trade as", "Old trade as"])
     df = df.set_index("Core pair")
     return df
 

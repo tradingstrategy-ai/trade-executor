@@ -99,5 +99,6 @@ def test_telegram_logging():
     assert handler.listener._thread is not None
     handler.close()
 
+    logger.removeHandler(handler)
     logger.setLevel(logging.WARNING)  # Do not leak logging in parallel tests
 

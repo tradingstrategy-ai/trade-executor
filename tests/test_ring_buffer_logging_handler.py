@@ -50,5 +50,4 @@ def test_ring_buffer_logger():
     json.dumps(data)
 
     logger.removeHandler(handler)
-
     logger.setLevel(logging.WARNING)  # In parallel test, avoid excessive output
