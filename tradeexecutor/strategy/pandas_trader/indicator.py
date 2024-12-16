@@ -325,11 +325,10 @@ class IndicatorDefinition:
         """Calculate the indicator value that only takes other indicators as input."""
         assert self.dependency_order > 1, "Dependency-based indicator order cannot be first"
         try:
-            ret = self.func( **self._fix_parameters_for_function_signature(resolver))
+            ret = self.func( **self._fix_parameters_for_function_signature(resolver, pair=None))
             return self._check_good_return_value(ret)
         except Exception as e:
             raise IndicatorCalculationFailed(f"Could not calculate indicator {self.name} ({self.func}) for parameters {self.parameters}, input data is {len(input)} rows: {e}") from e
-
 
     def calculate_by_pair_ohlcv(self, candles: pd.DataFrame, pair: TradingPairIdentifier, resolver: "IndicatorDependencyResolver") -> pd.DataFrame | pd.Series:
         """Calculate the underlying OHCLV indicator value.
@@ -1552,7 +1551,7 @@ class IndicatorDependencyResolver:
             if column == "all":
                 return data
 
-            assert column is not None, f"Indicator {name} has multiple available columns to choose from: {data.columns}"
+            assert column is not None, f"Indicator {name} has multiple available columns to choose from: {data.columns}. Indicator data is {type(data)}"
             assert column in data.columns, f"Indicator {name} subcolumn {column} not in the available columns: {data.columns}"
             series = data[column]
         elif isinstance(data, pd.Series):
