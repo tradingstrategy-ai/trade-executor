@@ -23,6 +23,7 @@ from tradeexecutor.strategy.execution_context import ExecutionContext, unit_test
 from tradeexecutor.strategy.execution_model import AssetManagementMode
 from tradeexecutor.strategy.pandas_trader.runner import PandasTraderRunner
 from tradeexecutor.strategy.parameters import StrategyParameters
+from tradeexecutor.strategy.trade_pricing import TradePricing
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse, load_partial_data
 from tradeexecutor.strategy.universe_model import UniverseOptions
 from tradeexecutor.utils.timer import timed_task
@@ -210,7 +211,7 @@ def create_trading_universe(
     print("Universe is (including benchmark pairs):")
     for idx, pair in enumerate(strategy_universe.iterate_pairs()):
         benchmark = pair.other_data.get("benchmark")
-        print(f"   {idx + 1}. pair #{pair_id}: {pair.base.token_symbol} - {pair.quote.token_symbol} ({pair.exchange_name}), {'benchmark/routed' if benchmark else 'traded'}")
+        print(f"   {idx + 1}. pair #{pair.internal_id}: {pair.base.token_symbol} - {pair.quote.token_symbol} ({pair.exchange_name} w/ {pair.fee} fee), {'benchmark/routed' if benchmark else 'traded'}")
 
     return strategy_universe
 
@@ -316,7 +317,7 @@ def test_tvl_routing_mixed(persistent_test_client, logger):
 
     # Test second Uni v3 pair
     pair = strategy_universe.get_pair_by_human_description(
-        (ChainId.ethereum, "uniswap-v3", "NEIRO", "WETH", 0.0030)
+        (ChainId.ethereum, "uniswap-v3", "Neiro", "WETH", 0.0030)
     )
 
     tvl_usd = pricing_model.get_usd_tvl(None, pair)
@@ -324,7 +325,7 @@ def test_tvl_routing_mixed(persistent_test_client, logger):
     assert tvl_usd > 0
 
     price_structure = pricing_model.get_buy_price(None, pair, Decimal(1000.00))
-
+    assert isinstance(price_structure, TradePricing)
 
 
 
