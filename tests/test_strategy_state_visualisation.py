@@ -177,8 +177,8 @@ def strategy_universe(universe) -> TradingStrategyUniverse:
 
 
 def test_visualise_strategy_state(
-        logger: logging.Logger,
-        strategy_universe,
+    logger: logging.Logger,
+    strategy_universe,
     ):
     """Visualise strategy state as an inline image."""
 

@@ -17,6 +17,7 @@ TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID")
 pytestmark = pytest.mark.skipif(not(TELEGRAM_API_KEY and TELEGRAM_CHAT_ID), reason="Missing TELEGRAM_API_KEY and TELEGRAM_CHAT_ID env")
 
 
+@pytest.mark.skip(reason="Breaks multiprocess testing, refactor to cleanly get rid of TG handler for good, as this handler somehow is stuck around")
 def test_telegram_logging():
     """Send a messagea to TG group chat for manual inspection.
 
@@ -98,4 +99,7 @@ def test_telegram_logging():
 
     assert handler.listener._thread is not None
     handler.close()
+
+    logger.removeHandler(handler)
+    logger.setLevel(logging.WARNING)  # Do not leak logging in parallel tests
 

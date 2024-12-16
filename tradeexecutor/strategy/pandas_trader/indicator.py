@@ -12,7 +12,7 @@
 
 - Support external data sources
 
-To get started with indicators see examples in :py:class:`CreateIndicatorsProtocolV2`.
+To get started with indicators see examples in :py:mod:`tradeexecutor.strategy.pandas_trader.indicator_decorator`.
 """
 import datetime
 import threading
@@ -136,9 +136,27 @@ class IndicatorSource(enum.Enum):
     #:
     external_per_pair = "external_per_pair"
 
+    #: This indicator is based purely on the previously calculated indicators
+    #:
+    #: - For each pari
+    #: - No price data etc. used
+    #:
+    #: See :py:class:`IndicatorDependencyResolver`
+    #:
+    dependencies_only_per_pair = "dependencies_only_per_pair"
+
+    #: This indicator is based purely on the previously calculated indicators
+    #:
+    #: - Once per universe
+    #: - No price data etc. used
+    #:
+    #: See :py:class:`IndicatorDependencyResolver`
+    #:
+    dependencies_only_universe = "dependencies_only_universe"
+
     def is_per_pair(self) -> bool:
         """This indicator is calculated to all trading pairs."""
-        return self in (IndicatorSource.open_price, IndicatorSource.close_price, IndicatorSource.ohlcv, IndicatorSource.external_per_pair)
+        return self in (IndicatorSource.open_price, IndicatorSource.close_price, IndicatorSource.ohlcv, IndicatorSource.external_per_pair, IndicatorSource.dependencies_only_per_pair)
 
 
 def _flatten_index(series: pd.Series) -> pd.Series:
@@ -294,6 +312,24 @@ class IndicatorDefinition:
         except Exception as e:
             raise IndicatorCalculationFailed(f"Could not calculate indicator {self.name} ({self.func}) for parameters {self.parameters}, input data is {len(input)} rows: {e}, pair is {pair}") from e
 
+    def calculate_dependencies_only_per_pair(self, pair: TradingPairIdentifier, resolver: "IndicatorDependencyResolver") -> pd.DataFrame | pd.Series:
+        """Calculate the indicator value that only takes other indicators as input."""
+        assert self.dependency_order > 1, "Dependency-based indicator order cannot be first"
+        try:
+            ret = self.func( **self._fix_parameters_for_function_signature(resolver, pair))
+            return self._check_good_return_value(ret)
+        except Exception as e:
+            raise IndicatorCalculationFailed(f"Could not calculate indicator {self.name} ({self.func}) for parameters {self.parameters}, input data is {len(input)} rows: {e}, pair is {pair}") from e
+
+    def calculate_dependencies_only_per_universe(self, resolver: "IndicatorDependencyResolver") -> pd.DataFrame | pd.Series:
+        """Calculate the indicator value that only takes other indicators as input."""
+        assert self.dependency_order > 1, "Dependency-based indicator order cannot be first"
+        try:
+            ret = self.func( **self._fix_parameters_for_function_signature(resolver, pair=None))
+            return self._check_good_return_value(ret)
+        except Exception as e:
+            raise IndicatorCalculationFailed(f"Could not calculate indicator {self.name} ({self.func}) for parameters {self.parameters}, input data is {len(input)} rows: {e}") from e
+
     def calculate_by_pair_ohlcv(self, candles: pd.DataFrame, pair: TradingPairIdentifier, resolver: "IndicatorDependencyResolver") -> pd.DataFrame | pd.Series:
         """Calculate the underlying OHCLV indicator value.
 
@@ -415,7 +451,7 @@ class IndicatorKey:
             return f"{pair.base.token_symbol}-{pair.quote.token_symbol}{fee_slug}"
         else:
             # Indicator calculated over the universe
-            assert self.definition.source == IndicatorSource.strategy_universe, f"Got: {self.definition}, {self.definition.source}"
+            assert self.definition.source in (IndicatorSource.strategy_universe, IndicatorSource.dependencies_only_universe), f"Got: {self.definition}, {self.definition.source}"
             return "universe"
 
     def __eq__(self, other):
@@ -626,6 +662,12 @@ class CreateIndicatorsProtocolV2(Protocol):
 
     - If you wish to use data from earlier indicators calculations in later indicator calculations, see :py:class:`IndicatorDependencyResolver`
       for how to do it
+
+    .. note ::
+
+        For new examples of defining indicators, please see :py:mod:`tradeexecutor.strategy.pandas_trader.indicator_decorator`.
+        The examples below work too, but with Python decorator-based syntax you can make the code more reaadable
+        and shorter.
 
     Example for creating an Exponential Moving Average (EMA) indicator based on the `close` price.
     This example is for a grid search. Unless specified, indicators are assumed to be
@@ -1055,6 +1097,8 @@ def _calculate_and_save_indicator_result(
                     data = indicator.calculate_by_pair_ohlcv(input, key.pair, resolver)
                 case IndicatorSource.external_per_pair:
                     data = indicator.calculate_by_pair_external(key.pair, resolver)
+                case IndicatorSource.dependencies_only_per_pair:
+                    data = indicator.calculate_dependencies_only_per_pair(key.pair, resolver)
                 case _:
                     raise NotImplementedError(f"Unsupported input source {key.pair} {key.definition} {indicator.source}")
 
@@ -1074,6 +1118,8 @@ def _calculate_and_save_indicator_result(
         match indicator.source:
             case IndicatorSource.strategy_universe:
                 data = indicator.calculate_universe(strategy_universe, resolver)
+            case IndicatorSource.dependencies_only_universe:
+                data = indicator.calculate_dependencies_only_per_universe(resolver)
             case _:
                 raise NotImplementedError(f"Unsupported input source {key.pair} {key.definition} {indicator.source}")
 
@@ -1304,7 +1350,7 @@ class IndicatorDependencyResolver:
 
     def match_indicator(
         self,
-        name: str,
+        name: str | Callable,
         pair: TradingPairIdentifier | HumanReadableTradingPairDescription | None = None,
         parameters: dict | None = None,
     ) -> IndicatorKey:
@@ -1315,7 +1361,26 @@ class IndicatorDependencyResolver:
         - Check by name, pair and parameter
 
         - Make sure that the indicator defined is on a lower level than the current dependency order level
+
+        :param name:
+            The name of the indicator or its defining function.
+
+        :param pair:
+            Pair for which we look up the indicator value
+
+        :param parameters:
+            Parameters for which this indicator was calculated with.
+
+            We can have several instances of the same indicator in grid search.
+
+        :return:
+            IndicatorKey which we can use to look up the indicator data.
+
         """
+
+        if callable(name):
+            # Convert function to its name
+            name = name.__name__
 
         if len(self.all_indicators) > 8:
             all_text = f"We have total {len(self.all_indicators)} indicator keys across all pairs and grid combinations."
@@ -1353,7 +1418,7 @@ class IndicatorDependencyResolver:
 
     def get_indicator_data_pairs_combined(
         self,
-        name: str,
+        name: str | Callable,
         parameters: dict | None = None,
     ) -> pd.Series:
         """Get a DataFrame that contains indicator data for all pairs combined.
@@ -1430,7 +1495,7 @@ class IndicatorDependencyResolver:
 
     def get_indicator_data(
         self,
-        name: str,
+        name: str | Callable,
         column: str | None = None,
         pair: TradingPairIdentifier | HumanReadableTradingPairDescription | None = None,
         parameters: dict | None = None,
@@ -1486,7 +1551,7 @@ class IndicatorDependencyResolver:
             if column == "all":
                 return data
 
-            assert column is not None, f"Indicator {name} has multiple available columns to choose from: {data.columns}"
+            assert column is not None, f"Indicator {name} has multiple available columns to choose from: {data.columns}. Indicator data is {type(data)}"
             assert column in data.columns, f"Indicator {name} subcolumn {column} not in the available columns: {data.columns}"
             series = data[column]
         elif isinstance(data, pd.Series):

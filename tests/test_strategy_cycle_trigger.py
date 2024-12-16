@@ -80,7 +80,7 @@ def test_trading_data_availability_based_strategy_cycle_trigger(
         "MAX_POSITIONS": "2",
         "UNIT_TESTING": "true",
         "MAX_CYCLES": "1",
-        "LOG_LEVEL": "info",
+        "LOG_LEVEL": "disabled",
     }
 
     # Don't use CliRunner.invoke() here,

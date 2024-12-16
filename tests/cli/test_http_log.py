@@ -1,3 +1,4 @@
+import logging
 import os
 from pathlib import Path
 
@@ -31,6 +32,8 @@ def test_http_log(tmpdir):
     content = open(http_path, "rt").read()
     assert "root" not in content
     assert "HTTP warning" in content
+
+    root_logger.setLevel(logging.WARNING)  # Do not leak logging in parallel tests
 
 
 

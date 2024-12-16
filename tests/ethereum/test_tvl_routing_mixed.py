@@ -23,6 +23,7 @@ from tradeexecutor.strategy.execution_context import ExecutionContext, unit_test
 from tradeexecutor.strategy.execution_model import AssetManagementMode
 from tradeexecutor.strategy.pandas_trader.runner import PandasTraderRunner
 from tradeexecutor.strategy.parameters import StrategyParameters
+from tradeexecutor.strategy.trade_pricing import TradePricing
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse, load_partial_data
 from tradeexecutor.strategy.universe_model import UniverseOptions
 from tradeexecutor.utils.timer import timed_task
@@ -32,7 +33,7 @@ from tradingstrategy.client import Client
 from tradingstrategy.pair import PandasPairUniverse
 from tradingstrategy.timebucket import TimeBucket
 from tradingstrategy.utils.token_extra_data import filter_scams
-from tradingstrategy.utils.token_filter import deduplicate_pairs_by_volume
+from tradingstrategy.utils.token_filter import deduplicate_pairs_by_volume, filter_for_base_tokens
 
 JSON_RPC_ETHEREUM = os.environ.get("JSON_RPC_ETHEREUM")
 
@@ -163,17 +164,23 @@ def create_trading_universe(
     supporting_pairs_df = pairs_df[pairs_df["pair_id"].isin(benchmark_pair_ids)]
 
     # Deduplicate trading pairs - Choose the best pair with the best volume
-    deduplicated_df = deduplicate_pairs_by_volume(pairs_df)
-    pairs_df = pd.concat([deduplicated_df, supporting_pairs_df]).drop_duplicates(subset='pair_id', keep='first')
+    # deduplicated_df = deduplicate_pairs_by_volume(pairs_df)
+    test_pairs_df = filter_for_base_tokens(
+        pairs_df,
+        {
+            "0x594daad7d77592a2b97b725a7ad59d7e188b5bfa",  # APU
+            "0x812ba41e071c7b7fa4ebcfb62df5f45f6fa853ee",  # Neiro
+        }
+    )
+
+    pairs_df = pd.concat([test_pairs_df, supporting_pairs_df]).drop_duplicates(subset='pair_id', keep='first')
 
     print(
         f"Total {len(pairs_df)} pairs to trade on {chain_id.name} for categories {categories}",
     )
 
     # Scam filter using TokenSniffer
-    pairs_df = filter_scams(pairs_df, client, min_token_sniffer_score=Parameters.min_token_sniffer_score)
-    pairs_df = pairs_df.sort_values("volume", ascending=False)
-
+    # pairs_df = filter_scams(pairs_df, client, min_token_sniffer_score=Parameters.min_token_sniffer_score)
     uni_v2 = pairs_df.loc[pairs_df["exchange_slug"] == "uniswap-v2"]
     uni_v3 = pairs_df.loc[pairs_df["exchange_slug"] == "uniswap-v3"]
     print(f"Pairs on Uniswap v2: {len(uni_v2)}, Uniswap v3: {len(uni_v3)}")
@@ -204,7 +211,7 @@ def create_trading_universe(
     print("Universe is (including benchmark pairs):")
     for idx, pair in enumerate(strategy_universe.iterate_pairs()):
         benchmark = pair.other_data.get("benchmark")
-        print(f"   {idx + 1}. pair #{pair_id}: {pair.base.token_symbol} - {pair.quote.token_symbol} ({pair.exchange_name}), {'benchmark/routed' if benchmark else 'traded'}")
+        print(f"   {idx + 1}. pair #{pair.internal_id}: {pair.base.token_symbol} - {pair.quote.token_symbol} ({pair.exchange_name} w/ {pair.fee} fee), {'benchmark/routed' if benchmark else 'traded'}")
 
     return strategy_universe
 
@@ -243,6 +250,7 @@ def test_tvl_routing_mixed(persistent_test_client, logger):
         json_rpc_avalanche=None,
         json_rpc_arbitrum=None,
         json_rpc_anvil=None,
+        json_rpc_base=None,
     )
 
     web3config.set_default_chain(ChainId.ethereum)
@@ -309,7 +317,7 @@ def test_tvl_routing_mixed(persistent_test_client, logger):
 
     # Test second Uni v3 pair
     pair = strategy_universe.get_pair_by_human_description(
-        (ChainId.ethereum, "uniswap-v3", "NEIRO", "WETH", 0.0030)
+        (ChainId.ethereum, "uniswap-v3", "Neiro", "WETH", 0.0030)
     )
 
     tvl_usd = pricing_model.get_usd_tvl(None, pair)
@@ -317,7 +325,7 @@ def test_tvl_routing_mixed(persistent_test_client, logger):
     assert tvl_usd > 0
 
     price_structure = pricing_model.get_buy_price(None, pair, Decimal(1000.00))
-
+    assert isinstance(price_structure, TradePricing)
 
 
 

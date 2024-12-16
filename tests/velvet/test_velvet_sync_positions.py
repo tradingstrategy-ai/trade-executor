@@ -25,19 +25,18 @@ from tradeexecutor.strategy.trading_strategy_universe import translate_trading_p
 from tradingstrategy.chain import ChainId
 from tradingstrategy.pair import PandasPairUniverse
 
-
 #: Detect Github Actions
 CI = os.environ.get("CI", None) is not None
 
 
 @pytest.fixture()
 def deposit_user() -> HexAddress:
-    """A user that has preapproved 5 USDC deposit for the vault above, no approve(0 needed."""
-    return "0x7612A94AafF7a552C373e3124654C1539a4486A8"
+    """A user that has preapproved 5 USDC deposit for the vault above, no approve() needed."""
+    return "0x9C5749f73e3D8728DDC77d69b3DB3C60B91A91E2"
 
 
 def test_check_velvet_universe(
-    velvet_test_vault_pair_universe: PandasPairUniverse,
+        velvet_test_vault_pair_universe: PandasPairUniverse,
 ):
     """Check we have good universe to map pairs to positions."""
     pair_universe = velvet_test_vault_pair_universe
@@ -50,8 +49,8 @@ def test_check_velvet_universe(
 
 
 def test_check_price_on_base_uniswap_v3(
-    velvet_pricing_model: PricingModel,
-    velvet_test_vault_strategy_universe: PandasPairUniverse,
+        velvet_pricing_model: PricingModel,
+        velvet_test_vault_strategy_universe: PandasPairUniverse,
 ):
     """Check that we have a good price feed."""
 
@@ -73,8 +72,8 @@ def test_check_price_on_base_uniswap_v3(
 
 
 def test_velvet_fetch_balances(
-    base_example_vault: VelvetVault,
-    velvet_test_vault_pair_universe: PandasPairUniverse,
+        base_example_vault: VelvetVault,
+        velvet_test_vault_pair_universe: PandasPairUniverse,
 ):
     """Check we fetch balances for onchain positions correctly.
 
@@ -111,10 +110,10 @@ def test_velvet_fetch_balances(
 
 
 def test_velvet_sync_positions_initial(
-    base_example_vault: VelvetVault,
-    base_usdc: AssetIdentifier,
-    velvet_test_vault_strategy_universe: TradingStrategyUniverse,
-    velvet_pricing_model: PricingModel,
+        base_example_vault: VelvetVault,
+        base_usdc: AssetIdentifier,
+        velvet_test_vault_strategy_universe: TradingStrategyUniverse,
+        velvet_pricing_model: PricingModel,
 ):
     """Sync velvet open positions
 
@@ -159,20 +158,20 @@ def test_velvet_sync_positions_initial(
 
     # We have DogInMe position
     assert len(portfolio.open_positions) == 1
-    dog_in_me_pos =  portfolio.open_positions[1]
+    dog_in_me_pos = portfolio.open_positions[1]
     assert dog_in_me_pos.get_value() > 0
 
 
 @pytest.mark.skipif(CI, reason="Skipped on continuous integration due to Velvet/Enso stability issues")
 def test_velvet_sync_positions_deposit(
-    web3: Web3,
-    base_example_vault: VelvetVault,
-    base_usdc: AssetIdentifier,
-    base_doginme: AssetIdentifier,
-    velvet_test_vault_strategy_universe: TradingStrategyUniverse,
-    velvet_pricing_model: PricingModel,
-    base_usdc_token: TokenDetails,
-    deposit_user: HexAddress,
+        web3: Web3,
+        base_example_vault: VelvetVault,
+        base_usdc: AssetIdentifier,
+        base_doginme: AssetIdentifier,
+        velvet_test_vault_strategy_universe: TradingStrategyUniverse,
+        velvet_pricing_model: PricingModel,
+        base_usdc_token: TokenDetails,
+        deposit_user: HexAddress,
 ):
     """Sync velvet open positions
 
@@ -233,14 +232,15 @@ def test_velvet_sync_positions_deposit(
     allowance = usdc_contract.functions.allowance(
         Web3.to_checksum_address(deposit_user),
         Web3.to_checksum_address(deposit_manager),
-        ).call()
-    assert allowance == 5 * 10**6
+    ).call()
+    amount = 4999999
+    assert allowance == amount
 
     # Prepare the deposit tx payload
     tx_data = vault.prepare_deposit_with_enso(
         from_=deposit_user,
         deposit_token_address=usdc_contract.address,
-        amount=5 * 10**6,
+        amount=amount,
         slippage=0.20,
     )
     assert tx_data["gas"] > 1_000_000
@@ -289,14 +289,14 @@ def test_velvet_sync_positions_deposit(
 
 @pytest.mark.skipif(CI, reason="Skipped on continuous integration due to Velvet/Enso stability issues")
 def test_velvet_sync_positions_redeem(
-    web3: Web3,
-    base_example_vault: VelvetVault,
-    base_usdc: AssetIdentifier,
-    base_doginme: AssetIdentifier,
-    velvet_test_vault_strategy_universe: TradingStrategyUniverse,
-    velvet_pricing_model: PricingModel,
-    base_usdc_token: TokenDetails,
-    existing_shareholder: HexAddress,
+        web3: Web3,
+        base_example_vault: VelvetVault,
+        base_usdc: AssetIdentifier,
+        base_doginme: AssetIdentifier,
+        velvet_test_vault_strategy_universe: TradingStrategyUniverse,
+        velvet_pricing_model: PricingModel,
+        base_usdc_token: TokenDetails,
+        existing_shareholder: HexAddress,
 ):
     """Sync velvet open positions.
 
@@ -361,7 +361,6 @@ def test_velvet_sync_positions_redeem(
     assert tx_data["to"] == withdrawal_manager
     tx_hash = web3.eth.send_transaction(tx_data)
     assert_transaction_success_with_explanation(web3, tx_hash)
-
 
     #
     # Sync positions after a full redemption
