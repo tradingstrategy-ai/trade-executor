@@ -99,7 +99,7 @@ class Parameters:
     # Backtesting only
     #
     backtest_start = datetime.datetime(2024, 9, 15)
-    backtest_end = datetime.datetime(2024, 12, 10)
+    backtest_end = datetime.datetime(2024, 11, 10)
     initial_cash = 10_000
 
     #
@@ -119,22 +119,12 @@ class Parameters:
 SUPPORTING_PAIRS = [
     # (ChainId.ethereum, "uniswap-v3", "WBTC", "USDT", 0.0005),
     # (ChainId.ethereum, "uniswap-v3", "WETH", "USDC", 0.0005),
-    (ChainId.ethereum, "uniswap-v2", "WETH", "USDC", 0.0030),  # TODO: Needed until we have universal routing
+    (ChainId.base, "uniswap-v2", "WETH", "USDC", 0.0030),  # TODO: Needed until we have universal routing
     # (ChainId.ethereum, "uniswap-v2", "WETH", "USDC", 0.0030),  # TODO: Needed until we have universal routing
 ]
 
 #: Which pair we use as the volatility benchmark for the inclusion criteria
-VOLATILITY_BENCHMARK_PAIR = (ChainId.ethereum, "uniswap-v2", "WETH", "USDC")
-
-#: Assets used in routing and buy-and-hold benchmark values for our strategy, but not traded by this strategy.
-SUPPORTING_PAIRS = [
-    (ChainId.base, "uniswap-v2", "WETH", "USDC", 0.0030),
-    (ChainId.base, "uniswap-v3", "WETH", "USDC", 0.0005),
-    (ChainId.base, "uniswap-v3", "cbBTC", "WETH", 0.0030),  # Only trading since October
-]
-
-# Will be converted to cbBTC/ETH->USDC
-VOL_PAIR = (ChainId.base, "uniswap-v2", "WETH", "USDC", 0.0030)
+VOLATILITY_BENCHMARK_PAIR = (ChainId.base, "uniswap-v2", "WETH", "USDC")
 
 
 def create_trading_universe(
@@ -266,7 +256,7 @@ def decide_trades(
     if volume_inclusion_criteria_pairs is None:
         volume_inclusion_criteria_pairs = []
 
-    vol_pair = strategy_universe.get_pair_by_human_description(VOL_PAIR)
+    vol_pair = strategy_universe.get_pair_by_human_description(VOLATILITY_BENCHMARK_PAIR)
     vol_pair_vol = indicators.get_indicator_value("volatility_ewm", pair=vol_pair)
 
     if vol_pair_vol is None:

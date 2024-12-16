@@ -32,8 +32,8 @@ CI = os.environ.get("CI", None) is not None
 
 @pytest.fixture()
 def deposit_user() -> HexAddress:
-    """A user that has preapproved 5 USDC deposit for the vault above, no approve(0 needed."""
-    return "0x7612A94AafF7a552C373e3124654C1539a4486A8"
+    """A user that has preapproved 5 USDC deposit for the vault above, no approve() needed."""
+    return "0x9C5749f73e3D8728DDC77d69b3DB3C60B91A91E2"
 
 
 def test_check_velvet_universe(
@@ -234,13 +234,14 @@ def test_velvet_sync_positions_deposit(
         Web3.to_checksum_address(deposit_user),
         Web3.to_checksum_address(deposit_manager),
         ).call()
-    assert allowance == 5 * 10**6
+    amount = 4999999
+    assert allowance == amount
 
     # Prepare the deposit tx payload
     tx_data = vault.prepare_deposit_with_enso(
         from_=deposit_user,
         deposit_token_address=usdc_contract.address,
-        amount=5 * 10**6,
+        amount=amount,
         slippage=0.20,
     )
     assert tx_data["gas"] > 1_000_000
