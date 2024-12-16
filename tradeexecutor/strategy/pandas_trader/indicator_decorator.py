@@ -35,6 +35,7 @@ DEFAULT_INDICATOR_ARGUMENTS = {
     "open",
     "high",
     "low",
+    "volume",
     "strategy_universe",
     "dependency_resolver",
     "pair",
@@ -79,7 +80,7 @@ def detect_source(func: Callable, source: IndicatorSource | None) -> IndicatorSo
     args = set(signature.parameters.keys())
     if "strategy_universe" in args:
         return IndicatorSource.strategy_universe
-    elif ("open" in args) or ("high" in args) or ("low" in args):
+    elif ("open" in args) or ("high" in args) or ("low" in args) or ("volume" in args):
         return IndicatorSource.ohlcv
     elif ("close" in args):
         return IndicatorSource.close_price
@@ -313,6 +314,7 @@ class IndicatorRegistry:
                 "Order": entry.order,
                 "Name": entry.name,
                 "Source": entry.source.name,
+                "Parameters": ", ".join(entry.args),
                 "Dependencies": ", ".join(d.__name__ for d in entry.dependencies),
             })
 

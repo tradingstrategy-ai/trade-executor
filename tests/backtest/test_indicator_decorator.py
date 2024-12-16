@@ -15,6 +15,7 @@ from tradeexecutor.strategy.pandas_trader.indicator import (
     calculate_and_load_indicators_inline,
 )
 from tradeexecutor.strategy.pandas_trader.indicator_decorator import IndicatorRegistry
+from tradeexecutor.strategy.pandas_trader.strategy_input import StrategyInputIndicators
 from tradeexecutor.strategy.parameters import StrategyParameters
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse, create_pair_universe_from_code
 from tradeexecutor.testing.synthetic_ethereum_data import generate_random_ethereum_address
@@ -104,13 +105,12 @@ def test_get_indicator_decorator_simple(strategy_universe):
     def rsi(close, rsi_length):
         return pandas_ta.rsi(close, rsi_length)
 
-    # Calculate indicators - will spawn multiple worker processed,
-    # or load cached results from the disk
     parameters = StrategyParameters.from_class(Parameters)
     indicators = calculate_and_load_indicators_inline(
         strategy_universe=strategy_universe,
         parameters=parameters,
         create_indicators=indicators.create_indicators,
+        verbose=False,
     )
 
     series = indicators.get_indicator_data_pairs_combined("rsi")
@@ -213,3 +213,34 @@ def test_indicator_decorator_order():
     assert indicator_set.get_indicator("ma_universe").dependency_order == 3
 
 
+def test_get_indicator_decorator_arguments(strategy_universe):
+    """See arguments passed to the indicator functions look good."""
+    indicators = IndicatorRegistry()
+
+    class Parameters:
+        rsi_length = 20
+
+    @indicators.define()
+    def rsi(close, rsi_length, pair, dependency_resolver):
+        assert isinstance(close, pd.Series)
+        assert type(rsi_length) == int
+        assert isinstance(pair, TradingPairIdentifier)
+        assert isinstance(dependency_resolver, IndicatorDependencyResolver)
+        return pd.Series([], dtype="float64")
+
+    @indicators.define(source=IndicatorSource.dependencies_only_per_pair, dependencies=[rsi])
+    def rsi_derivate(rsi_length, pair, dependency_resolver):
+        assert type(rsi_length) == int
+        assert isinstance(pair, TradingPairIdentifier)
+        assert isinstance(dependency_resolver, IndicatorDependencyResolver)
+        return pd.Series([], dtype="float64")
+
+    parameters = StrategyParameters.from_class(Parameters)
+    indicators = calculate_and_load_indicators_inline(
+        strategy_universe=strategy_universe,
+        parameters=parameters,
+        create_indicators=indicators.create_indicators,
+        verbose=False,
+    )
+
+    assert isinstance(indicators, StrategyInputIndicators)

@@ -452,7 +452,7 @@ class IndicatorKey:
             return f"{pair.base.token_symbol}-{pair.quote.token_symbol}{fee_slug}"
         else:
             # Indicator calculated over the universe
-            assert self.definition.source == IndicatorSource.strategy_universe, f"Got: {self.definition}, {self.definition.source}"
+            assert self.definition.source in (IndicatorSource.strategy_universe, IndicatorSource.dependencies_only_universe), f"Got: {self.definition}, {self.definition.source}"
             return "universe"
 
     def __eq__(self, other):
