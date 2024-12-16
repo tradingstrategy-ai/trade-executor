@@ -117,8 +117,7 @@ class Parameters:
 
 #: Assets used in routing and buy-and-hold benchmark values for our strategy, but not traded by this strategy.
 SUPPORTING_PAIRS = [
-    # (ChainId.ethereum, "uniswap-v3", "WBTC", "USDT", 0.0005),
-    # (ChainId.ethereum, "uniswap-v3", "WETH", "USDC", 0.0005),
+    (ChainId.base, "uniswap-v3", "WETH", "USDC", 0.0005),  # TODO: Needed until we have universal routing
     (ChainId.base, "uniswap-v2", "WETH", "USDC", 0.0030),  # TODO: Needed until we have universal routing
     # (ChainId.ethereum, "uniswap-v2", "WETH", "USDC", 0.0030),  # TODO: Needed until we have universal routing
 ]
