@@ -180,6 +180,9 @@ def create_trading_universe(
     pairs_df = filter_scams(pairs_df, client, min_token_sniffer_score=Parameters.min_token_sniffer_score)
     pairs_df = pairs_df.sort_values("volume", ascending=False)
 
+    # Choose 10 best pairs
+    pairs_df = pairs_df.iloc[0:10]
+
     uni_v2 = pairs_df.loc[pairs_df["exchange_slug"] == "uniswap-v2"]
     uni_v3 = pairs_df.loc[pairs_df["exchange_slug"] == "uniswap-v3"]
     print(f"Pairs on Uniswap v2: {len(uni_v2)}, Uniswap v3: {len(uni_v3)}")

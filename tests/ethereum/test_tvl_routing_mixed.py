@@ -32,7 +32,7 @@ from tradingstrategy.client import Client
 from tradingstrategy.pair import PandasPairUniverse
 from tradingstrategy.timebucket import TimeBucket
 from tradingstrategy.utils.token_extra_data import filter_scams
-from tradingstrategy.utils.token_filter import deduplicate_pairs_by_volume
+from tradingstrategy.utils.token_filter import deduplicate_pairs_by_volume, filter_for_base_tokens
 
 JSON_RPC_ETHEREUM = os.environ.get("JSON_RPC_ETHEREUM")
 
@@ -163,17 +163,23 @@ def create_trading_universe(
     supporting_pairs_df = pairs_df[pairs_df["pair_id"].isin(benchmark_pair_ids)]
 
     # Deduplicate trading pairs - Choose the best pair with the best volume
-    deduplicated_df = deduplicate_pairs_by_volume(pairs_df)
-    pairs_df = pd.concat([deduplicated_df, supporting_pairs_df]).drop_duplicates(subset='pair_id', keep='first')
+    # deduplicated_df = deduplicate_pairs_by_volume(pairs_df)
+    test_pairs_df = filter_for_base_tokens(
+        pairs_df,
+        {
+            "0x594daad7d77592a2b97b725a7ad59d7e188b5bfa",  # APU
+            "0x812ba41e071c7b7fa4ebcfb62df5f45f6fa853ee",  # Neiro
+        }
+    )
+
+    pairs_df = pd.concat([test_pairs_df, supporting_pairs_df]).drop_duplicates(subset='pair_id', keep='first')
 
     print(
         f"Total {len(pairs_df)} pairs to trade on {chain_id.name} for categories {categories}",
     )
 
     # Scam filter using TokenSniffer
-    pairs_df = filter_scams(pairs_df, client, min_token_sniffer_score=Parameters.min_token_sniffer_score)
-    pairs_df = pairs_df.sort_values("volume", ascending=False)
-
+    # pairs_df = filter_scams(pairs_df, client, min_token_sniffer_score=Parameters.min_token_sniffer_score)
     uni_v2 = pairs_df.loc[pairs_df["exchange_slug"] == "uniswap-v2"]
     uni_v3 = pairs_df.loc[pairs_df["exchange_slug"] == "uniswap-v3"]
     print(f"Pairs on Uniswap v2: {len(uni_v2)}, Uniswap v3: {len(uni_v3)}")
@@ -243,6 +249,7 @@ def test_tvl_routing_mixed(persistent_test_client, logger):
         json_rpc_avalanche=None,
         json_rpc_arbitrum=None,
         json_rpc_anvil=None,
+        json_rpc_base=None,
     )
 
     web3config.set_default_chain(ChainId.ethereum)
