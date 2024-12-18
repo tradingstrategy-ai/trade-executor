@@ -107,6 +107,12 @@ class SizeRisk:
     #:
     diagnostics_data: dict | None = None
 
+    #: TVL hint used when calculating the position size in backtesting.
+    #:
+    #: Might not be available in live trading.
+    #:
+    tvl: USDollarAmount | None = None
+
     def __post_init__(self):
         assert isinstance(self.timestamp, (datetime.datetime, NoneType)), f"Timestamp was {self.timestamp}"
         if self.asked_quantity is not None:

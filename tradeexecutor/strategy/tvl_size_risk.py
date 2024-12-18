@@ -88,6 +88,7 @@ class BaseTVLSizeRiskModel(SizeRiskModel):
             accepted_size=accepted_size,
             capped=capped,
             diagnostics_data=diagnostics_data,
+            tvl=tvl,
         )
 
     def get_acceptable_size_for_sell(
@@ -120,6 +121,7 @@ class BaseTVLSizeRiskModel(SizeRiskModel):
             accepted_size=max_value,
             capped=capped,
             diagnostics_data=diagnostics_data,
+            tvl=tvl,
         )
 
     def get_acceptable_size_for_position(
@@ -146,6 +148,7 @@ class BaseTVLSizeRiskModel(SizeRiskModel):
             accepted_size=accepted_size,
             capped=capped,
             diagnostics_data=diagnostics_data,
+            tvl=tvl,
         )
 
     @abc.abstractmethod

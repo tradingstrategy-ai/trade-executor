@@ -301,7 +301,7 @@ def decide_trades(
     trades = alpha_model.generate_rebalance_trades_and_triggers(
         position_manager,
         min_trade_threshold=rebalance_threshold_usd,  # Don't bother with trades under XXXX USD
-        invidiual_rebalance_min_threshold=parameters.individual_rebalance_min_threshold_usd,
+        individual_rebalance_min_threshold=parameters.individual_rebalance_min_threshold_usd,
     )
 
     if input.is_visualisation_enabled():

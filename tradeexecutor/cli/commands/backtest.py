@@ -69,7 +69,6 @@ logger = logging.getLogger(__name__)
 
 @app.command()
 def backtest(
-
     id: str = shared_options.id,
     name: Optional[str] = shared_options.name,
     strategy_file: Path = shared_options.strategy_file,
@@ -153,6 +152,8 @@ def backtest(
     print(f"Starting backtesting for {strategy_file}")
 
     def loop():
+        nonlocal trading_strategy_api_key
+        nonlocal cache_path
         result = run_backtest_for_module(
             strategy_file=strategy_file,
             trading_strategy_api_key=trading_strategy_api_key,

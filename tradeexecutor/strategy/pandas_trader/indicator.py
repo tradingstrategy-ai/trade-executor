@@ -124,6 +124,13 @@ class IndicatorSource(enum.Enum):
     #:
     ohlcv = "ohlcv"
 
+    #: Calculate this indicator based open, high, low, close TVL data.
+    #:
+    #: - Per pair
+    #:
+    #:
+    tvl = "tvl"
+
     #: This indicator is calculated once per the strategy universe
     #:
     #: These indicators are custom and do not have trading pair set
@@ -156,7 +163,14 @@ class IndicatorSource(enum.Enum):
 
     def is_per_pair(self) -> bool:
         """This indicator is calculated to all trading pairs."""
-        return self in (IndicatorSource.open_price, IndicatorSource.close_price, IndicatorSource.ohlcv, IndicatorSource.external_per_pair, IndicatorSource.dependencies_only_per_pair)
+        return self in (
+            IndicatorSource.open_price,
+            IndicatorSource.close_price,
+            IndicatorSource.ohlcv,
+            IndicatorSource.external_per_pair,
+            IndicatorSource.dependencies_only_per_pair,
+            IndicatorSource.tvl,
+        )
 
 
 def _flatten_index(series: pd.Series) -> pd.Series:
@@ -314,7 +328,7 @@ class IndicatorDefinition:
 
     def calculate_dependencies_only_per_pair(self, pair: TradingPairIdentifier, resolver: "IndicatorDependencyResolver") -> pd.DataFrame | pd.Series:
         """Calculate the indicator value that only takes other indicators as input."""
-        assert self.dependency_order > 1, "Dependency-based indicator order cannot be first"
+        assert self.dependency_order > 1, "Dependency-based indicator order cannot be first. Did you forget to declare dependencies?"
         try:
             ret = self.func( **self._fix_parameters_for_function_signature(resolver, pair))
             return self._check_good_return_value(ret)
@@ -323,7 +337,7 @@ class IndicatorDefinition:
 
     def calculate_dependencies_only_per_universe(self, resolver: "IndicatorDependencyResolver") -> pd.DataFrame | pd.Series:
         """Calculate the indicator value that only takes other indicators as input."""
-        assert self.dependency_order > 1, "Dependency-based indicator order cannot be first"
+        assert self.dependency_order > 1, "Dependency-based indicator order cannot be first. Did you forget to declare dependencies?"
         try:
             ret = self.func( **self._fix_parameters_for_function_signature(resolver, pair=None))
             return self._check_good_return_value(ret)
@@ -451,7 +465,7 @@ class IndicatorKey:
             return f"{pair.base.token_symbol}-{pair.quote.token_symbol}{fee_slug}"
         else:
             # Indicator calculated over the universe
-            assert self.definition.source in (IndicatorSource.strategy_universe, IndicatorSource.dependencies_only_universe), f"Got: {self.definition}, {self.definition.source}"
+            assert not self.definition.source.is_per_pair()
             return "universe"
 
     def __eq__(self, other):
@@ -1094,6 +1108,10 @@ def _calculate_and_save_indicator_result(
                     data = indicator.calculate_by_pair(input, key.pair, resolver)
                 case IndicatorSource.ohlcv:
                     input = strategy_universe.data_universe.candles.get_samples_by_pair(key.pair.internal_id)
+                    data = indicator.calculate_by_pair_ohlcv(input, key.pair, resolver)
+                case IndicatorSource.tvl:
+                    assert strategy_universe.data_universe.liquidity is not None, "TVL/liquidity data not loaded, trying to create TVL indicator"
+                    input = strategy_universe.data_universe.liquidity.get_samples_by_pair(key.pair.internal_id)
                     data = indicator.calculate_by_pair_ohlcv(input, key.pair, resolver)
                 case IndicatorSource.external_per_pair:
                     data = indicator.calculate_by_pair_external(key.pair, resolver)
@@ -1955,6 +1973,8 @@ def warm_up_indicator_cache(
     - Display TQDM progress bars for loading cached indicators and calculating new ones
 
     - Use cached indicators if available
+
+    - Not need to call from the notebook manuallyt
 
     :return:
         Tuple (Cached indicators, calculated indicators)
