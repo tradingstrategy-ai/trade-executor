@@ -78,6 +78,7 @@ def run_backtest_for_module(
 
     universe_options = mod.get_universe_options()
 
+    logger.info("Using cache path %s", client.transport.cache_path)
     logger.info("Loading backtesting universe data for %s", universe_options)
 
     universe = mod.create_trading_universe(

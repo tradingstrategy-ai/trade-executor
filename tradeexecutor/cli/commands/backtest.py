@@ -158,6 +158,7 @@ def backtest(
             trading_strategy_api_key=trading_strategy_api_key,
             execution_context=standalone_backtest_execution_context,
             max_workers=max_workers,
+            cache_path=cache_path,
         )
         return result
 

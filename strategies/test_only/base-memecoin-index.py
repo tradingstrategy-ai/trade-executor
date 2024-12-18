@@ -30,6 +30,7 @@ from tradeexecutor.strategy.trading_strategy_universe import (
 from tradeexecutor.strategy.tvl_size_risk import USDTVLSizeRiskModel
 from tradeexecutor.strategy.universe_model import UniverseOptions
 from tradeexecutor.strategy.weighting import weight_by_1_slash_n, weight_passthrouh
+from tradeexecutor.webhook.error import exception_response
 from tradingstrategy.alternative_data.coingecko import CoingeckoUniverse, categorise_pairs
 from tradingstrategy.chain import ChainId
 from tradingstrategy.client import Client
@@ -224,7 +225,7 @@ def create_trading_universe(
     print("Universe is (including benchmark pairs):")
     for idx, pair in enumerate(strategy_universe.iterate_pairs()):
         benchmark = pair.other_data.get("benchmark")
-        print(f"   {idx + 1}. pair #{pair_id}: {pair.base.token_symbol} - {pair.quote.token_symbol} ({pair.exchange_name}), {'benchmark/routed token' if benchmark else 'traded token'}")
+        print(f"   {idx + 1}. pair #{pair.internal_id}: {pair.base.token_symbol} - {pair.quote.token_symbol} ({pair.exchange_name}), {'benchmark/routed token' if benchmark else 'traded token'}")
 
     return strategy_universe
 
@@ -266,8 +267,8 @@ def decide_trades(
     signal_count = 0
 
     for pair_id in volume_inclusion_criteria_pairs:
-        pair = strategy_universe.get_pair_by_id(pair_id)
 
+        pair = strategy_universe.get_pair_by_id(pair_id)
         volatility = indicators.get_indicator_value("volatility_ewm", pair=pair)
         if not volatility:
             continue
@@ -515,7 +516,6 @@ def volume_inclusion_criteria(
 
     # Turn to a series of lists
     data = mask.groupby(level='timestamp').apply(lambda x: x.index.get_level_values('pair_id').tolist())
-
 
     return data
 
