@@ -1974,6 +1974,8 @@ def warm_up_indicator_cache(
 
     - Use cached indicators if available
 
+    - Not need to call from the notebook manually
+
     :return:
         Tuple (Cached indicators, calculated indicators)
     """
