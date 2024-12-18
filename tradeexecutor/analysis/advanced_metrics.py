@@ -111,6 +111,11 @@ def calculate_advanced_metrics(
         if convert_to_daily:
             returns = resample_returns(returns, "D")
 
+        if len(returns) == 0 or returns.nunique() == 1:
+            # Unit test workaround, otherwise quantstats crashes when calculating adv stats
+            # ValueError: Cannot calculate a linear regression if all x values are identical
+            mode = AdvancedMetricsMode.basic
+
         result = metrics(
             returns,
             benchmark=benchmark,
