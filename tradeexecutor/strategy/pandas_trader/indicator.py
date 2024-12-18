@@ -328,7 +328,7 @@ class IndicatorDefinition:
 
     def calculate_dependencies_only_per_pair(self, pair: TradingPairIdentifier, resolver: "IndicatorDependencyResolver") -> pd.DataFrame | pd.Series:
         """Calculate the indicator value that only takes other indicators as input."""
-        assert self.dependency_order > 1, "Dependency-based indicator order cannot be first"
+        assert self.dependency_order > 1, "Dependency-based indicator order cannot be first. Did you forget to declare dependencies?"
         try:
             ret = self.func( **self._fix_parameters_for_function_signature(resolver, pair))
             return self._check_good_return_value(ret)
@@ -337,7 +337,7 @@ class IndicatorDefinition:
 
     def calculate_dependencies_only_per_universe(self, resolver: "IndicatorDependencyResolver") -> pd.DataFrame | pd.Series:
         """Calculate the indicator value that only takes other indicators as input."""
-        assert self.dependency_order > 1, "Dependency-based indicator order cannot be first"
+        assert self.dependency_order > 1, "Dependency-based indicator order cannot be first. Did you forget to declare dependencies?"
         try:
             ret = self.func( **self._fix_parameters_for_function_signature(resolver, pair=None))
             return self._check_good_return_value(ret)
@@ -1974,7 +1974,7 @@ def warm_up_indicator_cache(
 
     - Use cached indicators if available
 
-    - Not need to call from the notebook manually
+    - Not need to call from the notebook manuallyt
 
     :return:
         Tuple (Cached indicators, calculated indicators)

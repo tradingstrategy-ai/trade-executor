@@ -1135,6 +1135,7 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
                 dataset.liquidity,
                 time_bucket=dataset.liquidity_time_bucket,
                 forward_fill=forward_fill,
+                forward_fill_until=forward_fill_until,
                 index_automatically=False,
             )
             resampled_liquidity = None

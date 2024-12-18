@@ -281,6 +281,7 @@ class TradingPairSignal:
     #:
     other_data: dict = field(default_factory=dict)
 
+    #: Debug flags for this signal, see :py:fuc:`format_signals`
     flags: set[TradingPairSignalFlags] = field(default_factory=set)
 
     def __post_init__(self):
@@ -394,6 +395,17 @@ class TradingPairSignal:
 
         else:
             raise AssertionError(f"Unsupported")
+
+    def get_tvl(self) -> USDollarAmount | 0:
+        """What was TVL used for this signal.
+
+        TVL data we use in calculations in :py:meth:`AlphaModel._normalise_weights_size_risk`.
+
+        Expose for debugging
+        """
+        if self.position_size_risk:
+            return self.position_size_risk.tvl or 0
+        return 0
 
 
 @dataclass_json
@@ -1320,9 +1332,12 @@ class AlphaModel:
         return result
 
 
+
 def format_signals(
     alpha_model: AlphaModel,
     signal_type: Literal["chosen", "raw"] = "chosen",
+    column_mode: Literal["spot", "leveraged"] = "spot",
+    sort_key="Signal",
 ) -> pd.DataFrame:
     """Debug helper used to develop the strategy.
 
@@ -1347,6 +1362,9 @@ def format_signals(
     :param signal_type:
         Show raw signals or only signals that survived filtering.
 
+    :param column_mode:
+        What columns include in the resulting table
+
     :return:
         DataFrame containing a table for signals on this cycle
     """
@@ -1369,12 +1387,47 @@ def format_signals(
         asked_size = s.position_size_risk.asked_size if s.position_size_risk else "-"
         flags = ", ".join(f.value for f in s.flags)
         old_pair = s.old_pair.get_ticker() if s.old_pair else "-"
-        data.append((pair.get_ticker(), s.signal, asked_size, s.position_target, s.position_adjust_usd, s.normalised_weight, s.old_weight, s.get_flip_label(), synthetic_pair, old_pair, flags))
+
+        match column_mode:
+            case "leveraged":
+                # Debug data for Aave shorts
+                data.append({
+                    "Pair": pair.get_ticker(),
+                    "Signal": s.signal,
+                    "Asked size": asked_size,
+                    "Accepted size": s.position_target,
+                    "Value adjust USD": s.position_adjust_usd,
+                    "Norm. weights": s.normalised_weight,
+                    "Old weight": s.old_weight,
+                    "Flipping": s.get_flip_label(),
+                    "Trade as": synthetic_pair,
+                    "Old pair": old_pair,
+                    "Flags": flags
+                })
+            case "spot":
+                # Normal spot market portfolio construction
+                data.append({
+                    "Pair": pair.get_ticker(),
+                    "Signal": s.signal,
+                    "Asked size": asked_size,
+                    "Accepted size": s.position_target,
+                    "Value adjust USD": s.position_adjust_usd,
+                    "Weights (raw)": s.raw_weight,
+                    "Weights (norm)": s.normalised_weight,
+                    "Old weight": s.old_weight,
+                    "Flipping": s.get_flip_label(),
+                    "TVL": s.get_tvl(),
+                    "Flags": flags
+                })
+            case _:
+                raise NotImplementedError(f"Unknown column mode {column_mode}")
 
         #print(f"Pair: {pair.get_ticker()}, signal: {s.signal}")
 
-    df = pd.DataFrame(data, columns=["Core pair", "Signal", "Asked size", "Accepted size", "Value adj", "Norm weight", "Old weight", "Flipping", "Trade as", "Old trade as", "Flags"])
-    df = df.set_index("Core pair")
+    df = pd.DataFrame(data)
+    if len(df) > 0:
+        df = df.sort_values(by=[sort_key])
+        df = df.set_index("Pair")
     return df
 
 
