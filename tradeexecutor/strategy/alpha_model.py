@@ -396,7 +396,7 @@ class TradingPairSignal:
         else:
             raise AssertionError(f"Unsupported")
 
-    def get_tvl(self) -> USDollarAmount | 0:
+    def get_tvl(self) -> USDollarAmount:
         """What was TVL used for this signal.
 
         TVL data we use in calculations in :py:meth:`AlphaModel._normalise_weights_size_risk`.
@@ -1413,10 +1413,10 @@ def format_signals(
                     "Accepted size": s.position_target,
                     "Value adjust USD": s.position_adjust_usd,
                     "Weights (raw)": s.raw_weight,
-                    "Weights (norm)": s.normalised_weight,
+                    "Weights (norm/cap)": s.normalised_weight,
                     "Old weight": s.old_weight,
                     "Flipping": s.get_flip_label(),
-                    "TVL": s.get_tvl(),
+                    "TVL": f"{s.get_tvl():.0f}",
                     "Flags": flags
                 })
             case _:

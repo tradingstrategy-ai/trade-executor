@@ -17,6 +17,7 @@ Any consecutive wins and losses are measured in days, not in the trade or candle
 import enum
 import warnings
 
+import numpy as np
 import pandas as pd
 
 from tradeexecutor.state.identifier import TradingPairIdentifier
@@ -107,6 +108,9 @@ def calculate_advanced_metrics(
         if display:
             quantstats_awful_kwargs = {"internal": True}
 
+        if convert_to_daily:
+            returns = resample_returns(returns, "D")
+
         result = metrics(
             returns,
             benchmark=benchmark,
@@ -119,15 +123,13 @@ def calculate_advanced_metrics(
 
         assert result is not None, "metrics(): returned None"
 
-        if convert_to_daily:
-            returns = resample_returns(returns, "D")
-
         # Hack - see analyse_combination()
         # Communicative annualized growth return,
         # as compounded
         # Should say CAGR (raw), but is what it is for the legacy reasons
         if benchmark is None:
             result.loc["Annualised return (raw)"] = [stats.cagr(returns, 0., compounded=True)]
+
         return result
 
 
@@ -137,6 +139,7 @@ def visualise_advanced_metrics(
     benchmark: pd.Series | None = None,
     name: str | None = None,
     convert_to_daily=False,
+    periods_per_year=365,
 ) -> pd.DataFrame:
     """Calculate advanced strategy performance statistics using Quantstats.
 
@@ -210,6 +213,8 @@ def visualise_advanced_metrics(
     :param convert_to_daily:
         QuantStats metrics can only work on daily data, so force convert from 1h or 8h or so if needed.
 
+        If set automatically convert to daily returns.
+
     :return:
         A DataFrame ready to display a table of comparable merics.
 
@@ -238,7 +243,7 @@ def visualise_advanced_metrics(
         df = metrics(
             returns,
             benchmark=benchmark,
-            periods_per_year=365,
+            periods_per_year=periods_per_year,
             mode=mode.value,
             internal=True,
             display=False
@@ -252,10 +257,7 @@ def visualise_advanced_metrics(
 
         if name is not None:
             df = df.rename({"Strategy": name}, axis="columns")
+        else:
+            name = "Strategy"
 
         return df
-
-
-
-
-

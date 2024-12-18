@@ -489,6 +489,8 @@ def test_advanced_summary_statistics(
     assert adv_stats['Win Quarter'] == '50.0%'
     assert adv_stats['Win Year'] == '0.0%'
 
+    import ipdb ; ipdb.set_trace()
+
 
 
 

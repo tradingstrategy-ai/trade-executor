@@ -202,7 +202,7 @@ def get_benchmark_data(
 def compare_multiple_portfolios(
     portfolios: pd.DataFrame,
     indexes: pd.DataFrame | None = None,
-    mode: AdvancedMetricsMode=AdvancedMetricsMode.basic,
+    mode: AdvancedMetricsMode=AdvancedMetricsMode.full,
     periods_per_year=365,
     display=False,
 ) -> pd.DataFrame:
