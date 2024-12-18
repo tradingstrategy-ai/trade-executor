@@ -55,6 +55,9 @@ class TradingPairSignalFlags(enum.Enum):
     #: This pair was not adjusted because the trade to rebalance would be too small dollar wise
     individual_trade_size_too_small = "individual_trade_size_too_small"
 
+    #: Position was not opened/was closed because its weight % in the portfolio is too small
+    close_position_weight_limit = "close_position_weight_limit"
+
     #: This signal led to closing the position (signal went to zero)
     closed = "closed"
 
@@ -1054,8 +1057,9 @@ class AlphaModel:
         self,
         position_manager: PositionManager,
         min_trade_threshold: USDollarAmount = 10.0,
-        invidiual_rebalance_min_threshold: USDollarAmount = 0.0,
+        individual_rebalance_min_threshold: USDollarAmount = 0.0,
         use_spot_for_long=True,
+        invidiual_rebalance_min_threshold=None,
     ) -> List[TradeExecution]:
         """Generate the trades that will rebalance the portfolio.
 
@@ -1080,7 +1084,7 @@ class AlphaModel:
             This is to prevent doing too small trades due to fuzziness in the valuations
             and calculations.
 
-        :param invidiual_rebalance_min_threshold:
+        :param individual_rebalance_min_threshold:
             If an invidual treade value is smaller than this, skip it.
 
         :param use_spot_for_long:
@@ -1094,6 +1098,10 @@ class AlphaModel:
         """
 
         assert use_spot_for_long, "Leveraged long unsupported for now"
+
+        if invidiual_rebalance_min_threshold is not None:
+            # Legacy typo fix
+            individual_rebalance_min_threshold = invidiual_rebalance_min_threshold
 
         # Generate trades
         trades: List[TradeExecution] = []
@@ -1169,10 +1177,10 @@ class AlphaModel:
                         signal.normalised_weight,
                         dollar_diff)
 
-            if invidiual_rebalance_min_threshold:
+            if individual_rebalance_min_threshold:
                 trade_size = abs(dollar_diff)
-                if trade_size < invidiual_rebalance_min_threshold:
-                    logger.info("Individual trade size too small, trade size is %s, our threshold %s", trade_size, invidiual_rebalance_min_threshold)
+                if trade_size < individual_rebalance_min_threshold:
+                    logger.info("Individual trade size too small, trade size is %s, our threshold %s", trade_size, individual_rebalance_min_threshold)
                     signal.flags.add(TradingPairSignalFlags.individual_trade_size_too_small)
                     continue
 
@@ -1206,6 +1214,7 @@ class AlphaModel:
                     else:
                         logger.info("Zero signal, but no position to close")
                         signal.position_adjust_ignored = True
+                    signal.flags.add(TradingPairSignalFlags.close_position_weight_limit)
                 else:
                     # Signal is switching between short/long,
                     # so close any old position
@@ -1358,12 +1367,13 @@ def format_signals(
         pair = s.pair
         synthetic_pair = s.synthetic_pair.get_ticker() if s.synthetic_pair else "-"
         asked_size = s.position_size_risk.asked_size if s.position_size_risk else "-"
+        flags = ", ".join(f.value for f in s.flags)
         old_pair = s.old_pair.get_ticker() if s.old_pair else "-"
-        data.append((pair.get_ticker(), s.signal, s.position_target, asked_size, s.position_adjust_usd, s.normalised_weight, s.old_weight, s.get_flip_label(), synthetic_pair, old_pair))
+        data.append((pair.get_ticker(), s.signal, asked_size, s.position_target, s.position_adjust_usd, s.normalised_weight, s.old_weight, s.get_flip_label(), synthetic_pair, old_pair, flags))
 
         #print(f"Pair: {pair.get_ticker()}, signal: {s.signal}")
 
-    df = pd.DataFrame(data, columns=["Core pair", "Signal", "Target USD", "Asked size", "Value adj", "Norm weight", "Old weight", "Flipping", "Trade as", "Old trade as"])
+    df = pd.DataFrame(data, columns=["Core pair", "Signal", "Asked size", "Accepted size", "Value adj", "Norm weight", "Old weight", "Flipping", "Trade as", "Old trade as", "Flags"])
     df = df.set_index("Core pair")
     return df
 
