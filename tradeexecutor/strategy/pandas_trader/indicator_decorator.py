@@ -39,6 +39,8 @@ DEFAULT_INDICATOR_ARGUMENTS = {
     "strategy_universe",
     "dependency_resolver",
     "pair",
+    "execution_context",
+    "timestamp"
 }
 
 
