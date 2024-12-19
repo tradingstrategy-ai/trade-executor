@@ -1,6 +1,7 @@
 """perform-test-trade command"""
 
 import datetime
+from decimal import Decimal
 from pathlib import Path
 from typing import Optional
 from typer import Option
@@ -72,6 +73,7 @@ def perform_test_trade(
     buy_only: bool = Option(False, "--buy-only/--no-buy-only", help="Only perform the buy side of the test trade - leave position open."),
     test_short: bool = Option(True, "--test-short/--no-test-short", help="Perform test short trades as well."),
     test_credit_supply: bool = Option(True, "--test-credit-supply/--no-test-credit-supply", help="Perform test credit supply trades as well."),
+    amount: float= Option(1.0, "The USD value of the test trade"),
     simulate: bool = shared_options.simulate,
 ):
     """Perform a small test swap.
@@ -228,6 +230,7 @@ def perform_test_trade(
                     buy_only=buy_only,
                     test_short=test_short,
                     test_credit_supply=test_credit_supply,
+                    amount=Decimal(amount),
                 )
         else:
 
@@ -245,6 +248,7 @@ def perform_test_trade(
                 buy_only=buy_only,
                 test_short=test_short,
                 test_credit_supply=test_credit_supply,
+                amount=Decimal(amount),
             )
     except OutOfBalance as e:
         raise RuntimeError(f"Failed to a test trade, as we run out of balance. Make sure vault has enough stablecoins deposited for the test trades.") from e
