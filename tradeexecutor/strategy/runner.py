@@ -15,7 +15,6 @@ from types import NoneType
 from typing import List, Optional, Tuple, cast, Callable
 
 from eth_defi.provider.anvil import is_anvil, mine
-from tests.backtest.test_backtest_short_execution import sync_model
 from tradeexecutor.backtest.backtest_execution import BacktestExecutionFailed
 from tradeexecutor.ethereum.ethereum_protocol_adapters import EthereumPairConfigurator
 from tradeexecutor.ethereum.tx import TransactionBuilder
@@ -31,10 +30,10 @@ from tradeexecutor.strategy.execution_model import ExecutionModel
 from tradeexecutor.strategy.generic.generic_pricing_model import GenericPricing
 from tradeexecutor.strategy.generic.generic_router import GenericRouting
 from tradeexecutor.strategy.generic.generic_valuation import GenericValuation
-from tradeexecutor.strategy.pandas_trader.indicator import CreateIndicatorsProtocolV1, DiskIndicatorStorage, CreateIndicatorsProtocol
+from tradeexecutor.strategy.pandas_trader.indicator import CreateIndicatorsProtocol
 from tradeexecutor.strategy.pandas_trader.strategy_input import StrategyInputIndicators
 from tradeexecutor.strategy.parameters import StrategyParameters
-from tradeexecutor.strategy.sync_model import SyncMethodV0, SyncModel
+from tradeexecutor.strategy.sync_model import SyncModel
 from tradeexecutor.strategy.run_state import RunState
 from tradeexecutor.strategy.output import output_positions, DISCORD_BREAK_CHAR, output_trades
 from tradeexecutor.strategy.pandas_trader.position_manager import PositionManager
@@ -260,7 +259,7 @@ class StrategyRunner(abc.ABC):
             sync_position_events = self.sync_model.sync_positions(
                 strategy_cycle_or_trigger_check_ts,
                 state,
-                universe,
+                cast(TradingStrategyUniverse, universe),
                 pricing_model,
             )
             debug_details["sync_position_events"] = sync_position_events
