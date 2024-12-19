@@ -147,6 +147,8 @@ def make_factory_from_strategy_mod(mod: StrategyModuleInformation) -> StrategyFa
             # Get Parameters instance from the strategy module
             parameters = mod_info.parameters
 
+        create_indicators = mod_info.create_indicators or create_indicators
+
         runner = PandasTraderRunner(
             timed_task_context_manager=timed_task_context_manager,
             execution_model=execution_model,

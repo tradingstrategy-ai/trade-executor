@@ -17,6 +17,7 @@ from ..log import setup_logging
 from ...strategy.bootstrap import import_strategy_file
 from ...strategy.description import StrategyExecutionDescription
 from ...strategy.execution_context import ExecutionContext, ExecutionMode, preflight_execution_context
+from ...strategy.pandas_trader.indicator import calculate_and_load_indicators, calculate_and_load_indicators_inline, MemoryIndicatorStorage
 from ...strategy.parameters import dump_parameters
 from ...strategy.run_state import RunState
 from ...strategy.trading_strategy_universe import TradingStrategyUniverseModel
@@ -36,7 +37,7 @@ def check_universe(
 ):
     """Checks that the trading universe is healthy.
 
-    Check that we can call create_trading_universe() in the strategy module and it loads data correctly.
+    Check that create_trading_universe() and create_indicators() functions in the strategy module work.
     """
 
     global logger
@@ -116,5 +117,20 @@ def check_universe(
     for idx, pair in enumerate(universe.data_universe.pairs.iterate_pairs(), start=1):
         command_line_pair_id = construct_identifier_from_pair(pair)
         logger.info(f"Pair {idx}. {pair.get_ticker()}, identifier: {command_line_pair_id}")
+    logger.info("-" * 80)
+
+    create_indicators = run_description.runner.create_indicators
+    if create_indicators:
+        logger.info("Checking create_indicators()")
+        parameters = run_description.runner.parameters
+        calculate_and_load_indicators_inline(
+            create_indicators=create_indicators,
+            strategy_universe=universe,
+            parameters=parameters,
+            execution_context=execution_context,
+            storage=MemoryIndicatorStorage(universe.get_cache_key()),
+        )
+    else:
+        logger.info("Strategy module lacks create_indicators()")
 
 
