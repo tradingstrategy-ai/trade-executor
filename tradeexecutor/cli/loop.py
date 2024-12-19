@@ -1078,7 +1078,13 @@ class ExecutionLoop:
                 state,
                 reserve_assets,
             )
-            
+
+            if self.sync_model.has_position_sync():
+                logger.warning(
+                    "sync_positions() requested by %s, but not supported on the startup sync. TODO.",
+                    self.sync_model,
+                )
+
             self.store.sync(state)
 
         logger.info("Performing startup accounting check")

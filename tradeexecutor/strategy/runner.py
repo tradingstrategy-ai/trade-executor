@@ -15,6 +15,7 @@ from types import NoneType
 from typing import List, Optional, Tuple, cast, Callable
 
 from eth_defi.provider.anvil import is_anvil, mine
+from tests.backtest.test_backtest_short_execution import sync_model
 from tradeexecutor.backtest.backtest_execution import BacktestExecutionFailed
 from tradeexecutor.ethereum.ethereum_protocol_adapters import EthereumPairConfigurator
 from tradeexecutor.ethereum.tx import TransactionBuilder
@@ -231,6 +232,8 @@ class StrategyRunner(abc.ABC):
         token = reserve_assets[0]
         assert token.decimals and token.decimals > 0, f"Reserve asset lacked decimals"
 
+        routing_state, pricing_model, valuation_model = self.setup_routing(universe)
+
         if end_block is not None:
             # Only msg in live executoin
             logger.info("sync_portfolio() starting at block %s", end_block)
@@ -252,12 +255,23 @@ class StrategyRunner(abc.ABC):
         debug_details["total_equity_at_start"] = state.portfolio.get_total_equity()
         debug_details["total_cash_at_start"] = state.portfolio.get_cash()
 
+        if self.sync_model.has_position_sync():
+            logger.info("Performing sync_positions() for %s", self.sync_model)
+            sync_position_events = self.sync_model.sync_positions(
+                strategy_cycle_or_trigger_check_ts,
+                state,
+                universe,
+                pricing_model,
+            )
+            debug_details["sync_position_events"] = sync_position_events
+        else:
+            logger.info("No sync_positions() needed")
+
         # If we have any new deposits, let's refresh our stats right away
         # to reflect the new balances
         if len(balance_update_events) > 0:
 
             with self.timed_task_context_manager("sync_portfolio_stats_refresh"):
-                routing_state, pricing_model, valuation_model = self.setup_routing(universe)
 
                 timestamp = strategy_cycle_or_trigger_check_ts
 
