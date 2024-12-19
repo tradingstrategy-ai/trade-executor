@@ -17,6 +17,7 @@ To get started with indicators see examples in :py:mod:`tradeexecutor.strategy.p
 import datetime
 import threading
 from abc import ABC, abstractmethod
+from pprint import pformat
 
 from IPython import get_ipython
 from skopt.space import Dimension
@@ -414,7 +415,7 @@ class IndicatorDefinition:
             ret = self.func(**full_kwargs)
             return self._check_good_return_value(ret)
         except Exception as e:
-            raise IndicatorCalculationFailed(f"Could not calculate indicator {self.name} ({self.func}) for parameters {self.parameters}, candles is {len(candles)} rows, {candles.columns} columns\nThe original exception was: {e}") from e
+            raise IndicatorCalculationFailed(f"Could not calculate indicator {self.name} ({self.func}) for parameters {self.parameters}, candles is {len(candles)} rows, {candles.columns} columns\nThe original exception was: {e}\nCalling with args {pformat(full_kwargs)}") from e
 
     def calculate_universe(
         self,
@@ -467,15 +468,14 @@ class IndicatorDefinition:
             if "pair" in func_args:
                 parameters["pair"] = pair
 
-        if timestamp:
-            assert isinstance(timestamp, pd.Timestamp)
-            if "timestamp" in func_args:
-                parameters["timestamp"] = pair
+        if "timestamp" in func_args:
+            assert isinstance(timestamp, (pd.Timestamp, NoneType)), f"Got {type(timestamp)}, but expected pd.Timestamp"
+            parameters["timestamp"] = timestamp
 
         if execution_context:
             assert isinstance(execution_context, ExecutionContext)
             if "execution_context" in func_args:
-                parameters["execution_context"] = pair
+                parameters["execution_context"] = execution_context
 
         return parameters
 
@@ -1120,7 +1120,7 @@ def _calculate_and_save_indicator_result(
     key: IndicatorKey,
     all_indicators: set[IndicatorKey],
     execution_context: ExecutionContext,
-    strategy_cycle_timestamp: datetime.datetime,
+    strategy_cycle_timestamp: datetime.datetime | None,
 ) -> IndicatorResult | None:
     """Calculate an indicator result.
 
@@ -1130,6 +1130,8 @@ def _calculate_and_save_indicator_result(
     assert isinstance(storage, IndicatorStorage), f"Got {type(storage)}"
     assert isinstance(key, IndicatorKey), f"Got {type(key)}"
     assert type(all_indicators) == set, f"Got {type(all_indicators)}"
+    assert isinstance(execution_context, ExecutionContext), f"Got {type(execution_context)}"
+    assert isinstance(strategy_cycle_timestamp, (datetime.datetime, NoneType)), f"Got {type(strategy_cycle_timestamp)}"
 
     global _universe
 
@@ -1758,7 +1760,7 @@ def calculate_indicators(
 
     task_args: list[CalculateTaskArguments] = []
     for key in remaining:
-        task_args.append((storage, key, all_combinations, strategy_cycle_timestamp, execution_context))
+        task_args.append((storage, key, all_combinations, execution_context, strategy_cycle_timestamp))
 
     results = {}
 
@@ -2037,7 +2039,7 @@ def calculate_and_load_indicators_inline(
 
     if create_indicators:
         assert indicator_set is None, f"Cannot give both indicator_set and create_indicators"
-        indicator_set = prepare_indicators(create_indicators, parameters, strategy_universe, execution_context, timestamp=None)
+        indicator_set = prepare_indicators(create_indicators, parameters, strategy_universe, execution_context, timestamp=strategy_cycle_timestamp)
 
     if ipython:
         # Unable to fork when running on Ipython
@@ -2052,6 +2054,7 @@ def calculate_and_load_indicators_inline(
         verbose=verbose,
         indicators=indicator_set,
         max_workers=max_workers,
+        strategy_cycle_timestamp=strategy_cycle_timestamp,
     )
 
     return StrategyInputIndicators(

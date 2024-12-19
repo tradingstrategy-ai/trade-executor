@@ -947,15 +947,13 @@ def test_get_indicators_combined(strategy_universe):
 def test_calculate_indicators_tvl(strategy_universe):
     """Test calculate_and_load_indicators_inline() """
 
-    # Some example parameters we use to calculate indicators.
-    # E.g. RSI length
     class Parameters:
-        ewm_length = 20
+        ewm_span = 20
 
-    def tvl_ewm(close, execution_context, timestamp):
+    def tvl_ewm(close, span, execution_context, timestamp):
         assert isinstance(close, pd.Series)
         assert isinstance(execution_context, ExecutionContext)
-        assert timestamp is None
+        assert isinstance(timestamp, pd.Timestamp), f"Got: {timestamp}"
 
         if timestamp:
             # Live trading, end comes from the clock.
@@ -966,17 +964,16 @@ def test_calculate_indicators_tvl(strategy_universe):
             df_ff = forward_fill(
                 df,
                 "1h",
+                columns=("close",),
                 forward_fill_until=timestamp,
             )
-            return df_ff["close"]
+            series = df_ff["close"]
         else:
             # Backtesting, end comes from the series
-            return close.resample("1h").ffill()
+            series = close.resample("1h").ffill()
 
-    # Create indicators.
-    # Map technical indicator functions to their parameters, like length.
-    # You can also use hardcoded values, but we recommend passing in parameter dict,
-    # as this allows later to reuse the code for optimising/grid searches, etc.
+        return series.ewm(span=span).mean()
+
     def create_indicators(
         timestamp,
         parameters,
@@ -987,23 +984,25 @@ def test_calculate_indicators_tvl(strategy_universe):
         indicator_set.add(
             "tvl_ewm",
             tvl_ewm,
-            parameters={"length": parameters.ewm_length},
+            parameters={"span": parameters.ewm_span},
             source=IndicatorSource.tvl,
         )
         return indicator_set
 
-    # Calculate indicators - will spawn multiple worker processed,
-    # or load cached results from the disk
     indicators = calculate_and_load_indicators_inline(
         strategy_universe=strategy_universe,
         parameters=StrategyParameters.from_class(Parameters),
         create_indicators=create_indicators,
+        strategy_cycle_timestamp=datetime.datetime(2022, 2, 2),
+        max_workers=1,
+        storage=MemoryIndicatorStorage(strategy_universe.get_cache_key()),
     )
 
     # From calculated indicators, read one indicator (RSI for BTC)
     wbtc_usdc = strategy_universe.get_pair_by_human_description((ChainId.ethereum, "test-dex", "WBTC", "USDC"))
     tvl = indicators.get_indicator_series("tvl_ewm", pair=wbtc_usdc)
-    assert len(tvl) == 214  # We have series data for 214 days
+    assert len(tvl) == 5905  # We have series data for 214 days
+    assert tvl.index[-1] == pd.Timestamp("2022-02-02")
 
 
 
