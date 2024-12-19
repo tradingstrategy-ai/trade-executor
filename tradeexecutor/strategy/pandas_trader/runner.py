@@ -61,7 +61,11 @@ class PandasTraderRunner(StrategyRunner):
         debug_details: dict,
         indicators:StrategyInputIndicators | None = None,
         ) -> List[TradeExecution]:
-        """Run one strategy tick."""
+        """Run one strategy tick.
+
+        :param clock:
+            Strategy cycle timestamp
+        """
 
         assert isinstance(strategy_universe, TradingStrategyUniverse)
         universe = strategy_universe.data_universe
@@ -425,7 +429,7 @@ class PandasTraderRunner(StrategyRunner):
             execution_context=self.execution_context,
             indicators=indicators,
             parameters=self.parameters,
-            timestamp=timestamp,
+            strategy_cycle_timestamp=timestamp,
         )
 
         strategy_input_indicators = StrategyInputIndicators(
