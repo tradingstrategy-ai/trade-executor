@@ -35,6 +35,7 @@ def check_universe(
     cache_path: Optional[Path] = shared_options.cache_path,
     max_data_delay_minutes: int = typer.Option(24*60, envvar="MAX_DATA_DELAY_MINUTES", help="How fresh the OHCLV data for our strategy must be before failing"),
     log_level: str = shared_options.log_level,
+    max_workers: int | None = shared_options.max_workers,
 ):
     """Checks that the trading universe is healthy.
 
@@ -139,6 +140,7 @@ def check_universe(
             execution_context=execution_context,
             storage=MemoryIndicatorStorage(universe.get_cache_key()),
             strategy_cycle_timestamp=strategy_cycle_timestamp,
+            max_workers=max_workers,
         )
     else:
         logger.info("Strategy module lacks create_indicators()")
