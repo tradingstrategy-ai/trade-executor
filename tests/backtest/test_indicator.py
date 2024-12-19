@@ -24,8 +24,10 @@ from tradeexecutor.testing.synthetic_exchange_data import generate_exchange
 from tradeexecutor.testing.synthetic_price_data import generate_multi_pair_candles
 from tradingstrategy.candle import GroupedCandleUniverse
 from tradingstrategy.chain import ChainId
+from tradingstrategy.liquidity import GroupedLiquidityUniverse
 from tradingstrategy.timebucket import TimeBucket
 from tradingstrategy.universe import Universe
+from tradingstrategy.utils.forward_fill import forward_fill
 
 
 @pytest.fixture(scope="module")
@@ -78,13 +80,21 @@ def strategy_universe() -> TradingStrategyUniverse:
     )
     candle_universe = GroupedCandleUniverse(candles)
 
+    liq = generate_multi_pair_candles(
+        time_bucket,
+        start_at,
+        end_at,
+        pairs={wbtc_usdc: 250_000, weth_usdc: 500_000}
+    )
+    liquidity_universe = GroupedLiquidityUniverse(liq)
+
     universe = Universe(
         time_bucket=time_bucket,
         chains={mock_chain_id},
         exchanges={mock_exchange},
         pairs=pair_universe,
         candles=candle_universe,
-        liquidity=None
+        liquidity=liquidity_universe
     )
 
     return TradingStrategyUniverse(data_universe=universe, reserve_assets=[usdc])
@@ -934,7 +944,66 @@ def test_get_indicators_combined(strategy_universe):
     assert list(pair_ids.unique()) == [1, 2]
 
 
+def test_calculate_indicators_tvl(strategy_universe):
+    """Test calculate_and_load_indicators_inline() """
 
+    # Some example parameters we use to calculate indicators.
+    # E.g. RSI length
+    class Parameters:
+        ewm_length = 20
+
+    def tvl_ewm(close, execution_context, timestamp):
+        assert isinstance(close, pd.Series)
+        assert isinstance(execution_context, ExecutionContext)
+        assert timestamp is None
+
+        if timestamp:
+            # Live trading, end comes from the clock.
+            # Needs special forward filler
+            df = pd.DataFrame({
+                "close": close,
+            })
+            df_ff = forward_fill(
+                df,
+                "1h",
+                forward_fill_until=timestamp,
+            )
+            return df_ff["close"]
+        else:
+            # Backtesting, end comes from the series
+            return close.resample("1h").ffill()
+
+    # Create indicators.
+    # Map technical indicator functions to their parameters, like length.
+    # You can also use hardcoded values, but we recommend passing in parameter dict,
+    # as this allows later to reuse the code for optimising/grid searches, etc.
+    def create_indicators(
+        timestamp,
+        parameters,
+        strategy_universe,
+        execution_context,
+    ) -> IndicatorSet:
+        indicator_set = IndicatorSet()
+        indicator_set.add(
+            "tvl_ewm",
+            tvl_ewm,
+            parameters={"length": parameters.ewm_length},
+            source=IndicatorSource.tvl,
+        )
+        return indicator_set
+
+    # Calculate indicators - will spawn multiple worker processed,
+    # or load cached results from the disk
+    indicators = calculate_and_load_indicators_inline(
+        strategy_universe=strategy_universe,
+        parameters=StrategyParameters.from_class(Parameters),
+        create_indicators=create_indicators,
+    )
+
+    # From calculated indicators, read one indicator (RSI for BTC)
+    wbtc_usdc = strategy_universe.get_pair_by_human_description((ChainId.ethereum, "test-dex", "WBTC", "USDC"))
+    tvl = indicators.get_indicator_series("tvl_ewm", pair=wbtc_usdc)
+    assert len(tvl) == 214  # We have series data for 214 days
 
 
 
