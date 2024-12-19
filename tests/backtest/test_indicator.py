@@ -24,8 +24,10 @@ from tradeexecutor.testing.synthetic_exchange_data import generate_exchange
 from tradeexecutor.testing.synthetic_price_data import generate_multi_pair_candles
 from tradingstrategy.candle import GroupedCandleUniverse
 from tradingstrategy.chain import ChainId
+from tradingstrategy.liquidity import GroupedLiquidityUniverse
 from tradingstrategy.timebucket import TimeBucket
 from tradingstrategy.universe import Universe
+from tradingstrategy.utils.forward_fill import forward_fill
 
 
 @pytest.fixture(scope="module")
@@ -78,13 +80,21 @@ def strategy_universe() -> TradingStrategyUniverse:
     )
     candle_universe = GroupedCandleUniverse(candles)
 
+    liq = generate_multi_pair_candles(
+        time_bucket,
+        start_at,
+        end_at,
+        pairs={wbtc_usdc: 250_000, weth_usdc: 500_000}
+    )
+    liquidity_universe = GroupedLiquidityUniverse(liq)
+
     universe = Universe(
         time_bucket=time_bucket,
         chains={mock_chain_id},
         exchanges={mock_exchange},
         pairs=pair_universe,
         candles=candle_universe,
-        liquidity=None
+        liquidity=liquidity_universe
     )
 
     return TradingStrategyUniverse(data_universe=universe, reserve_assets=[usdc])
@@ -934,7 +944,65 @@ def test_get_indicators_combined(strategy_universe):
     assert list(pair_ids.unique()) == [1, 2]
 
 
+def test_calculate_indicators_tvl(strategy_universe):
+    """Test calculate_and_load_indicators_inline() """
 
+    class Parameters:
+        ewm_span = 20
+
+    def tvl_ewm(close, span, execution_context, timestamp):
+        assert isinstance(close, pd.Series)
+        assert isinstance(execution_context, ExecutionContext)
+        assert isinstance(timestamp, pd.Timestamp), f"Got: {timestamp}"
+
+        if timestamp:
+            # Live trading, end comes from the clock.
+            # Needs special forward filler
+            df = pd.DataFrame({
+                "close": close,
+            })
+            df_ff = forward_fill(
+                df,
+                "1h",
+                columns=("close",),
+                forward_fill_until=timestamp,
+            )
+            series = df_ff["close"]
+        else:
+            # Backtesting, end comes from the series
+            series = close.resample("1h").ffill()
+
+        return series.ewm(span=span).mean()
+
+    def create_indicators(
+        timestamp,
+        parameters,
+        strategy_universe,
+        execution_context,
+    ) -> IndicatorSet:
+        indicator_set = IndicatorSet()
+        indicator_set.add(
+            "tvl_ewm",
+            tvl_ewm,
+            parameters={"span": parameters.ewm_span},
+            source=IndicatorSource.tvl,
+        )
+        return indicator_set
+
+    indicators = calculate_and_load_indicators_inline(
+        strategy_universe=strategy_universe,
+        parameters=StrategyParameters.from_class(Parameters),
+        create_indicators=create_indicators,
+        strategy_cycle_timestamp=datetime.datetime(2022, 2, 2),
+        max_workers=1,
+        storage=MemoryIndicatorStorage(strategy_universe.get_cache_key()),
+    )
+
+    # From calculated indicators, read one indicator (RSI for BTC)
+    wbtc_usdc = strategy_universe.get_pair_by_human_description((ChainId.ethereum, "test-dex", "WBTC", "USDC"))
+    tvl = indicators.get_indicator_series("tvl_ewm", pair=wbtc_usdc)
+    assert len(tvl) == 5905  # We have series data for 214 days
+    assert tvl.index[-1] == pd.Timestamp("2022-02-02")
 
 
 

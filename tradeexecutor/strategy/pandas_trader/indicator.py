@@ -17,6 +17,7 @@ To get started with indicators see examples in :py:mod:`tradeexecutor.strategy.p
 import datetime
 import threading
 from abc import ABC, abstractmethod
+from pprint import pformat
 
 from IPython import get_ipython
 from skopt.space import Dimension
@@ -285,7 +286,13 @@ class IndicatorDefinition:
     def is_per_pair(self) -> bool:
         return self.source.is_per_pair()
 
-    def calculate_by_pair_external(self, pair: TradingPairIdentifier, resolver: "IndicatorDependencyResolver") -> pd.DataFrame | pd.Series:
+    def calculate_by_pair_external(
+        self,
+        pair: TradingPairIdentifier,
+        resolver: "IndicatorDependencyResolver",
+        timestamp: pd.Timestamp | None,
+        execution_context: ExecutionContext,
+    ) -> pd.DataFrame | pd.Series:
         """Calculate indicator for external data.
 
         :param pair:
@@ -306,7 +313,14 @@ class IndicatorDefinition:
         except Exception as e:
             raise IndicatorCalculationFailed(f"Could not calculate external data indicator {self.name} ({self.func}) for parameters {self.parameters}, pair {pair}") from e
 
-    def calculate_by_pair(self, input: pd.Series, pair: TradingPairIdentifier, resolver: "IndicatorDependencyResolver") -> pd.DataFrame | pd.Series:
+    def calculate_by_pair(
+        self,
+        input: pd.Series,
+        pair: TradingPairIdentifier,
+        resolver: "IndicatorDependencyResolver",
+        timestamp: pd.Timestamp | None,
+        execution_context: ExecutionContext,
+    ) -> pd.DataFrame | pd.Series:
         """Calculate the underlying indicator value.
 
         :param input:
@@ -321,30 +335,48 @@ class IndicatorDefinition:
         """
         try:
             input_fixed = _flatten_index(input)
-            ret = self.func(input_fixed, **self._fix_parameters_for_function_signature(resolver, pair))
+            ret = self.func(input_fixed, **self._fix_parameters_for_function_signature(resolver, pair, timestamp, execution_context))
             return self._check_good_return_value(ret)
         except Exception as e:
             raise IndicatorCalculationFailed(f"Could not calculate indicator {self.name} ({self.func}) for parameters {self.parameters}, input data is {len(input)} rows: {e}, pair is {pair}") from e
 
-    def calculate_dependencies_only_per_pair(self, pair: TradingPairIdentifier, resolver: "IndicatorDependencyResolver") -> pd.DataFrame | pd.Series:
+    def calculate_dependencies_only_per_pair(
+        self,
+        pair: TradingPairIdentifier,
+        resolver: "IndicatorDependencyResolver",
+        timestamp: pd.Timestamp | None,
+        execution_context: ExecutionContext,
+    ) -> pd.DataFrame | pd.Series:
         """Calculate the indicator value that only takes other indicators as input."""
         assert self.dependency_order > 1, "Dependency-based indicator order cannot be first. Did you forget to declare dependencies?"
         try:
-            ret = self.func( **self._fix_parameters_for_function_signature(resolver, pair))
+            ret = self.func( **self._fix_parameters_for_function_signature(resolver, pair, timestamp, execution_context))
             return self._check_good_return_value(ret)
         except Exception as e:
             raise IndicatorCalculationFailed(f"Could not calculate indicator {self.name} ({self.func}) for parameters {self.parameters}, input data is {len(input)} rows: {e}, pair is {pair}") from e
 
-    def calculate_dependencies_only_per_universe(self, resolver: "IndicatorDependencyResolver") -> pd.DataFrame | pd.Series:
+    def calculate_dependencies_only_per_universe(
+        self,
+        resolver: "IndicatorDependencyResolver",
+        timestamp: pd.Timestamp | None,
+        execution_context: ExecutionContext,
+    ) -> pd.DataFrame | pd.Series:
         """Calculate the indicator value that only takes other indicators as input."""
         assert self.dependency_order > 1, "Dependency-based indicator order cannot be first. Did you forget to declare dependencies?"
         try:
-            ret = self.func( **self._fix_parameters_for_function_signature(resolver, pair=None))
+            ret = self.func( **self._fix_parameters_for_function_signature(resolver, None, timestamp, execution_context))
             return self._check_good_return_value(ret)
         except Exception as e:
             raise IndicatorCalculationFailed(f"Could not calculate indicator {self.name} ({self.func}) for parameters {self.parameters}, input data is {len(input)} rows: {e}") from e
 
-    def calculate_by_pair_ohlcv(self, candles: pd.DataFrame, pair: TradingPairIdentifier, resolver: "IndicatorDependencyResolver") -> pd.DataFrame | pd.Series:
+    def calculate_by_pair_ohlcv(
+        self,
+        candles: pd.DataFrame,
+        pair: TradingPairIdentifier,
+        resolver: "IndicatorDependencyResolver",
+        timestamp: pd.Timestamp | None,
+        execution_context: ExecutionContext,
+    ) -> pd.DataFrame | pd.Series:
         """Calculate the underlying OHCLV indicator value.
 
         Assume function can take parameters: `open`, `high`, `low`, `close`, `volume`,
@@ -375,7 +407,7 @@ class IndicatorDefinition:
         if len(full_kwargs) == 0:
             raise IndicatorCalculationFailed(f"Could not calculate OHLCV indicator {self.name} ({self.func}): does not take any of function arguments from {needed_args}")
 
-        fixed_params = self._fix_parameters_for_function_signature(resolver, pair)
+        fixed_params = self._fix_parameters_for_function_signature(resolver, pair, timestamp, execution_context)
 
         full_kwargs.update(fixed_params)
 
@@ -383,9 +415,15 @@ class IndicatorDefinition:
             ret = self.func(**full_kwargs)
             return self._check_good_return_value(ret)
         except Exception as e:
-            raise IndicatorCalculationFailed(f"Could not calculate indicator {self.name} ({self.func}) for parameters {self.parameters}, candles is {len(candles)} rows, {candles.columns} columns\nThe original exception was: {e}") from e
+            raise IndicatorCalculationFailed(f"Could not calculate indicator {self.name} ({self.func}) for parameters {self.parameters}, candles is {len(candles)} rows, {candles.columns} columns\nThe original exception was: {e}\nCalling with args {pformat(full_kwargs)}") from e
 
-    def calculate_universe(self, input: TradingStrategyUniverse, resolver: "IndicatorDependencyResolver") -> pd.DataFrame | pd.Series:
+    def calculate_universe(
+        self,
+        input: TradingStrategyUniverse,
+        resolver: "IndicatorDependencyResolver",
+        timestamp: pd.Timestamp | None,
+        execution_context: ExecutionContext,
+    ) -> pd.DataFrame | pd.Series:
         """Calculate the underlying indicator value.
 
         :param input:
@@ -399,7 +437,7 @@ class IndicatorDefinition:
 
         """
         try:
-            ret = self.func(input, **self._fix_parameters_for_function_signature(resolver, None))
+            ret = self.func(input, **self._fix_parameters_for_function_signature(resolver, None, timestamp, execution_context))
             return self._check_good_return_value(ret)
         except Exception as e:
             raise IndicatorCalculationFailed(f"Could not calculate indicator {self.name} ({self.func}) for parameters {self.parameters}, input universe is {input}.\nException is {e}\n\n To use Python debugger, set `max_workers=1`, and if doing a grid search, also set `multiprocess=False`") from e
@@ -408,10 +446,16 @@ class IndicatorDefinition:
         assert isinstance(df, (pd.Series, pd.DataFrame)), f"Indicator did not return pd.DataFrame or pd.Series: {self.name}, we got {type(df)}\nCheck you are using IndicatorSource correcly e.g. IndicatorSource.close_price when creating indicators"
         return df
 
-    def _fix_parameters_for_function_signature(self, resolver: "IndicatorDependencyResolver", pair: TradingPairIdentifier | None) -> dict:
-        """Update parameters to include resolver if the indicator needs it.
+    def _fix_parameters_for_function_signature(
+        self,
+        resolver: "IndicatorDependencyResolver",
+        pair: TradingPairIdentifier | None,
+        timestamp: pd.Timestamp | None,
+        execution_context: ExecutionContext | None,
+    ) -> dict:
+        """Update parameters to include optional parameter if the indicator needs them.
 
-        This was a late addon, so we cram it in here.
+        - This was a late addon, so we cram it in here.
         """
 
         parameters = self.parameters.copy()
@@ -423,6 +467,15 @@ class IndicatorDefinition:
         if pair:
             if "pair" in func_args:
                 parameters["pair"] = pair
+
+        if "timestamp" in func_args:
+            assert isinstance(timestamp, (pd.Timestamp, NoneType)), f"Got {type(timestamp)}, but expected pd.Timestamp"
+            parameters["timestamp"] = timestamp
+
+        if execution_context:
+            assert isinstance(execution_context, ExecutionContext)
+            if "execution_context" in func_args:
+                parameters["execution_context"] = execution_context
 
         return parameters
 
@@ -1066,6 +1119,8 @@ def _calculate_and_save_indicator_result(
     storage: DiskIndicatorStorage | MemoryIndicatorStorage,
     key: IndicatorKey,
     all_indicators: set[IndicatorKey],
+    execution_context: ExecutionContext,
+    strategy_cycle_timestamp: datetime.datetime | None,
 ) -> IndicatorResult | None:
     """Calculate an indicator result.
 
@@ -1075,6 +1130,8 @@ def _calculate_and_save_indicator_result(
     assert isinstance(storage, IndicatorStorage), f"Got {type(storage)}"
     assert isinstance(key, IndicatorKey), f"Got {type(key)}"
     assert type(all_indicators) == set, f"Got {type(all_indicators)}"
+    assert isinstance(execution_context, ExecutionContext), f"Got {type(execution_context)}"
+    assert isinstance(strategy_cycle_timestamp, (datetime.datetime, NoneType)), f"Got {type(strategy_cycle_timestamp)}"
 
     global _universe
 
@@ -1094,6 +1151,12 @@ def _calculate_and_save_indicator_result(
 
     indicator = key.definition
 
+    # Use pd.Timestamp() because we deal with pd.Series()
+    if strategy_cycle_timestamp:
+        timestamp = pd.Timestamp(strategy_cycle_timestamp)
+    else:
+        timestamp = None
+
     if indicator.is_per_pair():
         assert key.pair.internal_id, f"Per-pair indicator lacks pair internal_id: {key.pair}"
         try:
@@ -1101,22 +1164,55 @@ def _calculate_and_save_indicator_result(
                 case IndicatorSource.open_price:
                     column = "open"
                     input = strategy_universe.data_universe.candles.get_samples_by_pair(key.pair.internal_id)[column]
-                    data = indicator.calculate_by_pair(input, key.pair, resolver)
+                    data = indicator.calculate_by_pair(
+                        input,
+                        key.pair,
+                        resolver=resolver,
+                        timestamp=timestamp,
+                        execution_context=execution_context
+                    )
                 case IndicatorSource.close_price:
                     column = "close"
                     input = strategy_universe.data_universe.candles.get_samples_by_pair(key.pair.internal_id)[column]
-                    data = indicator.calculate_by_pair(input, key.pair, resolver)
+                    data = indicator.calculate_by_pair(
+                        input,
+                        key.pair,
+                        resolver=resolver,
+                        timestamp=timestamp,
+                        execution_context=execution_context
+                    )
                 case IndicatorSource.ohlcv:
                     input = strategy_universe.data_universe.candles.get_samples_by_pair(key.pair.internal_id)
-                    data = indicator.calculate_by_pair_ohlcv(input, key.pair, resolver)
+                    data = indicator.calculate_by_pair_ohlcv(
+                        input,
+                        key.pair,
+                        resolver=resolver,
+                        timestamp=timestamp,
+                        execution_context=execution_context
+                    )
                 case IndicatorSource.tvl:
                     assert strategy_universe.data_universe.liquidity is not None, "TVL/liquidity data not loaded, trying to create TVL indicator"
                     input = strategy_universe.data_universe.liquidity.get_samples_by_pair(key.pair.internal_id)
-                    data = indicator.calculate_by_pair_ohlcv(input, key.pair, resolver)
+                    data = indicator.calculate_by_pair_ohlcv(
+                        input,
+                        key.pair,
+                        resolver=resolver,
+                        timestamp=timestamp,
+                        execution_context=execution_context
+                    )
                 case IndicatorSource.external_per_pair:
-                    data = indicator.calculate_by_pair_external(key.pair, resolver)
+                    data = indicator.calculate_by_pair_external(
+                        key.pair,
+                        resolver=resolver,
+                        timestamp=timestamp,
+                        execution_context=execution_context
+                    )
                 case IndicatorSource.dependencies_only_per_pair:
-                    data = indicator.calculate_dependencies_only_per_pair(key.pair, resolver)
+                    data = indicator.calculate_dependencies_only_per_pair(
+                        key.pair,
+                        resolver=resolver,
+                        timestamp=timestamp,
+                        execution_context=execution_context,                    )
                 case _:
                     raise NotImplementedError(f"Unsupported input source {key.pair} {key.definition} {indicator.source}")
 
@@ -1135,9 +1231,18 @@ def _calculate_and_save_indicator_result(
         # Calculate indicator over the whole universe
         match indicator.source:
             case IndicatorSource.strategy_universe:
-                data = indicator.calculate_universe(strategy_universe, resolver)
+                data = indicator.calculate_universe(
+                    strategy_universe,
+                    resolver=resolver,
+                    timestamp=timestamp,
+                    execution_context=execution_context,
+                )
             case IndicatorSource.dependencies_only_universe:
-                data = indicator.calculate_dependencies_only_per_universe(resolver)
+                data = indicator.calculate_dependencies_only_per_universe(
+                    resolver=resolver,
+                    timestamp=timestamp,
+                    execution_context=execution_context
+                )
             case _:
                 raise NotImplementedError(f"Unsupported input source {key.pair} {key.definition} {indicator.source}")
 
@@ -1612,6 +1717,7 @@ def calculate_indicators(
     label: str | None = None,
     all_combinations: set[IndicatorKey] | None = None,
     verbose=True,
+    strategy_cycle_timestamp: datetime.datetime = None,
 ) -> IndicatorResultMap:
     """Calculate indicators for which we do not have cached data yet.
 
@@ -1654,7 +1760,7 @@ def calculate_indicators(
 
     task_args: list[CalculateTaskArguments] = []
     for key in remaining:
-        task_args.append((storage, key, all_combinations))
+        task_args.append((storage, key, all_combinations, execution_context, strategy_cycle_timestamp))
 
     results = {}
 
@@ -1773,7 +1879,7 @@ def calculate_and_load_indicators(
     max_workers: int | Callable = get_safe_max_workers_count,
     max_readers: int | Callable = get_safe_max_workers_count,
     verbose=True,
-    timestamp: datetime.datetime = None,
+    strategy_cycle_timestamp: datetime.datetime = None,
 ) -> IndicatorResultMap:
     """Precalculate all indicators.
 
@@ -1807,7 +1913,7 @@ def calculate_and_load_indicators(
     if create_indicators:
         assert indicators is None, f"Give either indicators or create_indicators, not both"
         assert parameters is not None, f"parameters argument must be given if you give create_indicators"
-        indicators = prepare_indicators(create_indicators, parameters, strategy_universe, execution_context, timestamp=timestamp)
+        indicators = prepare_indicators(create_indicators, parameters, strategy_universe, execution_context, timestamp=strategy_cycle_timestamp)
 
     assert isinstance(indicators, IndicatorSet), f"Got class {type(indicators)} when IndicatorSet expected"
 
@@ -1841,6 +1947,7 @@ def calculate_and_load_indicators(
         max_workers=max_workers,
         all_combinations=all_combinations,
         verbose=verbose,
+        strategy_cycle_timestamp=strategy_cycle_timestamp,
     )
 
     result = cached | calculated
@@ -1862,6 +1969,7 @@ def calculate_and_load_indicators_inline(
     create_indicators: CreateIndicatorsProtocol = None,
     storage: IndicatorStorage | None = None,
     max_workers: int | Callable = get_safe_max_workers_count,
+    strategy_cycle_timestamp: datetime.datetime = None,
 ) -> "tradeexecutor.strategy.pandas_trader.strategy_input.StrategyInputIndicators":
     """Calculate indicators in the notebook itself, before starting the backtest.
 
@@ -1931,7 +2039,7 @@ def calculate_and_load_indicators_inline(
 
     if create_indicators:
         assert indicator_set is None, f"Cannot give both indicator_set and create_indicators"
-        indicator_set = prepare_indicators(create_indicators, parameters, strategy_universe, execution_context, timestamp=None)
+        indicator_set = prepare_indicators(create_indicators, parameters, strategy_universe, execution_context, timestamp=strategy_cycle_timestamp)
 
     if ipython:
         # Unable to fork when running on Ipython
@@ -1946,6 +2054,7 @@ def calculate_and_load_indicators_inline(
         verbose=verbose,
         indicators=indicator_set,
         max_workers=max_workers,
+        strategy_cycle_timestamp=strategy_cycle_timestamp,
     )
 
     return StrategyInputIndicators(
