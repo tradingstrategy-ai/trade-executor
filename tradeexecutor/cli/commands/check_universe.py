@@ -37,7 +37,7 @@ def check_universe(
 ):
     """Checks that the trading universe is healthy.
 
-    Check that we can call create_trading_universe() in the strategy module and it loads data correctly.
+    Check that create_trading_universe() and create_indicators() functions in the strategy module work.
     """
 
     global logger
@@ -124,6 +124,7 @@ def check_universe(
         logger.info("Checking create_indicators()")
         parameters = run_description.runner.parameters
         calculate_and_load_indicators_inline(
+            create_indicators=create_indicators,
             strategy_universe=universe,
             parameters=parameters,
             execution_context=execution_context,
