@@ -1913,7 +1913,7 @@ def calculate_and_load_indicators(
     if create_indicators:
         assert indicators is None, f"Give either indicators or create_indicators, not both"
         assert parameters is not None, f"parameters argument must be given if you give create_indicators"
-        indicators = prepare_indicators(create_indicators, parameters, strategy_universe, execution_context, timestamp=timestamp)
+        indicators = prepare_indicators(create_indicators, parameters, strategy_universe, execution_context, timestamp=strategy_cycle_timestamp)
 
     assert isinstance(indicators, IndicatorSet), f"Got class {type(indicators)} when IndicatorSet expected"
 
