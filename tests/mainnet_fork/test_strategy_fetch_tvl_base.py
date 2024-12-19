@@ -1,7 +1,4 @@
-"""Real-time TVL fetching on Base.
-
-- Run decide_trades() with some pairs from Ethereum mainnet
-"""
+"""Real-time TVL fetching on Base."""
 
 import os
 
@@ -10,7 +7,7 @@ import pytest
 
 from eth_defi.provider.multi_provider import create_multi_provider_web3
 from tradeexecutor.ethereum.ethereum_protocol_adapters import EthereumPairConfigurator
-from tradeexecutor.ethereum.tvl import fetch_quote_token_tvls, CurrencyConversionRateMissing
+from tradeexecutor.ethereum.tvl import fetch_quote_token_tvls
 from tradeexecutor.state.trade import TradeExecution
 from tradeexecutor.strategy.execution_context import unit_test_trading_execution_context
 from tradeexecutor.strategy.generic.generic_pricing_model import GenericPricing
