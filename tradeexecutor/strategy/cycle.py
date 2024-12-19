@@ -23,6 +23,14 @@ class CycleDuration(enum.Enum):
     E.g. 24h cycle is always run at 00:00.
 
     See :ref:`strategy cycle` for more information.
+
+    To get the latest cycle timestamp for the current time:
+
+    .. code-block:: python
+
+        clock = datetime.datetime.utcnow()
+        strategy_cycle_timestamp = snap_to_previous_tick(clock)
+
     """
 
     #: Run `decide_trades()` one second

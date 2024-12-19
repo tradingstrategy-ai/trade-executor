@@ -15,6 +15,7 @@ from .pair_mapping import construct_identifier_from_pair
 from ..bootstrap import prepare_executor_id, prepare_cache
 from ..log import setup_logging
 from ...strategy.bootstrap import import_strategy_file
+from ...strategy.cycle import CycleDuration, snap_to_previous_tick
 from ...strategy.description import StrategyExecutionDescription
 from ...strategy.execution_context import ExecutionContext, ExecutionMode, preflight_execution_context
 from ...strategy.pandas_trader.indicator import calculate_and_load_indicators, calculate_and_load_indicators_inline, MemoryIndicatorStorage
@@ -119,16 +120,25 @@ def check_universe(
         logger.info(f"Pair {idx}. {pair.get_ticker()}, identifier: {command_line_pair_id}")
     logger.info("-" * 80)
 
+    # Poke create_indicators() if the strategy module defines one
     create_indicators = run_description.runner.create_indicators
     if create_indicators:
-        logger.info("Checking create_indicators()")
         parameters = run_description.runner.parameters
+        cycle_duration: CycleDuration = parameters["cycle_duration"]
+        clock = datetime.datetime.utcnow()
+        strategy_cycle_timestamp = snap_to_previous_tick(
+            clock,
+            cycle_duration,
+        )
+
+        logger.info("Checking create_indicators(), using strategy cycle timestamp %s", strategy_cycle_timestamp)
         calculate_and_load_indicators_inline(
             create_indicators=create_indicators,
             strategy_universe=universe,
             parameters=parameters,
             execution_context=execution_context,
             storage=MemoryIndicatorStorage(universe.get_cache_key()),
+            strategy_cycle_timestamp=strategy_cycle_timestamp,
         )
     else:
         logger.info("Strategy module lacks create_indicators()")

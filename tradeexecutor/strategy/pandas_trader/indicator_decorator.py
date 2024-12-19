@@ -30,6 +30,11 @@ class ParameterMissing(Exception):
     pass
 
 
+#: List of function arguments for different indicator functions that are built-in,
+#: and do not come from StrategyParameters definitions.
+#:
+#: Each indicator source may have different arguments available.
+#:
 DEFAULT_INDICATOR_ARGUMENTS = {
     "close",
     "open",
