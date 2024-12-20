@@ -23,6 +23,7 @@ from ...strategy.parameters import dump_parameters
 from ...strategy.run_state import RunState
 from ...strategy.trading_strategy_universe import TradingStrategyUniverseModel
 from ...strategy.universe_model import UniverseOptions
+from ...utils.cpu import get_safe_max_workers_count
 from ...utils.timer import timed_task
 from . import shared_options
 
@@ -140,7 +141,7 @@ def check_universe(
             execution_context=execution_context,
             storage=MemoryIndicatorStorage(universe.get_cache_key()),
             strategy_cycle_timestamp=strategy_cycle_timestamp,
-            max_workers=max_workers,
+            max_workers=max_workers or get_safe_max_workers_count,
         )
     else:
         logger.info("Strategy module lacks create_indicators()")

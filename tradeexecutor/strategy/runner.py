@@ -135,11 +135,12 @@ class StrategyRunner(abc.ABC):
             self.trade_settle_wait = trade_settle_wait
 
         logger.info(
-            "Created strategy runner: %s, engine version: %s, running mode: %s, max_price_impact: %s",
+            "Created strategy runner: %s, engine version: %s, running mode: %s, max_price_impact: %s, routing model: %s",
             self.__class__.__name__,
             self.execution_context.engine_version,
             self.execution_context.mode.name,
-            self.max_price_impact
+            self.max_price_impact,
+            routing_model,
         )
 
         # If planned and executed price is % off then
