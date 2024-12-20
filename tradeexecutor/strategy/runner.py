@@ -545,6 +545,9 @@ class StrategyRunner(abc.ABC):
             # The new style routing initialisation
             logger.info("Lazily initialised the default routing model, as routing model has not been set up earlier")
             self.routing_model = routing_model = self.execution_model.create_default_routing_model(universe)
+            logger.info("Lazy routing model initialised: %s", self.routing_model)
+        else:
+            logger.info("Using passed routing model: %s", self.routing_model)
 
         assert routing_model, "Routing model not set"
 
