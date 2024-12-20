@@ -6,7 +6,9 @@ import logging
 
 from eth_defi.velvet import VelvetVault
 from tradeexecutor.ethereum.execution import EthereumExecution
-from tradeexecutor.ethereum.velvet.velvet_enso_routing import VelvetEnsoRouting
+from tradeexecutor.ethereum.velvet.velvet_enso_routing import VelvetEnsoRouting, VelvetEnsoRoutingState
+from tradeexecutor.state.state import State
+from tradeexecutor.state.trade import TradeExecution
 from tradeexecutor.strategy.execution_model import RoutingStateDetails
 from tradeexecutor.strategy.routing import RoutingState, RoutingModel
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
@@ -55,3 +57,26 @@ class VelvetExecution(EthereumExecution):
             reserve_token_address=reserve_asset.address,
         )
 
+    def execute_trades(
+        self,
+        ts: datetime.datetime,
+        state: State,
+        trades: list[TradeExecution],
+        routing_model: RoutingModel,
+        routing_state: RoutingState,
+        check_balances=False,
+        rebroadcast=False,
+        triggered=False,
+    ):
+        assert isinstance(routing_model, VelvetEnsoRouting), f"Got {routing_model}"
+        assert isinstance(routing_state, VelvetEnsoRoutingState), f"Got {routing_state}"
+        return super().execute_trades(
+            ts=ts,
+            state=state,
+            trades=trades,
+            routing_model=routing_model,
+            routing_state=routing_state,
+            check_balances=check_balances,
+            rebroadcast=rebroadcast,
+            triggered=triggered,
+        )

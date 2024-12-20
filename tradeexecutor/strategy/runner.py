@@ -30,10 +30,10 @@ from tradeexecutor.strategy.execution_model import ExecutionModel
 from tradeexecutor.strategy.generic.generic_pricing_model import GenericPricing
 from tradeexecutor.strategy.generic.generic_router import GenericRouting
 from tradeexecutor.strategy.generic.generic_valuation import GenericValuation
-from tradeexecutor.strategy.pandas_trader.indicator import CreateIndicatorsProtocolV1, DiskIndicatorStorage, CreateIndicatorsProtocol
+from tradeexecutor.strategy.pandas_trader.indicator import CreateIndicatorsProtocol
 from tradeexecutor.strategy.pandas_trader.strategy_input import StrategyInputIndicators
 from tradeexecutor.strategy.parameters import StrategyParameters
-from tradeexecutor.strategy.sync_model import SyncMethodV0, SyncModel
+from tradeexecutor.strategy.sync_model import SyncModel
 from tradeexecutor.strategy.run_state import RunState
 from tradeexecutor.strategy.output import output_positions, DISCORD_BREAK_CHAR, output_trades
 from tradeexecutor.strategy.pandas_trader.position_manager import PositionManager
@@ -135,11 +135,12 @@ class StrategyRunner(abc.ABC):
             self.trade_settle_wait = trade_settle_wait
 
         logger.info(
-            "Created strategy runner: %s, engine version: %s, running mode: %s, max_price_impact: %s",
+            "Created strategy runner: %s, engine version: %s, running mode: %s, max_price_impact: %s, routing model: %s",
             self.__class__.__name__,
             self.execution_context.engine_version,
             self.execution_context.mode.name,
-            self.max_price_impact
+            self.max_price_impact,
+            routing_model,
         )
 
         # If planned and executed price is % off then
@@ -231,6 +232,8 @@ class StrategyRunner(abc.ABC):
         token = reserve_assets[0]
         assert token.decimals and token.decimals > 0, f"Reserve asset lacked decimals"
 
+        routing_state, pricing_model, valuation_model = self.setup_routing(universe)
+
         if end_block is not None:
             # Only msg in live executoin
             logger.info("sync_portfolio() starting at block %s", end_block)
@@ -252,12 +255,23 @@ class StrategyRunner(abc.ABC):
         debug_details["total_equity_at_start"] = state.portfolio.get_total_equity()
         debug_details["total_cash_at_start"] = state.portfolio.get_cash()
 
+        if self.sync_model.has_position_sync():
+            logger.info("Performing sync_positions() for %s", self.sync_model)
+            sync_position_events = self.sync_model.sync_positions(
+                strategy_cycle_or_trigger_check_ts,
+                state,
+                cast(TradingStrategyUniverse, universe),
+                pricing_model,
+            )
+            debug_details["sync_position_events"] = sync_position_events
+        else:
+            logger.info("No sync_positions() needed")
+
         # If we have any new deposits, let's refresh our stats right away
         # to reflect the new balances
         if len(balance_update_events) > 0:
 
             with self.timed_task_context_manager("sync_portfolio_stats_refresh"):
-                routing_state, pricing_model, valuation_model = self.setup_routing(universe)
 
                 timestamp = strategy_cycle_or_trigger_check_ts
 
@@ -531,6 +545,9 @@ class StrategyRunner(abc.ABC):
             # The new style routing initialisation
             logger.info("Lazily initialised the default routing model, as routing model has not been set up earlier")
             self.routing_model = routing_model = self.execution_model.create_default_routing_model(universe)
+            logger.info("Lazy routing model initialised: %s", self.routing_model)
+        else:
+            logger.info("Using passed routing model: %s", self.routing_model)
 
         assert routing_model, "Routing model not set"
 

@@ -74,6 +74,14 @@ def close_all(
 
     logger.info("We received balance update events: %s", balance_updates)
 
+    if sync_model.has_position_sync():
+        sync_model.sync_positions(
+            ts,
+            state,
+            universe,
+            pricing_model
+        )
+
     vault_address = sync_model.get_vault_address()
     hot_wallet = sync_model.get_hot_wallet()
     gas_at_start = hot_wallet.get_native_currency_balance(web3)

@@ -30,6 +30,8 @@ from ..slippage import configure_max_slippage_tolerance
 from ..version_info import VersionInfo
 from ..watchdog import stop_watchdog
 from ...ethereum.enzyme.vault import EnzymeVaultSyncModel
+from ...ethereum.velvet.execution import VelvetExecution
+from ...ethereum.velvet.vault import VelvetVaultSyncModel
 from ...state.state import State
 from ...state.store import NoneStore, JSONFileStore
 from ...strategy.approval import ApprovalType
@@ -424,6 +426,7 @@ def start(
             test_evm_uniswap_v2_router=test_evm_uniswap_v2_router,
             test_evm_uniswap_v2_init_code_hash=test_evm_uniswap_v2_init_code_hash,
             clear_caches=clear_caches,
+            asset_management_mode=asset_management_mode,
         )
 
         # Currently, all actions require us to have a valid API key
@@ -520,6 +523,12 @@ def start(
         trade_immediately = True
     else:
         logger.info("No immediate trade set up, max cycles is %s", max_cycles)
+
+    # Trip wire for Velvet integration, as Velvet needs its special Enso path
+    if asset_management_mode == AssetManagementMode.velvet:
+        assert isinstance(execution_model, VelvetExecution), f"Got: {execution_model}"
+        assert isinstance(sync_model, VelvetVaultSyncModel), f"Got: {sync_model}"
+        assert routing_model is None, f"Got: {routing_model}"
 
     loop = ExecutionLoop(
         name=name,
