@@ -98,7 +98,6 @@ def test_fetch_tvl_base(
 
     - Run a single cycle of decide_trades
     """
-
     strategy_input = StrategyInput(
         cycle=1,
         strategy_universe=strategy_universe,
