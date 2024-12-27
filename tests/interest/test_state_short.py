@@ -10,7 +10,7 @@ from _decimal import Decimal
 
 import pytest
 
-from eth_defi.uniswap_v2.utils import ZERO_ADDRESS
+from eth_defi.abi import ZERO_ADDRESS
 from tradeexecutor.state.identifier import TradingPairIdentifier, AssetIdentifier, TradingPairKind, AssetType
 from tradeexecutor.utils.leverage_calculations import LeverageEstimate
 from tradeexecutor.state.reserve import ReservePosition

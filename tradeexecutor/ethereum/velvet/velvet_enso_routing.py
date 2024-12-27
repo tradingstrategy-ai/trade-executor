@@ -17,6 +17,7 @@ from tradeexecutor.state.interest_distribution import AssetInterestData
 from tradeexecutor.state.state import State
 from tradeexecutor.state.trade import TradeExecution
 from tradeexecutor.state.types import JSONHexAddress
+from tradeexecutor.strategy.execution_context import ExecutionContext
 from tradeexecutor.strategy.routing import RoutingState, RoutingModel
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
 from tradeexecutor.strategy.universe_model import StrategyExecutionUniverse
@@ -99,21 +100,26 @@ class VelvetEnsoRouting(RoutingModel):
         tx_builder = state.tx_builder
 
         logger.info(
-            "Preparing Enso swap %s -> %s, amount %s, slippage tolerance %f",
+            "Preparing Enso swap %s -> %s, amount %s (%s), slippage tolerance %f",
             token_in.token_symbol,
             token_out.token_symbol,
             swap_amount,
+            token_in.convert_to_decimal(swap_amount),
             trade.slippage_tolerance,
         )
 
-        tx_data = vault.prepare_swap_with_enso(
-            token_in=token_in.address,
-            token_out=token_out.address,
-            swap_amount=swap_amount,
-            slippage=trade.slippage_tolerance,
-            remaining_tokens=remaining_tokens,
-            swap_all=trade.closing,
-        )
+        try:
+            tx_data = vault.prepare_swap_with_enso(
+                token_in=token_in.address,
+                token_out=token_out.address,
+                swap_amount=swap_amount,
+                slippage=trade.slippage_tolerance,
+                remaining_tokens=remaining_tokens,
+                swap_all=trade.closing,
+                manage_token_list=False,
+            )
+        except Exception as e:
+            raise RuntimeError(f"Could not perform trade {trade} on Enso") from e
         blockchain_transaction = tx_builder.sign_transaction_data(
             tx_data,
             notes=trade.notes,
@@ -128,6 +134,15 @@ class VelvetEnsoRouting(RoutingModel):
         check_balances=False,
         rebroadcast=False,
     ):
+        """
+        See test_velvet_e2e for testse.
+
+        Error codes:
+
+        - Revert reason: execution reverted: custom error 0xe2f23246
+
+        - 2Po: Enso slippage error, or out of funds
+        """
 
         logger.info(
             "Preparing %s trades for Enso execution",
@@ -135,15 +150,17 @@ class VelvetEnsoRouting(RoutingModel):
         )
 
         for trade in trades:
-            assert trade.is_spot(), "Velvet only supports spot trades"
+            assert trade.is_spot(), f"Velvet only supports spot trades, got {trade}"
 
         # Calculate what tokens we will have after this trade batch is complete
-        remaining_tokens = {p.pair.base for p in state.portfolio.get_open_and_frozen_positions()}
+        remaining_tokens = {p.pair.base for p in state.portfolio.get_open_and_frozen_positions() if p.get_quantity(planned=False) > 0}
         remaining_tokens.add(routing_state.get_reserve_asset())
 
         for t in trades:
             if t.closing:
-                remaining_tokens.discard(t)
+                remaining_tokens.discard(t.pair.base)
+            elif t.is_buy():
+                remaining_tokens.add(t.pair.base)
 
             logger.info(
                 "Preparing trade %s, remaining tokens %s",

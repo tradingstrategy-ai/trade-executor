@@ -21,7 +21,7 @@ from tradeexecutor.state.state import State
 from tradeexecutor.state.trade import TradeExecution
 from tradingstrategy.chain import ChainId
 from tradingstrategy.pair import PandasPairUniverse
-from eth_defi.abi import get_deployed_contract
+from eth_defi.abi import get_deployed_contract, ZERO_ADDRESS_STR
 from eth_defi.tx import AssetDelta
 from eth_defi.gas import estimate_gas_fees
 from eth_defi.uniswap_v3.deployment import UniswapV3Deployment, mock_partial_deployment_for_analysis
@@ -39,7 +39,6 @@ from eth_defi.one_delta.price import (
     estimate_buy_received_amount, 
     estimate_sell_received_amount,
 )
-from eth_defi.utils import ZERO_ADDRESS_STR
 from eth_defi.aave_v3.constants import MAX_AMOUNT
 
 from tradeexecutor.state.types import Percent

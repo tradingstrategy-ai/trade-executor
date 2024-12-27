@@ -14,7 +14,7 @@ from eth_defi.token import fetch_erc20_details
 from eth_defi.trade import TradeSuccess
 from tradingstrategy.chain import ChainId
 from tradingstrategy.pair import PandasPairUniverse
-from eth_defi.abi import get_deployed_contract
+from eth_defi.abi import get_deployed_contract, ZERO_ADDRESS_STR
 from eth_defi.tx import AssetDelta
 from eth_defi.gas import estimate_gas_fees
 from eth_defi.uniswap_v3.deployment import UniswapV3Deployment, mock_partial_deployment_for_analysis
@@ -27,7 +27,6 @@ from eth_defi.one_delta.position import (
     reduce_short_position,
 )
 from eth_defi.aave_v3.loan import supply, withdraw
-from eth_defi.utils import ZERO_ADDRESS_STR
 from eth_defi.aave_v3.constants import MAX_AMOUNT
 
 from tradeexecutor.state.types import Percent

@@ -37,12 +37,11 @@ from typing import Optional
 
 from typer import Option
 
-from eth_defi.abi import get_deployed_contract
+from eth_defi.abi import get_deployed_contract, ZERO_ADDRESS
 from eth_defi.enzyme.generic_adapter_vault import deploy_guard as _deploy_guard, deploy_generic_adapter_with_guard, whitelist_sender_receiver, bind_vault
 from eth_defi.enzyme.policy import update_adapter_policy
 from eth_defi.enzyme.vault import Vault
 from eth_defi.hotwallet import HotWallet
-from eth_defi.uniswap_v2.utils import ZERO_ADDRESS
 from tradeexecutor.cli.guard import generate_whitelist, get_enzyme_deployment
 from tradeexecutor.monkeypatch.web3 import construct_sign_and_send_raw_middleware
 from tradingstrategy.chain import ChainId
