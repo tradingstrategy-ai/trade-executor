@@ -98,7 +98,8 @@ def repair(
         json_rpc_binance=json_rpc_binance,
         json_rpc_polygon=json_rpc_polygon,
         json_rpc_avalanche=json_rpc_avalanche,
-        json_rpc_ethereum=json_rpc_ethereum, json_rpc_base=json_rpc_base, 
+        json_rpc_ethereum=json_rpc_ethereum,
+        json_rpc_base=json_rpc_base,
         json_rpc_anvil=json_rpc_anvil,
         json_rpc_arbitrum=json_rpc_arbitrum,
         unit_testing=unit_testing,
@@ -137,6 +138,7 @@ def repair(
         test_evm_uniswap_v2_router=test_evm_uniswap_v2_router,
         test_evm_uniswap_v2_init_code_hash=test_evm_uniswap_v2_init_code_hash,
         clear_caches=False,
+        asset_management_mode=asset_management_mode,
     )
     assert client is not None, "You need to give details for TradingStrategy.ai client"
 
