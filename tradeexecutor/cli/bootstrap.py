@@ -345,7 +345,10 @@ def create_metadata(
     sort_priority=0,
     fees=None,
 ) -> Metadata:
-    """Create metadata object from the configuration variables."""
+    """Create metadata object from the configuration variables.
+
+    - This metadata is exposed to frontend to be displayed on the website
+    """
 
     on_chain_data = OnChainData(
         asset_management_mode=asset_management_mode,

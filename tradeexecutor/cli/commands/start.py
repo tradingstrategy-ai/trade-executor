@@ -336,10 +336,14 @@ def start(
                 raise RuntimeError("Does not know how to set up a state file for this run")
 
         # Pass vault metadata to HTTP API
-        if isinstance(sync_model, EnzymeVaultSyncModel):
-            vault = sync_model.vault
-        elif isinstance(sync_model, VelvetVaultSyncModel):
-            vault = sync_model.vault
+        if asset_management_mode.is_vault():
+            match sync_model:
+                case EnzymeVaultSyncModel():
+                    vault = sync_model.vault
+                case VelvetVaultSyncModel():
+                    vault = sync_model.vault
+                case _:
+                    raise NotImplementedError(f"Vault not implemented: {asset_management_mode}")
         else:
             vault = None
 
