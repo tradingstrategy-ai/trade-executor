@@ -355,11 +355,10 @@ def create_metadata(
 
     if vault:
 
-        on_chain_data.owner = vault.get_owner()
-
         match asset_management_mode:
             case AssetManagementMode.enzyme:
                 assert isinstance(vault, Vault)
+                on_chain_data.owner = vault.get_owner()
                 on_chain_data.smart_contracts.update(vault.deployment.contracts.get_all_addresses())
                 on_chain_data.smart_contracts.update({
                     "vault": vault.vault.address,
@@ -391,6 +390,7 @@ def create_metadata(
             case AssetManagementMode.velvet:
                 assert isinstance(vault, VelvetVault)
                 on_chain_data.smart_contracts.update(vault.info)
+                on_chain_data.owner = vault.owner_address
             case _:
                 raise NotImplementedError(f"Unsupported asset management mode: {asset_management_mode}")
 
