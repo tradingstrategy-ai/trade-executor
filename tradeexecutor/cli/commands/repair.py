@@ -13,12 +13,16 @@ from .app import app
 from ..bootstrap import prepare_executor_id, create_state_store, create_execution_and_sync_model, prepare_cache, create_web3_config, create_client
 from ..log import setup_logging
 from ...ethereum.rebroadcast import rebroadcast_all
+from ...ethereum.velvet.execution import VelvetExecution
+from ...ethereum.velvet.vault import VelvetVaultSyncModel
+from ...ethereum.velvet.velvet_enso_routing import VelvetEnsoRouting
 from ...state.repair import repair_trades, repair_tx_not_generated, repair_zero_quantity
 from ...strategy.approval import UncheckedApprovalModel
 from ...strategy.bootstrap import make_factory_from_strategy_mod
 from ...strategy.description import StrategyExecutionDescription
 from ...strategy.execution_context import ExecutionContext, ExecutionMode
 from ...strategy.execution_model import AssetManagementMode
+from ...strategy.generic.generic_pricing_model import GenericPricing
 from ...strategy.run_state import RunState
 from ...strategy.strategy_module import read_strategy_module
 from ...strategy.trading_strategy_universe import TradingStrategyUniverseModel
@@ -138,7 +142,7 @@ def repair(
         test_evm_uniswap_v2_router=test_evm_uniswap_v2_router,
         test_evm_uniswap_v2_init_code_hash=test_evm_uniswap_v2_init_code_hash,
         clear_caches=False,
-        asset_management_mode=asset_management_mode,
+        asset_management_mode=asset_management_mode,  # Needed for Velvet
     )
     assert client is not None, "You need to give details for TradingStrategy.ai client"
 
@@ -180,6 +184,15 @@ def repair(
     routing_model = runner.routing_model
     routing_state, pricing_model, valuation_method = runner.setup_routing(universe)
 
+    # Trip wire for Velvet integration, as Velvet needs its special Enso path
+    if asset_management_mode == AssetManagementMode.velvet:
+        assert isinstance(execution_model, VelvetExecution), f"Got: {execution_model}"
+        assert isinstance(sync_model, VelvetVaultSyncModel), f"Got: {sync_model}"
+        assert isinstance(pricing_model, GenericPricing), f"Got: {pricing_model}"
+        # TODO: Clean up this parameter passing in some point
+        assert isinstance(runner.routing_model, VelvetEnsoRouting), f"Got: {runner.routing_model}"
+        assert routing_model is None, f"Got: {routing_model}"
+
     #
     # First trades that have txs missing
     #
@@ -196,7 +209,7 @@ def repair(
         web3config.get_default(),
         state,
         execution_model,
-        routing_model,
+        runner.routing_model,  # runner. -> Needed for Velvet
         routing_state
     )
     logger.info("Rebroadcast fixed %d trades", len(trades))
