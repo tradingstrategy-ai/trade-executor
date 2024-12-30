@@ -236,6 +236,7 @@ class AssetManagementMode(enum.Enum):
         return self in (AssetManagementMode.hot_wallet, AssetManagementMode.enzyme, AssetManagementMode.velvet, AssetManagementMode.lagoon)
 
     def is_vault(self) -> bool:
+        """Are we trading using a vault smart contract"""
         return self in (AssetManagementMode.enzyme, AssetManagementMode.velvet, AssetManagementMode.lagoon,)
 
 

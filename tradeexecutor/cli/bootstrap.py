@@ -358,6 +358,8 @@ def create_metadata(
 
     if vault:
 
+        assert asset_management_mode.is_vault()
+
         match asset_management_mode:
             case AssetManagementMode.enzyme:
                 assert isinstance(vault, Vault)
