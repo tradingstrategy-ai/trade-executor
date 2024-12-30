@@ -334,7 +334,7 @@ def create_metadata(
     icon_url,
     asset_management_mode: AssetManagementMode,
     chain_id: ChainId,
-    vault: Optional[Vault],
+    vault: Optional[Vault | VelvetVault],
     backtest_result: Optional[Path] = None,
     backtest_notebook: Optional[Path] = None,
     backtest_html: Optional[Path] = None,
@@ -345,7 +345,10 @@ def create_metadata(
     sort_priority=0,
     fees=None,
 ) -> Metadata:
-    """Create metadata object from the configuration variables."""
+    """Create metadata object from the configuration variables.
+
+    - This metadata is exposed to frontend to be displayed on the website
+    """
 
     on_chain_data = OnChainData(
         asset_management_mode=asset_management_mode,
@@ -355,37 +358,44 @@ def create_metadata(
 
     if vault:
 
-        on_chain_data.owner = vault.get_owner()
+        match asset_management_mode:
+            case AssetManagementMode.enzyme:
+                assert isinstance(vault, Vault)
+                on_chain_data.owner = vault.get_owner()
+                on_chain_data.smart_contracts.update(vault.deployment.contracts.get_all_addresses())
+                on_chain_data.smart_contracts.update({
+                    "vault": vault.vault.address,
+                    "comptroller": vault.comptroller.address,
+                    "generic_adapter": vault.generic_adapter.address,
+                    "payment_forwarder": vault.payment_forwarder.address if vault.payment_forwarder else None,
+                    "terms_of_service": vault.terms_of_service_contract.address if vault.terms_of_service_contract else None,
+                    "guard": vault.guard_contract.address if vault.guard_contract else None,
+                })
 
-        on_chain_data.smart_contracts.update(vault.deployment.contracts.get_all_addresses())
-
-        on_chain_data.smart_contracts.update({
-            "vault": vault.vault.address,
-            "comptroller": vault.comptroller.address,
-            "generic_adapter": vault.generic_adapter.address,
-            "payment_forwarder": vault.payment_forwarder.address if vault.payment_forwarder else None,
-            "terms_of_service": vault.terms_of_service_contract.address if vault.terms_of_service_contract else None,
-            "guard": vault.guard_contract.address if vault.guard_contract else None,
-        })
-
-        if vault.deployment.contracts.fund_value_calculator is None:
-            # Hot fix for Polygon
-            # TODO: Fix properly, legacy
-            match vault.web3.eth.chain_id:
-                case 137 | 31337:
-                    on_chain_data.smart_contracts.update({
-                        "fund_value_calculator": "0xcdf038Dd3b66506d2e5378aee185b2f0084B7A33",
-                    })
-                case 1:
-                    on_chain_data.smart_contracts.update({
-                        "fund_value_calculator": "0x490e64E0690b4aa481Fb02255aED3d052Bad7BF1",
-                    })
-                case 42161:
-                    on_chain_data.smart_contracts.update({
-                        "fund_value_calculator": "0xea609eeb38d1ee8e8719597d47cc9276df9f8707",
-                    })
-                case _:
-                    raise NotImplementedError(f"Chain {vault.web3.eth.chain_id}")
+                if vault.deployment.contracts.fund_value_calculator is None:
+                    # Hot fix for Polygon
+                    # TODO: Fix properly, legacy
+                    match vault.web3.eth.chain_id:
+                        case 137 | 31337:
+                            on_chain_data.smart_contracts.update({
+                                "fund_value_calculator": "0xcdf038Dd3b66506d2e5378aee185b2f0084B7A33",
+                            })
+                        case 1:
+                            on_chain_data.smart_contracts.update({
+                                "fund_value_calculator": "0x490e64E0690b4aa481Fb02255aED3d052Bad7BF1",
+                            })
+                        case 42161:
+                            on_chain_data.smart_contracts.update({
+                                "fund_value_calculator": "0xea609eeb38d1ee8e8719597d47cc9276df9f8707",
+                            })
+                        case _:
+                            raise NotImplementedError(f"Chain {vault.web3.eth.chain_id}")
+            case AssetManagementMode.velvet:
+                assert isinstance(vault, VelvetVault)
+                on_chain_data.smart_contracts.update(vault.info)
+                on_chain_data.owner = vault.owner_address
+            case _:
+                raise NotImplementedError(f"Unsupported asset management mode: {asset_management_mode}")
 
     if backtest_result is not None:
         backtested_state = State.read_json_file(backtest_result)

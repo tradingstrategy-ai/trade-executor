@@ -235,6 +235,8 @@ class AssetManagementMode(enum.Enum):
         """
         return self in (AssetManagementMode.hot_wallet, AssetManagementMode.enzyme, AssetManagementMode.velvet, AssetManagementMode.lagoon)
 
+    def is_vault(self) -> bool:
+        return self in (AssetManagementMode.enzyme, AssetManagementMode.velvet, AssetManagementMode.lagoon,)
 
 
 

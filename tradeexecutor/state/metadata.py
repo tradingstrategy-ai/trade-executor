@@ -10,6 +10,7 @@ from typing import Optional, Dict, TypedDict, List, Set
 
 from dataclasses_json import dataclass_json
 
+from eth_defi.velvet.vault import VelvetVaultInfo
 from tradeexecutor.strategy.tag import StrategyTag
 from tradingstrategy.chain import ChainId
 
@@ -64,6 +65,12 @@ class EnzymeSmartContracts(TypedDict):
     terms_of_service: ZeroExAddress
 
 
+class VelvetSmartContracts(VelvetVaultInfo):
+    """Velvet smart contract addresses.
+
+    Just inherit directly from eth_defi package."""
+
+
 @dataclass_json
 @dataclass
 class OnChainData:
@@ -83,7 +90,7 @@ class OnChainData:
     #:
     #: Depend on the vault backend.
     #:
-    smart_contracts: EnzymeSmartContracts = field(default_factory=dict)
+    smart_contracts: EnzymeSmartContracts | VelvetSmartContracts = field(default_factory=dict)
 
     #: Vault owner address
     #:
