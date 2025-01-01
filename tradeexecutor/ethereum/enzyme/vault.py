@@ -118,7 +118,7 @@ class EnzymeVaultSyncModel(SyncModel):
     def resync_nonce(self):
         self.hot_wallet.sync_nonce(self.web3)
 
-    def get_vault_address(self) -> Optional[str]:
+    def get_key_address(self) -> Optional[str]:
         """Get the vault address we are using"""
         return self.vault.address
 
@@ -126,7 +126,7 @@ class EnzymeVaultSyncModel(SyncModel):
         return self.hot_wallet
 
     def get_token_storage_address(self) -> Optional[str]:
-        return self.get_vault_address()
+        return self.get_key_address()
 
     def is_ready_for_live_trading(self, state: State) -> bool:
         """Have we run init command on the vault."""
@@ -481,7 +481,7 @@ class EnzymeVaultSyncModel(SyncModel):
 
         return sync_interests(
             web3=self.web3,
-            wallet_address=self.get_vault_address(),
+            wallet_address=self.get_key_address(),
             timestamp=timestamp,
             state=state,
             universe=universe,
@@ -503,7 +503,7 @@ class EnzymeVaultSyncModel(SyncModel):
 
         return fetch_address_balances(
             self.web3,
-            self.get_vault_address(),
+            self.get_key_address(),
             sorted_assets,
             block_number=block_identifier,
             filter_zero=filter_zero,

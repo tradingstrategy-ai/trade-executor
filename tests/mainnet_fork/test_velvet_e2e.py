@@ -93,6 +93,7 @@ def environment(
         "TRADING_STRATEGY_API_KEY": TRADING_STRATEGY_API_KEY,
         "MAX_DATA_DELAY_MINUTES": str(10 * 60 * 24 * 365),  # 10 years or "disabled""
         "MIN_GAS_BALANCE": "0.005",
+        "RAISE_ON_UNCLEAN": "true",  # For correct-accounts
     }
     return environment
 
@@ -184,3 +185,19 @@ def test_base_memecoin_index_velvet_single_cycle(
     assert len(state.visualisation.get_messages_tail(5)) == 1
     assert len(state.portfolio.frozen_positions) == 0
 
+
+def test_velvet_correct_accounts(
+    environment: dict,
+    mocker,
+    state_file,
+    web3,
+):
+    """Check correct-accounts works with Velvet sync model.
+
+    - This test checks code runs, but does not attempt to repair any errors
+    """
+
+    cli = get_command(app)
+    mocker.patch.dict("os.environ", environment, clear=True)
+    cli.main(args=["init"], standalone_mode=False)
+    cli.main(args=["correct-accounts"], standalone_mode=False)

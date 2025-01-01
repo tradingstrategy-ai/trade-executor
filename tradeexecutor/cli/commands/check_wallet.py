@@ -169,12 +169,12 @@ def check_wallet(
     tx_builder = sync_model
 
     # Check balances
-    reserve_address = sync_model.get_vault_address() or sync_model.get_hot_wallet().address
+    reserve_address = sync_model.get_key_address() or sync_model.get_hot_wallet().address
     logger.info("Balance details")
     logger.info("  Hot wallet is %s", sync_model.get_hot_wallet().address)
     gas_balance = web3.eth.get_balance(hot_wallet.address) / 10**18
     if isinstance(sync_model, EnzymeVaultSyncModel):
-        logger.info("  Vault address is %s", sync_model.get_vault_address())
+        logger.info("  Vault address is %s", sync_model.get_key_address())
     logger.info("  We have %f tokens left for gas", gas_balance)
     logger.info("  The gas error limit is %f tokens", min_gas_balance)
 

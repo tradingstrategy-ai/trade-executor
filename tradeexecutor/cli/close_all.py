@@ -82,7 +82,7 @@ def close_all(
             pricing_model
         )
 
-    vault_address = sync_model.get_vault_address()
+    vault_address = sync_model.get_key_address()
     hot_wallet = sync_model.get_hot_wallet()
     gas_at_start = hot_wallet.get_native_currency_balance(web3)
 
