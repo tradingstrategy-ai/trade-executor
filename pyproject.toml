@@ -36,11 +36,11 @@ web3-ethereum-defi = {path = "deps/web3-ethereum-defi", develop = true, extras=[
 
 # https://github.com/apache/arrow/pull/35412
 # Last checked 2023-07, still broken
-urllib3 = "<2"
+#urllib3 = "<2"
 
 # Breaks OpenAPI package for now 2023-09
 # AttributeError: module 'jsonschema._utils' has no attribute 'load_schema'
-jsonschema = "4.17.3"
+# jsonschema = "4.17.3"
 
 #
 # Execution deps
@@ -61,11 +61,11 @@ beautifulsoup4 = {version="^4.12.2", optional = true}  # Needed to export HTML r
 # Web server deps
 #
 pyramid = {version="^2.0", optional = true}
-pyramid-openapi3 = {version="^0.16.0", optional = true}
+pyramid-openapi3 = "0.20.1"
 waitress = {version="^2.0.0", optional = true}
 WebTest = {version="^3.0.0", optional = true}
 # python-openapi3 incompatible with newer versions
-openapi-core = {version = "<0.17", optional = true}
+# openapi-core = {version = "<0.17", optional = true}
 
 #
 # Legacy strategy deps
@@ -118,6 +118,7 @@ pytest-timeout = "^2.3.1"
 
 # https://github.com/arynyklas/telegram_bot_logger/pull/1
 telegram-bot-logger = {git = "https://github.com/tradingstrategy-ai/telegram_bot_logger.git", branch="patch-bleeding-edges", optional = true}
+openapi-core = "0.19.1"
 
 [tool.poetry.extras]
 
