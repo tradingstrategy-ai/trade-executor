@@ -337,6 +337,9 @@ def correct_accounts(
     else:
         logger.info("Deposit/redemption distribution skipped")
 
+    if asset_management_mode.is_vault():
+        tx_builder.hot_wallet.sync_nonce(web3)
+
     balance_updates = _correct_accounts(
         state,
         corrections,
@@ -350,7 +353,7 @@ def correct_accounts(
         pricing_model=pricing_model,
         token_fix_method=UnknownTokenPositionFix.transfer_away if transfer_away else UnknownTokenPositionFix.open_missing_position,
     )
-    balance_updates = list(balance_updates)
+    balance_updates = list(balance_updates)  # Side effect: this will force execution of all actions stuck in the iterator
     logger.info(f"We did {len(corrections)} accounting corrections, of which {len(balance_updates)} internal state balance updates, new block height is {block_number:,} at {block_timestamp}")
 
     if not skip_save:
