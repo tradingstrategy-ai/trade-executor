@@ -29,6 +29,7 @@ numpy = "<2"  # https://stackoverflow.com/a/78638258/315168
 web3-ethereum-defi = {path = "deps/web3-ethereum-defi", develop = true, extras=["data", "test"]}
 
 # AttributeError: 'MathBlockParser' object has no attribute 'parse_axt_heading'
+# https://github.com/lepture/mistune/issues/403
 # https://github.com/jupyter/nbconvert/issues/2198
 mistune = "<3.1"
 
