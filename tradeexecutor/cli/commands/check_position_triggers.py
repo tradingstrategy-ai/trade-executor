@@ -116,7 +116,7 @@ def check_position_triggers(
     logger.info("Balance details")
     logger.info("  Hot wallet is %s", hot_wallet.address)
 
-    vault_address =  sync_model.get_vault_address()
+    vault_address =  sync_model.get_key_address()
     if vault_address:
         logger.info("  Vault is %s", vault_address)
         if vault_deployment_block_number:

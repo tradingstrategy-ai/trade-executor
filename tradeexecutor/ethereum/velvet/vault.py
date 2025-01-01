@@ -78,6 +78,9 @@ class VelvetVaultSyncModel(AddressSyncModel):
     def get_hot_wallet(self) -> Optional[HotWallet]:
         return self.hot_wallet
 
+    def get_key_address(self) -> Optional[str]:
+        return self.vault.portfolio_address
+
     def get_main_address(self) -> Optional[JSONHexAddress]:
         """Which is the onchain address that identifies this wallet/vault deployment.
 

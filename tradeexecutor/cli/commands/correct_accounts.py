@@ -144,7 +144,7 @@ def correct_accounts(
     logger.info("Balance details")
     logger.info("  Hot wallet is %s", hot_wallet.address)
 
-    vault_address =  sync_model.get_vault_address()
+    vault_address =  sync_model.get_key_address()
     if vault_address:
         logger.info("  Vault is %s", vault_address)
         if vault_deployment_block_number:
@@ -174,6 +174,7 @@ def correct_accounts(
         test_evm_uniswap_v2_router=test_evm_uniswap_v2_router,
         test_evm_uniswap_v2_init_code_hash=test_evm_uniswap_v2_init_code_hash,
         clear_caches=False,
+        asset_management_mode=asset_management_mode,
     )
     assert client is not None, "You need to give details for TradingStrategy.ai client"
 
@@ -272,14 +273,7 @@ def correct_accounts(
 
     check_state_internal_coherence(state)
 
-    if isinstance(sync_model, EnzymeVaultSyncModel):
-        vault = sync_model.vault
-        tx_builder = EnzymeTransactionBuilder(hot_wallet, vault)
-    elif isinstance(sync_model, HotWalletSyncModel):
-        vault = None
-        tx_builder = HotWalletTransactionBuilder(web3, hot_wallet)
-    else:
-        raise NotImplementedError()
+    tx_builder = sync_model.create_transaction_builder()
 
     # Set the default token dump address
     if not unknown_token_receiver:

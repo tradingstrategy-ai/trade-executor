@@ -125,7 +125,7 @@ def make_test_trade(
         )
         logger.info("sync_positions(): received balance update events: %s", balance_updates)
 
-    vault_address = sync_model.get_vault_address()
+    vault_address = sync_model.get_key_address()
     hot_wallet = sync_model.get_hot_wallet()
     gas_at_start = hot_wallet.get_native_currency_balance(web3)
 

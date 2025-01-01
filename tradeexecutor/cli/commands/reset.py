@@ -93,7 +93,7 @@ def reset(
     logger.info("Balance details")
     logger.info("  Hot wallet is %s", hot_wallet.address)
 
-    vault_address =  sync_model.get_vault_address()
+    vault_address =  sync_model.get_key_address()
     start_block = None
     if vault_address:
         logger.info("  Vault is %s", vault_address)

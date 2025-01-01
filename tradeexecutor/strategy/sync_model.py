@@ -46,8 +46,12 @@ class OnChainBalance:
 class SyncModel(ABC):
     """Abstract class for syncing on-chain fund movements event to the strategy treasury."""
 
-    def get_vault_address(self) -> Optional[str]:
-        """Get the vault address we are using.
+    def get_key_address(self) -> Optional[str]:
+        """Get the address that identifies the vault/wallet we are using.
+
+        - Vault smart contract address for Enzyme
+
+        - Portfolio address for Velvet
 
         :return:
             None if the strategy is not vaulted
