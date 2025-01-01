@@ -14,7 +14,6 @@ packages = [
 [tool.poetry.dependencies]
 python = ">=3.11,<=3.12"
 
-
 # Use these during development
 # TODO: FileLock, Parquet None issueset
 trading-strategy = {path = "deps/trading-strategy", develop = true}
@@ -28,19 +27,11 @@ tqdm-loggable = "^0.2"
 numpy = "<2"  # https://stackoverflow.com/a/78638258/315168
 
 web3-ethereum-defi = {path = "deps/web3-ethereum-defi", develop = true, extras=["data", "test"]}
-#web3-ethereum-defi = {version="0.24.6", extras=["data", "test"]}
 
-# tqdm progress bar doesn't show up in VScode Jupyter with ipywidgets>=8
-# https://github.com/microsoft/vscode-jupyter/issues/11014
-# ipywidgets = ">=7.0,<8.0"
+# AttributeError: 'MathBlockParser' object has no attribute 'parse_axt_heading'
+# https://github.com/jupyter/nbconvert/issues/2198
+mistune = "<3.1"
 
-# https://github.com/apache/arrow/pull/35412
-# Last checked 2023-07, still broken
-#urllib3 = "<2"
-
-# Breaks OpenAPI package for now 2023-09
-# AttributeError: module 'jsonschema._utils' has no attribute 'load_schema'
-# jsonschema = "4.17.3"
 
 #
 # Execution deps
