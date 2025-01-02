@@ -13,11 +13,12 @@ from tradeexecutor.cli.log import setup_telegram_logging, setup_custom_log_level
 
 TELEGRAM_API_KEY = os.environ.get("TELEGRAM_API_KEY")
 TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID")
+CI = os.environ.get("CI")
 
 pytestmark = pytest.mark.skipif(not(TELEGRAM_API_KEY and TELEGRAM_CHAT_ID), reason="Missing TELEGRAM_API_KEY and TELEGRAM_CHAT_ID env")
 
 
-@pytest.mark.skip(reason="Breaks multiprocess testing, refactor to cleanly get rid of TG handler for good, as this handler somehow is stuck around")
+@pytest.mark.skipif(CI, reason="Breaks multiprocess testing, refactor to cleanly get rid of TG handler for good, as this handler somehow is stuck around")
 def test_telegram_logging():
     """Send a messagea to TG group chat for manual inspection.
 
