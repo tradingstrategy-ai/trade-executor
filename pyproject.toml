@@ -112,6 +112,7 @@ pytest-timeout = "^2.3.1"
 telegram-bot-logger = {git = "https://github.com/tradingstrategy-ai/telegram_bot_logger.git", branch="main", optional = true}
 openapi-core = "0.19.1"
 
+
 [tool.poetry.extras]
 
 # Legacy strats
