@@ -1072,6 +1072,14 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
             See :term:`forward fill` for more information.
         """
 
+        logger.info(
+            "create_from_dataset(), forward fill: %s, until: %s, reserve: %s, dataset pairs %d",
+            forward_fill,
+            forward_fill_until,
+            reserve_asset,
+            len(dataset.pairs)
+        )
+
         chain_ids = dataset.pairs["chain_id"].unique()
 
         assert len(chain_ids) == 1, f"Currently only single chain datasets supported, got chains {chain_ids}"
