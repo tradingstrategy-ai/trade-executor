@@ -18,6 +18,7 @@ from pathlib import Path
 from typing import List, Optional, Callable, Tuple, Set, Dict, Iterable, Collection, TypeAlias
 
 import pandas as pd
+from more_itertools.more import bucket
 
 from tradeexecutor.state.types import JSONHexAddress, Percent
 from tradingstrategy.lending import LendingReserveUniverse, LendingReserveDescription, LendingCandleType, LendingCandleUniverse, UnknownLendingReserve, LendingProtocolType, LendingReserve

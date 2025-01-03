@@ -332,6 +332,7 @@ def console(
             remaining=indicators_needed,
             all_combinations=indicators_needed,
             max_workers=max_workers,
+            strategy_cycle_timestamp=cycle_timestamp,
         )
         indicators = StrategyInputIndicators(
             strategy_universe=universe,
