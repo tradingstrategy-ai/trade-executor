@@ -13,6 +13,7 @@ To start a console in shell with `docker-compose.yml` set up:
 """
 import datetime
 import itertools
+import multiprocessing
 from decimal import Decimal
 from pathlib import Path
 from typing import Optional
@@ -50,6 +51,7 @@ from ...strategy.run_state import RunState
 from ...strategy.strategy_module import read_strategy_module
 from ...strategy.trading_strategy_universe import TradingStrategyUniverseModel
 from ...strategy.universe_model import UniverseOptions
+from ...utils.cpu import get_safe_max_workers_count
 from ...utils.timer import timed_task
 
 
@@ -107,6 +109,7 @@ def console(
     log_level: str = shared_options.log_level,
 
     unit_testing: bool = shared_options.unit_testing,
+    max_workers: Optional[int] = shared_options.max_workers,
 ):
     """Open interactive IPython console to explore state.
 
@@ -229,13 +232,14 @@ def console(
     universe_model: TradingStrategyUniverseModel = run_description.universe_model
 
     cycle_duration: CycleDuration = None
-    if mod:
+    if mod and mod.parameters:
         cycle_duration = mod.parameters.get("cycle_duration")
 
     if cycle_duration:
         # We need to found universe timestamp to its previous cycle when we have data
         cycle_timestamp = cycle_duration.round_down(datetime.datetime.utcnow())
     else:
+        # Legacy path
         cycle_timestamp = datetime.datetime.utcnow()
 
     universe = universe_model.construct_universe(
@@ -300,6 +304,16 @@ def console(
     if mod.create_indicators:
         # If the strategy uses indicators calculate and expose them to the console
         #
+
+        if max_workers is None:
+            max_workers = get_safe_max_workers_count()
+
+        print(f"Creating real-time indicators for the strategy module for timestamp {cycle_timestamp}")
+        print(f"No indicator cache used")
+
+        # TODO: MemoryIndicatorStorage does not support yet parallel indicator calculations
+        max_workers = 1
+
         assert mod.parameters, "You need to have Parameters class if create_indicators is specified"
         indicator_storage = MemoryIndicatorStorage(universe_key=universe.get_cache_key())
         indicator_set = prepare_indicators(
@@ -317,7 +331,7 @@ def console(
             execution_context=execution_context,
             remaining=indicators_needed,
             all_combinations=indicators_needed,
-            max_workers=1,  # Max_workers=1 to enable easier debug
+            max_workers=max_workers,
         )
         indicators = StrategyInputIndicators(
             strategy_universe=universe,
