@@ -14,6 +14,7 @@ def test_cli_show_positions_long(mocker):
 
     environment = {
         "STATE_FILE": path.as_posix(),
+        "TX_TYPE": "all",
     }
 
     mocker.patch.dict("os.environ", environment, clear=True)
@@ -24,5 +25,6 @@ def test_cli_show_positions_long(mocker):
 
     assert "Open positions" in f.getvalue()
     assert "No frozen positions" in f.getvalue()
+    assert "Transactions by trade" in f.getvalue()
 
 

@@ -5,8 +5,10 @@ from typing import Iterable
 import pandas as pd
 
 from tradeexecutor.ethereum.revert import clean_revert_reason_message
+from tradeexecutor.state.blockhain_transaction import BlockchainTransaction
 from tradeexecutor.state.position import TradingPosition
 from tradeexecutor.state.reserve import ReservePosition
+from tradeexecutor.state.trade import TradeExecution
 
 
 def _ftime(v: datetime.datetime) -> str:
@@ -128,3 +130,93 @@ def display_reserve_position_events(position: ReservePosition) -> pd.DataFrame:
     df = df.fillna("")
     df = df.replace({pd.NaT: ""})
     return df
+
+
+
+def display_transactions(trades: Iterable[TradeExecution]) -> pd.DataFrame:
+    """Format blockchain transactions for console table output.
+
+    Display in one table
+
+    - Transaction data with associated trade information
+
+    :return:
+        DataFrame containing positions and trades, values as string formatted
+    """
+
+    items = []
+    idx = []
+    for t in trades:
+        ticker = t.pair.get_ticker()
+        trade_id = t.trade_id
+        for tx in t.blockchain_transactions:
+            idx.append(trade_id)
+            flags = []
+
+            if tx.is_reverted():
+                flags.append("R")
+
+            if t.is_buy():
+                flags.append("B")
+
+            if t.is_sell():
+                flags.append("S")
+
+            items.append({
+                "F": "".join(flags),
+                "Id": t.trade_id,
+                "Trade": ticker,
+                # "Broadcasted": _ftime(tx.broadcasted_at),
+                "Block": f"{tx.block_number or 0:,}",
+                "Hash": tx.tx_hash,
+                "Gas": tx.realised_gas_units_consumed,
+                "Price (GWei)": tx.realised_gas_price // (10**9),
+                "Revert reason": _format_long_string(tx.revert_reason),
+                # "Notes": (tx.notes or "")[0:20],
+            })
+
+    df = pd.DataFrame(items, index=idx)
+    df = df.fillna("")
+    df = df.replace({pd.NaT: ""})
+    df = df.sort_values(by=["Id", "Block"]).set_index("Id")
+    return df
+
+
+def _format_long_string(text, max_length=20):
+    """
+    Splits a long string into multiple lines.
+
+    Args:
+    text (str): The string to split.
+    max_length (int): Maximum number of characters per line. Default is 80.
+
+    Returns:
+    str: A multi-line string where no line exceeds max_length characters.
+    """
+
+    if text is None:
+        text = ""
+
+    # Split the text into words
+    words = text.split()
+    lines = []
+    current_line = ""
+
+    for word in words:
+        # If adding the word would exceed max_length, start a new line
+        if len(current_line) + len(word) + 1 > max_length:
+            lines.append(current_line.strip())
+            current_line = word
+        else:
+            # Add the word to the current line
+            if current_line:
+                current_line += " " + word
+            else:
+                current_line = word
+
+    # Append the last line if it's not empty
+    if current_line:
+        lines.append(current_line.strip())
+
+    # Join all lines with newline characters
+    return "\n".join(lines)

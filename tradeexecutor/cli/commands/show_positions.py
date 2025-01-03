@@ -11,7 +11,7 @@ from typer import Option
 
 from .app import app
 from ..bootstrap import prepare_executor_id, create_state_store
-from ...analysis.position import display_positions
+from ...analysis.position import display_positions, display_transactions
 from ...state.state import State
 from . import shared_options
 
@@ -29,12 +29,26 @@ class PositionType(enum.Enum):
     all = "all"
 
 
+class TransactionType(enum.Enum):
+    """What transaction output we want from show-positions command."""
+
+    none = "none"
+
+    #: Show only open positions
+    failed = "failed"
+
+    #: Show all positions
+    all = "all"
+
+
+
 @app.command()
 def show_positions(
     id: str = shared_options.id,
     state_file: Optional[Path] = shared_options.state_file,
     strategy_file: Optional[Path] = shared_options.optional_strategy_file,
-    position_type: PositionType = Option(PositionType.open_and_frozen.value, envvar="POSITION_TYPE", help="Which position types to display")
+    position_type: PositionType = Option(PositionType.open_and_frozen.value, envvar="POSITION_TYPE", help="Which position types to display"),
+    tx_type: TransactionType = Option(TransactionType.none, envvar="TX_TYPE", help="Which transactions to list"),
 ):
     """Display trading positions from a state file.
 
@@ -84,3 +98,23 @@ def show_positions(
         print("Closed positions")
         df = display_positions(state.portfolio.closed_positions.values())
         print(tabulate(df, headers='keys', tablefmt='rounded_outline'))
+
+    match tx_type:
+        case TransactionType.failed:
+            trades = (t for t in state.portfolio.get_all_trades() if t.is_failed())
+        case TransactionType.all:
+            trades = (t for t in state.portfolio.get_all_trades())
+        case TransactionType.none:
+            trades = None
+        case _:
+            raise NotImplementedError(f"{tx_type}")
+
+    if trades:
+        print("Transactions by trade")
+        df = display_transactions(trades)
+        # rounded_outline does not support newlines in cells
+        print(tabulate(df, headers='keys', tablefmt="fancy_grid"))
+
+
+
+
