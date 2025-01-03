@@ -21,6 +21,7 @@ import typer
 
 from IPython import embed
 import pandas as pd
+from eth.vm.logic.block import timestamp
 
 from eth_defi.hotwallet import HotWallet
 from tradingstrategy.chain import ChainId
@@ -38,6 +39,7 @@ from ...state.state import State
 from ...statistics.in_memory_statistics import refresh_run_state
 from ...strategy.approval import UncheckedApprovalModel
 from ...strategy.bootstrap import make_factory_from_strategy_mod
+from ...strategy.cycle import CycleDuration
 from ...strategy.description import StrategyExecutionDescription
 from ...strategy.execution_context import ExecutionContext, ExecutionMode
 from ...strategy.execution_model import AssetManagementMode
@@ -179,6 +181,7 @@ def console(
         test_evm_uniswap_v2_factory=None,
         test_evm_uniswap_v2_router=None,
         test_evm_uniswap_v2_init_code_hash=None,
+        asset_management_mode=asset_management_mode,
     )
     assert client is not None, "You need to give details for TradingStrategy.ai client"
 
@@ -224,7 +227,17 @@ def console(
 
     # We construct the trading universe to know what's our reserve asset
     universe_model: TradingStrategyUniverseModel = run_description.universe_model
-    ts = datetime.datetime.utcnow()
+
+    cycle_duration: CycleDuration = None
+    if mod:
+        cycle_duration = mod.parameters.get("cycle_duration")
+
+    if cycle_duration:
+        # We need to found universe timestamp to its previous cycle when we have data
+        ts = cycle_duration.round_down(datetime.datetime.utcnow())
+    else:
+        ts = datetime.datetime.utcnow()
+
     universe = universe_model.construct_universe(
         ts,
         ExecutionMode.preflight_check,
@@ -320,6 +333,7 @@ def console(
     # Set up the default objects
     # availalbe in the interactive session
     bindings = {
+        "cycle_timestamp": timestamp,
         "web3": web3,
         "client": client,
         "state": state,

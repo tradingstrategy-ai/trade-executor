@@ -189,6 +189,10 @@ class CycleDuration(enum.Enum):
         else:
             return pd.DateOffset(self.to_pandas_timedelta())
 
+    def round_down(self, timestamp: datetime.datetime) -> datetime.datetime:
+        """Round real-time clock to the previous cycle."""
+        return snap_to_previous_tick(timestamp, self)
+
 
 def round_datetime_up(
         ts: datetime.datetime,
