@@ -234,18 +234,17 @@ def console(
 
     if cycle_duration:
         # We need to found universe timestamp to its previous cycle when we have data
-        ts = cycle_duration.round_down(datetime.datetime.utcnow())
+        cycle_timestamp = cycle_duration.round_down(datetime.datetime.utcnow())
     else:
-        ts = datetime.datetime.utcnow()
+        cycle_timestamp = datetime.datetime.utcnow()
 
     universe = universe_model.construct_universe(
-        ts,
+        cycle_timestamp,
         ExecutionMode.preflight_check,
         universe_options,
     )
 
     # Get all tokens from the universe
-    reserve_assets = universe.reserve_assets
     web3 = web3config.get_default()
 
     logger.info("RPC details")
@@ -308,7 +307,7 @@ def console(
             mod.parameters,
             universe,
             execution_context,
-            timestamp=datetime.datetime.utcnow()
+            timestamp=cycle_timestamp,
         )
         indicators_needed = set(indicator_set.generate_combinations(universe))
         indicator_result_map = calculate_indicators(
@@ -324,16 +323,15 @@ def console(
             strategy_universe=universe,
             available_indicators=indicator_set,
             indicator_results=indicator_result_map,
-            timestamp=None,
+            timestamp=pd.Timestamp(cycle_timestamp),
         )
     else:
         indicator_storage = indicator_set = indicator_result_map = indicators = None
 
-
     # Set up the default objects
     # availalbe in the interactive session
     bindings = {
-        "cycle_timestamp": timestamp,
+        "cycle_timestamp": cycle_timestamp,
         "web3": web3,
         "client": client,
         "state": state,
