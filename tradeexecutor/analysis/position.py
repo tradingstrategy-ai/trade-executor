@@ -170,7 +170,7 @@ def display_transactions(trades: Iterable[TradeExecution]) -> pd.DataFrame:
                 "Block": f"{tx.block_number or 0:,}",
                 "Hash": tx.tx_hash,
                 "Gas": tx.realised_gas_units_consumed,
-                "Price (GWei)": tx.realised_gas_price // (10**9),
+                "Price (GWei)": tx.realised_gas_price // (10**9) if tx.realised_gas_price else "-",
                 "Revert reason": _format_long_string(tx.revert_reason),
                 # "Notes": (tx.notes or "")[0:20],
             })
