@@ -411,3 +411,88 @@ def test_velvet_intent_based_open_position_many(
         assert t.executed_quantity > 0.0001
 
     assert all(t for t in trades if t.is_success())
+
+
+def test_velvet_intent_based_open_many_close_one(
+    state_with_starting_positions: State,
+    velvet_test_vault_strategy_universe: TradingStrategyUniverse,
+    velvet_pricing_model: GenericPricing,
+    velvet_execution_model: VelvetExecution,
+    velvet_routing_model: VelvetEnsoRouting,
+):
+    """Open multiple positions in one go.
+
+    - Open two positions
+
+    - Close one fully
+    """
+
+    state = state_with_starting_positions
+    strategy_universe = velvet_test_vault_strategy_universe
+    execution_model = velvet_execution_model
+    routing_model = velvet_routing_model
+
+    position_manager = PositionManager(
+        datetime.datetime.utcnow(),
+        universe=velvet_test_vault_strategy_universe,
+        state=state,
+        pricing_model=velvet_pricing_model,
+        default_slippage_tolerance=0.20,
+    )
+
+    trades = []
+
+    pair = strategy_universe.get_pair_by_human_description((ChainId.base, "uniswap-v2", "KEYCAT", "WETH"))
+    trades += position_manager.open_spot(
+        pair=pair,
+        value=1.0  # USDC
+    )
+
+    pair = strategy_universe.get_pair_by_human_description((ChainId.base, "uniswap-v3", "WETH", "USDC"))
+    trades += position_manager.open_spot(
+        pair=pair,
+        value=1.0  # USDC
+    )
+
+    # Setup routing state for the approvals of this cycle
+    routing_state_details = execution_model.get_routing_state_details()
+    routing_state = routing_model.create_routing_state(strategy_universe, routing_state_details)
+
+    execution_model.initialize()
+
+    execution_model.execute_trades(
+        datetime.datetime.utcnow(),
+        state,
+        trades,
+        routing_model,
+        routing_state,
+        check_balances=True,
+    )
+
+    for t in trades:
+        assert t.is_success(), f"Enso trade failed: {t.blockchain_transactions[0].revert_reason}: {t}"
+        assert 0 < t.executed_price < 5000
+        assert t.executed_quantity > 0.0001
+
+    assert all(t for t in trades if t.is_success())
+
+    # Now close WETH
+    trades = []
+    pair = strategy_universe.get_pair_by_human_description((ChainId.base, "uniswap-v3", "WETH", "USDC"))
+    position = position_manager.get_current_position_for_pair(pair)
+    trades += position_manager.close_position(position)
+    execution_model.execute_trades(
+        datetime.datetime.utcnow(),
+        state,
+        trades,
+        routing_model,
+        routing_state,
+        check_balances=True,
+    )
+
+    for t in trades:
+        assert t.is_success(), f"Enso trade failed: {t.blockchain_transactions[0].revert_reason}: {t}"
+    assert all(t for t in trades if t.is_success())
+
+    # Keycat, Sky
+    assert len(state.portfolio.open_positions) == 2
