@@ -19,7 +19,7 @@ from tradingstrategy.chain import ChainId
 logger = logging.getLogger(__name__)
 
 
-class VelvetExecution(EthereumExecution):
+class LagoonExecution(EthereumExecution):
     """Execution model that uses raw onchain Uniswap swaps with Lagoon."""
 
     def __init__(self, vault: LagoonVault, **kwargs):
