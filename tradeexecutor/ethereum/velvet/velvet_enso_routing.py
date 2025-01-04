@@ -6,6 +6,7 @@ from typing import cast, Dict
 from hexbytes import HexBytes
 
 from eth_defi.timestamp import get_block_timestamp
+from eth_defi.token import fetch_erc20_details
 from eth_defi.trade import TradeSuccess
 from eth_defi.velvet import VelvetVault
 from eth_defi.velvet.analysis import analyse_trade_by_receipt_generic
