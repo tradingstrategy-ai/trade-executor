@@ -21,6 +21,8 @@ from eth_defi.provider.multi_provider import create_multi_provider_web3
 from eth_defi.token import TokenDetails, fetch_erc20_details
 from eth_defi.trace import assert_transaction_success_with_explanation
 from eth_defi.vault.base import VaultSpec
+from tradeexecutor.ethereum.lagoon.execution import LagoonExecution
+from tradeexecutor.ethereum.lagoon.tx import LagoonTransactionBuilder
 
 JSON_RPC_BASE = os.environ.get("JSON_RPC_BASE")
 
@@ -129,7 +131,7 @@ def base_dino(web3) -> TokenDetails:
 
 
 @pytest.fixture()
-def hot_wallet_user(web3, usdc, usdc_holder) -> HotWallet:
+def hot_wallet(web3, usdc, usdc_holder) -> HotWallet:
     """A test account with USDC balance."""
 
     hw = HotWallet.create_for_testing(
@@ -204,14 +206,10 @@ def topped_up_valuation_manager(web3, valuation_manager):
 def lagoont_execution_model(
     web3: Web3,
     lagoon_vault: LagoonVault,
+    hot_wallet: HotWallet,
 ) -> LagoonExecution:
     """Set EthereumExecutionModel in Base fork testing mode."""
 
-    private_key = os.environ["VELVET_VAULT_OWNER_PRIVATE_KEY"]
-
-    assert not private_key.startswith("http"), f"Github WTF: {private_key}"
-
-    hot_wallet = HotWallet.from_private_key(private_key)
     execution_model = LagoonExecution(
         vault=lagoon_vault,
         tx_builder=LagoonTransactionBuilder(lagoon_vault, hot_wallet),
@@ -222,12 +220,5 @@ def lagoont_execution_model(
 
 
 @pytest.fixture()
-def lagoon_routing_model(base_weth, base_usdc) -> VelvetEnsoRouting:
-    """Create Enso routing model.
-    """
-
-    # Uses default router choose function
-    return VelvetEnsoRouting(
-        reserve_token_address=base_usdc.address,
-        allowed_intermediary_pairs={base_weth.address: "0xd0b53d9277642d899df5c87a3966a349a798f224"},  # WETH
-    )
+def lagoon_routing_model(lagoont_execution_model) -> GenericRouting:
+    return lagoont_execution_model.create_default_routing_model()
