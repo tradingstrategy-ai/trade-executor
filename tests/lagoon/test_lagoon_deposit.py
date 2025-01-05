@@ -129,5 +129,87 @@ def test_lagoon_sync_deposit(
     # Check we account USDC correctly
     portfolio = state.portfolio
     assert portfolio.get_cash() == pytest.approx(9)
+    assert portfolio.get_net_asset_value(include_interest=True) == pytest.approx(9)
     assert reserve_position.last_sync_at is not None
     assert reserve_position.last_pricing_at is not None
+
+
+
+def test_lagoon_sync_redeem(
+    web3: Web3,
+    automated_lagoon_vault: LagoonAutomatedDeployment,
+    base_usdc_token: TokenDetails,
+    vault_strategy_universe: TradingStrategyUniverse,
+    depositor: HexAddress,
+    asset_manager: HotWallet,
+):
+    """Do a redeem to Lagoon vault and sync it."""
+
+    vault = automated_lagoon_vault.vault
+    usdc = base_usdc_token
+    strategy_universe = vault_strategy_universe
+    state = State()
+    portfolio = state.portfolio
+    usdc_asset = strategy_universe.get_reserve_asset()
+
+    sync_model = LagoonVaultSyncModel(
+        vault=vault,
+        hot_wallet=asset_manager,
+    )
+
+    sync_model.sync_initial(
+        state,
+        reserve_asset=usdc_asset,
+        reserve_token_price=1.0,
+    )
+
+    # Do initial deposit
+    # Deposit 9.00 USDC into the vault from the first user
+    usdc_amount = Decimal(9.00)
+    raw_usdc_amount = usdc.convert_to_raw(usdc_amount)
+    tx_hash = usdc.approve(vault.address, usdc_amount).transact({"from": depositor})
+    assert_transaction_success_with_explanation(web3, tx_hash)
+    deposit_func = vault.request_deposit(depositor, raw_usdc_amount)
+    tx_hash = deposit_func.transact({"from": depositor})
+    assert_transaction_success_with_explanation(web3, tx_hash)
+    assert usdc.fetch_balance_of(vault.silo_address) == pytest.approx(Decimal(9))
+
+    # Process the initial deposits
+    cycle = datetime.datetime.utcnow()
+    events = sync_model.sync_treasury(cycle, state, post_valuation=True)
+    assert len(events) == 1
+
+    assert portfolio.get_net_asset_value(include_interest=True) == pytest.approx(9)
+
+    #
+    # Redeem
+    #
+
+    # Get shares to the wallet
+    bound_func = vault.finalise_deposit(depositor)
+    tx_hash = bound_func.transact({"from": depositor})
+    assert_transaction_success_with_explanation(web3, tx_hash)
+
+    # Redeem shares
+    # Redeem 3 USDC for the first user
+    shares_to_redeem_raw = vault.share_token.convert_to_raw(3)
+    bound_func = vault.request_redeem(depositor, shares_to_redeem_raw)
+    tx_hash = bound_func.transact({"from": depositor, "gas": 1_000_000})
+    assert_transaction_success_with_explanation(web3, tx_hash)
+
+    # Sync
+    events = sync_model.sync_treasury(cycle, state, post_valuation=True)
+    treasury = state.sync.treasury
+    reserve_position = state.portfolio.get_default_reserve_position()
+    assert reserve_position.quantity == pytest.approx(6)
+    assert len(events) == 1
+    assert len(treasury.balance_update_refs) == 2
+    assert len(reserve_position.balance_updates) == 2
+    redeem_event = events[0]
+    assert redeem_event.block_number is not None
+    assert redeem_event.tx_hash is not None
+    assert redeem_event.other_data is not None
+    assert redeem_event.quantity == pytest.approx(Decimal(-3))
+    assert redeem_event.old_balance == pytest.approx(Decimal(9))
+
+    assert portfolio.get_cash() == pytest.approx(pytest.approx(6))
