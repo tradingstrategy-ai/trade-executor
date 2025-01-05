@@ -108,12 +108,14 @@ class SyncModel(ABC):
         pass
 
     @abstractmethod
-    def sync_treasury(self,
-                      strategy_cycle_ts: datetime.datetime,
-                      state: State,
-                      supported_reserves: Optional[List[AssetIdentifier]] = None,
-                      end_block: BlockNumber | NoneType = None,
-                      ) -> List[BalanceUpdate]:
+    def sync_treasury(
+        self,
+        strategy_cycle_ts: datetime.datetime,
+        state: State,
+        supported_reserves: Optional[List[AssetIdentifier]] = None,
+        end_block: BlockNumber | NoneType = None,
+        post_valuation=False,
+    ) -> List[BalanceUpdate]:
         """Apply the balance sync before each strategy cycle.
 
         :param strategy_cycle_ts:
@@ -131,6 +133,12 @@ class SyncModel(ABC):
 
         :param end_block:
             Sync until this block.
+
+        :param post_valuation:
+            For models where we need to manage the deposit queue ourselves,
+            like Lagoon, make onchain transaction to update the new onchain valuation.
+
+            Disabled by default as this needs gas fees.
 
         :return:
             List of balance updates detected.

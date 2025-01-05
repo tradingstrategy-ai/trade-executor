@@ -53,6 +53,9 @@ class AddressSyncModel(SyncModel):
         - Set the reserve assets (optional, sometimes can be read from the chain)
 
         """
+
+        assert isinstance(reserve_asset, AssetIdentifier)
+
         web3 = self.web3
         deployment = state.sync.deployment
         deployment.chain_id = ChainId(web3.eth.chain_id)

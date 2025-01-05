@@ -9,20 +9,34 @@ Explore the static deployment which we fork from the Base mainnet:
 - Roles: https://app.safe.global/apps/open?safe=base:0x20415f3Ec0FEA974548184bdD6e67575D128953F&appUrl=https%3A%2F%2Fzodiac.gnosisguild.org%2F
 """
 import os
+from decimal import Decimal
 
 import pytest
+from eth_account.signers.local import LocalAccount
 from eth_typing import HexAddress
 from web3 import Web3
 
 from eth_defi.hotwallet import HotWallet
+from eth_defi.lagoon.deployment import deploy_automated_lagoon_vault, LagoonDeploymentParameters, LagoonAutomatedDeployment
 from eth_defi.lagoon.vault import LagoonVault
 from eth_defi.provider.anvil import AnvilLaunch, fork_network_anvil
 from eth_defi.provider.multi_provider import create_multi_provider_web3
-from eth_defi.token import TokenDetails, fetch_erc20_details
+from eth_defi.token import TokenDetails, fetch_erc20_details, USDC_NATIVE_TOKEN
 from eth_defi.trace import assert_transaction_success_with_explanation
+from eth_defi.uniswap_v2.constants import UNISWAP_V2_DEPLOYMENTS
+from eth_defi.uniswap_v2.deployment import fetch_deployment
 from eth_defi.vault.base import VaultSpec
 from tradeexecutor.ethereum.lagoon.execution import LagoonExecution
 from tradeexecutor.ethereum.lagoon.tx import LagoonTransactionBuilder
+from tradeexecutor.state.identifier import TradingPairIdentifier, AssetIdentifier
+from tradeexecutor.strategy.generic.generic_router import GenericRouting
+from tradeexecutor.strategy.reverse_universe import create_universe_from_trading_pair_identifiers
+from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse, translate_token
+from tradingstrategy.chain import ChainId
+from tradingstrategy.exchange import ExchangeUniverse, Exchange, ExchangeType
+from tradingstrategy.pair import PandasPairUniverse
+from tradingstrategy.timebucket import TimeBucket
+from tradingstrategy.universe import Universe
 
 JSON_RPC_BASE = os.environ.get("JSON_RPC_BASE")
 
@@ -102,31 +116,86 @@ def web3(anvil_base_fork) -> Web3:
     return web3
 
 
-@pytest.fixture()
-def base_usdc(web3) -> TokenDetails:
-    return fetch_erc20_details(
-        web3,
-        "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+@pytest.fixture(scope='module')
+def base_doginme() -> AssetIdentifier:
+    """DogInMe"""
+    return AssetIdentifier(
+        chain_id=8453,
+        address="0x6921B130D297cc43754afba22e5EAc0FBf8Db75b",
+        decimals=18,
+        token_symbol="DogInMe",
     )
 
 
-@pytest.fixture()
-def base_weth(web3) -> TokenDetails:
-    return fetch_erc20_details(
-        web3,
-        "0x4200000000000000000000000000000000000006",
-    )
+
+@pytest.fixture(scope='module')
+def base_ski() -> AssetIdentifier:
+    """SKI - SkiMask.
+
+    https://app.uniswap.org/explore/tokens/base/0x768be13e1680b5ebe0024c42c896e3db59ec0149
+
+    .. warning::
+
+        Has weird tax "cooling off period"
+
+        https://basescan.org/address/0x768BE13e1680b5ebE0024C42c896E3dB59ec0149#code
 
 
-@pytest.fixture()
-def base_dino(web3) -> TokenDetails:
-    """A token that trades as DINO/WETH on Uniswap v2
-
-    https://app.uniswap.org/explore/pools/base/0x6a77CDeC82EFf6A6A5D273F18C1c27CD3d71A588
     """
-    return fetch_erc20_details(
-        web3,
-        "0x85E90a5430AF45776548ADB82eE4cD9E33B08077",
+    return AssetIdentifier(
+        chain_id=8453,
+        address="0x768BE13e1680b5ebE0024C42c896E3dB59ec0149",
+        decimals=18,
+        token_symbol="SKI",
+    )
+
+
+@pytest.fixture(scope='module')
+def base_keycat() -> AssetIdentifier:
+    """KEYCAT
+
+    - Uniswap v2
+
+    https://dexscreener.com/base/0x377feeed4820b3b28d1ab429509e7a0789824fca
+    """
+    return AssetIdentifier(
+        chain_id=8453,
+        address="0x9a26F5433671751C3276a065f57e5a02D2817973",
+        decimals=18,
+        token_symbol="KEYCAT",
+    )
+
+
+@pytest.fixture()
+def base_doginme_token(web3, base_doginme) -> TokenDetails:
+    """DogInMe.
+
+    - Uniswap v3
+
+    https://app.uniswap.org/explore/tokens/base/0x6921b130d297cc43754afba22e5eac0fbf8db75b
+    """
+    return fetch_erc20_details(web3, base_doginme.address)
+
+
+@pytest.fixture(scope='module')
+def base_weth() -> AssetIdentifier:
+    """WETH"""
+    return AssetIdentifier(
+        chain_id=8453,
+        address="0x4200000000000000000000000000000000000006",
+        decimals=18,
+        token_symbol="WETH",
+    )
+
+
+@pytest.fixture(scope='module')
+def base_usdc() -> AssetIdentifier:
+    """USDC"""
+    return AssetIdentifier(
+        chain_id=8453,
+        address="0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+        decimals=6,
+        token_symbol="USDC",
     )
 
 
@@ -222,3 +291,231 @@ def lagoont_execution_model(
 @pytest.fixture()
 def lagoon_routing_model(lagoont_execution_model) -> GenericRouting:
     return lagoont_execution_model.create_default_routing_model()
+
+
+@pytest.fixture(scope='module')
+def vault_pair_universe(
+    base_usdc,
+    base_doginme,
+    base_weth,
+    base_ski,
+    base_keycat,
+) -> PandasPairUniverse:
+    """Define pair universe of USDC and DogMeIn assets, trading on Uni v3 on Base.
+
+    """
+
+    exchange_universe = ExchangeUniverse(
+        exchanges={
+            1: Exchange(
+                chain_id=ChainId(8453),
+                chain_slug="base",
+                exchange_id=1,
+                exchange_slug="uniswap-v3",
+                address="0x33128a8fC17869897dcE68Ed026d694621f6FDfD",
+                exchange_type=ExchangeType.uniswap_v3,
+                pair_count=1,
+            ),
+
+            2: Exchange(
+                chain_id=ChainId(8453),
+                chain_slug="base",
+                exchange_id=2,
+                exchange_slug="uniswap-v2",
+                address="0x8909Dc15e40173Ff4699343b6eB8132c65e18eC6",
+                exchange_type=ExchangeType.uniswap_v2,
+                pair_count=1,
+            )
+        }
+    )
+
+    trading_pair_uniswap_v3 = TradingPairIdentifier(
+        base=base_doginme,
+        quote=base_weth,
+        pool_address="0xADE9BcD4b968EE26Bed102dd43A55f6A8c2416df",
+        exchange_address="0x33128a8fC17869897dcE68Ed026d694621f6FDfD",
+        fee=0.0100,
+    )
+
+    trading_pair_uniswap_v2 = TradingPairIdentifier(
+        base=base_ski,
+        quote=base_weth,
+        pool_address="0x6d6391b9bd02eefa00fa711fb1cb828a6471d283",
+        exchange_address="0x8909Dc15e40173Ff4699343b6eB8132c65e18eC6",  # Uniswap v2 factory on Base
+        fee=0.0030,
+    )
+
+    trading_pair_2_uniswap_v2 = TradingPairIdentifier(
+        base=base_keycat,
+        quote=base_weth,
+        pool_address="0x377FeeeD4820B3B28D1ab429509e7A0789824fCA",
+        exchange_address="0x8909Dc15e40173Ff4699343b6eB8132c65e18eC6",  # Uniswap v2 factory on Base
+        fee=0.0030,
+    )
+
+    # https://coinmarketcap.com/dexscan/base/0xd0b53d9277642d899df5c87a3966a349a798f224/
+    weth_usdc_uniswap_v3 = TradingPairIdentifier(
+        base=base_weth,
+        quote=base_usdc,
+        pool_address="0xd0b53d9277642d899df5c87a3966a349a798f224",
+        exchange_address="0x33128a8fC17869897dcE68Ed026d694621f6FDfD",
+        fee=0.0005,
+    )
+
+    # https://app.uniswap.org/explore/pools/base/0x88A43bbDF9D098eEC7bCEda4e2494615dfD9bB9C
+    weth_usdc_uniswap_v2 = TradingPairIdentifier(
+        base=base_weth,
+        quote=base_usdc,
+        pool_address="0x88A43bbDF9D098eEC7bCEda4e2494615dfD9bB9C",
+        exchange_address="0x8909Dc15e40173Ff4699343b6eB8132c65e18eC6",
+        fee=0.0030,
+    )
+
+    universe = create_universe_from_trading_pair_identifiers(
+        [
+            trading_pair_uniswap_v3,
+            trading_pair_uniswap_v2,
+            weth_usdc_uniswap_v3,
+            weth_usdc_uniswap_v2,
+            trading_pair_2_uniswap_v2
+        ],
+        exchange_universe=exchange_universe,
+    )
+    return universe
+
+
+@pytest.fixture(scope='module')
+def vault_strategy_universe(
+    vault_pair_universe,
+) -> TradingStrategyUniverse:
+    """Contains pairs and exchanges"""
+
+    universe = Universe(
+        chains={ChainId.base},
+        time_bucket=TimeBucket.not_applicable,  # Not used, only live price checks done
+        exchange_universe=vault_pair_universe.exchange_universe,
+        pairs=vault_pair_universe,
+    )
+
+    usdc = vault_pair_universe.get_token("0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913")
+    return TradingStrategyUniverse(
+        data_universe=universe,
+        reserve_assets={translate_token(usdc)},
+    )
+
+
+@pytest.fixture()
+def automated_lagoon_vault(
+    web3,
+    deployer_local_account,
+    asset_manager,
+    multisig_owners,
+    uniswap_v2,
+) -> LagoonAutomatedDeployment:
+    """Deploy a new Lagoon vault with TradingStrategyModuleV0.
+
+    - Whitelist any Uniswap v2 token for trading using TradingStrategyModuleV0 and asset_manager
+    """
+
+    chain_id = web3.eth.chain_id
+    deployer = deployer_local_account
+
+    parameters = LagoonDeploymentParameters(
+        underlying=USDC_NATIVE_TOKEN[chain_id],
+        name="Example",
+        symbol="EXA",
+    )
+
+    deploy_info = deploy_automated_lagoon_vault(
+        web3=web3,
+        deployer=deployer,
+        asset_manager=asset_manager,
+        parameters=parameters,
+        safe_owners=multisig_owners,
+        safe_threshold=2,
+        uniswap_v2=uniswap_v2,
+        uniswap_v3=None,
+        any_asset=True,
+    )
+
+    return deploy_info
+
+
+
+@pytest.fixture()
+def asset_manager() -> HexAddress:
+    """The asset manager role."""
+    return "0x0b2582E9Bf6AcE4E7f42883d4E91240551cf0947"
+
+
+@pytest.fixture()
+def topped_up_asset_manager(web3, asset_manager) -> HexAddress:
+    # Topped up with some ETH
+    tx_hash = web3.eth.send_transaction({
+        "to": asset_manager,
+        "from": web3.eth.accounts[0],
+        "value": 9 * 10**18,
+    })
+    assert_transaction_success_with_explanation(web3, tx_hash)
+    return asset_manager
+
+
+@pytest.fixture()
+def topped_up_valuation_manager(web3, valuation_manager) -> HexAddress:
+    # Topped up with some ETH
+    tx_hash = web3.eth.send_transaction({
+        "to": valuation_manager,
+        "from": web3.eth.accounts[0],
+        "value": 9 * 10**18,
+    })
+    assert_transaction_success_with_explanation(web3, tx_hash)
+    return valuation_manager
+
+
+@pytest.fixture()
+def new_depositor(web3, base_usdc, usdc_holder) -> HexAddress:
+    """User with some USDC ready to deposit.
+
+    - Start with 500 USDC
+    """
+    new_depositor = web3.eth.accounts[5]
+    tx_hash = base_usdc.transfer(new_depositor, Decimal(500)).transact({"from": usdc_holder, "gas": 100_000})
+    assert_transaction_success_with_explanation(web3, tx_hash)
+    return new_depositor
+
+
+@pytest.fixture()
+def another_new_depositor(web3, base_usdc, usdc_holder) -> HexAddress:
+    """User with some USDC ready to deposit.
+
+    - Start with 500 USDC
+    - We need two test users
+    """
+    another_new_depositor = web3.eth.accounts[6]
+    tx_hash = base_usdc.transfer(another_new_depositor, Decimal(500)).transact({"from": usdc_holder, "gas": 100_000})
+    assert_transaction_success_with_explanation(web3, tx_hash)
+    return another_new_depositor
+
+
+@pytest.fixture()
+def uniswap_v2(web3):
+    """Uniswap V2 on Base"""
+    return fetch_deployment(
+        web3,
+        factory_address=UNISWAP_V2_DEPLOYMENTS["base"]["factory"],
+        router_address=UNISWAP_V2_DEPLOYMENTS["base"]["router"],
+        init_code_hash=UNISWAP_V2_DEPLOYMENTS["base"]["init_code_hash"],
+    )
+
+
+@pytest.fixture()
+def deployer_local_account(web3) -> LocalAccount:
+    """Account that we use for Lagoon deployment"""
+    hot_wallet = HotWallet.create_for_testing(web3, eth_amount=1)
+    return hot_wallet.account
+
+
+@pytest.fixture()
+def multisig_owners(web3) -> list[HexAddress]:
+    """Accouunts that are set as the owners of deployed Safe w/valt"""
+    return [web3.eth.accounts[2], web3.eth.accounts[3], web3.eth.accounts[4]]
