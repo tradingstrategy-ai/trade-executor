@@ -4,10 +4,13 @@ from decimal import Decimal
 
 import pytest
 from eth_typing import HexAddress
+from web3 import Web3
 
+from eth_defi.hotwallet import HotWallet
 from eth_defi.lagoon.deployment import LagoonAutomatedDeployment
 from eth_defi.token import TokenDetails
 from eth_defi.trace import assert_transaction_success_with_explanation
+from tradeexecutor.cli.commands.shared_options import asset_management_mode
 
 from tradeexecutor.ethereum.lagoon.vault import LagoonVaultSyncModel
 from tradeexecutor.state.portfolio import ReserveMissing
@@ -61,21 +64,23 @@ def test_lagoon_treasury_initialise(
     assert len(reserve_position.balance_updates) == 0
 
 
-def test_lagoon_deposit(
+def test_lagoon_sync_deposit(
+    web3: Web3,
     automated_lagoon_vault: LagoonAutomatedDeployment,
-    base_usdc: TokenDetails,
+    base_usdc_token: TokenDetails,
     vault_strategy_universe: TradingStrategyUniverse,
     depositor: HexAddress,
+    asset_manager: HotWallet,
 ):
-    """Do the initial lagoon deposit."""
+    """Do a deposit to Lagoon vault and sync it."""
 
     vault = automated_lagoon_vault.vault
-    usdc = base_usdc
+    usdc = base_usdc_token
     strategy_universe = vault_strategy_universe
 
     sync_model = LagoonVaultSyncModel(
         vault=vault,
-        hot_wallet=None,
+        hot_wallet=asset_manager,
     )
 
     state = State()
@@ -99,7 +104,7 @@ def test_lagoon_deposit(
 
     # Process the initial deposits
     cycle = datetime.datetime.utcnow()
-    events = sync_model.sync_treasury(cycle, state)
+    events = sync_model.sync_treasury(cycle, state, post_valuation=True)
     treasury = state.sync.treasury
     reserve_position = state.portfolio.get_default_reserve_position()
     assert len(events) == 1
@@ -108,6 +113,12 @@ def test_lagoon_deposit(
     assert treasury.last_cycle_at is not None
     assert len(treasury.balance_update_refs) == 1
     assert len(reserve_position.balance_updates) == 1
+    deposit_event = events[0]
+    assert deposit_event.block_number is not None
+    assert deposit_event.tx_hash is not None
+    assert deposit_event.other_data is not None
+    assert deposit_event.quantity == Decimal(9)
+    assert deposit_event.old_balance == Decimal(0)
 
     # We scan again, no changes
     events = sync_model.sync_treasury(cycle, state)
@@ -118,3 +129,5 @@ def test_lagoon_deposit(
     # Check we account USDC correctly
     portfolio = state.portfolio
     assert portfolio.get_cash() == pytest.approx(9)
+    assert reserve_position.last_sync_at is not None
+    assert reserve_position.last_pricing_at is not None

@@ -46,37 +46,13 @@ pytestmark = pytest.mark.skipif(not JSON_RPC_BASE, reason="No JSON_RPC_BASE envi
 
 
 @pytest.fixture()
-def vault_owner() -> HexAddress:
-    # Vaut owner
-    return "0x0c9db006f1c7bfaa0716d70f012ec470587a8d4f"
-
-
-@pytest.fixture()
-def depositor() -> HexAddress:
-    # Someone how deposited assets to the vault earlier
-    return "0x20415f3Ec0FEA974548184bdD6e67575D128953F"
-
-
-@pytest.fixture()
 def usdc_holder() -> HexAddress:
     # https://basescan.org/token/0x833589fcd6edb6e08f4c7c32d4f71b54bda02913#balances
     return "0x3304E22DDaa22bCdC5fCa2269b418046aE7b566A"
 
 
 @pytest.fixture()
-def valuation_manager() -> HexAddress:
-    """Unlockable account set as the vault valuation manager."""
-    return "0x8358bBFb4Afc9B1eBe4e8C93Db8bF0586BD8331a"
-
-
-@pytest.fixture()
-def safe_address() -> HexAddress:
-    """Unlockable Safe multisig as spoofed Anvil account."""
-    return "0x20415f3Ec0FEA974548184bdD6e67575D128953F"
-
-
-@pytest.fixture()
-def anvil_base_fork(request, vault_owner, usdc_holder, asset_manager, valuation_manager) -> AnvilLaunch:
+def anvil_base_fork(request, usdc_holder) -> AnvilLaunch:
     """Create a testable fork of live BNB chain.
 
     :return: JSON-RPC URL for Web3
@@ -84,7 +60,7 @@ def anvil_base_fork(request, vault_owner, usdc_holder, asset_manager, valuation_
     assert JSON_RPC_BASE, "JSON_RPC_BASE not set"
     launch = fork_network_anvil(
         JSON_RPC_BASE,
-        unlocked_addresses=[vault_owner, usdc_holder, asset_manager, valuation_manager],
+        unlocked_addresses=[usdc_holder],
     )
     try:
         yield launch
@@ -200,6 +176,16 @@ def base_usdc() -> AssetIdentifier:
 
 
 @pytest.fixture()
+def base_usdc_token(base_usdc, web3) -> TokenDetails:
+    """USDC"""
+    return fetch_erc20_details(
+        web3,
+        base_usdc.address,
+        chain_id=base_usdc.chain_id,
+    )
+
+
+@pytest.fixture()
 def hot_wallet(web3, usdc, usdc_holder) -> HotWallet:
     """A test account with USDC balance."""
 
@@ -241,9 +227,10 @@ def lagoon_vault(web3, base_test_vault_spec: VaultSpec) -> LagoonVault:
 
 
 @pytest.fixture()
-def asset_manager() -> HexAddress:
-    """The asset manager role."""
-    return "0x0b2582E9Bf6AcE4E7f42883d4E91240551cf0947"
+def asset_manager(web3) -> LocalAccount:
+    """Account that we use for Lagoon trade/settles"""
+    hot_wallet = HotWallet.create_for_testing(web3, eth_amount=1)
+    return hot_wallet
 
 
 @pytest.fixture()
@@ -429,7 +416,7 @@ def automated_lagoon_vault(
     deploy_info = deploy_automated_lagoon_vault(
         web3=web3,
         deployer=deployer,
-        asset_manager=asset_manager,
+        asset_manager=asset_manager.address,
         parameters=parameters,
         safe_owners=multisig_owners,
         safe_threshold=2,
@@ -441,58 +428,27 @@ def automated_lagoon_vault(
     return deploy_info
 
 
-
 @pytest.fixture()
-def asset_manager() -> HexAddress:
-    """The asset manager role."""
-    return "0x0b2582E9Bf6AcE4E7f42883d4E91240551cf0947"
-
-
-@pytest.fixture()
-def topped_up_asset_manager(web3, asset_manager) -> HexAddress:
-    # Topped up with some ETH
-    tx_hash = web3.eth.send_transaction({
-        "to": asset_manager,
-        "from": web3.eth.accounts[0],
-        "value": 9 * 10**18,
-    })
-    assert_transaction_success_with_explanation(web3, tx_hash)
-    return asset_manager
-
-
-@pytest.fixture()
-def topped_up_valuation_manager(web3, valuation_manager) -> HexAddress:
-    # Topped up with some ETH
-    tx_hash = web3.eth.send_transaction({
-        "to": valuation_manager,
-        "from": web3.eth.accounts[0],
-        "value": 9 * 10**18,
-    })
-    assert_transaction_success_with_explanation(web3, tx_hash)
-    return valuation_manager
-
-
-@pytest.fixture()
-def new_depositor(web3, base_usdc, usdc_holder) -> HexAddress:
+def depositor(web3, base_usdc_token, usdc_holder) -> HexAddress:
     """User with some USDC ready to deposit.
 
     - Start with 500 USDC
     """
     new_depositor = web3.eth.accounts[5]
-    tx_hash = base_usdc.transfer(new_depositor, Decimal(500)).transact({"from": usdc_holder, "gas": 100_000})
+    tx_hash = base_usdc_token.transfer(new_depositor, Decimal(500)).transact({"from": usdc_holder, "gas": 100_000})
     assert_transaction_success_with_explanation(web3, tx_hash)
     return new_depositor
 
 
 @pytest.fixture()
-def another_new_depositor(web3, base_usdc, usdc_holder) -> HexAddress:
+def another_new_depositor(web3, base_usdc_token, usdc_holder) -> HexAddress:
     """User with some USDC ready to deposit.
 
     - Start with 500 USDC
     - We need two test users
     """
     another_new_depositor = web3.eth.accounts[6]
-    tx_hash = base_usdc.transfer(another_new_depositor, Decimal(500)).transact({"from": usdc_holder, "gas": 100_000})
+    tx_hash = base_usdc_token.transfer(another_new_depositor, Decimal(500)).transact({"from": usdc_holder, "gas": 100_000})
     assert_transaction_success_with_explanation(web3, tx_hash)
     return another_new_depositor
 
