@@ -25,7 +25,7 @@ from tradeexecutor.ethereum.onchain_balance import fetch_address_balances
 from tradeexecutor.state.balance_update import BalanceUpdate, BalanceUpdatePositionType, BalanceUpdateCause
 from tradeexecutor.state.identifier import AssetIdentifier
 from tradeexecutor.state.state import State
-from tradeexecutor.state.types import JSONHexAddress, USDollarPrice, BlockNumber
+from tradeexecutor.state.types import JSONHexAddress, USDollarPrice, BlockNumber, Percent, USDollarAmount
 from tradeexecutor.strategy.interest import sync_interests
 from tradeexecutor.strategy.pricing_model import PricingModel
 from tradeexecutor.strategy.sync_model import OnChainBalance
@@ -48,6 +48,7 @@ class LagoonVaultSyncModel(AddressSyncModel):
         hot_wallet: HotWallet | None,
         extra_gnosis_gas: int = 500_000,
         valuation_data_freshness=datetime.timedelta(hours=4),
+        min_nav_change_update: Percent=0.005
     ):
         """
         :param extra_gnosis_gas:
@@ -59,6 +60,9 @@ class LagoonVaultSyncModel(AddressSyncModel):
             Crash is valuation data is older than this.
 
             Abort posting new valuations to onchain the valuation is too old.
+
+        :param min_nav_change_update:
+            Minimum change in NAV before we post update.
         """
         assert isinstance(vault, LagoonVault), f"Got {type(vault)} instead of LagoonVault"
         if hot_wallet is not None:
@@ -68,6 +72,7 @@ class LagoonVaultSyncModel(AddressSyncModel):
         self.hot_wallet = hot_wallet
         self.extra_gnosis_gas = extra_gnosis_gas
         self.valuation_data_freshness = valuation_data_freshness
+        self.min_nav_change_update = min_nav_change_update
         assert vault.trading_strategy_module, "LagoonVault.trading_strategy_module initialisation param not set - needed to run the sync model properly"
         # assert isinstance(self.web3.provider, MEVBlockerProvider), f"This sync model needs MEVBlockerProvider, got {type(self.web3.provider)}"
 
@@ -185,6 +190,35 @@ class LagoonVaultSyncModel(AddressSyncModel):
         # TODO: Replace with pure onchain valuation mechanism?
         return state.portfolio.get_net_asset_value(include_interest=True)
 
+    def check_nav_update_and_settle_needed(self, calculated_nav: USDollarAmount) -> bool:
+        """Do we need to settle or change onchain NAV.
+
+        - Avoid unnecessary txs if NAV price has not moved
+
+        :return:
+            True if we need to settle/post NAV
+        """
+        block_number = get_almost_latest_block_number(self.web3)
+        flow_manager = self.vault.get_flow_manager()
+        pending_deposits = flow_manager.fetch_pending_deposit(block_number)
+        pending_redemptions = flow_manager.fetch_pending_deposit(block_number)
+        if pending_deposits or pending_redemptions:
+            logger.info("Deposit/redemptions detected, NAV update needed")
+            return True
+
+        onchain_nav = self.vault.fetch_nav()
+        nav_diff = abs(calculated_nav - onchain_nav) / onchain_nav
+        if nav_diff >= self.min_nav_change_update:
+            logger.info(
+                "NAV update neeed. Calcualted %s, onchain %s, diff %f %%",
+                onchain_nav,
+                calculated_nav,
+                nav_diff * 100,
+            )
+            return True
+
+        return False
+
     def sync_treasury(
         self,
         strategy_cycle_ts: datetime.datetime,
@@ -223,21 +257,36 @@ class LagoonVaultSyncModel(AddressSyncModel):
             chain_id=reserve_asset.chain_id,
         )
 
-        valuation = self.calculate_valuation(state, )
+        valuation = self.calculate_valuation(state)
 
         if not post_valuation:
             logger.warning("LagoonVaultSyncModel.sync_treasury() called with post_valuation=False")
             return []
 
+        if not self.check_nav_update_and_settle_needed(valuation):
+            return []
+
+        assert self.hot_wallet, "asset_manager HotWallet needed in order to sync Lagoon vault"
+
         old_balance = reserve_token.fetch_balance_of(self.get_token_storage_address())
 
         logger.info("Posting new Lagoon valuation: %f USD", valuation)
         bound_func = vault.post_new_valuation(Decimal(valuation))
-        signed_tx_1 = self.hot_wallet.sign_bound_call_with_new_nonce(bound_func, {"gas": DEFAULT_LAGOON_POST_VALUATION_GAS})
+        signed_tx_1 = self.hot_wallet.sign_bound_call_with_new_nonce(
+            bound_func,
+            tx_params={"gas": DEFAULT_LAGOON_POST_VALUATION_GAS},
+            web3=web3,
+            fill_gas_price=True
+        )
 
         logger.info("Preparing to settle Lagoon")
         bound_func = vault.settle_via_trading_strategy_module()
-        signed_tx_2 = self.hot_wallet.sign_bound_call_with_new_nonce(bound_func, {"gas": DEFAULT_LAGOON_SETTLE_GAS})
+        signed_tx_2 = self.hot_wallet.sign_bound_call_with_new_nonce(
+            bound_func,
+            tx_params={"gas": DEFAULT_LAGOON_SETTLE_GAS},
+            web3=web3,
+            fill_gas_price=True
+        )
 
         wait_and_broadcast_multiple_nodes_mev_blocker(
             web3.provider,
@@ -278,6 +327,11 @@ class LagoonVaultSyncModel(AddressSyncModel):
             other_data=analysis.get_serialiable_diagnostics_data()
         )
 
+        # Update reserve position mutable value
+        reserve_position.reserve_token_price = float(1)
+        reserve_position.last_pricing_at = analysis.timestamp
+        reserve_position.last_sync_at = analysis.timestamp
+        reserve_position.quantity = analysis.underlying_balance
         reserve_position.add_balance_update_event(evt)
 
         # Add in the event cross reference list
@@ -286,6 +340,7 @@ class LagoonVaultSyncModel(AddressSyncModel):
         treasury_sync.last_block_scanned = analysis.block_number
         treasury_sync.last_updated_at = datetime.datetime.utcnow()
         treasury_sync.last_cycle_at = strategy_cycle_ts
+        treasury_sync.pending_redemptions = float(analysis.pending_redemptions_underlying)
 
-        logger.info(f"Lagoon settlements done, the last block is now {treasury_sync.last_block_scanned:,}, settled {analysis.get_underlying_diff()} events")
+        logger.info(f"Lagoon settlements done, the last block is now {treasury_sync.last_block_scanned:,}, settled {analysis.get_underlying_diff()} events, pending redemptions {analysis.pending_redemptions_underlying} USD")
         return [evt]

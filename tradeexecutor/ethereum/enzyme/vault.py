@@ -716,7 +716,6 @@ class EnzymeVaultSyncModel(SyncModel):
         portfolio.initialise_reserves(asset)
 
         reserve_position = portfolio.get_reserve_position(asset)
-
         reserve_position.reserve_token_price = float(1)
         reserve_position.last_pricing_at = datetime.datetime.utcnow()
         reserve_position.last_sync_at = datetime.datetime.utcnow()

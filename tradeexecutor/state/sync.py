@@ -158,6 +158,12 @@ class Treasury:
     #: The actual balance update content is stored on the position itself.
     balance_update_refs: List[BalanceEventRef] = field(default_factory=list)
 
+    #: How much pending redemptions we have?
+    #:
+    #: For Lagoon based vaults, we need to sell assets to satisfy redemptions on the next cycle.
+    #:
+    pending_redemptions: Optional[USDollarAmount] = None
+
     def __repr__(self):
         return f"<Treasury updated:{self.last_updated_at} cycle:{self.last_cycle_at} block scanned:{self.last_block_scanned or 0:,} refs:{len(self.balance_update_refs)}>"
 
