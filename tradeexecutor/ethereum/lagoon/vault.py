@@ -13,6 +13,7 @@ from eth_defi.confirmation import wait_and_broadcast_multiple_nodes_mev_blocker
 from eth_defi.hotwallet import HotWallet
 from eth_defi.lagoon.analysis import analyse_vault_flow_in_settlement
 from eth_defi.lagoon.vault import LagoonVault, DEFAULT_LAGOON_POST_VALUATION_GAS, DEFAULT_LAGOON_SETTLE_GAS
+from eth_defi.provider.anvil import is_anvil
 from eth_defi.provider.broken_provider import get_almost_latest_block_number
 from eth_defi.provider.mev_blocker import MEVBlockerProvider
 
@@ -73,6 +74,7 @@ class LagoonVaultSyncModel(AddressSyncModel):
         self.extra_gnosis_gas = extra_gnosis_gas
         self.valuation_data_freshness = valuation_data_freshness
         self.min_nav_change_update = min_nav_change_update
+        self.anvil = is_anvil(self.web3)  # Running test mode
         assert vault.trading_strategy_module, "LagoonVault.trading_strategy_module initialisation param not set - needed to run the sync model properly"
         # assert isinstance(self.web3.provider, MEVBlockerProvider), f"This sync model needs MEVBlockerProvider, got {type(self.web3.provider)}"
 
@@ -106,6 +108,14 @@ class LagoonVaultSyncModel(AddressSyncModel):
 
     def get_token_storage_address(self) -> Optional[str]:
         return self.vault.safe_address
+
+    def get_safe_latest_block(self) -> int:
+        if self.anvil:
+            # On Anvil tests, we need to always follow the latest block
+            return self.web3.eth.block_number
+        else:
+            # Leave room for minor reorg of 1-2 blocks
+            return get_almost_latest_block_number(self.web3)
 
     def create_transaction_builder(self) -> LagoonTransactionBuilder:
         return LagoonTransactionBuilder(self.vault, self.hot_wallet, self.extra_gnosis_gas)
@@ -165,7 +175,7 @@ class LagoonVaultSyncModel(AddressSyncModel):
 
         # Latest block fails on LlamaNodes.com
         if block_identifier is None:
-            block_identifier = get_almost_latest_block_number(self.web3)
+            block_identifier = self.get_safe_latest_block()
 
         return fetch_address_balances(
             self.web3,
@@ -198,15 +208,15 @@ class LagoonVaultSyncModel(AddressSyncModel):
         :return:
             True if we need to settle/post NAV
         """
-        block_number = get_almost_latest_block_number(self.web3)
+        block_number = self.get_safe_latest_block()
         flow_manager = self.vault.get_flow_manager()
         pending_deposits = flow_manager.fetch_pending_deposit(block_number)
-        pending_redemptions = flow_manager.fetch_pending_deposit(block_number)
+        pending_redemptions = flow_manager.fetch_pending_redemption(block_number)
         if pending_deposits or pending_redemptions:
             logger.info("Deposit/redemptions detected, NAV update needed")
             return True
 
-        onchain_nav = self.vault.fetch_nav()
+        onchain_nav = float(self.vault.fetch_nav())
         nav_diff = abs(calculated_nav - onchain_nav) / onchain_nav
         if nav_diff >= self.min_nav_change_update:
             logger.info(
@@ -264,6 +274,7 @@ class LagoonVaultSyncModel(AddressSyncModel):
             return []
 
         if not self.check_nav_update_and_settle_needed(valuation):
+            logger.info("LagoonVaultSyncModel.sync_treasury() no actionable changes detected")
             return []
 
         assert self.hot_wallet, "asset_manager HotWallet needed in order to sync Lagoon vault"
@@ -307,6 +318,10 @@ class LagoonVaultSyncModel(AddressSyncModel):
         event_id = portfolio.next_balance_update_id
         portfolio.next_balance_update_id += 1
 
+        # Include our valuation in the other_data diangnostics
+        other_data = analysis.get_serialiable_diagnostics_data()
+        other_data["valuation"] = valuation
+
         evt = BalanceUpdate(
             balance_update_id=event_id,
             position_type=BalanceUpdatePositionType.reserve,
@@ -324,7 +339,7 @@ class LagoonVaultSyncModel(AddressSyncModel):
             usd_value=float(delta),  # Assume stablecoin
             notes=f"Lagoon reserve update at tx {analysis.tx_hash.hex()}, block {analysis.block_number:,}",
             block_number=analysis.block_number,
-            other_data=analysis.get_serialiable_diagnostics_data()
+            other_data=other_data,
         )
 
         # Update reserve position mutable value
@@ -342,5 +357,5 @@ class LagoonVaultSyncModel(AddressSyncModel):
         treasury_sync.last_cycle_at = strategy_cycle_ts
         treasury_sync.pending_redemptions = float(analysis.pending_redemptions_underlying)
 
-        logger.info(f"Lagoon settlements done, the last block is now {treasury_sync.last_block_scanned:,}, settled {analysis.get_underlying_diff()} events, pending redemptions {analysis.pending_redemptions_underlying} USD")
+        logger.info(f"Lagoon settlements done, the last block is now {treasury_sync.last_block_scanned:,}, settled {analysis.get_underlying_diff()} events, valuation is {valuation:,.2f}, pending redemptions {analysis.pending_redemptions_underlying} USD")
         return [evt]
