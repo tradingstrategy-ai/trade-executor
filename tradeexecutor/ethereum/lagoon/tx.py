@@ -43,11 +43,11 @@ class LagoonTransactionBuilder(TransactionBuilder):
 
     def get_token_delivery_address(self) -> str:
         """Get the target address for ERC-20 approve()"""
-        return self.vault.vault_address
+        return self.vault.safe_address
 
     def get_erc_20_balance_address(self) -> str:
         """Get the address that holds ERC-20 supply"""
-        return self.vault.vault_address
+        return self.vault.safe_address
 
     def get_gas_wallet_address(self) -> str:
         """Get the address that holds native token for gas fees"""
@@ -89,20 +89,24 @@ class LagoonTransactionBuilder(TransactionBuilder):
                     asset_deltas)
 
         gas_price_suggestion = gas_price_suggestion or self.fetch_gas_price_suggestion()
-        gas_data = gas_price_suggestion.get_tx_gas_params()
 
         bound_prepare_call = self.vault.transact_via_trading_strategy_module(
             args_bound_func
         )
-        tx_data = bound_prepare_call.build_transaction()
-        tx_data.update(gas_data)
-        tx_data["gas"] = gas_limit + self.extra_gnosis_gas
+        tx_data = bound_prepare_call.build_transaction({
+            "gas": gas_limit + self.extra_gnosis_gas,
+            "from": self.hot_wallet.address,
+        })
+        tx_data.update(gas_price_suggestion.get_tx_gas_params())
 
         signed_tx = self.hot_wallet.sign_transaction_with_new_nonce(tx_data)
         signed_bytes = signed_tx.rawTransaction.hex()
 
+        # Needed for get_swap_transactions() hack
+        tx_data["function"] =  args_bound_func.fn_name
+
         return BlockchainTransaction(
-            type=BlockchainTransactionType.enzyme_vault,
+            type=BlockchainTransactionType.lagoon_vault,
             chain_id=self.chain_id,
             from_address=self.hot_wallet.address,
             contract_address=self.vault.trading_strategy_module_address,

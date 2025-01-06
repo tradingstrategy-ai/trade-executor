@@ -26,9 +26,12 @@ from eth_defi.trace import assert_transaction_success_with_explanation
 from eth_defi.uniswap_v2.constants import UNISWAP_V2_DEPLOYMENTS
 from eth_defi.uniswap_v2.deployment import fetch_deployment
 from eth_defi.vault.base import VaultSpec
+
+from tradeexecutor.ethereum.ethereum_protocol_adapters import EthereumPairConfigurator
 from tradeexecutor.ethereum.lagoon.execution import LagoonExecution
 from tradeexecutor.ethereum.lagoon.tx import LagoonTransactionBuilder
 from tradeexecutor.state.identifier import TradingPairIdentifier, AssetIdentifier
+from tradeexecutor.strategy.generic.generic_pricing_model import GenericPricing
 from tradeexecutor.strategy.generic.generic_router import GenericRouting
 from tradeexecutor.strategy.reverse_universe import create_universe_from_trading_pair_identifiers
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse, translate_token
@@ -37,6 +40,7 @@ from tradingstrategy.exchange import ExchangeUniverse, Exchange, ExchangeType
 from tradingstrategy.pair import PandasPairUniverse
 from tradingstrategy.timebucket import TimeBucket
 from tradingstrategy.universe import Universe
+
 
 JSON_RPC_BASE = os.environ.get("JSON_RPC_BASE")
 
@@ -227,7 +231,7 @@ def lagoon_vault(web3, base_test_vault_spec: VaultSpec) -> LagoonVault:
 
 
 @pytest.fixture()
-def asset_manager(web3) -> LocalAccount:
+def asset_manager(web3) -> HotWallet:
     """Account that we use for Lagoon trade/settles"""
     hot_wallet = HotWallet.create_for_testing(web3, eth_amount=1)
     return hot_wallet
@@ -259,16 +263,18 @@ def topped_up_valuation_manager(web3, valuation_manager):
 
 
 @pytest.fixture()
-def lagoont_execution_model(
+def lagoon_execution_model(
     web3: Web3,
-    lagoon_vault: LagoonVault,
-    hot_wallet: HotWallet,
+    automated_lagoon_vault: LagoonAutomatedDeployment,
+    asset_manager: HotWallet,
 ) -> LagoonExecution:
     """Set EthereumExecutionModel in Base fork testing mode."""
 
+    vault = automated_lagoon_vault.vault
+
     execution_model = LagoonExecution(
-        vault=lagoon_vault,
-        tx_builder=LagoonTransactionBuilder(lagoon_vault, hot_wallet),
+        vault=vault,
+        tx_builder=LagoonTransactionBuilder(vault, asset_manager),
         mainnet_fork=True,
         confirmation_block_count=0,
     )
@@ -276,8 +282,32 @@ def lagoont_execution_model(
 
 
 @pytest.fixture()
-def lagoon_routing_model(lagoont_execution_model) -> GenericRouting:
-    return lagoont_execution_model.create_default_routing_model()
+def lagoon_routing_model(lagoon_execution_model, vault_strategy_universe) -> GenericRouting:
+    return lagoon_execution_model.create_default_routing_model(vault_strategy_universe)
+
+
+@pytest.fixture()
+def lagoon_pricing_model(
+    web3,
+    vault_strategy_universe,
+) -> GenericPricing:
+    pair_configurator = EthereumPairConfigurator(
+        web3,
+        vault_strategy_universe,
+    )
+
+    weth_usdc = vault_strategy_universe.get_pair_by_human_description(
+        (ChainId.base, "uniswap-v3", "WETH", "USDC", 0.0005),
+    )
+
+    base_weth = weth_usdc.base
+
+    return GenericPricing(
+        pair_configurator,
+        exchange_rate_pairs={
+            base_weth: weth_usdc,
+        }
+    )
 
 
 @pytest.fixture(scope='module')
