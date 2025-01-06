@@ -58,7 +58,7 @@ def anvil(request: FixtureRequest) -> AnvilLaunch:
 
     # London hardfork will enable EIP-1559 style gas fees
     anvil = launch_anvil(
-        hardfork="london",
+        hardfork="cancun",
         gas_limit=15_000_000,  # Max 5M gas per block, or per transaction in test automining
     )
     try:

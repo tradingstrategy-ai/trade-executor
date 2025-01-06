@@ -44,19 +44,15 @@ from typing import Optional
 
 from typer import Option
 
-from eth_defi.abi import get_deployed_contract
-from eth_defi.deploy import deploy_contract
-from eth_defi.enzyme.deployment import POLYGON_DEPLOYMENT, EnzymeDeployment, ETHEREUM_DEPLOYMENT
-from eth_defi.enzyme.generic_adapter_vault import deploy_vault_with_generic_adapter
+
 from eth_defi.hotwallet import HotWallet
 from eth_defi.lagoon.deployment import LagoonDeploymentParameters, deploy_automated_lagoon_vault
-from eth_defi.token import fetch_erc20_details, USDC_NATIVE_TOKEN
+from eth_defi.token import fetch_erc20_details
 from eth_defi.uniswap_v2.constants import UNISWAP_V2_DEPLOYMENTS
 from eth_defi.uniswap_v2.deployment import fetch_deployment
-from tests.lagoon.test_deploy_base import multisig_owners
 
 from tradeexecutor.cli.commands.shared_options import parse_comma_separated_list
-from tradeexecutor.cli.guard import get_enzyme_deployment, generate_whitelist
+from tradeexecutor.cli.guard import generate_whitelist
 from tradeexecutor.monkeypatch.web3 import construct_sign_and_send_raw_middleware
 from tradingstrategy.chain import ChainId
 
@@ -149,10 +145,16 @@ def enzyme_deploy_vault(
     # TODO: Asset manager is now always the deployer
     asset_manager = hot_wallet.address
 
+    denomination_token = fetch_erc20_details(
+        web3,
+        denomination_asset,
+    )
+
     if simulate:
         logger.info("Simulation deployment")
     else:
         logger.info("Ready to deploy")
+
     logger.info("-" * 80)
     logger.info("Deployer hot wallet: %s", hot_wallet.address)
     logger.info("Deployer balance: %f, nonce %d", hot_wallet.get_native_currency_balance(web3), hot_wallet.current_nonce)
@@ -161,6 +163,7 @@ def enzyme_deploy_vault(
     logger.info("Whitelisted assets: %s", ", ".join([a.symbol for a in whitelisted_asset_details]))
     logger.info("Whitelisting 1delta: %s", one_delta)
     logger.info("Whitelisting Aave: %s", aave)
+    logger.info("Underlying token: %s", denomination_token.symbol)
 
     if etherscan_api_key:
         logger.info("Etherscan API key: %s", etherscan_api_key)
@@ -189,9 +192,9 @@ def enzyme_deploy_vault(
     # as the trade-executor that deploys the vault is going to
     # the assset manager for this vault
     parameters = LagoonDeploymentParameters(
-        underlying=USDC_NATIVE_TOKEN[chain_id],
-        name="Example",
-        symbol="EXA",
+        underlying=denomination_token.address,
+        name=fund_name,
+        symbol=fund_symbol,
     )
 
     if uniswap_v2:
