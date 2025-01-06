@@ -47,7 +47,7 @@ jobs:
           path: ~/.cache/trading-strategy-tests
           key: cache-datasets
 
-      # Needed for Anvil
+      # Needed for Anvil / fork tests
       - name: Install Foundry
         uses: foundry-rs/foundry-toolchain@v1
         with:
