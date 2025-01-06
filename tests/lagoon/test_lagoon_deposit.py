@@ -1,5 +1,6 @@
 """Test Lagoon vault deposits/redemptions are correctly performed."""
 import datetime
+import os
 from decimal import Decimal
 
 import pytest
@@ -10,12 +11,15 @@ from eth_defi.hotwallet import HotWallet
 from eth_defi.lagoon.deployment import LagoonAutomatedDeployment
 from eth_defi.token import TokenDetails
 from eth_defi.trace import assert_transaction_success_with_explanation
-from tradeexecutor.cli.commands.shared_options import asset_management_mode
 
 from tradeexecutor.ethereum.lagoon.vault import LagoonVaultSyncModel
 from tradeexecutor.state.portfolio import ReserveMissing
 from tradeexecutor.state.state import State
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
+
+
+JSON_RPC_BASE = os.environ.get("JSON_RPC_BASE")
+pytestmark = pytest.mark.skipif(not JSON_RPC_BASE, reason="No JSON_RPC_BASE environment variable")
 
 
 def test_lagoon_treasury_initialise(

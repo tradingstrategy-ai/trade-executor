@@ -51,8 +51,9 @@ jobs:
       - name: Install Foundry
         uses: foundry-rs/foundry-toolchain@v1
         with:
-          # pick a nightly release from: https://github.com/foundry-rs/foundry/releases
-          version: 'nightly-de33b6af53005037b463318d2628b5cfcaf39916'
+          # Anvil 0.3.0
+          # https://github.com/foundry-rs/foundry/releases/tag/v0.3.0
+          version: '5a8bd893eeeeb9489ea66dd52a02eeaa580e3af0'
 
       - name: Install dependencies
         if: steps.cached-poetry-dependencies.outputs.cache-hit != 'true'
