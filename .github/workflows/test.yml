@@ -64,6 +64,8 @@ jobs:
       # I suspect out of memory situation that is not reported to the user.
       # Print 20 slowest tests when done.
       # tests/**/test*.py -> workaround issues by scanning tests folder in git submodules and importing them (even if not running)
+      # More on Github Actions issues:
+      # https://github.com/pytest-dev/pytest/issues/3216#issuecomment-2572882817
       - name: Run test scripts
         run: |
             poetry run pytest -v --tb=native --dist loadscope -n 3 --durations=20 -m "not slow_test_group" --timeout=300
