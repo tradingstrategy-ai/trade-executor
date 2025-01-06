@@ -351,6 +351,7 @@ def test_velvet_intent_based_increase_position_uniswap_v3(
     assert t.executed_reserve > 0
 
 
+@pytest.mark.skipif(CI, reason="Skipped on continuous integration due to Velvet/Enso stability issues")
 def test_velvet_intent_based_open_position_many(
     state_with_starting_positions: State,
     velvet_test_vault_strategy_universe: TradingStrategyUniverse,
