@@ -9,6 +9,8 @@ from web3 import Web3
 
 from eth_defi.provider.anvil import AnvilLaunch, launch_anvil
 from eth_defi.provider.multi_provider import create_multi_provider_web3
+
+
 from tradeexecutor.cli.commands.app import app
 from tradeexecutor.state.state import State
 
@@ -16,8 +18,8 @@ JSON_RPC_BASE = os.environ.get("JSON_RPC_BASE")
 TRADING_STRATEGY_API_KEY = os.environ.get("TRADING_STRATEGY_API_KEY")
 
 pytestmark = pytest.mark.skipif(
-     (not JSON_RPC_BASE or not TRADING_STRATEGY_API_KEY or not VELVET_VAULT_OWNER_PRIVATE_KEY),
-      reason="Set JSON_RPC_BASE and TRADING_STRATEGY_API_KEY and VELVET_VAULT_OWNER_PRIVATE_KEYneeded to run this test"
+     (not JSON_RPC_BASE or not TRADING_STRATEGY_API_KEY),
+      reason="Set JSON_RPC_BASE and TRADING_STRATEGY_API_KEY needed to run this test"
 )
 
 @pytest.fixture()
@@ -57,8 +59,7 @@ def environment(
     strategy_file,
     anvil,
     state_file,
-    vault_address,
-    topped_up_asset_manager,
+    asset_manager,
 ):
     environment = {
         "EXECUTOR_ID": "test_base_memecoin_inddex_lagoon",
@@ -67,7 +68,6 @@ def environment(
         "JSON_RPC_BASE": anvil.json_rpc_url,
         "STATE_FILE": state_file.as_posix(),
         "ASSET_MANAGEMENT_MODE": "lagoon",
-        "VAULT_ADDRESS": vault_address,
         "UNIT_TESTING": "true",
         # "LOG_LEVEL": "info",  # Set to info to get debug data for the test run
         "LOG_LEVEL": "disabled",
@@ -76,7 +76,7 @@ def environment(
         "MAX_DATA_DELAY_MINUTES": str(10 * 60 * 24 * 365),  # 10 years or "disabled""
         "MIN_GAS_BALANCE": "0.005",
         "RAISE_ON_UNCLEAN": "true",  # For correct-accounts
-        "PRIVATE_KEY": topped_up_asset_manager.private_key,
+        "PRIVATE_KEY": asset_manager.private_key,
     }
     return environment
 
@@ -94,8 +94,9 @@ def deployed_vault_environment(
     deploy_info = automated_lagoon_vault
 
     environment = {
-        "EXECUTOR_ID": "test_base_memecoin_inddex_lagoon",
-        "NAME": "test_base_memecoin_inddex_lagoon",
+        "PATH": os.environ["PATH"],  # Need forge
+        "EXECUTOR_ID": "deployed_vault_environment",
+        "NAME": "deployed_vault_environment",
         "STRATEGY_FILE": strategy_file.as_posix(),
         "JSON_RPC_BASE": anvil.json_rpc_url,
         "STATE_FILE": state_file.as_posix(),
@@ -109,25 +110,31 @@ def deployed_vault_environment(
         "MAX_DATA_DELAY_MINUTES": str(10 * 60 * 24 * 365),  # 10 years or "disabled""
         "MIN_GAS_BALANCE": "0.005",
         "RAISE_ON_UNCLEAN": "true",  # For correct-accounts
-        "PRIVATE_KEY": topped_up_asset_manager.private_key,
+        "PRIVATE_KEY": topped_up_asset_manager.private_key.hex(),
+        "ANY_ASSET": "true",
     }
     return environment
 
 
-def test_cli_deploy_vault(
+def test_cli_lagoon_deploy_vault(
+    web3,
     anvil,
     strategy_file,
     environment: dict,
     mocker,
     state_file,
-    web3,
-    topped_up_asset_manager,
+    asset_manager,
+    tmp_path: Path,
+    base_usdc,
 ):
-    """Run check-walet Velvet vault."""
+    """Deploy Lagoon vault."""
+
+    multisig_owners = f"{web3.eth.accounts[2]}, {web3.eth.accounts[3]}, {web3.eth.accounts[4]}"
 
     environment = {
-        "EXECUTOR_ID": "test_base_memecoin_inddex_lagoon",
-        "NAME": "test_base_memecoin_inddex_lagoon",
+        "PATH": os.environ["PATH"],  # Need forge
+        "EXECUTOR_ID": "test_cli_lagoon_deploy_vault",
+        "NAME": "test_cli_lagoon_deploy_vault",
         "STRATEGY_FILE": strategy_file.as_posix(),
         "JSON_RPC_BASE": anvil.json_rpc_url,
         "STATE_FILE": state_file.as_posix(),
@@ -135,12 +142,16 @@ def test_cli_deploy_vault(
         "UNIT_TESTING": "true",
         # "LOG_LEVEL": "info",  # Set to info to get debug data for the test run
         "LOG_LEVEL": "disabled",
-        "RUN_SINGLE_CYCLE": "true",
         "TRADING_STRATEGY_API_KEY": TRADING_STRATEGY_API_KEY,
-        "MAX_DATA_DELAY_MINUTES": str(10 * 60 * 24 * 365),  # 10 years or "disabled""
-        "MIN_GAS_BALANCE": "0.005",
-        "RAISE_ON_UNCLEAN": "true",  # For correct-accounts
-        "PRIVATE_KEY": topped_up_asset_manager.private_key,
+        "PRIVATE_KEY": asset_manager.private_key.hex(),
+        "VAULT_RECORD_FILE": str(tmp_path / "vault-record.json"),
+        "FUND_NAME": "Example",
+        "FUND_SYMBOL": "EXAM",
+        "MULTISIG_OWNERS": multisig_owners,
+        "DENOMINATION_ASSET": base_usdc.address,
+        "ANY_ASSET": "true",
+        "UNISWAP_V2": "true",
+
     }
 
     cli = get_command(app)

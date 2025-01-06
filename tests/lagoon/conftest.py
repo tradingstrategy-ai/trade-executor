@@ -238,18 +238,6 @@ def asset_manager(web3) -> HotWallet:
 
 
 @pytest.fixture()
-def topped_up_asset_manager(web3, asset_manager):
-    # Topped up with some ETH
-    tx_hash = web3.eth.send_transaction({
-        "to": asset_manager,
-        "from": web3.eth.accounts[0],
-        "value": 9 * 10**18,
-    })
-    assert_transaction_success_with_explanation(web3, tx_hash)
-    return asset_manager
-
-
-@pytest.fixture()
 def topped_up_valuation_manager(web3, valuation_manager):
     # Topped up with some ETH
     tx_hash = web3.eth.send_transaction({

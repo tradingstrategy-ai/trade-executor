@@ -100,7 +100,7 @@ telegram_chat_id = Option(None, envvar="TELEGRAM_CHAT_ID", help="Telegram chat i
 
 max_workers = Option(None, envvar="MAX_WORKERS", help="Maximum number of worker processes (CPU cores) used for indicator calculations. Set to 1 for single thread mode to be used with Python debuggers. If not given use an autodetected safe value.")
 
-def parse_comma_separated_list(value: str):
+def parse_comma_separated_list(value: str) -> list:
     # def main(items: list[str] = typer.Argument(..., callback=parse_comma_separated_list)):
     #     """
     #     This is a command that takes a comma-separated list of items as an argument.
@@ -111,4 +111,7 @@ def parse_comma_separated_list(value: str):
     #
     # if __name__ == "__main__":
     #     typer.run(main)
-    return [item.strip() for item in value.split(',') if item.strip()]
+    assert type(value) == str, f"Expected string, got: {type(value)}: {value}"
+    if value:
+        return [item.strip() for item in value.split(',') if item.strip()]
+    return []
