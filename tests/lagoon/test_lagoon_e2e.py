@@ -63,6 +63,7 @@ def environment(
     anvil,
     state_file,
     vault_address,
+    topped_up_asset_manager,
 ):
     environment = {
         "EXECUTOR_ID": "test_base_memecoin_inddex_lagoon",
@@ -80,17 +81,72 @@ def environment(
         "MAX_DATA_DELAY_MINUTES": str(10 * 60 * 24 * 365),  # 10 years or "disabled""
         "MIN_GAS_BALANCE": "0.005",
         "RAISE_ON_UNCLEAN": "true",  # For correct-accounts
+        "PRIVATE_KEY": topped_up_asset_manager.private_key,
+    }
+    return environment
+
+
+
+@pytest.fixture()
+def deployed_vault_environment(
+    strategy_file,
+    anvil,
+    state_file,
+    topped_up_asset_manager,
+    automated_lagoon_vault,
+):
+    """Lagoon CLI environment with predeployed vault."""
+    deploy_info = automated_lagoon_vault
+
+    environment = {
+        "EXECUTOR_ID": "test_base_memecoin_inddex_lagoon",
+        "NAME": "test_base_memecoin_inddex_lagoon",
+        "STRATEGY_FILE": strategy_file.as_posix(),
+        "JSON_RPC_BASE": anvil.json_rpc_url,
+        "STATE_FILE": state_file.as_posix(),
+        "ASSET_MANAGEMENT_MODE": "lagoon",
+        "VAULT_ADDRESS": deploy_info.vault.vault_address,
+        "UNIT_TESTING": "true",
+        # "LOG_LEVEL": "info",  # Set to info to get debug data for the test run
+        "LOG_LEVEL": "disabled",
+        "RUN_SINGLE_CYCLE": "true",
+        "TRADING_STRATEGY_API_KEY": TRADING_STRATEGY_API_KEY,
+        "MAX_DATA_DELAY_MINUTES": str(10 * 60 * 24 * 365),  # 10 years or "disabled""
+        "MIN_GAS_BALANCE": "0.005",
+        "RAISE_ON_UNCLEAN": "true",  # For correct-accounts
+        "PRIVATE_KEY": topped_up_asset_manager.private_key,
     }
     return environment
 
 
 def test_cli_deploy_vault(
+    anvil,
+    strategy_file,
     environment: dict,
     mocker,
     state_file,
     web3,
+    topped_up_asset_manager,
 ):
     """Run check-walet Velvet vault."""
+
+    environment = {
+        "EXECUTOR_ID": "test_base_memecoin_inddex_lagoon",
+        "NAME": "test_base_memecoin_inddex_lagoon",
+        "STRATEGY_FILE": strategy_file.as_posix(),
+        "JSON_RPC_BASE": anvil.json_rpc_url,
+        "STATE_FILE": state_file.as_posix(),
+        "ASSET_MANAGEMENT_MODE": "lagoon",
+        "UNIT_TESTING": "true",
+        # "LOG_LEVEL": "info",  # Set to info to get debug data for the test run
+        "LOG_LEVEL": "disabled",
+        "RUN_SINGLE_CYCLE": "true",
+        "TRADING_STRATEGY_API_KEY": TRADING_STRATEGY_API_KEY,
+        "MAX_DATA_DELAY_MINUTES": str(10 * 60 * 24 * 365),  # 10 years or "disabled""
+        "MIN_GAS_BALANCE": "0.005",
+        "RAISE_ON_UNCLEAN": "true",  # For correct-accounts
+        "PRIVATE_KEY": topped_up_asset_manager.private_key,
+    }
 
     cli = get_command(app)
     mocker.patch.dict("os.environ", environment, clear=True)
@@ -98,7 +154,7 @@ def test_cli_deploy_vault(
 
 
 def test_cli_lagoon_check_wallet(
-    environment: dict,
+    deployed_vault_environment: dict,
     mocker,
     state_file,
     web3,
@@ -124,12 +180,14 @@ def test_cli_lagoon_check_universe(
 
 
 def test_cli_lagoon_perform_test_trade(
-    environment: dict,
+    deployed_vault_environment: dict,
     mocker,
     state_file,
     web3,
 ):
     """Run a single test trade using Velvet vault."""
+
+    environment = deployed_vault_environment
 
     cli = get_command(app)
     mocker.patch.dict("os.environ", environment, clear=True)
@@ -159,7 +217,7 @@ def test_cli_lagoon_backtest(
 
 
 def test_cli_lagoon_base_memecoin_index_start_single_cycle(
-    environment: dict,
+    deployed_vault_environment: dict,
     mocker,
     state_file,
     web3,
@@ -168,6 +226,8 @@ def test_cli_lagoon_base_memecoin_index_start_single_cycle(
 
     - Should attempt to open multiple positions using Enso
     """
+
+    environment = deployed_vault_environment
 
     cli = get_command(app)
     mocker.patch.dict("os.environ", environment, clear=True)
@@ -186,7 +246,7 @@ def test_cli_lagoon_base_memecoin_index_start_single_cycle(
 
 
 def test_cli_lagoon_correct_accounts(
-    environment: dict,
+    deployed_vault_environment: dict,
     mocker,
     state_file,
     web3,
@@ -195,6 +255,8 @@ def test_cli_lagoon_correct_accounts(
 
     - This test checks code runs, but does not attempt to repair any errors
     """
+
+    environment = deployed_vault_environment
 
     cli = get_command(app)
     mocker.patch.dict("os.environ", environment, clear=True)
