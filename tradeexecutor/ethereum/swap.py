@@ -34,11 +34,11 @@ def get_swap_transactions(trade: TradeExecution) -> BlockchainTransaction:
         if tx.type == BlockchainTransactionType.hot_wallet:
             if is_swap_function(tx.function_selector):
                 return tx
-        elif tx.type == BlockchainTransactionType.enzyme_vault:
+        elif tx.type in (BlockchainTransactionType.enzyme_vault, BlockchainTransactionType.lagoon_vault):
             if is_swap_function(tx.details["function"]):
                 return tx
 
-    raise RuntimeError("Should not happen")
+    raise NotImplementedError(f"Unimplemented swap transaction type: {trade}")
 
 
 def report_failure(

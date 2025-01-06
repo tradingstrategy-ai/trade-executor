@@ -1,4 +1,4 @@
-"""Test Velvet vault deposits are correctly read."""
+"""Test Lagoon vault deposits/redemptions are correctly performed."""
 import datetime
 from decimal import Decimal
 
