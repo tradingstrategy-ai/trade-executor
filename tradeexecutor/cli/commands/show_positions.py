@@ -48,7 +48,7 @@ def show_positions(
     state_file: Optional[Path] = shared_options.state_file,
     strategy_file: Optional[Path] = shared_options.optional_strategy_file,
     position_type: PositionType = Option(PositionType.open_and_frozen.value, envvar="POSITION_TYPE", help="Which position types to display"),
-    tx_type: TransactionType = Option(TransactionType.none, envvar="TX_TYPE", help="Which transactions to list"),
+    tx_type: TransactionType = Option("none", envvar="TX_TYPE", help="Which transactions to list"),
 ):
     """Display trading positions from a state file.
 
