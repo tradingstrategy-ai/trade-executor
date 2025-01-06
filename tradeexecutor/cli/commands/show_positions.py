@@ -16,7 +16,7 @@ from ...state.state import State
 from . import shared_options
 
 
-class PositionType(enum.Enum):
+class PositionType(enum.StrEnum):
     """What output we want from show-positions command."""
 
     #: Show only open positions
@@ -29,7 +29,7 @@ class PositionType(enum.Enum):
     all = "all"
 
 
-class TransactionType(enum.Enum):
+class TransactionType(enum.StrEnum):
     """What transaction output we want from show-positions command."""
 
     none = "none"
@@ -47,7 +47,7 @@ def show_positions(
     id: str = shared_options.id,
     state_file: Optional[Path] = shared_options.state_file,
     strategy_file: Optional[Path] = shared_options.optional_strategy_file,
-    position_type: PositionType = Option(PositionType.open_and_frozen.value, envvar="POSITION_TYPE", help="Which position types to display"),
+    position_type: PositionType = Option(PositionType.open_and_frozen, envvar="POSITION_TYPE", help="Which position types to display"),
     tx_type: TransactionType = Option(TransactionType.none, envvar="TX_TYPE", help="Which transactions to list"),
 ):
     """Display trading positions from a state file.
