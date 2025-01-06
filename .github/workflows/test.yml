@@ -51,9 +51,9 @@ jobs:
       - name: Install Foundry
         uses: foundry-rs/foundry-toolchain@v1
         with:
-          # Anvil 0.3.0
+          # Anvil 0.3.0d
           # https://github.com/foundry-rs/foundry/releases/tag/v0.3.0
-          version: '0.3.0'
+          version: 'v0.3.0'
 
       - name: Install dependencies
         if: steps.cached-poetry-dependencies.outputs.cache-hit != 'true'
