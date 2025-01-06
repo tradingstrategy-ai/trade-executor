@@ -8,6 +8,7 @@ on:
 
 jobs:
   automated-test-suite:
+
     timeout-minutes: 40
     # Use paid faster Github Actions runner
     runs-on:
@@ -46,12 +47,13 @@ jobs:
           path: ~/.cache/trading-strategy-tests
           key: cache-datasets
 
-      # Needed for Anvil
+      # Needed for Anvil / fork tests
       - name: Install Foundry
         uses: foundry-rs/foundry-toolchain@v1
         with:
-          # pick a nightly release from: https://github.com/foundry-rs/foundry/releases
-          version: 'nightly-de33b6af53005037b463318d2628b5cfcaf39916'
+          # Anvil 0.3.0d
+          # https://github.com/foundry-rs/foundry/releases/tag/v0.3.0
+          version: 'v0.3.0'
 
       - name: Install dependencies
         if: steps.cached-poetry-dependencies.outputs.cache-hit != 'true'
@@ -63,9 +65,11 @@ jobs:
       # I suspect out of memory situation that is not reported to the user.
       # Print 20 slowest tests when done.
       # tests/**/test*.py -> workaround issues by scanning tests folder in git submodules and importing them (even if not running)
+      # More on Github Actions issues:
+      # https://github.com/pytest-dev/pytest/issues/3216#issuecomment-2572882817
       - name: Run test scripts
         run: |
-            poetry run pytest -v --tb=native --dist loadscope -n 4 --durations=20 -m "not slow_test_group" --timeout=300
+            poetry run pytest --tb=native --dist loadscope -n 2 --durations=20 -m "not slow_test_group" --timeout=300
         env:
           TRADING_STRATEGY_API_KEY: ${{ secrets.TRADING_STRATEGY_API_KEY }}
           BNB_CHAIN_JSON_RPC: ${{ secrets.BNB_CHAIN_JSON_RPC }}
@@ -73,6 +77,8 @@ jobs:
           PYDEVD_DISABLE_FILE_VALIDATION: 1
           JSON_RPC_POLYGON: ${{ secrets.JSON_RPC_POLYGON }}
           JSON_RPC_POLYGON_ARCHIVE: ${{ secrets.JSON_RPC_POLYGON_ARCHIVE }}
+          JSON_RPC_BASE: ${{ secrets.JSON_RPC_BASE }}
+          JSON_RPC_ETHEREUM: ${{ secrets.JSON_RPC_ETHEREUM }}
           # Special private key needed for Velvet integration tests
           VELVET_VAULT_OWNER_PRIVATE_KEY: ${{ secrets.VELVET_VAULT_OWNER_PRIVATE_KEY }}
 

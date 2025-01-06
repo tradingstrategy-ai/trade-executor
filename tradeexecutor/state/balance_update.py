@@ -27,6 +27,9 @@ class BalanceUpdateCause(enum.Enum):
     #: User redeemed assets
     redemption = "redemption"
 
+    #: Lagoon settles both deposits and redemptions at the same time
+    deposit_and_redemption = "deposit_and_redemption"
+
     #: Position value has change due to accrued interest
     #:
     #:
@@ -166,6 +169,9 @@ class BalanceUpdate:
     #: Not always available.
     #:
     block_number: int | None = None
+
+    #: Other debug data, e.g. :py:meth:`eth_defi.lagoon.analysis.LagoonSettlementEvent.get_serialiable_diagnostics_data`
+    other_data: dict | None = None
 
     def __post_init__(self):
 

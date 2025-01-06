@@ -99,3 +99,16 @@ telegram_api_key = Option(None, envvar="TELEGRAM_API_KEY", help="Telegram bot AP
 telegram_chat_id = Option(None, envvar="TELEGRAM_CHAT_ID", help="Telegram chat id where the bot will log. Group chats have negative id. Bot must receive command /start in the group chat before it can send messages there.")
 
 max_workers = Option(None, envvar="MAX_WORKERS", help="Maximum number of worker processes (CPU cores) used for indicator calculations. Set to 1 for single thread mode to be used with Python debuggers. If not given use an autodetected safe value.")
+
+def parse_comma_separated_list(value: str):
+    # def main(items: list[str] = typer.Argument(..., callback=parse_comma_separated_list)):
+    #     """
+    #     This is a command that takes a comma-separated list of items as an argument.
+    #
+    #     :param items: A list of items separated by commas.
+    #     """
+    #     print(f"Items: {items}")
+    #
+    # if __name__ == "__main__":
+    #     typer.run(main)
+    return [item.strip() for item in value.split(',') if item.strip()]

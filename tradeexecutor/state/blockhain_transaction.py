@@ -78,6 +78,9 @@ class BlockchainTransactionType(enum.Enum):
     #:
     enzyme_vault = "enzyme_vault"
 
+    #: By LagoonTransactionBuilder
+    lagoon_vault = "lagoon_vault"
+
     #: Simulated transaction
     #:
     #: This transaction does not take place on EVM (real blockchain, unit test chain, etc).

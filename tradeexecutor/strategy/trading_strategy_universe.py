@@ -1041,7 +1041,50 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
     ):
         """Create a universe from loaded dataset.
 
-        For code example see :py:func:`load_trading_and_lending_data`.
+        Example:
+
+        .. code-block:: python
+
+            def create_trading_universe(
+                timestamp: datetime.datetime,
+                client: Client,
+                execution_context: ExecutionContext,
+                universe_options: UniverseOptions,
+            ) -> TradingStrategyUniverse:
+
+                # ... a lot of code goes here
+
+                # First phase:
+                # Load all data files and JSON API streams
+                # from the server needed to construct the trading universe
+                dataset = load_partial_data(
+                    client=client,
+                    time_bucket=Parameters.candle_time_bucket,
+                    pairs=pairs_df,
+                    execution_context=execution_context,
+                    universe_options=universe_options,
+                    liquidity=True,
+                    liquidity_time_bucket=TimeBucket.d1,
+                    liquidity_query_type=OHLCVCandleType.tvl_v2,
+                )
+
+                # Second phase
+                # Construct trading strategy universe from the dataset.
+                # Wrangles/massages data out for the issues
+                strategy_universe = TradingStrategyUniverse.create_from_dataset(
+                    dataset,
+                    # USDC on Base
+                    reserve_asset="0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+                    # Because we use sparse candles, we need to fill gaps between candles
+                    forward_fill=True,
+                    # Because some pairs may have died during real-time trading, we still
+                    # need to forward fill until today, not the last day they had a trade
+                    forward_fill_until=timestamp,
+                )
+
+                return strategy_universe
+
+        For more code examples see :py:func:`load_trading_and_lending_data`.
 
         :param reserve_asset:
             Which reserve asset to use.
