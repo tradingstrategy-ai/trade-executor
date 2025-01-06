@@ -6,6 +6,7 @@ import datetime
 import os
 from decimal import Decimal
 
+import flaky
 import pytest
 from eth_typing import HexAddress
 from web3 import Web3
@@ -287,7 +288,9 @@ def test_velvet_sync_positions_deposit(
     assert state.portfolio.open_positions[1].get_quantity() > 600
 
 
+# :test_velvet_sync_positions_redeem - requests.exceptions.ReadTimeout: HTTPConnectionPool(host='localhost', port=27100): Read timed out. (read timeout=60)
 @pytest.mark.skipif(CI, reason="Skipped on continuous integration due to Velvet/Enso stability issues")
+@flaky.flaky()
 def test_velvet_sync_positions_redeem(
         web3: Web3,
         base_example_vault: VelvetVault,
