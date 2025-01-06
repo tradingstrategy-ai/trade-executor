@@ -13,7 +13,7 @@ from tradeexecutor.cli.log import setup_telegram_logging, setup_custom_log_level
 
 TELEGRAM_API_KEY = os.environ.get("TELEGRAM_API_KEY")
 TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID")
-CI = os.environ.get("CI")
+CI = os.environ.get("CI") == "true"
 
 pytestmark = pytest.mark.skipif(not(TELEGRAM_API_KEY and TELEGRAM_CHAT_ID), reason="Missing TELEGRAM_API_KEY and TELEGRAM_CHAT_ID env")
 
