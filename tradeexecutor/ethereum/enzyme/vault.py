@@ -382,8 +382,9 @@ class EnzymeVaultSyncModel(SyncModel):
                 # the state was initialised
                 first_allowed_ts = state.sync.deployment.initialised_at
                 if first_allowed_ts is not None:
-                    assert event.timestamp > first_allowed_ts, f"Vault has a redemption from the time before trade execution was initialised\n" \
+                    assert event.timestamp >= first_allowed_ts, f"Vault has a redemption from the time before trade execution was initialised\n" \
                                                                f"Initialised at: {state.sync.deployment.initialised_at}\n" \
+                                                               f"Event timestamp: {event.timestamp}\n" \
                                                                f"Event:\n" \
                                                                f"{_dump_enzyme_event(event)}" \
 
