@@ -34,7 +34,7 @@ jobs:
         uses: foundry-rs/foundry-toolchain@v1
         with:
           # pick a nightly release from: https://github.com/foundry-rs/foundry/releases
-          version: 'nightly-de33b6af53005037b463318d2628b5cfcaf39916'
+          version: 'v0.3.0'
       - name: Install dependencies
         if: steps.cached-poetry-dependencies.outputs.cache-hit != 'true'
         # We don't install -E qstrader and run legacy tests on CI as they
