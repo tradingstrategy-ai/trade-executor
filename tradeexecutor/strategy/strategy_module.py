@@ -497,7 +497,7 @@ class StrategyModuleInformation:
         # Validate StrategyParameters now as it is used later
         if self.is_version_greater_or_equal_than(0, 5, 0):
             assert self.parameters is not None, "Parameters class missing in the strategy module"
-            assert inspect.isclass(self.parameters)
+            assert inspect.isclass(self.parameters), f"Expected mod.parameters to be a class, got {type(self.parameters)}"
 
             # Transform from class with args to a attribdict
             self.parameters = StrategyParameters.from_class(self.parameters, grid_search=False)
@@ -707,9 +707,13 @@ def read_strategy_module(path: Path) -> Union[StrategyModuleInformation, Strateg
 
     try:
         mod_info = parse_strategy_module(path, strategy_exports, source_code)
-        mod_info.validate()
     except Exception as e:
         raise RuntimeError(f"Error reading strategy module: {path.resolve()}: {e}") from e
+
+    try:
+        mod_info.validate()
+    except Exception as e:
+        raise RuntimeError(f"Error validating strategy module: {path.resolve()}: {e}") from e
 
     return mod_info
 

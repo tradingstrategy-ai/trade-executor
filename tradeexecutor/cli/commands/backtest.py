@@ -149,6 +149,8 @@ def backtest(
     if not notebook_report:
         notebook_report = Path(f"state/{id}-backtest.ipynb")
 
+    assert trading_strategy_api_key, "Cannot start the backtest without trading_strategy_api_key - please give command line option or give TRADING_STRATEGY_API_KEY env var"
+
     print(f"Starting backtesting for {strategy_file}")
 
     def loop():

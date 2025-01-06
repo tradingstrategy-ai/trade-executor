@@ -1,6 +1,7 @@
 """Test Lagoon vault trades."""
 
 import datetime
+import os
 from decimal import Decimal
 
 import pytest
@@ -18,6 +19,10 @@ from tradeexecutor.strategy.pandas_trader.position_manager import PositionManage
 from tradeexecutor.strategy.routing import RoutingModel
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
 from tradingstrategy.chain import ChainId
+
+
+JSON_RPC_BASE = os.environ.get("JSON_RPC_BASE")
+pytestmark = pytest.mark.skipif(not JSON_RPC_BASE, reason="No JSON_RPC_BASE environment variable")
 
 
 @pytest.fixture()
