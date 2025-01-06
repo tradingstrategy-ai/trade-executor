@@ -54,7 +54,7 @@ class AddressSyncModel(SyncModel):
 
         """
 
-        assert isinstance(reserve_asset, AssetIdentifier)
+        assert isinstance(reserve_asset, (AssetIdentifier, NoneType)), f"Got {type(reserve_asset)}"
 
         web3 = self.web3
         deployment = state.sync.deployment
