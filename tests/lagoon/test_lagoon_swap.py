@@ -1,4 +1,5 @@
-"""Test Velvet vault trades."""
+"""Test Lagoon vault trades."""
+
 import datetime
 from decimal import Decimal
 
