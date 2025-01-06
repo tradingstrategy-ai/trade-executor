@@ -107,7 +107,6 @@ def base_doginme() -> AssetIdentifier:
     )
 
 
-
 @pytest.fixture(scope='module')
 def base_ski() -> AssetIdentifier:
     """SKI - SkiMask.
@@ -444,6 +443,34 @@ def automated_lagoon_vault(
     )
 
     return deploy_info
+
+
+@pytest.fixture()
+def deposited_lagoon_vault(
+    web3,
+    automated_lagoon_vault,
+    depositor,
+    base_usdc_token,
+):
+    """Lagoon vault with deposits in it.
+
+    - Does the initial Vault.deposit() Solidity call
+    - Treasury not yet synced
+    """
+
+    vault = automated_lagoon_vault.vault
+    usdc = base_usdc_token
+
+    # Do initial deposit
+    # Deposit 399.00 USDC into the vault from the first user
+    usdc_amount = Decimal(399.00)
+    raw_usdc_amount = usdc.convert_to_raw(usdc_amount)
+    tx_hash = usdc.approve(vault.address, usdc_amount).transact({"from": depositor})
+    assert_transaction_success_with_explanation(web3, tx_hash)
+    deposit_func = vault.request_deposit(depositor, raw_usdc_amount)
+    tx_hash = deposit_func.transact({"from": depositor})
+    assert_transaction_success_with_explanation(web3, tx_hash)
+    return automated_lagoon_vault
 
 
 @pytest.fixture()

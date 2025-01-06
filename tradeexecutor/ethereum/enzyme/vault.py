@@ -563,12 +563,14 @@ class EnzymeVaultSyncModel(SyncModel):
 
         return reader, broken_quicknode
 
-    def sync_treasury(self,
-                      strategy_cycle_ts: datetime.datetime,
-                      state: State,
-                      supported_reserves: Optional[List[AssetIdentifier]] = None,
-                      end_block: BlockNumber | NoneType = None,
-                      ) -> List[BalanceUpdate]:
+    def sync_treasury(
+        self,
+        strategy_cycle_ts: datetime.datetime,
+        state: State,
+        supported_reserves: Optional[List[AssetIdentifier]] = None,
+        end_block: BlockNumber | NoneType = None,
+        post_valuation=False,
+    ) -> List[BalanceUpdate]:
 
         web3 = self.web3
         sync = state.sync

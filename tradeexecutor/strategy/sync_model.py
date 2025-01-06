@@ -266,6 +266,7 @@ class DummySyncModel(SyncModel):
         state: State,
         supported_reserves: Optional[List[AssetIdentifier]] = None,
         end_block: BlockNumber | NoneType = None,
+        post_valuation=False,
     ) -> List[BalanceUpdate]:
         assert end_block is None, "Dummy does not understand end_block"
         if not self.fake_sync_done:

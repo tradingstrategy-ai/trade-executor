@@ -15,8 +15,10 @@ from eth_defi.gas import GasPriceMethod
 from eth_defi.hotwallet import HotWallet
 from web3 import Web3
 
+from eth_defi.lagoon.vault import LagoonVault
 from eth_defi.vault.base import VaultSpec
 from eth_defi.velvet import VelvetVault
+from tradeexecutor.ethereum.lagoon.vault import LagoonVaultSyncModel
 from tradeexecutor.ethereum.velvet.velvet_enso_routing import VelvetEnsoRouting
 
 from tradingstrategy.chain import ChainId
@@ -481,6 +483,17 @@ def create_sync_model(
             return VelvetVaultSyncModel(
                 vault,
                 hot_wallet
+            )
+        case AssetManagementMode.lagoon:
+            assert vault_adapter_address, "TradingStrategyModuleV0 address must be given with Lagoon vault using VAULT_ADAPTER_ACCESS env option"
+            vault = LagoonVault(
+                web3,
+                VaultSpec(web3.eth.chain_id, cast(HexAddress, vault_address)),
+                trading_strategy_module_address=vault_adapter_address,
+            )
+            return LagoonVaultSyncModel(
+                vault,
+                hot_wallet,
             )
         case _:
             raise NotImplementedError()

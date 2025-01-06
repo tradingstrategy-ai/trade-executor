@@ -255,10 +255,22 @@ class LagoonVaultSyncModel(AddressSyncModel):
         vault = self.vault
         treasury_sync = sync.treasury
         portfolio = state.portfolio
-        reserve_position = portfolio.get_default_reserve_position()
-        reserve_asset = reserve_position.asset
 
         assert sync.is_initialised(), f"Vault sync not initialised: {sync}\nPlease run trade-executor init command"
+
+        if treasury_sync.last_block_scanned:
+            # We have already run sync once
+            logger.info("Reserve previously synced at %s", treasury_sync.last_updated_at)
+            reserve_position = portfolio.get_default_reserve_position()
+            reserve_asset = reserve_position.asset
+        else:
+            # Tabula rasa sync, need to create initial reserve position
+            logger.info("Creating initial reserve")
+            assert supported_reserves is not None
+            reserve_asset = supported_reserves[0]
+            state.portfolio.initialise_reserves(reserve_asset, reserve_token_price=1.0)
+            reserve_position = portfolio.get_default_reserve_position()
+
         assert reserve_asset.is_stablecoin()
 
         reserve_token = fetch_erc20_details(

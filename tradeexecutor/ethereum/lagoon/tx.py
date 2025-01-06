@@ -96,14 +96,20 @@ class LagoonTransactionBuilder(TransactionBuilder):
         tx_data = bound_prepare_call.build_transaction({
             "gas": gas_limit + self.extra_gnosis_gas,
             "from": self.hot_wallet.address,
+            "chainId": self.chain_id,
         })
         tx_data.update(gas_price_suggestion.get_tx_gas_params())
+
+        if "maxFeePerGas" in tx_data and "gasPrice" in tx_data:
+            # We can have only one
+            # https://ethereum.stackexchange.com/questions/121361/web3py-issue-on-avalanche-when-using-maxpriorityfeepergas-and-maxfeepergas
+            del tx_data["gasPrice"]
 
         signed_tx = self.hot_wallet.sign_transaction_with_new_nonce(tx_data)
         signed_bytes = signed_tx.rawTransaction.hex()
 
         # Needed for get_swap_transactions() hack
-        tx_data["function"] =  args_bound_func.fn_name
+        tx_data["function"] = args_bound_func.fn_name
 
         return BlockchainTransaction(
             type=BlockchainTransactionType.lagoon_vault,
