@@ -8,6 +8,7 @@ on:
 
 jobs:
   automated-test-suite:
+
     timeout-minutes: 40
     # Use paid faster Github Actions runner
     runs-on:
@@ -65,7 +66,7 @@ jobs:
       # tests/**/test*.py -> workaround issues by scanning tests folder in git submodules and importing them (even if not running)
       - name: Run test scripts
         run: |
-            poetry run pytest -v --tb=native --dist loadscope -n 4 --durations=20 -m "not slow_test_group" --timeout=300
+            poetry run pytest -v --tb=native --dist loadscope -n 3 --durations=20 -m "not slow_test_group" --timeout=300
         env:
           TRADING_STRATEGY_API_KEY: ${{ secrets.TRADING_STRATEGY_API_KEY }}
           BNB_CHAIN_JSON_RPC: ${{ secrets.BNB_CHAIN_JSON_RPC }}
