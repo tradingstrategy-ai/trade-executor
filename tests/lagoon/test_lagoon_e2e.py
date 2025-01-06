@@ -15,15 +15,10 @@ from tradeexecutor.state.state import State
 JSON_RPC_BASE = os.environ.get("JSON_RPC_BASE")
 TRADING_STRATEGY_API_KEY = os.environ.get("TRADING_STRATEGY_API_KEY")
 
-
-# pytestmark = pytest.mark.skipif(
-#     (not JSON_RPC_BASE or not TRADING_STRATEGY_API_KEY or not VELVET_VAULT_OWNER_PRIVATE_KEY),
-#      reason="Set JSON_RPC_BASE and TRADING_STRATEGY_API_KEY and VELVET_VAULT_OWNER_PRIVATE_KEYneeded to run this test"
-# )
-
-
-pytestmark = pytest.mark.skip(reason="Unfinished")
-
+pytestmark = pytest.mark.skipif(
+     (not JSON_RPC_BASE or not TRADING_STRATEGY_API_KEY or not VELVET_VAULT_OWNER_PRIVATE_KEY),
+      reason="Set JSON_RPC_BASE and TRADING_STRATEGY_API_KEY and VELVET_VAULT_OWNER_PRIVATE_KEYneeded to run this test"
+)
 
 @pytest.fixture()
 def anvil() -> AnvilLaunch:
