@@ -220,8 +220,6 @@ def lagoon_deploy_vault(
     else:
         uniswap_v3_deployment = None
 
-    assert not uniswap_v3, "Not implemented"
-
     deploy_info = deploy_automated_lagoon_vault(
         web3=web3,
         deployer=hot_wallet.account,

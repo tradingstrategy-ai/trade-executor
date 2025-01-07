@@ -428,7 +428,8 @@ def get_uniswap_for_pair(web3: Web3, address_map: dict, target_pair: TradingPair
         "address_map[\"factory\"] and target_pair.exchange_address should be equal\n" \
         f"Got {factory_address} and {address_map['factory']} on pair {target_pair}"
 
-    cached = _uniswap_v3_cache.get(factory_address)
+    cache_key = (factory_address, id(web3))
+    cached = _uniswap_v3_cache.get(cache_key)
     if cached:
         return cached
 
@@ -448,10 +449,12 @@ def get_uniswap_for_pair(web3: Web3, address_map: dict, target_pair: TradingPair
             quoter_v2=quoter_v2,
             router_v2=router_v2,
         )
-        _uniswap_v3_cache[factory_address] = cached
+        _uniswap_v3_cache[cache_key] = cached
         return cached
     except ContractLogicError as e:
         raise RuntimeError(f"Could not fetch deployment data for router address {router_address} (factory {factory_address}) - data is likely wrong") from e
 
 
+#: TODO: Web3 instances stay around here forever.
+#: But only matters for unit tests.
 _uniswap_v3_cache = {}
