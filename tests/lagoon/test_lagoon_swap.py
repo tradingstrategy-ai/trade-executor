@@ -132,6 +132,25 @@ def test_lagoon_swap_uniswap_v2(
     assert t.executed_quantity > 1000  # Keycat tokens
     assert t.executed_reserve > 0
 
+    # Then sell Keycat
+    trades = position_manager.close_all()
+    assert len(trades) == 1
+    t = trades[0]
+
+    execution_model.execute_trades(
+        datetime.datetime.utcnow(),
+        state,
+        trades,
+        routing_model,
+        routing_state,
+        check_balances=True,
+    )
+
+    assert t.is_success(), f"Trade failed: {t.blockchain_transactions[0].revert_reason}"
+    assert 0 < t.executed_price < 1
+    assert t.executed_quantity < 1000  # DogInMe tokens
+    assert t.executed_reserve > 0
+
 
 def test_lagoon_swap_uniswap_v3(
     deposited_vault: LagoonAutomatedDeployment,
