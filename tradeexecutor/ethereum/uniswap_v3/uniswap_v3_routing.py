@@ -19,7 +19,6 @@ from tradeexecutor.utils.blockchain import get_block_timestamp
 from tradingstrategy.chain import ChainId
 from web3 import Web3
 
-from eth_defi.gas import estimate_gas_fees
 from eth_defi.uniswap_v3.deployment import UniswapV3Deployment, fetch_deployment, mock_partial_deployment_for_analysis
 from eth_defi.uniswap_v3.swap import swap_with_slippage_protection
 from web3.exceptions import ContractLogicError
@@ -406,6 +405,7 @@ def get_uniswap_for_pair(web3: Web3, address_map: dict, target_pair: TradingPair
     position_manager_address = Web3.to_checksum_address(address_map["position_manager"])
     quoter_address = Web3.to_checksum_address(address_map["quoter"])
     quoter_v2 = address_map.get("quoter_v2")
+    router_v2 = address_map.get("router_v2")
 
     try:
         return fetch_deployment(
@@ -415,6 +415,7 @@ def get_uniswap_for_pair(web3: Web3, address_map: dict, target_pair: TradingPair
             position_manager_address,
             quoter_address,
             quoter_v2=quoter_v2,
+            router_v2=router_v2,
         )
     except ContractLogicError as e:
         raise RuntimeError(f"Could not fetch deployment data for router address {router_address} (factory {factory_address}) - data is likely wrong") from e

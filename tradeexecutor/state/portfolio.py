@@ -1048,7 +1048,7 @@ class Portfolio:
 
         Currently we assume there can be only one reserve currency.
         """
-        assert len(self.reserves) == 0, "Reserves already initialised"
+        assert len(self.reserves) == 0, f"Reserves already initialised: {self.reserves}"
         pos = ReservePosition(
             asset=asset,
             quantity=Decimal(0),

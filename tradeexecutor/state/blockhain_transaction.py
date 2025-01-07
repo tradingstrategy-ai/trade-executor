@@ -187,6 +187,10 @@ class BlockchainTransaction:
         )
     )
 
+    #: If this is a wrapped call, the underlying target of the wrapped call payload.
+    #:
+    wrapped_target: Optional[JSONHexAddress] = None
+
     #: Function name the vault calls.
     #:
     #: This is Solidity function entry point from the transaction data payload

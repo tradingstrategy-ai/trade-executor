@@ -49,7 +49,8 @@ class LagoonVaultSyncModel(AddressSyncModel):
         hot_wallet: HotWallet | None,
         extra_gnosis_gas: int = 500_000,
         valuation_data_freshness=datetime.timedelta(hours=4),
-        min_nav_change_update: Percent=0.005
+        min_nav_change_update: Percent=0.005,
+        unit_testing=False,
     ):
         """
         :param extra_gnosis_gas:
@@ -61,6 +62,11 @@ class LagoonVaultSyncModel(AddressSyncModel):
             Crash is valuation data is older than this.
 
             Abort posting new valuations to onchain the valuation is too old.
+
+        :param unit_testing:
+            Don't use minor regorg safe latest block protection.
+
+            Needed for tenderly.
 
         :param min_nav_change_update:
             Minimum change in NAV before we post update.
@@ -75,6 +81,7 @@ class LagoonVaultSyncModel(AddressSyncModel):
         self.valuation_data_freshness = valuation_data_freshness
         self.min_nav_change_update = min_nav_change_update
         self.anvil = is_anvil(self.web3)  # Running test mode
+        self.unit_testing = unit_testing  #
         assert vault.trading_strategy_module, "LagoonVault.trading_strategy_module initialisation param not set - needed to run the sync model properly"
         # assert isinstance(self.web3.provider, MEVBlockerProvider), f"This sync model needs MEVBlockerProvider, got {type(self.web3.provider)}"
 
@@ -110,8 +117,9 @@ class LagoonVaultSyncModel(AddressSyncModel):
         return self.vault.safe_address
 
     def get_safe_latest_block(self) -> int:
-        if self.anvil:
+        if self.anvil or self.unit_testing:
             # On Anvil tests, we need to always follow the latest block
+            # Set self.unit_testing when using Tenderly
             return self.web3.eth.block_number
         else:
             # Leave room for minor reorg of 1-2 blocks
@@ -216,16 +224,21 @@ class LagoonVaultSyncModel(AddressSyncModel):
             logger.info("Deposit/redemptions detected, NAV update needed")
             return True
 
-        onchain_nav = float(self.vault.fetch_nav())
-        nav_diff = abs(calculated_nav - onchain_nav) / onchain_nav
-        if nav_diff >= self.min_nav_change_update:
-            logger.info(
-                "NAV update neeed. Calcualted %s, onchain %s, diff %f %%",
-                onchain_nav,
-                calculated_nav,
-                nav_diff * 100,
-            )
-            return True
+        onchain_nav = float(self.vault.fetch_nav(block_identifier=block_number))
+
+        if onchain_nav > 0:
+            nav_diff = abs(calculated_nav - onchain_nav) / onchain_nav
+            if nav_diff >= self.min_nav_change_update:
+                logger.info(
+                    "NAV update neeed. Calcualted %s, onchain %s, diff %f %%",
+                    onchain_nav,
+                    calculated_nav,
+                    nav_diff * 100,
+                )
+                return True
+        else:
+            # Avoid division by zero
+            return not ((onchain_nav == 0) and (calculated_nav == 0))
 
         return False
 
@@ -258,18 +271,21 @@ class LagoonVaultSyncModel(AddressSyncModel):
 
         assert sync.is_initialised(), f"Vault sync not initialised: {sync}\nPlease run trade-executor init command"
 
-        if treasury_sync.last_block_scanned:
-            # We have already run sync once
-            logger.info("Reserve previously synced at %s", treasury_sync.last_updated_at)
-            reserve_position = portfolio.get_default_reserve_position()
-            reserve_asset = reserve_position.asset
-        else:
-            # Tabula rasa sync, need to create initial reserve position
-            logger.info("Creating initial reserve")
-            assert supported_reserves is not None
-            reserve_asset = supported_reserves[0]
-            state.portfolio.initialise_reserves(reserve_asset, reserve_token_price=1.0)
-            reserve_position = portfolio.get_default_reserve_position()
+        match len(portfolio.reserves):
+            case 1:
+                # We have already run sync once
+                logger.info("Reserve previously synced at %s", treasury_sync.last_updated_at)
+                reserve_position = portfolio.get_default_reserve_position()
+                reserve_asset = reserve_position.asset
+            case 0:
+                # Tabula rasa sync, need to create initial reserve position
+                logger.info("Creating initial reserve")
+                assert supported_reserves is not None
+                reserve_asset = supported_reserves[0]
+                state.portfolio.initialise_reserves(reserve_asset, reserve_token_price=1.0)
+                reserve_position = portfolio.get_default_reserve_position()
+            case _:
+                raise NotImplementedError("Multireserve not supported")
 
         assert reserve_asset.is_stablecoin()
 

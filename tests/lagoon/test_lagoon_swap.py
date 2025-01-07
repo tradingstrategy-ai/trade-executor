@@ -29,6 +29,7 @@ pytestmark = pytest.mark.skipif(not JSON_RPC_BASE, reason="No JSON_RPC_BASE envi
 def deposited_vault(
     web3,
     depositor,
+    base_usdc,
     base_usdc_token,
     vault_strategy_universe,
     asset_manager,
@@ -49,6 +50,7 @@ def deposited_vault(
     sync_model = LagoonVaultSyncModel(
         vault=vault,
         hot_wallet=asset_manager,
+        unit_testing=True,
     )
 
     sync_model.sync_initial(
@@ -69,7 +71,12 @@ def deposited_vault(
 
     # Process the initial deposits
     cycle = datetime.datetime.utcnow()
-    events = sync_model.sync_treasury(cycle, state, post_valuation=True)
+    events = sync_model.sync_treasury(
+        cycle,
+        state,
+        supported_reserves=[base_usdc],
+        post_valuation=True,
+    )
     assert len(events) == 1
     assert portfolio.get_net_asset_value(include_interest=True) == pytest.approx(399)
 
@@ -100,6 +107,56 @@ def test_lagoon_swap_uniswap_v2(
     )
 
     pair = strategy_universe.get_pair_by_human_description((ChainId.base, "uniswap-v2", "KEYCAT", "WETH"))
+    trades = position_manager.open_spot(
+        pair,
+        value=10.00,
+    )
+    t = trades[0]
+
+    routing_state_details = execution_model.get_routing_state_details()
+    routing_state = routing_model.create_routing_state(strategy_universe, routing_state_details)
+
+    execution_model.initialize()
+
+    execution_model.execute_trades(
+        datetime.datetime.utcnow(),
+        state,
+        trades,
+        routing_model,
+        routing_state,
+        check_balances=True,
+    )
+
+    assert t.is_success(), f"Trade failed: {t.blockchain_transactions[0].revert_reason}"
+    assert 0 < t.executed_price < 1
+    assert t.executed_quantity > 1000  # Keycat tokens
+    assert t.executed_reserve > 0
+
+
+def test_lagoon_swap_uniswap_v3(
+    deposited_vault: LagoonAutomatedDeployment,
+    vault_strategy_universe: TradingStrategyUniverse,
+    asset_manager: HotWallet,
+    lagoon_execution_model: LagoonExecution,
+    lagoon_pricing_model: GenericPricing,
+    lagoon_routing_model:RoutingModel,
+):
+    """Do a deposit to Lagoon vault and perform Uniswap v3 token buy (three legs)."""
+
+    vault, state = deposited_vault
+    strategy_universe = vault_strategy_universe
+    execution_model = lagoon_execution_model
+    routing_model = lagoon_routing_model
+
+    position_manager = PositionManager(
+        datetime.datetime.utcnow(),
+        universe=strategy_universe,
+        state=state,
+        pricing_model=lagoon_pricing_model,
+        default_slippage_tolerance=0.20,
+    )
+
+    pair = strategy_universe.get_pair_by_human_description((ChainId.base, "uniswap-v3", "DogInMe", "WETH"))
     trades = position_manager.open_spot(
         pair,
         value=10.00,
