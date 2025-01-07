@@ -130,7 +130,7 @@ def test_cli_lagoon_deploy_vault(
         "DENOMINATION_ASSET": base_usdc.address,
         "ANY_ASSET": "true",
         "UNISWAP_V2": "true",
-
+        "UNISWAP_V3": "true",
     }
 
     cli = get_command(app)
@@ -186,20 +186,19 @@ def test_cli_lagoon_perform_test_trade(
 
 
 def test_cli_lagoon_backtest(
-    environment: dict,
     mocker,
     state_file,
     web3,
+    pre_deployment_vault_environment,
 ):
     """Run backtest using a the vault strat."""
 
     cli = get_command(app)
-    mocker.patch.dict("os.environ", environment, clear=True)
-    cli.main(args=["init"], standalone_mode=False)
+    mocker.patch.dict("os.environ", pre_deployment_vault_environment, clear=True)
     cli.main(args=["backtest"], standalone_mode=False)
 
 
-def test_cli_lagoon_base_memecoin_index_start_single_cycle(
+def test_cli_lagoon_start(
     deployed_vault_environment: dict,
     mocker,
     state_file,
@@ -210,10 +209,8 @@ def test_cli_lagoon_base_memecoin_index_start_single_cycle(
     - Should attempt to open multiple positions using Enso
     """
 
-    environment = deployed_vault_environment
-
     cli = get_command(app)
-    mocker.patch.dict("os.environ", environment, clear=True)
+    mocker.patch.dict("os.environ", deployed_vault_environment, clear=True)
     cli.main(args=["init"], standalone_mode=False)
 
     state = State.read_json_file(state_file)
@@ -225,6 +222,8 @@ def test_cli_lagoon_base_memecoin_index_start_single_cycle(
     reserve_position = state.portfolio.get_default_reserve_position()
     assert reserve_position.get_value() > 5.0  # Should have 100 USDC starting balance
     assert len(state.visualisation.get_messages_tail(5)) == 1
+    for t in state.portfolio.get_all_trades():
+        assert t.is_success(), f"Trade {t} failed: {t.get_revert_reason()}"
     assert len(state.portfolio.frozen_positions) == 0
 
 
@@ -238,10 +237,7 @@ def test_cli_lagoon_correct_accounts(
 
     - This test checks code runs, but does not attempt to repair any errors
     """
-
-    environment = deployed_vault_environment
-
     cli = get_command(app)
-    mocker.patch.dict("os.environ", environment, clear=True)
+    mocker.patch.dict("os.environ", deployed_vault_environment, clear=True)
     cli.main(args=["init"], standalone_mode=False)
     cli.main(args=["correct-accounts"], standalone_mode=False)

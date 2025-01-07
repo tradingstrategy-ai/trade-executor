@@ -165,10 +165,10 @@ class LagoonVaultSyncModel(AddressSyncModel):
         )
 
     def fetch_onchain_balances(
-            self,
-            assets: list[AssetIdentifier],
-            filter_zero=True,
-            block_identifier: BlockIdentifier = None,
+        self,
+        assets: list[AssetIdentifier],
+        filter_zero=True,
+        block_identifier: BlockIdentifier = None,
     ) -> Iterable[OnChainBalance]:
 
         sorted_assets = sorted(assets, key=lambda a: a.address)
@@ -179,7 +179,7 @@ class LagoonVaultSyncModel(AddressSyncModel):
 
         return fetch_address_balances(
             self.web3,
-            self.get_key_address(),
+            self.get_token_storage_address(),
             sorted_assets,
             block_number=block_identifier,
             filter_zero=filter_zero,
@@ -333,6 +333,8 @@ class LagoonVaultSyncModel(AddressSyncModel):
         # Include our valuation in the other_data diangnostics
         other_data = analysis.get_serialiable_diagnostics_data()
         other_data["valuation"] = valuation
+        valuation_with_deposits = valuation + float(delta)
+        other_data["valuation_with_deposits"] = valuation_with_deposits
 
         evt = BalanceUpdate(
             balance_update_id=event_id,
@@ -369,5 +371,11 @@ class LagoonVaultSyncModel(AddressSyncModel):
         treasury_sync.last_cycle_at = strategy_cycle_ts
         treasury_sync.pending_redemptions = float(analysis.pending_redemptions_underlying)
 
-        logger.info(f"Lagoon settlements done, the last block is now {treasury_sync.last_block_scanned:,}, settled {analysis.get_underlying_diff()} events, valuation is {valuation:,.2f}, pending redemptions {analysis.pending_redemptions_underlying} USD")
+        logger.info(
+            f"Lagoon settlements done, the last block is now {treasury_sync.last_block_scanned:,}\n"
+            f"Safe address: {vault.safe_address}, vault address: {vault.vault_address}, silo address: {vault.silo_address}\n"
+            f"Settled {analysis.get_underlying_diff()} USD\n"
+            f"Non-deposit valuation is {valuation:,.2f} USD, with-deposit valuation is {valuation_with_deposits:,.2f} USD\n"
+            f"Pending redemptions {analysis.pending_redemptions_underlying} USD"
+        )
         return [evt]

@@ -97,6 +97,7 @@ def init(
         hot_wallet,
         vault_address,
         vault_adapter_address=vault_adapter_address,
+        init=True,
     )
 
     logger.info("RPC details")

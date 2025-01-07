@@ -34,12 +34,9 @@ Example how to manually test:
 """
 
 import json
-import logging
 import os.path
 import sys
-from io import StringIO
 from pathlib import Path
-from pprint import pformat
 from typing import Optional
 
 from typer import Option
@@ -50,9 +47,10 @@ from eth_defi.lagoon.deployment import LagoonDeploymentParameters, deploy_automa
 from eth_defi.token import fetch_erc20_details
 from eth_defi.uniswap_v2.constants import UNISWAP_V2_DEPLOYMENTS
 from eth_defi.uniswap_v2.deployment import fetch_deployment
+from eth_defi.uniswap_v3.constants import UNISWAP_V3_DEPLOYMENTS
+from eth_defi.uniswap_v3.deployment import fetch_deployment as fetch_deployment_uni_v3
 
 from tradeexecutor.cli.commands.shared_options import parse_comma_separated_list
-from tradeexecutor.cli.guard import generate_whitelist
 from tradeexecutor.monkeypatch.web3 import construct_sign_and_send_raw_middleware
 from tradingstrategy.chain import ChainId
 
@@ -90,8 +88,8 @@ def lagoon_deploy_vault(
     etherscan_api_key: Optional[str] = Option(None, envvar="ETHERSCAN_API_KEY", help="Etherscan API key need to verify the contracts on a production deployment."),
     one_delta: bool = Option(False, envvar="ONE_DELTA", help="Whitelist 1delta interaction with GuardV0 smart contract."),
     aave: bool = Option(False, envvar="AAVE", help="Whitelist Aave aUSDC deposits"),
-    uniswap_v2: bool = Option(False, envvar="AAVE", help="Whitelist Uniswap v2"),
-    uniswap_v3: bool = Option(False, envvar="AAVE", help="Whitelist Uniswap v3"),
+    uniswap_v2: bool = Option(False, envvar="UNISWAP_V2", help="Whitelist Uniswap v2"),
+    uniswap_v3: bool = Option(False, envvar="UNISWAP_V3", help="Whitelist Uniswap v3"),
 ):
     """Deploy a new Lagoon vault.
 
@@ -194,8 +192,9 @@ def lagoon_deploy_vault(
         symbol=fund_symbol,
     )
 
+    chain_slug = chain_id.get_slug()
+
     if uniswap_v2:
-        chain_slug = chain_id.get_slug()
         uniswap_v2_deployment = fetch_deployment(
             web3,
             factory_address=UNISWAP_V2_DEPLOYMENTS[chain_slug]["factory"],
@@ -204,6 +203,22 @@ def lagoon_deploy_vault(
         )
     else:
         uniswap_v2_deployment = None
+
+    if uniswap_v3:
+        chain_slug = chain_id.get_slug()
+        deployment_data = UNISWAP_V3_DEPLOYMENTS[chain_slug]
+        uniswap_v3_deployment= fetch_deployment_uni_v3(
+            web3,
+            factory_address=deployment_data["factory"],
+            router_address=deployment_data["router"],
+            position_manager_address=deployment_data["position_manager"],
+            quoter_address=deployment_data["quoter"],
+            quoter_v2=deployment_data["quoter_v2"],
+            router_v2=deployment_data["router_v2"],
+        )
+
+    else:
+        uniswap_v3_deployment = None
 
     assert not uniswap_v3, "Not implemented"
 
@@ -215,7 +230,7 @@ def lagoon_deploy_vault(
         safe_owners=multisig_owners,
         safe_threshold=len(multisig_owners) - 1,
         uniswap_v2=uniswap_v2_deployment,
-        uniswap_v3=None,
+        uniswap_v3=uniswap_v3_deployment,
         any_asset=True,
         use_forge=True,
         etherscan_api_key=etherscan_api_key,

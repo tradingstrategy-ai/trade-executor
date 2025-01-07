@@ -77,6 +77,10 @@ class LagoonTransactionBuilder(TransactionBuilder):
         assert gas_limit is not None, f"Gas limit set to None for call: {args_bound_func} - LagoonTransactionBuilder needs explicit gas limit on all txs"
 
         def present(a):
+            if type(a) == list:
+                if len(a) > 0:
+                    if type(a[0]) == bytes:
+                        return [x.hex() for x in a]
             if type(a) == bytes:
                 return "0x" + a.hex()
             return str(a)
