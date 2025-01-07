@@ -5,44 +5,17 @@ from pathlib import Path
 
 import pytest
 from typer.main import get_command
-from web3 import Web3
 
-from eth_defi.provider.anvil import AnvilLaunch, launch_anvil
-from eth_defi.provider.multi_provider import create_multi_provider_web3
 from tradeexecutor.cli.commands.app import app
 from tradeexecutor.state.state import State
 
 JSON_RPC_BASE = os.environ.get("JSON_RPC_BASE")
 TRADING_STRATEGY_API_KEY = os.environ.get("TRADING_STRATEGY_API_KEY")
 
-
-# pytestmark = pytest.mark.skipif(
-#     (not JSON_RPC_BASE or not TRADING_STRATEGY_API_KEY or not VELVET_VAULT_OWNER_PRIVATE_KEY),
-#      reason="Set JSON_RPC_BASE and TRADING_STRATEGY_API_KEY and VELVET_VAULT_OWNER_PRIVATE_KEYneeded to run this test"
-# )
-
-
-pytestmark = pytest.mark.skip(reason="Unfinished")
-
-
-@pytest.fixture()
-def anvil() -> AnvilLaunch:
-    """Launch mainnet fork."""
-
-    anvil = launch_anvil(
-        fork_url=JSON_RPC_BASE,
-    )
-    try:
-        yield anvil
-    finally:
-        anvil.close()
-
-
-@pytest.fixture()
-def web3(anvil) -> Web3:
-    web3 = create_multi_provider_web3(anvil.json_rpc_url)
-    assert web3.eth.chain_id == 8453
-    return web3
+pytestmark = pytest.mark.skipif(
+     (not JSON_RPC_BASE or not TRADING_STRATEGY_API_KEY),
+      reason="Set JSON_RPC_BASE and TRADING_STRATEGY_API_KEY needed to run this test"
+)
 
 
 @pytest.fixture()
@@ -58,21 +31,26 @@ def state_file(tmp_path) -> Path:
 
 
 @pytest.fixture()
-def environment(
+def deployed_vault_environment(
     strategy_file,
-    anvil,
+    anvil_base_fork,
     state_file,
-    vault_address,
-    topped_up_asset_manager,
+    asset_manager,
+    deposited_lagoon_vault,
 ):
+    """Lagoon CLI environment with predeployed vault."""
+    deploy_info = deposited_lagoon_vault
+
     environment = {
-        "EXECUTOR_ID": "test_base_memecoin_inddex_lagoon",
-        "NAME": "test_base_memecoin_inddex_lagoon",
+        "PATH": os.environ["PATH"],  # Need forge
+        "EXECUTOR_ID": "deployed_vault_environment",
+        "NAME": "deployed_vault_environment",
         "STRATEGY_FILE": strategy_file.as_posix(),
-        "JSON_RPC_BASE": anvil.json_rpc_url,
+        "JSON_RPC_BASE": anvil_base_fork.json_rpc_url,
         "STATE_FILE": state_file.as_posix(),
         "ASSET_MANAGEMENT_MODE": "lagoon",
-        "VAULT_ADDRESS": vault_address,
+        "VAULT_ADDRESS": deploy_info.vault.vault_address,
+        "VAULT_ADAPTER_ADDRESS": deploy_info.vault.trading_strategy_module_address,
         "UNIT_TESTING": "true",
         # "LOG_LEVEL": "info",  # Set to info to get debug data for the test run
         "LOG_LEVEL": "disabled",
@@ -81,31 +59,29 @@ def environment(
         "MAX_DATA_DELAY_MINUTES": str(10 * 60 * 24 * 365),  # 10 years or "disabled""
         "MIN_GAS_BALANCE": "0.005",
         "RAISE_ON_UNCLEAN": "true",  # For correct-accounts
-        "PRIVATE_KEY": topped_up_asset_manager.private_key,
+        "PRIVATE_KEY": asset_manager.private_key.hex(),
     }
     return environment
 
 
 
 @pytest.fixture()
-def deployed_vault_environment(
+def pre_deployment_vault_environment(
     strategy_file,
-    anvil,
+    anvil_base_fork,
     state_file,
-    topped_up_asset_manager,
-    automated_lagoon_vault,
+    asset_manager,
 ):
-    """Lagoon CLI environment with predeployed vault."""
-    deploy_info = automated_lagoon_vault
+    """Lagoon CLI environment with vault not yet deployed."""
 
     environment = {
-        "EXECUTOR_ID": "test_base_memecoin_inddex_lagoon",
-        "NAME": "test_base_memecoin_inddex_lagoon",
+        "PATH": os.environ["PATH"],  # Need forge
+        "EXECUTOR_ID": "deployed_vault_environment",
+        "NAME": "deployed_vault_environment",
         "STRATEGY_FILE": strategy_file.as_posix(),
-        "JSON_RPC_BASE": anvil.json_rpc_url,
+        "JSON_RPC_BASE": anvil_base_fork.json_rpc_url,
         "STATE_FILE": state_file.as_posix(),
         "ASSET_MANAGEMENT_MODE": "lagoon",
-        "VAULT_ADDRESS": deploy_info.vault.vault_address,
         "UNIT_TESTING": "true",
         # "LOG_LEVEL": "info",  # Set to info to get debug data for the test run
         "LOG_LEVEL": "disabled",
@@ -114,38 +90,47 @@ def deployed_vault_environment(
         "MAX_DATA_DELAY_MINUTES": str(10 * 60 * 24 * 365),  # 10 years or "disabled""
         "MIN_GAS_BALANCE": "0.005",
         "RAISE_ON_UNCLEAN": "true",  # For correct-accounts
-        "PRIVATE_KEY": topped_up_asset_manager.private_key,
+        "PRIVATE_KEY": asset_manager.private_key.hex(),
+        "ANY_ASSET": "true",
     }
     return environment
 
 
-def test_cli_deploy_vault(
-    anvil,
+def test_cli_lagoon_deploy_vault(
+    web3,
+    anvil_base_fork,
     strategy_file,
-    environment: dict,
     mocker,
     state_file,
-    web3,
-    topped_up_asset_manager,
+    asset_manager,
+    tmp_path: Path,
+    base_usdc,
 ):
-    """Run check-walet Velvet vault."""
+    """Deploy Lagoon vault."""
+
+    multisig_owners = f"{web3.eth.accounts[2]}, {web3.eth.accounts[3]}, {web3.eth.accounts[4]}"
 
     environment = {
-        "EXECUTOR_ID": "test_base_memecoin_inddex_lagoon",
-        "NAME": "test_base_memecoin_inddex_lagoon",
+        "PATH": os.environ["PATH"],  # Need forge
+        "EXECUTOR_ID": "test_cli_lagoon_deploy_vault",
+        "NAME": "test_cli_lagoon_deploy_vault",
         "STRATEGY_FILE": strategy_file.as_posix(),
-        "JSON_RPC_BASE": anvil.json_rpc_url,
+        "JSON_RPC_BASE": anvil_base_fork.json_rpc_url,
         "STATE_FILE": state_file.as_posix(),
         "ASSET_MANAGEMENT_MODE": "lagoon",
         "UNIT_TESTING": "true",
         # "LOG_LEVEL": "info",  # Set to info to get debug data for the test run
         "LOG_LEVEL": "disabled",
-        "RUN_SINGLE_CYCLE": "true",
         "TRADING_STRATEGY_API_KEY": TRADING_STRATEGY_API_KEY,
-        "MAX_DATA_DELAY_MINUTES": str(10 * 60 * 24 * 365),  # 10 years or "disabled""
-        "MIN_GAS_BALANCE": "0.005",
-        "RAISE_ON_UNCLEAN": "true",  # For correct-accounts
-        "PRIVATE_KEY": topped_up_asset_manager.private_key,
+        "PRIVATE_KEY": asset_manager.private_key.hex(),
+        "VAULT_RECORD_FILE": str(tmp_path / "vault-record.json"),
+        "FUND_NAME": "Example",
+        "FUND_SYMBOL": "EXAM",
+        "MULTISIG_OWNERS": multisig_owners,
+        "DENOMINATION_ASSET": base_usdc.address,
+        "ANY_ASSET": "true",
+        "UNISWAP_V2": "true",
+        "UNISWAP_V3": "true",
     }
 
     cli = get_command(app)
@@ -159,23 +144,23 @@ def test_cli_lagoon_check_wallet(
     state_file,
     web3,
 ):
-    """Run check-walet Velvet vault."""
+    """Run check-wallet command."""
 
     cli = get_command(app)
-    mocker.patch.dict("os.environ", environment, clear=True)
+    mocker.patch.dict("os.environ", deployed_vault_environment, clear=True)
     cli.main(args=["check-wallet"], standalone_mode=False)
 
 
 def test_cli_lagoon_check_universe(
-    environment: dict,
+    pre_deployment_vault_environment: dict,
     mocker,
     state_file,
     web3,
 ):
-    """Run check-walet Velvet vault."""
+    """Run check-universe command."""
 
     cli = get_command(app)
-    mocker.patch.dict("os.environ", environment, clear=True)
+    mocker.patch.dict("os.environ", pre_deployment_vault_environment, clear=True)
     cli.main(args=["check-universe"], standalone_mode=False)
 
 
@@ -185,12 +170,10 @@ def test_cli_lagoon_perform_test_trade(
     state_file,
     web3,
 ):
-    """Run a single test trade using Velvet vault."""
-
-    environment = deployed_vault_environment
+    """Run a single test trade using the vault."""
 
     cli = get_command(app)
-    mocker.patch.dict("os.environ", environment, clear=True)
+    mocker.patch.dict("os.environ", deployed_vault_environment, clear=True)
     cli.main(args=["init"], standalone_mode=False)
     cli.main(args=["perform-test-trade", "--pair", "(base, uniswap-v2, KEYCAT, WETH, 0.0030)"], standalone_mode=False)
 
@@ -203,20 +186,19 @@ def test_cli_lagoon_perform_test_trade(
 
 
 def test_cli_lagoon_backtest(
-    environment: dict,
     mocker,
     state_file,
     web3,
+    pre_deployment_vault_environment,
 ):
-    """Run backtest using a Velvet vault strat."""
+    """Run backtest using a the vault strat."""
 
     cli = get_command(app)
-    mocker.patch.dict("os.environ", environment, clear=True)
-    cli.main(args=["init"], standalone_mode=False)
+    mocker.patch.dict("os.environ", pre_deployment_vault_environment, clear=True)
     cli.main(args=["backtest"], standalone_mode=False)
 
 
-def test_cli_lagoon_base_memecoin_index_start_single_cycle(
+def test_cli_lagoon_start(
     deployed_vault_environment: dict,
     mocker,
     state_file,
@@ -227,21 +209,18 @@ def test_cli_lagoon_base_memecoin_index_start_single_cycle(
     - Should attempt to open multiple positions using Enso
     """
 
-    environment = deployed_vault_environment
-
     cli = get_command(app)
-    mocker.patch.dict("os.environ", environment, clear=True)
+    mocker.patch.dict("os.environ", deployed_vault_environment, clear=True)
     cli.main(args=["init"], standalone_mode=False)
-
-    state = State.read_json_file(state_file)
-    assert state.cycle == 1
-
     cli.main(args=["start"], standalone_mode=False)
 
+    # Read results of 1 cycle of strategy
     state = State.read_json_file(state_file)
     reserve_position = state.portfolio.get_default_reserve_position()
     assert reserve_position.get_value() > 5.0  # Should have 100 USDC starting balance
     assert len(state.visualisation.get_messages_tail(5)) == 1
+    for t in state.portfolio.get_all_trades():
+        assert t.is_success(), f"Trade {t} failed: {t.get_revert_reason()}"
     assert len(state.portfolio.frozen_positions) == 0
 
 
@@ -255,10 +234,7 @@ def test_cli_lagoon_correct_accounts(
 
     - This test checks code runs, but does not attempt to repair any errors
     """
-
-    environment = deployed_vault_environment
-
     cli = get_command(app)
-    mocker.patch.dict("os.environ", environment, clear=True)
+    mocker.patch.dict("os.environ", deployed_vault_environment, clear=True)
     cli.main(args=["init"], standalone_mode=False)
     cli.main(args=["correct-accounts"], standalone_mode=False)

@@ -1077,6 +1077,7 @@ class ExecutionLoop:
                 datetime.datetime.utcnow(),
                 state,
                 reserve_assets,
+                post_valuation=True,
             )
 
             if self.sync_model.has_position_sync():

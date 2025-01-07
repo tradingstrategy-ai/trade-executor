@@ -112,6 +112,7 @@ def make_test_trade(
         ts,
         state,
         list(universe.reserve_assets),
+        post_valuation=True,
     )
 
     logger.info("sync_treasury() received balance update events: %s", balance_updates)

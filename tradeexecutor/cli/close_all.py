@@ -70,6 +70,7 @@ def close_all(
         ts,
         state,
         list(universe.reserve_assets),
+        post_valuation=True,
     )
 
     logger.info("We received balance update events: %s", balance_updates)

@@ -1,4 +1,7 @@
-"""Map trades to different routing backends based on their type."""
+"""Map trades to different routing backends based on their type.
+
+See :py:mod:`tradeexecutor.ethereum.routing_data` for per-chain and per-protocol configuration data.
+"""
 
 from typing import Dict, TypeAlias, List, Tuple
 import logging

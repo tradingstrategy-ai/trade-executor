@@ -333,6 +333,7 @@ def correct_accounts(
             strategy_cycle_ts=timestamp,
             state=state,
             end_block=end_block,
+            post_valuation=True,
         )
     else:
         logger.info("Deposit/redemption distribution skipped")

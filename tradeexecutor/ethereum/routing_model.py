@@ -166,6 +166,9 @@ class EthereumRoutingModel(RoutingModel):
         :return:
             List of approval transactions (if any needed)
         """
+
+        logger.info("EthereumRoutingModel.make_multihop_trade() to %s, int. %s, reserve %d", target_pair, intermediary_pair, reserve_amount)
+
         uniswap = routing_state.get_uniswap_for_pair(address_map, target_pair)
         token_address = reserve_asset.address
         
@@ -323,7 +326,7 @@ class EthereumRoutingModel(RoutingModel):
             transactions in the `routing_state`.
         """
 
-        logger.info("trade() pair: %s reserve: %s reserve allocated: %s max slippage: %s %%",
+        logger.info("trade() pair: %s source asset (reserve): %s reserve allocated: %s max slippage: %s %%",
                     target_pair,
                     reserve_asset,
                     reserve_asset_amount,

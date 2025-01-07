@@ -11,16 +11,14 @@ import logging
 
 from hexbytes import HexBytes
 
-from eth_defi.trade import TradeSuccess
-from eth_defi.velvet.analysis import analyse_trade_by_receipt_generic
-from tradeexecutor.ethereum.swap import report_failure
+
 from tradeexecutor.state.identifier import TradingPairIdentifier, AssetIdentifier
 from tradeexecutor.state.state import State
 from tradeexecutor.state.trade import TradeExecution
 from tradeexecutor.state.types import JSONHexAddress
 from tradeexecutor.strategy.universe_model import StrategyExecutionUniverse
 from tradeexecutor.strategy.trading_strategy_universe import translate_token, translate_trading_pair
-from tradeexecutor.utils.blockchain import get_block_timestamp
+
 
 from tradingstrategy.pair import PandasPairUniverse, PairNotFoundError
 

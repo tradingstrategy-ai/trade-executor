@@ -4,6 +4,7 @@ import logging
 from _decimal import Decimal
 from typing import Dict, Optional, List
 
+import ipdb
 from eth_typing import HexAddress
 from hexbytes import HexBytes
 
@@ -19,7 +20,6 @@ from tradeexecutor.utils.blockchain import get_block_timestamp
 from tradingstrategy.chain import ChainId
 from web3 import Web3
 
-from eth_defi.gas import estimate_gas_fees
 from eth_defi.uniswap_v3.deployment import UniswapV3Deployment, fetch_deployment, mock_partial_deployment_for_analysis
 from eth_defi.uniswap_v3.swap import swap_with_slippage_protection
 from web3.exceptions import ContractLogicError
@@ -120,17 +120,20 @@ class UniswapV3RoutingState(EthereumRoutingState):
         )
 
     def trade_on_router_three_way(self,
-            uniswap: UniswapV3Deployment,
-            target_pair: TradingPairIdentifier,
-            intermediary_pair: TradingPairIdentifier,
-            reserve_asset: AssetIdentifier,
-            reserve_amount: int,
-            max_slippage: float,
-            check_balances: False,
-            asset_deltas: Optional[List[AssetDelta]] = None,
-            notes="",
+        uniswap: UniswapV3Deployment,
+        target_pair: TradingPairIdentifier,
+        intermediary_pair: TradingPairIdentifier,
+        reserve_asset: AssetIdentifier,
+        reserve_amount: int,
+        max_slippage: float,
+        check_balances: False,
+        asset_deltas: Optional[List[AssetDelta]] = None,
+        notes="",
         ):
         """Prepare the actual swap for three way trade.
+
+        :param reserve_asset:
+            The token we use as input (source) for this trade
 
         :param check_balances:
             Check on-chain balances that the account has enough tokens
@@ -138,28 +141,47 @@ class UniswapV3RoutingState(EthereumRoutingState):
         """
 
         self.validate_pairs(target_pair, intermediary_pair)
-        
         self.validate_exchange(target_pair, intermediary_pair)
 
-        base_token, quote_token, intermediary_token = get_base_quote_intermediary(self.web3,target_pair, intermediary_pair, reserve_asset)
+        base_token, quote_token, intermediary_token = get_base_quote_intermediary(
+            self.web3,
+            target_pair,
+            intermediary_pair,
+            reserve_asset,
+        )
 
         if check_balances:
             self.check_has_enough_tokens(quote_token, reserve_amount)
 
         # eth_defi uses raw_fees
         raw_pool_fees = [int(intermediary_pair.fee * 1_000_000), int(target_pair.fee * 1_000_000)]
-        
-        bound_swap_func = swap_with_slippage_protection(
-            uniswap,
-            recipient_address=self.tx_builder.get_token_delivery_address(),
-            base_token=base_token,
-            quote_token=quote_token,
-            pool_fees=raw_pool_fees,
-            amount_in=reserve_amount,
-            max_slippage=get_slippage_in_bps(max_slippage),
-            intermediate_token=intermediary_token,
-        )
-        
+
+        if target_pair.base == reserve_asset:
+            # We are doing sell, reverse fee order
+            raw_pool_fees.reverse()
+            bound_swap_func = swap_with_slippage_protection(
+                uniswap,
+                recipient_address=self.tx_builder.get_token_delivery_address(),
+                base_token=base_token,
+                quote_token=quote_token,
+                pool_fees=raw_pool_fees,
+                amount_in=reserve_amount,
+                max_slippage=get_slippage_in_bps(max_slippage),
+                intermediate_token=intermediary_token,
+            )
+        else:
+            # Buy
+            bound_swap_func = swap_with_slippage_protection(
+                uniswap,
+                recipient_address=self.tx_builder.get_token_delivery_address(),
+                base_token=base_token,
+                quote_token=quote_token,
+                pool_fees=raw_pool_fees,
+                amount_in=reserve_amount,
+                max_slippage=get_slippage_in_bps(max_slippage),
+                intermediate_token=intermediary_token,
+            )
+
         return self.create_signed_transaction(
             uniswap.swap_router,
             bound_swap_func,
@@ -244,13 +266,13 @@ class UniswapV3Routing(EthereumRoutingModel):
 
         - Called from check-wallet to see our routing and balances are good
         """
-
         logger.info("Routing details")
         logger.info("  Factory: %s", self.address_map["factory"])
         logger.info("  Router: %s", self.address_map["router"])
         logger.info("  Position Manager: %s", self.address_map["position_manager"])
         logger.info("  Quoter: %s", self.address_map["quoter"])
-
+        logger.info("  Quoter v2: %s", self.address_map.get("quoter_v2"))
+        logger.info("  Swap Router v2: %s", self.address_map.get("router_v2"))
         self.reserve_asset_logging(pair_universe)
         
     def make_direct_trade(
@@ -349,9 +371,11 @@ class UniswapV3Routing(EthereumRoutingModel):
             if trade.is_buy():
                 assert path[0] == reserve.address, f"Was expecting the route path to start with reserve token {reserve}, got path {result.path}"
 
-                price = result.get_human_price(quote_token_details.address == result.token0.address)
+                # price = result.get_human_price(quote_token_details.address == result.token0.address)
                 executed_reserve = result.amount_in / Decimal(10 ** reserve.decimals)
                 executed_amount = result.amount_out / Decimal(10 ** base_token_details.decimals)
+
+                price = executed_reserve / executed_amount
 
                 # lp fee is already in terms of quote token
                 lp_fee_paid = result.lp_fee_paid
@@ -359,14 +383,16 @@ class UniswapV3Routing(EthereumRoutingModel):
                 # Ordered other way around
                 assert path[0] == base_token_details.address.lower(), f"Path is {path}, base token is {base_token_details}"
                 assert path[-1] == reserve.address
-                price = result.get_human_price(quote_token_details.address == result.token0.address)
+                # price = result.get_human_price(quote_token_details.address == result.token0.address)
                 executed_amount = -result.amount_in / Decimal(10 ** base_token_details.decimals)
                 executed_reserve = result.amount_out / Decimal(10 ** reserve.decimals)
+
+                price = -executed_reserve / executed_amount
 
                 # convert lp fee to be in terms of quote token
                 lp_fee_paid = result.lp_fee_paid * float(price) if result.lp_fee_paid else None
 
-            assert (executed_reserve > 0) and (executed_amount != 0) and (price > 0), f"Executed amount {executed_amount}, executed_reserve: {executed_reserve}, price: {price}, tx info {trade.tx_info}"
+            assert (executed_reserve > 0) and (executed_amount != 0) and (price > 0), f"Executed amount {executed_amount}, executed_reserve: {executed_reserve}, price: {price}"
 
             logger.info(f"Executed: {executed_amount} {trade.pair.base.token_symbol}, {executed_reserve} {trade.pair.quote.token_symbol}")
 
@@ -394,27 +420,41 @@ class UniswapV3Routing(EthereumRoutingModel):
 
 
 def get_uniswap_for_pair(web3: Web3, address_map: dict, target_pair: TradingPairIdentifier) -> UniswapV3Deployment:
-    """Get a router for a trading pair."""
+    """Get Uniswap v3 resolved contracts for a pair."""
     assert target_pair.exchange_address, f"Exchange address missing for {target_pair}"
-    
+
     factory_address = Web3.to_checksum_address(target_pair.exchange_address)
     assert factory_address == Web3.to_checksum_address(address_map["factory"]), \
         "address_map[\"factory\"] and target_pair.exchange_address should be equal\n" \
         f"Got {factory_address} and {address_map['factory']} on pair {target_pair}"
-    
+
+    cache_key = (factory_address, id(web3))
+    cached = _uniswap_v3_cache.get(cache_key)
+    if cached:
+        return cached
+
     router_address = Web3.to_checksum_address(address_map["router"])
     position_manager_address = Web3.to_checksum_address(address_map["position_manager"])
     quoter_address = Web3.to_checksum_address(address_map["quoter"])
     quoter_v2 = address_map.get("quoter_v2")
+    router_v2 = address_map.get("router_v2")
 
     try:
-        return fetch_deployment(
+        cached = fetch_deployment(
             web3,
             factory_address,
             router_address,
             position_manager_address,
             quoter_address,
             quoter_v2=quoter_v2,
+            router_v2=router_v2,
         )
+        _uniswap_v3_cache[cache_key] = cached
+        return cached
     except ContractLogicError as e:
         raise RuntimeError(f"Could not fetch deployment data for router address {router_address} (factory {factory_address}) - data is likely wrong") from e
+
+
+#: TODO: Web3 instances stay around here forever.
+#: But only matters for unit tests.
+_uniswap_v3_cache = {}

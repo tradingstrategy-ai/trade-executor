@@ -34,12 +34,9 @@ Example how to manually test:
 """
 
 import json
-import logging
 import os.path
 import sys
-from io import StringIO
 from pathlib import Path
-from pprint import pformat
 from typing import Optional
 
 from typer import Option
@@ -50,9 +47,10 @@ from eth_defi.lagoon.deployment import LagoonDeploymentParameters, deploy_automa
 from eth_defi.token import fetch_erc20_details
 from eth_defi.uniswap_v2.constants import UNISWAP_V2_DEPLOYMENTS
 from eth_defi.uniswap_v2.deployment import fetch_deployment
+from eth_defi.uniswap_v3.constants import UNISWAP_V3_DEPLOYMENTS
+from eth_defi.uniswap_v3.deployment import fetch_deployment as fetch_deployment_uni_v3
 
 from tradeexecutor.cli.commands.shared_options import parse_comma_separated_list
-from tradeexecutor.cli.guard import generate_whitelist
 from tradeexecutor.monkeypatch.web3 import construct_sign_and_send_raw_middleware
 from tradingstrategy.chain import ChainId
 
@@ -63,7 +61,7 @@ from tradeexecutor.cli.log import setup_logging
 
 
 @app.command()
-def enzyme_deploy_vault(
+def lagoon_deploy_vault(
     log_level: str = shared_options.log_level,
     json_rpc_binance: Optional[str] = shared_options.json_rpc_binance,
     json_rpc_polygon: Optional[str] = shared_options.json_rpc_polygon,
@@ -78,10 +76,10 @@ def enzyme_deploy_vault(
     vault_record_file: Optional[Path] = Option(..., envvar="VAULT_RECORD_FILE", help="Store vault and comptroller addresses in this JSON file. It's important to write down all contract addresses."),
     fund_name: Optional[str] = Option(..., envvar="FUND_NAME", help="On-chain name for the fund shares"),
     fund_symbol: Optional[str] = Option(..., envvar="FUND_SYMBOL", help="On-chain token symbol for the fund shares"),
-    denomination_asset: Optional[str] = Option(None, envvar="DENOMINATION_ASSET", help="Stablecoin asset used for vault denomination"),
-    multisig_owners: Optional[list[str]] = Option(None, callback=parse_comma_separated_list, envvar="MULTISIG_OWNERS", help="The list of acconts that are set to the cosigners of the Safe. The multisig threshold is number of cosigners - 1."),
+    denomination_asset: Optional[str] = Option(..., envvar="DENOMINATION_ASSET", help="Stablecoin asset used for vault denomination"),
+    multisig_owners: Optional[str] = Option(None, callback=parse_comma_separated_list, envvar="MULTISIG_OWNERS", help="The list of acconts that are set to the cosigners of the Safe. The multisig threshold is number of cosigners - 1."),
     # terms_of_service_address: Optional[str] = Option(None, envvar="TERMS_OF_SERVICE_ADDRESS", help="The address of the terms of service smart contract"),
-    whitelisted_assets: Optional[str] = Option(..., envvar="WHITELISTED_ASSETS", help="Space separarted list of ERC-20 addresses this vault can trade. Denomination asset does not need to be whitelisted separately."),
+    whitelisted_assets: Optional[str] = Option(None, envvar="WHITELISTED_ASSETS", help="Space separarted list of ERC-20 addresses this vault can trade. Denomination asset does not need to be whitelisted separately."),
     any_asset: Optional[bool] = Option(False, envvar="ANY_ASSET", help="Allow trading of any ERC-20 on Uniswap (unsecure)."),
 
     unit_testing: bool = shared_options.unit_testing,
@@ -90,12 +88,12 @@ def enzyme_deploy_vault(
     etherscan_api_key: Optional[str] = Option(None, envvar="ETHERSCAN_API_KEY", help="Etherscan API key need to verify the contracts on a production deployment."),
     one_delta: bool = Option(False, envvar="ONE_DELTA", help="Whitelist 1delta interaction with GuardV0 smart contract."),
     aave: bool = Option(False, envvar="AAVE", help="Whitelist Aave aUSDC deposits"),
-    uniswap_v2: bool = Option(False, envvar="AAVE", help="Whitelist Uniswap v2"),
-    uniswap_v3: bool = Option(False, envvar="AAVE", help="Whitelist Uniswap v3"),
+    uniswap_v2: bool = Option(False, envvar="UNISWAP_V2", help="Whitelist Uniswap v2"),
+    uniswap_v3: bool = Option(False, envvar="UNISWAP_V3", help="Whitelist Uniswap v3"),
 ):
     """Deploy a new Lagoon vault.
 
-    Deploys a new Lagoon vault, Safe and TradingStrategyModuleV0 for automated trading.
+    Deploys a new Lagoon vault, Safe and TradingStrategyModuleV0 guard for automated trading.
 
     TODO: Heavily under development.
     """
@@ -130,13 +128,8 @@ def enzyme_deploy_vault(
     hot_wallet.sync_nonce(web3)
     web3.middleware_onion.add(construct_sign_and_send_raw_middleware(hot_wallet.account))
 
-    # Build the list of whitelisted assets GuardV0 allows us to trade
-    if denomination_asset not in whitelisted_assets:
-        # Unit test legacy hack
-        whitelisted_assets = denomination_asset + " " + whitelisted_assets
-    whitelisted_asset_details = generate_whitelist(web3, whitelisted_assets)
-    assert len(whitelisted_asset_details) >= 1, "You need to whitelist at least one token as a trading pair"
-    denomination_token = whitelisted_asset_details[0]
+    assert not whitelisted_assets, "whitelisted_assets: Not implemented"
+    whitelisted_asset_details = []
 
     # Check the chain is online
     logger.info(f"  Chain id is {web3.eth.chain_id:,}")
@@ -159,11 +152,13 @@ def enzyme_deploy_vault(
     logger.info("Deployer hot wallet: %s", hot_wallet.address)
     logger.info("Deployer balance: %f, nonce %d", hot_wallet.get_native_currency_balance(web3), hot_wallet.current_nonce)
     logger.info("Fund: %s (%s)", fund_name, fund_symbol)
+    logger.info("Underlying token: %s", denomination_token.symbol)
     logger.info("Whitelisting any token: %s", aave)
     logger.info("Whitelisted assets: %s", ", ".join([a.symbol for a in whitelisted_asset_details]))
+    logger.info("Whitelisting Uniswap v2: %s", uniswap_v2)
+    logger.info("Whitelisting Uniswap v3: %s", uniswap_v3)
     logger.info("Whitelisting 1delta: %s", one_delta)
     logger.info("Whitelisting Aave: %s", aave)
-    logger.info("Underlying token: %s", denomination_token.symbol)
 
     if etherscan_api_key:
         logger.info("Etherscan API key: %s", etherscan_api_key)
@@ -197,8 +192,9 @@ def enzyme_deploy_vault(
         symbol=fund_symbol,
     )
 
+    chain_slug = chain_id.get_slug()
+
     if uniswap_v2:
-        chain_slug = chain_id.get_slug()
         uniswap_v2_deployment = fetch_deployment(
             web3,
             factory_address=UNISWAP_V2_DEPLOYMENTS[chain_slug]["factory"],
@@ -208,7 +204,21 @@ def enzyme_deploy_vault(
     else:
         uniswap_v2_deployment = None
 
-    assert not uniswap_v3, "Not implemented"
+    if uniswap_v3:
+        chain_slug = chain_id.get_slug()
+        deployment_data = UNISWAP_V3_DEPLOYMENTS[chain_slug]
+        uniswap_v3_deployment= fetch_deployment_uni_v3(
+            web3,
+            factory_address=deployment_data["factory"],
+            router_address=deployment_data["router"],
+            position_manager_address=deployment_data["position_manager"],
+            quoter_address=deployment_data["quoter"],
+            quoter_v2=deployment_data["quoter_v2"],
+            router_v2=deployment_data["router_v2"],
+        )
+
+    else:
+        uniswap_v3_deployment = None
 
     deploy_info = deploy_automated_lagoon_vault(
         web3=web3,
@@ -218,8 +228,10 @@ def enzyme_deploy_vault(
         safe_owners=multisig_owners,
         safe_threshold=len(multisig_owners) - 1,
         uniswap_v2=uniswap_v2_deployment,
-        uniswap_v3=None,
+        uniswap_v3=uniswap_v3_deployment,
         any_asset=True,
+        use_forge=True,
+        etherscan_api_key=etherscan_api_key,
     )
 
     if vault_record_file and (not simulate):

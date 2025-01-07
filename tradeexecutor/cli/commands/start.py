@@ -30,6 +30,7 @@ from ..slippage import configure_max_slippage_tolerance
 from ..version_info import VersionInfo
 from ..watchdog import stop_watchdog
 from ...ethereum.enzyme.vault import EnzymeVaultSyncModel
+from ...ethereum.lagoon.vault import LagoonVaultSyncModel
 from ...ethereum.velvet.execution import VelvetExecution
 from ...ethereum.velvet.vault import VelvetVaultSyncModel
 from ...state.state import State
@@ -341,6 +342,8 @@ def start(
                 case EnzymeVaultSyncModel():
                     vault = sync_model.vault
                 case VelvetVaultSyncModel():
+                    vault = sync_model.vault
+                case LagoonVaultSyncModel():
                     vault = sync_model.vault
                 case _:
                     raise NotImplementedError(f"Vault not implemented: {asset_management_mode}")

@@ -243,6 +243,7 @@ class StrategyRunner(abc.ABC):
             state,
             supported_reserves=reserve_assets,
             end_block=end_block,
+            post_valuation=True,
         )
         assert type(balance_update_events) == list
         if end_block is not None:

@@ -1,12 +1,6 @@
-"""Base memecoin  basket.
+"""Base memecoin basket strategy.
 
-Run backtest:
-
-    trade-executor \
-        backtest \
-        --strategy-file=strategy/ethereum-memecoin-vol-basket.py \
-        --trading-strategy-api-key=$TRADING_STRATEGY_API_KEY
-
+Used in Velvet and Lagoon E2E test.
 """
 import datetime
 

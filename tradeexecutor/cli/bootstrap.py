@@ -15,8 +15,10 @@ from eth_defi.gas import GasPriceMethod
 from eth_defi.hotwallet import HotWallet
 from web3 import Web3
 
+from eth_defi.lagoon.vault import LagoonVault
 from eth_defi.vault.base import VaultSpec
 from eth_defi.velvet import VelvetVault
+from tradeexecutor.ethereum.lagoon.vault import LagoonVaultSyncModel
 from tradeexecutor.ethereum.velvet.velvet_enso_routing import VelvetEnsoRouting
 
 from tradingstrategy.chain import ChainId
@@ -334,7 +336,7 @@ def create_metadata(
     icon_url,
     asset_management_mode: AssetManagementMode,
     chain_id: ChainId,
-    vault: Optional[Vault | VelvetVault],
+    vault: Optional[Vault | VelvetVault | LagoonVault],
     backtest_result: Optional[Path] = None,
     backtest_notebook: Optional[Path] = None,
     backtest_html: Optional[Path] = None,
@@ -396,6 +398,10 @@ def create_metadata(
                 assert isinstance(vault, VelvetVault)
                 on_chain_data.smart_contracts.update(vault.info)
                 on_chain_data.owner = vault.owner_address
+            case AssetManagementMode.lagoon:
+                assert isinstance(vault, LagoonVault)
+                on_chain_data.smart_contracts.update(vault.info)
+                on_chain_data.owner = vault.safe_address
             case _:
                 raise NotImplementedError(f"Unsupported asset management mode: {asset_management_mode}")
 
@@ -456,7 +462,13 @@ def create_sync_model(
     vault_address: Optional[str] = None,
     vault_adapter_address: Optional[str] = None,
     vault_payment_forwarder_address: Optional[str] = None,
+    init=False,
 ) -> SyncModel:
+    """Create sync model for wallet type
+
+    :param init:
+        This is for state init only - no chain functions called
+    """
     match asset_management_mode:
         case AssetManagementMode.hot_wallet:
             return HotWalletSyncModel(web3, hot_wallet)
@@ -481,6 +493,17 @@ def create_sync_model(
             return VelvetVaultSyncModel(
                 vault,
                 hot_wallet
+            )
+        case AssetManagementMode.lagoon:
+            assert vault_adapter_address, "TradingStrategyModuleV0 address must be given with Lagoon vault using VAULT_ADAPTER_ACCESS env option"
+            vault = LagoonVault(
+                web3,
+                VaultSpec(web3.eth.chain_id, cast(HexAddress, vault_address)),
+                trading_strategy_module_address=vault_adapter_address,
+            )
+            return LagoonVaultSyncModel(
+                vault,
+                hot_wallet,
             )
         case _:
             raise NotImplementedError()

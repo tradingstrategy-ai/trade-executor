@@ -86,6 +86,7 @@ class BacktestSyncModel(SyncModel):
         state: State,
         supported_reserves: Optional[List[AssetIdentifier]] = None,
         end_block: BlockNumber | NoneType = None,
+        post_valuation=False,
     ) -> List[BalanceUpdate]:
         """Apply the balance sync before each strategy cycle.
 

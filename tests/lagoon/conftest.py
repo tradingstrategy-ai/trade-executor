@@ -24,8 +24,10 @@ from eth_defi.provider.multi_provider import create_multi_provider_web3
 from eth_defi.token import TokenDetails, fetch_erc20_details, USDC_NATIVE_TOKEN
 from eth_defi.trace import assert_transaction_success_with_explanation
 from eth_defi.uniswap_v2.constants import UNISWAP_V2_DEPLOYMENTS
-from eth_defi.uniswap_v2.deployment import fetch_deployment
+from eth_defi.uniswap_v2.deployment import fetch_deployment, UniswapV2Deployment
+from eth_defi.uniswap_v3.constants import UNISWAP_V3_DEPLOYMENTS
 from eth_defi.vault.base import VaultSpec
+from eth_defi.uniswap_v3.deployment import fetch_deployment as fetch_deployment_uni_v3, UniswapV3Deployment
 
 from tradeexecutor.ethereum.ethereum_protocol_adapters import EthereumPairConfigurator
 from tradeexecutor.ethereum.lagoon.execution import LagoonExecution
@@ -105,7 +107,6 @@ def base_doginme() -> AssetIdentifier:
         decimals=18,
         token_symbol="DogInMe",
     )
-
 
 
 @pytest.fixture(scope='module')
@@ -235,18 +236,6 @@ def asset_manager(web3) -> HotWallet:
     """Account that we use for Lagoon trade/settles"""
     hot_wallet = HotWallet.create_for_testing(web3, eth_amount=1)
     return hot_wallet
-
-
-@pytest.fixture()
-def topped_up_asset_manager(web3, asset_manager):
-    # Topped up with some ETH
-    tx_hash = web3.eth.send_transaction({
-        "to": asset_manager,
-        "from": web3.eth.accounts[0],
-        "value": 9 * 10**18,
-    })
-    assert_transaction_success_with_explanation(web3, tx_hash)
-    return asset_manager
 
 
 @pytest.fixture()
@@ -428,6 +417,7 @@ def automated_lagoon_vault(
     asset_manager,
     multisig_owners,
     uniswap_v2,
+    uniswap_v3,
 ) -> LagoonAutomatedDeployment:
     """Deploy a new Lagoon vault with TradingStrategyModuleV0.
 
@@ -451,11 +441,39 @@ def automated_lagoon_vault(
         safe_owners=multisig_owners,
         safe_threshold=2,
         uniswap_v2=uniswap_v2,
-        uniswap_v3=None,
+        uniswap_v3=uniswap_v3,
         any_asset=True,
     )
 
     return deploy_info
+
+
+@pytest.fixture()
+def deposited_lagoon_vault(
+    web3,
+    automated_lagoon_vault,
+    depositor,
+    base_usdc_token,
+):
+    """Lagoon vault with deposits in it.
+
+    - Does the initial Vault.deposit() Solidity call
+    - Treasury not yet synced
+    """
+
+    vault = automated_lagoon_vault.vault
+    usdc = base_usdc_token
+
+    # Do initial deposit
+    # Deposit 399.00 USDC into the vault from the first user
+    usdc_amount = Decimal(399.00)
+    raw_usdc_amount = usdc.convert_to_raw(usdc_amount)
+    tx_hash = usdc.approve(vault.address, usdc_amount).transact({"from": depositor})
+    assert_transaction_success_with_explanation(web3, tx_hash)
+    deposit_func = vault.request_deposit(depositor, raw_usdc_amount)
+    tx_hash = deposit_func.transact({"from": depositor})
+    assert_transaction_success_with_explanation(web3, tx_hash)
+    return automated_lagoon_vault
 
 
 @pytest.fixture()
@@ -484,7 +502,7 @@ def another_new_depositor(web3, base_usdc_token, usdc_holder) -> HexAddress:
 
 
 @pytest.fixture()
-def uniswap_v2(web3):
+def uniswap_v2(web3) -> UniswapV2Deployment:
     """Uniswap V2 on Base"""
     return fetch_deployment(
         web3,
@@ -492,6 +510,21 @@ def uniswap_v2(web3):
         router_address=UNISWAP_V2_DEPLOYMENTS["base"]["router"],
         init_code_hash=UNISWAP_V2_DEPLOYMENTS["base"]["init_code_hash"],
     )
+
+
+@pytest.fixture()
+def uniswap_v3(web3) -> UniswapV3Deployment:
+    deployment_data = UNISWAP_V3_DEPLOYMENTS["base"]
+    uniswap_v3_on_base = fetch_deployment_uni_v3(
+        web3,
+        factory_address=deployment_data["factory"],
+        router_address=deployment_data["router"],
+        position_manager_address=deployment_data["position_manager"],
+        quoter_address=deployment_data["quoter"],
+        quoter_v2=deployment_data["quoter_v2"],
+        router_v2=deployment_data["router_v2"],
+    )
+    return uniswap_v3_on_base
 
 
 @pytest.fixture()

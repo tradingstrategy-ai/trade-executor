@@ -49,7 +49,8 @@ class LagoonVaultSyncModel(AddressSyncModel):
         hot_wallet: HotWallet | None,
         extra_gnosis_gas: int = 500_000,
         valuation_data_freshness=datetime.timedelta(hours=4),
-        min_nav_change_update: Percent=0.005
+        min_nav_change_update: Percent=0.005,
+        unit_testing=False,
     ):
         """
         :param extra_gnosis_gas:
@@ -61,6 +62,11 @@ class LagoonVaultSyncModel(AddressSyncModel):
             Crash is valuation data is older than this.
 
             Abort posting new valuations to onchain the valuation is too old.
+
+        :param unit_testing:
+            Don't use minor regorg safe latest block protection.
+
+            Needed for tenderly.
 
         :param min_nav_change_update:
             Minimum change in NAV before we post update.
@@ -75,6 +81,7 @@ class LagoonVaultSyncModel(AddressSyncModel):
         self.valuation_data_freshness = valuation_data_freshness
         self.min_nav_change_update = min_nav_change_update
         self.anvil = is_anvil(self.web3)  # Running test mode
+        self.unit_testing = unit_testing  #
         assert vault.trading_strategy_module, "LagoonVault.trading_strategy_module initialisation param not set - needed to run the sync model properly"
         # assert isinstance(self.web3.provider, MEVBlockerProvider), f"This sync model needs MEVBlockerProvider, got {type(self.web3.provider)}"
 
@@ -110,8 +117,9 @@ class LagoonVaultSyncModel(AddressSyncModel):
         return self.vault.safe_address
 
     def get_safe_latest_block(self) -> int:
-        if self.anvil:
+        if self.anvil or self.unit_testing:
             # On Anvil tests, we need to always follow the latest block
+            # Set self.unit_testing when using Tenderly
             return self.web3.eth.block_number
         else:
             # Leave room for minor reorg of 1-2 blocks
@@ -165,10 +173,10 @@ class LagoonVaultSyncModel(AddressSyncModel):
         )
 
     def fetch_onchain_balances(
-            self,
-            assets: list[AssetIdentifier],
-            filter_zero=True,
-            block_identifier: BlockIdentifier = None,
+        self,
+        assets: list[AssetIdentifier],
+        filter_zero=True,
+        block_identifier: BlockIdentifier = None,
     ) -> Iterable[OnChainBalance]:
 
         sorted_assets = sorted(assets, key=lambda a: a.address)
@@ -179,7 +187,7 @@ class LagoonVaultSyncModel(AddressSyncModel):
 
         return fetch_address_balances(
             self.web3,
-            self.get_key_address(),
+            self.get_token_storage_address(),
             sorted_assets,
             block_number=block_identifier,
             filter_zero=filter_zero,
@@ -216,16 +224,21 @@ class LagoonVaultSyncModel(AddressSyncModel):
             logger.info("Deposit/redemptions detected, NAV update needed")
             return True
 
-        onchain_nav = float(self.vault.fetch_nav())
-        nav_diff = abs(calculated_nav - onchain_nav) / onchain_nav
-        if nav_diff >= self.min_nav_change_update:
-            logger.info(
-                "NAV update neeed. Calcualted %s, onchain %s, diff %f %%",
-                onchain_nav,
-                calculated_nav,
-                nav_diff * 100,
-            )
-            return True
+        onchain_nav = float(self.vault.fetch_nav(block_identifier=block_number))
+
+        if onchain_nav > 0:
+            nav_diff = abs(calculated_nav - onchain_nav) / onchain_nav
+            if nav_diff >= self.min_nav_change_update:
+                logger.info(
+                    "NAV update neeed. Calcualted %s, onchain %s, diff %f %%",
+                    onchain_nav,
+                    calculated_nav,
+                    nav_diff * 100,
+                )
+                return True
+        else:
+            # Avoid division by zero
+            return not ((onchain_nav == 0) and (calculated_nav == 0))
 
         return False
 
@@ -255,10 +268,25 @@ class LagoonVaultSyncModel(AddressSyncModel):
         vault = self.vault
         treasury_sync = sync.treasury
         portfolio = state.portfolio
-        reserve_position = portfolio.get_default_reserve_position()
-        reserve_asset = reserve_position.asset
 
         assert sync.is_initialised(), f"Vault sync not initialised: {sync}\nPlease run trade-executor init command"
+
+        match len(portfolio.reserves):
+            case 1:
+                # We have already run sync once
+                logger.info("Reserve previously synced at %s", treasury_sync.last_updated_at)
+                reserve_position = portfolio.get_default_reserve_position()
+                reserve_asset = reserve_position.asset
+            case 0:
+                # Tabula rasa sync, need to create initial reserve position
+                logger.info("Creating initial reserve")
+                assert supported_reserves is not None
+                reserve_asset = supported_reserves[0]
+                state.portfolio.initialise_reserves(reserve_asset, reserve_token_price=1.0)
+                reserve_position = portfolio.get_default_reserve_position()
+            case _:
+                raise NotImplementedError("Multireserve not supported")
+
         assert reserve_asset.is_stablecoin()
 
         reserve_token = fetch_erc20_details(
@@ -321,6 +349,8 @@ class LagoonVaultSyncModel(AddressSyncModel):
         # Include our valuation in the other_data diangnostics
         other_data = analysis.get_serialiable_diagnostics_data()
         other_data["valuation"] = valuation
+        valuation_with_deposits = valuation + float(delta)
+        other_data["valuation_with_deposits"] = valuation_with_deposits
 
         evt = BalanceUpdate(
             balance_update_id=event_id,
@@ -357,5 +387,11 @@ class LagoonVaultSyncModel(AddressSyncModel):
         treasury_sync.last_cycle_at = strategy_cycle_ts
         treasury_sync.pending_redemptions = float(analysis.pending_redemptions_underlying)
 
-        logger.info(f"Lagoon settlements done, the last block is now {treasury_sync.last_block_scanned:,}, settled {analysis.get_underlying_diff()} events, valuation is {valuation:,.2f}, pending redemptions {analysis.pending_redemptions_underlying} USD")
+        logger.info(
+            f"Lagoon settlements done, the last block is now {treasury_sync.last_block_scanned:,}\n"
+            f"Safe address: {vault.safe_address}, vault address: {vault.vault_address}, silo address: {vault.silo_address}\n"
+            f"Settled {analysis.get_underlying_diff()} USD\n"
+            f"Non-deposit valuation is {valuation:,.2f} USD, with-deposit valuation is {valuation_with_deposits:,.2f} USD\n"
+            f"Pending redemptions {analysis.pending_redemptions_underlying} USD"
+        )
         return [evt]

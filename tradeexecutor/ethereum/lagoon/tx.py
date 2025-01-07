@@ -7,6 +7,7 @@ from decimal import Decimal
 
 from web3.contract.contract import Contract, ContractFunction
 
+from eth_defi.abi import present_solidity_args
 from eth_defi.gas import GasPriceSuggestion, apply_gas
 from eth_defi.hotwallet import HotWallet
 from eth_defi.lagoon.vault import LagoonVault
@@ -76,17 +77,14 @@ class LagoonTransactionBuilder(TransactionBuilder):
         assert asset_deltas is not None, f"{args_bound_func.fn_name}() - cannot make Enzyme trades without asset_deltas set. Set to asset_deltas=[] for approve()"
         assert gas_limit is not None, f"Gas limit set to None for call: {args_bound_func} - LagoonTransactionBuilder needs explicit gas limit on all txs"
 
-        def present(a):
-            if type(a) == bytes:
-                return "0x" + a.hex()
-            return str(a)
-
-        logger.info("Lagoon tx for %s.%s(%s), gas limit %d, deltas %s",
-                    contract.address,
+        logger.info("Lagoon tx for <%s>.%s(%s), gas limit %d, deltas %s",
+                    args_bound_func.address,
                     args_bound_func.fn_name,
-                    ", ".join([present(a) for a in args_bound_func.args]),
+                    present_solidity_args(args_bound_func.args),
                     gas_limit,
                     asset_deltas)
+
+        assert contract.address == args_bound_func.address
 
         gas_price_suggestion = gas_price_suggestion or self.fetch_gas_price_suggestion()
 
@@ -96,14 +94,20 @@ class LagoonTransactionBuilder(TransactionBuilder):
         tx_data = bound_prepare_call.build_transaction({
             "gas": gas_limit + self.extra_gnosis_gas,
             "from": self.hot_wallet.address,
+            "chainId": self.chain_id,
         })
         tx_data.update(gas_price_suggestion.get_tx_gas_params())
+
+        if "maxFeePerGas" in tx_data and "gasPrice" in tx_data:
+            # We can have only one
+            # https://ethereum.stackexchange.com/questions/121361/web3py-issue-on-avalanche-when-using-maxpriorityfeepergas-and-maxfeepergas
+            del tx_data["gasPrice"]
 
         signed_tx = self.hot_wallet.sign_transaction_with_new_nonce(tx_data)
         signed_bytes = signed_tx.rawTransaction.hex()
 
         # Needed for get_swap_transactions() hack
-        tx_data["function"] =  args_bound_func.fn_name
+        tx_data["function"] = args_bound_func.fn_name
 
         return BlockchainTransaction(
             type=BlockchainTransactionType.lagoon_vault,
@@ -113,6 +117,7 @@ class LagoonTransactionBuilder(TransactionBuilder):
             function_selector=bound_prepare_call.fn_name,
             transaction_args=bound_prepare_call.args,
             args=args_bound_func.args,
+            wrapped_target=args_bound_func.address,
             wrapped_args=args_bound_func.args,
             wrapped_function_selector=args_bound_func.fn_name,
             signed_bytes=signed_bytes,

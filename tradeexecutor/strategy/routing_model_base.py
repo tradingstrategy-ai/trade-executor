@@ -1,10 +1,8 @@
 import logging
 from typing import Type
 
-from tradeexecutor.strategy.routing import RoutingModel
 from typing import Dict, List, Optional, Tuple
 
-from eth_typing import HexAddress
 from tradingstrategy.chain import ChainId
 
 from eth_defi.gas import estimate_gas_fees
@@ -14,8 +12,7 @@ from tradeexecutor.state.blockhain_transaction import BlockchainTransaction
 from tradeexecutor.state.identifier import TradingPairIdentifier, AssetIdentifier
 from tradeexecutor.state.trade import TradeExecution
 from tradeexecutor.strategy.routing import RoutingModel, CannotRouteTrade
-from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse, translate_trading_pair, \
-    translate_token
+from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse, translate_trading_pair
 from tradingstrategy.pair import PandasPairUniverse
 
 from tradeexecutor.strategy.universe_model import StrategyExecutionUniverse
