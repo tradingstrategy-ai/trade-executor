@@ -4,7 +4,6 @@ import logging
 from _decimal import Decimal
 from typing import Dict, Optional, List
 
-import ipdb
 from eth_typing import HexAddress
 from hexbytes import HexBytes
 
