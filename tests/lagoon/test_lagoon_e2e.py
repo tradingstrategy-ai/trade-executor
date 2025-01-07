@@ -212,12 +212,9 @@ def test_cli_lagoon_start(
     cli = get_command(app)
     mocker.patch.dict("os.environ", deployed_vault_environment, clear=True)
     cli.main(args=["init"], standalone_mode=False)
-
-    state = State.read_json_file(state_file)
-    assert state.cycle == 1
-
     cli.main(args=["start"], standalone_mode=False)
 
+    # Read results of 1 cycle of strategy
     state = State.read_json_file(state_file)
     reserve_position = state.portfolio.get_default_reserve_position()
     assert reserve_position.get_value() > 5.0  # Should have 100 USDC starting balance

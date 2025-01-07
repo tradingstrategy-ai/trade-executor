@@ -93,7 +93,7 @@ def lagoon_deploy_vault(
 ):
     """Deploy a new Lagoon vault.
 
-    Deploys a new Lagoon vault, Safe and TradingStrategyModuleV0 for automated trading.
+    Deploys a new Lagoon vault, Safe and TradingStrategyModuleV0 guard for automated trading.
 
     TODO: Heavily under development.
     """
