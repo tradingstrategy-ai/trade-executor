@@ -141,7 +141,7 @@ def test_lagoon_swap_uniswap_v3(
     lagoon_pricing_model: GenericPricing,
     lagoon_routing_model:RoutingModel,
 ):
-    """Do a deposit to Lagoon vault and perform Uniswap v3 token buy (three legs)."""
+    """Do a deposit to Lagoon vault and perform Uniswap v3 token buy/sell (three legs)."""
 
     vault, state = deposited_vault
     strategy_universe = vault_strategy_universe
@@ -180,4 +180,23 @@ def test_lagoon_swap_uniswap_v3(
     assert t.is_success(), f"Trade failed: {t.blockchain_transactions[0].revert_reason}"
     assert 0 < t.executed_price < 1
     assert t.executed_quantity > 1000  # Keycat tokens
+    assert t.executed_reserve > 0
+
+    # Then sell DogInMe
+    trades = position_manager.close_all()
+    assert len(trades) == 1
+    t = trades[0]
+
+    execution_model.execute_trades(
+        datetime.datetime.utcnow(),
+        state,
+        trades,
+        routing_model,
+        routing_state,
+        check_balances=True,
+    )
+
+    assert t.is_success(), f"Trade failed: {t.blockchain_transactions[0].revert_reason}"
+    assert 0 < t.executed_price < 1
+    assert t.executed_quantity < 1000  # DogInMe tokens
     assert t.executed_reserve > 0
