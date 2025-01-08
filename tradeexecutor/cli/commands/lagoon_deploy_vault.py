@@ -159,6 +159,8 @@ def lagoon_deploy_vault(
     logger.info("Whitelisting Uniswap v3: %s", uniswap_v3)
     logger.info("Whitelisting 1delta: %s", one_delta)
     logger.info("Whitelisting Aave: %s", aave)
+    logger.info("Multisig owners: %s", multisig_owners)
+    logger.info("Etherscan API key: %s", etherscan_api_key)
 
     if etherscan_api_key:
         logger.info("Etherscan API key: %s", etherscan_api_key)
