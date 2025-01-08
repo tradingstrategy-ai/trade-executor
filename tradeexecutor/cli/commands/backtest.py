@@ -162,6 +162,7 @@ def backtest(
             execution_context=standalone_backtest_execution_context,
             max_workers=max_workers,
             cache_path=cache_path,
+            verbose=not unit_testing,
         )
         return result
 

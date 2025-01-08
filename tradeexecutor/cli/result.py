@@ -1,6 +1,7 @@
 """Simple command line based backtesting result display."""
 import traceback
 
+import pandas as pd
 from IPython.core.display_functions import display
 
 from tradeexecutor.analysis.trade_analyser import build_trade_analysis
@@ -29,7 +30,8 @@ def display_backtesting_results(
     analysis = build_trade_analysis(state.portfolio)
     try:
         summary = analysis.calculate_summary_statistics(state=state)
-        display(summary.to_dataframe(format_headings=False))
+        with pd.option_context('display.max_rows', None, 'display.max_columns', None):
+            display(summary.to_dataframe(format_headings=False))
     except Exception as e:
         print("Could not calculate summary:", e)
         traceback.print_exc()
@@ -41,7 +43,8 @@ def display_backtesting_results(
             strategy_universe,
             display=True,
         )
-        display(portfolio_comparison)
+        with pd.option_context('display.max_rows', None, 'display.max_columns', None):
+            display(portfolio_comparison)
 
     key_metrics = calculate_key_metrics(
         State(),

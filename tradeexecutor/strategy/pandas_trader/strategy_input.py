@@ -5,7 +5,6 @@
 
 import logging
 from dataclasses import dataclass
-from functools import lru_cache
 from typing import Callable
 
 import cachetools
@@ -24,7 +23,6 @@ from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniv
 from tradingstrategy.candle import CandleSampleUnavailable
 from tradingstrategy.liquidity import LiquidityDataUnavailable
 from tradingstrategy.pair import HumanReadableTradingPairDescription
-from tradingstrategy.timebucket import TimeBucket
 from tradingstrategy.utils.time import get_prior_timestamp, ZERO_TIMEDELTA
 
 logger = logging.getLogger(__name__)
@@ -468,6 +466,8 @@ class StrategyInputIndicators:
                     raise IndicatorDataNotFoundWithinDataTolerance(
                         f"Asked indicator {name}. Data delay tolerance is {data_delay_tolerance}, but the delay was longer {distance}.\n"
                         f"Our timestamp {self.timestamp}, fixed timestamp {shifted_ts}, data available at {before_match_timestamp}.\n"
+                        f"First indicator entry {series.index[0]}, last indicator entry {series.index[-1]}.\n"
+                        f"If your indicator data is gappy, make sure you use reindex() or ffill() to fill the gaps.\n"
                     )
 
                 value = before_match

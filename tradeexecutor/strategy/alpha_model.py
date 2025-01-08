@@ -16,6 +16,7 @@ import numpy as np
 from dataclasses_json import dataclass_json
 
 from tradeexecutor.state.size_risk import SizeRisk
+from tradeexecutor.strategy.execution_context import ExecutionContext
 from tradeexecutor.strategy.size_risk_model import SizeRiskModel
 from tradingstrategy.types import PrimaryKey
 
@@ -1072,6 +1073,7 @@ class AlphaModel:
         individual_rebalance_min_threshold: USDollarAmount = 0.0,
         use_spot_for_long=True,
         invidiual_rebalance_min_threshold=None,
+        execution_context: ExecutionContext = None,
     ) -> List[TradeExecution]:
         """Generate the trades that will rebalance the portfolio.
 
@@ -1103,6 +1105,9 @@ class AlphaModel:
             If we go long a pair, use spot.
 
             If set False, use leveraged long.
+
+        :param execution_context:
+            Needed to tune down print/log/state file clutter when backtesting thousands of trades.
 
         :return:
             List of trades we need to execute to reach the target portfolio.
@@ -1275,6 +1280,14 @@ class AlphaModel:
                         # Increase or decrease the position for the target pair
                         # Open new position if needed.
                         logger.info("Adjusting spot position")
+
+                        # For long backtests, state file is filled with these notes,
+                        # so we only enable for live trading
+                        notes = ""
+                        if execution_context:
+                            if execution_context.mode.is_live_trading():
+                                notes = f"Resizing position, trade based on signal: {signal} as {self.timestamp}"
+
                         position_rebalance_trades += position_manager.adjust_position(
                             synthetic,
                             dollar_diff,
@@ -1284,7 +1297,7 @@ class AlphaModel:
                             take_profit=signal.take_profit,
                             trailing_stop_loss=signal.trailing_stop_loss,
                             override_stop_loss=self.override_stop_loss,
-                            notes="Rebalance for signal {signal}"
+                            notes=notes,
                         )
                     else:
                         raise NotImplementedError(f"Leveraged long missing w/leverage {signal.leverage}, {signal.get_flip_label()}: {signal}")
