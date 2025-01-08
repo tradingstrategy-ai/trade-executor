@@ -43,9 +43,10 @@ RUN poetry config virtualenvs.create false
 RUN poetry install --no-dev --no-interaction --no-ansi --all-extras
 
 # Anvil is needed for the transaction simulation e.g. by trade-executor enzyme-deploy-vault command
+# For the latest pindowns check Github test workflow
 ENV PATH="${PATH}:/root/.foundry/bin"
 RUN curl -L https://foundry.paradigm.xyz | bash
-RUN foundryup
+RUN foundryup --version v0.3.0
 
 # trade-executor /api
 # Pyramid HTTP server for webhooks at port 3456
