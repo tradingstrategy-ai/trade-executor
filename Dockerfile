@@ -50,7 +50,7 @@ RUN foundryup --install v0.3.0
 
 # trade-executor /api
 # Pyramid HTTP server for webhooks at port 3456
-EXPOSE 3456wh
+EXPOSE 3456
 
 # Use --quiet to supress Skipping virtualenv creation, as specified in config file.
 # use --directory so we can use -w and -v switches with Docker run
