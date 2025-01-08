@@ -90,6 +90,7 @@ def lagoon_deploy_vault(
     aave: bool = Option(False, envvar="AAVE", help="Whitelist Aave aUSDC deposits"),
     uniswap_v2: bool = Option(False, envvar="UNISWAP_V2", help="Whitelist Uniswap v2"),
     uniswap_v3: bool = Option(False, envvar="UNISWAP_V3", help="Whitelist Uniswap v3"),
+    verbose: bool = Option(False, envvar="VERBOSE", help="Extra verbosity with deploy commands"),
 ):
     """Deploy a new Lagoon vault.
 
@@ -160,12 +161,11 @@ def lagoon_deploy_vault(
     logger.info("Whitelisting 1delta: %s", one_delta)
     logger.info("Whitelisting Aave: %s", aave)
     logger.info("Multisig owners: %s", multisig_owners)
-    logger.info("Etherscan API key: %s", etherscan_api_key)
 
     if etherscan_api_key:
         logger.info("Etherscan API key: %s", etherscan_api_key)
     else:
-        logger.error("Etherscan API key missing")
+        logger.error("Etherscan API key: not provided")
 
     if asset_manager != hot_wallet.address:
         logger.info("Asset manager is %s", asset_manager)
