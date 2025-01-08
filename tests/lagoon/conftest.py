@@ -413,7 +413,7 @@ def vault_strategy_universe(
 @pytest.fixture()
 def automated_lagoon_vault(
     web3,
-    deployer_local_account,
+    deployer_hot_wallet,
     asset_manager,
     multisig_owners,
     uniswap_v2,
@@ -425,7 +425,7 @@ def automated_lagoon_vault(
     """
 
     chain_id = web3.eth.chain_id
-    deployer = deployer_local_account
+    deployer = deployer_hot_wallet
 
     parameters = LagoonDeploymentParameters(
         underlying=USDC_NATIVE_TOKEN[chain_id],
@@ -528,10 +528,16 @@ def uniswap_v3(web3) -> UniswapV3Deployment:
 
 
 @pytest.fixture()
-def deployer_local_account(web3) -> LocalAccount:
+def deployer_hot_wallet(web3) -> HotWallet:
     """Account that we use for Lagoon deployment"""
     hot_wallet = HotWallet.create_for_testing(web3, eth_amount=1)
-    return hot_wallet.account
+    return hot_wallet
+
+
+@pytest.fixture()
+def deployer_local_account(deployer_hot_wallet) -> LocalAccount:
+    """Account that we use for Lagoon deployment"""
+    return deployer_hot_wallet.account
 
 
 @pytest.fixture()

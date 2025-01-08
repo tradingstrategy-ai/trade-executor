@@ -14,13 +14,15 @@ from tradeexecutor.state.state import State
 
 
 def calculate_asset_weights(
-        state: State,
+    state: State,
 ) -> pd.Series:
     """Get timeline of asset weights for a backtest.
 
     - Designed for visualisation / human readable output
 
     - Might not handle complex cases correctly
+
+    - Uses portfolio positions as the input
 
     :return:
         Pandas Series of asset weights
@@ -69,11 +71,11 @@ def calculate_asset_weights(
 
 
 def visualise_weights(
-        weights_series: pd.Series,
-        normalised=True,
-        color_palette=colors.qualitative.Light24,
-        template="plotly_dark",
-        include_reserves=True,
+    weights_series: pd.Series,
+    normalised=True,
+    color_palette=colors.qualitative.Light24,
+    template="plotly_dark",
+    include_reserves=True,
 ) -> Figure:
     """Draw a chart of weights.
 
