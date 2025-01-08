@@ -344,7 +344,7 @@ def compare_strategy_backtest_to_multiple_assets(
             index=index
         )
 
-    prices_table = prices_table.applymap(lambda x: f"{x:.2f}" if isinstance(x, (float, np.float64)) else x)
+    prices_table = prices_table.map(lambda x: f"{x:.2f}" if isinstance(x, (float, np.float64)) else x)
     prices_table = prices_table.fillna("-")
 
     table = pd.concat([table, prices_table])

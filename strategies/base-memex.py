@@ -85,7 +85,7 @@ class Parameters:
     #
     min_asset_universe = 10  # How many assets we need in the asset universe to start running the index
     max_assets_in_portfolio = 99  # How many assets our basket can hold once
-    allocation = 0.95  # Allocate all cash to volatile pairs
+    allocation = 0.90  # Allocate all cash to volatile pairs
     # min_rebalance_trade_threshold_pct = 0.05  # % of portfolio composition must change before triggering rebalacne
     individual_rebalance_min_threshold_usd = 75.0  # Don't make buys less than this amount
     min_volatility_threshold = 0.02  # Set to have Sharpe ratio threshold for the inclusion
@@ -114,7 +114,8 @@ class Parameters:
     #
     # Backtesting only
     #
-    backtest_start = datetime.datetime(2023, 1, 15)
+    #backtest_start = datetime.datetime(2023, 1, 15)
+    backtest_start = datetime.datetime(2024, 12, 15)
     backtest_end = datetime.datetime(2025, 1, 3)
     initial_cash = 10_000
 

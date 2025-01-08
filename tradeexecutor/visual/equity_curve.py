@@ -363,9 +363,11 @@ def visualise_returns_distribution(
     """
 
     qs = import_quantstats_wrapped()
-    fig = qs.plots.distribution(
-        returns,
-        show=False)
+    with warnings.catch_warnings():  #  DeprecationWarning: Importing display from IPython.core.display is deprecated since IPython 7.14, please import from IPython display
+        warnings.simplefilter(action='ignore', category=FutureWarning)
+        fig = qs.plots.distribution(
+            returns,
+            show=False)
     return fig
 
 
