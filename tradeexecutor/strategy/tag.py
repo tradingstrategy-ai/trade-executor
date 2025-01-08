@@ -28,6 +28,9 @@ class StrategyTag(enum.Enum):
     #: The strategy is expected to make profit and has enough history to show this
     live = "live"
 
+    # The strategy is archived and should not be visible on the strategy index by default
+    archived = "archived"
+
     #: The strategy is not expected to make profit, but is only running as an infrastructure test
     internal_testing = "internal_testing"
 
