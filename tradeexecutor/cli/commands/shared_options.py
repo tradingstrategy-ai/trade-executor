@@ -111,7 +111,8 @@ def parse_comma_separated_list(value: str) -> list:
     #
     # if __name__ == "__main__":
     #     typer.run(main)
-    assert type(value) == str, f"Expected string, got: {type(value)}: {value}"
+    if value is None:
+        return []
     if value:
         return [item.strip() for item in value.split(',') if item.strip()]
     return []
