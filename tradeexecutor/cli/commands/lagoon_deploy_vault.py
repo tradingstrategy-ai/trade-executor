@@ -224,7 +224,7 @@ def lagoon_deploy_vault(
 
     deploy_info = deploy_automated_lagoon_vault(
         web3=web3,
-        deployer=hot_wallet.account,
+        deployer=hot_wallet,
         asset_manager=asset_manager,
         parameters=parameters,
         safe_owners=multisig_owners,
