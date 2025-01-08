@@ -3,8 +3,9 @@
 Import from there and use in
 """
 import copy
-from typing import Optional
+from typing import Optional, Any
 
+import typer
 from typer import Option
 from typer.models import OptionInfo
 
@@ -100,17 +101,22 @@ telegram_chat_id = Option(None, envvar="TELEGRAM_CHAT_ID", help="Telegram chat i
 
 max_workers = Option(None, envvar="MAX_WORKERS", help="Maximum number of worker processes (CPU cores) used for indicator calculations. Set to 1 for single thread mode to be used with Python debuggers. If not given use an autodetected safe value.")
 
-def parse_comma_separated_list(value: str) -> list:
-    # def main(items: list[str] = typer.Argument(..., callback=parse_comma_separated_list)):
-    #     """
-    #     This is a command that takes a comma-separated list of items as an argument.
-    #
-    #     :param items: A list of items separated by commas.
-    #     """
-    #     print(f"Items: {items}")
-    #
-    # if __name__ == "__main__":
-    #     typer.run(main)
+
+def parse_comma_separated_list(ctx: typer.Context, value: str) -> list[str] | Any:
+    """Support comma separated, whitespaced, list as a command line argument with Typer.
+
+    Example:
+
+    .. code-block:: python
+
+        @app.command()
+        def lagoon_deploy_vault(
+            multisig_owners: Optional[str] = Option(None, callback=parse_comma_separated_list, envvar="MULTISIG_OWNERS", help="The list of acconts that are set to the cosigners of the Safe. The multisig threshold is number of cosigners - 1."),
+        )
+
+    """
+    if ctx.resilient_parsing:
+        return value
     if value is None:
         return []
     if value:
