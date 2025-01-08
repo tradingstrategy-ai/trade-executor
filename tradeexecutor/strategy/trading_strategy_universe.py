@@ -100,6 +100,9 @@ class Dataset:
     #: How much back we looked from today
     history_period: Optional[datetime.timedelta] = None
 
+    def __repr__(self):
+        return f"<Dataset pairs:{len(self.pairs)} candles:{len(self.candles)} start:{self.start_at} end:{self.end_at} live history period:{self.history_period}>"
+
     def get_chain_ids(self) -> Set[ChainId]:
         """Get all chain ids on this dataset."""
         return {e.chain_id for e in self.exchanges.exchanges}
