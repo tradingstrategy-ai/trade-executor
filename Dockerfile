@@ -46,11 +46,11 @@ RUN poetry install --no-dev --no-interaction --no-ansi --all-extras
 # For the latest pindowns check Github test workflow
 ENV PATH="${PATH}:/root/.foundry/bin"
 RUN curl -L https://foundry.paradigm.xyz | bash
-RUN foundryup --version v0.3.0
+RUN foundryup --install v0.3.0
 
 # trade-executor /api
 # Pyramid HTTP server for webhooks at port 3456
-EXPOSE 3456
+EXPOSE 3456wh
 
 # Use --quiet to supress Skipping virtualenv creation, as specified in config file.
 # use --directory so we can use -w and -v switches with Docker run
