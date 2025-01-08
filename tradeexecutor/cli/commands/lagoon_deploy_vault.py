@@ -100,6 +100,7 @@ def lagoon_deploy_vault(
     """
 
     assert any_asset, "Currently only any_asset configurations supported"
+    assert private_key, "PRIVATE_KEY not set"
 
     logger = setup_logging(log_level)
 
