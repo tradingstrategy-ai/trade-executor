@@ -460,7 +460,12 @@ class StrategyRunner(abc.ABC):
         debug_details: dict,
         trades: list[TradeExecution],
     ):
-        assert type(cycle) == int
+
+        if cycle is None:
+            # Legacy unit test path
+            cycle = 0
+
+        assert type(cycle) == int, f"Got: {type(cycle)}: {cycle}"
         assert isinstance(clock, datetime.datetime)
         assert type(trades) == list
 
@@ -883,12 +888,12 @@ class StrategyRunner(abc.ABC):
             # Log output
             if self.is_progress_report_needed():
                 self.report_after_execution(
-                    cycle,
-                    strategy_cycle_timestamp,
-                    universe,
-                    state,
-                    debug_details,
-                    approved_trades,
+                    cycle=cycle,
+                    clock=strategy_cycle_timestamp,
+                    universe=universe,
+                    state=state,
+                    debug_details=debug_details,
+                    trades=approved_trades,
                 )
 
         return debug_details

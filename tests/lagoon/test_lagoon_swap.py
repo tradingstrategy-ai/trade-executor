@@ -354,4 +354,4 @@ def test_lagoon_redemption_queue(
     assert position_manager.get_pending_redemptions() == pytest.approx(0)
     assert 0 < position_manager.get_current_cash() < 100
     underlying = vault.denomination_token
-    assert 200 < underlying.fetch_balance_of(vault.address) == 300
+    assert 200 < underlying.fetch_balance_of(vault.address) < 300

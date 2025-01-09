@@ -199,9 +199,8 @@ def test_backtest_data_preload(
 
 
 def test_run_inline_real_backtest(
-        logger: logging.Logger,
-        persistent_test_client: Client,
-    ):
+    persistent_test_client: Client,
+):
     """Run the strategy backtest using inline decide_trades function.
     """
 

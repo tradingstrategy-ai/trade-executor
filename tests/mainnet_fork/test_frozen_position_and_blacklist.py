@@ -86,7 +86,7 @@ def large_busd_holder() -> HexAddress:
 
 
 @pytest.fixture()
-def anvil_bnb_chain_fork(logger, large_busd_holder) -> str:
+def anvil_bnb_chain_fork(large_busd_holder) -> str:
     """Create a testable fork of live BNB chain.
 
     :return: JSON-RPC URL for Web3
@@ -331,7 +331,6 @@ def runner(
 
 
 def test_buy_and_sell_blacklisted_asset(
-        logger: logging.Logger,
         strategy_path: Path,
         web3: Web3,
         hot_wallet: HotWallet,
