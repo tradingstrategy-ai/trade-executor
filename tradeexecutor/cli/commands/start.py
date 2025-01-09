@@ -188,7 +188,7 @@ def start(
         logger.error("Please use separate backtest command instead of start command.")
         raise NotImplementedError()
 
-    if not unit_testing:
+    if not (unit_testing or simulate):
         if discord_webhook_url and asset_management_mode.is_live_trading():
             # TODO: Move backtesting to its own console command
             setup_discord_logging(
@@ -196,7 +196,7 @@ def start(
                 webhook_url=discord_webhook_url,
                 avatar_url=icon_url)
 
-    if not unit_testing:
+
         if telegram_api_key and asset_management_mode.is_live_trading():
             setup_telegram_logging(
                 telegram_api_key,
