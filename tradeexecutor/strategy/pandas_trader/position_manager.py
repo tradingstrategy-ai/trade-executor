@@ -2318,7 +2318,7 @@ class PositionManager:
             If the associated vault protocol does not have redemption queue,
             always return zero.
         """
-        return self.state.sync.treasury.pending_redemptions
+        return self.state.sync.treasury.pending_redemptions or 0
 
     def log(self, msg: str, level=logging.INFO, prefix="{self.timestamp}: "):
         """Log debug info.
