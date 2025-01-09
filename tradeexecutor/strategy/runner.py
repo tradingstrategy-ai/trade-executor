@@ -945,18 +945,20 @@ class StrategyRunner(abc.ABC):
 
         with self.timed_task_context_manager("check_position_triggers"):
 
-            with self.timed_task_context_manager("sync_portfolio_before_triggers"):
-                # Sync treasure before the trigger checks
-                self.sync_portfolio(
-                    clock,
-                    universe,
-                    state,
-                    debug_details,
-                    end_block=end_block,
-                    long_short_metrics_latest=long_short_metrics_latest,
-                    # Stop loss checks should not trigger any valuation updates
-                    post_valuation=False,
-                )
+            # Don't post valuation on Lagoon when we check the triggers
+            if not self.sync_model.has_async_deposits():
+                with self.timed_task_context_manager("sync_portfolio_before_triggers"):
+                    # Sync treasure before the trigger checks
+                    self.sync_portfolio(
+                        clock,
+                        universe,
+                        state,
+                        debug_details,
+                        end_block=end_block,
+                        long_short_metrics_latest=long_short_metrics_latest,
+                        # Stop loss checks should not trigger any valuation updates
+                        post_valuation=True,
+                    )
 
             # We need to sync interest before we can run check accounts
             # but after sync treasury since new deposit / redemption can break the interest calculations

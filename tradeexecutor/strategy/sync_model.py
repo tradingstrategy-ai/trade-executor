@@ -85,6 +85,13 @@ class SyncModel(ABC):
         """
         return False
 
+    def has_async_deposits(self) -> bool:
+        """Can deposit land only when we tell so.
+
+        - See :py:class:`LagoonVaultSyncModel`
+        """
+        return False
+
     @abstractmethod
     def get_token_storage_address(self) -> Optional[JSONHexAddress]:
         """Get the address where tokens are stored.
