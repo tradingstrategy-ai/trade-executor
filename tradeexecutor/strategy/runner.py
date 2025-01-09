@@ -191,6 +191,7 @@ class StrategyRunner(abc.ABC):
         debug_details: dict,
         end_block: BlockNumber | NoneType = None,
         long_short_metrics_latest: StatisticsTable | None = None,
+        post_valuation=True,
     ):
         """Adjust portfolio balances based on the external events.
 
@@ -243,7 +244,7 @@ class StrategyRunner(abc.ABC):
             state,
             supported_reserves=reserve_assets,
             end_block=end_block,
-            post_valuation=True,
+            post_valuation=post_valuation,
         )
         assert type(balance_update_events) == list
         if end_block is not None:
@@ -953,6 +954,8 @@ class StrategyRunner(abc.ABC):
                     debug_details,
                     end_block=end_block,
                     long_short_metrics_latest=long_short_metrics_latest,
+                    # Stop loss checks should not trigger any valuation updates
+                    post_valuation=False,
                 )
 
             # We need to sync interest before we can run check accounts
