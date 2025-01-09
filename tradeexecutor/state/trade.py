@@ -1324,18 +1324,19 @@ class TradeExecution:
             assert self.get_status() == TradeStatus.started, f"Trade in bad state: {self.get_status()}"
         self.broadcasted_at = broadcasted_at
 
-    def mark_success(self,
-                     executed_at: datetime.datetime,
-                     executed_price: USDollarAmount,
-                     executed_quantity: Decimal,
-                     executed_reserve: Decimal,
-                     lp_fees: USDollarAmount,
-                     native_token_price: USDollarAmount,
-                     force=False,
-                     cost_of_gas: USDollarAmount | None = None,
-                     executed_collateral_consumption: Decimal | None = None,
-                     executed_collateral_allocation: Decimal | None = None,
-                     ):
+    def mark_success(
+        self,
+        executed_at: datetime.datetime,
+        executed_price: USDollarAmount,
+        executed_quantity: Decimal,
+        executed_reserve: Decimal,
+        lp_fees: USDollarAmount,
+        native_token_price: USDollarAmount,
+        force=False,
+        cost_of_gas: USDollarAmount | None = None,
+        executed_collateral_consumption: Decimal | None = None,
+        executed_collateral_allocation: Decimal | None = None,
+    ):
         """Mark trade success.
 
         - Called by execution engine when we get a confirmation from the blockchain our blockchain txs where good
