@@ -2305,6 +2305,21 @@ class PositionManager:
 
         return trades
 
+    def get_pending_redemptions(self) -> USDollarAmount:
+        """Get the amount of cash needed to settle the redemptions.
+
+        - Relevant for ERC-7540: Asynchronous ERC-4626 Tokenized Vaults like Lagoon protocol
+        - Vaults do not offer in kind redemption, and the trade executor must need to make
+          enough cash available for the redemption queue
+
+        :return:
+            US dollar amount pending redemptions.
+
+            If the associated vault protocol does not have redemption queue,
+            always return zero.
+        """
+        return self.state.sync.treasury.pending_redemptions
+
     def log(self, msg: str, level=logging.INFO, prefix="{self.timestamp}: "):
         """Log debug info.
 
