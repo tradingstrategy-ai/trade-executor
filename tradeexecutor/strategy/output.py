@@ -100,10 +100,14 @@ def format_position(
     else:
         duration = datetime.datetime.utcnow() - position.opened_at
 
+    if duration:
+        duration_str = f"age: {duration}",
+    else:
+        duration_str = "just opened"
+
     lines = [
         f"{symbol} #{position.position_id} {position.pair.get_human_description()} {position_label} value: ${position.get_value():,.2f}, {allocation:.2f}% of portfolio",
-        f"profit: {(position.get_total_profit_percent() * 100):.2f} % ({position.get_total_profit_usd():,.4f} USD)",
-        f"duration: {duration}",
+        f"profit: {(position.get_total_profit_percent() * 100):.2f} % ({position.get_total_profit_usd():,.4f} USD), {duration_str}",
     ]
 
     if position.is_frozen():
