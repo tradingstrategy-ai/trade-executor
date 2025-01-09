@@ -477,9 +477,11 @@ class StrategyRunner(abc.ABC):
             # Should not never happen, but just be prepared
             total_equity = 0.00001
 
+        total_volume = sum(t.get_value() for t in trades)
+
         print(f"Strategy status after rebalance #{cycle} ({clock})", file=buf)
         print("", file=buf)
-        print(f"- Rebalancing trades made: {len(trades)}", file = buf)
+        print(f"- Trades made: {len(trades)} trades, with volume of ${total_volume:,.2f}", file = buf)
         print("", file=buf)
         print(f"- Total equity: ${total_equity:,.2f}", file = buf)
         print("", file=buf)
