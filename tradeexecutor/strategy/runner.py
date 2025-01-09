@@ -451,7 +451,24 @@ class StrategyRunner(abc.ABC):
             print("No new trades", file=buf)
         logger.trade(buf.getvalue())
 
-    def report_after_execution(self, clock: datetime.datetime, universe: StrategyExecutionUniverse, state: State, debug_details: dict):
+    def report_after_execution(
+        self,
+        cycle: int,
+        clock: datetime.datetime,
+        universe: StrategyExecutionUniverse,
+        state: State,
+        debug_details: dict,
+        trades: list[TradeExecution],
+    ):
+
+        if cycle is None:
+            # Legacy unit test path
+            cycle = 0
+
+        assert type(cycle) == int, f"Got: {type(cycle)}: {cycle}"
+        assert isinstance(clock, datetime.datetime)
+        assert type(trades) == list
+
         buf = StringIO()
         portfolio = state.portfolio
 
@@ -460,7 +477,9 @@ class StrategyRunner(abc.ABC):
             # Should not never happen, but just be prepared
             total_equity = 0.00001
 
-        print("Portfolio status (after rebalance)", file=buf)
+        print(f"Strategy status after rebalance #{cycle} ({clock})", file=buf)
+        print("", file=buf)
+        print(f"- Rebalancing trades made: {len(trades)}", file = buf)
         print("", file=buf)
         print(f"- Total equity: ${total_equity:,.2f}", file = buf)
         print("", file=buf)
@@ -786,11 +805,15 @@ class StrategyRunner(abc.ABC):
                         universe=universe,
                         state=state,
                         trades=rebalance_trades,
-                        debug_details=debug_details)
+                        debug_details=debug_details,)
 
                 # Shortcut quit here if no trades are needed
                 if len(rebalance_trades) == 0:
-                    logger.trade_high("No action taken: strategy decided not to open or close any positions")
+                    logger.trade_high(
+                        "Rebalance: #%d (%s), No action taken: strategy decided not to open or close any positions",
+                        cycle or 0,
+                        strategy_cycle_timestamp
+                    )
                     return debug_details
 
                 # Ask user confirmation for any trades
@@ -864,7 +887,14 @@ class StrategyRunner(abc.ABC):
 
             # Log output
             if self.is_progress_report_needed():
-                self.report_after_execution(strategy_cycle_timestamp, universe, state, debug_details)
+                self.report_after_execution(
+                    cycle=cycle,
+                    clock=strategy_cycle_timestamp,
+                    universe=universe,
+                    state=state,
+                    debug_details=debug_details,
+                    trades=approved_trades,
+                )
 
         return debug_details
 

@@ -86,16 +86,16 @@ class Parameters:
     #
     min_asset_universe = 10  # How many assets we need in the asset universe to start running the index
     max_assets_in_portfolio = 99  # How many assets our basket can hold once
-    allocation = 0.90  # Allocate all cash to volatile pairs
+    allocation = 0.97  # Allocate all cash to volatile pairs
     # min_rebalance_trade_threshold_pct = 0.05  # % of portfolio composition must change before triggering rebalacne
-    individual_rebalance_min_threshold_usd = 75.0  # Don't make buys less than this amount
+    individual_rebalance_min_threshold_usd = 10.0  # Don't make buys less than this amount
     min_volatility_threshold = 0.02  # Set to have Sharpe ratio threshold for the inclusion
     per_position_cap_of_pool = 0.01  # Never own more than % of the lit liquidity of the trading pool
     max_concentration = 0.20  # How large % can one asset be in a portfolio once
     min_portfolio_weight = 0.0050  # Close position / do not open if weight is less than 50 BPS
 
     #
-    # Inclusion criteria parameters:
+    # Index xnclusion criteria parameters:
     # - We set the length of various indicators used in the inclusion criteria
     # - We set minimum thresholds neede to be included in the index to filter out illiquid pairs
     #
@@ -140,10 +140,10 @@ VOL_PAIR = (ChainId.base, "uniswap-v2", "WETH", "USDC", 0.0030)
 
 
 def create_trading_universe(
-        timestamp: datetime.datetime,
-        client: Client,
-        execution_context: ExecutionContext,
-        universe_options: UniverseOptions,
+    timestamp: datetime.datetime,
+    client: Client,
+    execution_context: ExecutionContext,
+    universe_options: UniverseOptions,
 ) -> TradingStrategyUniverse:
     """Create the trading universe.
 
@@ -249,7 +249,7 @@ def create_trading_universe(
 
 
 def decide_trades(
-        input: StrategyInput
+    input: StrategyInput
 ) -> list[TradeExecution]:
     """For each strategy tick, generate the list of trades."""
     parameters = input.parameters
@@ -293,6 +293,7 @@ def decide_trades(
     for pair_id in included_pairs:
         pair = strategy_universe.get_pair_by_id(pair_id)
 
+        # Equally weighted index
         weight = 1
 
         alpha_model.set_signal(
@@ -306,7 +307,7 @@ def decide_trades(
     # Calculate how much dollar value we want each individual position to be on this strategy cycle,
     # based on our total available equity
     portfolio = position_manager.get_current_portfolio()
-    portfolio_target_value = portfolio.get_total_equity() * parameters.allocation
+    portfolio_target_value = portfolio.get_total_equity() * parameters.allocation - position_manager.get_pending_redemptions()
 
     # Select max_assets_in_portfolio assets in which we are going to invest
     # Calculate a weight for ecah asset in the portfolio using 1/N method based on the raw signal
@@ -433,8 +434,8 @@ indicators = IndicatorRegistry()
 
 @indicators.define()
 def trailing_sharpe(
-        close: pd.Series,
-        trailing_sharpe_bars: int
+    close: pd.Series,
+    trailing_sharpe_bars: int
 ) -> pd.Series:
     """Calculate trailing 30d or so returns / standard deviation.
 
@@ -455,10 +456,10 @@ def trailing_sharpe(
 
 @indicators.define(dependencies=(trailing_sharpe,), source=IndicatorSource.dependencies_only_per_pair)
 def trailing_sharpe_ewm(
-        trailing_sharpe_bars: int,
-        ewm_span: float,
-        pair: TradingPairIdentifier,
-        dependency_resolver: IndicatorDependencyResolver,
+    trailing_sharpe_bars: int,
+    ewm_span: float,
+    pair: TradingPairIdentifier,
+    dependency_resolver: IndicatorDependencyResolver,
 ) -> pd.Series:
     """Expontentially weighted moving average for Sharpe.
 
@@ -587,13 +588,19 @@ def volatility_inclusion_criteria(
     # and max out the threshold signal if there is
     # mask = filtered_series >= threshold_signal
     df = series.reset_index()
+
     df2 = df.merge(threshold_signal, on=["timestamp"], suffixes=('_pair', '_reference'))
 
     #         pair_id           timestamp  value_pair  value_reference
     # 0       4569519 2024-02-13 16:00:00    0.097836              NaN
     # 1       4569519 2024-02-13 17:00:00    0.097773              NaN
 
-    high_volatility_rows = df2[df2["value_pair"] >= df2["value_reference"]]
+    # Something goin on here?
+    # Sometimes columns get different names
+    if "value_pair" in df2.columns:
+        high_volatility_rows = df2[df2["value_pair"] >= df2["value_reference"]]
+    else:
+        high_volatility_rows = df2[df2["close_pair"] >= df2["close_reference"]]
 
     def _get_pair_ids_as_list(rows):
         return rows["pair_id"].tolist()
@@ -918,6 +925,7 @@ This automated trading strategy buys and holds all available memecoins on the Ba
 
 - Get directional exposure to exciting small-cap memecoin market 
 - No need to pick memecoins yourself; the strategy will buy all of them
+- Small cap mememcoins may are uncorrelated to the major cryptocurrencies
 
 ## Tradind rules summary 
 
