@@ -240,8 +240,7 @@ def lagoon_deploy_vault(
     if vault_record_file and (not simulate):
         # Make a small file, mostly used to communicate with unit tests
         with open(vault_record_file, "wt") as out:
-            vault_record = deploy_info.pformat()
-            json.dump(vault_record, out, indent=4)
+            out.write(deploy_info.pformat())
         logger.info("Wrote %s for vault details", os.path.abspath(vault_record_file))
     else:
         logger.info("Skipping record file because of simulation")
