@@ -919,25 +919,43 @@ This automated trading strategy buys and holds all available memecoins on the Ba
 - Get directional exposure to exciting small-cap memecoin market 
 - No need to pick memecoins yourself; the strategy will buy all of them
 
-## Risks
+## Tradind rules summary 
 
-This strategy is ultra-high-risk. Only allocate small amounts of capital you may lose. The risks involve high volatility, rug pulls, and other questionable activities in DEX small-cap markets. 
-
-Despite risks, the strategy may outperform picking memecoins by hand.
-
-## Rule summary 
-
-The strategy will run an open index strategy for which source code is available.
+The strategy will run an open-ended index strategy. The source code of this strategy is available.
 
 - Rebalance every four hours
-- Equally weight between picked memecoins
-- Trade on Uniswap v2 and v3 based on Base
-- Use Coingecko as a labelling source for the meme category
-- Use TokenSniffer as a token quality labelling source to filter scams
+- Equally weight between opened positions
+- Trade on Uniswap v2 and v3 on Base
+- Use Coingecko as category labelling source for memecoins
+- Use TokenSniffer as token quality source to filter scams
 - Have minimum TVL and volume criteria to be included in the index
-- Adjust position size based on lit Uniswap liquidity (TVL) so that the strategy does not take oversized positions on small-cap tokens which have limited liquidity
+- Adjust position size based on lit Uniswap liquidity (TVL), to prevent takeing oversized positions on limited liquidity tokens
 
 For further details, see the strategy source code.
+
+## Risks
+
+**This strategy is ultra-high-risk**. Only allocate small amounts of capital you may lose.
+Before investing large amounts of capital, speak with the strategy developers.
+
+This strategy, paired with onchain execution, is the first of its kind in the world. Because of the novelty, multiple risks are involved. Consider it beta-quality software.
+
+**Trading risk**: Small-cap tokens traded are highly volatility, 
+may include rug pulls and other questionable activities.
+Despite the strategy of automated filtering for tokens, some of the tokens may go to zero.
+
+**Technical risk**: The strategy relies on ERC-7540: Asynchronous ERC-4626 Tokenized Vaults standard.
+This standard is new and not yet time-proven.  The onchain trade execution contains unaudited smart contracts. There are centralised price oracles. The redemption process relies on a centralised valuation committee. 
+
+The technical risks can be mitigated in the future by working with other protocols,
+by increasing the quality onchain trading venues, data and decentralisation.
+
+Strategy includes risk mitigations to    
+- Use third-party security services to check the reputation of traded tokens
+- Strategy limits position sizes based on the available lit liquidity
+- Strategy limits position sizes based on the overall maximum % of the portfolio
+- DAO and/or security committee holding multisignature keys can take manual actions in the case of unexpected issues:
+  the strategy can be halted and manually wind up
 
 ## Further information
 
