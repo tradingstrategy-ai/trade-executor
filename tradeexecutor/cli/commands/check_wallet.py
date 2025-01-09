@@ -26,8 +26,6 @@ from ...strategy.execution_context import ExecutionContext, ExecutionMode, stand
 from ...strategy.execution_model import AssetManagementMode
 from ...strategy.run_state import RunState
 from ...strategy.strategy_module import read_strategy_module
-from ...strategy.trading_strategy_universe import TradingStrategyUniverseModel
-from ...strategy.universe_model import UniverseOptions
 from ...utils.fullname import get_object_full_name
 from ...utils.timer import timed_task
 
@@ -107,7 +105,7 @@ def check_wallet(
     )
 
     universe = mod.create_trading_universe(
-        pd.Timestamp.utcnow(),
+        pd.Timestamp(datetime.datetime.utcnow()),
         client,
         execution_context,
         mod.get_universe_options(),
