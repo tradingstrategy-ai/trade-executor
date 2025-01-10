@@ -583,7 +583,13 @@ class ExecutionLoop:
         # for hourly revaluations
         return universe
 
-    def update_position_valuations(self, clock: datetime.datetime, state: State, universe: StrategyExecutionUniverse, execution_mode: ExecutionMode):
+    def update_position_valuations(
+        self,
+        clock: datetime.datetime,
+        state: State,
+        universe: StrategyExecutionUniverse,
+        execution_mode: ExecutionMode,
+    ):
         """Revalue positions and update statistics.
 
         A new statistics entry is calculated for portfolio and all of its positions
@@ -1071,8 +1077,24 @@ class ExecutionLoop:
         universe = self.warm_up_live_trading()
 
         if self.sync_treasury_on_startup:
+
             reserve_assets = list(universe.reserve_assets)
-            logger.info("Syncing treasury events for startup")
+            startup_time = datetime.datetime.utcnow()
+            logger.info(
+                "Syncing treasury events for startup, startup time is %s",
+                startup_time,
+            )
+
+            if self.sync_model.has_async_deposits():
+                # Need value portfolio to sync Lagoon treasury
+                logger.info("Async deposits - revaluing the portfolio before processing the deposit queue")
+                self.update_position_valuations(
+                    clock=startup_time,
+                    state=state,
+                    universe=universe,
+                    execution_mode=execution_context.mode,
+                )
+
             self.sync_model.sync_treasury(
                 datetime.datetime.utcnow(),
                 state,
