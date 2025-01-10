@@ -104,6 +104,9 @@ class LagoonVaultSyncModel(AddressSyncModel):
     def chain_id(self) -> ChainId:
         return ChainId(self.vault.spec.chain_id)
 
+    def has_async_deposits(self):
+        return True
+
     def get_hot_wallet(self) -> Optional[HotWallet]:
         return self.hot_wallet
 
