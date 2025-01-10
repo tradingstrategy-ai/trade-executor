@@ -727,11 +727,13 @@ class ExecutionLoop:
         logger.info("Warmed up universe %s", universe)
         return universe
 
-    def run_backtest_trigger_checks(self,
-                                    start_ts: datetime.datetime,
-                                    end_ts: datetime.datetime,
-                                    state: State,
-                                    universe: TradingStrategyUniverse) -> Tuple[int, int]:
+    def run_backtest_trigger_checks(
+        self,
+        start_ts: datetime.datetime,
+        end_ts: datetime.datetime,
+        state: State,
+        universe: TradingStrategyUniverse
+    ) -> Tuple[int, int]:
         """Generate stop loss price checks.
 
         Backtests may use finer grade data for stop loss signals,

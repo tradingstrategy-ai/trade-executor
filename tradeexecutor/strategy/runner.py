@@ -723,9 +723,25 @@ class StrategyRunner(abc.ABC):
             routing_state, pricing_model, valuation_model = self.setup_routing(universe)
             assert pricing_model, "Routing did not provide pricing_model"
 
+            # Needed for Lagoon.
+            # sync_portfolio() posts valuation onchain to
+            # process the deposit/redemption queue and
+            # for this we need up-to-date valuation
+            # if self.sync_model.has_async_deposits():
+            with self.timed_task_context_manager("revalue_portfolio_before_sync"):
+                self.revalue_state(strategy_cycle_timestamp, state, valuation_model)
+
             # Watch incoming deposits
             with self.timed_task_context_manager("sync_portfolio"):
-                self.sync_portfolio(strategy_cycle_timestamp, universe, state, debug_details, end_block, long_short_metrics_latest=long_short_metrics_latest)
+                self.sync_portfolio(
+                    strategy_cycle_timestamp,
+                    universe,
+                    state,
+                    debug_details,
+                    end_block,
+                    long_short_metrics_latest=long_short_metrics_latest,
+                    post_valuation=True,
+                )
 
             # Double check we handled deposits correctly
             with self.timed_task_context_manager("check_accounts_pre_trade"):
@@ -733,8 +749,8 @@ class StrategyRunner(abc.ABC):
                 self.check_accounts(universe, state, end_block)
 
             # Assing a new value for every existing position
-            with self.timed_task_context_manager("revalue_portfolio"):
-                self.revalue_state(strategy_cycle_timestamp, state, valuation_model)
+            # with self.timed_task_context_manager("revalue_portfolio"):
+            #    self.revalue_state(strategy_cycle_timestamp, state, valuation_model)
 
             # Log output
             if self.is_progress_report_needed():
