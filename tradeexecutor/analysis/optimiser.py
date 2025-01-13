@@ -91,7 +91,9 @@ def plot_profile_duration_data(
 
     lines_df = df[list(include_colums)]
     # Convert to seconds
-    lines_df = lines_df.apply(lambda x: x.dt.total_seconds())
+    lines_df = lines_df.apply(
+        lambda x: x.dt.total_seconds(),
+    )
     fig = px.line(lines_df)
     fig.update_layout(title="Profiled optimiser durations of subsections")
     return fig

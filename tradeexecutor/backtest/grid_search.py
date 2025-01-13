@@ -67,8 +67,7 @@ from tradeexecutor.strategy.cycle import CycleDuration
 from tradeexecutor.strategy.default_routing_options import TradeRouting
 from tradeexecutor.strategy.strategy_module import DecideTradesProtocol, DecideTradesProtocol2, StrategyParameters, DecideTradesProtocol3, DecideTradesProtocol4
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
-from tradeexecutor.visual.equity_curve import calculate_equity_curve, calculate_returns
-
+from tradeexecutor.visual.equity_curve import calculate_equity_curve, calculate_returns, resample_returns
 
 logger = logging.getLogger(__name__)
 
@@ -1273,7 +1272,7 @@ def create_grid_search_failed_result(combination, state, exception: Exception) -
     metrics = calculate_advanced_metrics(
         returns,
         mode=AdvancedMetricsMode.full,
-        convert_to_daily=False,
+        convert_to_daily=True,
         display=False,
     )
 
@@ -1409,11 +1408,12 @@ def run_grid_search_backtest(
     # Portfolio performance
     equity = calculate_equity_curve(state)
     returns = calculate_returns(equity)
+    daily_returns = resample_returns(returns, "D")
     metrics = calculate_advanced_metrics(
-        returns,
+        daily_returns,
         mode=AdvancedMetricsMode.full,
-        periods_per_year=cycle_duration.get_yearly_periods(),
-        convert_to_daily=True,
+        periods_per_year=365,
+        convert_to_daily=False,
         display=False,
     )
 

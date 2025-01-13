@@ -11,10 +11,12 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import List
 
+import ipdb
 import numpy as np
 import pandas as pd
 
 import plotly.express as px
+from pandas.io.formats.style import Styler
 from plotly.graph_objs import Figure
 
 from tradeexecutor.backtest.grid_search import GridSearchResult
@@ -169,7 +171,7 @@ def visualise_table(*args, **kwargs):
     return render_grid_search_result_table(*args, **kwargs)
 
 
-def render_grid_search_result_table(results: pd.DataFrame | list[GridSearchResult]) -> pd.DataFrame:
+def render_grid_search_result_table(results: pd.DataFrame | list[GridSearchResult]) -> Styler:
     """Render a grid search combination table to notebook output.
 
     - Highlight winners and losers
@@ -210,17 +212,18 @@ def render_grid_search_result_table(results: pd.DataFrame | list[GridSearchResul
     # Diverge color gradient around zero
     # https://stackoverflow.com/a/60654669/315168
 
-    # Optimised column is not alwqys present
+    # Optimised column is not always present,
+    # avoid error on format()
     value_cols = [v for v in VALUE_COLS if v in df.columns]
 
     format_dict = {}
     for v in value_cols:
-        format_dict[v] = "{:.2}"
+        format_dict[v] = "{:.2f}".format
     for v in PERCENT_COLS:
-        format_dict[v] = "{:.2%}"
+        format_dict[v] = "{:.2%}".format
     for v in DATA_COLS:
         # # https://stackoverflow.com/a/12080042/315168
-        format_dict[v] = "{0:g}"
+        format_dict[v] = "{0:g}".format
 
     # Get rid of class name in enums for presentation
     def enum_to_value(x):

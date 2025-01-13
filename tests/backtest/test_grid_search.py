@@ -7,6 +7,7 @@ import pandas as pd
 import pandas_ta
 import pytest
 from packaging import version
+from pandas.io.formats.style import Styler
 from plotly.graph_objs import Figure
 
 from tradeexecutor.backtest.backtest_execution import BacktestExecutionFailed
@@ -274,7 +275,8 @@ def test_perform_grid_search_single_thread(
         assert row["CAGR"] == pytest.approx(0.06771955893113946)
     assert row["Positions"] == 2
 
-    render_grid_search_result_table(table)
+    styler = render_grid_search_result_table(table)
+    assert isinstance(styler, Styler)
 
     # Remove extra axis by focusing only stop_loss_pct=0.9
     heatmap_data = table.xs(0.9, level="stop_loss_pct")

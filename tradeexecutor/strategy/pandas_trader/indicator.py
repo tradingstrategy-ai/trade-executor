@@ -16,6 +16,7 @@ To get started with indicators see examples in :py:mod:`tradeexecutor.strategy.p
 """
 import datetime
 import threading
+import warnings
 from abc import ABC, abstractmethod
 from pprint import pformat
 
@@ -1613,7 +1614,11 @@ class IndicatorDependencyResolver:
         series_map = {pair.internal_id: self.get_indicator_data(name, pair=pair, parameters=parameters) for pair in self.strategy_universe.iterate_pairs()}
         series_list = [s for s in series_map.values() if len(s) > 0]
         pair_ids = list(series_map.keys())
-        combined = pd.concat(series_list, keys=pair_ids, names=['pair_id', 'timestamp'])
+
+        with warnings.catch_warnings():
+            # FutureWarning: The behavior of pd.concat with len(keys) != len(objs) is deprecated. In a future version this will raise instead of truncating to the smaller of the two sequences
+            warnings.simplefilter(action='ignore', category=FutureWarning)
+            combined = pd.concat(series_list, keys=pair_ids, names=['pair_id', 'timestamp'])
         return combined
 
     def get_indicator_data(
