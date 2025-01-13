@@ -133,7 +133,7 @@ def visualise_weights(
 
 
 def calculate_weights_statistics(
-        weights: pd.Series,
+    weights: pd.Series,
 ) -> pd.DataFrame:
     """Get statistics of weights during the portfolio construction.
 
@@ -159,6 +159,11 @@ def calculate_weights_statistics(
 
     # Filter out zero values
     weights = weights[weights != 0]
+
+    if len(weights.index) == 0:
+        return pd.DataFrame([
+            {"Error": "No trades or weights assigned"}
+        ])
 
     max_idx = weights.idxmax()
     at, pair = max_idx
