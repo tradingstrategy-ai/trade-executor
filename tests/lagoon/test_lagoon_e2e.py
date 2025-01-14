@@ -131,6 +131,7 @@ def test_cli_lagoon_deploy_vault(
         "ANY_ASSET": "true",
         "UNISWAP_V2": "true",
         "UNISWAP_V3": "true",
+        "GENERATE_REPORT": "false",  # Creating backtest report takes too long > 300s
     }
 
     cli = get_command(app)
