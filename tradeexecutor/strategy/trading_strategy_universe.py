@@ -1286,6 +1286,7 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
             exchanges=our_exchanges,
             candles=candle_universe,
             exchange_universe=exchange_universe,
+            liquidity_time_bucket=dataset.liquidity_time_bucket,
         )
 
         pair_universe.exchange_universe = exchange_universe

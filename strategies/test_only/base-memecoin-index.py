@@ -237,11 +237,6 @@ def create_trading_universe(
         pair = strategy_universe.get_pair_by_id(pair_id)
         pair.other_data["benchmark"] = True
 
-    print("Universe is (including benchmark pairs):")
-    for idx, pair in enumerate(strategy_universe.iterate_pairs()):
-        benchmark = pair.other_data.get("benchmark")
-        print(f"   {idx + 1}. pair #{pair.internal_id}: {pair.base.token_symbol} - {pair.quote.token_symbol} ({pair.exchange_name}), {'benchmark/routed token' if benchmark else 'traded token'}")
-
     return strategy_universe
 
 
