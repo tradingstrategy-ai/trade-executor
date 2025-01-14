@@ -18,6 +18,7 @@ from typing import Optional, Callable, List, cast, Tuple
 import pandas as pd
 from apscheduler.events import EVENT_JOB_ERROR
 
+from tradeexecutor.analysis.pair import display_strategy_universe
 from tradeexecutor.backtest.backtest_sync import BacktestSyncModel
 from tradeexecutor.cli.watchdog import create_watchdog_registry, register_worker, mark_alive, start_background_watchdog, \
     WatchdogMode
@@ -1077,6 +1078,10 @@ class ExecutionLoop:
         assert execution_context, "ExecutionContext missing"
 
         universe = self.warm_up_live_trading()
+
+        # Display our current trading universe at the startup
+        universe_diagnose_df = display_strategy_universe(universe)
+        logger.trade("Trading universe is:\n%s", str(universe_diagnose_df))
 
         if self.sync_treasury_on_startup:
 
