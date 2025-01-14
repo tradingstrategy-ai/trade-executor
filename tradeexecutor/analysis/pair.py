@@ -6,6 +6,7 @@ import pandas as pd
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
 from tradingstrategy.candle import CandleSampleUnavailable
 from tradingstrategy.liquidity import LiquidityDataUnavailable
+from tradingstrategy.timebucket import TimeBucket
 
 
 def display_strategy_universe(
@@ -29,15 +30,23 @@ def display_strategy_universe(
     - Benchmark pairs are detected by ``pair.other_data.get("benchmark")``
 
     :return:
-        Human-readable DataFrame for ``display()``
+        Human-readable DataFrame for ``display()``.
+
+        Empty DataFrame returned if the incoming universe is partial.
     """
+
+    if not strategy_universe.data_universe.candles:
+        return pd.DataFrame()
 
     pairs = []
 
     if not now_:
         now_ = datetime.datetime.utcnow()
 
-    candle_now = strategy_universe.data_universe.time_bucket.floor(pd.Timestamp(now_))
+    if strategy_universe.data_universe.time_bucket != TimeBucket.not_applicable:
+        candle_now = strategy_universe.data_universe.time_bucket.floor(pd.Timestamp(now_))
+    else:
+        candle_now = now_
 
     for pair in strategy_universe.iterate_pairs():
         benchmark = pair.other_data.get("benchmark")
@@ -74,7 +83,12 @@ def display_strategy_universe(
 
         if show_tvl:
             if strategy_universe.data_universe.liquidity:
-                tvl_now = strategy_universe.data_universe.liquidity_time_bucket.floor(pd.Timestamp(now_))
+
+                if strategy_universe.data_universe.time_bucket != TimeBucket.not_applicable:
+                    tvl_now = strategy_universe.data_universe.liquidity_time_bucket.floor(pd.Timestamp(now_))
+                else:
+                    tvl_now = now_
+
                 try:
                     tvl, tvl_at = strategy_universe.data_universe.liquidity.get_liquidity_with_tolerance(
                         pair_id=pair.internal_id,
