@@ -1,5 +1,6 @@
 """Analytics for constructed pair universes."""
 import datetime
+import logging
 
 import pandas as pd
 
@@ -7,6 +8,9 @@ from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniv
 from tradingstrategy.candle import CandleSampleUnavailable
 from tradingstrategy.liquidity import LiquidityDataUnavailable
 from tradingstrategy.timebucket import TimeBucket
+
+
+logger = logging.getLogger(__name__)
 
 
 def display_strategy_universe(
@@ -19,7 +23,7 @@ def display_strategy_universe(
 ) -> pd.DataFrame:
     """Displays a constructed trading strategy universe in table format.
 
-    - Designed for notebook debug
+    - Designed for notebook debug and live trading startup checks
     - To be called at the end of ``create_trading_universe()``
     - Returns a human-readable table of selected trading pairs and their nature
     - Contains latest TVL, price and volume figures for the reference
@@ -47,6 +51,24 @@ def display_strategy_universe(
         candle_now = strategy_universe.data_universe.time_bucket.floor(pd.Timestamp(now_))
     else:
         candle_now = now_
+
+    if strategy_universe.data_universe.liquidity:
+        if strategy_universe.data_universe.time_bucket != TimeBucket.not_applicable:
+            tvl_now = strategy_universe.data_universe.liquidity_time_bucket.floor(pd.Timestamp(now_))
+        else:
+            tvl_now = now_
+    else:
+        tvl_now = None
+
+    logger.info(
+        "display_strategy_universe(): now: %s, candles at: %s, tvl at: %s, pairs: %d, candles: %d, tvl rows: %d",
+        now_,
+        candle_now,
+        tvl_now,
+        strategy_universe.data_universe.pairs.get_count(),
+        strategy_universe.data_universe.candles.get_candle_count() if strategy_universe.data_universe.candles else 0,
+        strategy_universe.data_universe.liquidity.get_sample_count() if strategy_universe.data_universe.liquidity else 0,
+    )
 
     for pair in strategy_universe.iterate_pairs():
         benchmark = pair.other_data.get("benchmark")
@@ -83,12 +105,6 @@ def display_strategy_universe(
 
         if show_tvl:
             if strategy_universe.data_universe.liquidity:
-
-                if strategy_universe.data_universe.time_bucket != TimeBucket.not_applicable:
-                    tvl_now = strategy_universe.data_universe.liquidity_time_bucket.floor(pd.Timestamp(now_))
-                else:
-                    tvl_now = now_
-
                 try:
                     tvl, tvl_at = strategy_universe.data_universe.liquidity.get_liquidity_with_tolerance(
                         pair_id=pair.internal_id,

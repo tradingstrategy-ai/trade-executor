@@ -4,6 +4,8 @@ import datetime
 import logging
 from pathlib import Path
 from typing import Optional
+
+import pandas as pd
 import typer
 
 
@@ -11,14 +13,14 @@ from packaging import version
 
 from tradingstrategy.client import Client
 from .app import app
-from .pair_mapping import construct_identifier_from_pair
 from ..bootstrap import prepare_executor_id, prepare_cache
 from ..log import setup_logging
+from ...analysis.pair import display_strategy_universe
 from ...strategy.bootstrap import import_strategy_file
 from ...strategy.cycle import CycleDuration, snap_to_previous_tick
 from ...strategy.description import StrategyExecutionDescription
-from ...strategy.execution_context import ExecutionContext, ExecutionMode, preflight_execution_context
-from ...strategy.pandas_trader.indicator import calculate_and_load_indicators, calculate_and_load_indicators_inline, MemoryIndicatorStorage
+from ...strategy.execution_context import preflight_execution_context
+from ...strategy.pandas_trader.indicator import calculate_and_load_indicators_inline, MemoryIndicatorStorage
 from ...strategy.parameters import dump_parameters
 from ...strategy.run_state import RunState
 from ...strategy.trading_strategy_universe import TradingStrategyUniverseModel
@@ -114,13 +116,9 @@ def check_universe(
     ago = datetime.datetime.utcnow() - latest_candle_at
     logger.info("Latest OHCLV candle is at: %s, %s ago", latest_candle_at, ago)
 
-    # Display trading pairs
-    logger.info("Trading pairs in the trading universe:")
-    logger.info("-" * 80)
-    for idx, pair in enumerate(universe.data_universe.pairs.iterate_pairs(), start=1):
-        command_line_pair_id = construct_identifier_from_pair(pair)
-        logger.info(f"Pair {idx}. {pair.get_ticker()}, identifier: {command_line_pair_id}")
-    logger.info("-" * 80)
+    with pd.option_context('display.max_rows', None, 'display.max_columns', None):
+        universe_df = display_strategy_universe(universe)
+        logger.info("Universe is:\n%s", str(universe_df))
 
     # Poke create_indicators() if the strategy module defines one
     create_indicators = run_description.runner.create_indicators
