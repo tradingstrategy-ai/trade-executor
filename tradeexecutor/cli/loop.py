@@ -1081,7 +1081,7 @@ class ExecutionLoop:
 
         # Display our current trading universe at the startup
         universe_diagnose_df = display_strategy_universe(universe)
-        with pd.option_context('display.max_rows', None, 'display.max_columns', None):
+        with pd.option_context('display.max_rows', None, 'display.max_columns', None, 'display.width', 140):
             logger.trade("Trading universe is:\n%s", str(universe_diagnose_df))
 
         if self.sync_treasury_on_startup:

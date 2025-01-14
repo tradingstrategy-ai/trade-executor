@@ -116,9 +116,12 @@ def check_universe(
     ago = datetime.datetime.utcnow() - latest_candle_at
     logger.info("Latest OHCLV candle is at: %s, %s ago", latest_candle_at, ago)
 
-    with pd.option_context('display.max_rows', None, 'display.max_columns', None):
+    with pd.option_context('display.max_rows', None, 'display.max_columns', None, 'display.width', 140):
         universe_df = display_strategy_universe(universe)
         logger.info("Universe is:\n%s", str(universe_df))
+
+    # Disable excessive logging for the following section
+    logging.getLogger("tradeexecutor.strategy.pandas_trader.indicator").setLevel(logging.WARNING)
 
     # Poke create_indicators() if the strategy module defines one
     create_indicators = run_description.runner.create_indicators
@@ -143,5 +146,7 @@ def check_universe(
         )
     else:
         logger.info("Strategy module lacks create_indicators()")
+
+    logger.info("All ok")
 
 

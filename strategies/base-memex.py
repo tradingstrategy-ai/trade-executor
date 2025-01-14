@@ -4,7 +4,7 @@ Check universe and indicators:
 
     trade-executor \
         check-universe \
-        --strategy-file=strategy/base-memex.py \
+        --strategy-file=strategies/base-memex.py \
         --trading-strategy-api-key=$TRADING_STRATEGY_API_KEY
 
 Run backtest:
@@ -595,7 +595,12 @@ def volatility_inclusion_criteria(
     # 0       4569519 2024-02-13 16:00:00    0.097836              NaN
     # 1       4569519 2024-02-13 17:00:00    0.097773              NaN
 
-    high_volatility_rows = df2[df2["value_pair"] >= df2["value_reference"]]
+    if "close_pair" in df2.columns:
+        # Live trading.
+        # For some reason we get different column naming than in the backtest notebook
+        high_volatility_rows = df2[df2["close_pair"] >= df2["close_reference"]]
+    else:
+        high_volatility_rows = df2[df2["value_pair"] >= df2["value_reference"]]
 
     def _get_pair_ids_as_list(rows):
         return rows["pair_id"].tolist()

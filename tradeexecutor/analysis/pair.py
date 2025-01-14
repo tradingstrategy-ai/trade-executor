@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 def display_strategy_universe(
     strategy_universe: TradingStrategyUniverse,
     show_tvl=True,
-    show_volume=True,
+    show_volume=False,
     show_price=True,
     now_ = None,
     tolerance=pd.Timedelta("90D"),  # Put in any number, fix later to ignore lookup errors
@@ -32,6 +32,14 @@ def display_strategy_universe(
     - Part of trading
     - Benchmarks
     - Benchmark pairs are detected by ``pair.other_data.get("benchmark")``
+
+    Example:
+
+    .. code-block:: python
+
+        with pd.option_context('display.max_rows', None, 'display.max_columns', None, 'display.width', 140):
+            universe_df = display_strategy_universe(universe)
+            logger.info("Universe is:\n%s", str(universe_df))
 
     :return:
         Human-readable DataFrame for ``display()``.
@@ -78,7 +86,7 @@ def display_strategy_universe(
             "quote": pair.quote.token_symbol,
             "exchange": pair.exchange_name,
             "fee %": pair.fee * 100,
-            "type:": "benchmark/routed token" if benchmark else "traded token"
+            "type:": "benchmark" if benchmark else "traded"
         }
 
         if show_price:
@@ -123,5 +131,21 @@ def display_strategy_universe(
 
         pairs.append(data)
 
-    human_pair_universe_df = pd.DataFrame(pairs)
-    return human_pair_universe_df
+    # Make human-readable DF
+
+    def _format_float_2(value):
+        if isinstance(value, float):
+            return f"{value:.2f}"
+        return value
+
+    def _format_float_0(value):
+        if isinstance(value, float):
+            return f"{value:,.0f}"
+        return value
+
+    df = pd.DataFrame(pairs)
+    df['price'] = df['price'].apply(_format_float_2)
+    if "tvl" in df.columns:
+        df['tvl'] = df['tvl'].apply(_format_float_0)
+    df = df.sort_values("id").set_index("id")
+    return df

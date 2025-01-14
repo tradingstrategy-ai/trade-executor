@@ -249,7 +249,7 @@ def console(
         universe_options,
     )
 
-    with pd.option_context('display.max_rows', None, 'display.max_columns', None):
+    with pd.option_context('display.max_rows', None, 'display.max_columns', None, 'display.width', 140):
         universe_df = display_strategy_universe(universe)
         logger.info("Universe is:\n%s", str(universe_df))
 
