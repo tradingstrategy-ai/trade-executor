@@ -393,6 +393,8 @@ class Portfolio:
         :param pending:
             Check also pending positions that wait market limit open and are not yet triggered
 
+        :return:
+            None of no matching position
         """
 
         if pending:

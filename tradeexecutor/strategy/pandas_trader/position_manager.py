@@ -11,6 +11,7 @@ import cachetools
 import pandas as pd
 
 from eth_defi.token_analysis.blacklist import is_blacklisted_address
+from tradeexecutor.ethereum.one_delta.analysis import analyse_leverage_trade_by_receipt
 from tradingstrategy.candle import CandleSampleUnavailable
 from tradingstrategy.pair import DEXPair, HumanReadableTradingPairDescription
 from tradingstrategy.universe import Universe
@@ -2418,6 +2419,7 @@ class PositionManager:
         trades: list[TradeExecution],
         allocation_pct: Percent,
         buffer_pct: Percent=0.01,
+        lending_reserve_identifier: TradingPairIdentifier = None,
     ) -> USDollarAmount:
         """How much cash we need ton this cycle.
 
@@ -2433,15 +2435,22 @@ class PositionManager:
         :param allocation_pct:
             How much of the cash we allocate to the portfolio positions.
 
+            E.g. if this is 0.95, then 95% goes to open positions, 5% to cash.
+
         :param buffer_pct:
             Because we do not know the executed reserve quantity released in sell trades,
             we need to have some safe margin because we might getting a bit less cash from sells
             we expect.
 
+        :param lending_reserve_identifier:
+            Check our open lending position.
+
         :return:
             Positive: This much of cash must be released from credit supplied.
             Negative: This much of cash be deposited to Aave at the end of the cycle.
         """
+
+        assert allocation_pct > 0.30, f"allocation_pct might not be correct: {allocation_pct}"
 
         cash_needed = 0.0
 
@@ -2456,19 +2465,34 @@ class PositionManager:
         # Keep this amount always in cash.
         # For Lagoon this will enable instant small redemptions.
         nav = self.state.portfolio.get_net_asset_value()
-        always_cash = nav * allocation_pct
+        always_cash = nav * (1 - allocation_pct)
+
+        position = self.get_current_position_for_pair(lending_reserve_identifier)
+        if position is None:
+            already_deposited = 0
+        else:
+            already_deposited = position.get_value(include_interest=True)
+
+        available_cash = self.get_current_cash()
         total_cash_needed = cash_needed + always_cash
+        flow = total_cash_needed - available_cash
 
         logger.info(
-            "calculate_cash_needed(): nav: %f, total cash needed: %f, cash needed in trades: %f, always cash: %f, buffer: %f",
+            "calculate_cash_needed(): trades: %d, nav: %f, flow: %f, total cash needed: %f, cash needed in trades: %f, already deposited: %f, always cash: %f, buffer: %f",
+            len(trades),
             nav,
+            flow,
             total_cash_needed,
             cash_needed,
+            already_deposited,
             always_cash,
             buffer_pct,
         )
 
-        return cash_needed
+        if flow > 0:
+            assert flow < already_deposited, f"Tries to release {flow} from credit supplies, buy we have only {already_deposited}"
+
+        return flow
 
     def manage_credit_flow(
         self,
@@ -2491,7 +2515,11 @@ class PositionManager:
         if lending_reserve_identifier is None:
             lending_reserve_identifier = self.strategy_universe.get_credit_supply_pair()
 
-        logger.info("manage_credit_flow(), lending reserve is %s, change %f", flow)
+        logger.info(
+            "manage_credit_flow(), lending reserve is %s, change %f",
+            lending_reserve_identifier,
+            flow
+        )
 
         position = self.get_current_position_for_pair(lending_reserve_identifier)
         trades = []

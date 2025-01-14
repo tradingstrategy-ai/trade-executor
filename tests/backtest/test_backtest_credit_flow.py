@@ -1,43 +1,31 @@
 """Test PositionManager.manage_credit_flow()."""
-import os
-import logging
+
 import datetime
 import random
-from _decimal import Decimal
 
 import pytest
-from typing import List, Dict
-
-import pandas as pd
+from typing import List
 
 from tradeexecutor.strategy.pandas_trader.strategy_input import StrategyInput
 from tradeexecutor.strategy.parameters import StrategyParameters
-from tradingstrategy.client import Client
+
 from tradingstrategy.chain import ChainId
 from tradingstrategy.timebucket import TimeBucket
 
-from tradeexecutor.analysis.trade_analyser import build_trade_analysis
+
 from tradeexecutor.backtest.backtest_runner import run_backtest_inline
 from tradeexecutor.state.trade import TradeExecution
-from tradeexecutor.state.state import State
 from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier
-from tradeexecutor.statistics.statistics_table import serialise_long_short_stats_as_json_table
 from tradeexecutor.strategy.cycle import CycleDuration
 from tradeexecutor.strategy.reserve_currency import ReserveCurrency
 from tradeexecutor.strategy.default_routing_options import TradeRouting
-from tradeexecutor.strategy.pricing_model import PricingModel
-from tradeexecutor.strategy.pandas_trader.position_manager import PositionManager
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
 from tradeexecutor.testing.synthetic_ethereum_data import generate_random_ethereum_address
 from tradeexecutor.testing.synthetic_exchange_data import generate_exchange
 from tradeexecutor.testing.synthetic_price_data import generate_ohlcv_candles
 from tradeexecutor.testing.synthetic_universe_data import create_synthetic_single_pair_universe
 from tradeexecutor.testing.synthetic_lending_data import generate_lending_reserve, generate_lending_universe
-from tradeexecutor.visual.equity_curve import calculate_compounding_realised_trading_profitability, calculate_long_compounding_realised_trading_profitability, calculate_short_compounding_realised_trading_profitability
 
-
-# https://docs.pytest.org/en/latest/how-to/skipping.html#skip-all-test-functions-of-a-class-or-module
-pytestmark = pytest.mark.skipif(os.environ.get("TRADING_STRATEGY_API_KEY") is None, reason="Set TRADING_STRATEGY_API_KEY environment variable to run this test")
 
 start_at = datetime.datetime(2023, 1, 1)
 end_at = datetime.datetime(2023, 1, 20)
