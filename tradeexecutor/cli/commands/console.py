@@ -35,6 +35,7 @@ from ..bootstrap import prepare_executor_id, prepare_cache, create_web3_config, 
     create_state_store, create_client
 from ..log import setup_logging
 from ..version_info import VersionInfo
+from ...analysis.pair import display_strategy_universe
 from ...monkeypatch.web3 import construct_sign_and_send_raw_middleware
 from ...state.state import State
 from ...statistics.in_memory_statistics import refresh_run_state
@@ -247,6 +248,10 @@ def console(
         ExecutionMode.preflight_check,
         universe_options,
     )
+
+    with pd.option_context('display.max_rows', None, 'display.max_columns', None):
+        universe_df = display_strategy_universe(universe)
+        logger.info("Universe is:\n%s", str(universe_df))
 
     # Get all tokens from the universe
     web3 = web3config.get_default()
