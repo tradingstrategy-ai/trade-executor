@@ -699,7 +699,7 @@ class PositionManager:
             value = Decimal(value)
 
         # Tripwire to avoid historical rug pulls
-        assert self.is_problematic_pair(executor_pair), f"Tried to open spot position for a blacklisted token: {pair}"
+        assert not self.is_problematic_pair(executor_pair), f"Tried to open spot position for a blacklisted token: {pair}"
 
         try:
             price_structure = self.pricing_model.get_buy_price(self.timestamp, executor_pair, value)
