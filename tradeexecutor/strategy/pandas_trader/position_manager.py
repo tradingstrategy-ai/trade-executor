@@ -345,6 +345,7 @@ class PositionManager:
         :return:
             True: avoid trade, set slippage to max when selling.
         """
+        assert isinstance(pair, TradingPairIdentifier)
         return is_blacklisted_address(pair.base.address)
     
     def _get_single_open_position_for_kind(self, kind: str) -> TradingPosition:
@@ -698,7 +699,7 @@ class PositionManager:
             value = Decimal(value)
 
         # Tripwire to avoid historical rug pulls
-        assert self.is_problematic_pair(pair), f"Tried to open spot position for a blacklisted token: {pair}"
+        assert self.is_problematic_pair(executor_pair), f"Tried to open spot position for a blacklisted token: {pair}"
 
         try:
             price_structure = self.pricing_model.get_buy_price(self.timestamp, executor_pair, value)

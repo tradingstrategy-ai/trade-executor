@@ -36,7 +36,6 @@ def display_strategy_universe(
 
     candle_now = strategy_universe.data_universe.time_bucket.floor(pd.Timestamp(now_))
 
-    print("Universe is (including benchmark pairs):")
     for pair in strategy_universe.iterate_pairs():
         benchmark = pair.other_data.get("benchmark")
         data = {
@@ -54,6 +53,13 @@ def display_strategy_universe(
                 when=candle_now,
             )
 
+        if show_volume:
+            data["volume"], _ = strategy_universe.data_universe.candles.get_price_with_tolerance(
+                pair=pair.internal_id,
+                when=candle_now,
+                kind="volume",
+            )
+
         if show_tvl:
             if strategy_universe.data_universe.liquidity:
                 tvl_now = strategy_universe.data_universe.liquidity_time_bucket.floor(pd.Timestamp(now_))
@@ -65,13 +71,6 @@ def display_strategy_universe(
                 tvl = "<not loaded>"
 
             data["tvl"] = tvl
-
-        if show_volume:
-            data["volume"], _ = strategy_universe.data_universe.candles.get_price_with_tolerance(
-                pair=pair.internal_id,
-                when=candle_now,
-                kind="volume",
-            )
 
         pairs.append(data)
 
