@@ -19,7 +19,7 @@ def display_strategy_universe(
     show_volume=True,
     show_price=True,
     now_ = None,
-    tolerance=pd.Timedelta("3m"),  # Put in any number, fix later to ignore lookup errors
+    tolerance=pd.Timedelta("90D"),  # Put in any number, fix later to ignore lookup errors
 ) -> pd.DataFrame:
     """Displays a constructed trading strategy universe in table format.
 
