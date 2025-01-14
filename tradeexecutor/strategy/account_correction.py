@@ -531,7 +531,7 @@ def correct_accounts(
             print("Correction needed:", c)
 
         # print(f"Any tokens that cannot be assigned to an open position will be send to {unknown_token_receiver}")
-        confirmation = input("Attempt to repair [y/n]").lower()
+        confirmation = input("Attempt to correct balances [y/n]").lower()
         if confirmation != "y":
             raise AccountingCorrectionAborted()
 
