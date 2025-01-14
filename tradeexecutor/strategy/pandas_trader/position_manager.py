@@ -10,6 +10,7 @@ import logging
 import cachetools
 import pandas as pd
 
+from eth_defi.token_analysis.blacklist import is_blacklisted_address
 from tradingstrategy.candle import CandleSampleUnavailable
 from tradingstrategy.pair import DEXPair, HumanReadableTradingPairDescription
 from tradingstrategy.universe import Universe
@@ -331,6 +332,21 @@ class PositionManager:
             raise NoSingleOpenPositionException(f"Multiple positions ({len(open_positions)}) open at {self.timestamp}")
 
         return next(iter(open_positions.values()))
+
+    def is_problematic_pair(
+        self,
+        pair: TradingPairIdentifier,
+    ) -> bool:
+        """Check if trading pair is on any manual blacklist.
+
+        - Is a rugpull
+        - Get rid of any open position at any price
+
+        :return:
+            True: avoid trade, set slippage to max when selling.
+        """
+        assert isinstance(pair, TradingPairIdentifier)
+        return is_blacklisted_address(pair.base.address)
     
     def _get_single_open_position_for_kind(self, kind: str) -> TradingPosition:
         """Get the current single position for the given kind.
@@ -681,6 +697,9 @@ class PositionManager:
         # so we can have exact numbers from this point forward
         if type(value) == float:
             value = Decimal(value)
+
+        # Tripwire to avoid historical rug pulls
+        assert not self.is_problematic_pair(executor_pair), f"Tried to open spot position for a blacklisted token: {pair}"
 
         try:
             price_structure = self.pricing_model.get_buy_price(self.timestamp, executor_pair, value)

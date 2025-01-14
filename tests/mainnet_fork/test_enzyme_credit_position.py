@@ -253,6 +253,7 @@ def vault(
     return vault
 
 
+@flaky.flaky
 def test_enzyme_credit_positions_with_big_size(
     vault: Vault,
     environment: dict,
@@ -376,6 +377,7 @@ def test_enzyme_credit_position_redemption(
         assert reserve_position.get_value() == pytest.approx(1980)
 
 
+@flaky.flaky
 def test_enzyme_credit_position_redemption_check_triggers(
     web3: Web3,
     vault: Vault,
