@@ -306,7 +306,7 @@ def decide_trades(
     # Calculate how much dollar value we want each individual position to be on this strategy cycle,
     # based on our total available equity
     portfolio = position_manager.get_current_portfolio()
-    portfolio_target_value = portfolio.get_total_equity() * parameters.allocation
+    portfolio_target_value = portfolio.get_total_equity() * parameters.allocation - position_manager.get_pending_redemptions()
 
     # Select max_assets_in_portfolio assets in which we are going to invest
     # Calculate a weight for ecah asset in the portfolio using 1/N method based on the raw signal
