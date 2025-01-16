@@ -544,6 +544,11 @@ class Portfolio:
 
         portfolio_value = self.get_total_equity()
 
+        if flags:
+            if TradeFlag.ignore_open in flags:
+                # Special case of same cycle close/open
+                position = None
+
         if position is None:
             # Initialise new position data structure
             position = self.open_new_position(

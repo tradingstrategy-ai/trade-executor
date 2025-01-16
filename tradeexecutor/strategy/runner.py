@@ -872,7 +872,11 @@ class StrategyRunner(abc.ABC):
                         # Any credit market withdraw will be executed first, then sells, then buys and Aave deposits last.
                         sorted_approved_trades = sorted(approved_trades, key=lambda t: t.get_execution_sort_position())
                         if approved_trades != sorted_approved_trades:
-                            logger.info("Trades resorted to: %s", sorted_approved_trades)
+                            logger.info(
+                                "Cycle %d, trades resolved to: %s",
+                                cycle or 0,
+                                sorted_approved_trades,
+                            )
 
                         self.execution_model.execute_trades(
                             strategy_cycle_timestamp,

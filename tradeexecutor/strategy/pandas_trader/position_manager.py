@@ -840,7 +840,16 @@ class PositionManager:
 
         .. code-block:: python
 
-
+            pair = strategy_universe.get_pair_by_human_description((ChainId.base, "uniswap-v3", "DogInMe", "WETH"))
+            dollar_delta = 0.1  # Buy 0.1 more on the existing position
+            position = position_manager.get_current_position_for_pair(pair)
+            quantity_delta = dollar_delta * position.get_current_price()
+            trades = position_manager.adjust_position(
+                pair=pair,
+                dollar_delta=dollar_delta,
+                quantity_delta=quantity_delta,
+                weight=1,
+            )
 
         .. warning ::
 
@@ -853,15 +862,18 @@ class PositionManager:
         :param dollar_delta:
             How much we want to increase/decrease the position in US dollar terms.
 
+            - Positive: increase position
+            - Negative: decrease position
+
             TODO: If you are selling the assets, you need to calculate the expected
             dollar estimate yourself at the moment.
-            Must be positive.
 
         :param quantity_delta:
             How much we want to increase/decrease the position in the asset unit terms.
 
             Used only when decreasing existing positions (selling).
             Set to ``None`` if not selling.
+
             Must be negative.
 
         :param weight:
@@ -930,6 +942,8 @@ class PositionManager:
                 quantity_delta = Decimal(quantity_delta) if isinstance(quantity_delta, float | int) else quantity_delta
                 price_structure = self.pricing_model.get_sell_price(self.timestamp, pair, abs(quantity_delta))
 
+                assert position, f"adjust_delta(), dollar_delta negative, assuming sell but no position was given"
+
         except CandleSampleUnavailable as e:
             # Backtesting cannot fetch price for an asset,
             # probably not enough data and the pair is trading early?
@@ -953,6 +967,13 @@ class PositionManager:
         reserve_asset, reserve_price = self.state.portfolio.get_default_reserve_asset()
 
         slippage_tolerance = slippage_tolerance or self.default_slippage_tolerance
+
+        logger.info(
+            "adjust_position(), position: %s, dollar_delta: %s, quantity_delta: %s",
+            position,
+            dollar_delta,
+            quantity_delta,
+        )
 
         if dollar_delta > 0:
 
@@ -2426,7 +2447,7 @@ class PositionManager:
             msg,
         )
 
-    def calculate_cash_needed(
+    def calculate_credit_flow_needed(
         self,
         trades: list[TradeExecution],
         allocation_pct: Percent,
@@ -2585,6 +2606,7 @@ class PositionManager:
 
             trades += self.open_credit_supply_position_for_reserves(
                 funds_to_deposit_at_cycle_end,
+                flags={TradeFlag.ignore_open},
                 notes="Redepositing remaining funds at the end of cycle"
             )
         else:

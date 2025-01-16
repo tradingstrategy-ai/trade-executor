@@ -135,16 +135,37 @@ class BacktestExecution(ExecutionModel):
             executed_reserve = trade.planned_reserve
             executed_quantity = trade.planned_quantity
         else:
-            assert position and position.is_open(), f"Tried to execute sell on position {position} that is not open: {trade}"
+            if not position or not position.is_open():
+                logger.error("Selling closed position: %s, trade %s", position, trade)
+                logger.error("Current positions")
+                for p in state.portfolio.get_open_and_frozen_positions():
+                    logger.error("Position %s", p)
+                if position:
+                    for t in position.trades:
+                        logger.error("Position has earlier trade %s", t)
+                    last_trade = position.trades[-1] if position.trades else None
+                else:
+                    last_trade = None
+                raise AssertionError(f"Tried to execute sell on position {position} that is not open. This trade is {trade}, pair {trade.pair}, trade id: {trade.trade_id}, position id: {trade.position_id}, last trade was {last_trade}")
             executed_quantity, sell_amount_epsilon_fix = fix_sell_token_amount(base_balance, trade.planned_quantity)
             executed_reserve = abs(Decimal(trade.planned_quantity) * Decimal(trade.planned_price))
 
+
         if trade.is_buy():
-            self.wallet.update_balance(base, executed_quantity, f"spot buy trade #{trade.trade_id}")
-            self.wallet.update_balance(reserve, -executed_reserve, f"spot buy trade #{trade.trade_id}")
+            # Will take also this path for credit supplies
+            if trade.is_credit_supply():
+                type = "credit supply"
+            else:
+                type = "spot buy"
+            self.wallet.update_balance(base, executed_quantity, f"{type} trade #{trade.trade_id}")
+            self.wallet.update_balance(reserve, -executed_reserve, f"{type} trade #{trade.trade_id}")
         else:
-            self.wallet.update_balance(base, executed_quantity, f"spot sell #{trade.trade_id}")
-            self.wallet.update_balance(reserve, executed_reserve, f"spot sell #{trade.trade_id}")
+            if trade.is_credit_supply():
+                type = "credit recall"
+            else:
+                type = "spot sell"
+            self.wallet.update_balance(base, executed_quantity, f"{type} #{trade.trade_id}")
+            self.wallet.update_balance(reserve, executed_reserve, f"{type} #{trade.trade_id}")
 
         assert abs(
             executed_quantity) > 0, f"Expected executed_quantity for the trade to be above zero, got executed_quantity:{executed_quantity}, planned_quantity:{trade.planned_quantity}, trade is {trade}"
@@ -417,8 +438,14 @@ class BacktestExecution(ExecutionModel):
             logger.error("Trades were")
             for t in trades:
                 logger.error("Trade: %s", t)
+            logger.error("Positions are")
+            for p in state.portfolio.get_open_and_frozen_positions():
+                logger.error("Position: %s", p)
 
-            raise RuntimeError(f"Backtest simulated wallet and portfolio out of sync at {ts} after executing trades:\n{asset_df}")
+            error_msg = f"Backtest simulated wallet and portfolio out of sync at {ts} after executing trades:\n{asset_df}"
+            logger.error("Current chain status:\n%s", error_msg)
+
+            raise RuntimeError(error_msg)
 
         # Set the check point interest balacnes for new positions
         set_interest_checkpoint(state, ts, None)

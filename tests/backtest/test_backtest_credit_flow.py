@@ -107,43 +107,54 @@ def decide_trades(input: StrategyInput) -> List[TradeExecution]:
     trading_pair = input.get_default_pair()
     cash = input.state.portfolio.get_cash()
 
+    volatile_position = position_manager.get_current_position_for_pair(trading_pair)
+
     # Generate randomish trades
     trades = []
     if input.cycle % 3 == 0:
 
         if rng.randint(0, 4) == 0:
             # Randomly close everything
+            position_manager.log("Decide to close all")
             trades += position_manager.close_all(
                 credit_supply=False,
             )
         else:
-            if not position_manager.is_any_open():
+            if not volatile_position:
+                position_manager.log("Decide to open spot")
                 trades += position_manager.open_spot(
                     trading_pair,
                     cash * (rng.random() * 0.7 + 0.1),
                 )
             else:
-                position = position_manager.get_current_position()
-                if random.randint(0, 4) == 0:
+                position = volatile_position
+                assert position.is_open()
+                position_manager.log("Decide something else")
+                if rng.randint(0, 4) == 0:
                     # Randomly increase of decrease the position
-
                     portion = 0.05 * rng.choice([1, -1])
-
                     if portion > 0:
                         dollar_delta = position.get_value() * portion
                         quantity_delta = None
+                        position_manager.log("Decide to increase spot")
                     else:
-                        dollar_delta = None
                         quantity_delta = position.get_quantity() * Decimal(portion)
+                        dollar_delta = position.get_value() * portion
+                        position_manager.log("Decide to decrease spot")
+
+                    assert trading_pair == position.pair, f"trading_pair: {trading_pair}, positio.pair: {position.pair}"
 
                     trades += position_manager.adjust_position(
                         trading_pair,
                         dollar_delta=dollar_delta,
                         quantity_delta=quantity_delta,
                         weight=1,
+                        position=volatile_position,
                     )
+    else:
+        position_manager.log("Do nothing cycle")
 
-    credit_flow = position_manager.calculate_cash_needed(
+    credit_flow = position_manager.calculate_credit_flow_needed(
         trades,
         allocation_pct=0.95,
     )
@@ -185,6 +196,6 @@ def test_backtest_credit_flow(
 
     # Calculate total interest gained
     credit_positions = [p for p in portfolio.get_all_positions() if p.is_credit_supply()]
-    assert len(credit_positions) == 1
+    assert len(credit_positions) == 10
     total_interest_gained = sum(p.get_total_profit_usd() for p in credit_positions)
-    assert total_interest_gained == 1
+    assert total_interest_gained == pytest.approx(76.8234503286251)
