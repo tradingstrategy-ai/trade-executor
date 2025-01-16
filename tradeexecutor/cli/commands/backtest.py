@@ -42,6 +42,7 @@ from ..loop import ExecutionLoop
 from ..result import display_backtesting_results
 from ..version_info import VersionInfo
 from ..watchdog import stop_watchdog
+from ...analysis.pair import display_strategy_universe
 from ...backtest.backtest_module import run_backtest_for_module
 from ...backtest.backtest_runner import setup_backtest, run_backtest, setup_backtest_for_universe
 from ...backtest.tearsheet import export_backtest_report
@@ -178,6 +179,10 @@ def backtest(
 
     state = result.state
     universe = result.strategy_universe
+
+    with pd.option_context('display.max_rows', None, 'display.max_columns', None, 'display.width', 140):
+        universe_df = display_strategy_universe(universe)
+        logger.info("Universe is:\n%s", str(universe_df))
 
     # We should not be able let unnamed backtests through
     assert state.name

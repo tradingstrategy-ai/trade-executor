@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 def display_strategy_universe(
     strategy_universe: TradingStrategyUniverse,
     show_tvl=True,
-    show_volume=False,
+    show_volume=True,
     show_price=True,
     now_ = None,
     tolerance=pd.Timedelta("90D"),  # Put in any number, fix later to ignore lookup errors
