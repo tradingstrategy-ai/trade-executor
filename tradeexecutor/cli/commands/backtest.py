@@ -180,10 +180,6 @@ def backtest(
     state = result.state
     universe = result.strategy_universe
 
-    with pd.option_context('display.max_rows', None, 'display.max_columns', None, 'display.width', 140):
-        universe_df = display_strategy_universe(universe)
-        print("Loaded strategy universe pairs are:\n%s", str(universe_df))
-
     # We should not be able let unnamed backtests through
     assert state.name
 
