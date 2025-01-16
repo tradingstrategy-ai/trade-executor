@@ -154,3 +154,9 @@ def test_backtest_credit_flow(
     portfolio = state.portfolio
     assert len(portfolio.open_positions) >= 1
 
+    # Calculate total interest gained
+    credit_positions = [p for p in portfolio.get_all_positions() if p.is_credit_supply()]
+    assert len(credit_positions) == 5
+    total_interest_gained = sum(p.get_total_profit_usd() for p in credit_positions)
+    assert total_interest_gained == 1
+
