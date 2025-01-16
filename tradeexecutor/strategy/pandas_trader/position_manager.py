@@ -2490,7 +2490,7 @@ class PositionManager:
         )
 
         if flow > 0:
-            assert flow < already_deposited, f"Tries to release {flow} from credit supplies, buy we have only {already_deposited}"
+            assert flow < already_deposited, f"Tries to release {flow} from credit supplies, but we have only {already_deposited}"
 
         return flow
 
@@ -2498,6 +2498,7 @@ class PositionManager:
         self,
         flow: USDollarAmount,
         lending_reserve_identifier: TradingPairIdentifier = None,
+        cash_change_tolerance_usd: USDollarAmount=50.0,
     ) -> list[TradeExecution]:
         """Create trades to adjust cash/credit supply positions.
 
@@ -2529,18 +2530,62 @@ class PositionManager:
             return []
 
         if position is None:
-            logger.info("Creating initial credit supply position")
-            assert flow < 0, f"Initial credit flow must be supply, got {flow}"
-
-            trades += self.open_credit_supply_position_for_reserves(
-                -flow,
-                notes="Initial supply"
-            )
+            already_deposited = 0
         else:
+            already_deposited = position.get_value(include_interest=True)
+
+        if flow > 0:
+
+            # We need to release cash from the reserves.
+            # How we do this is
+            # - Fully close Aave position at the start of the trades
+            # - Deposit money left back at the end of the trades
+            # We do this this way so that we claim interest at this kind of cycle,
+            # makes accounting easier
+            funds_to_deposit_at_cycle_end = already_deposited - flow
+
+            logger.info(
+                "Releasing all Aave cash and re-depositing at the end. Flow: %f, Aave deposits at the end: %f, trades: %d",
+                flow,
+                funds_to_deposit_at_cycle_end,
+                len(trades)
+            )
+
+            # Don't generate trades if we only see change in the interest.
+            # Small interest changes should not trigger rebalance,
+            # we only need to trigger if cash is needed for trades.
+            if len(trades) == 0 and flow < cash_change_tolerance_usd:
+                logger.info("No trades and credit supply position within the no action tolerance")
+                return []
+
             trades += self.adjust_credit_supply_position(
                 position,
                 delta=-flow,
+                notes="Releasing all funds to trade on the cycle"
             )
+
+            trades += self.open_credit_supply_position_for_reserves(
+                funds_to_deposit_at_cycle_end,
+                notes="Redepositing remaining funds at the end of cycle"
+            )
+        else:
+            # The credit supply position increaes in this cycle
+            if position is None:
+                logger.info("Creating initial credit supply position")
+                assert flow < 0, f"Initial credit flow must be supply, got {flow}"
+
+                trades += self.open_credit_supply_position_for_reserves(
+                    -flow,
+                    notes="Initial supply"
+                )
+            else:
+                logger.info("Increasing the existing credit supply position")
+                # Add funds to the existing credit position
+                trades += self.adjust_credit_supply_position(
+                    position,
+                    delta=-flow,
+                    notes="Extra cash, increasing credit supply"
+                )
 
         return trades
 
