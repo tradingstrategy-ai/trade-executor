@@ -855,12 +855,14 @@ class PositionManager:
 
             TODO: If you are selling the assets, you need to calculate the expected
             dollar estimate yourself at the moment.
+            Must be positive.
 
         :param quantity_delta:
             How much we want to increase/decrease the position in the asset unit terms.
 
             Used only when decreasing existing positions (selling).
             Set to ``None`` if not selling.
+            Must be negative.
 
         :param weight:
             What is the weight of the asset in the new target portfolio 0....1.
@@ -2576,9 +2578,8 @@ class PositionManager:
                 logger.info("No trades and credit supply position within the no action tolerance")
                 return []
 
-            trades += self.adjust_credit_supply_position(
+            trades += self.close_credit_supply_position(
                 position,
-                delta=-flow,
                 notes="Releasing all funds to trade on the cycle"
             )
 

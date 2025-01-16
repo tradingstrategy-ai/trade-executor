@@ -2,6 +2,7 @@
 
 import datetime
 import random
+from decimal import Decimal
 
 import pytest
 from typing import List
@@ -28,7 +29,8 @@ from tradeexecutor.testing.synthetic_lending_data import generate_lending_reserv
 
 
 start_at = datetime.datetime(2023, 1, 1)
-end_at = datetime.datetime(2023, 3, 1)
+end_at = datetime.datetime(2023, 6, 1)
+
 
 @pytest.fixture(scope="module")
 def universe() -> TradingStrategyUniverse:
@@ -95,6 +97,10 @@ def strategy_universe(universe):
     return universe
 
 
+# Use deterministic random numbers in decide_trades()
+rng = random.Random(0)
+
+
 def decide_trades(input: StrategyInput) -> List[TradeExecution]:
     """Example decide_trades function using partial take profits and trailing stoploss."""
     position_manager = input.get_position_manager()
@@ -104,15 +110,38 @@ def decide_trades(input: StrategyInput) -> List[TradeExecution]:
     # Generate randomish trades
     trades = []
     if input.cycle % 3 == 0:
-        if position_manager.is_any_open():
+
+        if rng.randint(0, 4) == 0:
+            # Randomly close everything
             trades += position_manager.close_all(
                 credit_supply=False,
             )
         else:
-            trades += position_manager.open_spot(
-                trading_pair,
-                cash * (random.random() * 0.7 + 0.1),
-            )
+            if not position_manager.is_any_open():
+                trades += position_manager.open_spot(
+                    trading_pair,
+                    cash * (rng.random() * 0.7 + 0.1),
+                )
+            else:
+                position = position_manager.get_current_position()
+                if random.randint(0, 4) == 0:
+                    # Randomly increase of decrease the position
+
+                    portion = 0.05 * rng.choice([1, -1])
+
+                    if portion > 0:
+                        dollar_delta = position.get_value() * portion
+                        quantity_delta = None
+                    else:
+                        dollar_delta = None
+                        quantity_delta = position.get_quantity() * Decimal(portion)
+
+                    trades += position_manager.adjust_position(
+                        trading_pair,
+                        dollar_delta=dollar_delta,
+                        quantity_delta=quantity_delta,
+                        weight=1,
+                    )
 
     credit_flow = position_manager.calculate_cash_needed(
         trades,
@@ -156,7 +185,6 @@ def test_backtest_credit_flow(
 
     # Calculate total interest gained
     credit_positions = [p for p in portfolio.get_all_positions() if p.is_credit_supply()]
-    assert len(credit_positions) == 5
+    assert len(credit_positions) == 1
     total_interest_gained = sum(p.get_total_profit_usd() for p in credit_positions)
     assert total_interest_gained == 1
-
