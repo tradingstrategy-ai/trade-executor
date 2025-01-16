@@ -1297,8 +1297,14 @@ class PositionManager:
         else:
             raise NotImplementedError(f"Does not know how to close: {position}")
 
-    def close_all(self) -> List[TradeExecution]:
+    def close_all(
+        self,
+        credit_supply=True,
+    ) -> List[TradeExecution]:
         """Close all open positions.
+
+        :param credit_supply:
+            Set to false not to automatically close credit supply positions.
 
         :return:
             List of trades that will close existing positions
@@ -1308,6 +1314,10 @@ class PositionManager:
         position: TradingPosition
         trades = []
         for position in self.state.portfolio.open_positions.values():
+            if position.is_credit_supply():
+                if not credit_supply:
+                    continue
+
             trade = self.close_position(position)
             if trade:
                 trades.extend(trade)
@@ -2450,12 +2460,16 @@ class PositionManager:
             Negative: This much of cash be deposited to Aave at the end of the cycle.
         """
 
+        if lending_reserve_identifier is None:
+            lending_reserve_identifier = self.strategy_universe.get_credit_supply_pair()
+
         assert allocation_pct > 0.30, f"allocation_pct might not be correct: {allocation_pct}"
+        assert isinstance(lending_reserve_identifier, TradingPairIdentifier), f"Expected TradingPairIdentifier, got {lending_reserve_identifier}"
 
         cash_needed = 0.0
 
         for t in trades:
-            assert t.is_spot(), f"Only spot trades supported for now, got: {t}"
+            assert t.is_spot(), f"Only spot trades supported in calculate_cash_needed(), got: {t}"
 
             if t.is_buy():
                 cash_needed += float(t.planned_reserve)
@@ -2489,6 +2503,8 @@ class PositionManager:
             buffer_pct,
         )
 
+        logger.info("Lending reserve: %s, lending position: %s", lending_reserve_identifier, position)
+
         if flow > 0:
             assert flow < already_deposited, f"Tries to release {flow} from credit supplies, but we have only {already_deposited}"
 
@@ -2515,6 +2531,8 @@ class PositionManager:
         assert type(flow) == float, f"Got: {type(flow)} instead of float"
         if lending_reserve_identifier is None:
             lending_reserve_identifier = self.strategy_universe.get_credit_supply_pair()
+
+        assert isinstance(lending_reserve_identifier, TradingPairIdentifier), f"Expected TradingPairIdentifier, got {lending_reserve_identifier}"
 
         logger.info(
             "manage_credit_flow(), lending reserve is %s, change %f",
