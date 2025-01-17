@@ -665,18 +665,19 @@ class Portfolio:
 
         This includes
 
-        - Equity Value of the positions
+        - Equity Value of the open positions
 
-        - ...and cash in the hand
+        - Cash cash in the hand
+
+        - Excluding frozen positions: cash cannot be released
 
         But not
 
         - Leverage/loan based positions (equity is in collateral)
 
-        See also :py:meth:`get_theoretical_value`
+        See also :py:meth:`get_tradable_equity` and :py:meth:`get_theoretical_value` and
 
         """
-
         # Any trading positions we have one
         # spot_values = sum([p.get_equity() for p in self.open_positions.values() if not p.is_leverage()])
         return self.get_position_equity_and_loan_nav() + self.get_cash()
