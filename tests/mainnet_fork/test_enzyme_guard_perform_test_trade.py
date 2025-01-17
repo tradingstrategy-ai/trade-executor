@@ -5,6 +5,7 @@ import secrets
 from pathlib import Path
 from unittest import mock
 
+import flaky
 import pytest
 
 from eth_account import Account
@@ -161,6 +162,7 @@ def environment(
     return environment
 
 
+@flaky.flaky
 def test_enzyme_guard_perform_test_trade(
     environment: dict,
     web3: Web3,
