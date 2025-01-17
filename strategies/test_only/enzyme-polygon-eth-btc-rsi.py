@@ -347,7 +347,7 @@ def decide_trades(
     #
 
     portfolio = position_manager.get_current_portfolio()
-    portfolio_target_value = portfolio.get_total_equity() * parameters.allocation
+    portfolio_target_value = portfolio.calculate_total_equity() * parameters.allocation
 
     # Use alpha model and construct a portfolio of two assets
     alpha_model.select_top_signals(2)
@@ -385,7 +385,7 @@ def decide_trades(
     #
     trades += alpha_model.generate_rebalance_trades_and_triggers(
         position_manager,
-        min_trade_threshold=parameters.rebalance_threshold * portfolio.get_total_equity(),
+        min_trade_threshold=parameters.rebalance_threshold * portfolio.calculate_total_equity(),
     )
 
     if len(trades) == 0 and alpha_model.has_any_signal():
@@ -393,7 +393,7 @@ def decide_trades(
         # and we starting to lose positions because of it
         position_manager.log(
             f"Generated zero trades even though trade signals: {list(alpha_model.signals.values())}\n" +
-            f"Total equity: {portfolio.get_total_equity()}\n" +
+            f"Total equity: {portfolio.calculate_total_equity()}\n" +
             f"Rebalance threshold: {parameters.rebalance_threshold}\n",
             level=logging.WARNING,
         )

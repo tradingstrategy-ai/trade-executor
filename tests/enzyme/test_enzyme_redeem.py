@@ -85,7 +85,7 @@ def test_enzyme_redeem_reserve(
 
     # Strategy has its reserve balances updated
     sync_model.sync_treasury(datetime.datetime.utcnow(), state)
-    assert state.portfolio.get_total_equity() == pytest.approx(500)
+    assert state.portfolio.calculate_total_equity() == pytest.approx(500)
 
     tx_builder = EnzymeTransactionBuilder(hot_wallet, vault)
 
@@ -115,7 +115,7 @@ def test_enzyme_redeem_reserve(
     # Deposit + Withdrawal
     assert len(state.portfolio.get_default_reserve_position().balance_updates) == 2
 
-    assert state.portfolio.get_total_equity() == pytest.approx(250)
+    assert state.portfolio.calculate_total_equity() == pytest.approx(250)
 
 
 # AssertionError: Timestamp missing for block number 46, hash 0xa1069a48792f212348ad4a002fb62807c5101e8a2c1b5f0eb3860da54c80e1a4
@@ -161,7 +161,7 @@ def test_enzyme_redeem_open_position(
 
     # Strategy has its reserve balances updated
     sync_model.sync_treasury(datetime.datetime.utcnow(), state)
-    assert state.portfolio.get_total_equity() == pytest.approx(500)
+    assert state.portfolio.calculate_total_equity() == pytest.approx(500)
 
     # Create open WETH/USDC position worth of 100
 
@@ -234,6 +234,6 @@ def test_enzyme_redeem_open_position(
     reserve = state.portfolio.get_default_reserve_position()
     assert position.get_value() == pytest.approx(100)
     assert reserve.get_value() == pytest.approx(200)
-    assert state.portfolio.get_total_equity() == pytest.approx(300)
+    assert state.portfolio.calculate_total_equity() == pytest.approx(300)
 
 

@@ -130,7 +130,7 @@ def test_enzyme_execute_open_position(
 
     # Strategy has its reserve balances updated
     sync_model.sync_treasury(datetime.datetime.utcnow(), state)
-    assert state.portfolio.get_total_equity() == pytest.approx(500)
+    assert state.portfolio.calculate_total_equity() == pytest.approx(500)
 
     tx_builder = EnzymeTransactionBuilder(hot_wallet, vault)
 
@@ -255,7 +255,7 @@ def test_enzyme_execute_close_position(
 
     # Strategy has its reserve balances updated
     sync_model.sync_treasury(datetime.datetime.utcnow(), state)
-    assert state.portfolio.get_total_equity() == pytest.approx(500)
+    assert state.portfolio.calculate_total_equity() == pytest.approx(500)
 
     tx_builder = EnzymeTransactionBuilder(hot_wallet, vault)
 
@@ -292,7 +292,7 @@ def test_enzyme_execute_close_position(
     assert position.is_closed()
 
     # Lost some money on fees
-    assert state.portfolio.get_total_equity() == pytest.approx(Decimal(497.011924))
+    assert state.portfolio.calculate_total_equity() == pytest.approx(Decimal(497.011924))
 
 
 # Some Anvil flakiness on Github
@@ -338,7 +338,7 @@ def test_enzyme_lp_fees(
 
     # Strategy has its reserve balances updated
     sync_model.sync_treasury(datetime.datetime.utcnow(), state)
-    assert state.portfolio.get_total_equity() == pytest.approx(500)
+    assert state.portfolio.calculate_total_equity() == pytest.approx(500)
 
     tx_builder = EnzymeTransactionBuilder(hot_wallet, vault)
 

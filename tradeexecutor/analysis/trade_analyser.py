@@ -877,7 +877,8 @@ class TradeAnalysis:
             interest_paid_usd.append(position.get_repaid_interest())
 
             for t in position.trades.values():
-                trade_volume += t.get_value()
+                if t.pair.is_volume_generating():
+                    trade_volume += t.get_value()
             
             if position.is_credit_supply():
                 delta_neutral_cons += 1

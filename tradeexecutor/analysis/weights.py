@@ -65,8 +65,13 @@ def calculate_asset_weights(
     #             USDC     1.000000e+04
     series_deduped = series[~series.index.duplicated(keep='last')]
 
+    # Get out all Aave aUSDC positions
+    credit_supply_symbols = [p.pair.base.token_symbol for p in state.portfolio.get_all_positions() if p.is_credit_supply()]
+
     # Pass to visualisation
     series_deduped.attrs["reserve_asset_symbol"] = reserve_asset_symbol
+    series_deduped.attrs["credit_supply_symbols"] = credit_supply_symbols
+
     return series_deduped
 
 
@@ -92,15 +97,21 @@ def visualise_weights(
     assert isinstance(weights_series, pd.Series)
 
     reserve_asset_symbol = weights_series.attrs["reserve_asset_symbol"]
+    non_volatile_symbols = [weights_series.attrs["reserve_asset_symbol"]] + weights_series.attrs["credit_supply_symbols"]
 
     if not include_reserves:
-        # Filter out reserve position
-        reserve_asset_symbol = weights_series.attrs["reserve_asset_symbol"]
-        weights_series = weights_series[weights_series.index.get_level_values(1) != reserve_asset_symbol]
+        # Filter out reserve/credit position
+        weights_series = weights_series[
+            ~weights_series.index.get_level_values(1).isin(non_volatile_symbols)
+        ]
 
     def sort_key_reserve_first(col_name):
         if col_name == reserve_asset_symbol:
             return -1000, col_name
+
+        if col_name in non_volatile_symbols:
+            return -500, col_name
+
         return 0, col_name
 
     # Unstack to create DataFrame with asset symbols as columns
@@ -127,6 +138,11 @@ def visualise_weights(
         color_discrete_sequence=color_palette,
         template=template,
     )
+
+    for symbol in non_volatile_symbols:
+        # Aave colour
+        # https://aave.com/brand
+        fig.update_traces(fillcolor='#9896FF', selector=dict(name=symbol))
     fig.update_traces(fillcolor='#aaa', selector=dict(name=reserve_asset_symbol))
     fig.update_traces(line_width=0)
     return fig

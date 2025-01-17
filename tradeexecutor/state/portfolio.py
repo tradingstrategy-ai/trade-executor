@@ -354,7 +354,7 @@ class Portfolio:
 
         """
 
-        portfolio_value = self.get_total_equity()
+        portfolio_value = self.calculate_total_equity()
 
         p = TradingPosition(
             position_id=self.next_position_id,
@@ -393,6 +393,8 @@ class Portfolio:
         :param pending:
             Check also pending positions that wait market limit open and are not yet triggered
 
+        :return:
+            None of no matching position
         """
 
         if pending:
@@ -540,7 +542,12 @@ class Portfolio:
             # Open a new position
             position = self.get_position_by_trading_pair(pair)
 
-        portfolio_value = self.get_total_equity()
+        portfolio_value = self.calculate_total_equity()
+
+        if flags:
+            if TradeFlag.ignore_open in flags:
+                # Special case of same cycle close/open
+                position = None
 
         if position is None:
             # Initialise new position data structure
@@ -653,26 +660,38 @@ class Portfolio:
         """Get the value of current trading positions plus unexecuted trades."""
         return sum([p.get_value() for p in self.open_positions.values()])
 
-    def get_total_equity(self) -> USDollarAmount:
+    def calculate_total_equity(
+        self,
+    ) -> USDollarAmount:
         """Get the value of the portfolio based on the latest pricing.
 
         This includes
 
-        - Equity Value of the positions
+        - Equity Value of the open positions
 
-        - ...and cash in the hand
+        - Cash cash in the hand
+
+        - Excluding frozen positions: cash cannot be released
 
         But not
 
         - Leverage/loan based positions (equity is in collateral)
 
-        See also :py:meth:`get_theoretical_value`
+        Example:
+
+        .. code-block:: python
+
+            portfolio = position_manager.get_current_portfolio()
+            portfolio_target_value = portfolio.calculate_total_equity() \
+            * parameters.allocation \
+            - position_manager.get_pending_redemptions()
 
         """
-
         # Any trading positions we have one
         # spot_values = sum([p.get_equity() for p in self.open_positions.values() if not p.is_leverage()])
         return self.get_position_equity_and_loan_nav() + self.get_cash()
+
+    get_total_equity = calculate_total_equity
 
     def get_net_asset_value(self, include_interest=True) -> USDollarAmount:
         """Calculate portfolio value if every position would be closed now.
@@ -1163,7 +1182,7 @@ class Portfolio:
         :return:
             If we have any capital to trade
         """
-        return self.get_total_equity() >= threshold_usd
+        return self.calculate_total_equity() >= threshold_usd
     
     def get_total_claimed_interest(self) -> USDollarAmount:
         """Get the total interest claimed from the positions."""

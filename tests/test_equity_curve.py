@@ -222,7 +222,7 @@ def test_calculate_equity_curve(state: State):
     assert type(curve) == pd.Series
 
     # Check begin and end values of portfolio look correct
-    assert state.portfolio.get_total_equity() == pytest.approx(8605.74)
+    assert state.portfolio.calculate_total_equity() == pytest.approx(8605.74)
     assert curve[pd.Timestamp("2021-06-01")] == 10_000
     assert curve[pd.Timestamp("2021-12-30")] == pytest.approx(8605.74)
 
@@ -237,7 +237,7 @@ def test_calculate_equity_time_gapped(state: State):
     assert type(curve) == pd.Series
 
     # Check begin and end values of portfolio look correct
-    assert state.portfolio.get_total_equity() == pytest.approx(8605.74)
+    assert state.portfolio.calculate_total_equity() == pytest.approx(8605.74)
     assert curve[pd.Timestamp("2021-06-01")] == 10_000
     assert curve[pd.Timestamp("2021-12-30")] == pytest.approx(8605.74)
 

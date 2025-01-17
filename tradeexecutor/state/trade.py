@@ -147,6 +147,15 @@ class TradeFlag(enum.Enum):
     #:
     partial_take_profit = "partial_take_profit"
 
+    #: If there is an existing open position, do not try to match the trade for an open position.
+    #:
+    #: We trade by pair. If in same cycle we close and open position for the same pair, the trade
+    #: would count against the closed pair and not correctly accounted for.
+    #:
+    #: This is for the case that we recall all Aave credit at the start of the cycle,
+    #: then put it back at the end of the cycle.
+    #:
+    ignore_open = "ignore_open"
 
 
 @dataclass_json
@@ -830,6 +839,9 @@ class TradeExecution:
 
     def is_buy(self) -> bool:
         """Trade is considered spot buy or long if the planned quantity is positive.
+
+        :return:
+            True also for credit supplies
         """
         return self.planned_quantity > 0
 

@@ -144,7 +144,7 @@ def test_update_reserves(usdc, weth, weth_usdc, start_ts):
     state = State()
     state.update_reserves([ReservePosition(usdc, Decimal(1000), start_ts, 1.0, start_ts)])
     assert state.portfolio.get_cash() == 1_000
-    assert state.portfolio.get_total_equity() == 1_000
+    assert state.portfolio.calculate_total_equity() == 1_000
 
 
 def test_single_buy(usdc, weth, weth_usdc, start_ts):
@@ -183,7 +183,7 @@ def test_single_buy(usdc, weth, weth_usdc, start_ts):
 
     assert position.has_planned_trades()
     assert state.portfolio.get_cash() == 1_000
-    assert state.portfolio.get_total_equity() == 1_000
+    assert state.portfolio.calculate_total_equity() == 1_000
 
     # #2 Capital allocation
     txid = "0xffffff"
@@ -197,13 +197,13 @@ def test_single_buy(usdc, weth, weth_usdc, start_ts):
     assert position.has_unexecuted_trades()
     assert not position.has_planned_trades()
     assert state.portfolio.get_cash() == 830  # Trades being executed do not show in the portfolio value
-    assert state.portfolio.get_total_equity() == 1000  # Trades being executed do not show in the portfolio value
+    assert state.portfolio.calculate_total_equity() == 1000  # Trades being executed do not show in the portfolio value
 
     # #3 broadcast
     ts = ts + datetime.timedelta(minutes=1)
     state.mark_broadcasted(ts, trade)
     assert state.portfolio.get_cash() == 830  # Trades being executed do not show in the portfolio value
-    assert state.portfolio.get_total_equity() == 1000  # Trades being executed do not show in the portfolio value
+    assert state.portfolio.calculate_total_equity() == 1000  # Trades being executed do not show in the portfolio value
 
     # #4 success
     ts = ts + datetime.timedelta(minutes=1)
@@ -226,7 +226,7 @@ def test_single_buy(usdc, weth, weth_usdc, start_ts):
     assert not position.has_unexecuted_trades()
     assert not position.has_planned_trades()
     assert state.portfolio.get_cash() == 830  # Trades being executed do not show in the portfolio value
-    assert state.portfolio.get_total_equity() == 983  # Trades being executed do not show in the portfolio value7
+    assert state.portfolio.calculate_total_equity() == 983  # Trades being executed do not show in the portfolio value7
 
     assert len(state.portfolio.open_positions) == 1
 
@@ -237,7 +237,7 @@ def test_single_sell_all(usdc, weth, weth_usdc, start_ts, single_asset_portfolio
 
     # 0: Check the starting state
     assert state.portfolio.get_cash() == 500
-    assert state.portfolio.get_total_equity() == 657.7
+    assert state.portfolio.calculate_total_equity() == 657.7
     assert state.portfolio.get_position_equity_and_loan_nav() == 157.7
     eth_quantity = state.portfolio.open_positions[1].get_quantity_old()
     assert eth_quantity == Decimal("0.09500000000000000111022302463")
@@ -266,7 +266,7 @@ def test_single_sell_all(usdc, weth, weth_usdc, start_ts, single_asset_portfolio
     assert trade.get_status() == TradeStatus.planned
     assert position.has_planned_trades()
     assert state.portfolio.get_cash() == 500
-    assert state.portfolio.get_total_equity() == 657.7
+    assert state.portfolio.calculate_total_equity() == 657.7
 
     asset_deltas = trade.calculate_asset_deltas()
     assert asset_deltas[0].is_spending()
@@ -282,7 +282,7 @@ def test_single_sell_all(usdc, weth, weth_usdc, start_ts, single_asset_portfolio
     ts = start_ts + datetime.timedelta(minutes=1)
     state.start_execution(ts, trade, txid, nonce)
     assert state.portfolio.get_cash() == 500
-    assert state.portfolio.get_total_equity() == 657.7
+    assert state.portfolio.calculate_total_equity() == 657.7
     assert state.portfolio.open_positions[1].trades[2].txid == txid
     assert state.portfolio.open_positions[1].trades[2].nonce == nonce
     assert state.portfolio.open_positions[1].trades[2].started_at == ts
@@ -294,7 +294,7 @@ def test_single_sell_all(usdc, weth, weth_usdc, start_ts, single_asset_portfolio
     ts = ts + datetime.timedelta(minutes=1)
     state.mark_broadcasted(ts, trade)
     assert state.portfolio.get_cash() == 500
-    assert state.portfolio.get_total_equity() == 657.7
+    assert state.portfolio.calculate_total_equity() == 657.7
 
     # #4 success
     ts = ts + datetime.timedelta(minutes=1)
@@ -331,7 +331,7 @@ def test_single_sell_all(usdc, weth, weth_usdc, start_ts, single_asset_portfolio
     # We originally bought ETH at 1690
     # now sold at 1640
     assert state.portfolio.get_cash() == 655.8
-    assert state.portfolio.get_total_equity() == 655.8
+    assert state.portfolio.calculate_total_equity() == 655.8
     assert state.portfolio.get_position_equity_and_loan_nav() == 0
 
     assert len(state.portfolio.open_positions) == 0
@@ -346,11 +346,11 @@ def test_buy_buy_sell_sell(usdc, weth, weth_usdc, start_ts):
     trader = UnitTestTrader(state)
 
     # 0: start
-    assert state.portfolio.get_total_equity() == 1000.0
+    assert state.portfolio.calculate_total_equity() == 1000.0
 
     # 1: buy 1
     position, trade = trader.buy(weth_usdc, Decimal(0.1), 1700)
-    assert state.portfolio.get_total_equity() == 998.3
+    assert state.portfolio.calculate_total_equity() == 998.3
     assert position.get_quantity_old() == pytest.approx(Decimal(0.099))
 
     # 2: buy 2
@@ -366,7 +366,7 @@ def test_buy_buy_sell_sell(usdc, weth, weth_usdc, start_ts):
     # it is not automatically revalued on loss on trade execution and this is why
     # it seems the portfolio value is growing when we buy more ETH
     assert position.last_token_price == 1700
-    assert state.portfolio.get_total_equity() == 996.6
+    assert state.portfolio.calculate_total_equity() == 996.6
 
     assert len(state.portfolio.open_positions) == 1
 
@@ -383,7 +383,7 @@ def test_buy_buy_sell_sell(usdc, weth, weth_usdc, start_ts):
 
     assert position.get_quantity_old() == 0
     assert len(state.portfolio.open_positions) == 0
-    assert state.portfolio.get_total_equity() == pytest.approx(993.234)
+    assert state.portfolio.calculate_total_equity() == pytest.approx(993.234)
 
     # All done
     assert len(position.trades) == 4
@@ -398,11 +398,11 @@ def test_buy_sell_two_positions(usdc, weth_usdc, aave_usdc, start_ts):
     trader = UnitTestTrader(state)
 
     # 0: start
-    assert state.portfolio.get_total_equity() == 1000.0
+    assert state.portfolio.calculate_total_equity() == 1000.0
 
     # 1: buy token 1
     position, trade = trader.buy(weth_usdc, Decimal(0.1), 1700)
-    assert state.portfolio.get_total_equity() == 998.3
+    assert state.portfolio.calculate_total_equity() == 998.3
     assert position.get_quantity_old() == pytest.approx(Decimal(0.099))
 
     # 2: buy  token 3
@@ -410,7 +410,7 @@ def test_buy_sell_two_positions(usdc, weth_usdc, aave_usdc, start_ts):
     assert position.get_quantity_old() == pytest.approx(Decimal(0.5 * 0.99))
 
     assert len(state.portfolio.open_positions) == 2
-    assert state.portfolio.get_total_equity() == 997.3
+    assert state.portfolio.calculate_total_equity() == 997.3
 
     # 3: sell both
     portfolio = state.portfolio
@@ -418,7 +418,7 @@ def test_buy_sell_two_positions(usdc, weth_usdc, aave_usdc, start_ts):
     trader.sell(aave_usdc, portfolio.get_equity_for_pair(aave_usdc), 200)
 
     assert len(state.portfolio.open_positions) == 0
-    assert state.portfolio.get_total_equity() == pytest.approx(994.627)
+    assert state.portfolio.calculate_total_equity() == pytest.approx(994.627)
 
 
 def test_statistics(usdc, weth_usdc, aave_usdc, start_ts):
@@ -437,7 +437,7 @@ def test_statistics(usdc, weth_usdc, aave_usdc, start_ts):
     trader = UnitTestTrader(state)
 
     # 0: start
-    assert state.portfolio.get_total_equity() == 1000.0
+    assert state.portfolio.calculate_total_equity() == 1000.0
     portfolio = state.portfolio
 
     # 1: buy token 1
@@ -494,7 +494,7 @@ def test_statistics(usdc, weth_usdc, aave_usdc, start_ts):
     trader.sell(aave_usdc, portfolio.get_equity_for_pair(aave_usdc), 300)
 
     assert len(state.portfolio.open_positions) == 0
-    assert state.portfolio.get_total_equity() == pytest.approx(1043.632)
+    assert state.portfolio.calculate_total_equity() == pytest.approx(1043.632)
 
     long_short_metrics_latest = serialise_long_short_stats_as_json_table(
         state, None
@@ -570,7 +570,7 @@ def test_not_enough_cash(usdc, weth_usdc, start_ts):
     trader = UnitTestTrader(state)
 
     # 0: start
-    assert state.portfolio.get_total_equity() == 1000.0
+    assert state.portfolio.calculate_total_equity() == 1000.0
 
     # Has $1000, needs $1700
     with pytest.raises(NotEnoughMoney):
@@ -585,11 +585,11 @@ def test_buy_sell_buy(usdc, weth, weth_usdc, start_ts):
     trader = UnitTestTrader(state)
 
     # 0: start
-    assert state.portfolio.get_total_equity() == 1000.0
+    assert state.portfolio.calculate_total_equity() == 1000.0
 
     # 1: buy 1
     position, trade = trader.buy(weth_usdc, Decimal(0.1), 1700)
-    assert state.portfolio.get_total_equity() == 998.3
+    assert state.portfolio.calculate_total_equity() == 998.3
     assert position.get_quantity_old() == pytest.approx(Decimal(0.099))
 
     # 2: Sell half of the tokens
@@ -614,7 +614,7 @@ def test_realised_profit_calculation(usdc, weth_usdc, start_ts: datetime.datetim
     state.update_reserves([ReservePosition(usdc, Decimal(10000), start_ts, 1.0, start_ts)])
     trader = UnitTestTrader(state, lp_fees=0, price_impact=1)
 
-    assert state.portfolio.get_total_equity() == 10000.0
+    assert state.portfolio.calculate_total_equity() == 10000.0
 
     # Do 2 buys w/ different prices
     position, trade = trader.buy(weth_usdc, Decimal("1.0"), 1700.0)
@@ -662,7 +662,7 @@ def test_realised_partial_profit_calculation(usdc, weth_usdc, start_ts: datetime
     state.update_reserves([ReservePosition(usdc, Decimal(10000), start_ts, 1.0, start_ts)])
     trader = UnitTestTrader(state, lp_fees=0, price_impact=1)
 
-    assert state.portfolio.get_total_equity() == 10000.0
+    assert state.portfolio.calculate_total_equity() == 10000.0
 
     # Do 2 buys w/ different prices
     trader.buy(weth_usdc, Decimal("1.0"), 1700.0)
@@ -702,7 +702,7 @@ def test_unrealised_partial_profit_calculation_with_in_kind_redemption_zero_prof
     state.update_reserves([ReservePosition(usdc, Decimal(10000), start_ts, 1.0, start_ts)])
     trader = UnitTestTrader(state, lp_fees=0, price_impact=1)
 
-    assert state.portfolio.get_total_equity() == 10000.0
+    assert state.portfolio.calculate_total_equity() == 10000.0
 
     # Buy 1 ETH at 1700
     position, trade = trader.buy(weth_usdc, Decimal("1.0"), 1700.0)
@@ -731,7 +731,7 @@ def test_unrealised_partial_profit_calculation_with_in_kind_redemption_only_unre
     state.update_reserves([ReservePosition(usdc, Decimal(10000), start_ts, 1.0, start_ts)])
     trader = UnitTestTrader(state, lp_fees=0, price_impact=1)
 
-    assert state.portfolio.get_total_equity() == 10000.0
+    assert state.portfolio.calculate_total_equity() == 10000.0
 
     # Buy 1 ETH at 1700
     position, trade = trader.buy(weth_usdc, Decimal("1.0"), 1700.0)
@@ -766,7 +766,7 @@ def test_unrealised_partial_profit_calculation_with_in_kind_redemption_realised(
     state.update_reserves([ReservePosition(usdc, Decimal(10000), start_ts, 1.0, start_ts)])
     trader = UnitTestTrader(state, lp_fees=0, price_impact=1)
 
-    assert state.portfolio.get_total_equity() == 10000.0
+    assert state.portfolio.calculate_total_equity() == 10000.0
 
     # Buy 1 ETH at 1700
     position, trade = trader.buy(weth_usdc, Decimal("1.0"), 1700.0)
@@ -806,7 +806,7 @@ def test_realised_partial_profit_calculation_with_in_kind_redemption(usdc, weth_
     state.update_reserves([ReservePosition(usdc, Decimal(10000), start_ts, 1.0, start_ts)])
     trader = UnitTestTrader(state, lp_fees=0, price_impact=1)
 
-    assert state.portfolio.get_total_equity() == 10000.0
+    assert state.portfolio.calculate_total_equity() == 10000.0
 
     # Do 2 buys w/ different prices
     trader.buy(weth_usdc, Decimal("1.0"), 1700.0)
@@ -877,7 +877,7 @@ def test_unrealised_partial_profit_calculation_with_in_kind_redemption_sell_then
     state.update_reserves([ReservePosition(usdc, Decimal(10000), start_ts, 1.0, start_ts)])
     trader = UnitTestTrader(state, lp_fees=0, price_impact=1)
 
-    assert state.portfolio.get_total_equity() == 10000.0
+    assert state.portfolio.calculate_total_equity() == 10000.0
 
     # Buy 1 ETH at 1700
     position, trade = trader.buy(weth_usdc, Decimal("1.0"), 1700.0)
@@ -922,7 +922,7 @@ def test_unrealised_partial_profit_calculation_with_in_kind_redemption_redeem_th
     state.update_reserves([ReservePosition(usdc, Decimal(10000), start_ts, 1.0, start_ts)])
     trader = UnitTestTrader(state, lp_fees=0, price_impact=1)
 
-    assert state.portfolio.get_total_equity() == 10000.0
+    assert state.portfolio.calculate_total_equity() == 10000.0
 
     # Buy 1 ETH at 1700
     position, trade = trader.buy(weth_usdc, Decimal("1.0"), 1700.0)
@@ -963,7 +963,7 @@ def test_unrealised_partial_profit_calculation_with_in_kind_redemption_sell_real
     state.update_reserves([ReservePosition(usdc, Decimal(10000), start_ts, 1.0, start_ts)])
     trader = UnitTestTrader(state, lp_fees=0, price_impact=1)
 
-    assert state.portfolio.get_total_equity() == 10000.0
+    assert state.portfolio.calculate_total_equity() == 10000.0
 
     # Buy 1 ETH at 1700
     position, trade = trader.buy(weth_usdc, Decimal("1.0"), 1700.0)
@@ -995,7 +995,7 @@ def test_unrealised_partial_profit_calculation_with_in_kind_redemption_redeem_th
     state.update_reserves([ReservePosition(usdc, Decimal(10000), start_ts, 1.0, start_ts)])
     trader = UnitTestTrader(state, lp_fees=0, price_impact=1)
 
-    assert state.portfolio.get_total_equity() == 10000.0
+    assert state.portfolio.calculate_total_equity() == 10000.0
 
     # Buy 1 ETH at 1700
     position, trade = trader.buy(weth_usdc, Decimal("1.0"), 1700.0)
@@ -1039,7 +1039,7 @@ def test_unrealised_profit_calculation(usdc, weth_usdc, start_ts: datetime.datet
     state.update_reserves([ReservePosition(usdc, Decimal(10000), start_ts, 1.0, start_ts)])
     trader = UnitTestTrader(state, lp_fees=0, price_impact=1)
 
-    assert state.portfolio.get_total_equity() == 10000.0
+    assert state.portfolio.calculate_total_equity() == 10000.0
 
     # Do 2 buys w/ different prices
     trader.buy(weth_usdc, Decimal("1.0"), 1700.0)
@@ -1108,7 +1108,7 @@ def test_position_risk_calculation(usdc, weth_usdc, start_ts: datetime.datetime)
     state.update_reserves([ReservePosition(usdc, Decimal(10000), start_ts, 1.0, start_ts)])
     trader = UnitTestTrader(state, lp_fees=0, price_impact=1)
 
-    assert state.portfolio.get_total_equity() == 10000.0
+    assert state.portfolio.calculate_total_equity() == 10000.0
 
     # Do 2 buys, see open value does not change
     position, trade = trader.buy(weth_usdc, Decimal("1.0"), 1700.0)
@@ -1160,7 +1160,7 @@ def test_single_buy_failed(usdc, weth, weth_usdc, start_ts):
     ts = ts + datetime.timedelta(minutes=1)
     state.mark_broadcasted(ts, trade)
     assert state.portfolio.get_cash() == 830  # Trades being executed do not show in the portfolio value
-    assert state.portfolio.get_total_equity() == 1000  # Trades being executed do not show in the portfolio value
+    assert state.portfolio.calculate_total_equity() == 1000  # Trades being executed do not show in the portfolio value
 
     # #4 fail
     ts = ts + datetime.timedelta(minutes=1)
@@ -1178,7 +1178,7 @@ def test_single_buy_failed(usdc, weth, weth_usdc, start_ts):
     assert not position.has_unexecuted_trades()
     assert not position.has_planned_trades()
     assert state.portfolio.get_cash() == 1000.0  # Trades being executed do not show in the portfolio value
-    assert state.portfolio.get_total_equity() == 1000.0  # Trades being executed do not show in the portfolio value7
+    assert state.portfolio.calculate_total_equity() == 1000.0  # Trades being executed do not show in the portfolio value7
 
     assert len(state.portfolio.open_positions) == 1
 
@@ -1204,7 +1204,7 @@ def test_serialize_state(usdc, weth_usdc, start_ts: datetime.datetime):
 
     # 1: buy 1
     position, trade = trader.buy(weth_usdc, Decimal(0.1), 1700)
-    assert state.portfolio.get_total_equity() == 998.3
+    assert state.portfolio.calculate_total_equity() == 998.3
     assert position.get_value() == pytest.approx(168.3)
     assert position.last_pricing_at == start_ts
 
@@ -1247,7 +1247,7 @@ def test_state_summary_without_initial_cash(usdc, weth_usdc, start_ts: datetime.
     trader = UnitTestTrader(state)
 
     position, trade = trader.buy(weth_usdc, Decimal(0.1), 1700)
-    assert state.portfolio.get_total_equity() == 998.3
+    assert state.portfolio.calculate_total_equity() == 998.3
     assert position.get_value() == pytest.approx(168.3)
     assert position.last_pricing_at == start_ts
 
@@ -1356,7 +1356,7 @@ def test_serialize_state(usdc, weth_usdc, start_ts: datetime.datetime):
 
     # 1: buy 1
     position, trade = trader.buy(weth_usdc, Decimal(0.1), 1700)
-    assert state.portfolio.get_total_equity() == 998.3
+    assert state.portfolio.calculate_total_equity() == 998.3
     assert position.get_value() == pytest.approx(168.3)
     assert position.last_pricing_at == start_ts
 

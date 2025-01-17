@@ -695,6 +695,10 @@ class TradingPairIdentifier:
     def is_credit_supply(self) -> bool:
         return self.kind.is_credit_supply()
 
+    def is_volume_generating(self) -> bool:
+        """Should this pair to be included in total volume calculations"""
+        return not self.is_credit_supply()
+
     def get_liquidation_threshold(self) -> Percent:
         """What's the liqudation threshold for this leveraged pair"""
         assert self.kind.is_leverage()

@@ -318,7 +318,6 @@ class EthereumExecution(ExecutionModel):
         mev_blocker = get_mev_blocker_provider(web3)
         # assert mev_blocker or self.force_sequential_broadcast
 
-
         # Special path needed on Ethereum mainnet and MEV Blocker
         logger.info(
             "MEV blocker/sequential tx enabled broadcast, mev blocker: %s, sequential: %s, timeout %s",
@@ -331,11 +330,46 @@ class EthereumExecution(ExecutionModel):
             # Anvil test path
             mev_blocker = web3.provider
 
+        asset, _ = state.portfolio.get_default_reserve_asset()
+        treasury_token = fetch_erc20_details(
+            self.web3,
+            asset.address,
+            chain_id=asset.chain_id,
+        )
+        balance_address = self.tx_builder.get_erc_20_balance_address()
+
+        completed_trades = []
+
         # Broadcast and resolve one by one
         for t in trades:
 
             current_trade_tx_map = {}
             current_trade_receipts = {}
+
+            needed_usd = t.get_value()
+
+            onchain_treasury_balance = treasury_token.fetch_balance_of(balance_address)
+            logger.info(
+                "Onchain balance %f, before executing %s with value %s",
+                onchain_treasury_balance,
+                t,
+                needed_usd,
+            )
+
+            # Trip wire if we have somehow miscalculated USD allocation for buy trades
+            if t.is_spot():
+                if t.is_buy():
+                    if onchain_treasury_balance <= needed_usd:
+                        trades_done = len(completed_trades)
+                        total_sales = sum(t.get_executed_value() for t in completed_trades if t.is_sell())
+                        expected_sales = sum(t.planned_reserve for t in completed_trades if t.is_sell())
+                        diff = (total_sales - expected_sales) / expected_sales
+                        assert onchain_treasury_balance >= needed_usd, \
+                            f"Not enough treasury to buy token  in the middle of rebalance run, should not happen.\n" \
+                            f"Trades done: {trades_done}, total trades: {len(trades)}\n" \
+                            f"Balance: {onchain_treasury_balance:.2f}, USD needed: {needed_usd:.2f}" \
+                            f"Total sales: {total_sales:.2f} USD, expected sales: {expected_sales:.2f} USD, diff {diff:.2%}" \
+                            f"Trade: {t}"
 
             for tx in t.blockchain_transactions:
 
@@ -390,6 +424,8 @@ class EthereumExecution(ExecutionModel):
                     current_trade_receipts,
                     stop_on_execution_failure=stop_on_execution_failure
             )
+
+            completed_trades.append(t)
 
     def broadcast_and_resolve_multiple_nodes(
         self,

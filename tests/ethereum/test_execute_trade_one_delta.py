@@ -349,7 +349,7 @@ def test_execute_trade_instructions_open_short(
     portfolio = state.portfolio
 
     # We have everything in cash
-    assert portfolio.get_total_equity() == 10_000
+    assert portfolio.calculate_total_equity() == 10_000
     assert portfolio.get_cash() == 10_000
 
     # Buy 500 USDC worth of WETH
@@ -372,7 +372,7 @@ def test_execute_trade_instructions_open_short(
         leverage,
     )
     assert trade.is_leverage()
-    assert state.portfolio.get_total_equity() == pytest.approx(10000.0)
+    assert state.portfolio.calculate_total_equity() == pytest.approx(10000.0)
     assert trade.get_status() == TradeStatus.planned
 
     ethereum_trader.execute_trades_simple(ethereum_trader.create_routing_model(), [trade])
@@ -410,7 +410,7 @@ def test_execute_trade_instructions_open_and_close_short(
     portfolio = state.portfolio
 
     # We have everything in cash
-    assert portfolio.get_total_equity() == 10_000
+    assert portfolio.calculate_total_equity() == 10_000
     assert portfolio.get_cash() == 10_000
 
     # Buy 500 USDC worth of WETH
@@ -433,7 +433,7 @@ def test_execute_trade_instructions_open_and_close_short(
         leverage,
     )
     assert trade1.is_leverage()
-    assert state.portfolio.get_total_equity() == pytest.approx(10000.0)
+    assert state.portfolio.calculate_total_equity() == pytest.approx(10000.0)
     assert trade1.get_status() == TradeStatus.planned
 
     ethereum_trader.execute_trades_simple(ethereum_trader.create_routing_model(), [trade1])

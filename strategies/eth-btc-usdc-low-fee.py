@@ -273,11 +273,11 @@ def decide_trades(
     alpha_model.normalise_weights()
     alpha_model.update_old_weights(state.portfolio)
     portfolio = position_manager.get_current_portfolio()
-    portfolio_target_value = portfolio.get_total_equity() * parameters.allocation
+    portfolio_target_value = portfolio.calculate_total_equity() * parameters.allocation
     alpha_model.calculate_target_positions(position_manager, portfolio_target_value)
     trades = alpha_model.generate_rebalance_trades_and_triggers(
         position_manager,
-        min_trade_threshold=parameters.rebalance_threshold * portfolio.get_total_equity(),
+        min_trade_threshold=parameters.rebalance_threshold * portfolio.calculate_total_equity(),
     )
 
     #

@@ -11,6 +11,7 @@ import cachetools
 import pandas as pd
 
 from eth_defi.token_analysis.blacklist import is_blacklisted_address
+from tradeexecutor.ethereum.one_delta.analysis import analyse_leverage_trade_by_receipt
 from tradingstrategy.candle import CandleSampleUnavailable
 from tradingstrategy.pair import DEXPair, HumanReadableTradingPairDescription
 from tradingstrategy.universe import Universe
@@ -839,7 +840,16 @@ class PositionManager:
 
         .. code-block:: python
 
-
+            pair = strategy_universe.get_pair_by_human_description((ChainId.base, "uniswap-v3", "DogInMe", "WETH"))
+            dollar_delta = 0.1  # Buy 0.1 more on the existing position
+            position = position_manager.get_current_position_for_pair(pair)
+            quantity_delta = dollar_delta * position.get_current_price()
+            trades = position_manager.adjust_position(
+                pair=pair,
+                dollar_delta=dollar_delta,
+                quantity_delta=quantity_delta,
+                weight=1,
+            )
 
         .. warning ::
 
@@ -852,6 +862,9 @@ class PositionManager:
         :param dollar_delta:
             How much we want to increase/decrease the position in US dollar terms.
 
+            - Positive: increase position
+            - Negative: decrease position
+
             TODO: If you are selling the assets, you need to calculate the expected
             dollar estimate yourself at the moment.
 
@@ -860,6 +873,8 @@ class PositionManager:
 
             Used only when decreasing existing positions (selling).
             Set to ``None`` if not selling.
+
+            Must be negative.
 
         :param weight:
             What is the weight of the asset in the new target portfolio 0....1.
@@ -950,6 +965,13 @@ class PositionManager:
         reserve_asset, reserve_price = self.state.portfolio.get_default_reserve_asset()
 
         slippage_tolerance = slippage_tolerance or self.default_slippage_tolerance
+
+        logger.info(
+            "adjust_position(), position: %s, dollar_delta: %s, quantity_delta: %s",
+            position,
+            dollar_delta,
+            quantity_delta,
+        )
 
         if dollar_delta > 0:
 
@@ -1296,8 +1318,14 @@ class PositionManager:
         else:
             raise NotImplementedError(f"Does not know how to close: {position}")
 
-    def close_all(self) -> List[TradeExecution]:
+    def close_all(
+        self,
+        credit_supply=True,
+    ) -> List[TradeExecution]:
         """Close all open positions.
+
+        :param credit_supply:
+            Set to false not to automatically close credit supply positions.
 
         :return:
             List of trades that will close existing positions
@@ -1307,6 +1335,10 @@ class PositionManager:
         position: TradingPosition
         trades = []
         for position in self.state.portfolio.open_positions.values():
+            if position.is_credit_supply():
+                if not credit_supply:
+                    continue
+
             trade = self.close_position(position)
             if trade:
                 trades.extend(trade)
@@ -1450,7 +1482,8 @@ class PositionManager:
     def adjust_credit_supply_position(
         self,
         position: TradingPosition,
-        new_value: USDollarAmount,
+        new_value: USDollarAmount = None,
+        delta: USDollarAmount = None,
         trade_type: TradeType = TradeType.rebalance,
         flags: Set[TradeFlag] | None = None,
         notes: str | None = None,
@@ -1472,6 +1505,11 @@ class PositionManager:
         :param new_value:
             The allocated collateral for this position after the trade in US Dollar reserves.
 
+        :param delta:
+            Collateral added to the credit position.
+
+            Positive = add more collateral.
+
         :return:
             New trades to be executed
         """
@@ -1480,10 +1518,13 @@ class PositionManager:
         assert position.is_credit_supply()
         assert position.is_open(), "Cannot adjust closed credit position"
         assert position.loan is not None, f"Position did not have existing loan structure: {position}"
-        assert new_value > 0, "Cannot use adjust_credit_supply_position() to close credit position"
+        assert new_value or delta, "Either new_value or delta must be provided"
+        if new_value:
+            assert new_value > 0, "Cannot use adjust_credit_supply_position() to close credit position"
 
         value = position.get_value()
-        delta = new_value - value
+        if not delta:
+            delta = new_value - value
 
         if abs(delta) == 0:
             logger.info("Change is abs zero for %s", position.pair)
@@ -2403,6 +2444,190 @@ class PositionManager:
             level,
             msg,
         )
+
+    def calculate_credit_flow_needed(
+        self,
+        trades: list[TradeExecution],
+        allocation_pct: Percent,
+        buffer_pct: Percent=0.01,
+        lending_reserve_identifier: TradingPairIdentifier = None,
+    ) -> USDollarAmount:
+        """How much cash we need ton this cycle.
+
+        - We have a strategy that uses Aave for USDC credit yield, or similar yield farming service
+        - We need to know how much new cash we need to release
+
+        .. note ::
+
+            Only call this after you have set up all the other trades in this cycle.
+
+        See also :py:meth:`manage_credit_flow`
+
+        :param allocation_pct:
+            How much of the cash we allocate to the portfolio positions.
+
+            E.g. if this is 0.95, then 95% goes to open positions, 5% to cash.
+
+        :param buffer_pct:
+            Because we do not know the executed reserve quantity released in sell trades,
+            we need to have some safe margin because we might getting a bit less cash from sells
+            we expect.
+
+        :param lending_reserve_identifier:
+            Check our open lending position.
+
+        :return:
+            Positive: This much of cash must be released from credit supplied.
+            Negative: This much of cash be deposited to Aave at the end of the cycle.
+        """
+
+        if lending_reserve_identifier is None:
+            lending_reserve_identifier = self.strategy_universe.get_credit_supply_pair()
+
+        assert allocation_pct > 0.30, f"allocation_pct might not be correct: {allocation_pct}"
+        assert isinstance(lending_reserve_identifier, TradingPairIdentifier), f"Expected TradingPairIdentifier, got {lending_reserve_identifier}"
+
+        cash_needed = 0.0
+
+        for t in trades:
+            assert t.is_spot(), f"Only spot trades supported in calculate_cash_needed(), got: {t}"
+
+            if t.is_buy():
+                cash_needed += float(t.planned_reserve)
+            else:
+                cash_needed -= float(t.planned_reserve) * buffer_pct
+
+        # Keep this amount always in cash.
+        # For Lagoon this will enable instant small redemptions.
+        nav = self.state.portfolio.get_net_asset_value()
+        always_cash = nav * (1 - allocation_pct)
+
+        position = self.get_current_position_for_pair(lending_reserve_identifier)
+        if position is None:
+            already_deposited = 0
+        else:
+            already_deposited = position.get_value(include_interest=True)
+
+        available_cash = self.get_current_cash()
+        total_cash_needed = cash_needed + always_cash
+        flow = total_cash_needed - available_cash
+
+        logger.info(
+            "calculate_cash_needed(): trades: %d, nav: %f, flow: %f, total cash needed: %f, cash needed in trades: %f, already deposited: %f, always cash: %f, buffer: %f",
+            len(trades),
+            nav,
+            flow,
+            total_cash_needed,
+            cash_needed,
+            already_deposited,
+            always_cash,
+            buffer_pct,
+        )
+
+        logger.info("Lending reserve: %s, lending position: %s", lending_reserve_identifier, position)
+
+        if flow > 0:
+            assert flow < already_deposited, f"Tries to release {flow} from credit supplies, but we have only {already_deposited}"
+
+        return flow
+
+    def manage_credit_flow(
+        self,
+        flow: USDollarAmount,
+        lending_reserve_identifier: TradingPairIdentifier = None,
+        cash_change_tolerance_usd: USDollarAmount=50.0,
+    ) -> list[TradeExecution]:
+        """Create trades to adjust cash/credit supply positions.
+
+        :param flow:
+            How much credit supply should change.
+
+            Positive: This much of cash must be released from credit supplied.
+            Negative: This much of cash be deposited to Aave at the end of the cycle.
+
+        :param lending_reserve_identifier:
+            Use this lending protocol.
+        """
+
+        assert type(flow) == float, f"Got: {type(flow)} instead of float"
+        if lending_reserve_identifier is None:
+            lending_reserve_identifier = self.strategy_universe.get_credit_supply_pair()
+
+        assert isinstance(lending_reserve_identifier, TradingPairIdentifier), f"Expected TradingPairIdentifier, got {lending_reserve_identifier}"
+
+        logger.info(
+            "manage_credit_flow(), lending reserve is %s, change %f",
+            lending_reserve_identifier,
+            flow
+        )
+
+        position = self.get_current_position_for_pair(lending_reserve_identifier)
+        trades = []
+
+        if flow == 0:
+            logger.info("No credit flow, skipping")
+            return []
+
+        if position is None:
+            already_deposited = 0
+        else:
+            already_deposited = position.get_value(include_interest=True)
+
+        if flow > 0:
+
+            # We need to release cash from the reserves.
+            # How we do this is
+            # - Fully close Aave position at the start of the trades
+            # - Deposit money left back at the end of the trades
+            # We do this this way so that we claim interest at this kind of cycle,
+            # makes accounting easier
+            funds_to_deposit_at_cycle_end = already_deposited - flow
+
+            logger.info(
+                "Releasing all Aave cash and re-depositing at the end. Flow: %f, Aave deposits at the end: %f, trades: %d",
+                flow,
+                funds_to_deposit_at_cycle_end,
+                len(trades)
+            )
+
+            # Don't generate trades if we only see change in the interest.
+            # Small interest changes should not trigger rebalance,
+            # we only need to trigger if cash is needed for trades.
+            if len(trades) == 0 and flow < cash_change_tolerance_usd:
+                logger.info("No trades and credit supply position within the no action tolerance")
+                return []
+
+            trades += self.close_credit_supply_position(
+                position,
+                notes="Releasing all funds to trade on the cycle"
+            )
+
+            trades += self.open_credit_supply_position_for_reserves(
+                funds_to_deposit_at_cycle_end,
+                flags={TradeFlag.ignore_open},
+                notes="Redepositing remaining funds at the end of cycle"
+            )
+        else:
+            # The credit supply position increaes in this cycle
+            if position is None:
+                logger.info("Creating initial credit supply position")
+                assert flow < 0, f"Initial credit flow must be supply, got {flow}"
+
+                trades += self.open_credit_supply_position_for_reserves(
+                    -flow,
+                    notes="Initial supply"
+                )
+            else:
+                logger.info("Increasing the existing credit supply position")
+                # Add funds to the existing credit position
+                trades += self.adjust_credit_supply_position(
+                    position,
+                    delta=-flow,
+                    notes="Extra cash, increasing credit supply"
+                )
+
+        return trades
+
 
 
 def explain_open_position_failure(

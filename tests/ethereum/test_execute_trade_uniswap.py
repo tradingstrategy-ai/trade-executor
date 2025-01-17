@@ -249,7 +249,7 @@ def test_execute_trade_instructions_buy_weth(
     portfolio = state.portfolio
 
     # We have everything in cash
-    assert portfolio.get_total_equity() == 10_000
+    assert portfolio.calculate_total_equity() == 10_000
     assert portfolio.get_cash() == 10_000
 
     # Buy 500 USDC worth of WETH
@@ -263,7 +263,7 @@ def test_execute_trade_instructions_buy_weth(
     assert assumed_quantity == pytest.approx(Decimal(0.293149332386944192))
 
     position, trade = trader.prepare_buy(weth_usdc_pair, assumed_quantity, 1700)
-    assert state.portfolio.get_total_equity() == pytest.approx(10000.0)
+    assert state.portfolio.calculate_total_equity() == pytest.approx(10000.0)
     assert trade.get_status() == TradeStatus.planned
 
     routing_model = ethereum_trader.create_routing_model()
@@ -290,7 +290,7 @@ def test_execute_trade_instructions_buy_weth_with_tester(
     portfolio = state.portfolio
 
     # We have everything in cash
-    assert portfolio.get_total_equity() == 10_000
+    assert portfolio.calculate_total_equity() == 10_000
     assert portfolio.get_cash() == 10_000
 
     # Buy 500 USDC worth of WETH
@@ -312,7 +312,7 @@ def test_execute_trade_instructions_buy_weth_with_tester(
     assert portfolio.get_cash() == pytest.approx(9500.0)
 
     # Portfolio is correctly valued
-    assert portfolio.get_total_equity() == pytest.approx(9999.999999000293)
+    assert portfolio.calculate_total_equity() == pytest.approx(9999.999999000293)
 
 
 def test_buy_sell_buy_with_tester(
@@ -330,7 +330,7 @@ def test_buy_sell_buy_with_tester(
     portfolio = state.portfolio
 
     # We have everything in cash
-    assert portfolio.get_total_equity() == 10_000
+    assert portfolio.calculate_total_equity() == 10_000
     assert portfolio.get_cash() == 10_000
 
     #
@@ -349,7 +349,7 @@ def test_buy_sell_buy_with_tester(
     assert trade.executed_quantity == pytest.approx(Decimal('0.293149331800817389'))
 
     assert portfolio.get_cash() == pytest.approx(9500.0)
-    assert portfolio.get_total_equity() == pytest.approx(9999.999999000293)
+    assert portfolio.calculate_total_equity() == pytest.approx(9999.999999000293)
 
     #
     # 2. Sell all bought ETH
@@ -368,7 +368,7 @@ def test_buy_sell_buy_with_tester(
     assert trade2.executed_quantity == pytest.approx(-Decimal('0.293149331800817389'))
 
     assert portfolio.get_cash() == pytest.approx(9997.005374)
-    assert portfolio.get_total_equity() == pytest.approx(9997.005374)
+    assert portfolio.calculate_total_equity() == pytest.approx(9997.005374)
 
     #
     # 3. Buy ETH again as a regret buy
@@ -409,7 +409,7 @@ def test_buy_buy_sell_sell_tester(
     portfolio = state.portfolio
 
     # We have everything in cash
-    assert portfolio.get_total_equity() == 10_000
+    assert portfolio.calculate_total_equity() == 10_000
     assert portfolio.get_cash() == 10_000
 
     #
@@ -441,7 +441,7 @@ def test_buy_buy_sell_sell_tester(
     assert len(state.portfolio.closed_positions) == 1
 
     # We have everything in cash and lost some USDC in trading fees
-    assert portfolio.get_total_equity() == pytest.approx(9994.011623)
+    assert portfolio.calculate_total_equity() == pytest.approx(9994.011623)
     assert portfolio.get_cash() == pytest.approx(9994.011623)
 
 
@@ -464,7 +464,7 @@ def test_two_parallel_positions(
     portfolio = state.portfolio
 
     # We have everything in cash and initial assumptions on the price
-    assert portfolio.get_total_equity() == 10_000
+    assert portfolio.calculate_total_equity() == 10_000
     assert portfolio.get_cash() == 10_000
     assert get_current_price(web3, uniswap_v2, weth_usdc_pair) == pytest.approx(1693.211867)
     assert get_current_price(web3, uniswap_v2, aave_usdc_pair) == pytest.approx(199.201396)
@@ -492,7 +492,7 @@ def test_two_parallel_positions(
     assert position2.get_quantity_old() == pytest.approx(Decimal('2.486302885086316575'))
     assert position1.get_value() == pytest.approx(500)
     assert position2.get_value() == pytest.approx(500)
-    assert portfolio.get_total_equity() == pytest.approx(9999.999998002779)
+    assert portfolio.calculate_total_equity() == pytest.approx(9999.999998002779)
     assert portfolio.get_cash() == pytest.approx(9000.0)
 
     balances = get_held_assets(web3, hot_wallet.address, [asset_usdc, asset_aave, asset_weth])
@@ -525,7 +525,7 @@ def test_two_parallel_positions(
     assert position4.get_quantity() == 0
     assert position3.is_closed()
     assert position4.is_closed()
-    assert portfolio.get_total_equity() == pytest.approx(9994.017298)
+    assert portfolio.calculate_total_equity() == pytest.approx(9994.017298)
     assert portfolio.get_cash() == pytest.approx(9994.017298)
 
     balances = get_held_assets(web3, hot_wallet.address, [asset_usdc, asset_aave, asset_weth])
@@ -559,7 +559,7 @@ def test_execute_alpha_model_rebalance_trades(
     portfolio = state.portfolio
 
     # We have everything in cash and initial assumptions on the price
-    assert portfolio.get_total_equity() == 10_000
+    assert portfolio.calculate_total_equity() == 10_000
     assert portfolio.get_cash() == 10_000
     assert get_current_price(web3, uniswap_v2, weth_usdc_pair) == pytest.approx(1693.211867)
     assert get_current_price(web3, uniswap_v2, aave_usdc_pair) == pytest.approx(199.201396)
@@ -587,7 +587,7 @@ def test_execute_alpha_model_rebalance_trades(
     assert position2.get_quantity_old() == pytest.approx(Decimal(21.940323684081220533))
     assert position1.get_value() == pytest.approx(4500)
     assert position2.get_value() == pytest.approx(4500)
-    assert portfolio.get_total_equity() == pytest.approx(9999.999998002779)
+    assert portfolio.calculate_total_equity() == pytest.approx(9999.999998002779)
     assert portfolio.get_cash() == pytest.approx(1000)
 
     balances = get_held_assets(web3, hot_wallet.address, [asset_usdc, asset_aave, asset_weth])
@@ -610,7 +610,7 @@ def test_execute_alpha_model_rebalance_trades(
 
     assert position3.is_closed()
     assert position4.is_open()
-    assert portfolio.get_total_equity() == pytest.approx(9779.609513697993)
+    assert portfolio.calculate_total_equity() == pytest.approx(9779.609513697993)
     assert portfolio.get_cash() == pytest.approx(973.11125)
 
     balances = get_held_assets(web3, hot_wallet.address, [asset_usdc, asset_aave, asset_weth])

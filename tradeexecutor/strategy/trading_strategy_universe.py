@@ -2118,16 +2118,9 @@ def load_partial_data(
 
     This function works in low memory environments unlike :py:func:`tradeexecutor.strategy.trading_strategy_universe.load_all_data`.
 
-    Example:
+    Example of loading spot-only data:
 
     ... code-block:: python
-
-        TRADING_PAIRS = [
-            (ChainId.avalanche, "trader-joe", "WAVAX", "USDC"), # Avax
-            (ChainId.polygon, "quickswap", "WMATIC", "USDC"),  # Matic
-            (ChainId.ethereum, "uniswap-v2", "WETH", "USDC"),  # Eth
-            (ChainId.ethereum, "uniswap-v2", "WBTC", "USDC"),  # Btc
-        ]
 
         def create_trading_universe(
                 ts: datetime.datetime,
@@ -2136,29 +2129,30 @@ def load_partial_data(
                 universe_options: UniverseOptions,
         ) -> TradingStrategyUniverse:
 
-            assert not execution_context.mode.is_live_trading(), \
-                f"Only strategy backtesting supported, got {execution_context.mode}"
-
-            # Load data for our trading pair whitelist
             dataset = load_partial_data(
                 client=client,
-                time_bucket=CANDLE_TIME_BUCKET,
-                pairs=TRADING_PAIRS,
+                time_bucket=Parameters.candle_time_bucket,
+                pairs=pairs_df,
                 execution_context=execution_context,
                 universe_options=universe_options,
-                stop_loss_time_bucket=STOP_LOSS_TIME_BUCKET,
-                start_at=START_AT,
-                end_at=END_AT,
+                liquidity=True,
+                liquidity_time_bucket=TimeBucket.d1,
+                liquidity_query_type=OHLCVCandleType.tvl_v2,
             )
 
-            # Filter down the dataset to the pairs we specified
-            universe = TradingStrategyUniverse.create_multichain_universe_by_pair_descriptions(
+            strategy_universe = TradingStrategyUniverse.create_from_dataset(
                 dataset,
-                TRADING_PAIRS,
-                reserve_token_symbol="USDC"  # Pick any USDC - does not matter as we do not route
+                reserve_asset="0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",  # USDC on Base
+                forward_fill=True,  # We got very gappy data from low liquid DEX coins
             )
 
             return universe
+
+    Example of loading spot pair and Aave credit pool data:
+
+    .. code-block:: python
+
+
 
     :param client:
         Trading Strategy client instance

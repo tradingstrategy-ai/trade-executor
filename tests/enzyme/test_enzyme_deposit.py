@@ -140,7 +140,7 @@ def test_enzyme_single_deposit(
     assert len(treasury.balance_update_refs) == 1
 
     # Strategy has balance
-    assert state.portfolio.get_total_equity() == Decimal(500)
+    assert state.portfolio.calculate_total_equity() == Decimal(500)
 
     # See we can serialise the sync state
     dump = state.to_json()
@@ -205,4 +205,4 @@ def test_enzyme_two_deposits(
     assert reserve_position.get_value() == 1200
 
     # Strategy has its reserve balances updated
-    assert state.portfolio.get_total_equity() == pytest.approx(1200)
+    assert state.portfolio.calculate_total_equity() == pytest.approx(1200)

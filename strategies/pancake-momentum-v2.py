@@ -286,7 +286,7 @@ def decide_trades(
     weights = normalise_weights(weight_by_1_slash_n(alpha_signals))
 
     portfolio = position_manager.get_current_portfolio()
-    portfolio_target_value = portfolio.get_total_equity() * value_allocated_to_positions
+    portfolio_target_value = portfolio.calculate_total_equity() * value_allocated_to_positions
 
     # Shift portfolio from current positions to target positions
     # determined by the alpha signals (momentum)

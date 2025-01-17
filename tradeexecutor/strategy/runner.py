@@ -254,7 +254,7 @@ class StrategyRunner(abc.ABC):
 
         # Update the debug data for tests with our events
         debug_details["reserve_update_events"] = balance_update_events
-        debug_details["total_equity_at_start"] = state.portfolio.get_total_equity()
+        debug_details["total_equity_at_start"] = state.portfolio.calculate_total_equity()
         debug_details["total_cash_at_start"] = state.portfolio.get_cash()
 
         if self.sync_model.has_position_sync():
@@ -296,7 +296,7 @@ class StrategyRunner(abc.ABC):
     def revalue_state(self, ts: datetime.datetime, state: State, valuation_model: ValuationModel):
         """Revalue portfolio based on the latest prices."""
         revalue_state(state, ts, valuation_model)
-        logger.info("After revaluation at %s our portfolio value is %f USD", ts, state.portfolio.get_total_equity())
+        logger.info("After revaluation at %s our portfolio value is %f USD", ts, state.portfolio.calculate_total_equity())
 
     def collect_post_execution_data(
             self,
@@ -405,10 +405,10 @@ class StrategyRunner(abc.ABC):
         buf = StringIO()
         portfolio = state.portfolio
         tick = debug_details.get("cycle", 1)
-        total_equity = portfolio.get_total_equity()
+        total_equity = portfolio.calculate_total_equity()
         print(f"Portfolio status (before rebalance), tick #{tick}", file=buf)
         print("", file=buf)
-        print(f"Total equity: ${portfolio.get_total_equity():,.2f}, in cash: ${portfolio.get_cash():,.2f}", file=buf)
+        print(f"Total equity: ${portfolio.calculate_total_equity():,.2f}, in cash: ${portfolio.get_cash():,.2f}", file=buf)
         print(f"Life-time positions: {portfolio.next_position_id - 1}, trades: {portfolio.next_trade_id - 1}", file=buf)
 
         print(DISCORD_BREAK_CHAR, file=buf)
@@ -473,7 +473,7 @@ class StrategyRunner(abc.ABC):
         buf = StringIO()
         portfolio = state.portfolio
 
-        total_equity = portfolio.get_total_equity()
+        total_equity = portfolio.calculate_total_equity()
         if total_equity == 0:
             # Should not never happen, but just be prepared
             total_equity = 0.00001
@@ -872,7 +872,11 @@ class StrategyRunner(abc.ABC):
                         # Any credit market withdraw will be executed first, then sells, then buys and Aave deposits last.
                         sorted_approved_trades = sorted(approved_trades, key=lambda t: t.get_execution_sort_position())
                         if approved_trades != sorted_approved_trades:
-                            logger.info("Trades resorted to: %s", sorted_approved_trades)
+                            logger.info(
+                                "Cycle %d, trades resolved to: %s",
+                                cycle or 0,
+                                sorted_approved_trades,
+                            )
 
                         self.execution_model.execute_trades(
                             strategy_cycle_timestamp,
@@ -901,7 +905,7 @@ class StrategyRunner(abc.ABC):
                     )
 
             else:
-                equity = state.portfolio.get_total_equity()
+                equity = state.portfolio.calculate_total_equity()
                 logger.trade("Strategy has no trading capital and trade decision step was skipped. The total equity is %f USD, execution mode is %s", equity, execution_context.mode.name)
 
             # Log output
