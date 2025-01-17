@@ -15,7 +15,7 @@ from tradeexecutor.state.state import State
 JSON_RPC_BASE = os.environ.get("JSON_RPC_BASE")
 TRADING_STRATEGY_API_KEY = os.environ.get("TRADING_STRATEGY_API_KEY")
 VELVET_VAULT_OWNER_PRIVATE_KEY = os.environ.get("VELVET_VAULT_OWNER_PRIVATE_KEY")
-CI = os.environ.get("CI")
+CI = os.environ.get("CI") == "true"
 
 
 pytestmark = pytest.mark.skipif(
