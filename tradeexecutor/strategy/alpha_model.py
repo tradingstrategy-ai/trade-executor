@@ -1086,6 +1086,18 @@ class AlphaModel:
 
         - Set up take profit/stop loss triggers for positions
 
+        Example:
+
+        .. code-block:: python
+
+            trades = alpha_model.generate_rebalance_trades_and_triggers(
+                position_manager,
+                min_trade_threshold=parameters.rebalance_threshold_usd,  # Don't bother with trades under XXXX USD
+                invidiual_rebalance_min_threshold=parameters.individual_rebalance_min_threshold_usd,
+                sell_rebalance_min_threshold=parameters.sell_rebalance_min_threshold_usd,
+                execution_context=input.execution_context,
+            )
+
         :param position_manager:
             Portfolio of our existing holdings
 

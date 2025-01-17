@@ -117,7 +117,7 @@ class Parameters:
     # Backtesting only
     #
     backtest_start = datetime.datetime(2024, 3, 1)
-    backtest_end = datetime.datetime(2025, 1, 3)
+    backtest_end = datetime.datetime(2024, 5, 3)
     initial_cash = 10_000
 
     #
