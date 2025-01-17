@@ -11,6 +11,7 @@ from tradeexecutor.state.state import State
 
 JSON_RPC_BASE = os.environ.get("JSON_RPC_BASE")
 TRADING_STRATEGY_API_KEY = os.environ.get("TRADING_STRATEGY_API_KEY")
+CI = os.environ.get("CI")
 
 pytestmark = pytest.mark.skipif(
      (not JSON_RPC_BASE or not TRADING_STRATEGY_API_KEY),
@@ -186,6 +187,7 @@ def test_cli_lagoon_perform_test_trade(
         assert t.is_success()
 
 
+@pytest.mark.skipif(CI, "Too slow to run on Github, > 600 seconds")
 def test_cli_lagoon_backtest(
     mocker,
     state_file,
