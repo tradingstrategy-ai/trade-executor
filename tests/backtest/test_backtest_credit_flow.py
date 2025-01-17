@@ -8,7 +8,7 @@ import pandas as pd
 import pytest
 from typing import List
 
-from tradeexecutor.analysis.interest import calculate_credit_metrics
+from tradeexecutor.analysis.credit import calculate_credit_metrics
 from tradeexecutor.strategy.pandas_trader.strategy_input import StrategyInput
 from tradeexecutor.strategy.parameters import StrategyParameters
 
