@@ -361,13 +361,14 @@ class EthereumExecution(ExecutionModel):
                 if t.is_buy():
                     if onchain_treasury_balance <= needed_usd:
                         trades_done = len(completed_trades)
-                        total_sales = [t.get_executed_value() for t in completed_trades if t.is_sell()]
-                        expected_sales = [t.planned_reserve for t in completed_trades if t.is_sell()]
+                        total_sales = sum(t.get_executed_value() for t in completed_trades if t.is_sell())
+                        expected_sales = sum(t.planned_reserve for t in completed_trades if t.is_sell())
+                        diff = (total_sales - expected_sales) / expected_sales
                         assert onchain_treasury_balance >= needed_usd, \
                             f"Not enough treasury to buy token  in the middle of rebalance run, should not happen.\n" \
                             f"Trades done: {trades_done}, total trades: {len(trades)}\n" \
                             f"Balance: {onchain_treasury_balance:.2f}, USD needed: {needed_usd:.2f}" \
-                            f"Total sales: {total_sales:.2f} USD, expected sales: {expected_sales:.2f} USD" \
+                            f"Total sales: {total_sales:.2f} USD, expected sales: {expected_sales:.2f} USD, diff {diff:.2%}" \
                             f"Trade: {t}"
 
             for tx in t.blockchain_transactions:
