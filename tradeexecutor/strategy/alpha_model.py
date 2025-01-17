@@ -1073,6 +1073,7 @@ class AlphaModel:
         individual_rebalance_min_threshold: USDollarAmount = 0.0,
         use_spot_for_long=True,
         invidiual_rebalance_min_threshold=None,
+        sell_rebalance_min_threshold=None,
         execution_context: ExecutionContext = None,
     ) -> List[TradeExecution]:
         """Generate the trades that will rebalance the portfolio.
@@ -1084,6 +1085,18 @@ class AlphaModel:
         - Buys for new assets or assets where we want to increase our position
 
         - Set up take profit/stop loss triggers for positions
+
+        Example:
+
+        .. code-block:: python
+
+            trades = alpha_model.generate_rebalance_trades_and_triggers(
+                position_manager,
+                min_trade_threshold=parameters.rebalance_threshold_usd,  # Don't bother with trades under XXXX USD
+                invidiual_rebalance_min_threshold=parameters.individual_rebalance_min_threshold_usd,
+                sell_rebalance_min_threshold=parameters.sell_rebalance_min_threshold_usd,
+                execution_context=input.execution_context,
+            )
 
         :param position_manager:
             Portfolio of our existing holdings
@@ -1099,7 +1112,14 @@ class AlphaModel:
             and calculations.
 
         :param individual_rebalance_min_threshold:
-            If an invidual treade value is smaller than this, skip it.
+            If an invividual trade value is smaller than this, skip it.
+
+        :param sell_rebalance_min_threshold:
+            If an invividual sell trade value is smaller than this, skip it.
+
+            If not given use ``individual_rebalance_min_threshold``.
+
+            Should be lower value, as we want to make sure we do not skip sells that are supposed to release cash for our buys.
 
         :param use_spot_for_long:
             If we go long a pair, use spot.
@@ -1119,6 +1139,9 @@ class AlphaModel:
         if invidiual_rebalance_min_threshold is not None:
             # Legacy typo fix
             individual_rebalance_min_threshold = invidiual_rebalance_min_threshold
+
+        if sell_rebalance_min_threshold is None:
+            sell_rebalance_min_threshold = invidiual_rebalance_min_threshold
 
         # Generate trades
         trades: List[TradeExecution] = []
@@ -1196,7 +1219,14 @@ class AlphaModel:
 
             if individual_rebalance_min_threshold:
                 trade_size = abs(dollar_diff)
-                if trade_size < individual_rebalance_min_threshold:
+
+                if dollar_diff < 0:
+                    # Special threshold for sells
+                    threshold  = sell_rebalance_min_threshold or individual_rebalance_min_threshold
+                else:
+                    threshold = individual_rebalance_min_threshold
+
+                if trade_size < threshold:
                     logger.info("Individual trade size too small, trade size is %s, our threshold %s", trade_size, individual_rebalance_min_threshold)
                     signal.flags.add(TradingPairSignalFlags.individual_trade_size_too_small)
                     continue

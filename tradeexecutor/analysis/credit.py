@@ -11,9 +11,18 @@ def calculate_credit_metrics(
     """Calculate interest metrics for a strategy backtest.
 
     - Credit earned on Aave
+
+    :return:
+        Human readable DataFrame
     """
 
     credit_positions = [p for p in state.portfolio.get_all_positions() if p.is_credit_supply()]
+    if len(credit_positions) == 0:
+        data = {
+            "Credit position count": 0,
+        }
+        return pd.DataFrame(list(data.items()), columns=['Name', 'Value']).set_index('Name')
+
     total_interest_earned_usd = sum(p.get_total_profit_usd() for p in credit_positions)
     interest_rates = [p.get_annualised_credit_interest() for p in credit_positions]
     durations = [p.get_duration() for p in credit_positions]

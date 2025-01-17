@@ -95,6 +95,7 @@ def environment(
         "MAX_DATA_DELAY_MINUTES": str(10 * 60 * 24 * 365),  # 10 years or "disabled""
         "MIN_GAS_BALANCE": "0.005",
         "RAISE_ON_UNCLEAN": "true",  # For correct-accounts
+        "GENERATE_REPORT": "false",
     }
     return environment
 
@@ -146,7 +147,7 @@ def test_velvet_perform_test_trade(
         assert t.is_success()
 
 
-@pytest.mark.skipif(CI, "Too slow to run on Github, > 600 seconds")
+@pytest.mark.skipif(CI, reason="Too slow to run on Github, > 600 seconds")
 def test_velvet_backtest(
     environment: dict,
     mocker,

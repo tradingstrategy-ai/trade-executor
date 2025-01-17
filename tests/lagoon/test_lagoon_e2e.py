@@ -61,6 +61,7 @@ def deployed_vault_environment(
         "MIN_GAS_BALANCE": "0.005",
         "RAISE_ON_UNCLEAN": "true",  # For correct-accounts
         "PRIVATE_KEY": asset_manager.private_key.hex(),
+        "GENERATE_REPORT": "false",
     }
     return environment
 
@@ -187,7 +188,7 @@ def test_cli_lagoon_perform_test_trade(
         assert t.is_success()
 
 
-@pytest.mark.skipif(CI, "Too slow to run on Github, > 600 seconds")
+@pytest.mark.skipif(CI, reason="Too slow to run on Github, > 600 seconds")
 def test_cli_lagoon_backtest(
     mocker,
     state_file,

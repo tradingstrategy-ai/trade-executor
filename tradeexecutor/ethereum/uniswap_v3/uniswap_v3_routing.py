@@ -393,8 +393,6 @@ class UniswapV3Routing(EthereumRoutingModel):
 
             assert (executed_reserve > 0) and (executed_amount != 0) and (price > 0), f"Executed amount {executed_amount}, executed_reserve: {executed_reserve}, price: {price}"
 
-            logger.info(f"Executed: {executed_amount} {trade.pair.base.token_symbol}, {executed_reserve} {trade.pair.quote.token_symbol}")
-
             # Mark as success
             state.mark_trade_success(
                 ts,
@@ -406,6 +404,10 @@ class UniswapV3Routing(EthereumRoutingModel):
                 native_token_price=0,  # won't fix
                 cost_of_gas=result.get_cost_of_gas(),
             )
+
+            slippage = trade.get_slippage()
+            logger.info(f"Executed: {executed_amount} {trade.pair.base.token_symbol}, {executed_reserve} {trade.pair.quote.token_symbol}, price: {trade.executed_price}, expected reserve: {trade.planned_reserve} {trade.pair.quote.token_symbol}, slippage {slippage:.2%}")
+
         else:
             # Trade failed
             report_failure(ts, state, trade, stop_on_execution_failure)
