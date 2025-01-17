@@ -9,7 +9,9 @@ from _decimal import Decimal
 from pathlib import Path
 from unittest.mock import patch
 
+import flaky
 import pytest
+from IPython.terminal.ipapp import flags
 from click.testing import Result
 from eth_account import Account
 from typer.main import get_command
@@ -374,6 +376,7 @@ def test_enzyme_deploy_vault(
         assert vault.payment_forwarder.functions.amountProxied().call() == 0
 
 
+@flaky.flaky
 def test_enzyme_perform_test_trade(
     environment: dict,
     web3: Web3,

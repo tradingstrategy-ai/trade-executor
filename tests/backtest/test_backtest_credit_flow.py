@@ -4,9 +4,11 @@ import datetime
 import random
 from decimal import Decimal
 
+import pandas as pd
 import pytest
 from typing import List
 
+from tradeexecutor.analysis.interest import calculate_credit_metrics
 from tradeexecutor.strategy.pandas_trader.strategy_input import StrategyInput
 from tradeexecutor.strategy.parameters import StrategyParameters
 
@@ -199,3 +201,6 @@ def test_backtest_credit_flow(
     assert len(credit_positions) == 10
     total_interest_gained = sum(p.get_total_profit_usd() for p in credit_positions)
     assert total_interest_gained == pytest.approx(76.8234503286251)
+
+    interest_metrics = calculate_credit_metrics(state)
+    assert isinstance(interest_metrics, pd.DataFrame)
