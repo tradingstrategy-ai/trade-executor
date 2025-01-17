@@ -1222,7 +1222,7 @@ class AlphaModel:
 
                 if dollar_diff < 0:
                     # Special threshold for sells
-                    threshold  = sell_rebalance_min_threshold
+                    threshold  = sell_rebalance_min_threshold or individual_rebalance_min_threshold
                 else:
                     threshold = individual_rebalance_min_threshold
 
