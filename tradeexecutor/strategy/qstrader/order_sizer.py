@@ -119,7 +119,7 @@ class CashBufferedOrderSizer(OrderSizer):
 
         assert isinstance(debug_details, dict)
 
-        total_equity = self.state.portfolio.get_total_equity()
+        total_equity = self.state.portfolio.calculate_total_equity()
 
         cash_buffered_total_equity = total_equity * (
             1.0 - self.cash_buffer_percentage

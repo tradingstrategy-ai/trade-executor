@@ -142,7 +142,7 @@ def test_enzyme_no_accounting_errors(
 
     # Strategy has its reserve balances updated
     sync_model.sync_treasury(datetime.datetime.utcnow(), state)
-    assert state.portfolio.get_total_equity() == pytest.approx(500)
+    assert state.portfolio.calculate_total_equity() == pytest.approx(500)
 
     tx_builder = EnzymeTransactionBuilder(hot_wallet, vault)
 
@@ -242,7 +242,7 @@ def test_enzyme_correct_accounting_errors(
 
     # Strategy has its reserve balances updated
     sync_model.sync_treasury(datetime.datetime.utcnow(), state)
-    assert state.portfolio.get_total_equity() == pytest.approx(500)
+    assert state.portfolio.calculate_total_equity() == pytest.approx(500)
 
     reserve_position: ReservePosition = state.portfolio.get_default_reserve_position()
     assert reserve_position.get_quantity() == pytest.approx(Decimal(500))
@@ -455,7 +455,7 @@ def test_enzyme_correct_accounting_no_open_position(
 
     # Strategy has its reserve balances updated
     sync_model.sync_treasury(datetime.datetime.utcnow(), state)
-    assert state.portfolio.get_total_equity() == pytest.approx(500)
+    assert state.portfolio.calculate_total_equity() == pytest.approx(500)
 
     # Send in some WETH
     weth.functions.transfer(vault.vault.address, 2*10**18).transact({"from": deployer})
@@ -556,7 +556,7 @@ def test_correct_accounting_errors_for_zero_position(
 
     # Strategy has its reserve balances updated
     sync_model.sync_treasury(datetime.datetime.utcnow(), state)
-    assert state.portfolio.get_total_equity() == pytest.approx(500)
+    assert state.portfolio.calculate_total_equity() == pytest.approx(500)
 
     reserve_position: ReservePosition = state.portfolio.get_default_reserve_position()
     assert reserve_position.get_quantity() == pytest.approx(Decimal(500))

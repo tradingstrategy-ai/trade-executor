@@ -134,7 +134,7 @@ def test_backtest_open_only_credit_supply_mock_data(
     assert credit_position.get_accrued_interest() == pytest.approx(5.777347790050936)
     assert credit_position.get_quantity() == pytest.approx(Decimal(10005.77734779005093525703117))
     assert credit_position.get_value() == pytest.approx(10005.77734779005093525703117)
-    assert portfolio.get_total_equity() == pytest.approx(10005.77734779005093525703117)
+    assert portfolio.calculate_total_equity() == pytest.approx(10005.77734779005093525703117)
 
     analysis = build_trade_analysis(state.portfolio)
     summary = analysis.calculate_summary_statistics(state=state)
@@ -227,7 +227,7 @@ def test_backtest_open_and_close_credit_supply_mock_data(
 
     assert portfolio.get_cash() == pytest.approx(10002.67867669078453209820816)
     assert portfolio.get_net_asset_value() == pytest.approx(10002.67867669078453209820816)
-    assert portfolio.get_total_equity() == pytest.approx(10002.67867669078453209820816)
+    assert portfolio.calculate_total_equity() == pytest.approx(10002.67867669078453209820816)
 
     analysis = build_trade_analysis(state.portfolio)
     summary = analysis.calculate_summary_statistics(state=state)

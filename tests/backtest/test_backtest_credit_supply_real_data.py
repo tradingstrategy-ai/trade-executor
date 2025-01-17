@@ -118,7 +118,7 @@ def test_backtest_open_only_credit_supply_real_data(
     assert credit_position.get_accrued_interest() == pytest.approx(5.777347790050936)
     assert credit_position.get_quantity() == pytest.approx(Decimal(10005.77734779005093525703117))
     assert credit_position.get_value() == pytest.approx(10005.77734779005093525703117)
-    assert portfolio.get_total_equity() == pytest.approx(10005.77734779005093525703117)
+    assert portfolio.calculate_total_equity() == pytest.approx(10005.77734779005093525703117)
 
 
 def test_backtest_open_and_close_credit_supply_real_data(
@@ -187,4 +187,4 @@ def test_backtest_open_and_close_credit_supply_real_data(
     assert credit_position.get_quantity() == Decimal('0')  # Closed positions do not have quantity left
     assert credit_position.get_value() == pytest.approx(0)  # Closed positions do not have value left
 
-    assert portfolio.get_total_equity() == pytest.approx(10002.678676690784532)
+    assert portfolio.calculate_total_equity() == pytest.approx(10002.678676690784532)

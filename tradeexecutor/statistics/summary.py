@@ -82,7 +82,7 @@ def calculate_summary_statistics(
     portfolio = state.portfolio
 
     # We can alway get the current value even if there are no trades
-    current_value = portfolio.get_total_equity()
+    current_value = portfolio.calculate_total_equity()
 
     first_trade, last_trade = portfolio.get_first_and_last_executed_trade()
 

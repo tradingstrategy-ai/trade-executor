@@ -126,7 +126,7 @@ def calculate_statistics(
         
         pf_stats = PortfolioStatistics(
             calculated_at=clock,
-            total_equity=portfolio.get_total_equity(),
+            total_equity=portfolio.calculate_total_equity(),
             net_asset_value=portfolio.get_net_asset_value(),
             unrealised_profitability=profitability_series.iloc[-1] if len(profitability_series) > 0 else 0,
             free_cash=float(portfolio.get_cash()),
@@ -145,7 +145,7 @@ def calculate_statistics(
     else:
         pf_stats = PortfolioStatistics(
             calculated_at=clock,
-            total_equity=portfolio.get_total_equity(),
+            total_equity=portfolio.calculate_total_equity(),
             net_asset_value=portfolio.get_net_asset_value(),
             free_cash=float(portfolio.get_cash()),
         )

@@ -28,7 +28,7 @@ class CLIApprovalModel(ApprovalModel):
 
         :return: promp_toolkit HTML for displaying the portfolio
         """
-        equity = portfolio.get_total_equity()
+        equity = portfolio.calculate_total_equity()
         cash = portfolio.get_cash()
         text = textwrap.dedent(f"""
             Total equity <ansigreen>${equity:,.2f}</ansigreen>

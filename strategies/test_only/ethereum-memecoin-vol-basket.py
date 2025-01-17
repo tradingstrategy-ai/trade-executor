@@ -257,7 +257,7 @@ def decide_trades(
     # Calculate how much dollar value we want each individual position to be on this strategy cycle,
     # based on our total available equity
     portfolio = position_manager.get_current_portfolio()
-    portfolio_target_value = portfolio.get_total_equity() * parameters.allocation
+    portfolio_target_value = portfolio.calculate_total_equity() * parameters.allocation
 
     #
     # Do 1/N weighting

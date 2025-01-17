@@ -186,7 +186,7 @@ class MomentumAlphaModel(AlphaModel):
         # but we also have a minimum liquidity floor related to our portfolio size.
         # With high value portfolio, we will no longer invest in tokens with less liquidity.
         # TODO: Fix QSTrader to pass this information directly.
-        portflio_value = state.portfolio.get_total_equity()
+        portflio_value = state.portfolio.calculate_total_equity()
         liquidity_threshold = max(min_liquidity_threshold, portflio_value * portfolio_base_liquidity_threshold)
 
         # Expose how many candles we evaluated to the testing

@@ -224,7 +224,7 @@ def test_open_short(
     assert state.portfolio.get_position_equity_and_loan_nav() == 1000  # 1000 USDC collateral
     assert state.portfolio.get_cash() == 9000
     assert state.portfolio.get_loan_net_asset_value() == 1000
-    assert state.portfolio.get_total_equity() == 10000
+    assert state.portfolio.calculate_total_equity() == 10000
 
     apolusdc = loan.collateral.asset
     vdebtpolweth = loan.borrowed.asset
@@ -266,7 +266,7 @@ def test_short_unrealised_profit(
     )
 
     trader.set_perfectly_executed(trade)
-    assert state.portfolio.get_total_equity() == 10000
+    assert state.portfolio.calculate_total_equity() == 10000
 
     # ETH price 1500 -> 1400
     short_position.revalue_base_asset(
@@ -339,7 +339,7 @@ def test_short_unrealised_profit_partially_closed_keep_collateral(
     assert loan.collateral.quantity == pytest.approx(2000)
     assert loan.get_leverage() == 1.0
 
-    assert portfolio.get_total_equity() == 10000
+    assert portfolio.calculate_total_equity() == 10000
     assert portfolio.get_cash() == 9000
 
     # ETH price 1500 -> 1400
@@ -411,7 +411,7 @@ def test_short_unrealised_profit_partially_closed_keep_collateral(
     assert portfolio.get_cash() == 9000  # No changes in cash, because we paid back from the collateral
     assert portfolio.get_net_asset_value() == pytest.approx(10066.66666)  # Should be same with our without reducing position as we have no fees, see test above
     assert portfolio.get_loan_net_asset_value() == pytest.approx(1066.6666666666665)
-    assert portfolio.get_total_equity() == pytest.approx(10066.666)  # Any profits from closed short positions are not moved to equity, unless told so
+    assert portfolio.calculate_total_equity() == pytest.approx(10066.666)  # Any profits from closed short positions are not moved to equity, unless told so
 
 
 def test_short_unrealised_profit_partially_closed_release_collateral(
@@ -454,7 +454,7 @@ def test_short_unrealised_profit_partially_closed_release_collateral(
 
     trader.set_perfectly_executed(trade)
 
-    assert state.portfolio.get_total_equity() == 10000
+    assert state.portfolio.calculate_total_equity() == 10000
     loan = short_position.loan
     assert loan.borrowed.quantity == pytest.approx(Decimal(expected_eth_shorted_amount))
     assert loan.collateral.quantity == pytest.approx(2000)
@@ -658,7 +658,7 @@ def test_short_close_fully_profitable(
     assert portfolio.get_all_loan_nav() == 0
     assert portfolio.get_cash() == pytest.approx(10066.666666)  # We have now cashed out our USD 53 profit unlike in the previous test
     assert portfolio.get_net_asset_value() == pytest.approx(10066.666666)  # Should be same with our without reducing position as we have no fees, see test above
-    assert portfolio.get_total_equity() == pytest.approx(10066.666666)
+    assert portfolio.calculate_total_equity() == pytest.approx(10066.666666)
 
 
 def test_short_close_fully_loss(
@@ -772,7 +772,7 @@ def test_short_close_fully_loss(
     assert portfolio.get_all_loan_nav() == 0
     assert portfolio.get_cash() == pytest.approx(9933.333333333334)
     assert portfolio.get_net_asset_value() == pytest.approx(9933.333333333334)
-    assert portfolio.get_total_equity() == pytest.approx(9933.333333333334)
+    assert portfolio.calculate_total_equity() == pytest.approx(9933.333333333334)
 
 
 def test_short_increase_leverage_and_close(
@@ -1050,7 +1050,7 @@ def test_short_unrealised_profit_no_leverage(
     )
 
     trader.set_perfectly_executed(trade)
-    assert state.portfolio.get_total_equity() == 10000
+    assert state.portfolio.calculate_total_equity() == 10000
 
     # ETH price 1500 -> 1400
     short_position.revalue_base_asset(
@@ -1213,7 +1213,7 @@ def test_short_unrealised_interest_and_profit(
     )
 
     trader.set_perfectly_executed(trade)
-    assert state.portfolio.get_total_equity() == 10000
+    assert state.portfolio.calculate_total_equity() == 10000
 
     # Move forward half a year
     now_at = datetime.datetime(2020, 6, 1)
@@ -1334,7 +1334,7 @@ def test_short_unrealised_interest_and_losses(
     )
 
     trader.set_perfectly_executed(trade)
-    assert state.portfolio.get_total_equity() == 10000
+    assert state.portfolio.calculate_total_equity() == 10000
 
     # Move forward a financial year
     now_at = datetime.datetime(2020, 1, 1) + datetime.timedelta(days=365)
@@ -1429,7 +1429,7 @@ def test_short_realised_interest_and_profit(
     )
 
     trader.set_perfectly_executed(trade)
-    assert state.portfolio.get_total_equity() == 10000
+    assert state.portfolio.calculate_total_equity() == 10000
 
     # Move forward half a year
     now_at = datetime.datetime(2020, 6, 1)

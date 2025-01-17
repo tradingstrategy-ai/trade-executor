@@ -136,4 +136,4 @@ def test_decide_trades_v03(
     assert credit_position.get_accrued_interest() == pytest.approx(5.777347790050936)
     assert credit_position.get_quantity() == pytest.approx(Decimal(10005.77734779005093525703117))
     assert credit_position.get_value() == pytest.approx(10005.77734779005093525703117)
-    assert portfolio.get_total_equity() == pytest.approx(10005.77734779005093525703117)
+    assert portfolio.calculate_total_equity() == pytest.approx(10005.77734779005093525703117)

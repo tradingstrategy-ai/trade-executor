@@ -311,7 +311,7 @@ def decide_trades(
     # Calculate how much dollar value we want each individual position to be on this strategy cycle,
     # based on our total available equity
     portfolio = position_manager.get_current_portfolio()
-    portfolio_target_value = portfolio.get_total_equity() * parameters.allocation
+    portfolio_target_value = portfolio.calculate_total_equity() * parameters.allocation
 
     # Select max_assets_in_portfolio assets in which we are going to invest
     # Calculate a weight for ecah asset in the portfolio using 1/N method based on the raw signal
@@ -392,7 +392,7 @@ def decide_trades(
         - meeting volatility inclusion criteria: {volatility_included_pair_count}        
         - meeting TVL inclusion criteria: {tvl_included_pair_count}        
         Signals created: {signal_count}
-        Total equity: {portfolio.get_total_equity():,.2f} USD
+        Total equity: {portfolio.calculate_total_equity():,.2f} USD
         Cash: {position_manager.get_current_cash():,.2f} USD
         Investable equity: {alpha_model.investable_equity:,.2f} USD
         Accepted investable equity: {alpha_model.accepted_investable_equity:,.2f} USD

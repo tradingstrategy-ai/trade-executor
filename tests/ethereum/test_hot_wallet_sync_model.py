@@ -158,7 +158,7 @@ def test_hot_wallet_sync_model_deposit(
 
     assert len(state.portfolio.reserves) == 1
 
-    assert state.portfolio.get_total_equity() == 500
+    assert state.portfolio.calculate_total_equity() == 500
 
 
 def test_hot_wallet_sync_model_sync_twice(

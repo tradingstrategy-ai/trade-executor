@@ -148,7 +148,7 @@ def test_enzyme_redeemed_position_profit(
 
     # Strategy has its reserve balances updated
     sync_model.sync_treasury(datetime.datetime.utcnow(), state)
-    assert state.portfolio.get_total_equity() == pytest.approx(500)
+    assert state.portfolio.calculate_total_equity() == pytest.approx(500)
 
     # Create open WETH/USDC position worth of 100
 
@@ -221,7 +221,7 @@ def test_enzyme_redeemed_position_profit(
     reserve = state.portfolio.get_default_reserve_position()
     assert position.get_value() == 0
     assert reserve.get_value() == pytest.approx(242.627953)
-    assert state.portfolio.get_total_equity() == pytest.approx(242.627953)
+    assert state.portfolio.calculate_total_equity() == pytest.approx(242.627953)
 
     assert position.get_realised_profit_usd() == pytest.approx(-7.372047000000003)
     # (1359.153875 - 1582.577362) / 1582.577362 ~= -14.1
