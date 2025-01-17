@@ -1517,3 +1517,13 @@ class TradeExecution:
             self.notes = ""
 
         self.notes += line + "\n"
+
+    def get_slippage(self) -> Percent:
+        """How much slippage this trade had.
+
+        :return:
+            Negative if we lost money in slippage, positive if we gained.
+        """
+        assert self.executed_price is not None, f"This trade is not executed yet: {self}"
+        return (self.executed_price - self.planned_price) / (self.planned_price)
+
