@@ -89,6 +89,7 @@ class Parameters:
     allocation = 0.90  # Allocate all cash to volatile pairs
     # min_rebalance_trade_threshold_pct = 0.05  # % of portfolio composition must change before triggering rebalacne
     individual_rebalance_min_threshold_usd = 75.0  # Don't make buys less than this amount
+    sell_rebalance_min_threshold = 10.0
     min_volatility_threshold = 0.02  # Set to have Sharpe ratio threshold for the inclusion
     per_position_cap_of_pool = 0.01  # Never own more than % of the lit liquidity of the trading pool
     max_concentration = 0.20  # How large % can one asset be in a portfolio once
@@ -340,14 +341,11 @@ def decide_trades(
     # Shift portfolio from current positions to target positions
     # determined by the alpha signals (momentum)
 
-    # rebalance_threshold_usd = portfolio_target_value * parameters.min_rebalance_trade_threshold_pct
-    rebalance_threshold_usd = parameters.individual_rebalance_min_threshold_usd
-
-    assert rebalance_threshold_usd > 0.1, "Safety check tripped - something like wrong with strat code"
     trades = alpha_model.generate_rebalance_trades_and_triggers(
         position_manager,
-        min_trade_threshold=rebalance_threshold_usd,  # Don't bother with trades under XXXX USD
+        min_trade_threshold=parameters.rebalance_threshold_usd,  # Don't bother with trades under XXXX USD
         invidiual_rebalance_min_threshold=parameters.individual_rebalance_min_threshold_usd,
+        sell_rebalance_min_threshold=parameters.sell_rebalance_min_threshold_usd,
         execution_context=input.execution_context,
     )
 
