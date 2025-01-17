@@ -338,7 +338,7 @@ class EthereumExecution(ExecutionModel):
         )
         balance_address = self.tx_builder.get_erc_20_balance_address()
 
-        trades_done = 0
+        completed_trades = []
 
         # Broadcast and resolve one by one
         for t in trades:
@@ -359,11 +359,16 @@ class EthereumExecution(ExecutionModel):
             # Trip wire if we have somehow miscalculated USD allocation for buy trades
             if t.is_spot():
                 if t.is_buy():
-                    assert onchain_treasury_balance >= needed_usd, \
-                        f"Not enough treasury to buy token  in the middle of rebalance run, should not happen.\n" \
-                        f"Trades done: {trades_done}, total trades: {len(trades)}\n" \
-                        f"Balance: {onchain_treasury_balance:.2f}, USD needed: {needed_usd:.2f}" \
-                        f"Trade: {t}"
+                    if onchain_treasury_balance <= needed_usd:
+                        trades_done = len(completed_trades)
+                        total_sales = [t.get_executed_value() for t in completed_trades if t.is_sell()]
+                        expected_sales = [t.planned_reserve for t in completed_trades if t.is_sell()]
+                        assert onchain_treasury_balance >= needed_usd, \
+                            f"Not enough treasury to buy token  in the middle of rebalance run, should not happen.\n" \
+                            f"Trades done: {trades_done}, total trades: {len(trades)}\n" \
+                            f"Balance: {onchain_treasury_balance:.2f}, USD needed: {needed_usd:.2f}" \
+                            f"Total sales: {total_sales:.2f} USD, expected sales: {expected_sales:.2f} USD" \
+                            f"Trade: {t}"
 
             for tx in t.blockchain_transactions:
 
@@ -419,7 +424,7 @@ class EthereumExecution(ExecutionModel):
                     stop_on_execution_failure=stop_on_execution_failure
             )
 
-            trades_done += 1
+            completed_trades.append(t)
 
     def broadcast_and_resolve_multiple_nodes(
         self,
