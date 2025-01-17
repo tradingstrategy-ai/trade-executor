@@ -942,8 +942,6 @@ class PositionManager:
                 quantity_delta = Decimal(quantity_delta) if isinstance(quantity_delta, float | int) else quantity_delta
                 price_structure = self.pricing_model.get_sell_price(self.timestamp, pair, abs(quantity_delta))
 
-                assert position, f"adjust_delta(), dollar_delta negative, assuming sell but no position was given"
-
         except CandleSampleUnavailable as e:
             # Backtesting cannot fetch price for an asset,
             # probably not enough data and the pair is trading early?

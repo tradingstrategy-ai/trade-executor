@@ -675,7 +675,14 @@ class Portfolio:
 
         - Leverage/loan based positions (equity is in collateral)
 
-        See also :py:meth:`get_tradable_equity` and :py:meth:`get_theoretical_value` and
+        Example:
+
+        .. code-block:: python
+
+            portfolio = position_manager.get_current_portfolio()
+            portfolio_target_value = portfolio.get_total_equity() \
+            * parameters.allocation \
+            - position_manager.get_pending_redemptions()
 
         """
         # Any trading positions we have one
