@@ -1,11 +1,17 @@
+"""Valuation update logic handling.
+
+- Internal valuation calculations
+
+- Posting new valuation onchain
+"""
+
 import datetime
 import logging
 
 from tradeexecutor.state.state import State
 from tradeexecutor.statistics.core import update_statistics
 from tradeexecutor.statistics.statistics_table import StatisticsTable
-from tradeexecutor.strategy.execution_context import ExecutionMode, ExecutionContext
-from tradeexecutor.strategy.pricing_model import PricingModel
+from tradeexecutor.strategy.execution_context import ExecutionContext
 from tradeexecutor.strategy.routing import RoutingState
 from tradeexecutor.strategy.universe_model import StrategyExecutionUniverse
 from tradeexecutor.strategy.valuation import revalue_state, ValuationModel

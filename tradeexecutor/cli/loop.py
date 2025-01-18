@@ -590,6 +590,7 @@ class ExecutionLoop:
         clock: datetime.datetime,
         state: State,
         universe: StrategyExecutionUniverse,
+        execution_mode: ExecutionMode = None,
     ):
         """Revalue positions and update statistics.
 
@@ -597,7 +598,15 @@ class ExecutionLoop:
         and added to the state.
 
         :param clock: Real-time or historical clock
+
+        :param execution_mode:
+            Legacy argument, ignored.
         """
+
+        if execution_mode is None:
+            execution_mode = self.execution_context.mode
+
+        assert execution_mode == self.execution_context.mode, f"ExecutionMode given: {execution_mode}, context has: {self.execution_context.mode}"
 
         # Set up the execution to perform the valuation
 
@@ -970,7 +979,7 @@ class ExecutionLoop:
             )
 
             # Revalue our portfolio
-            self.update_position_valuations(ts, state, universe, self.execution_context.mode)
+            self.update_position_valuations(ts, state, universe)
 
             # Check for termination in integration testing.
             # TODO: Get rid of this and only support date ranges to run tests
