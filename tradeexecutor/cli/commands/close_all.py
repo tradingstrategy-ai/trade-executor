@@ -162,7 +162,7 @@ def close_all(
     )
 
     runner = run_description.runner
-    routing_state, pricing_model, valuation_method = runner.setup_routing(universe)
+    routing_state, pricing_model, valuation_model = runner.setup_routing(universe)
 
     # Set slippge tolerance from the strategy file
     slippage_tolerance = 0.01
@@ -181,6 +181,8 @@ def close_all(
         routing_state,
         slippage_tolerance=slippage_tolerance,
         interactive=interactive,
+        unit_testing=unit_testing,
+        valuation_model=valuation_model,
     )
 
     # Store the test trade data in the strategy history

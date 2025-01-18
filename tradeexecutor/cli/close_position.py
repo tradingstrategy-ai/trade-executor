@@ -11,6 +11,8 @@ from web3 import Web3
 from tradeexecutor.analysis.position import display_positions
 from tradeexecutor.ethereum.enzyme.vault import EnzymeVaultSyncModel
 from tradeexecutor.strategy.sync_model import SyncModel
+from tradeexecutor.strategy.valuation import ValuationModel
+from tradeexecutor.strategy.valuation_update import update_position_valuations
 from tradingstrategy.types import Percent
 from tradeexecutor.state.state import State
 from tradeexecutor.strategy.execution_model import ExecutionModel
@@ -36,9 +38,11 @@ def close_single_or_all_positions(
     universe: TradingStrategyUniverse,
     routing_model: RoutingModel,
     routing_state: RoutingState,
+    valuation_model: ValuationModel,
     slippage_tolerance: Percent,
     interactive=True,
     position_id: int | None = None,
+    unit_testing=False,
 ):
     """Close single/all positions.
 
@@ -52,6 +56,8 @@ def close_single_or_all_positions(
     """
 
     assert isinstance(sync_model, SyncModel)
+    assert isinstance(universe, TradingStrategyUniverse)
+    assert isinstance(valuation_model, ValuationModel)
 
     if position_id is not None:
         assert type(position_id) is int, f"Got: {position_id} {type(position_id)}"
@@ -65,9 +71,18 @@ def close_single_or_all_positions(
     logger.info("Sync model is %s", sync_model)
     logger.info("Trading university reserve asset is %s", universe.get_reserve_asset())
 
-    if sync_model.has_async_deposits():
+    # Use unit_testing flag so this code path is easier to check
+    if sync_model.has_async_deposits() or unit_testing:
         logger.info("Vault must be revalued before proceeding, using: %s", sync_model.__class__.__name__)
-        pass
+        update_position_valuations(
+            timestamp=ts,
+            state=state,
+            universe=universe,
+            execution_context=execution_model.execution_context,
+            routing_state=routing_state,
+            valuation_model=valuation_model,
+            long_short_metrics_latest=None,
+        )
 
     # Sync any incoming stablecoin transfers
     # that have not been synced yet
@@ -80,6 +95,7 @@ def close_single_or_all_positions(
 
     logger.info("We received balance update events: %s", balance_updates)
 
+    # Velvet capital code path
     if sync_model.has_position_sync():
         sync_model.sync_positions(
             ts,
