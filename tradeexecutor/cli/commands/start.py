@@ -638,7 +638,7 @@ def start(
         # for automated execution due to unstability of the blockchains.
         # eth_defi.confirmation.ConfirmationTimedOut
         if isinstance(e, (ExecutionHaltableIssue, ConfirmationTimedOut)):
-            logger.error("Saving state with aborted execution")
+            logger.error("Saving state with aborted execution: %s", e)
             store.sync(state)
 
         # Debug exceptions in production
