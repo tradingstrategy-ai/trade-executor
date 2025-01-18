@@ -382,7 +382,7 @@ def test_live_stop_loss(
         ts,
         state,
         trading_strategy_universe,
-        ExecutionMode.real_trading
+        ExecutionMode.simulated_trading
     )
 
     # After the first tick, we should have synced our reserves and opened the first position
