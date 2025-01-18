@@ -30,6 +30,18 @@ class AutoClosingOrderUnsupported(Exception):
     """
 
 
+class ExecutionHaltableIssue(Exception):
+    """Something has gone wrong in the execution.
+
+    - Halt the strategy
+
+    - Save state
+
+    - Manual clearing of bad tokens needed
+        - Whitelist/blacklist tokens if we have rigged tokens
+    """
+
+
 class RoutingStateDetails(TypedDict):
     """Detailts a trade router needs from the execeution mode to set its internal state.
 

@@ -48,6 +48,15 @@ class NoSingleOpenPositionException(Exception):
     """Raised if getting the single position of the current portfolio is not successful."""
 
 
+class NotEnoughCasForBuys(Exception):
+    """Exception raised when generated trades in decide_trades() may lead to inconsistent portfolio state.
+
+    - Sells + cash in hand + credit releases should cover buys
+
+    See :py:meth:`PositionManager.check_enough_case.
+    """
+
+
 class PositionManager:
     """An utility class to open and close new trade positions.
 
@@ -2628,6 +2637,55 @@ class PositionManager:
 
         return trades
 
+    def check_enough_cash(
+        self,
+        trades: list[TradeExecution],
+    ):
+        """Check that we have enough cash to cover buys.
+
+        - This is a trip wire for a strategy logic to not to generate
+          and rebalances
+
+        - This is to check that strategy internal logic is coherent
+
+        - For example, too high filtering parameters of alpha model trade generation
+          may cause us not to generate enough trades
+        """
+
+        cash_needed_for_buy = 0.0
+        cash_released = 0.0
+        credit_released = 0.0
+        credit_supplied = 0.0
+
+        for t in trades:
+            assert t.is_spot() or t.is_credit_supply(), "Only spot and credit supply positions supported for now"
+            if t.is_buy():
+                if t.is_credit_supply():
+                    credit_supplied += float(t.planned_reserve)
+                else:
+                    cash_needed_for_buy += float(t.planned_reserve)
+            elif t.is_sell():
+                if t.is_credit_supply():
+                    credit_released += float(t.planned_reserve)
+                else:
+                    cash_released += float(t.planned_reserve)
+            else:
+                raise RuntimeError(f"Unsupported: {t}")
+
+        cash_in_hand = self.get_current_cash()
+        cash_available = cash_in_hand + cash_released + credit_released
+        cash_needed_total = cash_needed_for_buy +  credit_supplied
+
+        msg = f"check_enough_cash(): cash needed: {cash_needed_total} cash will be available: {cash_available}\n" \
+              f"trades: cash needed: {cash_needed_for_buy}, cash released: {cash_released}\n" \
+              f"credit: cash needed: {credit_supplied}, cash released: {credit_released}\n" \
+              f"cash in hand: {cash_in_hand}\n" \
+              f"trades: {len(trades)}\n"
+
+        logger.info(msg)
+
+        if cash_needed_for_buy > cash_available:
+            raise NotEnoughCasForBuys(f"Release cash will not cover for buys. Likely a problem with strategy logic.\n{msg}")
 
 
 def explain_open_position_failure(

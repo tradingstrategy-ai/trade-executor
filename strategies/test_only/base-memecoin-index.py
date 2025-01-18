@@ -430,6 +430,8 @@ def decide_trades(
 
         state.visualisation.set_discardable_data("alpha_model", alpha_model)
 
+    position_manager.check_enough_cash(trades)
+
     return trades  # Return the list of trades we made in this cycle
 
 

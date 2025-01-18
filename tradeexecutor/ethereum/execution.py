@@ -40,7 +40,7 @@ from tradeexecutor.state.identifier import AssetIdentifier
 from tradeexecutor.ethereum.uniswap_v2.uniswap_v2_routing import UniswapV2Routing, UniswapV2RoutingState
 from tradeexecutor.ethereum.uniswap_v3.uniswap_v3_routing import UniswapV3Routing, UniswapV3RoutingState
 from tradeexecutor.state.types import BlockNumber
-from tradeexecutor.strategy.execution_model import ExecutionModel, RoutingStateDetails
+from tradeexecutor.strategy.execution_model import ExecutionModel, RoutingStateDetails, ExecutionHaltableIssue
 from tradeexecutor.strategy.generic.generic_router import GenericRouting
 from tradeexecutor.strategy.routing import RoutingModel, RoutingState
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
@@ -356,7 +356,9 @@ class EthereumExecution(ExecutionModel):
                 needed_usd,
             )
 
-            # Trip wire if we have somehow miscalculated USD allocation for buy trades
+            # Trip wire if we have somehow miscalculated USD allocation for buy trades.
+            # The next transaction would not go through even if we try, so better to abort here
+            # and inspect why is this happening.
             if t.is_spot():
                 if t.is_buy():
                     if onchain_treasury_balance <= needed_usd:
@@ -378,12 +380,14 @@ class EthereumExecution(ExecutionModel):
                                 t.executed_price,
                                 t.price_structure,
                             )
-                        assert onchain_treasury_balance >= needed_usd, \
+                        # This is a special type of exception that will cause store.sync() to save state in start.py main loop exit
+                        raise ExecutionHaltableIssue(
                             f"Not enough treasury to buy token  in the middle of rebalance run, should not happen.\n" \
                             f"Trades done: {trades_done}, total trades: {len(trades)}, total sell trades: {total_sell_trades}, total sell trades failed: {total_sell_trades_failed}, total buy trades: {total_buy_trades}\n" \
                             f"Balance: {onchain_treasury_balance:.2f}, USD needed: {needed_usd:.2f}\n" \
                             f"Total sales: {total_sales:.2f} USD, expected sales: {expected_sales:.2f} USD, diff {diff:.2%}" \
                             f"Trade: {t}"
+                        )
 
             for tx in t.blockchain_transactions:
 
