@@ -63,10 +63,13 @@ def report_failure(
         If set, abort with exceptionm instead of trying to keep going.
     """
 
+    last_tx_hash = trade.blockchain_transactions[-1].tx_hash
+
     logger.error(
-        "Trade %s failed and freezing the position: %s",
+        "Trade %s failed and freezing the position: %s\nTransaction hash is: %s",
         trade,
         trade.get_revert_reason(),
+        last_tx_hash,
     )
 
     state.mark_trade_failed(
