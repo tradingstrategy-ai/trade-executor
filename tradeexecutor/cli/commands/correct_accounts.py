@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Optional
 
 import typer
+from ipywidgets import interactive
 from tabulate import tabulate
 from typer import Option
 
@@ -18,6 +19,7 @@ from eth_defi.provider.broken_provider import get_almost_latest_block_number
 from tradeexecutor.strategy.account_correction import correct_accounts as _correct_accounts, check_accounts, UnknownTokenPositionFix, check_state_internal_coherence
 from .app import app
 from ..bootstrap import prepare_executor_id, create_web3_config, create_sync_model, create_client, backup_state, create_execution_and_sync_model
+from ..double_position import check_double_position
 from ..log import setup_logging
 from ...ethereum.enzyme.tx import EnzymeTransactionBuilder
 from ...ethereum.enzyme.vault import EnzymeVaultSyncModel
@@ -253,6 +255,13 @@ def correct_accounts(
         if len(state.portfolio.reserves) == 0:
             logger.info("Initialising reserves for the unit test: %s", universe.reserve_assets[0])
             state.portfolio.initialise_reserves(universe.reserve_assets[0])
+
+    double_positions = check_double_position(state, printer=logger.info)
+    if double_positions:
+        logger.info("Double positions detected. You should *not* proceed with accounting correction,")
+        logger.info("because we cannot correct onchain token balance across multiple positions.")
+        logger.info("Manually remove duplicates with close-position command first.")
+        raise RuntimeError("Crash for safety")
 
     block_number = get_almost_latest_block_number(web3)
     logger.info(f"Correcting accounts at block {block_number:,}")
