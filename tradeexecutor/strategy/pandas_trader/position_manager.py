@@ -2647,7 +2647,7 @@ class PositionManager:
           and rebalances
 
         - This is to check that strategy internal logic is coherent
-
+xz
         - For example, too high filtering parameters of alpha model trade generation
           may cause us not to generate enough trades
 

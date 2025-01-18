@@ -65,6 +65,10 @@ def close_single_or_all_positions(
     logger.info("Sync model is %s", sync_model)
     logger.info("Trading university reserve asset is %s", universe.get_reserve_asset())
 
+    if sync_model.has_async_deposits():
+        logger.info("Vault must be revalued before proceeding, using: %s", sync_model.__class__.__name__)
+        pass
+
     # Sync any incoming stablecoin transfers
     # that have not been synced yet
     balance_updates = sync_model.sync_treasury(
