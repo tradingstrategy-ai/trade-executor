@@ -261,7 +261,7 @@ def display_position_valuations(positions: Iterable[TradingPosition]) -> pd.Data
             "Ticker": p.pair.get_ticker(),
             "Value USD": p.get_value(),
             "Qty": f"{p.get_quantity():,.4f}",
-            "Token price": f"{p.last_token_price:,.6f}",
+            "Token price": f"{p.last_token_price:,.9f}",
             "Valued at": _ftime(p.last_pricing_at),
             "Last trade at": _ftime(last_trade_at),
             "Last failed trade at": _ftime(last_failed_trade_at),
