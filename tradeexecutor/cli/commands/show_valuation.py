@@ -1,7 +1,7 @@
 """show-valuation command.
 
 """
-import enum
+
 from pathlib import Path
 from typing import Optional
 
@@ -14,6 +14,7 @@ from ...analysis.position import display_position_valuations
 from ...state.state import State
 from . import shared_options
 
+
 @app.command()
 def show_valuation(
     id: str = shared_options.id,
@@ -25,6 +26,7 @@ def show_valuation(
 
     - Last valued
     - Value of individual positions
+    - Warn if there are multiple positions for a same trading pair
     """
 
     if not state_file:

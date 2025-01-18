@@ -156,7 +156,7 @@ def close_single_or_all_positions(
         logger.info("Performing close-all for %d open positions", len(open_positions))
         positions_to_close = list(open_positions)
     else:
-        logger.info("Performing close-position for %d position #%d", position_id)
+        logger.info("Performing close-position for position #%d", position_id)
         positions_to_close = [state.portfolio.open_positions[position_id]]
 
     for p in positions_to_close:

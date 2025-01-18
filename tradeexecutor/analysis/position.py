@@ -244,7 +244,7 @@ def display_position_valuations(positions: Iterable[TradingPosition]) -> pd.Data
         idx.append(p.position_id)
         flags = []
         success_trades = [t for t in p.trades.values() if t.is_success()]
-        failed_trades = [t for t in p.trades.values() if t.is_failed()]
+        failed_trades = [t for t in p.trades.values() if (t.is_failed() or t.is_repaired())]
         if success_trades:
             last_trade_at = success_trades[-1].executed_at
         else:
