@@ -5,28 +5,17 @@ import enum
 from pathlib import Path
 from typing import Optional
 
-from IPython.core.display_functions import display
 from tabulate import tabulate
 from typer import Option
 
 from .app import app
+from .shared_options import PositionType
 from ..bootstrap import prepare_executor_id, create_state_store
 from ...analysis.position import display_positions, display_transactions
 from ...state.state import State
 from . import shared_options
 
 
-class PositionType(enum.Enum):
-    """What output we want from show-positions command."""
-
-    #: Show only open positions
-    open = "open"
-
-    #: Show only open positions
-    open_and_frozen = "open_and_frozen"
-
-    #: Show all positions
-    all = "all"
 
 
 class TransactionType(enum.Enum):
@@ -47,7 +36,7 @@ def show_positions(
     id: str = shared_options.id,
     state_file: Optional[Path] = shared_options.state_file,
     strategy_file: Optional[Path] = shared_options.optional_strategy_file,
-    position_type: PositionType = Option(PositionType.open_and_frozen.value, envvar="POSITION_TYPE", help="Which position types to display"),
+    position_type: PositionType = shared_options.position_type,
     tx_type: TransactionType = Option("none", envvar="TX_TYPE", help="Which transactions to list"),
 ):
     """Display trading positions from a state file.
