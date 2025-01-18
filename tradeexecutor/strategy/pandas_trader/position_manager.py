@@ -2650,6 +2650,23 @@ class PositionManager:
 
         - For example, too high filtering parameters of alpha model trade generation
           may cause us not to generate enough trades
+
+        Example:
+
+        .. code-block:: python
+
+            trades = alpha_model.generate_rebalance_trades_and_triggers(
+                position_manager,
+                min_trade_threshold=parameters.rebalance_threshold_usd,  # Don't bother with trades under XXXX USD
+                invidiual_rebalance_min_threshold=parameters.individual_rebalance_min_threshold_usd,
+                sell_rebalance_min_threshold=parameters.sell_rebalance_min_threshold_usd,
+                execution_context=input.execution_context,
+            )
+
+            position_manager.check_enough_cash(trades)
+
+        :raise NotEnoughCasForBuys:
+            In the case we cannot execute all buy trades.
         """
 
         cash_needed_for_buy = 0.0
