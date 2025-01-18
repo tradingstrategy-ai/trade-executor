@@ -311,9 +311,9 @@ def test_cli_backtest(
 
 
 def test_cli_show_positions(
-        logger,
-        strategy_path: str,
-        unit_test_cache_path: str,
+    logger,
+    strategy_path: str,
+    unit_test_cache_path: str,
     ):
     """show-positions command works.
 
@@ -335,6 +335,34 @@ def test_cli_show_positions(
             f = StringIO()
             with redirect_stdout(f):
                 cli.main(args=["show-positions"])
+        assert e.value.code == 0
+
+
+def test_cli_show_valuation_empty(
+    logger,
+    strategy_path: str,
+    unit_test_cache_path: str,
+    ):
+    """show-valuation command works.
+
+    Run against an empty state file.
+    """
+
+    path = Path(tempfile.mkdtemp()) / "test-cli-show-positions-state.json"
+    state = State()
+    with path.open("wt") as out:
+        out.write(state.to_json_safe())
+
+    environment = {
+        "STATE_FILE": path.as_posix(),
+    }
+
+    cli = get_command(app)
+    with patch.dict(os.environ, environment, clear=True):
+        with pytest.raises(SystemExit) as e:
+            f = StringIO()
+            with redirect_stdout(f):
+                cli.main(args=["show-valuation"])
         assert e.value.code == 0
 
 

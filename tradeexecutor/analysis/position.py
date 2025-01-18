@@ -220,3 +220,56 @@ def _format_long_string(text, max_length=20):
 
     # Join all lines with newline characters
     return "\n".join(lines)
+
+
+def display_position_valuations(positions: Iterable[TradingPosition]) -> pd.DataFrame:
+    """Format position valuations for Jupyter Notebook/console table output.
+
+    Display in one table
+
+    - All positions
+
+    - Their values
+
+    :return:
+        DataFrame containing positions and their valuatio data
+    """
+
+    sorted_positions = [p for p in positions]
+    sorted_positions.sort(key=lambda p: p.get_value(), reverse=True)
+
+    items = []
+    idx = []
+    for p in positions:
+        idx.append(p.position_id)
+        flags = []
+        success_trades = [t for t in p.trades.values() if t.is_success()]
+        failed_trades = [t for t in p.trades.values() if t.is_failed()]
+        if success_trades:
+            last_trade_at = success_trades[-1].executed_at
+        else:
+            last_trade_at = None
+
+        if failed_trades:
+            last_failed_trade_at = failed_trades[-1].executed_at
+        else:
+            last_failed_trade_at = None
+
+        items.append({
+            "Id": p.position_id,
+            # "Flags": ", ".join(flags),
+            "Ticker": p.pair.get_ticker(),
+            "Value USD": p.get_value(),
+            "Qty": f"{p.get_quantity():,.4f}",
+            "Token price": f"{p.last_token_price:,.6f}",
+            "Valued at": _ftime(p.last_pricing_at),
+            "Last trade at": _ftime(last_trade_at),
+            "Last failed trade at": _ftime(last_failed_trade_at),
+        })
+
+    df = pd.DataFrame(items, index=idx)
+    df = df.fillna("")
+    if len(df) > 0:
+        df = df.set_index("Id")
+        df = df.replace({pd.NaT: ""})
+    return df

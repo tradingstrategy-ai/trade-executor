@@ -28,3 +28,22 @@ def test_cli_show_positions_long(mocker):
     assert "Transactions by trade" in f.getvalue()
 
 
+def test_cli_show_valuation_long(mocker):
+    """show-positions command work with long output of various output.
+    """
+    path = Path(os.path.dirname(__file__)) / "show-positions-long.json"
+
+    environment = {
+        "STATE_FILE": path.as_posix(),
+    }
+
+    mocker.patch.dict("os.environ", environment, clear=True)
+
+    f = StringIO()
+    with redirect_stdout(f):
+        app(["show-valuation"], standalone_mode=False)
+
+    print(f.getvalue())
+    assert "Valued at" in f.getvalue()
+
+
