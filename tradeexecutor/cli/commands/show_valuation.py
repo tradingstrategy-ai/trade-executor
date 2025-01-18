@@ -68,3 +68,13 @@ def show_valuation(
         df = display_position_valuations(state.portfolio.closed_positions.values())
         print(tabulate(df, headers='keys', tablefmt='rounded_outline'))
 
+    # Warn about pairs appearing twice in the portfolio
+    pairs = {p.pair for p in state.portfolio.get_open_and_frozen_positions()}
+    for pair in pairs:
+        positions = [p for p in state.portfolio.get_open_and_frozen_positions() if p.pair == pair]
+        if len(positions) > 0:
+            print(f"Warning: pair {pair} has multiple open positions: {len(positions)}")
+            for p in positions:
+                print(p)
+
+
