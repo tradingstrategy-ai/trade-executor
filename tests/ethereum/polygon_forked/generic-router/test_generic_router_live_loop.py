@@ -119,7 +119,7 @@ def test_generic_router_spot_and_short_strategy(
             ts,
             state,
             strategy_universe,
-            ExecutionMode.real_trading
+            ExecutionMode.simulated_trading
         )
         ts += datetime.timedelta(days=1)
         mine(web3, to_int_unix_timestamp(ts))
@@ -218,7 +218,7 @@ def test_generic_router_spot_and_short_strategy_manual_tick(
         ts,
         state,
         strategy_universe,
-        ExecutionMode.real_trading
+        ExecutionMode.simulated_trading
     )
     assert len(portfolio.open_positions) == 1
 
@@ -260,7 +260,7 @@ def test_generic_router_spot_and_short_strategy_manual_tick(
         ts,
         state,
         strategy_universe,
-        ExecutionMode.real_trading
+        ExecutionMode.simulated_trading
     )
     assert len(portfolio.open_positions) == 1
 
