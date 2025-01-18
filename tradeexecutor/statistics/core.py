@@ -208,8 +208,8 @@ def update_statistics(
         strategy_cycle_or_wall_clock
     )
     
-    if execution_mode.is_live_trading() and execution_mode != ExecutionMode.unit_testing_trading:
-        assert long_short_metrics_latest, "long short metrics should be provided in live trading"
+    if execution_mode.is_live_trading() and execution_mode not in (ExecutionMode.unit_testing_trading, ExecutionMode.one_off):
+        assert long_short_metrics_latest, f"long short metrics should be provided in live trading, trading mode is: {execution_mode}"
     
     if long_short_metrics_latest:
         logger.info("Serialising long_short_metrics_latest")

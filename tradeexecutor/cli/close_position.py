@@ -10,6 +10,7 @@ from web3 import Web3
 
 from tradeexecutor.analysis.position import display_positions
 from tradeexecutor.ethereum.enzyme.vault import EnzymeVaultSyncModel
+from tradeexecutor.strategy.execution_context import ExecutionContext
 from tradeexecutor.strategy.sync_model import SyncModel
 from tradeexecutor.strategy.valuation import ValuationModel
 from tradeexecutor.strategy.valuation_update import update_position_valuations
@@ -32,6 +33,7 @@ class CloseAllAborted(Exception):
 def close_single_or_all_positions(
     web3: Web3,
     execution_model: ExecutionModel,
+    execution_context: ExecutionContext,
     pricing_model: PricingModel,
     sync_model: SyncModel,
     state: State,
@@ -58,6 +60,7 @@ def close_single_or_all_positions(
     assert isinstance(sync_model, SyncModel)
     assert isinstance(universe, TradingStrategyUniverse)
     assert isinstance(valuation_model, ValuationModel)
+    assert isinstance(execution_context, ExecutionContext)
 
     if position_id is not None:
         assert type(position_id) is int, f"Got: {position_id} {type(position_id)}"
@@ -78,7 +81,7 @@ def close_single_or_all_positions(
             timestamp=ts,
             state=state,
             universe=universe,
-            execution_context=execution_model.execution_context,
+            execution_context=execution_context,
             routing_state=routing_state,
             valuation_model=valuation_model,
             long_short_metrics_latest=None,

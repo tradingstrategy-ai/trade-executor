@@ -177,18 +177,18 @@ def close_position(
 
     close_single_or_all_positions(
         web3config.get_default(),
-        execution_model,
-        pricing_model,
-        sync_model,
-        state,
-        universe,
-        runner.routing_model,
-        routing_state,
+        execution_model=execution_model,
+        pricing_model=pricing_model,
+        sync_model=sync_model,
+        state=state,
+        universe=universe,
+        routing_model=runner.routing_model,
+        routing_state=routing_state,
         slippage_tolerance=slippage_tolerance,
         interactive=interactive,
-        position_id=position_id,
-        valuation_model=valuation_model,
         unit_testing=unit_testing,
+        valuation_model=valuation_model,
+        execution_context=execution_context,
     )
 
     # Store the test trade data in the strategy history
