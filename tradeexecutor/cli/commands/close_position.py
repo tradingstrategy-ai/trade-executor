@@ -175,6 +175,8 @@ def close_position(
         if mod.parameters:
             slippage_tolerance = mod.parameters.get("slippage_tolerance", 0.01)
 
+    assert position_id
+
     close_single_or_all_positions(
         web3config.get_default(),
         execution_model=execution_model,
@@ -189,6 +191,7 @@ def close_position(
         unit_testing=unit_testing,
         valuation_model=valuation_model,
         execution_context=execution_context,
+        position_id=position_id,
     )
 
     # Store the test trade data in the strategy history

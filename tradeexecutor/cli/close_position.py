@@ -166,9 +166,14 @@ def close_single_or_all_positions(
         quantity = p.get_quantity()
 
         if trading_quantity != quantity:
-            logger.info("Position quantity: %f, available for trade quantity: %f", quantity, trading_quantity)
+            logger.info(
+                "Position #%d quantity: %f, available for trade quantity: %f",
+                p.position_id,
+                quantity,
+                trading_quantity,
+            )
             for t in p.trades.values():
-                logger.info("Trade %s, quantity", t, quantity)
+                logger.info("Trade %s, quantity: %s", t, quantity)
 
         assert trading_quantity == quantity, (f"Position quantity vs. available trading quantity mismatch.\n"
                                               f"Probably unexecuted trades? {quantity} vs. {trading_quantity}\n"
