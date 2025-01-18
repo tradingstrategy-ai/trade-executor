@@ -182,7 +182,7 @@ def test_one_delta_live_strategy_short_open_and_close(
         ts,
         state,
         trading_strategy_universe,
-        ExecutionMode.real_trading
+        ExecutionMode.simulated_trading
     )
 
     loop.runner.check_accounts(trading_strategy_universe, state)
@@ -219,7 +219,7 @@ def test_one_delta_live_strategy_short_open_and_close(
         ts,
         state,
         trading_strategy_universe,
-        ExecutionMode.real_trading
+        ExecutionMode.simulated_trading
     )
 
     loop.runner.check_accounts(trading_strategy_universe, state)
@@ -342,7 +342,7 @@ def test_one_delta_live_strategy_short_open_accrue_interests(
         ts,
         state,
         trading_strategy_universe,
-        ExecutionMode.real_trading
+        ExecutionMode.simulated_trading
     )
 
     assert len(state.portfolio.open_positions) == 1
@@ -389,7 +389,7 @@ def test_one_delta_live_strategy_short_open_accrue_interests(
         ts,
         state,
         trading_strategy_universe,
-        ExecutionMode.real_trading
+        ExecutionMode.simulated_trading
     )
 
     # position should still be open
@@ -431,7 +431,7 @@ def test_one_delta_live_strategy_short_open_accrue_interests(
         ts,
         state,
         trading_strategy_universe,
-        ExecutionMode.real_trading
+        ExecutionMode.simulated_trading
     )
 
     # # there should be accrued interest now
@@ -549,7 +549,7 @@ def test_one_delta_live_strategy_short_increase(
         ts,
         state,
         trading_strategy_universe,
-        ExecutionMode.real_trading
+        ExecutionMode.simulated_trading
     )
 
     loop.runner.check_accounts(trading_strategy_universe, state)
@@ -586,7 +586,7 @@ def test_one_delta_live_strategy_short_increase(
         ts,
         state,
         trading_strategy_universe,
-        ExecutionMode.real_trading
+        ExecutionMode.simulated_trading
     )
 
     loop.runner.check_accounts(trading_strategy_universe, state)
@@ -700,7 +700,7 @@ def test_one_delta_live_strategy_short_reduce(
         ts,
         state,
         trading_strategy_universe,
-        ExecutionMode.real_trading
+        ExecutionMode.simulated_trading
     )
 
     loop.runner.check_accounts(trading_strategy_universe, state)
@@ -737,7 +737,7 @@ def test_one_delta_live_strategy_short_reduce(
         ts,
         state,
         trading_strategy_universe,
-        ExecutionMode.real_trading
+        ExecutionMode.simulated_trading
     )
 
     loop.runner.check_accounts(trading_strategy_universe, state)

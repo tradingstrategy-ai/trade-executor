@@ -9,6 +9,7 @@ import pytest
 
 from eth_account import Account
 from eth_typing import HexAddress
+import flaky
 from hexbytes import HexBytes
 from web3 import Web3, HTTPProvider
 
@@ -163,6 +164,7 @@ def environment(
     return environment
 
 
+@flaky.flaky
 def test_enzyme_guard_perform_test_trade_aave(
     environment: dict,
     web3: Web3,

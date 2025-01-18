@@ -120,7 +120,7 @@ def test_aave_v3_live_credit_supply_open_only(
         ts,
         state,
         strategy_universe,
-        ExecutionMode.real_trading
+        ExecutionMode.simulated_trading
     )
 
     loop.runner.check_accounts(strategy_universe, state)
@@ -158,7 +158,7 @@ def test_aave_v3_live_credit_supply_open_only(
         ts,
         state,
         strategy_universe,
-        ExecutionMode.real_trading
+        ExecutionMode.simulated_trading
     )
 
     loop.runner.check_accounts(strategy_universe, state)
@@ -246,7 +246,7 @@ def test_aave_v3_live_credit_supply_open_and_increase(
         ts,
         state,
         strategy_universe,
-        ExecutionMode.real_trading
+        ExecutionMode.simulated_trading
     )
 
     loop.runner.check_accounts(strategy_universe, state)
@@ -284,7 +284,7 @@ def test_aave_v3_live_credit_supply_open_and_increase(
         ts,
         state,
         strategy_universe,
-        ExecutionMode.real_trading
+        ExecutionMode.simulated_trading
     )
 
     loop.runner.check_accounts(strategy_universe, state)
@@ -372,7 +372,7 @@ def test_aave_v3_live_credit_supply_open_and_reduce(
         ts,
         state,
         strategy_universe,
-        ExecutionMode.real_trading
+        ExecutionMode.simulated_trading
     )
 
     loop.runner.check_accounts(strategy_universe, state)
@@ -410,7 +410,7 @@ def test_aave_v3_live_credit_supply_open_and_reduce(
         ts,
         state,
         strategy_universe,
-        ExecutionMode.real_trading
+        ExecutionMode.simulated_trading
     )
 
     loop.runner.check_accounts(strategy_universe, state)

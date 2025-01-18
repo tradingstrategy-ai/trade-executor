@@ -39,6 +39,7 @@ from tradeexecutor.strategy.parameters import StrategyParameters
 from tradeexecutor.strategy.routing import RoutingModel
 from tradeexecutor.strategy.run_state import RunState
 from tradeexecutor.strategy.strategy_cycle_trigger import StrategyCycleTrigger
+from tradeexecutor.strategy.valuation_update import update_position_valuations
 from tradingstrategy.candle import GroupedCandleUniverse
 
 try:
@@ -589,7 +590,7 @@ class ExecutionLoop:
         clock: datetime.datetime,
         state: State,
         universe: StrategyExecutionUniverse,
-        execution_mode: ExecutionMode,
+        execution_mode: ExecutionMode = None,
     ):
         """Revalue positions and update statistics.
 
@@ -597,27 +598,36 @@ class ExecutionLoop:
         and added to the state.
 
         :param clock: Real-time or historical clock
+
+        :param execution_mode:
+            Legacy argument, ignored.
         """
 
+        if execution_mode is None:
+            execution_mode = self.execution_context.mode
+
+        assert execution_mode == self.execution_context.mode, f"ExecutionMode given: {execution_mode}, context has: {self.execution_context.mode}"
+
         # Set up the execution to perform the valuation
+
+        long_short_metrics_latest = (
+            self.extract_long_short_stats_from_state(state)
+        )
 
         if len(state.portfolio.reserves) == 0:
             logger.info("The strategy has no reserves or deposits yet")
 
-        routing_state, pricing_model, valuation_method = self.runner.setup_routing(universe)
+        routing_state, pricing_model, valuation_model = self.runner.setup_routing(universe)
 
-        # TODO: this seems to be duplicated in tick()
-        with self.timed_task_context_manager("revalue_portfolio_statistics"):
-            logger.info("Updating position valuations")
-            self.runner.revalue_state(clock, state, valuation_method)
-
-        with self.timed_task_context_manager("update_statistics"):
-            logger.info("Updating position statistics after revaluation")
-
-            long_short_metrics_latest = (
-                self.extract_long_short_stats_from_state(state)
-            )
-            update_statistics(clock, state.stats, state.portfolio, execution_mode, long_short_metrics_latest=long_short_metrics_latest)
+        update_position_valuations(
+            timestamp=clock,
+            state=state,
+            universe=universe,
+            execution_context=self.execution_context,
+            routing_state=routing_state,
+            valuation_model=valuation_model,
+            long_short_metrics_latest=long_short_metrics_latest,
+        )
 
         # Check that state is good before writing it to the disk
         state.perform_integrity_check()
@@ -969,7 +979,7 @@ class ExecutionLoop:
             )
 
             # Revalue our portfolio
-            self.update_position_valuations(ts, state, universe, self.execution_context.mode)
+            self.update_position_valuations(ts, state, universe)
 
             # Check for termination in integration testing.
             # TODO: Get rid of this and only support date ranges to run tests

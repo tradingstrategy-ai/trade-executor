@@ -152,13 +152,13 @@ def set_up_simulated_execution_loop_uniswap_v2(
 
 
 def set_up_simulated_execution_loop_uniswap_v3(
-        *ignore,
-        web3: Web3,
-        decide_trades: DecideTradesProtocol,
-        universe: StrategyExecutionUniverse,
-        routing_model: UniswapV3Routing,
-        state: State,
-        wallet_account: LocalAccount,
+    *ignore,
+    web3: Web3,
+    decide_trades: DecideTradesProtocol,
+    universe: StrategyExecutionUniverse,
+    routing_model: UniswapV3Routing,
+    state: State,
+    wallet_account: LocalAccount,
 ) -> ExecutionLoop:
     """Set up a simulated execution loop for Uniswap V3.
 
