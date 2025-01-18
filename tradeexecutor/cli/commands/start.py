@@ -15,6 +15,7 @@ from typing import Optional
 
 import typer
 
+from eth_defi.confirmation import ConfirmationTimedOut
 from eth_defi.gas import GasPriceMethod
 from tradingstrategy.chain import ChainId
 from tradingstrategy.timebucket import TimeBucket
@@ -633,8 +634,10 @@ def start(
 
         logger.exception(e)
 
-        # Save state
-        if isinstance(e, ExecutionHaltableIssue):
+        # Save state on known good exceptions we know are causing headache
+        # for automated execution due to unstability of the blockchains.
+        # eth_defi.confirmation.ConfirmationTimedOut
+        if isinstance(e, (ExecutionHaltableIssue, ConfirmationTimedOut)):
             logger.error("Saving state with aborted execution")
             store.sync(state)
 
