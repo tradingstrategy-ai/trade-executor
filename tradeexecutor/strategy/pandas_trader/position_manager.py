@@ -2497,6 +2497,7 @@ class PositionManager:
         assert isinstance(lending_reserve_identifier, TradingPairIdentifier), f"Expected TradingPairIdentifier, got {lending_reserve_identifier}"
 
         cash_needed = 0.0
+        cash_released = 0.0
 
         for t in trades:
             assert t.is_spot(), f"Only spot trades supported in calculate_cash_needed(), got: {t}"
@@ -2504,12 +2505,12 @@ class PositionManager:
             if t.is_buy():
                 cash_needed += float(t.planned_reserve)
             else:
-                cash_needed -= float(t.planned_reserve) * buffer_pct
+                cash_released += float(t.planned_reserve) * (1 - buffer_pct)
 
         # Keep this amount always in cash.
         # For Lagoon this will enable instant small redemptions.
         nav = self.state.portfolio.get_net_asset_value()
-        always_cash = nav * (1 - allocation_pct)
+        target_reserve = nav * (1 - allocation_pct)
 
         position = self.get_current_position_for_pair(lending_reserve_identifier)
         if position is None:
@@ -2518,25 +2519,42 @@ class PositionManager:
             already_deposited = position.get_value(include_interest=True)
 
         available_cash = self.get_current_cash()
-        total_cash_needed = cash_needed + always_cash
-        flow = total_cash_needed - available_cash
+        reserve_diff = target_reserve - available_cash
+        trade_cash_diff = cash_needed - cash_released
+        total_cash_needed = trade_cash_diff + reserve_diff
+        flow = total_cash_needed
 
-        logger.info(
-            "calculate_cash_needed(): trades: %d, nav: %f, flow: %f, total cash needed: %f, cash needed in trades: %f, already deposited: %f, always cash: %f, buffer: %f",
-            len(trades),
-            nav,
-            flow,
-            total_cash_needed,
-            cash_needed,
-            already_deposited,
-            always_cash,
-            buffer_pct,
-        )
+        # Construct a sophisticated log/error message
+        msg = \
+            "calculate_cash_needed(): trades: %d nav: %f flow: %f\n" \
+            "total cash needed for buys and reserve: %f, cash consumed in trades: %f, cash released in trades: %f\n" \
+            "trade cash diff: %f\n" \
+            "deposited in Aave: %f\n" \
+            "sell buffer pct: %f\n" \
+            "target reserve: %f, cash reserves: %f, reserve diff: %f\n" \
+            "lending reserve: %s, lending position: %s" \
+             % (
+                len(trades),
+                nav,
+                flow,
+                total_cash_needed,
+                cash_needed,
+                cash_released,
+                trade_cash_diff,
+                already_deposited,
+                buffer_pct,
+                target_reserve,
+                available_cash,
+                reserve_diff,
+                lending_reserve_identifier,
+                position
+            )
 
-        logger.info("Lending reserve: %s, lending position: %s", lending_reserve_identifier, position)
+        logger.info(msg)
 
         if flow > 0:
-            assert flow < already_deposited, f"Tries to release {flow} from credit supplies, but we have only {already_deposited}"
+            assert flow < already_deposited, \
+                f"Tries to release {flow} from credit supplies, but we have only {already_deposited}\n{msg}"
 
         return flow
 
