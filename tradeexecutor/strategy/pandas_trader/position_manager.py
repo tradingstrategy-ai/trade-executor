@@ -2553,8 +2553,12 @@ class PositionManager:
         logger.info(msg)
 
         if flow > 0:
-            assert flow < already_deposited, \
-                f"Tries to release {flow} from credit supplies, but we have only {already_deposited}\n{msg}"
+            if flow > already_deposited:
+                # This may happen in some situation that we need all reserves we have (all in on volatile positions)
+                # so we have no Aave credit left and eating into a reservs a bit.
+                # Esp. because we have some margin how much cash we will release for sells.
+                logger.info(f"Tries to release {flow} from credit supplies, but we have only {already_deposited}")
+                flow = already_deposited
 
         return flow
 

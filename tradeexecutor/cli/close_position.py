@@ -149,13 +149,14 @@ def close_single_or_all_positions(
     # on the previous run
 
     open_positions = list(state.portfolio.open_positions.values())
-    logger.info("Performing close-all for %d open positions", len(open_positions))
 
     assert len(open_positions) > 0, "Strategy does not have any open positions to close"
 
     if position_id is None:
+        logger.info("Performing close-all for %d open positions", len(open_positions))
         positions_to_close = list(open_positions)
     else:
+        logger.info("Performing close-position for %d position #%d", position_id)
         positions_to_close = [state.portfolio.open_positions[position_id]]
 
     for p in positions_to_close:
@@ -163,7 +164,15 @@ def close_single_or_all_positions(
 
         trading_quantity = p.get_available_trading_quantity()
         quantity = p.get_quantity()
-        assert trading_quantity == quantity, f"Position quantity vs. available trading quantity mismatch. Probably unexecuted trades? {quantity} vs. {trading_quantity}"
+
+        if trading_quantity != quantity:
+            logger.info("Position quantity: %f, available for trade quantity: %f", quantity, trading_quantity)
+            for t in p.trades.values():
+                logger.info("Trade %s, quantity", t, quantity)
+
+        assert trading_quantity == quantity, (f"Position quantity vs. available trading quantity mismatch.\n"
+                                              f"Probably unexecuted trades? {quantity} vs. {trading_quantity}\n"
+                                              f"Position: {p}")
 
     if interactive:
         confirmation = input("Attempt to close positions [y/n]").lower()
