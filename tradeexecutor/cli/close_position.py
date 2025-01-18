@@ -4,9 +4,6 @@ Code to clean up positions or forcing a shutdown.
 """
 import logging
 import datetime
-import textwrap
-from decimal import Decimal
-from typing import Union
 
 from tabulate import tabulate
 from web3 import Web3
@@ -15,16 +12,13 @@ from tradeexecutor.analysis.position import display_positions
 from tradeexecutor.ethereum.enzyme.vault import EnzymeVaultSyncModel
 from tradeexecutor.strategy.sync_model import SyncModel
 from tradingstrategy.types import Percent
-from tradingstrategy.universe import Universe
-from tradingstrategy.pair import HumanReadableTradingPairDescription
-
-from tradeexecutor.ethereum.hot_wallet_sync_model import EthereumHotWalletReserveSyncer
 from tradeexecutor.state.state import State
 from tradeexecutor.strategy.execution_model import ExecutionModel
 from tradeexecutor.strategy.pandas_trader.position_manager import PositionManager
 from tradeexecutor.strategy.pricing_model import PricingModel
 from tradeexecutor.strategy.routing import RoutingModel, RoutingState
-from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse, translate_trading_pair
+from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
+
 
 logger = logging.getLogger(__name__)
 
@@ -33,7 +27,7 @@ class CloseAllAborted(Exception):
     """Interactively chosen to cancel"""
 
 
-def close_all(
+def close_single_or_all_positions(
     web3: Web3,
     execution_model: ExecutionModel,
     pricing_model: PricingModel,
@@ -44,8 +38,11 @@ def close_all(
     routing_state: RoutingState,
     slippage_tolerance: Percent,
     interactive=True,
+    position_id: int | None = None,
 ):
-    """Close all positions.
+    """Close single/all positions.
+
+    - CLI entry point
 
     - Sync reserves before starting
 
@@ -55,6 +52,10 @@ def close_all(
     """
 
     assert isinstance(sync_model, SyncModel)
+
+    if position_id is not None:
+        assert type(position_id) is int, f"Got: {position_id} {type(position_id)}"
+        assert position_id >= 0
 
     ts = datetime.datetime.utcnow()
 
@@ -129,7 +130,12 @@ def close_all(
 
     assert len(open_positions) > 0, "Strategy does not have any open positions to close"
 
-    for p in open_positions:
+    if position_id is None:
+        positions_to_close = list(open_positions)
+    else:
+        positions_to_close = [state.portfolio.open_positions[position_id]]
+
+    for p in positions_to_close:
         logger.info("  Position: %s, quantity %s", p, p.get_quantity())
 
         trading_quantity = p.get_available_trading_quantity()
@@ -137,11 +143,11 @@ def close_all(
         assert trading_quantity == quantity, f"Position quantity vs. available trading quantity mismatch. Probably unexecuted trades? {quantity} vs. {trading_quantity}"
 
     if interactive:
-        confirmation = input("Attempt to cloes positions [y/n]").lower()
+        confirmation = input("Attempt to close positions [y/n]").lower()
         if confirmation != "y":
             raise CloseAllAborted()
 
-    for p in open_positions:
+    for p in positions_to_close:
         # Create trades to open the position
         logger.info("Closing position %s", p)
 

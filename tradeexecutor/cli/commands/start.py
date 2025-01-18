@@ -39,7 +39,7 @@ from ...strategy.approval import ApprovalType
 from ...strategy.bootstrap import import_strategy_file
 from ...strategy.cycle import CycleDuration
 from ...strategy.execution_context import ExecutionContext, ExecutionMode
-from ...strategy.execution_model import AssetManagementMode
+from ...strategy.execution_model import AssetManagementMode, ExecutionHaltableIssue
 from ...strategy.parameters import dump_parameters
 from ...strategy.routing import RoutingModel
 from ...strategy.run_state import RunState
@@ -632,6 +632,11 @@ def start(
         stop_watchdog()
 
         logger.exception(e)
+
+        # Save state
+        if isinstance(e, ExecutionHaltableIssue):
+            logger.error("Saving state with aborted execution")
+            store.sync(state)
 
         # Debug exceptions in production
         if port_mortem_debugging:

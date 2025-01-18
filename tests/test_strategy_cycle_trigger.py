@@ -37,7 +37,7 @@ def logger(request):
     return setup_pytest_logging(request, mute_requests=False)
 
 
-temp_disable = datetime.datetime(2024, 12, 15)
+temp_disable = datetime.datetime(2025, 2, 15)
 
 @pytest.mark.skipif(datetime.datetime.utcnow() < temp_disable, reason="Temporary disabled, oracle server having an issue")
 @pytest.mark.skipif(os.environ.get("SKIP_SLOW_TEST"), reason="Slow tests skipping enabled")

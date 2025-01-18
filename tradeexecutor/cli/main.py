@@ -7,6 +7,7 @@ from .commands.check_accounts import check_accounts
 from .commands.check_universe import check_universe
 from .commands.check_wallet import check_wallet
 from .commands.close_all import close_all
+from .commands.close_position import close_position
 from .commands.console import console
 from .commands.correct_accounts import correct_accounts
 from .commands.deploy_guard import deploy_guard
@@ -34,7 +35,7 @@ from .commands.show_valuation import show_valuation
 __all__ = [
     app, check_wallet, check_universe, hello, start, perform_test_trade, 
     version, repair, console, init, reset, enzyme_asset_list, enzyme_deploy_vault,
-    lagoon_deploy_vault, close_all, show_positions, show_valuation, backtest, correct_accounts, check_accounts,
+    lagoon_deploy_vault, close_all, close_position, show_positions, show_valuation, backtest, correct_accounts, check_accounts,
     reset_deposits, export, retry, visualise, webapi,
     deploy_guard, check_position_triggers, send_log_message
 ]
