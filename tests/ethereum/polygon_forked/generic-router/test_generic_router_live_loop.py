@@ -292,7 +292,7 @@ def test_generic_router_spot_and_short_strategy_manual_tick(
         ts,
         state,
         strategy_universe,
-        ExecutionMode.real_trading
+        ExecutionMode.simulated_trading
     )
     assert len(portfolio.open_positions) == 1
 
