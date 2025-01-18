@@ -1,10 +1,11 @@
-"""close-all command"""
+"""close-position command"""
 
 import datetime
 from pathlib import Path
 from typing import Optional
 
-from . import shared_options
+from typer import Option
+
 from .app import app
 from ..bootstrap import prepare_executor_id, prepare_cache, create_web3_config, create_state_store, \
     create_execution_and_sync_model, create_client
@@ -18,11 +19,12 @@ from ...strategy.run_state import RunState
 from ...strategy.strategy_module import read_strategy_module, StrategyModuleInformation
 from ...strategy.trading_strategy_universe import TradingStrategyUniverseModel
 from ...utils.timer import timed_task
-from tradeexecutor.cli.close_position import close_single_or_all_positions as _close_all
+from tradeexecutor.cli.commands import shared_options
+from tradeexecutor.cli.close_position import close_single_or_all_positions
 
 
 @app.command()
-def close_all(
+def close_position(
     id: str = shared_options.id,
 
     strategy_file: Path = shared_options.strategy_file,
@@ -56,8 +58,10 @@ def close_all(
 
     unit_testing: bool = shared_options.unit_testing,
     simulate: bool = shared_options.simulate,
+
+    position_id: Optional[int] = Option(None, envvar="POSITION_ID", help="Position id to close.")
 ):
-    """Close all open positions.
+    """Close a single positions.
 
     - Syncs the latest reserve deposits and redemptions
 
@@ -75,7 +79,8 @@ def close_all(
         json_rpc_binance=json_rpc_binance,
         json_rpc_polygon=json_rpc_polygon,
         json_rpc_avalanche=json_rpc_avalanche,
-        json_rpc_ethereum=json_rpc_ethereum, json_rpc_base=json_rpc_base, 
+        json_rpc_ethereum=json_rpc_ethereum,
+        json_rpc_base=json_rpc_base,
         json_rpc_anvil=json_rpc_anvil,
         json_rpc_arbitrum=json_rpc_arbitrum,
         simulate=simulate,
@@ -170,7 +175,7 @@ def close_all(
         if mod.parameters:
             slippage_tolerance = mod.parameters.get("slippage_tolerance", 0.01)
 
-    _close_all(
+    close_single_or_all_positions(
         web3config.get_default(),
         execution_model,
         pricing_model,
@@ -181,6 +186,7 @@ def close_all(
         routing_state,
         slippage_tolerance=slippage_tolerance,
         interactive=interactive,
+        position_id=position_id,
     )
 
     # Store the test trade data in the strategy history

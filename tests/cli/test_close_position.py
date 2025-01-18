@@ -114,6 +114,55 @@ def test_close_all(
     assert len(state.portfolio.open_positions) == 0
 
 
+def test_close_position_single(
+    environment: dict,
+    state_file: Path,
+):
+    """Perform close-position command
+
+    - End-to-end high level test for the command
+
+    - Create test EVM trading environment
+
+    - Initialise strategy command
+
+    - Perform buy only test trade command
+
+    - Perform close singgle command
+    """
+
+    # trade-executor init
+    cli = get_command(app)
+    with patch.dict(os.environ, environment, clear=True):
+        with pytest.raises(SystemExit) as e:
+            cli.main(args=["init"])
+        assert e.value.code == 0
+
+    # trade-executor perform-test-trade --buy-only
+    cli = get_command(app)
+    with patch.dict(os.environ, environment, clear=True):
+        with pytest.raises(SystemExit) as e:
+            cli.main(args=["perform-test-trade", "--buy-only"])
+        assert e.value.code == 0
+
+    state = State.read_json_file(state_file)
+    assert len(state.portfolio.open_positions) == 1
+
+    position = next(iter(state.portfolio.open_positions.values()))
+
+    environment["POSITION_ID"] = str(position.position_id)
+
+    # trade-executor close-all
+    cli = get_command(app)
+    with patch.dict(os.environ, environment, clear=True):
+        with pytest.raises(SystemExit) as e:
+            cli.main(args=["close-position"])
+        assert e.value.code == 0
+
+    state = State.read_json_file(state_file)
+    assert len(state.portfolio.open_positions) == 0
+
+
 
 def test_close_all_simulate(
     environment: dict,
