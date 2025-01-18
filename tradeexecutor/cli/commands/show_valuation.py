@@ -72,7 +72,7 @@ def show_valuation(
     pairs = {p.pair for p in state.portfolio.get_open_and_frozen_positions()}
     for pair in pairs:
         positions = [p for p in state.portfolio.get_open_and_frozen_positions() if p.pair == pair]
-        if len(positions) > 0:
+        if len(positions) >= 2:
             print(f"Warning: pair {pair} has multiple open positions: {len(positions)}")
             for p in positions:
                 print(p)
