@@ -41,7 +41,43 @@ def update_position_valuations(
 
     Example:
 
+    .. code-block:: python
 
+        logger.info("Sync model is %s", sync_model)
+        logger.info("Trading university reserve asset is %s", universe.get_reserve_asset())
+
+        # Use unit_testing flag so this code path is easier to check
+        if sync_model.has_async_deposits() or unit_testing:
+            logger.info("Vault must be revalued before proceeding, using: %s", sync_model.__class__.__name__)
+            update_position_valuations(
+                timestamp=ts,
+                state=state,
+                universe=universe,
+                execution_context=execution_context,
+                routing_state=routing_state,
+                valuation_model=valuation_model,
+                long_short_metrics_latest=None,
+            )
+
+        # Sync any incoming stablecoin transfers
+        # that have not been synced yet
+        balance_updates = sync_model.sync_treasury(
+            ts,
+            state,
+            list(universe.reserve_assets),
+            post_valuation=True,
+        )
+
+        logger.info("We received balance update events: %s", balance_updates)
+
+        # Velvet capital code path
+        if sync_model.has_position_sync():
+            sync_model.sync_positions(
+                ts,
+                state,
+                universe,
+                pricing_model
+            )
 
     :param timestamp:
         Real-time or historical clock
