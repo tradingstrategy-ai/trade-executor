@@ -166,7 +166,7 @@ def test_one_delta_live_credit_supply_open_only(
         ts,
         state,
         trading_strategy_universe,
-        ExecutionMode.real_trading
+        ExecutionMode.simulated_trading
     )
 
     loop.runner.check_accounts(trading_strategy_universe, state)
@@ -262,7 +262,7 @@ def test_one_delta_live_credit_supply_open_and_close(
         ts,
         state,
         trading_strategy_universe,
-        ExecutionMode.real_trading
+        ExecutionMode.simulated_trading
     )
 
     loop.runner.check_accounts(trading_strategy_universe, state)
@@ -300,7 +300,7 @@ def test_one_delta_live_credit_supply_open_and_close(
         ts,
         state,
         trading_strategy_universe,
-        ExecutionMode.real_trading
+        ExecutionMode.simulated_trading
     )
 
     loop.runner.check_accounts(trading_strategy_universe, state)
@@ -409,7 +409,7 @@ def test_one_delta_live_credit_supply_mixed_with_spot(
         ts,
         state,
         trading_strategy_universe,
-        ExecutionMode.real_trading
+        ExecutionMode.simulated_trading
     )
 
     loop.runner.check_accounts(trading_strategy_universe, state)
@@ -447,7 +447,7 @@ def test_one_delta_live_credit_supply_mixed_with_spot(
         ts,
         state,
         trading_strategy_universe,
-        ExecutionMode.real_trading
+        ExecutionMode.simulated_trading
     )
 
     loop.runner.check_accounts(trading_strategy_universe, state)
@@ -538,7 +538,7 @@ def test_one_delta_live_credit_supply_open_and_increase(
         ts,
         state,
         trading_strategy_universe,
-        ExecutionMode.real_trading
+        ExecutionMode.simulated_trading
     )
 
     loop.runner.check_accounts(trading_strategy_universe, state)
@@ -576,7 +576,7 @@ def test_one_delta_live_credit_supply_open_and_increase(
         ts,
         state,
         trading_strategy_universe,
-        ExecutionMode.real_trading
+        ExecutionMode.simulated_trading
     )
 
     loop.runner.check_accounts(trading_strategy_universe, state)
@@ -669,7 +669,7 @@ def test_one_delta_live_credit_supply_open_and_reduce(
         ts,
         state,
         trading_strategy_universe,
-        ExecutionMode.real_trading
+        ExecutionMode.simulated_trading
     )
 
     loop.runner.check_accounts(trading_strategy_universe, state)
@@ -707,7 +707,7 @@ def test_one_delta_live_credit_supply_open_and_reduce(
         ts,
         state,
         trading_strategy_universe,
-        ExecutionMode.real_trading
+        ExecutionMode.simulated_trading
     )
 
     loop.runner.check_accounts(trading_strategy_universe, state)
