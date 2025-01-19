@@ -157,7 +157,12 @@ def close_single_or_all_positions(
         positions_to_close = list(open_positions)
     else:
         logger.info("Performing close-position for position #%d", position_id)
-        positions_to_close = [state.portfolio.open_positions[position_id]]
+        if position_id in state.portfolio.open_positions:
+            positions_to_close = [state.portfolio.open_positions[position_id]]
+        elif position_id in state.portfolio.frozen_positions:
+            positions_to_close = [state.portfolio.frozen_positions[position_id]]
+        else:
+            raise RuntimeError(f"Position #{position_id} does not exist")
 
     for p in positions_to_close:
         logger.info("  Position: %s, quantity %s", p, p.get_quantity())
