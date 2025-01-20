@@ -91,14 +91,17 @@ def display_strategy_universe(
 
         if show_price:
             try:
-                data["price"], data["price_at"] = strategy_universe.data_universe.candles.get_price_with_tolerance(
+                data["price"], data["last_price_at"] = strategy_universe.data_universe.candles.get_price_with_tolerance(
                     pair=pair.internal_id,
                     when=candle_now,
                     tolerance=tolerance,
                 )
+                candles = strategy_universe.data_universe.candles.get_candles_by_pair(pair.internal_id)
+                data["first_price_at"] = candles.index[0]
             except CandleSampleUnavailable:
                 data["price"] = "<not avail>"
-                data["price_at"] = "-"
+                data["first_price_at"] = "-"
+                data["last_price_at"] = "-"
 
         if show_volume:
             try:
