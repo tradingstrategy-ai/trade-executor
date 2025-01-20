@@ -167,6 +167,8 @@ def start(
         else:
             name = "Unnamed backtest"
 
+    assert asset_management_mode, f"ASSET_MANAGEMENT_MODE must given, options are: {[member.name for member in AssetManagementMode]}"
+
     if not log_level:
         if asset_management_mode == AssetManagementMode.backtest:
             log_level = logging.WARNING
