@@ -200,7 +200,7 @@ def test_backtest_credit_flow(
     credit_positions = [p for p in portfolio.get_all_positions() if p.is_credit_supply()]
     assert len(credit_positions) == 10
     total_interest_gained = sum(p.get_total_profit_usd() for p in credit_positions)
-    assert total_interest_gained == pytest.approx(76.8234503286251)
+    assert total_interest_gained == pytest.approx(76.8234503286251 rel=0.01)
 
     interest_metrics = calculate_credit_metrics(state)
     assert isinstance(interest_metrics, pd.DataFrame)

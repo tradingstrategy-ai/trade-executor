@@ -19,7 +19,7 @@ python = ">=3.11,<=3.12"
 trading-strategy = {path = "deps/trading-strategy", develop = true}
 # trading-strategy = "^0.22.6"
 requests = "^2.27.1"
-matplotlib = "^3.6.0"
+matplotlib = ">=3.5"
 jupyterlab = "^4.0.7"
 pandas = "<3"
 pandas-ta = "^0.3.14b"  # Unmaintained, still stick to old Pandas

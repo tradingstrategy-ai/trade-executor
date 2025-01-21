@@ -7031,10 +7031,10 @@ evm-trace = "^0.1.0a17"
 futureproof = "^0.3.1"
 gql = {version = "^3.3.0", extras = ["requests"], optional = true}
 jupyter = {version = "^1.0.0", optional = true}
-matplotlib = {version = "^3.5.2", optional = true}
+matplotlib = {version = ">=3.5", optional = true}
 multicall = "^0.9.0"
 numpy = {version = "<2", optional = true}
-pandas = {version = ">=1.5", optional = true}
+pandas = {version = ">=1.4", optional = true}
 plotly = {version = "^5.8.2", optional = true}
 psutil = "^5.9.0"
 pyarrow = {version = "*", optional = true}
@@ -7051,7 +7051,7 @@ web3 = {version = "6.14.0", extras = ["tester"]}
 web3-google-hsm = "^0.1.0"
 
 [package.extras]
-data = ["gql[requests] (>=3.3.0,<4.0.0)", "jupyter (>=1.0.0,<2.0.0)", "matplotlib (>=3.5.2,<4.0.0)", "numpy (<2)", "pandas (>=1.5)", "plotly (>=5.8.2,<6.0.0)", "pyarrow", "tqdm (>=4.66.1)"]
+data = ["gql[requests] (>=3.3.0,<4.0.0)", "jupyter (>=1.0.0,<2.0.0)", "matplotlib (>=3.5)", "numpy (<2)", "pandas (>=1.4)", "plotly (>=5.8.2,<6.0.0)", "pyarrow", "tqdm (>=4.66.1)"]
 docs = ["Sphinx (>=4.5.0,<5.0.0)", "furo (>=2022.6.4.1,<2023.0.0.0)", "nbsphinx (>=0.8.9,<0.9.0)", "sphinx-autodoc-typehints (>=1.16.0,<2.0.0)", "sphinx-rtd-theme (>=1.0.0,<2.0.0)", "sphinx-rtd-theme (>=1.0.0,<2.0.0)", "sphinx-sitemap (>=2.2.0,<3.0.0)", "sphinx-sitemap (>=2.2.0,<3.0.0)", "zope-dottedname (>=6.0,<7.0)"]
 test = ["pytest-xdist (>=3.3.1,<4.0.0)"]
 
@@ -7601,4 +7601,4 @@ web-server = ["WebTest", "openapi-core", "pyramid", "pyramid-openapi3", "waitres
 [metadata]
 lock-version = "2.0"
 python-versions = ">=3.11,<=3.12"
-content-hash = "de34da19dc553c4e08c6dfa73711e4d7871e274a205a89fa3aed748ae166efe6"
+content-hash = "c20e5a65fa8a4b18e19f996bf73fadd006a82a03adb5c838a7d72b0767f5d27d"
