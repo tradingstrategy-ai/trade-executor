@@ -451,10 +451,11 @@ class GridSearchResult:
         return self.combination == other.combination
 
     def __repr__(self) -> str:
-        cagr = self.get_cagr()
-        sharpe = self.get_sharpe()
-        max_drawdown = self.get_max_drawdown()
-        return f"<GridSearchResult\n  {self.combination.get_all_parameters_label()}\n  CAGR: {cagr*100:.2f}% Sharpe: {sharpe:.2f} Max drawdown:{max_drawdown*100:.2f}%\n>"
+        cagr = self.get_cagr() or 0
+        sharpe = self.get_sharpe() or 0
+        sortino = self.get_sortino() or 0
+        max_drawdown = self.get_max_drawdown() or 0
+        return f"<GridSearchResult\n  {self.combination.get_all_parameters_label()}\n  CAGR: {cagr*100:.2f}%, Sharpe: {sharpe:.2f}, Sortino: {sortino:.2f}, Max drawdown:{max_drawdown*100:.2f}%\n>"
 
     def get_label(self) -> str:
         """Get name for this result for charts.
