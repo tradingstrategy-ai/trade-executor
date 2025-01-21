@@ -20,6 +20,8 @@ def display_strategy_universe(
     show_price=True,
     now_ = None,
     tolerance=pd.Timedelta("90D"),  # Put in any number, fix later to ignore lookup errors
+    sort_key="id",
+    sort_ascending=True,
 ) -> pd.DataFrame:
     """Displays a constructed trading strategy universe in table format.
 
@@ -40,6 +42,23 @@ def display_strategy_universe(
         with pd.option_context('display.max_rows', None, 'display.max_columns', None, 'display.width', 140):
             universe_df = display_strategy_universe(universe)
             logger.info("Universe is:\n%s", str(universe_df))
+        
+    Example 2:
+
+    .. code-block:: python
+
+        strategy_universe = create_trading_universe(
+            None,
+            client,
+            notebook_execution_context,
+            UniverseOptions.from_strategy_parameters_class(Parameters, notebook_execution_context)
+        )
+
+        display_strategy_universe(
+            strategy_universe,
+            sort_key="tvl",
+            sort_ascending=False,
+        ) 
 
     :return:
         Human-readable DataFrame for ``display()``.
@@ -134,6 +153,17 @@ def display_strategy_universe(
 
         pairs.append(data)
 
+    df = pd.DataFrame(pairs)
+
+    df['numeric_values'] = df[sort_key].replace("-", 0).replace("<not avail>", 0).astype(int)
+
+    df = df.sort_values(
+        by="numeric_values", 
+        ascending=sort_ascending,
+    ).set_index("id")
+
+    df = df.drop(columns=['numeric_values'])
+
     # Make human-readable DF
 
     def _format_float_2(value):
@@ -145,10 +175,8 @@ def display_strategy_universe(
         if isinstance(value, float):
             return f"{value:,.0f}"
         return value
-
-    df = pd.DataFrame(pairs)
+    
     df['price'] = df['price'].apply(_format_float_2)
     if "tvl" in df.columns:
-        df['tvl'] = df['tvl'].apply(_format_float_0)
-    df = df.sort_values("id").set_index("id")
+        df['tvl'] = df['tvl'].apply(_format_float_0)    
     return df

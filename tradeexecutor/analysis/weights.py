@@ -5,6 +5,8 @@
 - See :py:func:`visualise_weights` for usage
 
 """
+import enum
+
 import pandas as pd
 from plotly.graph_objs import Figure
 import plotly.express as px
@@ -12,6 +14,9 @@ import plotly.colors as colors
 
 from tradeexecutor.state.state import State
 
+class LegendMode(enum.Enum):
+    side = "side"
+    bottom = "bottom"
 
 def calculate_asset_weights(
     state: State,
@@ -81,6 +86,8 @@ def visualise_weights(
     color_palette=colors.qualitative.Light24,
     template="plotly_dark",
     include_reserves=True,
+    legend_mode: LegendMode=LegendMode.side,
+    columns=20,
 ) -> Figure:
     """Draw a chart of weights.
 
@@ -145,6 +152,12 @@ def visualise_weights(
         fig.update_traces(fillcolor='#9896FF', selector=dict(name=symbol))
     fig.update_traces(fillcolor='#aaa', selector=dict(name=reserve_asset_symbol))
     fig.update_traces(line_width=0)
+
+    match legend_mode:
+        case LegendMode.bottom:
+            # Adjust legend properties
+            pass
+
     return fig
 
 

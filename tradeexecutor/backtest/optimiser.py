@@ -245,7 +245,7 @@ class OptimiserResult:
         """"""
         if len(self.results) == 0:
             return None
-        sorted_results = self.results.sorted(sort_key, reverse=reverse)
+        sorted_results = sorted(self.results, key=sort_key, reverse=reverse)
         return sorted_results[0]
 
 
