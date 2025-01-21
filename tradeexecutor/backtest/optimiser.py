@@ -241,6 +241,14 @@ class OptimiserResult:
         """
         return len([r for r in self.results if r.filtered])
 
+    def find_best(self, sort_key: Callable, reverse=True) -> OptimiserSearchResult | None:
+        """"""
+        if len(self.results) == 0:
+            return None
+        sorted_results = self.results.sorted(sort_key, reverse=reverse)
+        return sorted_results[0]
+
+
 
 class ObjectiveWrapper:
     """Middleware between Optimiser and TS frameworks.

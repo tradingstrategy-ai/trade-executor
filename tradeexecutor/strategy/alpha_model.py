@@ -1180,6 +1180,8 @@ class AlphaModel:
                 s.flags.add(TradingPairSignalFlags.max_adjust_too_small)
             return []
 
+        frozen_pairs = {p.pair for p in position_manager.state.portfolio.frozen_positions.values()}
+
         #  TODO: Break this massive for if spagetti to sub-functions
         for signal in self.iterate_signals():
 
@@ -1216,6 +1218,10 @@ class AlphaModel:
                         signal.old_weight,
                         signal.normalised_weight,
                         dollar_diff)
+
+            if signal.pair in frozen_pairs:
+                logger.warning("Does not generate trades for a pair with frozen positions: %s", signal.pair)
+                continue
 
             if individual_rebalance_min_threshold:
                 trade_size = abs(dollar_diff)

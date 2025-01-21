@@ -187,6 +187,7 @@ def environment(
         "PATH": os.environ["PATH"],  # Needs forge
         "ONE_DELTA": "true",
         "MAX_CYCLES": "3",  # Run decide_trades() 2 times
+        "MAX_DATA_DELAY_MINUTES": "36000",
     }
     return environment
 
