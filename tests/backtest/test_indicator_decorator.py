@@ -383,7 +383,7 @@ def test_get_indicator_rolling_parameters(strategy_universe):
         )
         assert rsi_2 > 0
 
-        rsi_2 = indicators.get_indicator_value(
+        rsi_3 = indicators.get_indicator_value(
             "rsi_derivative",
             pair=pair,
             parameters={
@@ -391,7 +391,9 @@ def test_get_indicator_rolling_parameters(strategy_universe):
                 "other_param": 2,
             },
         )
-        assert rsi_2 > 0
+        assert rsi_3 > 3
+
+        import ipdb ; ipdb.set_trace()
 
         return []
 
