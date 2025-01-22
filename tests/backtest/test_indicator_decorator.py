@@ -15,7 +15,7 @@ from tradeexecutor.strategy.execution_context import unit_test_execution_context
 from tradeexecutor.strategy.pandas_trader.indicator import (
     DiskIndicatorStorage,
     IndicatorSource, IndicatorDependencyResolver,
-    calculate_and_load_indicators_inline, prepare_indicators, IndicatorDefinition,
+    calculate_and_load_indicators_inline, prepare_indicators, IndicatorDefinition, IndicatorNotFound,
 )
 from tradeexecutor.strategy.pandas_trader.indicator_decorator import IndicatorRegistry
 from tradeexecutor.strategy.pandas_trader.strategy_input import StrategyInputIndicators, StrategyInput, IndicatorWithVariations
@@ -393,7 +393,15 @@ def test_get_indicator_rolling_parameters(strategy_universe):
         )
         assert rsi_3 > 3
 
-        import ipdb ; ipdb.set_trace()
+        with pytest.raises(IndicatorNotFound):
+            _ = indicators.get_indicator_value(
+                "rsi_derivative",
+                pair=pair,
+                parameters={
+                    "rsi_length": 0,
+                    "other_param": 0,
+                },
+            )
 
         return []
 

@@ -18,6 +18,7 @@ import datetime
 import threading
 import warnings
 from abc import ABC, abstractmethod
+from collections import defaultdict
 from pprint import pformat
 
 from IPython import get_ipython
@@ -568,14 +569,14 @@ class IndicatorSet:
     """
 
     indicators: dict[str, IndicatorDefinition] = field(default_factory=dict)
-    variation_cache: dict[str, bool] = field(default_factory=dict)
+    variation_cache: dict[str, list] = field(default_factory=lambda: defaultdict(list))
     variation_lookup: dict[int, IndicatorDefinition] = field(default_factory=dict)
 
     def has_indicator(self, name: str) -> bool:
         return name in self.indicators
 
     def is_varying_indicator(self, name: str) -> bool:
-        return self.variation_cache[name]
+        return len(self.variation_cache[name]) > 0
 
     @staticmethod
     def make_parameter_key(
@@ -600,6 +601,10 @@ class IndicatorSet:
     def get_indicator(self, name: str) -> IndicatorDefinition | None:
         """Get a named indicator definition."""
         return self.indicators.get(name)
+
+    def get_variations(self, name) -> list[dict]:
+        """Get all parameter variations for an indicator."""
+        return self.variation_cache[name]
 
     def get_indicator_by_name_and_parameters(
         self,
@@ -675,13 +680,12 @@ class IndicatorSet:
             hashed_name = f"{name}_{hex(hash_source)[-6:]}"
             assert hashed_name not in self.indicators, f"Hashed name for varying indicator {hashed_name} already defined - hash collision, bug?"
             self.indicators[hashed_name] = IndicatorDefinition(name, func, parameters, source, order, variations=True)
-            self.variation_cache[name] = True
+            self.variation_cache[name].append(parameters)
             key = self.make_parameter_key(name, parameters)
             self.variation_lookup[key] = self.indicators[hashed_name]
         else:
             assert name not in self.indicators, f"Indicator {name} already added"
             self.indicators[name] = IndicatorDefinition(name, func, parameters, source, order)
-            self.variation_cache[name] = False
 
     def iterate(self) -> Iterable[IndicatorDefinition]:
         yield from self.indicators.values()

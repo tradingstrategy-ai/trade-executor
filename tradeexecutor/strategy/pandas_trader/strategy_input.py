@@ -662,8 +662,14 @@ class StrategyInputIndicators:
 
         if varying:
             indicator = self.available_indicators.get_indicator_by_name_and_parameters(name, parameters)
+
             if indicator is None:
-                raise IndicatorNotFound(f"Indicator with name '{name}' not defined by create_indicators(). Available indicators are: {self.available_indicators.get_label()}")
+
+                if name in self.available_indicators.variation_cache:
+                    combinations = self.available_indicators.get_variations(name)
+                    raise IndicatorNotFound(f"Indicator with name '{name}' and parameters {parameters} does not match parameters. Matching parameters are: {combinations}")
+
+                raise IndicatorNotFound(f"Indicator with name '{name}' and parameters {parameters} not found. Available indicators are: {self.available_indicators.get_label()}")
 
         else:
             indicator = self.available_indicators.get_indicator(name)
