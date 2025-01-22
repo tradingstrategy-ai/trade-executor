@@ -31,7 +31,7 @@ def generate_sepia_palette(n=40):
 
 def hacker_crt_green_palette(num_colors):
     """
-    Generates a Plotly color palette in hacker CRT green style.
+    Generates a Plotly color palette in hacker CRT green style with varying brightness.
 
     Parameters:
     num_colors (int): Number of colors to generate.
@@ -39,16 +39,18 @@ def hacker_crt_green_palette(num_colors):
     Returns:
     list: A list of color strings in hexadecimal format.
     """
-    base_green = "#00FF00"  # Base CRT green color
     palette = []
 
     for i in range(num_colors):
         if i % 2 == 0:
-            # Lighter shade (base green)
-            palette.append(base_green)
+            # Brighter green with varying intensity
+            intensity = 255 - int((i / num_colors) * 100)  # Adjust intensity based on position
+            brighter_green = f"#00{intensity:02X}00"
+            palette.append(brighter_green)
         else:
-            # Darker shade (reduce the green channel)
-            darker_green = "#{:02X}{:02X}{:02X}".format(0, int(0xFF * 0.6), 0)
+            # Darker green (fixed for contrast)
+            darker_green = "#007700"
             palette.append(darker_green)
 
     return palette
+

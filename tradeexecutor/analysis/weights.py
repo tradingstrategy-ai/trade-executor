@@ -87,7 +87,9 @@ def visualise_weights(
     template="plotly_dark",
     include_reserves=True,
     legend_mode: LegendMode=LegendMode.side,
-    columns=20,
+    aave_colour='#9896FF',
+    reserve_asset_colour='#aaa',
+    clean=False,
 ) -> Figure:
     """Draw a chart of weights.
 
@@ -96,6 +98,11 @@ def visualise_weights(
 
     :param include_reserves:
         Include reserve positions like USDC in the output.
+
+    :param clean:
+        Remove title texts.
+
+        Good for screenshots.
 
     :return:
         Plotly chart
@@ -149,14 +156,56 @@ def visualise_weights(
     for symbol in non_volatile_symbols:
         # Aave colour
         # https://aave.com/brand
-        fig.update_traces(fillcolor='#9896FF', selector=dict(name=symbol))
-    fig.update_traces(fillcolor='#aaa', selector=dict(name=reserve_asset_symbol))
+        fig.update_traces(fillcolor=aave_colour, selector=dict(name=symbol))
+    fig.update_traces(fillcolor=reserve_asset_colour, selector=dict(name=reserve_asset_symbol))
     fig.update_traces(line_width=0)
 
     match legend_mode:
         case LegendMode.bottom:
             # Adjust legend properties
-            pass
+            fig.update_layout(
+                # Move legend to bottom
+                legend=dict(
+                    yanchor="top",
+                    y=-0.1,  # Adjust this value to move legend up/down
+                    xanchor="center",
+                    x=0.5,
+                    # Arrange items in 4 rows
+                    orientation="h",
+                    traceorder="normal",
+                    # nrows=4
+                    itemwidth=40,  # Adjust the multiplier as needed
+                    title_text="",
+                    font=dict(
+                        size=20  # Adjust this value to make legend text bigger/smaller
+                    ),
+                )
+            )
+
+    if clean:
+        fig.update_layout(
+            title=None,
+            xaxis=dict(
+                title=None,
+                # other x-axis properties...
+                nticks=4,
+                # Increase font size (default is usually 12)
+                tickfont=dict(
+                    size=22  # Adjust this value to make font bigger/smaller
+                )
+            ),
+            yaxis=dict(
+                title=None,
+                # other y-axis properties...
+                nticks=5,
+                # Optionally specify tick labels
+                # ticktext=['0%', '50%', '100%'],
+                tickfont=dict(
+                    size=22,
+                ),
+
+            )
+        )
 
     return fig
 

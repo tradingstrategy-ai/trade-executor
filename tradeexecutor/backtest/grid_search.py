@@ -444,6 +444,12 @@ class GridSearchResult:
     #:
     delivered_to_main_thread_at: datetime.datetime | None = None
 
+    #: Include first trade timestamp
+    #:
+    #: Useful for quick debugging.
+    #:
+    first_trade_at: datetime.datetime | None = None
+
     def __hash__(self):
         return self.combination.__hash__()
 
@@ -1320,14 +1326,19 @@ def run_grid_search_backtest(
     if cycle_debug_data is None:
         cycle_debug_data = {}
 
-    backtest_start = datetime.datetime.utcnow()
+    duration_start = datetime.datetime.utcnow()
 
-    universe_range = universe.data_universe.candles.get_timestamp_range()
-    if not start_at:
-        start_at = universe_range[0]
+    if parameters["backtest_start"]:
+        start_at = parameters["backtest_start"]
+        end_at = parameters["backtest_end"]
+    else:
 
-    if not end_at:
-        end_at = universe_range[1]
+        universe_range = universe.data_universe.candles.get_timestamp_range()
+        if not start_at:
+            start_at = universe_range[0]
+
+        if not end_at:
+            end_at = universe_range[1]
 
     if isinstance(start_at, datetime.datetime):
         start_at = pd.Timestamp(start_at)
@@ -1426,6 +1437,12 @@ def run_grid_search_backtest(
 
     period = state.get_trading_time_range()
 
+    try:
+        first_trade = next(iter(state.portfolio.get_all_trades()))
+        first_trade_at = first_trade.executed_at
+    except StopIteration:
+        first_trade_at = None
+
     res = GridSearchResult(
         combination=combination,
         state=state,
@@ -1435,11 +1452,12 @@ def run_grid_search_backtest(
         equity_curve=equity,
         returns=returns,
         initial_cash=state.portfolio.get_initial_cash(),
-        run_start_at=backtest_start,
+        run_start_at=duration_start,
         run_end_at=backtest_end,
         analysis_end_at=analysis_end,
         backtest_start=period[0],
         backtest_end=period[1],
+        first_trade_at=first_trade_at,
     )
 
     # Double check we have not broken QuantStats again
