@@ -6,17 +6,20 @@ import random
 import pandas as pd
 import pandas_ta
 import pytest
+from pandas._libs.tslibs.offsets import MonthBegin
 
+from tradeexecutor.backtest.backtest_runner import run_backtest_inline, BacktestResult
 from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier
+from tradeexecutor.strategy.cycle import CycleDuration
 from tradeexecutor.strategy.execution_context import unit_test_execution_context
 from tradeexecutor.strategy.pandas_trader.indicator import (
     DiskIndicatorStorage,
     IndicatorSource, IndicatorDependencyResolver,
-    calculate_and_load_indicators_inline,
+    calculate_and_load_indicators_inline, prepare_indicators, IndicatorDefinition,
 )
 from tradeexecutor.strategy.pandas_trader.indicator_decorator import IndicatorRegistry
-from tradeexecutor.strategy.pandas_trader.strategy_input import StrategyInputIndicators
-from tradeexecutor.strategy.parameters import StrategyParameters
+from tradeexecutor.strategy.pandas_trader.strategy_input import StrategyInputIndicators, StrategyInput, IndicatorWithVariations
+from tradeexecutor.strategy.parameters import StrategyParameters, RollingParameter
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse, create_pair_universe_from_code
 from tradeexecutor.testing.synthetic_ethereum_data import generate_random_ethereum_address
 from tradeexecutor.testing.synthetic_exchange_data import generate_exchange
@@ -244,3 +247,164 @@ def test_get_indicator_decorator_arguments(strategy_universe):
     )
 
     assert isinstance(indicators, StrategyInputIndicators)
+
+
+def test_get_indicator_rolling_parameters(strategy_universe):
+    """We create multiple indicator parameter variations for rolling indicators."""
+    indicators = IndicatorRegistry()
+
+    rolling_data = pd.Series(
+        data=[21, 22, 23, 24, 25, 26],
+        index=pd.Index([
+            pd.Timestamp("2021-06-01"),
+            pd.Timestamp("2021-07-01"),
+            pd.Timestamp("2021-08-01"),
+            pd.Timestamp("2021-09-01"),
+            pd.Timestamp("2021-10-01"),
+            pd.Timestamp("2021-12-01"),
+        ]),
+    )
+
+    other_param_data = pd.Series(
+        data=[1, 2, 3, 4, 5, 6],
+        index=pd.Index([
+            pd.Timestamp("2021-06-01"),
+            pd.Timestamp("2021-07-01"),
+            pd.Timestamp("2021-08-01"),
+            pd.Timestamp("2021-09-01"),
+            pd.Timestamp("2021-10-01"),
+            pd.Timestamp("2021-12-01"),
+        ]),
+    )
+
+    class Parameters:
+
+        fixed_parameter = 10
+
+        rsi_length = RollingParameter(
+            name="rsi_length",
+            freq=MonthBegin(1),
+            values=rolling_data,
+        )
+
+        other_param = RollingParameter(
+            name="other_param",
+            freq=MonthBegin(1),
+            values=other_param_data,
+        )
+
+        backtest_start = datetime.datetime(2021, 6, 1)
+        backtest_end = datetime.datetime(2022, 1, 1)
+        initial_cash = 10_000
+        cycle_duration = CycleDuration.cycle_1d
+
+    @indicators.define()
+    def fixed_rsi(close, fixed_parameter, pair, dependency_resolver):
+        assert isinstance(close, pd.Series)
+        assert type(fixed_parameter) == int
+        assert isinstance(pair, TradingPairIdentifier)
+        assert isinstance(dependency_resolver, IndicatorDependencyResolver)
+        return close
+
+    @indicators.define()
+    def rsi(close, rsi_length, pair, dependency_resolver):
+        assert isinstance(close, pd.Series)
+        assert type(rsi_length) == int
+        assert isinstance(pair, TradingPairIdentifier)
+        assert isinstance(dependency_resolver, IndicatorDependencyResolver)
+        return close * rsi_length
+
+    @indicators.define(source=IndicatorSource.dependencies_only_per_pair, dependencies=[rsi])
+    def rsi_derivative(rsi_length, other_param, pair, dependency_resolver):
+        assert type(rsi_length) == int
+        assert type(other_param) == int
+        assert isinstance(pair, TradingPairIdentifier)
+        assert isinstance(dependency_resolver, IndicatorDependencyResolver)
+        rsi = dependency_resolver.get_indicator_data(
+            "rsi",
+            pair=pair,
+            parameters={
+                "rsi_length": rsi_length,
+            }
+        )
+        return rsi * other_param
+
+    parameters = StrategyParameters.from_class(Parameters)
+
+    indicator_set = prepare_indicators(
+        indicators.create_indicators,
+        parameters,
+        strategy_universe,
+        unit_test_execution_context,
+    )
+
+    for ind in indicator_set.indicators.values():
+        assert isinstance(ind, IndicatorDefinition)
+        if not ind.name.startswith("fixed"):
+            assert ind.variations is True
+
+    assert len(indicator_set.indicators.values()) == 43
+
+    strategy_input_indicators = calculate_and_load_indicators_inline(
+        strategy_universe=strategy_universe,
+        parameters=parameters,
+        indicator_set=indicator_set,
+        verbose=False,
+    )
+
+    assert isinstance(strategy_input_indicators, StrategyInputIndicators)
+
+    # Make sure we have access to every variation of the indicator
+    def decide_trades(input: StrategyInput):
+        timestamp = input.timestamp
+        indicators = input.indicators
+
+        pair = input.strategy_universe.get_pair_by_id(1)
+
+        _ = indicators.get_indicator_value("fixed_rsi", pair=pair)
+
+        with pytest.raises(IndicatorWithVariations):
+            indicators.get_indicator_value("rsi", pair=pair)
+
+        with pytest.raises(IndicatorWithVariations):
+            indicators.get_indicator_value("rsi_derivative", pair=pair)
+
+        rsi_1 = indicators.get_indicator_value(
+            "rsi",
+            pair=pair,
+            parameters={"rsi_length": 21},
+        )
+        assert rsi_1 > 0
+
+        rsi_2 = indicators.get_indicator_value(
+            "rsi",
+            pair=pair,
+            parameters={"rsi_length": 22},
+        )
+        assert rsi_2 > 0
+
+        rsi_2 = indicators.get_indicator_value(
+            "rsi_derivative",
+            pair=pair,
+            parameters={
+                "rsi_length": 22,
+                "other_param": 2,
+            },
+        )
+        assert rsi_2 > 0
+
+        return []
+
+    backtest_result = run_backtest_inline(
+        start_at=datetime.datetime(2021, 6, 1),
+        end_at=datetime.datetime(2022, 1, 1),
+        client=None,
+        cycle_duration=CycleDuration.cycle_1d,
+        decide_trades=decide_trades,
+        universe=strategy_universe,
+        engine_version="0.5",
+        create_indicators=indicators.create_indicators,
+        parameters=parameters,
+    )
+
+    assert isinstance(backtest_result, BacktestResult)

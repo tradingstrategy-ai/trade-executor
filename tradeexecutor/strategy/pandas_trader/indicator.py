@@ -37,7 +37,7 @@ import signal
 import sys
 import tempfile
 from collections.abc import Iterable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from multiprocessing import Process
 from pathlib import Path
 from types import NoneType
@@ -51,7 +51,7 @@ from tqdm_loggable.auto import tqdm
 
 from tradeexecutor.state.identifier import TradingPairIdentifier
 from tradeexecutor.strategy.execution_context import ExecutionContext, notebook_execution_context
-from tradeexecutor.strategy.parameters import StrategyParameters
+from tradeexecutor.strategy.parameters import StrategyParameters, RollingParameter
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse, UniverseCacheKey
 from tradeexecutor.utils.cpu import get_safe_max_workers_count
 from tradeexecutor.utils.python_function import hash_function
@@ -245,6 +245,9 @@ class IndicatorDefinition:
     #:
     dependency_order: int = 1
 
+    #: This indicator needs multiple variations with different parameters for a single run
+    variations: bool = False
+
     def __repr__(self):
         return f"<Indicator {self.name} using {self.func.__name__ if self.func else '?()'} for {self.parameters}>"
 
@@ -252,13 +255,12 @@ class IndicatorDefinition:
         return self.name == other.name and self.parameters == other.parameters and self.source == other.source
 
     def __hash__(self):
-
         try:
             items = frozenset(self.parameters.items())
             args = (self.name, items, self.source)
             return hash(args)
         except Exception as e:
-            raise RuntimeError(f"Could not hash {self}.\nIf changing grid search to backtest, remember to change lists to single value.\nIf changing backtest to grid search, do not call create_indicators() directly.\nException is {e}\nHashed items: {args}") from e
+            raise RuntimeError(f"Could not hash {self}.\nIf changing grid search to backtest, remember to change lists to single value.\nIf changing backtest to grid search, do not call create_indicators() directly.\nException is {e}") from e
 
     def __post_init__(self):
         assert type(self.name) == str
@@ -533,6 +535,11 @@ class IndicatorKey:
         slug = self.get_pair_cache_id()
 
         def norm_value(v):
+            if isinstance(v, RollingParameter):
+                raise AssertionError("Should not happen - rolling parameters must be expanded earlier")
+                # values = list(v.values)
+                # assert len(values) > 0, f"RollingParameter lacks values: {v}"
+                # v = ",".join([str(x) for x in values])
             if isinstance(v, enum.Enum):
                 v = str(v.value)
             else:
@@ -543,6 +550,7 @@ class IndicatorKey:
         return f"{self.definition.name}_{self.definition.get_function_body_hash()}({parameters})-{slug}"
 
 
+@dataclass(slots=True, frozen=False)
 class IndicatorSet:
     """Define the indicators that are needed by a trading strategy.
 
@@ -556,12 +564,24 @@ class IndicatorSet:
     See :py:class:`CreateIndicatorsProtocolV2` for usage.
     """
 
-    def __init__(self):
-        #: Map indicators by the indicator name to their definition
-        self.indicators: dict[str, IndicatorDefinition] = {}
+    indicators: dict[str, IndicatorDefinition] = field(default_factory=dict)
+    variation_cache: dict[str, bool] = field(default_factory=dict)
+    variation_lookup: dict[int, IndicatorDefinition] = field(default_factory=dict)
 
     def has_indicator(self, name: str) -> bool:
         return name in self.indicators
+
+    def is_varying_indicator(self, name: str) -> bool:
+        return self.variation_cache[name]
+
+    @staticmethod
+    def make_parameter_key(
+        name: str,
+        parameters: dict,
+    ) -> int:
+        assert isinstance(parameters, dict)
+        parameters = [("name", name)] + [(key, value) for key, value in parameters.items()]
+        return hash(tuple(parameters))
 
     def get_label(self):
 
@@ -578,6 +598,17 @@ class IndicatorSet:
         """Get a named indicator definition."""
         return self.indicators.get(name)
 
+    def get_indicator_by_name_and_parameters(
+        self,
+        name: str,
+        parameters: dict,
+    )-> IndicatorDefinition | None:
+        """Get a variation indicator definition."""
+        assert type(name) == str
+        assert type(parameters) == dict
+        key = IndicatorSet.make_parameter_key(name, parameters)
+        return self.variation_lookup.get(key)
+
     def add(
         self,
         name: str,
@@ -585,6 +616,7 @@ class IndicatorSet:
         parameters: dict | None = None,
         source: IndicatorSource=IndicatorSource.close_price,
         order=1,
+        variations=False,
     ):
         """Add a new indicator to this indicator set.
 
@@ -622,6 +654,9 @@ class IndicatorSet:
             Dependency resolution order.
 
             See :py:attr:`tradingstrategy.strategy.pandas_trader.indicator.IndicatorKey.order` parameter.
+
+        :param variations:
+            Set for rolling indicators that need to have their values calculated with several combinations for a backtest run.
         """
         assert type(name) == str
         assert callable(func), f"{func} is not callable"
@@ -630,14 +665,26 @@ class IndicatorSet:
             parameters = {}
         assert type(parameters) == dict, f"parameters must be dictionary, we got {parameters.__class__}"
         assert isinstance(source, IndicatorSource), f"Expected IndicatorSource, got {type(source)}"
-        assert name not in self.indicators, f"Indicator {name} already added"
-        self.indicators[name] = IndicatorDefinition(name, func, parameters, source, order)
+
+        # For this indicator, we need eto calculate multiple variations with different parameters
+        if variations:
+            hash_source = hash(tuple(v for v in parameters.values()))
+            hashed_name = f"{name}_{hex(hash_source)[-6:]}"
+            assert hashed_name not in self.indicators, f"Hashed name for varying indicator {hashed_name} already defined - hash collision, bug?"
+            self.indicators[hashed_name] = IndicatorDefinition(name, func, parameters, source, order, variations=True)
+            self.variation_cache[name] = True
+            key = self.make_parameter_key(name, parameters)
+            self.variation_lookup[key] = self.indicators[hashed_name]
+        else:
+            assert name not in self.indicators, f"Indicator {name} already added"
+            self.indicators[name] = IndicatorDefinition(name, func, parameters, source, order)
+            self.variation_cache[name] = False
 
     def iterate(self) -> Iterable[IndicatorDefinition]:
         yield from self.indicators.values()
 
     def generate_combinations(self, strategy_universe: TradingStrategyUniverse) -> Iterable[IndicatorKey]:
-        """Create all indiviual indicator (per pair) we need to calculate for this trading universe.
+        """Create all individual indicator (per pair) we need to calculate for this trading universe.
 
         - Because most indicators are per pair, we need to combine the trading pair universe
           with wanted indicators to get the final set of indicators we need to calcuate
