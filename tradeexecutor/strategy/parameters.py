@@ -257,6 +257,11 @@ class StrategyParameters(MutableAttributeDict):
         if "cycle_duration" not in self:
             raise StrategyParametersMissing("cycle_duration parameter missing")
 
+    def get_rolling_parameter_value(
+        self,
+    ):
+        pass
+
     @staticmethod
     def from_class(c: type, grid_search=False) -> "StrategyParameters":
         """Create parameter dict out from a class object.

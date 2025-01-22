@@ -1328,7 +1328,7 @@ def run_grid_search_backtest(
 
     duration_start = datetime.datetime.utcnow()
 
-    if parameters and parameters["backtest_start"]:
+    if parameters and parameters.get("backtest_start"):
         start_at = parameters["backtest_start"]
         end_at = parameters["backtest_end"]
     else:
