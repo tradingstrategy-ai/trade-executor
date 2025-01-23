@@ -17,7 +17,7 @@ from tradeexecutor.strategy.pandas_trader.indicator import (
     IndicatorSource, IndicatorDependencyResolver,
     calculate_and_load_indicators_inline, prepare_indicators, IndicatorDefinition, IndicatorNotFound,
 )
-from tradeexecutor.strategy.pandas_trader.indicator_decorator import IndicatorRegistry
+from tradeexecutor.strategy.pandas_trader.indicator_decorator import IndicatorRegistry, flatten_dict_permutations
 from tradeexecutor.strategy.pandas_trader.strategy_input import StrategyInputIndicators, StrategyInput, IndicatorWithVariations
 from tradeexecutor.strategy.parameters import StrategyParameters, RollingParameter
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse, create_pair_universe_from_code
@@ -418,3 +418,15 @@ def test_get_indicator_rolling_parameters(strategy_universe):
     )
 
     assert isinstance(backtest_result, BacktestResult)
+
+
+def test_param_permutations():
+
+    input = {
+        "rsi": [21, 22, 23],
+        "other_param": [1, 2],
+        "fixed_val": 1,
+    }
+
+    permutations = flatten_dict_permutations(input)
+    assert len(permutations) == 6

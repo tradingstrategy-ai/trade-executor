@@ -23,6 +23,7 @@ from pprint import pformat
 
 from IPython import get_ipython
 from skopt.space import Dimension
+from stack_data.utils import cached_property
 
 # Enable pickle patch that allows multiprocessing in notebooks
 from tradeexecutor.monkeypatch import cloudpickle_patch
@@ -249,19 +250,32 @@ class IndicatorDefinition:
     #: This indicator needs multiple variations with different parameters for a single run
     variations: bool = False
 
+    _cached_hash: int = None
+
     def __repr__(self):
         return f"<Indicator {self.name} using {self.func.__name__ if self.func else '?()'} for {self.parameters}>"
 
     def __eq__(self, other):
         return self.name == other.name and self.parameters == other.parameters and self.source == other.source
 
+    def _calculate_cached_hash(self):
+        # Optimisation
+        if not self._cached_hash:
+            def _unlistify(v):
+                if isinstance(v, list):
+                    return tuple(v)
+                return v
+            try:
+                items = frozenset({k: _unlistify(v) for k, v in self.parameters.items()})
+                args = (self.name, items, self.source)
+                self._cached_hash = hash(args)
+            except Exception as e:
+                raise RuntimeError(f"Could not hash {self}.\nIf changing grid search to backtest, remember to change lists to single value.\nIf changing backtest to grid search, do not call create_indicators() directly.\nException is {e}") from e
+
+        return self._cached_hash
+
     def __hash__(self):
-        try:
-            items = frozenset(self.parameters.items())
-            args = (self.name, items, self.source)
-            return hash(args)
-        except Exception as e:
-            raise RuntimeError(f"Could not hash {self}.\nIf changing grid search to backtest, remember to change lists to single value.\nIf changing backtest to grid search, do not call create_indicators() directly.\nException is {e}") from e
+        return self._calculate_cached_hash()
 
     def __post_init__(self):
         assert type(self.name) == str
@@ -274,7 +288,6 @@ class IndicatorDefinition:
         # Check for common data passing errors
         for k, v in self.parameters.items():
             assert not isinstance(v, Dimension), f"Detected scikit-optimize Dimension as a parameter value: {k}: {v} - did you accidentally pass in optimiser search space to a single backtest"
-
 
     def get_function_body_hash(self) -> str:
         """Calculate the hash for the function code.
@@ -585,6 +598,7 @@ class IndicatorSet:
     ) -> int:
         assert isinstance(parameters, dict)
         parameters = [("name", name)] + [(key, value) for key, value in parameters.items()]
+        parameters.sort(key=lambda x: x[0])
         return hash(tuple(parameters))
 
     def get_label(self):
@@ -665,6 +679,8 @@ class IndicatorSet:
 
         :param variations:
             Set for rolling indicators that need to have their values calculated with several combinations for a backtest run.
+
+            You can add the same variation multiple times and the sequent adds are ignored.
         """
         assert type(name) == str
         assert callable(func), f"{func} is not callable"
@@ -676,12 +692,16 @@ class IndicatorSet:
 
         # For this indicator, we need eto calculate multiple variations with different parameters
         if variations:
-            hash_source = hash(tuple(v for v in parameters.values()))
-            hashed_name = f"{name}_{hex(hash_source)[-6:]}"
-            assert hashed_name not in self.indicators, f"Hashed name for varying indicator {hashed_name} already defined - hash collision, bug?"
+            key = self.make_parameter_key(name, parameters)
+            # Use 32-bit hash to separate variations.
+            # May be collision prone.
+            hashed_name = f"{name}_{hex(key)[-8:]}"
+            if hashed_name in self.indicators:
+                # add() twice is a legit use case as time series may have the same parameter value twice in different sections
+                # f"Hashed name for varying indicator {hashed_name} already defined - hash collision, bug?\nOur parameters: {parameters}\nExisting variations are with parameters: {self.variation_cache[name]}"
+                return
             self.indicators[hashed_name] = IndicatorDefinition(name, func, parameters, source, order, variations=True)
             self.variation_cache[name].append(parameters)
-            key = self.make_parameter_key(name, parameters)
             self.variation_lookup[key] = self.indicators[hashed_name]
         else:
             assert name not in self.indicators, f"Indicator {name} already added"

@@ -303,16 +303,21 @@ class IndicatorRegistry:
                 if parameter not in parameters:
                     raise ParameterMissing(f"Function {name} requires parameter {parameter}, but this is not defined in strategy parameters.\nWe have: {list(parameters.keys())}")
                 value = parameters[parameter]
-                rollable |= RollingParameter.is_rolling(value)
+                rollable = RollingParameter.is_rolling(value)
                 if rollable:
                     applied_parameters[parameter] = list(value.values)
                 else:
                     applied_parameters[parameter] = value
 
             if rollable:
-                logger.info("Rollable parameters detected, unrolling")
-                permutations = _flatten_dict_permutations(applied_parameters)
+                permutations = flatten_dict_permutations(applied_parameters)
+                logger.info("Rollable parameters detected, unrolling, args %s, we have %d permutations for %s",
+                            definition.args,
+                    len(permutations),
+                            applied_parameters,
+                )
                 for p in permutations:
+                    # logger.info("Adding %s", p)
                     indicators.add(
                         name=definition.name,
                         func=definition.func,
@@ -355,7 +360,7 @@ class IndicatorRegistry:
         return df
 
 
-def _flatten_dict_permutations(input_dict):
+def flatten_dict_permutations(input_dict: dict) -> list[dict]:
     # Separate scalar and list values
     scalar_values = {k: v for k, v in input_dict.items() if not isinstance(v, list)}
     list_values = {k: v for k, v in input_dict.items() if isinstance(v, list)}
