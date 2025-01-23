@@ -9,7 +9,6 @@ from typing import Tuple, Iterable, TypedDict
 import pandas as pd
 from pandas import DateOffset
 from pandas._libs.tslibs.offsets import MonthBegin
-from skopt.space import Dimension
 from tabulate import tabulate
 from web3.datastructures import MutableAttributeDict
 
