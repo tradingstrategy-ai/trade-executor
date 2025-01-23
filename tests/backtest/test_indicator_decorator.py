@@ -7,6 +7,7 @@ import pandas as pd
 import pandas_ta
 import pytest
 from pandas._libs.tslibs.offsets import MonthBegin
+from pyasn1_modules.rfc8018 import id_PBMAC1
 
 from tradeexecutor.backtest.backtest_runner import run_backtest_inline, BacktestResult
 from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier
@@ -19,7 +20,7 @@ from tradeexecutor.strategy.pandas_trader.indicator import (
 )
 from tradeexecutor.strategy.pandas_trader.indicator_decorator import IndicatorRegistry, flatten_dict_permutations
 from tradeexecutor.strategy.pandas_trader.strategy_input import StrategyInputIndicators, StrategyInput, IndicatorWithVariations
-from tradeexecutor.strategy.parameters import StrategyParameters, RollingParameter
+from tradeexecutor.strategy.parameters import StrategyParameters, RollingParameter, RollingParameterValueNotAvailable
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse, create_pair_universe_from_code
 from tradeexecutor.testing.synthetic_ethereum_data import generate_random_ethereum_address
 from tradeexecutor.testing.synthetic_exchange_data import generate_exchange
@@ -250,7 +251,11 @@ def test_get_indicator_decorator_arguments(strategy_universe):
 
 
 def test_get_indicator_rolling_parameters(strategy_universe):
-    """We create multiple indicator parameter variations for rolling indicators."""
+    """We create multiple indicator parameter variations for rolling indicators.
+
+    - Test reading rolling parameter values
+    - Test calculating indicators for varying rolling parameters, with multiple copies
+    """
     indicators = IndicatorRegistry()
 
     rolling_data = pd.Series(
@@ -331,6 +336,26 @@ def test_get_indicator_rolling_parameters(strategy_universe):
 
     parameters = StrategyParameters.from_class(Parameters)
 
+    # Test reading rolling parameter values
+    val = parameters.get_rolling_parameter("rsi_length", pd.Timestamp("2021-06-02"))
+    assert val == 21
+
+    val = parameters.get_rolling_parameter("rsi_length", pd.Timestamp("2021-12-01"))
+    assert val == 26
+
+    val = parameters.get_rolling_parameter("rsi_length", pd.Timestamp("2021-12-02"))
+    assert val == 26
+
+    val = parameters.get_rolling_parameter("rsi_length", pd.Timestamp("2021-06-01"))
+    assert val == 21
+
+    with pytest.raises(RollingParameterValueNotAvailable):
+        _ = parameters.get_rolling_parameter("rsi_length", pd.Timestamp("2021-05-29"))
+
+    with pytest.raises(RollingParameterValueNotAvailable):
+        _ = parameters.get_rolling_parameter("rsi_length", pd.Timestamp("2022-01-01"))
+
+    # Test calculating indicators for varying rolling parameters, with multiple copies
     indicator_set = prepare_indicators(
         indicators.create_indicators,
         parameters,
@@ -421,12 +446,11 @@ def test_get_indicator_rolling_parameters(strategy_universe):
 
 
 def test_param_permutations():
-
+    """We generate permutations correctly for varying-indicator parameters"""
     input = {
         "rsi": [21, 22, 23],
         "other_param": [1, 2],
         "fixed_val": 1,
     }
-
     permutations = flatten_dict_permutations(input)
     assert len(permutations) == 6

@@ -8,6 +8,7 @@ from typing import Tuple, Iterable, TypedDict
 
 import pandas as pd
 from pandas import DateOffset
+from pandas._libs.tslibs.offsets import MonthBegin
 from skopt.space import Dimension
 from tabulate import tabulate
 from web3.datastructures import MutableAttributeDict
@@ -19,6 +20,10 @@ from tradeexecutor.strategy.default_routing_options import TradeRouting
 
 class StrategyParametersMissing(Exception):
     """Strategy parameters are not well defined."""
+
+
+class RollingParameterValueNotAvailable(Exception):
+    """Out of boudns lookup."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -43,9 +48,11 @@ class RollingParameter:
         return f"<RollingParameter {self.name} freq={self.freq} with {len(self.values)} values between {first} - {last}>"
 
     def get_value(self, timestamp: pd.Timestamp) -> float:
-        floored = timestamp.floor(self.freq)
+        # How to floor using MonthBegin
+        assert isinstance(self.freq, MonthBegin), "Only MonthBegin supported now"
+        floored = timestamp.to_period('M').to_timestamp()  # Hack
         if floored not in self.values.index:
-            raise RuntimeError(f"Value missing for parameter {self.name}, timestamp {timestamp}, floored {floored}\nWe have indexes {self.values.index}")
+            raise RollingParameterValueNotAvailable(f"Value missing for parameter {self.name}, timestamp {timestamp}, floored {floored}\nWe have indexes {self.values.index}")
         return self.values[floored]
 
     @staticmethod
