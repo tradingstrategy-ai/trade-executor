@@ -554,6 +554,8 @@ class IndicatorKey:
                 # values = list(v.values)
                 # assert len(values) > 0, f"RollingParameter lacks values: {v}"
                 # v = ",".join([str(x) for x in values])
+            elif isinstance(v, list):
+                raise AssertionError(f"Should not happen - parameter received list as a value: {self.definition.name}: {v}")
             if isinstance(v, enum.Enum):
                 v = str(v.value)
             else:

@@ -317,7 +317,6 @@ def test_get_indicator_rolling_parameters(strategy_universe):
         assert type(rsi_length) == int
         assert isinstance(pair, TradingPairIdentifier)
         assert isinstance(dependency_resolver, IndicatorDependencyResolver)
-        import ipdb ; ipdb.set_trace()
         return close * rsi_length
 
     @indicators.define(source=IndicatorSource.dependencies_only_per_pair, dependencies=[rsi])
@@ -441,6 +440,7 @@ def test_get_indicator_rolling_parameters(strategy_universe):
         engine_version="0.5",
         create_indicators=indicators.create_indicators,
         parameters=parameters,
+        max_workers=1,
     )
 
     assert isinstance(backtest_result, BacktestResult)

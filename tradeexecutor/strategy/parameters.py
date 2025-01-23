@@ -358,7 +358,7 @@ class StrategyParameters(MutableAttributeDict):
 
 
 def dump_parameters(parameters: StrategyParameters) -> str:
-    """Format strategy parameters for the output."""
+    """Format strategy parameters for console output."""
 
     assert isinstance(parameters, StrategyParameters), f"Got {parameters}"
 
@@ -368,3 +368,20 @@ def dump_parameters(parameters: StrategyParameters) -> str:
         headers=("Parameter", "Value"),
     )
     return out
+
+
+def display_parameters(parameters: StrategyParameters) -> pd.DataFrame:
+    """Format strategy parameters for notebook output."""
+
+    assert isinstance(parameters, StrategyParameters), f"Got {parameters}"
+
+    data = []
+    for key, value in parameters.iterate_parameters():
+        data.append({
+            "Name": key,
+            "Value": value,
+            "Type": type(value),
+        })g
+    df = pd.DataFrame(data)
+    df = df.set_index("Name")
+    return df
