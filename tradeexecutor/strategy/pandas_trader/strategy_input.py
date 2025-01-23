@@ -35,6 +35,13 @@ class IndicatorDataNotFoundWithinDataTolerance(Exception):
     """We try to get forward-filled data, but there is no data within our tolerance."""
 
 
+class IndicatorWithVariations(Exception):
+    """This indicator has versions with different parameters.
+
+    You need to specify parameters to access the correct data.
+    """
+
+
 
 @dataclass(slots=True)
 class StrategyInputIndicators:
@@ -281,6 +288,7 @@ class StrategyInputIndicators:
         clock_shift: pd.Timedelta = pd.Timedelta(hours=0),
         data_delay_tolerance: pd.Timedelta="auto",
         na_conversion=True,
+        parameters: dict=None,
     ) -> float | None:
         """Read the available value of an indicator.
 
@@ -377,6 +385,9 @@ class StrategyInputIndicators:
 
             Disable if your indicator data contains complex object values like lists.
 
+        :param parameters:
+            Needed for indicators with variations, access by parameters.
+
         :return:
             The latest available indicator value.
 
@@ -386,9 +397,17 @@ class StrategyInputIndicators:
 
         :raise IndicatorDataNotFoundWithinDataTolerance:
             We asked `data_delay_tolerance` look backwards, but there wasn't any samples within the tolerance.
+
+        :raise IndicatorWithVariations:
+            In the case the indicator needs to be accessed by parameter set.
         """
 
-        series = self.resolve_indicator_data(name, column, pair)
+        series = self.resolve_indicator_data(
+            name,
+            column,
+            pair,
+            parameters=parameters,
+        )
 
         if len(series) == 0:
             # Empty array -> probably could not calculate the indicator
@@ -604,6 +623,7 @@ class StrategyInputIndicators:
         column: str | None = None,
         pair: TradingPairIdentifier | HumanReadableTradingPairDescription | None = None,
         unlimited=False,
+        parameters: dict = None,
     ) -> pd.Series | pd.DataFrame:
         """Get access to indicator data series/frame.
 
@@ -625,6 +645,9 @@ class StrategyInputIndicators:
         :param unlimited:
             Allow loading of past and future data.
 
+        :raise IndicatorWithVariations:
+            If the same indicator has multiple versions with different parameters.
+
         """
         assert type(name) == str
         if column is not None:
@@ -633,9 +656,25 @@ class StrategyInputIndicators:
         if not unlimited:
             assert self.timestamp, f"StrategyInputIndicators.timestamp is None. prepare_decision_cycle() not called, or you are outside a decide_trades() function."
 
-        indicator = self.available_indicators.get_indicator(name)
-        if indicator is None:
-            raise IndicatorNotFound(f"Indicator with name '{name}' not defined by create_indicators(). Available indicators are: {self.available_indicators.get_label()}")
+        varying = self.available_indicators.is_varying_indicator(name)
+        if varying and not parameters:
+            raise IndicatorWithVariations(f"{name} indicator has multiple variations, pass parameters to access the correct variation")
+
+        if varying:
+            indicator = self.available_indicators.get_indicator_by_name_and_parameters(name, parameters)
+
+            if indicator is None:
+
+                if name in self.available_indicators.variation_cache:
+                    combinations = self.available_indicators.get_variations(name)
+                    raise IndicatorNotFound(f"Indicator with name '{name}' and parameters {parameters} does not match parameters. Matching parameters are: {combinations}")
+
+                raise IndicatorNotFound(f"Indicator with name '{name}' and parameters {parameters} not found. Available indicators are: {self.available_indicators.get_label()}")
+
+        else:
+            indicator = self.available_indicators.get_indicator(name)
+            if indicator is None:
+                raise IndicatorNotFound(f"Indicator with name '{name}' not defined by create_indicators(). Available indicators are: {self.available_indicators.get_label()}")
 
         if indicator.source.is_per_pair():
 

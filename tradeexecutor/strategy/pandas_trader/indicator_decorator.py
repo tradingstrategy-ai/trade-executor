@@ -7,6 +7,8 @@
 
 """
 import inspect
+import itertools
+import logging
 from dataclasses import dataclass
 import datetime
 from functools import wraps
@@ -16,8 +18,11 @@ import pandas as pd
 
 from tradeexecutor.strategy.execution_context import ExecutionContext
 from tradeexecutor.strategy.pandas_trader.indicator import IndicatorSet, IndicatorSource, CreateIndicatorsProtocolV1, CreateIndicatorsProtocolV2
-from tradeexecutor.strategy.parameters import StrategyParameters
+from tradeexecutor.strategy.parameters import StrategyParameters, RollingParameter
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
+
+
+logger = logging.getLogger(__name__)
 
 
 class NotYetDefined(Exception):
@@ -293,18 +298,42 @@ class IndicatorRegistry:
         for name, definition in self.registry.items():
 
             applied_parameters = {}
+            rollable = False
             for parameter in definition.args:
                 if parameter not in parameters:
                     raise ParameterMissing(f"Function {name} requires parameter {parameter}, but this is not defined in strategy parameters.\nWe have: {list(parameters.keys())}")
-                applied_parameters[parameter] = parameters[parameter]
+                value = parameters[parameter]
+                rollable = RollingParameter.is_rolling(value)
+                if rollable:
+                    applied_parameters[parameter] = list(value.values)
+                else:
+                    applied_parameters[parameter] = value
 
-            indicators.add(
-                name=definition.name,
-                func=definition.func,
-                source=definition.source,
-                order=definition.order,
-                parameters=applied_parameters,
-            )
+            if rollable:
+                permutations = flatten_dict_permutations(applied_parameters)
+                logger.info("Rollable parameters detected, unrolling, args %s, we have %d permutations for %s",
+                            definition.args,
+                    len(permutations),
+                            applied_parameters,
+                )
+                for p in permutations:
+                    # logger.info("Adding %s", p)
+                    indicators.add(
+                        name=definition.name,
+                        func=definition.func,
+                        source=definition.source,
+                        order=definition.order,
+                        parameters=p,
+                        variations=True,
+                    )
+            else:
+                indicators.add(
+                    name=definition.name,
+                    func=definition.func,
+                    source=definition.source,
+                    order=definition.order,
+                    parameters=applied_parameters,
+                )
 
         return indicators
 
@@ -329,3 +358,23 @@ class IndicatorRegistry:
         df = df.sort_values(by=["Order", "Name"])
         df = df.set_index("Name")
         return df
+
+
+def flatten_dict_permutations(input_dict: dict) -> list[dict]:
+    # Separate scalar and list values
+    scalar_values = {k: v for k, v in input_dict.items() if not isinstance(v, list)}
+    list_values = {k: v for k, v in input_dict.items() if isinstance(v, list)}
+
+    # Generate all combinations of list values
+    keys = list_values.keys()
+    values = list_values.values()
+    combinations = itertools.product(*values)
+
+    # Create dictionaries for each combination
+    result = []
+    for combination in combinations:
+        new_dict = scalar_values.copy()
+        new_dict.update(zip(keys, combination))
+        result.append(new_dict)
+
+    return result

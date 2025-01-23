@@ -3,8 +3,11 @@
 - Handle input parameters in single-run and grid search cases
 """
 import datetime
+from dataclasses import dataclass
 from typing import Tuple, Iterable, TypedDict
 
+import pandas as pd
+from pandas import DateOffset
 from skopt.space import Dimension
 from tabulate import tabulate
 from web3.datastructures import MutableAttributeDict
@@ -16,6 +19,38 @@ from tradeexecutor.strategy.default_routing_options import TradeRouting
 
 class StrategyParametersMissing(Exception):
     """Strategy parameters are not well defined."""
+
+
+@dataclass(frozen=True, slots=True)
+class RollingParameter:
+    """Parameter where values changes over tine.
+
+    - Used for periodically adjusted parameters
+    """
+    name: str
+    freq: DateOffset
+    values: pd.Series
+
+    def __eq__(self, other) -> bool:
+        return self.name == other.name
+
+    def __hash__(self) -> int:
+        return hash(self.name)
+
+    def __repr__(self):
+        first = self.values.index[0]
+        last = self.values.index[-1]
+        return f"<RollingParameter {self.name} freq={self.freq} with {len(self.values)} values between {first} - {last}>"
+
+    def get_value(self, timestamp: pd.Timestamp) -> float:
+        floored = timestamp.floor(self.freq)
+        if floored not in self.values.index:
+            raise RuntimeError(f"Value missing for parameter {self.name}, timestamp {timestamp}, floored {floored}\nWe have indexes {self.values.index}")
+        return self.values[floored]
+
+    @staticmethod
+    def is_rolling(value) -> bool:
+        return isinstance(value, RollingParameter)
 
 
 
@@ -256,6 +291,23 @@ class StrategyParameters(MutableAttributeDict):
 
         if "cycle_duration" not in self:
             raise StrategyParametersMissing("cycle_duration parameter missing")
+
+    def get_rolling_parameter(
+        self,
+        name: str,
+        timestamp: pd.Timestamp,
+    ):
+        """Handle periodically optimised backtest values.
+
+        TODOL Example
+        """
+        value = self.get(name)
+        if isinstance(value, RollingParameter):
+            # Rolling parameter mode in specia backtest
+            return value.get_value(timestamp)
+
+        # Grid search / normal backtest
+        return value
 
     @staticmethod
     def from_class(c: type, grid_search=False) -> "StrategyParameters":
