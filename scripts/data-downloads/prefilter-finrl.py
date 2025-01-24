@@ -198,9 +198,9 @@ merged_df = merged_df.reset_index()
 
 # Map the first_timestamp_series to the DataFrame
 merged_df['first_timestamp'] = merged_df['pair_id'].map(first_timestamps_series)
-merged_filtered_df = merged_df[merged_df['timestamp'] >= merged_df['first_timestamp']]
+merged_df = merged_df[merged_df['timestamp'] >= merged_df['first_timestamp']]
 
-print(f"After cropping data to TVL threshold, we have {len(merged_filtered_df)} rows")
+print(f"After cropping data to TVL threshold, we have {len(merged_filtered_df):,} rows")
 
 # Add metadata to every row
 pair_universe = PandasPairUniverse(pairs_df)
@@ -213,7 +213,7 @@ print(f"In the end we have {len(pair_id_unique)} unique pairs")
 print(f"In the end we have {len(merged_df):,} rows")
 
 print(f"Writing Parquet {combined_output_fname}")
-merged_filtered_df.to_parquet(
+merged_df.to_parquet(
   combined_output_fname,
   engine='pyarrow',
   compression='zstd',
