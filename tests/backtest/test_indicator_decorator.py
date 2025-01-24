@@ -16,11 +16,11 @@ from tradeexecutor.strategy.execution_context import unit_test_execution_context
 from tradeexecutor.strategy.pandas_trader.indicator import (
     DiskIndicatorStorage,
     IndicatorSource, IndicatorDependencyResolver,
-    calculate_and_load_indicators_inline, prepare_indicators, IndicatorDefinition, IndicatorNotFound,
+    calculate_and_load_indicators_inline, prepare_indicators, IndicatorDefinition, IndicatorNotFound, load_indicators, MemoryIndicatorStorage,
 )
 from tradeexecutor.strategy.pandas_trader.indicator_decorator import IndicatorRegistry, flatten_dict_permutations
 from tradeexecutor.strategy.pandas_trader.strategy_input import StrategyInputIndicators, StrategyInput, IndicatorWithVariations
-from tradeexecutor.strategy.parameters import StrategyParameters, RollingParameter, RollingParameterValueNotAvailable
+from tradeexecutor.strategy.parameters import StrategyParameters, RollingParameter, RollingParameterValueNotAvailable, display_parameters
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse, create_pair_universe_from_code
 from tradeexecutor.testing.synthetic_ethereum_data import generate_random_ethereum_address
 from tradeexecutor.testing.synthetic_exchange_data import generate_exchange
@@ -250,7 +250,7 @@ def test_get_indicator_decorator_arguments(strategy_universe):
     assert isinstance(indicators, StrategyInputIndicators)
 
 
-def test_get_indicator_rolling_parameters(strategy_universe):
+def test_get_indicator_rolling_parameters(strategy_universe, indicator_storage, tmp_path):
     """We create multiple indicator parameter variations for rolling indicators.
 
     - Test reading rolling parameter values
@@ -334,7 +334,30 @@ def test_get_indicator_rolling_parameters(strategy_universe):
         )
         return rsi * other_param
 
+    @indicators.define(dependencies=(rsi_derivative,), source=IndicatorSource.dependencies_only_universe)
+    def third_degree(
+        rsi_length: int,
+        other_param: int,
+        dependency_resolver: IndicatorDependencyResolver
+    ) -> pd.Series:
+        """Series where each timestamp is the list of pairs meeting all inclusion criteria.
+
+        :return:
+            Series with pair count for each timestamp
+        """
+        series = dependency_resolver.get_indicator_data_pairs_combined(
+            "rsi_derivative",
+            parameters={
+                "rsi_length": rsi_length,
+                "other_param": other_param,
+            },
+        )
+        return series
+
     parameters = StrategyParameters.from_class(Parameters)
+    df = display_parameters(parameters)
+    assert "RollingParameter" in str(df)
+    assert "[1, 2, 3, 4, 5, 6]" in str(df)
 
     # Test reading rolling parameter values
     val = parameters.get_rolling_parameter("rsi_length", pd.Timestamp("2021-06-02"))
@@ -368,13 +391,23 @@ def test_get_indicator_rolling_parameters(strategy_universe):
         if not ind.name.startswith("fixed"):
             assert ind.variations is True
 
-    assert len(indicator_set.indicators.values()) == 43
+    assert len(indicator_set.indicators.values()) == 79
 
+    all_combinations = list(indicator_set.generate_combinations(strategy_universe))
+    all_combinations.sort(key=lambda x: str(x))
+    assert len(all_combinations) == 122
+    for combination in all_combinations:
+        for key, value in combination.definition.parameters.items():
+            assert not isinstance(value, list)
+
+    storage = MemoryIndicatorStorage(strategy_universe.get_cache_key())
     strategy_input_indicators = calculate_and_load_indicators_inline(
         strategy_universe=strategy_universe,
         parameters=parameters,
         indicator_set=indicator_set,
         verbose=False,
+        max_workers=1,
+        storage=storage,
     )
 
     assert isinstance(strategy_input_indicators, StrategyInputIndicators)
@@ -445,13 +478,82 @@ def test_get_indicator_rolling_parameters(strategy_universe):
 
     assert isinstance(backtest_result, BacktestResult)
 
+    # Make sure we can load these values
+    strategy_input_indicators = calculate_and_load_indicators_inline(
+        strategy_universe=strategy_universe,
+        parameters=parameters,
+        create_indicators=indicators.create_indicators,
+        verbose=False,
+        indicator_storage_path=tmp_path,
+        max_workers=1,
+    )
+
+    indicator_set = prepare_indicators(
+        indicators.create_indicators,
+        parameters,
+        strategy_universe,
+        unit_test_execution_context,
+        timestamp=None,
+    )
+    storage = DiskIndicatorStorage(tmp_path, strategy_universe.get_cache_key())
+    all_combinations = set(indicator_set.generate_combinations(strategy_universe))
+
+    for combination in all_combinations:
+        assert storage.is_available(combination)
+        for key, value in combination.definition.parameters.items():
+            assert not isinstance(value, list), f"Bad key: {key}, value: {value}, {value.__class__}, {combination.definition}"
+            assert not isinstance(value, RollingParameter), f"RollingParameter not expanded: {key}, value: {value}, {value.__class__}, {combination.definition}"
+
+    strategy_input_indicators = load_indicators(
+        strategy_universe=strategy_universe,
+        storage=storage,
+        indicator_set=indicator_set,
+        all_combinations=all_combinations,
+    )
+
 
 def test_param_permutations():
     """We generate permutations correctly for varying-indicator parameters"""
+
+    rolling_data = pd.Series(
+        data=[21, 22, 23],
+        index=pd.Index([
+            pd.Timestamp("2021-06-01"),
+            pd.Timestamp("2021-07-01"),
+            pd.Timestamp("2021-08-01"),
+        ]),
+    )
+
+    other_param_data = pd.Series(
+        data=[1, 2],
+        index=pd.Index([
+            pd.Timestamp("2021-06-01"),
+            pd.Timestamp("2021-07-01"),
+        ]),
+    )
+
     input = {
-        "rsi": [21, 22, 23],
-        "other_param": [1, 2],
+        "rsi":  RollingParameter(
+            name="rsi_length",
+            freq=MonthBegin(1),
+            values=rolling_data,
+        ),
+        "other_param": RollingParameter(
+            name="other_param",
+            freq=MonthBegin(1),
+            values=other_param_data,
+        ),
         "fixed_val": 1,
     }
     permutations = flatten_dict_permutations(input)
     assert len(permutations) == 6
+
+    input = {
+        "rsi":  RollingParameter(
+            name="rsi_length",
+            freq=MonthBegin(1),
+            values=rolling_data,
+        ),
+    }
+    permutations = flatten_dict_permutations(input)
+    assert len(permutations) == 3

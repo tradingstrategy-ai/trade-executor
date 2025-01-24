@@ -25,7 +25,7 @@ class RollingParameterValueNotAvailable(Exception):
     """Out of boudns lookup."""
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(slots=True)
 class RollingParameter:
     """Parameter where values changes over tine.
 
@@ -34,6 +34,10 @@ class RollingParameter:
     name: str
     freq: DateOffset
     values: pd.Series
+
+    def __post_init__(self):
+        # self.values = self.values.drop_duplicates()
+        pass
 
     def __eq__(self, other) -> bool:
         return self.name == other.name
@@ -53,6 +57,9 @@ class RollingParameter:
         if floored not in self.values.index:
             raise RollingParameterValueNotAvailable(f"Value missing for parameter {self.name}, timestamp {timestamp}, floored {floored}\nWe have indexes {self.values.index}")
         return self.values[floored]
+
+    def get_all_values(self) -> list:
+        return list(self.values)
 
     @staticmethod
     def is_rolling(value) -> bool:
@@ -377,11 +384,17 @@ def display_parameters(parameters: StrategyParameters) -> pd.DataFrame:
 
     data = []
     for key, value in parameters.iterate_parameters():
+
+        type = value.__class__.__name__
+
+        if isinstance(value, RollingParameter):
+            value = list(value.values)
+
         data.append({
             "Name": key,
             "Value": value,
-            "Type": type(value),
-        })g
+            "Type": type,
+        })
     df = pd.DataFrame(data)
     df = df.set_index("Name")
     return df
