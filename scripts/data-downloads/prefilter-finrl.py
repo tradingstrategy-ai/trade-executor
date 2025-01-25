@@ -261,9 +261,13 @@ def main():
     # These are already in indexes
     merged_df = merged_df.reset_index()
 
+    def _ticker(pair_id):
+        pair = pair_universe.get_pair_by_id(pair_id))
+        return f"{pair.get_ticker()}-{pair.fee}"
+
     # Add metadata to every row
     pair_universe = PandasPairUniverse(pairs_df)
-    merged_df["ticker"] = merged_df["pair_id"].apply(lambda pair_id: pair_universe.get_pair_by_id(pair_id).get_ticker())
+    merged_df["ticker"] = merged_df["pair_id"].apply(_ticker)
     merged_df["dex"] = merged_df["pair_id"].apply(lambda pair_id: pair_universe.get_pair_by_id(pair_id).dex_type)
     merged_df["fee"] = merged_df["pair_id"].apply(lambda pair_id: pair_universe.get_pair_by_id(pair_id).fee)
 
