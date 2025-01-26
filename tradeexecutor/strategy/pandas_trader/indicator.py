@@ -253,7 +253,8 @@ class IndicatorDefinition:
     _cached_hash: int = None
 
     def __repr__(self):
-        return f"<Indicator {self.name} using {self.func.__name__ if self.func else '?()'} for {self.parameters}>"
+        variations_msg = "w/variations" if self.variations else ""
+        return f"<Indicator {self.name} using {self.func.__name__ if self.func else '?()'} for {self.parameters} {variations_msg}>"
 
     def __eq__(self, other):
         return self.name == other.name and self.parameters == other.parameters and self.source == other.source
@@ -384,7 +385,7 @@ class IndicatorDefinition:
             ret = self.func( **self._fix_parameters_for_function_signature(resolver, None, timestamp, execution_context))
             return self._check_good_return_value(ret)
         except Exception as e:
-            raise IndicatorCalculationFailed(f"Could not calculate indicator {self.name} ({self.func}) for parameters {self.parameters}, input data is {len(input)} rows: {e}") from e
+            raise IndicatorCalculationFailed(f"Could not calculate indicator {self.name} ({self.func}) for parameters {self.parameters}, rows: {e}") from e
 
     def calculate_by_pair_ohlcv(
         self,
@@ -550,10 +551,12 @@ class IndicatorKey:
 
         def norm_value(v):
             if isinstance(v, RollingParameter):
-                raise AssertionError("Should not happen - rolling parameters must be expanded earlier")
+                raise AssertionError(f"Should not happen - rolling parameters must be expanded earlier: {self}: {v}")
                 # values = list(v.values)
                 # assert len(values) > 0, f"RollingParameter lacks values: {v}"
                 # v = ",".join([str(x) for x in values])
+            elif isinstance(v, list):
+                raise AssertionError(f"Should not happen - parameter received list as a value: {self.definition.name} {type(v)}: {v}")
             if isinstance(v, enum.Enum):
                 v = str(v.value)
             else:
@@ -1605,7 +1608,7 @@ class IndicatorDependencyResolver:
             filtered_by_parameters = filtered_by_pair
 
         if len(filtered_by_parameters) != 1:
-            raise IndicatorDependencyResolutionError(f"Multiple indicator results for named {name},\n for pair {pair},\n parameters {parameters}.\n{all_text}\nfiltered_by_parameters is: {filtered_by_parameters}")
+            raise IndicatorDependencyResolutionError(f"Multiple indicator results for named {name},\n for pair {pair},\n parameters {parameters}.\n{all_text}\nfiltered_by_parameters is: {filtered_by_parameters}.\nDid you forget to specify pair?")
 
         result = filtered_by_parameters[0]
 
@@ -1998,6 +2001,11 @@ def calculate_and_load_indicators(
 
     all_combinations = set(indicators.generate_combinations(strategy_universe))
 
+    # Safety assert for rolling parameters
+    for combination in all_combinations:
+        for key, value in combination.definition.parameters.items():
+            assert not isinstance(value, list), f"Got {key}: {value}"
+
     logger.info("Loading indicators %s for the universe %s, storage is %s", indicators.get_label(), strategy_universe.get_cache_key(), storage.get_disk_cache_path())
     cached = load_indicators(
         strategy_universe,
@@ -2098,9 +2106,7 @@ def calculate_and_load_indicators_inline(
         rsi = indicators.get_indicator_series("rsi", pair=wbtc_usdc)
         assert len(rsi) == 214  # We have series data for 214 days
 
-
     """
-
     assert not parameters.is_grid_search(), "calculate_and_load_indicators_inline() is designed to work only with single backtests"
 
     # Hack to be able to run notebook with ipython from the command line

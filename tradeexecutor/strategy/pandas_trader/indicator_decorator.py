@@ -303,21 +303,21 @@ class IndicatorRegistry:
                 if parameter not in parameters:
                     raise ParameterMissing(f"Function {name} requires parameter {parameter}, but this is not defined in strategy parameters.\nWe have: {list(parameters.keys())}")
                 value = parameters[parameter]
-                rollable = RollingParameter.is_rolling(value)
-                if rollable:
-                    applied_parameters[parameter] = list(value.values)
-                else:
-                    applied_parameters[parameter] = value
+                assert type(value) != list, f"Early trip wire {name}: {value}"
+                rollable |= RollingParameter.is_rolling(value)
+                applied_parameters[parameter] = value
 
             if rollable:
                 permutations = flatten_dict_permutations(applied_parameters)
-                logger.info("Rollable parameters detected, unrolling, args %s, we have %d permutations for %s",
-                            definition.args,
-                    len(permutations),
-                            applied_parameters,
+                logger.info(
+            "Rollable parameters detected for indicator %s, unrolling, args %s, we have %d permutations for %s",
+           name,
+                  definition.args,
+                  len(permutations),
+                  applied_parameters,
                 )
                 for p in permutations:
-                    # logger.info("Adding %s", p)
+                    logger.info("Adding %s: %s", definition.name, p)
                     indicators.add(
                         name=definition.name,
                         func=definition.func,
@@ -327,6 +327,12 @@ class IndicatorRegistry:
                         variations=True,
                     )
             else:
+                logger.info(
+                    "Non-rollable parameters detected for indicator %s, unrolling, args %s, parameters are %s",
+                    name,
+                    definition.args,
+                    applied_parameters,
+                )
                 indicators.add(
                     name=definition.name,
                     func=definition.func,
@@ -362,8 +368,14 @@ class IndicatorRegistry:
 
 def flatten_dict_permutations(input_dict: dict) -> list[dict]:
     # Separate scalar and list values
+
+    for key, v in input_dict.items():
+        assert not isinstance(v, list), f"{key} should not be {type(v)} {v.__class__}: {v}"
+
     scalar_values = {k: v for k, v in input_dict.items() if not isinstance(v, list)}
-    list_values = {k: v for k, v in input_dict.items() if isinstance(v, list)}
+    list_values = {k: v.get_all_values() for k, v in input_dict.items() if isinstance(v, RollingParameter)}
+
+    logger.info("Flattening: %s", list_values)
 
     # Generate all combinations of list values
     keys = list_values.keys()

@@ -8,7 +8,7 @@ from typing import Tuple, Iterable, TypedDict
 
 import pandas as pd
 from pandas import DateOffset
-from skopt.space import Dimension
+from pandas._libs.tslibs.offsets import MonthBegin
 from tabulate import tabulate
 from web3.datastructures import MutableAttributeDict
 
@@ -21,7 +21,11 @@ class StrategyParametersMissing(Exception):
     """Strategy parameters are not well defined."""
 
 
-@dataclass(frozen=True, slots=True)
+class RollingParameterValueNotAvailable(Exception):
+    """Out of boudns lookup."""
+
+
+@dataclass(slots=True)
 class RollingParameter:
     """Parameter where values changes over tine.
 
@@ -30,6 +34,10 @@ class RollingParameter:
     name: str
     freq: DateOffset
     values: pd.Series
+
+    def __post_init__(self):
+        # self.values = self.values.drop_duplicates()
+        pass
 
     def __eq__(self, other) -> bool:
         return self.name == other.name
@@ -43,10 +51,15 @@ class RollingParameter:
         return f"<RollingParameter {self.name} freq={self.freq} with {len(self.values)} values between {first} - {last}>"
 
     def get_value(self, timestamp: pd.Timestamp) -> float:
-        floored = timestamp.floor(self.freq)
+        # How to floor using MonthBegin
+        assert isinstance(self.freq, MonthBegin), "Only MonthBegin supported now"
+        floored = timestamp.to_period('M').to_timestamp()  # Hack
         if floored not in self.values.index:
-            raise RuntimeError(f"Value missing for parameter {self.name}, timestamp {timestamp}, floored {floored}\nWe have indexes {self.values.index}")
+            raise RollingParameterValueNotAvailable(f"Value missing for parameter {self.name}, timestamp {timestamp}, floored {floored}\nWe have indexes {self.values.index}")
         return self.values[floored]
+
+    def get_all_values(self) -> list:
+        return list(self.values)
 
     @staticmethod
     def is_rolling(value) -> bool:
@@ -352,7 +365,7 @@ class StrategyParameters(MutableAttributeDict):
 
 
 def dump_parameters(parameters: StrategyParameters) -> str:
-    """Format strategy parameters for the output."""
+    """Format strategy parameters for console output."""
 
     assert isinstance(parameters, StrategyParameters), f"Got {parameters}"
 
@@ -362,3 +375,26 @@ def dump_parameters(parameters: StrategyParameters) -> str:
         headers=("Parameter", "Value"),
     )
     return out
+
+
+def display_parameters(parameters: StrategyParameters) -> pd.DataFrame:
+    """Format strategy parameters for notebook output."""
+
+    assert isinstance(parameters, StrategyParameters), f"Got {parameters}"
+
+    data = []
+    for key, value in parameters.iterate_parameters():
+
+        type = value.__class__.__name__
+
+        if isinstance(value, RollingParameter):
+            value = list(value.values)
+
+        data.append({
+            "Name": key,
+            "Value": value,
+            "Type": type,
+        })
+    df = pd.DataFrame(data)
+    df = df.set_index("Name")
+    return df

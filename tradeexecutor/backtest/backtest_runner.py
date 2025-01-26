@@ -216,6 +216,7 @@ class BacktestSetup:
 
         - Display TQDM progress bar about reading cached results and calculating new indicators
         """
+
         if self.create_indicators is None:
             # Legacy - create_indicators() not defined
             # Empty indicator set
