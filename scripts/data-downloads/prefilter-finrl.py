@@ -29,9 +29,11 @@ import os
 from pathlib import Path
 
 import pandas as pd
+from IPython.core.display_functions import display
 
 from tradingstrategy.chain import ChainId
 from tradingstrategy.client import Client
+from tradingstrategy.exchange import ExchangeType
 from tradingstrategy.pair import PandasPairUniverse
 from tradingstrategy.timebucket import TimeBucket
 from tradingstrategy.utils.token_filter import filter_pairs_default
@@ -66,8 +68,8 @@ def fill_missing_ohlcv(df, columns_to_zero=['open', 'high', 'low', 'close', 'vol
     filled_df = df.reindex(multi_index)
 
     # Fill specified columns with zeros where data is missing
-    for col in columns_to_zero:
-        filled_df[col] = filled_df[col].fillna(0)
+    # for col in columns_to_zero:
+    #    filled_df[col] = filled_df[col]
 
     return filled_df
 
@@ -258,12 +260,25 @@ def main():
     #         2023-01-01 16:00:00   0.0   0.0  0.0    0.0     0.0  0.0
     merged_df = filled_df
 
+    if merged_df.index.duplicated().any():
+        duplicate_rows = merged_df[merged_df.index.duplicated(keep=False)].sort_index()
+        display(duplicate_rows)
+        assert merged_df.index.duplicated().any(), f"Contains duplicates"
+
     # These are already in indexes
     merged_df = merged_df.reset_index()
 
     def _ticker(pair_id):
-        pair = pair_universe.get_pair_by_id(pair_id))
-        return f"{pair.get_ticker()}-{pair.fee}"
+        pair = pair_universe.get_pair_by_id(pair_id)
+        match pair.dex_type:
+            case ExchangeType.uniswap_v2:
+                dex_type = "v2"
+            case ExchangeType.uniswap_v3:
+                dex_type = "v3"
+            case _:
+                raise NotImplementedError(f"Unknown DEX {pair}")
+
+        return f"{pair.get_ticker()}-{dex_type}-{pair.fee}"
 
     # Add metadata to every row
     pair_universe = PandasPairUniverse(pairs_df)
