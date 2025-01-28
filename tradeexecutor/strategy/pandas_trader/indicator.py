@@ -564,6 +564,12 @@ class IndicatorKey:
             return v
 
         parameters = ",".join([f"{k}={norm_value(v)}" for k, v in self.definition.parameters.items()])
+
+        if len(parameters) > 80:
+            # Parameters are too long to be presented in the filename,
+            # so we just take the 8 bytes hash
+            parameters = hex(hash(parameters))[-8:0]
+
         return f"{self.definition.name}_{self.definition.get_function_body_hash()}({parameters})-{slug}"
 
 

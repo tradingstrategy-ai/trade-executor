@@ -1396,7 +1396,7 @@ class PositionManager:
 
             profit_pct = position.get_unrealised_profit_pct() or 0
             if profit_pct > parameters.trailing_stop_loss_activation_level - 1:
-                new_trailing_stop_loss = close_price - atr_trailing_stop_loss * parameters.trailing_stop_loss_activation_fract
+                    new_trailing_stop_loss = close_price - atr_trailing_stop_loss * parameters.trailing_stop_loss_activation_fract
                 position_manager.update_stop_loss(
                     position,
                     new_trailing_stop_loss,
