@@ -1608,8 +1608,10 @@ class IndicatorDependencyResolver:
         if parameters is not None:
             filtered_by_parameters = [i for i in filtered_by_pair if i.definition.parameters == parameters]
 
+            filtered_by_pair_parameters = [i.definition.parameters for i in filtered_by_pair]
+
             if len(filtered_by_parameters) == 0:
-                raise IndicatorDependencyResolutionError(f"No indicator named {name},\nPair {pair},\nParameters {parameters}.\nOther parameter combinations:{filtered_by_pair}\n{all_text}")
+                raise IndicatorDependencyResolutionError(f"No indicator named {name},\nPair {pair},\nParameters {parameters}.\nOther parameter combinations:{filtered_by_pair} with parameters: {filtered_by_pair_parameters}\n{all_text}")
         else:
             filtered_by_parameters = filtered_by_pair
 

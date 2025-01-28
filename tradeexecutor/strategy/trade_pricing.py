@@ -158,7 +158,7 @@ class TradePricing:
         if all(self.lp_fee):
             return sum(self.lp_fee)
         
-        logger.warning("some trades don't have an associated lp fee")
+        # logger.warning("some trades don't have an associated lp fee")
         
         return sum(filter(None, self.lp_fee))
     
@@ -184,7 +184,7 @@ class TradePricing:
             else:
                 raise ValueError("Swap involves fees from more than two pairs")
             
-        logger.warning("some pairs in the trade have a fee of None")
+        # logger.warning("some pairs in the trade have a fee of None")
         return None
 
     def get_price_impact(self) -> Percent:

@@ -11,7 +11,6 @@ import cachetools
 import pandas as pd
 
 from eth_defi.token_analysis.blacklist import is_blacklisted_address
-from tradeexecutor.ethereum.one_delta.analysis import analyse_leverage_trade_by_receipt
 from tradingstrategy.candle import CandleSampleUnavailable
 from tradingstrategy.pair import DEXPair, HumanReadableTradingPairDescription
 from tradingstrategy.universe import Universe
@@ -1043,7 +1042,10 @@ class PositionManager:
                 pending=pending,
             )
 
-        assert trade.lp_fees_estimated > 0, f"LP fees estimated: {trade.lp_fees_estimated} - {trade} - DEX fee data missing?"
+        # In BacktestPricing we may override fee to zero
+        fee_override = getattr(self.pricing_model, "trading_fee_override", None)
+        if fee_override is None:
+            assert trade.lp_fees_estimated > 0, f"LP fees estimated: {trade.lp_fees_estimated} - {trade} - DEX fee data missing?\nFee override is {fee_override}"
 
         # Update stop loss for this position
         if stop_loss:

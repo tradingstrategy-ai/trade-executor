@@ -173,7 +173,7 @@ class BacktestPricing(PricingModel):
 
         else:
             # Fee information not available
-            if not self.allow_missing_fees:
+            if (not self.allow_missing_fees) and (self.trading_fee_override is None):
                 raise AssertionError(f"Pair lacks fee information: {pair}")
 
             price = mid_price
@@ -221,7 +221,8 @@ class BacktestPricing(PricingModel):
             # Move price above mid price
             price = mid_price * (1 + pair_fee)
 
-            assert lp_fee > 0, f"Got bad fee: {pair} {reserve}: {lp_fee}"
+            if self.trading_fee_override is None:
+                assert lp_fee > 0, f"Got bad fee: {pair} {reserve}: {lp_fee}, trading fee override is: {self.trading_fee_override}"
         else:
             # Fee information not available
             if not self.allow_missing_fees:

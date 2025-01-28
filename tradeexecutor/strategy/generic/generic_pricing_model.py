@@ -40,6 +40,7 @@ class GenericPricing(PricingModel):
         self.pair_configurator = pair_configurator
         self.data_delay_tolerance = data_delay_tolerance
         self.exchange_rate_pairs = exchange_rate_pairs
+        self.trading_fee_override = None
 
     def get_exchange_rate(
         self,
@@ -107,12 +108,13 @@ class GenericPricing(PricingModel):
         return route.get_pair_fee(ts, pair)
 
     def set_trading_fee_override(
-            self,
-            trading_fee_override: Percent | None
+        self,
+        trading_fee_override: Percent | None
     ):
         # TODO: Finish API description and such
         for config in self.pair_configurator.configs.values():
             config.pricing_model.set_trading_fee_override(trading_fee_override)
+        self.trading_fee_override = trading_fee_override
 
     def get_usd_tvl(
         self,
