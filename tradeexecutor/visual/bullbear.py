@@ -32,6 +32,8 @@ def visualise_market_regime_filter(
     - Under price colour regime filter regions. Bull regime green, bear regime read.
     - Crab market does not have colour
 
+
+
     :param price_series:
         Price on an asset
 

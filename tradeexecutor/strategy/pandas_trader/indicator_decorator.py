@@ -301,7 +301,8 @@ class IndicatorRegistry:
             rollable = False
             for parameter in definition.args:
                 if parameter not in parameters:
-                    raise ParameterMissing(f"Function {name} requires parameter {parameter}, but this is not defined in strategy parameters.\nWe have: {list(parameters.keys())}")
+                    list_str = "\n".join(list(parameters.keys()))
+                    raise ParameterMissing(f"Function {name} requires parameter {parameter}, but this is not defined in strategy parameters.\nWe have:\n{list_str}")
                 value = parameters[parameter]
                 assert type(value) != list, f"Early trip wire {name}: {value}"
                 rollable |= RollingParameter.is_rolling(value)

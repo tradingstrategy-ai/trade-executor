@@ -378,7 +378,16 @@ def dump_parameters(parameters: StrategyParameters) -> str:
 
 
 def display_parameters(parameters: StrategyParameters) -> pd.DataFrame:
-    """Format strategy parameters for notebook output."""
+    """Format strategy parameters for notebook output.
+
+    Example:
+
+    .. code-block:: python
+
+        from tradeexecutor.strategy.parameters import display_parameters
+        parameters = StrategyParameters.from_class(Parameters)  # Convert to AttributedDict to easier typing with dot notation
+        display_parameters(parameters)
+    """
 
     assert isinstance(parameters, StrategyParameters), f"Got {parameters}"
 
