@@ -13,6 +13,7 @@ from typing import Dict, Optional, List, Iterable, Tuple, Set
 import numpy as np
 import pandas as pd
 from dataclasses_json import dataclass_json
+from jedi.inference.gradual.typing import TypedDict
 
 from tradeexecutor.state.balance_update import BalanceUpdate, BalanceUpdateCause
 from tradeexecutor.state.generic_position import GenericPosition, BalanceUpdateEventAlreadyAdded
@@ -38,6 +39,10 @@ logger = logging.getLogger(__name__)
 #: If a token position helds less than this absolute amount of token
 #: consider closing it as dust
 CLOSED_POSITION_DUST_EPSILON = 0.0001
+
+
+class PositionOtherData(TypedDict):
+    marked_down_at: datetime.datetime
 
 
 @dataclass_json
@@ -282,6 +287,8 @@ class TradingPosition(GenericPosition):
     #: 
     liquidation_price: USDollarAmount | None = None
 
+    other_data: OtherData = field(default_factory=dict)
+
     def __repr__(self):
         if self.is_pending():
             return f"<Pending position #{self.position_id} {self.pair} ${self.get_value()}>"
@@ -388,8 +395,11 @@ class TradingPosition(GenericPosition):
         return any(t.is_repaired() for t in self.trades.values())
 
     def is_marked_down(self) -> bool:
-        """Position value was forcefully set to zero."""
+        """Position value was forcefully set to zero.
 
+        See :py:meth:`mark_down`.
+        """
+        return self.other_data["marked_down_at"] is not None
 
     def has_automatic_close(self) -> bool:
         """This position has stop loss/take profit set."""
@@ -2064,3 +2074,13 @@ class TradingPosition(GenericPosition):
         if duration is None:
             return 0.0
         return (self.get_claimed_interest() / self.get_value_at_open()) * datetime.timedelta(days=365) / duration
+
+    def mark_down(self):
+        """Manually set position value to zero.
+
+        - Must be done to unsellable assets like scam coins
+        """
+        self.other_data["marked_down_at"] = datetime.datetime.utcnow()
+        self.add_notes_message(f"Marked down to zero manually, last price was {self.last_token_price}, last value was: {self.get_value()}")
+        self.last_token_price = 0
+        self.last_pricing_at = datetime.datetime.utcnow()

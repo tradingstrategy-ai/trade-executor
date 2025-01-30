@@ -228,9 +228,7 @@ def close_single_or_all_positions(
         # TODO: Add blacklist not to touch this position again
         portfolio = state.portfolio
         for p in positions_to_close:
-            p.add_notes_message(f"Marked down to zero manually, last price was {p.last_token_price}")
-            p.last_token_price = 0
-            p.last_pricing_at = datetime.datetime.utcnow()
+            p.mark_down()
 
             if p.is_frozen():
                 del portfolio.open_positions[p.position_id]

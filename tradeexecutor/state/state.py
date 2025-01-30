@@ -900,6 +900,7 @@ class State:
 
     def blacklist_asset(self, asset: AssetIdentifier):
         """Add a asset to the blacklist."""
+        logger.info("Blacklisted: %s", asset)
         self.asset_blacklist.add(asset.get_identifier())
 
     def perform_integrity_check(self):
