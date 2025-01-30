@@ -145,15 +145,9 @@ def close_single_or_all_positions(
         default_slippage_tolerance=slippage_tolerance,
     )
 
-    # The message left on the positions that were closed
-    note = f"Closed with close-all command at {datetime.datetime.utcnow()}"
-
     # Open the test position only if there isn't position already open
     # on the previous run
-
     open_positions = list(state.portfolio.open_positions.values())
-
-    assert len(open_positions) > 0, "Strategy does not have any open positions to close"
 
     if position_id is None:
         logger.info("Performing close-all for %d open positions", len(open_positions))
@@ -204,9 +198,14 @@ def close_single_or_all_positions(
 
     portfolio = state.portfolio
 
+    assert len(positions_to_close) > 0, "Strategy does not have any open positions to close"
+
     if close_by_sell:
+
         for p in positions_to_close:
 
+            # The message left on the positions that were closed
+            note = f"Close sell with CLI command at {datetime.datetime.utcnow()}"
 
             # Create trades to open the position
             logger.info("Closing position %s", p)
@@ -267,7 +266,7 @@ def close_single_or_all_positions(
     for p in positions_to_close:
         assert p.is_closed(), f"Failed to close position: {p}"
         assert p.position_id in portfolio.closed_positions, f"Position was not in closed positions: {p}"
-        assert p.position_id not in portfolio.closed_positions, f"Position was not in closed positions: {p}"
+        assert p.position_id not in portfolio.frozen_positions, f"Position was back in frozen positions: {p}"
 
     gas_at_end = hot_wallet.get_native_currency_balance(web3)
     reserve_currency_at_end = state.portfolio.get_default_reserve_position().get_value()
