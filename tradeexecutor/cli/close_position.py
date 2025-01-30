@@ -10,6 +10,7 @@ from web3 import Web3
 
 from tradeexecutor.analysis.position import display_positions
 from tradeexecutor.ethereum.enzyme.vault import EnzymeVaultSyncModel
+from tradeexecutor.ethereum.onchain_balance import fetch_address_balances
 from tradeexecutor.strategy.execution_context import ExecutionContext
 from tradeexecutor.strategy.sync_model import SyncModel
 from tradeexecutor.strategy.valuation import ValuationModel
@@ -171,13 +172,19 @@ def close_single_or_all_positions(
 
         trading_quantity = p.get_available_trading_quantity()
         quantity = p.get_quantity()
+        onchain_fetch_data = sync_model.fetch_onchain_balances(
+            [p.pair.base],
+            filter_zero=False,
+        )
+        onchain_balance = next(iter(onchain_fetch_data))
 
         if trading_quantity != quantity:
             logger.info(
-                "Position #%d quantity: %f, available for trade quantity: %f",
+                "Position #%d quantity: %f, available for trade quantity: %f, onchain quantity: %f",
                 p.position_id,
                 quantity,
                 trading_quantity,
+                onchain_balance.amount,
             )
             for t in p.trades.values():
                 logger.info("Trade %s, quantity: %s", t, quantity)
