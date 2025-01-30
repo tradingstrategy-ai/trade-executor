@@ -202,8 +202,6 @@ def test_close_all_simulate(
     assert len(state.portfolio.open_positions) == 1
 
 
-
-
 def test_mark_down_position(
     environment: dict,
     state_file: Path,

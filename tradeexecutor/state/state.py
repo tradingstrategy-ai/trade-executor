@@ -201,8 +201,9 @@ class State:
         assert isinstance(pair, TradingPairIdentifier), f"Expected TradingPairIdentifier, got {type(pair)}: {pair}"
 
         if pair.base.address in self.asset_blacklist:
-            # Legacy state ecompatiblity
-            return True
+            # Legacy state compatiblity.
+            # Remove in the future.
+            return False
 
         return (pair.base not in self.blacklisted_assets) and (pair.quote not in self.blacklisted_assets)
 
