@@ -908,7 +908,12 @@ class TradeAnalysis:
                 take_profits += 1
 
             realised_profit_usd = position.get_realised_profit_usd()
-            assert realised_profit_usd is not None, f"Realised profit calculation failed for: {position}"
+
+            # Marked down means we may have never received any profits,
+            # it was closed to zero without any sells
+            if not position.is_marked_down():
+                assert realised_profit_usd is not None, f"Realised profit calculation failed for: {position}"
+
             realised_profit_percent = position.get_realised_profit_percent()
 
             duration = position.get_duration()
