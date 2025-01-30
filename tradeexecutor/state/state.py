@@ -15,7 +15,6 @@ from typing import List, Callable, Tuple, Set, Optional
 import pandas as pd
 from dataclasses_json import dataclass_json
 from dataclasses_json.core import _ExtendedEncoder
-from qstrader.asset.asset import Asset
 
 from .other_data import OtherData
 from .sync import Sync
@@ -25,14 +24,14 @@ from .position import TradingPosition
 from .reserve import ReservePosition
 from .statistics import Statistics
 from .trade import TradeExecution, TradeStatus, TradeType, TradeFlag
-from .types import USDollarAmount, BPS, USDollarPrice
+from .types import USDollarAmount, USDollarPrice
 from .uptime import Uptime
 from .visualisation import Visualisation
 
 from tradeexecutor.utils.summarydataframe import as_duration, format_value
 from tradeexecutor.strategy.trade_pricing import TradePricing
 from ..strategy.cycle import CycleDuration
-from ..utils.accuracy import ZERO_DECIMAL
+
 from tradeexecutor.strategy.lending_protocol_leverage import (
     create_short_loan,
     update_short_loan,
