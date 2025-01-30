@@ -165,7 +165,7 @@ class State:
     #: The main motivation of this list is to avoid assets that caused a freeze in the future.
     #:
     #: Key is token Ethereum address, lowercased.
-    asset_blacklist: Set[str] = field(default_factory=set)
+    asset_blacklist: Set[AssetIdentifier] = field(default_factory=set)
 
     #: Strategy visualisation and debug messages
     #: to show how the strategy is thinking.
@@ -198,7 +198,7 @@ class State:
     def is_good_pair(self, pair: TradingPairIdentifier) -> bool:
         """Check if the trading pair is blacklisted."""
         assert isinstance(pair, TradingPairIdentifier), f"Expected TradingPairIdentifier, got {type(pair)}: {pair}"
-        return (pair.base.get_identifier() not in self.asset_blacklist) and (pair.quote.get_identifier() not in self.asset_blacklist)
+        return (pair.base not in self.asset_blacklist) and (pair.quote not in self.asset_blacklist)
 
     def mark_ready(self, timestamp: datetime.datetime | pd.Timestamp):
         """Mark that the strategy has enough (backtest) data to decide the first trade.
@@ -904,7 +904,7 @@ class State:
         See :py:meth:`is_good_pair`.
         """
         logger.info("Blacklisted: %s", asset)
-        self.asset_blacklist.add(asset.get_identifier())
+        self.asset_blacklist.add(asset)
 
     def perform_integrity_check(self):
         """Check that we are not reusing any trade or position ids and counters are correct.
