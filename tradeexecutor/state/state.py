@@ -163,7 +163,8 @@ class State:
     #: Besides this internal black list, the executor can have other blacklists
     #: based on the trading universe and these are not part of the state.
     #: The main motivation of this list is to avoid assets that caused a freeze in the future.
-    #: Key is Ethereum address, lowercased.
+    #:
+    #: Key is token Ethereum address, lowercased.
     asset_blacklist: Set[str] = field(default_factory=set)
 
     #: Strategy visualisation and debug messages

@@ -387,6 +387,10 @@ class TradingPosition(GenericPosition):
         """
         return any(t.is_repaired() for t in self.trades.values())
 
+    def is_marked_down(self) -> bool:
+        """Position value was forcefully set to zero."""
+
+
     def has_automatic_close(self) -> bool:
         """This position has stop loss/take profit set."""
         return (self.stop_loss is not None) or (self.take_profit is not None)

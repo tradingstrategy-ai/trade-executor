@@ -59,7 +59,8 @@ def close_position(
     unit_testing: bool = shared_options.unit_testing,
     simulate: bool = shared_options.simulate,
 
-    position_id: Optional[int] = Option(None, envvar="POSITION_ID", help="Position id to close.")
+    position_id: Optional[int] = Option(None, envvar="POSITION_ID", help="Position id to close."),
+    close_by_sell: Optional[bool] = Option(True, envvar="CLOSE_BY_SELL", help="Attempt to close position by selling the underlying. If set to false, mark the position down to zero value.")
 ):
     """Close a single positions.
 
@@ -192,6 +193,7 @@ def close_position(
         valuation_model=valuation_model,
         execution_context=execution_context,
         position_id=position_id,
+        close_by_sell=close_by_sell,
     )
 
     # Store the test trade data in the strategy history
