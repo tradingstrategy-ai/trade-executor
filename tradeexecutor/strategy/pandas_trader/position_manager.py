@@ -358,7 +358,7 @@ class PositionManager:
 
         # Check executor internal blacklist.
         # You can end up here through frozen position/manual intervention
-        if pair.base.address in self.state.asset_blacklist:
+        if not self.state.is_good_pair(pair):
             return True
 
         # Check source code blacklist from eth_defi

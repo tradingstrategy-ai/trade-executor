@@ -899,7 +899,10 @@ class State:
         raise RuntimeError(f"Removed. Use valuation.revalue_state()")
 
     def blacklist_asset(self, asset: AssetIdentifier):
-        """Add a asset to the blacklist."""
+        """Add a asset to the blacklist.
+
+        See :py:meth:`is_good_pair`.
+        """
         logger.info("Blacklisted: %s", asset)
         self.asset_blacklist.add(asset.get_identifier())
 

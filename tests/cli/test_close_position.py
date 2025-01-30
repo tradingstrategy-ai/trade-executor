@@ -239,11 +239,11 @@ def test_mark_down_position(
     assert len(state.portfolio.open_positions) == 1
 
     position = next(iter(state.portfolio.open_positions.values()))
-
     environment["POSITION_ID"] = str(position.position_id)
-    environment["CLOSE_BY_SELL"] = False
+    environment["CLOSE_BY_SELL"] = "false"  # Do mark down
+    assert position.is_open()
 
-    # trade-executor close-all
+    # Run the command
     cli = get_command(app)
     with patch.dict(os.environ, environment, clear=True):
         with pytest.raises(SystemExit) as e:
@@ -253,5 +253,10 @@ def test_mark_down_position(
     state = State.read_json_file(state_file)
     assert len(state.portfolio.open_positions) == 0
 
+    # Check marked down results look correct
     position = state.portfolio.closed_positions[position.position_id]
     assert position.is_marked_down()
+    assert position.is_closed()
+    assert not position.is_open()
+    assert not position.is_frozen()
+    assert not state.is_good_pair(position.pair)  # Blacklisted

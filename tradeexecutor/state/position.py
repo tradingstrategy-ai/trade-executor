@@ -42,6 +42,8 @@ CLOSED_POSITION_DUST_EPSILON = 0.0001
 
 
 class PositionOtherData(TypedDict):
+    """Position data that is not relevant for most positions."""
+
     marked_down_at: datetime.datetime
 
 
@@ -287,7 +289,8 @@ class TradingPosition(GenericPosition):
     #: 
     liquidation_price: USDollarAmount | None = None
 
-    other_data: OtherData = field(default_factory=dict)
+    #: Misc bag of data, not often needed
+    other_data: PositionOtherData = field(default_factory=dict)
 
     def __repr__(self):
         if self.is_pending():
@@ -2084,3 +2087,5 @@ class TradingPosition(GenericPosition):
         self.add_notes_message(f"Marked down to zero manually, last price was {self.last_token_price}, last value was: {self.get_value()}")
         self.last_token_price = 0
         self.last_pricing_at = datetime.datetime.utcnow()
+        self.closed_at = datetime.datetime.utcnow()
+        self.unfrozen_at = datetime.datetime.utcnow()

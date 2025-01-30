@@ -8,7 +8,6 @@ import datetime
 from tabulate import tabulate
 from web3 import Web3
 
-from tests.ethereum.test_execute_trade_uniswap import portfolio
 from tradeexecutor.analysis.position import display_positions
 from tradeexecutor.ethereum.enzyme.vault import EnzymeVaultSyncModel
 from tradeexecutor.strategy.execution_context import ExecutionContext
@@ -47,6 +46,7 @@ def close_single_or_all_positions(
     position_id: int | None = None,
     unit_testing=False,
     close_by_sell=True,
+    blacklist_marked_down=True,
 ):
     """Close single/all positions.
 
@@ -228,20 +228,23 @@ def close_single_or_all_positions(
         # TODO: Add blacklist not to touch this position again
         portfolio = state.portfolio
         for p in positions_to_close:
-            p.mark_down()
 
             if p.is_frozen():
                 del portfolio.open_positions[p.position_id]
             elif p.is_open():
                 del portfolio.open_positions[p.position_id]
             else:
-                raise NotImplementedError()
+                raise NotImplementedError(f"Cannot mark down closed position: {p}")
 
             portfolio.closed_positions[p.position_id] = p
-            logger.info(f"Position was moved to closed positions: {p}")
+
+            p.mark_down()
+
+            logger.info(f"Position was marked down and moved to closed positions: {p}")
 
             # Also add to the blacklist
-            state.blacklist_asset(p.pair.base)
+            if blacklist_marked_down:
+                state.blacklist_asset(p.pair.base)
 
     gas_at_end = hot_wallet.get_native_currency_balance(web3)
     reserve_currency_at_end = state.portfolio.get_default_reserve_position().get_value()
