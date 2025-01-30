@@ -912,7 +912,7 @@ class TradeAnalysis:
             # Marked down means we may have never received any profits,
             # it was closed to zero without any sells
             if not position.is_marked_down():
-                assert realised_profit_usd is not None, f"Realised profit calculation failed for: {position}"
+                assert realised_profit_usd is not None, f"Realised profit calculation failed for: {position}. Marked down: {position.is_marked_down()}"
 
             realised_profit_percent = position.get_realised_profit_percent()
 
