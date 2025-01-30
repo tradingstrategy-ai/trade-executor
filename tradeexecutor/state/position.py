@@ -402,7 +402,7 @@ class TradingPosition(GenericPosition):
 
         See :py:meth:`mark_down`.
         """
-        return self.other_data["marked_down_at"] is not None
+        return self.other_data.get("marked_down_at") is not None
 
     def has_automatic_close(self) -> bool:
         """This position has stop loss/take profit set."""
