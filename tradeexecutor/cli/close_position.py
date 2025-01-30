@@ -202,10 +202,16 @@ def close_single_or_all_positions(
         if confirmation != "y":
             raise CloseAllAborted()
 
+    portfolio = state.portfolio
+
     if close_by_sell:
         for p in positions_to_close:
+
+
             # Create trades to open the position
             logger.info("Closing position %s", p)
+
+            assert not p.is_closed(), "Was already closed"
 
             trades = position_manager.close_position(p)
 
@@ -237,8 +243,9 @@ def close_single_or_all_positions(
     else:
         # TODO: Add accounting correction
         # TODO: Add blacklist not to touch this position again
-        portfolio = state.portfolio
         for p in positions_to_close:
+
+            assert not p.is_closed(), "Was already closed"
 
             if p.is_frozen():
                 del portfolio.frozen_positions[p.position_id]
@@ -256,6 +263,10 @@ def close_single_or_all_positions(
             # Also add to the blacklist
             if blacklist_marked_down:
                 state.blacklist_asset(p.pair.base)
+
+    for p in positions_to_close:
+        assert p.is_closed(), f"Failed to close position: {p}"
+        assert p.position_id in portfolio.closed_positions, f"Position was not in closed positions: {p}"
 
     gas_at_end = hot_wallet.get_native_currency_balance(web3)
     reserve_currency_at_end = state.portfolio.get_default_reserve_position().get_value()
