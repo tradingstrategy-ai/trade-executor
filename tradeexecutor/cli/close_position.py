@@ -187,6 +187,10 @@ def close_single_or_all_positions(
                                               f"Position: {p}")
 
     if interactive:
+        if close_by_sell:
+            logger.info("We will attempt to close the positions by selling")
+        else:
+            logger.info("We will mark positions to zero")
         confirmation = input("Attempt to close positions [y/n]").lower()
         if confirmation != "y":
             raise CloseAllAborted()
@@ -230,7 +234,7 @@ def close_single_or_all_positions(
         for p in positions_to_close:
 
             if p.is_frozen():
-                del portfolio.open_positions[p.position_id]
+                del portfolio.frozen_positions[p.position_id]
             elif p.is_open():
                 del portfolio.open_positions[p.position_id]
             else:
