@@ -159,7 +159,10 @@ class State:
     #: Portfolio and position performance records over time.
     stats: Statistics = field(default_factory=Statistics)
 
-    #: Legacy: Do not use.
+    #: Legacy: Do not use. Use function accessor to add and read.
+    #:
+    #: List of asset identifiers that are blacklisted.
+    #:
     #:
     #: See :py:meth:`blacklist_asset`
     #:
@@ -911,8 +914,8 @@ class State:
         See :py:meth:`is_good_pair`.
         """
         logger.info("Blacklisted: %s", asset)
+        self.asset_blacklist.add(asset.get_identifier())  # Legacy compatibility
         self.blacklisted_assets.add(asset)
-        self.asset_blacklist.add(asset.address)  # Legacy compatibility
 
     def perform_integrity_check(self):
         """Check that we are not reusing any trade or position ids and counters are correct.
