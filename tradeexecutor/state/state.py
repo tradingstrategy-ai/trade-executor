@@ -15,6 +15,7 @@ from typing import List, Callable, Tuple, Set, Optional
 import pandas as pd
 from dataclasses_json import dataclass_json
 from dataclasses_json.core import _ExtendedEncoder
+from qstrader.asset.asset import Asset
 
 from .other_data import OtherData
 from .sync import Sync
@@ -158,14 +159,14 @@ class State:
     #: Portfolio and position performance records over time.
     stats: Statistics = field(default_factory=Statistics)
 
-    #: Assets that the strategy is not allowed to touch,
-    #: or have failed to trade in the past, resulting to a frozen position.
-    #: Besides this internal black list, the executor can have other blacklists
-    #: based on the trading universe and these are not part of the state.
-    #: The main motivation of this list is to avoid assets that caused a freeze in the future.
+    #: Legacy: Do not use.
     #:
-    #: Key is token Ethereum address, lowercased.
-    asset_blacklist: Set[AssetIdentifier] = field(default_factory=set)
+    #: See :py:meth:`blacklist_asset`
+    #:
+    asset_blacklist: Set[str] = field(default_factory=set)
+
+    #: Maintain set of blacklisted asset identifiers
+    blacklisted_assets: Set[AssetIdentifier] = field(default_factory=set)
 
     #: Strategy visualisation and debug messages
     #: to show how the strategy is thinking.
@@ -198,7 +199,12 @@ class State:
     def is_good_pair(self, pair: TradingPairIdentifier) -> bool:
         """Check if the trading pair is blacklisted."""
         assert isinstance(pair, TradingPairIdentifier), f"Expected TradingPairIdentifier, got {type(pair)}: {pair}"
-        return (pair.base not in self.asset_blacklist) and (pair.quote not in self.asset_blacklist)
+
+        if pair.base.address in self.asset_blacklist:
+            # Legacy state ecompatiblity
+            return True
+
+        return (pair.base not in self.blacklisted_assets) and (pair.quote not in self.blacklisted_assets)
 
     def mark_ready(self, timestamp: datetime.datetime | pd.Timestamp):
         """Mark that the strategy has enough (backtest) data to decide the first trade.
@@ -562,22 +568,22 @@ class State:
         )
 
     def supply_credit(
-            self,
-            strategy_cycle_at: datetime.datetime,
-            pair: TradingPairIdentifier,
-            trade_type: TradeType,
-            reserve_currency: AssetIdentifier,
-            collateral_asset_price: USDollarPrice,
-            collateral_quantity: Optional[Decimal] = None,
-            notes: Optional[str] = None,
-            pair_fee: Optional[float] = None,
-            lp_fees_estimated: Optional[USDollarAmount] = None,
-            planned_mid_price: Optional[USDollarPrice] = None,
-            price_structure: Optional[TradePricing] = None,
-            position: Optional[TradingPosition] = None,
-            slippage_tolerance: Optional[float] = None,
-            closing: Optional[bool] = False,
-            flags: Optional[Set[TradeFlag]] = None,
+        self,
+        strategy_cycle_at: datetime.datetime,
+        pair: TradingPairIdentifier,
+        trade_type: TradeType,
+        reserve_currency: AssetIdentifier,
+        collateral_asset_price: USDollarPrice,
+        collateral_quantity: Optional[Decimal] = None,
+        notes: Optional[str] = None,
+        pair_fee: Optional[float] = None,
+        lp_fees_estimated: Optional[USDollarAmount] = None,
+        planned_mid_price: Optional[USDollarPrice] = None,
+        price_structure: Optional[TradePricing] = None,
+        position: Optional[TradingPosition] = None,
+        slippage_tolerance: Optional[float] = None,
+        closing: Optional[bool] = False,
+        flags: Optional[Set[TradeFlag]] = None,
     ) -> Tuple[TradingPosition, TradeExecution, bool]:
         """Create or adjust credit supply position.
 
@@ -904,7 +910,8 @@ class State:
         See :py:meth:`is_good_pair`.
         """
         logger.info("Blacklisted: %s", asset)
-        self.asset_blacklist.add(asset)
+        self.blacklisted_assets.add(asset)
+        self.asset_blacklist.add(asset.address)  # Legacy compatibility
 
     def perform_integrity_check(self):
         """Check that we are not reusing any trade or position ids and counters are correct.
