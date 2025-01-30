@@ -355,6 +355,13 @@ class PositionManager:
             True: avoid trade, set slippage to max when selling.
         """
         assert isinstance(pair, TradingPairIdentifier)
+
+        # Check executor internal blacklist.
+        # You can end up here through frozen position/manual intervention
+        if not self.state.is_good_pair(pair):
+            return True
+
+        # Check source code blacklist from eth_defi
         return is_blacklisted_address(pair.base.address)
     
     def _get_single_open_position_for_kind(self, kind: str) -> TradingPosition:

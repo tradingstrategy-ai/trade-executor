@@ -1185,6 +1185,13 @@ class AlphaModel:
         #  TODO: Break this massive for if spagetti to sub-functions
         for signal in self.iterate_signals():
 
+            # Trip wire for blacklisted pairs.
+            # Never generate trades for them.
+            # Must be manually closed with close-position command.
+            if position_manager.is_problematic_pair(signal.pair):
+                logger.warning("Skipping blacklisted pair: %s", signal.pair)
+                continue
+
             # Trades that we will execute for the position for this signal
             # Trades that we will execute for the position for this signal
             # A signal may cause multiple trades, as e.g.

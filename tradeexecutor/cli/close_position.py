@@ -45,6 +45,8 @@ def close_single_or_all_positions(
     interactive=True,
     position_id: int | None = None,
     unit_testing=False,
+    close_by_sell=True,
+    blacklist_marked_down=True,
 ):
     """Close single/all positions.
 
@@ -189,37 +191,60 @@ def close_single_or_all_positions(
         if confirmation != "y":
             raise CloseAllAborted()
 
-    for p in positions_to_close:
-        # Create trades to open the position
-        logger.info("Closing position %s", p)
+    if close_by_sell:
+        for p in positions_to_close:
+            # Create trades to open the position
+            logger.info("Closing position %s", p)
 
-        trades = position_manager.close_position(p)
+            trades = position_manager.close_position(p)
 
-        assert len(trades) == 1
-        trade = trades[0]
+            assert len(trades) == 1
+            trade = trades[0]
 
-        # Compose the trades as approve() + swapTokenExact(),
-        # broadcast them to the blockchain network and
-        # wait for the confirmation
-        execution_model.execute_trades(
-            ts,
-            state,
-            trades,
-            routing_model,
-            routing_state,
-        )
+            # Compose the trades as approve() + swapTokenExact(),
+            # broadcast them to the blockchain network and
+            # wait for the confirmation
+            execution_model.execute_trades(
+                ts,
+                state,
+                trades,
+                routing_model,
+                routing_state,
+            )
 
-        if not trade.is_success():
-            logger.error("Trade failed: %s", trade)
-            logger.error("Tx hash: %s", trade.blockchain_transactions[-1].tx_hash)
-            logger.error("Revert reason: %s", trade.blockchain_transactions[-1].revert_reason)
-            logger.error("Trade dump:\n%s", trade.get_debug_dump())
-            raise AssertionError("Trade to close position failed")
+            if not trade.is_success():
+                logger.error("Trade failed: %s", trade)
+                logger.error("Tx hash: %s", trade.blockchain_transactions[-1].tx_hash)
+                logger.error("Revert reason: %s", trade.blockchain_transactions[-1].revert_reason)
+                logger.error("Trade dump:\n%s", trade.get_debug_dump())
+                raise AssertionError("Trade to close position failed")
 
-        if p.notes is None:
-            p.notes = ""
+            if p.notes is None:
+                p.notes = ""
 
-        p.add_notes_message(note)
+            p.add_notes_message(note)
+    else:
+        # TODO: Add accounting correction
+        # TODO: Add blacklist not to touch this position again
+        portfolio = state.portfolio
+        for p in positions_to_close:
+
+            if p.is_frozen():
+                del portfolio.open_positions[p.position_id]
+            elif p.is_open():
+                del portfolio.open_positions[p.position_id]
+            else:
+                raise NotImplementedError(f"Cannot mark down closed position: {p}")
+
+            portfolio.closed_positions[p.position_id] = p
+
+            p.mark_down()
+
+            logger.info(f"Position was marked down and moved to closed positions: {p}")
+
+            # Also add to the blacklist
+            if blacklist_marked_down:
+                state.blacklist_asset(p.pair.base)
 
     gas_at_end = hot_wallet.get_native_currency_balance(web3)
     reserve_currency_at_end = state.portfolio.get_default_reserve_position().get_value()

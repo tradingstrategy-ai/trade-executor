@@ -102,7 +102,7 @@ def anvil_bnb_chain_fork(large_busd_holder) -> str:
         yield launch.json_rpc_url
         # Wind down Ganache process after the test is complete
     finally:
-        launch.close(log_level=logging.INFO)
+        launch.close()
 
 
 @pytest.fixture
@@ -331,15 +331,16 @@ def runner(
 
 
 def test_buy_and_sell_blacklisted_asset(
-        strategy_path: Path,
-        web3: Web3,
-        hot_wallet: HotWallet,
-        pancakeswap_v2: UniswapV2Deployment,
-        universe_model: StaticUniverseModel,
-        state: State,
-        runner,
-        wbnb_busd_pair,
-        bit_busd_pair
+    logger: logging.Logger,
+    strategy_path: Path,
+    web3: Web3,
+    hot_wallet: HotWallet,
+    pancakeswap_v2: UniswapV2Deployment,
+    universe_model: StaticUniverseModel,
+    state: State,
+    runner,
+    wbnb_busd_pair,
+    bit_busd_pair
     ):
     """Try to buy/sell BIT token.
 

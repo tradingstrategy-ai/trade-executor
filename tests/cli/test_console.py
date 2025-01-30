@@ -6,10 +6,6 @@ import pytest
 from tradeexecutor.cli.commands.app import app
 
 pytestmark = pytest.mark.skipif(os.environ.get("JSON_RPC_ETHEREUM") is None, reason="Set JSON_RPC_ETHEREUM environment variable torun this test")
-<<<<<<< Updated upstream
-=======
-
->>>>>>> Stashed changes
 
 
 @pytest.mark.skipif(os.environ.get("GITHUB_ACTIONS") == "true", reason="This test seems to block Github CI for some reason")
