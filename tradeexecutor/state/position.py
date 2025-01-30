@@ -1675,7 +1675,10 @@ class TradingPosition(GenericPosition):
                     if not valuation_price:
                         valuation_price = self.last_token_price
 
-                    assert valuation_price, "Cannot value unrealised PnL without an explicit valuation price for the unsold portion"
+                    # Marked down positions need to have special handling
+                    if not self.is_marked_down():
+                        assert valuation_price, f"Cannot value unrealised PnL without an explicit valuation price for the unsold portion.\n" \
+                                                f"Position was: {self}, quantity left: {quantity_left_sell}, valuation price: {valuation_price}"
                     unrealised_equity = valuation_price * float(quantity_left_sell)
 
             avg_price = self.get_average_price()
