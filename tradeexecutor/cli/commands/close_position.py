@@ -4,12 +4,14 @@ import datetime
 from pathlib import Path
 from typing import Optional
 
+from tabulate import tabulate
 from typer import Option
 
 from .app import app
 from ..bootstrap import prepare_executor_id, prepare_cache, create_web3_config, create_state_store, \
     create_execution_and_sync_model, create_client
 from ..log import setup_logging
+from ...analysis.position import display_positions
 from ...strategy.approval import UncheckedApprovalModel
 from ...strategy.bootstrap import make_factory_from_strategy_mod
 from ...strategy.description import StrategyExecutionDescription
@@ -179,6 +181,16 @@ def close_position(
 
     assert position_id
 
+    print("Open positions are")
+    df = display_positions(state.portfolio.open_positions.values())
+    if len(df) > 0:
+        print(tabulate(df, headers='keys', tablefmt='rounded_outline'))
+
+    print("Frozen positions positions are")
+    df = display_positions(state.portfolio.frozen_positions.values())
+    if len(df) > 0:
+        print(tabulate(df, headers='keys', tablefmt='rounded_outline'))
+
     close_single_or_all_positions(
         web3config.get_default(),
         execution_model=execution_model,
@@ -200,6 +212,7 @@ def close_position(
 
     # Store the test trade data in the strategy history
     if not simulate:
+        logger.info("Storing new state")
         store.sync(state)
 
     logger.info("All ok")

@@ -267,6 +267,7 @@ def close_single_or_all_positions(
     for p in positions_to_close:
         assert p.is_closed(), f"Failed to close position: {p}"
         assert p.position_id in portfolio.closed_positions, f"Position was not in closed positions: {p}"
+        assert p.position_id not in portfolio.closed_positions, f"Position was not in closed positions: {p}"
 
     gas_at_end = hot_wallet.get_native_currency_balance(web3)
     reserve_currency_at_end = state.portfolio.get_default_reserve_position().get_value()
