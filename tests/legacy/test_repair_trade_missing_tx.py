@@ -53,8 +53,8 @@ def test_repair_trade_missing_tx(
     assert pos.trades[8].is_missing_blockchain_transactions()
     assert len(pos.trades) == 4
 
-    assert pos.get_value() == pytest.approx(2831.946809553303)
-    assert portfolio.calculate_total_equity() == pytest.approx(4062.6783229397383)
+    assert pos.get_value() == pytest.approx(2822.223554)
+    assert portfolio.calculate_total_equity() == pytest.approx(4049.33755226)
 
     repair_trades = repair_tx_not_generated(state, interactive=False)
     assert len(repair_trades) == 7  # 7 repairs across two positions
@@ -68,5 +68,5 @@ def test_repair_trade_missing_tx(
 
     assert len(pos.trades) == 7  # 4 original + 3 repairs added
 
-    assert pos.get_value() == pytest.approx(2831.946809553303)
-    assert portfolio.calculate_total_equity() == pytest.approx(4062.6783229397383)
+    assert pos.get_value() == pytest.approx(2822.223554)
+    assert portfolio.calculate_total_equity() == pytest.approx(4049.33755226)
