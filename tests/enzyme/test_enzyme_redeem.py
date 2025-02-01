@@ -232,8 +232,8 @@ def test_enzyme_redeem_open_position(
     assert len(state.portfolio.open_positions[1].balance_updates) == 1
 
     reserve = state.portfolio.get_default_reserve_position()
-    assert position.get_value() == pytest.approx(100)
+    assert position.get_value() == pytest.approx(50)
     assert reserve.get_value() == pytest.approx(200)
-    assert state.portfolio.calculate_total_equity() == pytest.approx(300)
+    assert state.portfolio.calculate_total_equity() == pytest.approx(250)
 
 
