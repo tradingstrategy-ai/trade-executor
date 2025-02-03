@@ -733,7 +733,16 @@ class TradingPosition(GenericPosition):
 
         reserve_quantity = sum([t.get_equity_for_reserve() for t in self.trades.values() if t.is_accounted_for_equity()])
 
-        return float(token_quantity) * token_price + float(reserve_quantity) * reserve_price
+        direct_balance_updates = self.get_base_token_balance_update_quantity()
+
+        value = float(token_quantity) * token_price + float(reserve_quantity) * reserve_price
+
+        if self.is_short():
+            value -= float(direct_balance_updates) * token_price
+        else:
+            value += float(direct_balance_updates) * token_price
+
+        return value
 
     def get_equity(self) -> USDollarAmount:
         """Get equity tied to this position.
