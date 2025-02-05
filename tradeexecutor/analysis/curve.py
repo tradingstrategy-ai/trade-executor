@@ -35,9 +35,11 @@ SPECIAL_SERIES_ATTRIBUTES = {"name", "colour", "curve", "period"}
 DEFAULT_BENCHMARK_COLOURS = {
     "BTC": "orange",
     "ETH": "blue",
+    "ETH.e": "blue",
     "MATIC": "purple",
     "SOL": "lightblue",
     "ARB": "red",
+    "AVAX": "red",
     "DOGE": "darkorange",
     "PEPE": "darkmagenta",
     "AAVE": "#F289DA",
