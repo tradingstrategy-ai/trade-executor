@@ -133,8 +133,7 @@ def save_daily_returns(
     df.attrs["trading_end"] = state.get_trading_time_range()[0]
 
     if strategy_universe is not None:
-        pairs = [p.to_dict() for p in strategy_universe.iterate_pairs()]
-        df.attrs["pairs"] = json.dumps(pairs)
+        df.attrs["pair_count"] = strategy_universe.get_pair_count()
 
     if verbose:
         print(f"Saved {path}, {path.stat().st_size:,} bytes")

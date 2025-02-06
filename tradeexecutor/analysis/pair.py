@@ -22,6 +22,7 @@ def display_strategy_universe(
     tolerance=pd.Timedelta("90D"),  # Put in any number, fix later to ignore lookup errors
     sort_key="id",
     sort_ascending=True,
+    sort_numeric=True,
 ) -> pd.DataFrame:
     """Displays a constructed trading strategy universe in table format.
 
@@ -155,7 +156,10 @@ def display_strategy_universe(
 
     df = pd.DataFrame(pairs)
 
-    df['numeric_values'] = df[sort_key].replace("-", 0).replace("<not avail>", 0).astype(int)
+    if sort_numeric:
+        df['numeric_values'] = df[sort_key].replace("-", 0).replace("<not avail>", 0).astype(int)
+    else:
+        df['numeric_values'] = df[sort_key]
 
     df = df.sort_values(
         by="numeric_values", 

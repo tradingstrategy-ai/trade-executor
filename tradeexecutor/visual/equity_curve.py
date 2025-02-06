@@ -291,7 +291,9 @@ def visualise_equity_curve(
         returns,
         title=title,
         lw=line_width,
-        show=False)
+        show=False,
+        subtitle=False,
+        )
     return fig
 
 

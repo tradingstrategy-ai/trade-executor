@@ -8,6 +8,7 @@ import plotly.graph_objects as go
 import pandas as pd
 from plotly.graph_objs.layout import Annotation
 
+from tradeexecutor.state.identifier import TradingPairIdentifier
 from tradeexecutor.state.position import TradingPosition
 from tradeexecutor.state.state import State
 from tradeexecutor.state.trade import TradeExecution
@@ -122,6 +123,7 @@ def visualise_positions_with_duration_and_slippage(
 
     Add arrow indicators to point start and end duration,
     and slippage.
+
     """
 
     # TODO: Figure out how to add a Y coordinate
@@ -304,6 +306,29 @@ def visualise_single_pair(
     legend: bool = True,
 ) -> go.Figure:
     """Visualise single-pair trade execution.
+
+    Example:
+
+    .. code-block:: python
+
+        from tradeexecutor.visual.single_pair import visualise_single_pair
+        from tradingstrategy.charting.candle_chart import VolumeBarMode
+
+        pair = token_map["BANANA"]
+
+        all_trades = [t for t in state.portfolio.get_all_trades() if t.pair == pair]
+        print(f"We have total {len(all_trades)} trades on {pair}")
+
+        figure = visualise_single_pair(
+            state,
+            candle_universe=strategy_universe.data_universe.candles,
+            pair_id=pair.internal_id,
+            volume_bar_mode=VolumeBarMode.hidden,
+            execution_context=notebook_execution_context,
+            title=f"Trades on {pair}",
+        )
+
+        figure.show()
 
     :param state:
         The recorded state of the strategy execution.
@@ -492,6 +517,28 @@ def visualise_single_pair_positions_with_duration_and_slippage(
 
     - slippage
 
+    Example:
+
+    .. code-block:: python
+
+        from tradeexecutor.visual.single_pair import visualise_single_pair_positions_with_duration_and_slippage
+        from tradingstrategy.charting.candle_chart import VolumeBarMode
+
+        pair = token_map["BANANA"]
+
+        all_positions = [t for t in state.portfolio.get_all_positions() if t.pair == pair]
+        print(f"We have total {len(all_positions)} positions on {pair}")
+
+        figure = visualise_single_pair_positions_with_duration_and_slippage(
+            state=state,
+            candles=strategy_universe.data_universe.candles.get_candles_by_pair(pair.internal_id),
+            pair_id=pair.internal_id,
+            execution_context=notebook_execution_context,
+            title=f"Positions on {pair}",
+        )
+
+        figure.show()
+
     :param state:
         The recorded state of the strategy execution.
         Either live or backtest.
@@ -590,6 +637,16 @@ def visualise_single_pair_positions_with_duration_and_slippage(
     positions = get_all_positions(state, pair_id)
 
     logging.info("State has %d positions for pair id %d", len(positions), pair_id)
+
+    if start_at or end_at:
+        positions = [p for p in positions if start_at <= p.opened_at <= end_at]
+        logging.info(
+            "After limiting range %s %s, we have %d positions for pair id %d",
+            start_at,
+            end_at,
+            len(positions),
+            pair_id,
+        )
     
     # hide volume bar
     volume_bar_mode = VolumeBarMode.hidden
@@ -803,3 +860,40 @@ def visualise_single_position(
     )
 
     return fig
+
+
+def display_positions_table(
+    state: State,
+    pair: TradingPairIdentifier,
+    sort_by="PnL %",
+    ascending=True,
+) -> pd.DataFrame:
+    """Prepare a table of positions taken for a trading pair.
+
+    Example:
+
+    .. code-block:: python
+
+        from tradeexecutor.visual.single_pair import display_positions_table
+        pair = token_map["JOE"]  # Get previously resolved trading pair
+        display_positions_table(state, pair, sort_by="PnL USD", ascending=False)
+
+    :return:
+        DataFrame that includes basic diagnostics info about positions taken in a backtest.
+    """
+    data = []
+    positions = [p for p in state.portfolio.get_all_positions() if p.pair == pair]
+    for p in positions:
+        data.append({
+            "Open": p.opened_at,
+            "Close": p.closed_at,
+            "Duration": p.get_duration(),
+            "PnL %": p.get_realised_profit_percent() * 100,
+            "PnL USD": p.get_realised_profit_usd(),
+            "Trades": p.get_trade_count(),
+        })
+
+    df = pd.DataFrame(data)
+    df = df.set_index("Open")
+    df = df.sort_values(by=[sort_by], ascending=ascending)
+    return df
