@@ -15,7 +15,6 @@ def visualise_asset_correlation(
     """Draw asset correlation heatmap.
 
     - Takes close price of all pairs in the trading universe
-
     """
 
     # Prepare correlation dataframe
@@ -71,4 +70,82 @@ def visualise_asset_correlation(
         xaxis={'side': 'bottom'},
         yaxis={'autorange': 'reversed'},
     )
+    return fig
+
+
+def calculate_correlation_matrix(
+    corr_df: pd.DataFrame,
+    method="pearson",
+    min_periods=30,
+) -> pd.DataFrame:
+    """Calculate correlation matrix.
+
+    - Defaults for daily returns
+    """
+    corr_matrix = corr_df.corr(
+        method=method,
+        min_periods=min_periods,
+    )
+    return corr_matrix
+
+
+def visualise_correlation_matrix(
+    corr_matrix: pd.DataFrame,
+    title: str = 'Returns correlation matrix',
+) -> Figure:
+    """Visualise correlation matrix as a heatmap.
+
+    - Use for custome returns series
+
+    Example:
+
+    .. code-block:: python
+
+        weekly_returns_df = (returns_df + 1).resample('W').prod() - 1
+
+        display(weekly_returns_df.iloc[0:5])
+
+        corr_matrix = weekly_returns_df.corr(
+            method='pearson',
+            min_periods=4,
+        )
+
+        display(corr_matrix)
+        visualise_correlation_matrix(corr_matrix, title="Weekly returns correlation")
+
+    """
+    # Create heatmap
+    fig = go.Figure(data=go.Heatmap(
+        z=corr_matrix,
+        x=corr_matrix.columns,
+        y=corr_matrix.columns,
+        zmin=-1,
+        zmax=1,
+        customdata=np.round(corr_matrix, 3),
+        hoverongaps=False,
+        hovertemplate=(
+                '%{x} vs %{y}<br>' +
+                'Correlation: %{customdata}<br>' +
+                '<extra></extra>'
+        ),
+        colorscale='RdBu',
+    ))
+
+    # Update layout
+    fig.update_layout(
+        title={
+            'text': title,
+            'y': 0.95,
+            'x': 0.5,
+            'xanchor': 'center',
+            'yanchor': 'top'
+        },
+        width=800,
+        height=800,
+        xaxis_title="Asset",
+        yaxis_title="Asset",
+        xaxis={'side': 'bottom'},
+        yaxis={'autorange': 'reversed'},
+    )
+
     return fig

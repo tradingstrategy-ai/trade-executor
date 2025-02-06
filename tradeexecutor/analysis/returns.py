@@ -1,7 +1,15 @@
 """Daily returns and related calculations."""
+import json
+from dataclasses import asdict
+from os import makedirs
+from pathlib import Path
+
 import pandas as pd
 
+from tradeexecutor.state.state import State
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
+from tradeexecutor.visual.equity_curve import calculate_daily_returns
+from tradingstrategy.client import Client
 
 
 def calculate_returns(
@@ -52,3 +60,81 @@ def calculate_returns(
     df = candles_raw_df.set_index(["pair_id", "timestamp"], drop=False)
     series = df.groupby(level='pair_id')[column].pct_change()
     return series
+
+
+
+def get_default_returns_folder(client: Client) -> Path:
+    """Where do we save return series."""
+    folder = Path(client.transport.cache_path) / "returns"
+    return folder
+
+
+def save_daily_returns(
+    state: State,
+    client: Client = None,
+    folder: Path = None,
+    verbose=True,
+    strategy_universe: TradingStrategyUniverse | None = None,
+):
+    """Save daily returns as a parquet file.
+
+    - To be opened in another notebook for a benchmark
+
+    - DataFrame contains one column "returns"
+
+    - DataFrame.attrs will contain metadata about the backtest run, like trading pairs
+
+    :param state:
+        Backtest state.
+
+    :param client:
+        Use to resolve the default save folder
+
+    :param folder:
+        Save in this folder.
+
+        The resulting name is "daily-returns-{state.name}.parquet".
+
+        If not given use client cache path / returns.
+
+    :param strategy_universe:
+        Store pair metadata
+
+    :param verbose:
+        Print out the saved filename
+
+    :return:
+        Saved DataFrame.
+    """
+
+    assert (folder or client), "Give either folder or client"
+
+    if folder is None:
+        folder = get_default_returns_folder(client)
+
+    assert state.name
+
+    # Slugify the filename
+    name = state.name.replace("_", "-").replace(" ", "-")
+    path = folder / f"daily-returns-{name}.parquet"
+    makedirs(folder, exist_ok=True)
+    returns = calculate_daily_returns(state)
+    assert returns is not None, "Got empty returns"
+
+    df = pd.DataFrame({
+        "returns": returns,
+    })
+
+    df.to_parquet(path)
+
+    # Add some metadata
+    df.attrs["name"] = state.name
+    df.attrs["trading_start"] = state.get_trading_time_range()[0]
+    df.attrs["trading_end"] = state.get_trading_time_range()[0]
+
+    if strategy_universe is not None:
+        pairs = [p.to_dict() for p in strategy_universe.iterate_pairs()]
+        df.attrs["pairs"] = json.dumps(pairs)
+
+    if verbose:
+        print(f"Saved {path}, {path.stat().st_size:,} bytes")

@@ -4,6 +4,7 @@ import logging
 
 import pandas as pd
 import matplotlib_inline
+import plotly.io as pio
 
 
 class OutputMode(enum.Enum):
@@ -28,6 +29,7 @@ def setup_charting_and_output(
     max_rows=1000,
     width=1500,
     height=1500,
+    increase_font_size=False,
 ):
     """Sets charting and other output options for Jupyter Notebooks.
 
@@ -66,6 +68,9 @@ def setup_charting_and_output(
         Do we remove the ``max_rows`` limitation from Pandas tables.
 
         Default 20 is too low to display summary tables.
+
+    :param increase_font_size:
+        Make charts and tables more readable with larger fonts
     """
 
     from plotly.offline import init_notebook_mode
@@ -108,3 +113,35 @@ def setup_charting_and_output(
 
     if max_rows:
         pd.set_option('display.max_rows', max_rows)
+
+
+def set_large_plotly_chart_font(title_font_size = 30, font_size = 24, line_width = 3):
+    """Increae the default Plotly chart font sizes so that charts are readable on other mediums like mobile and PowerPoint."""
+
+    # Update the default template
+    pio.templates["custom"] = pio.templates["plotly"]
+    pio.templates["custom"]["layout"]["font"]["size"] = font_size  # Set the default font size
+    pio.templates["custom"]["layout"]["legend"]["font"]["size"] = font_size  # Set the legend font size
+    pio.templates["custom"]["layout"]["legend"]["font"]["size"] = font_size  # Set the legend font size
+    pio.templates["custom"]["layout"]["xaxis"]["title"]["font"]["size"] = font_size  # Set the x-axis title font size
+    pio.templates["custom"]["layout"]["yaxis"]["title"]["font"]["size"] = font_size  # Set the y-axis title font size
+    pio.templates["custom"]["layout"]["xaxis"]["tickfont"]["size"] = font_size  # Set the x-axis tick font size
+    pio.templates["custom"]["layout"]["yaxis"]["tickfont"]["size"] = font_size  # Set the y-axis tick font size
+
+    pio.templates["custom"]["layout"]["xaxis"]["title"]["font"]["size"] = title_font_size  # Set the x-axis title font size
+    pio.templates["custom"]["layout"]["yaxis"]["title"]["font"]["size"] = title_font_size  # Set the y-axis title font size
+
+    # Set the default title font size
+    pio.templates["custom"]["layout"]["title"] = {
+        "font": {"size": title_font_size}
+    }
+
+    # Set the default line width
+    pio.templates["custom"]["data"]["scatter"] = [{
+        "type": "scatter",
+        "mode": "lines",
+        "line": {"width": line_width}  # Set the default line width for scatter plots
+    }]
+
+    # Set the default template to the custom template
+    pio.templates.default = "custom"

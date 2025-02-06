@@ -362,7 +362,7 @@ def visualise_equity_curve_benchmark(
         # Clip to the backtest time frame
         buy_and_hold_price_series = buy_and_hold_price_series[start_at:end_at]
 
-        if buy_and_hold_price_series.attrs.get("returns_series_type") == "cumulative_returns":
+        if buy_and_hold_price_series.attrs.get("returns_series_type") == CurveType.cumulative_returns.value:
             # See get_benchmark_data()
             scatter = go.Scatter(
                 x=buy_and_hold_price_series.index,
@@ -372,6 +372,17 @@ def visualise_equity_curve_benchmark(
                 line=dict(color=buy_and_hold_price_series.attrs.get("colour")),
             )
 
+            fig.add_trace(scatter)
+        elif buy_and_hold_price_series.attrs.get("returns_series_type") == CurveType.returns.value:
+            # Convert daily returns to equity curve
+            eq_curve = (1 + buy_and_hold_price_series).cumprod() * all_cash
+            scatter = go.Scatter(
+                x=eq_curve.index,
+                y=eq_curve,
+                mode="lines",
+                name=benchmark_name,
+                line=dict(color=buy_and_hold_price_series.attrs.get("colour")),
+            )
             fig.add_trace(scatter)
         else:
             # Legacy path without get_benchmark_data()
