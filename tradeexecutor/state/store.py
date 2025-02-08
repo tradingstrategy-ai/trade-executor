@@ -16,6 +16,7 @@ from dataclasses_json.core import _ExtendedEncoder
 from tradeexecutor.state.state import State
 from tradeexecutor.state.validator import validate_nested_state_dict
 
+
 logger = logging.getLogger(__name__)
 
 

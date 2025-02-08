@@ -883,6 +883,10 @@ def display_positions_table(
     """
     data = []
     positions = [p for p in state.portfolio.get_all_positions() if p.pair == pair]
+
+    if len(positions) == 0:
+        return pd.DataFrame([])
+
     for p in positions:
         data.append({
             "Open": p.opened_at,
