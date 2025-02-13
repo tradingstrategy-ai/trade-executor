@@ -13,6 +13,7 @@ def analyse_optimiser_result(
     result: OptimiserResult,
     max_search_results=100,
     exclude_filtered=True,
+    drop_duplicates=True,
 ) -> pd.DataFrame:
     """Create a table of optimiser searched space + their results.
 
@@ -44,7 +45,11 @@ def analyse_optimiser_result(
         raise AssertionError(f"No optimsier results for analysis where left after dropping backtests that did not pass perform_optimisation(result_filter)")
 
     # min_positions_threshold should have taken care by optimiser filter earlier
-    return analyse_grid_search_result(top_chunk, min_positions_threshold=0)
+    return analyse_grid_search_result(
+        top_chunk,
+        min_positions_threshold=0,
+        drop_duplicates=drop_duplicates,
+    )
 
 
 def profile_optimiser(result: OptimiserResult) -> pd.DataFrame:

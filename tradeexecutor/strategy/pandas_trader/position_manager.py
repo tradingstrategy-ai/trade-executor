@@ -2720,6 +2720,7 @@ xz
             else:
                 raise RuntimeError(f"Unsupported: {t}")
 
+        total_equity = self.state.portfolio.get_total_equity()
         cash_in_hand = self.get_current_cash()
         cash_available = cash_in_hand + cash_released + credit_released
         cash_needed_total = cash_needed_for_buy +  credit_supplied
@@ -2728,7 +2729,8 @@ xz
               f"trades: cash needed: {cash_needed_for_buy}, cash released: {cash_released}\n" \
               f"credit: cash needed: {credit_supplied}, cash released: {credit_released}\n" \
               f"cash in hand: {cash_in_hand}\n" \
-              f"trades: {len(trades)}\n"
+              f"trades: {len(trades)}\n" \
+              f"total equity: {total_equity}"
 
         logger.info(msg)
 
