@@ -2723,7 +2723,7 @@ xz
         total_equity = self.state.portfolio.get_total_equity()
         cash_in_hand = self.get_current_cash()
         cash_available = cash_in_hand + cash_released + credit_released
-        cash_needed_total = cash_needed_for_buy +  credit_supplied
+        cash_needed_total = cash_needed_for_buy + credit_supplied
 
         msg = f"check_enough_cash(): cash needed: {cash_needed_total} cash will be available: {cash_available}\n" \
               f"trades: cash needed: {cash_needed_for_buy}, cash released: {cash_released}\n" \
@@ -2735,6 +2735,8 @@ xz
         logger.info(msg)
 
         if cash_needed_for_buy > cash_available:
+            for t in trades:
+                logger.info("Trade %s, value %s, planned reserve: %s", t, t.get_value(), t.planned_reserve)
             raise NotEnoughCasForBuys(f"Release cash will not cover for buys. Likely a problem with strategy logic.\n{msg}")
 
 
