@@ -34,6 +34,7 @@ SPECIAL_SERIES_ATTRIBUTES = {"name", "colour", "curve", "period"}
 #:
 DEFAULT_BENCHMARK_COLOURS = {
     "BTC": "orange",
+    "cbBTC": "orange",
     "ETH": "blue",
     "ETH.e": "blue",
     "MATIC": "purple",
