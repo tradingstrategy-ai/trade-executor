@@ -371,7 +371,7 @@ class IndicatorDefinition:
             ret = self.func( **self._fix_parameters_for_function_signature(resolver, pair, timestamp, execution_context))
             return self._check_good_return_value(ret)
         except Exception as e:
-            raise IndicatorCalculationFailed(f"Could not calculate indicator {self.name} ({self.func}) for parameters {self.parameters}, input data is {len(input)} rows: {e}, pair is {pair}") from e
+            raise IndicatorCalculationFailed(f"Could not calculate indicator {self.name} ({self.func}) for parameters {self.parameters}, exception: {e}, pair is {pair}") from e
 
     def calculate_dependencies_only_per_universe(
         self,

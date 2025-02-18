@@ -1,6 +1,7 @@
 """Jupyter notebook utilities for backtesting."""
 import enum
 import logging
+import sys
 
 import pandas as pd
 import matplotlib_inline
@@ -145,3 +146,14 @@ def set_large_plotly_chart_font(title_font_size = 30, font_size = 24, line_width
 
     # Set the default template to the custom template
     pio.templates.default = "custom"
+
+
+def set_notebook_logging(log_level=logging.INFO):
+    """Enable logging in notebooks.
+
+    - Only needed to diagnose Client library bugs when running in notebook
+    """
+    format = '[%(asctime)s] %(levelname)s %(module)s: %(message)s'
+    logging.basicConfig(level=log_level,
+                        format=format,
+                        datefmt='%H:%M:%S')
