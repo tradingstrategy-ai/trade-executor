@@ -43,7 +43,7 @@ from typer import Option
 
 
 from eth_defi.hotwallet import HotWallet
-from eth_defi.lagoon.deployment import LagoonDeploymentParameters, deploy_automated_lagoon_vault
+from eth_defi.lagoon.deployment import LagoonDeploymentParameters, deploy_automated_lagoon_vault, DEFAULT_PERFORMANCE_RATE, DEFAULT_MANAGEMENT_RATE
 from eth_defi.token import fetch_erc20_details
 from eth_defi.uniswap_v2.constants import UNISWAP_V2_DEPLOYMENTS
 from eth_defi.uniswap_v2.deployment import fetch_deployment
@@ -91,6 +91,8 @@ def lagoon_deploy_vault(
     uniswap_v2: bool = Option(False, envvar="UNISWAP_V2", help="Whitelist Uniswap v2"),
     uniswap_v3: bool = Option(False, envvar="UNISWAP_V3", help="Whitelist Uniswap v3"),
     verbose: bool = Option(False, envvar="VERBOSE", help="Extra verbosity with deploy commands"),
+    performance_fee: int = Option(DEFAULT_PERFORMANCE_RATE, envvar="PERFORMANCE_FEE", help="Performance fee in BPS"),
+    management_fee: int = Option(DEFAULT_MANAGEMENT_RATE, envvar="MANAGEMENT_FEE", help="Management fee in BPS"),
 ):
     """Deploy a new Lagoon vault.
 
@@ -162,6 +164,8 @@ def lagoon_deploy_vault(
     logger.info("Whitelisting 1delta: %s", one_delta)
     logger.info("Whitelisting Aave: %s", aave)
     logger.info("Multisig owners: %s", multisig_owners)
+    logger.info("Performance fee: %f %%", performance_fee / 100)
+    logger.info("Management fee: %f %%", management_fee / 100)
 
     if etherscan_api_key:
         logger.info("Etherscan API key: %s", etherscan_api_key)
@@ -193,6 +197,8 @@ def lagoon_deploy_vault(
         underlying=denomination_token.address,
         name=fund_name,
         symbol=fund_symbol,
+        performanceRate=performance_fee,
+        managementRate=management_fee,
     )
 
     chain_slug = chain_id.get_slug()
