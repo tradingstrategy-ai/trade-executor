@@ -114,9 +114,9 @@ class Parameters:
     rolling_volatility_bars = pd.Timedelta("7d") // candle_time_bucket.to_timedelta()
     tvl_ewm_span = 7 * 24  # Smooth TVL inclusin criteria
     min_volume = 25_000  # USD
-    min_tvl_prefilter = 250_000  # USD - to reduce number of trading pairs for backtest-purposes only
-    min_tvl = 250_000  # USD - set to same as above if you want to avoid any survivorship bias
-    min_token_sniffer_score = 20  # 20 = AAVE
+    min_tvl_prefilter = 1_250_000  # USD - to reduce number of trading pairs for backtest-purposes only
+    min_tvl = 1_250_000  # USD - set to same as above if you want to avoid any survivorship bias
+    min_token_sniffer_score = 75  # 20 = AAVE
 
     #
     # Yield on cash

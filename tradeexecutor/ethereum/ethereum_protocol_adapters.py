@@ -253,6 +253,7 @@ def create_aave_v3_adapter(
         pool_address=AAVE_V3_DEPLOYMENTS[chain_slug]["pool"],
         data_provider_address=AAVE_V3_DEPLOYMENTS[chain_slug]["data_provider"],
         oracle_address=AAVE_V3_DEPLOYMENTS[chain_slug]["oracle"],
+        ausdc_address=AAVE_V3_DEPLOYMENTS[chain_slug].get("ausdc"),
     )
 
     address_map = {

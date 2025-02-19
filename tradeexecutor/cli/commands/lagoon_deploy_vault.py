@@ -41,7 +41,7 @@ from typing import Optional
 
 from typer import Option
 
-
+from eth_defi.aave_v3.constants import AAVE_V3_DEPLOYMENTS
 from eth_defi.hotwallet import HotWallet
 from eth_defi.lagoon.deployment import LagoonDeploymentParameters, deploy_automated_lagoon_vault, DEFAULT_PERFORMANCE_RATE, DEFAULT_MANAGEMENT_RATE
 from eth_defi.token import fetch_erc20_details
@@ -49,6 +49,7 @@ from eth_defi.uniswap_v2.constants import UNISWAP_V2_DEPLOYMENTS
 from eth_defi.uniswap_v2.deployment import fetch_deployment
 from eth_defi.uniswap_v3.constants import UNISWAP_V3_DEPLOYMENTS
 from eth_defi.uniswap_v3.deployment import fetch_deployment as fetch_deployment_uni_v3
+from eth_defi.aave_v3.deployment import fetch_deployment as fetch_aave_deployment
 
 from tradeexecutor.cli.commands.shared_options import parse_comma_separated_list
 from tradeexecutor.monkeypatch.web3 import construct_sign_and_send_raw_middleware
@@ -73,7 +74,7 @@ def lagoon_deploy_vault(
     private_key: str = shared_options.private_key,
 
     # Vault options
-    vault_record_file: Optional[Path] = Option(..., envvar="VAULT_RECORD_FILE", help="Store vault and comptroller addresses in this JSON file. It's important to write down all contract addresses."),
+    vault_record_file: Optional[Path] = Option(..., envvar="VAULT_RECORD_FILE", help="Store vault data in this TXT file, paired with a JSON file."),
     fund_name: Optional[str] = Option(..., envvar="FUND_NAME", help="On-chain name for the fund shares"),
     fund_symbol: Optional[str] = Option(..., envvar="FUND_SYMBOL", help="On-chain token symbol for the fund shares"),
     denomination_asset: Optional[str] = Option(..., envvar="DENOMINATION_ASSET", help="Stablecoin asset used for vault denomination"),
@@ -225,9 +226,22 @@ def lagoon_deploy_vault(
             quoter_v2=deployment_data["quoter_v2"],
             router_v2=deployment_data["router_v2"],
         )
-
     else:
         uniswap_v3_deployment = None
+
+    if aave:
+        chain_slug = chain_id.get_slug()
+        deployment_data = AAVE_V3_DEPLOYMENTS[chain_slug]
+        assert "ausdc" in deployment_data, f"No aUSDC configuration: {AAVE_V3_DEPLOYMENTS}"
+        aave_v3_deployment = fetch_aave_deployment(
+            web3,
+            pool_address=deployment_data["pool"],
+            data_provider_address=deployment_data["data_provider"],
+            oracle_address=deployment_data["oracle"],
+            ausdc_address=deployment_data["ausdc"],
+        )
+    else:
+        aave_v3_deployment = None
 
     deploy_info = deploy_automated_lagoon_vault(
         web3=web3,
@@ -238,6 +252,7 @@ def lagoon_deploy_vault(
         safe_threshold=len(multisig_owners) - 1,
         uniswap_v2=uniswap_v2_deployment,
         uniswap_v3=uniswap_v3_deployment,
+        aave_v3=aave_v3_deployment,
         any_asset=True,
         use_forge=True,
         etherscan_api_key=etherscan_api_key,
@@ -247,6 +262,11 @@ def lagoon_deploy_vault(
         # Make a small file, mostly used to communicate with unit tests
         with open(vault_record_file, "wt") as out:
             out.write(deploy_info.pformat())
+
+        #
+        with open(vault_record_file.with_suffix(".json"), "wt") as out:
+            out.write(json.dumps(deploy_info.get_deployment_data()))
+
         logger.info("Wrote %s for vault details", os.path.abspath(vault_record_file))
     else:
         logger.info("Skipping record file because of simulation")
