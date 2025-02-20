@@ -472,7 +472,7 @@ def accrue_interest(
     assert interest_distribution.duration > ZERO_TIMEDELTA, f"Tried to distribute interest for negative timespan {interest_distribution.start} - {interest_distribution.end}"
 
     block_number_str = f"{block_number,}" if block_number else "<no block>"
-    logger.info(f"accrue_interest(block_timestamp={block_timestamp:,}, {block_number_str})")
+    logger.info(f"accrue_interest(block_timestamp={block_timestamp:,}, {block_number_str}), we have {len(on_chain_balances)} onchain balances")
 
     part_of_year = interest_distribution.duration / aave_financial_year
 
@@ -676,7 +676,7 @@ def sync_interests(
 
     duration = timestamp - previous_update_at
     if duration <= ZERO_TIMEDELTA:
-        logger.error(f"Sync time span must be positive: {previous_update_at} - {timestamp}")
+        logger.error(f"Interest rate sync error. Sync time span must be positive: {previous_update_at} - {timestamp}")
         return []
 
     logger.info(
@@ -697,6 +697,8 @@ def sync_interests(
 
     # Then sync interest back from the chain
     block_identifier = get_almost_latest_block_number(web3)
+
+    logger.info("Preparing interest distribution for assets: %s", interest_distribution.assets)
 
     onchain_balances = fetch_address_balances(
         web3,
@@ -722,6 +724,6 @@ def sync_interests(
 
     events = list(events_iter)
 
-    logger.info(f"sync_interests() complete, last block is now {state.sync.interest.last_sync_block}")
+    logger.info(f"sync_interests() complete, last block is now {state.sync.interest.last_sync_block}, we got {len(events)} events")
 
     return events
