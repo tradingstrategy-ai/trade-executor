@@ -1499,12 +1499,15 @@ class TradingPosition(GenericPosition):
         """Get the timestamp when this position was last valued"""
 
         if self.is_loan_based():
+            # Loan-based positions are updated by update_interest()
+            # and it does not always update the token price (e.g. aUSDC).
+            # The timestamp for these positions must be thus taken from the interest update events.
             timestamps = []
-            if self.loan.collateral and self.loan.collateral.last_pricing_at:
-                timestamps.append(self.loan.collateral.last_pricing_at)
-            if self.loan.borrowed and self.loan.borrowed.last_pricing_at:
+            if self.loan.collateral and self.loan.collateral_interest.last_updated_at:
+                timestamps.append(self.loan.collateral_interest.last_updated_at)
+            if self.loan.borrowed and self.loan.borrowed_interest.last_updated_at:
                 # Credit position does not have borrowed part of the loan
-                timestamps.append(self.loan.borrowed.last_pricing_at)
+                timestamps.append(self.loan.borrowed_interest.last_updated_at)
             return min(timestamps)
         else:
             # Spot tokens

@@ -111,13 +111,15 @@ def update_interest(
 
     logger.log(
         log_level,
-        f"update_interest(), block {block_number or 0:,}, new token amount: %s, old balance: %s, gained interest tokens: %s, position new USD value: %s, previous update at %s, previous block at %s",
+        f"update_interest(), block {block_number or 0:,}, new token amount: %s, old balance: %s, gained interest tokens: %s, position new USD value: %s, previous update at %s, previous block at %s, current block %s, block time %s",
         new_token_amount,
         old_balance,
         gained_interest,
         usd_value,
         previous_update_at,
         f"{previous_block or 0:,}",
+        block_number,
+        event_at,
     )
 
     gained_interest_percent = gained_interest / old_balance
@@ -152,7 +154,6 @@ def update_interest(
     interest.last_event_at = event_at
     interest.last_updated_block_number = block_number
     interest.last_token_amount = new_token_amount
-
     return evt
 
 
