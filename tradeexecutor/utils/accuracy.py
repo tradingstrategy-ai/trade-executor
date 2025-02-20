@@ -29,6 +29,9 @@ ZERO_DECIMAL = Decimal(0)
 #: Used to catch floating point rounding errors
 QUANTITY_EPSILON = Decimal(10**-18)
 
+#: Handle interest rounding errors
+INTEREST_QUANTITY_EPSILON = Decimal(10**-5)
+
 
 #: Dust quantity of collateral resulted from our calculations that can be considered zero
 COLLATERAL_EPSILON = Decimal(10**-5)

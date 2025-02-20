@@ -8,7 +8,7 @@ from dataclasses_json import dataclass_json
 
 from tradeexecutor.state.identifier import AssetIdentifier
 from tradeexecutor.state.types import BlockNumber
-from tradeexecutor.utils.accuracy import ZERO_DECIMAL, QUANTITY_EPSILON
+from tradeexecutor.utils.accuracy import ZERO_DECIMAL, QUANTITY_EPSILON, INTEREST_QUANTITY_EPSILON
 
 
 @dataclass_json
@@ -114,7 +114,7 @@ class Interest:
         """Update interest payments needed to maintain the borrowed debt."""
         self.interest_payments += quantity
 
-    def adjust(self, delta: Decimal, epsilon: Decimal = QUANTITY_EPSILON):
+    def adjust(self, delta: Decimal, epsilon: Decimal = INTEREST_QUANTITY_EPSILON):
         """Adjust the quantity on this loan.
 
         Used when doing increase/reduce shorts to get a new amount.

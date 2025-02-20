@@ -195,11 +195,11 @@ class SyncModel(ABC):
         """
 
     def sync_interests(
-            self,
-            timestamp: datetime.datetime,
-            state: State,
-            universe: TradingStrategyUniverse,
-            pricing_model: PricingModel,
+        self,
+        timestamp: datetime.datetime,
+        state: State,
+        universe: TradingStrategyUniverse,
+        pricing_model: PricingModel,
     ) -> List[BalanceUpdate]:
         """Update interest on all tokens that receive interest thru rebase.
 
