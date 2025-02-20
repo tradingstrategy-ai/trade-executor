@@ -1500,11 +1500,11 @@ class TradingPosition(GenericPosition):
 
         if self.is_loan_based():
             timestamps = []
-            if self.loan.collateral.last_pricing_at:
+            if self.loan.collateral and self.loan.collateral.last_pricing_at:
                 timestamps.append(self.loan.collateral.last_pricing_at)
-            if self.loan.borrowed.last_pricing_at:
+            if self.loan.borrowed and self.loan.borrowed.last_pricing_at:
+                # Credit position does not have borrowed part of the loan
                 timestamps.append(self.loan.borrowed.last_pricing_at)
-
             return min(timestamps)
         else:
             # Spot tokens
