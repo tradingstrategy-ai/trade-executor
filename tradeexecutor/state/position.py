@@ -114,7 +114,10 @@ class TradingPosition(GenericPosition):
     #: Strategy tick time.
     opened_at: datetime.datetime
 
-    #: When was the last time this position was (re)valued
+    #: When was the last time this position was (re)valued.
+    #:
+    #: Read with :py:meth:`get_last_valued_at`.
+    #:
     last_pricing_at: datetime.datetime
 
     #: Last valued price for the base token.
@@ -1491,6 +1494,21 @@ class TradingPosition(GenericPosition):
             return None
 
         return t.blockchain_transactions[-1].tx_hash
+
+    def get_last_valued_at(self) -> datetime.datetime:
+        """Get the timestamp when this position was last valued"""
+
+        if self.is_loan_based():
+            timestamps = []
+            if self.loan.collateral.last_pricing_at:
+                timestamps.append(self.loan.collateral.last_pricing_at)
+            if self.loan.borrowed.last_pricing_at:
+                timestamps.append(self.loan.borrowed.last_pricing_at)
+
+            return min(timestamps)
+        else:
+            # Spot tokens
+            return self.last_pricing_at
 
     def revalue_base_asset(self, last_pricing_at: datetime.datetime, last_token_price: USDollarPrice):
         """Update position token prices.

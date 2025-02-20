@@ -472,7 +472,7 @@ def accrue_interest(
     assert interest_distribution.duration > ZERO_TIMEDELTA, f"Tried to distribute interest for negative timespan {interest_distribution.start} - {interest_distribution.end}"
 
     block_number_str = f"{block_number,}" if block_number else "<no block>"
-    logger.info(f"accrue_interest(block_timestamp={block_timestamp}, {block_number_str})")
+    logger.info(f"accrue_interest(block_timestamp={block_timestamp:,}, {block_number_str})")
 
     part_of_year = interest_distribution.duration / aave_financial_year
 
@@ -599,7 +599,7 @@ def set_interest_checkpoint(
     if distribution is not None:
         state.sync.interest.last_distribution = distribution
 
-    block_number_str = f"{block_number,}" if block_number else "<no block>"
+    block_number_str = f"{block_number:,}" if block_number else "<no block>"
     logger.info(f"Interest check point set to {timestamp}, block: {block_number_str}")
 
 

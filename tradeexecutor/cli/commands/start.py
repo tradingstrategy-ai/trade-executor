@@ -605,6 +605,12 @@ def start(
             if isinstance(store, JSONFileStore):
                 logger.info("Wrote backtest result to %s", store.path.absolute())
 
+        if run_single_cycle:
+            if len(state.portfolio.frozen_positions) > 0:
+                logger.error("After single cycle run, we have frozen positions")
+                for p in state.portfolio.frozen_positions.values():
+                    logger.error("Position: %s", p)
+
     except KeyboardInterrupt as e:
 
         # CTRL+C shutdown or watch dog crash
