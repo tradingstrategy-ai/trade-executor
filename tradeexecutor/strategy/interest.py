@@ -722,4 +722,6 @@ def sync_interests(
 
     events = list(events_iter)
 
+    logger.info(f"sync_interests() complete, last block is now {state.sync.interest.last_sync_block}")
+
     return events
