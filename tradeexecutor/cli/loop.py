@@ -1122,7 +1122,7 @@ class ExecutionLoop:
                     state=state,
                     universe=universe,
                     execution_mode=execution_context.mode,
-                    intrest=True,
+                    interest=True,
                 )
 
             self.sync_model.sync_treasury(
