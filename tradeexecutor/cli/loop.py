@@ -591,6 +591,7 @@ class ExecutionLoop:
         state: State,
         universe: StrategyExecutionUniverse,
         execution_mode: ExecutionMode = None,
+        interest=True,
     ):
         """Revalue positions and update statistics.
 
@@ -618,6 +619,15 @@ class ExecutionLoop:
             logger.info("The strategy has no reserves or deposits yet")
 
         routing_state, pricing_model, valuation_model = self.runner.setup_routing(universe)
+
+        if interest:
+            interest_events = self.sync_model.sync_interests(
+                clock,
+                state,
+                cast(TradingStrategyUniverse, universe),
+                pricing_model,
+            )
+            logger.info("Generated %d sync interest events", len(interest_events))
 
         update_position_valuations(
             timestamp=clock,
@@ -1105,12 +1115,14 @@ class ExecutionLoop:
 
             if self.sync_model.has_async_deposits():
                 # Need value portfolio to sync Lagoon treasury
+
                 logger.info("Async deposits - revaluing the portfolio before processing the deposit queue")
                 self.update_position_valuations(
                     clock=startup_time,
                     state=state,
                     universe=universe,
                     execution_mode=execution_context.mode,
+                    intrest=True,
                 )
 
             self.sync_model.sync_treasury(
