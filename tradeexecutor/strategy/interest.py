@@ -680,10 +680,11 @@ def sync_interests(
         return []
 
     logger.info(
-        "Starting interest distribution operation at: %s, previous update %s, syncing %s",
+        "Starting interest distribution operation at: %s, previous update %s, syncing %s, address: %s",
         timestamp,
         previous_update_at,
         duration,
+        wallet_address,
     )
 
     record_interest_rate(state, universe, timestamp)

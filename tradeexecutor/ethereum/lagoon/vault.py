@@ -168,7 +168,7 @@ class LagoonVaultSyncModel(AddressSyncModel):
 
         return sync_interests(
             web3=self.web3,
-            wallet_address=self.get_key_address(),
+            wallet_address=self.get_token_storage_address(),
             timestamp=timestamp,
             state=state,
             universe=universe,
