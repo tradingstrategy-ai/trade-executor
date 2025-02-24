@@ -536,7 +536,7 @@ def test_statistics(usdc, weth_usdc, aave_usdc, start_ts):
     assert stats.get_latest_position_stats(1).profitability == 0
     assert stats.get_latest_position_stats(1).profit_usd == 0
     assert stats.get_latest_position_stats(1).quantity == 0
-    assert stats.get_latest_position_stats(2).profitability == 0.5
+    assert stats.get_latest_position_stats(2).profitability == pytest.approx(0.5)
 
     assert stats.closed_positions[1].value_at_open == pytest.approx(168.3)
     assert stats.closed_positions[1].value_at_max == pytest.approx(168.3)
