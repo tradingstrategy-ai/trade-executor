@@ -64,7 +64,8 @@ def calculate_position_statistics(clock: datetime.datetime, position: TradingPos
         # This will be mean %
         profitability = position.get_unrealised_and_realised_profitability_percent_credit()
     else:
-        profitability = position.get_unrealised_and_realised_profit_percent()
+        # TODO: Update this to new code paths
+        profitability = position.get_total_profit_percent()
 
     stats = PositionStatistics(
         calculated_at=clock,
