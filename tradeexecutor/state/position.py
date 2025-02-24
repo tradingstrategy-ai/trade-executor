@@ -3,6 +3,7 @@ import datetime
 import enum
 import logging
 import pprint
+import statistics
 import warnings
 from dataclasses import dataclass, field, asdict
 from decimal import Decimal
@@ -15,7 +16,7 @@ import pandas as pd
 from dataclasses_json import dataclass_json
 from jedi.inference.gradual.typing import TypedDict
 
-from tradeexecutor.state.balance_update import BalanceUpdate, BalanceUpdateCause
+from tradeexecutor.state.balance_update import BalanceUpdate, BalanceUpdateCause, DEFAULT_YEAR
 from tradeexecutor.state.generic_position import GenericPosition, BalanceUpdateEventAlreadyAdded
 from tradeexecutor.state.identifier import TradingPairIdentifier, AssetIdentifier, TradingPairKind
 from tradeexecutor.state.interest import Interest
@@ -1656,6 +1657,26 @@ class TradingPosition(GenericPosition):
             # TODO: Some legacy code paths end here?
             # raise NotImplementedError(f"Should not never happen as for non-spot positions we use leverage-based profit calculation: {self}")
             return 0
+
+    def get_unrealised_and_realised_profitability_percent_credit(
+        self
+    ):
+        """Calculate avg % interest we have earned over time for a credit supply position.
+
+        - Slow, as we need to iterate over all balance update events
+
+        :return:
+            Average interest over time.
+
+            Regardless of position increase/decrease.
+        """
+
+        # Unrolled get_effective_yearly_yield()
+        return statistics.mean(
+            float(b.quantity / b.old_balance) / ((b.block_mined_at - b.previous_update_at) / DEFAULT_YEAR)
+            for b in self.balance_updates.values()
+            if (b.cause == BalanceUpdateCause.interest) and (b.previous_update_at is not None) and (b.previous_update_at != b.block_mined_at)
+        )
 
     def get_unrealised_and_realised_profit_percent(
         self,

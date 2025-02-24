@@ -586,7 +586,7 @@ def create_client(
     return client, routing_model
 
 
-def backup_state(state_file: Path | str, backup_suffix="backup") -> Tuple[JSONFileStore, State]:
+def backup_state(state_file: Path | str, backup_suffix="backup", unit_testing=False) -> Tuple[JSONFileStore, State]:
     """Take a copy of the state file, then read the original file."""
 
     logger.info("Backing up %s", state_file)
@@ -598,7 +598,8 @@ def backup_state(state_file: Path | str, backup_suffix="backup") -> Tuple[JSONFi
     # Make a backup
     # https://stackoverflow.com/a/47528275/315168
     backup_file = None
-    for i in range(1, 99):  # Try 99 different iterateive backup filenames
+    backup_attempts = 1 if unit_testing else 99  # Don't pollute folders when unit testing
+    for i in range(1, backup_attempts):  # Try 99 different iterateive backup filenames
         backup_file = state_file.with_suffix(f".{backup_suffix}-{i}.json")
         if os.path.exists(backup_file):
             continue

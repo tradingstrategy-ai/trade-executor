@@ -19,6 +19,9 @@ from tradeexecutor.state.identifier import AssetIdentifier
 from tradingstrategy.types import USDollarAmount, Percent
 
 
+DEFAULT_YEAR = datetime.timedelta(seconds=SECONDS_PER_YEAR_INT)
+
+
 class BalanceUpdateCause(enum.Enum):
 
     #: Reserve was deposited in the vault
@@ -242,6 +245,8 @@ class BalanceUpdate:
         - Mostly useful for interest rate events
 
         - Calculated in tokens (exchange rate immune)
+
+        - See also :py:meth:`get_effective_yield_statistics`
 
         :return:
             1-based interest.
