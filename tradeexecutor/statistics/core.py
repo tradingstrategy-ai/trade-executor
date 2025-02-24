@@ -58,10 +58,19 @@ def calculate_position_statistics(clock: datetime.datetime, position: TradingPos
     #if value == 0:
     #        logger.warning(f"Position {position} reported value {value}. Last token price: {position.last_token_price}. Last reserve price: {position.last_reserve_price}")
 
+
+    if position.is_credit_supply():
+        # Special path to calculate accured interest.
+        # This will be mean %
+        profitability = position.get_unrealised_and_realised_profitability_percent_credit()
+    else:
+        # TODO: Update this to new code paths
+        profitability = position.get_total_profit_percent()
+
     stats = PositionStatistics(
         calculated_at=clock,
         last_valuation_at=position.last_pricing_at,
-        profitability=position.get_total_profit_percent(),
+        profitability=profitability,
         profit_usd=position.get_total_profit_usd(),
         quantity=float(position.get_quantity_old()),
         value=value,

@@ -156,7 +156,7 @@ def correct_accounts(
     if not state_file:
         state_file = f"state/{id}.json"
 
-    store, state = backup_state(state_file)
+    store, state = backup_state(state_file, unit_testing=unit_testing)
 
     mod: StrategyModuleInformation = read_strategy_module(strategy_file)
 

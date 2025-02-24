@@ -514,9 +514,6 @@ def test_enzyme_correct_accounts(
             cli.main(args=["correct-accounts"])
         assert e.value.code == 0
 
-    # We created a backup of the old state
-    assert os.path.exists("/tmp/test_enzyme_end_to_end.backup-1.json")
-
     # See that the corrected reverse balance looks ok
     state: State = State.read_json_file(state_file)
     reserve_position = state.portfolio.get_default_reserve_position()
