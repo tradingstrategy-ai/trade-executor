@@ -1665,6 +1665,8 @@ class TradingPosition(GenericPosition):
 
         - Slow, as we need to iterate over all balance update events
 
+        - See also: py:meth:`get_unrealised_and_realised_profit_percent`
+
         :return:
             Average interest over time.
 
@@ -1697,6 +1699,8 @@ class TradingPosition(GenericPosition):
         - :py:meth:`get_realised_profit_percent`
 
         - :py:meth:`get_total_profit_percent` (don't use, legacy)
+
+        - py:meth:`get_unrealised_and_realised_profitability_percent_credit`
 
         :param valuation_price:
             Valuate the unrealised portion of tokens at this price
