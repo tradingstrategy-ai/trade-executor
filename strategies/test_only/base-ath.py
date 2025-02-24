@@ -192,8 +192,8 @@ def create_trading_universe(
     pair_universe = PandasPairUniverse(pairs_df, exchange_universe=exchange_universe)
     benchmark_pair_ids = [pair_universe.get_pair_by_human_description(desc).pair_id for desc in SUPPORTING_PAIRS]
 
+    pairs_df = add_base_quote_address_columns(pairs_df)
     category_df = pairs_df
-    category_df = add_base_quote_address_columns(category_df)
     assert "base_token_address" in category_df.columns, "base/quote token address data must be retrofitted to the DataFrame before calling load_tokensniffer_metadata(). Call add_base_quote_address_columns() first."
     assert "base_token_symbol" in category_df.columns, "base/quote token symbol data must be retrofitted to the DataFrame before calling load_tokensniffer_metadata(). Call add_base_quote_address_columns() first."
     assert "quote_token_address" in category_df.columns, "base/quote token address data must be retrofitted to the DataFrame before calling load_tokensniffer_metadata(). Call add_base_quote_address_columns() first."
