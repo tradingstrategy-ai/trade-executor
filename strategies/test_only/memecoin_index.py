@@ -36,7 +36,7 @@ from tradingstrategy.client import Client
 from tradingstrategy.pair import PandasPairUniverse
 from tradingstrategy.timebucket import TimeBucket
 from tradingstrategy.utils.token_extra_data import filter_scams
-from tradingstrategy.utils.token_filter import deduplicate_pairs_by_volume
+from tradingstrategy.utils.token_filter import deduplicate_pairs_by_volume, add_base_quote_address_columns
 from tradeexecutor.state.visualisation import PlotKind
 from tradingstrategy.types import TokenSymbol
 from tradeexecutor.state.identifier import TradingPairIdentifier
@@ -94,13 +94,13 @@ class Parameters:
     ewm_span = 200  # How many bars to use in exponential moving average for trailing sharpe smoothing
     min_volume = 200_000   # USD
     min_liquidity = 200_000  # USD
-    min_token_sniffer_score = 30  # Scam filter
+    min_token_sniffer_score = 90  # Scam filter
 
     #
     # Backtesting only
     #
     backtest_start = datetime.datetime(2022, 8, 15)
-    backtest_end = datetime.datetime(2024, 11, 20)
+    backtest_end = datetime.datetime(2022, 10, 20)
     initial_cash = 10_000
 
     #
@@ -158,6 +158,8 @@ def create_trading_universe(
     # Drop other chains to make the dataset smaller to work with
     chain_mask = pairs_df["chain_id"] == Parameters.chain_id.value
     pairs_df = pairs_df[chain_mask]
+
+    pairs_df = add_base_quote_address_columns(pairs_df)
 
     # Pull out our benchmark pairs ids.
     # We need to construct pair universe object for the symbolic lookup.
@@ -265,6 +267,9 @@ def decide_trades(
 
     max_vol = (0, None)  # Diagnostics
     signal_count = 0
+
+    if volume_inclusion_criteria_pairs is None:
+        return []
 
     for pair_id in volume_inclusion_criteria_pairs:
         pair = strategy_universe.get_pair_by_id(pair_id)
