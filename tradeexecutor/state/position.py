@@ -1671,14 +1671,20 @@ class TradingPosition(GenericPosition):
             Average interest over time.
 
             Regardless of position increase/decrease.
+
+            Return 0 if no datapoints.
         """
 
         # Unrolled get_effective_yearly_yield()
-        return statistics.mean(
-            float(b.quantity / b.old_balance) / ((b.block_mined_at - b.previous_update_at) / DEFAULT_YEAR)
-            for b in self.balance_updates.values()
-            if (b.cause == BalanceUpdateCause.interest) and (b.previous_update_at is not None) and (b.previous_update_at != b.block_mined_at)
-        )
+        try:
+            return statistics.mean(
+                float(b.quantity / b.old_balance) / ((b.block_mined_at - b.previous_update_at) / DEFAULT_YEAR)
+                for b in self.balance_updates.values()
+                if (b.cause == BalanceUpdateCause.interest) and (b.previous_update_at is not None) and (b.previous_update_at != b.block_mined_at)
+            )
+        except statistics.StatisticsError:
+            # Zero data points
+            return 0
 
     def get_unrealised_and_realised_profit_percent(
         self,

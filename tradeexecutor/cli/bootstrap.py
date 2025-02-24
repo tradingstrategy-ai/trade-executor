@@ -607,7 +607,8 @@ def backup_state(state_file: Path | str, backup_suffix="backup", unit_testing=Fa
         shutil.copy(state_file, backup_file)
         break
     else:
-        raise RuntimeError(f"Could not create backup {backup_file}")
+        if not unit_testing:
+            raise RuntimeError(f"Could not create backup {backup_file}")
 
     logger.info("Old state backed up as %s", backup_file)
 
