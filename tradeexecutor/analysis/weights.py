@@ -87,7 +87,7 @@ def visualise_weights(
     template="plotly_dark",
     include_reserves=True,
     legend_mode: LegendMode=LegendMode.side,
-    aave_colour='#9896FF',
+    aave_colour='#ccc',
     reserve_asset_colour='#aaa',
     clean=False,
 ) -> Figure:

@@ -1879,6 +1879,9 @@ class TradingPosition(GenericPosition):
             If the 50% aloocation position made 1% profit returns 1.005.
         """
 
+        if self.is_credit_supply():
+            # Credit position profitability is avg interest %
+            return self.estimate_gained_interest()
         if self.is_spot():
             # Calculate with in-kind redemption support
             return self.get_unrealised_and_realised_profit_percent() * self.get_capital_tied_at_open_pct()

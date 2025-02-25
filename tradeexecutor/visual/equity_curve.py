@@ -523,7 +523,7 @@ def calculate_compounding_unrealised_trading_profitability(
     profit_data.sort(key=lambda t: t[0])
 
     index, profit = list(zip(*profit_data))
-    returns = pd.Series(data=profit, index=pd.DatetimeIndex(index))
+    returns = pd.Series(data=profit, index=pd.DatetimeIndex(index), dtype="float64")
 
     if freq:
 

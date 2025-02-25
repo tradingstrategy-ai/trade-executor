@@ -25,6 +25,7 @@ import logging
 from dataclasses import dataclass, field
 from typing import List, Dict, Iterable, Optional, Tuple, Callable, Set
 
+import numpy
 import numpy as np
 import pandas as pd
 from IPython.core.display_functions import display
@@ -1311,7 +1312,7 @@ def calculate_annualised_return(profit_pct: float, duration: datetime.timedelta)
     :param duration: Duration of the trade as a datetime object
     :return: Annualised return % if profit_pct is not None
     """
-    assert isinstance(profit_pct, float | int | None), "Profit % should be a float or int or None"
+    assert isinstance(profit_pct, float | int | None), f"Profit % should be a float or int or None: got {type(profit_pct)}: {profit_pct}"
     assert isinstance(duration, datetime.timedelta), f"Duration should be a datetime.timedelta object, got {type(duration)}"
     return calculate_percentage(profit_pct * 365 * 24 * 60 * 60, duration.total_seconds()) if profit_pct else None
 
