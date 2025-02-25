@@ -17,5 +17,8 @@ def state_file() -> Path:
 def test_credit_position_profitability(state_file):
     state = State.read_json_file(state_file)
     credit_position = state.portfolio.open_positions[2]
-    profit = credit_position.get_unrealised_and_realised_profitability_percent_credit()
+    profit = credit_position.estimate_gained_interest(interest_period="year")
     assert profit == pytest.approx(0.049043081055064434)
+
+    profit = credit_position.estimate_gained_interest(interest_period="position")
+    assert profit == pytest.approx(0.000724640625)
