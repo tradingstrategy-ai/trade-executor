@@ -2,6 +2,8 @@
 from queue import Queue
 
 import requests
+import flaky
+
 from eth_defi.utils import find_free_port
 
 from tradeexecutor.state.metadata import Metadata
@@ -10,6 +12,8 @@ from tradeexecutor.strategy.run_state import RunState
 from tradeexecutor.webhook.server import create_webhook_server
 
 
+#  OSError: [Errno 98] Address already in use
+@flaky.flaky()
 def test_auth_ok(logger):
     """Username and password allow to access the webhook"""
     queue = Queue()
