@@ -1312,7 +1312,7 @@ def calculate_annualised_return(profit_pct: float, duration: datetime.timedelta)
     :param duration: Duration of the trade as a datetime object
     :return: Annualised return % if profit_pct is not None
     """
-    assert isinstance(profit_pct, float | int | None | numpy.int64), f"Profit % should be a float or int or None: got {type(profit_pct)}: {profit_pct}"
+    assert isinstance(profit_pct, float | int | None), f"Profit % should be a float or int or None: got {type(profit_pct)}: {profit_pct}"
     assert isinstance(duration, datetime.timedelta), f"Duration should be a datetime.timedelta object, got {type(duration)}"
     return calculate_percentage(profit_pct * 365 * 24 * 60 * 60, duration.total_seconds()) if profit_pct else None
 
