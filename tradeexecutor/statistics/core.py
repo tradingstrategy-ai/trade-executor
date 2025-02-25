@@ -62,7 +62,7 @@ def calculate_position_statistics(clock: datetime.datetime, position: TradingPos
     if position.is_credit_supply():
         # Special path to calculate accured interest.
         # This will be mean %
-        profitability = position.get_unrealised_and_realised_profitability_percent_credit()
+        profitability = position.estimate_gained_interest()
     else:
         # TODO: Update this to new code paths
         profitability = position.get_total_profit_percent()

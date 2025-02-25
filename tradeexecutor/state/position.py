@@ -9,7 +9,7 @@ from dataclasses import dataclass, field, asdict
 from decimal import Decimal
 from itertools import chain
 
-from typing import Dict, Optional, List, Iterable, Tuple, Set
+from typing import Dict, Optional, List, Iterable, Tuple, Set, Literal
 
 import numpy as np
 import pandas as pd
@@ -1658,8 +1658,9 @@ class TradingPosition(GenericPosition):
             # raise NotImplementedError(f"Should not never happen as for non-spot positions we use leverage-based profit calculation: {self}")
             return 0
 
-    def get_unrealised_and_realised_profitability_percent_credit(
-        self
+    def estimate_gained_interest(
+        self,
+        interest_period: Literal["position", "year"] = "position",
     ):
         """Calculate avg % interest we have earned over time for a credit supply position.
 
@@ -1675,13 +1676,22 @@ class TradingPosition(GenericPosition):
             Return 0 if no datapoints.
         """
 
-        # Unrolled get_effective_yearly_yield()
         try:
-            return statistics.mean(
+            # Unrolled get_effective_yearly_yield()
+            yearly_interest = statistics.mean(
                 float(b.quantity / b.old_balance) / ((b.block_mined_at - b.previous_update_at) / DEFAULT_YEAR)
                 for b in self.balance_updates.values()
                 if (b.cause == BalanceUpdateCause.interest) and (b.previous_update_at is not None) and (b.previous_update_at != b.block_mined_at)
             )
+
+            match interest_period:
+                case "year":
+                    return yearly_interest
+                case "position":
+                    return yearly_interest * self.get_duration(partial=True) / DEFAULT_YEAR
+                case _:
+                    raise NotImplementedError(f"Unknown divider")
+
         except statistics.StatisticsError:
             # Zero data points
             return 0
@@ -1886,15 +1896,22 @@ class TradingPosition(GenericPosition):
         """
         return self.get_realised_profit_percent() * self.get_capital_tied_at_open_pct()
 
-    def get_duration(self) -> datetime.timedelta | None:
+    def get_duration(self, partial=False) -> datetime.timedelta | None:
         """How long this position was held.
 
-        :return: None if the position is still open
+        :param partial:
+            Return duration until now for open positions.
+
+        :return:
+            None if the position is still open if partial is not set
         """
         if self.is_closed():
             return self.closed_at - self.opened_at  
-        else:
-            return None
+
+        if partial:
+            return datetime.datetime.utcnow() - self.opened_at
+
+        return None
     
     def get_total_lp_fees_paid(self) -> USDollarAmount:
         """Get the total amount of swap fees paid in the position. Includes all trades."""
