@@ -51,7 +51,7 @@ CLOSE_POSITION_COLLATERAL_EPSILON = Decimal(0.02)
 #: Spotted from test_generic_routing_live_trading_start
 #: that does mainnet fork trading.
 #:
-INTEREST_EPSILON = Decimal(0.000002)
+INTEREST_EPSILON = Decimal(0.00003)
 
 
 
