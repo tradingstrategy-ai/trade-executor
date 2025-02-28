@@ -411,7 +411,6 @@ class EnzymeVaultSyncModel(SyncModel):
         """
         sync = state.sync
 
-
         if not allow_override:
             assert not sync.is_initialised(), "Initialisation twice is not allowed"
 

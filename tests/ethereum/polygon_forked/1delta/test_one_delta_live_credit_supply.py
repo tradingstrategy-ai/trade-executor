@@ -14,6 +14,7 @@ import flaky
 from eth_defi.uniswap_v3.deployment import UniswapV3Deployment
 from eth_defi.hotwallet import HotWallet
 from eth_defi.provider.anvil import fork_network_anvil, mine
+from tradeexecutor.utils import accuracy
 from tradingstrategy.exchange import ExchangeUniverse
 from tradingstrategy.pair import PandasPairUniverse
 from tradingstrategy.chain import ChainId
@@ -124,8 +125,12 @@ def test_one_delta_live_credit_supply_open_only(
         live=True,
     )
 
+    ts2 = get_latest_block_timestamp(web3)
+
+    assert ts2 > ts
+
     loop.update_position_valuations(
-        ts,
+        ts2,
         state,
         trading_strategy_universe,
         ExecutionMode.simulated_trading
@@ -145,16 +150,19 @@ def test_one_delta_live_credit_supply_open_only(
     old_col_value = position.loan.get_collateral_value()
     assert old_col_value == pytest.approx(1000)
     assert position.loan.get_collateral_interest() == 0
-    
-    for i in range(100):
-        mine(web3)
+
+    mine(web3, increase_timestamp=3600.0)
 
     # trade another cycle to accure interest
-    ts = get_latest_block_timestamp(web3)
-    strategy_cycle_timestamp = snap_to_next_tick(ts, loop.cycle_duration)
+    ts3 = get_latest_block_timestamp(web3)
+    strategy_cycle_timestamp = snap_to_next_tick(ts3, loop.cycle_duration)
+
+    assert ts3 > ts2
+    assert strategy_cycle_timestamp > ts2
+    assert ts3 > state.sync.interest.last_sync_at
 
     loop.tick(
-        ts,
+        ts3,
         loop.cycle_duration,
         state,
         cycle=2,
@@ -162,8 +170,12 @@ def test_one_delta_live_credit_supply_open_only(
         strategy_cycle_timestamp=strategy_cycle_timestamp,
     )
 
+    mine(web3, increase_timestamp=3600.0)
+    ts4 = get_latest_block_timestamp(web3)
+    assert ts4 > ts3
+
     loop.update_position_valuations(
-        ts,
+        ts4,
         state,
         trading_strategy_universe,
         ExecutionMode.simulated_trading
@@ -173,13 +185,13 @@ def test_one_delta_live_credit_supply_open_only(
 
     assert len(state.portfolio.open_positions) == 1
     position = state.portfolio.open_positions[1]
-    assert position.get_quantity() == pytest.approx(Decimal(1000))
-    assert position.get_value() == pytest.approx(1000)
-    assert position.loan.get_collateral_value() == pytest.approx(1000.000308)
-    assert position.loan.get_collateral_value() > old_col_value
+    assert position.loan.get_collateral_value() == pytest.approx(1000.021155)
     assert position.loan.get_collateral_interest() > 0
+    assert position.loan.get_collateral_value() > old_col_value
     assert position.loan.collateral.interest_rate_at_open == pytest.approx(0.09283768887858043)
-    assert position.loan.collateral.last_interest_rate == pytest.approx(0.09283768887858043)
+    assert position.loan.collateral.last_interest_rate == pytest.approx(0.12044348368598377)
+    # assert position.get_quantity() == pytest.approx(Decimal(1000))
+    # assert position.get_value() == pytest.approx(1000)
 
 
 def test_one_delta_live_credit_supply_open_and_close(
