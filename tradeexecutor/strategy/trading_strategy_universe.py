@@ -2099,6 +2099,7 @@ def load_partial_data(
     liquidity=False,
     liquidity_time_bucket: TimeBucket | None = None,
     liquidity_query_type: OHLCVCandleType = OHLCVCandleType.tvl_v1,
+    preloaded_tvl_df: pd.DataFrame | None = None,
     stop_loss_time_bucket: Optional[TimeBucket] = None,
     required_history_period: datetime.timedelta | None = None,
     lending_reserves: LendingReserveUniverse | Collection[LendingReserveDescription] | None = None,
@@ -2190,6 +2191,11 @@ def load_partial_data(
 
         See :py:class:`OHLCVCandleType` for details.
 
+    :param preloaded_tvl_df:
+        Liquidity data was earlier loaded with ``fetch_tvl(min_tvl)`` when constructing the trading universe.
+
+        We do not reload this same data, but use the preloaded DataFrame directly.
+
     :param lending_reserves:
         Set true to load lending reserve data as well
 
@@ -2245,6 +2251,9 @@ def load_partial_data(
     assert isinstance(time_bucket, TimeBucket)
     assert isinstance(execution_context, ExecutionContext)
     assert isinstance(universe_options, UniverseOptions)
+
+    if preloaded_tvl_df is not None:
+        assert not liquidity, "Cannot use liquidity argument with preloaded_tvl_df"
 
     if required_history_period:
         assert isinstance(required_history_period, datetime.timedelta), f"required_history_period: expected timedelta, got {type(required_history_period)}: {required_history_period}"
@@ -2381,6 +2390,8 @@ def load_partial_data(
                 end_time=end_at,
                 query_type=liquidity_query_type,
             )
+        elif preloaded_tvl_df is not None:
+            liquidity_df = preloaded_tvl_df
         else:
             liquidity_time_bucket = None
             liquidity_df = None
