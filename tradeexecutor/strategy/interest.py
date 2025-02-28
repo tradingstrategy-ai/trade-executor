@@ -7,6 +7,7 @@ from typing import Tuple, Dict, List, Iterable
 
 from eth_defi.aave_v3.rates import SECONDS_PER_YEAR_INT
 from eth_defi.provider.broken_provider import get_almost_latest_block_number
+from tradeexecutor.strategy.execution_context import ExecutionContext
 from tradingstrategy.utils.time import ZERO_TIMEDELTA
 
 from tradeexecutor.state.balance_update import BalanceUpdate, BalanceUpdatePositionType, BalanceUpdateCause
@@ -645,6 +646,7 @@ def sync_interests(
     state: State,
     universe: TradingStrategyUniverse,
     pricing_model: PricingModel,
+    unit_testing=False,
 ) -> List[BalanceUpdate]:
     """Update position's interests on all tokens that receive interests
 
@@ -665,6 +667,7 @@ def sync_interests(
         Used to update asset price in loan
     """
     assert isinstance(timestamp, datetime.datetime), f"got {type(timestamp)}"
+
     if not universe.has_lending_data():
         # sync_interests() is not needed if the strategy isn't dealing with leverage
         return []
@@ -678,6 +681,7 @@ def sync_interests(
     duration = timestamp - previous_update_at
     if duration <= ZERO_TIMEDELTA:
         logger.error(f"Interest rate sync error. Sync time span must be positive: {previous_update_at} - {timestamp}")
+        raise RuntimeError(f"Interest rate sync error. Sync time span must be positive: {previous_update_at} - {timestamp}")
         return []
 
     logger.info(

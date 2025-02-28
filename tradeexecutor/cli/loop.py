@@ -483,7 +483,7 @@ class ExecutionLoop:
         else:
             # In backtesting do discreet steps
             interest_timestamp = ts
-            logger.info("Doing backtesitng interest sync at %s", interest_timestamp)
+            logger.info("Doing backtesting interest sync at %s", interest_timestamp)
 
         interest_events = self.sync_model.sync_interests(
             interest_timestamp,
