@@ -407,3 +407,9 @@ def test_min_tvl_trading_universe(
         (ChainId.base, "uniswap-v3", "WETH", "USDC", 0.0005)
     )
 
+    liquidity = universe.data_universe.liquidity.get_closest_liquidity(
+        pair_id=pair.internal_id,
+        when=pd.Timestamp("2024-01-05")
+    )
+    assert liquidity > 100_000
+
