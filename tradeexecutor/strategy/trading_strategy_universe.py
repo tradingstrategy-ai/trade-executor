@@ -2396,6 +2396,7 @@ def load_partial_data(
                 "bucket": "timestamp",
             })
             liquidity_df = preloaded_tvl_df
+            liquidity_df = liquidity_df.sort_values(by=["timestamp"])
         else:
             liquidity_time_bucket = None
             liquidity_df = None
