@@ -260,6 +260,7 @@ def test_one_delta_live_credit_supply_open_and_close(
     loop.runner.run_state = RunState()  # Needed for visualisations
     loop.runner.accounting_checks = True
 
+    mine(web3, increase_timestamp=3600)
     ts = get_latest_block_timestamp(web3)
 
     loop.tick(
@@ -274,7 +275,8 @@ def test_one_delta_live_credit_supply_open_and_close(
         ts,
         state,
         trading_strategy_universe,
-        ExecutionMode.simulated_trading
+        ExecutionMode.simulated_trading,
+        interest=False,
     )
 
     loop.runner.check_accounts(trading_strategy_universe, state)
@@ -291,9 +293,8 @@ def test_one_delta_live_credit_supply_open_and_close(
     old_col_value = position.loan.get_collateral_value()
     assert old_col_value == pytest.approx(1000)
     assert position.loan.get_collateral_interest() == 0
-    
-    for i in range(100):
-        mine(web3)
+
+    mine(web3, increase_timestamp=3600.0)
 
     # trade another cycle to close the position
     ts = get_latest_block_timestamp(web3)
@@ -312,13 +313,14 @@ def test_one_delta_live_credit_supply_open_and_close(
         ts,
         state,
         trading_strategy_universe,
-        ExecutionMode.simulated_trading
+        ExecutionMode.simulated_trading,
+        interest=False,
     )
 
     loop.runner.check_accounts(trading_strategy_universe, state)
 
     assert len(state.portfolio.open_positions) == 0
-    assert state.portfolio.reserves[usdc_id].quantity == pytest.approx(Decimal(10000.000303))
+    assert state.portfolio.reserves[usdc_id].quantity == pytest.approx(Decimal(10000.010581))
 
 
 # test_one_delta_live_credit_supply.py::test_one_delta_live_credit_supply_mixed_with_spot - AssertionError: assert Decimal('19000') == 9000
@@ -421,7 +423,8 @@ def test_one_delta_live_credit_supply_mixed_with_spot(
         ts,
         state,
         trading_strategy_universe,
-        ExecutionMode.simulated_trading
+        ExecutionMode.simulated_trading,
+        interest=False,
     )
 
     loop.runner.check_accounts(trading_strategy_universe, state)
@@ -438,9 +441,8 @@ def test_one_delta_live_credit_supply_mixed_with_spot(
     old_col_value = position.loan.get_collateral_value()
     assert old_col_value == pytest.approx(1000)
     assert position.loan.get_collateral_interest() == 0
-    
-    for i in range(100):
-        mine(web3)
+
+    mine(web3, increase_timestamp=3600)
 
     # trade another cycle to close the position
     ts = get_latest_block_timestamp(web3)
@@ -459,14 +461,15 @@ def test_one_delta_live_credit_supply_mixed_with_spot(
         ts,
         state,
         trading_strategy_universe,
-        ExecutionMode.simulated_trading
+        ExecutionMode.simulated_trading,
+        interest=False,
     )
 
     loop.runner.check_accounts(trading_strategy_universe, state)
 
     assert len(state.portfolio.open_positions) == 1
     spot_position = state.portfolio.open_positions[2]
-    assert spot_position.portfolio_value_at_open == pytest.approx(10000.0003)
+    assert spot_position.portfolio_value_at_open == pytest.approx(10000.010581)
 
 
 def test_one_delta_live_credit_supply_open_and_increase(
@@ -550,7 +553,8 @@ def test_one_delta_live_credit_supply_open_and_increase(
         ts,
         state,
         trading_strategy_universe,
-        ExecutionMode.simulated_trading
+        ExecutionMode.simulated_trading,
+        interest=False,
     )
 
     loop.runner.check_accounts(trading_strategy_universe, state)
@@ -567,9 +571,8 @@ def test_one_delta_live_credit_supply_open_and_increase(
     old_col_value = position.loan.get_collateral_value()
     assert old_col_value == pytest.approx(1000)
     assert position.loan.get_collateral_interest() == 0
-    
-    for i in range(100):
-        mine(web3)
+
+    mine(web3, increase_timestamp=3600)
 
     # trade another cycle to close the position
     ts = get_latest_block_timestamp(web3)
@@ -588,7 +591,8 @@ def test_one_delta_live_credit_supply_open_and_increase(
         ts,
         state,
         trading_strategy_universe,
-        ExecutionMode.simulated_trading
+        ExecutionMode.simulated_trading,
+        interest=False,
     )
 
     loop.runner.check_accounts(trading_strategy_universe, state)
@@ -681,7 +685,8 @@ def test_one_delta_live_credit_supply_open_and_reduce(
         ts,
         state,
         trading_strategy_universe,
-        ExecutionMode.simulated_trading
+        ExecutionMode.simulated_trading,
+        interest=False,
     )
 
     loop.runner.check_accounts(trading_strategy_universe, state)
@@ -698,9 +703,8 @@ def test_one_delta_live_credit_supply_open_and_reduce(
     old_col_value = position.loan.get_collateral_value()
     assert old_col_value == pytest.approx(1000)
     assert position.loan.get_collateral_interest() == 0
-    
-    for i in range(100):
-        mine(web3)
+
+    mine(web3, increase_timestamp=3600)
 
     # trade another cycle to close the position
     ts = get_latest_block_timestamp(web3)
@@ -719,7 +723,8 @@ def test_one_delta_live_credit_supply_open_and_reduce(
         ts,
         state,
         trading_strategy_universe,
-        ExecutionMode.simulated_trading
+        ExecutionMode.simulated_trading,
+        interest=False,
     )
 
     loop.runner.check_accounts(trading_strategy_universe, state)
