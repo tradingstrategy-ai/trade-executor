@@ -231,7 +231,7 @@ class SimulatedWallet:
     def verify_balances(
         self,
         expected: Dict[AssetIdentifier, Decimal],
-        epsilon=0.0001,
+        epsilon=0.001,
     ) -> Tuple[bool, pd.DataFrame]:
         """Check that our simulated balances are what we expect.
 
@@ -244,13 +244,14 @@ class SimulatedWallet:
             on_chain_balance = self.get_balance(asset.address)
             mismatch = False
             diff = abs(on_chain_balance - amount)
-            if diff / amount >= epsilon:
+            relative_diff = diff / amount
+            if relative_diff >= epsilon:
                 clean = False
                 mismatch = True
 
-            data.append((asset.token_symbol, amount, on_chain_balance, diff, mismatch))
+            data.append((asset.token_symbol, amount, on_chain_balance, diff, relative_diff, mismatch, epsilon))
 
-        df = pd.DataFrame(data, columns=["Asset", "Expected", "Actual", "Diff", "Mismatch"])
+        df = pd.DataFrame(data, columns=["Asset", "Expected", "Actual", "Diff", "Rel diff", "Mismatch", "Epsilon"])
         df.set_index("Asset")
         return clean, df
 

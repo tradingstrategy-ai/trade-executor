@@ -7,6 +7,7 @@ from typing import List
 
 import pytest
 import pandas as pd
+from ipywidgets import interactive
 from web3 import Web3
 from web3.contract import Contract
 import flaky
@@ -120,7 +121,8 @@ def test_aave_v3_live_credit_supply_open_only(
         ts,
         state,
         strategy_universe,
-        ExecutionMode.simulated_trading
+        ExecutionMode.simulated_trading,
+        interest=False,
     )
 
     loop.runner.check_accounts(strategy_universe, state)
@@ -137,9 +139,8 @@ def test_aave_v3_live_credit_supply_open_only(
     old_col_value = position.loan.get_collateral_value()
     assert old_col_value == pytest.approx(1000)
     assert position.loan.get_collateral_interest() == 0
-    
-    for i in range(100):
-        mine(web3)
+
+    mine(web3, increase_timestamp=3600)
 
     # trade another cycle to accure interest
     ts = get_latest_block_timestamp(web3)
@@ -158,16 +159,17 @@ def test_aave_v3_live_credit_supply_open_only(
         ts,
         state,
         strategy_universe,
-        ExecutionMode.simulated_trading
+        ExecutionMode.simulated_trading,
+        interest=False,
     )
 
     loop.runner.check_accounts(strategy_universe, state)
 
     assert len(state.portfolio.open_positions) == 1
     position = state.portfolio.open_positions[1]
-    assert position.get_quantity() == pytest.approx(Decimal(1000))
-    assert position.get_value() == pytest.approx(1000)
-    assert position.loan.get_collateral_value() == pytest.approx(1000.000308)
+    assert position.get_quantity() == pytest.approx(Decimal(1000.008054))
+    assert position.get_value() == pytest.approx(1000.008054)
+    assert position.loan.get_collateral_value() == pytest.approx(1000.008054)
     assert position.loan.get_collateral_value() > old_col_value
     assert position.loan.get_collateral_interest() > 0
 
@@ -246,7 +248,8 @@ def test_aave_v3_live_credit_supply_open_and_increase(
         ts,
         state,
         strategy_universe,
-        ExecutionMode.simulated_trading
+        ExecutionMode.simulated_trading,
+        interest=False,
     )
 
     loop.runner.check_accounts(strategy_universe, state)
@@ -264,8 +267,7 @@ def test_aave_v3_live_credit_supply_open_and_increase(
     assert old_col_value == pytest.approx(1000)
     assert position.loan.get_collateral_interest() == 0
     
-    for i in range(100):
-        mine(web3)
+    mine(web3, increase_timestamp=3600)
 
     # trade another cycle to accure interest
     ts = get_latest_block_timestamp(web3)
@@ -284,7 +286,8 @@ def test_aave_v3_live_credit_supply_open_and_increase(
         ts,
         state,
         strategy_universe,
-        ExecutionMode.simulated_trading
+        ExecutionMode.simulated_trading,
+        interest=False,
     )
 
     loop.runner.check_accounts(strategy_universe, state)
@@ -372,7 +375,8 @@ def test_aave_v3_live_credit_supply_open_and_reduce(
         ts,
         state,
         strategy_universe,
-        ExecutionMode.simulated_trading
+        ExecutionMode.simulated_trading,
+        interest=False,
     )
 
     loop.runner.check_accounts(strategy_universe, state)
@@ -389,9 +393,8 @@ def test_aave_v3_live_credit_supply_open_and_reduce(
     old_col_value = position.loan.get_collateral_value()
     assert old_col_value == pytest.approx(1000)
     assert position.loan.get_collateral_interest() == 0
-    
-    for i in range(100):
-        mine(web3)
+
+    mine(web3, increase_timestamp=3600)
 
     # trade another cycle to accure interest
     ts = get_latest_block_timestamp(web3)
@@ -410,7 +413,8 @@ def test_aave_v3_live_credit_supply_open_and_reduce(
         ts,
         state,
         strategy_universe,
-        ExecutionMode.simulated_trading
+        ExecutionMode.simulated_trading,
+        interest=False,
     )
 
     loop.runner.check_accounts(strategy_universe, state)
