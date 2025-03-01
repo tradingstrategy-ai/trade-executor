@@ -168,6 +168,7 @@ def test_one_delta_live_strategy_short_open_and_close(
     )
     loop.runner.run_state = RunState()  # Needed for visualisations
 
+    mine(web3, increase_timestamp=3600)
     ts = get_latest_block_timestamp(web3)
 
     loop.tick(
@@ -182,7 +183,8 @@ def test_one_delta_live_strategy_short_open_and_close(
         ts,
         state,
         trading_strategy_universe,
-        ExecutionMode.simulated_trading
+        ExecutionMode.simulated_trading,
+        interest=False,
     )
 
     loop.runner.check_accounts(trading_strategy_universe, state)
@@ -199,8 +201,7 @@ def test_one_delta_live_strategy_short_open_and_close(
     assert state.portfolio.open_positions[1].get_value() == pytest.approx(1000.0140651703407, rel=APPROX_REL)
 
     # mine a few block before running next tick
-    for i in range(1, 10):
-        mine(web3)
+    mine(web3, increase_timestamp=3600)
 
     # trade another cycle to close the short position
     ts = get_latest_block_timestamp(web3)
@@ -219,7 +220,8 @@ def test_one_delta_live_strategy_short_open_and_close(
         ts,
         state,
         trading_strategy_universe,
-        ExecutionMode.simulated_trading
+        ExecutionMode.simulated_trading,
+        interest=False,
     )
 
     loop.runner.check_accounts(trading_strategy_universe, state)
@@ -342,7 +344,8 @@ def test_one_delta_live_strategy_short_open_accrue_interests(
         ts,
         state,
         trading_strategy_universe,
-        ExecutionMode.simulated_trading
+        ExecutionMode.simulated_trading,
+        interest=False,
     )
 
     assert len(state.portfolio.open_positions) == 1
@@ -389,7 +392,8 @@ def test_one_delta_live_strategy_short_open_accrue_interests(
         ts,
         state,
         trading_strategy_universe,
-        ExecutionMode.simulated_trading
+        ExecutionMode.simulated_trading,
+        interest=False,
     )
 
     # position should still be open
@@ -431,7 +435,8 @@ def test_one_delta_live_strategy_short_open_accrue_interests(
         ts,
         state,
         trading_strategy_universe,
-        ExecutionMode.simulated_trading
+        ExecutionMode.simulated_trading,
+        interest=False,
     )
 
     # # there should be accrued interest now
