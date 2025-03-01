@@ -119,10 +119,11 @@ def test_generic_router_spot_and_short_strategy(
             ts,
             state,
             strategy_universe,
-            ExecutionMode.simulated_trading
+            ExecutionMode.simulated_trading,
+            interest=False,
         )
         ts += datetime.timedelta(days=1)
-        mine(web3, to_int_unix_timestamp(ts))
+        mine(web3, increase_timestamp=24*3600)
 
         loop.runner.check_accounts(strategy_universe, state)  # Check that on-chain balances reflect what we expect
 
