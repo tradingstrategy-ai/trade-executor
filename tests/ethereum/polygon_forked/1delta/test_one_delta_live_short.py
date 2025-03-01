@@ -554,7 +554,8 @@ def test_one_delta_live_strategy_short_increase(
         ts,
         state,
         trading_strategy_universe,
-        ExecutionMode.simulated_trading
+        ExecutionMode.simulated_trading,
+        interest=False,
     )
 
     loop.runner.check_accounts(trading_strategy_universe, state)
@@ -591,7 +592,8 @@ def test_one_delta_live_strategy_short_increase(
         ts,
         state,
         trading_strategy_universe,
-        ExecutionMode.simulated_trading
+        ExecutionMode.simulated_trading,
+        interest=False,
     )
 
     loop.runner.check_accounts(trading_strategy_universe, state)
