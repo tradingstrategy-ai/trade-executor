@@ -707,7 +707,8 @@ def test_one_delta_live_strategy_short_reduce(
         ts,
         state,
         trading_strategy_universe,
-        ExecutionMode.simulated_trading
+        ExecutionMode.simulated_trading,
+        interest=False,
     )
 
     loop.runner.check_accounts(trading_strategy_universe, state)
@@ -724,8 +725,7 @@ def test_one_delta_live_strategy_short_reduce(
     assert state.portfolio.open_positions[1].get_value() == pytest.approx(1000.0140651703407, rel=APPROX_REL)
 
     # mine a few block before running next tick
-    for i in range(1, 10):
-        mine(web3)
+    mine(web3, increase_timestamp=3600)
 
     # trade another cycle to close the short position
     ts = get_latest_block_timestamp(web3)
@@ -744,7 +744,8 @@ def test_one_delta_live_strategy_short_reduce(
         ts,
         state,
         trading_strategy_universe,
-        ExecutionMode.simulated_trading
+        ExecutionMode.simulated_trading,
+        interest=False,
     )
 
     loop.runner.check_accounts(trading_strategy_universe, state)
@@ -753,6 +754,6 @@ def test_one_delta_live_strategy_short_reduce(
     assert len(state.portfolio.open_positions) == 1
 
     # check the position size get reduced and reserve should be increased
-    assert state.portfolio.reserves[usdc_id].quantity == pytest.approx(Decimal(9500.236073))
-    assert state.portfolio.open_positions[1].get_quantity() == pytest.approx(Decimal(-0.446393815741076019))
+    assert state.portfolio.reserves[usdc_id].quantity == pytest.approx(Decimal(9500.267716))
+    assert state.portfolio.open_positions[1].get_quantity() == pytest.approx(Decimal(-0.446379690265763032))
     assert state.portfolio.open_positions[1].get_value() == pytest.approx(499.02187110825594, rel=APPROX_REL)
