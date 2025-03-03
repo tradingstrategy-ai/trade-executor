@@ -36,7 +36,7 @@ from tradingstrategy.client import Client
 from tradingstrategy.pair import PandasPairUniverse
 from tradingstrategy.timebucket import TimeBucket
 from tradingstrategy.utils.token_extra_data import filter_scams
-from tradingstrategy.utils.token_filter import deduplicate_pairs_by_volume
+from tradingstrategy.utils.token_filter import deduplicate_pairs_by_volume, add_base_quote_address_columns
 from tradingstrategy.types import TokenSymbol
 from tradeexecutor.state.identifier import TradingPairIdentifier
 
@@ -144,6 +144,8 @@ def create_trading_universe(
     # Drop other chains to make the dataset smaller to work with
     chain_mask = pairs_df["chain_id"] == Parameters.chain_id.value
     pairs_df = pairs_df[chain_mask]
+
+    pairs_df = add_base_quote_address_columns(pairs_df)
 
     # Pull out our benchmark pairs ids.
     # We need to construct pair universe object for the symbolic lookup.
