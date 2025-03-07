@@ -2391,6 +2391,7 @@ def load_partial_data(
                 query_type=liquidity_query_type,
             )
         elif preloaded_tvl_df is not None:
+            assert liquidity_time_bucket is not None, "load_partial_data(): liquidity_time_bucket must be given with preloaded_tvl_df argument"
             # Different column naming adapter
             preloaded_tvl_df = preloaded_tvl_df.rename(columns={
                 "bucket": "timestamp",
