@@ -2,6 +2,9 @@
 
 - Generate preprocessed backtest histories with certain parameters
 
+- Generated sets are free from survivorship bias, by having inclusion criteria
+  as historical TVL threshold
+
 To export / update all exported data:
 
 .. code-block:: shell
@@ -159,10 +162,14 @@ def prepare_dataset(
 
     pairs_df = load_token_metadata(pairs_df, client)
     # Scam filter using TokenSniffer
-    risk_filtered_pairs_df = filter_by_token_sniffer_score(
-        pairs_df,
-        risk_score=tokensniffer_threshold,
-    )
+    if tokensniffer_threshold is not None:
+        risk_filtered_pairs_df = filter_by_token_sniffer_score(
+            pairs_df,
+            risk_score=tokensniffer_threshold,
+        )
+
+    else:
+        risk_filtered_pairs_df = pairs_df
 
     logger.info(
         "After risk filter we have %d pairs",
@@ -187,21 +194,23 @@ def prepare_dataset(
         pairs=pairs_df,
         execution_context=python_script_execution_context,
         universe_options=universe_options,
-        liquidity=True,
+        liquidity=False,
         liquidity_time_bucket=TimeBucket.d1,
-        liquidity_query_type=OHLCVCandleType.tvl_v2,
+        preloaded_tvl_df=tvl_df,
     )
     logger.info("Wrangling DEX price data")
     price_df = loaded_data.candles
     price_df = price_df.set_index("timestamp", drop=False).groupby("pair_id")
-    price_df = fix_dex_price_data(
+    price_dfgb = fix_dex_price_data(
         price_df,
         freq=time_bucket.to_frequency(),
         forward_fill=True,
         forward_fill_until=dataset.end,
     )
+    price_df = price_dfgb.obj
 
     # Add additional columns
+    pairs_df = pairs_df.set_index("pair_id")
     pair_metadata = {pair_id: row for pair_id, row in pairs_df.iterrows()}
     price_df["ticker"] = price_df["pair_id"].apply(lambda pair_id: make_full_ticker(pair_metadata[pair_id]))
     price_df["link"] = price_df["pair_id"].apply(lambda pair_id: make_link(pair_metadata[pair_id]))
@@ -209,7 +218,8 @@ def prepare_dataset(
     price_df["quote"] = price_df["pair_id"].apply(lambda pair_id: pair_metadata[pair_id]["quote_token_symbol"])
     price_df["fee"] = price_df["pair_id"].apply(lambda pair_id: pair_metadata[pair_id]["fee"])
 
-    # Merge price and TVL data
+    # Merge price and TVL data.
+    # For this we need to resample TVL to whatever timeframe the price happens to be in.
     liquidity_df = tvl_df.rename(columns={'close': 'tvl'})
     liquidity_df = liquidity_df.groupby('pair_id').apply(lambda x: x.set_index("timestamp").resample(time_bucket.to_frequency()).ffill())
     liquidity_df = liquidity_df.drop(columns=["pair_id"])
