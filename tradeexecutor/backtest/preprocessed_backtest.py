@@ -220,16 +220,21 @@ def prepare_dataset(
 
     # Merge price and TVL data.
     # For this we need to resample TVL to whatever timeframe the price happens to be in.
-    liquidity_df = tvl_df.rename(columns={'close': 'tvl'})
-    liquidity_df = liquidity_df.groupby('pair_id').apply(lambda x: x.set_index("timestamp").resample(time_bucket.to_frequency()).ffill())
-    liquidity_df = liquidity_df.drop(columns=["pair_id"])
-    merged_df = price_df.join(liquidity_df, how='outer')
+    liquidity_df = tvl_df
+    liquidity_df = liquidity_df.rename(columns={'bucket': 'timestamp'})
+    liquidity_df = liquidity_df.groupby('pair_id').apply(lambda x: x.set_index("timestamp").resample(time_bucket.to_frequency()).ffill(), include_groups=False)
+    liquidity_df = liquidity_df.rename(columns={'close': 'tvl'})
+
+    merged_df = price_df.join(liquidity_df["tvl"].to_frame(), how='inner')
+
+    unique_pair_ids = merged_df.index.get_level_values('pair_id').unique()
+    logger.info(f"After price/TVL merge we have {len(unique_pair_ids)} unique pairs")
 
     # Export data, make sure we got columns in an order we want
     logger.info(f"Writing OHLCV files")
     del merged_df["timestamp"]
     del merged_df["pair_id"]
-    merged_df = price_df.reset_index()
+    merged_df = merged_df.reset_index()
     column_order = (
         "ticker",
         "timestamp",
@@ -247,11 +252,9 @@ def prepare_dataset(
     )
     merged_df = merged_df.reindex(columns=column_order)  # Sort columns in a specific order
 
-    merged_df["pair_id"] = price_df.index.get_level_values(0)
-
     if write_csv:
         csv_file = output_folder / f"{dataset.slug}.csv"
-        price_df.to_csv(
+        merged_df.to_csv(
             csv_file,
         )
         logger.info(f"Wrote {csv_file}, {csv_file.stat().st_size:,} bytes")
@@ -260,7 +263,7 @@ def prepare_dataset(
 
     if write_parquet:
         parquet_file = output_folder / f"{dataset.slug}.parquet"
-        price_df.to_csv(
+        merged_df.to_csv(
             parquet_file,
         )
         logger.info(f"Wrote {csv_file}, {csv_file.stat().st_size:,} bytes")
@@ -271,7 +274,7 @@ def prepare_dataset(
         set=dataset,
         csv_path=csv_file,
         parquet_path=parquet_file,
-        df=price_df,
+        df=merged_df,
         pairs_df=pairs_df,
     )
 
