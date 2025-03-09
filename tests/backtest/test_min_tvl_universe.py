@@ -170,6 +170,7 @@ def create_trading_universe(
         universe_options=universe_options,
         lending_reserves=LENDING_RESERVES,
         preloaded_tvl_df=tvl_df,
+        liquidity_time_bucket=TimeBucket.d1,
     )
 
     reserve_asset = PREFERRED_STABLECOIN
