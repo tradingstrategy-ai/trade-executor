@@ -70,6 +70,9 @@ class SavedDataset:
     df: pd.DataFrame
     pairs_df: pd.DataFrame
 
+    def get_pair_count(self):
+        return len(self.pairs_df)
+
 
 def make_full_ticker(row: pd.Series) -> str:
     """Generate a base-quote ticker for a pair."""
