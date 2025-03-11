@@ -253,6 +253,7 @@ def prepare_dataset(
     # Resolve uniswap-v3 internal id
     targeted_exchanges = [exchange_universe.get_by_chain_and_slug(chain_id, slug) for slug in exchange_slugs]
     exchange_ids = [exchange.exchange_id for exchange in targeted_exchanges]
+    exchange_universe = exchange_universe.limit_to_slugs(exchange_slugs)
     logger.info(f"Exchange {exchange_slugs} ids are {exchange_ids}")
 
     # We need pair metadata to know which pairs belong to Polygon
@@ -415,11 +416,14 @@ def prepare_dataset(
         dataset_liquidty_df = tvl_df
         dataset_liquidty_df = dataset_liquidty_df.rename(columns={"bucket": "timestamp"})
 
+        dataset_price_df = price_df
+        # import ipdb ; ipdb.set_trace()
+
         universe_dataset = Dataset(
             time_bucket=time_bucket,
             exchanges=exchange_universe,
             pairs=dataset_pairs_df,
-            candles=price_df,
+            candles=dataset_price_df,
             liquidity=dataset_liquidty_df,
             liquidity_time_bucket=liquidity_time_bucket,
             start_at=dataset.start,
@@ -429,6 +433,8 @@ def prepare_dataset(
         strategy_universe = TradingStrategyUniverse.create_from_dataset(
             universe_dataset,
             reserve_asset=dataset.reserve_token_address,
+            forward_fill_until=dataset.end,
+            forward_fill=True,
         )
 
         output_html = output_folder / f"{dataset.slug}-report.html"
