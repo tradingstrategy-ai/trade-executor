@@ -72,6 +72,13 @@ class BacktestDatasetDefinion:
 
     #: Prefilter pairs with this liquidity before calling token sniffer
     min_tvl: USDollarAmount | None = None
+
+    #: Filter used in the reporting notebook.
+    #:
+    #: Note that you still need to do actual volum filtering in the
+    #: dataset yourself, as volume 0 days are exported.
+    min_weekly_volume: USDollarAmount | None = None
+
     categories: list[str] | None = None
     max_fee: Percent | None = None
     min_tokensniffer_score: int | None = None
@@ -101,7 +108,7 @@ class SavedDataset:
             "End": self.set.end,
             "Chain": self.set.chain.get_name(),
             "Exchanges": ", ".join(self.set.exchanges),
-            "Pair count": self.get_pair_count(),
+            "Pair count (w/TVL criteria)": self.get_pair_count(),
             "Min TVL (USD)": self.set.min_tvl,
             "OHLCV timeframe": self.set.time_bucket.value,
             "OHLCV rows": len(self.df),
@@ -179,7 +186,7 @@ def run_and_write_report(
 
         # Run the notebook
         universe_size = os.path.getsize(universe_path)
-        dataset_size = os.path.getsize(universe_path)
+        dataset_size = os.path.getsize(dataset_path)
         logger.info(f"Starting backtest dataset notebook execution, dataset size is {dataset_size:,}b, universe size is {universe_size:,}b")
         ep = ExecutePreprocessor(timeout=600, kernel_name='python3')
 
@@ -228,6 +235,7 @@ def prepare_dataset(
     write_csv=True,
     write_parquet=True,
     write_report=True,
+    verbose=True,
 ) -> SavedDataset:
     """Prepare a predefined backtesting dataset.
 

@@ -27,7 +27,8 @@ def integration_test_dataset():
         start=datetime.datetime(2023, 1, 1),
         end=datetime.datetime(2023, 2, 1),
         time_bucket=TimeBucket.d1,
-        min_tvl=1_000_000,
+        min_tvl=500_000,
+        min_weekly_volume=10_000,
         exchanges={"trader-joe"},
         always_included_pairs=[],
         reserve_token_address=AVAX_QUOTE_TOKEN,
@@ -48,4 +49,4 @@ def test_preprocessed_dataset(
         output_folder=tmp_path,
     )
     assert isinstance(saved_dataset, SavedDataset)
-    assert saved_dataset.get_pair_count() == 8
+    assert saved_dataset.get_pair_count() == 14
