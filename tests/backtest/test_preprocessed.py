@@ -1,3 +1,5 @@
+"""Preproccessed backtest dataset integration tests."""
+
 import datetime
 
 import pytest
@@ -11,17 +13,16 @@ from tradingstrategy.timebucket import TimeBucket
 
 @pytest.fixture
 def integration_test_dataset():
-    """Sample 1 months worth of data."""
+    """Sample 1 months worth of data.
+
+    - Avalanche datasets are small, fastest to download
+    """
     return Dataset(
         chain=ChainId.avalanche,
         slug="integration_test_dataset",
-        name="Binance Chain, Pancakeswap, 2021-2025, hourly",
+        name="Avalanche test set",
         description=dedent_any("""
-            PancakeSwap DEX hourly trades.
-
-            - Contains bull and bear market data with mixed set of tokens
-            - Binance smart chain is home of many fly-by-night tokens, 
-              and very few of tokens on this chain have long term prospects 
+            TODO 
             """),
         start=datetime.datetime(2023, 1, 1),
         end=datetime.datetime(2023, 2, 1),

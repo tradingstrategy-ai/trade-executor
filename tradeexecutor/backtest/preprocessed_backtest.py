@@ -20,10 +20,17 @@ import datetime
 from pathlib import Path
 
 import pandas as pd
+from nbclient.exceptions import CellExecutionError
+from nbconvert import HTMLExporter
+from nbconvert.preprocessors import ExecutePreprocessor
+from nbformat.v4 import nbformat
 
+from tradeexecutor.backtest.tearsheet import BacktestReportRunFailed, DEFAULT_CUSTOM_CSS, _inject_custom_css_and_js, DEFAULT_CUSTOM_JS
 from tradeexecutor.cli.log import setup_logging
+from tradeexecutor.state.state import State
 from tradeexecutor.strategy.execution_context import python_script_execution_context
-from tradeexecutor.strategy.trading_strategy_universe import load_partial_data
+from tradeexecutor.strategy.parameters import StrategyParameters
+from tradeexecutor.strategy.trading_strategy_universe import load_partial_data, TradingStrategyUniverse
 from tradeexecutor.strategy.universe_model import UniverseOptions
 from tradeexecutor.utils.dedent import dedent_any
 from tradingstrategy.chain import ChainId
@@ -38,6 +45,9 @@ from tradingstrategy.utils.wrangle import fix_dex_price_data
 
 
 logger = logging.getLogger(__name__)
+
+
+DATASET_NOTEBOOK_TEMPLATE = os.path.join(os.path.dirname(__file__), "dataset_report_template.ipynb")
 
 
 @dataclass
@@ -69,9 +79,37 @@ class SavedDataset:
     csv_path: Path
     df: pd.DataFrame
     pairs_df: pd.DataFrame
+    strategy: TradingStrategyUniverse
 
     def get_pair_count(self):
         return len(self.pairs_df)
+
+    def get_info(self) -> pd.DataFrame:
+        """Get information of this dataset to be displayed in the notebook."""
+
+        items = {
+            "Dataset name": self.set.name,
+            "Slug": self.set.slug,
+            "Description": self.set.description,
+            "Start": self.set.start,
+            "End": self.set.end,
+            "Chain": self.set.chain.get_name(),
+            "Exchanges": ", ".join(self.set.exchanges),
+            "Pair count": self.get_pair_count(),
+            "Min TVL (USD)": self.set.min_tvl,
+            "OHLCV timeframe": self.set.time_bucket.value,
+            "OHLCV rows": len(self.df),
+        }
+
+        data = []
+        for key, value in items.items():
+            data.append({
+                "Name": key,
+                "Value": value,
+            })
+        df = pd.DataFrame(data)
+        df = df.set_index("Name")
+        return df
 
 
 def make_full_ticker(row: pd.Series) -> str:
@@ -93,6 +131,78 @@ def make_link(row: pd.Series) -> str:
     """Get TradingStrategy.ai explorer link for the trading data"""
     chain_slug = ChainId(row.chain_id).get_slug()
     return f"https://tradingstrategy.ai/trading-view/{chain_slug}/{row.exchange_slug}/{row.pair_slug}"
+
+
+def run_and_write_report(
+    output_html: Path,
+    output_notebook: Path,
+    dataset: SavedDataset,
+    custom_css=DEFAULT_CUSTOM_CSS,
+    custom_js=DEFAULT_CUSTOM_JS,
+    show_code=False,
+):
+    # https://nbconvert.readthedocs.io/en/latest/execute_api.html
+    with open(DATASET_NOTEBOOK_TEMPLATE) as f:
+        nb = nbformat.read(f, as_version=4)
+
+    # Replace the first cell that allows us to pass parameters
+    # See
+    # - https://github.com/nteract/papermill/blob/main/papermill/parameterize.py
+    # - https://github.com/takluyver/nbparameterise/blob/master/nbparameterise/code.py
+    # for inspiration
+    cell = nb.cells[0]
+    assert cell.cell_type == "code", f"Assumed first cell is parameter cell, got {cell}"
+    assert "parameters =" in cell.source, f"Did not see parameters = definition in the cell source: {cell.source}"
+    cell.source = f"""parameters = {{
+        "state_file": "{state_path}",
+        "universe_file": "{universe_path}", 
+        "dataset_file": "{}".
+    }} """
+
+    # Run the notebook
+    state_size = os.path.getsize(state_path)
+    universe_size = os.path.getsize(universe_path)
+    logger.info(f"Starting backtest tearsheet notebook execution, state size is {state_size:,}b, universe size is {universe_size:,}b")
+    ep = ExecutePreprocessor(timeout=600, kernel_name='python3')
+
+    try:
+        ep.preprocess(nb, {'metadata': {'path': '.'}})
+    except CellExecutionError as e:
+        raise BacktestReportRunFailed(f"Could not run backtest reporter for {name}: {e}") from e
+
+    logger.info("Notebook executed")
+
+    # Write ipynb file that contains output cells created in place
+    if output_notebook is not None:
+        with open(output_notebook, 'w', encoding='utf-8') as f:
+            nbformat.write(nb, f)
+
+    # Write a static HTML file based on the notebook
+    if output_html is not None:
+
+        html_exporter = HTMLExporter(
+            template_name='classic',
+            embed_images=True,
+            exclude_input=show_code is False,
+            exclude_input_prompt=True,
+            exclude_output_prompt=True,
+        )
+        # Image are inlined in the output
+        html_content, resources = html_exporter.from_notebook_node(nb)
+
+        # Inject our custom css
+        if custom_css is not None:
+            html_content = _inject_custom_css_and_js(html_content, custom_css, custom_js)
+
+        with open(output_html, 'w', encoding='utf-8') as f:
+            f.write(html_content)
+
+        logger.info("Wrote HTML report to %s, total %d bytes", output_html, len(html_content))
+
+    return nb
+
+
+
 
 
 def prepare_dataset(
