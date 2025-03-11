@@ -180,7 +180,7 @@ def run_and_write_report(
         # Run the notebook
         universe_size = os.path.getsize(universe_path)
         dataset_size = os.path.getsize(universe_path)
-        logger.info(f"Starting backtest tearsheet notebook execution, dataset size is {dataset_size:,}b, universe size is {universe_size:,}b")
+        logger.info(f"Starting backtest dataset notebook execution, dataset size is {dataset_size:,}b, universe size is {universe_size:,}b")
         ep = ExecutePreprocessor(timeout=600, kernel_name='python3')
 
         try:
