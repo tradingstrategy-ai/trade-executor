@@ -14,7 +14,9 @@ To export / update all exported data:
 """
 import logging
 import os
+import pickle
 import sys
+import tempfile
 from dataclasses import dataclass
 import datetime
 from pathlib import Path
@@ -23,21 +25,19 @@ import pandas as pd
 from nbclient.exceptions import CellExecutionError
 from nbconvert import HTMLExporter
 from nbconvert.preprocessors import ExecutePreprocessor
-from nbformat.v4 import nbformat
+import nbformat
 
+from eth_defi.token import USDT_NATIVE_TOKEN, USDC_NATIVE_TOKEN
 from tradeexecutor.backtest.tearsheet import BacktestReportRunFailed, DEFAULT_CUSTOM_CSS, _inject_custom_css_and_js, DEFAULT_CUSTOM_JS
 from tradeexecutor.cli.log import setup_logging
-from tradeexecutor.state.state import State
 from tradeexecutor.strategy.execution_context import python_script_execution_context
-from tradeexecutor.strategy.parameters import StrategyParameters
-from tradeexecutor.strategy.trading_strategy_universe import load_partial_data, TradingStrategyUniverse
+from tradeexecutor.strategy.trading_strategy_universe import load_partial_data, TradingStrategyUniverse, Dataset
 from tradeexecutor.strategy.universe_model import UniverseOptions
 from tradeexecutor.utils.dedent import dedent_any
 from tradingstrategy.chain import ChainId
 from tradingstrategy.client import Client
 from tradingstrategy.pair import PandasPairUniverse
 from tradingstrategy.timebucket import TimeBucket
-from tradingstrategy.transport.cache import OHLCVCandleType
 from tradingstrategy.types import USDollarAmount, Percent
 from tradingstrategy.utils.token_extra_data import load_token_metadata
 from tradingstrategy.utils.token_filter import filter_pairs_default, filter_by_token_sniffer_score, deduplicate_pairs_by_volume, add_base_quote_address_columns
@@ -51,7 +51,7 @@ DATASET_NOTEBOOK_TEMPLATE = os.path.join(os.path.dirname(__file__), "dataset_rep
 
 
 @dataclass
-class Dataset:
+class BacktestDatasetDefinion:
     """Predefined backtesting dataset"""
     slug: str
     name: str
@@ -65,6 +65,11 @@ class Dataset:
     #: Pair descriptions that are always included, regardless of min_tvl and category filtering
     always_included_pairs: list[tuple]
 
+    #: The main USDC/USDT token on the chain
+    #:
+    #: We use this to generate equally-weighted index report and as a reserve token in this index.
+    reserve_token_address: str
+
     #: Prefilter pairs with this liquidity before calling token sniffer
     min_tvl: USDollarAmount | None = None
     categories: list[str] | None = None
@@ -72,14 +77,15 @@ class Dataset:
     min_tokensniffer_score: int | None = None
 
 
+
+
 @dataclass
 class SavedDataset:
-    set: Dataset
+    set: BacktestDatasetDefinion
     parquet_path: Path
     csv_path: Path
     df: pd.DataFrame
     pairs_df: pd.DataFrame
-    strategy: TradingStrategyUniverse
 
     def get_pair_count(self):
         return len(self.pairs_df)
@@ -137,80 +143,91 @@ def run_and_write_report(
     output_html: Path,
     output_notebook: Path,
     dataset: SavedDataset,
+    strategy_universe: TradingStrategyUniverse,
     custom_css=DEFAULT_CUSTOM_CSS,
     custom_js=DEFAULT_CUSTOM_JS,
     show_code=False,
 ):
-    # https://nbconvert.readthedocs.io/en/latest/execute_api.html
-    with open(DATASET_NOTEBOOK_TEMPLATE) as f:
-        nb = nbformat.read(f, as_version=4)
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        tmp_dir = Path(tmp_dir)
 
-    # Replace the first cell that allows us to pass parameters
-    # See
-    # - https://github.com/nteract/papermill/blob/main/papermill/parameterize.py
-    # - https://github.com/takluyver/nbparameterise/blob/master/nbparameterise/code.py
-    # for inspiration
-    cell = nb.cells[0]
-    assert cell.cell_type == "code", f"Assumed first cell is parameter cell, got {cell}"
-    assert "parameters =" in cell.source, f"Did not see parameters = definition in the cell source: {cell.source}"
-    cell.source = f"""parameters = {{
-        "state_file": "{state_path}",
-        "universe_file": "{universe_path}", 
-        "dataset_file": "{}".
-    }} """
+        universe_path = tmp_dir / "universe.pickle"
+        dataset_path = tmp_dir / "dataset.pickle"
 
-    # Run the notebook
-    state_size = os.path.getsize(state_path)
-    universe_size = os.path.getsize(universe_path)
-    logger.info(f"Starting backtest tearsheet notebook execution, state size is {state_size:,}b, universe size is {universe_size:,}b")
-    ep = ExecutePreprocessor(timeout=600, kernel_name='python3')
+        with open(universe_path, "wb") as out:
+            pickle.dump(strategy_universe, out)
 
-    try:
-        ep.preprocess(nb, {'metadata': {'path': '.'}})
-    except CellExecutionError as e:
-        raise BacktestReportRunFailed(f"Could not run backtest reporter for {name}: {e}") from e
+        with open(dataset_path, "wb") as out:
+            pickle.dump(dataset, out)
 
-    logger.info("Notebook executed")
+        # https://nbconvert.readthedocs.io/en/latest/execute_api.html
+        with open(DATASET_NOTEBOOK_TEMPLATE) as f:
+            nb = nbformat.read(f, as_version=4)
 
-    # Write ipynb file that contains output cells created in place
-    if output_notebook is not None:
-        with open(output_notebook, 'w', encoding='utf-8') as f:
-            nbformat.write(nb, f)
+        # Replace the first cell that allows us to pass parameters
+        # See
+        # - https://github.com/nteract/papermill/blob/main/papermill/parameterize.py
+        # - https://github.com/takluyver/nbparameterise/blob/master/nbparameterise/code.py
+        # for inspiration
+        cell = nb.cells[0]
+        assert cell.cell_type == "code", f"Assumed first cell is parameter cell, got {cell}"
+        assert "parameters =" in cell.source, f"Did not see parameters = definition in the cell source: {cell.source}"
+        cell.source = f"""parameters = {{
+            "universe_file": "{universe_path}", 
+            "dataset_file": "{dataset_path}",
+        }} """
 
-    # Write a static HTML file based on the notebook
-    if output_html is not None:
+        # Run the notebook
+        universe_size = os.path.getsize(universe_path)
+        dataset_size = os.path.getsize(universe_path)
+        logger.info(f"Starting backtest tearsheet notebook execution, dataset size is {dataset_size:,}b, universe size is {universe_size:,}b")
+        ep = ExecutePreprocessor(timeout=600, kernel_name='python3')
 
-        html_exporter = HTMLExporter(
-            template_name='classic',
-            embed_images=True,
-            exclude_input=show_code is False,
-            exclude_input_prompt=True,
-            exclude_output_prompt=True,
-        )
-        # Image are inlined in the output
-        html_content, resources = html_exporter.from_notebook_node(nb)
+        try:
+            ep.preprocess(nb, {'metadata': {'path': '.'}})
+        except CellExecutionError as e:
+            raise BacktestReportRunFailed(f"Could not run backtest reporter for {dataset_path}: {e}") from e
 
-        # Inject our custom css
-        if custom_css is not None:
-            html_content = _inject_custom_css_and_js(html_content, custom_css, custom_js)
+        logger.info("Notebook executed")
 
-        with open(output_html, 'w', encoding='utf-8') as f:
-            f.write(html_content)
+        # Write ipynb file that contains output cells created in place
+        if output_notebook is not None:
+            with open(output_notebook, 'w', encoding='utf-8') as f:
+                nbformat.write(nb, f)
 
-        logger.info("Wrote HTML report to %s, total %d bytes", output_html, len(html_content))
+        # Write a static HTML file based on the notebook
+        if output_html is not None:
 
-    return nb
+            html_exporter = HTMLExporter(
+                template_name='classic',
+                embed_images=True,
+                exclude_input=show_code is False,
+                exclude_input_prompt=True,
+                exclude_output_prompt=True,
+            )
+            # Image are inlined in the output
+            html_content, resources = html_exporter.from_notebook_node(nb)
 
+            # Inject our custom css
+            if custom_css is not None:
+                html_content = _inject_custom_css_and_js(html_content, custom_css, custom_js)
 
+            with open(output_html, 'w', encoding='utf-8') as f:
+                f.write(html_content)
+
+            logger.info("Wrote HTML report to %s, total %d bytes", output_html, len(html_content))
+
+        return nb
 
 
 
 def prepare_dataset(
     client: Client,
-    dataset: Dataset,
+    dataset: BacktestDatasetDefinion,
     output_folder: Path,
     write_csv=True,
     write_parquet=True,
+    write_report=True,
 ) -> SavedDataset:
     """Prepare a predefined backtesting dataset.
 
@@ -383,7 +400,7 @@ def prepare_dataset(
     else:
         parquet_file = None
 
-    return SavedDataset(
+    saved_dataset = SavedDataset(
         set=dataset,
         csv_path=csv_file,
         parquet_path=parquet_file,
@@ -391,9 +408,48 @@ def prepare_dataset(
         pairs_df=pairs_df,
     )
 
+    if write_report:
+
+        dataset_pairs_df = pairs_df
+        dataset_pairs_df["pair_id"] = dataset_pairs_df.index
+        dataset_liquidty_df = tvl_df
+        dataset_liquidty_df = dataset_liquidty_df.rename(columns={"bucket": "timestamp"})
+
+        universe_dataset = Dataset(
+            time_bucket=time_bucket,
+            exchanges=exchange_universe,
+            pairs=dataset_pairs_df,
+            candles=price_df,
+            liquidity=dataset_liquidty_df,
+            liquidity_time_bucket=liquidity_time_bucket,
+            start_at=dataset.start,
+            end_at=dataset.end,
+        )
+
+        strategy_universe = TradingStrategyUniverse.create_from_dataset(
+            universe_dataset,
+            reserve_asset=dataset.reserve_token_address,
+        )
+
+        output_html = output_folder / f"{dataset.slug}-report.html"
+        output_notebook = output_folder / f"{dataset.slug}-report.ipynb"
+        run_and_write_report(
+            output_html=output_html,
+            output_notebook=output_notebook,
+            dataset=saved_dataset,
+            strategy_universe=strategy_universe,
+        )
+
+    return saved_dataset
+
+
+BNB_QUOTE_TOKEN = USDT_NATIVE_TOKEN[ChainId.binance.value]
+
+AVAX_QUOTE_TOKEN = USDC_NATIVE_TOKEN[ChainId.avalanche.value]
+
 
 PREPACKAGED_SETS = [
-    Dataset(
+    BacktestDatasetDefinion(
         chain=ChainId.binance,
         description=dedent_any("""
         PancakeSwap DEX daily trades.
@@ -411,10 +467,11 @@ PREPACKAGED_SETS = [
         exchanges={"pancakeswap-v2"},
         always_included_pairs=[
             (ChainId.binance, "pancakeswap-v2", "WBNB", "USDT"),
-        ]
+        ],
+        reserve_token_address=BNB_QUOTE_TOKEN,
     ),
 
-    Dataset(
+    BacktestDatasetDefinion(
         chain=ChainId.binance,
         slug="binance-chain-1h",
         name="Binance Chain, Pancakeswap, 2021-2025, hourly",
@@ -432,7 +489,8 @@ PREPACKAGED_SETS = [
         exchanges={"pancakeswap-v2"},
         always_included_pairs=[
             (ChainId.binance, "pancakeswap-v2", "WBNB", "USDT"),
-        ]
+        ],
+        reserve_token_address=BNB_QUOTE_TOKEN,
     )
 ]
 

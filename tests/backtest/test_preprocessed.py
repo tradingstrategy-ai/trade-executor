@@ -4,7 +4,7 @@ import datetime
 
 import pytest
 
-from tradeexecutor.backtest.preprocessed_backtest import Dataset, prepare_dataset, SavedDataset
+from tradeexecutor.backtest.preprocessed_backtest import BacktestDatasetDefinion, prepare_dataset, SavedDataset, AVAX_QUOTE_TOKEN
 from tradeexecutor.utils.dedent import dedent_any
 from tradingstrategy.chain import ChainId
 from tradingstrategy.client import Client
@@ -17,7 +17,7 @@ def integration_test_dataset():
 
     - Avalanche datasets are small, fastest to download
     """
-    return Dataset(
+    return BacktestDatasetDefinion(
         chain=ChainId.avalanche,
         slug="integration_test_dataset",
         name="Avalanche test set",
@@ -30,6 +30,7 @@ def integration_test_dataset():
         min_tvl=1_000_000,
         exchanges={"trader-joe"},
         always_included_pairs=[],
+        reserve_token_address=AVAX_QUOTE_TOKEN,
     )
 
 def test_preprocessed_dataset(
