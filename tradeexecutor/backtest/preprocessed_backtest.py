@@ -102,7 +102,7 @@ class SavedDataset:
         return self.pair_count
 
     def get_info(self) -> pd.DataFrame:
-        """Get information of this dataset to be displayed in the notebook."""
+        """Get human readable information of this dataset to be displayed in the notebook."""
 
         items = {
             "Dataset name": self.set.name,
@@ -113,9 +113,9 @@ class SavedDataset:
             "Chain": self.set.chain.get_name(),
             "Exchanges": ", ".join(self.set.exchanges),
             "Pair count (w/TVL criteria)": self.get_pair_count(),
-            "Min TVL (USD)": self.set.min_tvl,
+            "Min TVL": f"{self.set.min_tvl:,} USD",
             "OHLCV timeframe": self.set.time_bucket.value,
-            "OHLCV rows": self.row_count,
+            "OHLCV rows": f"{self.row_count:,}",
             "Parquet size": f"{self.parquet_file_size:,} bytes",
             "CSV size": f"{self.csv_file_size:,} bytes",
         }
@@ -339,7 +339,10 @@ def prepare_dataset(
 
     deduplicated_df = deduplicate_pairs_by_volume(risk_filtered_pairs_df)
     pairs_df = pd.concat([deduplicated_df, supporting_pairs_df]).drop_duplicates(subset='pair_id', keep='first')
-    logger.info("After pairs deduplication we have %d pairs", len(pairs_df))
+    logger.info("After pairs deduplication we have %d pairs", len(deduplicated_df))
+
+    # Supporting pairs lack metadata
+    pairs_df.loc[pairs_df["token_metadata"].isna(), "token_metadata"] = None
 
     universe_options = UniverseOptions(
         start_at=dataset.start,
@@ -506,6 +509,8 @@ AVAX_QUOTE_TOKEN = USDC_NATIVE_TOKEN[ChainId.avalanche.value]
 
 BASE_QUOTE_TOKEN = USDC_NATIVE_TOKEN[ChainId.base.value]
 
+ETHEREUM_QUOTE_TOKEN = USDC_NATIVE_TOKEN[ChainId.ethereum.value]
+
 
 PREPACKAGED_SETS = [
     BacktestDatasetDefinion(
@@ -610,8 +615,8 @@ PREPACKAGED_SETS = [
         start=datetime.datetime(2024, 1, 1),
         end=datetime.datetime(2025, 3, 1),
         time_bucket=TimeBucket.h1,
-        min_tvl=300_000,
-        min_weekly_volume=300_000,
+        min_tvl=500_000,
+        min_weekly_volume=500_000,
         exchanges={"uniswap-v2", "uniswap-v3"},
         always_included_pairs=[
             (ChainId.base, "uniswap-v2", "WETH", "USDC", 0.0030),
@@ -630,14 +635,37 @@ PREPACKAGED_SETS = [
         start=datetime.datetime(2024, 1, 1),
         end=datetime.datetime(2025, 3, 1),
         time_bucket=TimeBucket.d1,
-        min_tvl=300_000,
-        min_weekly_volume=300_000,
+        min_tvl=500_000,
+        min_weekly_volume=500_000,
         exchanges={"uniswap-v2", "uniswap-v3"},
         always_included_pairs=[
             (ChainId.base, "uniswap-v2", "WETH", "USDC", 0.0030),
             (ChainId.base, "uniswap-v3", "cbBTC", "WETH", 0.0030),  # Only trading since October
         ],
         reserve_token_address=BASE_QUOTE_TOKEN,
+    ),
+
+    BacktestDatasetDefinion(
+        chain=ChainId.ethereum,
+        slug="ethereum-1d",
+        name="Ethereum mainnet, Uniswap and Sushiwap, 2020-2025/Q2, daily",
+        description=dedent_any("""
+    Ethereum Uniswap and Sushiswap dEX traeds.
+
+    - Longest DEX history we have
+    - Contains bull and bear market data with mixed set of tokens
+    """),
+        start=datetime.datetime(2020, 1, 1),
+        end=datetime.datetime(2025, 3, 1),
+        time_bucket=TimeBucket.d1,
+        min_tvl=4_000_000,
+        min_weekly_volume=4_000_000,
+        exchanges={"uniswap-v2", "uniswap-v3", "sushi"},
+        always_included_pairs=[
+            (ChainId.ethereum, "uniswap-v2", "WETH", "USDC", 0.0030),
+            (ChainId.ethereum, "uniswap-v3", "WBTC", "USDC", 0.0030),  # Only trading since October
+        ],
+        reserve_token_address=ETHEREUM_QUOTE_TOKEN,
     ),
 ]
 
