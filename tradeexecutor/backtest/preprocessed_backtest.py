@@ -269,6 +269,7 @@ def prepare_dataset(
     targeted_exchanges = [exchange_universe.get_by_chain_and_slug(chain_id, slug) for slug in exchange_slugs]
     exchange_ids = [exchange.exchange_id for exchange in targeted_exchanges]
     exchange_universe = exchange_universe.limit_to_slugs(exchange_slugs)
+    exchange_universe = exchange_universe.limit_to_chains({chain_id})
     logger.info(f"Exchange {exchange_slugs} ids are {exchange_ids}")
 
     # We need pair metadata to know which pairs belong to Polygon
