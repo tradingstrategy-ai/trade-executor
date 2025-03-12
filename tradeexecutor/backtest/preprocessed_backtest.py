@@ -25,7 +25,7 @@ Run using Docker. Created files will be placed in ``~/exported`` in the host FS:
         -v ~/exported:/exported \
         -v ~/.cache:/root/.cache \
         ghcr.io/tradingstrategy-ai/trade-executor:${TRADE_EXECUTOR_VERSION} \
-        /usr/src/trade-executor/tradeexecutor/backtest/preprocessed_backtest_exporter.py /exported
+        /usr/src/trade-executor/tradeexecutor/backtest/preprocessed_backtest_exporter.py /exported base-1d
 
 """
 import logging
@@ -249,7 +249,6 @@ def run_and_write_report(
         return nb
 
 
-
 def prepare_dataset(
     client: Client,
     dataset: BacktestDatasetDefinion,
@@ -267,6 +266,8 @@ def prepare_dataset(
     """
 
     started = datetime.datetime.utcnow()
+
+    logger.info("Preparing dataset %s", dataset.slug)
 
     chain_id = dataset.chain
     time_bucket = dataset.time_bucket
