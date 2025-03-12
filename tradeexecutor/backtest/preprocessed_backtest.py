@@ -373,12 +373,12 @@ def prepare_dataset(
     price_df["buy_tax"] = price_df["pair_id"].apply(lambda pair_id: pair_metadata[pair_id]["buy_tax"])
     price_df["sell_tax"] = price_df["pair_id"].apply(lambda pair_id: pair_metadata[pair_id]["sell_tax"])
 
-    # Merge price and TVL data.
+    # Merge price and TVL data.x
     # For this we need to resample TVL to whatever timeframe the price happens to be in.
     liquidity_df = tvl_df
     liquidity_df = liquidity_df.rename(columns={'bucket': 'timestamp'})
     liquidity_df = liquidity_df.groupby('pair_id').apply(lambda x: x.set_index("timestamp").resample(time_bucket.to_frequency()).ffill(), include_groups=False)
-    liquidity_df = liquidity_df.rename(columns={'close': 'tvl'})
+    liquidity_df["tvl"] = liquidity_df["close"]
 
     merged_df = price_df.join(liquidity_df["tvl"].to_frame(), how='inner')
 
@@ -443,7 +443,6 @@ def prepare_dataset(
         dataset_liquidty_df = dataset_liquidty_df.rename(columns={"bucket": "timestamp"})
 
         dataset_price_df = price_df
-        # import ipdb ; ipdb.set_trace()
 
         universe_dataset = Dataset(
             time_bucket=time_bucket,
@@ -463,7 +462,18 @@ def prepare_dataset(
             forward_fill=True,
         )
 
-        # assert strategy_universe.data_universe.liquidity.df.index.is_monotonic_increasing, "Liquidity was not monotonically increasing"
+        # Check liquidity forward fill bug on Binance data
+        # if dataset.slug == "binance-chain-1d":
+        #     liquidity_universe = strategy_universe.data_universe.liquidity
+        #     pair_id = 2184761
+        #     ldf = strategy_universe.data_universe.liquidity.df
+        #     pdf = ldf[ldf.pair_id == 2184761]
+        #     l = liquidity_universe.get_liquidity_with_tolerance(
+        #         pair_id,
+        #         pd.Timestamp("2022-03-11"),
+        #         tolerance=pd.Timedelta(days=1)
+        #     )
+        #     # assert strategy_universe.data_universe.liquidity.df.index.is_monotonic_increasing, "Liquidity was not monotonically increasing"
 
         output_html = output_folder / f"{dataset.slug}-report.html"
         output_notebook = output_folder / f"{dataset.slug}-report.ipynb"

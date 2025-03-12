@@ -32,9 +32,20 @@ def export_all_main():
     client = Client.create_live_client(api_key=os.environ["TRADING_STRATEGY_API_KEY"])
     output_path = Path(sys.argv[1])
 
+    if len(sys.argv) == 3:
+        slug = sys.argv[2]
+    else:
+        slug = None
+
     assert output_path.exists(), f"{output_path} does not exist"
     assert output_path.is_dir(), f"{output_path} is not a directory"
     for ds in PREPACKAGED_SETS:
+
+        # filter by slug
+        if slug:
+            if ds.slug != slug:
+                continue
+
         prepare_dataset(
             client=client,
             dataset=ds,
