@@ -186,7 +186,7 @@ def run_and_write_report(
         universe_size = os.path.getsize(universe_path)
         dataset_size = os.path.getsize(dataset_path)
         logger.info(f"Starting backtest dataset notebook execution, dataset size is {dataset_size:,}b, universe size is {universe_size:,}b")
-        ep = ExecutePreprocessor(timeout=600, kernel_name='python3')
+        ep = ExecutePreprocessor(timeout=3600, kernel_name='python3')
 
         try:
             ep.preprocess(nb, {'metadata': {'path': '.'}})
@@ -420,10 +420,11 @@ def prepare_dataset(
 
     if write_parquet:
         parquet_file = output_folder / f"{dataset.slug}.parquet"
-        merged_df.to_csv(
+        merged_df.to_parquet(
             parquet_file,
+            compression='zstd'
         )
-        logger.info(f"Wrote {csv_file}, {csv_file.stat().st_size:,} bytes")
+        logger.info(f"Wrote {parquet_file}, {csv_file.stat().st_size:,} bytes")
     else:
         parquet_file = None
 
