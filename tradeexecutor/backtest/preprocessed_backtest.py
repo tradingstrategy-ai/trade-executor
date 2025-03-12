@@ -11,16 +11,21 @@ To export / update all exported data:
 
     python tradeexecutor/backtest/preprocessed_backtest_exporter.py ~/exported
 
-Run using Docker:
+Run using Docker. Created files will be placed in ``~/exported`` in the host FS:
 
 .. code-block:: shell
 
     mkdir ~/exported
-    export TRADE_EXECUTOR_VERSION=...
+    # Get from https://github.com/tradingstrategy-ai/trade-executor/actions
+    export TRADE_EXECUTOR_VERSION=latest
     docker run \
-        ghcr.io/tradingstrategy-ai/trade-executor:${TRADE_EXECUTOR_VERSION} \
+        -it \
+        --entrypoint /usr/local/bin/python \
+        --env TRADING_STRATEGY_API_KEY \
         -v ~/exported:/exported \
-        python /usr/tradeexecutor/backtest/preprocessed_backtest_exporter.py
+        -v ~/.cache:/root/.cache \
+        ghcr.io/tradingstrategy-ai/trade-executor:${TRADE_EXECUTOR_VERSION} \
+        /usr/src/trade-executor/tradeexecutor/backtest/preprocessed_backtest_exporter.py /exported
 
 """
 import logging

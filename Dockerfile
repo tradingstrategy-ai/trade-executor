@@ -16,7 +16,8 @@ ENV PYTHONDONTWRITEBYTECODE 1 \
 # curl and jq needed for the health checks
 # node.js and g++ libssl1.0.0 libssl-dev needed for enzyme below - remove when enzyme dep has been factored out
 # https://github.com/nodejs/node-gyp/issues/1195#issuecomment-371954099
-RUN apt-get update && apt-get install -y curl jq ca-certificates gnupg
+# https://stackoverflow.com/questions/40075271/gmpy2-not-installing-mpir-h-not-found
+RUN apt-get update && apt-get install -y curl jq ca-certificates gnupg libmpfr-dev libmpc-dev
 RUN curl -sSL https://install.python-poetry.org | python - --version 1.8.3
 
 ENV PATH="/root/.local/bin:$PATH"
