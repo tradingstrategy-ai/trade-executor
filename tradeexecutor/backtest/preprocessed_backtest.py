@@ -25,7 +25,7 @@ Run using Docker. Created files will be placed in ``~/exported`` in the host FS:
         -v ~/exported:/exported \
         -v ~/.cache:/root/.cache \
         ghcr.io/tradingstrategy-ai/trade-executor:${TRADE_EXECUTOR_VERSION} \
-        /usr/src/trade-executor/tradeexecutor/backtest/preprocessed_backtest_exporter.py /exported base-1d
+        /usr/src/trade-executor/tradeexecutor/backtest/preprocessed_backtest_exporter.py /exported
 
 """
 import logging
@@ -671,18 +671,41 @@ PREPACKAGED_SETS = [
     BacktestDatasetDefinion(
         chain=ChainId.ethereum,
         slug="ethereum-1d",
-        name="Ethereum mainnet, Uniswap and Sushiwap, 2020-2025/Q2, daily",
+        name="Ethereum mainnet, Uniswap and Sushiswap, 2020-2025/Q2, daily",
         description=dedent_any("""
-    Ethereum Uniswap and Sushiswap dEX traeds.
-
-    - Longest DEX history we have
-    - Contains bull and bear market data with mixed set of tokens
-    """),
+        Ethereum Uniswap and Sushiswap DEX traeds.
+    
+        - Longest DEX history we have
+        - Contains bull and bear market data with mixed set of tokens
+        """),
         start=datetime.datetime(2020, 1, 1),
         end=datetime.datetime(2025, 3, 1),
         time_bucket=TimeBucket.d1,
-        min_tvl=4_000_000,
-        min_weekly_volume=4_000_000,
+        min_tvl=3_000_000,
+        min_weekly_volume=100_000,
+        exchanges={"uniswap-v2", "uniswap-v3", "sushi"},
+        always_included_pairs=[
+            (ChainId.ethereum, "uniswap-v2", "WETH", "USDC", 0.0030),
+            (ChainId.ethereum, "uniswap-v3", "WBTC", "USDC", 0.0030),  # Only trading since October
+        ],
+        reserve_token_address=ETHEREUM_QUOTE_TOKEN,
+    ),
+
+    BacktestDatasetDefinion(
+        chain=ChainId.ethereum,
+        slug="ethereum-1h",
+        name="Ethereum mainnet, Uniswap and Sushiswap, 2020-2025/Q2, hourly",
+        description=dedent_any("""
+        Ethereum Uniswap and Sushiswap DEX traeds.
+        
+        - Longest DEX history we have
+        - Contains bull and bear market data with mixed set of tokens
+        """),
+        start=datetime.datetime(2020, 1, 1),
+        end=datetime.datetime(2025, 3, 1),
+        time_bucket=TimeBucket.h1,
+        min_tvl=3_000_000,
+        min_weekly_volume=100_000,
         exchanges={"uniswap-v2", "uniswap-v3", "sushi"},
         always_included_pairs=[
             (ChainId.ethereum, "uniswap-v2", "WETH", "USDC", 0.0030),
