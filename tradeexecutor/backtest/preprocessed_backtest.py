@@ -94,9 +94,7 @@ class SavedDataset:
     csv_file_size: int
     pair_count: int
     row_count: int
-
-    # df: pd.DataFrame
-    #pairs_df: pd.DataFrame
+    duration: datetime.timedelta | None
 
     def get_pair_count(self):
         return self.pair_count
@@ -118,6 +116,7 @@ class SavedDataset:
             "OHLCV rows": f"{self.row_count:,}",
             "Parquet size": f"{self.parquet_file_size:,} bytes",
             "CSV size": f"{self.csv_file_size:,} bytes",
+            "Job duration": {self.duration},
         }
 
         data = []
@@ -249,6 +248,8 @@ def prepare_dataset(
     - Clean it
     - Write to a parquet file
     """
+
+    started = datetime.datetime.utcnow()
 
     chain_id = dataset.chain
     time_bucket = dataset.time_bucket
@@ -448,6 +449,7 @@ def prepare_dataset(
         csv_file_size=csv_file.stat().st_size if csv_file else None,
         pair_count=len(pairs_df),
         row_count=len(merged_df),
+        duration=None,
         # df=merged_df,
         #pairs_df=pairs_df,
     )
@@ -500,6 +502,8 @@ def prepare_dataset(
             dataset=saved_dataset,
             strategy_universe=strategy_universe,
         )
+
+    saved_dataset.duration = datetime.datetime.utcnow() - started
 
     return saved_dataset
 
