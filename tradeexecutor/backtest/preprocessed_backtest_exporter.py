@@ -13,7 +13,6 @@ import os
 import sys
 from pathlib import Path
 
-from tests.backtest.test_visualise_market_regime_filte import dataset
 from tradeexecutor.backtest.preprocessed_backtest import PREPACKAGED_SETS, prepare_dataset
 from tradeexecutor.cli.log import setup_logging
 from tradingstrategy.client import Client
