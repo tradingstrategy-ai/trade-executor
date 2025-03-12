@@ -523,6 +523,10 @@ def prepare_dataset(
 
     saved_dataset.duration = datetime.datetime.utcnow() - started
 
+    pickle_file = output_folder / f"{dataset.slug}.dataset-pickle"
+    with open(pickle_file, "wb") as f:
+        pickle.dump(saved_dataset, f)
+
     return saved_dataset
 
 
