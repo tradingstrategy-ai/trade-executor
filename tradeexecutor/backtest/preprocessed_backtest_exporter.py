@@ -39,6 +39,10 @@ def export_all_main():
 
     assert output_path.exists(), f"{output_path} does not exist"
     assert output_path.is_dir(), f"{output_path} is not a directory"
+
+    # Export newly added sets first
+    PREPACKAGED_SETS.reverse()
+
     for ds in PREPACKAGED_SETS:
 
         # filter by slug

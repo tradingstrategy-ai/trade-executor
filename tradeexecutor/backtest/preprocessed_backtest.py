@@ -89,11 +89,17 @@ class SavedDataset:
     set: BacktestDatasetDefinion
     parquet_path: Path
     csv_path: Path
-    df: pd.DataFrame
-    pairs_df: pd.DataFrame
+
+    parquet_file_size: int
+    csv_file_size: int
+    pair_count: int
+    row_count: int
+
+    # df: pd.DataFrame
+    #pairs_df: pd.DataFrame
 
     def get_pair_count(self):
-        return len(self.pairs_df)
+        return self.pair_count
 
     def get_info(self) -> pd.DataFrame:
         """Get information of this dataset to be displayed in the notebook."""
@@ -109,7 +115,9 @@ class SavedDataset:
             "Pair count (w/TVL criteria)": self.get_pair_count(),
             "Min TVL (USD)": self.set.min_tvl,
             "OHLCV timeframe": self.set.time_bucket.value,
-            "OHLCV rows": len(self.df),
+            "OHLCV rows": self.row_count,
+            "Parquet size": f"{self.parquet_file_size:,} bytes",
+            "CSV size": f"{self.csv_file_size:,} bytes",
         }
 
         data = []
@@ -424,7 +432,7 @@ def prepare_dataset(
             parquet_file,
             compression='zstd'
         )
-        logger.info(f"Wrote {parquet_file}, {csv_file.stat().st_size:,} bytes")
+        logger.info(f"Wrote {parquet_file}, {parquet_file.stat().st_size:,} bytes")
     else:
         parquet_file = None
 
@@ -432,8 +440,12 @@ def prepare_dataset(
         set=dataset,
         csv_path=csv_file,
         parquet_path=parquet_file,
-        df=merged_df,
-        pairs_df=pairs_df,
+        parquet_file_size=parquet_file.stat().st_size if parquet_file else None,
+        csv_file_size=csv_file.stat().st_size if csv_file else None,
+        pair_count=len(pairs_df),
+        row_count=len(merged_df),
+        # df=merged_df,
+        #pairs_df=pairs_df,
     )
 
     if write_report:
@@ -491,6 +503,8 @@ def prepare_dataset(
 BNB_QUOTE_TOKEN = USDT_NATIVE_TOKEN[ChainId.binance.value]
 
 AVAX_QUOTE_TOKEN = USDC_NATIVE_TOKEN[ChainId.avalanche.value]
+
+BASE_QUOTE_TOKEN = USDC_NATIVE_TOKEN[ChainId.base.value]
 
 
 PREPACKAGED_SETS = [
@@ -584,6 +598,46 @@ PREPACKAGED_SETS = [
 
         ],
         reserve_token_address=AVAX_QUOTE_TOKEN,
+    ),
+
+    BacktestDatasetDefinion(
+        chain=ChainId.base,
+        slug="base-1h",
+        name="Base, Uniswap, 2024-2025/Q2, hourly",
+        description=dedent_any("""
+        - Base Uniswap v2 and v3 trading pairs with a minimum TVL threshold
+        """),
+        start=datetime.datetime(2024, 1, 1),
+        end=datetime.datetime(2025, 3, 1),
+        time_bucket=TimeBucket.h1,
+        min_tvl=300_000,
+        min_weekly_volume=300_000,
+        exchanges={"uniswap-v2", "uniswap-v3"},
+        always_included_pairs=[
+            (ChainId.base, "uniswap-v2", "WETH", "USDC", 0.0030),
+            (ChainId.base, "uniswap-v3", "cbBTC", "WETH", 0.0030),  # Only trading since October
+        ],
+        reserve_token_address=BASE_QUOTE_TOKEN,
+    ),
+
+    BacktestDatasetDefinion(
+        chain=ChainId.base,
+        slug="base-1d",
+        name="Base, Uniswap, 2024-2025/Q2, hourly",
+        description=dedent_any("""
+    - Base Uniswap v2 and v3 trading pairs with a minimum TVL threshold
+    """),
+        start=datetime.datetime(2024, 1, 1),
+        end=datetime.datetime(2025, 3, 1),
+        time_bucket=TimeBucket.d1,
+        min_tvl=300_000,
+        min_weekly_volume=300_000,
+        exchanges={"uniswap-v2", "uniswap-v3"},
+        always_included_pairs=[
+            (ChainId.base, "uniswap-v2", "WETH", "USDC", 0.0030),
+            (ChainId.base, "uniswap-v3", "cbBTC", "WETH", 0.0030),  # Only trading since October
+        ],
+        reserve_token_address=BASE_QUOTE_TOKEN,
     ),
 ]
 
