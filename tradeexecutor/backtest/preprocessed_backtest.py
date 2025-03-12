@@ -9,13 +9,12 @@ To export / update all exported data:
 
 .. code-block:: shell
 
-    python tradeexecutor/backtest/preprocessed_backtest.py ~/exported
+    python tradeexecutor/backtest/preprocessed_backtest_exporter.py ~/exported
 
 """
 import logging
 import os
 import pickle
-import sys
 import tempfile
 from dataclasses import dataclass
 import datetime
@@ -29,7 +28,6 @@ import nbformat
 
 from eth_defi.token import USDT_NATIVE_TOKEN, USDC_NATIVE_TOKEN
 from tradeexecutor.backtest.tearsheet import BacktestReportRunFailed, DEFAULT_CUSTOM_CSS, _inject_custom_css_and_js, DEFAULT_CUSTOM_JS
-from tradeexecutor.cli.log import setup_logging
 from tradeexecutor.strategy.execution_context import python_script_execution_context
 from tradeexecutor.strategy.trading_strategy_universe import load_partial_data, TradingStrategyUniverse, Dataset
 from tradeexecutor.strategy.universe_model import UniverseOptions
@@ -291,6 +289,9 @@ def prepare_dataset(
     tvl_filtered_pair_ids = tvl_df["pair_id"].unique()
     logger.info("TVL filter gave us %d pairs", len(tvl_filtered_pair_ids))
 
+    # Server returns candles in random order
+    tvl_df = tvl_df.sort_values("bucket")
+
     tvl_pairs_df = pairs_df[pairs_df["pair_id"].isin(tvl_filtered_pair_ids)]
     pairs_df = filter_pairs_default(
         tvl_pairs_df,
@@ -445,6 +446,8 @@ def prepare_dataset(
             forward_fill=True,
         )
 
+        # assert strategy_universe.data_universe.liquidity.df.index.is_monotonic_increasing, "Liquidity was not monotonically increasing"
+
         output_html = output_folder / f"{dataset.slug}-report.html"
         output_notebook = output_folder / f"{dataset.slug}-report.ipynb"
         run_and_write_report(
@@ -477,6 +480,7 @@ PREPACKAGED_SETS = [
         start=datetime.datetime(2021, 1, 1),
         end=datetime.datetime(2025, 1, 1),
         min_tvl=5_000_000,
+        min_weekly_volume=200_000,
         time_bucket=TimeBucket.d1,
         exchanges={"pancakeswap-v2"},
         always_included_pairs=[
@@ -500,37 +504,35 @@ PREPACKAGED_SETS = [
         end=datetime.datetime(2025, 1, 1),
         time_bucket=TimeBucket.h1,
         min_tvl=5_000_000,
+        min_weekly_volume=200_000,
         exchanges={"pancakeswap-v2"},
         always_included_pairs=[
             (ChainId.binance, "pancakeswap-v2", "WBNB", "USDT"),
         ],
         reserve_token_address=BNB_QUOTE_TOKEN,
+    ),
+
+    BacktestDatasetDefinion(
+        chain=ChainId.avalanche,
+        slug="avalanche-1h",
+        name="Avalanche C-Chain, LFG, 2021-2025, hourly",
+        description=dedent_any("""
+    LFG, formerly known as Trader Joe, DEX hourly trades.
+
+    - Contains bull and bear market data with mixed set of tokens
+    """),
+        start=datetime.datetime(2021, 1, 1),
+        end=datetime.datetime(2025, 1, 1),
+        time_bucket=TimeBucket.h1,
+        min_tvl=250_000,
+        min_weekly_volume=250_000,
+        exchanges={"trader-joe"},
+        always_included_pairs=[
+            (ChainId.avalanche, "trader-joe", "WAVAX", "USDT.e", 0.0030),
+            (ChainId.avalanche, "trader-joe", "WETH.e", "WAVAX", 0.0030),  # Only trading since October
+
+        ],
+        reserve_token_address=BNB_QUOTE_TOKEN,
     )
 ]
 
-
-def export_all_main():
-    """Export all preprocessed backtest sets.
-
-    - Main entry point
-    """
-
-    setup_logging()
-
-    client = Client.create_live_client(api_key=os.environ["TRADING_STRATEGY_API_KEY"])
-    output_path = Path(sys.argv[1])
-
-    assert output_path.exists(), f"{output_path} does not exist"
-    assert output_path.is_dir(), f"{output_path} is not a directory"
-    for ds in PREPACKAGED_SETS:
-        prepare_dataset(
-            client=client,
-            dataset=ds,
-            output_folder=output_path,
-        )
-
-    logger.info("All done")
-
-
-if __name__ == "__main__":
-    export_all_main()
