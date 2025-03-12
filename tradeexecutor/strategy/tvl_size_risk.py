@@ -26,6 +26,13 @@ class TVLMethod(enum.Enum):
     raw_chain_based = "raw_chain_based"
 
 
+class TVLReadError(Exception):
+    """Could not access live/historical TVL data for some reason.
+
+    See nested exception
+    """
+
+
 class BaseTVLSizeRiskModel(SizeRiskModel):
     """A trade sizer that uses % of TVL of the target pool as the cap.
 
@@ -207,11 +214,17 @@ class USDTVLSizeRiskModel(BaseTVLSizeRiskModel):
                 tvl = None
                 exc = e
 
-        assert tvl is not None, \
-            f"HistoricalUSDTVLSizeRiskModel.get_tvl(): Cannot read TVL value at {timestamp} for pair {pair}\n" \
-            f"Does the universe have liquidity data set up?\n" \
-            f"Pricing model is: {self.pricing_model}\n" \
-            f"Exception was: {exc}\n"
+        if tvl is None:
+            msg = \
+                f"HistoricalUSDTVLSizeRiskModel.get_tvl(): Cannot read TVL value at {timestamp} for pair {pair}\n" \
+                f"Does the universe have liquidity data set up?\n" \
+                f"Pricing model is: {self.pricing_model}\n" \
+                f"Exception was: {exc}\n"
+            # Handle legit none reads and broken reads
+            if exc is not None:
+                raise TVLReadError(msg) from exc
+            else:
+                raise AssertionError(msg)
         return tvl
 
 

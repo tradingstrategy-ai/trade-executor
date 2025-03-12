@@ -181,13 +181,6 @@ def create_trading_universe(
         forward_fill=True,  # We got very gappy data from low liquid DEX coins
     )
 
-    # Tag benchmark/routing pairs tokens so they can be separated from the rest of the tokens
-    # for the index construction.
-    strategy_universe.warm_up_data()
-    for pair_id in benchmark_pair_ids:
-        pair = strategy_universe.get_pair_by_id(pair_id)
-        pair.other_data["benchmark"] = False
-
     return strategy_universe
 
 
@@ -209,9 +202,10 @@ def test_min_tvl_trading_universe(
         (ChainId.base, "uniswap-v3", "WETH", "USDC", 0.0005)
     )
 
-    liquidity = universe.data_universe.liquidity.get_closest_liquidity(
+    liquidity, _  = universe.data_universe.liquidity.get_liquidity_with_tolerance(
         pair_id=pair.internal_id,
-        when=pd.Timestamp("2024-01-05")
+        when=pd.Timestamp("2024-01-05"),
+        tolerance=pd.Timedelta(days=1),
     )
     assert liquidity > 100_000
 

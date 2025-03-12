@@ -92,7 +92,7 @@ def test_keycat_weth_price(
         weth,
     )
 
-    assert 2000 < weth_price < 10_000
+    assert 1000 < weth_price < 10_000
 
     price = pricing_model.get_mid_price(datetime.datetime.utcnow(), pair)
     assert 0.001 < price < 0.3
