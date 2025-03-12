@@ -248,6 +248,7 @@ def prepare_dataset(
     exchange_slugs = dataset.exchanges
     tokensniffer_threshold = dataset.min_tokensniffer_score
     min_liquidity_threshold = dataset.min_tvl  #
+    max_tax = 0.06
 
     #
     # Set out trading pair universe
@@ -316,7 +317,19 @@ def prepare_dataset(
         len(risk_filtered_pairs_df),
     )
 
-    deduplicated_df = deduplicate_pairs_by_volume(pairs_df)
+    risk_filtered_pairs_df = risk_filtered_pairs_df[
+        (risk_filtered_pairs_df["buy_tax"] < max_tax) | (risk_filtered_pairs_df["buy_tax"].isnull())
+    ]
+    risk_filtered_pairs_df = risk_filtered_pairs_df[
+        (risk_filtered_pairs_df["sell_tax"] < max_tax) | (risk_filtered_pairs_df["sell_tax"].isnull())
+    ]
+    logger.info(
+        "After tax tax filter %f we have %d pairs",
+        max_tax,
+        len(risk_filtered_pairs_df),
+    )
+
+    deduplicated_df = deduplicate_pairs_by_volume(risk_filtered_pairs_df)
     pairs_df = pd.concat([deduplicated_df, supporting_pairs_df]).drop_duplicates(subset='pair_id', keep='first')
     logger.info("After pairs deduplication we have %d pairs", len(pairs_df))
 
@@ -357,6 +370,8 @@ def prepare_dataset(
     price_df["base"] = price_df["pair_id"].apply(lambda pair_id: pair_metadata[pair_id]["base_token_symbol"])
     price_df["quote"] = price_df["pair_id"].apply(lambda pair_id: pair_metadata[pair_id]["quote_token_symbol"])
     price_df["fee"] = price_df["pair_id"].apply(lambda pair_id: pair_metadata[pair_id]["fee"])
+    price_df["buy_tax"] = price_df["pair_id"].apply(lambda pair_id: pair_metadata[pair_id]["buy_tax"])
+    price_df["sell_tax"] = price_df["pair_id"].apply(lambda pair_id: pair_metadata[pair_id]["sell_tax"])
 
     # Merge price and TVL data.
     # For this we need to resample TVL to whatever timeframe the price happens to be in.
@@ -389,6 +404,8 @@ def prepare_dataset(
         "fee",
         "link",
         "pair_id",
+        "buy_tax",
+        "sell_tax",
     )
     merged_df = merged_df.reindex(columns=column_order)  # Sort columns in a specific order
 
@@ -514,13 +531,36 @@ PREPACKAGED_SETS = [
 
     BacktestDatasetDefinion(
         chain=ChainId.avalanche,
+        slug="avalanche-1d",
+        name="Avalanche C-Chain, LFG, 2021-2025, daily",
+        description=dedent_any("""
+        LFG, formerly known as Trader Joe, DEX daily trades.
+        
+        - Contains bull and bear market data with mixed set of tokens
+        """),
+        start=datetime.datetime(2021, 1, 1),
+        end=datetime.datetime(2025, 1, 1),
+        time_bucket=TimeBucket.d1,
+        min_tvl=250_000,
+        min_weekly_volume=250_000,
+        exchanges={"trader-joe"},
+        always_included_pairs=[
+            (ChainId.avalanche, "trader-joe", "WAVAX", "USDT.e", 0.0030),
+            (ChainId.avalanche, "trader-joe", "WETH.e", "WAVAX", 0.0030),  # Only trading since October
+
+        ],
+        reserve_token_address=AVAX_QUOTE_TOKEN,
+    ),
+
+    BacktestDatasetDefinion(
+        chain=ChainId.avalanche,
         slug="avalanche-1h",
         name="Avalanche C-Chain, LFG, 2021-2025, hourly",
         description=dedent_any("""
-    LFG, formerly known as Trader Joe, DEX hourly trades.
-
-    - Contains bull and bear market data with mixed set of tokens
-    """),
+        LFG, formerly known as Trader Joe, DEX hourly trades.
+    
+        - Contains bull and bear market data with mixed set of tokens
+        """),
         start=datetime.datetime(2021, 1, 1),
         end=datetime.datetime(2025, 1, 1),
         time_bucket=TimeBucket.h1,
@@ -532,7 +572,7 @@ PREPACKAGED_SETS = [
             (ChainId.avalanche, "trader-joe", "WETH.e", "WAVAX", 0.0030),  # Only trading since October
 
         ],
-        reserve_token_address=BNB_QUOTE_TOKEN,
-    )
+        reserve_token_address=AVAX_QUOTE_TOKEN,
+    ),
 ]
 
