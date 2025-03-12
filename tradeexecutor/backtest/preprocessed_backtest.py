@@ -11,6 +11,17 @@ To export / update all exported data:
 
     python tradeexecutor/backtest/preprocessed_backtest_exporter.py ~/exported
 
+Run using Docker:
+
+.. code-block:: shell
+
+    mkdir ~/exported
+    export TRADE_EXECUTOR_VERSION=...
+    docker run \
+        ghcr.io/tradingstrategy-ai/trade-executor:${TRADE_EXECUTOR_VERSION} \
+        -v ~/exported:/exported \
+        python /usr/tradeexecutor/backtest/preprocessed_backtest_exporter.py
+
 """
 import logging
 import os
@@ -159,6 +170,7 @@ def run_and_write_report(
     custom_css=DEFAULT_CUSTOM_CSS,
     custom_js=DEFAULT_CUSTOM_JS,
     show_code=False,
+    timeout=1800,
 ):
     with tempfile.TemporaryDirectory() as tmp_dir:
         tmp_dir = Path(tmp_dir)
@@ -193,7 +205,7 @@ def run_and_write_report(
         universe_size = os.path.getsize(universe_path)
         dataset_size = os.path.getsize(dataset_path)
         logger.info(f"Starting backtest {dataset.set.slug}, dataset notebook execution, dataset size is {dataset_size:,}b, universe size is {universe_size:,}b")
-        ep = ExecutePreprocessor(timeout=3600, kernel_name='python3')
+        ep = ExecutePreprocessor(timeout=timeout, kernel_name='python3')
 
         try:
             ep.preprocess(nb, {'metadata': {'path': '.'}})
