@@ -56,6 +56,7 @@ def export_all_main():
             client=client,
             dataset=ds,
             output_folder=output_path,
+            write_csv=False,
         )
 
     logger.info("All done in %s", datetime.datetime.utcnow() - started)
