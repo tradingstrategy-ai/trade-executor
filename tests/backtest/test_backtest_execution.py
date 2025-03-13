@@ -15,6 +15,7 @@ from tradeexecutor.strategy.reserve_currency import ReserveCurrency
 from tradeexecutor.strategy.universe_model import UniverseOptions
 from tradeexecutor.testing.backtest_trader import BacktestTrader
 from tradingstrategy.chain import ChainId
+from tradingstrategy.pair import PandasPairUniverse
 from tradingstrategy.timebucket import TimeBucket
 
 from tradeexecutor.backtest.backtest_execution import BacktestExecution
@@ -28,7 +29,7 @@ from tradeexecutor.ethereum.routing_data import get_pancake_default_routing_para
 from tradeexecutor.state.state import State
 from tradeexecutor.strategy.execution_context import ExecutionMode, ExecutionContext
 from tradeexecutor.strategy.trading_strategy_universe import load_all_data, TradingStrategyUniverse, \
-    translate_trading_pair
+    translate_trading_pair, load_partial_data
 from tradeexecutor.utils.timer import timed_task
 
 
@@ -60,27 +61,52 @@ def universe(request, persistent_test_client, execution_context) -> TradingStrat
     client = persistent_test_client
 
     # Time bucket for our candles
-    candle_time_bucket = TimeBucket.d1
+    # candle_time_bucket = TimeBucket.d1
 
     # Which chain we are trading
     chain_id = ChainId.bsc
 
     # Which exchange we are trading on.
-    exchange_slug = "pancakeswap-v2"
+    # exchange_slug = "pancakeswap-v2"
 
     # Which trading pair we are trading
-    trading_pair = ("WBNB", "BUSD")
+    # trading_pair = ("WBNB", "BUSD")
+
+    exchange_universe = client.fetch_exchange_universe()
+    all_pairs_df = client.fetch_pair_universe().to_pandas()
+
+    pair_universe = PandasPairUniverse(
+        all_pairs_df,
+        exchange_universe=exchange_universe,
+        build_index=False,
+    )
+
+    pairs = [
+        (chain_id, "pancakeswap-v2", "WBNB", "BUSD")
+    ]
 
     # Load all datas we can get for our candle time bucket
-    dataset = load_all_data(client, candle_time_bucket, execution_context, UniverseOptions())
+    # dataset = load_all_data(client, candle_time_bucket, execution_context, UniverseOptions())
+
+    universe_options = UniverseOptions(
+        start_at=datetime.datetime(2021, 1, 1),
+        end_at=datetime.datetime(2022, 1, 1),
+    )
+
+    dataset = load_partial_data(
+        client=client,
+        time_bucket=TimeBucket.d1,
+        pairs=pairs,
+        execution_context=execution_context,
+        universe_options=universe_options,
+        liquidity_time_bucket=TimeBucket.d1,
+        liquidity=True,
+    )
 
     # Filter down to the single pair we are interested in
-    universe = TradingStrategyUniverse.create_single_pair_universe(
+    universe = TradingStrategyUniverse.create_from_dataset(
         dataset,
-        chain_id,
-        exchange_slug,
-        trading_pair[0],
-        trading_pair[1],
+        reserve_asset="0xe9e7cea3dedca5984780bafc599bd69add087d56"  # BUSD
     )
 
     return universe
@@ -152,12 +178,12 @@ def state(strategy_universe, deposit_syncer: BacktestSyncer) -> State:
 
 
 def test_get_historical_price(
-        logger: logging.Logger,
-        state: State,
-        wallet: SimulatedWallet,
-        strategy_universe,
-        pricing_model: BacktestPricing,
-        routing_model: BacktestRoutingModel,
+    logger: logging.Logger,
+    state: State,
+    wallet: SimulatedWallet,
+    strategy_universe,
+    pricing_model: BacktestPricing,
+    routing_model: BacktestRoutingModel,
     ):
     """Retrieve historical buy and sell price."""
 
