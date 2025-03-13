@@ -130,8 +130,8 @@ class SavedDataset:
             "Min TVL": f"{self.set.min_tvl:,} USD",
             "OHLCV timeframe": self.set.time_bucket.value,
             "OHLCV rows": f"{self.row_count:,}",
-            "Parquet size": f"{self.parquet_file_size:,} bytes",
-            "CSV size": f"{self.csv_file_size:,} bytes",
+            "Parquet size": f"{self.parquet_file_size if self.parquet_file_size else 0:,} bytes",
+            "CSV size": f"{self.csv_file_size if self.csv_file_size else 0:,} bytes",
             "Job duration": {self.duration},
         }
 

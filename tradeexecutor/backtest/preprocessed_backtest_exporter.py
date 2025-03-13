@@ -1,11 +1,6 @@
 """Prebuilt backtest dataset generation entry point.
 
-To export / update all exported data:
-
-.. code-block:: shell
-
-    python tradeexecutor/backtest/preprocessed_backtest_exporter.py ~/exported
-
+For usage see :py:mod:`preprocessed_backtest`.
 """
 import datetime
 import logging
