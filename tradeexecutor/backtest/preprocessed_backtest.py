@@ -308,7 +308,7 @@ def prepare_dataset(
     assert min_liquidity_threshold is not None, "Dataset creation only by min_tvl supported for now"
 
     tvl_df = client.fetch_tvl(
-        mode="min_tvl",
+        mode="min_tvl_low",
         bucket=liquidity_time_bucket,
         start_time=dataset.start,
         end_time=dataset.end,
