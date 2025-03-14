@@ -257,6 +257,7 @@ def prepare_dataset(
     write_parquet=True,
     write_report=True,
     verbose=True,
+    allow_missing_sniffer_score=True,
 ) -> SavedDataset:
     """Prepare a predefined backtesting dataset.
 
@@ -335,6 +336,7 @@ def prepare_dataset(
         risk_filtered_pairs_df = filter_by_token_sniffer_score(
             pairs_df,
             risk_score=tokensniffer_threshold,
+            drop_tokens_with_missing_data=allow_missing_sniffer_score,
         )
 
     else:
@@ -685,8 +687,8 @@ PREPACKAGED_SETS = [
         start=datetime.datetime(2020, 1, 1),
         end=datetime.datetime(2025, 3, 1),
         time_bucket=TimeBucket.d1,
-        min_tvl=4_000_000,
-        min_weekly_volume=100_000,
+        min_tvl=3_000_000,
+        min_weekly_volume=200_000,
         exchanges={"uniswap-v2", "uniswap-v3", "sushi"},
         always_included_pairs=[
             (ChainId.ethereum, "uniswap-v2", "WETH", "USDC", 0.0030),
@@ -708,8 +710,8 @@ PREPACKAGED_SETS = [
         start=datetime.datetime(2020, 1, 1),
         end=datetime.datetime(2025, 3, 1),
         time_bucket=TimeBucket.h1,
-        min_tvl=4_000_000,
-        min_weekly_volume=100_000,
+        min_tvl=3_000_000,
+        min_weekly_volume=200_000,
         exchanges={"uniswap-v2", "uniswap-v3", "sushi"},
         always_included_pairs=[
             (ChainId.ethereum, "uniswap-v2", "WETH", "USDC", 0.0030),
