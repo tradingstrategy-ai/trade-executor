@@ -7,7 +7,6 @@ from typing import Tuple, Dict, List, Iterable
 
 from eth_defi.aave_v3.rates import SECONDS_PER_YEAR_INT
 from eth_defi.provider.broken_provider import get_almost_latest_block_number
-from tradeexecutor.strategy.execution_context import ExecutionContext
 from tradingstrategy.utils.time import ZERO_TIMEDELTA
 
 from tradeexecutor.state.balance_update import BalanceUpdate, BalanceUpdatePositionType, BalanceUpdateCause

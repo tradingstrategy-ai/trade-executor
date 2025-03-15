@@ -1,4 +1,5 @@
 """Interest tracking data structures."""
+import logging
 import datetime
 from dataclasses import dataclass, field
 from decimal import Decimal
@@ -9,6 +10,9 @@ from dataclasses_json import dataclass_json
 from tradeexecutor.state.identifier import AssetIdentifier
 from tradeexecutor.state.types import BlockNumber
 from tradeexecutor.utils.accuracy import ZERO_DECIMAL, QUANTITY_EPSILON, INTEREST_QUANTITY_EPSILON
+
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass_json
@@ -122,7 +126,20 @@ class Interest:
 
         :param delta:
             Positive: increase amount, negative decrease amount.
+
+        :param epsilon:
+            Consider
         """
+
+        if delta < 0 and abs(delta) < epsilon:
+            logger.warning(
+                "Ignoring negative change in the interest amount. We are: %s, delta %d, epsilon",
+                self,
+                delta,
+                epsilon,
+            )
+            delta = 0
+
         self.last_token_amount += delta
 
         if abs(self.last_token_amount) < epsilon:
