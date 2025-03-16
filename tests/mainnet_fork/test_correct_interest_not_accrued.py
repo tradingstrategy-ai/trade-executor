@@ -63,6 +63,7 @@ def environment(
     anvil: AnvilLaunch,
     state_file: Path,
     strategy_file: Path,
+    persistent_test_client,
     ) -> dict:
     """Passed to init and start commands as environment variables"""
     # Set up the configuration for the live trader
@@ -83,6 +84,7 @@ def environment(
         "VAULT_PAYMENT_FORWARDER_ADDRESS": "0x7424DaceaC1F64c266B85f9C43A0e0851EdB3234",
         "VAULT_DEPLOYMENT_BLOCK_NUMBER": "20362579",
         "SKIP_SAVE": "true",
+        "CACHE_PATH": str(persistent_test_client.transport.cache_path),  # Use unit test cache
     }
     return environment
 

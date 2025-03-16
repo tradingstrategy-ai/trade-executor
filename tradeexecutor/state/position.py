@@ -1088,7 +1088,7 @@ class TradingPosition(GenericPosition):
             case TradingPairKind.credit_supply:
                 if trade_type != TradeType.repair:
                     assert reserve, "You must give reserve"
-                assert quantity, "You must give quantity"
+                assert quantity is not None, "You must give quantity"
                 planned_reserve = reserve
                 planned_quantity = quantity
 
@@ -1195,6 +1195,11 @@ class TradingPosition(GenericPosition):
 
         Perform additional check for token amount dust caused by rounding errors.
         """
+
+        if self.closed_at:
+            # Already closed
+            return False
+
         epsilon = get_close_epsilon_for_pair(self.pair)
         quantity = self.get_quantity()
         # VELVET HACK: Quantity can go to below zero, because te last trade

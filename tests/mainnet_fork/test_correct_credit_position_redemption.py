@@ -57,6 +57,7 @@ def strategy_file() -> Path:
 
 @pytest.fixture()
 def environment(
+    persistent_test_client,
     anvil: AnvilLaunch,
     state_file: Path,
     strategy_file: Path,
@@ -79,6 +80,7 @@ def environment(
         "VAULT_DEPLOYMENT_BLOCK_NUMBER": "57311900",
         "SKIP_SAVE": "false",  # Need to save between runs
         "SKIP_INTEREST": "true",  # This must be enabled so that correct-accounts do not crash in early intrest distribution phase
+        "CACHE_PATH": str(persistent_test_client.transport.cache_path),  # Use unit test cache
     }
     return environment
 

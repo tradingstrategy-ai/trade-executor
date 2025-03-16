@@ -176,11 +176,14 @@ def close_position_with_empty_trade(portfolio: Portfolio, p: TradingPosition) ->
 
     """
 
-    assert p.pair.is_spot(), f"Only spot supported for now"
+    assert p.pair.is_spot() or p.pair.is_credit_supply(), f"Only spot / credit position supported for now"
+
+    # TODO: Cannot honour this in some cases?
+    # assert len(p.trades) == 1, f"Can only fix one failed trade, got: {p}:\n{p.trades}"
 
     opening_trade = p.get_first_trade()
 
-    assert opening_trade.is_success(), f"Cannot make a repairingn trade, because opening trade {t} was not success"
+    assert opening_trade.is_success(), f"Cannot make a repairing trade, because opening trade {t} was not success"
 
     # We copy any price structure from opening trade, though it should be meaningfull
     position, counter_trade, created = portfolio.create_trade(
@@ -224,6 +227,11 @@ def close_position_with_empty_trade(portfolio: Portfolio, p: TradingPosition) ->
     c.add_note(f"Repairing to close the position, full position size gone missing")
 
     portfolio.close_position(position, datetime.datetime.utcnow())
+
+    # The position is now cleared
+    assert p.is_closed()
+    assert not p.can_be_closed()
+    assert p.position_id in portfolio.closed_positions
 
     return c
 

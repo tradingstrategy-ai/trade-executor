@@ -60,6 +60,7 @@ def strategy_file() -> Path:
 
 @pytest.fixture()
 def environment(
+    persistent_test_client,
     anvil: AnvilLaunch,
     state_file: Path,
     strategy_file: Path,
@@ -83,6 +84,7 @@ def environment(
         "VAULT_PAYMENT_FORWARDER_ADDRESS": "0x7424DaceaC1F64c266B85f9C43A0e0851EdB3234",
         "VAULT_DEPLOYMENT_BLOCK_NUMBER": "20362579",
         "SKIP_SAVE": "true",
+        "CACHE_PATH": str(persistent_test_client.transport.cache_path),  # Use unit test cache
     }
     return environment
 
