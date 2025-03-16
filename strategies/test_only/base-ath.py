@@ -1,10 +1,10 @@
-"""Base memecoin  basket.
+"""Base ATH strategy, version 2.0.
 
 Check universe and indicators:
 
     trade-executor \
         check-universe \
-        --strategy-file=strategy/base-ath.py \
+        --strategy-file=strategy/base-ath-v2.py \
         --trading-strategy-api-key=$TRADING_STRATEGY_API_KEY
 
 Run backtest:
@@ -25,6 +25,7 @@ Perform test trade:
 
 """
 import datetime
+import logging
 
 import pandas as pd
 import pandas_ta
@@ -58,12 +59,21 @@ from tradingstrategy.transport.cache import OHLCVCandleType
 from tradingstrategy.utils.forward_fill import forward_fill
 from tradingstrategy.utils.groupeduniverse import resample_candles
 from tradingstrategy.utils.liquidity_filter import prefilter_pairs_with_tvl
+
+from tradingstrategy.utils.token_filter import add_base_quote_address_columns
+from tradingstrategy.utils.token_filter import filter_for_exchange_slugs
+from tradingstrategy.utils.token_filter import filter_pairs_default
 from tradingstrategy.utils.token_extra_data import load_token_metadata
-from tradingstrategy.utils.token_filter import deduplicate_pairs_by_volume, filter_by_token_sniffer_score, filter_for_quote_tokens, add_base_quote_address_columns, filter_for_stablecoins, StablecoinFilteringMode, filter_for_derivatives
+from tradingstrategy.utils.token_filter import filter_by_token_sniffer_score
+from tradingstrategy.utils.token_filter import deduplicate_pairs_by_volume
+
 from tradingstrategy.lending import LendingProtocolType
 
 from tradeexecutor.state.identifier import TradingPairIdentifier
 from tradeexecutor.utils.dedent import dedent_any
+
+
+logger = logging.getLogger(__name__)
 
 #
 # Strategy parametrers
@@ -114,9 +124,9 @@ class Parameters:
     rolling_volatility_bars = pd.Timedelta("7d") // candle_time_bucket.to_timedelta()
     tvl_ewm_span = 7 * 24  # Smooth TVL inclusin criteria
     min_volume = 25_000  # USD
-    min_tvl_prefilter = 1_250_000  # USD - to reduce number of trading pairs for backtest-purposes only
-    min_tvl = 1_250_000  # USD - set to same as above if you want to avoid any survivorship bias
-    min_token_sniffer_score = 75  # 20 = AAVE
+    min_tvl_prefilter = 250_000  # USD - to reduce number of trading pairs for backtest-purposes only
+    min_tvl = 250_000  # USD - set to same as above if you want to avoid any survivorship bias
+    min_token_sniffer_score = 20  # 20 = AAVE
 
     #
     # Yield on cash
@@ -130,14 +140,14 @@ class Parameters:
     # Limiting factor: Aave v3 on Base starts at the end of DEC 2023
     #
     backtest_start = datetime.datetime(2024, 1, 1)
-    backtest_end = datetime.datetime(2025, 2, 4)
+    backtest_end = datetime.datetime(2025, 3, 12)
     initial_cash = 100_000
 
     #
     # Live only
     #
     routing = TradeRouting.default
-    required_history_period = datetime.timedelta(days=2 * 14 + 1)
+    required_history_period = datetime.timedelta(days=daily_rsi_bars + 2)
     slippage_tolerance = 0.0060  # 0.6%
     assummed_liquidity_when_data_missings = 10_000
 
@@ -157,6 +167,7 @@ LENDING_RESERVES = [
 PREFERRED_STABLECOIN = USDC_NATIVE_TOKEN[Parameters.chain_id.value].lower()
 
 VOL_PAIR = (ChainId.base, "uniswap-v3", "WETH", "USDC", 0.0005)
+
 
 
 def create_trading_universe(
@@ -180,85 +191,86 @@ def create_trading_universe(
 
     chain_id = Parameters.chain_id
 
-    exchange_universe = client.fetch_exchange_universe()
-    pairs_df = client.fetch_pair_universe().to_pandas()
+    logger.info(f"Preparing trading universe on chain {chain_id.get_name()}")
 
-    # Drop other chains to make the dataset smaller to work with
-    chain_mask = pairs_df["chain_id"] == Parameters.chain_id.value
-    pairs_df = pairs_df[chain_mask]
+    exchange_universe = client.fetch_exchange_universe()
+    targeted_exchanges = [exchange_universe.get_by_chain_and_slug(chain_id, slug) for slug in Parameters.exchanges]
 
     # Pull out our benchmark pairs ids.
     # We need to construct pair universe object for the symbolic lookup.
-    pair_universe = PandasPairUniverse(pairs_df, exchange_universe=exchange_universe)
-    benchmark_pair_ids = [pair_universe.get_pair_by_human_description(desc).pair_id for desc in SUPPORTING_PAIRS]
-
-    pairs_df = add_base_quote_address_columns(pairs_df)
-    category_df = pairs_df
-    assert "base_token_address" in category_df.columns, "base/quote token address data must be retrofitted to the DataFrame before calling load_tokensniffer_metadata(). Call add_base_quote_address_columns() first."
-    assert "base_token_symbol" in category_df.columns, "base/quote token symbol data must be retrofitted to the DataFrame before calling load_tokensniffer_metadata(). Call add_base_quote_address_columns() first."
-    assert "quote_token_address" in category_df.columns, "base/quote token address data must be retrofitted to the DataFrame before calling load_tokensniffer_metadata(). Call add_base_quote_address_columns() first."
-    assert "quote_token_symbol" in category_df.columns, "base/quote token symbol data must be retrofitted to the DataFrame before calling load_tokensniffer_metadata(). Call add_base_quote_address_columns() first."
-
-    category_df = filter_for_stablecoins(category_df, StablecoinFilteringMode.only_volatile_pairs)
-    category_df = filter_for_derivatives(category_df)
-
-    allowed_quotes = {
-        PREFERRED_STABLECOIN,
-        WRAPPED_NATIVE_TOKEN[chain_id.value].lower(),
-    }
-
-    category_df = filter_for_quote_tokens(category_df, allowed_quotes)
-    category_pair_ids = category_df["pair_id"]
-    our_pair_ids = list(category_pair_ids) + benchmark_pair_ids
-
-    # From these pair ids, see what trading pairs we have on Ethereum mainnet
-    pairs_df = pairs_df[pairs_df["pair_id"].isin(our_pair_ids)]
-
-    # Limit by DEX
-    pairs_df = pairs_df[pairs_df["exchange_slug"].isin(Parameters.exchanges)]
-
-    print(f"After exchange and quote token filter we have {len(pairs_df)} pairs")
+    # TODO: PandasPairUniverse(buidl_index=True) - speed this up by skipping index building
+    all_pairs_df = client.fetch_pair_universe().to_pandas()
+    all_pairs_df = filter_for_exchange_slugs(all_pairs_df, Parameters.exchanges)
+    logger.info("Creating universe for benchmark pair extraction")
+    pair_universe = PandasPairUniverse(
+        all_pairs_df,
+        exchange_universe=exchange_universe,
+        build_index=False,
+    )
+    logger.info(f"Exchanges {Parameters.exchanges} have total {len(all_pairs_df):,} pairs on chain {Parameters.chain_id.get_name()}")
 
     # Get TVL data for prefilteirng
     if execution_context.live_trading:
         # For live trading, we take TVL data from ~around the start of the strategy until today
         tvl_time_bucket = TimeBucket.d1
-        pairs_df = prefilter_pairs_with_tvl(
-            client,
-            pairs_df,
-            chain_id=Parameters.chain_id,
-            min_tvl=Parameters.min_tvl_prefilter,
-            start=datetime.datetime(2024, 2, 1),
-            end=tvl_time_bucket.floor(pd.Timestamp(datetime.datetime.utcnow())),
-        )
+        start = datetime.datetime(2024, 2, 1)
+        end = tvl_time_bucket.floor(pd.Timestamp(datetime.datetime.utcnow() - tvl_time_bucket.to_timedelta()))
     else:
-        # For backtesting period, we use all available TVL data for all pairs
-        pairs_df = prefilter_pairs_with_tvl(
-            client,
-            pairs_df,
-            chain_id=Parameters.chain_id,
-            min_tvl=Parameters.min_tvl_prefilter,
-            start=Parameters.backtest_start,
-            end=Parameters.backtest_end,
-        )
+        start = Parameters.backtest_start
+        end = Parameters.backtest_end
 
-    print(f"After TVL filter {Parameters.min_tvl_prefilter:,} USD we have {len(pairs_df)} tradeable pairs")
+    #
+    # Do exchange and TVL prefilter pass for the trading universe
+    #
+    min_tvl = Parameters.min_tvl_prefilter
+    # logging.getLogger().setLevel(logging.INFO)
+    liquidity_time_bucket = TimeBucket.d1
+    tvl_df = client.fetch_tvl(
+        mode="min_tvl",
+        bucket=liquidity_time_bucket,
+        start_time=start,
+        end_time=end,
+        exchange_ids=[exc.exchange_id for exc in targeted_exchanges],
+        min_tvl=min_tvl,
+    )
+    # logging.getLogger().setLevel(logging.WARNING)
+    logger.info(f"Fetch TVL, we got {len(tvl_df['pair_id'].unique())} pairs with TVL data for min TVL criteria {min_tvl}")
+
+    tvl_filtered_pair_ids = tvl_df["pair_id"].unique()
+    benchmark_pair_ids = [pair_universe.get_pair_by_human_description(desc).pair_id for desc in SUPPORTING_PAIRS]
+    needed_pair_ids = set(benchmark_pair_ids) | set(tvl_filtered_pair_ids)
+    pairs_df = all_pairs_df[all_pairs_df["pair_id"].isin(needed_pair_ids)]
+    logger.info(f"After TVL prefilter to {Parameters.min_tvl_prefilter:,} in {Parameters.backtest_start} - {Parameters.backtest_end}, we have {len(pairs_df)} trading pairs")
+    pairs_df = add_base_quote_address_columns(pairs_df)
 
     # Never deduplicate supporting pars
     supporting_pairs_df = pairs_df[pairs_df["pair_id"].isin(benchmark_pair_ids)]
 
+    allowed_quotes = {
+        PREFERRED_STABLECOIN,
+        WRAPPED_NATIVE_TOKEN[chain_id.value].lower(),
+    }
+    filtered_pairs_df = filter_pairs_default(
+        pairs_df,
+        good_quote_token_addresses=allowed_quotes,
+        verbose_print=print,
+    )
+
     # Deduplicate trading pairs - Choose the best pair with the best volume
-    deduplicated_df = deduplicate_pairs_by_volume(pairs_df)
+    deduplicated_df = deduplicate_pairs_by_volume(filtered_pairs_df)
+
+    # Get our reference pairs back to the dataset
     pairs_df = pd.concat([deduplicated_df, supporting_pairs_df]).drop_duplicates(subset='pair_id', keep='first')
-    print(f"After deduplication we have {len(pairs_df)} pairs")
+    logger.info(f"After deduplication we have {len(pairs_df)} pairs")
 
     # Add benchmark pairs back to the dataset
     pairs_df = pd.concat([pairs_df, supporting_pairs_df]).drop_duplicates(subset='pair_id', keep='first')
 
     # Load metadata
-    print("Loading metadata")
-    pairs_df = add_base_quote_address_columns(pairs_df)
+    logger.info("Loading metadata")
+    # logging.getLogger().setLevel(logging.INFO)
     pairs_df = load_token_metadata(pairs_df, client)
+    # logging.getLogger().setLevel(logging.WARNING)
 
     # Scam filter using TokenSniffer
     risk_filtered_pairs_df = filter_by_token_sniffer_score(
@@ -274,31 +286,31 @@ def create_trading_universe(
         assert len(first_dropped_data) == 1, f"Got {len(first_dropped_data)} entries: {first_dropped_data}"
         raise AssertionError(f"Benchmark trading pair dropped in filter_by_token_sniffer_score() check: {first_dropped_data.iloc[0]}")
     pairs_df = risk_filtered_pairs_df.sort_values("volume", ascending=False)
-    print(f"After TokenSniffer risk filter we have {len(pairs_df)} pairs")
+    logger.info(f"After TokenSniffer risk filter we have {len(pairs_df)} pairs")
 
     uni_v2 = pairs_df.loc[pairs_df["exchange_slug"] == "uniswap-v2"]
     uni_v3 = pairs_df.loc[pairs_df["exchange_slug"] == "uniswap-v3"]
     other_dex = pairs_df.loc[~((pairs_df["exchange_slug"] != "uniswap-v3") | (pairs_df["exchange_slug"] != "uniswap-v2"))]
-    print(f"Pairs on Uniswap v2: {len(uni_v2)}, Uniswap v3: {len(uni_v3)}, other DEX: {len(other_dex)}")
+    logger.info(f"Pairs on Uniswap v2: {len(uni_v2)}, Uniswap v3: {len(uni_v3)}, other DEX: {len(other_dex)}")
     dataset = load_partial_data(
         client=client,
         time_bucket=Parameters.candle_time_bucket,
         pairs=pairs_df,
         execution_context=execution_context,
         universe_options=universe_options,
-        liquidity=True,
-        liquidity_time_bucket=TimeBucket.d1,
-        liquidity_query_type=OHLCVCandleType.tvl_v2,
+        liquidity_time_bucket=liquidity_time_bucket,
+        preloaded_tvl_df=tvl_df,
         lending_reserves=LENDING_RESERVES,
     )
 
     reserve_asset = PREFERRED_STABLECOIN
 
-    print("Creating trading universe")
+    logger.info("Creating trading universe")
     strategy_universe = TradingStrategyUniverse.create_from_dataset(
         dataset,
         reserve_asset=reserve_asset,
         forward_fill=True,  # We got very gappy data from low liquid DEX coins
+        forward_fill_until=timestamp,
     )
 
     # Tag benchmark/routing pairs tokens so they can be separated from the rest of the tokens
@@ -308,7 +320,7 @@ def create_trading_universe(
         pair = strategy_universe.get_pair_by_id(pair_id)
         pair.other_data["benchmark"] = False
 
-    print(f"Total {strategy_universe.get_pair_count()}")
+    logger.info(f"Total {strategy_universe.get_pair_count()}")
 
     return strategy_universe
 
@@ -1055,12 +1067,71 @@ tags = {StrategyTag.beta}
 
 name = "All-time high on Base"
 
-short_description = "Momentum strategy based on all-time high price indicators"
+short_description = "Momentum strategy buying tokens breaching their all-time highs"
 
 icon = ""
 
 long_description = """
 # Strategy description
 
-TODO
+This is a [portfolio construction](https://tradingstrategy.ai/glossary/portfolio-construction) and 
+[momentum](https://tradingstrategy.ai/glossary/momentum) strategy trading tokens on the Base blockchain.
+
+## Benefits
+
+- Get directional exposure to exciting small-cap onchain token markets 
+- No need to pick tokens yourself; the strategy will buy all of them
+- Small cap memecoins are often uncorrelated with the rest of cryptocurrency markets
+
+## Trading rules summary 
+
+Trading rules are designed so that the strategy captures the upward momentum of the markets while trying to stay away from the markets and minimise [drawdowns](https://tradingstrategy.ai/glossary/maximum-drawdown).
+
+- Rebalance every four hours
+- Buy tokens that are above their local all-time highs 
+- Dynamically weight between opened positions
+- Trade on Uniswap v2 and v3 on Base
+- Have minimum TVL and volume criteria to be included in the trading universe
+- Use TokenSniffer as a token quality source to filter scams
+- Adjust position size based on lit Uniswap liquidity ([TVL](https://tradingstrategy.ai/glossary/total-value-locked-tvl)), to prevent taking oversized positions on limited liquidity tokens
+- Earn interest for uninvested for cash by depositing it in [Aave lending protocol](https://tradingstrategy.ai/glossary/aave)
+
+The strategy is fully open: the source code is available. For further details, see the strategy source code.
+
+## Expected performance
+
+The strategy reflects the performance of small-cap onchain DEX markets, with limited downside.
+
+See [backtesting](./backtesting) page for historical estimated performance.
+Past performance is no guarantee of future results. 
+Due to the short history of recently set-up traded onchain markets, there is no backtesting data about market downturns. To check for overfitting, the same trading rules were tested across different markets with longer histories, with varying but not significantly degraded performance.
+
+## Risks
+
+**This strategy is ultra-high-risk**. Only allocate small amounts of capital you may lose.
+Before investing large amounts of capital, speak with the strategy developers.
+
+This strategy, paired with onchain execution, is the first in the world. Because of the novelty, multiple risks are involved. Consider it beta-quality software.
+
+**Trading risk**: Small-cap tokens traded are highly volatile, 
+may include rug pulls and other questionable activities.
+Despite the strategy of automated filtering for tokens, some of the tokens may go to zero. Onchain markets may and many traded tokens go to zero, and are likely to do so at some point.
+There is little liquidity for these tokens, and trading costs are high, so they may change abruptly.
+
+**Technical risk**: The strategy relies on ERC-7540: Asynchronous ERC-4626 Tokenized Vaults standard.
+This standard is new and not yet time-proven.  The onchain trade execution contains unaudited smart contracts. There are centralised price oracles. The redemption process relies on a centralised valuation committee. 
+
+The strategy includes risk mitigations like:
+- Use third-party security services to check the reputation of traded tokens
+- Strategy limits position sizes based on the available lit liquidity
+- Strategy limits position sizes based on the overall maximum % of the portfolio
+- DAO and/or security committee holding multisignature keys can take manual actions in the case of unexpected issues:
+  The strategy can be halted and manually wind up
+
+The technical risks will be mitigated in the future by working with other protocols,
+by increasing the quality of onchain trading venues, data and decentralisation.
+
+## Further information
+
+- Any questions are welcome in [the Discord community chat](https://tradingstrategy.ai/community)
 """
