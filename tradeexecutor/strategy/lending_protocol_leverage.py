@@ -309,7 +309,7 @@ def reset_credit_supply_loan(
 
     assert position.pair.is_credit_supply()
     assert block_number
-    assert quantity
+    assert quantity is not None  # Quantity can be zero in repair trades
     loan = position.loan
     assert loan.borrowed is None, "Should be collateral only"
     loan.collateral.reset(quantity)  # Reset core quantity

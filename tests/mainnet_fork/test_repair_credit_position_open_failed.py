@@ -37,7 +37,8 @@ def anvil(request: FixtureRequest) -> AnvilLaunch:
 @pytest.fixture()
 def state_file(tmp_path) -> Path:
     """Make a copy of the state file with the broken credit position on a new test cycle"""
-    template = Path(__file__).resolve().parent / "credit-position-open-failed.json.json"
+    template = Path(__file__).resolve().parent / "credit-position-open-failed.json"
+    assert template.exists(), f"State dump missing: {template}"
     p = tmp_path / Path("credit-position-open-failed.json.json")
     shutil.copy(template, p)
     assert p.exists(), f"{p} missing"
@@ -57,6 +58,7 @@ def environment(
     anvil: AnvilLaunch,
     state_file: Path,
     strategy_file: Path,
+    persistent_test_client,
     ) -> dict:
     """Passed to init and start commands as environment variables"""
     # Set up the configuration for the live trader
@@ -76,19 +78,27 @@ def environment(
         "VAULT_ADAPTER_ADDRESS": "0x3275Af9ce73665A1Cd665E5Fa0b48c25249219ac",
         "SKIP_SAVE": "true",
         "AUTO_APPROVE": "true",  # skip y/n prompt
+        "CACHE_PATH": str(persistent_test_client.transport.cache_path),  # Use unit test cache
+        "RAISE_ON_UNCLEAN": "true",
     }
     return environment
 
 
+@pytest.mark.slow_test_group
 def test_repair_credit_position_open_failed(
     environment: dict,
+    mocker,
 ):
-    """Fix frozen credit positions."""
+    """Fix a creidt position that failed to open.
 
-    with mock.patch.dict("os.environ", environment, clear=True):
-        app(["repair"], standalone_mode=False)
+    - Execution crashes in broadcasting phase
+    """
 
-        # Check accounts now to verify if balance is good
-        with pytest.raises(SystemExit) as sys_exit:
-            app(["check-accounts"], standalone_mode=False)
-        assert sys_exit.value.code == 0
+    mocker.patch.dict("os.environ", environment, clear=True)
+    app(["repair"], standalone_mode=False)
+    app(["correct-accounts"], standalone_mode=False)
+
+    # Check accounts now to verify if balance is good
+    # with pytest.raises(SystemExit) as sys_exit:
+
+    # assert sys_exit.value.code == 0

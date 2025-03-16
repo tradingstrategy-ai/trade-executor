@@ -124,9 +124,9 @@ class Parameters:
     rolling_volatility_bars = pd.Timedelta("7d") // candle_time_bucket.to_timedelta()
     tvl_ewm_span = 7 * 24  # Smooth TVL inclusin criteria
     min_volume = 25_000  # USD
-    min_tvl_prefilter = 250_000  # USD - to reduce number of trading pairs for backtest-purposes only
-    min_tvl = 250_000  # USD - set to same as above if you want to avoid any survivorship bias
-    min_token_sniffer_score = 20  # 20 = AAVE
+    min_tvl_prefilter = 1_250_000  # USD - to reduce number of trading pairs for backtest-purposes only
+    min_tvl = 1_250_000  # USD - set to same as above if you want to avoid any survivorship bias
+    min_token_sniffer_score = 90  # 20 = AAVE
 
     #
     # Yield on cash
@@ -140,14 +140,14 @@ class Parameters:
     # Limiting factor: Aave v3 on Base starts at the end of DEC 2023
     #
     backtest_start = datetime.datetime(2024, 1, 1)
-    backtest_end = datetime.datetime(2025, 3, 12)
+    backtest_end = datetime.datetime(2024, 1, 12)
     initial_cash = 100_000
 
     #
     # Live only
     #
     routing = TradeRouting.default
-    required_history_period = datetime.timedelta(days=daily_rsi_bars + 2)
+    required_history_period = datetime.timedelta(days=14)
     slippage_tolerance = 0.0060  # 0.6%
     assummed_liquidity_when_data_missings = 10_000
 
