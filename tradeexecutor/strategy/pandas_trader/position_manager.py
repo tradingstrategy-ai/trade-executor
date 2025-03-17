@@ -11,6 +11,8 @@ import cachetools
 import pandas as pd
 
 from eth_defi.token_analysis.blacklist import is_blacklisted_address
+from tradeexecutor.analysis.position import display_positions
+from tradeexecutor.cli.commands.show_positions import show_positions
 from tradingstrategy.candle import CandleSampleUnavailable
 from tradingstrategy.pair import DEXPair, HumanReadableTradingPairDescription
 from tradingstrategy.universe import Universe
@@ -2793,3 +2795,22 @@ def explain_portfolio_contents(portfolio: Portfolio) -> str:
     for pos in portfolio.open_positions.values():
         print(f"   {pos.pair.get_ticker()}, opened:{pos.opened_at} value:${pos.get_value()}", file=buf)
     return buf.getvalue()
+
+
+def _check_double_credit_positions(portfolio: Portfolio):
+    """Check we do not accidentally have double positions on the same credit assert.
+
+    :raise AssertionError:
+        Internal logic failure managing the credit position
+    """
+
+    existing_credit_positions = set()
+    for pos in portfolio.open_positions.values():
+        if pos.is_credit_supply():
+            if pos.pair in existing_credit_positions:
+                df = display_positions(portfolio.open_positions.values())
+                raise AssertionError(f"Double credit position detected for: {pos.pair}:\n{df}")
+
+            existing_credit_positions.add(pos.pair)
+
+
