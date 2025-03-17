@@ -30,7 +30,7 @@ ZERO_DECIMAL = Decimal(0)
 QUANTITY_EPSILON = Decimal(10**-18)
 
 #: Handle interest rounding errors
-INTEREST_QUANTITY_EPSILON = Decimal(10**-5)
+INTEREST_QUANTITY_EPSILON = Decimal("0.002")
 
 
 #: Dust quantity of collateral resulted from our calculations that can be considered zero
