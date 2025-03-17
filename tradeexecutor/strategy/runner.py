@@ -842,15 +842,27 @@ class StrategyRunner(abc.ABC):
                     logger.info("After approval we have %d trades left", len(approved_trades))
                     debug_details["approved_trades"] = approved_trades
 
+                with self.timed_task_context_manager("sort_trades"):
+                    # Order trades to a natural order, so we have always the correct cash in hand.
+                    # Any credit market withdraw will be executed first, then sells, then buys and Aave deposits last.
+                    sorted_approved_trades = prepare_sorted_trades(approved_trades)
+
+                    if approved_trades != sorted_approved_trades:
+                        logger.info(
+                            "Cycle %d, trades re-sorted to to: %s",
+                            cycle or 0,
+                            sorted_approved_trades,
+                        )
+
                 # Log output
                 if self.is_progress_report_needed():
-                    self.report_before_execution(strategy_cycle_timestamp, universe, state, approved_trades, debug_details)
+                    self.report_before_execution(strategy_cycle_timestamp, universe, state, sorted_approved_trades, debug_details)
 
                 # Unit tests can turn this flag to make it easier to see why trades fail
                 check_balances = debug_details.get("check_balances", False)
 
                 # Physically execute the trades
-                with self.timed_task_context_manager("execute_trades", trade_count=len(approved_trades), check_balances=check_balances):
+                with self.timed_task_context_manager("execute_trades", trade_count=len(sorted_approved_trades), check_balances=check_balances):
 
                     # Make sure our hot wallet nonce is up to date
                     self.sync_model.resync_nonce()
@@ -863,21 +875,10 @@ class StrategyRunner(abc.ABC):
                     # node issues, or gas fee spikes
                     if self.execution_context.mode.is_live_trading():
                         if store is not None:
-                            logger.info("Syncing state before teh trade execution")
+                            logger.info("Syncing state file before the trade execution")
                             store.sync(state)
 
                     try:
-
-                        # Order trades to a natural order, so we have always the correct cash in hand.
-                        # Any credit market withdraw will be executed first, then sells, then buys and Aave deposits last.
-                        sorted_approved_trades = sorted(approved_trades, key=lambda t: t.get_execution_sort_position())
-                        if approved_trades != sorted_approved_trades:
-                            logger.info(
-                                "Cycle %d, trades resolved to: %s",
-                                cycle or 0,
-                                sorted_approved_trades,
-                            )
-
                         self.execution_model.execute_trades(
                             strategy_cycle_timestamp,
                             state,
@@ -1200,4 +1201,18 @@ def post_process_trade_decision(
                     )
                 t.price_impact_tolerance = max_price_impact
 
+
     return trades
+
+
+def prepare_sorted_trades(approved_trades: list[TradeExecution]) -> list[TradeExecution]:
+    """Set correct execution order of trades.
+
+    - Take trades in any order
+    - Sells must go before buys, so that we have always enough cash in hand
+    """
+    sorted_approved_trades = sorted(approved_trades, key=lambda t: t.get_execution_sort_position())
+    # Store sort_index for later debugging
+    for idx, trade in enumerate(sorted_approved_trades):
+        trade.sort_index = idx
+    return sorted_approved_trades

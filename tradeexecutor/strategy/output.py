@@ -59,6 +59,11 @@ def format_trade(portfolio: Portfolio, trade: TradeExecution) -> List[str]:
             f"Opens a new position"
         ]
 
+    if trade.sort_index:
+        lines += [
+            f"Execution index: {trade.sort_index}"
+        ]
+
     if link:
         lines.append(f"Trading pair link: {link}")
 

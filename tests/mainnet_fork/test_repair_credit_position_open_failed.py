@@ -98,6 +98,8 @@ def test_repair_credit_position_open_failed(
     app(["repair"], standalone_mode=False)
     app(["correct-accounts"], standalone_mode=False)
 
+
+
     # Check accounts now to verify if balance is good
     # with pytest.raises(SystemExit) as sys_exit:
 

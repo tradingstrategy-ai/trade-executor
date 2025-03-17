@@ -652,6 +652,12 @@ class TradeExecution:
     #:
     expired_at: Optional[datetime.datetime] = None
 
+    #: After the trade has been assigned to the execution, track
+    #: it's execution sort index here.
+    #:
+    #:
+    sort_index: Optional[int] = None
+
     def __repr__(self) -> str:
         """Python debug string representation.
 

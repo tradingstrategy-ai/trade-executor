@@ -766,6 +766,12 @@ class State:
                 assert executed_reserve > 0, f"Executed reserve must be positive for sell, got amount:{executed_amount}, reserve:{executed_reserve}"
                 assert executed_amount < 0, f"Executed amount must be negative for sell, got amount:{executed_amount}, reserve:{executed_reserve}"
 
+        logger.info(
+            "Marking trade success.\nTrade: %s\nPosition: %s",
+            trade,
+            position,
+        )
+
         trade.mark_success(
             executed_at,
             executed_price,
