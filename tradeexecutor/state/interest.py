@@ -131,6 +131,7 @@ class Interest:
             Consider
         """
 
+
         if delta < 0 and abs(delta) < epsilon:
             logger.warning(
                 "Ignoring negative change in the interest amount. We are: %s, delta %s, epsilon",

@@ -30,6 +30,11 @@ ZERO_DECIMAL = Decimal(0)
 QUANTITY_EPSILON = Decimal(10**-18)
 
 #: Handle interest rounding errors
+#:
+#:
+#: base-ath  | AssertionError: last_token_amount cannot go negative. Got -0.001185 on <Interest, current principal + interest -0.001185, current tracked interest gains 0.660038>, delta was -20289.270319, epsilon was 0.000010000000000000000818030539140313095458623138256371021270751953125
+#:
+#: When closing position, there is -0.001185 error with aBalUSDC
 INTEREST_QUANTITY_EPSILON = Decimal("0.002")
 
 
