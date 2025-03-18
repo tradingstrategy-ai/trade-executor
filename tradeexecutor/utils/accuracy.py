@@ -39,7 +39,11 @@ INTEREST_QUANTITY_EPSILON = Decimal("0.002")
 
 
 #: Dust quantity of collateral resulted from our calculations that can be considered zero
-COLLATERAL_EPSILON = Decimal(10**-5)
+#:
+#: base-ath  |     assert self.last_token_amount >= 0, f"last_token_amount cannot go negative. Got {self.last_token_amount} on {self}, delta was {delta}, epsilon was {epsilon}"
+#: base-ath  |            ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+#: base-ath  | AssertionError: last_token_amount cannot go negative. Got -0.001249 on <Interest, current principal + interest -0.001249, current tracked interest gains 0.646329>, delta was -21071.402453, epsilon was 0.000010000000000000000818030539140313095458623138256371021270751953125
+COLLATERAL_EPSILON = Decimal("0.002")
 
 
 #: When closing a position
