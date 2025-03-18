@@ -47,15 +47,28 @@ def calculate_asset_weights(
 
     # Need to look up assets for every position
     position_asset_map = {p.position_id: p.pair.base.token_symbol for p in state.portfolio.get_all_positions()}
+    position_kind_map = {p.position_id: p.pair.kind.value for p in state.portfolio.get_all_positions()}
 
     # Add position values
     position_rows = [{
         "timestamp": ps.calculated_at,
         "asset": position_asset_map[position_id],
         "value": ps.value,
+        "kind": position_kind_map[position_id]
     } for position_id, position_stats in state.stats.positions.items() for ps in position_stats]
 
     df = pd.DataFrame(reserve_rows + position_rows)
+
+    # For credit positions, we might have close and poen new position in the same
+    # timestamp and need to handle this specially.
+
+    # Split the DataFrame into two parts
+    mask = df["kind"] == "credit_supply"
+    df_to_dedup = df[mask]  # rows that need deduplication
+    df_keep = df[~mask]  # rows to keep as-is
+    df_deduped = df_to_dedup.groupby(['timestamp', 'asset']).agg({'value': 'sum'}).reset_index()
+    df = pd.concat([df_deduped, df_keep])
+
     df['timestamp'] = pd.to_datetime(df['timestamp'], unit='s')
     df = df.sort_values(by='timestamp')
 
@@ -63,11 +76,12 @@ def calculate_asset_weights(
     series = df["value"]
 
     # For each timestamp, we may have multiple entries of the same asset
-    # - in this case take the last one per asset.
+    # - in this case take the sum the assets
     # These may cause e.g. by simulated deposit events.
     # 2021-06-01  USDC     1.000000e+06
     #             WBTC     9.840778e+05
     #             USDC     1.000000e+04
+    # import ipdb ; ipdb.set_trace()
     series_deduped = series[~series.index.duplicated(keep='last')]
 
     # Get out all Aave aUSDC positions
@@ -365,3 +379,38 @@ def calculate_weights_statistics(
     df = df.set_index("Name")
     df["Value"] = df["Value"].apply(lambda x: "{:,.2f}".format(x))
     return df
+
+
+def render_weight_series_table(weights_series: pd.Series) -> pd.DataFrame:
+    """Render the weight series in human readable format.
+
+    - Each row is a timestamp
+    - All assets are columns, representing USD allocation of the asset for the timestamp
+
+    Example:
+
+    .. code-block:: python
+
+        from tradeexecutor.analysis.weights import calculate_asset_weights, visualise_weights, render_weight_series_table
+
+        weights_series = calculate_asset_weights(state)
+
+        with pd.option_context('display.max_rows', None):
+            df = render_weight_series_table(weights_series)
+            display(df)
+
+    """
+
+    assert isinstance(weights_series, pd.Series)
+    weight_df = weights_series.unstack()
+    filtered_df = weight_df.dropna(axis=1, how='all')
+
+    # Get the index of first non-NA value for each column
+    first_non_na = filtered_df.notna().idxmax()
+
+    # Sort columns based on first non-NA index
+    sorted_columns = first_non_na.sort_values().index
+
+    # Reorder DataFrame
+    reordered_df = filtered_df[sorted_columns]
+    return reordered_df
