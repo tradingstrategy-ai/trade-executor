@@ -10,6 +10,7 @@ from decimal import Decimal
 
 from tradeexecutor.state.identifier import TradingPairIdentifier, AssetIdentifier
 from tradeexecutor.state.types import Percent
+from tradeexecutor.utils.accuracy import COLLATERAL_EPSILON
 
 #: The absolute number of tokens we consider the value to be zero
 #:
@@ -61,6 +62,20 @@ def get_close_epsilon_for_pair(pair: TradingPairIdentifier) -> Decimal:
         Maximum amount of units we consider "zero".
 
     """
+
+    # Credit positions we have larger tolerance
+    # │ 10 │          │ aBasUSDC-USDC │ 2025-03-18 12:00 │          │ -0.0012        │ Initial supply
+    # Relea                      │            │          │                  │
+    # │ 10 │ T, B     │ ‎ ‎ ‎ ‎ ‎ ┗        │ 2025-03-18 12:00 │          │ 20,282.0378    │ Initial supply       │ 40         │ 1.000000 │ 2025-03-18 12:09 │
+    # │ 10 │ T, S     │ ‎ ‎ ‎ ‎ ‎ ┗        │ 2025-03-18 16:00 │          │ -20,282.3650   │ Releasing all funds  │ 42         │ 1.000000 │ 2025-03-18 16:09 │
+    # │ 11 │          │ aBasUSDC-USDC │ 2025-03-18 16:00 │          │ 20,172.9335    │ Redepositing remaini │            │          │                  │
+    # │ 11 │ T, B     │ ‎ ‎ ‎ ‎ ‎ ┗        │ 2025-03-18 16:00 │          │ 20,172.9335    │ Redepositing remaini │ 43         │ 1.000000 │ 2025-03-18 16:09 │
+    # ╰────┴──────────┴───────────────┴──────────────────┴──────────┴────────────────┴──────────────────────┴────────────┴──────────┴──────────────────╯
+    #
+    # Frozen positions
+    if pair.is_credit_supply():
+        return COLLATERAL_EPSILON
+
     return get_dust_epsilon_for_asset(pair.base)
 
 

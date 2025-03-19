@@ -116,11 +116,26 @@ def setup_charting_and_output(
         pd.set_option('display.max_rows', max_rows)
 
 
-def set_large_plotly_chart_font(title_font_size = 30, font_size = 24, line_width = 3):
-    """Increae the default Plotly chart font sizes so that charts are readable on other mediums like mobile and PowerPoint."""
+def set_large_plotly_chart_font(
+    title_font_size = 30,
+    font_size = 24,
+    line_width = 3,
+    base_template="plotly",
+):
+    """Increae the default Plotly chart font sizes so that charts are readable on other mediums like mobile and PowerPoint.
+
+    Usage:
+
+    .. code-block:: python
+
+        from tradeexecutor.utils.notebook import set_large_plotly_chart_font
+
+        set_large_plotly_chart_font()
+
+    """
 
     # Update the default template
-    pio.templates["custom"] = pio.templates["plotly"]
+    pio.templates["custom"] = pio.templates[base_template]
     pio.templates["custom"]["layout"]["font"]["size"] = font_size  # Set the default font size
     pio.templates["custom"]["layout"]["legend"]["font"]["size"] = font_size  # Set the legend font size
     pio.templates["custom"]["layout"]["legend"]["font"]["size"] = font_size  # Set the legend font size

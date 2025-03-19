@@ -809,6 +809,17 @@ class Portfolio:
 
         See also :py:meth:`TradingPosition.can_be_closed`.
 
+        Manually marking position closed from the console (this only marks closed, does not sell anything):
+
+        .. code-block:: python
+
+            p = state.portfolio.open_positions[10]
+            state.portfolio.close_position(p, datetime.datetime.utcnow())
+            print("Left open")
+            for p in state.portfolio.open_positions.values():
+                print(p)
+            store.sync(state)
+
         :param position:
             Trading position where the trades and balance updates quantity equals to zero
 

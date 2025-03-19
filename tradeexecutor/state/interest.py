@@ -1,15 +1,13 @@
 """Interest tracking data structures."""
 import logging
 import datetime
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from decimal import Decimal
-from typing import Dict
 
 from dataclasses_json import dataclass_json
 
-from tradeexecutor.state.identifier import AssetIdentifier
 from tradeexecutor.state.types import BlockNumber
-from tradeexecutor.utils.accuracy import ZERO_DECIMAL, QUANTITY_EPSILON, INTEREST_QUANTITY_EPSILON
+from tradeexecutor.utils.accuracy import ZERO_DECIMAL, INTEREST_QUANTITY_EPSILON
 
 
 logger = logging.getLogger(__name__)

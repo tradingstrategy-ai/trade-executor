@@ -1204,9 +1204,11 @@ class TradingPosition(GenericPosition):
         quantity = self.get_quantity()
         # VELVET HACK: Quantity can go to below zero, because te last trade
         # got in last minute deposit and executed more than we thought we have
-        if self.is_spot():
+        # aBasUSDC HACK: Quantity can also go below zero due to rounding/epsilon
+        if self.is_spot() or self.is_credit_supply():
             if quantity <= 0:
                 return True
+
         return abs(quantity) <= epsilon
 
     def get_last_updated_at(self) -> datetime.datetime:

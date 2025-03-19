@@ -1343,7 +1343,7 @@ def _calculate_and_save_indicator_result(
         else:
             diagnostics_text = f"{data}"
 
-    logger.info(
+    logger.debug(
         "Indicator calculated: %s, pair: %s, data: %s",
         key.definition.name,
         key.pair.get_ticker() if key.pair else "<universe>",
