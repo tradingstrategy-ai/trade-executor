@@ -299,6 +299,14 @@ def prepare_interest_distribution(
 
             side, tracker = p.loan.get_tracked_asset(asset)
 
+            assert tracker.quantity >= 0, f"Negative interest data: {tracker}"
+            if tracker.quantity == 0:
+                logger.warning(
+                    "Got zero interest rate entry: %s %s",
+                    side,
+                    tracker,
+                )
+
             assert side is not None, f"Got confused with asset {asset} on position {p}"
 
             if side == LoanSide.collateral:
