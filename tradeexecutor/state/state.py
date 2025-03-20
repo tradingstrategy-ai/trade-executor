@@ -856,6 +856,16 @@ class State:
             del self.portfolio.pending_positions[position.position_id]
             position.pending_since_at = None
 
+        quantity = position.get_quantity()
+        if quantity < 0:
+            logger.info(
+                "Position quantity zero or negative: %s: %s. Can be closed: %s, closed at: %s",
+                position,
+                quantity,
+                position.can_be_closed(),
+                position.closed_at,
+            )
+
         if position.can_be_closed():
 
             logger.info("Marking position to closed: %s", position)
