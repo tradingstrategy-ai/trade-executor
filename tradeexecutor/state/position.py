@@ -1202,6 +1202,10 @@ class TradingPosition(GenericPosition):
 
         epsilon = get_close_epsilon_for_pair(self.pair)
         quantity = self.get_quantity()
+
+        if self.is_credit_supply():
+            logger.info("can_be_closed(): credit supply debug. Quantity: %s, epsilon: %s", quantity, epsilon)
+
         # VELVET HACK: Quantity can go to below zero, because te last trade
         # got in last minute deposit and executed more than we thought we have
         # aBasUSDC HACK: Quantity can also go below zero due to rounding/epsilon

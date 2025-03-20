@@ -813,7 +813,7 @@ class Portfolio:
 
         .. code-block:: python
 
-            p = state.portfolio.open_positions[10]
+            p = state.portfolio.open_positions[11]
             state.portfolio.close_position(p, datetime.datetime.utcnow())
             print("Left open")
             for p in state.portfolio.open_positions.values():
