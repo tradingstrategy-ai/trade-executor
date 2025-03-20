@@ -43,6 +43,7 @@ def calculate_asset_weights(
         "timestamp": ps.calculated_at,
         "asset": reserve_asset_symbol,
         "value": ps.free_cash,
+        "kind": "reserve"
     } for ps in state.stats.portfolio]
 
     # Need to look up assets for every position
@@ -62,7 +63,6 @@ def calculate_asset_weights(
     # For credit positions, we might have close and poen new position in the same
     # timestamp and need to handle this specially.
 
-    # Split the DataFrame into two parts
     mask = df["kind"] == "credit_supply"
     df_to_dedup = df[mask]  # rows that need deduplication
     df_keep = df[~mask]  # rows to keep as-is

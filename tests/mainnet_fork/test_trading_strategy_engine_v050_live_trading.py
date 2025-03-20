@@ -43,7 +43,18 @@ pytestmark = pytest.mark.skipif(os.environ.get("JSON_RPC_POLYGON") is None, reas
 @pytest.fixture(scope="module")
 def logger(request):
     """Setup test logger."""
-    return setup_pytest_logging(request)
+    logger = setup_pytest_logging(request)
+    # Remove exceess log output when debugging with logging.INFO
+    logging.getLogger("tradeexecutor.strategy.pandas_trader").setLevel(logging.WARNING)
+    logging.getLogger("tradeexecutor.strategy.valuation").setLevel(logging.WARNING)
+    logging.getLogger("tradeexecutor.strategy.valuation_update").setLevel(logging.WARNING)
+    logging.getLogger("tradeexecutor.strategy.runner").setLevel(logging.WARNING)
+    logging.getLogger("tradeexecutor.visual").setLevel(logging.WARNING)
+    logging.getLogger("tradeexecutor.cli.loop").setLevel(logging.WARNING)
+    logging.getLogger("tradeexecutor.statistics").setLevel(logging.WARNING)
+    logging.getLogger("tradeexecutor.ethereum.wallet").setLevel(logging.WARNING)
+    return logger
+
 
 
 @pytest.fixture
@@ -85,8 +96,8 @@ def anvil_polygon_chain_fork_rpc(logger, large_polygon_usdc_holder, large_matic_
     try:
         yield launch.json_rpc_url
     finally:
-        # launch.close(log_level=logging.INFO)
-        launch.close()
+        launch.close(log_level=logging.WARNING)
+        # launch.close()
 
 
 @pytest.fixture
