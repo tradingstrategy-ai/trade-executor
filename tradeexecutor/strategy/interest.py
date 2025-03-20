@@ -302,10 +302,12 @@ def prepare_interest_distribution(
             assert tracker.quantity >= 0, f"Negative interest data: {tracker}"
             if tracker.quantity == 0:
                 logger.warning(
-                    "Got zero interest rate entry: %s %s",
+                    "Got zero interest rate entry: %s %s: %s",
                     side,
                     tracker,
+                    tracker.quantity,
                 )
+                continue
 
             assert side is not None, f"Got confused with asset {asset} on position {p}"
 
@@ -331,7 +333,7 @@ def prepare_interest_distribution(
                 price=price,
             )
 
-            assert entry.quantity > 0, f"Zero-amount entry in the interest distribution: {p}: {tracker}"
+            assert entry.quantity > 0, f"Zero-amount entry in the interest distribution: {p}: {tracker}: {entry}"
 
             entries.append(entry)
             assets.add(asset)

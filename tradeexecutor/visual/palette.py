@@ -55,7 +55,7 @@ def hacker_crt_green_palette(num_colors):
     return palette
 
 
-def format_blog_post_figure(fig, show_legend=True):
+def format_blog_post_figure(fig, show_legend=True, font_color="#888"):
     """Better formatting for blog post images from charts.
 
     Example:
@@ -111,7 +111,8 @@ def format_blog_post_figure(fig, show_legend=True):
             itemwidth=40,  # Adjust the multiplier as needed
             title_text="",
             font=dict(
-                size=30  # Adjust this value to make legend text bigger/smaller
+                size=30,  # Adjust this value to make legend text bigger/smaller
+                color=font_color,
             ),
         )
     )
@@ -124,7 +125,8 @@ def format_blog_post_figure(fig, show_legend=True):
             nticks=4,
             # Increase font size (default is usually 12)
             tickfont=dict(
-                size=30  # Adjust this value to make font bigger/smaller
+                size=30, # Adjust this value to make font bigger/smaller
+                color=font_color,
             ),
             anchor='free',
             side='bottom',
@@ -141,6 +143,7 @@ def format_blog_post_figure(fig, show_legend=True):
             # ticktext=['0%', '50%', '100%'],
             tickfont=dict(
                 size=30,
+                color=font_color,
             ),
             tickprefix='$',
             showgrid=False,
