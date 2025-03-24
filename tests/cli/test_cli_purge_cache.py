@@ -13,7 +13,7 @@ def test_cli_purge_token_cache(mocker, persistent_test_client):
     client = persistent_test_client
 
     environment = {
-        "CACHE_PATH": client.transport.get_abs_cache_path(),
+        "CACHE_PATH": str(client.transport.get_abs_cache_path()),
         "PURGE_TYPE": "missing_tokensniffer_data",
         "PRINT_TOKENS": "all",
         "UNIT_TESTING": "true",
