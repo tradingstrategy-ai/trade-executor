@@ -48,7 +48,11 @@ from ...strategy.strategy_cycle_trigger import StrategyCycleTrigger
 from ...strategy.strategy_module import read_strategy_module, StrategyModuleInformation
 from ...strategy.universe_model import UniverseOptions
 from ...utils.timer import timed_task
-from ...webhook.server import create_webhook_server
+
+try:
+    from ...webhook.server import create_webhook_server
+except ImportError as e:
+    create_webhook_server = None
 
 
 logger = logging.getLogger(__name__)
@@ -411,6 +415,8 @@ def start(
 
         # Create our webhook server
         if http_enabled:
+
+            assert create_webhook_server is not None, "Could not load tradeexecutor.webhook.server: check all extra packages have been installed"
 
             server = create_webhook_server(
                 http_host,

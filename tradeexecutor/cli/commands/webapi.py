@@ -16,7 +16,11 @@ from queue import Queue
 from typing import Optional
 
 import typer
-import waitress
+try:
+    import waitress
+    from ...webhook.server import create_pyramid_app
+except ImportError:
+    waitress = None
 
 from . import shared_options
 from .app import app
@@ -28,7 +32,6 @@ from ...strategy.execution_model import AssetManagementMode
 from ...strategy.run_state import RunState
 from ...strategy.strategy_module import read_strategy_module, StrategyModuleInformation
 from ...statistics.in_memory_statistics import refresh_run_state
-from ...webhook.server import create_pyramid_app
 from ...strategy.execution_context import ExecutionContext, ExecutionMode
 from ...strategy.cycle import CycleDuration
 
