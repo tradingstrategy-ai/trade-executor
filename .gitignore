@@ -61,3 +61,6 @@ tests/mainnet_fork/*backup*json
 
 # Lagoon initial prototype files
 scripts/lagoon/*.env
+
+# No idea what's this
+sample_dataset
