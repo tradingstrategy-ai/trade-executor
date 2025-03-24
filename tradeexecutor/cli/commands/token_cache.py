@@ -52,7 +52,8 @@ def token_cache(
 
     table = [[key, value] for key, value in summary.items()]
 
-    print(f"Cache path: {client.transport.get_abs_cache_path()}")
+    path = client.transport.get_abs_cache_path() / 'token-metadata'
+    print(f"Cache path: {path}")
     print("Token metadata cache contents:")
     print(tabulate(table, headers=["Key", "Value"], tablefmt="fancy_grid"))
 
