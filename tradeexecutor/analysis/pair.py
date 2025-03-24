@@ -156,8 +156,8 @@ def display_strategy_universe(
         if show_tax:
             buy_tax = pair.get_buy_tax()
             sell_tax = pair.get_sell_tax()
-            buy_tax_fmt = f"{buy_tax:.2f}" if buy_tax else "-"
-            sell_tax_fmt = f"{sell_tax:.2f}" if sell_tax else "-"
+            buy_tax_fmt = f"{buy_tax:.1%}" if buy_tax is not None else "-"
+            sell_tax_fmt = f"{sell_tax:.1%}" if sell_tax is not None else "-"
             data["tax"] = f"{buy_tax_fmt} / {sell_tax_fmt}"
 
         pairs.append(data)

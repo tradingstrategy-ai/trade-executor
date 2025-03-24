@@ -746,6 +746,13 @@ class TradingPairIdentifier:
         underlying = self.underlying_spot_pair or self
         return underlying.base.get_tags()
 
+    def can_have_tax(self) -> bool:
+        """Can this token pair have a tax.
+
+        Token tax is usually only applicable to Uniswap v2 pairs.
+        """
+        return self.exchange_name != "uniswap-v3"
+
     def get_buy_tax(self) -> Percent | None:
         """Get buy tax associated with this token if any.
 
@@ -753,6 +760,11 @@ class TradingPairIdentifier:
 
             This property should be per trading pair, but all other DEX systems use per token tax values.
         """
+
+        if not self.can_have_tax():
+            # Shortcut for untaxable pairs
+            return 0
+
         return self.base.get_buy_tax()
 
     def get_sell_tax(self) -> Percent | None:
@@ -763,6 +775,11 @@ class TradingPairIdentifier:
             This property should be per trading pair, but all other DEX systems use per token tax values.
 
         """
+
+        if not self.can_have_tax():
+            # Shortcut for untaxable pairs
+            return 0
+
         return self.base.get_sell_tax()
 
 

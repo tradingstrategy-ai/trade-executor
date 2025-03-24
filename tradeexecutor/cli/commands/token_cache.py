@@ -85,5 +85,6 @@ def token_cache(
             for e in purge_entries:
                 print(f"Deleting {e.path}")
                 e.purge()
+            print(f"Purged {len(purge_entries)} tokens from cache")
     else:
         print("Nothing to purge")
