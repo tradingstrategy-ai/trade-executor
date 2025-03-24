@@ -70,6 +70,14 @@ trading-strategy-qstrader = {version="^0.5",  optional = true}
 #
 quantstats = {version="^0.0.62"}
 
+# File ~/Library/Caches/pypoetry/virtualenvs/trade-executor-kk5ZLC7w-py3.11/lib/python3.11/site-packages/quantstats/utils.py:300, in _in_notebook(matplotlib_inline)
+#    297 if shell == "ZMQInteractiveShell":
+#    298     # Jupyter notebook or qtconsole
+#    299     if matplotlib_inline:
+#--> 300         get_ipython().magic("matplotlib inline")
+ipython = "<9"
+lxml = "^5.3"
+
 # Needed for Plotly Express scatter(trendline="ols)
 # https://www.statsmodels.org/stable/index.html
 statsmodels = {version="^0.14.0"}
@@ -111,6 +119,8 @@ pytest-timeout = "^2.3.1"
 # https://github.com/arynyklas/telegram_bot_logger/pull/1
 telegram-bot-logger = {git = "https://github.com/tradingstrategy-ai/telegram_bot_logger.git", branch="main", optional = true}
 openapi-core = "0.19.1"
+
+
 
 
 [tool.poetry.extras]
