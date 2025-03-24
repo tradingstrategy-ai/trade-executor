@@ -11,6 +11,7 @@ from tradingstrategy.client import Client
 from tradingstrategy.transport.token_cache import read_token_cache, calculate_token_cache_summary
 from . import shared_options
 from .app import app
+from .shared_options import required_option
 
 logger = logging.getLogger(__name__)
 
@@ -26,6 +27,7 @@ def token_cache(
     cache_path: Optional[Path] = shared_options.cache_path,
     purge: PurgeType = Option("none", envvar="PURGE_TYPE", help="Which cache entries to purge"),
     unit_testing: bool = shared_options.unit_testing,
+    trading_strategy_api_key: str = required_option(shared_options.trading_strategy_api_key),
 ):
     """Display and purge token cache entries.
 
@@ -33,7 +35,7 @@ def token_cache(
     """
 
     client = Client.create_live_client(
-        api_key=None,
+        api_key=trading_strategy_api_key,
         cache_path=cache_path,  # Set via environment variable for unit testing
         settings_path=None,  # No interactive settings file with live execution
     )
@@ -44,6 +46,7 @@ def token_cache(
 
     table = [[key, value] for key, value in summary.items()]
 
+    print(f"Cache path: {client.transport.get_abs_cache_path()}")
     print("Token metadata cache contents:")
     print(tabulate(table, headers=["Key", "Value"], tablefmt="fancy_grid"))
 
