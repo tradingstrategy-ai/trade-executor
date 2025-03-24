@@ -15,6 +15,7 @@ def test_cli_purge_token_cache(mocker, persistent_test_client):
     environment = {
         "CACHE_PATH": client.transport.get_abs_cache_path(),
         "PURGE_TYPE": "missing_tokensniffer_data",
+        "PRINT_TOKENS": "all",
         "UNIT_TESTING": "true",
         "TRADING_STRATEGY_API_KEY": os.environ["TRADING_STRATEGY_API_KEY"],
     }
@@ -25,6 +26,7 @@ def test_cli_purge_token_cache(mocker, persistent_test_client):
     with redirect_stdout(f):
         app(["token-cache"], standalone_mode=False)
 
+    # print(f.getvalue())
     assert "count" in f.getvalue()
 
 

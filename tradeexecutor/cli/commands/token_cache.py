@@ -8,7 +8,7 @@ from tabulate import tabulate
 from typer import Option
 
 from tradingstrategy.client import Client
-from tradingstrategy.transport.token_cache import read_token_cache, calculate_token_cache_summary
+from tradingstrategy.transport.token_cache import read_token_cache, calculate_token_cache_summary, display_token_metadata
 from . import shared_options
 from .app import app
 from .shared_options import required_option
@@ -22,10 +22,16 @@ class PurgeType(enum.Enum):
     missing_tokensniffer_data = "missing_tokensniffer_data"
 
 
+class PrintTokenOption(enum.Enum):
+    none = "none"
+    all = "all"
+
+
 @app.command()
 def token_cache(
     cache_path: Optional[Path] = shared_options.cache_path,
     purge: PurgeType = Option("none", envvar="PURGE_TYPE", help="Which cache entries to purge"),
+    print_option: PrintTokenOption = Option("none", envvar="PRINT_TOKENS", help="Which token metadata to print"),
     unit_testing: bool = shared_options.unit_testing,
     trading_strategy_api_key: str = required_option(shared_options.trading_strategy_api_key),
 ):
@@ -59,6 +65,15 @@ def token_cache(
             purge_entries = cached_entries
         case _:
             raise NotImplementedError(f"PurgeType {purge} not implemented")
+
+    if print_option == PrintTokenOption.all:
+        # Print tokens
+        if len(cached_entries) == 0:
+            print("No data")
+        else:
+            print("Cache contents:")
+        data = display_token_metadata(cached_entries)
+        print(tabulate(data, headers="keys", tablefmt="fancy_grid"))
 
     if purge_entries:
         if not unit_testing:

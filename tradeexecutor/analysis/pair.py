@@ -18,6 +18,7 @@ def display_strategy_universe(
     show_tvl=True,
     show_volume=True,
     show_price=True,
+    show_tax=True,
     now_ = None,
     tolerance=pd.Timedelta("90D"),  # Put in any number, fix later to ignore lookup errors
     sort_key="id",
@@ -151,6 +152,13 @@ def display_strategy_universe(
 
             data["tvl"] = tvl
             data["tvl_at"] = tvl_at
+
+        if show_tax:
+            buy_tax = pair.get_buy_tax()
+            sell_tax = pair.get_sell_tax()
+            buy_tax_fmt = f"{buy_tax:.2f}" if buy_tax else "-"
+            sell_tax_fmt = f"{sell_tax:.2f}" if sell_tax else "-"
+            data["tax"] = f"{buy_tax_fmt} / {sell_tax_fmt}"
 
         pairs.append(data)
 
