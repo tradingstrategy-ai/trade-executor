@@ -12,6 +12,7 @@ from tradingstrategy.transport.token_cache import read_token_cache, calculate_to
 from . import shared_options
 from .app import app
 from .shared_options import required_option
+from ..bootstrap import prepare_cache
 
 logger = logging.getLogger(__name__)
 
@@ -29,6 +30,7 @@ class PrintTokenOption(enum.Enum):
 
 @app.command()
 def token_cache(
+    id: str = shared_options.id,
     cache_path: Optional[Path] = shared_options.cache_path,
     purge: PurgeType = Option("none", envvar="PURGE_TYPE", help="Which cache entries to purge"),
     print_option: PrintTokenOption = Option("none", envvar="PRINT_TOKENS", help="Which token metadata to print"),
@@ -39,6 +41,8 @@ def token_cache(
 
     - Token metadata cache contains data from TokenSniffer and CoinGecko APIs that may be stale
     """
+
+    cache_path = prepare_cache(id, cache_path, unit_testing)
 
     client = Client.create_live_client(
         api_key=trading_strategy_api_key,

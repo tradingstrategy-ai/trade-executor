@@ -287,9 +287,9 @@ def create_state_store(state_file: Path, simulate: bool = False) -> JSONFileStor
 
 
 def prepare_cache(
-        executor_id: str,
-        cache_path: Optional[Path],
-        unit_testing=False,
+    executor_id: str,
+    cache_path: Optional[Path],
+    unit_testing=False,
 ) -> Path:
     """Prepare a cache location for this trade-executor.
     
