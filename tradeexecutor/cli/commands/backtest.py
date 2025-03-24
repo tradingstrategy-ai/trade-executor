@@ -12,57 +12,23 @@ To read generated cprofile reports:
 
 """
 
-import datetime
 import logging
 import os
-import time
-from decimal import Decimal
 from pathlib import Path
-from queue import Queue
 from typing import Optional
 
-import pandas as pd
-import typer
-
-from eth_defi.gas import GasPriceMethod
-from tradingstrategy.chain import ChainId
-from tradingstrategy.client import Client
-from tradingstrategy.testing.uniswap_v2_mock_client import UniswapV2MockClient
-from tradingstrategy.timebucket import TimeBucket
 from typer import Option
 
 from . import shared_options
-from .app import app, TRADE_EXECUTOR_VERSION
+from .app import app
 from .shared_options import required_option
-from ..bootstrap import prepare_executor_id, prepare_cache, create_web3_config, create_state_store, \
-    create_execution_and_sync_model, create_metadata, create_approval_model, create_client
-from ..log import setup_logging, setup_discord_logging, setup_logstash_logging, setup_file_logging, \
-    setup_custom_log_levels
-from ..loop import ExecutionLoop
+from ..bootstrap import prepare_executor_id, prepare_cache
+from ..log import setup_logging
 from ..result import display_backtesting_results
-from ..version_info import VersionInfo
-from ..watchdog import stop_watchdog
-from ...analysis.pair import display_strategy_universe
 from ...backtest.backtest_module import run_backtest_for_module
-from ...backtest.backtest_runner import setup_backtest, run_backtest, setup_backtest_for_universe
 from ...backtest.tearsheet import export_backtest_report
-from ...ethereum.enzyme.vault import EnzymeVaultSyncModel
-from ...ethereum.uniswap_v2.uniswap_v2_routing import UniswapV2Routing
 from ...state.state import State
-from ...state.store import NoneStore, JSONFileStore
-from ...strategy.approval import ApprovalType
-from ...strategy.bootstrap import import_strategy_file
-from ...strategy.cycle import CycleDuration
-from ...strategy.default_routing_options import TradeRouting
-from ...strategy.execution_context import ExecutionContext, ExecutionMode, standalone_backtest_execution_context
-from ...strategy.execution_model import AssetManagementMode
-from ...strategy.pandas_trader.indicator import IndicatorStorage, DiskIndicatorStorage
-from ...strategy.routing import RoutingModel
-from ...strategy.run_state import RunState
-from ...strategy.strategy_cycle_trigger import StrategyCycleTrigger
-from ...strategy.strategy_module import read_strategy_module, StrategyModuleInformation
-from ...utils.timer import timed_task
-from ...webhook.server import create_webhook_server
+from ...strategy.execution_context import standalone_backtest_execution_context
 
 
 logger = logging.getLogger(__name__)
