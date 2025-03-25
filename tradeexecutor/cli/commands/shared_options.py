@@ -41,6 +41,7 @@ def required_option(option: OptionInfo) -> OptionInfo:
     return new_option
 
 
+
 id = Option(None, envvar="EXECUTOR_ID", help="Executor id used when programmatically referring to this instance.\n"
                                                   "\n"
                                                   "If not given, take the base of --strategy-file.")

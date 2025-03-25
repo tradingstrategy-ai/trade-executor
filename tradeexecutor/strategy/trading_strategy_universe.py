@@ -2263,7 +2263,7 @@ def load_partial_data(
     time_bucket = universe_options.candle_time_bucket_override or time_bucket
 
     # Some sanity and safety check
-    if len(pairs) >= 250:
+    if len(pairs) >= 1000:
         logger.warning("load_partial_data() method is designed to load data for low number or trading pairs, got %d - this might be slow", len(pairs))
 
     # Legacy compat

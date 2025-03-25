@@ -31,7 +31,7 @@ class PrintTokenOption(enum.Enum):
 @app.command()
 def token_cache(
     id: str = shared_options.id,
-    strategy_file: Path = shared_options.strategy_file,
+    strategy_file = Option(None, envvar="STRATEGY_FILE", help="Python trading strategy module to use for running the strategy"),
     cache_path: Optional[Path] = shared_options.cache_path,
     purge: PurgeType = Option("none", envvar="PURGE_TYPE", help="Which cache entries to purge"),
     print_option: PrintTokenOption = Option("none", envvar="PRINT_TOKENS", help="Which token metadata to print"),
@@ -43,10 +43,15 @@ def token_cache(
     - Token metadata cache contains data from TokenSniffer and CoinGecko APIs that may be stale
     """
 
-    # Guess id from the strategy file
-    id = prepare_executor_id(id, strategy_file)
-
-    cache_path = prepare_cache(id, cache_path, unit_testing)
+    # Drive id and cache path from the strategy file
+    if id is not None or strategy_file is not None:
+        print(f"Deriving cache path from strategy id: {id} and strategy module: {strategy_file}")
+        id = prepare_executor_id(id, strategy_file)
+        cache_path = prepare_cache(id, cache_path, unit_testing)
+        print(f"Cache path is: {cache_path}")
+    else:
+        # Use default ~/.tradingstrategy cache path
+        pass
 
     client = Client.create_live_client(
         api_key=trading_strategy_api_key,
