@@ -119,3 +119,48 @@ def plot_profile_size_data(
     fig = px.line(lines_df)
     fig.update_layout(title="Profiled optimiser file sizes")
     return fig
+
+
+def debug_optimiser_result(
+    result: OptimiserResult,
+    max_search_results=10,
+    read_state=True,
+) -> pd.DataFrame:
+    """Create a table of optimiser searched space + their results.
+
+    - Focus on tracking problems in the code
+
+    :return:
+        Human readable DataFrame about optimiser backtest run data.
+    """
+
+    data = []
+
+    results = result.results[0:max_search_results]
+
+    for res in results:
+        label = res.combination.get_all_parameters_label()
+        label = label.replace(",", "\n")
+
+        path = res.combination.get_compressed_state_file_path()
+
+        entry = {
+            "combination": label,
+            "path": res.combination.result_path,
+            "value": res.value,
+            "filtered": res.filtered,
+            "iteration": res.iteration,
+            "sharpe": res.result.get_sharpe(),
+            "state_size": res.get_state_size(),
+            "state_file": path,
+        }
+
+        if read_state:
+            state = res.result.hydrate_state()
+            trade_count = len(list(state.portfolio.get_all_trades()))
+
+            entry["trade_count"] = trade_count
+
+        data.append(entry)
+
+    return pd.DataFrame(data)

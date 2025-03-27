@@ -24,6 +24,7 @@ def display_strategy_universe(
     sort_key="id",
     sort_ascending=True,
     sort_numeric=True,
+    limit: int | None = None,
 ) -> pd.DataFrame:
     """Displays a constructed trading strategy universe in table format.
 
@@ -60,7 +61,10 @@ def display_strategy_universe(
             strategy_universe,
             sort_key="tvl",
             sort_ascending=False,
-        ) 
+        )
+
+    :param limit:
+        Display only X first entries
 
     :return:
         Human-readable DataFrame for ``display()``.
@@ -190,5 +194,10 @@ def display_strategy_universe(
     
     df['price'] = df['price'].apply(_format_float_2)
     if "tvl" in df.columns:
-        df['tvl'] = df['tvl'].apply(_format_float_0)    
+        df['tvl'] = df['tvl'].apply(_format_float_0)
+
+    if limit is not None:
+        df = df.iloc[0:limit]
+        print(f"Results limited to first {limit} entries")
+
     return df
