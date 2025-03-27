@@ -8,7 +8,7 @@ import os
 import sys
 from pathlib import Path
 
-from tradeexecutor.backtest.preprocessed_backtest import PREPACKAGED_SETS, prepare_dataset
+from tradeexecutor.backtest.preprocessed_backtest import PREPACKAGED_SETS, prepare_dataset, ExportFormat
 from tradeexecutor.cli.log import setup_logging
 from tradingstrategy.client import Client
 
@@ -52,6 +52,8 @@ def export_all_main():
             dataset=ds,
             output_folder=output_path,
             write_csv=False,
+            write_parquet=ExportFormat.parquet in ds.formats,
+            write_csv_pair_columns=ExportFormat.csv_pair_columns in ds.formats,
         )
 
     logger.info("All done in %s", datetime.datetime.utcnow() - started)

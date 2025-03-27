@@ -28,12 +28,14 @@ Run using Docker. Created files will be placed in ``~/exported`` in the host FS:
         /usr/src/trade-executor/tradeexecutor/backtest/preprocessed_backtest_exporter.py /exported
 
 """
+import enum
 import logging
 import os
 import pickle
 import tempfile
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import datetime
+from heapq import merge
 from pathlib import Path
 
 import pandas as pd
@@ -62,6 +64,16 @@ logger = logging.getLogger(__name__)
 
 
 DATASET_NOTEBOOK_TEMPLATE = os.path.join(os.path.dirname(__file__), "dataset_report_template.ipynb")
+
+
+class ExportFormat(enum.Enum):
+    """What formats we export"""
+
+    #: Zstd compressed
+    parquet = "parquet"
+
+    #: CSV where each pair is a a column
+    csv_pair_columns = "csv_pair_columns"
 
 
 @dataclass
@@ -97,7 +109,8 @@ class BacktestDatasetDefinion:
     max_fee: Percent | None = None
     min_tokensniffer_score: int | None = None
 
-
+    # What exports formats to create for this
+    formats: set[ExportFormat] = field(default=lambda: {ExportFormat.parquet})
 
 
 @dataclass
@@ -254,6 +267,7 @@ def prepare_dataset(
     dataset: BacktestDatasetDefinion,
     output_folder: Path,
     write_csv=True,
+    write_csv_pair_columns=False,
     write_parquet=True,
     write_report=True,
     verbose=True,
@@ -461,6 +475,24 @@ def prepare_dataset(
     else:
         parquet_file = None
 
+    # Create a CSV file where each pair has it's own open, high, low, column
+    # e.g. WETH-USDC_open
+    if write_csv_pair_columns:
+        csv_file = output_folder / f"{dataset.slug}-pair-columns.csv"
+        split_df = merged_df
+        split_df = split_df.set_index("timestamp")
+        split_df = split_df.drop(columns=["base", "quote", "fee", "link", "pair_id", "buy_tax", "sell_tax"])
+        split_df = split_df.pivot(
+            columns="ticker",
+            values=['open', 'high', 'low', 'close', 'volume']
+        )
+        split_df.columns = [f'{col[1]}_{col[0]}' for col in split_df.columns]
+        split_df = split_df.fillna("-")
+        split_df.to_csv(
+            csv_file,
+        )
+        logger.info(f"Wrote {csv_file}, {csv_file.stat().st_size:,} bytes")
+
     saved_dataset = SavedDataset(
         set=dataset,
         csv_path=csv_file,
@@ -531,16 +563,19 @@ def prepare_dataset(
 
     return saved_dataset
 
-
+#: What token we use to build a dataset quote trading pair
 BNB_QUOTE_TOKEN = USDT_NATIVE_TOKEN[ChainId.binance.value]
 
+#: What token we use to build a dataset quote trading pair
 AVAX_QUOTE_TOKEN = USDC_NATIVE_TOKEN[ChainId.avalanche.value]
 
+#: What token we use to build a dataset quote trading pair
 BASE_QUOTE_TOKEN = USDC_NATIVE_TOKEN[ChainId.base.value]
 
+#: What token we use to build a dataset quote trading pair
 ETHEREUM_QUOTE_TOKEN = USDC_NATIVE_TOKEN[ChainId.ethereum.value]
 
-
+#: Different cleaned and prefiltered dataset we provide
 PREPACKAGED_SETS = [
     BacktestDatasetDefinion(
         chain=ChainId.binance,
@@ -669,6 +704,26 @@ PREPACKAGED_SETS = [
         exchanges={"uniswap-v2", "uniswap-v3"},
         always_included_pairs=[
             (ChainId.base, "uniswap-v2", "WETH", "USDC", 0.0030),
+            (ChainId.base, "uniswap-v3", "cbBTC", "WETH", 0.0030),  # Only trading since October
+        ],
+        reserve_token_address=BASE_QUOTE_TOKEN,
+    ),
+
+    BacktestDatasetDefinion(
+        chain=ChainId.base,
+        slug="base-1h-top",
+        name="Base, hourly, top pairs",
+        description=dedent_any("""
+        - Base Uniswap v2 and v3 trading pairs with high TVL
+        """),
+        start=datetime.datetime(2024, 1, 1),
+        end=datetime.datetime(2025, 3, 20),
+        time_bucket=TimeBucket.h1,
+        min_tvl=3_000_000,
+        min_weekly_volume=1_000_000,
+        exchanges={"uniswap-v3"},
+        formats={ExportFormat.parquet, ExportFormat.csv_pair_columns},
+        always_included_pairs=[
             (ChainId.base, "uniswap-v3", "cbBTC", "WETH", 0.0030),  # Only trading since October
         ],
         reserve_token_address=BASE_QUOTE_TOKEN,
