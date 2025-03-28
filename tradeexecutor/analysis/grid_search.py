@@ -235,6 +235,10 @@ def render_grid_search_result_table(results: pd.DataFrame | list[GridSearchResul
     else:
         df = df.applymap(enum_to_value)
 
+    # Not sure what triggers duplicate result in the result set
+    # KeyError: 'Styler.apply and .map are not compatible with non-unique index or columns'
+    df = df[~df.index.duplicated(keep='first')]
+
     formatted = df.style.background_gradient(
         axis = 0,
         subset = value_cols,

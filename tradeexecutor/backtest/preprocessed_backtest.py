@@ -460,6 +460,7 @@ def prepare_dataset(
         csv_file = output_folder / f"{dataset.slug}.csv"
         merged_df.to_csv(
             csv_file,
+            float_format=lambda x: f'{x:.6f}'
         )
         logger.info(f"Wrote {csv_file}, {csv_file.stat().st_size:,} bytes")
     else:
@@ -490,6 +491,7 @@ def prepare_dataset(
         split_df = split_df.fillna("-")
         split_df.to_csv(
             csv_file,
+            float_format = lambda x: f'{x:.6f}'
         )
         logger.info(f"Wrote {csv_file}, {csv_file.stat().st_size:,} bytes")
 

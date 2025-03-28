@@ -160,6 +160,7 @@ def debug_optimiser_result(
             trade_count = len(list(state.portfolio.get_all_trades()))
 
             entry["trade_count"] = trade_count
+            entry["description"] = state.backtest_data.description
 
         data.append(entry)
 

@@ -1417,6 +1417,9 @@ def run_grid_search_backtest(
 
     backtest_end = datetime.datetime.utcnow()
 
+    # Store backtest metadata
+    state.backtest_data.description = f"Combination search: {combination.get_all_parameters_label()}"
+
     # Portfolio performance
     equity = calculate_equity_curve(state)
     returns = calculate_returns(equity)

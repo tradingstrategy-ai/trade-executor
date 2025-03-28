@@ -482,6 +482,7 @@ def perform_optimisation(
     indicator_storage: DiskIndicatorStorage | None = None,
     result_path: Path | None = None,
     min_batch_size=4,
+    batch_size: int | None = None,
     real_space_rounding=Decimal("0.01"),
     timeout: float = 10 * 60,
     log_level: int | None=None,
@@ -530,6 +531,11 @@ def perform_optimisation(
 
         We need to write float values as cache filename parameters and too high float accuracy causes
         too long strings breaking filenames.
+
+    :param batch_size:
+        How many points to send to the scikit-optimiser once.
+
+        If set to ``None`` try to have rules of thumb.
 
     :param min_batch_size:
         How many points we ask for the batch processing from the scikit-optimiser once.
@@ -638,7 +644,8 @@ def perform_optimisation(
         max_nbytes=40*1024*1024,  # Allow passing 40 MBytes for child processes
     )
 
-    batch_size = max(min_batch_size, max_workers)  # Make sure we have some batch size even if running single CPU
+    if batch_size is None:
+        batch_size = max(min_batch_size, max_workers)  # Make sure we have some batch size even if running single CPU
 
     # We do some disk saving trickery to avoid pickling super large
     # trading universe data as as function argument every time a new search is performed

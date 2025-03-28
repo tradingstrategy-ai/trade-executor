@@ -70,6 +70,11 @@ class BacktestData:
     #:
     ready_at: Optional[datetime.datetime] = None
 
+    #: Human readable description of this backtest.
+    #:
+    #: E.g. parameters used
+    description: str | None = None
+
     def mark_ready(self, timestamp: datetime.datetime | pd.Timestamp):
         """Mark that the strategy has enough data to decide its first trade.
 
