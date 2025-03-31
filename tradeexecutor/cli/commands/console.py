@@ -10,6 +10,9 @@ To start a console in shell with `docker-compose.yml` set up:
 
      docker-compose run $YOUR_CONTAINER_NAME console
 
+
+
+
 """
 import datetime
 import itertools

@@ -546,7 +546,7 @@ class IndicatorKey:
         return hash((self.pair, self.definition))
 
     def get_cache_key(self) -> str:
-        """Get unique key that holds the cached value for the indicator function."""
+        """Get unique key that holds the disk cached file  for the indicator function."""
         slug = self.get_pair_cache_id()
 
         def norm_value(v):
@@ -568,7 +568,7 @@ class IndicatorKey:
         if len(parameters) > 80:
             # Parameters are too long to be presented in the filename,
             # so we just take the 8 bytes hash
-            parameters = hex(hash(parameters))[-8:0]
+            parameters = hex(hash(parameters))[-8:]
 
         return f"{self.definition.name}_{self.definition.get_function_body_hash()}({parameters})-{slug}"
 
@@ -1194,7 +1194,10 @@ def _serialise_parameters_for_cache_key(parameters: dict) -> str:
 
 
 def _load_indicator_result(storage: DiskIndicatorStorage, key: IndicatorKey) -> IndicatorResult:
-    logger.info("Loading %s", key)
+    # Cache key is different from indicator key, as we need to truncate
+    # paramaeters to make it fit into a filename
+    path = storage.get_indicator_path(key)
+    logger.info("Loading indicator, indicator key: %s, cache path: %s", key, path)
     assert storage.is_available(key), f"Tried to load indicator that is not in the cache: {key}"
     return storage.load(key)
 
