@@ -24,8 +24,11 @@ from tradeexecutor.cli.main import app
 from tradeexecutor.monkeypatch.web3 import construct_sign_and_send_raw_middleware
 from tradeexecutor.state.state import State
 
+#: Runs on Github?
+CI = os.environ.get("CI", "false") == "true"
 
 pytestmark = pytest.mark.skipif(not os.environ.get("JSON_RPC_POLYGON") or not os.environ.get("TRADING_STRATEGY_API_KEY"), reason="Set POLYGON_JSON_RPC and TRADING_STRATEGY_API_KEY environment variables to run this test")
+
 
 
 @pytest.fixture()
@@ -162,6 +165,7 @@ def environment(
     return environment
 
 
+@pytest.mark.skipif(CI, reason="Too flaky on Github")
 @flaky.flaky
 def test_enzyme_guard_perform_test_trade(
     environment: dict,
