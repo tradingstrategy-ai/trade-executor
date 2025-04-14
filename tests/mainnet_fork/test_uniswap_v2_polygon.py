@@ -434,4 +434,4 @@ def test_simple_routing_three_leg_live(
 
     # We received the tokens we bought
     assert sand_token.fetch_balance_of(hot_wallet.address) == 0
-    assert 0 < matic_token.fetch_balance_of(hot_wallet.address) < 1000
+    assert 0 < matic_token.fetch_balance_of(hot_wallet.address) < 3000

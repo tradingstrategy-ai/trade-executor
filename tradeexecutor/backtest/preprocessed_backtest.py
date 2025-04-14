@@ -110,7 +110,7 @@ class BacktestDatasetDefinion:
     min_tokensniffer_score: int | None = None
 
     # What exports formats to create for this
-    formats: set[ExportFormat] = field(default=lambda: {ExportFormat.parquet})
+    formats: set[ExportFormat] = ExportFormat.parquet
 
 
 @dataclass

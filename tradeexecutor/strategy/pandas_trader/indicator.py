@@ -1185,6 +1185,10 @@ class MemoryIndicatorStorage(IndicatorStorage):
     def get_universe_cache_path(self) -> Path | None:
         return None
 
+    def get_indicator_path(self, key: IndicatorKey) -> Path:
+        # TODO: Return fake path now - abstract memory indicator storage paths away
+        return Path("/dev/memory" + key.get_cache_key())
+
 
 def _serialise_parameters_for_cache_key(parameters: dict) -> str:
     for k, v in parameters.items():
