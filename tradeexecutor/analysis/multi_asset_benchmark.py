@@ -31,6 +31,7 @@ DEFAULT_BENCHMARK_ASSETS = (
     "WARB",
     "SOL",
     "WSOL",
+    "WAVAX",
 )
 
 

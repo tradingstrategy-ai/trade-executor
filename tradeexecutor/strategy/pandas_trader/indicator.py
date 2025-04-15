@@ -1092,8 +1092,9 @@ class DiskIndicatorStorage(IndicatorStorage):
         path = self.get_indicator_path(key)
         df = pd.read_parquet(path)
 
-        if len(df.columns) == 1:
-            # Convert back to series
+        if len(df.columns) == 1 and df.columns[0] == "value":
+            # Convert back to series.
+            # See save() below.
             df = df[df.columns[0]]
 
         return IndicatorResult(
@@ -1127,7 +1128,6 @@ class DiskIndicatorStorage(IndicatorStorage):
         temp.close()
         # https://stackoverflow.com/a/3716361/315168
         shutil.move(temp.name, path)
-
         logger.info("Saved %s", path)
 
         return IndicatorResult(
@@ -1775,6 +1775,10 @@ class IndicatorDependencyResolver:
             assert column in data.columns, f"Indicator {name} subcolumn {column} not in the available columns: {data.columns}"
             series = data[column]
         elif isinstance(data, pd.Series):
+            if len(data) == 0:
+                # TODO: Special case. Need to figure out how to handle this neatly.
+                return data
+            assert column != "all", f"Multicolumn indicator requested. Indicator {name} is pd.Series type, not DataFrame type, cannot get multiple columns. Indicator data is {type(data)}"
             series = data
         else:
             raise NotImplementedError(f"Unknown indicator data type {type(data)}")
@@ -2154,6 +2158,7 @@ def calculate_and_load_indicators_inline(
         verbose=verbose,
         indicators=indicator_set,
         max_workers=max_workers,
+        max_readers=max_workers,  # TODO: Add another parameter?
         strategy_cycle_timestamp=strategy_cycle_timestamp,
     )
 
