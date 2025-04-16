@@ -24,6 +24,7 @@ DEFAULT_BENCHMARK_ASSETS = (
     "BTC",
     "WBTC",
     "WBTC.e",  # Avalanche
+    "cbBTC",  # Coinbase
     "ETH",
     "WETH",
     "WETH.e",  # Avalanche
