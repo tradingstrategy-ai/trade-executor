@@ -16,12 +16,12 @@ from tradeexecutor.strategy.pandas_trader.position_manager import PositionManage
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
 
 
-#: Detect Github Actions
+#: Detect Github Actions - disable
 CI = os.environ.get("CI", None) is not None
 
 
 pytestmark = pytest.mark.skipif(
-    not os.environ.get("VELVET_VAULT_OWNER_PRIVATE_KEY"),
+    (not os.environ.get("VELVET_VAULT_OWNER_PRIVATE_KEY")) or CI,
     reason="Need to set VELVET_VAULT_OWNER_PRIVATE_KEY to a specific private key to run this test"
 )
 
