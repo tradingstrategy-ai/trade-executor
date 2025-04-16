@@ -15,15 +15,15 @@
 To get started with indicators see examples in :py:mod:`tradeexecutor.strategy.pandas_trader.indicator_decorator`.
 """
 import datetime
+import hashlib
 import threading
 import warnings
 from abc import ABC, abstractmethod
-from collections import defaultdict
+from collections import defaultdict, OrderedDict
 from pprint import pformat
 
 from IPython import get_ipython
 from skopt.space import Dimension
-from stack_data.utils import cached_property
 
 # Enable pickle patch that allows multiprocessing in notebooks
 from tradeexecutor.monkeypatch import cloudpickle_patch
@@ -290,6 +290,10 @@ class IndicatorDefinition:
         for k, v in self.parameters.items():
             assert not isinstance(v, Dimension), f"Detected scikit-optimize Dimension as a parameter value: {k}: {v} - did you accidentally pass in optimiser search space to a single backtest"
 
+        # Dict only retains initial order, not fixed sort order.
+        # Ensure parameters are always iterated in a stable deterministic order.
+        self.parameters = OrderedDict(sorted(self.parameters.items()))
+
     def get_function_body_hash(self) -> str:
         """Calculate the hash for the function code.
 
@@ -549,7 +553,8 @@ class IndicatorKey:
         """Get unique key that holds the disk cached file  for the indicator function."""
         slug = self.get_pair_cache_id()
 
-        def norm_value(v):
+        def norm_value(v: Any):
+
             if isinstance(v, RollingParameter):
                 raise AssertionError(f"Should not happen - rolling parameters must be expanded earlier: {self}: {v}")
                 # values = list(v.values)
@@ -557,18 +562,26 @@ class IndicatorKey:
                 # v = ",".join([str(x) for x in values])
             elif isinstance(v, list):
                 raise AssertionError(f"Should not happen - parameter received list as a value: {self.definition.name} {type(v)}: {v}")
-            if isinstance(v, enum.Enum):
+            elif isinstance(v, set):
+                # Used for "set of tags" use cases
+                # Set order must be made deterministic.
+                v = str(sorted(list(v)))
+            elif isinstance(v, enum.Enum):
                 v = str(v.value)
             else:
                 v = str(v)
             return v
 
-        parameters = ",".join([f"{k}={norm_value(v)}" for k, v in self.definition.parameters.items()])
+        # Make sort order stable
+        entries = list(self.definition.parameters.items())
+        entries = sorted(entries, key=lambda t: t[0])
+
+        parameters = ",".join([f"{k}={norm_value(v)}" for k, v in entries])
 
         if len(parameters) > 80:
             # Parameters are too long to be presented in the filename,
             # so we just take the 8 bytes hash
-            parameters = hex(hash(parameters))[-8:]
+            parameters = _deterministic_hash(parameters)[-8:]
 
         return f"{self.definition.name}_{self.definition.get_function_body_hash()}({parameters})-{slug}"
 
@@ -1088,7 +1101,7 @@ class DiskIndicatorStorage(IndicatorStorage):
 
     def load(self, key: IndicatorKey) -> IndicatorResult:
         """Load cached indicator data from the disk."""
-        assert self.is_available(key), f"Data does not exist: {key}"
+        assert self.is_available(key), f"Data does not exist: {key}, path is: {self.get_indicator_path(key)}"
         path = self.get_indicator_path(key)
         df = pd.read_parquet(path)
 
@@ -1128,7 +1141,14 @@ class DiskIndicatorStorage(IndicatorStorage):
         temp.close()
         # https://stackoverflow.com/a/3716361/315168
         shutil.move(temp.name, path)
-        logger.info("Saved %s", path)
+        logger.info(
+            "Saved: %s, rows: %d, parameters: %s",
+            path,
+            len(df),
+            list(key.definition.parameters.items()),
+        )
+
+        assert os.path.exists(path), f"Save failed: {path}"
 
         return IndicatorResult(
             universe_key=self.universe_key,
@@ -1386,6 +1406,12 @@ def load_indicators(
     for key in all_combinations:
         if storage.is_available(key):
             task_args.append((storage, key))
+        else:
+            logger.info(
+                "Indicator not available: %s: %s",
+                storage.get_indicator_path(key),
+                list(key.definition.parameters.items()),
+            )
 
     logger.info(
         "Loading cached indicators, we have %d indicator combinations out of %d available in the cache %s",
@@ -2335,4 +2361,12 @@ def wrap_nones(f: Callable) -> Callable:
     return wrapped
 
 
+def _deterministic_hash(input_str: str) -> str:
+    """Python hash() is not deterministic across sessions.
+
+    - Make persistent hash
+    - This includes multiprocessing
+    - This includes notebook reboots
+    """
+    return hashlib.sha256(input_str.encode()).hexdigest()
 

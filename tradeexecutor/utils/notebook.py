@@ -163,11 +163,15 @@ def set_large_plotly_chart_font(
     pio.templates.default = "custom"
 
 
-def set_notebook_logging(log_level=logging.INFO):
+def set_notebook_logging(log_level: int | str=logging.INFO):
     """Enable logging in notebooks.
 
     - Only needed to diagnose Client library bugs when running in notebook
     """
+
+    if type(log_level) == str:
+        log_level = getattr(logging, log_level.upper())
+
     format = '[%(asctime)s] %(levelname)s %(module)s: %(message)s'
     logging.basicConfig(level=log_level,
                         format=format,
