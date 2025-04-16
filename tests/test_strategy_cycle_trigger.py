@@ -8,6 +8,7 @@ To run:
     export POLYGON_JSON_RPC="https://bsc-dataseed.binance.org/"
     pytest --log-cli-level=info -s -k test_strategy_cycle_trigger
 
+
 """
 
 import os
