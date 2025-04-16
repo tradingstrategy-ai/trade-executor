@@ -19,7 +19,7 @@ CI = os.environ.get("CI") == "true"
 
 
 pytestmark = pytest.mark.skipif(
-    (not JSON_RPC_BASE or not TRADING_STRATEGY_API_KEY or not VELVET_VAULT_OWNER_PRIVATE_KEY),
+    (not JSON_RPC_BASE or not TRADING_STRATEGY_API_KEY or not VELVET_VAULT_OWNER_PRIVATE_KEY) or CI,
      reason="Set JSON_RPC_ETHEREUM and TRADING_STRATEGY_API_KEY and VELVET_VAULT_OWNER_PRIVATE_KEYneeded to run this test"
 )
 

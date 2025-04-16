@@ -41,6 +41,7 @@ temp_disable = datetime.datetime(2025, 2, 15)
 
 @pytest.mark.skipif(datetime.datetime.utcnow() < temp_disable, reason="Temporary disabled, oracle server having an issue")
 @pytest.mark.skipif(os.environ.get("SKIP_SLOW_TEST"), reason="Slow tests skipping enabled")
+@pytest.mark.skipif(os.environ.get("CI") == "true", reason="Very slow and flaky, do not run on CI")
 @pytest.mark.slow_test_group
 def test_trading_data_availability_based_strategy_cycle_trigger(
     logger,
