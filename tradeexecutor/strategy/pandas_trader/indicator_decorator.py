@@ -223,6 +223,10 @@ class IndicatorRegistry:
         def decorator(func):
             nonlocal dependencies
             name = func.__name__
+
+            if dependencies is not None:
+                assert type(dependencies) in (list, set, tuple), f"Bad indicator dependencies definition, does not look like a list: {dependencies} in {func}"
+
             dependencies = list(dependencies) if dependencies else []
             resolved_order = order if order else self.detect_order(func, dependencies)
 
