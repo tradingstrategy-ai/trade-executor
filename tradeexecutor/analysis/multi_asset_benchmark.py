@@ -23,8 +23,11 @@ from tradingstrategy.types import TokenSymbol
 DEFAULT_BENCHMARK_ASSETS = (
     "BTC",
     "WBTC",
+    "WBTC.e",  # Avalanche
+    "cbBTC",  # Coinbase
     "ETH",
     "WETH",
+    "WETH.e",  # Avalanche
     "WMATIC",
     "MATIC",
     "ARB",

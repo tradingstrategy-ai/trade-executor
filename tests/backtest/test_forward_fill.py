@@ -1,7 +1,9 @@
 """Data forward fill tests."""
 import datetime
 
+import flaky
 import pandas as pd
+import pytest
 
 from tradeexecutor.strategy.execution_context import unit_test_execution_context
 from tradeexecutor.strategy.trading_strategy_universe import load_partial_data, TradingStrategyUniverse
@@ -12,6 +14,8 @@ from tradingstrategy.pair import PandasPairUniverse
 from tradingstrategy.timebucket import TimeBucket
 
 
+@flaky.flaky
+@pytest.mark.slow_test_group
 def test_forward_fill_spot_only_forward_filled(persistent_test_client: Client):
     """Forward-will spot market data.
 
