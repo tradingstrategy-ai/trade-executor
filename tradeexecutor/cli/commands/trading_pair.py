@@ -13,7 +13,7 @@ from .app import app
 from .shared_options import required_option
 from ..bootstrap import prepare_cache, prepare_executor_id
 from ..log import setup_logging
-from ..universe import load_universe
+from ..universe import setup_universe
 from ...state.identifier import TradingPairIdentifier
 from ...strategy.bootstrap import import_strategy_file
 from ...strategy.execution_context import console_command_execution_context
@@ -69,7 +69,7 @@ def trading_pair(
 
     execution_context = console_command_execution_context
 
-    universe_init = load_universe(
+    universe_init = setup_universe(
         trading_strategy_api_key=trading_strategy_api_key,
         cache_path=cache_path,
         max_data_delay_minutes=max_data_delay_minutes,

@@ -8,7 +8,7 @@ import logging
 from packaging import version
 
 from tradeexecutor.strategy.description import StrategyExecutionDescription
-from tradeexecutor.strategy.execution_context import preflight_execution_context, ExecutionContext
+from tradeexecutor.strategy.execution_context import ExecutionContext
 from tradeexecutor.strategy.parameters import dump_parameters
 from tradeexecutor.strategy.run_state import RunState
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverseModel
@@ -28,14 +28,20 @@ class UniverseInitData:
     run_description: StrategyExecutionDescription
 
 
-def load_universe(
+def setup_universe(
     trading_strategy_api_key: str,
     cache_path: Optional[Path],
     max_data_delay_minutes: int,
     strategy_factory: Callable,
     execution_context: ExecutionContext,
 ) -> UniverseInitData:
-    """Load trading strategy"""
+    """Setup universe loading for a trading strategy.
+
+    - Intended to bootstrap CLI scripts
+    - We need strategy module loaded and decoded
+    - Extract create_universe() factory from the module
+    - Don't call the factory yet
+    """
 
     client = Client.create_live_client(
         trading_strategy_api_key,

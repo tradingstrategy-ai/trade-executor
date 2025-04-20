@@ -1910,8 +1910,8 @@ def translate_trading_pair(dex_pair: DEXPair, cache: dict | None = None) -> Trad
             # TODO: Legacy, remove
             pair.other_data.update({
                 "token_sniffer_data": {
-                    "swap_simulation": token_sniffer_data["swap_simulation"],
-                    "score": token_sniffer_data["score"],
+                    "swap_simulation": token_sniffer_data.get("swap_simulation"),
+                    "score": token_sniffer_data.get("score"),
                 }
             })
         else:

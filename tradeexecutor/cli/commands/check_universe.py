@@ -11,7 +11,7 @@ import pandas as pd
 from .app import app
 from ..bootstrap import prepare_executor_id, prepare_cache
 from ..log import setup_logging
-from ..universe import load_universe
+from ..universe import setup_universe
 from ...analysis.pair import display_strategy_universe
 from ...strategy.bootstrap import import_strategy_file
 from ...strategy.cycle import CycleDuration, snap_to_previous_tick
@@ -54,7 +54,7 @@ def check_universe(
 
     execution_context = console_command_execution_context
 
-    universe_init = load_universe(
+    universe_init = setup_universe(
         trading_strategy_api_key=trading_strategy_api_key,
         cache_path=cache_path,
         max_data_delay_minutes=max_data_delay_minutes,
