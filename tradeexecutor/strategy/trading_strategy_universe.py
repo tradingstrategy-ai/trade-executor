@@ -1907,7 +1907,8 @@ def translate_trading_pair(dex_pair: DEXPair, cache: dict | None = None) -> Trad
             token_sniffer_data = dex_pair.other_data.get("token_sniffer_data")
 
         if token_sniffer_data:
-            # TODO: Legacy, remove
+            # TODO: Legacy, remove. Instead use TradingPairIdentifier.get_xxx() accessor functions.
+
             pair.other_data.update({
                 "token_sniffer_data": {
                     "swap_simulation": token_sniffer_data.get("swap_simulation"),
