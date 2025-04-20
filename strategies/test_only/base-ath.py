@@ -126,7 +126,7 @@ class Parameters:
     min_volume = 25_000  # USD
     min_tvl_prefilter = 1_250_000  # USD - to reduce number of trading pairs for backtest-purposes only
     min_tvl = 1_250_000  # USD - set to same as above if you want to avoid any survivorship bias
-    min_token_sniffer_score = 90  # 20 = AAVE
+    min_token_sniffer_score = 20  # 20 = AAVE
 
     #
     # Yield on cash
@@ -156,6 +156,7 @@ class Parameters:
 SUPPORTING_PAIRS = [
     (ChainId.base, "uniswap-v2", "WETH", "USDC", 0.0030),
     (ChainId.base, "uniswap-v3", "WETH", "USDC", 0.0005),
+    (ChainId.base, "uniswap-v2", "EAI", "WETH", 0.0030),  # Crappy token tax pair
     (ChainId.base, "uniswap-v3", "cbBTC", "WETH", 0.0030),    # Only trading since October
 ]
 

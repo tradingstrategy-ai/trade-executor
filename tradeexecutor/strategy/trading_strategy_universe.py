@@ -1894,13 +1894,26 @@ def translate_trading_pair(dex_pair: DEXPair, cache: dict | None = None) -> Trad
     if dex_pair.other_data:
         # Because other_data is very heavy, we should only copy fields we really care.
         # Below are the whitelisted fields.
-        if "token_sniffer_data" in dex_pair.other_data:
-            pair.other_data = {
+
+        pair.other_data = {}
+
+        # Pass TokenMetadata instance
+        token_metadata = dex_pair.other_data.get("token_metadata")
+        pair.other_data["token_metadata"] = token_metadata
+
+        if token_metadata:
+            token_sniffer_data = token_metadata.token_sniffer_data
+        else:
+            token_sniffer_data = dex_pair.other_data.get("token_sniffer_data")
+
+        if token_sniffer_data:
+            # TODO: Legacy, remove
+            pair.other_data.update({
                 "token_sniffer_data": {
-                    "swap_simulation": dex_pair.other_data["token_sniffer_data"]["swap_simulation"],
-                    "score": dex_pair.other_data["token_sniffer_data"]["score"],
+                    "swap_simulation": token_sniffer_data.get("swap_simulation"),
+                    "score": token_sniffer_data.get("score"),
                 }
-            }
+            })
         else:
             # Skip other_data.top_pair_data
             pass

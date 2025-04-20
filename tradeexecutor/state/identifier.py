@@ -16,6 +16,7 @@ from eth_defi.uniswap_v2.utils import sort_tokens
 from tradingstrategy.chain import ChainId
 from tradingstrategy.lending import LendingProtocolType
 from tradingstrategy.stablecoin import is_stablecoin_like
+from tradingstrategy.token_metadata import TokenMetadata
 from tradingstrategy.types import PrimaryKey
 
 from tradeexecutor.utils.accuracy import sum_decimal, ensure_exact_zero, SUM_EPSILON
@@ -566,7 +567,7 @@ class TradingPairIdentifier:
         if other is None:
             return False
 
-        assert isinstance(other, TradingPairIdentifier), f"Got {other}"
+        assert isinstance(other, TradingPairIdentifier), f"TradingPairIdentifier comparison failed, the other object is: {type(other)}"
         return self.base == other.base and self.quote == other.quote and self.fee == other.fee
 
     @property
@@ -620,6 +621,83 @@ class TradingPairIdentifier:
                 return f"{underlying.get_ticker()} credit"
 
         return self.get_ticker()
+
+    def get_diagnostics_info(self, extended=False) -> dict:
+        """Return data for debugginb about this pair.
+
+        - Used for table formatting
+
+        :return:
+            Human readable dict of various data points
+        """
+
+        metadata = self.get_token_metadata()
+
+        data = {
+            "internal_id": self.internal_id,
+            "kind": self.kind.value,
+            "chain": self.chain_id,
+            "exchange": self.exchange_name,
+            "address": self.pool_address,
+            "base": self.base.token_symbol,
+            "base_decimals": self.base.decimals,
+            "base_ddress": self.base.address,
+            "quote": self.quote.token_symbol,
+            "quote_address": self.quote.address,
+            "fee": self.fee,
+            "buy_tax": self.get_buy_tax(),
+            "sell_tax": self.get_sell_tax(),
+            "risk_score": self.get_risk_score(),
+        }
+
+        if extended:
+            data["coingecko_categories"] = self.get_coingecko_categories()
+
+            if metadata:
+                data["metadata_cached_on_disk"] = metadata.cached
+                data["metadata_queried_at"] = metadata.queried_at
+
+                tokensniffer_data = metadata.token_sniffer_data
+                if tokensniffer_data:
+                    data["tokensniffer_fetched_at"] = tokensniffer_data["data_fetched_at"]
+                    data["tokensniffer_refreshed_at"] = tokensniffer_data["refreshed_at"]
+                    data["tokensniffer_token_created_at"] = tokensniffer_data["created_at"]
+                    data["tokensniffer_token_flagged_at"] = tokensniffer_data["flagged_at"]
+
+                coingecko_data = metadata.coingecko_data
+                if coingecko_data:
+                    data["coingecko_queried_at"] = coingecko_data["queried_at"]
+                    data["coingecko_last_updated"] = coingecko_data["last_updated"]
+                    data["coingecko_id"] = coingecko_data["id"]
+                    data["coingecko_symbol"] = coingecko_data["symbol"]
+                    data["coingecko_slug"] = coingecko_data["web_slug"]
+                    data["coingecko_public_notice"] = coingecko_data["public_notice"]
+
+        data = {k: str(v) for k, v in data.items()}
+
+        return data
+
+    def get_token_metadata(self) -> TokenMetadata | None:
+        """Get metadata for the base token"""
+        return self.other_data.get("token_metadata")
+
+    def get_tokesniffer_data(self) -> dict | None:
+        meta = self.get_token_metadata()
+        if meta:
+            return meta.token_sniffer_data
+        return None
+
+    def get_coingecko_categories(self) -> set | None:
+        meta = self.get_token_metadata()
+        if meta:
+            return meta.get_coingecko_categories()
+        return None
+
+    def get_risk_score(self) -> int | None:
+        tokensniffer_data = self.get_tokesniffer_data()
+        if tokensniffer_data:
+            return tokensniffer_data["score"]
+        return None
 
     def has_complete_info(self) -> bool:
         """Check if the pair has good information.
