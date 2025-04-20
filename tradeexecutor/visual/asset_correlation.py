@@ -15,6 +15,17 @@ def visualise_asset_correlation(
     """Draw asset correlation heatmap.
 
     - Takes close price of all pairs in the trading universe
+
+    Example:
+
+    .. code-block:: python
+
+        from tradeexecutor.visual.asset_correlation import visualise_asset_correlation
+
+        fig = visualise_asset_correlation(
+            strategy_universe
+        )
+        fig.show()
     """
 
     # Prepare correlation dataframe

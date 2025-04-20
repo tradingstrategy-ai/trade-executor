@@ -109,8 +109,11 @@ class BacktestDatasetDefinion:
     max_fee: Percent | None = None
     min_tokensniffer_score: int | None = None
 
+    #: If we have multiple base/quote matches, try to filter out for the best pair
+    filter_duplicates: bool = True
+
     # What exports formats to create for this
-    formats: set[ExportFormat] = ExportFormat.parquet
+    formats: tuple[ExportFormat] = (ExportFormat.parquet,)
 
 
 @dataclass
@@ -373,9 +376,13 @@ def prepare_dataset(
         len(risk_filtered_pairs_df),
     )
 
-    deduplicated_df = deduplicate_pairs_by_volume(risk_filtered_pairs_df)
-    pairs_df = pd.concat([deduplicated_df, supporting_pairs_df]).drop_duplicates(subset='pair_id', keep='first')
-    logger.info("After pairs deduplication we have %d pairs", len(deduplicated_df))
+    if dataset.filter_duplicates:
+        deduplicated_df = deduplicate_pairs_by_volume(risk_filtered_pairs_df)
+        pairs_df = pd.concat([deduplicated_df, supporting_pairs_df]).drop_duplicates(subset='pair_id', keep='first')
+        logger.info("After pairs deduplication we have %d pairs", len(pairs_df))
+    else:
+        pairs_df = pd.concat([pairs_df, supporting_pairs_df]).drop_duplicates(subset='pair_id', keep='first')
+        logger.info("Pair deduplication skipped, we have %d pairs", len(pairs_df))
 
     # Supporting pairs lack metadata
     pairs_df.loc[pairs_df["token_metadata"].isna(), "token_metadata"] = None
@@ -741,7 +748,7 @@ PREPACKAGED_SETS = [
         - Longest DEX history we have
         - Contains bull and bear market data with mixed set of tokens
         """),
-        start=datetime.datetime(2020, 1, 1),
+        start=datetime.datetime(2020, 6, 1),
         end=datetime.datetime(2025, 3, 1),
         time_bucket=TimeBucket.d1,
         min_tvl=3_000_000,
@@ -752,6 +759,30 @@ PREPACKAGED_SETS = [
             (ChainId.ethereum, "uniswap-v3", "WBTC", "USDC", 0.0030),  # Only trading since October
         ],
         reserve_token_address=ETHEREUM_QUOTE_TOKEN,
+    ),
+
+    BacktestDatasetDefinion(
+        chain=ChainId.ethereum,
+        slug="ethereum-1d-legacy",
+        name="Ethereum mainnet, Uniswap v2 only, 2020-2025/Q2, daily",
+        description=dedent_any("""
+    Ethereum Uniswap and Sushiswap DEX traeds.
+
+    - Longest DEX history we have
+    - Have only Uniswap v2 pairs
+    - Do not filter out duplicates base/quote matches
+    """),
+        start=datetime.datetime(2020, 6, 1),
+        end=datetime.datetime(2025, 3, 1),
+        time_bucket=TimeBucket.d1,
+        min_tvl=2_250_000,
+        min_weekly_volume=200_000,
+        exchanges={"uniswap-v2", "sushi"},
+        always_included_pairs=[
+            (ChainId.ethereum, "uniswap-v2", "WETH", "USDC", 0.0030),
+        ],
+        reserve_token_address=ETHEREUM_QUOTE_TOKEN,
+        filter_duplicates=False,
     ),
 
     BacktestDatasetDefinion(

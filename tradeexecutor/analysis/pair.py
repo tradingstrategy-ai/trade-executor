@@ -196,6 +196,9 @@ def display_strategy_universe(
     if "tvl" in df.columns:
         df['tvl'] = df['tvl'].apply(_format_float_0)
 
+    if "volume" in df.columns:
+        df['volume'] = df['volume'].apply(_format_float_2)
+
     if limit is not None:
         df = df.iloc[0:limit]
         print(f"Results limited to first {limit} entries")
