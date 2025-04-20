@@ -15,6 +15,7 @@ from tradingstrategy.client import Client
 from .app import app
 from ..bootstrap import prepare_executor_id, prepare_cache
 from ..log import setup_logging
+from ..universe import load_universe
 from ...analysis.pair import display_strategy_universe
 from ...strategy.bootstrap import import_strategy_file
 from ...strategy.cycle import CycleDuration, snap_to_previous_tick
@@ -61,52 +62,21 @@ def check_universe(
 
     assert trading_strategy_api_key, "TRADING_STRATEGY_API_KEY missing"
 
-    client = Client.create_live_client(
-        trading_strategy_api_key,
-        cache_path=cache_path,
-        settings_path=None,
-    )
-    client.clear_caches()
-
     execution_context = preflight_execution_context
 
-    max_data_delay = datetime.timedelta(minutes=max_data_delay_minutes)
-
-    run_description: StrategyExecutionDescription = strategy_factory(
-        execution_model=None,
+    universe_init = load_universe(
+        trading_strategy_api_key=trading_strategy_api_key,
+        cache_path=cache_path,
+        max_data_delay_minutes=max_data_delay_minutes,
+        strategy_factory=strategy_factory,
         execution_context=execution_context,
-        timed_task_context_manager=timed_task,
-        sync_model=None,
-        valuation_model_factory=None,
-        pricing_model_factory=None,
-        approval_model=None,
-        client=client,
-        run_state=RunState(),
     )
 
-    parameters = run_description.runner.parameters
-    if parameters:
-        logger.info(
-            "Strategy parameters:\n%s",
-            dump_parameters(parameters)
-        )
-        universe_options = UniverseOptions.from_strategy_parameters_class(
-            parameters,
-            execution_context,
-        )
-    else:
-        universe_options = UniverseOptions()
-
-    # Check that Parameters gives us period how much history we need
-    engine_version = run_description.trading_strategy_engine_version
-    if engine_version:
-        if version.parse(engine_version) >= version.parse("0.5"):
-            parameters = run_description.runner.parameters
-            assert parameters, f"Engine version {engine_version}, but runner lacks decoded strategy parameters"
-            assert "required_history_period" in parameters, f"Strategy lacks Parameters.required_history_period. We have {parameters}"
-
     # Deconstruct strategy input
-    universe_model: TradingStrategyUniverseModel = run_description.universe_model
+    universe_model = universe_init.universe_model
+    universe_options = universe_init.universe_options
+    max_data_delay = universe_init.max_data_delay
+    run_description = universe_init.run_description
 
     ts = datetime.datetime.utcnow()
     logger.info("Performing universe data check for timestamp %s", ts)
