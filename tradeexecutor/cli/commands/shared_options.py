@@ -121,6 +121,9 @@ max_workers = Option(None, envvar="MAX_WORKERS", help="Maximum number of worker 
 position_type = Option("open_and_frozen", envvar="POSITION_TYPE", help="Which position types to display")
 
 
+max_data_delay_minutes = typer.Option(24*60, envvar="MAX_DATA_DELAY_MINUTES", help="How fresh the OHCLV data for our strategy must be before failing")
+
+
 def parse_comma_separated_list(ctx: typer.Context, value: str) -> list[str] | Any:
     """Support comma separated, whitespaced, list as a command line argument with Typer.
 

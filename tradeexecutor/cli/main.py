@@ -20,6 +20,7 @@ from .commands.show_positions import show_positions
 from .commands.start import start
 from .commands.perform_test_trade import perform_test_trade
 from .commands.token_cache import token_cache
+from .commands.trading_pair import trading_pair
 from .commands.version import version
 from .commands.repair import repair
 from .commands.retry import retry
@@ -38,5 +39,5 @@ __all__ = [
     version, repair, console, init, reset, enzyme_asset_list, enzyme_deploy_vault,
     lagoon_deploy_vault, close_all, close_position, show_positions, show_valuation, backtest, correct_accounts, check_accounts,
     reset_deposits, export, retry, visualise, webapi,
-    deploy_guard, check_position_triggers, send_log_message, token_cache
+    deploy_guard, check_position_triggers, send_log_message, token_cache, trading_pair
 ]

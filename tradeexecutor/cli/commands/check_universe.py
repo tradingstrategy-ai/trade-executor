@@ -6,12 +6,8 @@ from pathlib import Path
 from typing import Optional
 
 import pandas as pd
-import typer
 
 
-from packaging import version
-
-from tradingstrategy.client import Client
 from .app import app
 from ..bootstrap import prepare_executor_id, prepare_cache
 from ..log import setup_logging
@@ -19,15 +15,9 @@ from ..universe import load_universe
 from ...analysis.pair import display_strategy_universe
 from ...strategy.bootstrap import import_strategy_file
 from ...strategy.cycle import CycleDuration, snap_to_previous_tick
-from ...strategy.description import StrategyExecutionDescription
-from ...strategy.execution_context import preflight_execution_context
+from ...strategy.execution_context import  console_command_execution_context
 from ...strategy.pandas_trader.indicator import calculate_and_load_indicators_inline, MemoryIndicatorStorage
-from ...strategy.parameters import dump_parameters
-from ...strategy.run_state import RunState
-from ...strategy.trading_strategy_universe import TradingStrategyUniverseModel
-from ...strategy.universe_model import UniverseOptions
 from ...utils.cpu import get_safe_max_workers_count
-from ...utils.timer import timed_task
 from . import shared_options
 
 
@@ -37,7 +27,7 @@ def check_universe(
     strategy_file: Path = shared_options.strategy_file,
     trading_strategy_api_key: str = shared_options.trading_strategy_api_key,
     cache_path: Optional[Path] = shared_options.cache_path,
-    max_data_delay_minutes: int = typer.Option(24*60, envvar="MAX_DATA_DELAY_MINUTES", help="How fresh the OHCLV data for our strategy must be before failing"),
+    max_data_delay_minutes: int = shared_options.max_data_delay_minutes,
     log_level: str = shared_options.log_level,
     max_workers: int | None = shared_options.max_workers,
 ):
@@ -62,7 +52,7 @@ def check_universe(
 
     assert trading_strategy_api_key, "TRADING_STRATEGY_API_KEY missing"
 
-    execution_context = preflight_execution_context
+    execution_context = console_command_execution_context
 
     universe_init = load_universe(
         trading_strategy_api_key=trading_strategy_api_key,

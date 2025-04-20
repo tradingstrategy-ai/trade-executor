@@ -49,7 +49,7 @@ def load_universe(
     run_description: StrategyExecutionDescription = strategy_factory(
         execution_model=None,
         execution_context=execution_context,
-        timed_task_context_manager=timed_task,
+        timed_task_context_manager=execution_context.timed_task_context_manager,
         sync_model=None,
         valuation_model_factory=None,
         pricing_model_factory=None,
