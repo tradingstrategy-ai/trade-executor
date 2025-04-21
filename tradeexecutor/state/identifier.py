@@ -715,7 +715,7 @@ class TradingPairIdentifier:
             return data
         return None
 
-    def get_tokesniffer_data(self) -> dict | None:
+    def get_tokensniffer_data(self) -> dict | None:
         meta = self.get_token_metadata()
         if meta:
             return meta.token_sniffer_data
