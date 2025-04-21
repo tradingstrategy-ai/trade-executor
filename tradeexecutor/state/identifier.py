@@ -9,7 +9,7 @@ from decimal import Decimal
 from typing import Optional, Literal, TypeAlias
 
 from web3 import Web3
-from dataclasses_json import dataclass_json
+from dataclasses_json import dataclass_json, config
 from eth_typing import HexAddress
 
 from eth_defi.uniswap_v2.utils import sort_tokens
@@ -405,6 +405,19 @@ class TradingPairKind(enum.Enum):
         return self == TradingPairKind.spot_market_hold or self == TradingPairKind.spot_market_hold_rebalancing_token
 
 
+_REMOTE_OTHER_DATA_KEYS = {"token_metadata"}
+
+def _reduce_other_data(val):
+    """See translate_trading_pair() on how TradingPairIdentifier.other_data is populated"""
+    if isinstance(val, dict):
+        # Remove remote data from the dict
+        for key in _REMOTE_OTHER_DATA_KEYS:
+            if key in val:
+                del val[key]
+    return val
+
+
+
 @dataclass_json
 @dataclass(slots=True)
 class TradingPairIdentifier:
@@ -528,7 +541,11 @@ class TradingPairIdentifier:
     #: Be wary of the life cycle of the instances. The life time of the class instances
     #: tied to the trading universe that is recreated for every strategy cycle.
     #:
-    other_data: Optional[dict] = field(default_factory=dict)
+    #: .. warning::
+    #:
+    #:     To keep state size in check, other_data is not serialised.
+    #:
+    other_data: Optional[dict] = field(default_factory=dict, metadata=config(encoder=_reduce_other_data))
 
     def __post_init__(self):
         assert self.base.chain_id == self.quote.chain_id, "Cross-chain trading pairs are not possible"

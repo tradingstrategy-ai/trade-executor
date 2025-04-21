@@ -191,10 +191,6 @@ def close_position(
     if len(df) > 0:
         print(tabulate(df, headers='keys', tablefmt='rounded_outline'))
 
-    if sync_model.has_async_deposits():
-        # Cannot close any positions without doing settle first
-        pass
-
     close_single_or_all_positions(
         web3config.get_default(),
         execution_model=execution_model,

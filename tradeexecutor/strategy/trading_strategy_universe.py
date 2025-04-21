@@ -1891,6 +1891,7 @@ def translate_trading_pair(dex_pair: DEXPair, cache: dict | None = None) -> Trad
         pair.base.other_data["sell_tax"] = dex_pair.sell_tax
 
     # Need to be loaded with load_extra_metadata().
+    # see _reduce_other_data() for caveats.
     if dex_pair.other_data:
         # Because other_data is very heavy, we should only copy fields we really care.
         # Below are the whitelisted fields.
