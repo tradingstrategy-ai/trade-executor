@@ -644,6 +644,10 @@ class TradingPairIdentifier:
 
         - Used for table formatting
 
+        .. warning ::
+
+            When TradingPairIdentifier is serialised, other_data is dicarded.
+
         :return:
             Human readable dict of various data points
         """
@@ -676,8 +680,8 @@ class TradingPairIdentifier:
 
                 tokensniffer_data = metadata.token_sniffer_data
                 if tokensniffer_data:
-                    data["tokensniffer_fetched_at"] = datetime.datetime.utcfromtimestamp(tokensniffer_data["data_fetched_at"])
-                    data["tokensniffer_refreshed_at"] = datetime.datetime.utcfromtimestamp(tokensniffer_data["refreshed_at"])
+                    data["tokensniffer_fetched_at"] = tokensniffer_data["data_fetched_at"]
+                    data["tokensniffer_refreshed_at"] = datetime.datetime.utcfromtimestamp(int(tokensniffer_data["refreshed_at"] / 1000))
                     data["tokensniffer_token_created_at"] = tokensniffer_data["created_at"]
                     data["tokensniffer_token_flagged_at"] = tokensniffer_data["flagged_at"]
 
@@ -695,8 +699,21 @@ class TradingPairIdentifier:
         return data
 
     def get_token_metadata(self) -> TokenMetadata | None:
-        """Get metadata for the base token"""
+        """Get full metadata for the base token.
+
+        Not serialised.
+        """
         return self.other_data.get("token_metadata")
+
+    def get_minimal_tokesniffer_data(self) -> dict | None:
+        """Always serialised if avail.
+
+        See translate_trading_pair().
+        """
+        data = self.other_data.get("token_sniffer_data")
+        if data:
+            return data
+        return None
 
     def get_tokesniffer_data(self) -> dict | None:
         meta = self.get_token_metadata()
@@ -711,7 +728,7 @@ class TradingPairIdentifier:
         return None
 
     def get_risk_score(self) -> int | None:
-        tokensniffer_data = self.get_tokesniffer_data()
+        tokensniffer_data = self.get_minimal_tokesniffer_data()
         if tokensniffer_data:
             return tokensniffer_data["score"]
         return None

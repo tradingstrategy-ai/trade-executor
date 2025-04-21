@@ -30,7 +30,7 @@ def test_cli_trading_pair(
         "TRADING_STRATEGY_API_KEY": os.environ["TRADING_STRATEGY_API_KEY"],
         "STRATEGY_FILE": strategy_path.as_posix(),
         "CACHE_PATH": tmp_path.as_posix(),
-        "LOG_LEVEL": "info",
+        "LOG_LEVEL": "disabled",
         "UNIT_TESTING": "true",
         "MAX_DATA_DELAY_MINUTES": "99999",
         "TOKEN_ADDRESS": "0x6797b6244fa75f2e78cdffc3a4eb169332b730cc",  # EAI
