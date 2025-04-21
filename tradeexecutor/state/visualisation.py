@@ -16,7 +16,7 @@ import datetime
 import enum
 from dataclasses import dataclass, field
 from types import NoneType
-from typing import List, Dict, Optional, Any, Union, Tuple
+from typing import List, Dict, Optional, Any, Union, Tuple, Callable
 
 import numpy as np
 import pandas as pd
@@ -404,6 +404,10 @@ class Visualisation:
 
         - The first message is in strategy thinking Discord/Telegram logging output for each cycle
 
+        To display in backtesting notebook:
+
+        For example see :py:meth:`get_messages_tail`.
+
         :param timestamp:
             The current strategy cycle timestamp
 
@@ -417,19 +421,71 @@ class Visualisation:
         timepoint_messages.append(content)
         self.messages[timestamp] = timepoint_messages
 
-    def get_messages_tail(self, count: int) -> dict[datetime.datetime, str]:
+    def get_messages_tail(self, count: int, filter_func: Callable = None) -> dict[datetime.datetime, str]:
         """Get N latest messages.
 
-        - If there are multiple messages per timepoint get only one
+        - If there are multiple messages per timepoint get only one.
+
+        Example:
+
+        .. code-block:: python
+
+            # Find rebalance event
+            def find_rebalance_log_messages(msg: str):
+                return "Rebalanced: 👍" in msg
+
+            messages = state.visualisation.get_messages_tail(10, filter_func=find_rebalance_log_messages)
+
+            table = pd.Series(
+                data=list(messages.values()),
+                index=list(messages.keys()),
+            )
+
+            df = table.to_frame()
+
+            display(df.style.set_properties(**{
+                'text-align': 'left',
+                'white-space': 'pre-wrap',
+            }))
+
+        :param count:
+            How many last messages to return.
+
+        :param filter_func:
+            Match messages against this filter.
+
+            Matches the first message for a timepoint.
         """
         message_tuples = sorted(self.messages.items(), key=lambda x: x[0], reverse=True)
         result = {}
-        for msg_data in message_tuples[0:count]:
-            unix_time = msg_data[0]
-            messages = msg_data[1]
-            if messages:
-                timestamp = datetime.datetime.utcfromtimestamp(unix_time)
-                result[timestamp] = messages[0]
+
+        if filter_func:
+            for msg_data in message_tuples:
+                unix_time = msg_data[0]
+                messages = msg_data[1]
+
+                if messages:
+
+                    if filter_func is not None:
+                        if not filter_func(messages[0]):
+                            continue
+
+                    # We only want the first message for this timepoint
+                    timestamp = datetime.datetime.utcfromtimestamp(unix_time)
+                    result[timestamp] = messages[0]
+
+            last_n = dict(list(result.items())[-count:])
+            return last_n
+
+        else:
+            for msg_data in message_tuples[0:count]:
+                unix_time = msg_data[0]
+                messages = msg_data[1]
+
+                if messages:
+                    # We only want the first message for this timepoint
+                    timestamp = datetime.datetime.utcfromtimestamp(unix_time)
+                    result[timestamp] = messages[0]
 
         return result
 
