@@ -229,24 +229,16 @@ class UniswapV2LivePricing(EthereumPricingModel):
         
         if intermediate_pair:
             fee2 = self.get_pair_fee(ts, intermediate_pair)
-
             assert fee2 == fee, f"Pairs for Uniswap V2 should have same fee. Intermediate has: {fee2}, expected {fee}. Pair {intermediate_pair}"
-
             # TODO: Verify calculation
             mid_price = price * (1 - fee) * (1 - fee)
-            
             path = [intermediate_pair, target_pair]
-            
             fees = [fee, fee2]
-            
             total_fee_pct = 1 - (1-fees[0]) * (1-fees[1])
         else:
             mid_price = price * (1 - fee)
-            
             path = [target_pair]
-            
             fees = [fee]
-            
             total_fee_pct = 1 - (1 - fees[0])
             
         # Reserve is not necessarily a dollar amount (quote token doesn't have to be dollars), so we need to calculate

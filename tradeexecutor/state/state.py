@@ -928,12 +928,32 @@ class State:
         """
         raise RuntimeError(f"Removed. Use valuation.revalue_state()")
 
-    def blacklist_asset(self, asset: AssetIdentifier):
+    def blacklist_asset(
+        self,
+        asset: AssetIdentifier,
+        reason: str | None = None,
+    ):
         """Add a asset to the blacklist.
 
         See :py:meth:`is_good_pair`.
+
+        How to manually blacklist from the console:
+
+        .. code-block:: python
+
+            print("Currently blacklisted")
+            for idx, a in enumerate(state.blacklisted_assets):
+                print(f"{idx + 1}# {a}")
+
+            for p in strategy_universe.iterate_pairs():
+                if p.base.token_symbol == "EAI":
+                    state.blacklist_asset(p.base)
+
+            store.sync(state)
+
         """
-        logger.info("Blacklisted: %s", asset)
+        assert isinstance(asset, AssetIdentifier), f"Expected AssetIdentifier, got {type(asset)}: {asset}"
+        logger.info("Blacklisted: %s, reason: %s", asset, reason)
         self.asset_blacklist.add(asset.get_identifier())  # Legacy compatibility
         self.blacklisted_assets.add(asset)
 

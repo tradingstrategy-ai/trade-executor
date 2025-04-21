@@ -659,8 +659,8 @@ class TradingPairIdentifier:
 
                 tokensniffer_data = metadata.token_sniffer_data
                 if tokensniffer_data:
-                    data["tokensniffer_fetched_at"] = tokensniffer_data["data_fetched_at"]
-                    data["tokensniffer_refreshed_at"] = tokensniffer_data["refreshed_at"]
+                    data["tokensniffer_fetched_at"] = datetime.datetime.utcfromtimestamp(tokensniffer_data["data_fetched_at"])
+                    data["tokensniffer_refreshed_at"] = datetime.datetime.utcfromtimestamp(tokensniffer_data["refreshed_at"])
                     data["tokensniffer_token_created_at"] = tokensniffer_data["created_at"]
                     data["tokensniffer_token_flagged_at"] = tokensniffer_data["flagged_at"]
 
