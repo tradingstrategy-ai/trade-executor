@@ -256,7 +256,7 @@ def export_backtest_report(
             returns_series.index.name = 'timestamp'
             returns_series = returns_series.fillna(0)
             returns_df = pd.DataFrame({"daily_returns": returns_series})
-            returns_df.to_csv(output_csv_daily_returns, index=True)
+            returns_df.to_csv(output_csv_daily_returns, index=True, float_format='%.8f')
 
         # Write a static HTML file based on the notebook
         if output_html is not None:
