@@ -253,6 +253,8 @@ def export_backtest_report(
 
         if output_csv_daily_returns is not None:
             returns_series = calculate_daily_returns(state)
+            returns_series.index.name = 'timestamp'
+            returns_series = returns_series.fillna(0)
             returns_df = pd.DataFrame({"daily_returns": returns_series})
             returns_df.to_csv(output_csv_daily_returns, index=True)
 

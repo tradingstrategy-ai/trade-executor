@@ -277,6 +277,7 @@ def test_cli_backtest(
     backtest_result = os.path.join(tempfile.mkdtemp(), 'test_cli_backtest.json')
     notebook_result = os.path.join(tempfile.mkdtemp(), 'test_cli_backtest.ipynb')
     html_result = os.path.join(tempfile.mkdtemp(), 'test_cli_backtest.html')
+    csv_result = os.path.join(tempfile.mkdtemp(), 'test_cli_backtest-daily-returns.csv')
 
     environment = {
         "TRADING_STRATEGY_API_KEY": os.environ["TRADING_STRATEGY_API_KEY"],
@@ -286,6 +287,7 @@ def test_cli_backtest(
         "LOG_LEVEL": "disabled",
         "HTML_REPORT":  html_result,
         "NOTEBOOK_REPORT":  notebook_result,
+        "CSV_REPORT":  csv_result,
         "STATE_FILE":  backtest_result,
     }
 
@@ -303,6 +305,8 @@ def test_cli_backtest(
     # Check generated HTML file is good
     html = Path(html_result).open("rt").read()
     assert "/* trade-executor backtest report generator custom CSS */" in html
+
+    assert os.path.exists(csv_result), f"Did not generate: {csv_result}"
 
     # Check generated notebook is good
     with open(notebook_result, "rt") as inp:
