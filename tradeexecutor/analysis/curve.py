@@ -36,6 +36,7 @@ DEFAULT_BENCHMARK_COLOURS = {
     "BTC": "orange",
     "BTC.e": "orange",
     "cbBTC": "orange",
+    "BNB": "darkorange",
     "ETH": "blue",
     "ETH.e": "blue",
     "MATIC": "purple",

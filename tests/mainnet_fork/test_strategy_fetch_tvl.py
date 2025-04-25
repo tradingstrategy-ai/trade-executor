@@ -20,6 +20,9 @@ from tradingstrategy.chain import ChainId
 from tradingstrategy.timebucket import TimeBucket
 
 
+CI = os.environ.get("CI") == "true"
+
+
 pytestmark = pytest.mark.skipif(not os.environ.get("JSON_RPC_ETHEREUM") or not os.environ.get("TRADING_STRATEGY_API_KEY"), reason="Set JSON_RPC_ETHEREUM and TRADING_STRATEGY_API_KEY environment variables to run this test")
 
 

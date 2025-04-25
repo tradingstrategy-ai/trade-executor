@@ -11,6 +11,7 @@ from pathlib import Path
 from tempfile import NamedTemporaryFile
 
 import nbformat
+import pandas as pd
 from bs4 import BeautifulSoup
 from nbclient.exceptions import CellExecutionError
 from nbconvert import HTMLExporter
@@ -20,7 +21,7 @@ from nbformat import NotebookNode
 from tradeexecutor.state.state import State
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
 from tradeexecutor.utils.notebook import setup_charting_and_output
-
+from tradeexecutor.visual.equity_curve import calculate_daily_returns
 
 logger = logging.getLogger(__name__)
 
@@ -154,14 +155,15 @@ class BacktestReporter:
 
 
 def export_backtest_report(
-        state: State,
-        universe: TradingStrategyUniverse,
-        report_template: Path | None = None,
-        output_notebook: Path | None = None,
-        output_html: Path | None = None,
-        show_code=False,
-        custom_css: str | None=DEFAULT_CUSTOM_CSS,
-        custom_js: str | None=DEFAULT_CUSTOM_JS,
+    state: State,
+    universe: TradingStrategyUniverse,
+    report_template: Path | None = None,
+    output_notebook: Path | None = None,
+    output_html: Path | None = None,
+    output_csv_daily_returns: Path | None = None,
+    show_code=False,
+    custom_css: str | None=DEFAULT_CUSTOM_CSS,
+    custom_js: str | None=DEFAULT_CUSTOM_JS,
 ) -> NotebookNode:
     """Creates the backtest visual report.
 
@@ -248,6 +250,11 @@ def export_backtest_report(
         if output_notebook is not None:
             with open(output_notebook, 'w', encoding='utf-8') as f:
                 nbformat.write(nb, f)
+
+        if output_csv_daily_returns is not None:
+            returns_series = calculate_daily_returns(state)
+            returns_df = pd.DataFrame({"daily_returns": returns_series})
+            returns_df.to_csv(output_csv_daily_returns, index=True)
 
         # Write a static HTML file based on the notebook
         if output_html is not None:
