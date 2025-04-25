@@ -79,6 +79,7 @@ backtest_result = Option(None, envvar="BACKTEST_RESULT", help="State JSON file t
 
 notebook_report = Option(None, envvar="NOTEBOOK_REPORT", help="Jupyter Notebook file where the store the notebook results. If not given defaults to state/{executor-id}-backtest.ipynb.")
 html_report = Option(None, envvar="HTML_REPORT", help="HTML file where the store the notebook results. If not given defaults to state/{executor-id}-backtest.html.")
+csv_daily_returns_report = Option(None, envvar="CSV_REPORT", help="CSV file of daily returns. If not given defaults to state/{executor-id}-daily-returns.csv.")
 
 trading_strategy_api_key = Option(None, envvar="TRADING_STRATEGY_API_KEY", help="Trading Strategy API key")
 

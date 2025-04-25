@@ -35,6 +35,7 @@ DEFAULT_BENCHMARK_ASSETS = (
     "SOL",
     "WSOL",
     "WAVAX",
+    "WBNB",
 )
 
 

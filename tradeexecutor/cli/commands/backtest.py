@@ -54,6 +54,7 @@ def backtest(
 
     notebook_report: Optional[Path] = shared_options.notebook_report,
     html_report: Optional[Path] = shared_options.html_report,
+    csv_daily_returns_report: Optional[Path] = shared_options.csv_daily_returns_report,
 
     python_profile_report: Optional[Path] = Option(None, envvar="PYTHON_PROFILE_REPORT", help="Write a Python cprof file to check where backtest spends time"),
 
@@ -116,6 +117,9 @@ def backtest(
     if not notebook_report:
         notebook_report = Path(f"state/{id}-backtest.ipynb")
 
+    if not csv_daily_returns_report:
+        csv_daily_returns_report = Path(f"state/{id}-daily-returns.csv")
+
     assert trading_strategy_api_key, "Cannot start the backtest without trading_strategy_api_key - please give command line option or give TRADING_STRATEGY_API_KEY env var"
 
     print(f"Starting backtesting for {strategy_file}")
@@ -163,11 +167,13 @@ def backtest(
         print(f"Exporting report")
         print(f"Notebook: {notebook_report.resolve()}")
         print(f"HTML: {html_report.resolve()}")
+        print(f"CSV: {csv_daily_returns_report.resolve()}")
         export_backtest_report(
             state,
             universe,
             output_notebook=notebook_report,
             output_html=html_report,
+            output_daily_returns_csv=csv_daily_returns_report,
         )
     else:
         print("Report generation skipped")
