@@ -26,6 +26,8 @@ from tradeexecutor.strategy.strategy_type import StrategyType
 from tradeexecutor.strategy.default_routing_options import TradeRouting
 from tradeexecutor.strategy.universe_model import UniverseOptions
 
+CI = os.environ.get("CI") == "true"
+
 # https://docs.pytest.org/en/latest/how-to/skipping.html#skip-all-test-functions-of-a-class-or-module
 pytestmark = pytest.mark.skipif(os.environ.get("TRADING_STRATEGY_API_KEY") is None, reason="Set TRADING_STRATEGY_API_KEY environment variable to run this test")
 
@@ -182,6 +184,7 @@ def logger(request):
     return setup_pytest_logging(request, mute_requests=False)
 
 
+@pytest.mark.skipci(CI, reaosn="Too much data / slow / flaky on Github")
 def test_backtest_data_preload(
         logger: logging.Logger,
         persistent_test_client: Client,
