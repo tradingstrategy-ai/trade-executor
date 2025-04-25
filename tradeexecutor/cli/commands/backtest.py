@@ -173,7 +173,7 @@ def backtest(
             universe,
             output_notebook=notebook_report,
             output_html=html_report,
-            output_daily_returns_csv=csv_daily_returns_report,
+            output_csv_daily_returns=csv_daily_returns_report,
         )
     else:
         print("Report generation skipped")
