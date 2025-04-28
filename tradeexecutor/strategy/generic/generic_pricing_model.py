@@ -41,6 +41,7 @@ class GenericPricing(PricingModel):
         self.data_delay_tolerance = data_delay_tolerance
         self.exchange_rate_pairs = exchange_rate_pairs
         self.trading_fee_override = None
+        logger.info("GenericPricing: pair_configurator: %s", self.pair_configurator)
 
     def get_exchange_rate(
         self,

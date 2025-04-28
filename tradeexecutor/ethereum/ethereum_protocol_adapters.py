@@ -3,6 +3,7 @@
 See :py:mod:`tradeexecutor.strategy.generic.pair_configurator`.
 """
 
+import logging
 from typing import Set
 
 from web3 import Web3
@@ -22,6 +23,9 @@ from tradeexecutor.strategy.generic.pair_configurator import PairConfigurator, P
 from tradeexecutor.strategy.generic.default_protocols import default_match_router, default_supported_routers
 from tradeexecutor.strategy.reserve_currency import ReserveCurrency
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
+
+
+logger = logging.getLogger(__name__)
 
 
 def get_exchange_type(
@@ -44,6 +48,8 @@ def create_uniswap_v2_adapter(
     from tradeexecutor.ethereum.uniswap_v2.uniswap_v2_live_pricing import UniswapV2LivePricing
     from tradeexecutor.ethereum.uniswap_v2.uniswap_v2_valuation import UniswapV2PoolRevaluator
     from tradeexecutor.ethereum.routing_data import create_uniswap_v2_compatible_routing
+
+    logger.info("create_uniswap_v2_adapter(): %s", routing_id)
 
     assert routing_id.router_name == "uniswap-v2"
     assert len(strategy_universe.data_universe.chains) == 1
@@ -69,7 +75,14 @@ def create_uniswap_v2_adapter(
             ReserveCurrency.usdc,
             chain_id,
         )
+    elif exchange.exchange_slug == "pancakeswap-v2":
+        routing_model = create_uniswap_v2_compatible_routing(
+            TradeRouting.pancakeswap_usdt,
+            ReserveCurrency.usdt,
+            chain_id,
+        )
     else:
+        assert exchange.exchange_slug == "uniswap-v2", f"Expected uniswap-v2, got exchange slug {exchange.exchange_slug}"
         routing_model = create_uniswap_v2_compatible_routing(
             TradeRouting.uniswap_v2_usdc,
             ReserveCurrency.usdc,
