@@ -234,6 +234,7 @@ def perform_test_trade(
                 )
         else:
 
+            logger.info("Single pair test trade for %s", pair)
             make_test_trade(
                 web3config.get_default(),
                 execution_model,
