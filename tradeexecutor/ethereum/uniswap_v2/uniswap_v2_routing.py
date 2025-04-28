@@ -244,13 +244,17 @@ class UniswapV2Routing(EthereumRoutingModel):
         self.trading_fee = trading_fee
 
         logger.info(
-            "Initialised %s\nfactory_router_map: %s\nallowed_intermediary_pairs: %s\nfee: %s\nreserve token: %s",
+            "Initialised %s\nfactory_router_map: %s\nallowed_intermediary_pairs: %s\nfee: %s\nreserve token: %s\nchain: %s",
             self,
             self.factory_router_map,
             self.allowed_intermediary_pairs,
             self.trading_fee,
             self.reserve_token_address,
+            self.chain_id,
         )
+
+        if self.chain_id == ChainId.binance:
+            assert self.reserve_token_address != "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48", "Attempted to use USDC as reserve currency on BNB Smart Chain"
 
     def get_default_trading_fee(self) -> Optional[float]:
         return self.trading_fee

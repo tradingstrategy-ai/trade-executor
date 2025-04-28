@@ -3,7 +3,6 @@ import logging
 import datetime
 from decimal import Decimal
 
-from eth.vm.logic.block import timestamp
 from web3 import Web3
 
 from tradingstrategy.universe import Universe
@@ -60,7 +59,7 @@ def make_test_trade(
     ts = datetime.datetime.utcnow()
 
     # Sync nonce for the hot wallet
-    logger.info("make_test_trade() at %s", timestamp)
+    logger.info("make_test_trade() at %s", ts)
     execution_model.initialize()
 
     data_universe: Universe = universe.data_universe
@@ -86,7 +85,7 @@ def make_test_trade(
     else:
         raw_pair = data_universe.pairs.get_single()
 
-    logger.info("Getting price for pair %s", raw_pair)
+    logger.info("Getting price for pair %s using %s", raw_pair, pricing_model)
     pair = translate_trading_pair(raw_pair)
 
     # Get estimated price for the asset we are going to buy
