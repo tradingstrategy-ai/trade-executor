@@ -5,6 +5,7 @@ import logging
 
 from eth import Chain
 
+from eth_defi.token import WRAPPED_NATIVE_TOKEN
 from eth_defi.velvet import VelvetVault
 from tradeexecutor.ethereum.execution import EthereumExecution
 from tradeexecutor.ethereum.velvet.velvet_enso_routing import VelvetEnsoRouting, VelvetEnsoRoutingState
@@ -48,10 +49,21 @@ class VelvetExecution(EthereumExecution):
         reserve_asset = strategy_universe.get_reserve_asset()
 
         # A hardcoded hack for now
-        assert self.web3.eth.chain_id in (ChainId.base.value, ChainId.binance.value), "Unsupported Velvet chain"
-        allowed_intermediary_pairs = {
-            "0x4200000000000000000000000000000000000006": "0x88A43bbDF9D098eEC7bCEda4e2494615dfD9bB9C",
-        }
+        chain_id = self.web3.eth.chain_id
+        assert chain_id in (ChainId.base.value, ChainId.binance.value), "Unsupported Velvet chain"
+        match chain_id:
+            case ChainId.base.value:
+                allowed_intermediary_pairs = {
+                    "0x4200000000000000000000000000000000000006": "0x88A43bbDF9D098eEC7bCEda4e2494615dfD9bB9C",
+                }
+            case ChainId.binance.value:
+                allowed_intermediary_pairs = {
+                    # WBNB-USDT on PancakeSwap v2
+                    # https://tradingstrategy.ai/trading-view/binance/pancakeswap-v2/bnb-usdt
+                    WRAPPED_NATIVE_TOKEN[ChainId.binance.value]: "0x16b9a82891338f9ba80e2d6970fdda79d1eb0dae",
+                }
+            case _:
+                raise NotImplementedError()
 
         return VelvetEnsoRouting(
             allowed_intermediary_pairs=allowed_intermediary_pairs,

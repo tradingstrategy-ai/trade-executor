@@ -19,6 +19,7 @@ from .app import app
 from ..bootstrap import prepare_executor_id, prepare_cache, create_web3_config, create_execution_and_sync_model
 from ..log import setup_logging
 from ...ethereum.enzyme.vault import EnzymeVaultSyncModel
+from ...ethereum.velvet.vault import VelvetVaultSyncModel
 from ...strategy.approval import UncheckedApprovalModel
 from ...strategy.bootstrap import make_factory_from_strategy_mod
 from ...strategy.description import StrategyExecutionDescription
@@ -167,12 +168,17 @@ def check_wallet(
     tx_builder = sync_model
 
     # Check balances
-    reserve_address = sync_model.get_key_address() or sync_model.get_hot_wallet().address
+    reserve_address = sync_model.get_token_storage_address() or sync_model.get_hot_wallet().address
     logger.info("Balance details")
     logger.info("  Hot wallet is %s", sync_model.get_hot_wallet().address)
     gas_balance = web3.eth.get_balance(hot_wallet.address) / 10**18
     if isinstance(sync_model, EnzymeVaultSyncModel):
         logger.info("  Vault address is %s", sync_model.get_key_address())
+    elif isinstance(sync_model, VelvetVaultSyncModel):
+        logger.info("  Vault address is %s", sync_model.vault_address)
+    else:
+        logger.info("  Vault address lookup not implemented", )
+
     logger.info("  We have %f tokens left for gas", gas_balance)
     logger.info("  The gas error limit is %f tokens", min_gas_balance)
 
