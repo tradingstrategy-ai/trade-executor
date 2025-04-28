@@ -93,7 +93,9 @@ def run_backtest_for_module(
 
     with pd.option_context('display.max_rows', None, 'display.max_columns', None, 'display.width', 140):
         universe_df = display_strategy_universe(universe)
-        print(f"Loaded strategy universe pairs are:\n{universe_df}")
+        # Make more room in terminal
+        display_df = universe_df.drop(columns=["first_price_at", "type", "tvl_at"])
+        print(f"Loaded strategy universe pairs are (top 20):\n{display_df.head(20)}")
 
     initial_cash = mod.initial_cash
     assert initial_cash is not None, f"Strategy module does not set initial_cash needed to backtest"

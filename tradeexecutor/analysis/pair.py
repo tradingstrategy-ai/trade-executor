@@ -111,7 +111,7 @@ def display_strategy_universe(
             "quote": pair.quote.token_symbol,
             "exchange": pair.exchange_name,
             "fee %": pair.fee * 100,
-            "type:": "benchmark" if benchmark else "traded"
+            "type": "benchmark" if benchmark else "traded"
         }
 
         if show_price:
