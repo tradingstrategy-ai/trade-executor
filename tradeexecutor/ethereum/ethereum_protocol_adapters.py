@@ -50,7 +50,7 @@ def create_uniswap_v2_adapter(
     assert len(strategy_universe.reserve_assets) == 1
 
     reserve = strategy_universe.get_reserve_asset()
-    assert reserve.token_symbol == "USDC"
+    assert reserve.token_symbol in ("USDC", "USDT",)
 
     exchange_universe = strategy_universe.data_universe.exchange_universe
     chain_id = strategy_universe.get_single_chain()
