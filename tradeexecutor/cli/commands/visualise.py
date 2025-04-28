@@ -39,7 +39,7 @@ def visualise(
     # Debugging and unit testing
     unit_testing: bool = shared_options.unit_testing,
 ):
-    """Visualise a given strategy module.
+    """Draw the latest visualisation chart and save as PNG.
 
     - Run a backtest on a strategy module.
 

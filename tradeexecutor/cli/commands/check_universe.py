@@ -78,6 +78,7 @@ def check_universe(
 
     with pd.option_context('display.max_rows', None, 'display.max_columns', None, 'display.width', 140):
         universe_df = display_strategy_universe(universe)
+        # universe_df = pd.DataFrame(universe.get_universe_data())
         logger.info("Universe is:\n%s", str(universe_df))
 
     # Disable excessive logging for the following section

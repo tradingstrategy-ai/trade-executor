@@ -25,6 +25,7 @@ def display_strategy_universe(
     sort_ascending=True,
     sort_numeric=True,
     limit: int | None = None,
+    compact=False,
 ) -> pd.DataFrame:
     """Displays a constructed trading strategy universe in table format.
 
@@ -65,6 +66,9 @@ def display_strategy_universe(
 
     :param limit:
         Display only X first entries
+
+    :param compact:
+        Remove columns to fit into terminal window
 
     :return:
         Human-readable DataFrame for ``display()``.
@@ -202,5 +206,9 @@ def display_strategy_universe(
     if limit is not None:
         df = df.iloc[0:limit]
         print(f"Results limited to first {limit} entries")
+
+    if compact:
+        # Remove columns to fit into terminal window
+        df = df.drop(columns=["first_price_at", "type", "tvl_at"])
 
     return df
