@@ -233,6 +233,7 @@ class UniswapV2Routing(EthereumRoutingModel):
         super().__init__(allowed_intermediary_pairs, reserve_token_address, chain_id)
 
         assert type(factory_router_map) == dict
+        self.chain_id = chain_id
         self.factory_router_map = self.convert_address_dict_to_lower(factory_router_map)
         
         # TODO remove trading_fee
@@ -243,11 +244,12 @@ class UniswapV2Routing(EthereumRoutingModel):
         self.trading_fee = trading_fee
 
         logger.info(
-            "Initialised %s\nfactory_router_map: %s\nallowed_intermediary_pairs: %s\nfee: %s",
+            "Initialised %s\nfactory_router_map: %s\nallowed_intermediary_pairs: %s\nfee: %s\nreserve token: %s",
             self,
             self.factory_router_map,
             self.allowed_intermediary_pairs,
             self.trading_fee,
+            self.reserve_token_address,
         )
 
     def get_default_trading_fee(self) -> Optional[float]:

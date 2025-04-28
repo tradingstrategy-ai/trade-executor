@@ -25,6 +25,7 @@ See also :py:class:`tradeexecutor.strategy.default_routing_options.TradeRouting`
 that gives the users the choices for the trade routing options in their strategy module.
 
 """
+import logging
 from typing import TypedDict, List
 
 from eth_defi.uniswap_v2.constants import UNISWAP_V2_DEPLOYMENTS
@@ -38,6 +39,9 @@ from tradeexecutor.strategy.execution_context import ExecutionContext, Execution
 from tradeexecutor.strategy.reserve_currency import ReserveCurrency
 from tradeexecutor.strategy.default_routing_options import TradeRouting
 from tradeexecutor.strategy.routing import RoutingModel
+
+
+logger = logging.getLogger(__name__)
 
 
 QUICKSWAP_FEE = 0.0030
@@ -859,9 +863,14 @@ def create_compatible_routing(
     validate_reserve_currency(routing_type, reserve_currency)
 
     if routing_type in get_uniswap_v2_compatible_routing_types():
-        return create_uniswap_v2_compatible_routing(routing_type, reserve_currency)
+        routing = create_uniswap_v2_compatible_routing(routing_type, reserve_currency)
+        logger.info("create_uniswap_v2_compatible_routing(): chain is %s", routing.chain_id)
     elif routing_type in get_all_uniswap_v3_compatible_routing_types():
-        return create_uniswap_v3_compatible_routing(routing_type, reserve_currency)
+        routing = create_uniswap_v3_compatible_routing(routing_type, reserve_currency)
+
+    logger.info("create_compatible_routing(): created %s", routing)
+
+    return routing
 
 
 def get_routing_model(
