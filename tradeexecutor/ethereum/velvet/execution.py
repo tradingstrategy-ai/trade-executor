@@ -3,6 +3,7 @@
 import datetime
 import logging
 
+from eth import Chain
 
 from eth_defi.velvet import VelvetVault
 from tradeexecutor.ethereum.execution import EthereumExecution
@@ -47,7 +48,7 @@ class VelvetExecution(EthereumExecution):
         reserve_asset = strategy_universe.get_reserve_asset()
 
         # A hardcoded hack for now
-        assert self.web3.eth.chain_id == ChainId.base.value
+        assert self.web3.eth.chain_id in (ChainId.base.value, ChainId.binance.value), "Unsupported Velvet chain"
         allowed_intermediary_pairs = {
             "0x4200000000000000000000000000000000000006": "0x88A43bbDF9D098eEC7bCEda4e2494615dfD9bB9C",
         }
