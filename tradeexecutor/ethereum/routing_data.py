@@ -30,16 +30,14 @@ from typing import TypedDict, List
 
 from eth_defi.uniswap_v2.constants import UNISWAP_V2_DEPLOYMENTS
 from eth_defi.uniswap_v3.constants import UNISWAP_V3_DEPLOYMENTS
-from tradingstrategy.chain import ChainId
-
 from tradeexecutor.backtest.backtest_routing import BacktestRoutingModel, BacktestRoutingIgnoredModel
 from tradeexecutor.ethereum.uniswap_v2.uniswap_v2_routing import UniswapV2Routing
 from tradeexecutor.ethereum.uniswap_v3.uniswap_v3_routing import UniswapV3Routing
+from tradeexecutor.strategy.default_routing_options import TradeRouting
 from tradeexecutor.strategy.execution_context import ExecutionContext, ExecutionMode
 from tradeexecutor.strategy.reserve_currency import ReserveCurrency
-from tradeexecutor.strategy.default_routing_options import TradeRouting
 from tradeexecutor.strategy.routing import RoutingModel
-
+from tradingstrategy.chain import ChainId
 
 logger = logging.getLogger(__name__)
 
@@ -867,6 +865,9 @@ def create_compatible_routing(
         logger.info("create_uniswap_v2_compatible_routing(): chain is %s", routing.chain_id)
     elif routing_type in get_all_uniswap_v3_compatible_routing_types():
         routing = create_uniswap_v3_compatible_routing(routing_type, reserve_currency)
+    else:
+        logger.info(f"create_compatible_routing(): Cannot handle {routing_type} {reserve_currency}, returns no routing")
+        return None
 
     logger.info("create_compatible_routing(): created %s", routing)
 

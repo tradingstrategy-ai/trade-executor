@@ -101,7 +101,7 @@ class VelvetEnsoRouting(RoutingModel):
         tx_builder = state.tx_builder
 
         logger.info(
-            "Preparing Enso swap %s -> %s, amount %s (%s), slippage tolerance %f",
+            "Preparing Velvet swap %s -> %s, amount %s (%s), slippage tolerance %f",
             token_in.token_symbol,
             token_out.token_symbol,
             swap_amount,
@@ -110,7 +110,7 @@ class VelvetEnsoRouting(RoutingModel):
         )
 
         try:
-            tx_data = vault.prepare_swap_with_enso(
+            tx_data = vault.prepare_swap_with_intent(
                 token_in=token_in.address,
                 token_out=token_out.address,
                 swap_amount=swap_amount,
@@ -136,7 +136,7 @@ class VelvetEnsoRouting(RoutingModel):
         rebroadcast=False,
     ):
         """
-        See test_velvet_e2e for testse.
+        See test_velvet_e2e for tests.
 
         Error codes:
 

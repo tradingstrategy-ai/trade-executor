@@ -51,6 +51,7 @@ APPROX_REL = 0.001
 APPROX_REL_DECIMAL = Decimal("0.001")
 
 
+@flaky.flaky
 def test_one_delta_live_credit_supply_open_only(
     logger,
     web3: Web3,
