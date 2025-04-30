@@ -2760,6 +2760,37 @@ xz
         """Check if we can open a position fop a pair.
 
         - For documentation see :py:meth:`~tradeexecutor.strategy.routing.RoutingModel.check_enter_position`
+
+        Example:
+
+        .. code-block:: python
+
+            for pair_id in included_pairs:
+                pair = strategy_universe.get_pair_by_id(pair_id)
+
+                pair_signal = indicators.get_indicator_value("signal", pair=pair)
+                if pair_signal is None:
+                    continue
+
+                weight = pair_signal
+
+                if weight < 0:
+                    continue
+
+                # Enso hack to see if Enso routing is supported
+                existing_position = position_manager.get_current_position_for_pair(pair)
+                if existing_position is None:
+                    position_availability = position_manager.check_enter_position(
+                        pair,
+                    )
+                    if not position_availability.supported:
+                        # Enso does not support routing this token, we cannot open a position
+                        continue
+
+                alpha_model.set_signal(
+                    pair,
+                    weight,
+                )
         """
 
         state = self.state
