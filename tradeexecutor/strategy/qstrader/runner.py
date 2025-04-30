@@ -13,6 +13,7 @@ from tradeexecutor.strategy.pandas_trader.strategy_input import StrategyInputInd
 from tradeexecutor.strategy.pricing_model import PricingModel
 from tradeexecutor.strategy.qstrader.alpha_model import AlphaModel
 from tradeexecutor.strategy.qstrader.order_sizer import CashBufferedOrderSizer
+from tradeexecutor.strategy.routing import RoutingState, RoutingModel
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse, translate_trading_pair
 
 from tradeexecutor.state.state import State
@@ -119,14 +120,17 @@ class QSTraderRunner(StrategyRunner):
     def on_data_signal(self):
         pass
 
-    def on_clock(self,
-                 clock: datetime.datetime,
-                 executor_universe: TradingStrategyUniverse,
-                 pricing_model: PricingModel,
-                 state: State,
-                 debug_details: dict,
-                 indicators: StrategyInputIndicators | None = None,
-                 ) -> List[TradeExecution]:
+    def on_clock(
+        self,
+         clock: datetime.datetime,
+         executor_universe: TradingStrategyUniverse,
+         pricing_model: PricingModel,
+         state: State,
+         debug_details: dict,
+         indicators: StrategyInputIndicators | None = None,
+        routing_state: RoutingState = None,
+        routing_model: RoutingModel = None,
+    ) -> List[TradeExecution]:
         """Run one strategy cycle.
 
         - Takes universe, pricing model and state as an input
