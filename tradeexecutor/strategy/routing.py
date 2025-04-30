@@ -6,9 +6,11 @@ based on the exchanges the universe covers.
 Here we define the abstract overview of routing.
 """
 import abc
+from decimal import Decimal
 from typing import List, Optional, Dict
 import logging
 
+from attr import dataclass
 from hexbytes import HexBytes
 
 
@@ -24,6 +26,17 @@ from tradingstrategy.pair import PandasPairUniverse, PairNotFoundError
 
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass.dataclass
+class TradeAvailabilityResponse:
+    """Ask routing model if a pair is tradeable.
+
+    - See :py:meth:`~tradeexecutor.strategy.routing.RoutingModel.can_trade`
+    """
+    pair: TradingPairIdentifier
+    tradeable: bool
+    error_message: Optional[str] = None
 
 
 class CannotRouteTrade(Exception):
@@ -285,5 +298,24 @@ class RoutingModel(abc.ABC):
 
             Used in unit testing.
 
+        """
+        raise NotImplementedError()
+
+    def check_enter_position(
+        self,
+        routing_state: RoutingState,
+        trading_pair: TradingPairIdentifier,
+        reserve_amount_to_test=Decimal(1),
+    ) -> TradeAvailabilityResponse:
+        """Check if a pair is tradeable.
+        
+        - Work around Enso execution issues of Enso not supporting
+          all visible pairs
+
+        :param strategy_universe:
+            The currently loaded pairs
+
+        :param trading_pair:
+            Trading pair we want to query
         """
         raise NotImplementedError()

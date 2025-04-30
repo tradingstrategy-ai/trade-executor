@@ -381,6 +381,8 @@ class StrategyRunner(abc.ABC):
         state: State,
         debug_details: dict,
         indicators:StrategyInputIndicators | None = None,
+        routing_state: RoutingState = None,
+        routing_model: RoutingModel = None,
     ) -> List[TradeExecution]:
         """Perform the core strategy decision cycle.
 
@@ -775,6 +777,8 @@ class StrategyRunner(abc.ABC):
                         state,
                         debug_details,
                         indicators=indicators,
+                        routing_state=routing_state,
+                        routing_model=self.routing_model,
                     )
                     assert type(rebalance_trades) == list
                     debug_details["rebalance_trades"] = rebalance_trades

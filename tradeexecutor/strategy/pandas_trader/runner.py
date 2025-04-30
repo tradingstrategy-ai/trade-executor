@@ -15,6 +15,7 @@ from tradeexecutor.strategy.pandas_trader.indicator import IndicatorSet, calcula
 from tradeexecutor.strategy.pandas_trader.strategy_input import StrategyInput, StrategyInputIndicators
 from tradeexecutor.strategy.parameters import StrategyParameters
 from tradeexecutor.strategy.pricing_model import PricingModel
+from tradeexecutor.strategy.routing import RoutingState, RoutingModel
 from tradeexecutor.strategy.strategy_module import DecideTradesProtocol, DecideTradesProtocol2, DecideTradesProtocol3, DecideTradesProtocol4
 from tradeexecutor.strategy.sync_model import SyncModel
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse, translate_trading_pair
@@ -60,6 +61,8 @@ class PandasTraderRunner(StrategyRunner):
         state: State,
         debug_details: dict,
         indicators:StrategyInputIndicators | None = None,
+        routing_state: RoutingState = None,
+        routing_model: RoutingModel = None,
         ) -> List[TradeExecution]:
         """Run one strategy tick.
 
@@ -108,6 +111,8 @@ class PandasTraderRunner(StrategyRunner):
                 parameters=self.parameters,
                 execution_context=self.execution_context,
                 web3=web3,
+                routing_state=routing_state,
+                routing_model=routing_model,
             )
 
             logger.info(

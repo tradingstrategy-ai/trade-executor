@@ -19,6 +19,7 @@ from tradeexecutor.strategy.pandas_trader.indicator import IndicatorResultMap, I
 from tradeexecutor.strategy.pandas_trader.position_manager import PositionManager, DEFAULT_SLIPPAGE_TOLERANCE
 from tradeexecutor.strategy.parameters import StrategyParameters
 from tradeexecutor.strategy.pricing_model import PricingModel
+from tradeexecutor.strategy.routing import RoutingState, RoutingModel
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
 from tradingstrategy.candle import CandleSampleUnavailable
 from tradingstrategy.liquidity import LiquidityDataUnavailable
@@ -886,6 +887,12 @@ class StrategyInput:
     #: For live trading only, to be used in real-time decision making based on onchain-data.
     #:
     web3: Web3 | None = None
+
+    #: The routing model for the strategy
+    routing_model: RoutingModel | None = None
+
+    #: The routing state for the current cycle
+    routing_state: RoutingState | None = None
 
     def get_position_manager(self) -> PositionManager:
         """Create a position manager instance to open/close trading positions in this decision cycle."""
