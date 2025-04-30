@@ -21,7 +21,7 @@ from tradeexecutor.state.state import State
 from tradeexecutor.state.trade import TradeExecution
 from tradeexecutor.state.types import JSONHexAddress
 from tradeexecutor.strategy.execution_context import ExecutionContext
-from tradeexecutor.strategy.routing import RoutingState, RoutingModel, TradeAvailabilityResponse
+from tradeexecutor.strategy.routing import RoutingState, RoutingModel, PositionAvailabilityResponse
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
 from tradeexecutor.strategy.universe_model import StrategyExecutionUniverse
 from tradingstrategy.pair import PandasPairUniverse
@@ -265,7 +265,7 @@ class VelvetEnsoRouting(RoutingModel):
         routing_state: RoutingState,
         trading_pair: TradingPairIdentifier,
         reserve_amount_to_test=Decimal(1),
-    ) -> TradeAvailabilityResponse:
+    ) -> PositionAvailabilityResponse:
 
         assert isinstance(routing_state, VelvetEnsoRoutingState)
 
@@ -274,12 +274,19 @@ class VelvetEnsoRouting(RoutingModel):
         token_out = trading_pair.base
         swap_amount = token_in.convert_to_raw_amount(reserve_amount_to_test)
 
+        buy_tax =  trading_pair.get_buy_tax()
+        sell_tax = trading_pair.get_sell_tax()
+        risk_score = trading_pair.get_risk_score()
+
         logger.info(
-            "Velvet tradeability check %s -> %s, amount %s (%s), slippage tolerance %f",
+            "Velvet tradeability check %s -> %s, amount %s (%s), slippage tolerance: %f, buy tax: %s, sell tax: %s, risk score: %s",
             token_in.token_symbol,
             token_out.token_symbol,
             swap_amount,
             token_in.convert_to_decimal(swap_amount),
+            buy_tax,
+            sell_tax,
+            risk_score,
         )
 
         vault = routing_state.vault
@@ -294,7 +301,11 @@ class VelvetEnsoRouting(RoutingModel):
                 swap_all=False,
                 manage_token_list=False,
             )
-            return TradeAvailabilityResponse(
+            logger.info(
+                "Velvet tradeability check %s: success",
+                token_out.token_symbol,
+            )
+            return PositionAvailabilityResponse(
                 pair=trading_pair,
                 tradeable=True,
                 error_message=None
@@ -302,7 +313,11 @@ class VelvetEnsoRouting(RoutingModel):
         except VelvetSwapError as e:
             marker_string = "Could not quote shortcuts for route"
             if marker_string in str(e):
-                return TradeAvailabilityResponse(
+                logger.warning(
+                    "Velvet tradeability check %s: failed",
+                    token_out.token_symbol,
+                )
+                return PositionAvailabilityResponse(
                     pair=trading_pair,
                     tradeable=False,
                     error_message=str(e)

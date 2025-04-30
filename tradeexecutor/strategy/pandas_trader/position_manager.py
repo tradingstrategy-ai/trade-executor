@@ -11,7 +11,7 @@ import cachetools
 import pandas as pd
 
 from eth_defi.token_analysis.blacklist import is_blacklisted_address
-from tradeexecutor.strategy.routing import TradeAvailabilityResponse, RoutingModel
+from tradeexecutor.strategy.routing import PositionAvailabilityResponse, RoutingModel
 from tradingstrategy.candle import CandleSampleUnavailable
 from tradingstrategy.pair import DEXPair, HumanReadableTradingPairDescription
 from tradingstrategy.universe import Universe
@@ -2740,10 +2740,10 @@ xz
                 logger.info("Trade %s, value %s, planned reserve: %s", t, t.get_value(), t.planned_reserve)
             raise NotEnoughCasForBuys(f"Release cash will not cover for buys. Likely a problem with strategy logic.\n{msg}")
 
-     def check_enter_position(
+    def check_enter_position(
         self,
         trading_pair: TradingPairIdentifier,
-    ) -> TradeAvailabilityResponse:
+    ) -> PositionAvailabilityResponse:
         """Check if we can open a position fop a pair."""
 
         routing_model = self.routing_model

@@ -6,11 +6,11 @@ based on the exchanges the universe covers.
 Here we define the abstract overview of routing.
 """
 import abc
+from dataclasses import dataclass
 from decimal import Decimal
 from typing import List, Optional, Dict
 import logging
 
-from attr import dataclass
 from hexbytes import HexBytes
 
 
@@ -28,14 +28,14 @@ from tradingstrategy.pair import PandasPairUniverse, PairNotFoundError
 logger = logging.getLogger(__name__)
 
 
-@dataclass.dataclass
-class TradeAvailabilityResponse:
+@dataclass
+class PositionAvailabilityResponse:
     """Ask routing model if a pair is tradeable.
 
-    - See :py:meth:`~tradeexecutor.strategy.routing.RoutingModel.can_trade`
+    - See :py:meth:`~tradeexecutor.strategy.routing.RoutingModel.check_enter_position`
     """
     pair: TradingPairIdentifier
-    tradeable: bool
+    supported: bool
     error_message: Optional[str] = None
 
 
@@ -306,7 +306,7 @@ class RoutingModel(abc.ABC):
         routing_state: RoutingState,
         trading_pair: TradingPairIdentifier,
         reserve_amount_to_test=Decimal(1),
-    ) -> TradeAvailabilityResponse:
+    ) -> PositionAvailabilityResponse:
         """Check if a pair is tradeable.
         
         - Work around Enso execution issues of Enso not supporting
