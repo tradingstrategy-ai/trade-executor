@@ -1,6 +1,7 @@
 """Perform spot token swaps for Velvet vault using Enso's intent engine."""
 
 import logging
+from decimal import Decimal
 from typing import cast, Dict
 
 from hexbytes import HexBytes
@@ -10,21 +11,26 @@ from eth_defi.token import fetch_erc20_details
 from eth_defi.trade import TradeSuccess
 from eth_defi.velvet import VelvetVault
 from eth_defi.velvet.analysis import analyse_trade_by_receipt_generic
+from eth_defi.velvet.enso import VelvetSwapError
 from tradeexecutor.ethereum.swap import report_failure
 from tradeexecutor.ethereum.velvet.tx import VelvetTransactionBuilder
 from tradeexecutor.state.blockhain_transaction import BlockchainTransaction
-from tradeexecutor.state.identifier import AssetIdentifier
+from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier
 from tradeexecutor.state.interest_distribution import AssetInterestData
 from tradeexecutor.state.state import State
 from tradeexecutor.state.trade import TradeExecution
 from tradeexecutor.state.types import JSONHexAddress
 from tradeexecutor.strategy.execution_context import ExecutionContext
-from tradeexecutor.strategy.routing import RoutingState, RoutingModel
+from tradeexecutor.strategy.routing import RoutingState, RoutingModel, PositionAvailabilityResponse
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
 from tradeexecutor.strategy.universe_model import StrategyExecutionUniverse
 from tradingstrategy.pair import PandasPairUniverse
 
 logger = logging.getLogger(__name__)
+
+
+class SwapCheckFailed(Exception):
+    """Enso check for tradeabiltiy failed"""
 
 
 class VelvetEnsoRoutingState(RoutingState):
@@ -172,7 +178,6 @@ class VelvetEnsoRouting(RoutingModel):
             remaining_token_addresses = [t.address for t in remaining_tokens]
             t.blockchain_transactions = [self.swap(routing_state, t, remaining_token_addresses)]
 
-
     def settle_trade(
         self,
         web3,
@@ -254,3 +259,71 @@ class VelvetEnsoRouting(RoutingModel):
         else:
             # Trade failed
             report_failure(ts, state, trade, stop_on_execution_failure)
+
+    def check_enter_position(
+        self,
+        routing_state: RoutingState,
+        trading_pair: TradingPairIdentifier,
+        reserve_amount_to_test=Decimal(1),
+    ) -> PositionAvailabilityResponse:
+
+        assert isinstance(routing_state, VelvetEnsoRoutingState)
+
+        strategy_universe = routing_state.strategy_universe
+        token_in = strategy_universe.get_reserve_asset()
+        token_out = trading_pair.base
+        swap_amount = token_in.convert_to_raw_amount(reserve_amount_to_test)
+
+        buy_tax =  trading_pair.get_buy_tax()
+        sell_tax = trading_pair.get_sell_tax()
+        risk_score = trading_pair.get_risk_score()
+
+        logger.info(
+            "Velvet tradeability check %s -> %s, amount %s (%s), slippage tolerance: %f, buy tax: %s, sell tax: %s, risk score: %s",
+            token_in.token_symbol,
+            token_out.token_symbol,
+            swap_amount,
+            token_in.convert_to_decimal(swap_amount),
+            buy_tax,
+            sell_tax,
+            risk_score,
+        )
+
+        vault = routing_state.vault
+
+        try:
+            _ = vault.prepare_swap_with_intent(
+                token_in=token_in.address,
+                token_out=token_out.address,
+                swap_amount=swap_amount,
+                slippage=0.01,
+                remaining_tokens=[token_in.address],
+                swap_all=False,
+                manage_token_list=False,
+                # Do not retry because we want to handle HTTP 500
+                retries=1,
+            )
+            logger.info(
+                "Velvet tradeability check %s: success",
+                token_out.token_symbol,
+            )
+            return PositionAvailabilityResponse(
+                pair=trading_pair,
+                supported=True,
+                error_message=None
+            )
+        except VelvetSwapError as e:
+            # "https://intents.velvet.capital/api/v1, code 500: {"message":"Could not quote shortcuts for route 0x55d398326f99059ff775485246999027b3197955 -> 0x75da2849aab9a7970be603449a5b4b47efe61178 on network 56, please make sure your amountIn (8180838235143463421) is within an acceptable range","description":"failed enso request"}"
+            marker_string = "Could not quote shortcuts for route"
+            if marker_string in str(e):
+                logger.warning(
+                    "Velvet tradeability check %s: failed",
+                    token_out.token_symbol,
+                )
+                return PositionAvailabilityResponse(
+                    pair=trading_pair,
+                    supported=False,
+                    error_message=str(e)
+                )
+            else:
+                raise SwapCheckFailed(f"Unknown error when checking tradebility for pair: {trading_pair}") from e

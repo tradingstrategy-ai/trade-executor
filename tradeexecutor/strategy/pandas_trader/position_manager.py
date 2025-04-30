@@ -11,6 +11,7 @@ import cachetools
 import pandas as pd
 
 from eth_defi.token_analysis.blacklist import is_blacklisted_address
+from tradeexecutor.strategy.routing import PositionAvailabilityResponse, RoutingModel, RoutingState
 from tradingstrategy.candle import CandleSampleUnavailable
 from tradingstrategy.pair import DEXPair, HumanReadableTradingPairDescription
 from tradingstrategy.universe import Universe
@@ -169,6 +170,8 @@ class PositionManager:
         pricing_model: PricingModel,
         default_slippage_tolerance: Percent=None,
         trading_pair_cache=DEFAULT_TRADING_PAIR_CACHE,
+        routing_model: RoutingModel = None,
+        routing_state: RoutingState = None,
     ):
 
         """Create a new PositionManager instance.
@@ -200,6 +203,15 @@ class PositionManager:
 
             See :py:meth:`get_trading_pair`.
 
+        :param routing_model:
+            Needed for position enter checks.
+
+            See :py:meth:`check_enter_position`.
+
+        :param routing_state:
+            Needed for position enter checks.
+
+            See :py:meth:`check_enter_position`.
         """
 
         assert pricing_model, "pricing_model is needed in order to know buy/sell price of new positions"
@@ -241,6 +253,8 @@ class PositionManager:
         self.reserve_currency = reserve_currency
         self.reserve_price = reserve_price
         self.trading_pair_cache = trading_pair_cache
+        self.routing_model = routing_model
+        self.routing_state = routing_state
 
     def is_any_open(self) -> bool:
         """Do we have any positions open.
@@ -2738,6 +2752,73 @@ xz
             for t in trades:
                 logger.info("Trade %s, value %s, planned reserve: %s", t, t.get_value(), t.planned_reserve)
             raise NotEnoughCasForBuys(f"Release cash will not cover for buys. Likely a problem with strategy logic.\n{msg}")
+
+    def check_enter_position(
+        self,
+        trading_pair: TradingPairIdentifier,
+    ) -> PositionAvailabilityResponse:
+        """Check if we can open a position fop a pair.
+
+        - For documentation see :py:meth:`~tradeexecutor.strategy.routing.RoutingModel.check_enter_position`
+
+        Example:
+
+        .. code-block:: python
+
+            for pair_id in included_pairs:
+                pair = strategy_universe.get_pair_by_id(pair_id)
+
+                pair_signal = indicators.get_indicator_value("signal", pair=pair)
+                if pair_signal is None:
+                    continue
+
+                weight = pair_signal
+
+                if weight < 0:
+                    continue
+
+                # Enso hack to see if Enso routing is supported
+                existing_position = position_manager.get_current_position_for_pair(pair)
+                if existing_position is None:
+                    position_availability = position_manager.check_enter_position(
+                        pair,
+                    )
+                    if not position_availability.supported:
+                        # Enso does not support routing this token, we cannot open a position
+                        continue
+
+                alpha_model.set_signal(
+                    pair,
+                    weight,
+                )
+        """
+
+        state = self.state
+        timestamp = self.timestamp
+        routing_model = self.routing_model
+        assert routing_model is not None, f"RoutingModel not given when initialising PositionManager"
+
+        routing_state = self.routing_state
+        assert routing_state is not None, f"RoutingState not given when initialising PositionManager"
+
+        response = routing_model.check_enter_position(
+            routing_state=self.routing_state,
+            trading_pair=trading_pair,
+        )
+
+        # Log in the state if the trading pair becomes suddenly available
+        if response.supported:
+            state.visualisation.add_message(
+                timestamp,
+                f"check_enter_position(): pair {trading_pair.get_ticker()} supported",
+            )
+        else:
+            state.visualisation.add_message(
+                timestamp,
+                f"check_enter_position(): pair {trading_pair.get_ticker()} unsupported: {response.error_message}",
+            )
+
+        return response
 
 
 def explain_open_position_failure(

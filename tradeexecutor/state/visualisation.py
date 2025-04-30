@@ -472,7 +472,7 @@ class Visualisation:
 
                     # We only want the first message for this timepoint
                     timestamp = datetime.datetime.utcfromtimestamp(unix_time)
-                    result[timestamp] = messages[0]
+                    result[timestamp] = "\n".join(messages)
 
             last_n = dict(list(result.items())[-count:])
             return last_n
@@ -485,7 +485,7 @@ class Visualisation:
                 if messages:
                     # We only want the first message for this timepoint
                     timestamp = datetime.datetime.utcfromtimestamp(unix_time)
-                    result[timestamp] = messages[0]
+                    result[timestamp] = "\n".join(messages)
 
         return result
 
