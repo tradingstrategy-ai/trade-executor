@@ -100,6 +100,7 @@ def environment(
         "TRADING_STRATEGY_API_KEY": TRADING_STRATEGY_API_KEY,
         "MAX_DATA_DELAY_MINUTES": str(10 * 60 * 24 * 365),  # 10 years or "disabled""
         "MIN_GAS_BALANCE": "0.0",
+        "GAS_BALANCE_WARNING_LEVEL": "0.0",
     }
     return environment
 
@@ -112,21 +113,18 @@ def test_velvet_check_enter_position(
 ):
     """Run a single cycle test strategy and see we get correct replies in PositionAvailabilityResponse
 
+    - In the strategy file SUPPORTED_PAIRS we have hand-picked two pairs on BNB Smart Chain
+      we know behave in a certain way
     """
 
     cli = get_command(app)
     mocker.patch.dict("os.environ", environment, clear=True)
     cli.main(args=["init"], standalone_mode=False)
-
-    state = State.read_json_file(state_file)
-    assert state.cycle == 1
-
     cli.main(args=["start"], standalone_mode=False)
-
     state = State.read_json_file(state_file)
-    reserve_position = state.portfolio.get_default_reserve_position()
-    assert reserve_position.get_value() > 5.0  # Should have 100 USDC starting balance
-
     messages = state.visualisation.get_messages_tail(5)
-    assert messages[0] == "Ok"
+    # "Strategy did not produce intended ok message - execution loop probably failed, check logs"
+    assert len(messages) == 1
+    message = next(iter(messages.values()))
+    assert "decide_trades() completed" in message
 

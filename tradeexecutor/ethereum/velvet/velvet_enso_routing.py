@@ -300,6 +300,8 @@ class VelvetEnsoRouting(RoutingModel):
                 remaining_tokens=[token_in.address],
                 swap_all=False,
                 manage_token_list=False,
+                # Do not retry because we want to handle HTTP 500
+                retries=1,
             )
             logger.info(
                 "Velvet tradeability check %s: success",
@@ -307,10 +309,11 @@ class VelvetEnsoRouting(RoutingModel):
             )
             return PositionAvailabilityResponse(
                 pair=trading_pair,
-                tradeable=True,
+                supported=True,
                 error_message=None
             )
         except VelvetSwapError as e:
+            # "https://intents.velvet.capital/api/v1, code 500: {"message":"Could not quote shortcuts for route 0x55d398326f99059ff775485246999027b3197955 -> 0x75da2849aab9a7970be603449a5b4b47efe61178 on network 56, please make sure your amountIn (8180838235143463421) is within an acceptable range","description":"failed enso request"}"
             marker_string = "Could not quote shortcuts for route"
             if marker_string in str(e):
                 logger.warning(
@@ -319,7 +322,7 @@ class VelvetEnsoRouting(RoutingModel):
                 )
                 return PositionAvailabilityResponse(
                     pair=trading_pair,
-                    tradeable=False,
+                    supported=False,
                     error_message=str(e)
                 )
             else:

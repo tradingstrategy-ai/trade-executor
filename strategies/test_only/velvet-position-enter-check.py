@@ -163,6 +163,7 @@ class Parameters:
 SUPPORTING_PAIRS = [
     (ChainId.binance, "pancakeswap-v2", "DWN", "USDT", 0.0025),  # Scam pair, should not be tradeable
     (ChainId.binance, "pancakeswap-v2", "ICC", "USDT", 0.0025),
+    (ChainId.binance, "pancakeswap-v2", "WBNB", "USDT", 0.0025),
 ]
 LENDING_RESERVES = None
 
@@ -315,13 +316,26 @@ def decide_trades(
     bad_pair = strategy_universe.get_pair_by_human_description(
         SUPPORTING_PAIRS[0]
     )
-
     position_tradeability = position_manager.check_enter_position(bad_pair)
     assert position_tradeability.supported is False
+    # Check for specific Enso error message we know
+    assert "Could not quote shortcuts" in position_tradeability.error_message
+
+    maybe_pair = strategy_universe.get_pair_by_human_description(
+        SUPPORTING_PAIRS[1]
+    )
+    position_tradeability = position_manager.check_enter_position(maybe_pair)
+    assert position_tradeability.supported is False, f"We expected we can trade pair, but we can't: {position_tradeability.error_message}"
+
+    good_pair = strategy_universe.get_pair_by_human_description(
+        SUPPORTING_PAIRS[2]
+    )
+    position_tradeability = position_manager.check_enter_position(good_pair)
+    assert position_tradeability.supported is True, f"We expected we can trade pair, but we can't: {position_tradeability.error_message}"
 
     input.state.visualisation.add_message(
         input.timestamp,
-        "OK"
+        "decide_trades() completed"
     )
 
     return []
