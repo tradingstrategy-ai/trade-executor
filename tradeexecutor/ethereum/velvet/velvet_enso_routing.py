@@ -2,6 +2,7 @@
 
 import logging
 from decimal import Decimal
+from importlib.metadata import metadata
 from typing import cast, Dict
 
 from hexbytes import HexBytes
@@ -273,30 +274,34 @@ class VelvetEnsoRouting(RoutingModel):
         token_in = strategy_universe.get_reserve_asset()
         token_out = trading_pair.base
         swap_amount = token_in.convert_to_raw_amount(reserve_amount_to_test)
+        slippage_tolerance = 0.01
 
         buy_tax =  trading_pair.get_buy_tax()
         sell_tax = trading_pair.get_sell_tax()
         risk_score = trading_pair.get_risk_score()
+        metadata = trading_pair.get_token_metadata()
 
         logger.info(
-            "Velvet tradeability check %s -> %s, amount %s (%s), slippage tolerance: %f, buy tax: %s, sell tax: %s, risk score: %s",
+            "Velvet tradeability check %s -> %s, amount %s (%s), slippage tolerance: %f, buy tax: %s, sell tax: %s, risk score: %s, metadata is %s",
             token_in.token_symbol,
             token_out.token_symbol,
             swap_amount,
+            slippage_tolerance,
             token_in.convert_to_decimal(swap_amount),
             buy_tax,
             sell_tax,
             risk_score,
+            metadata is not None,
         )
 
         vault = routing_state.vault
 
         try:
-            _ = vault.prepare_swap_with_intent(
+            tx_data = vault.prepare_swap_with_intent(
                 token_in=token_in.address,
                 token_out=token_out.address,
                 swap_amount=swap_amount,
-                slippage=0.01,
+                slippage=slippage_tolerance,
                 remaining_tokens=[token_in.address],
                 swap_all=False,
                 manage_token_list=False,
@@ -304,8 +309,9 @@ class VelvetEnsoRouting(RoutingModel):
                 retries=1,
             )
             logger.info(
-                "Velvet tradeability check %s: success",
+                "Velvet trade allowed %s: check success, %s",
                 token_out.token_symbol,
+                tx_data,
             )
             return PositionAvailabilityResponse(
                 pair=trading_pair,
@@ -317,7 +323,7 @@ class VelvetEnsoRouting(RoutingModel):
             marker_string = "Could not quote shortcuts for route"
             if marker_string in str(e):
                 logger.warning(
-                    "Velvet tradeability check %s: failed",
+                    "Velvet trade not allowed %s: failed",
                     token_out.token_symbol,
                 )
                 return PositionAvailabilityResponse(
