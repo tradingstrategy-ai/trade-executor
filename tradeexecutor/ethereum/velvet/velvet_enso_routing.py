@@ -280,9 +280,10 @@ class VelvetEnsoRouting(RoutingModel):
         sell_tax = trading_pair.get_sell_tax()
         risk_score = trading_pair.get_risk_score()
         metadata = trading_pair.get_token_metadata()
+        tokensniffer_data  = trading_pair.get_minimal_tokesniffer_data()
 
         logger.info(
-            "Velvet tradeability check %s -> %s, amount %s (%s), slippage tolerance: %f, buy tax: %s, sell tax: %s, risk score: %s, metadata is %s",
+            "Velvet tradeability check %s -> %s, amount %s (%s), slippage tolerance: %f, buy tax: %s, sell tax: %s, risk score: %s, metadata is %s, tokensniffer data is %s",
             token_in.token_symbol,
             token_out.token_symbol,
             swap_amount,
@@ -292,6 +293,7 @@ class VelvetEnsoRouting(RoutingModel):
             sell_tax,
             risk_score,
             metadata is not None,
+            tokensniffer_data,
         )
 
         vault = routing_state.vault
