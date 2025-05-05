@@ -2,15 +2,28 @@
 """
 import datetime
 import logging
+from itertools import chain
 
 from tradeexecutor.state.state import State
 from tradeexecutor.state.trade import TradeExecution, TradeType, TradeStatus
 from tradeexecutor.strategy.execution_model import ExecutionModel
 from tradeexecutor.strategy.routing import RoutingModel, RoutingState
-from .repair import find_trades_to_be_repaired, RepairAborted, RepairResult, unfreeze_position
+from .repair import RepairAborted, RepairResult, unfreeze_position
 
 logger = logging.getLogger(__name__)
 
+
+def find_trades_to_be_retried(state: State) -> list[TradeExecution]:
+    trades_to_be_repaired = []
+    # Closed trades do not need attention
+    for p in chain(state.portfolio.open_positions.values(), state.portfolio.frozen_positions.values()):
+        t: TradeExecution
+        for t in p.trades.values():
+            if t.is_repair_needed():
+                logger.info("Found a trade needing repair: %s", t)
+                trades_to_be_repaired.append(t)
+
+    return trades_to_be_repaired
 
 
 def rebroadcast_trade(
@@ -75,7 +88,7 @@ def retry_trades(
 
     logger.info("Strategy has %d frozen positions", len(frozen_positions))
 
-    trades_to_be_retried = find_trades_to_be_repaired(state)
+    trades_to_be_retried = find_trades_to_be_retried(state)
 
     logger.info("Found %d trades to be retried", len(trades_to_be_retried))
 

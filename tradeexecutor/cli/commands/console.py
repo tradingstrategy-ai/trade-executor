@@ -299,15 +299,15 @@ def console(
     else:
         backtested_state = None
 
-    refresh_run_state(
-        run_state,
-        state,
-        execution_context,
-        visualisation=True,
-        universe=universe,
-        sync_model=sync_model,
-        backtested_state=backtested_state,
-    )
+    # refresh_run_state(
+    #     run_state,
+    #     state,
+    #     execution_context,
+    #     visualisation=True,
+    #     universe=universe,
+    #     sync_model=sync_model,
+    #     backtested_state=backtested_state,
+    # )
 
     if mod.create_indicators:
         # If the strategy uses indicators calculate and expose them to the console
