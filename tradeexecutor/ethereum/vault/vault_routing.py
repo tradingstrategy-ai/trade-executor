@@ -109,7 +109,7 @@ class VaultRouting(RoutingModel):
         else:
             token_in = trade.pair.base
             token_out = reserve_asset
-            swap_amount = -trade.get_planned_quantity()
+            swap_amount = -trade.planned_quantity
 
         logger.info(
             "Preparing vault flow %s -> %s, amount %s (%s), slippage tolerance %f",

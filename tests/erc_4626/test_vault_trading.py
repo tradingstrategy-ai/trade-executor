@@ -53,8 +53,7 @@ def test_vault_routing(
 
 
 
-
-def test_vault_trading_deposit(
+def test_vault_trading_deposit_redeem(
     vault: IPORVault,
     strategy_universe,
     execution_model,
@@ -82,6 +81,7 @@ def test_vault_trading_deposit(
         default_slippage_tolerance=0.20,
     )
 
+    # Deposit to the vault
     trades = position_manager.open_spot(
         pair,
         value=10.00,
@@ -103,11 +103,11 @@ def test_vault_trading_deposit(
     )
 
     assert t.is_success(), f"Trade failed: {t.blockchain_transactions[0].revert_reason}"
-    assert 0 < t.executed_price < 1
-    assert t.executed_quantity > 1000  # Keycat tokens
-    assert t.executed_reserve > 0
+    assert t.executed_price == pytest.approx(1.0335669715951414)
+    assert t.executed_quantity == pytest.approx(Decimal(9.67523177))
+    assert t.executed_reserve == 10
 
-    # Then sell Keycat
+    # Then redeem shares back
     trades = position_manager.close_all()
     assert len(trades) == 1
     t = trades[0]
@@ -122,6 +122,5 @@ def test_vault_trading_deposit(
     )
 
     assert t.is_success(), f"Trade failed: {t.blockchain_transactions[0].revert_reason}"
-    assert 0 < t.executed_price < 1
-    assert t.executed_quantity < 1000  # DogInMe tokens
-    assert t.executed_reserve > 0
+    assert t.executed_price == pytest.approx(1.0335669715951414)
+    assert t.executed_quantity == pytest.approx(Decimal(9.67523177))

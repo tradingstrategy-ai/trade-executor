@@ -26,6 +26,7 @@ def is_swap_function(name: str):
         "withdraw",
         # ERC-4626
         "deposit",
+        "redeem",
     }
 
 
