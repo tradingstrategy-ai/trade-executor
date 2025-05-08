@@ -98,8 +98,9 @@ class VaultRouting(RoutingModel):
         reserve_asset = state.strategy_universe.get_reserve_asset()
 
         tx_builder = state.tx_builder
+        web3 = tx_builder.web3
 
-        target_vault = get_vault_for_pair(trade.pair)
+        target_vault = get_vault_for_pair(web3, trade.pair)
 
         if trade.is_buy():
             token_in = reserve_asset
@@ -206,10 +207,13 @@ class VaultRouting(RoutingModel):
         except KeyError as e:
             raise KeyError(f"Could not find hash: {swap_tx.tx_hash} in {receipts}") from e
 
+        direction = "deposit" if trade.is_buy() else "redeem"
+
         result = analyse_4626_flow_transaction(
             vault=vault,
             tx_hash=swap_tx.tx_hash,
             tx_receipt=receipt,
+            direction=direction,
         )
 
         ts = get_block_timestamp(web3, receipt["blockNumber"])

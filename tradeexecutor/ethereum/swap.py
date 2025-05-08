@@ -24,6 +24,8 @@ def is_swap_function(name: str):
         # Aave
         "supply",
         "withdraw",
+        # ERC-4626
+        "deposit",
     }
 
 

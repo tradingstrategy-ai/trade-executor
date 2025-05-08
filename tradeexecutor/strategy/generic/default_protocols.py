@@ -92,7 +92,7 @@ def default_supported_routers(strategy_universe: TradingStrategyUniverse) -> Set
                 configs.add(
                     ProtocolRoutingId(
                         router_name="vault",
-                        exchange_slug=xc.exchange_slug,
+                        exchange_slug=None,
                     )
                 )
                 vault_done = True
@@ -122,7 +122,5 @@ def default_supported_routers(strategy_universe: TradingStrategyUniverse) -> Set
                     lending_protocol_slug="aave_v3",
                 )
             )
-
-    import ipdb ; ipdb.set_trace()
 
     return configs
