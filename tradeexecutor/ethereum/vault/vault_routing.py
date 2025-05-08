@@ -19,6 +19,7 @@ from tradeexecutor.ethereum.swap import get_swap_transactions, report_failure
 from tradeexecutor.state.blockhain_transaction import BlockchainTransaction
 from tradeexecutor.state.state import State
 from tradeexecutor.state.trade import TradeExecution
+from tradeexecutor.state.types import JSONHexAddress
 from tradeexecutor.strategy.routing import RoutingState, RoutingModel
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
 from tradeexecutor.utils.blockchain import get_block_timestamp
@@ -57,6 +58,12 @@ class VaultRouting(RoutingModel):
 
     - Do trades for ERC-4626 and other vaults
     """
+
+    def __init__(self, reserve_token_address: JSONHexAddress):
+        super().__init__(
+            allowed_intermediary_pairs={},
+            reserve_token_address=reserve_token_address,
+        )
 
     def create_routing_state(
         self,

@@ -15,8 +15,8 @@ class VaultValuator(ValuationModel):
     """Re-value assets based on what vault tells us."""
 
     def __init__(self, pricing_model: VaultPricing):
-        super().__init__(pricing_model)
         assert isinstance(pricing_model, VaultPricing)
+        self.pricing_model = pricing_model
 
     def __call__(
         self,

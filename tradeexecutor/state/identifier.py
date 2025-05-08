@@ -743,8 +743,18 @@ class TradingPairIdentifier:
         return None
 
     def get_vault_features(self) -> set[ERC4626Feature] | None:
-        """Needed for ERC-4626 compatibility."""
+        """Get list of vault feature flags if the pair is a vault.
+
+        Needed for ERC-4626 compatibility.
+        """
         return self.other_data.get("vault_features")
+
+    def get_vault_protocol(self) -> str | None:
+        """Get the vault protocol name.
+
+        - Lowercased, slug
+        """
+        return self.other_data.get("vault_protocol")
 
     def has_complete_info(self) -> bool:
         """Check if the pair has good information.

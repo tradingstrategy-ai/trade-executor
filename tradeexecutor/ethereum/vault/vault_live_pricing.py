@@ -10,6 +10,7 @@ from web3 import Web3
 
 from tradeexecutor.ethereum.vault.vault_routing import get_vault_for_pair
 from tradeexecutor.state.identifier import TradingPairIdentifier
+from tradeexecutor.state.types import USDollarAmount
 from tradeexecutor.strategy.pricing_model import PricingModel
 from tradeexecutor.strategy.trade_pricing import TradePricing
 
@@ -17,7 +18,12 @@ logger = logging.getLogger(__name__)
 
 
 class VaultPricing(PricingModel):
-    """Always pull the latest live share price of a vault."""
+    """Always pull the latest live share price of a vault.
+
+    .. note::
+
+        Only supports stablecoin-nominated vaults
+    """
 
     def __init__(
         self,
@@ -106,3 +112,16 @@ class VaultPricing(PricingModel):
             token_out=estimated_shares,
         )
 
+    def get_mid_price(
+        self,
+        ts: datetime.datetime,
+        pair: TradingPairIdentifier
+    ) -> USDollarAmount:
+        return self.get_buy_price(ts, pair, Decimal(1))
+
+    def get_pair_fee(
+        self,
+        ts: datetime.datetime,
+        pair: TradingPairIdentifier,
+    ) -> Optional[float]:
+        return 0.0

@@ -41,6 +41,10 @@ def default_match_router(
                 router_name="aave-v3",
                 lending_protocol_slug="aave_v3",
             )
+    elif pair.is_vault():
+        return ProtocolRoutingId(
+            router_name="vault",
+        )
 
     pair_universe = strategy_universe.data_universe.pairs
 

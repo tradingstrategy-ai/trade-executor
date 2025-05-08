@@ -166,6 +166,7 @@ def create_universe_from_trading_pair_identifiers(
 ) -> PandasPairUniverse:
     """Create pair universe from a list of pair identifiers.
 
+    - Reverse engineer "raw data" from constructed Python objects
     - Used in tests to set up pair universes when we cannot yet downlaod data from the oracle
     """
 
@@ -175,8 +176,17 @@ def create_universe_from_trading_pair_identifiers(
         counter += 1
         return counter
 
-    data = [
-        {
+    data = []
+    for t in pairs:
+
+        if t.is_vault():
+            dex_type = "erc_4626_vault"
+            exchange_slug = t.other_data["vault_protocol"]
+        else:
+            dex_type = exchange_universe.get_by_chain_and_factory(ChainId(t.chain_id), t.exchange_address).exchange_type.value
+            exchange_slug = exchange_universe.get_by_chain_and_factory(ChainId(t.chain_id), t.exchange_address).exchange_slug
+
+        entry = {
             "pair_id": allocate_pair_id(),
             "chain_id": t.chain_id,
             "exchange_id": exchange_universe.get_by_chain_and_factory(ChainId(t.chain_id), t.exchange_address).exchange_id,
@@ -187,15 +197,17 @@ def create_universe_from_trading_pair_identifiers(
             "token1_symbol": t.quote.token_symbol,
             "base_token_symbol": t.base.token_symbol,
             "quote_token_symbol": t.quote.token_symbol,
-            "dex_type": exchange_universe.get_by_chain_and_factory(ChainId(t.chain_id), t.exchange_address).exchange_type.value,
+            "dex_type": dex_type,
             "token0_decimals": t.base.decimals,
             "token1_decimals": t.quote.decimals,
-            "exchange_slug": exchange_universe.get_by_chain_and_factory(ChainId(t.chain_id), t.exchange_address).exchange_slug,
+            "exchange_slug": exchange_slug,
             "exchange_address": t.exchange_address,
             "pair_slug": f"{t.base.token_symbol}-{t.quote.token_symbol}",
             "fee": int(t.fee * 10_000),
-        } for t in pairs
-    ]
+            "other_data": t.other_data,
+        }
+
+        data.append(entry)
     df = pd.DataFrame(data)
     universe = PandasPairUniverse(df, exchange_universe=exchange_universe)
     return universe

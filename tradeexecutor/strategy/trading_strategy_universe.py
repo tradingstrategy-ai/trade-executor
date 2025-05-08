@@ -606,6 +606,25 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
             raise RuntimeError(f"Failed to look up: {desc}") from e
         return translate_trading_pair(pair, cache=self.pair_cache)
 
+    def get_pair_by_smart_contract(self, address: JSONHexAddress) -> TradingPairIdentifier:
+        """Get pair by its smart contract address.
+
+        - Most useful for vaults
+        - See :py:meth:`tradingstrategy.pair.PandasPairUniverse.get_pair_by_smart_contract`
+
+        :return:
+            The trading pair object for the vault.
+
+        :raise NoPairFound:
+            In the case input data cannot be resolved.
+        """
+        try:
+            pair = self.data_universe.pairs.get_pair_by_smart_contract(address)
+        except Exception as e:
+            # TODO: Have a better exception here
+            raise RuntimeError(f"Failed to look up: {address}") from e
+        return translate_trading_pair(pair, cache=self.pair_cache)
+
     def iterate_pairs(self) -> Iterable[TradingPairIdentifier]:
         """Iterate over all available trading pairs.
 
@@ -1871,6 +1890,11 @@ def translate_trading_pair(dex_pair: DEXPair, cache: dict | None = None) -> Trad
         else:
             fee = None
 
+    if dex_pair.dex_type == ExchangeType.erc_4626_vault:
+        kind = TradingPairKind.vault
+    else:
+        kind = TradingPairKind.spot_market_hold
+
     pair = TradingPairIdentifier(
         base=base,
         quote=quote,
@@ -1881,6 +1905,7 @@ def translate_trading_pair(dex_pair: DEXPair, cache: dict | None = None) -> Trad
         fee=fee,
         reverse_token_order=dex_pair.token0_symbol != dex_pair.base_token_symbol,
         exchange_name=dex_pair.exchange_name,
+        kind=kind,
     )
 
     # Need to be loaded with load_extra_metadata()
@@ -1919,6 +1944,10 @@ def translate_trading_pair(dex_pair: DEXPair, cache: dict | None = None) -> Trad
         else:
             # Skip other_data.top_pair_data
             pass
+
+        if kind == TradingPairKind.vault:
+            pair.other_data["vault_features"] = dex_pair.other_data["vault_features"]
+            pair.other_data["vault_protocol"] = dex_pair.other_data["vault_protocol"]
 
     if cache is not None:
         cache[pair.internal_id] = pair

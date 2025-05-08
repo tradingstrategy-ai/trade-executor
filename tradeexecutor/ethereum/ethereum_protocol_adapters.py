@@ -13,6 +13,7 @@ from eth_defi.one_delta.deployment import fetch_deployment as fetch_1delta_deplo
 from eth_defi.aave_v3.constants import AAVE_V3_DEPLOYMENTS
 from eth_defi.one_delta.constants import ONE_DELTA_DEPLOYMENTS
 from tradeexecutor.ethereum.routing_data import base_uniswap_v3_address_map
+from tradeexecutor.ethereum.vault.vault_routing import VaultRouting
 
 from tradingstrategy.chain import ChainId
 from tradingstrategy.exchange import ExchangeUniverse, ExchangeType
@@ -298,6 +299,40 @@ def create_aave_v3_adapter(
     )
 
 
+
+def create_vault_adapter(
+    web3: Web3,
+    strategy_universe: TradingStrategyUniverse,
+    routing_id: ProtocolRoutingId,
+) -> ProtocolRoutingConfig:
+
+    # TODO: Avoid circular imports for now
+    from tradeexecutor.ethereum.vault.vault_live_pricing import VaultPricing
+    from tradeexecutor.ethereum.vault.vault_valuation import VaultValuator
+    # from tradeexecutor.ethereum.vault.vault_routing import VaultRouting
+
+    logger.info("create_vault_adapter(): %s", routing_id)
+
+    assert routing_id.router_name == "vault"
+    assert len(strategy_universe.data_universe.chains) == 1
+    assert len(strategy_universe.reserve_assets) == 1
+
+    reserve = strategy_universe.get_reserve_asset()
+    assert reserve.token_symbol in ("USDC", "USDT",)
+    chain_id = strategy_universe.get_single_chain()
+
+    routing_model = VaultRouting(reserve.address)
+    pricing_model = VaultPricing(web3)
+    valuation_model = VaultValuator(pricing_model)
+
+    return ProtocolRoutingConfig(
+        routing_id=routing_id,
+        routing_model=routing_model,
+        pricing_model=pricing_model,
+        valuation_model=valuation_model,
+    )
+
+
 class EthereumPairConfigurator(PairConfigurator):
     """Set up routes for EVM trading pairs.
 
@@ -310,6 +345,8 @@ class EthereumPairConfigurator(PairConfigurator):
     - Uniswap v3 likes
 
     - Aave v3
+
+    - ERC-4626 vaults
     """
 
     def __init__(
@@ -348,6 +385,8 @@ class EthereumPairConfigurator(PairConfigurator):
             return create_uniswap_v3_adapter(self.web3, self.strategy_universe, routing_id)
         elif routing_id.router_name == "aave-v3":
             return create_aave_v3_adapter(self.web3, self.strategy_universe, routing_id)
+        elif routing_id.router_name == "vault":
+            return create_vault_adapter(self.web3, self.strategy_universe, routing_id)
         else:
             raise NotImplementedError(f"Cannot route exchange {routing_id}")
 
