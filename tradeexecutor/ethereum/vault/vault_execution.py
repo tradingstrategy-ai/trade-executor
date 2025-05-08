@@ -7,13 +7,9 @@ import logging
 from web3 import Web3
 
 from eth_defi.uniswap_v2.analysis import TradeSuccess, TradeFail
-#from eth_defi.uniswap_v3.price import UniswapV3PriceHelper, estimate_sell_received_amount
-#from eth_defi.uniswap_v3.analysis import analyse_trade_by_receipt
-#from eth_defi.uniswap_v3.deployment import mock_partial_deployment_for_analysis
 from tradeexecutor.ethereum.tx import TransactionBuilder
 
 from tradeexecutor.state.identifier import TradingPairIdentifier
-#from tradeexecutor.strategy.execution_model import ExecutionModel
 from tradeexecutor.ethereum.execution import EthereumExecution
 
 logger = logging.getLogger(__name__)
@@ -88,24 +84,24 @@ class VaultExecution(EthereumExecution):
         """Returns true if instance is related to Uniswap V3, else false. 
         Kind of a hack to be able to share resolve trades function amongst v2 and v3."""
         return True
-    
+
 
 def get_current_price(web3: Web3, uniswap: UniswapV3Deployment, pair: TradingPairIdentifier, quantity=Decimal(1)) -> float:
     """Get a price from Uniswap v3 pool, assuming you are selling 1 unit of base token.
-    
+
     Does decimal adjustment.
-    
+
     :return: Price in quote token.
     """
-    
+
     quantity_raw = pair.base.convert_to_raw_amount(quantity)
-    
+
     out_raw = estimate_sell_received_amount(
         uniswap=uniswap,
         base_token_address=pair.base.checksum_address,
         quote_token_address=pair.quote.checksum_address,
         quantity=quantity_raw,
-        target_pair_fee=int(pair.fee * 1_000_000),        
+        target_pair_fee=int(pair.fee * 1_000_000),
     )
 
     return float(pair.quote.convert_to_decimal(out_raw))

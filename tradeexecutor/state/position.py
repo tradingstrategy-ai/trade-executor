@@ -431,6 +431,10 @@ class TradingPosition(GenericPosition):
         assert len(self.trades) + len(self.pending_trades) > 0, "Cannot determine if position is long or short because there are no trades"
         return self.get_first_trade().is_spot()
 
+    def is_vault(self) -> bool:
+        """Is this a vault shares position."""
+        return self.pair.is_vault()
+
     def is_long(self) -> bool:
         """Is this position long on the underlying base asset.
 

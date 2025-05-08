@@ -1,54 +1,50 @@
-"""Route trades to different Uniswap v2 like exchanges."""
+"""Route trades for ERC-4626 and similar vaults."""
 
 import logging
 from _decimal import Decimal
-from typing import Dict, Optional, List, cast
+from typing import Dict, cast
 
+from eth_typing import HexAddress
 from hexbytes import HexBytes
 
 from eth_defi.erc_4626.analysis import analyse_4626_flow_transaction
 from eth_defi.erc_4626.classification import create_vault_instance
+from eth_defi.erc_4626.flow import approve_and_deposit_4626, approve_and_redeem_4626
 from eth_defi.erc_4626.vault import ERC4626Vault
 from eth_defi.token import fetch_erc20_details
 from eth_defi.trade import TradeSuccess
-from eth_defi.tx import AssetDelta
 
-from tradeexecutor.ethereum.routing_state import EthereumRoutingState
+
 from tradeexecutor.ethereum.swap import get_swap_transactions, report_failure
 from tradeexecutor.state.blockhain_transaction import BlockchainTransaction
 from tradeexecutor.state.state import State
 from tradeexecutor.state.trade import TradeExecution
-from tradeexecutor.state.types import Percent
-from tradeexecutor.strategy.routing import RoutingState
+from tradeexecutor.strategy.routing import RoutingState, RoutingModel
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
 from tradeexecutor.utils.blockchain import get_block_timestamp
-from tradingstrategy.chain import ChainId
 from web3 import Web3
 
-from tradeexecutor.ethereum.tx import HotWalletTransactionBuilder, TransactionBuilder
+from tradeexecutor.ethereum.tx import TransactionBuilder
 from tradeexecutor.state.identifier import TradingPairIdentifier, AssetIdentifier
 from tradingstrategy.pair import PandasPairUniverse
 
 from tradeexecutor.strategy.universe_model import StrategyExecutionUniverse
-from tradeexecutor.ethereum.routing_model import EthereumRoutingModel
-from tradeexecutor.utils.slippage import get_slippage_in_bps
+
 
 logger = logging.getLogger(__name__)
 
 
 class VaultRoutingState(RoutingState):
-    """Capture trade executor state what we need for one strategy cycle of Enso routing.
+    """Capture trade executor state what we need for one strategy cycle of ERC-4626 deposits and redeems.
 
     - Not much to do here - Enso swaps are stateless (no approves needed)
     """
 
     def __init__(
         self,
-        vault: ERC4626Vault,
         tx_builder: TransactionBuilder,
         strategy_universe: TradingStrategyUniverse,
     ):
-        self.vault = vault
         self.tx_builder = tx_builder
         self.strategy_universe = strategy_universe
 
@@ -68,7 +64,6 @@ class VaultRouting(RoutingModel):
         execution_details: dict
     ) -> VaultRoutingState:
         return VaultRoutingState(
-            vault=execution_details["vault"],
             tx_builder=execution_details["tx_builder"],
             strategy_universe=cast(TradingStrategyUniverse, universe),
         )
@@ -89,22 +84,24 @@ class VaultRouting(RoutingModel):
     ) -> list[BlockchainTransaction]:
         """Prepare vault flow transactions."""
 
-        assert trade.is_vault(), "Velvet only supports spot trades"
-        assert trade.slippage_tolerance, "TradeExecution.slippage_tolerance must be set with Velvet"
+        assert trade.is_vault(), "Vault only supports vault trades"
+        assert trade.slippage_tolerance, "TradeExecution.slippage_tolerance must be set"
         assert trade.pair.quote.address in self.allowed_intermediary_pairs or trade.pair.quote.address == self.reserve_token_address, f"Unsupported quote token: {trade.pair}"
 
-        # Enso does routing for as, we only care about USDC and the target token
         reserve_asset = state.strategy_universe.get_reserve_asset()
+
+        tx_builder = state.tx_builder
+
+        target_vault = get_vault_for_pair(trade.pair)
+
         if trade.is_buy():
             token_in = reserve_asset
             token_out = trade.pair.base
-            swap_amount = trade.get_raw_planned_reserve()
+            swap_amount = trade.get_planned_reserve()
         else:
             token_in = trade.pair.base
             token_out = reserve_asset
-            swap_amount = -trade.get_raw_planned_quantity()
-
-        tx_builder = state.tx_builder
+            swap_amount = -trade.get_planned_quantity()
 
         logger.info(
             "Preparing vault flow %s -> %s, amount %s (%s), slippage tolerance %f",
@@ -115,27 +112,41 @@ class VaultRouting(RoutingModel):
             trade.slippage_tolerance,
         )
 
-        target_vault = get_vault_for_pair(trade.pair)
+        asset_deltas = trade.calculate_asset_deltas()
+        address = HexAddress(tx_builder.get_token_delivery_address())
 
-        try:
-
-            tx_data = vault.prepare_swap_with_intent(
-                token_in=token_in.address,
-                token_out=token_out.address,
-                swap_amount=swap_amount,
-                slippage=trade.slippage_tolerance,
-                remaining_tokens=remaining_tokens,
-                swap_all=trade.closing,
-                manage_token_list=False,
+        if trade.is_buy():
+            approve_call, swap_call = approve_and_deposit_4626(
+                vault=target_vault,
+                from_=address,
+                amount=swap_amount
             )
-        except Exception as e:
-            raise RuntimeError(f"Could not perform trade {trade} on vault") from e
+        else:
+            approve_call, swap_call = approve_and_redeem_4626(
+                vault=target_vault,
+                from_=address,
+                amount=swap_amount
+            )
 
-        blockchain_transaction = tx_builder.sign_transaction_data(
-            tx_data,
+        approve_gas_limit = 500_000
+        swap_gas_limit = 2_500_000
+
+        tx_1 = tx_builder.sign_transaction(
+            contract=target_vault.vault_contract,
+            args_bound_func=approve_call,
+            gas_limit=approve_gas_limit,
+            asset_deltas=[],
             notes=trade.notes,
         )
-        return blockchain_transaction
+
+        tx_2 = tx_builder.sign_transaction(
+            contract=target_vault.vault_contract,
+            args_bound_func=swap_call,
+            gas_limit=swap_gas_limit,
+            asset_deltas=[],
+            notes=trade.notes,
+        )
+        return [tx_1, tx_2]
 
     def setup_trades(
         self,
@@ -156,13 +167,13 @@ class VaultRouting(RoutingModel):
         """
 
         logger.info(
-            "Preparing %s trades for ERC-4626 execution",
+            "Preparing %d trades for ERC-4626 execution",
             len(trades),
         )
 
         for trade in trades:
             assert trade.is_vault(), f"Not a vault trade: {trade}"
-            t.blockchain_transactions = [self.deposit_or_redeem(routing_state, t, remaining_token_addresses)]
+            trade.blockchain_transactions = self.deposit_or_redeem(routing_state, trade)
 
     def settle_trade(
         self,
@@ -188,22 +199,16 @@ class VaultRouting(RoutingModel):
         except KeyError as e:
             raise KeyError(f"Could not find hash: {swap_tx.tx_hash} in {receipts}") from e
 
-        input_args = swap_tx.get_actual_function_input_args()
-
         result = analyse_4626_flow_transaction(
-            web3,
             vault=vault,
-            tx=tx_dict,
             tx_hash=swap_tx.tx_hash,
             tx_receipt=receipt,
-            input_args=input_args,
         )
 
         ts = get_block_timestamp(web3, receipt["blockNumber"])
 
         if isinstance(result, TradeSuccess):
 
-            # v3 path includes fee (int) as well
             path = [a.lower() for a in result.path if type(a) == str]
 
             if trade.is_buy():
