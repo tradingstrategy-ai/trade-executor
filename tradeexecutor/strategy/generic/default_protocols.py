@@ -82,13 +82,27 @@ def default_supported_routers(strategy_universe: TradingStrategyUniverse) -> Set
 
     assert exchanges.get_exchange_count() < 5, f"Exchanges might not be configured correctly, we have {exchanges.get_exchange_count()} exchanges"
     configs = set()
+
+    vaults_done = False
+
     for xc in exchanges.exchanges.values():
-        configs.add(
-            ProtocolRoutingId(
-                router_name="uniswap-v2" if xc.exchange_type == ExchangeType.uniswap_v2 else "uniswap-v3",
-                exchange_slug=xc.exchange_slug,
+        if xc.exchange_type == ExchangeType.erc_4626_vault:
+            if not vaults_done:
+                # All vaults use the same route
+                configs.add(
+                    ProtocolRoutingId(
+                        router_name="vault",
+                        exchange_slug=xc.exchange_slug,
+                    )
+                )
+                vault_done = True
+        else:
+            configs.add(
+                ProtocolRoutingId(
+                    router_name="uniswap-v2" if xc.exchange_type == ExchangeType.uniswap_v2 else "uniswap-v3",
+                    exchange_slug=xc.exchange_slug,
+                )
             )
-        )
 
     # Enabled 1delta if lending candles are available
     if strategy_universe.data_universe.lending_candles:
@@ -108,5 +122,7 @@ def default_supported_routers(strategy_universe: TradingStrategyUniverse) -> Set
                     lending_protocol_slug="aave_v3",
                 )
             )
+
+    import ipdb ; ipdb.set_trace()
 
     return configs

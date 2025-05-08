@@ -5,9 +5,8 @@ from dataclasses import dataclass
 from typing import Set, Dict
 
 import pandas as pd
-from web3 import Web3
 
-from tradeexecutor.state.identifier import TradingPairIdentifier, ExchangeType
+from tradeexecutor.state.identifier import TradingPairIdentifier
 from tradeexecutor.strategy.pricing_model import PricingModel
 from tradeexecutor.strategy.routing import RoutingModel
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse

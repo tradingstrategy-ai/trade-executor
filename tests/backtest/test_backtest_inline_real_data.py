@@ -184,7 +184,7 @@ def logger(request):
     return setup_pytest_logging(request, mute_requests=False)
 
 
-@pytest.mark.skipci(CI, reaosn="Too much data / slow / flaky on Github")
+@pytest.mark.skipif(CI, reaosn="Too much data / slow / flaky on Github")
 def test_backtest_data_preload(
         logger: logging.Logger,
         persistent_test_client: Client,

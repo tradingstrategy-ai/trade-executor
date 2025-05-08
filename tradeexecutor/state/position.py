@@ -1081,7 +1081,7 @@ class TradingPosition(GenericPosition):
                 planned_collateral_consumption = planned_collateral_consumption or Decimal(0)
                 planned_collateral_allocation = planned_collateral_allocation or Decimal(0)
 
-            case TradingPairKind.spot_market_hold:
+            case TradingPairKind.spot_market_hold | TradingPairKind.vault:
                 # Set spot market estimated quantities
                 if reserve is not None:
                     planned_reserve = reserve

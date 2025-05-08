@@ -13,11 +13,13 @@ from eth_defi.ipor.vault import IPORVault
 from eth_defi.lagoon.deployment import LagoonAutomatedDeployment
 from eth_defi.lagoon.vault import LagoonVault
 from eth_defi.trace import assert_transaction_success_with_explanation
+from tradeexecutor.ethereum.hot_wallet_sync_model import HotWalletSyncModel
 
 from tradeexecutor.ethereum.lagoon.execution import LagoonExecution
 
 from tradeexecutor.ethereum.lagoon.vault import LagoonVaultSyncModel
 from tradeexecutor.ethereum.vault.vault_routing import VaultRouting
+from tradeexecutor.state.identifier import AssetIdentifier
 from tradeexecutor.state.state import State
 from tradeexecutor.strategy.generic.generic_pricing_model import GenericPricing
 from tradeexecutor.strategy.generic.generic_router import GenericRouting
@@ -37,6 +39,7 @@ def test_vault_routing(
     strategy_universe: TradingStrategyUniverse,
 ):
     """Check we know how to route vault trades."""
+
     pair = strategy_universe.get_pair_by_smart_contract(vault.address)
     assert pair.is_vault()
     assert pair.get_vault_features() == {ERC4626Feature.ipor_like}
@@ -49,16 +52,27 @@ def test_vault_routing(
     assert isinstance(protocol_config.routing_model, VaultRouting)
 
 
+
+
 def test_vault_trading_deposit(
     vault: IPORVault,
     strategy_universe,
     execution_model,
     routing_model: GenericRouting,
     pricing_model,
+    sync_model: HotWalletSyncModel,
+    base_usdc: AssetIdentifier,
 ):
     """Do a deposit to Lagoon vault and perform Uniswap v2 token buy (three legs)."""
 
     state = State()
+    pair = strategy_universe.get_pair_by_smart_contract(vault.address)
+
+    sync_model.sync_initial(
+        state,
+        reserve_asset=base_usdc,
+        reserve_token_price=1.0,
+    )
 
     position_manager = PositionManager(
         datetime.datetime.utcnow(),

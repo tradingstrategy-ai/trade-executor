@@ -13,12 +13,12 @@ from dataclasses_json import dataclass_json, config
 from eth_typing import HexAddress
 
 from eth_defi.erc_4626.core import ERC4626Feature
-from eth_defi.uniswap_v2.utils import sort_tokens
 from tradingstrategy.chain import ChainId
 from tradingstrategy.lending import LendingProtocolType
 from tradingstrategy.stablecoin import is_stablecoin_like
 from tradingstrategy.token_metadata import TokenMetadata
 from tradingstrategy.types import PrimaryKey
+from tradingstrategy.exchange import ExchangeType
 
 from tradeexecutor.utils.accuracy import sum_decimal, ensure_exact_zero, SUM_EPSILON
 from tradeexecutor.state.types import JSONHexAddress, USDollarAmount, LeverageMultiplier, USDollarPrice, Percent
@@ -49,24 +49,6 @@ class AssetType(enum.Enum):
     #: ERC-20 vToken with dynamic balance()
     borrowed = "borrowed"
 
-
-@dataclass_json
-@dataclass
-class ExchangeType:
-    """What kind of a DEX we use for this pair.
-
-    Note that a trading pair can have several protocols associated with it,
-    DEX is just one of them.
-    """
-
-    #: El Classico
-    uniswap_v2 = "uniswap_v2"
-
-    #: ERC-20 aToken with dynamic balance()
-    uniswap_v3 = "uniswap_v3"
-
-    #: ERC-4626 vault or similar
-    vault = "vault"
 
 
 @dataclass_json
@@ -865,7 +847,7 @@ class TradingPairIdentifier:
 
             Return ``None`` if the trading pair does not have price information.
         """
-        if self.is_spot():
+        if self.is_spot() | self.is_vault():
             return self
         elif self.is_credit_supply():
             # Credit supply does not have a real trading pair,

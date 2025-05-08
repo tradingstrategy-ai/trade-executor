@@ -60,14 +60,14 @@ class VaultPricing(PricingModel):
             block_identifier=block_number,
         )
 
-        price = quantity / estimated_usd
+        price = float(quantity / estimated_usd)
         mid_price = price
 
         return TradePricing(
             price=price,
             mid_price=mid_price,
-            lp_fee=[0],
-            pair_fee=[0],
+            lp_fee=[0.0],
+            pair_fee=[0.0],
             side=False,
             path=[pair],
             read_at=datetime.datetime.utcnow(),
@@ -96,14 +96,14 @@ class VaultPricing(PricingModel):
             block_identifier=block_number,
         )
 
-        price = estimated_shares / reserve
+        price = float(estimated_shares / reserve)
         mid_price = price
 
         return TradePricing(
             price=price,
             mid_price=mid_price,
-            lp_fee=[0],
-            pair_fee=[0],
+            lp_fee=[0.0],
+            pair_fee=[0.0],
             side=False,
             path=[pair],
             read_at=datetime.datetime.utcnow(),
