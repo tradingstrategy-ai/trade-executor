@@ -977,6 +977,10 @@ class TradeExecution:
         """This is a spot marget trade."""
         return not self.is_credit_based()
 
+    def is_vault(self) -> bool:
+        """This is vault deposit/redemption."""
+        return self.pair.kind.is_vault()
+
     def is_short(self) -> bool:
         """This is margined short trade."""
         return self.pair.kind.is_shorting()

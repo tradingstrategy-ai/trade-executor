@@ -12,6 +12,7 @@ from web3 import Web3
 from dataclasses_json import dataclass_json, config
 from eth_typing import HexAddress
 
+from eth_defi.erc_4626.core import ERC4626Feature
 from eth_defi.uniswap_v2.utils import sort_tokens
 from tradingstrategy.chain import ChainId
 from tradingstrategy.lending import LendingProtocolType
@@ -64,7 +65,8 @@ class ExchangeType:
     #: ERC-20 aToken with dynamic balance()
     uniswap_v3 = "uniswap_v3"
 
-
+    #: ERC-4626 vault or similar
+    vault = "vault"
 
 
 @dataclass_json
@@ -377,6 +379,9 @@ class TradingPairKind(enum.Enum):
     #:
     lending_protocol_short = "lending_protocol_short"
 
+    #: ERC-4626 vault or similar
+    vault = "vault"
+
     def is_interest_accruing(self) -> bool:
         """Do base or quote or both gain interest during when the position is open."""
         return self in (TradingPairKind.lending_protocol_short, TradingPairKind.lending_protocol_long, TradingPairKind.credit_supply)
@@ -404,14 +409,17 @@ class TradingPairKind(enum.Enum):
         """This is a spot market pair."""
         return self == TradingPairKind.spot_market_hold or self == TradingPairKind.spot_market_hold_rebalancing_token
 
+    def is_vault(self):
+        return self == TradingPairKind.vault
 
-_REMOTE_OTHER_DATA_KEYS = {"token_metadata"}
+
+_TRANSIENT_OTHER_DATA_KEYS = {"token_metadata"}
 
 def _reduce_other_data(val):
     """See translate_trading_pair() on how TradingPairIdentifier.other_data is populated"""
     if isinstance(val, dict):
         # Remove remote data from the dict
-        for key in _REMOTE_OTHER_DATA_KEYS:
+        for key in _TRANSIENT_OTHER_DATA_KEYS:
             if key in val:
                 del val[key]
     return val
@@ -662,13 +670,14 @@ class TradingPairIdentifier:
             "address": self.pool_address,
             "base": self.base.token_symbol,
             "base_decimals": self.base.decimals,
-            "base_ddress": self.base.address,
+            "base_address": self.base.address,
             "quote": self.quote.token_symbol,
             "quote_address": self.quote.address,
             "fee": self.fee,
             "buy_tax": self.get_buy_tax(),
             "sell_tax": self.get_sell_tax(),
             "risk_score": self.get_risk_score(),
+            "vault_features": self.get_vault_features(),
         }
 
         if extended:
@@ -732,6 +741,10 @@ class TradingPairIdentifier:
         if tokensniffer_data:
             return tokensniffer_data["score"]
         return None
+
+    def get_vault_features(self) -> set[ERC4626Feature] | None:
+        """Needed for ERC-4626 compatibility."""
+        return self.other_data.get("vault_features")
 
     def has_complete_info(self) -> bool:
         """Check if the pair has good information.
@@ -803,6 +816,9 @@ class TradingPairIdentifier:
 
     def is_spot(self) -> bool:
         return self.kind.is_spot()
+
+    def is_vault(self) -> bool:
+        return self.kind.is_vault()
 
     def is_credit_supply(self) -> bool:
         return self.kind.is_credit_supply()
