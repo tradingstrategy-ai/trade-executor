@@ -803,7 +803,7 @@ class TradingPosition(GenericPosition):
             return value
 
         match self.pair.kind:
-            case TradingPairKind.spot_market_hold:
+            case TradingPairKind.spot_market_hold | TradingPairKind.vault:
 
                 value += self.calculate_value_using_price(
                     self.last_token_price,

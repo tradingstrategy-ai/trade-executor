@@ -701,8 +701,8 @@ def update_confirmation_status(
                 tx.nonce,
                 tx_hash.hex(),
                 tx.function_selector,
-                tx.get_gas_limit(),
                 tx.contract_address,
+                tx.get_gas_limit(),
                 trade)
 
             reason = None

@@ -103,9 +103,13 @@ def test_vault_trading_deposit_redeem(
     )
 
     assert t.is_success(), f"Trade failed: {t.blockchain_transactions[0].revert_reason}"
+    assert t.is_buy()
     assert t.executed_price == pytest.approx(1.0335669715951414)
     assert t.executed_quantity == pytest.approx(Decimal(9.67523177))
     assert t.executed_reserve == 10
+
+    position = position_manager.get_current_position_for_pair(pair)
+    assert position.get_quantity() == pytest.approx(Decimal(9.67523177))
 
     # Then redeem shares back
     trades = position_manager.close_all()
@@ -122,5 +126,10 @@ def test_vault_trading_deposit_redeem(
     )
 
     assert t.is_success(), f"Trade failed: {t.blockchain_transactions[0].revert_reason}"
-    assert t.executed_price == pytest.approx(1.0335669715951414)
-    assert t.executed_quantity == pytest.approx(Decimal(9.67523177))
+    assert t.is_sell()
+    assert t.planned_quantity == pytest.approx(Decimal(-9.67523177))
+    assert t.executed_price == pytest.approx(1.0335668671701836)
+    assert t.executed_quantity == pytest.approx(Decimal(-9.67523178))
+    assert t.executed_reserve == pytest.approx(Decimal('9.999999'))
+
+    assert position.is_closed()

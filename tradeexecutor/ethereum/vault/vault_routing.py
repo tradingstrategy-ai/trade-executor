@@ -196,11 +196,10 @@ class VaultRouting(RoutingModel):
         logger.info(f"Settling vault trade: #{trade.trade_id} for {vault}")
 
         base_token_details = fetch_erc20_details(web3, trade.pair.base.checksum_address)
-        quote_token_details = fetch_erc20_details(web3, trade.pair.quote.checksum_address)
+        # quote_token_details = fetch_erc20_details(web3, trade.pair.quote.checksum_address)
         reserve = trade.reserve_currency
 
         swap_tx = get_swap_transactions(trade)
-        tx_dict = swap_tx.get_transaction()
 
         try:
             receipt = receipts[HexBytes(swap_tx.tx_hash)]
@@ -208,7 +207,6 @@ class VaultRouting(RoutingModel):
             raise KeyError(f"Could not find hash: {swap_tx.tx_hash} in {receipts}") from e
 
         direction = "deposit" if trade.is_buy() else "redeem"
-
         result = analyse_4626_flow_transaction(
             vault=vault,
             tx_hash=swap_tx.tx_hash,
@@ -220,7 +218,7 @@ class VaultRouting(RoutingModel):
 
         if isinstance(result, TradeSuccess):
 
-            path = [a.lower() for a in result.path if type(a) == str]
+            path = result.path
 
             if trade.is_buy():
                 assert path[0] == reserve.address, f"Was expecting the route path to start with reserve token {reserve}, got path {result.path}"
@@ -238,10 +236,11 @@ class VaultRouting(RoutingModel):
                 # price = result.get_human_price(quote_token_details.address == result.token0.address)
                 executed_amount = -result.amount_in / Decimal(10 ** base_token_details.decimals)
                 executed_reserve = result.amount_out / Decimal(10 ** reserve.decimals)
-
                 price = -executed_reserve / executed_amount
 
             assert (executed_reserve > 0) and (executed_amount != 0) and (price > 0), f"Executed amount {executed_amount}, executed_reserve: {executed_reserve}, price: {price}"
+
+            logger.info("Executed amount: %s, executed reserve: %s, price: %s", executed_amount, executed_reserve, price)
 
             # Mark as success
             state.mark_trade_success(
