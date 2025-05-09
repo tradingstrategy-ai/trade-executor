@@ -303,6 +303,7 @@ class HotWalletTransactionBuilder(TransactionBuilder):
 
         apply_gas(tx, gas_price_suggestion)
 
+        import ipdb ; ipdb.set_trace()
         signed_tx = self.hot_wallet.sign_transaction_with_new_nonce(tx)
 
         logger.info(
