@@ -1,32 +1,21 @@
-"""Test Lagoon vault trades."""
+"""Test depositing and redeeming ERC-4626 vaults as a trade."""
 
 import datetime
 import os
 from decimal import Decimal
 
 import pytest
-from web3 import Web3
 
 from eth_defi.erc_4626.core import ERC4626Feature
-from eth_defi.hotwallet import HotWallet
 from eth_defi.ipor.vault import IPORVault
-from eth_defi.lagoon.deployment import LagoonAutomatedDeployment
-from eth_defi.lagoon.vault import LagoonVault
-from eth_defi.trace import assert_transaction_success_with_explanation
 from tradeexecutor.ethereum.hot_wallet_sync_model import HotWalletSyncModel
 
-from tradeexecutor.ethereum.lagoon.execution import LagoonExecution
-
-from tradeexecutor.ethereum.lagoon.vault import LagoonVaultSyncModel
 from tradeexecutor.ethereum.vault.vault_routing import VaultRouting
 from tradeexecutor.state.identifier import AssetIdentifier
 from tradeexecutor.state.state import State
-from tradeexecutor.strategy.generic.generic_pricing_model import GenericPricing
 from tradeexecutor.strategy.generic.generic_router import GenericRouting
 from tradeexecutor.strategy.pandas_trader.position_manager import PositionManager
-from tradeexecutor.strategy.routing import RoutingModel
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
-from tradingstrategy.chain import ChainId
 
 
 JSON_RPC_BASE = os.environ.get("JSON_RPC_BASE")
@@ -50,7 +39,6 @@ def test_vault_routing(
     assert protocol_config.routing_id.router_name == "vault"
     assert protocol_config.routing_id.exchange_slug is None
     assert isinstance(protocol_config.routing_model, VaultRouting)
-
 
 
 def test_vault_trading_deposit_redeem(

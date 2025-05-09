@@ -31,6 +31,7 @@ from tradingstrategy.pair import DEXPair, PandasPairUniverse, resolve_pairs_base
     filter_for_exchanges, filter_for_quote_tokens, StablecoinFilteringMode, filter_for_stablecoins, \
     HumanReadableTradingPairDescription, filter_for_chain, filter_for_base_tokens, filter_for_exchange, filter_for_trading_fee
 from tradingstrategy.timebucket import TimeBucket
+from tradingstrategy.token_metadata import TokenMetadata
 from tradingstrategy.transport.cache import OHLCVCandleType
 from tradingstrategy.types import TokenSymbol, NonChecksummedAddress
 from tradingstrategy.universe import Universe
@@ -41,6 +42,7 @@ from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifie
 from tradeexecutor.strategy.universe_model import StrategyExecutionUniverse, UniverseModel, DataTooOld, UniverseOptions, default_universe_options
 from tradingstrategy.utils.token_extra_data import load_extra_metadata
 from tradingstrategy.utils.token_filter import add_base_quote_address_columns
+from tradingstrategy.vault import VaultMetadata
 
 logger = logging.getLogger(__name__)
 
@@ -1923,31 +1925,34 @@ def translate_trading_pair(dex_pair: DEXPair, cache: dict | None = None) -> Trad
 
         pair.other_data = {}
 
-        # Pass TokenMetadata instance
-        token_metadata = dex_pair.other_data.get("token_metadata")
-        pair.other_data["token_metadata"] = token_metadata
+        # Pass and parse TokenMetadata instance
+        token_sniffer_data = None
+        metadata = dex_pair.other_data.get("token_metadata")
 
-        if token_metadata:
-            token_sniffer_data = token_metadata.token_sniffer_data
-        else:
+        match metadata:
+            case TokenMetadata():
+                pair.other_data["token_metadata"] = metadata
+                token_sniffer_data = metadata.token_sniffer_data
+            case VaultMetadata():
+                pair.other_data["token_metadata"] = metadata
+                pair.other_data["vault_features"] = dex_pair.other_data["vault_features"]
+                pair.other_data["vault_protocol"] = dex_pair.other_data["vault_protocol"]
+            case None:
+                pass
+            case _:
+                raise NotImplementedError(f"Unknown token metadata type {type(metadata)}")
+
+        if token_sniffer_data is None:
             token_sniffer_data = dex_pair.other_data.get("token_sniffer_data")
 
         if token_sniffer_data:
             # TODO: Legacy, remove. Instead use TradingPairIdentifier.get_xxx() accessor functions.
-
             pair.other_data.update({
                 "token_sniffer_data": {
                     "swap_simulation": token_sniffer_data.get("swap_simulation"),
                     "score": token_sniffer_data.get("score"),
                 }
             })
-        else:
-            # Skip other_data.top_pair_data
-            pass
-
-        if kind == TradingPairKind.vault:
-            pair.other_data["vault_features"] = dex_pair.other_data["vault_features"]
-            pair.other_data["vault_protocol"] = dex_pair.other_data["vault_protocol"]
 
     if cache is not None:
         cache[pair.internal_id] = pair
@@ -2348,11 +2353,17 @@ def load_partial_data(
             # Prefiltered pairs
             assert len(pairs) > 0, "The passed in pairs dataframe was empty"
 
+            # Skip vault data for now
+            # as it is not present
+            # TODO: Add later when centralised vault data is available
+            loadable_pairs = pairs[pairs["dex_type"] != ExchangeType.erc_4626_vault]
+
             filtered_pairs_df = pairs
-            our_pair_ids = pairs["pair_id"]
-            exchange_ids = pairs["exchange_id"]
+            our_pair_ids = loadable_pairs["pair_id"]
+            exchange_ids = loadable_pairs["exchange_id"]
             our_exchanges = {exchange_universe.get_by_id(id) for id in exchange_ids}
             our_exchange_universe = ExchangeUniverse.from_collection(our_exchanges)
+
         else:
             # Load and filter pairs
             pairs_df = client.fetch_pair_universe().to_pandas()
