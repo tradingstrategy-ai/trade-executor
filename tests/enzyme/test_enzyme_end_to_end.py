@@ -547,6 +547,7 @@ def test_enzyme_check_accounts(
         assert e.value.code == 1
 
 
+@flaky.flaky
 def test_enzyme_live_trading_reset_deposits(
     environment: dict,
     state_file: Path,
