@@ -49,10 +49,11 @@ def environment(
         "UNIT_TESTING": "true",
         # "LOG_LEVEL": "info",  # Set to info to get debug data for the test run
         "LOG_LEVEL": "disabled",
-        "MAX_CYCLES": "2",
+        "MAX_CYCLES": "2",  # decide_trades() needs 2 cycles to test all
         "TRADING_STRATEGY_API_KEY": TRADING_STRATEGY_API_KEY,
         "MAX_DATA_DELAY_MINUTES": str(10 * 60 * 24 * 365),  # 10 years or "disabled""
-        "MIN_GAS_BALANCE": "0.005",
+        "MIN_GAS_BALANCE": "0.01",
+        "GAS_BALANCE_WARNING_LEVEL": "0.0",
         "PRIVATE_KEY": hot_wallet.private_key.hex(),
         "CACHE_PATH":  cache_path,
     }

@@ -267,11 +267,6 @@ def create_trading_universe(
     pairs_df = risk_filtered_pairs_df.sort_values("volume", ascending=False)
     logger.info(f"After TokenSniffer risk filter we have {len(pairs_df)} pairs")
 
-    logger.info("Including supported vaults")
-    vault_exchanges, vault_pairs_df = load_single_vault(ChainId.base, "0x45aa96f0b3188d47a1dafdbefce1db6b37f58216")
-    exchange_universe.add(vault_exchanges)
-    pairs_df = pd.concat([pairs_df, vault_pairs_df])
-
     uni_v2 = pairs_df.loc[pairs_df["exchange_slug"] == "uniswap-v2"]
     uni_v3 = pairs_df.loc[pairs_df["exchange_slug"] == "uniswap-v3"]
     other_dex = pairs_df.loc[~((pairs_df["exchange_slug"] != "uniswap-v3") | (pairs_df["exchange_slug"] != "uniswap-v2"))]
@@ -284,6 +279,7 @@ def create_trading_universe(
         universe_options=universe_options,
         liquidity_time_bucket=liquidity_time_bucket,
         preloaded_tvl_df=tvl_df,
+        vaults=[(ChainId.base, "0x45aa96f0b3188d47a1dafdbefce1db6b37f58216")],
     )
 
     reserve_asset = PREFERRED_STABLECOIN

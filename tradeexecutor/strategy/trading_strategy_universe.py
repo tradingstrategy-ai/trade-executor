@@ -20,6 +20,7 @@ from typing import List, Optional, Callable, Tuple, Set, Dict, Iterable, Collect
 import pandas as pd
 
 from tradeexecutor.state.types import JSONHexAddress, Percent
+from tradingstrategy.alternative_data.vault import load_multiple_vaults
 from tradingstrategy.lending import LendingReserveUniverse, LendingReserveDescription, LendingCandleType, LendingCandleUniverse, UnknownLendingReserve, LendingProtocolType, LendingReserve
 from tradingstrategy.token import Token
 from tradingstrategy.candle import GroupedCandleUniverse
@@ -2159,6 +2160,7 @@ def load_partial_data(
     candle_progress_bar_desc: str | None = None,
     lending_candle_progress_bar_desc: str | None = None,
     pair_extra_metadata=False,
+    vaults: list[tuple[ChainId, JSONHexAddress]] | None = None,
 ) -> Dataset:
     """Load pair data for given trading pairs.
 
@@ -2290,6 +2292,13 @@ def load_partial_data(
         Load TokenSniffer data, buy/sell tax and other extra metadata.
 
         Slow and API endpoint severely limited. Use only if you are dealing with a limited number of pairs.
+
+    :param vaults:
+        List of (chain, vault address) tuples to load vault data for.
+
+        Vault metadata loeaded from tradingstrategy data bundle.
+
+        Currently does not load any historical data.
 
     :return:
         Datataset containing the requested data
@@ -2485,7 +2494,14 @@ def load_partial_data(
             time_bucket,
         )
 
-        # Colllect some debug data for the first 5 pairs
+        # Include vault data for designed vaults if asked
+        if vaults:
+            logger.info("Including vaults: %s", vaults)
+            vault_exchanges, vault_pairs_df = load_multiple_vaults(vaults)
+            our_exchange_universe.add(vault_exchanges)
+            filtered_pairs_df = pd.concat([filtered_pairs_df, vault_pairs_df])
+
+        # Collect some debug data for the first 5 pairs
         # to diagnose data loding problems
         if execution_context.mode.is_live_trading():
             for pair_id in list(our_pair_ids)[0:5]:
