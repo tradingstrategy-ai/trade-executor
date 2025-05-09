@@ -333,13 +333,19 @@ class TradingPosition(GenericPosition):
     def get_human_readable_name(self) -> str:
         return f"Trading position #{self.position_id} for {self.pair.get_ticker()}"
 
-    def get_debug_dump(self) -> str:
+    def get_debug_dump(self, char_limit=1000) -> str:
         """Return class contents for logging.
+
+        :param char_limit:
+            Display maximum of this many characters.
 
         :return:
             Indented JSON-like content
         """
-        return pprint.pformat(asdict(self), width=160)
+        msg = pprint.pformat(asdict(self), width=160)
+        if len(msg) > char_limit:
+            msg = msg[:char_limit] + "..."
+        return msg
 
     def get_human_summary(self) -> dict:
         """Get the human readable debug dump.
@@ -440,10 +446,11 @@ class TradingPosition(GenericPosition):
 
         We consider the position long if the first trade is buy.
 
-        This includes spot buy.
+        - This includes spot buy.
+        - This includes holding vault shares
         """
         assert len(self.trades) + len(self.pending_trades) > 0, "Cannot determine if position is long or short because there are no trades"
-        return self.pair.is_spot() or self.pair.is_long()
+        return self.pair.is_spot() or self.pair.is_long() or self.pair.is_vault()
 
     def is_short(self) -> bool:
         """Is this position short on the underlying base asset."""

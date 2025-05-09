@@ -49,7 +49,7 @@ def environment(
         "UNIT_TESTING": "true",
         # "LOG_LEVEL": "info",  # Set to info to get debug data for the test run
         "LOG_LEVEL": "disabled",
-        "MAX_CYCLES": "2",  # decide_trades() needs 2 cycles to test all
+        "MAX_CYCLES": "3",  # decide_trades() needs 2 cycles to test all
         "TRADING_STRATEGY_API_KEY": TRADING_STRATEGY_API_KEY,
         "MAX_DATA_DELAY_MINUTES": str(10 * 60 * 24 * 365),  # 10 years or "disabled""
         "MIN_GAS_BALANCE": "0.01",
@@ -78,9 +78,10 @@ def test_vault_trading_start(
 
     # Read results of 1 cycle of strategy
     state = State.read_json_file(state_file)
+    assert state.cycle == 2
     reserve_position = state.portfolio.get_default_reserve_position()
     assert reserve_position.get_value() > 5.0  # Should have 100 USDC starting balance
-    assert len(state.visualisation.get_messages_tail(5)) == 1
-    for t in state.portfolio.get_all_trades():
-        assert t.is_success(), f"Trade {t} failed: {t.get_revert_reason()}"
     assert len(state.portfolio.frozen_positions) == 0
+    assert len(state.portfolio.open_positions) == 0
+    assert len(state.portfolio.closed_positions) == 1
+

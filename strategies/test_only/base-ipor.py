@@ -322,6 +322,8 @@ def decide_trades(
 
     ipor_vault = strategy_universe.get_pair_by_smart_contract("0x45aa96f0b3188d47a1dafdbefce1db6b37f58216")
 
+    logger.info("Executing strategy cycle %d", cycle)
+
     trades = []
     if cycle == 1:
         cash = position_manager.get_current_cash()

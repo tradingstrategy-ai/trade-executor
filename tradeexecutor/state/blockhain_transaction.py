@@ -315,7 +315,7 @@ class BlockchainTransaction:
     #:
     #: - Newline separated
     #:
-    notes: str = ""
+    notes: str | None = ""
 
     def __repr__(self):
 

@@ -8,6 +8,7 @@ from typing import Tuple
 from tradeexecutor.ethereum.vault.vault_live_pricing import VaultPricing
 from tradeexecutor.state.position import TradingPosition
 from tradeexecutor.state.types import USDollarAmount
+from tradeexecutor.state.valuation import ValuationUpdate
 from tradeexecutor.strategy.valuation import ValuationModel
 
 
@@ -22,10 +23,25 @@ class VaultValuator(ValuationModel):
         self,
         ts: datetime.datetime,
         position: TradingPosition
-    ) -> Tuple[datetime.datetime, USDollarAmount]:
+    ) -> ValuationUpdate:
         assert position.is_vault()
         shares_amount = position.get_quantity()
-        return self.pricing_model.get_sell_price(ts, position.pair, shares_amount)
+        price_structure = self.pricing_model.get_sell_price(ts, position.pair, shares_amount)
+        old_price = position.last_token_price
+        old_value = position.get_value()
+        new_price = price_structure.price
+        new_value = position.revalue_base_asset(ts, float(new_price))
+        evt = ValuationUpdate(
+            created_at=ts,
+            position_id=position.position_id,
+            valued_at=ts,
+            old_value=old_value,
+            new_value=new_value,
+            old_price=old_price,
+            new_price=new_price,
+            quantity=shares_amount,
+        )
+        return evt
 
 
 def vault_valuation_factory(pricing_model):

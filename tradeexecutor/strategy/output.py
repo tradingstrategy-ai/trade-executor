@@ -83,10 +83,6 @@ def format_position(
     :return: List of log lines
     """
     symbol = up_symbol if position.get_total_profit_percent() >= 0 else down_symbol
-    if position.pair.info_url:
-        link = position.pair.info_url
-    else:
-        link = ""
 
     position_kind = position.pair.kind
 
@@ -94,11 +90,12 @@ def format_position(
         TradingPairKind.spot_market_hold: "spot",
         TradingPairKind.lending_protocol_short: "short",
         TradingPairKind.credit_supply: "credit",
+        TradingPairKind.vault: "vault",
     }
 
     position_label = position_labels.get(position_kind, "<unknown position type>")
 
-    allocation = position.get_value() / total_equity
+    allocation = position.get_value() / total_equity if total_equity else 0
 
     if position.is_open():
         duration = position.get_duration()
