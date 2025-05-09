@@ -729,7 +729,10 @@ class TradingPairIdentifier:
 
         Needed for ERC-4626 compatibility.
         """
-        return self.other_data.get("vault_features")
+        feats = self.other_data.get("vault_features")
+        if feats:
+            return set(feats)
+        return None
 
     def get_vault_protocol(self) -> str | None:
         """Get the vault protocol name.
