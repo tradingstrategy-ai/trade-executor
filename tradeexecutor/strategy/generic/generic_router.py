@@ -115,13 +115,15 @@ class GenericRouting(RoutingModel):
         for t in trades:
             routing_id = self.pair_configurator.match_router(t.pair)
             protocol_config = self.pair_configurator.get_config(routing_id)
-
             router = protocol_config.routing_model
             # Set the router, so we know
             # in the post-trade analysis which route this trade took
             t.route = protocol_config.routing_id.router_name
 
-            router_state = routing_state.state_map[protocol_config.routing_id.router_name]
+            # Set the router state
+            router_state = routing_state.state_map.get(protocol_config.routing_id.router_name)
+            assert router_state, f"No router state for: {protocol_config.routing_id.router_name}, we have {list(routing_state.state_map.keys())}"
+
             router.setup_trades(
                 state=state,
                 routing_state=router_state,

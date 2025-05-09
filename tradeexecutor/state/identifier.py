@@ -12,12 +12,13 @@ from web3 import Web3
 from dataclasses_json import dataclass_json, config
 from eth_typing import HexAddress
 
-from eth_defi.uniswap_v2.utils import sort_tokens
+from eth_defi.erc_4626.core import ERC4626Feature
 from tradingstrategy.chain import ChainId
 from tradingstrategy.lending import LendingProtocolType
 from tradingstrategy.stablecoin import is_stablecoin_like
 from tradingstrategy.token_metadata import TokenMetadata
 from tradingstrategy.types import PrimaryKey
+from tradingstrategy.exchange import ExchangeType
 
 from tradeexecutor.utils.accuracy import sum_decimal, ensure_exact_zero, SUM_EPSILON
 from tradeexecutor.state.types import JSONHexAddress, USDollarAmount, LeverageMultiplier, USDollarPrice, Percent
@@ -47,23 +48,6 @@ class AssetType(enum.Enum):
 
     #: ERC-20 vToken with dynamic balance()
     borrowed = "borrowed"
-
-
-@dataclass_json
-@dataclass
-class ExchangeType:
-    """What kind of a DEX we use for this pair.
-
-    Note that a trading pair can have several protocols associated with it,
-    DEX is just one of them.
-    """
-
-    #: El Classico
-    uniswap_v2 = "uniswap_v2"
-
-    #: ERC-20 aToken with dynamic balance()
-    uniswap_v3 = "uniswap_v3"
-
 
 
 
@@ -377,6 +361,9 @@ class TradingPairKind(enum.Enum):
     #:
     lending_protocol_short = "lending_protocol_short"
 
+    #: ERC-4626 vault or similar
+    vault = "vault"
+
     def is_interest_accruing(self) -> bool:
         """Do base or quote or both gain interest during when the position is open."""
         return self in (TradingPairKind.lending_protocol_short, TradingPairKind.lending_protocol_long, TradingPairKind.credit_supply)
@@ -404,14 +391,17 @@ class TradingPairKind(enum.Enum):
         """This is a spot market pair."""
         return self == TradingPairKind.spot_market_hold or self == TradingPairKind.spot_market_hold_rebalancing_token
 
+    def is_vault(self):
+        return self == TradingPairKind.vault
 
-_REMOTE_OTHER_DATA_KEYS = {"token_metadata"}
+
+_TRANSIENT_OTHER_DATA_KEYS = {"token_metadata"}
 
 def _reduce_other_data(val):
     """See translate_trading_pair() on how TradingPairIdentifier.other_data is populated"""
     if isinstance(val, dict):
         # Remove remote data from the dict
-        for key in _REMOTE_OTHER_DATA_KEYS:
+        for key in _TRANSIENT_OTHER_DATA_KEYS:
             if key in val:
                 del val[key]
     return val
@@ -662,13 +652,14 @@ class TradingPairIdentifier:
             "address": self.pool_address,
             "base": self.base.token_symbol,
             "base_decimals": self.base.decimals,
-            "base_ddress": self.base.address,
+            "base_address": self.base.address,
             "quote": self.quote.token_symbol,
             "quote_address": self.quote.address,
             "fee": self.fee,
             "buy_tax": self.get_buy_tax(),
             "sell_tax": self.get_sell_tax(),
             "risk_score": self.get_risk_score(),
+            "vault_features": self.get_vault_features(),
         }
 
         if extended:
@@ -732,6 +723,23 @@ class TradingPairIdentifier:
         if tokensniffer_data:
             return tokensniffer_data["score"]
         return None
+
+    def get_vault_features(self) -> set[ERC4626Feature] | None:
+        """Get list of vault feature flags if the pair is a vault.
+
+        Needed for ERC-4626 compatibility.
+        """
+        feats = self.other_data.get("vault_features")
+        if feats:
+            return set(feats)
+        return None
+
+    def get_vault_protocol(self) -> str | None:
+        """Get the vault protocol name.
+
+        - Lowercased, slug
+        """
+        return self.other_data.get("vault_protocol")
 
     def has_complete_info(self) -> bool:
         """Check if the pair has good information.
@@ -804,6 +812,9 @@ class TradingPairIdentifier:
     def is_spot(self) -> bool:
         return self.kind.is_spot()
 
+    def is_vault(self) -> bool:
+        return self.kind.is_vault()
+
     def is_credit_supply(self) -> bool:
         return self.kind.is_credit_supply()
 
@@ -839,7 +850,7 @@ class TradingPairIdentifier:
 
             Return ``None`` if the trading pair does not have price information.
         """
-        if self.is_spot():
+        if self.is_spot() | self.is_vault():
             return self
         elif self.is_credit_supply():
             # Credit supply does not have a real trading pair,

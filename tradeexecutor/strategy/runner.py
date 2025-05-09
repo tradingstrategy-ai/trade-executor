@@ -325,7 +325,7 @@ class StrategyRunner(abc.ABC):
             logger.info("Fetching post-execution price data for %s at %s", t.get_short_label(), ts)
 
             # Credit supply pairs do not have pricing ATM
-            if t.pair.is_spot():
+            if t.pair.is_spot() or t.pair.is_vault():
                 if t.is_buy():
                     t.post_execution_price_structure = pricing_model.get_buy_price(ts, t.pair, t.planned_reserve)
                 else:

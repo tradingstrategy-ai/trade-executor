@@ -333,13 +333,19 @@ class TradingPosition(GenericPosition):
     def get_human_readable_name(self) -> str:
         return f"Trading position #{self.position_id} for {self.pair.get_ticker()}"
 
-    def get_debug_dump(self) -> str:
+    def get_debug_dump(self, char_limit=1000) -> str:
         """Return class contents for logging.
+
+        :param char_limit:
+            Display maximum of this many characters.
 
         :return:
             Indented JSON-like content
         """
-        return pprint.pformat(asdict(self), width=160)
+        msg = pprint.pformat(asdict(self), width=160)
+        if len(msg) > char_limit:
+            msg = msg[:char_limit] + "..."
+        return msg
 
     def get_human_summary(self) -> dict:
         """Get the human readable debug dump.
@@ -431,15 +437,20 @@ class TradingPosition(GenericPosition):
         assert len(self.trades) + len(self.pending_trades) > 0, "Cannot determine if position is long or short because there are no trades"
         return self.get_first_trade().is_spot()
 
+    def is_vault(self) -> bool:
+        """Is this a vault shares position."""
+        return self.pair.is_vault()
+
     def is_long(self) -> bool:
         """Is this position long on the underlying base asset.
 
         We consider the position long if the first trade is buy.
 
-        This includes spot buy.
+        - This includes spot buy.
+        - This includes holding vault shares
         """
         assert len(self.trades) + len(self.pending_trades) > 0, "Cannot determine if position is long or short because there are no trades"
-        return self.pair.is_spot() or self.pair.is_long()
+        return self.pair.is_spot() or self.pair.is_long() or self.pair.is_vault()
 
     def is_short(self) -> bool:
         """Is this position short on the underlying base asset."""
@@ -799,7 +810,7 @@ class TradingPosition(GenericPosition):
             return value
 
         match self.pair.kind:
-            case TradingPairKind.spot_market_hold:
+            case TradingPairKind.spot_market_hold | TradingPairKind.vault:
 
                 value += self.calculate_value_using_price(
                     self.last_token_price,
@@ -1077,7 +1088,7 @@ class TradingPosition(GenericPosition):
                 planned_collateral_consumption = planned_collateral_consumption or Decimal(0)
                 planned_collateral_allocation = planned_collateral_allocation or Decimal(0)
 
-            case TradingPairKind.spot_market_hold:
+            case TradingPairKind.spot_market_hold | TradingPairKind.vault:
                 # Set spot market estimated quantities
                 if reserve is not None:
                     planned_reserve = reserve

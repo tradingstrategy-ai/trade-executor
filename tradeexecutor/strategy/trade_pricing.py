@@ -126,7 +126,7 @@ class TradePricing:
 
         Make sure we don't slip in e.g. NumPy types.
         """
-        assert type(self.price) == float
+        assert type(self.price) == float, f"Expected price to be float, got {self.price} {type(self.price)}"
         assert type(self.mid_price) == float
 
         # Convert legacy single lp_fee model to path based model

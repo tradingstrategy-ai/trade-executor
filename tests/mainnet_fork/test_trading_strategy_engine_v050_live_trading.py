@@ -177,6 +177,7 @@ def test_trading_strategy_engine_v050_live_trading(
     # Don't use CliRunner.invoke() here,
     # as it patches stdout/stdin and causes our pdb to stop working
     with mock.patch.dict('os.environ', environment, clear=True):
+        app(["init"], standalone_mode=False)
         app(["start"], standalone_mode=False)
 
     # We should have three cycles worth of debug data

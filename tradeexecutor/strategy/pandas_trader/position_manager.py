@@ -249,6 +249,8 @@ class PositionManager:
         logger.info("Initialised PositionManager, default slippage tolerance is %f %%", self.default_slippage_tolerance * 100)
 
         reserve_currency, reserve_price = state.portfolio.get_default_reserve_asset()
+        # TODO: One failing test needs fixing
+        # assert reserve_currency, "Portfolio does not have reserve currency set"
 
         self.reserve_currency = reserve_currency
         self.reserve_price = reserve_price
@@ -752,6 +754,8 @@ class PositionManager:
             flags = set()
 
         flags = {TradeFlag.open, TradeFlag.increase} | flags
+
+        assert self.reserve_currency, "PositionManager.open_spot(): self.reserve_currency is None"
 
         position, trade, created = self.state.create_trade(
             self.timestamp,
