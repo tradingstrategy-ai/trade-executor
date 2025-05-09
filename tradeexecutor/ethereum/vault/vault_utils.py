@@ -3,6 +3,7 @@ from eth_defi.erc_4626.core import get_vault_protocol_name
 from eth_defi.erc_4626.vault import ERC4626Vault
 from tradeexecutor.ethereum.token import translate_token_details
 from tradeexecutor.state.identifier import TradingPairIdentifier, AssetIdentifier, TradingPairKind
+from tradingstrategy.vault import VaultMetadata
 
 
 def get_vault_trading_pair(
@@ -26,6 +27,12 @@ def get_vault_trading_pair(
     protocol_name = get_vault_protocol_name(vault.features)
     protocol_slug = protocol_name.replace(" ", "_").lower()
 
+    vault_metadata = VaultMetadata(
+        protocol_name=protocol_name,
+        protocol_slug=protocol_slug,
+        features=list(features),
+    )
+
     return TradingPairIdentifier(
         base=base,
         quote=quote,
@@ -39,5 +46,6 @@ def get_vault_trading_pair(
         other_data={
             "vault_features": features,
             "vault_protocol": protocol_slug,
+            "token_metadata": vault_metadata,
         }
     )

@@ -1936,8 +1936,8 @@ def translate_trading_pair(dex_pair: DEXPair, cache: dict | None = None) -> Trad
                 token_sniffer_data = metadata.token_sniffer_data
             case VaultMetadata():
                 pair.other_data["token_metadata"] = metadata
-                pair.other_data["vault_features"] = dex_pair.other_data["vault_features"]
-                pair.other_data["vault_protocol"] = dex_pair.other_data["vault_protocol"]
+                pair.other_data["vault_features"] = metadata.features
+                pair.other_data["vault_protocol"] = metadata.protocol_slug
             case None:
                 pass
             case _:

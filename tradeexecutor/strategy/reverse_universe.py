@@ -5,6 +5,8 @@
 """
 import datetime
 import enum
+from importlib.metadata import metadata
+from types import NoneType
 from typing import Set, Tuple
 
 import pandas as pd
@@ -20,7 +22,9 @@ from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniv
 from tradingstrategy.exchange import Exchange, ExchangeUniverse
 from tradingstrategy.pair import PandasPairUniverse
 from tradingstrategy.timebucket import TimeBucket
+from tradingstrategy.token_metadata import TokenMetadata
 from tradingstrategy.universe import Universe
+from tradingstrategy.vault import VaultMetadata
 
 
 class DataRangeMode(enum.Enum):
@@ -186,6 +190,9 @@ def create_universe_from_trading_pair_identifiers(
             dex_type = exchange_universe.get_by_chain_and_factory(ChainId(t.chain_id), t.exchange_address).exchange_type.value
             exchange_slug = exchange_universe.get_by_chain_and_factory(ChainId(t.chain_id), t.exchange_address).exchange_slug
 
+        metadata = t.get_token_metadata()
+        assert isinstance(metadata, (NoneType, TokenMetadata, VaultMetadata))
+
         entry = {
             "pair_id": allocate_pair_id(),
             "chain_id": t.chain_id,
@@ -204,7 +211,7 @@ def create_universe_from_trading_pair_identifiers(
             "exchange_address": t.exchange_address,
             "pair_slug": f"{t.base.token_symbol}-{t.quote.token_symbol}",
             "fee": int(t.fee * 10_000),
-            "other_data": t.other_data,
+            "other_data": {"token_metadata": metadata},
         }
 
         data.append(entry)
