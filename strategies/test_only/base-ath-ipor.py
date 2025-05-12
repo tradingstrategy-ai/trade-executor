@@ -416,6 +416,11 @@ def decide_trades(
 
     # Supply or withdraw cash to Aave if strategy is set to do so
     credit_trades = []
+
+    yield_ruleset = YieldRuleset(
+
+    )
+
     yield_manager = YieldManager(
         position_manager
     )

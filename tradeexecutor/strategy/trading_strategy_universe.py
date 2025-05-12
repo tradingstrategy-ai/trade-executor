@@ -1909,6 +1909,7 @@ def translate_trading_pair(dex_pair: DEXPair, cache: dict | None = None) -> Trad
         reverse_token_order=dex_pair.token0_symbol != dex_pair.base_token_symbol,
         exchange_name=dex_pair.exchange_name,
         kind=kind,
+        internal_exchange_id=dex_pair.exchange_id,
     )
 
     # Need to be loaded with load_extra_metadata()

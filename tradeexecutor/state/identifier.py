@@ -8,6 +8,7 @@ from dataclasses import dataclass, field
 from decimal import Decimal
 from typing import Optional, Literal, TypeAlias
 
+import numpy as np
 from web3 import Web3
 from dataclasses_json import dataclass_json, config
 from eth_typing import HexAddress
@@ -202,7 +203,9 @@ class AssetIdentifier:
         assert self.address.startswith("0x")
         self.address= self.address.lower()
         assert type(self.chain_id) == int
-        assert type(self.decimals) == int, f"Bad decimals {self.decimals}"
+        if isinstance(self.decimals, np.int64):
+            self.decimals = int(self.decimals)
+        assert type(self.decimals) == int, f"Bad decimals {type(self.decimals)}: {self.decimals}"
         assert self.decimals >= 0
 
         if self.type:
