@@ -364,6 +364,11 @@ class TradingPairKind(enum.Enum):
     #: ERC-4626 vault or similar
     vault = "vault"
 
+    #: Cash.
+    #:
+    #: Not a real trading pair, but expresses cash place holder in weighting calculations.
+    cash = "cash"
+
     def is_interest_accruing(self) -> bool:
         """Do base or quote or both gain interest during when the position is open."""
         return self in (TradingPairKind.lending_protocol_short, TradingPairKind.lending_protocol_long, TradingPairKind.credit_supply)
