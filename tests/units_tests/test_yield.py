@@ -3,6 +3,7 @@ import datetime
 import random
 from decimal import Decimal
 
+import numpy as np
 import pytest
 
 from tradeexecutor.backtest.backtest_pricing import BacktestPricing
@@ -14,7 +15,7 @@ from tradeexecutor.state.state import State
 from tradeexecutor.strategy.pandas_trader.position_manager import PositionManager
 from tradeexecutor.strategy.trading_strategy_universe import create_pair_universe_from_code, TradingStrategyUniverse, translate_trading_pair
 from tradeexecutor.testing.synthetic_ethereum_data import generate_random_ethereum_address
-from tradeexecutor.testing.synthetic_exchange_data import generate_exchange, generate_simple_routing_model
+from tradeexecutor.testing.synthetic_exchange_data import generate_exchange, generate_simple_routing_model, generate_vault_routing_model
 from tradeexecutor.testing.synthetic_lending_data import generate_lending_universe, generate_lending_reserve
 from tradeexecutor.testing.synthetic_price_data import generate_ohlcv_candles
 from tradingstrategy.alternative_data.vault import load_multiple_vaults
@@ -87,7 +88,9 @@ def synthetic_universe(usdc, weth) -> TradingStrategyUniverse:
     vaults = [(chain_id, "0x45aa96f0b3188d47a1dafdbefce1db6b37f58216")]
     vault_exchanges, vault_pairs_df = load_multiple_vaults(vaults)
     vault_exchange = next(iter(vault_exchanges))
+    assert type(vault_exchange.exchange_id) == int
     vault_dex_pair = DEXPair.create_from_row(vault_pairs_df.iloc[0])
+    assert type(vault_dex_pair.exchange_id) == np.int64
     ipor_pair = translate_trading_pair(vault_dex_pair)
 
     pair_universe = create_pair_universe_from_code(
@@ -125,7 +128,7 @@ def synthetic_universe(usdc, weth) -> TradingStrategyUniverse:
 
 @pytest.fixture()
 def routing_model(synthetic_universe) -> BacktestRoutingModel:
-    return generate_simple_routing_model(synthetic_universe)
+    return generate_vault_routing_model(synthetic_universe, expected_exchages=2)
 
 
 @pytest.fixture()
@@ -164,14 +167,14 @@ def test_yield_manager_setup(
     """We can setup yield manager."""
 
     weth_usdc = synthetic_universe.get_pair_by_human_description(
-        (ChainId.ethereum, "my-dex", "WETH", "USDC"),
+        (ChainId.base, "my-dex", "WETH", "USDC"),
     )
     assert weth_usdc.is_spot()
 
     ipor_usdc = synthetic_universe.get_pair_by_smart_contract(
         "0x45aa96f0b3188d47a1dafdbefce1db6b37f58216",
     )
-    assert ipor_usdc.is_vault()
+    assert ipor_usdc.is_vault(), f"Got type: {ipor_usdc.kind}"
 
     state = State()
     start_at = datetime.datetime(2021, 6, 1)
