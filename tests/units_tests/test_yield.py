@@ -6,6 +6,14 @@ from decimal import Decimal
 import numpy as np
 import pytest
 
+from tradingstrategy.alternative_data.vault import load_multiple_vaults
+from tradingstrategy.candle import GroupedCandleUniverse
+from tradingstrategy.chain import ChainId
+from tradingstrategy.pair import DEXPair
+from tradingstrategy.timebucket import TimeBucket
+from tradingstrategy.universe import Universe
+
+
 from tradeexecutor.backtest.backtest_pricing import BacktestPricing
 from tradeexecutor.backtest.backtest_routing import BacktestRoutingModel
 from tradeexecutor.backtest.backtest_sync import BacktestSyncModel
@@ -15,27 +23,22 @@ from tradeexecutor.state.state import State
 from tradeexecutor.strategy.pandas_trader.position_manager import PositionManager
 from tradeexecutor.strategy.trading_strategy_universe import create_pair_universe_from_code, TradingStrategyUniverse, translate_trading_pair
 from tradeexecutor.testing.synthetic_ethereum_data import generate_random_ethereum_address
-from tradeexecutor.testing.synthetic_exchange_data import generate_exchange, generate_simple_routing_model, generate_vault_routing_model
+from tradeexecutor.testing.synthetic_exchange_data import generate_exchange, generate_vault_routing_model
 from tradeexecutor.testing.synthetic_lending_data import generate_lending_universe, generate_lending_reserve
 from tradeexecutor.testing.synthetic_price_data import generate_ohlcv_candles
-from tradingstrategy.alternative_data.vault import load_multiple_vaults
-from tradingstrategy.candle import GroupedCandleUniverse
-from tradingstrategy.chain import ChainId
-from tradingstrategy.pair import DEXPair
-from tradingstrategy.timebucket import TimeBucket
-from tradingstrategy.universe import Universe
+from tradeexecutor.strategy.pandas_trader.yield_manager import YieldManager, YieldRuleset, YieldWeightingRule
 
 
 @pytest.fixture()
 def usdc() -> AssetIdentifier:
     """Create a mock USDC asset."""
-    usdc = AssetIdentifier(ChainId.ethereum.value, generate_random_ethereum_address(), "USDC", 6, 1)
+    usdc = AssetIdentifier(ChainId.base.value, generate_random_ethereum_address(), "USDC", 6, 1)
     return usdc
 
 
 @pytest.fixture()
 def weth() -> AssetIdentifier:
-    weth = AssetIdentifier(ChainId.ethereum.value, generate_random_ethereum_address(), "WETH", 18, 2)
+    weth = AssetIdentifier(ChainId.base.value, generate_random_ethereum_address(), "WETH", 18, 2)
     return weth
 
 
@@ -92,6 +95,7 @@ def synthetic_universe(usdc, weth) -> TradingStrategyUniverse:
     vault_dex_pair = DEXPair.create_from_row(vault_pairs_df.iloc[0])
     assert type(vault_dex_pair.exchange_id) == np.int64
     ipor_pair = translate_trading_pair(vault_dex_pair)
+    assert ipor_pair.is_vault()
 
     pair_universe = create_pair_universe_from_code(
         chain_id,
@@ -158,11 +162,40 @@ def state(synthetic_universe, usdc) -> State:
     return state
 
 
+@pytest.fixture()
+def rules(
+    synthetic_universe,
+    usdc,
+) -> YieldRuleset:
+    """Create yield allocation rules.
+
+    - Allocate safe portion to IPOR
+    - Allocate the remaining to Aave
+    """
+
+    ipor_usdc = synthetic_universe.get_pair_by_smart_contract(
+        "0x45aa96f0b3188d47a1dafdbefce1db6b37f58216",
+    )
+
+    aave_usdc = synthetic_universe.get_credit_supply_pair()
+
+    return YieldRuleset(
+        position_allocation=0.95,
+        buffer_pct=0.01,
+        cash_change_tolerance_usd=5.00,
+        weights=[
+            YieldWeightingRule(pair=ipor_usdc, max_weight=0.33),
+            YieldWeightingRule(pair=aave_usdc, max_weight=1.0),
+        ]
+    )
+
+
 def test_yield_manager_setup(
     synthetic_universe: TradingStrategyUniverse,
     state: State,
     pricing_model,
     routing_model,
+    rules: YieldRuleset,
 ):
     """We can setup yield manager."""
 
@@ -176,6 +209,9 @@ def test_yield_manager_setup(
     )
     assert ipor_usdc.is_vault(), f"Got type: {ipor_usdc.kind}"
 
+    aave_usdc = synthetic_universe.get_credit_supply_pair()
+    assert aave_usdc.is_credit_supply()
+
     state = State()
     start_at = datetime.datetime(2021, 6, 1)
     position_manager = PositionManager(
@@ -183,6 +219,12 @@ def test_yield_manager_setup(
         universe=synthetic_universe,
         pricing_model=pricing_model,
         routing_model=routing_model,
+        state=state,
+    )
+
+    yield_manager = YieldManager(
+        position_manager=position_manager,
+        rules=rules,
     )
 
 

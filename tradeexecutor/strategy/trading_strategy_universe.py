@@ -1332,6 +1332,8 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
 
         Assume we move our single reserve currency to a single lending reserve we know for it.
 
+        TODO: Currently one pair per universe supported only.
+
         :return:
             Credit supply trading pair with ticket (aToken for reserve asset, reserve asset)
         """
@@ -2021,13 +2023,21 @@ def create_pair_universe_from_code(chain_id: ChainId, pairs: List[TradingPairIde
 
         assert p.internal_id not in used_ids, f"Duplicate internal id {p}: {p.internal_id}"
 
+        # TODO: The reverse translate here is incomplete
+        if p.is_vault():
+            dex_type = ExchangeType.erc_4626_vault
+        else:
+            dex_type = ExchangeType.uniswap_v2
+
+        other_data = p.other_data
+
         dex_pair = DEXPair(
             pair_id=p.internal_id,
             chain_id=chain_id,
             exchange_id=p.internal_exchange_id,
             address=p.pool_address,
             exchange_address=p.exchange_address,
-            dex_type=ExchangeType.uniswap_v2,
+            dex_type=dex_type,
             base_token_symbol=p.base.token_symbol,
             quote_token_symbol=p.quote.token_symbol,
             token0_symbol=p.base.token_symbol,
@@ -2037,6 +2047,7 @@ def create_pair_universe_from_code(chain_id: ChainId, pairs: List[TradingPairIde
             token0_decimals=p.base.decimals,
             token1_decimals=p.quote.decimals,
             fee=int(p.fee * 10_000) if p.fee else None,  # Convert to bps according to the documentation
+            other_data=other_data,
         )
         used_ids.add(p.internal_id)
         data.append(dex_pair.to_dict())

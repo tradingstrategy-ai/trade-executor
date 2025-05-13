@@ -2,8 +2,9 @@
 import logging
 from functools import cached_property
 
-from attr import dataclass
-from attr.setters import frozen
+import dataclasses
+
+from pydantic.v1.dataclasses import dataclass
 
 from tradeexecutor.state.identifier import TradingPairIdentifier, TradingPairKind
 from tradeexecutor.state.portfolio import Portfolio
@@ -15,6 +16,7 @@ from tradeexecutor.strategy.pandas_trader.position_manager import PositionManage
 logger = logging.getLogger(__name__)
 
 
+@dataclasses.dataclass(slots=True, frozen=True)
 class YieldWeightingRule:
     """Describe a rule how to optimise yield for spare cash."""
 
@@ -36,14 +38,11 @@ class YieldWeightingRule:
 
 
 
-@dataclass.dataclass(slots=True, frozen=True)
+@dataclasses.dataclass(slots=True, frozen=True)
 class YieldRuleset:
 
     #: How much total equity is allowed to directional + yield position.
     position_allocation: Percent
-
-    #: Max weights of each yield position
-    weights: list[YieldWeightingRule]
 
     #: Buffer amount.
     #
@@ -52,8 +51,14 @@ class YieldRuleset:
     # we expect.
     buffer_pct: Percent
 
+    #: How much yield position allocation must change before we start to generate new trades.
+    cash_change_tolerance_usd: USDollarAmount
 
-@dataclass.dataclass(slots=True, frozen=True)
+    #: Max weights of each yield position
+    weights: list[YieldWeightingRule]
+
+
+@dataclasses.dataclass(slots=True, frozen=True)
 class YieldDecisionInput:
 
     #: Total equity of our portfolio
@@ -75,20 +80,15 @@ class YieldManager:
         self,
         position_manager: PositionManager,
         rules: YieldRuleset,
-        cash_change_tolerance_usd: USDollarAmount,
     ):
         """
 
         :param position_manager:
             PositionManager instance setup within decide_trades()
 
-        :param cash_change_tolerance_usd:
-            How much yield position allocation must change before we start to generate new trades.
-
         """
         self.position_manager = position_manager
         self.rules = rules
-        self.cash_change_tolerance_usd = cash_change_tolerance_usd
 
     @property
     def portfolio(self) -> Portfolio:
