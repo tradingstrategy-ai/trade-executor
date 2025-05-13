@@ -293,3 +293,60 @@ def test_yield_distribute_all(
     assert t.is_buy()
     assert t.planned_reserve == pytest.approx(Decimal(6365))
 
+
+def test_yield_distribute_some_directional(
+    synthetic_universe: TradingStrategyUniverse,
+    state: State,
+    pricing_model,
+    routing_model,
+    rules: YieldRuleset,
+):
+    """Distribute leftover cash to yield positions.
+
+    - One directional trades taken
+    - We get one trade to open Aave position, another to open IPOR position
+    """
+
+    assert state.portfolio.get_total_equity() == 10_000.0
+
+    start_at = datetime.datetime(2021, 6, 1)
+    position_manager = PositionManager(
+        timestamp=start_at,
+        universe=synthetic_universe,
+        pricing_model=pricing_model,
+        routing_model=routing_model,
+        state=state,
+    )
+
+    yield_manager = YieldManager(
+        position_manager=position_manager,
+        rules=rules,
+    )
+
+    weth_usdc = synthetic_universe.get_pair_by_human_description(
+        (ChainId.base, "my-dex", "WETH", "USDC"),
+    )
+
+    directional_trades = position_manager.open_spot(
+        weth_usdc,
+        value=1000.0,
+    )
+
+    input = YieldDecisionInput(
+        total_equity=state.portfolio.get_total_equity(),
+        directional_trades=directional_trades,
+
+    )
+    trades = yield_manager.calculate_yield_management(input)
+    assert len(trades) == 2, f"Got trades: {trades}"
+
+    t = trades[0]
+    assert t.is_vault()
+    assert t.is_buy()
+    assert t.planned_price == 2.0  # Fixed price
+    assert t.planned_reserve == pytest.approx(Decimal(2805))
+
+    t = trades[1]
+    assert t.is_credit_supply()
+    assert t.is_buy()
+    assert t.planned_reserve == pytest.approx(Decimal(5695))
