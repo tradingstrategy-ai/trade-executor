@@ -402,6 +402,9 @@ class TradingPairKind(enum.Enum):
     def is_vault(self):
         return self == TradingPairKind.vault
 
+    def is_cash(self):
+        return self == TradingPairKind.cash
+
 
 _TRANSIENT_OTHER_DATA_KEYS = {"token_metadata"}
 
@@ -819,6 +822,9 @@ class TradingPairIdentifier:
 
     def is_spot(self) -> bool:
         return self.kind.is_spot()
+
+    def is_cash(self) -> bool:
+        return self.kind.is_cash()
 
     def is_vault(self) -> bool:
         return self.kind.is_vault()

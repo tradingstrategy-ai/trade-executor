@@ -6,6 +6,7 @@ from decimal import Decimal
 import numpy as np
 import pytest
 
+from tradeexecutor.state.portfolio import Portfolio
 from tradingstrategy.alternative_data.vault import load_multiple_vaults
 from tradingstrategy.candle import GroupedCandleUniverse
 from tradingstrategy.chain import ChainId
@@ -173,11 +174,18 @@ def rules(
     - Allocate the remaining to Aave
     """
 
+    weth_usdc = synthetic_universe.get_pair_by_human_description(
+        (ChainId.base, "my-dex", "WETH", "USDC"),
+    )
+    assert weth_usdc.is_spot()
+
     ipor_usdc = synthetic_universe.get_pair_by_smart_contract(
         "0x45aa96f0b3188d47a1dafdbefce1db6b37f58216",
     )
+    assert ipor_usdc.is_vault(), f"Got type: {ipor_usdc.kind}"
 
     aave_usdc = synthetic_universe.get_credit_supply_pair()
+    assert aave_usdc.is_credit_supply()
 
     return YieldRuleset(
         position_allocation=0.95,
@@ -199,20 +207,6 @@ def test_yield_manager_setup(
 ):
     """We can setup yield manager."""
 
-    weth_usdc = synthetic_universe.get_pair_by_human_description(
-        (ChainId.base, "my-dex", "WETH", "USDC"),
-    )
-    assert weth_usdc.is_spot()
-
-    ipor_usdc = synthetic_universe.get_pair_by_smart_contract(
-        "0x45aa96f0b3188d47a1dafdbefce1db6b37f58216",
-    )
-    assert ipor_usdc.is_vault(), f"Got type: {ipor_usdc.kind}"
-
-    aave_usdc = synthetic_universe.get_credit_supply_pair()
-    assert aave_usdc.is_credit_supply()
-
-    state = State()
     start_at = datetime.datetime(2021, 6, 1)
     position_manager = PositionManager(
         timestamp=start_at,
@@ -226,7 +220,7 @@ def test_yield_manager_setup(
         position_manager=position_manager,
         rules=rules,
     )
-
-
+    assert isinstance(yield_manager.portfolio, Portfolio)
+    assert yield_manager.cash_pair.is_cash()
 
 

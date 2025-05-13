@@ -160,7 +160,8 @@ class ReservePosition(GenericPosition):
     def get_held_assets(self) -> Iterable[Tuple[AssetIdentifier, Decimal]]:
         yield self.asset, self.quantity
 
-    def get_cash_pair_placeholder(self) -> TradingPairIdentifier:
+    def get_cash_pair(self) -> TradingPairIdentifier:
+        """Get the placeholder trading pair we use to symbolise cash allocation in calculations"""
         return TradingPairIdentifier(
             kind=TradingPairKind.cash,
             base=self.asset,
