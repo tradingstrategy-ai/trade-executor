@@ -3,8 +3,7 @@ import logging
 from functools import cached_property
 
 import dataclasses
-
-from pydantic.v1.dataclasses import dataclass
+from pprint import pformat
 
 from tradeexecutor.state.identifier import TradingPairIdentifier, TradingPairKind
 from tradeexecutor.state.portfolio import Portfolio
@@ -37,7 +36,6 @@ class YieldWeightingRule:
         return f"{self.pair.base.token_symbol}: {self.max_weight:,%}"
 
 
-
 @dataclasses.dataclass(slots=True, frozen=True)
 class YieldRuleset:
 
@@ -57,6 +55,19 @@ class YieldRuleset:
     #: Max weights of each yield position
     weights: list[YieldWeightingRule]
 
+    def validate(self):
+        """Check all looks good."""
+        assert self.buffer_pct > 0
+        assert self.cash_change_tolerance_usd > 0
+        assert self.position_allocation > 0
+        assert len(self.weights) >= 1
+        for w in self.weights:
+            assert w.pair
+            assert w.max_weight > 0
+
+        last_weight = self.weights[-1]
+        assert last_weight.max_weight == 1, f"Last weight slot must get the remaining capital, got: {last_weight}"
+
 
 @dataclasses.dataclass(slots=True, frozen=True)
 class YieldDecisionInput:
@@ -67,6 +78,22 @@ class YieldDecisionInput:
     #: Directional trades decided in this cycle
     directional_trades: list[TradeExecution]
 
+
+@dataclasses.dataclass(slots=True, frozen=True)
+class YieldDecisionResult:
+
+    #: Applied rule we used
+    rule: YieldWeightingRule
+
+    #: What is the weight we set for this
+    weight: Percent
+
+    #: What is the weight in USD
+    amount_usd: USDollarAmount
+
+    @property
+    def pair(self) -> TradingPairIdentifier:
+        return self.rule.pair
 
 
 class YieldManager:
@@ -87,6 +114,7 @@ class YieldManager:
             PositionManager instance setup within decide_trades()
 
         """
+        rules.validate()
         self.position_manager = position_manager
         self.rules = rules
 
@@ -110,16 +138,16 @@ class YieldManager:
         """
 
         positions = {self.cash_pair: self.position_manager.get_current_cash()}
-        for rule in self.rules:
-            position = self.position_manager.get_current_position_for_pair(rule.pair)
-            position[rule.pair] = position.get_value()
+        for weight in self.rules.weights:
+            position = self.position_manager.get_current_position_for_pair(weight.pair)
+            positions[weight.pair] = position.get_value() if position else 0.0
 
         return positions
 
-    def manage_yield_flow(
+    def generate_rebalance_trades(
         self,
         current_yield_positions: dict[TradingPairIdentifier, USDollarAmount],
-        desired_yield_positions: dict[TradingPairIdentifier, USDollarAmount],
+        desired_yield_positions: dict[TradingPairIdentifier, YieldDecisionResult],
     ) -> list[TradeExecution]:
         """Create trades to adjust yield positions.
 
@@ -130,8 +158,9 @@ class YieldManager:
             What are the desired positiosn at the end of this cycle
         """
 
-        for position, desired_amount in desired_yield_positions.items():
-            pair = position.pair
+        trades = []
+        for pair, desired_result in desired_yield_positions.items():
+            desired_amount = desired_result.amount_usd
             existing_position = current_yield_positions.get(pair)
             if existing_position:
                 existing_amount = existing_amount.get_value()
@@ -140,14 +169,13 @@ class YieldManager:
 
             dollar_delta = desired_amount - existing_amount
             if existing_position:
-                quantity_delta = dollar_delta * position.get_current_price()
+                quantity_delta = dollar_delta * existing_position.get_current_price()
             else:
                 quantity_delta = None
-            trades = []
 
-            notes = f"Bringing yield management position to: {desired_amount} USD",
+            notes = f"Adjusting yield management position to: {desired_amount} USD, previously {existing_amount} USD"
 
-            match position.pair.kind:
+            match pair.kind:
                 case TradingPairKind.cash:
                     raise AssertionError("Cash should not be in desired positions")
                 case TradingPairKind.vault:
@@ -156,6 +184,7 @@ class YieldManager:
                         dollar_delta=dollar_delta,
                         quantity_delta=quantity_delta,
                         notes=notes,
+                        weight=desired_result.weight,
                     )
                 case TradingPairKind.credit_supply:
                     # Aave positions are currently always fully closed and then reopenened due to internal limitaiton
@@ -178,27 +207,45 @@ class YieldManager:
     def calculate_yield_positions(
         self,
         cash_available_for_yield: USDollarAmount,
-    ) -> dict[TradingPairIdentifier, USDollarAmount]:
-        """Calculate cash positions we are allowed to take."""
+    ) -> dict[TradingPairIdentifier, YieldDecisionResult]:
+        """Calculate cash positions we are allowed to take.
 
-        desired_yield_positions: dict[TradingPairIdentifier, USDollarAmount] = {}
+        - Simple first in, first out, fill earier rules to their max weight
+        """
+
+        desired_yield_positions: dict[TradingPairIdentifier, YieldDecisionResult] = {}
 
         left = cash_available_for_yield
 
-        for rule in self.input.rules:
-            if rule.max_weight:
+        logger.info("Distributing total %f USD to yield positions", left)
+
+        for rule in self.rules.weights:
+            if rule.max_weight < 1:
                 amount = cash_available_for_yield * rule.max_weight
                 left -= amount
             else:
                 # Last position (Aave) gets what ever is left
                 amount = left
 
-            desired_yield_positions[rule.pair] = amount
+            weight = amount / cash_available_for_yield
 
+            result = YieldDecisionResult(
+                rule=rule,
+                weight=weight,
+                amount_usd=amount,
+            )
+            desired_yield_positions[rule.pair] = result
 
-        for pair, amount in desired_yield_positions.items():
-            logger.info("Yield position %s: %f USD", pair.base.token_symbol, amount)
+        for pair, result in desired_yield_positions.items():
+            logger.info(
+                "Yield position %s: %f USD (%f %%)",
+                pair.base.token_symbol,
+                result.amount_usd,
+                result.weight * 100,
+            )
 
+        total_distributed = sum(result.amount_usd for result in desired_yield_positions.values())
+        assert total_distributed <= cash_available_for_yield, f"Total distributed {total_distributed} exceed available cash {cash_available_for_yield} USD."
         return desired_yield_positions
 
     def calculate_cash_needed_to_cover_directional_trades(
@@ -226,6 +273,7 @@ class YieldManager:
         trades = input.directional_trades
         buffer_pct = self.rules.buffer_pct
         allocation_pct = self.rules.position_allocation
+        state = self.position_manager.state
 
         assert allocation_pct > 0.30, f"allocation_pct might not be correct: {allocation_pct}"
 
@@ -242,7 +290,7 @@ class YieldManager:
 
         # Keep this amount always in cash.
         # For Lagoon this will enable instant small redemptions.
-        nav = self.state.portfolio.get_net_asset_value()
+        nav = state.portfolio.get_net_asset_value()
         target_reserve = nav * (1 - allocation_pct)
 
         reserve_diff = target_reserve - available_cash
@@ -295,6 +343,8 @@ class YieldManager:
         current_cash_in_hand = sum([v for k, v in current_positions.items() if k.kind == TradingPairKind.cash])
         all_cash_like = current_cash_yielding + current_cash_in_hand
 
+        assert all_cash_like > 0, f"No cash-like instruments available for yield management:\n{pformat(current_positions)}"
+
         logger.info(
             "Current cash in hand: %f USD, cash yielding: %f USD, all cash like %f USD",
             current_cash_in_hand,
@@ -320,16 +370,15 @@ class YieldManager:
             available_for_yield,
         )
 
-        assert available_for_yield > 0, "Yield positions cannot go negative - something wrong with our calcultions?"
+        assert available_for_yield > 0, f"Yield positions cannot go negative - something wrong with our calcultions? Available for yield: {available_for_yield}"
 
         # 4. Calculate new yield positions
         desired_yield_positions = self.calculate_yield_positions(
-            input,
             available_for_yield,
         )
 
         # 5. Calculate rebalance trades for yield positions
-        trades = self.manage_yield_flow(
+        trades = self.generate_rebalance_trades(
             current_positions,
             desired_yield_positions,
         )

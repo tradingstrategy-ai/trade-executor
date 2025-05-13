@@ -1069,7 +1069,8 @@ class PositionManager:
 
         # In BacktestPricing we may override fee to zero
         fee_override = getattr(self.pricing_model, "trading_fee_override", None)
-        if fee_override is None:
+        if fee_override is None and not pair.is_vault():
+            # Vault fees can ne zero
             assert trade.lp_fees_estimated > 0, f"LP fees estimated: {trade.lp_fees_estimated} - {trade} - DEX fee data missing?\nFee override is {fee_override}"
 
         # Update stop loss for this position

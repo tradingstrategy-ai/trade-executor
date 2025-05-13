@@ -562,6 +562,9 @@ class TradingPairIdentifier:
             # TODO: Make this lazy property
             self.reverse_token_order = int(self.base.address, 16) > int(self.quote.address, 16)
 
+        if self.internal_id:
+            assert isinstance(self.internal_id, int), f"Expected int, got {self.internal_id} of type {type(self.internal_id)}: {self.internal_id}"
+
     def __repr__(self):
         fee = self.fee or 0
         type_name = self.kind.name if self.kind else "spot"

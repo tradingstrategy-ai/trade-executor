@@ -27,7 +27,7 @@ from tradeexecutor.testing.synthetic_ethereum_data import generate_random_ethere
 from tradeexecutor.testing.synthetic_exchange_data import generate_exchange, generate_vault_routing_model
 from tradeexecutor.testing.synthetic_lending_data import generate_lending_universe, generate_lending_reserve
 from tradeexecutor.testing.synthetic_price_data import generate_ohlcv_candles
-from tradeexecutor.strategy.pandas_trader.yield_manager import YieldManager, YieldRuleset, YieldWeightingRule
+from tradeexecutor.strategy.pandas_trader.yield_manager import YieldManager, YieldRuleset, YieldWeightingRule, YieldDecisionInput
 
 
 @pytest.fixture()
@@ -138,10 +138,20 @@ def routing_model(synthetic_universe) -> BacktestRoutingModel:
 
 @pytest.fixture()
 def pricing_model(synthetic_universe, routing_model) -> BacktestPricing:
+
+    # Work around lack of real data
+    ipor_usdc = synthetic_universe.get_pair_by_smart_contract(
+        "0x45aa96f0b3188d47a1dafdbefce1db6b37f58216",
+    )
+    fixed_prices = {
+        ipor_usdc: 2.0,
+    }
+
     pricing_model = BacktestPricing(
         synthetic_universe.data_universe.candles,
         routing_model,
         allow_missing_fees=True,
+        fixed_prices=fixed_prices,
     )
     return pricing_model
 
@@ -150,16 +160,26 @@ def pricing_model(synthetic_universe, routing_model) -> BacktestPricing:
 def sync_model(usdc) -> BacktestSyncModel:
     """Read wallet balances back to the backtesting state."""
     wallet = SimulatedWallet()
-    wallet.set_balance(usdc, Decimal(10_000))
-    sync_model = BacktestSyncModel(wallet)
+    #wallet.set_balance(usdc, Decimal(10_000))
+    sync_model = BacktestSyncModel(wallet, initial_deposit_amount=Decimal(10_000))
     return sync_model
 
 
 @pytest.fixture()
-def state(synthetic_universe, usdc) -> State:
-    """Create empty state."""
+def state(synthetic_universe, usdc, sync_model) -> State:
+    """Create empty state with $10,000 USDC reserve."""
     state = State()
-    state.portfolio.initialise_reserves(usdc, reserve_token_price=1.0)
+    # state.portfolio.initialise_reserves(usdc, reserve_token_price=1.0)
+
+    # Inject cash for testing
+    sync_model.sync_initial(state)
+    start_at = datetime.datetime(2021, 6, 1)
+    sync_model.sync_treasury(
+        strategy_cycle_ts=start_at,
+        state=state,
+        supported_reserves=[usdc],
+    )
+
     return state
 
 
@@ -223,4 +243,53 @@ def test_yield_manager_setup(
     assert isinstance(yield_manager.portfolio, Portfolio)
     assert yield_manager.cash_pair.is_cash()
 
+
+
+def test_yield_distribute_all(
+    synthetic_universe: TradingStrategyUniverse,
+    state: State,
+    pricing_model,
+    routing_model,
+    rules: YieldRuleset,
+):
+    """Distribute all cash to yield positions.
+
+    - No directional trades taken
+    - We get one trade to open Aave position, another to open IPOR position
+    """
+
+    assert state.portfolio.get_total_equity() == 10_000.0
+
+    start_at = datetime.datetime(2021, 6, 1)
+    position_manager = PositionManager(
+        timestamp=start_at,
+        universe=synthetic_universe,
+        pricing_model=pricing_model,
+        routing_model=routing_model,
+        state=state,
+    )
+
+    yield_manager = YieldManager(
+        position_manager=position_manager,
+        rules=rules,
+    )
+
+    input = YieldDecisionInput(
+        total_equity=state.portfolio.get_total_equity(),
+        directional_trades=[],
+
+    )
+    trades = yield_manager.calculate_yield_management(input)
+    assert len(trades) == 2, f"Got trades: {trades}"
+
+    t = trades[0]
+    assert t.is_vault()
+    assert t.is_buy()
+    assert t.planned_price == 2.0  # Fixed price
+    assert t.planned_reserve == pytest.approx(Decimal(3135))
+
+    t = trades[1]
+    assert t.is_credit_supply()
+    assert t.is_buy()
+    assert t.planned_reserve == pytest.approx(Decimal(6365))
 
