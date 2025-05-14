@@ -285,7 +285,7 @@ def decide_trades(
 
     trades = alpha_model.generate_rebalance_trades_and_triggers(
         position_manager,
-        min_trade_threshold=parameters.individual_rebalance_min_threshold_usd,  # Don't bother with trades under XXXX USD
+        min_trade_threshold=parameters.individual_rebalance_min_threshold_usd,
         invidiual_rebalance_min_threshold=parameters.individual_rebalance_min_threshold_usd,
         sell_rebalance_min_threshold=parameters.sell_rebalance_min_threshold,
         execution_context=input.execution_context,
@@ -293,4 +293,4 @@ def decide_trades(
 
     position_manager.check_enough_cash(trades)
 
-    return trades  # Return the list of trades we made in this cycle
+    return trades

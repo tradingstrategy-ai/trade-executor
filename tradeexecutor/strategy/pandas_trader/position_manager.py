@@ -2753,7 +2753,8 @@ xz
               f"credit: cash needed: {credit_supplied}, cash released: {credit_released}\n" \
               f"cash in hand: {cash_in_hand}\n" \
               f"trades: {len(trades)}\n" \
-              f"total equity: {total_equity}"
+              f"total equity: {total_equity}\n" \
+              f"at: {self.timestamp}"
 
         logger.info(msg)
 
