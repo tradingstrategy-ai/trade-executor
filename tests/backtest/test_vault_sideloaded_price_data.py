@@ -248,11 +248,6 @@ def decide_trades(
         close_position_weight_epsilon=parameters.min_portfolio_weight,  # 10 BPS is our min portfolio weight
     )
 
-    alpha_model.update_old_weights(
-        state.portfolio,
-        ignore_credit=False,
-    )
-
     # Generate new weights
     for pair in strategy_universe.iterate_pairs():
         weight = indicators.get_indicator_value("signal", pair=pair)
@@ -269,6 +264,11 @@ def decide_trades(
 
     alpha_model.select_top_signals(count=parameters.max_assets_in_portfolio)
     alpha_model.assign_weights(method=weight_passthrouh)
+
+    alpha_model.update_old_weights(
+        state.portfolio,
+        ignore_credit=False,
+    )
 
     size_risk_model = USDTVLSizeRiskModel(
         pricing_model=input.pricing_model,
@@ -291,6 +291,10 @@ def decide_trades(
         execution_context=input.execution_context,
     )
 
-    position_manager.check_enough_cash(trades)
+    try:
+        position_manager.check_enough_cash(trades)
+    except Exception as e:
+        # Dump alpha model
+        raise RuntimeError(f"Alpha model flow calculations failed: {alpha_model.get_debug_print()}") from e
 
     return trades

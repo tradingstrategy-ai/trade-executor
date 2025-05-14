@@ -543,7 +543,7 @@ class AlphaModel:
         buf = StringIO()
         print(f"Alpha model for {self.timestamp}, for USD {self.investable_equity:,} equity", file=buf)
         for idx, signal in enumerate(self.get_signals_sorted_by_weight(), start=1):
-            print(f"   Signal #{idx} {signal}", file=buf)
+            print(f"   Signal {signal}", file=buf)
         return buf.getvalue()
 
     def get_allocated_value(self) -> USDollarAmount:
