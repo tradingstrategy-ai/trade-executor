@@ -186,14 +186,15 @@ class BacktestPricing(PricingModel):
 
         pair_fee = self.get_pair_fee(ts, pair)
 
-        if pair_fee:
+        if pair_fee is not None:
             reserve = float(quantity) * mid_price
             lp_fee = float(reserve) * pair_fee
 
             # Move price below mid price
             price = mid_price * (1 - pair_fee)
 
-            assert lp_fee > 0, f"After simulating SELL trade, got non-positive LP fee: {pair} {quantity}: ${lp_fee}.\n"\
+            if not pair.is_vault():
+                assert lp_fee > 0, f"After simulating SELL trade, got non-positive LP fee: {pair} {quantity}: ${lp_fee}.\n"\
                                f"Mid price: {mid_price}, quantity: {quantity}, reserve: {reserve} , pair fee: {pair_fee}\n" \
 
         else:
@@ -259,7 +260,9 @@ class BacktestPricing(PricingModel):
             price = mid_price * (1 + pair_fee)
 
             if self.trading_fee_override is None:
-                assert lp_fee > 0, f"Got bad fee: {pair} {reserve}: {lp_fee}, trading fee override is: {self.trading_fee_override}"
+                if not pair.is_vault():
+                    # Vault fees are zero
+                    assert lp_fee > 0, f"Got bad fee: {pair} {reserve}: {lp_fee}, trading fee override is: {self.trading_fee_override}"
         else:
             # Fee information not available
             if not self.allow_missing_fees:
@@ -300,16 +303,16 @@ class BacktestPricing(PricingModel):
         return Decimal(quantity).quantize((Decimal(10) ** Decimal(-decimals)), rounding=ROUND_DOWN)
 
     def get_pair_fee(
-            self,
-            ts: datetime.datetime,
-            pair: TradingPairIdentifier,
+        self,
+        ts: datetime.datetime,
+        pair: TradingPairIdentifier,
     ) -> Optional[float]:
         """Figure out the fee from a pair or a routing."""
 
         if self.trading_fee_override is not None:
             return self.trading_fee_override
 
-        if pair.fee:
+        if pair.fee is not None:
             return pair.fee
 
         return self.routing_model.get_default_trading_fee()

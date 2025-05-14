@@ -92,6 +92,11 @@ class StrategyInputIndicators:
         assert isinstance(self.available_indicators, IndicatorSet)
         assert isinstance(self.strategy_universe, TradingStrategyUniverse)
 
+    @property
+    def indicator_combinations(self) -> set[IndicatorKey]:
+        """Get all calculate indicators."""
+        return set(self.indicator_results.keys())
+
     def get_ohlcv(
         self,
         pair: TradingPairIdentifier | HumanReadableTradingPairDescription | None = None,

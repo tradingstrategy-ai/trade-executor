@@ -291,7 +291,7 @@ class TradingPairSignal:
             # Convert from numpy.float64
             self.signal = float(self.signal)
 
-        assert self.pair.is_spot(), "Signals must be identified by their spot pairs"
+        assert self.pair.is_spot() or self.pair.is_vault(), "Signals must be identified by their spot pairs"
 
         if self.leverage:
             assert type(self.leverage) == float
@@ -643,7 +643,7 @@ class AlphaModel:
             If not set assume spot.
         """
 
-        assert pair.is_spot(), f"Signals are tracked by their spot pairs. got {pair}"
+        assert pair.is_spot() or pair.is_vault(), f"Signals are tracked by their spot pairs. got {pair}"
 
         # Don't let Numpy values beyond this point, as
         # they cause havoc in serialisation
@@ -946,6 +946,7 @@ class AlphaModel:
             Automatically ignore credit positions.
         """
         total = portfolio.get_position_equity_and_loan_nav()
+        assert total > 0, f"Portfolio equity is zero, cannot calculate weights: {total}. At {self.timestamp}, positions: {portfolio.open_positions.values()}"
         for position in portfolio.open_positions.values():
 
             if ignore_credit:
