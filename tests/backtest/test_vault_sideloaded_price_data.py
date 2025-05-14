@@ -240,37 +240,36 @@ def decide_trades(
 
     portfolio = state.portfolio
     assert portfolio.get_total_equity() > 0
+    assert portfolio.get_position_equity_and_loan_nav() >= 0
 
-    # Build signals for each pair
+    # Set up alpha model
     alpha_model = AlphaModel(
         timestamp,
         close_position_weight_epsilon=parameters.min_portfolio_weight,  # 10 BPS is our min portfolio weight
     )
 
+    alpha_model.update_old_weights(
+        state.portfolio,
+        ignore_credit=False,
+    )
+
+    # Generate new weights
     for pair in strategy_universe.iterate_pairs():
         weight = indicators.get_indicator_value("signal", pair=pair)
-        if weight is None:
-            # The vault does not yet exist in this timestamp
+        if weight is None or weight <= 0:
+            # The vault does not yet exist in this timestamp,
+            # or has negative rolling returns
             continue
         alpha_model.set_signal(
             pair,
             weight,
         )
 
-    # Calculate how much dollar value we want each individual position to be on this strategy cycle,
-    # based on our total available equity
-    portfolio = position_manager.get_current_portfolio()
     portfolio_target_value = portfolio.get_total_equity() * parameters.allocation
 
-    # Select max_assets_in_portfolio assets in which we are going to invest
-    # Calculate a weight for ecah asset in the portfolio using 1/N method based on the raw signal
     alpha_model.select_top_signals(count=parameters.max_assets_in_portfolio)
     alpha_model.assign_weights(method=weight_passthrouh)
-    # alpha_model.assign_weights(method=weight_by_1_slash_n)
 
-    #
-    # Normalise weights and cap the positions
-    #
     size_risk_model = USDTVLSizeRiskModel(
         pricing_model=input.pricing_model,
         per_position_cap=parameters.per_position_cap_of_pool,  # This is how much % by all pool TVL we can allocate for a position
@@ -282,28 +281,16 @@ def decide_trades(
         size_risk_model=size_risk_model,
         max_weight=parameters.max_concentration,
     )
-
-    # Load in old weight for each trading pair signal,
-    # so we can calculate the adjustment trade size
-    alpha_model.update_old_weights(
-        state.portfolio,
-        ignore_credit=False,
-    )
     alpha_model.calculate_target_positions(position_manager)
 
-    # Shift portfolio from current positions to target positions
-    # determined by the alpha signals (momentum)
-
-    # rebalance_threshold_usd = portfolio_target_value * parameters.min_rebalance_trade_threshold_pct
-    rebalance_threshold_usd = parameters.individual_rebalance_min_threshold_usd
-
-    assert rebalance_threshold_usd > 0.1, "Safety check tripped - something like wrong with strat code"
     trades = alpha_model.generate_rebalance_trades_and_triggers(
         position_manager,
-        min_trade_threshold=rebalance_threshold_usd,  # Don't bother with trades under XXXX USD
+        min_trade_threshold=parameters.individual_rebalance_min_threshold_usd,  # Don't bother with trades under XXXX USD
         invidiual_rebalance_min_threshold=parameters.individual_rebalance_min_threshold_usd,
         sell_rebalance_min_threshold=parameters.sell_rebalance_min_threshold,
         execution_context=input.execution_context,
     )
+
+    position_manager.check_enough_cash(trades)
 
     return trades  # Return the list of trades we made in this cycle

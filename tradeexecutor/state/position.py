@@ -771,7 +771,7 @@ class TradingPosition(GenericPosition):
         """
 
         match self.pair.kind:
-            case TradingPairKind.spot_market_hold:
+            case TradingPairKind.spot_market_hold | TradingPairKind.vault:
                 return self.calculate_value_using_price(
                     self.last_token_price,
                     self.last_reserve_price,

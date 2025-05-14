@@ -684,7 +684,7 @@ class AlphaModel:
         """
 
         assert pair is not None
-        assert pair.is_spot(), f"Expected spot pair, got {pair}"
+        assert pair.is_spot() or pair.is_vault(), f"Expected spot pair, got {pair}"
 
         if pair.internal_id in self.signals:
             self.signals[pair.internal_id].old_weight = old_weight
@@ -946,7 +946,10 @@ class AlphaModel:
             Automatically ignore credit positions.
         """
         total = portfolio.get_position_equity_and_loan_nav()
-        assert total > 0, f"Portfolio equity is zero, cannot calculate weights: {total}. At {self.timestamp}, positions: {portfolio.open_positions.values()}"
+
+        if portfolio.open_positions:
+            assert total > 0, f"Portfolio equity is zero, cannot calculate weights: {total}. At {self.timestamp}, positions: {portfolio.open_positions.values()}"
+
         for position in portfolio.open_positions.values():
 
             if ignore_credit:

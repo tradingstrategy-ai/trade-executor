@@ -998,7 +998,7 @@ class TradeExecution:
             return self.planned_quantity > 0
         elif self.is_long():
             return self.planned_quantity < 0
-        elif self.is_spot():
+        elif self.is_spot() or self.is_vault():
             return self.planned_quantity < 0
         else:
             raise NotImplementedError(f"Not leveraged trade: {self}")
@@ -1251,7 +1251,7 @@ class TradeExecution:
             # Always withdraw credit to cash in hand first,
             # so we have cash to do the trades we want
             return -self.trade_id - credit_order_bump
-        if self.closing:
+        elif self.closing:
             # Close positions always first to release maximum cash
             return -self.trade_id - close_order_bump
         elif (not self.is_credit_supply()) and self.is_reduce():
