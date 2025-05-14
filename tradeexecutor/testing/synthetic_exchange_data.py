@@ -28,7 +28,11 @@ def generate_exchange(
     return exchange
 
 
-def generate_simple_routing_model(universe: TradingStrategyUniverse, trading_fee: Optional[BPS] = None) -> BacktestRoutingModel:
+def generate_simple_routing_model(
+    universe: TradingStrategyUniverse,
+    trading_fee: Optional[BPS] = None,
+    expected_exchages: int = 1,
+) -> BacktestRoutingModel:
     """Creates a routing model for data generated synthetically.
 
     - Assumes there is only one exchange in the trading universe
@@ -36,7 +40,7 @@ def generate_simple_routing_model(universe: TradingStrategyUniverse, trading_fee
     - Assumes all pairs in the trading universe have the same quote token and its stablecoin
     """
 
-    assert len(universe.data_universe.exchanges) == 1
+    assert len(universe.data_universe.exchanges) == expected_exchages, f"Expected exactly one exchange in the universe, got {len(universe.data_universe.exchanges)}"
     assert len(universe.reserve_assets) == 1
 
     reserve_asset = universe.reserve_assets[0]
@@ -52,6 +56,49 @@ def generate_simple_routing_model(universe: TradingStrategyUniverse, trading_fee
     # by their smart contract addresses
     factory_router_map = {
         generate_random_ethereum_address(): (exchange.address, None)
+    }
+
+    # For three way trades, which pools we can use
+    allowed_intermediary_pairs = {
+    }
+
+    return BacktestRoutingModel(
+        factory_router_map,
+        allowed_intermediary_pairs,
+        reserve_token_address=reserve_asset.address,
+        trading_fee=trading_fee,
+    )
+
+
+
+def generate_vault_routing_model(
+    universe: TradingStrategyUniverse,
+    trading_fee: Optional[BPS] = None,
+    expected_exchages: int = 2,
+) -> BacktestRoutingModel:
+    """Creates a routing model for data generated synthetically, including vaults.
+
+    - Assumes there is only one exchange in the trading universe
+
+    - Assumes all pairs in the trading universe have the same quote token and its stablecoin
+    """
+
+    assert len(universe.data_universe.exchanges) == expected_exchages, f"Expected exactly one exchange in the universe, got {len(universe.data_universe.exchanges)}"
+    assert len(universe.reserve_assets) == 1
+
+    reserve_asset = universe.reserve_assets[0]
+
+    pair: DEXPair
+    for pair in universe.data_universe.pairs.iterate_pairs():
+        assert pair.exchange_id, f"Pair lacks exchange_id: {pair}"
+        exchange = universe.data_universe.exchange_universe.get_by_id(pair.exchange_id)
+        assert exchange is not None, f"Pair had exchange_id {pair.exchange_id}, but ExchangeUniverse does not have it. We have: {universe.data_universe.exchange_universe.exchanges}"
+        assert exchange.address
+
+    # Allowed exchanges as factory -> router pairs,
+    # by their smart contract addresses
+    factory_router_map = {
+        exchange.address: (exchange.address, None) for exchange in universe.data_universe.exchange_universe.exchanges.values()
     }
 
     # For three way trades, which pools we can use

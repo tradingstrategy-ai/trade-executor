@@ -1069,7 +1069,8 @@ class PositionManager:
 
         # In BacktestPricing we may override fee to zero
         fee_override = getattr(self.pricing_model, "trading_fee_override", None)
-        if fee_override is None:
+        if fee_override is None and not pair.is_vault():
+            # Vault fees can ne zero
             assert trade.lp_fees_estimated > 0, f"LP fees estimated: {trade.lp_fees_estimated} - {trade} - DEX fee data missing?\nFee override is {fee_override}"
 
         # Update stop loss for this position
@@ -1479,6 +1480,7 @@ class PositionManager:
         amount: USDollarAmount,
         flags: Set[TradeFlag] | None = None,
         notes: str | None = None,
+        lending_reserve_identifier: TradingPairIdentifier = None,
     ) -> List[TradeExecution]:
         """Move reserve currency to a credit supply position.
 
@@ -1492,7 +1494,10 @@ class PositionManager:
         assert self.strategy_universe is not None, f"PositionManager.strategy_universe not set, data_universe is {self.data_universe}"
         assert self.strategy_universe.has_lending_data(), "open_credit_supply_position_for_reserves(): lending data not loaded"
 
-        lending_reserve_identifier = self.strategy_universe.get_credit_supply_pair()
+        if lending_reserve_identifier is None:
+            lending_reserve_identifier = self.strategy_universe.get_credit_supply_pair()
+
+        assert lending_reserve_identifier.is_credit_supply()
 
         if not flags:
             flags = set()
@@ -2748,7 +2753,8 @@ xz
               f"credit: cash needed: {credit_supplied}, cash released: {credit_released}\n" \
               f"cash in hand: {cash_in_hand}\n" \
               f"trades: {len(trades)}\n" \
-              f"total equity: {total_equity}"
+              f"total equity: {total_equity}\n" \
+              f"at: {self.timestamp}"
 
         logger.info(msg)
 

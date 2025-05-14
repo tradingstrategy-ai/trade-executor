@@ -9,7 +9,7 @@ from dataclasses_json import dataclass_json
 
 from tradeexecutor.state.balance_update import BalanceUpdate
 from tradeexecutor.state.generic_position import GenericPosition, BalanceUpdateEventAlreadyAdded
-from tradeexecutor.state.identifier import AssetIdentifier
+from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier, TradingPairKind
 from tradeexecutor.state.types import USDollarAmount
 from tradeexecutor.utils.accuracy import sum_decimal
 
@@ -159,3 +159,14 @@ class ReservePosition(GenericPosition):
 
     def get_held_assets(self) -> Iterable[Tuple[AssetIdentifier, Decimal]]:
         yield self.asset, self.quantity
+
+    def get_cash_pair(self) -> TradingPairIdentifier:
+        """Get the placeholder trading pair we use to symbolise cash allocation in calculations"""
+        return TradingPairIdentifier(
+            kind=TradingPairKind.cash,
+            base=self.asset,
+            quote=self.asset,
+            pool_address=self.asset.address,
+            exchange_address=self.asset.address,
+            internal_id=0,
+        )

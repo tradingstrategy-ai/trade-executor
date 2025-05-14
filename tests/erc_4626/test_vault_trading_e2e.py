@@ -60,6 +60,7 @@ def environment(
     return environment
 
 
+@pytest.mark.slow_test_group
 def test_vault_trading_start(
     environment: dict,
     mocker,

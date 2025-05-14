@@ -291,7 +291,7 @@ class TradingPairSignal:
             # Convert from numpy.float64
             self.signal = float(self.signal)
 
-        assert self.pair.is_spot(), "Signals must be identified by their spot pairs"
+        assert self.pair.is_spot() or self.pair.is_vault(), "Signals must be identified by their spot pairs"
 
         if self.leverage:
             assert type(self.leverage) == float
@@ -543,7 +543,7 @@ class AlphaModel:
         buf = StringIO()
         print(f"Alpha model for {self.timestamp}, for USD {self.investable_equity:,} equity", file=buf)
         for idx, signal in enumerate(self.get_signals_sorted_by_weight(), start=1):
-            print(f"   Signal #{idx} {signal}", file=buf)
+            print(f"   Signal {signal}", file=buf)
         return buf.getvalue()
 
     def get_allocated_value(self) -> USDollarAmount:
@@ -643,7 +643,7 @@ class AlphaModel:
             If not set assume spot.
         """
 
-        assert pair.is_spot(), f"Signals are tracked by their spot pairs. got {pair}"
+        assert pair.is_spot() or pair.is_vault(), f"Signals are tracked by their spot pairs. got {pair}"
 
         # Don't let Numpy values beyond this point, as
         # they cause havoc in serialisation
@@ -684,7 +684,7 @@ class AlphaModel:
         """
 
         assert pair is not None
-        assert pair.is_spot(), f"Expected spot pair, got {pair}"
+        assert pair.is_spot() or pair.is_vault(), f"Expected spot pair, got {pair}"
 
         if pair.internal_id in self.signals:
             self.signals[pair.internal_id].old_weight = old_weight
@@ -946,6 +946,10 @@ class AlphaModel:
             Automatically ignore credit positions.
         """
         total = portfolio.get_position_equity_and_loan_nav()
+
+        if portfolio.open_positions:
+            assert total > 0, f"Portfolio equity is zero, cannot calculate weights: {total}. At {self.timestamp}, positions: {portfolio.open_positions.values()}"
+
         for position in portfolio.open_positions.values():
 
             if ignore_credit:

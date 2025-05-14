@@ -52,6 +52,7 @@ class BacktestPricing(PricingModel):
             allow_missing_fees=False,
             trading_fee_override: float | None=None,
             liquidity_universe: GroupedLiquidityUniverse | None = None,
+            fixed_prices: dict[TradingPairIdentifier, float] | None = None,
         ):
         """
 
@@ -99,6 +100,12 @@ class BacktestPricing(PricingModel):
 
             See :py:mod:`tradeexecutor.strategy.tvl_size_risk`.
 
+        :param fixed_prices:
+            Fix price of an asset to a certain value to work around missing data.
+
+            Use then we do not candle price data available for a pair.
+            Mainly to work around vault unit testing data issues.
+
         """
 
         # TODO: Remove later - now to support some old code111
@@ -116,6 +123,12 @@ class BacktestPricing(PricingModel):
         self.allow_missing_fees = allow_missing_fees
         self.trading_fee_override = trading_fee_override
         self.liquidity_universe = liquidity_universe
+
+        if fixed_prices:
+            for k, v in fixed_prices.items():
+                assert isinstance(k, TradingPairIdentifier)
+                assert isinstance(v, float), f"Fixed price must be a float, got {v} for {k}"
+        self.fixed_prices = fixed_prices or {}
 
     def __repr__(self):
         return f"<BacktestSimplePricingModel bucket: {self.time_bucket}, candles: {self.candle_universe}>"
@@ -137,10 +150,10 @@ class BacktestPricing(PricingModel):
         assert pair.quote.address == self.routing_model.reserve_token_address, f"Quote token {self.routing_model.reserve_token_address} not supported for pair {pair}, pair tokens are {pair.base.address} - {pair.quote.address}"
 
     def get_sell_price(
-            self,
-            ts: datetime.datetime,
-            pair: TradingPairIdentifier,
-            quantity: Optional[Decimal]
+        self,
+        ts: datetime.datetime,
+        pair: TradingPairIdentifier,
+        quantity: Optional[Decimal]
     ) -> TradePricing:
 
         assert pair is not None, "Pair missing"
@@ -150,6 +163,18 @@ class BacktestPricing(PricingModel):
 
         # TODO: Include price impact
         pair_id = pair.internal_id
+
+        fixed_price = self.fixed_prices.get(pair)
+        if fixed_price:
+            return TradePricing(
+                price=float(fixed_price),
+                mid_price=float(fixed_price),
+                lp_fee=[0],
+                pair_fee=[0],
+                market_feed_delay=None,
+                side=False,
+                path=[pair]
+            )
 
         mid_price, delay = self.candle_universe.get_price_with_tolerance(
             pair_id,
@@ -161,14 +186,15 @@ class BacktestPricing(PricingModel):
 
         pair_fee = self.get_pair_fee(ts, pair)
 
-        if pair_fee:
+        if pair_fee is not None:
             reserve = float(quantity) * mid_price
             lp_fee = float(reserve) * pair_fee
 
             # Move price below mid price
             price = mid_price * (1 - pair_fee)
 
-            assert lp_fee > 0, f"After simulating SELL trade, got non-positive LP fee: {pair} {quantity}: ${lp_fee}.\n"\
+            if not pair.is_vault():
+                assert lp_fee > 0, f"After simulating SELL trade, got non-positive LP fee: {pair} {quantity}: ${lp_fee}.\n"\
                                f"Mid price: {mid_price}, quantity: {quantity}, reserve: {reserve} , pair fee: {pair_fee}\n" \
 
         else:
@@ -204,6 +230,18 @@ class BacktestPricing(PricingModel):
         # TODO: Include price impact
         pair_id = pair.internal_id
 
+        fixed_price = self.fixed_prices.get(pair)
+        if fixed_price:
+            return TradePricing(
+                price=float(fixed_price),
+                mid_price=float(fixed_price),
+                lp_fee=[None],
+                pair_fee=[None],
+                market_feed_delay=None,
+                side=True,
+                path=[pair]
+            )
+
         mid_price, delay = self.candle_universe.get_price_with_tolerance(
             pair_id,
             ts,
@@ -222,7 +260,9 @@ class BacktestPricing(PricingModel):
             price = mid_price * (1 + pair_fee)
 
             if self.trading_fee_override is None:
-                assert lp_fee > 0, f"Got bad fee: {pair} {reserve}: {lp_fee}, trading fee override is: {self.trading_fee_override}"
+                if not pair.is_vault():
+                    # Vault fees are zero
+                    assert lp_fee > 0, f"Got bad fee: {pair} {reserve}: {lp_fee}, trading fee override is: {self.trading_fee_override}"
         else:
             # Fee information not available
             if not self.allow_missing_fees:
@@ -263,16 +303,16 @@ class BacktestPricing(PricingModel):
         return Decimal(quantity).quantize((Decimal(10) ** Decimal(-decimals)), rounding=ROUND_DOWN)
 
     def get_pair_fee(
-            self,
-            ts: datetime.datetime,
-            pair: TradingPairIdentifier,
+        self,
+        ts: datetime.datetime,
+        pair: TradingPairIdentifier,
     ) -> Optional[float]:
         """Figure out the fee from a pair or a routing."""
 
         if self.trading_fee_override is not None:
             return self.trading_fee_override
 
-        if pair.fee:
+        if pair.fee is not None:
             return pair.fee
 
         return self.routing_model.get_default_trading_fee()

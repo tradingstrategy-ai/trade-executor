@@ -8,6 +8,7 @@ from dataclasses import dataclass, field
 from decimal import Decimal
 from typing import Optional, Literal, TypeAlias
 
+import numpy as np
 from web3 import Web3
 from dataclasses_json import dataclass_json, config
 from eth_typing import HexAddress
@@ -202,7 +203,9 @@ class AssetIdentifier:
         assert self.address.startswith("0x")
         self.address= self.address.lower()
         assert type(self.chain_id) == int
-        assert type(self.decimals) == int, f"Bad decimals {self.decimals}"
+        if isinstance(self.decimals, np.int64):
+            self.decimals = int(self.decimals)
+        assert type(self.decimals) == int, f"Bad decimals {type(self.decimals)}: {self.decimals}"
         assert self.decimals >= 0
 
         if self.type:
@@ -364,6 +367,11 @@ class TradingPairKind(enum.Enum):
     #: ERC-4626 vault or similar
     vault = "vault"
 
+    #: Cash.
+    #:
+    #: Not a real trading pair, but expresses cash place holder in weighting calculations.
+    cash = "cash"
+
     def is_interest_accruing(self) -> bool:
         """Do base or quote or both gain interest during when the position is open."""
         return self in (TradingPairKind.lending_protocol_short, TradingPairKind.lending_protocol_long, TradingPairKind.credit_supply)
@@ -393,6 +401,9 @@ class TradingPairKind(enum.Enum):
 
     def is_vault(self):
         return self == TradingPairKind.vault
+
+    def is_cash(self):
+        return self == TradingPairKind.cash
 
 
 _TRANSIENT_OTHER_DATA_KEYS = {"token_metadata"}
@@ -550,6 +561,9 @@ class TradingPairIdentifier:
         if self.reverse_token_order is None:
             # TODO: Make this lazy property
             self.reverse_token_order = int(self.base.address, 16) > int(self.quote.address, 16)
+
+        if self.internal_id:
+            assert isinstance(self.internal_id, int), f"Expected int, got {self.internal_id} of type {type(self.internal_id)}: {self.internal_id}"
 
     def __repr__(self):
         fee = self.fee or 0
@@ -811,6 +825,9 @@ class TradingPairIdentifier:
 
     def is_spot(self) -> bool:
         return self.kind.is_spot()
+
+    def is_cash(self) -> bool:
+        return self.kind.is_cash()
 
     def is_vault(self) -> bool:
         return self.kind.is_vault()
