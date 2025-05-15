@@ -19,6 +19,7 @@ from .app import app
 from ..bootstrap import prepare_executor_id, prepare_cache, create_web3_config, create_execution_and_sync_model
 from ..log import setup_logging
 from ...ethereum.enzyme.vault import EnzymeVaultSyncModel
+from ...ethereum.lagoon.vault import LagoonVaultSyncModel
 from ...ethereum.velvet.vault import VelvetVaultSyncModel
 from ...strategy.approval import UncheckedApprovalModel
 from ...strategy.bootstrap import make_factory_from_strategy_mod
@@ -176,6 +177,9 @@ def check_wallet(
         logger.info("  Vault address is %s", sync_model.get_key_address())
     elif isinstance(sync_model, VelvetVaultSyncModel):
         logger.info("  Vault address is %s", sync_model.vault_address)
+    elif isinstance(sync_model, LagoonVaultSyncModel):
+        logger.info("  Vault address is %s", sync_model.vault_address)
+        logger.info("  Safe address is %s", sync_model.get_token_storage_address())
     else:
         logger.info("  Vault address lookup not implemented", )
 

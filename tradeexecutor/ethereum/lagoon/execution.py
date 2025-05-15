@@ -34,7 +34,6 @@ class LagoonExecution(EthereumExecution):
         routing_state,
     ):
         assert isinstance(ts, datetime.datetime)
-        assert isinstance(routing_model, VelvetEnsoRouting)
         assert isinstance(routing_state, RoutingState)
 
     def get_routing_state_details(self) -> RoutingStateDetails:
