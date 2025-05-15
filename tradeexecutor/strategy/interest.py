@@ -633,6 +633,15 @@ def record_interest_rate(
         if p.is_credit_supply():
             loan = p.loan
 
+            if loan is None:
+                # aUSCD position opening failed,
+                logger.warning(
+                    "Position %s, frozen %s, loan is None",
+                    p,
+                    p.is_frozen(),
+                )
+                continue
+
             last_interest_rate = universe.get_latest_supply_apr(
                 timestamp=timestamp,
                 tolerance=datetime.timedelta(days=7),

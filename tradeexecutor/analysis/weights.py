@@ -47,7 +47,7 @@ def calculate_asset_weights(
     } for ps in state.stats.portfolio]
 
     # Need to look up assets for every position
-    position_asset_map = {p.position_id: p.pair.base.token_symbol for p in state.portfolio.get_all_positions()}
+    position_asset_map = {p.position_id: p.pair.get_chart_label() for p in state.portfolio.get_all_positions()}
     position_kind_map = {p.position_id: p.pair.kind.value for p in state.portfolio.get_all_positions()}
 
     # Add position values

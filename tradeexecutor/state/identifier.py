@@ -617,6 +617,16 @@ class TradingPairIdentifier:
         """
         return f"{self.base.token_symbol}-{self.quote.token_symbol}"
 
+    def get_chart_label(self) -> str:
+        """Get the short name used in charting for this pair.
+
+        - Base token symbol if spot
+        - Vault name if vault
+        """
+        if self.is_vault():
+            return self.get_vault_name()
+        return self.base.token_symbol
+
     def get_lending_protocol(self) -> LendingProtocolType | None:
         """Is this pair on a particular lending protocol."""
         if self.kind in (TradingPairKind.lending_protocol_short, TradingPairKind.lending_protocol_long):
@@ -640,6 +650,8 @@ class TradingPairIdentifier:
                 return f"{self.get_ticker()} spot"
             elif self.is_credit_supply():
                 return f"{underlying.get_ticker()} credit"
+            elif self.is_vault():
+                return self.get_vault_name()
 
         return self.get_ticker()
 
@@ -754,6 +766,27 @@ class TradingPairIdentifier:
         - Lowercased, slug
         """
         return self.other_data.get("vault_protocol")
+
+    def get_vault_name(self) -> str | None:
+        """Get the vault name,
+
+        - Human readable
+        """
+        return self.other_data.get("vault_name")
+
+    def get_performance_fee(self) -> Percent | None:
+        """Get the vault performance fee.
+
+        - None if unknown
+        """
+        return self.other_data.get("vault_performance_fee")
+
+    def get_management_fee(self) -> Percent | None:
+        """Get the vault management fee.
+
+        - None if unknown
+        """
+        return self.other_data.get("vault_management_fee")
 
     def has_complete_info(self) -> bool:
         """Check if the pair has good information.

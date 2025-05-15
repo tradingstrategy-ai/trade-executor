@@ -6,6 +6,16 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
+from tradingstrategy.candle import GroupedCandleUniverse
+from tradingstrategy.chain import ChainId
+from tradingstrategy.client import Client
+from tradingstrategy.exchange import ExchangeUniverse
+from tradingstrategy.liquidity import GroupedLiquidityUniverse
+from tradingstrategy.pair import PandasPairUniverse
+from tradingstrategy.timebucket import TimeBucket
+from tradingstrategy.universe import Universe
+
+
 from tradeexecutor.backtest.backtest_runner import run_backtest_inline
 from tradeexecutor.state.identifier import TradingPairIdentifier
 from tradeexecutor.state.trade import TradeExecution
@@ -22,14 +32,6 @@ from tradeexecutor.strategy.tvl_size_risk import USDTVLSizeRiskModel
 from tradeexecutor.strategy.universe_model import UniverseOptions
 from tradeexecutor.strategy.weighting import weight_passthrouh
 from tradingstrategy.alternative_data.vault import load_multiple_vaults, load_vault_price_data, convert_vault_prices_to_candles
-from tradingstrategy.candle import GroupedCandleUniverse
-from tradingstrategy.chain import ChainId
-from tradingstrategy.client import Client
-from tradingstrategy.exchange import ExchangeUniverse
-from tradingstrategy.liquidity import GroupedLiquidityUniverse
-from tradingstrategy.pair import PandasPairUniverse
-from tradingstrategy.timebucket import TimeBucket
-from tradingstrategy.universe import Universe
 
 
 class Parameters:

@@ -109,14 +109,31 @@ def display_strategy_universe(
 
     for pair in strategy_universe.iterate_pairs():
         benchmark = pair.other_data.get("benchmark")
+
+        # Resolve vault specific variables
+        performance_fee = management_fee = None
+        if pair.is_vault():
+            name = pair.get_vault_name()
+            performance_fee = pair.get_performance_fee()
+            management_fee = pair.get_management_fee()
+            exchange_label = "vault"
+            pair_fee = None
+        else:
+            name = pair.exchange_name
+            exchange_label = "exchange"
+            pair_fee = pair.fee
+
+
         data = {
             "id": pair.internal_id,
             "base": pair.base.token_symbol,
             "quote": pair.quote.token_symbol,
-            "exchange": pair.exchange_name,
-            "fee %": pair.fee * 100,
+            exchange_label: name,
             "type": "benchmark" if benchmark else "traded"
         }
+
+        if pair_fee:
+            data["fee %"] = pair.fee * 100
 
         if show_price:
             try:
@@ -160,6 +177,12 @@ def display_strategy_universe(
 
             data["tvl"] = tvl
             data["tvl_at"] = tvl_at
+
+            if performance_fee is not None:
+                data["pfee"] = f"{performance_fee:.1%}" if performance_fee is not None else "-"
+
+            if performance_fee is not None:
+                data["mfee"] = f"{management_fee:.1%}" if management_fee is not None else "-"
 
         if show_tax:
             buy_tax = pair.get_buy_tax()

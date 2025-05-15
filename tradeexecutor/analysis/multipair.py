@@ -158,4 +158,5 @@ def format_multipair_summary(
 
         return HTML(df.to_html(escape=False))
 
+
     return df

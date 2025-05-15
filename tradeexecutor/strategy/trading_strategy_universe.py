@@ -234,8 +234,8 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
         # assert self.end_at.hour == 0
         # assert self.start_at.minute == 0
         # assert self.end_at.minute == 0
-        assert self.start_at.second == 0
-        assert self.end_at.second == 0
+        assert self.start_at.second == 0, f"Got start_at: {self.start_at}"
+        assert self.end_at.second == 0, f"Got end_at: {self.end_at}"
 
         time_str = f"{self.start_at.strftime('%Y-%m-%d')}-{self.end_at.strftime('%Y-%m-%d')}"
         if self.get_pair_count() < 5:
@@ -1941,6 +1941,9 @@ def translate_trading_pair(dex_pair: DEXPair, cache: dict | None = None) -> Trad
                 pair.other_data["token_metadata"] = metadata
                 pair.other_data["vault_features"] = metadata.features
                 pair.other_data["vault_protocol"] = metadata.protocol_slug
+                pair.other_data["vault_name"] = metadata.vault_name
+                pair.other_data["vault_performance_fee"] = metadata.performance_fee
+                pair.other_data["vault_management_fee"] = metadata.management_fee
             case None:
                 pass
             case _:

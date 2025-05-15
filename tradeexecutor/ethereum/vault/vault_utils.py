@@ -1,8 +1,11 @@
+"""Vault metadata utils."""
+
 from eth_defi.abi import ZERO_ADDRESS_STR
 from eth_defi.erc_4626.core import get_vault_protocol_name
 from eth_defi.erc_4626.vault import ERC4626Vault
+
 from tradeexecutor.ethereum.token import translate_token_details
-from tradeexecutor.state.identifier import TradingPairIdentifier, AssetIdentifier, TradingPairKind
+from tradeexecutor.state.identifier import TradingPairIdentifier, TradingPairKind
 from tradingstrategy.vault import VaultMetadata
 
 
@@ -27,10 +30,23 @@ def get_vault_trading_pair(
     protocol_name = get_vault_protocol_name(vault.features)
     protocol_slug = protocol_name.replace(" ", "_").lower()
 
+    try:
+        management_fee = vault.get_management_fee("latest")
+    except NotImplementedError:
+        management_fee = None
+
+    try:
+        performance_fee = vault.get_performance_fee("latest")
+    except NotImplementedError:
+        performance_fee = None
+
     vault_metadata = VaultMetadata(
+        vault_name=vault.name,
         protocol_name=protocol_name,
         protocol_slug=protocol_slug,
         features=list(features),
+        performance_fee=performance_fee,
+        management_fee=management_fee,  # No reader in ERC4626Vault
     )
 
     return TradingPairIdentifier(
