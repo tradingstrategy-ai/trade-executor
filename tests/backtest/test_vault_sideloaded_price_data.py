@@ -1,11 +1,15 @@
 """Create a trading universe and a simple vault rebalance backtest.
 """
 import datetime
+import os
 from pathlib import Path
 
 import pandas as pd
 import pytest
 
+from eth_defi.erc_4626.vault import ERC4626Vault
+from eth_defi.provider.multi_provider import create_multi_provider_web3
+from tradeexecutor.ethereum.vault.vault_utils import get_vault_from_trading_pair
 from tradingstrategy.candle import GroupedCandleUniverse
 from tradingstrategy.chain import ChainId
 from tradingstrategy.client import Client
@@ -34,6 +38,10 @@ from tradeexecutor.strategy.weighting import weight_passthrouh
 from tradingstrategy.alternative_data.vault import load_multiple_vaults, load_vault_price_data, convert_vault_prices_to_candles
 
 
+
+JSON_RPC_BASE = os.environ.get("JSON_RPC_BASE")
+
+
 class Parameters:
     id = "vault-optimiser"
     candle_time_bucket = TimeBucket.d1
@@ -54,7 +62,7 @@ class Parameters:
     max_assets_in_portfolio = 5  # N vaults at a time
     max_concentration = 0.40  # Max % of portfolio per vault
     per_position_cap_of_pool = 0.01  # 1% of the vault TVL
-    assummed_liquidity_when_data_missings = 0.0  # In data gaps, assume
+    assumed_liquidity_when_data_missings = 0.0  # In data gaps, assume
     individual_rebalance_min_threshold_usd = 150.00
     sell_rebalance_min_threshold = 5.0
 
@@ -72,6 +80,11 @@ VAULTS = [
     # https://app.morpho.org/base/vault/0x50b5b81Fc8B1f1873Ec7F31B0E98186ba008814D/indefi-usdc
     (ChainId.base, "0x50b5b81fc8b1f1873ec7f31b0e98186ba008814d"),  # InDefi USDc on Morpho
 ]
+
+
+@pytest.fixture(scope="module")
+def web3():
+    return create_multi_provider_web3(JSON_RPC_BASE)
 
 
 @pytest.fixture(scope="module")
@@ -94,6 +107,22 @@ def test_create_vault_universe(
     # We have liquidity data correctly loaded
     pair = strategy_universe.get_pair_by_address("0x50b5b81fc8b1f1873ec7f31b0e98186ba008814d")
     assert pair.base.token_symbol == "indeUSDC"
+    assert pair.get_vault_name() == "IndeFi USDC"
+
+
+@pytest.mark.skipif(not JSON_RPC_BASE, reason="Skip if JSON_RPC_BASE is not set")
+def test_reverse_translate_vault(
+    web3,
+    strategy_universe,
+):
+    """Check we can construct vault instance from trading pair."""
+    pair = strategy_universe.get_pair_by_address("0x50b5b81fc8b1f1873ec7f31b0e98186ba008814d")
+    vault = get_vault_from_trading_pair(web3, pair)
+    assert isinstance(vault, ERC4626Vault)
+    assert vault.denomination_token.symbol == "USDC"
+    assert vault.share_token.symbol == "indeUSDC"
+    assert vault.name == "IndeFi USDC"
+
 
 
 def test_vault_rebalance_strategy(
