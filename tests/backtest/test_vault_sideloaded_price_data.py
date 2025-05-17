@@ -1,12 +1,14 @@
 """Create a trading universe and a simple vault rebalance backtest.
 """
 import datetime
+import os
 from pathlib import Path
 
 import pandas as pd
 import pytest
 
 from eth_defi.erc_4626.vault import ERC4626Vault
+from eth_defi.provider.multi_provider import create_multi_provider_web3
 from tradeexecutor.ethereum.vault.vault_utils import get_vault_from_trading_pair
 from tradingstrategy.candle import GroupedCandleUniverse
 from tradingstrategy.chain import ChainId
@@ -34,6 +36,10 @@ from tradeexecutor.strategy.tvl_size_risk import USDTVLSizeRiskModel
 from tradeexecutor.strategy.universe_model import UniverseOptions
 from tradeexecutor.strategy.weighting import weight_passthrouh
 from tradingstrategy.alternative_data.vault import load_multiple_vaults, load_vault_price_data, convert_vault_prices_to_candles
+
+
+
+JSON_RPC_BASE = os.environ.get("JSON_RPC_BASE")
 
 
 class Parameters:
@@ -77,6 +83,11 @@ VAULTS = [
 
 
 @pytest.fixture(scope="module")
+def web3():
+    return create_multi_provider_web3(JSON_RPC_BASE)
+
+
+@pytest.fixture(scope="module")
 def strategy_universe(persistent_test_client: Client):
     client = persistent_test_client
     strategy_universe = create_trading_universe(
@@ -96,12 +107,21 @@ def test_create_vault_universe(
     # We have liquidity data correctly loaded
     pair = strategy_universe.get_pair_by_address("0x50b5b81fc8b1f1873ec7f31b0e98186ba008814d")
     assert pair.base.token_symbol == "indeUSDC"
-    assert pair.get_vault_name() == "Inde"
+    assert pair.get_vault_name() == "IndeFi USDC"
 
-    vault = get_vault_from_trading_pair(pair)
+
+@pytest.mark.skipif(not JSON_RPC_BASE, reason="Skip if JSON_RPC_BASE is not set")
+def test_reverse_translate_vault(
+    web3,
+    strategy_universe,
+):
+    """Check we can construct vault instance from trading pair."""
+    pair = strategy_universe.get_pair_by_address("0x50b5b81fc8b1f1873ec7f31b0e98186ba008814d")
+    vault = get_vault_from_trading_pair(web3, pair)
     assert isinstance(vault, ERC4626Vault)
     assert vault.denomination_token.symbol == "USDC"
     assert vault.share_token.symbol == "indeUSDC"
+    assert vault.name == "IndeFi USDC"
 
 
 
