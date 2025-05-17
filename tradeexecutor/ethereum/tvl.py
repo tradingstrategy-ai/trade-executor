@@ -3,6 +3,7 @@ from typing import Collection
 
 from web3 import Web3
 from eth_defi.token import fetch_erc20_details
+from tradeexecutor.ethereum.vault.vault_utils import get_vault_from_trading_pair
 from tradeexecutor.state.identifier import TradingPairIdentifier, AssetIdentifier
 from tradeexecutor.state.types import USDollarAmount, TokenAmount, USDollarPrice
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
@@ -14,20 +15,26 @@ class CurrencyConversionRateMissing(Exception):
 
 
 
-def fetch_uni_v2_v3_quote_token_tvl(
+def fetch_uni_v2_v3_vault_tvl(
     web3: Web3,
     pair: TradingPairIdentifier,
 ) -> TokenAmount:
+    """Shorcut method to get TVL of any kind of trading pair."""
 
-    token_address = Web3.to_checksum_address(pair.quote.address)
-    pool_address = Web3.to_checksum_address(pair.pool_address)
+    if pair.is_vault():
+        vault = get_vault_from_trading_pair(web3, pair)
+        return vault.fetch_nav()
+    else:
 
-    erc_20 = fetch_erc20_details(
-        web3,
-        token_address,
-    )
-    tvl = erc_20.fetch_balance_of(pool_address)
-    return tvl
+        token_address = Web3.to_checksum_address(pair.quote.address)
+        pool_address = Web3.to_checksum_address(pair.pool_address)
+
+        erc_20 = fetch_erc20_details(
+            web3,
+            token_address,
+        )
+        tvl = erc_20.fetch_balance_of(pool_address)
+        return tvl
 
 
 def fetch_quote_token_tvl_with_exchange_rate(
@@ -57,7 +64,7 @@ def fetch_quote_token_tvl_with_exchange_rate(
         address -> conversion raet mapping for WETH, others.
     """
 
-    quote_token_tvl = fetch_uni_v2_v3_quote_token_tvl(web3, pair)
+    quote_token_tvl = fetch_uni_v2_v3_vault_tvl(web3, pair)
 
     # float is fine for approxs
     quote_token_tvl = float(quote_token_tvl)

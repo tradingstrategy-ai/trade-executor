@@ -6,6 +6,8 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
+from eth_defi.erc_4626.vault import ERC4626Vault
+from tradeexecutor.ethereum.vault.vault_utils import get_vault_from_trading_pair
 from tradingstrategy.candle import GroupedCandleUniverse
 from tradingstrategy.chain import ChainId
 from tradingstrategy.client import Client
@@ -54,7 +56,7 @@ class Parameters:
     max_assets_in_portfolio = 5  # N vaults at a time
     max_concentration = 0.40  # Max % of portfolio per vault
     per_position_cap_of_pool = 0.01  # 1% of the vault TVL
-    assummed_liquidity_when_data_missings = 0.0  # In data gaps, assume
+    assumed_liquidity_when_data_missings = 0.0  # In data gaps, assume
     individual_rebalance_min_threshold_usd = 150.00
     sell_rebalance_min_threshold = 5.0
 
@@ -94,6 +96,13 @@ def test_create_vault_universe(
     # We have liquidity data correctly loaded
     pair = strategy_universe.get_pair_by_address("0x50b5b81fc8b1f1873ec7f31b0e98186ba008814d")
     assert pair.base.token_symbol == "indeUSDC"
+    assert pair.get_vault_name() == "Inde"
+
+    vault = get_vault_from_trading_pair(pair)
+    assert isinstance(vault, ERC4626Vault)
+    assert vault.denomination_token.symbol == "USDC"
+    assert vault.share_token.symbol == "indeUSDC"
+
 
 
 def test_vault_rebalance_strategy(

@@ -8,7 +8,7 @@ from decimal import Decimal, ROUND_DOWN
 from typing import Callable, Optional
 from web3 import Web3
 
-from tradeexecutor.ethereum.tvl import fetch_uni_v2_v3_quote_token_tvl
+from tradeexecutor.ethereum.tvl import fetch_uni_v2_v3_vault_tvl
 from tradeexecutor.state.identifier import TradingPairIdentifier, AssetIdentifier
 from tradeexecutor.state.types import USDollarAmount, TokenAmount
 from tradeexecutor.strategy.execution_model import ExecutionModel
@@ -315,7 +315,7 @@ class EthereumPricingModel(PricingModel):
             Ignore, always get the latest.
         """
         logger.info("Fetching quote token TVL for %s", pair)
-        return fetch_uni_v2_v3_quote_token_tvl(
+        return fetch_uni_v2_v3_vault_tvl(
             self.web3,
             pair,
         )
