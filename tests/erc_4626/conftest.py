@@ -31,7 +31,7 @@ from tradeexecutor.ethereum.hot_wallet_sync_model import HotWalletSyncModel
 from tradeexecutor.ethereum.lagoon.execution import LagoonExecution
 from tradeexecutor.ethereum.lagoon.tx import LagoonTransactionBuilder
 from tradeexecutor.ethereum.tx import HotWalletTransactionBuilder
-from tradeexecutor.ethereum.vault.vault_utils import get_vault_trading_pair
+from tradeexecutor.ethereum.vault.vault_utils import translate_vault_to_trading_pair
 from tradeexecutor.state.identifier import TradingPairIdentifier, AssetIdentifier
 from tradeexecutor.strategy.generic.generic_pricing_model import GenericPricing
 from tradeexecutor.strategy.generic.generic_router import GenericRouting
@@ -265,7 +265,7 @@ def vault_pair_universe(
         fee=0.0005,
     )
 
-    ipor_usdc = get_vault_trading_pair(vault)
+    ipor_usdc = translate_vault_to_trading_pair(vault)
     assert ipor_usdc.is_vault()
 
     universe = create_universe_from_trading_pair_identifiers(
