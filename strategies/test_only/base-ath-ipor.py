@@ -20,6 +20,7 @@ from tradeexecutor.strategy.pandas_trader.indicator import IndicatorDependencyRe
 from tradeexecutor.strategy.pandas_trader.indicator import IndicatorSource
 from tradeexecutor.strategy.pandas_trader.indicator_decorator import IndicatorRegistry
 from tradeexecutor.strategy.pandas_trader.strategy_input import StrategyInput
+from tradeexecutor.strategy.pandas_trader.yield_manager import YieldManager, YieldDecisionInput, YieldWeightingRule, YieldRuleset
 from tradeexecutor.strategy.parameters import StrategyParameters
 from tradeexecutor.strategy.tag import StrategyTag
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
@@ -53,7 +54,7 @@ from tradeexecutor.utils.dedent import dedent_any
 logger = logging.getLogger(__name__)
 
 #
-# Strategy parametrers
+# Strategy parameters
 #
 
 
@@ -61,11 +62,11 @@ trading_strategy_engine_version = "0.5"
 
 
 class Parameters:
-    id = "base-ath"
+    id = "01-base-ath3-initial"
 
     # We trade 1h candle
     candle_time_bucket = TimeBucket.h1
-    cycle_duration = CycleDuration.cycle_4h
+    cycle_duration = CycleDuration.cycle_2h
 
     # Coingecko categories to include
     # s
@@ -77,20 +78,26 @@ class Parameters:
     #
     # Basket construction and rebalance parameters
     #
-    min_asset_universe = 1  # How many assets we need in the asset universe to start running the index
+    min_asset_universe = 5  # How many assets we need in the asset universe to start running the index
     max_assets_in_portfolio = 10  # How many assets our basket can hold once
     allocation = 0.95  # Allocate all cash to volatile pairs
     # min_rebalance_trade_threshold_pct = 0.05  # % of portfolio composition must change before triggering rebalacne
-    individual_rebalance_min_threshold_usd = 5.0  # Don't make buys less than this amount
-    per_position_cap_of_pool = 0.01  # Never own more than % of the lit liquidity of the trading pool
-    max_concentration = 0.20  # How large % can one asset be in a portfolio once
+    individual_rebalance_min_threshold_usd = 175.0  # Don't make buys less than this amount
+    sell_rebalance_min_threshold = 50.0
+    sell_threshold = 0.05  # Sell if asset is more than 5% of the portfolio
+    per_position_cap_of_pool = 0.0050  # Never own more than % of the lit liquidity of the trading pool
+    max_concentration = 0.10  # How large % can one asset be in a portfolio once
     min_portfolio_weight = 0.0050  # Close position / do not open if weight is less than 50 BPS
 
     # ATH indicator parameters
     ath_delay_bars = 144
     ath_window_bars = 360
     ath_threshold = 1.10
+    # ath_threshold = 0.02
     ath_span = 72
+
+    hourly_rsi_bars = 192
+    hourly_rsi_threshold = 0
 
     # RSI filter parameters
     daily_rsi_bars = 90
@@ -101,32 +108,33 @@ class Parameters:
     rolling_volatility_bars = pd.Timedelta("7d") // candle_time_bucket.to_timedelta()
     tvl_ewm_span = 7 * 24  # Smooth TVL inclusin criteria
     min_volume = 25_000  # USD
-    min_tvl_prefilter = 1_250_000  # USD - to reduce number of trading pairs for backtest-purposes only
-    min_tvl = 1_250_000  # USD - set to same as above if you want to avoid any survivorship bias
+    min_tvl_prefilter = 170_000  # USD - to reduce number of trading pairs for backtest-purposes only
+    min_tvl = 170_000  # USD - set to same as above if you want to avoid any survivorship bias
     min_token_sniffer_score = 20  # 20 = AAVE
 
     #
     # Yield on cash
     #
-    use_aave = True
-    credit_flow_dust_threshold = 5.0  # Min deposit USD to Aave
+    use_managed_yield = True
+    yield_flow_dust_threshold = 5.0  # Min deposit USD to Aave
+    directional_trade_yield_buffer_pct = 0.01  # For credit flow, assume we might get this less cash released from sells
 
     #
     #
     # Backtesting only
     # Limiting factor: Aave v3 on Base starts at the end of DEC 2023
     #
-    backtest_start = datetime.datetime(2024, 1, 1)
-    backtest_end = datetime.datetime(2024, 1, 12)
+    backtest_start = datetime.datetime(2025, 3, 1)
+    backtest_end = datetime.datetime(2025, 5, 19)
     initial_cash = 100_000
 
     #
     # Live only
     #
     routing = TradeRouting.default
-    required_history_period = datetime.timedelta(days=14)
+    required_history_period = datetime.timedelta(days=daily_rsi_bars + 2)
     slippage_tolerance = 0.0060  # 0.6%
-    assummed_liquidity_when_data_missings = 10_000
+    assummed_liquidity_when_data_missings = 0
 
 
 #: Assets used in routing and buy-and-hold benchmark values for our strategy, but not traded by this strategy.
@@ -146,13 +154,22 @@ PREFERRED_STABLECOIN = USDC_NATIVE_TOKEN[Parameters.chain_id.value].lower()
 
 VOL_PAIR = (ChainId.base, "uniswap-v3", "WETH", "USDC", 0.0005)
 
+VAULTS = [
+    # Harvest USDC Autopilot on IPOR on Base
+    # https://app.ipor.io/fusion/base/0x0d877dc7c8fa3ad980dfdb18b48ec9f8768359c4
+    (ChainId.base, "0x0d877Dc7C8Fa3aD980DfDb18B48eC9F8768359C4".lower()),
+
+    # maxAPY USDC base
+    # https://app.maxapy.io/vaults/super/usdc
+    (ChainId.base, "0x7a63e8fc1d0a5e9be52f05817e8c49d9e2d6efae".lower())
+]
 
 
 def create_trading_universe(
-    timestamp: datetime.datetime,
-    client: Client,
-    execution_context: ExecutionContext,
-    universe_options: UniverseOptions,
+        timestamp: datetime.datetime,
+        client: Client,
+        execution_context: ExecutionContext,
+        universe_options: UniverseOptions,
 ) -> TradingStrategyUniverse:
     """Create the trading universe.
 
@@ -167,9 +184,17 @@ def create_trading_universe(
     - Load also BTC and ETH price data to be used as a benchmark
     """
 
+    if execution_context.live_trading:
+        # Live trading, send strategy universe formation details
+        # to logs
+        debug_printer = logger.info
+    else:
+        # Notebook node
+        debug_printer = print
+
     chain_id = Parameters.chain_id
 
-    logger.info(f"Preparing trading universe on chain {chain_id.get_name()}")
+    debug_printer(f"Preparing trading universe on chain {chain_id.get_name()}")
 
     exchange_universe = client.fetch_exchange_universe()
     targeted_exchanges = [exchange_universe.get_by_chain_and_slug(chain_id, slug) for slug in Parameters.exchanges]
@@ -179,13 +204,13 @@ def create_trading_universe(
     # TODO: PandasPairUniverse(buidl_index=True) - speed this up by skipping index building
     all_pairs_df = client.fetch_pair_universe().to_pandas()
     all_pairs_df = filter_for_exchange_slugs(all_pairs_df, Parameters.exchanges)
-    logger.info("Creating universe for benchmark pair extraction")
+    debug_printer("Creating universe for benchmark pair extraction")
     pair_universe = PandasPairUniverse(
         all_pairs_df,
         exchange_universe=exchange_universe,
         build_index=False,
     )
-    logger.info(f"Exchanges {Parameters.exchanges} have total {len(all_pairs_df):,} pairs on chain {Parameters.chain_id.get_name()}")
+    debug_printer(f"Exchanges {Parameters.exchanges} have total {len(all_pairs_df):,} pairs on chain {Parameters.chain_id.get_name()}")
 
     # Get TVL data for prefilteirng
     if execution_context.live_trading:
@@ -204,7 +229,7 @@ def create_trading_universe(
     # logging.getLogger().setLevel(logging.INFO)
     liquidity_time_bucket = TimeBucket.d1
     tvl_df = client.fetch_tvl(
-        mode="min_tvl",
+        mode="min_tvl_low",
         bucket=liquidity_time_bucket,
         start_time=start,
         end_time=end,
@@ -212,13 +237,13 @@ def create_trading_universe(
         min_tvl=min_tvl,
     )
     # logging.getLogger().setLevel(logging.WARNING)
-    logger.info(f"Fetch TVL, we got {len(tvl_df['pair_id'].unique())} pairs with TVL data for min TVL criteria {min_tvl}")
+    debug_printer(f"Fetch TVL, we got {len(tvl_df['pair_id'].unique())} pairs with TVL data for min TVL criteria {min_tvl}")
 
     tvl_filtered_pair_ids = tvl_df["pair_id"].unique()
     benchmark_pair_ids = [pair_universe.get_pair_by_human_description(desc).pair_id for desc in SUPPORTING_PAIRS]
     needed_pair_ids = set(benchmark_pair_ids) | set(tvl_filtered_pair_ids)
     pairs_df = all_pairs_df[all_pairs_df["pair_id"].isin(needed_pair_ids)]
-    logger.info(f"After TVL prefilter to {Parameters.min_tvl_prefilter:,} in {Parameters.backtest_start} - {Parameters.backtest_end}, we have {len(pairs_df)} trading pairs")
+    debug_printer(f"After TVL prefilter to {Parameters.min_tvl_prefilter:,} in {Parameters.backtest_start} - {Parameters.backtest_end}, we have {len(pairs_df)} trading pairs")
     pairs_df = add_base_quote_address_columns(pairs_df)
 
     # Never deduplicate supporting pars
@@ -239,21 +264,22 @@ def create_trading_universe(
 
     # Get our reference pairs back to the dataset
     pairs_df = pd.concat([deduplicated_df, supporting_pairs_df]).drop_duplicates(subset='pair_id', keep='first')
-    logger.info(f"After deduplication we have {len(pairs_df)} pairs")
+    debug_printer(f"After deduplication we have {len(pairs_df)} pairs")
 
     # Add benchmark pairs back to the dataset
     pairs_df = pd.concat([pairs_df, supporting_pairs_df]).drop_duplicates(subset='pair_id', keep='first')
 
     # Load metadata
-    logger.info("Loading metadata")
+    debug_printer("Loading metadata")
     # logging.getLogger().setLevel(logging.INFO)
-    pairs_df = load_token_metadata(pairs_df, client)
+    pairs_df = load_token_metadata(pairs_df, client, printer=debug_printer)
     # logging.getLogger().setLevel(logging.WARNING)
 
     # Scam filter using TokenSniffer
     risk_filtered_pairs_df = filter_by_token_sniffer_score(
         pairs_df,
         risk_score=Parameters.min_token_sniffer_score,
+        printer=debug_printer,
     )
 
     # Check if we accidentally get rid of benchmark pairs we need for the strategy
@@ -264,12 +290,19 @@ def create_trading_universe(
         assert len(first_dropped_data) == 1, f"Got {len(first_dropped_data)} entries: {first_dropped_data}"
         raise AssertionError(f"Benchmark trading pair dropped in filter_by_token_sniffer_score() check: {first_dropped_data.iloc[0]}")
     pairs_df = risk_filtered_pairs_df.sort_values("volume", ascending=False)
-    logger.info(f"After TokenSniffer risk filter we have {len(pairs_df)} pairs")
+    debug_printer(f"After TokenSniffer risk filter we have {len(pairs_df)} pairs")
+
+    # Remove extra pairs from the TVL data,
+    # so we do not drag extra data and memory usage to the trading universe and liquidity candles
+    tvl_pair_count_no_filtering = tvl_df["pair_id"].nunique()
+    tvl_df = tvl_df[tvl_df["pair_id"].isin(pairs_df["pair_id"])]
+    tvl_filtering_count = tvl_df["pair_id"].nunique()
+    debug_printer(f"TVL data before risk filtering had {tvl_pair_count_no_filtering} pairs, after filtering we have {tvl_filtering_count} pairs")
 
     uni_v2 = pairs_df.loc[pairs_df["exchange_slug"] == "uniswap-v2"]
     uni_v3 = pairs_df.loc[pairs_df["exchange_slug"] == "uniswap-v3"]
     other_dex = pairs_df.loc[~((pairs_df["exchange_slug"] != "uniswap-v3") | (pairs_df["exchange_slug"] != "uniswap-v2"))]
-    logger.info(f"Pairs on Uniswap v2: {len(uni_v2)}, Uniswap v3: {len(uni_v3)}, other DEX: {len(other_dex)}")
+    debug_printer(f"Pairs on Uniswap v2: {len(uni_v2)}, Uniswap v3: {len(uni_v3)}, other DEX: {len(other_dex)}")
     dataset = load_partial_data(
         client=client,
         time_bucket=Parameters.candle_time_bucket,
@@ -279,12 +312,13 @@ def create_trading_universe(
         liquidity_time_bucket=liquidity_time_bucket,
         preloaded_tvl_df=tvl_df,
         lending_reserves=LENDING_RESERVES,
-        vaults=[(ChainId.base, "0x45aa96f0b3188d47a1dafdbefce1db6b37f58216")],
+        vaults=VAULTS,
+        vault_bundled_price_data=True,
     )
 
     reserve_asset = PREFERRED_STABLECOIN
 
-    logger.info("Creating trading universe")
+    debug_printer("Creating trading universe")
     strategy_universe = TradingStrategyUniverse.create_from_dataset(
         dataset,
         reserve_asset=reserve_asset,
@@ -299,7 +333,7 @@ def create_trading_universe(
         pair = strategy_universe.get_pair_by_id(pair_id)
         pair.other_data["benchmark"] = False
 
-    logger.info(f"Total {strategy_universe.get_pair_count()}")
+    debug_printer(f"Total {strategy_universe.get_pair_count()}")
 
     return strategy_universe
 
@@ -310,7 +344,7 @@ def create_trading_universe(
 
 
 def decide_trades(
-    input: StrategyInput
+        input: StrategyInput
 ) -> list[TradeExecution]:
     """For each strategy tick, generate the list of trades."""
     parameters = input.parameters
@@ -383,7 +417,7 @@ def decide_trades(
     size_risk_model = USDTVLSizeRiskModel(
         pricing_model=input.pricing_model,
         per_position_cap=parameters.per_position_cap_of_pool,  # This is how much % by all pool TVL we can allocate for a position
-        missing_tvl_placeholder_usd=parameters.assummed_liquidity_when_data_missings,  # Placeholder for missing TVL data until we get the data off the chain
+        missing_tvl_placeholder_usd=0.0,  # Placeholder for missing TVL data until we get the data off the chain
     )
 
     alpha_model.normalise_weights(
@@ -411,29 +445,30 @@ def decide_trades(
         position_manager,
         min_trade_threshold=rebalance_threshold_usd,  # Don't bother with trades under XXXX USD
         invidiual_rebalance_min_threshold=parameters.individual_rebalance_min_threshold_usd,
+        sell_rebalance_min_threshold=parameters.sell_rebalance_min_threshold,
         execution_context=input.execution_context,
     )
 
-    # Supply or withdraw cash to Aave if strategy is set to do so
-    credit_trades = []
+    # Move cash in and out yield managed to cover spot positions
+    if parameters.use_managed_yield:
 
-    yield_ruleset = YieldRuleset(
-
-    )
-
-    yield_manager = YieldManager(
-        position_manager
-    )
-    if parameters.use_yield:
-        credit_deposit_flow = position_manager.calculate_credit_flow_needed(
-            trades,
-            parameters.allocation,
+        yield_manager = YieldManager(
+            position_manager=position_manager,
+            rules=create_yield_rules(parameters, strategy_universe),
         )
-        if abs(credit_deposit_flow) > parameters.credit_flow_dust_threshold:
-            credit_trades = position_manager.manage_credit_flow(credit_deposit_flow)
-            trades += credit_trades
+
+        yield_input = YieldDecisionInput(
+            timestamp=timestamp,
+            total_equity=state.portfolio.get_total_equity(),
+            directional_trades=trades,
+            size_risk_model=size_risk_model,
+        )
+
+        yield_result = yield_manager.calculate_yield_management(yield_input)
+        trades += yield_result.trades
+
     else:
-        credit_deposit_flow = 0
+        yield_result = None
 
     # Add verbal report about decision made/not made,
     # so it is much easier to diagnose live trade execution.
@@ -466,8 +501,8 @@ def decide_trades(
         Accepted investable equity: {alpha_model.accepted_investable_equity:,.2f} USD
         Allocated to signals: {alpha_model.get_allocated_value():,.2f} USD
         Discarted allocation because of lack of lit liquidity: {alpha_model.size_risk_discarded_value:,.2f} USD
-        Credit deposit flow: {credit_deposit_flow:,.2f} USD
-        Credit trades: {credit_trades}
+        Yield flow: {yield_result and yield_result.trade_cash_diff or 0:,.2f} USD
+        Yield trades: {yield_result and yield_result.trades or '-'}
         Rebalance volume: {rebalance_volume:,.2f} USD
         """)
 
@@ -1045,80 +1080,30 @@ def create_indicators(
         execution_context=execution_context,
     )
 
-#
-# Strategy metadata/UI data.
-#
 
 
-tags = {StrategyTag.beta}
+def create_yield_rules(
+    parameters: StrategyParameters,
+    strategy_universe: TradingStrategyUniverse,
+) -> YieldRuleset:
+    """Create yield rules for the strategy."""
 
-name = "All-time high on Base"
+    aave_usdc = strategy_universe.get_credit_supply_pair()
+    ipor_usdc = strategy_universe.get_pair_by_smart_contract(VAULTS[0][1])
+    maxapy_usdc = strategy_universe.get_pair_by_smart_contract(VAULTS[1][1])
 
-short_description = "Momentum strategy buying tokens breaching their all-time highs"
+    # Check we have yield vault metadata loaded
+    assert aave_usdc
+    assert ipor_usdc
+    assert maxapy_usdc
 
-icon = ""
-
-long_description = """
-# Strategy description
-
-This is a [portfolio construction](https://tradingstrategy.ai/glossary/portfolio-construction) and 
-[momentum](https://tradingstrategy.ai/glossary/momentum) strategy trading tokens on the Base blockchain.
-
-## Benefits
-
-- Get directional exposure to exciting small-cap onchain token markets 
-- No need to pick tokens yourself; the strategy will buy all of them
-- Small cap memecoins are often uncorrelated with the rest of cryptocurrency markets
-
-## Trading rules summary 
-
-Trading rules are designed so that the strategy captures the upward momentum of the markets while trying to stay away from the markets and minimise [drawdowns](https://tradingstrategy.ai/glossary/maximum-drawdown).
-
-- Rebalance every four hours
-- Buy tokens that are above their local all-time highs 
-- Dynamically weight between opened positions
-- Trade on Uniswap v2 and v3 on Base
-- Have minimum TVL and volume criteria to be included in the trading universe
-- Use TokenSniffer as a token quality source to filter scams
-- Adjust position size based on lit Uniswap liquidity ([TVL](https://tradingstrategy.ai/glossary/total-value-locked-tvl)), to prevent taking oversized positions on limited liquidity tokens
-- Earn interest for uninvested for cash by depositing it in [Aave lending protocol](https://tradingstrategy.ai/glossary/aave)
-
-The strategy is fully open: the source code is available. For further details, see the strategy source code.
-
-## Expected performance
-
-The strategy reflects the performance of small-cap onchain DEX markets, with limited downside.
-
-See [backtesting](./backtesting) page for historical estimated performance.
-Past performance is no guarantee of future results. 
-Due to the short history of recently set-up traded onchain markets, there is no backtesting data about market downturns. To check for overfitting, the same trading rules were tested across different markets with longer histories, with varying but not significantly degraded performance.
-
-## Risks
-
-**This strategy is ultra-high-risk**. Only allocate small amounts of capital you may lose.
-Before investing large amounts of capital, speak with the strategy developers.
-
-This strategy, paired with onchain execution, is the first in the world. Because of the novelty, multiple risks are involved. Consider it beta-quality software.
-
-**Trading risk**: Small-cap tokens traded are highly volatile, 
-may include rug pulls and other questionable activities.
-Despite the strategy of automated filtering for tokens, some of the tokens may go to zero. Onchain markets may and many traded tokens go to zero, and are likely to do so at some point.
-There is little liquidity for these tokens, and trading costs are high, so they may change abruptly.
-
-**Technical risk**: The strategy relies on ERC-7540: Asynchronous ERC-4626 Tokenized Vaults standard.
-This standard is new and not yet time-proven.  The onchain trade execution contains unaudited smart contracts. There are centralised price oracles. The redemption process relies on a centralised valuation committee. 
-
-The strategy includes risk mitigations like:
-- Use third-party security services to check the reputation of traded tokens
-- Strategy limits position sizes based on the available lit liquidity
-- Strategy limits position sizes based on the overall maximum % of the portfolio
-- DAO and/or security committee holding multisignature keys can take manual actions in the case of unexpected issues:
-  The strategy can be halted and manually wind up
-
-The technical risks will be mitigated in the future by working with other protocols,
-by increasing the quality of onchain trading venues, data and decentralisation.
-
-## Further information
-
-- Any questions are welcome in [the Discord community chat](https://tradingstrategy.ai/community)
-"""
+    return YieldRuleset(
+        position_allocation=parameters.allocation,
+        buffer_pct=parameters.directional_trade_yield_buffer_pct,
+        cash_change_tolerance_usd=parameters.yield_flow_dust_threshold,
+        weights=[
+            YieldWeightingRule(pair=maxapy_usdc, max_concentration=0.75),
+            YieldWeightingRule(pair=ipor_usdc, max_concentration=0.75),
+            YieldWeightingRule(pair=aave_usdc, max_concentration=1.0),
+        ]
+    )

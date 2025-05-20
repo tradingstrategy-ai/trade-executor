@@ -208,7 +208,7 @@ class USDTVLSizeRiskModel(BaseTVLSizeRiskModel):
         try:
             tvl = self.pricing_model.get_usd_tvl(timestamp, pair)
         except LiquidityDataUnavailable as e:
-            if self.missing_tvl_placeholder:
+            if self.missing_tvl_placeholder is not None:
                 tvl = self.missing_tvl_placeholder
             else:
                 tvl = None
