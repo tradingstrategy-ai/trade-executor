@@ -6,6 +6,7 @@ import pandas as pd
 from plotly.graph_objs import Figure
 from plotly.subplots import make_subplots
 import plotly.graph_objects as go
+import plotly.io as pio
 
 
 from tradeexecutor.state.identifier import TradingPairIdentifier
@@ -94,6 +95,7 @@ def plot_vault(
     # Set y-axes titles
     fig.update_yaxes(title_text=f"Share Price ({denomination})", secondary_y=False)
     fig.update_yaxes(title_text=f"TVL ({denomination})", secondary_y=True)
+    return fig
 
 
 
