@@ -212,8 +212,8 @@ def rules(
         buffer_pct=0.01,
         cash_change_tolerance_usd=5.00,
         weights=[
-            YieldWeightingRule(pair=ipor_usdc, max_weight=0.33),
-            YieldWeightingRule(pair=aave_usdc, max_weight=1.0),
+            YieldWeightingRule(pair=ipor_usdc, max_concentration=0.33),
+            YieldWeightingRule(pair=aave_usdc, max_concentration=1.0),
         ]
     )
 
