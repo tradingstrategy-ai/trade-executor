@@ -253,11 +253,13 @@ class BacktestExecution(ExecutionModel):
         # so return executed_collateral_quantity here to correctly calculate the price
         return executed_quantity, executed_reserve, executed_collateral_allocation, executed_collateral_consumption
 
-    def simulate_trade(self,
-                       ts: datetime.datetime,
-                       state: State,
-                       idx: int,
-                       trade: TradeExecution) -> Tuple[Decimal, Decimal, Decimal, Decimal]:
+    def simulate_trade(
+        self,
+        ts: datetime.datetime,
+        state: State,
+        idx: int,
+        trade: TradeExecution
+    ) -> Tuple[Decimal, Decimal, Decimal, Decimal]:
         """Set backtesting trade state from planned to executed.
         
         Currently, always executes trades "perfectly" i.e. no different slipppage
@@ -382,6 +384,9 @@ class BacktestExecution(ExecutionModel):
         # Check that backtest does not try to execute stop loss / take profit
         # trades when data is not available
         for t in trades:
+
+            assert not t.pair.is_cash(), f"Cannot do cash-cash trades. Got pair {t.pair}: {t}"
+
             position = state.portfolio.open_positions.get(t.position_id)
             if position and position.has_automatic_close():
                 # Check that we have stop loss data available
