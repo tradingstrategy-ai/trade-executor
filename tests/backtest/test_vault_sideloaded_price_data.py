@@ -7,8 +7,12 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
+from plotly.graph_objs import Figure
+
 from eth_defi.erc_4626.vault import ERC4626Vault
 from eth_defi.provider.multi_provider import create_multi_provider_web3
+
+from tradeexecutor.analysis.vault import visualise_vaults
 from tradeexecutor.ethereum.vault.vault_utils import get_vault_from_trading_pair
 from tradingstrategy.candle import GroupedCandleUniverse
 from tradingstrategy.chain import ChainId
@@ -108,6 +112,16 @@ def test_create_vault_universe(
     pair = strategy_universe.get_pair_by_address("0x50b5b81fc8b1f1873ec7f31b0e98186ba008814d")
     assert pair.base.token_symbol == "indeUSDC"
     assert pair.get_vault_name() == "IndeFi USDC"
+
+
+def test_visualise_vault_analysis_chart(
+    strategy_universe,
+):
+    """Visualise vault data."""
+
+    figures = visualise_vaults(strategy_universe)
+    for fig in figures:
+        assert isinstance(fig, Figure), f"Expected figure, got {type(fig)}"
 
 
 @pytest.mark.skipif(not JSON_RPC_BASE, reason="Skip if JSON_RPC_BASE is not set")
