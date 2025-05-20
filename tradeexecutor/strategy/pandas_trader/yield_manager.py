@@ -88,6 +88,9 @@ class YieldRuleset:
 @dataclasses.dataclass(slots=True, frozen=True)
 class YieldDecisionInput:
 
+    #: Strategy cycle number
+    cycle: int
+
     #: When we make the decision
     #:
     #: Must be filled for backtesting.
@@ -188,10 +191,14 @@ class YieldManager:
 
     def generate_rebalance_trades(
         self,
+        cycle: int,
         current_yield_positions: dict[TradingPairIdentifier, GenericPosition | None],
         desired_yield_positions: dict[TradingPairIdentifier, YieldDecision],
     ) -> list[TradeExecution]:
         """Create trades to adjust yield positions.
+
+        :param cycle:
+            Strategy cycle number for diagnostics
 
         :param current_yield_positions:
             Where is our cash currently held
@@ -217,7 +224,6 @@ class YieldManager:
                 quantity_delta = dollar_delta * existing_position.get_current_price()
             else:
                 quantity_delta = None
-
 
             if abs(dollar_delta) > self.rules.cash_change_tolerance_usd:
                 notes = f"Adjusting yield management position to: {desired_amount} USD, previously {existing_amount} USD"
@@ -267,7 +273,8 @@ class YieldManager:
             tablefmt="fancy_grid",
         )
         logger.info(
-            "Generated yield rebalancing trades:\n%s",
+            "Generated yield rebalancing trades at cycle #%d:\n%s",
+            cycle,
             trade_output_table_msg,
         )
         return trades
@@ -275,6 +282,7 @@ class YieldManager:
     def calculate_yield_positions(
         self,
         timestamp: datetime.datetime,
+        cycle: int,
         cash_available_for_yield: USDollarAmount,
         current_positions: dict[TradingPairIdentifier, GenericPosition | None],
         size_risk_model: BaseTVLSizeRiskModel | None = None,
@@ -357,7 +365,8 @@ class YieldManager:
         )
 
         logger.info(
-            "Desired yield positions for timestamp %s, cash available %s:\n%s",
+            "Desired yield positions for cycle #%d, timestamp %s, cash available %s:\n%s",
+            cycle,
             timestamp,
             cash_available_for_yield,
             table_msg,
@@ -494,6 +503,7 @@ class YieldManager:
         # 4. Calculate new yield positions
         desired_yield_positions = self.calculate_yield_positions(
             timestamp=input.timestamp,
+            cycle=input.cycle,
             cash_available_for_yield=available_for_yield,
             size_risk_model=input.size_risk_model,
             current_positions=current_positions,
@@ -501,6 +511,7 @@ class YieldManager:
 
         # 5. Calculate rebalance trades for yield positions
         trades = self.generate_rebalance_trades(
+            input.cycle,
             current_positions,
             desired_yield_positions,
         )
