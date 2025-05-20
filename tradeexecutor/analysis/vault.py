@@ -1,5 +1,6 @@
 """Vault analysis."""
 import logging
+from typing import Callable, cast
 
 import pandas as pd
 
@@ -25,16 +26,26 @@ def plot_vault(
     assert isinstance(price, pd.Series)
     assert isinstance(tvl, pd.Series)
 
+    assert isinstance(price.index, pd.DatetimeIndex), f"Price index is not a DatetimeIndex, got {type(price.index)}"
+    assert isinstance(tvl.index, pd.DatetimeIndex), f"TVL index is not a DatetimeIndex, got {type(tvl.index)}"
+
     name = pair.get_vault_name()
 
     logger.info(f"Examining vault {name}: {id}, having {len(price):,} pirce rows")
     nav_series = tvl
     price_series = price
+
     daily_returns = price_series.pct_change()
     denomination = pair.quote.token_symbol
 
     # Calculate cumulative returns (what $1 would grow to)
     cumulative_returns = (1 + daily_returns).cumprod()
+
+    df = pd.DataFrame({
+        "cumulative_returns": cumulative_returns,
+        "share_price": price_series,
+        "tvl": nav_series
+    })
 
     # Create figure with secondary y-axis
     fig = make_subplots(specs=[[{"secondary_y": True}]])
@@ -42,8 +53,8 @@ def plot_vault(
     # Add cumulative returns trace on a separate y-axis (share same axis as share price)
     fig.add_trace(
         go.Scatter(
-            x=cumulative_returns.index,
-            y=cumulative_returns.values,
+            x=df.index,
+            y=df.cumulative_returns,
             name="Cumulative returns (cleaned)",
             line=dict(color='darkgreen', width=4),
             opacity=0.75
@@ -54,8 +65,8 @@ def plot_vault(
     # Add share price trace on primary y-axis
     fig.add_trace(
         go.Scatter(
-            x=price_series.index,
-            y=price_series.values,
+            x=df.index,
+            y=df.share_price,
             name="Share Price",
             line=dict(color='green', width=4, dash='dash'),
             opacity=0.75
@@ -67,8 +78,8 @@ def plot_vault(
     # Add NAV trace on secondary y-axis
     fig.add_trace(
         go.Scatter(
-            x=nav_series.index,
-            y=nav_series.values,
+            x=df.index,
+            y=df.tvl,
             name="TVL",
             line=dict(color='blue', width=4),
             opacity=0.75
@@ -79,7 +90,7 @@ def plot_vault(
 
     # Set titles and labels
     fig.update_layout(
-        title_text=f"{name} - Returns TVL and share price",
+        title_text=f"{name} - Returns, TVL and share price",
         hovermode="x unified",
         template=pio.templates.default,
         showlegend=True,
@@ -101,11 +112,17 @@ def plot_vault(
 
 def visualise_vaults(
     strategy_universe: TradingStrategyUniverse,
+    printer: Callable=logger.warning,
 ) -> list[Figure]:
     """Visualise vaults used in the strategy universe.
 
     - Plots cumulative returns and TVL of all vaults.
     - Each vault gets its own figure
+
+    :param printer:
+        Logger to used for warnings.
+
+        Use print() in notebooks.
 
     :return:
         Plotly figure for returns and TVL for all vaults
@@ -117,9 +134,31 @@ def visualise_vaults(
 
     for pair in vault_pairs:
         candles = strategy_universe.data_universe.candles.get_candles_by_pair(pair.internal_id)
+
+        if candles is None:
+            printer(f"No candles found for pair {pair}")
+            continue
+
         price = candles["close"]
         liquidity_candles = strategy_universe.data_universe.liquidity.get_liquidity_samples_by_pair(pair.internal_id)
         tvl = liquidity_candles["close"]
+
+        # (pair_id, timestamp) -> (timestamp) conversion if needed
+        if isinstance(tvl.index, pd.MultiIndex):
+            tvl.index = tvl.index.get_level_values('timestamp')
+            tvl.index = pd.to_datetime(tvl.index)
+        elif isinstance(tvl.index, pd.DatetimeIndex):
+            pass
+        else:
+            raise NotImplementedError()
+
+        if tvl is None:
+            printer(f"No liquidity data found for pair {pair}")
+            continue
+
+        # Because liquidity data is 1d we might need to resample it to price freq
+        price_freq = pd.infer_freq(price.index)
+        tvl = tvl.resample(price_freq).ffill()
 
         figures.append(
             plot_vault(
@@ -129,4 +168,3 @@ def visualise_vaults(
             )
         )
     return figures
-
