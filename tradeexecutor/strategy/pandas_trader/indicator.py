@@ -1334,7 +1334,13 @@ def _calculate_and_save_indicator_result(
                 data.attrs["error"] = error_message
 
         except PairCandlesMissing as e:
-            logger.info("Indicator data %s not generated for pair %s because of lack of OHLCV data. Exception %s", key.definition.name, key.pair, e)
+            logger.info(
+                "Indicator data '%s' not generated for pair %s because of lack of OHLCV data. Exception %s",
+                key.definition.name,
+                key.pair,
+                e,
+                exc_info=e,
+            )
             data = pd.Series(dtype="float64", index=pd.DatetimeIndex([]))
             data.attrs["error"] = str(e)
 
