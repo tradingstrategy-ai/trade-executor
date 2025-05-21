@@ -896,7 +896,7 @@ class StrategyRunner(abc.ABC):
                         msg = "execute_trades() failed - likely trying to have larger trades than having cash in hand.\n"
                         msg += "Currently open positions:\n"
                         for p in state.portfolio.open_positions.values():
-                            msg += f"{p}\n"
+                            msg += f"{p}, quantity: {p.get_quantity()}, planned quantiy: {p.get_quantity(planned=True)}\n"
                         msg += "Trade queue:\n"
                         for t in approved_trades:
                             msg += f"{t} - execution order {t.get_execution_sort_position() + 1}.\n"

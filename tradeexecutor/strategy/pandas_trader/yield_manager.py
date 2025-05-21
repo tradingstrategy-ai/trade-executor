@@ -233,7 +233,7 @@ class YieldManager:
 
             if quantity_delta is not None and quantity_delta < 0:
                 # Double check for fumbled calculations
-                assert existing_position.get_quantity() > abs(quantity_delta), f"Trying to reduce yield position more than we have. Dollar delta: {dollar_delta}, quantity delta: {quantity_delta}, {existing_position}"
+                assert existing_position.get_quantity() >= abs(quantity_delta), f"Trying to reduce yield position more than we have. Dollar delta: {dollar_delta}, quantity delta: {quantity_delta}, {existing_position}"
 
             if abs(dollar_delta) > self.rules.cash_change_tolerance_usd:
                 notes = f"Adjusting yield management position to: {desired_amount} USD, previously {existing_amount} USD"
@@ -298,6 +298,7 @@ class YieldManager:
         cash_available_for_yield: USDollarAmount,
         current_positions: dict[TradingPairIdentifier, GenericPosition | None],
         size_risk_model: BaseTVLSizeRiskModel | None = None,
+        usd_assert_epsilon=0.01,
     ) -> dict[TradingPairIdentifier, YieldDecision]:
         """Calculate cash positions we are allowed to take.
 
@@ -386,7 +387,7 @@ class YieldManager:
         )
 
         total_distributed = sum(result.amount_usd for result in desired_yield_positions.values())
-        assert total_distributed <= cash_available_for_yield, f"Total distributed {total_distributed} exceed available cash {cash_available_for_yield} USD."
+        assert total_distributed <= cash_available_for_yield + usd_assert_epsilon, f"Total distributed {total_distributed} exceed available cash {cash_available_for_yield} USD."
         return desired_yield_positions
 
     def calculate_cash_needed_to_cover_directional_trades(

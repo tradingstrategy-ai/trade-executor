@@ -37,5 +37,6 @@ def test_backtest_vault_yield_manager(
         execution_context=unit_test_execution_context,
     )
 
-    assert len(result.closed_positions) > 0
+    state = result.state
+    assert len(state.portfolio.closed_positions) > 0
 
