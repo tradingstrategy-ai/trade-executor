@@ -5,6 +5,8 @@ from decimal import Decimal
 from typing import List, Tuple
 import logging
 
+from tabulate import tabulate
+
 from tradeexecutor.backtest.backtest_routing import BacktestRoutingModel, BacktestRoutingState
 from tradeexecutor.backtest.simulated_wallet import SimulatedWallet, OutOfSimulatedBalance
 from tradeexecutor.state.state import State
@@ -454,6 +456,29 @@ class BacktestExecution(ExecutionModel):
 
         # Set the check point interest balacnes for new positions
         set_interest_checkpoint(state, ts, None)
+
+        # Print out balances for diagnostics
+        if logger.getEffectiveLevel() >= logging.INFO:
+            balances = [
+                {"Asset": str(asset), "Balance": balance}
+                for asset, balance in all_assets.items()
+            ]
+
+            if not balances:
+                balances = [
+                    {"Asset": "None", "Balance": "Wallet does not have any assets"}
+                ]
+
+            table_msg = tabulate(
+                balances,
+                headers="keys",
+                tablefmt="fancy_grid",
+            )
+            logger.info(
+                "Wallet balances at %s:\n%s",
+                ts,
+                table_msg,
+            )
 
         logger.info("Finished backtest execution for %s", ts)
 

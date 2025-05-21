@@ -216,8 +216,10 @@ class YieldManager:
             existing_position = current_yield_positions.get(pair)
             if existing_position:
                 existing_amount = existing_position.get_value()
+                existing_id = existing_position.position_id
             else:
                 existing_amount = 0
+                existing_id = None
 
             dollar_delta = desired_amount - existing_amount
             if existing_position:
@@ -262,6 +264,7 @@ class YieldManager:
             trade_output_table.append({
                 "pair": pair.base.token_symbol,
                 "existing": existing_amount,
+                "existing_pos": existing_id,
                 "desired": desired_amount,
                 "delta": dollar_delta,
                 "trades": "\n".join(str(t) for t in trades),
