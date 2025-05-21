@@ -1144,7 +1144,7 @@ class TradingPosition(GenericPosition):
                 assert pair.kind == TradingPairKind.credit_supply, "Only credit supply supported for now"
                 if trade_type != TradeType.repair:
                     if self.loan is None:
-                        assert trade.is_buy(), "Opening credit position is modelled as buy"
+                        assert trade.is_buy(), f"Opening credit position is should be modelled as buy, we got: {trade}"
                         trade.planned_loan_update = create_credit_supply_loan(self, trade, strategy_cycle_at)
                     else:
                         trade.planned_loan_update = update_credit_supply_loan(
