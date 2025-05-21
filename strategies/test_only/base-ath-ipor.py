@@ -383,6 +383,8 @@ def decide_trades(
     for pair_id in included_pairs:
         pair = strategy_universe.get_pair_by_id(pair_id)
 
+        assert pair.is_spot() and not pair.is_vault(), "Signal-based weighting should be only used for directional positions"
+
         pair_signal = indicators.get_indicator_value("signal", pair=pair)
         if pair_signal is None:
             continue
