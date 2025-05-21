@@ -4,14 +4,13 @@ import datetime
 import enum
 from decimal import Decimal
 
-import pandas as pd
-
 from tradeexecutor.state.identifier import TradingPairIdentifier
 from tradeexecutor.state.size_risk import SizeRisk
 from tradeexecutor.state.types import USDollarAmount, TokenAmount, USDollarPrice, AnyTimestamp
 from tradeexecutor.strategy.pricing_model import PricingModel
 from tradeexecutor.strategy.routing import RoutingModel
 from tradeexecutor.strategy.size_risk_model import SizeRiskModel, SizingType
+from tradingstrategy.candle import CandleSampleUnavailable
 from tradingstrategy.liquidity import LiquidityDataUnavailable
 from tradingstrategy.pair import PandasPairUniverse
 from tradingstrategy.types import Percent
@@ -136,8 +135,29 @@ class BaseTVLSizeRiskModel(SizeRiskModel):
         timestamp: AnyTimestamp | None,
         pair: TradingPairIdentifier,
         asked_value: USDollarAmount,
+        check_price=False,
     ) -> SizeRisk:
+        """Calculate maximum position size we can take on the pool.
+
+        :param check_price:
+            Backtest workaround.
+
+            Sometimes we have TVL, but not price yet, becauase TVL timeframe
+            is different from the candle timeframe.
+
+            Check for the existing of the price as well, to make sure backtest
+            can execute as otherwise it will crash when it tries to open a position
+            without price data available.
+
+        """
         tvl = self.get_tvl(timestamp, pair)
+
+        if check_price:
+            try:
+                _ = self.pricing_model.get_buy_price(timestamp, pair, reserve=Decimal(1))
+            except CandleSampleUnavailable:
+                tvl = 0
+
         cap_pct = self.get_pair_cap(pair, SizingType.hold)
         tvl_cap = tvl * cap_pct
         accepted_size = min(tvl_cap, asked_value)
