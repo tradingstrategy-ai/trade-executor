@@ -461,6 +461,7 @@ def decide_trades(
         )
 
         yield_input = YieldDecisionInput(
+            execution_mode=input.execution_context.mode,
             cycle=input.cycle,
             timestamp=timestamp,
             total_equity=state.portfolio.get_total_equity(),

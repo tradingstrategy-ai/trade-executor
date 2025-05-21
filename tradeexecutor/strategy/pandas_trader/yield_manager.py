@@ -17,6 +17,7 @@ from tradeexecutor.state.position import TradingPosition
 from tradeexecutor.state.size_risk import SizeRisk
 from tradeexecutor.state.trade import TradeExecution
 from tradeexecutor.state.types import USDollarAmount, Percent
+from tradeexecutor.strategy.execution_context import ExecutionMode
 from tradeexecutor.strategy.pandas_trader.position_manager import PositionManager
 from tradeexecutor.strategy.tvl_size_risk import BaseTVLSizeRiskModel
 
@@ -87,6 +88,9 @@ class YieldRuleset:
 
 @dataclasses.dataclass(slots=True, frozen=True)
 class YieldDecisionInput:
+
+    #: Backtesting or live trading
+    execution_mode: ExecutionMode
 
     #: Strategy cycle number
     cycle: int
@@ -284,6 +288,7 @@ class YieldManager:
 
     def calculate_yield_positions(
         self,
+        execution_mode: ExecutionMode,
         timestamp: datetime.datetime,
         cycle: int,
         cash_available_for_yield: USDollarAmount,
@@ -316,6 +321,7 @@ class YieldManager:
                         timestamp,
                         rule.pair,
                         asked_value=amount,
+                        check_price=execution_mode.is_backtesting(),
                     )
 
                     # In backtesting,
@@ -505,6 +511,7 @@ class YieldManager:
 
         # 4. Calculate new yield positions
         desired_yield_positions = self.calculate_yield_positions(
+            execution_mode=input.execution_mode,
             timestamp=input.timestamp,
             cycle=input.cycle,
             cash_available_for_yield=available_for_yield,
