@@ -297,6 +297,15 @@ def prepare_interest_distribution(
                 # One side in spot-credit pair
                 continue
 
+            if not p.loan:
+                logger.warning(
+                    "Got loan as none for %s, trades %s",
+                    p,
+                    p.trades,
+                )
+                # This is a failed Aave deposit, loan object never materialised?
+                continue
+
             side, tracker = p.loan.get_tracked_asset(asset)
 
             assert tracker.quantity >= 0, f"Negative interest data: {tracker}"
