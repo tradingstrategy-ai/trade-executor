@@ -231,6 +231,10 @@ class YieldManager:
             else:
                 quantity_delta = None
 
+            if quantity_delta is not None and quantity_delta < 0:
+                # Double check for fumbled calculations
+                assert existing_position.get_quantity() > abs(quantity_delta), f"Trying to reduce yield position more than we have. Dollar delta: {dollar_delta}, quantity delta: {quantity_delta}, {existing_position}"
+
             if abs(dollar_delta) > self.rules.cash_change_tolerance_usd:
                 notes = f"Adjusting yield management position to: {desired_amount} USD, previously {existing_amount} USD"
 
