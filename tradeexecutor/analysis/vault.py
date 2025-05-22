@@ -30,6 +30,7 @@ def plot_vault(
     assert isinstance(tvl.index, pd.DatetimeIndex), f"TVL index is not a DatetimeIndex, got {type(tvl.index)}"
 
     name = pair.get_vault_name()
+    symbol = pair.base.token_symbol
 
     logger.info(f"Examining vault {name}: {id}, having {len(price):,} pirce rows")
     nav_series = tvl
@@ -90,7 +91,7 @@ def plot_vault(
 
     # Set titles and labels
     fig.update_layout(
-        title_text=f"{name} - Returns, TVL and share price",
+        title_text=f"{name} ({symbol}) - Returns, TVL and share price",
         hovermode="x unified",
         template=pio.templates.default,
         showlegend=True,

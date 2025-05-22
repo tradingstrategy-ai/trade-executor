@@ -80,7 +80,8 @@ def default_supported_routers(strategy_universe: TradingStrategyUniverse) -> Set
     exchanges = strategy_universe.data_universe.exchange_universe
     chain_id = strategy_universe.get_single_chain()
 
-    assert exchanges.get_exchange_count() < 5, f"Exchanges might not be configured correctly, we have {exchanges.get_exchange_count()} exchanges"
+    # Vaults count as exchanges, so multi vault strategy needs bump the number here
+    assert exchanges.get_exchange_count() < 20, f"Exchanges might not be configured correctly, we have {exchanges.get_exchange_count()} exchanges"
     configs = set()
 
     vaults_done = False
