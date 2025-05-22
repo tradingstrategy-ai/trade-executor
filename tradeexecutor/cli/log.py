@@ -454,3 +454,18 @@ def setup_logstash_logging(
     handler.setLevel(level)
     logger.addHandler(handler)
     return logger
+
+
+def setup_sentry_logging(*, application_name: str, sentry_dsn: str):
+    """Setup Sentry logging.
+
+    :param sentry_dsn:
+        Sentry DSN
+    """
+    import sentry_sdk
+
+    sentry_sdk.init(
+        dsn=sentry_dsn,
+        environment=application_name,
+        traces_sample_rate=0.1,
+    )

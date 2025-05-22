@@ -119,8 +119,7 @@ pytest-timeout = "^2.3.1"
 # https://github.com/arynyklas/telegram_bot_logger/pull/1
 telegram-bot-logger = {git = "https://github.com/tradingstrategy-ai/telegram_bot_logger.git", branch="main", optional = true}
 openapi-core = "0.19.1"
-
-
+sentry-sdk = {version = "^2.29.1", optional = true}
 
 
 [tool.poetry.extras]
@@ -141,6 +140,7 @@ execution = [
     "setuptools",
     "beautifulsoup4",
     "web3-ethereum-defi",
+    "sentry-sdk",
 ]
 
 # These dependencies are not neededon the client side code
@@ -168,12 +168,10 @@ demeter = [
     "zelos-demeter",
 ]
 
-[tool.poetry.dev-dependencies]
+[tool.poetry.group.dev.dependencies]
 pytest = "^7.2.2"
 ipdb = "^0.13.9"
 flaky = "^3.7.0"
-
-[tool.poetry.group.dev.dependencies]
 pytest-reverse = "^1.5.0"
 pytest-mock = "^3.11.1"
 

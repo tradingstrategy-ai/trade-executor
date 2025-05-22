@@ -24,7 +24,7 @@ from . import shared_options
 from .app import app
 from ..bootstrap import prepare_executor_id, prepare_cache, create_web3_config, create_state_store, \
     create_execution_and_sync_model, create_metadata, create_approval_model, create_client
-from ..log import setup_logging, setup_discord_logging, setup_logstash_logging, setup_file_logging, setup_telegram_logging
+from ..log import setup_logging, setup_discord_logging, setup_logstash_logging, setup_file_logging, setup_telegram_logging, setup_sentry_logging
 from ..loop import ExecutionLoop
 from ..result import display_backtesting_results
 from ..slippage import configure_max_slippage_tolerance
@@ -109,6 +109,7 @@ def start(
     file_log_level: Optional[str] = shared_options.file_log_level,
     telegram_api_key: Optional[str] = shared_options.telegram_api_key,
     telegram_chat_id: Optional[str] = shared_options.telegram_chat_id,
+    sentry_dsn: Optional[str] = shared_options.sentry_dsn,
 
     # Debugging and unit testing
     port_mortem_debugging: bool = typer.Option(False, "--post-mortem-debugging", envvar="POST_MORTEM_DEBUGGING", help="Launch ipdb debugger on a main loop crash to debug the exception"),
@@ -195,30 +196,35 @@ def start(
         logger.error("Please use separate backtest command instead of start command.")
         raise NotImplementedError()
 
-    if not (unit_testing or simulate):
-        if discord_webhook_url and asset_management_mode.is_live_trading():
+    if not (unit_testing or simulate) and asset_management_mode.is_live_trading():
+        if discord_webhook_url:
             # TODO: Move backtesting to its own console command
             setup_discord_logging(
                 name,
                 webhook_url=discord_webhook_url,
                 avatar_url=icon_url)
 
-
-        if telegram_api_key and asset_management_mode.is_live_trading():
+        if telegram_api_key:
             setup_telegram_logging(
                 telegram_api_key,
                 telegram_chat_id,
             )
 
-    if logstash_server and asset_management_mode.is_live_trading():
-        logger.info("Enabling Logstash logging to %s", logstash_server)
-        setup_logstash_logging(
-            logstash_server,
-            f"executor-{id}",  # Always prefix logged with executor id
-            quiet=False,
-        )
-    else:
-        logger.info("Logstash logging disabled")
+        if logstash_server:
+            logger.info("Enabling Logstash logging to %s", logstash_server)
+            setup_logstash_logging(
+                logstash_server,
+                f"executor-{id}",  # Always prefix logged with executor id
+                quiet=False,
+            )
+        else:
+            logger.info("Logstash logging disabled")
+
+        if sentry_dsn:
+            setup_sentry_logging(
+                application_name=name,
+                sentry_dsn=sentry_dsn,
+            )
 
     setup_file_logging(
         f"logs/{id}.log",

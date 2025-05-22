@@ -7,7 +7,7 @@ description = "Happy Eyeballs for asyncio"
 optional = false
 python-versions = ">=3.9"
 groups = ["main"]
-markers = "(extra == \"execution\" or extra == \"trendsspotter\") and (implementation_name == \"cpython\" or implementation_name == \"pypy\")"
+markers = "(implementation_name == \"cpython\" or implementation_name == \"pypy\") and (extra == \"execution\" or extra == \"trendsspotter\")"
 files = [
     {file = "aiohappyeyeballs-2.6.1-py3-none-any.whl", hash = "sha256:f349ba8f4b75cb25c99c5c2d84e997e485204d2902a9597802b0371f09331fb8"},
     {file = "aiohappyeyeballs-2.6.1.tar.gz", hash = "sha256:c3f9d0113123803ccadfdf3f0faa505bc78e6a72d1cc4806cbd719826e943558"},
@@ -20,7 +20,7 @@ description = "Async http client/server framework (asyncio)"
 optional = false
 python-versions = ">=3.9"
 groups = ["main"]
-markers = "(extra == \"execution\" or extra == \"trendsspotter\") and (implementation_name == \"cpython\" or implementation_name == \"pypy\")"
+markers = "(implementation_name == \"cpython\" or implementation_name == \"pypy\") and (extra == \"execution\" or extra == \"trendsspotter\")"
 files = [
     {file = "aiohttp-3.11.14-cp310-cp310-macosx_10_9_universal2.whl", hash = "sha256:e2bc827c01f75803de77b134afdbf74fa74b62970eafdf190f3244931d7a5c0d"},
     {file = "aiohttp-3.11.14-cp310-cp310-macosx_10_9_x86_64.whl", hash = "sha256:e365034c5cf6cf74f57420b57682ea79e19eb29033399dd3f40de4d0171998fa"},
@@ -124,7 +124,7 @@ description = "aiosignal: a list of registered asynchronous callbacks"
 optional = false
 python-versions = ">=3.9"
 groups = ["main"]
-markers = "(extra == \"execution\" or extra == \"trendsspotter\") and (implementation_name == \"cpython\" or implementation_name == \"pypy\")"
+markers = "(implementation_name == \"cpython\" or implementation_name == \"pypy\") and (extra == \"execution\" or extra == \"trendsspotter\")"
 files = [
     {file = "aiosignal-1.3.2-py2.py3-none-any.whl", hash = "sha256:45cde58e409a301715980c2b01d0c28bdde3770d8290b5eb2173759d9acb31a5"},
     {file = "aiosignal-1.3.2.tar.gz", hash = "sha256:a8c255c66fafb1e499c9351d0bf32ff2d8a0321595ebac3b93713656d2436f54"},
@@ -140,7 +140,7 @@ description = "Reusable constraint types to use with typing.Annotated"
 optional = false
 python-versions = ">=3.8"
 groups = ["main"]
-markers = "extra == \"execution\" and (implementation_name == \"cpython\" or implementation_name == \"pypy\")"
+markers = "(implementation_name == \"cpython\" or implementation_name == \"pypy\") and extra == \"execution\""
 files = [
     {file = "annotated_types-0.7.0-py3-none-any.whl", hash = "sha256:1f02e8b43a8fbbc3f3e0d4f0f4bfc8131bcb4eebe8849b8e5c773f3a1c582a53"},
     {file = "annotated_types-0.7.0.tar.gz", hash = "sha256:aff07c09a53a08bc8cfccb9c85b05f1aa9a2a6f23728d790723543408344ce89"},
@@ -176,7 +176,7 @@ description = "Disable App Nap on macOS >= 10.9"
 optional = false
 python-versions = ">=3.6"
 groups = ["main"]
-markers = "platform_system == \"Darwin\" and (implementation_name == \"cpython\" or implementation_name == \"pypy\")"
+markers = "(implementation_name == \"cpython\" or implementation_name == \"pypy\") and platform_system == \"Darwin\""
 files = [
     {file = "appnope-0.1.4-py2.py3-none-any.whl", hash = "sha256:502575ee11cd7a28c0205f379b525beefebab9d161b7c964670864014ed7213c"},
     {file = "appnope-0.1.4.tar.gz", hash = "sha256:1de3860566df9caf38f01f86f65e0e13e379af54f9e4bee1e66b48f2efffd1ee"},
@@ -367,7 +367,7 @@ description = "Function decoration for backoff and retry"
 optional = false
 python-versions = ">=3.7,<4.0"
 groups = ["main"]
-markers = "extra == \"execution\" and (implementation_name == \"cpython\" or implementation_name == \"pypy\")"
+markers = "(implementation_name == \"cpython\" or implementation_name == \"pypy\") and extra == \"execution\""
 files = [
     {file = "backoff-2.2.1-py3-none-any.whl", hash = "sha256:63579f9a0628e06278f7e47b7d7d5b6ce20dc65c5e96a6f3ca99a6adca0396e8"},
     {file = "backoff-2.2.1.tar.gz", hash = "sha256:03f829f5bb1923180821643f8753b0502c3b682293992485b0eef2807afa5cba"},
@@ -404,7 +404,7 @@ description = "efficient arrays of booleans -- C extension"
 optional = false
 python-versions = "*"
 groups = ["main"]
-markers = "extra == \"execution\" and (implementation_name == \"cpython\" or implementation_name == \"pypy\")"
+markers = "(implementation_name == \"cpython\" or implementation_name == \"pypy\") and extra == \"execution\""
 files = [
     {file = "bitarray-3.2.0-cp310-cp310-macosx_10_9_x86_64.whl", hash = "sha256:c588d095af825a2d2de0dc68290ffc6ad2e93c746db07f135b7dbd4a6a973867"},
     {file = "bitarray-3.2.0-cp310-cp310-macosx_11_0_arm64.whl", hash = "sha256:984023a73195b44180b546bf6a6daf57fd339523ffc08b0ae101abadf30a8bfa"},
@@ -569,7 +569,7 @@ description = "A decorator for caching properties in classes."
 optional = false
 python-versions = "*"
 groups = ["main"]
-markers = "extra == \"execution\" and (implementation_name == \"cpython\" or implementation_name == \"pypy\")"
+markers = "(implementation_name == \"cpython\" or implementation_name == \"pypy\") and extra == \"execution\""
 files = [
     {file = "cached-property-1.5.2.tar.gz", hash = "sha256:9fa5755838eecbb2d234c3aa390bd80fbd3ac6b6869109bfc1b499f7bd89a130"},
     {file = "cached_property-1.5.2-py2.py3-none-any.whl", hash = "sha256:df4f613cf7ad9a588cc381aaf4a512d26265ecebd5eb9e1ba12f1319eb85a6a0"},
@@ -582,7 +582,7 @@ description = "Extensible memoizing collections and decorators"
 optional = false
 python-versions = ">=3.7"
 groups = ["main"]
-markers = "(extra == \"execution\" or extra == \"trendsspotter\") and (implementation_name == \"cpython\" or implementation_name == \"pypy\")"
+markers = "(implementation_name == \"cpython\" or implementation_name == \"pypy\") and (extra == \"execution\" or extra == \"trendsspotter\")"
 files = [
     {file = "cachetools-5.5.2-py3-none-any.whl", hash = "sha256:d26a22bcc62eb95c3beabd9f1ee5e820d3d2704fe2967cbe350e20c8ffcd3f0a"},
     {file = "cachetools-5.5.2.tar.gz", hash = "sha256:1a661caa9175d26759571b2e19580f9d6393969e5dfca11fdb1f947a23e640d4"},
@@ -595,7 +595,7 @@ description = "A ~2x faster drop-in replacement for eth_utils.to_checksum_addres
 optional = false
 python-versions = "<4,>=3.8"
 groups = ["main"]
-markers = "extra == \"execution\" and (implementation_name == \"cpython\" or implementation_name == \"pypy\")"
+markers = "(implementation_name == \"cpython\" or implementation_name == \"pypy\") and extra == \"execution\""
 files = [
     {file = "cchecksum-0.0.7.tar.gz", hash = "sha256:14ed1dc66389aad843f238c25dda0e559b5da07be4c0411d69fa64d5f89b451b"},
 ]
@@ -808,7 +808,7 @@ description = "Python bindings for C-KZG-4844"
 optional = false
 python-versions = "*"
 groups = ["main"]
-markers = "extra == \"execution\" and (implementation_name == \"cpython\" or implementation_name == \"pypy\")"
+markers = "(implementation_name == \"cpython\" or implementation_name == \"pypy\") and extra == \"execution\""
 files = [
     {file = "ckzg-1.0.2-cp310-cp310-macosx_10_9_x86_64.whl", hash = "sha256:bdd082bc0f2a595e3546658ecbe1ff78fe65b0ab7e619a8197a62d94f46b5b46"},
     {file = "ckzg-1.0.2-cp310-cp310-macosx_11_0_arm64.whl", hash = "sha256:50ca4af4e2f1a1e8b0a7e97b3aef39dedbb0d52d90866ece424f13f8df1b5972"},
@@ -904,7 +904,7 @@ description = "Composable command line interface toolkit"
 optional = false
 python-versions = ">=3.7"
 groups = ["main"]
-markers = "(extra == \"execution\" or extra == \"qstrader\") and (implementation_name == \"cpython\" or implementation_name == \"pypy\")"
+markers = "(implementation_name == \"cpython\" or implementation_name == \"pypy\") and (extra == \"execution\" or extra == \"qstrader\")"
 files = [
     {file = "click-8.1.8-py3-none-any.whl", hash = "sha256:63c132bbbed01578a06712a2d1f497bb62d9c1c0d329b7903a866228027263b2"},
     {file = "click-8.1.8.tar.gz", hash = "sha256:ed53c9d8990d83c2a27deae68e4ee337473f6330c040a31d4225c9574d16096a"},
@@ -937,7 +937,7 @@ files = [
     {file = "colorama-0.4.6-py2.py3-none-any.whl", hash = "sha256:4f1d9991f5acc0ca119f9d443620b77f9d6b33703e51011c16baf57afb285fc6"},
     {file = "colorama-0.4.6.tar.gz", hash = "sha256:08695f5cb7ed6e0531a20572697297273c47b8cae5a63ffc6d6ed5c201be6e44"},
 ]
-markers = {main = "(platform_system == \"Windows\" or sys_platform == \"win32\" or extra == \"execution\") and (implementation_name == \"cpython\" or implementation_name == \"pypy\")", dev = "(sys_platform == \"win32\" or extra == \"execution\") and (implementation_name == \"cpython\" or implementation_name == \"pypy\")"}
+markers = {main = "(implementation_name == \"cpython\" or implementation_name == \"pypy\") and (platform_system == \"Windows\" or sys_platform == \"win32\" or extra == \"execution\")", dev = "(implementation_name == \"cpython\" or implementation_name == \"pypy\") and (sys_platform == \"win32\" or extra == \"execution\")"}
 
 [[package]]
 name = "coloredlogs"
@@ -946,7 +946,7 @@ description = "Colored terminal output for Python's logging module"
 optional = true
 python-versions = ">=2.7, !=3.0.*, !=3.1.*, !=3.2.*, !=3.3.*, !=3.4.*"
 groups = ["main"]
-markers = "extra == \"execution\" and (implementation_name == \"cpython\" or implementation_name == \"pypy\")"
+markers = "(implementation_name == \"cpython\" or implementation_name == \"pypy\") and extra == \"execution\""
 files = [
     {file = "coloredlogs-15.0.1-py2.py3-none-any.whl", hash = "sha256:612ee75c546f53e92e70049c9dbfcc18c935a2b9a53b66085ce9ef6a6e5c0934"},
     {file = "coloredlogs-15.0.1.tar.gz", hash = "sha256:7c991aa71a4577af2f82600d8f8f3a89f936baeaf9b50a9c197da014e5bf16b0"},
@@ -1059,7 +1059,7 @@ description = "cryptography is a package which provides cryptographic recipes an
 optional = false
 python-versions = "!=3.9.0,!=3.9.1,>=3.7"
 groups = ["main"]
-markers = "extra == \"execution\" and (implementation_name == \"cpython\" or implementation_name == \"pypy\")"
+markers = "(implementation_name == \"cpython\" or implementation_name == \"pypy\") and extra == \"execution\""
 files = [
     {file = "cryptography-44.0.2-cp37-abi3-macosx_10_9_universal2.whl", hash = "sha256:efcfe97d1b3c79e486554efddeb8f6f53a4cdd4cf6086642784fa31fc384e1d7"},
     {file = "cryptography-44.0.2-cp37-abi3-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:29ecec49f3ba3f3849362854b7253a9f59799e3763b0c9d0826259a88efa02f1"},
@@ -1135,7 +1135,7 @@ description = "Cython implementation of Toolz: High performance functional utili
 optional = false
 python-versions = ">=3.8"
 groups = ["main"]
-markers = "extra == \"execution\" and implementation_name == \"cpython\""
+markers = "implementation_name == \"cpython\" and extra == \"execution\""
 files = [
     {file = "cytoolz-1.0.1-cp310-cp310-macosx_10_9_x86_64.whl", hash = "sha256:cec9af61f71fc3853eb5dca3d42eb07d1f48a4599fa502cbe92adde85f74b042"},
     {file = "cytoolz-1.0.1-cp310-cp310-macosx_11_0_arm64.whl", hash = "sha256:140bbd649dbda01e91add7642149a5987a7c3ccc251f2263de894b89f50b6608"},
@@ -1269,7 +1269,7 @@ description = "Pandas Data Types for SQL systems (BigQuery, Spanner)"
 optional = true
 python-versions = ">=3.7"
 groups = ["main"]
-markers = "extra == \"demeter\" and (implementation_name == \"cpython\" or implementation_name == \"pypy\")"
+markers = "(implementation_name == \"cpython\" or implementation_name == \"pypy\") and extra == \"demeter\""
 files = [
     {file = "db_dtypes-1.4.2-py2.py3-none-any.whl", hash = "sha256:b3cd0128c8310a2e9ef249da2353e5cb07c62d8a3ce800c7990f9998eee74582"},
     {file = "db_dtypes-1.4.2.tar.gz", hash = "sha256:04348969e0d533de5f11ec3ac8fcb2dd983ac40229d042198ab9d8de51801a6e"},
@@ -1351,7 +1351,7 @@ description = "Easily send Discord webhooks with Python"
 optional = true
 python-versions = "<4.0,>=3.10"
 groups = ["main"]
-markers = "extra == \"execution\" and (implementation_name == \"cpython\" or implementation_name == \"pypy\")"
+markers = "(implementation_name == \"cpython\" or implementation_name == \"pypy\") and extra == \"execution\""
 files = [
     {file = "discord_webhook-1.4.1-py3-none-any.whl", hash = "sha256:1ed6a07d16ca0e6e6b1a91536c2fc34d0ba8251e5be37fe8850189aaf1155ee8"},
     {file = "discord_webhook-1.4.1.tar.gz", hash = "sha256:2913c3ccb216e7d82911f96296f78b6b28b68a6f33a6fa5a61fc2da697b34a4d"},
@@ -1370,7 +1370,7 @@ description = "ECDSA cryptographic signature library (pure python)"
 optional = false
 python-versions = "!=3.0.*,!=3.1.*,!=3.2.*,!=3.3.*,!=3.4.*,!=3.5.*,>=2.6"
 groups = ["main"]
-markers = "extra == \"execution\" and (implementation_name == \"cpython\" or implementation_name == \"pypy\")"
+markers = "(implementation_name == \"cpython\" or implementation_name == \"pypy\") and extra == \"execution\""
 files = [
     {file = "ecdsa-0.19.1-py2.py3-none-any.whl", hash = "sha256:30638e27cf77b7e15c4c4cc1973720149e1033827cfd00661ca5c8cc0cdb24c3"},
     {file = "ecdsa-0.19.1.tar.gz", hash = "sha256:478cba7b62555866fcb3bb3fe985e06decbdb68ef55713c4e5ab98c57d508e61"},
@@ -1391,7 +1391,7 @@ description = "eth_abi: Python utilities for working with Ethereum ABI definitio
 optional = false
 python-versions = "<4,>=3.8"
 groups = ["main"]
-markers = "extra == \"execution\" and (implementation_name == \"cpython\" or implementation_name == \"pypy\")"
+markers = "(implementation_name == \"cpython\" or implementation_name == \"pypy\") and extra == \"execution\""
 files = [
     {file = "eth_abi-5.2.0-py3-none-any.whl", hash = "sha256:17abe47560ad753f18054f5b3089fcb588f3e3a092136a416b6c1502cb7e8877"},
     {file = "eth_abi-5.2.0.tar.gz", hash = "sha256:178703fa98c07d8eecd5ae569e7e8d159e493ebb6eeb534a8fe973fbc4e40ef0"},
@@ -1415,7 +1415,7 @@ description = "eth-account: Sign Ethereum transactions and messages with local p
 optional = false
 python-versions = "<4,>=3.8"
 groups = ["main"]
-markers = "extra == \"execution\" and (implementation_name == \"cpython\" or implementation_name == \"pypy\")"
+markers = "(implementation_name == \"cpython\" or implementation_name == \"pypy\") and extra == \"execution\""
 files = [
     {file = "eth_account-0.11.3-py3-none-any.whl", hash = "sha256:16cf58aabc65171fc206489899b7e5546e3215e1a4debc12dbd55345c979081e"},
     {file = "eth_account-0.11.3.tar.gz", hash = "sha256:a712a9534638a7cfaa4cc069f1b9d5cefeee70362cfc3a7b0a2534ee61ce76c9"},
@@ -1444,7 +1444,7 @@ description = "Python implementation of the Ethereum Trie structure"
 optional = false
 python-versions = ">=3.7, <4"
 groups = ["main"]
-markers = "extra == \"execution\" and (implementation_name == \"cpython\" or implementation_name == \"pypy\")"
+markers = "(implementation_name == \"cpython\" or implementation_name == \"pypy\") and extra == \"execution\""
 files = [
     {file = "eth-bloom-2.0.0.tar.gz", hash = "sha256:73576828dff7566b9216403e0898966912f370bae5734241dd3f50ce5664a825"},
     {file = "eth_bloom-2.0.0-py3-none-any.whl", hash = "sha256:cc86ab9670577996f7fcb8445b7a164ecd211ac91d9c4c2b5a47678623419927"},
@@ -1466,7 +1466,7 @@ description = "eth-hash: The Ethereum hashing function, keccak256, sometimes (er
 optional = false
 python-versions = "<4,>=3.8"
 groups = ["main"]
-markers = "extra == \"execution\" and (implementation_name == \"cpython\" or implementation_name == \"pypy\")"
+markers = "(implementation_name == \"cpython\" or implementation_name == \"pypy\") and extra == \"execution\""
 files = [
     {file = "eth_hash-0.7.1-py3-none-any.whl", hash = "sha256:0fb1add2adf99ef28883fd6228eb447ef519ea72933535ad1a0b28c6f65f868a"},
     {file = "eth_hash-0.7.1.tar.gz", hash = "sha256:d2411a403a0b0a62e8247b4117932d900ffb4c8c64b15f92620547ca5ce46be5"},
@@ -1490,7 +1490,7 @@ description = "eth-keyfile: A library for handling the encrypted keyfiles used t
 optional = false
 python-versions = "<4,>=3.8"
 groups = ["main"]
-markers = "extra == \"execution\" and (implementation_name == \"cpython\" or implementation_name == \"pypy\")"
+markers = "(implementation_name == \"cpython\" or implementation_name == \"pypy\") and extra == \"execution\""
 files = [
     {file = "eth_keyfile-0.9.1-py3-none-any.whl", hash = "sha256:9789c3b4fa0bb6e2616cdc2bdd71b8755b42947d78ef1e900a0149480fabb5c2"},
     {file = "eth_keyfile-0.9.1.tar.gz", hash = "sha256:c7a8bc6af4527d1ab2eb1d1b949d59925252e17663eaf90087da121327b51df6"},
@@ -1514,7 +1514,7 @@ description = "Common API for Ethereum key operations."
 optional = false
 python-versions = "*"
 groups = ["main"]
-markers = "extra == \"execution\" and (implementation_name == \"cpython\" or implementation_name == \"pypy\")"
+markers = "(implementation_name == \"cpython\" or implementation_name == \"pypy\") and extra == \"execution\""
 files = [
     {file = "eth-keys-0.4.0.tar.gz", hash = "sha256:7d18887483bc9b8a3fdd8e32ddcb30044b9f08fcb24a380d93b6eee3a5bb3216"},
     {file = "eth_keys-0.4.0-py3-none-any.whl", hash = "sha256:e07915ffb91277803a28a379418bdd1fad1f390c38ad9353a0f189789a440d5d"},
@@ -1538,7 +1538,7 @@ description = "eth-pydantic-types: Pydantic Types for Ethereum"
 optional = false
 python-versions = "<4,>=3.9"
 groups = ["main"]
-markers = "extra == \"execution\" and (implementation_name == \"cpython\" or implementation_name == \"pypy\")"
+markers = "(implementation_name == \"cpython\" or implementation_name == \"pypy\") and extra == \"execution\""
 files = [
     {file = "eth-pydantic-types-0.1.3.tar.gz", hash = "sha256:4764ba82434ab6d0d98d3b7aee4ace0cc7b12cf47c7e53424525c33fb9b872af"},
     {file = "eth_pydantic_types-0.1.3-py3-none-any.whl", hash = "sha256:7a54f253f32bb3c01b21dbbfc7022d476b53ad5b7da96dcc4dae24997ec69469"},
@@ -1565,7 +1565,7 @@ description = "Provides a decorator that automatically catches known transient e
 optional = false
 python-versions = "*"
 groups = ["main"]
-markers = "extra == \"execution\" and (implementation_name == \"cpython\" or implementation_name == \"pypy\")"
+markers = "(implementation_name == \"cpython\" or implementation_name == \"pypy\") and extra == \"execution\""
 files = [
     {file = "eth_retry-0.2.1-py3-none-any.whl", hash = "sha256:df90cc4fe2d742bfa0f03e0ae4eaf28730ba01d88b997cacaa2aa1955988f57e"},
     {file = "eth_retry-0.2.1.tar.gz", hash = "sha256:12ffd9ca8e8a3e87cbd76019fdcf59b019ad9769f792a51135868b66c6f5a0ed"},
@@ -1581,7 +1581,7 @@ description = "eth-rlp: RLP definitions for common Ethereum objects in Python"
 optional = false
 python-versions = ">=3.8, <4"
 groups = ["main"]
-markers = "extra == \"execution\" and (implementation_name == \"cpython\" or implementation_name == \"pypy\")"
+markers = "(implementation_name == \"cpython\" or implementation_name == \"pypy\") and extra == \"execution\""
 files = [
     {file = "eth-rlp-1.0.1.tar.gz", hash = "sha256:d61dbda892ee1220f28fb3663c08f6383c305db9f1f5624dc585c9cd05115027"},
     {file = "eth_rlp-1.0.1-py3-none-any.whl", hash = "sha256:dd76515d71654277377d48876b88e839d61553aaf56952e580bb7cebef2b1517"},
@@ -1605,7 +1605,7 @@ description = "Tools for testing Ethereum applications."
 optional = false
 python-versions = ">=3.6.8,<4"
 groups = ["main"]
-markers = "extra == \"execution\" and (implementation_name == \"cpython\" or implementation_name == \"pypy\")"
+markers = "(implementation_name == \"cpython\" or implementation_name == \"pypy\") and extra == \"execution\""
 files = [
     {file = "eth-tester-0.9.1b1.tar.gz", hash = "sha256:b9cbc93d0b17a6e8acbb52294dad214ee223cf88209fa5be66ead353937d274c"},
     {file = "eth_tester-0.9.1b1-py3-none-any.whl", hash = "sha256:0e4367d99ae242efdb8c1d18ed99d1ff3f03149abb0a4c2427bc6d333ebef13b"},
@@ -1639,7 +1639,7 @@ description = "eth-typing: Common type annotations for ethereum python packages"
 optional = false
 python-versions = ">=3.7.2, <4"
 groups = ["main"]
-markers = "extra == \"execution\" and (implementation_name == \"cpython\" or implementation_name == \"pypy\")"
+markers = "(implementation_name == \"cpython\" or implementation_name == \"pypy\") and extra == \"execution\""
 files = [
     {file = "eth-typing-3.5.2.tar.gz", hash = "sha256:22bf051ddfaa35ff827c30090de167e5c5b8cc6d343f7f35c9b1c7553f6ab64d"},
     {file = "eth_typing-3.5.2-py3-none-any.whl", hash = "sha256:1842e628fb1ffa929b94f89a9d33caafbeb9978dc96abb6036a12bc91f1c624b"},
@@ -1661,7 +1661,7 @@ description = "eth-utils: Common utility functions for python code that interact
 optional = false
 python-versions = "<4,>=3.7"
 groups = ["main"]
-markers = "extra == \"execution\" and (implementation_name == \"cpython\" or implementation_name == \"pypy\")"
+markers = "(implementation_name == \"cpython\" or implementation_name == \"pypy\") and extra == \"execution\""
 files = [
     {file = "eth_utils-2.3.2-py3-none-any.whl", hash = "sha256:4470be372674a25b8440b69cb35bda634a079876930853814ea307248c3d198b"},
     {file = "eth_utils-2.3.2.tar.gz", hash = "sha256:1986d704b29202386c9bc4b27b948a134320c11c8104c45ca367e4663ae7d10e"},
@@ -1686,7 +1686,7 @@ description = "evm-trace: Ethereum Virtual Machine transaction tracing tool"
 optional = false
 python-versions = "<4,>=3.8"
 groups = ["main"]
-markers = "extra == \"execution\" and (implementation_name == \"cpython\" or implementation_name == \"pypy\")"
+markers = "(implementation_name == \"cpython\" or implementation_name == \"pypy\") and extra == \"execution\""
 files = [
     {file = "evm-trace-0.1.3.tar.gz", hash = "sha256:a05da6fb7bc6ad3e5d18527ca0b9cabe929359d7cea07812d5f059b3855b3a4b"},
     {file = "evm_trace-0.1.3-py3-none-any.whl", hash = "sha256:b1472ed57baae076ae29567180f3292f6031beb3e220edafc9ab465484b3b602"},
@@ -1712,7 +1712,7 @@ description = "execnet: rapid multi-Python deployment"
 optional = false
 python-versions = ">=3.8"
 groups = ["main"]
-markers = "extra == \"execution\" and (implementation_name == \"cpython\" or implementation_name == \"pypy\")"
+markers = "(implementation_name == \"cpython\" or implementation_name == \"pypy\") and extra == \"execution\""
 files = [
     {file = "execnet-2.1.1-py3-none-any.whl", hash = "sha256:26dee51f1b80cebd6d0ca8e74dd8745419761d3bef34163928cbebbdc4749fdc"},
     {file = "execnet-2.1.1.tar.gz", hash = "sha256:5189b52c6121c24feae288166ab41b32549c7e2348652736540b9e6e7d4e72e3"},
@@ -1929,7 +1929,7 @@ description = "A list-like structure which implements collections.abc.MutableSeq
 optional = false
 python-versions = ">=3.8"
 groups = ["main"]
-markers = "(extra == \"execution\" or extra == \"trendsspotter\") and (implementation_name == \"cpython\" or implementation_name == \"pypy\")"
+markers = "(implementation_name == \"cpython\" or implementation_name == \"pypy\") and (extra == \"execution\" or extra == \"trendsspotter\")"
 files = [
     {file = "frozenlist-1.5.0-cp310-cp310-macosx_10_9_universal2.whl", hash = "sha256:5b6a66c18b5b9dd261ca98dffcb826a525334b2f29e7caa54e182255c5f6a65a"},
     {file = "frozenlist-1.5.0-cp310-cp310-macosx_10_9_x86_64.whl", hash = "sha256:d1b3eb7b05ea246510b43a7e53ed1653e55c2121019a97e60cad7efb881a97bb"},
@@ -2032,7 +2032,7 @@ description = "File-system specification"
 optional = true
 python-versions = ">=3.8"
 groups = ["main"]
-markers = "extra == \"trendsspotter\" and (implementation_name == \"cpython\" or implementation_name == \"pypy\")"
+markers = "(implementation_name == \"cpython\" or implementation_name == \"pypy\") and extra == \"trendsspotter\""
 files = [
     {file = "fsspec-2024.12.0-py3-none-any.whl", hash = "sha256:b520aed47ad9804237ff878b504267a3b0b441e97508bd6d2d8774e3db85cee2"},
     {file = "fsspec-2024.12.0.tar.gz", hash = "sha256:670700c977ed2fb51e0d9f9253177ed20cbde4a3e5c0283cc5385b5870c8533f"},
@@ -2073,7 +2073,7 @@ description = "Bulletproof concurrent.futures"
 optional = false
 python-versions = "*"
 groups = ["main"]
-markers = "extra == \"execution\" and (implementation_name == \"cpython\" or implementation_name == \"pypy\")"
+markers = "(implementation_name == \"cpython\" or implementation_name == \"pypy\") and extra == \"execution\""
 files = [
     {file = "futureproof-0.3.1-py2.py3-none-any.whl", hash = "sha256:849d664cc201c39eb4503e1aa35d81b437e89e99cf34c3960ed106d7bbf6f154"},
     {file = "futureproof-0.3.1.tar.gz", hash = "sha256:274365159bfd8b7aa39677abfa7b16c8253a771d72d3c3ee9de4a03c8d6d2d9b"},
@@ -2094,7 +2094,7 @@ description = "Convenient Filesystem interface over GCS"
 optional = true
 python-versions = ">=3.9"
 groups = ["main"]
-markers = "extra == \"trendsspotter\" and (implementation_name == \"cpython\" or implementation_name == \"pypy\")"
+markers = "(implementation_name == \"cpython\" or implementation_name == \"pypy\") and extra == \"trendsspotter\""
 files = [
     {file = "gcsfs-2024.12.0-py2.py3-none-any.whl", hash = "sha256:ec88e48f77e466723705458af85dda238e43aa69fac071efd98829d06e9f095a"},
     {file = "gcsfs-2024.12.0.tar.gz", hash = "sha256:e672413922108300ebc1fe78b8f99f3c7c1b94e7e088f5a6dc88de6d5a93d156"},
@@ -2120,7 +2120,7 @@ description = "gmpy2 interface to GMP, MPFR, and MPC for Python 3.7+"
 optional = false
 python-versions = ">=3.7"
 groups = ["main"]
-markers = "extra == \"execution\" and (implementation_name == \"cpython\" or implementation_name == \"pypy\")"
+markers = "(implementation_name == \"cpython\" or implementation_name == \"pypy\") and extra == \"execution\""
 files = [
     {file = "gmpy2-2.2.1-cp310-cp310-macosx_10_9_x86_64.whl", hash = "sha256:431d599e1542b6e0b3618d3e296702c25215c97fb461d596e27adbe69d765dc6"},
     {file = "gmpy2-2.2.1-cp310-cp310-macosx_11_0_arm64.whl", hash = "sha256:5e51848975837751d1038e82d006e8bb488b179f093ba7fc8a59e1d8a2c61663"},
@@ -2184,7 +2184,7 @@ description = "Google API client core library"
 optional = false
 python-versions = ">=3.7"
 groups = ["main"]
-markers = "(extra == \"execution\" or extra == \"trendsspotter\") and (implementation_name == \"cpython\" or implementation_name == \"pypy\")"
+markers = "(implementation_name == \"cpython\" or implementation_name == \"pypy\") and (extra == \"execution\" or extra == \"trendsspotter\")"
 files = [
     {file = "google_api_core-2.24.2-py3-none-any.whl", hash = "sha256:810a63ac95f3c441b7c0e43d344e372887f62ce9071ba972eacf32672e072de9"},
     {file = "google_api_core-2.24.2.tar.gz", hash = "sha256:81718493daf06d96d6bc76a91c23874dbf2fac0adbbf542831b805ee6e974696"},
@@ -2212,7 +2212,7 @@ description = "Google Authentication Library"
 optional = false
 python-versions = ">=3.7"
 groups = ["main"]
-markers = "(extra == \"execution\" or extra == \"trendsspotter\") and (implementation_name == \"cpython\" or implementation_name == \"pypy\")"
+markers = "(implementation_name == \"cpython\" or implementation_name == \"pypy\") and (extra == \"execution\" or extra == \"trendsspotter\")"
 files = [
     {file = "google_auth-2.38.0-py2.py3-none-any.whl", hash = "sha256:e7dae6694313f434a2727bf2906f27ad259bae090d7aa896590d86feec3d9d4a"},
     {file = "google_auth-2.38.0.tar.gz", hash = "sha256:8285113607d3b80a3f1543b75962447ba8a09fe85783432a784fdeef6ac094c4"},
@@ -2238,7 +2238,7 @@ description = "Google Authentication Library"
 optional = true
 python-versions = ">=3.6"
 groups = ["main"]
-markers = "extra == \"trendsspotter\" and (implementation_name == \"cpython\" or implementation_name == \"pypy\")"
+markers = "(implementation_name == \"cpython\" or implementation_name == \"pypy\") and extra == \"trendsspotter\""
 files = [
     {file = "google_auth_oauthlib-1.2.1-py2.py3-none-any.whl", hash = "sha256:2d58a27262d55aa1b87678c3ba7142a080098cbc2024f903c62355deb235d91f"},
     {file = "google_auth_oauthlib-1.2.1.tar.gz", hash = "sha256:afd0cad092a2eaa53cd8e8298557d6de1034c6cb4a740500b5357b648af97263"},
@@ -2258,7 +2258,7 @@ description = "Google Cloud API client core library"
 optional = true
 python-versions = ">=3.7"
 groups = ["main"]
-markers = "extra == \"trendsspotter\" and (implementation_name == \"cpython\" or implementation_name == \"pypy\")"
+markers = "(implementation_name == \"cpython\" or implementation_name == \"pypy\") and extra == \"trendsspotter\""
 files = [
     {file = "google_cloud_core-2.4.3-py2.py3-none-any.whl", hash = "sha256:5130f9f4c14b4fafdff75c79448f9495cfade0d8775facf1b09c3bf67e027f6e"},
     {file = "google_cloud_core-2.4.3.tar.gz", hash = "sha256:1fab62d7102844b278fe6dead3af32408b1df3eb06f5c7e8634cbd40edc4da53"},
@@ -2278,7 +2278,7 @@ description = "Google Cloud Kms API client library"
 optional = false
 python-versions = ">=3.7"
 groups = ["main"]
-markers = "extra == \"execution\" and (implementation_name == \"cpython\" or implementation_name == \"pypy\")"
+markers = "(implementation_name == \"cpython\" or implementation_name == \"pypy\") and extra == \"execution\""
 files = [
     {file = "google_cloud_kms-3.4.1-py3-none-any.whl", hash = "sha256:aeeff2095dd32ba7c5921785e1adca1eeab200d5c27f875eee5808a7e65075ce"},
     {file = "google_cloud_kms-3.4.1.tar.gz", hash = "sha256:f41a97dc1ed294080cd8b65a385bc73de3253c6f8fb673dc9de5969598596ea5"},
@@ -2298,7 +2298,7 @@ description = "Google Cloud Storage API client library"
 optional = true
 python-versions = ">=3.7"
 groups = ["main"]
-markers = "extra == \"trendsspotter\" and (implementation_name == \"cpython\" or implementation_name == \"pypy\")"
+markers = "(implementation_name == \"cpython\" or implementation_name == \"pypy\") and extra == \"trendsspotter\""
 files = [
     {file = "google_cloud_storage-2.19.0-py2.py3-none-any.whl", hash = "sha256:aeb971b5c29cf8ab98445082cbfe7b161a1f48ed275822f59ed3f1524ea54fba"},
     {file = "google_cloud_storage-2.19.0.tar.gz", hash = "sha256:cd05e9e7191ba6cb68934d8eb76054d9be4562aa89dbc4236feee4d7d51342b2"},
@@ -2323,7 +2323,7 @@ description = "A python wrapper of the C library 'Google CRC32C'"
 optional = true
 python-versions = ">=3.9"
 groups = ["main"]
-markers = "extra == \"trendsspotter\" and (implementation_name == \"cpython\" or implementation_name == \"pypy\")"
+markers = "(implementation_name == \"cpython\" or implementation_name == \"pypy\") and extra == \"trendsspotter\""
 files = [
     {file = "google_crc32c-1.7.0-cp310-cp310-macosx_12_0_arm64.whl", hash = "sha256:18f1dfc6baeb3b28b1537d54b3622363352f75fcb2d4b6ffcc37584fe431f122"},
     {file = "google_crc32c-1.7.0-cp310-cp310-macosx_12_0_x86_64.whl", hash = "sha256:732378dc4ca08953eac0d13d1c312d99a54d5b483c90b4a5a536132669ed1c24"},
@@ -2345,6 +2345,7 @@ files = [
     {file = "google_crc32c-1.7.0-cp313-cp313-macosx_12_0_x86_64.whl", hash = "sha256:6a40522958040051c755a173eb98c05ad4d64a6dd898888c3e5ccca2d1cbdcdc"},
     {file = "google_crc32c-1.7.0-cp313-cp313-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:f714fe5cdf5007d7064c57cf7471a99e0cbafda24ddfa829117fc3baafa424f7"},
     {file = "google_crc32c-1.7.0-cp313-cp313-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:f04e58dbe1bf0c9398e603a9be5aaa09e0ba7eb022a3293195d8749459a01069"},
+    {file = "google_crc32c-1.7.0-cp313-cp313-win_amd64.whl", hash = "sha256:e545b51ddf97f604d30114f7c23eecaf4c06cd6c023ff1ae0b80dcd99af32833"},
     {file = "google_crc32c-1.7.0-cp313-cp313t-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:364067b063664dd8d1fec75a3fe85edf05c46f688365269beccaf42ef5dfe889"},
     {file = "google_crc32c-1.7.0-cp313-cp313t-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:e1b0d6044799f6ac51d1cc2decb997280a83c448b3bef517a54b57a3b71921c0"},
     {file = "google_crc32c-1.7.0-cp39-cp39-macosx_12_0_arm64.whl", hash = "sha256:02bc3295d26cd7666521fd6d5b7b93923ae1eb4417ddd3bc57185a5881ad7b96"},
@@ -2370,7 +2371,7 @@ description = "Utilities for Google Media Downloads and Resumable Uploads"
 optional = true
 python-versions = ">=3.7"
 groups = ["main"]
-markers = "extra == \"trendsspotter\" and (implementation_name == \"cpython\" or implementation_name == \"pypy\")"
+markers = "(implementation_name == \"cpython\" or implementation_name == \"pypy\") and extra == \"trendsspotter\""
 files = [
     {file = "google_resumable_media-2.7.2-py2.py3-none-any.whl", hash = "sha256:3ce7551e9fe6d99e9a126101d2536612bb73486721951e9562fee0f90c6ababa"},
     {file = "google_resumable_media-2.7.2.tar.gz", hash = "sha256:5280aed4629f2b60b847b0d42f9857fd4935c11af266744df33d8074cae92fe0"},
@@ -2390,7 +2391,7 @@ description = "Common protobufs used in Google APIs"
 optional = false
 python-versions = ">=3.7"
 groups = ["main"]
-markers = "(extra == \"execution\" or extra == \"trendsspotter\") and (implementation_name == \"cpython\" or implementation_name == \"pypy\")"
+markers = "(implementation_name == \"cpython\" or implementation_name == \"pypy\") and (extra == \"execution\" or extra == \"trendsspotter\")"
 files = [
     {file = "googleapis_common_protos-1.69.2-py3-none-any.whl", hash = "sha256:0b30452ff9c7a27d80bfc5718954063e8ab53dd3697093d3bc99581f5fd24212"},
     {file = "googleapis_common_protos-1.69.2.tar.gz", hash = "sha256:3e1b904a27a33c821b4b749fd31d334c0c9c30e6113023d495e48979a3dc9c5f"},
@@ -2410,7 +2411,7 @@ description = "GraphQL client for Python"
 optional = false
 python-versions = "*"
 groups = ["main"]
-markers = "extra == \"execution\" and (implementation_name == \"cpython\" or implementation_name == \"pypy\")"
+markers = "(implementation_name == \"cpython\" or implementation_name == \"pypy\") and extra == \"execution\""
 files = [
     {file = "gql-3.5.2-py2.py3-none-any.whl", hash = "sha256:c830ffc38b3997b2a146317b27758305ab3d0da3bde607b49f34e32affb23ba2"},
     {file = "gql-3.5.2.tar.gz", hash = "sha256:07e1325b820c8ba9478e95de27ce9f23250486e7e79113dbb7659a442dc13e74"},
@@ -2442,7 +2443,7 @@ description = "GraphQL implementation for Python, a port of GraphQL.js, the Java
 optional = false
 python-versions = "<4,>=3.6"
 groups = ["main"]
-markers = "extra == \"execution\" and (implementation_name == \"cpython\" or implementation_name == \"pypy\")"
+markers = "(implementation_name == \"cpython\" or implementation_name == \"pypy\") and extra == \"execution\""
 files = [
     {file = "graphql-core-3.2.4.tar.gz", hash = "sha256:acbe2e800980d0e39b4685dd058c2f4042660b89ebca38af83020fd872ff1264"},
     {file = "graphql_core-3.2.4-py3-none-any.whl", hash = "sha256:1604f2042edc5f3114f49cac9d77e25863be51b23a54a61a23245cf32f6476f0"},
@@ -2455,7 +2456,7 @@ description = "IAM API client library"
 optional = false
 python-versions = ">=3.7"
 groups = ["main"]
-markers = "extra == \"execution\" and (implementation_name == \"cpython\" or implementation_name == \"pypy\")"
+markers = "(implementation_name == \"cpython\" or implementation_name == \"pypy\") and extra == \"execution\""
 files = [
     {file = "grpc_google_iam_v1-0.14.2-py3-none-any.whl", hash = "sha256:a3171468459770907926d56a440b2bb643eec1d7ba215f48f3ecece42b4d8351"},
     {file = "grpc_google_iam_v1-0.14.2.tar.gz", hash = "sha256:b3e1fc387a1a329e41672197d0ace9de22c78dd7d215048c4c78712073f7bd20"},
@@ -2473,7 +2474,7 @@ description = "HTTP/2-based RPC framework"
 optional = false
 python-versions = ">=3.9"
 groups = ["main"]
-markers = "extra == \"execution\" and (implementation_name == \"cpython\" or implementation_name == \"pypy\")"
+markers = "(implementation_name == \"cpython\" or implementation_name == \"pypy\") and extra == \"execution\""
 files = [
     {file = "grpcio-1.71.0-cp310-cp310-linux_armv7l.whl", hash = "sha256:c200cb6f2393468142eb50ab19613229dcc7829b5ccee8b658a36005f6669fdd"},
     {file = "grpcio-1.71.0-cp310-cp310-macosx_12_0_universal2.whl", hash = "sha256:b2266862c5ad664a380fbbcdbdb8289d71464c42a8c29053820ee78ba0119e5d"},
@@ -2538,7 +2539,7 @@ description = "Status proto mapping for gRPC"
 optional = false
 python-versions = ">=3.9"
 groups = ["main"]
-markers = "extra == \"execution\" and (implementation_name == \"cpython\" or implementation_name == \"pypy\")"
+markers = "(implementation_name == \"cpython\" or implementation_name == \"pypy\") and extra == \"execution\""
 files = [
     {file = "grpcio_status-1.71.0-py3-none-any.whl", hash = "sha256:843934ef8c09e3e858952887467f8256aac3910c55f077a359a65b2b3cde3e68"},
     {file = "grpcio_status-1.71.0.tar.gz", hash = "sha256:11405fed67b68f406b3f3c7c5ae5104a79d2d309666d10d61b152e91d28fb968"},
@@ -2569,7 +2570,7 @@ description = "hexbytes: Python `bytes` subclass that decodes hex, with a readab
 optional = false
 python-versions = ">=3.7, <4"
 groups = ["main"]
-markers = "extra == \"execution\" and (implementation_name == \"cpython\" or implementation_name == \"pypy\")"
+markers = "(implementation_name == \"cpython\" or implementation_name == \"pypy\") and extra == \"execution\""
 files = [
     {file = "hexbytes-0.3.1-py3-none-any.whl", hash = "sha256:383595ad75026cf00abd570f44b368c6cdac0c6becfae5c39ff88829877f8a59"},
     {file = "hexbytes-0.3.1.tar.gz", hash = "sha256:a3fe35c6831ee8fafd048c4c086b986075fc14fd46258fa24ecb8d65745f9a9d"},
@@ -2637,7 +2638,7 @@ description = "Human friendly output for text interfaces using Python"
 optional = true
 python-versions = ">=2.7, !=3.0.*, !=3.1.*, !=3.2.*, !=3.3.*, !=3.4.*"
 groups = ["main"]
-markers = "extra == \"execution\" and (implementation_name == \"cpython\" or implementation_name == \"pypy\")"
+markers = "(implementation_name == \"cpython\" or implementation_name == \"pypy\") and extra == \"execution\""
 files = [
     {file = "humanfriendly-10.0-py2.py3-none-any.whl", hash = "sha256:1697e1a8a8f550fd43c2865cd84542fc175a61dcb779b6fee18cf6b6ccba1477"},
     {file = "humanfriendly-10.0.tar.gz", hash = "sha256:6b0b831ce8f15f7300721aa49829fc4e83921a9a301cc7f606be6686a2288ddc"},
@@ -2653,7 +2654,7 @@ description = "Integrated process monitor for developing and reloading daemons."
 optional = false
 python-versions = ">=3.7"
 groups = ["main"]
-markers = "extra == \"web-server\" and (implementation_name == \"cpython\" or implementation_name == \"pypy\")"
+markers = "(implementation_name == \"cpython\" or implementation_name == \"pypy\") and extra == \"web-server\""
 files = [
     {file = "hupper-1.12.1-py3-none-any.whl", hash = "sha256:e872b959f09d90be5fb615bd2e62de89a0b57efc037bdf9637fb09cdf8552b19"},
     {file = "hupper-1.12.1.tar.gz", hash = "sha256:06bf54170ff4ecf4c84ad5f188dee3901173ab449c2608ad05b9bfd6b13e32eb"},
@@ -2790,7 +2791,7 @@ description = "Jupyter interactive widgets"
 optional = false
 python-versions = ">=3.7"
 groups = ["main"]
-markers = "extra == \"execution\" and (implementation_name == \"cpython\" or implementation_name == \"pypy\")"
+markers = "(implementation_name == \"cpython\" or implementation_name == \"pypy\") and extra == \"execution\""
 files = [
     {file = "ipywidgets-8.1.5-py3-none-any.whl", hash = "sha256:3290f526f87ae6e77655555baba4f36681c555b8bdbbff430b70e52c34c86245"},
     {file = "ipywidgets-8.1.5.tar.gz", hash = "sha256:870e43b1a35656a80c18c9503bbf2d16802db1cb487eec6fab27d683381dde17"},
@@ -2813,7 +2814,7 @@ description = "An ISO 8601 date/time/duration parser and formatter"
 optional = false
 python-versions = ">=3.7"
 groups = ["main"]
-markers = "extra == \"web-server\" and (implementation_name == \"cpython\" or implementation_name == \"pypy\")"
+markers = "(implementation_name == \"cpython\" or implementation_name == \"pypy\") and extra == \"web-server\""
 files = [
     {file = "isodate-0.7.2-py3-none-any.whl", hash = "sha256:28009937d8031054830160fce6d409ed342816b543597cece116d966c6d99e15"},
     {file = "isodate-0.7.2.tar.gz", hash = "sha256:4cd1aa0f43ca76f4a6c6c0292a85f40b35ec2e43e315b59f06e6d32171a953e6"},
@@ -2971,7 +2972,7 @@ description = "JSONSchema Spec with object-oriented paths"
 optional = false
 python-versions = "<4.0.0,>=3.8.0"
 groups = ["main"]
-markers = "extra == \"web-server\" and (implementation_name == \"cpython\" or implementation_name == \"pypy\")"
+markers = "(implementation_name == \"cpython\" or implementation_name == \"pypy\") and extra == \"web-server\""
 files = [
     {file = "jsonschema_path-0.3.4-py3-none-any.whl", hash = "sha256:f502191fdc2b22050f9a81c9237be9d27145b9001c55842bece5e94e382e52f8"},
     {file = "jsonschema_path-0.3.4.tar.gz", hash = "sha256:8365356039f16cc65fddffafda5f58766e34bebab7d6d105616ab52bc4297001"},
@@ -3006,7 +3007,7 @@ description = "Jupyter metapackage. Install all the Jupyter components in one go
 optional = false
 python-versions = "*"
 groups = ["main"]
-markers = "extra == \"execution\" and (implementation_name == \"cpython\" or implementation_name == \"pypy\")"
+markers = "(implementation_name == \"cpython\" or implementation_name == \"pypy\") and extra == \"execution\""
 files = [
     {file = "jupyter-1.1.1-py2.py3-none-any.whl", hash = "sha256:7a59533c22af65439b24bbe60373a4e95af8f16ac65a6c00820ad378e3f7cc83"},
     {file = "jupyter-1.1.1.tar.gz", hash = "sha256:d55467bceabdea49d7e3624af7e33d59c37fff53ed3a350e1ac957bed731de7a"},
@@ -3051,7 +3052,7 @@ description = "Jupyter terminal console"
 optional = false
 python-versions = ">=3.7"
 groups = ["main"]
-markers = "extra == \"execution\" and (implementation_name == \"cpython\" or implementation_name == \"pypy\")"
+markers = "(implementation_name == \"cpython\" or implementation_name == \"pypy\") and extra == \"execution\""
 files = [
     {file = "jupyter_console-6.6.3-py3-none-any.whl", hash = "sha256:309d33409fcc92ffdad25f0bcdf9a4a9daa61b6f341177570fdac03de5352485"},
     {file = "jupyter_console-6.6.3.tar.gz", hash = "sha256:566a4bf31c87adbfadf22cdf846e3069b59a71ed5da71d6ba4d8aaad14a53539"},
@@ -3277,7 +3278,7 @@ description = "Jupyter interactive widgets for JupyterLab"
 optional = false
 python-versions = ">=3.7"
 groups = ["main"]
-markers = "extra == \"execution\" and (implementation_name == \"cpython\" or implementation_name == \"pypy\")"
+markers = "(implementation_name == \"cpython\" or implementation_name == \"pypy\") and extra == \"execution\""
 files = [
     {file = "jupyterlab_widgets-3.0.13-py3-none-any.whl", hash = "sha256:e3cda2c233ce144192f1e29914ad522b2f4c40e77214b0cc97377ca3d323db54"},
     {file = "jupyterlab_widgets-3.0.13.tar.gz", hash = "sha256:a2966d385328c1942b683a8cd96b89b8dd82c8b8f81dda902bb2bc06d46f5bed"},
@@ -3398,7 +3399,7 @@ description = "A fast and thorough lazy object proxy."
 optional = false
 python-versions = ">=3.8"
 groups = ["main"]
-markers = "extra == \"web-server\" and (implementation_name == \"cpython\" or implementation_name == \"pypy\")"
+markers = "(implementation_name == \"cpython\" or implementation_name == \"pypy\") and extra == \"web-server\""
 files = [
     {file = "lazy-object-proxy-1.10.0.tar.gz", hash = "sha256:78247b6d45f43a52ef35c25b5581459e85117225408a4128a3daf8bf9648ac69"},
     {file = "lazy_object_proxy-1.10.0-cp310-cp310-macosx_10_9_x86_64.whl", hash = "sha256:855e068b0358ab916454464a884779c7ffa312b8925c6f7401e952dcf3b89977"},
@@ -3446,7 +3447,7 @@ description = "An Dict like LRU container."
 optional = false
 python-versions = "*"
 groups = ["main"]
-markers = "extra == \"execution\" and (implementation_name == \"cpython\" or implementation_name == \"pypy\")"
+markers = "(implementation_name == \"cpython\" or implementation_name == \"pypy\") and extra == \"execution\""
 files = [
     {file = "lru-dict-1.2.0.tar.gz", hash = "sha256:13c56782f19d68ddf4d8db0170041192859616514c706b126d0df2ec72a11bd7"},
     {file = "lru_dict-1.2.0-cp310-cp310-macosx_10_9_x86_64.whl", hash = "sha256:de906e5486b5c053d15b7731583c25e3c9147c288ac8152a6d1f9bccdec72641"},
@@ -3698,7 +3699,7 @@ description = "Python port of markdown-it. Markdown parsing, done right!"
 optional = false
 python-versions = ">=3.8"
 groups = ["main"]
-markers = "extra == \"execution\" and (implementation_name == \"cpython\" or implementation_name == \"pypy\")"
+markers = "(implementation_name == \"cpython\" or implementation_name == \"pypy\") and extra == \"execution\""
 files = [
     {file = "markdown-it-py-3.0.0.tar.gz", hash = "sha256:e3f60a94fa066dc52ec76661e37c851cb232d92f9886b15cb560aaada2df8feb"},
     {file = "markdown_it_py-3.0.0-py3-none-any.whl", hash = "sha256:355216845c60bd96232cd8d8c40e8f9765cc86f46880e43a8fd22dc1a1a8cab1"},
@@ -3892,7 +3893,7 @@ description = "Markdown URL utilities"
 optional = false
 python-versions = ">=3.7"
 groups = ["main"]
-markers = "extra == \"execution\" and (implementation_name == \"cpython\" or implementation_name == \"pypy\")"
+markers = "(implementation_name == \"cpython\" or implementation_name == \"pypy\") and extra == \"execution\""
 files = [
     {file = "mdurl-0.1.2-py3-none-any.whl", hash = "sha256:84008a41e51615a49fc9966191ff91509e3c40b939176e643fd50a5c2196b8f8"},
     {file = "mdurl-0.1.2.tar.gz", hash = "sha256:bb413d29f5eea38f31dd4754dd7377d4465116fb207585f97bf925588687c1ba"},
@@ -3918,7 +3919,7 @@ description = "More routines for operating on iterables, beyond itertools"
 optional = false
 python-versions = ">=3.9"
 groups = ["main"]
-markers = "extra == \"web-server\" and (implementation_name == \"cpython\" or implementation_name == \"pypy\")"
+markers = "(implementation_name == \"cpython\" or implementation_name == \"pypy\") and extra == \"web-server\""
 files = [
     {file = "more-itertools-10.6.0.tar.gz", hash = "sha256:2cd7fad1009c31cc9fb6a035108509e6547547a7a738374f10bd49a09eb3ee3b"},
     {file = "more_itertools-10.6.0-py3-none-any.whl", hash = "sha256:6eb054cb4b6db1473f6e15fcc676a08e4732548acd47c708f0e179c2c7c01e89"},
@@ -3931,7 +3932,7 @@ description = "A fast serialization and validation library, with builtin support
 optional = false
 python-versions = ">=3.9"
 groups = ["main"]
-markers = "extra == \"execution\" and (implementation_name == \"cpython\" or implementation_name == \"pypy\")"
+markers = "(implementation_name == \"cpython\" or implementation_name == \"pypy\") and extra == \"execution\""
 files = [
     {file = "msgspec-0.19.0-cp310-cp310-macosx_10_9_x86_64.whl", hash = "sha256:d8dd848ee7ca7c8153462557655570156c2be94e79acec3561cf379581343259"},
     {file = "msgspec-0.19.0-cp310-cp310-macosx_11_0_arm64.whl", hash = "sha256:0553bbc77662e5708fe66aa75e7bd3e4b0f209709c48b299afd791d711a93c36"},
@@ -3985,7 +3986,7 @@ description = "aggregate results from multiple ethereum contract calls"
 optional = false
 python-versions = "<4,>=3.8"
 groups = ["main"]
-markers = "extra == \"execution\" and (implementation_name == \"cpython\" or implementation_name == \"pypy\")"
+markers = "(implementation_name == \"cpython\" or implementation_name == \"pypy\") and extra == \"execution\""
 files = [
     {file = "multicall-0.9.3-py3-none-any.whl", hash = "sha256:bbe9e32f0338e61833ce38f94beeeb8e460b156decd3f75bd2cb9831fdd169c7"},
     {file = "multicall-0.9.3.tar.gz", hash = "sha256:fa4454be14b0eb3c37ec00511d506f5f7206e947d1b29faeaaa7c72683967e81"},
@@ -4003,7 +4004,7 @@ description = "multidict implementation"
 optional = false
 python-versions = ">=3.9"
 groups = ["main"]
-markers = "(extra == \"execution\" or extra == \"trendsspotter\") and (implementation_name == \"cpython\" or implementation_name == \"pypy\")"
+markers = "(implementation_name == \"cpython\" or implementation_name == \"pypy\") and (extra == \"execution\" or extra == \"trendsspotter\")"
 files = [
     {file = "multidict-6.2.0-cp310-cp310-macosx_10_9_universal2.whl", hash = "sha256:b9f6392d98c0bd70676ae41474e2eecf4c7150cb419237a41f8f96043fcb81d1"},
     {file = "multidict-6.2.0-cp310-cp310-macosx_10_9_x86_64.whl", hash = "sha256:3501621d5e86f1a88521ea65d5cad0a0834c77b26f193747615b7c911e5422d2"},
@@ -4230,7 +4231,7 @@ description = "Jupyter Notebook - A web-based notebook environment for interacti
 optional = false
 python-versions = ">=3.8"
 groups = ["main"]
-markers = "extra == \"execution\" and (implementation_name == \"cpython\" or implementation_name == \"pypy\")"
+markers = "(implementation_name == \"cpython\" or implementation_name == \"pypy\") and extra == \"execution\""
 files = [
     {file = "notebook-7.3.3-py3-none-any.whl", hash = "sha256:b193df0878956562d5171c8e25c9252b8e86c9fcc16163b8ee3fe6c5e3f422f7"},
     {file = "notebook-7.3.3.tar.gz", hash = "sha256:707a313fb882d35f921989eb3d204de942ed5132a44e4aa1fe0e8f24bb9dc25d"},
@@ -4321,7 +4322,7 @@ description = "A generic, spec-compliant, thorough implementation of the OAuth r
 optional = true
 python-versions = ">=3.6"
 groups = ["main"]
-markers = "extra == \"trendsspotter\" and (implementation_name == \"cpython\" or implementation_name == \"pypy\")"
+markers = "(implementation_name == \"cpython\" or implementation_name == \"pypy\") and extra == \"trendsspotter\""
 files = [
     {file = "oauthlib-3.2.2-py3-none-any.whl", hash = "sha256:8139f29aac13e25d502680e9e19963e83f16838d48a0d71c287fe40e7067fbca"},
     {file = "oauthlib-3.2.2.tar.gz", hash = "sha256:9859c40929662bec5d64f34d01c99e093149682a3f38915dc0655d5a633dd918"},
@@ -4339,7 +4340,7 @@ description = "client-side and server-side support for the OpenAPI Specification
 optional = false
 python-versions = "<4.0.0,>=3.8.0"
 groups = ["main"]
-markers = "extra == \"web-server\" and (implementation_name == \"cpython\" or implementation_name == \"pypy\")"
+markers = "(implementation_name == \"cpython\" or implementation_name == \"pypy\") and extra == \"web-server\""
 files = [
     {file = "openapi_core-0.19.1-py3-none-any.whl", hash = "sha256:a1eeb93d2a7e41a8c34ccebd55b180d1f73c5dddffbad657315746e955283cfc"},
     {file = "openapi_core-0.19.1.tar.gz", hash = "sha256:3facc2c87b7e9fb9909ae72bfb0b7cad20954e23fb4ef04dc5559197dee87597"},
@@ -4371,7 +4372,7 @@ description = "OpenAPI schema validation for Python"
 optional = false
 python-versions = "<4.0.0,>=3.8.0"
 groups = ["main"]
-markers = "extra == \"web-server\" and (implementation_name == \"cpython\" or implementation_name == \"pypy\")"
+markers = "(implementation_name == \"cpython\" or implementation_name == \"pypy\") and extra == \"web-server\""
 files = [
     {file = "openapi_schema_validator-0.6.3-py3-none-any.whl", hash = "sha256:f3b9870f4e556b5a62a1c39da72a6b4b16f3ad9c73dc80084b1b11e74ba148a3"},
     {file = "openapi_schema_validator-0.6.3.tar.gz", hash = "sha256:f37bace4fc2a5d96692f4f8b31dc0f8d7400fd04f3a937798eaf880d425de6ee"},
@@ -4389,7 +4390,7 @@ description = "OpenAPI 2.0 (aka Swagger) and OpenAPI 3 spec validator"
 optional = false
 python-versions = ">=3.8.0,<4.0.0"
 groups = ["main"]
-markers = "extra == \"web-server\" and (implementation_name == \"cpython\" or implementation_name == \"pypy\")"
+markers = "(implementation_name == \"cpython\" or implementation_name == \"pypy\") and extra == \"web-server\""
 files = [
     {file = "openapi_spec_validator-0.7.1-py3-none-any.whl", hash = "sha256:3c81825043f24ccbcd2f4b149b11e8231abce5ba84f37065e14ec947d8f4e959"},
     {file = "openapi_spec_validator-0.7.1.tar.gz", hash = "sha256:8577b85a8268685da6f8aa30990b83b7960d4d1117e901d451b5d572605e5ec7"},
@@ -4643,7 +4644,7 @@ description = "parse() is the opposite of format()"
 optional = false
 python-versions = "*"
 groups = ["main"]
-markers = "extra == \"web-server\" and (implementation_name == \"cpython\" or implementation_name == \"pypy\")"
+markers = "(implementation_name == \"cpython\" or implementation_name == \"pypy\") and extra == \"web-server\""
 files = [
     {file = "parse-1.20.2-py2.py3-none-any.whl", hash = "sha256:967095588cb802add9177d0c0b6133b5ba33b1ea9007ca800e526f42a85af558"},
     {file = "parse-1.20.2.tar.gz", hash = "sha256:b41d604d16503c79d81af5165155c0b20f6c8d6c559efa66b4b695c3e5a0a0ce"},
@@ -4656,7 +4657,7 @@ description = "(Soon to be) the fastest pure-Python PEG parser I could muster"
 optional = false
 python-versions = "*"
 groups = ["main"]
-markers = "extra == \"execution\" and (implementation_name == \"cpython\" or implementation_name == \"pypy\")"
+markers = "(implementation_name == \"cpython\" or implementation_name == \"pypy\") and extra == \"execution\""
 files = [
     {file = "parsimonious-0.10.0-py3-none-any.whl", hash = "sha256:982ab435fabe86519b57f6b35610aa4e4e977e9f02a14353edf4bbc75369fc0f"},
     {file = "parsimonious-0.10.0.tar.gz", hash = "sha256:8281600da180ec8ae35427a4ab4f7b82bfec1e3d1e52f80cb60ea82b9512501c"},
@@ -4689,7 +4690,7 @@ description = "Load, configure, and compose WSGI applications and servers"
 optional = false
 python-versions = ">=3.7"
 groups = ["main"]
-markers = "extra == \"web-server\" and (implementation_name == \"cpython\" or implementation_name == \"pypy\")"
+markers = "(implementation_name == \"cpython\" or implementation_name == \"pypy\") and extra == \"web-server\""
 files = [
     {file = "PasteDeploy-3.1.0-py3-none-any.whl", hash = "sha256:76388ad53a661448d436df28c798063108f70e994ddc749540d733cdbd1b38cf"},
     {file = "PasteDeploy-3.1.0.tar.gz", hash = "sha256:9ddbaf152f8095438a9fe81f82c78a6714b92ae8e066bed418b6a7ff6a095a95"},
@@ -4707,7 +4708,7 @@ description = "Object-oriented paths"
 optional = false
 python-versions = "<4.0.0,>=3.7.0"
 groups = ["main"]
-markers = "extra == \"web-server\" and (implementation_name == \"cpython\" or implementation_name == \"pypy\")"
+markers = "(implementation_name == \"cpython\" or implementation_name == \"pypy\") and extra == \"web-server\""
 files = [
     {file = "pathable-0.4.4-py3-none-any.whl", hash = "sha256:5ae9e94793b6ef5a4cbe0a7ce9dbbefc1eec38df253763fd0aeeacf2762dbbc2"},
     {file = "pathable-0.4.4.tar.gz", hash = "sha256:6905a3cd17804edfac7875b5f6c9142a218c7caef78693c2dbbbfbac186d88b2"},
@@ -4751,7 +4752,7 @@ description = "Pexpect allows easy control of interactive console applications."
 optional = false
 python-versions = "*"
 groups = ["main", "dev"]
-markers = "sys_platform != \"win32\" and sys_platform != \"emscripten\" and (implementation_name == \"cpython\" or implementation_name == \"pypy\")"
+markers = "(implementation_name == \"cpython\" or implementation_name == \"pypy\") and sys_platform != \"win32\" and sys_platform != \"emscripten\""
 files = [
     {file = "pexpect-4.9.0-py2.py3-none-any.whl", hash = "sha256:7236d1e080e4936be2dc3e326cec0af72acf9212a7e1d060210e70a47e253523"},
     {file = "pexpect-4.9.0.tar.gz", hash = "sha256:ee7d41123f3c9911050ea2c2dac107568dc43b2d3b0c7557a33212c398ead30f"},
@@ -4857,7 +4858,7 @@ description = "A loader interface around multiple config file formats."
 optional = false
 python-versions = ">=3.7"
 groups = ["main"]
-markers = "extra == \"web-server\" and (implementation_name == \"cpython\" or implementation_name == \"pypy\")"
+markers = "(implementation_name == \"cpython\" or implementation_name == \"pypy\") and extra == \"web-server\""
 files = [
     {file = "plaster-1.1.2-py2.py3-none-any.whl", hash = "sha256:42992ab1f4865f1278e2ad740e8ad145683bb4022e03534265528f0c23c0df2d"},
     {file = "plaster-1.1.2.tar.gz", hash = "sha256:f8befc54bf8c1147c10ab40297ec84c2676fa2d4ea5d6f524d9436a80074ef98"},
@@ -4874,7 +4875,7 @@ description = "A loader implementing the PasteDeploy syntax to be used by plaste
 optional = false
 python-versions = ">=3.7"
 groups = ["main"]
-markers = "extra == \"web-server\" and (implementation_name == \"cpython\" or implementation_name == \"pypy\")"
+markers = "(implementation_name == \"cpython\" or implementation_name == \"pypy\") and extra == \"web-server\""
 files = [
     {file = "plaster_pastedeploy-1.0.1-py2.py3-none-any.whl", hash = "sha256:ad3550cc744648969ed3b810f33c9344f515ee8d8a8cec18e8f2c4a643c2181f"},
     {file = "plaster_pastedeploy-1.0.1.tar.gz", hash = "sha256:be262e6d2e41a7264875daa2fe2850cbb0615728bcdc92828fdc72736e381412"},
@@ -4978,7 +4979,7 @@ description = "Accelerated property cache"
 optional = false
 python-versions = ">=3.9"
 groups = ["main"]
-markers = "(extra == \"execution\" or extra == \"trendsspotter\") and (implementation_name == \"cpython\" or implementation_name == \"pypy\")"
+markers = "(implementation_name == \"cpython\" or implementation_name == \"pypy\") and (extra == \"execution\" or extra == \"trendsspotter\")"
 files = [
     {file = "propcache-0.3.0-cp310-cp310-macosx_10_9_universal2.whl", hash = "sha256:efa44f64c37cc30c9f05932c740a8b40ce359f51882c70883cc95feac842da4d"},
     {file = "propcache-0.3.0-cp310-cp310-macosx_10_9_x86_64.whl", hash = "sha256:2383a17385d9800b6eb5855c2f05ee550f803878f344f58b6e194de08b96352c"},
@@ -5087,7 +5088,7 @@ description = "Beautiful, Pythonic protocol buffers"
 optional = false
 python-versions = ">=3.7"
 groups = ["main"]
-markers = "(extra == \"execution\" or extra == \"trendsspotter\") and (implementation_name == \"cpython\" or implementation_name == \"pypy\")"
+markers = "(implementation_name == \"cpython\" or implementation_name == \"pypy\") and (extra == \"execution\" or extra == \"trendsspotter\")"
 files = [
     {file = "proto_plus-1.26.1-py3-none-any.whl", hash = "sha256:13285478c2dcf2abb829db158e1047e2f1e8d63a077d94263c2b88b043c75a66"},
     {file = "proto_plus-1.26.1.tar.gz", hash = "sha256:21a515a4c4c0088a773899e23c7bbade3d18f9c66c73edd4c7ee3816bc96a012"},
@@ -5106,7 +5107,7 @@ description = ""
 optional = false
 python-versions = ">=3.8"
 groups = ["main"]
-markers = "(extra == \"execution\" or extra == \"trendsspotter\") and (implementation_name == \"cpython\" or implementation_name == \"pypy\")"
+markers = "(implementation_name == \"cpython\" or implementation_name == \"pypy\") and (extra == \"execution\" or extra == \"trendsspotter\")"
 files = [
     {file = "protobuf-5.29.4-cp310-abi3-win32.whl", hash = "sha256:13eb236f8eb9ec34e63fc8b1d6efd2777d062fa6aaa68268fb67cf77f6839ad7"},
     {file = "protobuf-5.29.4-cp310-abi3-win_amd64.whl", hash = "sha256:bcefcdf3976233f8a502d265eb65ea740c989bacc6c30a58290ed0e519eb4b8d"},
@@ -5162,7 +5163,7 @@ files = [
     {file = "ptyprocess-0.7.0-py2.py3-none-any.whl", hash = "sha256:4b41f3967fce3af57cc7e94b888626c18bf37a083e3651ca8feeb66d492fef35"},
     {file = "ptyprocess-0.7.0.tar.gz", hash = "sha256:5c5d0a3b48ceee0b48485e0c26037c0acd7d29765ca3fbb5cb3831d347423220"},
 ]
-markers = {main = "(sys_platform != \"win32\" and sys_platform != \"emscripten\" or os_name != \"nt\") and (implementation_name == \"cpython\" or implementation_name == \"pypy\")", dev = "sys_platform != \"win32\" and sys_platform != \"emscripten\" and (implementation_name == \"cpython\" or implementation_name == \"pypy\")"}
+markers = {main = "(implementation_name == \"cpython\" or implementation_name == \"pypy\") and (sys_platform != \"win32\" and sys_platform != \"emscripten\" or os_name != \"nt\")", dev = "(implementation_name == \"cpython\" or implementation_name == \"pypy\") and sys_platform != \"win32\" and sys_platform != \"emscripten\""}
 
 [[package]]
 name = "pure-eval"
@@ -5187,7 +5188,7 @@ description = "Elliptic curve crypto in python including secp256k1 and alt_bn128
 optional = false
 python-versions = ">=3.6, <4"
 groups = ["main"]
-markers = "extra == \"execution\" and (implementation_name == \"cpython\" or implementation_name == \"pypy\")"
+markers = "(implementation_name == \"cpython\" or implementation_name == \"pypy\") and extra == \"execution\""
 files = [
     {file = "py_ecc-6.0.0-py3-none-any.whl", hash = "sha256:54e8aa4c30374fa62d582c599a99f352c153f2971352171318bd6910a643be0b"},
     {file = "py_ecc-6.0.0.tar.gz", hash = "sha256:3fc8a79e38975e05dc443d25783fd69212a1ca854cc0efef071301a8f7d6ce1d"},
@@ -5211,7 +5212,7 @@ description = "Python implementation of the Ethereum Virtual Machine"
 optional = false
 python-versions = "*"
 groups = ["main"]
-markers = "extra == \"execution\" and (implementation_name == \"cpython\" or implementation_name == \"pypy\")"
+markers = "(implementation_name == \"cpython\" or implementation_name == \"pypy\") and extra == \"execution\""
 files = [
     {file = "py-evm-0.7.0a4.tar.gz", hash = "sha256:d40b6ac950485111dc7ad7bd29e3f61e00d5f81dc919e8c2b3afca30f228dc05"},
     {file = "py_evm-0.7.0a4-py3-none-any.whl", hash = "sha256:1bf7b293faa70c03727358ae3e5cb0abf7282391461d9b52b82decd6ed18c2f7"},
@@ -5246,7 +5247,7 @@ description = "py-geth: Run Go-Ethereum as a subprocess"
 optional = false
 python-versions = "<4,>=3.8"
 groups = ["main"]
-markers = "extra == \"execution\" and (implementation_name == \"cpython\" or implementation_name == \"pypy\")"
+markers = "(implementation_name == \"cpython\" or implementation_name == \"pypy\") and extra == \"execution\""
 files = [
     {file = "py_geth-5.3.0-py3-none-any.whl", hash = "sha256:7b7aa1765aaeb1cf2e8ced50a4128e55027a992134d187ed6e9624bac17a05cd"},
     {file = "py_geth-5.3.0.tar.gz", hash = "sha256:ad04b204d8ea964effc441b10ab08056d003751b5595c45a0b983c69b38dc39f"},
@@ -5343,7 +5344,7 @@ description = "Pure-Python implementation of ASN.1 types and DER/BER/CER codecs 
 optional = false
 python-versions = ">=3.8"
 groups = ["main"]
-markers = "(extra == \"execution\" or extra == \"trendsspotter\") and (implementation_name == \"cpython\" or implementation_name == \"pypy\")"
+markers = "(implementation_name == \"cpython\" or implementation_name == \"pypy\") and (extra == \"execution\" or extra == \"trendsspotter\")"
 files = [
     {file = "pyasn1-0.6.1-py3-none-any.whl", hash = "sha256:0d632f46f2ba09143da3a8afe9e33fb6f92fa2320ab7e886e2d0f7672af84629"},
     {file = "pyasn1-0.6.1.tar.gz", hash = "sha256:6f580d2bdd84365380830acf45550f2511469f673cb4a5ae3857a3170128b034"},
@@ -5356,7 +5357,7 @@ description = "A collection of ASN.1-based protocols modules"
 optional = false
 python-versions = ">=3.8"
 groups = ["main"]
-markers = "(extra == \"execution\" or extra == \"trendsspotter\") and (implementation_name == \"cpython\" or implementation_name == \"pypy\")"
+markers = "(implementation_name == \"cpython\" or implementation_name == \"pypy\") and (extra == \"execution\" or extra == \"trendsspotter\")"
 files = [
     {file = "pyasn1_modules-0.4.1-py3-none-any.whl", hash = "sha256:49bfa96b45a292b711e986f222502c1c9a5e1f4e568fc30e2574a6c7d07838fd"},
     {file = "pyasn1_modules-0.4.1.tar.gz", hash = "sha256:c28e2dbf9c06ad61c71a075c7e0f9fd0f1b0bb2d2ad4377f240d33ac2ab60a7c"},
@@ -5385,7 +5386,7 @@ description = "Cryptographic library for Python"
 optional = false
 python-versions = "!=3.0.*,!=3.1.*,!=3.2.*,!=3.3.*,!=3.4.*,!=3.5.*,!=3.6.*,>=2.7"
 groups = ["main"]
-markers = "extra == \"execution\" and (implementation_name == \"cpython\" or implementation_name == \"pypy\")"
+markers = "(implementation_name == \"cpython\" or implementation_name == \"pypy\") and extra == \"execution\""
 files = [
     {file = "pycryptodome-3.22.0-cp27-cp27m-macosx_10_9_x86_64.whl", hash = "sha256:96e73527c9185a3d9b4c6d1cfb4494f6ced418573150be170f6580cb975a7f5a"},
     {file = "pycryptodome-3.22.0-cp27-cp27m-manylinux2010_i686.whl", hash = "sha256:9e1bb165ea1dc83a11e5dbbe00ef2c378d148f3a2d3834fb5ba4e0f6fd0afe4b"},
@@ -5425,7 +5426,7 @@ description = "Data validation using Python type hints"
 optional = false
 python-versions = ">=3.8"
 groups = ["main"]
-markers = "extra == \"execution\" and (implementation_name == \"cpython\" or implementation_name == \"pypy\")"
+markers = "(implementation_name == \"cpython\" or implementation_name == \"pypy\") and extra == \"execution\""
 files = [
     {file = "pydantic-2.10.6-py3-none-any.whl", hash = "sha256:427d664bf0b8a2b34ff5dd0f5a18df00591adcee7198fbd71981054cef37b584"},
     {file = "pydantic-2.10.6.tar.gz", hash = "sha256:ca5daa827cce33de7a42be142548b0096bf05a7e7b365aebfa5f8eeec7128236"},
@@ -5447,7 +5448,7 @@ description = "Core functionality for Pydantic validation and serialization"
 optional = false
 python-versions = ">=3.8"
 groups = ["main"]
-markers = "extra == \"execution\" and (implementation_name == \"cpython\" or implementation_name == \"pypy\")"
+markers = "(implementation_name == \"cpython\" or implementation_name == \"pypy\") and extra == \"execution\""
 files = [
     {file = "pydantic_core-2.27.2-cp310-cp310-macosx_10_12_x86_64.whl", hash = "sha256:2d367ca20b2f14095a8f4fa1210f5a7b78b8a20009ecced6b12818f455b1e9fa"},
     {file = "pydantic_core-2.27.2-cp310-cp310-macosx_11_0_arm64.whl", hash = "sha256:491a2b73db93fab69731eaee494f320faa4e093dbed776be1a829c2eb222c34c"},
@@ -5561,7 +5562,7 @@ description = "Settings management using Pydantic"
 optional = false
 python-versions = ">=3.8"
 groups = ["main"]
-markers = "extra == \"execution\" and (implementation_name == \"cpython\" or implementation_name == \"pypy\")"
+markers = "(implementation_name == \"cpython\" or implementation_name == \"pypy\") and extra == \"execution\""
 files = [
     {file = "pydantic_settings-2.8.1-py3-none-any.whl", hash = "sha256:81942d5ac3d905f7f3ee1a70df5dfb62d5569c12f51a5a647defc1c3d9ee2e9c"},
     {file = "pydantic_settings-2.8.1.tar.gz", hash = "sha256:d5c663dfbe9db9d5e1c646b2e161da12f0d734d422ee56f567d0ea2cee4e8585"},
@@ -5583,7 +5584,7 @@ description = "Python wrappers for ethash, the ethereum proof of workhashing fun
 optional = false
 python-versions = "*"
 groups = ["main"]
-markers = "extra == \"execution\" and (implementation_name == \"cpython\" or implementation_name == \"pypy\")"
+markers = "(implementation_name == \"cpython\" or implementation_name == \"pypy\") and extra == \"execution\""
 files = [
     {file = "pyethash-0.1.27.tar.gz", hash = "sha256:ff66319ce26b9d77df1f610942634dac9742e216f2c27b051c0a2c2dec9c2818"},
 ]
@@ -5627,7 +5628,7 @@ description = "The Pyramid Web Framework, a Pylons project"
 optional = false
 python-versions = ">=3.6"
 groups = ["main"]
-markers = "extra == \"web-server\" and (implementation_name == \"cpython\" or implementation_name == \"pypy\")"
+markers = "(implementation_name == \"cpython\" or implementation_name == \"pypy\") and extra == \"web-server\""
 files = [
     {file = "pyramid-2.0.2-py3-none-any.whl", hash = "sha256:2e6585ac55c147f0a51bc00dadf72075b3bdd9a871b332ff9e5e04117ccd76fa"},
     {file = "pyramid-2.0.2.tar.gz", hash = "sha256:372138a738e4216535cc76dcce6eddd5a1aaca95130f2354fb834264c06f18de"},
@@ -5655,7 +5656,7 @@ description = "Pyramid addon for OpenAPI3 validation of requests and responses."
 optional = false
 python-versions = "<4.0,>=3.10"
 groups = ["main"]
-markers = "extra == \"web-server\" and (implementation_name == \"cpython\" or implementation_name == \"pypy\")"
+markers = "(implementation_name == \"cpython\" or implementation_name == \"pypy\") and extra == \"web-server\""
 files = [
     {file = "pyramid_openapi3-0.20.1-py3-none-any.whl", hash = "sha256:3c239e60b51bc0b6d09108c40925fdf950edffaf0bf916daceaf021399d2c70f"},
     {file = "pyramid_openapi3-0.20.1.tar.gz", hash = "sha256:28c4cfb86e14735a23520a9fd30afd3b5e7248154d519a0b552521d6780c8291"},
@@ -5672,7 +5673,7 @@ description = "A python implementation of GNU readline."
 optional = true
 python-versions = ">=3.8"
 groups = ["main"]
-markers = "sys_platform == \"win32\" and extra == \"execution\" and (implementation_name == \"cpython\" or implementation_name == \"pypy\")"
+markers = "(implementation_name == \"cpython\" or implementation_name == \"pypy\") and sys_platform == \"win32\" and extra == \"execution\""
 files = [
     {file = "pyreadline3-3.5.4-py3-none-any.whl", hash = "sha256:eaf8e6cc3c49bcccf145fc6067ba8643d1df34d604a1ec0eccbf7a18e6d3fae6"},
     {file = "pyreadline3-3.5.4.tar.gz", hash = "sha256:8d57d53039a1c75adba8e50dd3d992b28143480816187ea5efbd5c78e6c885b7"},
@@ -5761,7 +5762,7 @@ description = "pytest xdist plugin for distributed testing, most importantly acr
 optional = false
 python-versions = ">=3.8"
 groups = ["main"]
-markers = "extra == \"execution\" and (implementation_name == \"cpython\" or implementation_name == \"pypy\")"
+markers = "(implementation_name == \"cpython\" or implementation_name == \"pypy\") and extra == \"execution\""
 files = [
     {file = "pytest_xdist-3.6.1-py3-none-any.whl", hash = "sha256:9ed4adfb68a016610848639bb7e02c9352d5d9f03d04809919e2dafc3be4cca7"},
     {file = "pytest_xdist-3.6.1.tar.gz", hash = "sha256:ead156a4db231eec769737f57668ef58a2084a34b2e55c4a8fa20d861107300d"},
@@ -5799,7 +5800,7 @@ description = "Read key-value pairs from a .env file and set them as environment
 optional = false
 python-versions = ">=3.7"
 groups = ["main"]
-markers = "extra == \"execution\" and (implementation_name == \"cpython\" or implementation_name == \"pypy\")"
+markers = "(implementation_name == \"cpython\" or implementation_name == \"pypy\") and extra == \"execution\""
 files = [
     {file = "python-dotenv-0.21.1.tar.gz", hash = "sha256:1c93de8f636cde3ce377292818d0e440b6e45a82f215c3744979151fa8151c49"},
     {file = "python_dotenv-0.21.1-py3-none-any.whl", hash = "sha256:41e12e0318bebc859fcc4d97d4db8d20ad21721a6aa5047dd59f090391cb549a"},
@@ -5831,7 +5832,7 @@ description = "Discord handler for Python logging framework"
 optional = true
 python-versions = "<4.0,>=3.8"
 groups = ["main"]
-markers = "extra == \"execution\" and (implementation_name == \"cpython\" or implementation_name == \"pypy\")"
+markers = "(implementation_name == \"cpython\" or implementation_name == \"pypy\") and extra == \"execution\""
 files = [
     {file = "python_logging_discord_handler-0.1.5-py3-none-any.whl", hash = "sha256:288fa85d6a7166f8eb655d05a6078f813ac58d02bf9b6767336d34a6612376ff"},
     {file = "python_logging_discord_handler-0.1.5.tar.gz", hash = "sha256:b014fa0de710843baa6b156cc6edf546bf36762a5f293b5f08b2e52edc723c72"},
@@ -5850,7 +5851,7 @@ description = "Python logging handler for Logstash (forked)"
 optional = false
 python-versions = "*"
 groups = ["main"]
-markers = "extra == \"execution\" and (implementation_name == \"cpython\" or implementation_name == \"pypy\")"
+markers = "(implementation_name == \"cpython\" or implementation_name == \"pypy\") and extra == \"execution\""
 files = [
     {file = "python-logstash-tradingstrategy-0.5.1.tar.gz", hash = "sha256:f98b43ac53adaef0bd4e1da84d2c2ab8e8ceebba76b412a9d63c89c1ea9207a4"},
 ]
@@ -5875,7 +5876,7 @@ description = "Unicode normalization forms (NFC, NFKC, NFD, NFKD). A library ind
 optional = false
 python-versions = ">=3.6"
 groups = ["main"]
-markers = "extra == \"execution\" and (implementation_name == \"cpython\" or implementation_name == \"pypy\")"
+markers = "(implementation_name == \"cpython\" or implementation_name == \"pypy\") and extra == \"execution\""
 files = [
     {file = "pyunormalize-16.0.0-py3-none-any.whl", hash = "sha256:c647d95e5d1e2ea9a2f448d1d95d8518348df24eab5c3fd32d2b5c3300a49152"},
     {file = "pyunormalize-16.0.0.tar.gz", hash = "sha256:2e1dfbb4a118154ae26f70710426a52a364b926c9191f764601f5a8cb12761f7"},
@@ -5888,7 +5889,7 @@ description = "Python for Window Extensions"
 optional = false
 python-versions = "*"
 groups = ["main"]
-markers = "(sys_platform == \"win32\" and platform_python_implementation != \"PyPy\" or extra == \"execution\" and platform_system == \"Windows\") and (implementation_name == \"cpython\" or implementation_name == \"pypy\")"
+markers = "(implementation_name == \"cpython\" or implementation_name == \"pypy\") and (sys_platform == \"win32\" and platform_python_implementation != \"PyPy\" or extra == \"execution\" and platform_system == \"Windows\")"
 files = [
     {file = "pywin32-310-cp310-cp310-win32.whl", hash = "sha256:6dd97011efc8bf51d6793a82292419eba2c71cf8e7250cfac03bba284454abc1"},
     {file = "pywin32-310-cp310-cp310-win_amd64.whl", hash = "sha256:c3e78706e4229b915a0821941a84e7ef420bf2b77e08c9dae3c76fd03fd2ae3d"},
@@ -5915,7 +5916,7 @@ description = "Pseudo terminal support for Windows from Python."
 optional = false
 python-versions = ">=3.9"
 groups = ["main"]
-markers = "os_name == \"nt\" and (implementation_name == \"cpython\" or implementation_name == \"pypy\")"
+markers = "(implementation_name == \"cpython\" or implementation_name == \"pypy\") and os_name == \"nt\""
 files = [
     {file = "pywinpty-2.0.15-cp310-cp310-win_amd64.whl", hash = "sha256:8e7f5de756a615a38b96cd86fa3cd65f901ce54ce147a3179c45907fa11b4c4e"},
     {file = "pywinpty-2.0.15-cp311-cp311-win_amd64.whl", hash = "sha256:9a6bcec2df2707aaa9d08b86071970ee32c5026e10bcc3cc5f6f391d85baf7ca"},
@@ -6145,7 +6146,7 @@ description = "Alternative regular expression module, to replace re."
 optional = false
 python-versions = ">=3.8"
 groups = ["main"]
-markers = "extra == \"execution\" and (implementation_name == \"cpython\" or implementation_name == \"pypy\")"
+markers = "(implementation_name == \"cpython\" or implementation_name == \"pypy\") and extra == \"execution\""
 files = [
     {file = "regex-2024.11.6-cp310-cp310-macosx_10_9_universal2.whl", hash = "sha256:ff590880083d60acc0433f9c3f713c51f7ac6ebb9adf889c79a261ecf541aa91"},
     {file = "regex-2024.11.6-cp310-cp310-macosx_10_9_x86_64.whl", hash = "sha256:658f90550f38270639e83ce492f27d2c8d2cd63805c65a13a14d36ca126753f0"},
@@ -6273,7 +6274,7 @@ description = "OAuthlib authentication support for Requests."
 optional = true
 python-versions = ">=3.4"
 groups = ["main"]
-markers = "extra == \"trendsspotter\" and (implementation_name == \"cpython\" or implementation_name == \"pypy\")"
+markers = "(implementation_name == \"cpython\" or implementation_name == \"pypy\") and extra == \"trendsspotter\""
 files = [
     {file = "requests-oauthlib-2.0.0.tar.gz", hash = "sha256:b3dffaebd884d8cd778494369603a9e7b58d29111bf6b41bdc2dcd87203af4e9"},
     {file = "requests_oauthlib-2.0.0-py2.py3-none-any.whl", hash = "sha256:7dd8a5c40426b779b0868c404bdef9768deccf22749cde15852df527e6269b36"},
@@ -6293,7 +6294,7 @@ description = "A utility belt for advanced users of python-requests"
 optional = false
 python-versions = ">=2.7, !=3.0.*, !=3.1.*, !=3.2.*, !=3.3.*"
 groups = ["main"]
-markers = "extra == \"execution\" and (implementation_name == \"cpython\" or implementation_name == \"pypy\")"
+markers = "(implementation_name == \"cpython\" or implementation_name == \"pypy\") and extra == \"execution\""
 files = [
     {file = "requests-toolbelt-1.0.0.tar.gz", hash = "sha256:7681a0a3d047012b5bdc0ee37d7f8f07ebe76ab08caeccfc3921ce23c88d5bc6"},
     {file = "requests_toolbelt-1.0.0-py2.py3-none-any.whl", hash = "sha256:cccfdd665f0a24fcf4726e690f65639d272bb0637b9b92dfd91a5568ccf6bd06"},
@@ -6338,7 +6339,7 @@ description = "Render rich text, tables, progress bars, syntax highlighting, mar
 optional = false
 python-versions = ">=3.8.0"
 groups = ["main"]
-markers = "extra == \"execution\" and (implementation_name == \"cpython\" or implementation_name == \"pypy\")"
+markers = "(implementation_name == \"cpython\" or implementation_name == \"pypy\") and extra == \"execution\""
 files = [
     {file = "rich-13.9.4-py3-none-any.whl", hash = "sha256:6049d5e6ec054bf2779ab3358186963bac2ea89175919d699e378b99738c2a90"},
     {file = "rich-13.9.4.tar.gz", hash = "sha256:439594978a49a09530cff7ebc4b5c7103ef57baf48d5ea3184f21d9a2befa098"},
@@ -6358,7 +6359,7 @@ description = "A package for Recursive Length Prefix encoding and decoding"
 optional = false
 python-versions = "*"
 groups = ["main"]
-markers = "extra == \"execution\" and (implementation_name == \"cpython\" or implementation_name == \"pypy\")"
+markers = "(implementation_name == \"cpython\" or implementation_name == \"pypy\") and extra == \"execution\""
 files = [
     {file = "rlp-3.0.0-py2.py3-none-any.whl", hash = "sha256:d2a963225b3f26795c5b52310e0871df9824af56823d739511583ef459895a7d"},
     {file = "rlp-3.0.0.tar.gz", hash = "sha256:63b0465d2948cd9f01de449d7adfb92d207c1aef3982f20310f8009be4a507e8"},
@@ -6495,7 +6496,7 @@ description = "Pure-Python RSA implementation"
 optional = false
 python-versions = ">=3.6,<4"
 groups = ["main"]
-markers = "(extra == \"execution\" or extra == \"trendsspotter\") and (implementation_name == \"cpython\" or implementation_name == \"pypy\")"
+markers = "(implementation_name == \"cpython\" or implementation_name == \"pypy\") and (extra == \"execution\" or extra == \"trendsspotter\")"
 files = [
     {file = "rsa-4.9-py3-none-any.whl", hash = "sha256:90260d9058e514786967344d0ef75fa8727eed8a7d2e43ce9f4bcf1b536174f7"},
     {file = "rsa-4.9.tar.gz", hash = "sha256:e38464a49c6c85d7f1351b0126661487a7e0a14a50f1675ec50eb34d4f20ef21"},
@@ -6511,7 +6512,7 @@ description = "Safe Ecosystem Foundation utilities for Ethereum projects"
 optional = false
 python-versions = ">=3.10"
 groups = ["main"]
-markers = "extra == \"execution\" and (implementation_name == \"cpython\" or implementation_name == \"pypy\")"
+markers = "(implementation_name == \"cpython\" or implementation_name == \"pypy\") and extra == \"execution\""
 files = [
     {file = "safe_eth_py-6.0.0b42-py3-none-any.whl", hash = "sha256:dd7e57bd9c817ac25b241aeae5c5ccf201af0a7e21b6d9c0a6b2b1ded382457e"},
     {file = "safe_eth_py-6.0.0b42.tar.gz", hash = "sha256:425c7f630b20576871434c720dd07eff7fdab4a7438b7614c35582500220fb0d"},
@@ -6534,7 +6535,7 @@ description = "SHA-3 (Keccak) for Python 3.9 - 3.11"
 optional = false
 python-versions = "*"
 groups = ["main"]
-markers = "extra == \"execution\" and (implementation_name == \"cpython\" or implementation_name == \"pypy\")"
+markers = "(implementation_name == \"cpython\" or implementation_name == \"pypy\") and extra == \"execution\""
 files = [
     {file = "safe-pysha3-1.0.4.tar.gz", hash = "sha256:e429146b1edd198b2ca934a2046a65656c5d31b0ec894bbd6055127f4deaff17"},
 ]
@@ -6716,7 +6717,7 @@ description = "A library implementing the 'SemVer' scheme."
 optional = false
 python-versions = ">=2.7"
 groups = ["main"]
-markers = "extra == \"execution\" and (implementation_name == \"cpython\" or implementation_name == \"pypy\")"
+markers = "(implementation_name == \"cpython\" or implementation_name == \"pypy\") and extra == \"execution\""
 files = [
     {file = "semantic_version-2.10.0-py2.py3-none-any.whl", hash = "sha256:de78a3b8e0feda74cabc54aab2da702113e33ac9d9eb9d2389bcf1f58b7d9177"},
     {file = "semantic_version-2.10.0.tar.gz", hash = "sha256:bdabb6d336998cbb378d4b9db3a4b56a1e3235701dc05ea2690d9a997ed5041c"},
@@ -6745,6 +6746,64 @@ objc = ["pyobjc-framework-Cocoa ; sys_platform == \"darwin\""]
 win32 = ["pywin32 ; sys_platform == \"win32\""]
 
 [[package]]
+name = "sentry-sdk"
+version = "2.29.1"
+description = "Python client for Sentry (https://sentry.io)"
+optional = true
+python-versions = ">=3.6"
+groups = ["main"]
+markers = "(implementation_name == \"cpython\" or implementation_name == \"pypy\") and extra == \"execution\""
+files = [
+    {file = "sentry_sdk-2.29.1-py2.py3-none-any.whl", hash = "sha256:90862fe0616ded4572da6c9dadb363121a1ae49a49e21c418f0634e9d10b4c19"},
+    {file = "sentry_sdk-2.29.1.tar.gz", hash = "sha256:8d4a0206b95fa5fe85e5e7517ed662e3888374bdc342c00e435e10e6d831aa6d"},
+]
+
+[package.dependencies]
+certifi = "*"
+urllib3 = ">=1.26.11"
+
+[package.extras]
+aiohttp = ["aiohttp (>=3.5)"]
+anthropic = ["anthropic (>=0.16)"]
+arq = ["arq (>=0.23)"]
+asyncpg = ["asyncpg (>=0.23)"]
+beam = ["apache-beam (>=2.12)"]
+bottle = ["bottle (>=0.12.13)"]
+celery = ["celery (>=3)"]
+celery-redbeat = ["celery-redbeat (>=2)"]
+chalice = ["chalice (>=1.16.0)"]
+clickhouse-driver = ["clickhouse-driver (>=0.2.0)"]
+django = ["django (>=1.8)"]
+falcon = ["falcon (>=1.4)"]
+fastapi = ["fastapi (>=0.79.0)"]
+flask = ["blinker (>=1.1)", "flask (>=0.11)", "markupsafe"]
+grpcio = ["grpcio (>=1.21.1)", "protobuf (>=3.8.0)"]
+http2 = ["httpcore[http2] (==1.*)"]
+httpx = ["httpx (>=0.16.0)"]
+huey = ["huey (>=2)"]
+huggingface-hub = ["huggingface_hub (>=0.22)"]
+langchain = ["langchain (>=0.0.210)"]
+launchdarkly = ["launchdarkly-server-sdk (>=9.8.0)"]
+litestar = ["litestar (>=2.0.0)"]
+loguru = ["loguru (>=0.5)"]
+openai = ["openai (>=1.0.0)", "tiktoken (>=0.3.0)"]
+openfeature = ["openfeature-sdk (>=0.7.1)"]
+opentelemetry = ["opentelemetry-distro (>=0.35b0)"]
+opentelemetry-experimental = ["opentelemetry-distro"]
+pure-eval = ["asttokens", "executing", "pure_eval"]
+pymongo = ["pymongo (>=3.1)"]
+pyspark = ["pyspark (>=2.4.4)"]
+quart = ["blinker (>=1.1)", "quart (>=0.16.1)"]
+rq = ["rq (>=0.6)"]
+sanic = ["sanic (>=0.8)"]
+sqlalchemy = ["sqlalchemy (>=1.2)"]
+starlette = ["starlette (>=0.19.1)"]
+starlite = ["starlite (>=1.48)"]
+statsig = ["statsig (>=0.55.3)"]
+tornado = ["tornado (>=6)"]
+unleash = ["UnleashClient (>=6.0.1)"]
+
+[[package]]
 name = "setuptools"
 version = "70.0.0"
 description = "Easily download, build, install, upgrade, and uninstall Python packages"
@@ -6768,7 +6827,7 @@ description = "Tool to Detect Surrounding Shell"
 optional = false
 python-versions = ">=3.7"
 groups = ["main"]
-markers = "extra == \"execution\" and (implementation_name == \"cpython\" or implementation_name == \"pypy\")"
+markers = "(implementation_name == \"cpython\" or implementation_name == \"pypy\") and extra == \"execution\""
 files = [
     {file = "shellingham-1.5.4-py2.py3-none-any.whl", hash = "sha256:7ecfff8f2fd72616f7481040475a65b2bf8af90a56c89140852d1120324e8686"},
     {file = "shellingham-1.5.4.tar.gz", hash = "sha256:8dbca0739d487e5bd35ab3ca4b36e11c4078f3a234bfce294b0a0291363404de"},
@@ -6781,7 +6840,7 @@ description = "Python library for rounding numbers (with expected results)"
 optional = false
 python-versions = "<4.0,>=3.8"
 groups = ["main"]
-markers = "extra == \"execution\" and (implementation_name == \"cpython\" or implementation_name == \"pypy\")"
+markers = "(implementation_name == \"cpython\" or implementation_name == \"pypy\") and extra == \"execution\""
 files = [
     {file = "sigfig-1.3.19-py3-none-any.whl", hash = "sha256:7bde0715e1a0cddb93c3ed3b9f8f20bf4cc77bbb47c570fe6fbd7b43aa6fd56c"},
     {file = "sigfig-1.3.19.tar.gz", hash = "sha256:a9e4fa37aa7595cc01b7207bfabf86cccd2d3edfddcdaa925ffd57dd77efcd9e"},
@@ -6823,7 +6882,7 @@ description = "Sorted Containers -- Sorted List, Sorted Dict, Sorted Set"
 optional = false
 python-versions = "*"
 groups = ["main"]
-markers = "extra == \"execution\" and (implementation_name == \"cpython\" or implementation_name == \"pypy\")"
+markers = "(implementation_name == \"cpython\" or implementation_name == \"pypy\") and extra == \"execution\""
 files = [
     {file = "sortedcontainers-2.4.0-py2.py3-none-any.whl", hash = "sha256:a163dcaede0f1c021485e957a39245190e74249897e2ae4b2aa38595db237ee0"},
     {file = "sortedcontainers-2.4.0.tar.gz", hash = "sha256:25caa5a06cc30b6b83d11423433f65d1f9d76c4c6a0c90e3379eaa43b9bfdb88"},
@@ -6952,7 +7011,7 @@ description = "It is a library that allows you to send logging logs to Telegram"
 optional = true
 python-versions = ">=3.7"
 groups = ["main"]
-markers = "extra == \"execution\" and (implementation_name == \"cpython\" or implementation_name == \"pypy\")"
+markers = "(implementation_name == \"cpython\" or implementation_name == \"pypy\") and extra == \"execution\""
 files = []
 develop = false
 
@@ -7045,7 +7104,7 @@ description = "List processing tools and functional utilities"
 optional = false
 python-versions = ">=3.8"
 groups = ["main"]
-markers = "extra == \"execution\" and (implementation_name == \"cpython\" or implementation_name == \"pypy\")"
+markers = "(implementation_name == \"cpython\" or implementation_name == \"pypy\") and extra == \"execution\""
 files = [
     {file = "toolz-1.0.0-py3-none-any.whl", hash = "sha256:292c8f1c4e7516bf9086f8850935c799a874039c8bcf959d47b600e4c44a6236"},
     {file = "toolz-1.0.0.tar.gz", hash = "sha256:2c86e3d9a04798ac556793bced838816296a2f085017664e4995cb40a1047a02"},
@@ -7153,7 +7212,7 @@ description = "QSTrader backtesting simulation engine (forked)"
 optional = true
 python-versions = "*"
 groups = ["main"]
-markers = "extra == \"qstrader\" and (implementation_name == \"cpython\" or implementation_name == \"pypy\")"
+markers = "(implementation_name == \"cpython\" or implementation_name == \"pypy\") and extra == \"qstrader\""
 files = [
     {file = "trading-strategy-qstrader-0.5.tar.gz", hash = "sha256:c294b56f84bdc31e79842b5db5f6c8a5603c947725b9650d95655d95ade3ed04"},
     {file = "trading_strategy_qstrader-0.5-py3-none-any.whl", hash = "sha256:9be233a73d6f519719d518bceac59ad2f3b1839d1cb3657d67572afe7001c06b"},
@@ -7190,7 +7249,7 @@ description = "Utility library for i18n relied on by various Repoze and Pyramid 
 optional = false
 python-versions = "*"
 groups = ["main"]
-markers = "extra == \"web-server\" and (implementation_name == \"cpython\" or implementation_name == \"pypy\")"
+markers = "(implementation_name == \"cpython\" or implementation_name == \"pypy\") and extra == \"web-server\""
 files = [
     {file = "translationstring-1.4-py2.py3-none-any.whl", hash = "sha256:5f4dc4d939573db851c8d840551e1a0fb27b946afe3b95aafc22577eed2d6262"},
     {file = "translationstring-1.4.tar.gz", hash = "sha256:bf947538d76e69ba12ab17283b10355a9ecfbc078e6123443f43f2107f6376f3"},
@@ -7206,7 +7265,7 @@ description = "Python implementation of the Ethereum Trie structure"
 optional = false
 python-versions = ">=3.7, <4"
 groups = ["main"]
-markers = "extra == \"execution\" and (implementation_name == \"cpython\" or implementation_name == \"pypy\")"
+markers = "(implementation_name == \"cpython\" or implementation_name == \"pypy\") and extra == \"execution\""
 files = [
     {file = "trie-2.2.0-py3-none-any.whl", hash = "sha256:b6ad00305722b271cd05c9475e741c92a61f0ca53e6cc4fa9a5591e37eac34ca"},
     {file = "trie-2.2.0.tar.gz", hash = "sha256:117a6f0844eb60f2f68ed45e621886690dacd16343394c1adfb3ff44231725bc"},
@@ -7231,7 +7290,7 @@ description = "Typer, build great CLIs. Easy to code. Based on Python type hints
 optional = false
 python-versions = ">=3.7"
 groups = ["main"]
-markers = "extra == \"execution\" and (implementation_name == \"cpython\" or implementation_name == \"pypy\")"
+markers = "(implementation_name == \"cpython\" or implementation_name == \"pypy\") and extra == \"execution\""
 files = [
     {file = "typer-0.12.5-py3-none-any.whl", hash = "sha256:62fe4e471711b147e3365034133904df3e235698399bc4de2b36c8579298d52b"},
     {file = "typer-0.12.5.tar.gz", hash = "sha256:f592f089bedcc8ec1b974125d64851029c3b1af145f04aca64d69410f0c9b722"},
@@ -7263,7 +7322,7 @@ description = "Typing stubs for requests"
 optional = false
 python-versions = ">=3.9"
 groups = ["main"]
-markers = "extra == \"execution\" and (implementation_name == \"cpython\" or implementation_name == \"pypy\")"
+markers = "(implementation_name == \"cpython\" or implementation_name == \"pypy\") and extra == \"execution\""
 files = [
     {file = "types_requests-2.32.0.20250306-py3-none-any.whl", hash = "sha256:25f2cbb5c8710b2022f8bbee7b2b66f319ef14aeea2f35d80f18c9dbf3b60a0b"},
     {file = "types_requests-2.32.0.20250306.tar.gz", hash = "sha256:0962352694ec5b2f95fda877ee60a159abdf84a0fc6fdace599f20acb41a03d1"},
@@ -7283,7 +7342,7 @@ files = [
     {file = "typing_extensions-4.12.2-py3-none-any.whl", hash = "sha256:04e5ca0351e0f3f85c6853954072df659d0d13fac324d0072316b67d7794700d"},
     {file = "typing_extensions-4.12.2.tar.gz", hash = "sha256:1a7ead55c7e559dd4dee8856e3a88b41225abfe1ce8df57b7c13915fe121ffb8"},
 ]
-markers = {main = "implementation_name == \"cpython\" or implementation_name == \"pypy\"", dev = "(implementation_name == \"cpython\" or implementation_name == \"pypy\") and python_version == \"3.11\""}
+markers = {main = "implementation_name == \"cpython\" or implementation_name == \"pypy\"", dev = "python_version == \"3.11\" and (implementation_name == \"cpython\" or implementation_name == \"pypy\")"}
 
 [[package]]
 name = "typing-inspect"
@@ -7341,7 +7400,7 @@ description = "Ultra fast JSON encoder and decoder for Python"
 optional = false
 python-versions = ">=3.8"
 groups = ["main"]
-markers = "extra == \"execution\" and (implementation_name == \"cpython\" or implementation_name == \"pypy\")"
+markers = "(implementation_name == \"cpython\" or implementation_name == \"pypy\") and extra == \"execution\""
 files = [
     {file = "ujson-5.10.0-cp310-cp310-macosx_10_9_x86_64.whl", hash = "sha256:2601aa9ecdbee1118a1c2065323bda35e2c5a2cf0797ef4522d485f9d3ef65bd"},
     {file = "ujson-5.10.0-cp310-cp310-macosx_11_0_arm64.whl", hash = "sha256:348898dd702fc1c4f1051bc3aacbf894caa0927fe2c53e68679c073375f732cf"},
@@ -7465,7 +7524,7 @@ description = "A library for deferring decorator actions"
 optional = false
 python-versions = ">=3.7"
 groups = ["main"]
-markers = "extra == \"web-server\" and (implementation_name == \"cpython\" or implementation_name == \"pypy\")"
+markers = "(implementation_name == \"cpython\" or implementation_name == \"pypy\") and extra == \"web-server\""
 files = [
     {file = "venusian-3.1.1-py3-none-any.whl", hash = "sha256:0845808a985976acbceaa1fbb871c7fac4fb28ae75453232970e9c2c2866dbf4"},
     {file = "venusian-3.1.1.tar.gz", hash = "sha256:534fb3b355669283eb3954581931e5d1d071fce61d029d58f3219a5e3a6f0c41"},
@@ -7482,7 +7541,7 @@ description = "Waitress WSGI server"
 optional = true
 python-versions = ">=3.7.0"
 groups = ["main"]
-markers = "extra == \"web-server\" and (implementation_name == \"cpython\" or implementation_name == \"pypy\")"
+markers = "(implementation_name == \"cpython\" or implementation_name == \"pypy\") and extra == \"web-server\""
 files = [
     {file = "waitress-2.1.2-py3-none-any.whl", hash = "sha256:7500c9625927c8ec60f54377d590f67b30c8e70ef4b8894214ac6e4cad233d2a"},
     {file = "waitress-2.1.2.tar.gz", hash = "sha256:780a4082c5fbc0fde6a2fcfe5e26e6efc1e8f425730863c04085769781f51eba"},
@@ -7512,7 +7571,7 @@ description = "web3.py"
 optional = false
 python-versions = ">=3.7.2"
 groups = ["main"]
-markers = "extra == \"execution\" and (implementation_name == \"cpython\" or implementation_name == \"pypy\")"
+markers = "(implementation_name == \"cpython\" or implementation_name == \"pypy\") and extra == \"execution\""
 files = [
     {file = "web3-6.14.0-py3-none-any.whl", hash = "sha256:e7023669ea05d6c9675d25e14342638da25d9b1a512d8a6472b860ed97914aec"},
     {file = "web3-6.14.0.tar.gz", hash = "sha256:a3726289da9eff2ce30f9b1b49ec59e9245216f7aecbfa2007f73dbe94999717"},
@@ -7546,12 +7605,12 @@ tester = ["eth-tester[py-evm] (==v0.9.1-b.1)", "py-geth (>=3.11.0)"]
 
 [[package]]
 name = "web3-ethereum-defi"
-version = "0.28.1"
+version = "0.29"
 description = "Python library for Uniswap, Aave, ChainLink, Enzyme and other protocols on BNB Chain, Polygon, Ethereum and other blockchains"
 optional = false
 python-versions = ">=3.10,<4"
 groups = ["main"]
-markers = "extra == \"execution\" and (implementation_name == \"cpython\" or implementation_name == \"pypy\")"
+markers = "(implementation_name == \"cpython\" or implementation_name == \"pypy\") and extra == \"execution\""
 files = []
 develop = true
 
@@ -7561,6 +7620,7 @@ eth-bloom = "^2.0.0"
 evm-trace = "^0.1.0a17"
 futureproof = "^0.3.1"
 gql = {version = "^3.3.0", extras = ["requests"], optional = true}
+joblib = "^1.4.2"
 jupyter = {version = "^1.0.0", optional = true}
 matplotlib = {version = ">=3.5", optional = true}
 multicall = "^0.9.0"
@@ -7584,6 +7644,7 @@ web3-google-hsm = "^0.1.0"
 [package.extras]
 data = ["gql[requests] (>=3.3.0,<4.0.0)", "jupyter (>=1.0.0,<2.0.0)", "matplotlib (>=3.5)", "numpy (<2)", "pandas (>=1.4)", "plotly (>=5.8.2,<6.0.0)", "pyarrow", "tqdm (>=4.66.1)"]
 docs = ["Sphinx (>=4.5.0,<5.0.0)", "furo (>=2022.6.4.1,<2023.0.0.0)", "nbsphinx (>=0.8.9,<0.9.0)", "sphinx-autodoc-typehints (>=1.16.0,<2.0.0)", "sphinx-rtd-theme (>=1.0.0,<2.0.0)", "sphinx-rtd-theme (>=1.0.0,<2.0.0)", "sphinx-sitemap (>=2.2.0,<3.0.0)", "sphinx-sitemap (>=2.2.0,<3.0.0)", "zope-dottedname (>=6.0,<7.0)"]
+hypersync = ["hypersync (>=0.8.5,<0.9.0)"]
 test = ["pytest-xdist (>=3.3.1,<4.0.0)"]
 
 [package.source]
@@ -7597,7 +7658,7 @@ description = "Cloud HSM to sign Web3.py Ethereum transactions"
 optional = false
 python-versions = ">=3.10"
 groups = ["main"]
-markers = "extra == \"execution\" and (implementation_name == \"cpython\" or implementation_name == \"pypy\")"
+markers = "(implementation_name == \"cpython\" or implementation_name == \"pypy\") and extra == \"execution\""
 files = [
     {file = "web3_google_hsm-0.1.0-py3-none-any.whl", hash = "sha256:770158608e121cc3caaa51452794f856b3a3ed6d2a740f551c1eab451e7aabb1"},
     {file = "web3_google_hsm-0.1.0.tar.gz", hash = "sha256:37107455b35888537dd20731d78aefc3137800bb6c0dab4b967f3d76b7fe9d42"},
@@ -7650,7 +7711,7 @@ description = "WSGI request and response object"
 optional = false
 python-versions = "!=3.0.*,!=3.1.*,!=3.2.*,>=2.7"
 groups = ["main"]
-markers = "extra == \"web-server\" and (implementation_name == \"cpython\" or implementation_name == \"pypy\")"
+markers = "(implementation_name == \"cpython\" or implementation_name == \"pypy\") and extra == \"web-server\""
 files = [
     {file = "WebOb-1.8.9-py2.py3-none-any.whl", hash = "sha256:45e34c58ed0c7e2ecd238ffd34432487ff13d9ad459ddfd77895e67abba7c1f9"},
     {file = "webob-1.8.9.tar.gz", hash = "sha256:ad6078e2edb6766d1334ec3dee072ac6a7f95b1e32ce10def8ff7f0f02d56589"},
@@ -7685,7 +7746,7 @@ description = "An implementation of the WebSocket Protocol (RFC 6455 & 7692)"
 optional = false
 python-versions = ">=3.9"
 groups = ["main"]
-markers = "extra == \"execution\" and (implementation_name == \"cpython\" or implementation_name == \"pypy\")"
+markers = "(implementation_name == \"cpython\" or implementation_name == \"pypy\") and extra == \"execution\""
 files = [
     {file = "websockets-15.0.1-cp310-cp310-macosx_10_9_universal2.whl", hash = "sha256:d63efaa0cd96cf0c5fe4d581521d9fa87744540d4bc999ae6e08595a1014b45b"},
     {file = "websockets-15.0.1-cp310-cp310-macosx_10_9_x86_64.whl", hash = "sha256:ac60e3b188ec7574cb761b08d50fcedf9d77f1530352db4eef1707fe9dee7205"},
@@ -7765,7 +7826,7 @@ description = "Helper to test WSGI applications"
 optional = true
 python-versions = ">=3.7"
 groups = ["main"]
-markers = "extra == \"web-server\" and (implementation_name == \"cpython\" or implementation_name == \"pypy\")"
+markers = "(implementation_name == \"cpython\" or implementation_name == \"pypy\") and extra == \"web-server\""
 files = [
     {file = "WebTest-3.0.1-py3-none-any.whl", hash = "sha256:b3bc75d020d0576ee93a5f149666045e58fe2400ea5f0c214d7430d7d213d0d0"},
     {file = "webtest-3.0.1.tar.gz", hash = "sha256:493b5c802f8948a65b5e3a1ad5b2524ee5e1ab60cd713d9a3da3b8da082c06fe"},
@@ -7787,7 +7848,7 @@ description = "The comprehensive WSGI web application library."
 optional = false
 python-versions = ">=3.9"
 groups = ["main"]
-markers = "extra == \"web-server\" and (implementation_name == \"cpython\" or implementation_name == \"pypy\")"
+markers = "(implementation_name == \"cpython\" or implementation_name == \"pypy\") and extra == \"web-server\""
 files = [
     {file = "werkzeug-3.1.3-py3-none-any.whl", hash = "sha256:54b78bf3716d19a65be4fceccc0d1d7b89e608834989dfae50ea87564639213e"},
     {file = "werkzeug-3.1.3.tar.gz", hash = "sha256:60723ce945c19328679790e3282cc758aa4a6040e4bb330f53d30fa546d44746"},
@@ -7806,7 +7867,7 @@ description = "Jupyter interactive widgets for Jupyter Notebook"
 optional = false
 python-versions = ">=3.7"
 groups = ["main"]
-markers = "extra == \"execution\" and (implementation_name == \"cpython\" or implementation_name == \"pypy\")"
+markers = "(implementation_name == \"cpython\" or implementation_name == \"pypy\") and extra == \"execution\""
 files = [
     {file = "widgetsnbextension-4.0.13-py3-none-any.whl", hash = "sha256:74b2692e8500525cc38c2b877236ba51d34541e6385eeed5aec15a70f88a6c71"},
     {file = "widgetsnbextension-4.0.13.tar.gz", hash = "sha256:ffcb67bc9febd10234a362795f643927f4e0c05d9342c727b65d2384f8feacb6"},
@@ -7819,7 +7880,7 @@ description = "Yet another URL library"
 optional = false
 python-versions = ">=3.9"
 groups = ["main"]
-markers = "(extra == \"execution\" or extra == \"trendsspotter\") and (implementation_name == \"cpython\" or implementation_name == \"pypy\")"
+markers = "(implementation_name == \"cpython\" or implementation_name == \"pypy\") and (extra == \"execution\" or extra == \"trendsspotter\")"
 files = [
     {file = "yarl-1.18.3-cp310-cp310-macosx_10_9_universal2.whl", hash = "sha256:7df647e8edd71f000a5208fe6ff8c382a1de8edfbccdbbfe649d263de07d8c34"},
     {file = "yarl-1.18.3-cp310-cp310-macosx_10_9_x86_64.whl", hash = "sha256:c69697d3adff5aa4f874b19c0e4ed65180ceed6318ec856ebc423aa5850d84f7"},
@@ -7945,7 +8006,7 @@ description = "better DEFI backtesting tool"
 optional = true
 python-versions = ">=3.11"
 groups = ["main"]
-markers = "extra == \"demeter\" and (implementation_name == \"cpython\" or implementation_name == \"pypy\")"
+markers = "(implementation_name == \"cpython\" or implementation_name == \"pypy\") and extra == \"demeter\""
 files = [
     {file = "zelos-demeter-0.7.6.tar.gz", hash = "sha256:2168e8f43ce726bd852f604e63efb670fe1dfbaa510a12f458709e4882395fc5"},
 ]
@@ -7967,7 +8028,7 @@ description = "Zope Deprecation Infrastructure"
 optional = false
 python-versions = ">=3.9"
 groups = ["main"]
-markers = "extra == \"web-server\" and (implementation_name == \"cpython\" or implementation_name == \"pypy\")"
+markers = "(implementation_name == \"cpython\" or implementation_name == \"pypy\") and extra == \"web-server\""
 files = [
     {file = "zope.deprecation-5.1-py3-none-any.whl", hash = "sha256:60f957b964d8f947a4a592c647d51ce0f4f844d1f041657956ddde0d9fa9a76a"},
     {file = "zope_deprecation-5.1.tar.gz", hash = "sha256:46bed4611fb53edc731aadeb64b28308bcb848f4cc150c60c948d078f7108721"},
@@ -7987,7 +8048,7 @@ description = "Interfaces for Python"
 optional = false
 python-versions = ">=3.8"
 groups = ["main"]
-markers = "extra == \"web-server\" and (implementation_name == \"cpython\" or implementation_name == \"pypy\")"
+markers = "(implementation_name == \"cpython\" or implementation_name == \"pypy\") and extra == \"web-server\""
 files = [
     {file = "zope.interface-7.2-cp310-cp310-macosx_10_9_x86_64.whl", hash = "sha256:ce290e62229964715f1011c3dbeab7a4a1e4971fd6f31324c4519464473ef9f2"},
     {file = "zope.interface-7.2-cp310-cp310-macosx_11_0_arm64.whl", hash = "sha256:05b910a5afe03256b58ab2ba6288960a2892dfeef01336dc4be6f1b9ed02ab0a"},
@@ -8152,7 +8213,7 @@ cffi = ["cffi (>=1.11)"]
 
 [extras]
 demeter = ["zelos-demeter"]
-execution = ["beautifulsoup4", "colorama", "coloredlogs", "prompt-toolkit", "python-dotenv", "python-logging-discord-handler", "python-logstash-tradingstrategy", "telegram-bot-logger", "typer", "web3-ethereum-defi"]
+execution = ["beautifulsoup4", "colorama", "coloredlogs", "prompt-toolkit", "python-dotenv", "python-logging-discord-handler", "python-logstash-tradingstrategy", "sentry-sdk", "telegram-bot-logger", "typer", "web3-ethereum-defi"]
 qstrader = ["trading-strategy-qstrader"]
 trendsspotter = ["fsspec", "gcsfs", "google-auth", "google-cloud-storage"]
 web-server = ["WebTest", "openapi-core", "pyramid", "pyramid-openapi3", "waitress"]
@@ -8160,4 +8221,4 @@ web-server = ["WebTest", "openapi-core", "pyramid", "pyramid-openapi3", "waitres
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.11,<=3.12"
-content-hash = "9807a202d4bdf2b6381ae204b1f25af937a791d058c64ebc11fece307712c703"
+content-hash = "c508f6026eef03fa1c80d6fe885944bde5f18328224e921e1e56ab3510cf781e"
