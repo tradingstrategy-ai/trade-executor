@@ -6,6 +6,7 @@ from pathlib import Path
 
 import pytest
 
+from tradeexecutor.analysis.credit import calculate_yield_metrics, YieldType
 from tradeexecutor.backtest.backtest_module import run_backtest_for_module
 from tradeexecutor.cli.log import setup_pytest_logging
 from tradeexecutor.strategy.execution_context import unit_test_execution_context
@@ -39,4 +40,15 @@ def test_backtest_vault_yield_manager(
 
     state = result.state
     assert len(state.portfolio.closed_positions) > 0
+
+    _ = calculate_yield_metrics(
+        state,
+        yield_type=YieldType.credit
+    )
+
+    _ = calculate_yield_metrics(
+        state,
+        yield_type=YieldType.vault
+    )
+
 

@@ -116,6 +116,8 @@ def visualise_weights(
     :param include_reserves:
         Include reserve positions like USDC in the output.
 
+        Setting False will remove cash, Aave, vaults.
+
     :param clean:
         Remove title texts.
 
@@ -134,7 +136,7 @@ def visualise_weights(
     if not include_reserves:
         # Filter out reserve/credit position
         weights_series = weights_series[
-            ~weights_series.index.get_level_values(1).isin(non_volatile_symbols)
+            ~(weights_series.index.get_level_values(1).isin(non_volatile_symbols) | weights_series.index.get_level_values(1).isin(vault_symbols))
         ]
 
     def sort_key_reserve_first(col_name):
@@ -175,14 +177,26 @@ def visualise_weights(
     for symbol in non_volatile_symbols:
         # Aave colour
         # https://aave.com/brand
-        fig.update_traces(fillcolor=aave_colour, selector=dict(name=symbol))
+        fig.update_traces(
+            fillcolor=aave_colour,
+            selector=dict(name=symbol),
+            fillpattern=dict(
+                shape="-",
+                size=5,
+                solidity=0.8
+            ),
+        )
 
     for symbol in vault_symbols:
         # Aave colour
         # https://aave.com/brand
         fig.update_traces(
             selector=dict(name=symbol),
-            fillpattern = {"fgcolor": "white", "pattern": "/"},
+            fillpattern=dict(
+                shape="x",
+                size=5,
+                solidity=0.8
+            ),
         )
 
     fig.update_traces(fillcolor=reserve_asset_colour, selector=dict(name=reserve_asset_symbol))

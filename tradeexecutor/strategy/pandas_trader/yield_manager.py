@@ -6,14 +6,11 @@ from functools import cached_property
 import dataclasses
 from pprint import pformat
 
-from eth.vm.logic.block import timestamp
-from numpy.distutils.conv_template import header
 from tabulate import tabulate
 
 from tradeexecutor.state.generic_position import GenericPosition
 from tradeexecutor.state.identifier import TradingPairIdentifier, TradingPairKind
 from tradeexecutor.state.portfolio import Portfolio
-from tradeexecutor.state.position import TradingPosition
 from tradeexecutor.state.size_risk import SizeRisk
 from tradeexecutor.state.trade import TradeExecution
 from tradeexecutor.state.types import USDollarAmount, Percent
@@ -55,6 +52,40 @@ class YieldWeightingRule:
 
 @dataclasses.dataclass(slots=True, frozen=True)
 class YieldRuleset:
+    """Define how the strategy can allocate idle cash for the yield management.
+
+    - Risk management, etc.
+    - Management of withdrawal delays
+
+    Example:
+
+    .. code-block:: python
+
+        def create_yield_rules(
+            parameters: StrategyParameters,
+            strategy_universe: TradingStrategyUniverse,
+        ) -> YieldRuleset:
+            # Create yield rules for the strategy.
+
+            aave_usdc = strategy_universe.get_credit_supply_pair()
+            ipor_usdc = strategy_universe.get_pair_by_smart_contract(VAULTS[0][1])
+            maxapy_usdc = strategy_universe.get_pair_by_smart_contract(VAULTS[1][1])
+
+            # Check we have yield vault metadata loaded
+            assert aave_usdc
+            assert ipor_usdc
+            assert maxapy_usdc
+
+            return YieldRuleset(
+                position_allocation=parameters.allocation,
+                buffer_pct=parameters.directional_trade_yield_buffer_pct,
+                cash_change_tolerance_usd=parameters.yield_flow_dust_threshold,
+                weights=[
+                    YieldWeightingRule(pair=maxapy_usdc, max_concentration=0.75),
+                    YieldWeightingRule(pair=ipor_usdc, max_concentration=0.75),
+                    YieldWeightingRule(pair=aave_usdc, max_concentration=1.0),
+                ]
+    """
 
     #: How much total equity is allowed to directional + yield position.
     position_allocation: Percent
@@ -88,6 +119,7 @@ class YieldRuleset:
 
 @dataclasses.dataclass(slots=True, frozen=True)
 class YieldDecisionInput:
+    """Required inputs to decide yield management rebalances for a single strategy cycle"""
 
     #: Backtesting or live trading
     execution_mode: ExecutionMode
@@ -102,6 +134,11 @@ class YieldDecisionInput:
 
     #: Total equity of our portfolio
     total_equity: USDollarAmount
+
+    #: How much USD worth of pending redemptions we have and we need to satisfy.
+    #:
+    #: The withdrawal queue read from the Lagoon vault.
+    pending_redemptions: USDollarAmount
 
     #: Directional trades decided in this cycle
     directional_trades: list[TradeExecution]
@@ -150,6 +187,32 @@ class YieldManager:
 
     - Park cash to profitable positions outside direactional trading
     - Extract cash when needed
+
+    Example:
+
+    .. code-block:: python
+
+        # Move cash in and out yield managed to cover spot positions
+        if parameters.use_managed_yield:
+
+            yield_manager = YieldManager(
+                position_manager=position_manager,
+                rules=create_yield_rules(parameters, strategy_universe),
+            )
+
+            yield_input = YieldDecisionInput(
+                execution_mode=input.execution_context.mode,
+                cycle=input.cycle,
+                timestamp=timestamp,
+                total_equity=state.portfolio.get_total_equity(),
+                directional_trades=trades,
+                size_risk_model=size_risk_model,
+                pending_redemptions=position_manager.get_pending_redemptions(),
+            )
+
+            yield_result = yield_manager.calculate_yield_management(yield_input)
+            trades += yield_result.trades
+
     """
 
     def __init__(
@@ -503,7 +566,7 @@ class YieldManager:
 
         #. 3. Calculate how much cash we can allocate for yield
         always_in_cash = input.total_equity * (1 - self.rules.position_allocation)
-        available_for_yield = all_cash_like - trade_cash_diff - always_in_cash
+        available_for_yield = all_cash_like - trade_cash_diff - always_in_cash - input.pending_redemptions
 
         logger.info(
             "Cash requirements calculated. Needed to cover trades/released from trades: %f USD, needed always cash in hand: %f USD, left for yield: %f USD",
