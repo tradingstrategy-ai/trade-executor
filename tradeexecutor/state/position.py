@@ -27,6 +27,7 @@ from tradeexecutor.state.trigger import Trigger
 from tradeexecutor.state.types import USDollarAmount, BPS, USDollarPrice, Percent, LeverageMultiplier, LegacyDataException
 from tradeexecutor.state.valuation import ValuationUpdate
 from tradeexecutor.strategy.dust import get_dust_epsilon_for_pair, get_close_epsilon_for_pair
+from tradeexecutor.strategy.execution_context import ExecutionMode
 from tradeexecutor.strategy.lending_protocol_leverage import create_short_loan, update_short_loan, create_credit_supply_loan, update_credit_supply_loan
 from tradeexecutor.strategy.trade_pricing import TradePricing
 from tradeexecutor.utils.accuracy import sum_decimal, QUANTITY_EPSILON
@@ -1921,20 +1922,40 @@ class TradingPosition(GenericPosition):
         """
         return self.get_realised_profit_percent() * self.get_capital_tied_at_open_pct()
 
-    def get_duration(self, partial=False) -> datetime.timedelta | None:
+    def get_duration(
+        self,
+        partial=False,
+        execution_mode: ExecutionMode=ExecutionMode.real_trading,
+        end_at: datetime.datetime = None,
+    ) -> datetime.timedelta | None:
         """How long this position was held.
 
         :param partial:
             Return duration until now for open positions.
 
+            Assumes the position is still open.
+
+        :param end_at:
+            What is the timestamp at the end of the backtest.
+
+            Not needed for live trading, uses current time.
+
+        :param execution_mode:
+            Are we live trading or backtesting.
+
         :return:
             None if the position is still open if partial is not set
         """
         if self.is_closed():
-            return self.closed_at - self.opened_at  
+            return self.closed_at - self.opened_at
 
         if partial:
-            return datetime.datetime.utcnow() - self.opened_at
+            if execution_mode.is_backtesting():
+                assert end_at, f"get_duration(): You must give end_at timestamp in backtesting"
+            else:
+                end_at = datetime.datetime.utcnow()
+
+            return end_at - self.opened_at
 
         return None
     
@@ -2173,6 +2194,8 @@ class TradingPosition(GenericPosition):
     def get_annualised_credit_interest(self) -> Percent:
         """Get the annualised interest for a credit position.
 
+        See also: :py:meth:`get_annualised_profit`
+
         :return:
             Annualised interest.
 
@@ -2183,6 +2206,21 @@ class TradingPosition(GenericPosition):
         if duration is None:
             return 0.0
         return (self.get_claimed_interest() / self.get_value_at_open()) * datetime.timedelta(days=365) / duration
+
+    def get_annualised_profit(self) -> Percent:
+        """Get the annualised profit for any position position.
+
+        See also: :py:meth:`get_annualised_credit_interest`
+
+        :return:
+            Annualised profit.
+
+            Return 0 if the position does not have a duration, or its still open.
+        """
+        duration = self.get_duration()
+        if duration is None:
+            return 0.0
+        return self.get_unrealised_and_realised_profit_percent() * datetime.timedelta(days=365) / duration
 
     def mark_down(self):
         """Manually set position value to zero.

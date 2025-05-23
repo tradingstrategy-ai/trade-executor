@@ -469,6 +469,7 @@ def decide_trades(
             total_equity=state.portfolio.get_total_equity(),
             directional_trades=trades,
             size_risk_model=size_risk_model,
+            pending_redemptions=position_manager.get_pending_redemptions(),
         )
 
         yield_result = yield_manager.calculate_yield_management(yield_input)
