@@ -468,15 +468,15 @@ def test_visualise_strategy_state(
 
     assert len(image.data) == 27
     assert len(image._grid_ref) == 6
-    assert image.data[0]['x'][0] == datetime.datetime(2023,4,3,0,0)
-    assert image.data[0]['x'][-1] == datetime.datetime(2023,6,5,0,0)
+    assert image.data[0]['x'][0] == numpy.datetime64(datetime.datetime(2023,4,3,0,0))
+    assert image.data[0]['x'][-1] == numpy.datetime64(datetime.datetime(2023,6,5,0,0))
 
     image_no_detached = draw_multi_pair_strategy_state(state, unit_test_execution_context, universe, detached_indicators=False)
 
     assert len(image_no_detached.data) == 24
     assert len(image_no_detached._grid_ref) == 3
-    assert image_no_detached.data[0]['x'][0] == datetime.datetime(2023,4,3,0,0)
-    assert image_no_detached.data[0]['x'][-1] == datetime.datetime(2023,6,5,0,0)
+    assert image_no_detached.data[0]['x'][0] == numpy.datetime64(datetime.datetime(2023,4,3,0,0))
+    assert image_no_detached.data[0]['x'][-1] == numpy.datetime64(datetime.datetime(2023,6,5,0,0))
 
     image_no_indicators = draw_multi_pair_strategy_state(state, unit_test_execution_context, universe, technical_indicators=False)
 
