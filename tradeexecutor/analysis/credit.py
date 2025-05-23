@@ -58,10 +58,12 @@ def calculate_yield_metrics(
             total_interest_earned_usd = sum(p.get_total_profit_usd() for p in credit_positions)
             interest_rates = [p.get_annualised_credit_interest() for p in credit_positions]
             deposit_trades = [t for p in credit_positions for t in p.trades.values() if t.is_credit_supply()]
+            durations = [p.get_duration(partial=True, execution_mode=execution_mode, end_at=end_at) for p in credit_positions]
         case YieldType.vault:
             credit_positions = [p for p in state.portfolio.get_all_positions() if p.is_vault()]
+            durations = [p.get_duration(partial=True, execution_mode=execution_mode, end_at=end_at) for p in credit_positions]
             total_interest_earned_usd = sum(p.get_total_profit_usd() for p in credit_positions)
-            interest_rates = [p.get_annualised_profit() for p in credit_positions]
+            interest_rates = [p.calculate_annualised_profit(duration) for p, duration in zip(credit_positions, durations)]
             deposit_trades = [t for p in credit_positions for t in p.trades.values() if t.is_buy()]
         case _:
             raise NotImplementedError()
@@ -72,7 +74,6 @@ def calculate_yield_metrics(
         }
         return pd.DataFrame(list(data.items()), columns=['Name', 'Value']).set_index('Name')
 
-    durations = [p.get_duration(partial=True, execution_mode=execution_mode, end_at=end_at) for p in credit_positions]
     durations = [d for d in durations if d is not None]
 
     assert len(durations) > 0, f"calculate_yield_metrics({yield_type}): No durations available for positions: {credit_positions}"
@@ -88,7 +89,7 @@ def calculate_yield_metrics(
     avg_deposit = sum(deposits) / len(deposits)
 
     data = {
-        "Credit position count": len(credit_positions),
+        "Position count": len(credit_positions),
         "Total interest earned": f"{total_interest_earned_usd:,.2f} USD",
         "Avg interest": f"{avg_interest:.2%}",
         "Min interest": f"{min_interest:.2%}",

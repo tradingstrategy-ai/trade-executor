@@ -34,6 +34,7 @@ from tradeexecutor.utils.accuracy import sum_decimal, QUANTITY_EPSILON
 from tradingstrategy.lending import LendingProtocolType
 
 from tradeexecutor.utils.leverage_calculations import LeverageEstimate
+from tradingstrategy.utils.time import ZERO_TIMEDELTA
 
 logger = logging.getLogger(__name__)
 
@@ -2207,19 +2208,21 @@ class TradingPosition(GenericPosition):
             return 0.0
         return (self.get_claimed_interest() / self.get_value_at_open()) * datetime.timedelta(days=365) / duration
 
-    def get_annualised_profit(self) -> Percent:
+    def calculate_annualised_profit(self, duration: datetime.timedelta) -> Percent:
         """Get the annualised profit for any position position.
 
         See also: :py:meth:`get_annualised_credit_interest`
+
+        :param duration:
+            See :py:meth:`get_duration`
 
         :return:
             Annualised profit.
 
             Return 0 if the position does not have a duration, or its still open.
         """
-        duration = self.get_duration()
-        if duration is None:
-            return 0.0
+        assert isinstance(duration, datetime.timedelta), f"Got: {duration.__class__}"
+        assert duration != ZERO_TIMEDELTA, f"Got: {duration}"
         return self.get_unrealised_and_realised_profit_percent() * datetime.timedelta(days=365) / duration
 
     def mark_down(self):
