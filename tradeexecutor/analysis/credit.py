@@ -1,33 +1,83 @@
+"""Credit and yield position profit analysis."""
+
 import datetime
+import enum
 
 import pandas as pd
 
 from tradeexecutor.state.state import State
+from tradeexecutor.strategy.execution_context import ExecutionMode
 
 
-def calculate_credit_metrics(
+class YieldType(enum.Enum):
+    """Which positions to calculate yield for."""
+    credit = "credit"
+    vault = "vault"
+
+
+def calculate_yield_metrics(
     state: State,
+    yield_type: YieldType = YieldType.credit,
+    execution_mode=ExecutionMode.backtesting,
 ) -> pd.DataFrame:
     """Calculate interest metrics for a strategy backtest.
 
     - Credit earned on Aave
 
+    Example:
+
+    .. code-block:: python
+
+        from tradeexecutor.analysis.credit import calculate_yield_metrics
+        from tradeexecutor.analysis.credit import YieldType
+
+        interest_df = calculate_yield_metrics(
+            state,
+            yield_type=YieldType.credit
+        )
+        display(interest_df)
+
+    :param yield_type:
+        Which positions to calculate yield for
+
     :return:
         Human readable DataFrame
     """
 
-    credit_positions = [p for p in state.portfolio.get_all_positions() if p.is_credit_supply()]
+    assert isinstance(execution_mode, ExecutionMode)
+    assert isinstance(yield_type, YieldType), f"Invalid yield type: {yield_type}"
+
+    if execution_mode.is_backtesting():
+        assert state.backtest_data
+        end_at = state.backtest_data.end_at
+        assert end_at
+
+    match yield_type:
+        case YieldType.credit:
+            credit_positions = [p for p in state.portfolio.get_all_positions() if p.is_credit_supply()]
+            total_interest_earned_usd = sum(p.get_total_profit_usd() for p in credit_positions)
+            interest_rates = [p.get_annualised_credit_interest() for p in credit_positions]
+            deposit_trades = [t for p in credit_positions for t in p.trades.values() if t.is_credit_supply()]
+            durations = [p.get_duration(partial=True, execution_mode=execution_mode, end_at=end_at) for p in credit_positions]
+        case YieldType.vault:
+            credit_positions = [p for p in state.portfolio.get_all_positions() if p.is_vault()]
+            durations = [p.get_duration(partial=True, execution_mode=execution_mode, end_at=end_at) for p in credit_positions]
+            total_interest_earned_usd = sum(p.get_total_profit_usd() for p in credit_positions)
+            interest_rates = [p.calculate_annualised_profit(duration) for p, duration in zip(credit_positions, durations)]
+            deposit_trades = [t for p in credit_positions for t in p.trades.values() if t.is_buy()]
+        case _:
+            raise NotImplementedError()
+
     if len(credit_positions) == 0:
         data = {
             "Credit position count": 0,
         }
         return pd.DataFrame(list(data.items()), columns=['Name', 'Value']).set_index('Name')
 
-    total_interest_earned_usd = sum(p.get_total_profit_usd() for p in credit_positions)
-    interest_rates = [p.get_annualised_credit_interest() for p in credit_positions]
-    durations = [p.get_duration() for p in credit_positions]
     durations = [d for d in durations if d is not None]
-    deposit_trades = [t for p in credit_positions for t in p.trades.values() if t.is_credit_supply()]
+
+    assert len(durations) > 0, f"calculate_yield_metrics({yield_type}): No durations available for positions: {credit_positions}"
+
     deposits = [t.get_value() for t in deposit_trades]
     min_interest = min(interest_rates)
     max_interest = max(interest_rates)
@@ -37,9 +87,9 @@ def calculate_credit_metrics(
     max_deposit = max(deposits)
     min_deposit = min(deposits)
     avg_deposit = sum(deposits) / len(deposits)
-    # import ipdb ; ipdb.set_trace()
+
     data = {
-        "Credit position count": len(credit_positions),
+        "Position count": len(credit_positions),
         "Total interest earned": f"{total_interest_earned_usd:,.2f} USD",
         "Avg interest": f"{avg_interest:.2%}",
         "Min interest": f"{min_interest:.2%}",
@@ -52,3 +102,7 @@ def calculate_credit_metrics(
     }
 
     return pd.DataFrame(list(data.items()), columns=['Name', 'Value']).set_index('Name')
+
+
+#: BBB
+calculate_credit_metrics = calculate_yield_metrics

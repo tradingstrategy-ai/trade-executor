@@ -62,7 +62,6 @@ def calculate_asset_weights(
 
     # For credit positions, we might have close and poen new position in the same
     # timestamp and need to handle this specially.
-
     mask = df["kind"] == "credit_supply"
     df_to_dedup = df[mask]  # rows that need deduplication
     df_keep = df[~mask]  # rows to keep as-is
@@ -87,9 +86,13 @@ def calculate_asset_weights(
     # Get out all Aave aUSDC positions
     credit_supply_symbols = [p.pair.base.token_symbol for p in state.portfolio.get_all_positions() if p.is_credit_supply()]
 
+    # Get vaults
+    vault_symbols = [p.pair.get_vault_name() for p in state.portfolio.get_all_positions() if p.is_vault()]
+
     # Pass to visualisation
     series_deduped.attrs["reserve_asset_symbol"] = reserve_asset_symbol
     series_deduped.attrs["credit_supply_symbols"] = credit_supply_symbols
+    series_deduped.attrs["vault_symbols"] = vault_symbols
 
     return series_deduped
 
@@ -113,6 +116,8 @@ def visualise_weights(
     :param include_reserves:
         Include reserve positions like USDC in the output.
 
+        Setting False will remove cash, Aave, vaults.
+
     :param clean:
         Remove title texts.
 
@@ -125,20 +130,22 @@ def visualise_weights(
     assert isinstance(weights_series, pd.Series)
 
     reserve_asset_symbol = weights_series.attrs["reserve_asset_symbol"]
+    vault_symbols = weights_series.attrs["vault_symbols"]
     non_volatile_symbols = [weights_series.attrs["reserve_asset_symbol"]] + weights_series.attrs["credit_supply_symbols"]
 
     if not include_reserves:
         # Filter out reserve/credit position
         weights_series = weights_series[
-            ~weights_series.index.get_level_values(1).isin(non_volatile_symbols)
+            ~(weights_series.index.get_level_values(1).isin(non_volatile_symbols) | weights_series.index.get_level_values(1).isin(vault_symbols))
         ]
 
     def sort_key_reserve_first(col_name):
         if col_name == reserve_asset_symbol:
             return -1000, col_name
-
-        if col_name in non_volatile_symbols:
+        elif col_name in non_volatile_symbols:
             return -500, col_name
+        elif col_name in vault_symbols:
+            return -200, col_name
 
         return 0, col_name
 
@@ -170,7 +177,28 @@ def visualise_weights(
     for symbol in non_volatile_symbols:
         # Aave colour
         # https://aave.com/brand
-        fig.update_traces(fillcolor=aave_colour, selector=dict(name=symbol))
+        fig.update_traces(
+            fillcolor=aave_colour,
+            selector=dict(name=symbol),
+            fillpattern=dict(
+                shape="-",
+                size=5,
+                solidity=0.8
+            ),
+        )
+
+    for symbol in vault_symbols:
+        # Aave colour
+        # https://aave.com/brand
+        fig.update_traces(
+            selector=dict(name=symbol),
+            fillpattern=dict(
+                shape="x",
+                size=5,
+                solidity=0.8
+            ),
+        )
+
     fig.update_traces(fillcolor=reserve_asset_colour, selector=dict(name=reserve_asset_symbol))
     fig.update_traces(line_width=0)
 

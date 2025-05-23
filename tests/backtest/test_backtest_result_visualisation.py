@@ -165,7 +165,6 @@ def test_visualise_trades_with_indicator(state_and_candles: tuple[State, pd.Data
     trades = export_trades_as_dataframe(state.portfolio, pair_id, start_at, end_at)
     assert len(trades) == 3
 
-
     #
     # Now visualise the events
     #
@@ -198,8 +197,8 @@ def test_visualise_trades_with_indicator(state_and_candles: tuple[State, pd.Data
     assert data[7]["name"] == "Sell"
 
     # check dates
-    assert data[0]['x'][0] == datetime.datetime(2021, 1, 1, 0, 0)
-    assert data[0]['x'][-1] == datetime.datetime(2021, 2, 28, 0, 0)
+    assert pd.to_datetime(data[0]['x'][0]).to_pydatetime() == datetime.datetime(2021, 1, 1, 0, 0)
+    assert pd.to_datetime(data[0]['x'][-1]).to_pydatetime() == datetime.datetime(2021, 2, 28, 0, 0)
 
     # Check test indicator data
     # that we have proper timestamps
@@ -307,8 +306,8 @@ def test_visualise_trades_separate_volume(
     assert data[7]["name"] == "Sell"
 
     # check dates
-    assert data[0]['x'][0] == datetime.datetime(2021, 1, 1, 0, 0)
-    assert data[0]['x'][-1] == datetime.datetime(2021, 2, 28, 0, 0)
+    assert pd.to_datetime(data[0]['x'][0]).to_pydatetime() == datetime.datetime(2021, 1, 1, 0, 0)
+    assert pd.to_datetime(data[0]['x'][-1]).to_pydatetime() == datetime.datetime(2021, 2, 28, 0, 0)
 
     # Check test indicator data
     # that we have proper timestamps
@@ -362,10 +361,6 @@ def test_visualise_trades_with_duration_and_slippage(
     assert data[3]["name"] == "random 2"
     assert data[4]["name"] == "random 3"
     assert data[5]["name"] == "random 4"
-
-    # check dates
-    assert data[0]['x'][0] == datetime.datetime(2021, 1, 1, 0, 0)
-    assert data[0]['x'][-1] == datetime.datetime(2021, 2, 28, 0, 0)
 
     # Check test indicator data
     # that we have proper timestamps

@@ -564,6 +564,7 @@ def setup_backtest(
         trading_strategy_engine_version=strategy_module.trading_strategy_engine_version,
         name=name,
         minimum_data_lookback_range=minimum_data_lookback_range,
+        create_indicators=strategy_module.create_indicators,
     )
 
 

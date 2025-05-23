@@ -7,6 +7,7 @@ import numpy as np
 import pytest
 
 from tradeexecutor.state.portfolio import Portfolio
+from tradeexecutor.strategy.execution_context import ExecutionMode
 from tradingstrategy.alternative_data.vault import load_multiple_vaults
 from tradingstrategy.candle import GroupedCandleUniverse
 from tradingstrategy.chain import ChainId
@@ -212,8 +213,8 @@ def rules(
         buffer_pct=0.01,
         cash_change_tolerance_usd=5.00,
         weights=[
-            YieldWeightingRule(pair=ipor_usdc, max_weight=0.33),
-            YieldWeightingRule(pair=aave_usdc, max_weight=1.0),
+            YieldWeightingRule(pair=ipor_usdc, max_concentration=0.33),
+            YieldWeightingRule(pair=aave_usdc, max_concentration=1.0),
         ]
     )
 
@@ -275,20 +276,24 @@ def test_yield_distribute_all(
     )
 
     input = YieldDecisionInput(
+        execution_mode=ExecutionMode.backtesting,
+        cycle=1,
+        timestamp=start_at,
         total_equity=state.portfolio.get_total_equity(),
         directional_trades=[],
+        pending_redemptions=0,
 
     )
-    trades = yield_manager.calculate_yield_management(input)
-    assert len(trades) == 2, f"Got trades: {trades}"
+    result = yield_manager.calculate_yield_management(input)
+    assert len(result.trades) == 2, f"Got trades: {result.trades}"
 
-    t = trades[0]
+    t = result.trades[0]
     assert t.is_vault()
     assert t.is_buy()
     assert t.planned_price == 2.0  # Fixed price
     assert t.planned_reserve == pytest.approx(Decimal(3135))
 
-    t = trades[1]
+    t = result.trades[1]
     assert t.is_credit_supply()
     assert t.is_buy()
     assert t.planned_reserve == pytest.approx(Decimal(6365))
@@ -334,19 +339,23 @@ def test_yield_distribute_some_directional(
 
     input = YieldDecisionInput(
         total_equity=state.portfolio.get_total_equity(),
+        execution_mode=ExecutionMode.backtesting,
+        cycle=1,
+        timestamp=start_at,
         directional_trades=directional_trades,
-
+        pending_redemptions=0,
     )
-    trades = yield_manager.calculate_yield_management(input)
-    assert len(trades) == 2, f"Got trades: {trades}"
 
-    t = trades[0]
+    result = yield_manager.calculate_yield_management(input)
+    assert len(result.trades) == 2, f"Got trades: {result.trades}"
+
+    t = result.trades[0]
     assert t.is_vault()
     assert t.is_buy()
     assert t.planned_price == 2.0  # Fixed price
     assert t.planned_reserve == pytest.approx(Decimal(2805))
 
-    t = trades[1]
+    t = result.trades[1]
     assert t.is_credit_supply()
     assert t.is_buy()
     assert t.planned_reserve == pytest.approx(Decimal(5695))

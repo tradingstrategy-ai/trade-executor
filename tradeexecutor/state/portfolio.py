@@ -531,6 +531,8 @@ class Portfolio:
             - True if a a new position was opened
         """
 
+        dust_epsilon = get_dust_epsilon_for_pair(pair)
+
         if price_structure is not None:
             assert isinstance(price_structure, TradePricing)
 
@@ -541,6 +543,17 @@ class Portfolio:
         if position is None:
             # Open a new position
             position = self.get_position_by_trading_pair(pair)
+
+            # A special logic if we touch the same position with two trades in the same cycle,
+            # and the first trade closes the position.
+            # 1. Recall credit
+            # 2. Supply credit
+            if position:
+                planned_quantity_this_cycle =  position.get_quantity(planned=True)
+                if abs(planned_quantity_this_cycle) < dust_epsilon:
+                    # We cannot trade against the old position as it is goint to be closed
+                    # when we execute the trade
+                    position = None
 
         portfolio_value = self.calculate_total_equity()
 
@@ -599,7 +612,6 @@ class Portfolio:
 
         # Do not allow open positions that are so small
         # we cannot track
-        dust_epsilon = get_dust_epsilon_for_pair(trade.pair)
         if trade.planned_quantity != 0:
             if abs(trade.planned_quantity) <= dust_epsilon:
                 raise TooSmallTrade(f"Trade cannot be this small\n"

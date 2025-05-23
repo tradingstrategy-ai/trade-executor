@@ -1,15 +1,18 @@
 """Vault metadata utils."""
+from web3 import Web3
 
 from eth_defi.abi import ZERO_ADDRESS_STR
+from eth_defi.erc_4626.classification import create_vault_instance
 from eth_defi.erc_4626.core import get_vault_protocol_name
 from eth_defi.erc_4626.vault import ERC4626Vault
+from eth_defi.vault.base import VaultBase
 
 from tradeexecutor.ethereum.token import translate_token_details
 from tradeexecutor.state.identifier import TradingPairIdentifier, TradingPairKind
 from tradingstrategy.vault import VaultMetadata
 
 
-def get_vault_trading_pair(
+def translate_vault_to_trading_pair(
     vault: ERC4626Vault,
 ) -> TradingPairIdentifier:
     """Construct trading pair identifier from a raw onchain vault contract."""
@@ -65,3 +68,31 @@ def get_vault_trading_pair(
             "token_metadata": vault_metadata,
         }
     )
+
+
+def get_vault_from_trading_pair(
+    web3: Web3,
+    pair: TradingPairIdentifier,
+) -> VaultBase:
+    """Get a vault instance for this process.
+
+    - In-memory cache for constructed vault objects
+    """
+
+    vault = _vault_cache.get(pair)
+
+    if vault is None:
+        features = pair.get_vault_features()
+        vault = create_vault_instance(
+            web3,
+            pair.pool_address,
+            features=features,
+        )
+
+        _vault_cache[pair] = vault
+
+    return vault
+
+
+_vault_cache: dict[TradingPairIdentifier, VaultBase] = {}
+

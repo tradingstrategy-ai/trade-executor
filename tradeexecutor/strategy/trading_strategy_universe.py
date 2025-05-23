@@ -19,8 +19,6 @@ from typing import List, Optional, Callable, Tuple, Set, Dict, Iterable, Collect
 
 import pandas as pd
 
-from tradeexecutor.state.types import JSONHexAddress, Percent
-from tradingstrategy.alternative_data.vault import load_multiple_vaults
 from tradingstrategy.lending import LendingReserveUniverse, LendingReserveDescription, LendingCandleType, LendingCandleUniverse, UnknownLendingReserve, LendingProtocolType, LendingReserve
 from tradingstrategy.token import Token
 from tradingstrategy.candle import GroupedCandleUniverse
@@ -37,13 +35,16 @@ from tradingstrategy.transport.cache import OHLCVCandleType
 from tradingstrategy.types import TokenSymbol, NonChecksummedAddress
 from tradingstrategy.universe import Universe
 from tradingstrategy.utils.groupeduniverse import filter_for_pairs, NoDataAvailable
+from tradingstrategy.utils.token_extra_data import load_extra_metadata
+from tradingstrategy.utils.token_filter import add_base_quote_address_columns
+from tradingstrategy.vault import VaultMetadata
+from tradingstrategy.alternative_data.vault import load_multiple_vaults, load_vault_price_data, convert_vault_prices_to_candles
 
 from tradeexecutor.strategy.execution_context import ExecutionMode, ExecutionContext
 from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier, TradingPairKind, AssetType
 from tradeexecutor.strategy.universe_model import StrategyExecutionUniverse, UniverseModel, DataTooOld, UniverseOptions, default_universe_options
-from tradingstrategy.utils.token_extra_data import load_extra_metadata
-from tradingstrategy.utils.token_filter import add_base_quote_address_columns
-from tradingstrategy.vault import VaultMetadata
+from tradeexecutor.state.types import JSONHexAddress, Percent
+
 
 logger = logging.getLogger(__name__)
 
@@ -2176,6 +2177,7 @@ def load_partial_data(
     lending_candle_progress_bar_desc: str | None = None,
     pair_extra_metadata=False,
     vaults: list[tuple[ChainId, JSONHexAddress]] | None = None,
+    vault_bundled_price_data=False,
 ) -> Dataset:
     """Load pair data for given trading pairs.
 
@@ -2315,6 +2317,13 @@ def load_partial_data(
 
         Currently does not load any historical data.
 
+    :param vault_bundled_price_data:
+        For vaults, also load bundled static price data.
+
+        Use minimal backtest dataset from Trading Strategy package bundle.
+
+        Not applicable for live trading.
+
     :return:
         Datataset containing the requested data
 
@@ -2426,7 +2435,7 @@ def load_partial_data(
         if not candle_progress_bar_desc:
             candle_progress_bar_desc = f"Loading OHLCV data for {name}"
 
-        candles = client.fetch_candles_by_pair_ids(
+        candles_df = client.fetch_candles_by_pair_ids(
             our_pair_ids,
             time_bucket,
             progress_bar_description=candle_progress_bar_desc,
@@ -2434,7 +2443,7 @@ def load_partial_data(
             end_time=end_at,
         )
 
-        candles_pairs = set(candles["pair_id"].unique())
+        candles_pairs = set(candles_df["pair_id"].unique())
         asked_pairs = set(our_pair_ids)
 
         if len(candles_pairs) != len(asked_pairs):
@@ -2516,11 +2525,22 @@ def load_partial_data(
             our_exchange_universe.add(vault_exchanges)
             filtered_pairs_df = pd.concat([filtered_pairs_df, vault_pairs_df])
 
+        if vault_bundled_price_data:
+            assert vaults, "Vaults must be given to load bundled price data"
+            assert not execution_context.mode.is_live_trading(), "Cannot load bundled price data in live trading"
+            vault_prices_df = load_vault_price_data(vault_pairs_df)
+            offset = time_bucket.to_frequency()
+            freq_string = f"{offset.n}{offset.name.lower()}"
+            vault_candle_df, vault_liquidity_df = convert_vault_prices_to_candles(vault_prices_df, freq_string)
+            candles_df = pd.concat([candles_df, vault_candle_df])
+            if liquidity_df is not None:
+                liquidity_df = pd.concat([liquidity_df, vault_liquidity_df])
+
         # Collect some debug data for the first 5 pairs
         # to diagnose data loding problems
         if execution_context.mode.is_live_trading():
             for pair_id in list(our_pair_ids)[0:5]:
-                pair_candles = candles[candles["pair_id"] == pair_id]
+                pair_candles = candles_df[candles_df["pair_id"] == pair_id]
                 if len(pair_candles) > 0:
                     first_at = min(pair_candles["timestamp"])
                     last_at = max(pair_candles["timestamp"])
@@ -2542,7 +2562,7 @@ def load_partial_data(
             time_bucket=time_bucket,
             exchanges=our_exchange_universe,
             pairs=filtered_pairs_df,
-            candles=candles,
+            candles=candles_df,
             liquidity=liquidity_df,
             liquidity_time_bucket=liquidity_time_bucket,
             backtest_stop_loss_time_bucket=stop_loss_time_bucket,
