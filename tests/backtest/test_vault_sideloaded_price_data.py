@@ -66,7 +66,7 @@ class Parameters:
     max_assets_in_portfolio = 5  # N vaults at a time
     max_concentration = 0.40  # Max % of portfolio per vault
     per_position_cap_of_pool = 0.01  # 1% of the vault TVL
-    assumed_liquidity_when_data_missings = 0.0  # In data gaps, assume
+    assumed_liquidity_when_data_missing = 0.0  # In data gaps, assume
     individual_rebalance_min_threshold_usd = 150.00
     sell_rebalance_min_threshold = 5.0
 
@@ -318,7 +318,7 @@ def decide_trades(
     size_risk_model = USDTVLSizeRiskModel(
         pricing_model=input.pricing_model,
         per_position_cap=parameters.per_position_cap_of_pool,  # This is how much % by all pool TVL we can allocate for a position
-        missing_tvl_placeholder_usd=parameters.assummed_liquidity_when_data_missings,  # Placeholder for missing TVL data until we get the data off the chain
+        missing_tvl_placeholder_usd=parameters.assumed_liquidity_when_data_missing,  # Placeholder for missing TVL data until we get the data off the chain
     )
 
     alpha_model.normalise_weights(
