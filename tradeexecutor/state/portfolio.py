@@ -550,7 +550,7 @@ class Portfolio:
             # 2. Supply credit
             if position:
                 planned_quantity_this_cycle =  position.get_quantity(planned=True)
-                if planned_quantity_this_cycle < dust_epsilon:
+                if abs(planned_quantity_this_cycle) < dust_epsilon:
                     # We cannot trade against the old position as it is goint to be closed
                     # when we execute the trade
                     position = None
