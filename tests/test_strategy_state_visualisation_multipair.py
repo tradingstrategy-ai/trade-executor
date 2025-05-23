@@ -8,6 +8,7 @@ import webbrowser
 from pathlib import Path
 from typing import List, Dict
 
+import numpy
 import pytest
 
 import pandas as pd
@@ -525,15 +526,15 @@ def test_visualise_strategy_state_overriden_pairs(
 
     assert len(image.data) == 11
     assert len(image._grid_ref) == 2
-    assert image.data[0]['x'][0] == datetime.datetime(2023,4,3,0,0)
-    assert image.data[0]['x'][-1] == datetime.datetime(2023,6,5,0,0)
+    assert image.data[0]['x'][0] == numpy.datetime64(datetime.datetime(2023,4,3,0,0))
+    assert image.data[0]['x'][-1] == numpy.datetime64(datetime.datetime(2023,6,5,0,0))
 
     image_no_detached = draw_multi_pair_strategy_state(state, unit_test_execution_context, strategy_universe, detached_indicators=False)
 
     assert len(image_no_detached.data) == 10
     assert len(image_no_detached._grid_ref) == 1
-    assert image_no_detached.data[0]['x'][0] == datetime.datetime(2023,4,3,0,0)
-    assert image_no_detached.data[0]['x'][-1] == datetime.datetime(2023,6,5,0,0)
+    assert image_no_detached.data[0]['x'][0] == numpy.datetime64(datetime.datetime(2023,4,3,0,0))
+    assert image_no_detached.data[0]['x'][-1] == numpy.datetime64(datetime.datetime(2023,6,5,0,0))
 
     image_no_indicators = draw_multi_pair_strategy_state(state, unit_test_execution_context, strategy_universe, technical_indicators=False)
 
@@ -543,15 +544,15 @@ def test_visualise_strategy_state_overriden_pairs(
     fig = visualise_multiple_pairs(state, strategy_universe.universe.candles, unit_test_execution_context)
     assert len(fig._grid_ref) == 6
     assert len(fig.data) == 27
-    assert fig.data[0].x[0] == datetime.datetime(2022,7,1)
-    assert fig.data[0].x[-1] == datetime.datetime(2023,6,5)
+    assert fig.data[0].x[0] == numpy.datetime64(datetime.datetime(2022,7,1))
+    assert fig.data[0].x[-1] == numpy.datetime64(datetime.datetime(2023,6,5))
     # open_plotly_figure_in_browser(fig, height=2000, width=1000)
 
     fig2 = visualise_single_pair(state, unit_test_execution_context, strategy_universe.universe.candles, pair_id=strategy_universe.iterate_pairs().__next__().internal_id)
     assert len(fig2.data) == 10
     assert len(fig2._grid_ref) == 2
-    assert fig2.data[0].x[0] == datetime.datetime(2022,7,1)
-    assert fig2.data[0].x[-1] == datetime.datetime(2023,6,5)
+    assert fig2.data[0].x[0] == numpy.datetime64(datetime.datetime(2022,7,1))
+    assert fig2.data[0].x[-1] == numpy.datetime64(datetime.datetime(2023,6,5))
     # open_plotly_figure_in_browser(fig2, height=2000, width=1000)
 
     # Test the image on a local screen using a web brower
