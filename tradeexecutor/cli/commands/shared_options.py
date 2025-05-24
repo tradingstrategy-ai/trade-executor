@@ -117,6 +117,7 @@ logstash_server = Option(None, envvar="LOGSTASH_SERVER", help="LogStash server h
 file_log_level = Option("info", envvar="FILE_LOG_LEVEL", help="Log file log level. The default log file is logs/id.log.")
 telegram_api_key = Option(None, envvar="TELEGRAM_API_KEY", help="Telegram bot API key for Telegram logging")
 telegram_chat_id = Option(None, envvar="TELEGRAM_CHAT_ID", help="Telegram chat id where the bot will log. Group chats have negative id. Bot must receive command /start in the group chat before it can send messages there.")
+sentry_dsn = Option(None, envvar="SENTRY_DSN", help="Sentry DSN for error reporting")
 
 max_workers = Option(None, envvar="MAX_WORKERS", help="Maximum number of worker processes (CPU cores) used for indicator calculations. Set to 1 for single thread mode to be used with Python debuggers. If not given use an autodetected safe value.")
 position_type = Option("open_and_frozen", envvar="POSITION_TYPE", help="Which position types to display")
