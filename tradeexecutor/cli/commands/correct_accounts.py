@@ -76,7 +76,6 @@ def correct_accounts(
 
     chain_settle_wait_seconds: float = Option(15.0, "--chain-settle-wait-seconds", envvar="CHAIN_SETTLE_WAIT_SECONDS", help="How long we wait after the account correction to see if our broadcasted transactions fixed the issue."),
     skip_save: bool = Option(False, "--skip-save", is_flag=False, envvar="SKIP_SAVE", help="Do not update state file after the account correction. Only used in testing."),
-    test_var: bool = Option(None, "--test-var", envvar="TEST_VAR", help="Typer bug reproduction."),
     skip_interest: bool = Option(False, "--skip-interest", envvar="SKIP_INTEREST", help="Do not do interest distribution. If an position balance is fixed down due to redemption, this is useful."),
     process_redemption: bool = Option(False, "--process-redemption", envvar="PROCESS_REDEMPTION", help="Attempt to process deposit and redemption requests before correcting accounts."),
     process_redemption_end_block_hint: int = Option(None, "--process-redemption-end-block-hint", envvar="PROCESS_REDEMPTION_END_BLOCK_HINT", help="Used in integration testing."),
