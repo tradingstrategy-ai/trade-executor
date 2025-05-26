@@ -244,10 +244,14 @@ class SimulatedWallet:
             on_chain_balance = self.get_balance(asset.address)
             mismatch = False
             diff = abs(on_chain_balance - amount)
-            relative_diff = diff / amount
-            if relative_diff >= epsilon:
-                clean = False
-                mismatch = True
+            if amount == 0:
+                assert diff == 0
+                relative_diff = 0
+            else:
+                relative_diff = diff / amount
+                if relative_diff >= epsilon:
+                    clean = False
+                    mismatch = True
 
             data.append((asset.token_symbol, amount, on_chain_balance, diff, relative_diff, mismatch, epsilon))
 

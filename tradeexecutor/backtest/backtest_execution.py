@@ -5,6 +5,8 @@ from decimal import Decimal
 from typing import List, Tuple
 import logging
 
+from tabulate import tabulate
+
 from tradeexecutor.backtest.backtest_routing import BacktestRoutingModel, BacktestRoutingState
 from tradeexecutor.backtest.simulated_wallet import SimulatedWallet, OutOfSimulatedBalance
 from tradeexecutor.state.state import State
@@ -253,11 +255,13 @@ class BacktestExecution(ExecutionModel):
         # so return executed_collateral_quantity here to correctly calculate the price
         return executed_quantity, executed_reserve, executed_collateral_allocation, executed_collateral_consumption
 
-    def simulate_trade(self,
-                       ts: datetime.datetime,
-                       state: State,
-                       idx: int,
-                       trade: TradeExecution) -> Tuple[Decimal, Decimal, Decimal, Decimal]:
+    def simulate_trade(
+        self,
+        ts: datetime.datetime,
+        state: State,
+        idx: int,
+        trade: TradeExecution
+    ) -> Tuple[Decimal, Decimal, Decimal, Decimal]:
         """Set backtesting trade state from planned to executed.
         
         Currently, always executes trades "perfectly" i.e. no different slipppage
@@ -382,6 +386,9 @@ class BacktestExecution(ExecutionModel):
         # Check that backtest does not try to execute stop loss / take profit
         # trades when data is not available
         for t in trades:
+
+            assert not t.pair.is_cash(), f"Cannot do cash-cash trades. Got pair {t.pair}: {t}"
+
             position = state.portfolio.open_positions.get(t.position_id)
             if position and position.has_automatic_close():
                 # Check that we have stop loss data available
@@ -449,6 +456,29 @@ class BacktestExecution(ExecutionModel):
 
         # Set the check point interest balacnes for new positions
         set_interest_checkpoint(state, ts, None)
+
+        # Print out balances for diagnostics
+        if logger.getEffectiveLevel() >= logging.INFO:
+            balances = [
+                {"Asset": str(asset), "Balance": balance}
+                for asset, balance in all_assets.items()
+            ]
+
+            if not balances:
+                balances = [
+                    {"Asset": "None", "Balance": "Wallet does not have any assets"}
+                ]
+
+            table_msg = tabulate(
+                balances,
+                headers="keys",
+                tablefmt="fancy_grid",
+            )
+            logger.info(
+                "Wallet balances at %s:\n%s",
+                ts,
+                table_msg,
+            )
 
         logger.info("Finished backtest execution for %s", ts)
 

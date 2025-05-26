@@ -5,12 +5,10 @@ import random
 import pandas as pd
 import pytest
 from plotly.graph_objs import Figure
-from pyasn1_modules.rfc6031 import id_pskc_deviceBinding
 
 from tradeexecutor.analysis.weights import calculate_asset_weights, visualise_weights, calculate_weights_statistics
 from tradingstrategy.candle import GroupedCandleUniverse
 from tradingstrategy.chain import ChainId
-from tradingstrategy.liquidity import GroupedLiquidityUniverse
 from tradingstrategy.timebucket import TimeBucket
 from tradingstrategy.universe import Universe
 
@@ -27,10 +25,9 @@ from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifie
 from tradeexecutor.strategy.pandas_trader.indicator import IndicatorSet
 from tradeexecutor.strategy.pandas_trader.strategy_input import StrategyInput
 from tradeexecutor.strategy.strategy_module import StrategyParameters
-from tradeexecutor.strategy.tvl_size_risk import USDTVLSizeRiskModel
 from tradeexecutor.testing.synthetic_ethereum_data import generate_random_ethereum_address
 from tradeexecutor.testing.synthetic_exchange_data import generate_exchange, generate_simple_routing_model
-from tradeexecutor.testing.synthetic_price_data import generate_ohlcv_candles, generate_tvl_candles
+from tradeexecutor.testing.synthetic_price_data import generate_ohlcv_candles
 
 
 

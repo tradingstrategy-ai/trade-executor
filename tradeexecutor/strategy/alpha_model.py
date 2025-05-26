@@ -943,7 +943,7 @@ class AlphaModel:
             You can use this to exclude credit positions from the portfolio trading.
 
         :param ignore_credit:
-            Automatically ignore credit positions.
+            Automatically ignore credit/vault yield positions.
         """
         total = portfolio.get_position_equity_and_loan_nav()
 
@@ -953,7 +953,7 @@ class AlphaModel:
         for position in portfolio.open_positions.values():
 
             if ignore_credit:
-                if position.is_credit_supply():
+                if position.is_credit_supply() or position.is_vault():
                     continue
 
             # Pair is excluded

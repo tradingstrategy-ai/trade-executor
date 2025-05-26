@@ -497,7 +497,7 @@ class StrategyModuleInformation:
         # Validate StrategyParameters now as it is used later
         if self.is_version_greater_or_equal_than(0, 5, 0):
             assert self.parameters is not None, "Parameters class missing in the strategy module"
-            assert inspect.isclass(self.parameters), f"Expected mod.parameters to be a class, got {type(self.parameters)}"
+            assert inspect.isclass(self.parameters) or isinstance(self.parameters, StrategyParameters), f"Expected mod.parameters to be a class, got {type(self.parameters)}"
 
             # Transform from class with args to a attribdict
             self.parameters = StrategyParameters.from_class(self.parameters, grid_search=False)
