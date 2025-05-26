@@ -4,18 +4,22 @@
 """
 
 import datetime
-from _decimal import Decimal
-from typing import TypeAlias, Tuple, Literal
+import logging
+from decimal import Decimal
+from typing import Literal
 
 from tradeexecutor.state.identifier import (
-    AssetIdentifier, AssetWithTrackedValue, TradingPairIdentifier, 
-    TradingPairKind, AssetType,
+    AssetWithTrackedValue,
+    AssetType,
 )
 from tradeexecutor.state.interest import Interest
 from tradeexecutor.state.loan import Loan, LiquidationRisked
 from tradeexecutor.state.trade import TradeExecution
-from tradeexecutor.state.types import USDollarAmount, LeverageMultiplier, BlockNumber
+from tradeexecutor.state.types import BlockNumber
 from tradeexecutor.utils.accuracy import COLLATERAL_EPSILON, CLOSE_POSITION_COLLATERAL_EPSILON
+
+
+logger = logging.getLogger(__name__)
 
 
 def create_credit_supply_loan(
@@ -312,6 +316,14 @@ def reset_credit_supply_loan(
     assert quantity is not None  # Quantity can be zero in repair trades
     loan = position.loan
     assert loan.borrowed is None, "Should be collateral only"
+    assert isinstance(loan, Loan)
+    previous_quantity = loan.collateral.quantity
+    logger.info(
+        "Resetting credit supply collateral quantity %s %s -> %s",
+        loan.collateral.asset,
+        previous_quantity,
+        quantity,
+    )
     loan.collateral.reset(quantity)  # Reset core quantity
     loan.collateral_interest.reset(
         quantity,
