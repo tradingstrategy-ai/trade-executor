@@ -2,12 +2,18 @@
 
 import json
 import logging
-from pprint import pprint
+import os
+
+import pytest
 
 from tradeexecutor.cli.log import setup_custom_log_levels
 from tradeexecutor.utils.ring_buffer_logging_handler import RingBufferHandler
 
 
+CI = os.environ.get("CI") == "true"
+
+
+@pytest.mark.skipif(CI, reason="Let's not pollute CI logs")
 def test_ring_buffer_logger():
     """Test our in-house in-memory logging solution."""
     setup_custom_log_levels()

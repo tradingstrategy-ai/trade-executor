@@ -75,7 +75,7 @@ def correct_accounts(
     unit_testing: bool = shared_options.unit_testing,
 
     chain_settle_wait_seconds: float = Option(15.0, "--chain-settle-wait-seconds", envvar="CHAIN_SETTLE_WAIT_SECONDS", help="How long we wait after the account correction to see if our broadcasted transactions fixed the issue."),
-    skip_save: bool = Option(False, "--skip-save", envvar="SKIP_SAVE", help="Do not update state file. Useful for testing."),
+    skip_save: bool = Option(False, "--skip-save", is_flag=False, envvar="SKIP_SAVE", help="Do not update state file after the account correction. Only used in testing."),
     skip_interest: bool = Option(False, "--skip-interest", envvar="SKIP_INTEREST", help="Do not do interest distribution. If an position balance is fixed down due to redemption, this is useful."),
     process_redemption: bool = Option(False, "--process-redemption", envvar="PROCESS_REDEMPTION", help="Attempt to process deposit and redemption requests before correcting accounts."),
     process_redemption_end_block_hint: int = Option(None, "--process-redemption-end-block-hint", envvar="PROCESS_REDEMPTION_END_BLOCK_HINT", help="Used in integration testing."),
@@ -367,7 +367,10 @@ def correct_accounts(
     logger.info(f"We did {len(corrections)} accounting corrections, of which {len(balance_updates)} internal state balance updates, new block height is {block_number:,} at {block_timestamp}")
 
     if not skip_save:
+        logger.info("Saving state to %s", store.path)
         store.sync(state)
+    else:
+        logger.info("Saving the fixed state skipped")
 
     web3config.close()
 
@@ -394,6 +397,7 @@ def correct_accounts(
     if clean:
         logger.info(f"Accounts after the correction match for block {block_number:,}:\n%s", output)
         if not raise_on_unclean:
+            logger.info("All ok")
             sys.exit(0)
         else:
             logger.info("Unit test exit - nothing to be done")

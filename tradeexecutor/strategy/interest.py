@@ -351,6 +351,7 @@ def prepare_interest_distribution(
             asset_id = asset.get_identifier()
             asset_interest = asset_interest_data.get(asset_id, AssetInterestData())
             asset_interest.total += entry.quantity
+            asset_interest.entries.append(entry)
             asset_interest_data[asset_id] = asset_interest
 
             position_count += 1
@@ -432,7 +433,17 @@ def distribute_interest_for_assets(
         previous_asset_total
     )
     if abs(interest_accrued_tokens) >= INTEREST_EPSILON:
-        assert interest_accrued_tokens >= 0, f"Interest cannot go negative: {interest_accrued_tokens}, our epsilon is {INTEREST_EPSILON}"
+        if interest_accrued_tokens < 0:
+            # More extensive debug logging
+            logger.error(
+                "Negative interest accrued for asset %s, operation %s",
+                asset,
+                operation.get_diagnostics_data(),
+            )
+            for entry in operation.entries:
+                logger.error("Interest distribution entry: %s", entry.get_diagnostics_data())
+            msg = f"Interest cannot go negative: {interest_accrued_tokens}, previous_asset_total: {previous_asset_total:,}, new total: {new_amount:,}, our epsilon is {INTEREST_EPSILON}. See logs for more details."
+            assert interest_accrued_tokens >= 0, msg
         for entry in operation.entries:
             if entry.asset == asset:
                 evt = distribute_to_entry(
@@ -491,8 +502,8 @@ def accrue_interest(
 
     assert interest_distribution.duration > ZERO_TIMEDELTA, f"Tried to distribute interest for negative timespan {interest_distribution.start} - {interest_distribution.end}"
 
-    block_number_str = f"{block_number,}" if block_number else "<no block>"
-    logger.info(f"accrue_interest(block_timestamp={block_timestamp:,}, {block_number_str}), we have {len(on_chain_balances)} onchain balances")
+    block_number_str = f"{block_number:,}" if block_number else "<no block>"
+    logger.info(f"accrue_interest(block_timestamp={block_timestamp}, {block_number_str}), we have {len(on_chain_balances)} onchain balances")
 
     part_of_year = interest_distribution.duration / aave_financial_year
 

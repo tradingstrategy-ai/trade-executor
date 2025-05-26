@@ -6,6 +6,7 @@ import logging
 import os.path
 import secrets
 import shutil
+from decimal import Decimal
 from pathlib import Path
 from unittest import mock
 
@@ -15,7 +16,7 @@ from _pytest.fixtures import FixtureRequest
 from eth_defi.provider.anvil import AnvilLaunch, launch_anvil
 
 from tradeexecutor.cli.commands.app import app
-
+from tradeexecutor.state.state import State
 
 pytestmark = pytest.mark.skipif(not os.environ.get("JSON_RPC_POLYGON") or not os.environ.get("TRADING_STRATEGY_API_KEY"), reason="Set JSON_RPC_POLYGON and TRADING_STRATEGY_API_KEY environment variables to run this test")
 
@@ -78,6 +79,7 @@ def environment(
         "VAULT_ADAPTER_ADDRESS": "0x1abc5e398775249622a561b2C14E8aeB7fD8e361",
         "VAULT_PAYMENT_FORWARDER_ADDRESS": "0x73b662A52C57C83dab75f1a9C209b5cE8beaB353",
         "VAULT_DEPLOYMENT_BLOCK_NUMBER": "57311900",
+        "TEST_VAR": "xxxx",
         "SKIP_SAVE": "false",  # Need to save between runs
         "SKIP_INTEREST": "true",  # This must be enabled so that correct-accounts do not crash in early intrest distribution phase
         "CACHE_PATH": str(persistent_test_client.transport.cache_path),  # Use unit test cache
@@ -87,6 +89,7 @@ def environment(
 
 def test_correct_accounts_redemption_on_ausdc(
     environment: dict,
+    state_file: Path,
 ):
     """Fix aUSDC redemption breaking accounts.
 
@@ -111,6 +114,16 @@ def test_correct_accounts_redemption_on_ausdc(
         with pytest.raises(SystemExit) as sys_exit:
             app(["correct-accounts"], standalone_mode=False)
         assert sys_exit.value.code == 0
+
+    # Check tracekd interest collateral amount is fixed.
+    # This address the issue if state is not correctly written after the correct accounts.
+    # This is for Typer/Click bug when SKIP_SAVE environment variable is incorrectly parsed
+    # always as true.
+    state = State.read_json_file(state_file)
+    position = state.portfolio.get_position_by_id(21)  # 'Trading position #21 for aPolUSDC-USDC.e'
+    loan = position.loan
+    collateral = loan.collateral
+    assert collateral.quantity == pytest.approx(Decimal(500.65))
 
     # See that the interest distribution now works
     # and is triggered at the start of correct-accounts command

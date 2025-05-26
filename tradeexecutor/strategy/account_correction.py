@@ -408,7 +408,14 @@ def apply_accounting_correction(
         position_type = BalanceUpdatePositionType.open_position
         position_id = correction.position.position_id
         assert position.is_spot() or position.is_credit_supply(), f"Correction not yet implemented for all position types, got {position}"
-        logger.info("Correcting spot %s, asset %s, %f -> %f", position.get_human_readable_name(), asset, correction.expected_amount, correction.actual_amount)
+        logger.info(
+            "Correcting %s %s, asset %s, %f -> %f",
+            position.pair.kind.name,
+            position.get_human_readable_name(),
+            asset,
+            correction.expected_amount,
+            correction.actual_amount,
+        )
         # assert position.is_open(), f"Cannot correct already closed positions, got {position}"
     elif isinstance(position, ReservePosition):
         position_type = BalanceUpdatePositionType.reserve
@@ -474,6 +481,7 @@ def apply_accounting_correction(
                 f"Accounting correction is: {correction}"
 
         if position.is_credit_supply():
+            logger.info("Credit tracking reset for: %s", position)
             reset_credit_supply_loan(
                 position,
                 timestamp=correction.timestamp,
@@ -958,7 +966,9 @@ def check_accounts(
         if c.position:
             position = c.position
             if isinstance(position, TradingPosition):
-                blacklisted = state.is_good_pair(position.pair)
+                blacklisted = not state.is_good_pair(position.pair)
+                if blacklisted:
+                    logger.info(f"Detected blacklisted pair in accounting: {position.pair.get_ticker()}")
 
         items.append({
             "Address": c.asset.address,

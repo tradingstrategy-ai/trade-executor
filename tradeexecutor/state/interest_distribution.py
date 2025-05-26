@@ -5,8 +5,9 @@ Data structures used in interest distribution.
 
 import datetime
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, asdict
 from decimal import Decimal
+from pprint import pformat
 from typing import Set, Dict, List
 import logging
 
@@ -67,6 +68,12 @@ class InterestDistributionEntry:
         """Amount of tracked asset in tokens"""
         return self.tracker.quantity
 
+    def get_diagnostics_data(self) -> str:
+        """Get debug dump of this instance."""
+        data = asdict(self)
+        data["position"] = self.position.get_human_readable_name()  # Don't dump full position data
+        return pformat(data)
+
 
 @dataclass_json
 @dataclass(slots=True)
@@ -83,6 +90,9 @@ class AssetInterestData:
     #:
     effective_rate: Percent = None
 
+    #: All entries that appleid for this asset
+    entries: list[InterestDistributionEntry] = field(default_factory=list)
+
 
 @dataclass_json
 @dataclass(slots=True)
@@ -97,7 +107,7 @@ class InterestDistributionOperation:
 
     #: Ending period of time span for which we calculate the interest
     #:
-    #: Timestamp of the the block end range
+    #: Timestamp of the block end range
     #:
     end: datetime.datetime
 
@@ -114,6 +124,7 @@ class InterestDistributionOperation:
     #:
     entries: List[InterestDistributionEntry]
 
+    #: Not used
     effective_rate: Dict[int, Percent]
 
     @property
@@ -123,3 +134,10 @@ class InterestDistributionOperation:
 
     def get_interest_data(self, asset: AssetIdentifier) -> AssetInterestData | None:
         return self.asset_interest_data.get(asset.get_identifier())
+
+    def get_diagnostics_data(self) -> str:
+        """Get debug dump of this instance."""
+        data = asdict(self)
+        data["asset_interest_data"] = f"{len(data['asset_interest_data'])} entries"
+        data["entries"] = f"{len(data['entries'])} entries"
+        return pformat(data)

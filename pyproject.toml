@@ -190,6 +190,7 @@ testpaths = [
     "tests",
 ]
 
+# TODO: This does not seem to work anymore
 # Do not let pytest to crawl into deps/ subprojects
 # that contain tests and are independent from us
 # https://stackoverflow.com/a/58306308/315168

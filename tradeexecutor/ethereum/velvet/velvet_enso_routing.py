@@ -2,13 +2,11 @@
 
 import logging
 from decimal import Decimal
-from importlib.metadata import metadata
 from typing import cast, Dict
 
 from hexbytes import HexBytes
 
 from eth_defi.timestamp import get_block_timestamp
-from eth_defi.token import fetch_erc20_details
 from eth_defi.trade import TradeSuccess
 from eth_defi.velvet import VelvetVault
 from eth_defi.velvet.analysis import analyse_trade_by_receipt_generic
@@ -17,11 +15,9 @@ from tradeexecutor.ethereum.swap import report_failure
 from tradeexecutor.ethereum.velvet.tx import VelvetTransactionBuilder
 from tradeexecutor.state.blockhain_transaction import BlockchainTransaction
 from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier
-from tradeexecutor.state.interest_distribution import AssetInterestData
 from tradeexecutor.state.state import State
 from tradeexecutor.state.trade import TradeExecution
 from tradeexecutor.state.types import JSONHexAddress
-from tradeexecutor.strategy.execution_context import ExecutionContext
 from tradeexecutor.strategy.routing import RoutingState, RoutingModel, PositionAvailabilityResponse
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
 from tradeexecutor.strategy.universe_model import StrategyExecutionUniverse
