@@ -185,7 +185,7 @@ get-latest-release = 'tradeexecutor.cli.latest_release:main'
 prepare-docker-env = 'tradeexecutor.cli.prepare_docker_env:main'
 
 [tool.pytest.ini_options]
-addopts = "-s --tb=native --ignore=deps"
+addopts = "-s --tb=native"
 testpaths = [
     "tests",
 ]
