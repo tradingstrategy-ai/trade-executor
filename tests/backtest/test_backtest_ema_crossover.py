@@ -39,6 +39,7 @@ def strategy_path() -> Path:
     return Path(os.path.join(os.path.dirname(__file__), "../..", "strategies", "ema-crossover-long-only-no-stop-loss.py"))
 
 
+@pytest.mark.slow_test_group
 def test_ema_crossover_real_data(
     strategy_path,
     logger: logging.Logger,
