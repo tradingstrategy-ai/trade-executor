@@ -198,7 +198,7 @@ class AccountingBalanceCheck:
             self.relative_epsilon,
         )
 
-    def is_low_value_position(self, usd_value_threshold=DEFAULT_USD_LOW_VALUE_THRESHOLD):
+    def is_usd_low_value_diff(self, usd_value_threshold=DEFAULT_USD_LOW_VALUE_THRESHOLD):
         """Check for dust positions.
 
         - We have plenty of token as in base token quantity but it is zeor
@@ -601,7 +601,7 @@ def correct_accounts(
                 )
             elif token_fix_method == UnknownTokenPositionFix.open_missing_position:
 
-                if correction.is_low_value_position():
+                if correction.is_usd_low_value_diff():
                     usd_value = correction.usd_value
                     logger.info(
                         "Position value %s USD is too low to correct - looks dusty: %s",
@@ -991,7 +991,7 @@ def check_accounts(
     for c in corrections:
         idx.append(c.asset.token_symbol)
 
-        low_value = c.is_low_value_position()
+        low_value = c.is_usd_low_value_diff()
 
         match c.position:
             case None:
@@ -1034,7 +1034,7 @@ def check_accounts(
             "Blacklisted": blacklisted,
         })
 
-        if c.mismatch:
+        if c.mismatch and not c.is_usd_low_value_diff():
             clean = False
 
     df = pd.DataFrame(items, index=idx)
