@@ -57,6 +57,7 @@ def environment(
     state_file: Path,
     strategy_file: Path,
     end_block: int,
+    persistent_test_cache_path,
     ) -> dict:
     """Used by CLI commands, for setting up this test environment"""
     environment = {
@@ -78,6 +79,7 @@ def environment(
         "PROCESS_REDEMPTION": "true",  # Especially test for the broken redemption event
         "PROCESS_REDEMPTION_END_BLOCK_HINT": str(end_block),
         "AUTO_APPROVE": "true",   # Disable interactivity for repair command
+        "CACHE_PATH": persistent_test_cache_path,
     }
     return environment
 
