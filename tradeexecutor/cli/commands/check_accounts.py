@@ -58,7 +58,7 @@ def check_accounts(
     test_evm_uniswap_v2_factory: Optional[str] = shared_options.test_evm_uniswap_v2_factory,
     test_evm_uniswap_v2_init_code_hash: Optional[str] = shared_options.test_evm_uniswap_v2_init_code_hash,
     unit_testing: bool = shared_options.unit_testing,
-    raise_on_unclean: bool = typer.Option(False, envvar="RAISE_ON_UNCLEAN", help="Raise an exception if unclean. Unit test option."),
+    raise_on_unclean: bool = typer.Option(False, is_flag=False, envvar="RAISE_ON_UNCLEAN", help="Raise an exception if unclean. Unit test option."),
 ):
     """Check that state internal ledger matches on chain balances.
 

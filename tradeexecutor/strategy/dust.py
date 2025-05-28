@@ -33,6 +33,10 @@ DEFAULT_RELATIVE_EPSILON = 5 * 10 ** -4
 ONE_DELTA_CLOSE_EPSILON = 1 * 10**-4
 
 
+#: If position value is less than 10c consider it to be zero
+DEFAULT_USD_LOW_VALUE_THRESHOLD = 0.10
+
+
 def get_dust_epsilon_for_pair(pair: TradingPairIdentifier) -> Decimal:
     """Get the dust threshold for a trading pair.
 

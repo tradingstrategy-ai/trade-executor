@@ -33,7 +33,7 @@ from tradeexecutor.state.portfolio import Portfolio
 from tradeexecutor.state.repair import close_position_with_empty_trade
 from tradeexecutor.state.trade import TradeFlag, TradeExecution
 from tradeexecutor.strategy.dust import DEFAULT_DUST_EPSILON, get_dust_epsilon_for_pair, get_dust_epsilon_for_asset, DEFAULT_RELATIVE_EPSILON, \
-    get_relative_epsilon_for_asset
+    get_relative_epsilon_for_asset, DEFAULT_USD_LOW_VALUE_THRESHOLD
 from tradeexecutor.strategy.lending_protocol_leverage import reset_credit_supply_loan
 from tradeexecutor.strategy.pandas_trader.position_manager import PositionManager
 from tradeexecutor.strategy.pricing_model import PricingModel
@@ -124,6 +124,8 @@ class AccountingBalanceCheck:
 
     timestamp: datetime.datetime | None
 
+    #: The difference between expected and actual, in USD terms
+    #:
     #: Keep track of monetary value of corrections.
     #:
     #: An estimated value at the time of the correction creation.
@@ -142,6 +144,12 @@ class AccountingBalanceCheck:
     #: Was there a balance mismatch that is larger than the epsilon
     #:
     mismatch: bool
+
+    #: Token price used in usd_value calcuulation
+    price: Decimal | None
+
+    #: Timestamp when we fetched the prcie
+    price_at: datetime.datetime | None
 
     def __post_init__(self):
         assert type(self.relative_epsilon) == float, f"Got {type(self.relative_epsilon)}"
@@ -175,7 +183,7 @@ class AccountingBalanceCheck:
         return self.quantity > 0
 
     def is_dusty(self) -> bool:
-        """If there is a mismatch, is the mismatch within the dust tolerance,"""
+        """If there is a mismatch, is the mismatch within the dust tolerance."""
 
         # Perfect accounting match
         if self.quantity == 0:
@@ -189,6 +197,16 @@ class AccountingBalanceCheck:
             self.dust_epsilon,
             self.relative_epsilon,
         )
+
+    def is_usd_low_value_diff(self, usd_value_threshold=DEFAULT_USD_LOW_VALUE_THRESHOLD):
+        """Check for dust positions.
+
+        - We have plenty of token as in base token quantity but it is zeor
+        """
+
+        # We don't calculate USD value for leveraged positions ATM
+        if self.usd_value is not None:
+            return self.usd_value < usd_value_threshold
 
     def is_mismatch(self) -> bool:
         return self.mismatch
@@ -268,6 +286,9 @@ def calculate_account_corrections(
     :param block_identifier:
         Check at certain account height
 
+    :param ignore_usd_low_value:
+        If the position value is less than this, round to zero.
+
     :raise UnexpectedAccountingCorrectionIssue:
         If we find on-chain tokens we do not know how to map any of our strategy positions
 
@@ -328,12 +349,25 @@ def calculate_account_corrections(
 
         reserve = mapping.is_for_reserve()
 
+        price = price_at = None
+
         if len(mapping.positions) == 0:
             # This asset does not have open our closed positions,
             # but is present in the trading universe
-            position = None
             usd_value = None
             dust_epsilon = 0
+
+            # Use cached token price value if available.
+            # This needs to looked upto deal with closed, dust like, positions
+            positions = list(state.portfolio.get_all_positions())
+            positions.sort(key=lambda p: p.position_id, reverse=True)
+            for p in positions:
+                if p.pair.base == ab.asset:
+                    price = p.last_token_price
+                    price_at = p.last_pricing_at
+                    usd_value = p
+                    break
+
         elif mapping.is_one_to_one_asset_to_position():
             position = mapping.get_only_position()
 
@@ -347,6 +381,10 @@ def calculate_account_corrections(
                 raise NotImplementedError(f"Could not figure out position: {position}")
 
             usd_value = position.calculate_quantity_usd_value(diff) if position else None
+
+            if isinstance(position, TradingPosition):
+                price = position.last_token_price
+                price_at = position.last_pricing_at
         else:
             # Loan based positions have multiple assets, both in base and quote.
             # We use some values from the first position (across multiple) to
@@ -379,6 +417,8 @@ def calculate_account_corrections(
                 usd_value,
                 reserve,
                 mismatch,
+                price=price,
+                price_at=price_at,
             )
 
 
@@ -563,6 +603,16 @@ def correct_accounts(
                     tx_builder,
                 )
             elif token_fix_method == UnknownTokenPositionFix.open_missing_position:
+
+                if correction.is_usd_low_value_diff():
+                    usd_value = correction.usd_value
+                    logger.info(
+                        "Position value %s USD is too low to correct - looks dusty: %s",
+                        correction,
+                        usd_value,
+                    )
+                    continue
+
                 logger.info("Open a new position in the state to match our wallet balance: %s", correction)
                 open_missing_position(
                     strategy_universe,
@@ -944,6 +994,8 @@ def check_accounts(
     for c in corrections:
         idx.append(c.asset.token_symbol)
 
+        low_value = c.is_usd_low_value_diff()
+
         match c.position:
             case None:
                 position_label = "No open position"
@@ -973,17 +1025,19 @@ def check_accounts(
         items.append({
             "Address": c.asset.address,
             "Position": position_label,
-            "Actual amount": f"{c.actual_amount:.6f}",
-            "Expected amount": f"{c.expected_amount:.6f}",
+            "Actual": f"{c.actual_amount:.6f}",
+            "Expected": f"{c.expected_amount:.6f}",
             "Diff": f"{c.quantity:.4f}",
             "Dusty": "Y" if dust else "N",
-            "Mismatch": mismatch_str if c.mismatch else "N",
-            "Dust epsilon": f"{c.dust_epsilon:.4f}",
-            "Relative epsilon": f"{c.relative_epsilon:.4f}",
+            "Lowval": "Y" if low_value else "N",
+            "Misma": mismatch_str if c.mismatch else "N",
+            "Dust eps.": f"{c.dust_epsilon:.4f}",
+            "Rel eps": f"{c.relative_epsilon:.4f}",
+            "USD diff": f"{c.usd_value:,.2f}" if c.usd_value is not None else "-",
             "Blacklisted": blacklisted,
         })
 
-        if c.mismatch:
+        if c.mismatch and not c.is_usd_low_value_diff():
             clean = False
 
     df = pd.DataFrame(items, index=idx)

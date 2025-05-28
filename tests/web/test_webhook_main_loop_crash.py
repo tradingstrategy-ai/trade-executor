@@ -38,6 +38,7 @@ def hot_wallet_private_key() -> HexBytes:
     return HexBytes(secrets.token_bytes(32))
 
 
+@pytest.mark.slow_test_group
 @pytest.mark.skipif(os.environ.get("BNB_CHAIN_JSON_RPC") is None, reason="Set BNB_CHAIN_JSON_RPC environment variable to Binance Smart Chain node to run this test")
 def test_main_loop_crash_with_catch(
     strategy_path,

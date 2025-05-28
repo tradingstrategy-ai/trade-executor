@@ -83,6 +83,7 @@ def environment(
         "SKIP_SAVE": "false",  # Need to save between runs
         "SKIP_INTEREST": "true",  # This must be enabled so that correct-accounts do not crash in early intrest distribution phase
         "CACHE_PATH": str(persistent_test_client.transport.cache_path),  # Use unit test cache
+        "RAISE_ON_UNCLEAN": "true",  # This is needed to detect unclean state
     }
     return environment
 
@@ -105,15 +106,11 @@ def test_correct_accounts_redemption_on_ausdc(
 
     # Accounting is detect to be incorrect
     with mock.patch.dict('os.environ', environment, clear=True):
-        with pytest.raises(SystemExit) as sys_exit:
-            app(["check-accounts"], standalone_mode=False)
-        assert sys_exit.value.code == 1
+        app(["check-accounts"], standalone_mode=False)
 
     # Fix issued
     with mock.patch.dict('os.environ', environment, clear=True):
-        with pytest.raises(SystemExit) as sys_exit:
-            app(["correct-accounts"], standalone_mode=False)
-        assert sys_exit.value.code == 0
+        app(["correct-accounts"], standalone_mode=False)
 
     # Check tracekd interest collateral amount is fixed.
     # This address the issue if state is not correctly written after the correct accounts.

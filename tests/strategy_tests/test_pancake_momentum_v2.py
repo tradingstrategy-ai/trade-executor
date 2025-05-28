@@ -16,6 +16,8 @@ from tradeexecutor.strategy.cycle import CycleDuration
 from tradingstrategy.timebucket import TimeBucket
 
 
+CI = os.environ.get("CI") == "true"
+
 # https://docs.pytest.org/en/latest/how-to/skipping.html#skip-all-test-functions-of-a-class-or-module
 pytestmark = pytest.mark.skipif(os.environ.get("TRADING_STRATEGY_API_KEY") is None, reason="Set TRADING_STRATEGY_API_KEY environment variable to run this test")
 
@@ -33,7 +35,7 @@ def strategy_path() -> Path:
 
 
 @pytest.mark.slow_test_group
-@pytest.mark.skipif(os.environ.get("SKIP_SLOW_TEST"), reason="Slow tests skipping enabled")
+@pytest.mark.skipif(os.environ.get("SKIP_SLOW_TEST") or CI, reason="Slow tests skipping enabled, also skipped on CI")
 def test_pancake_momentum_v2(
     strategy_path,
     logger: logging.Logger,

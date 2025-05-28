@@ -80,7 +80,7 @@ def correct_accounts(
     process_redemption: bool = Option(False, "--process-redemption", envvar="PROCESS_REDEMPTION", help="Attempt to process deposit and redemption requests before correcting accounts."),
     process_redemption_end_block_hint: int = Option(None, "--process-redemption-end-block-hint", envvar="PROCESS_REDEMPTION_END_BLOCK_HINT", help="Used in integration testing."),
     transfer_away: bool = Option(False, "--transfer-away", envvar="TRANSFER_AWAY", help="For tokens without assigned position, scoop them to the hot wallet instead of trying to construct a new position"),
-    raise_on_unclean: bool = typer.Option(False, envvar="RAISE_ON_UNCLEAN", help="Raise an exception if unclean. Unit test option."),
+    raise_on_unclean: bool = typer.Option(False, is_flag=True, envvar="RAISE_ON_UNCLEAN", help="Raise an exception if unclean. Unit test option."),
 ):
     """Correct accounting errors in the internal ledger of the trade executor.
 
@@ -323,7 +323,6 @@ def correct_accounts(
     if process_redemption:
         timestamp = datetime.datetime.utcnow()
         reserve_assets = list(universe.reserve_assets)
-
 
         if process_redemption_end_block_hint:
             # Passed by unit tests so we are not going to scan the whole chain until today (wall clock time)

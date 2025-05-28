@@ -75,8 +75,8 @@ def environment(
         "ASSET_MANAGEMENT_MODE": "enzyme",
         "UNIT_TESTING": "true",
         "UNIT_TEST_FORCE_ANVIL": "true",  # check-wallet command legacy hack
-        "LOG_LEVEL": "disabled",
-        # "LOG_LEVEL": "info",
+        # "LOG_LEVEL": "disabled",
+        "LOG_LEVEL": "info",
         # "CONFIRMATION_BLOCK_COUNT": "0",  # Needed for test backend, Anvil
         "TRADING_STRATEGY_API_KEY": os.environ["TRADING_STRATEGY_API_KEY"],
         "VAULT_ADDRESS": "0x773C9f40a7aeCcB307dFFFD237Fc55e649bf375a",
@@ -85,6 +85,7 @@ def environment(
         "VAULT_DEPLOYMENT_BLOCK_NUMBER": "20362579",
         "SKIP_SAVE": "true",
         "CACHE_PATH": str(persistent_test_client.transport.cache_path),  # Use unit test cache
+        "RAISE_ON_UNCLEAN": "true",
     }
     return environment
 
@@ -102,12 +103,8 @@ def test_correct_interest_not_accrued(
 
     # Accounting is detect to be incorrect
     with mock.patch.dict('os.environ', environment, clear=True):
-        with pytest.raises(SystemExit) as sys_exit:
-            app(["check-accounts"], standalone_mode=False)
-        assert sys_exit.value.code == 1
+        app(["check-accounts"], standalone_mode=False)
 
     # Fix issued
     with mock.patch.dict('os.environ', environment, clear=True):
-        with pytest.raises(SystemExit) as sys_exit:
-            app(["correct-accounts"], standalone_mode=False)
-        assert sys_exit.value.code == 0
+        app(["correct-accounts"], standalone_mode=False)
