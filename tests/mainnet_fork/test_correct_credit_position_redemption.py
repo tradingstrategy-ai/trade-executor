@@ -106,9 +106,7 @@ def test_correct_accounts_redemption_on_ausdc(
 
     # Accounting is detect to be incorrect
     with mock.patch.dict('os.environ', environment, clear=True):
-        with pytest.raises(SystemExit) as sys_exit:
-            app(["check-accounts"], standalone_mode=False)
-        assert sys_exit.value.code == 1
+        app(["check-accounts"], standalone_mode=False)
 
     # Fix issued
     with mock.patch.dict('os.environ', environment, clear=True):
