@@ -324,7 +324,6 @@ def correct_accounts(
         timestamp = datetime.datetime.utcnow()
         reserve_assets = list(universe.reserve_assets)
 
-
         if process_redemption_end_block_hint:
             # Passed by unit tests so we are not going to scan the whole chain until today (wall clock time)
             end_block = process_redemption_end_block_hint
