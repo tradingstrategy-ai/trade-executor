@@ -112,9 +112,7 @@ def test_correct_accounts_redemption_on_ausdc(
 
     # Fix issued
     with mock.patch.dict('os.environ', environment, clear=True):
-        with pytest.raises(SystemExit) as sys_exit:
-            app(["correct-accounts"], standalone_mode=False)
-        assert sys_exit.value.code == 0
+        app(["correct-accounts"], standalone_mode=False)
 
     # Check tracekd interest collateral amount is fixed.
     # This address the issue if state is not correctly written after the correct accounts.
