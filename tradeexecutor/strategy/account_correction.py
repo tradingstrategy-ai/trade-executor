@@ -203,7 +203,10 @@ class AccountingBalanceCheck:
 
         - We have plenty of token as in base token quantity but it is zeor
         """
-        return self.usd_value < usd_value_threshold
+
+        # We don't calculate USD value for leveraged positions ATM
+        if self.usd_value is not None:
+            return self.usd_value < usd_value_threshold
 
     def is_mismatch(self) -> bool:
         return self.mismatch
