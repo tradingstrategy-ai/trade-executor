@@ -138,6 +138,7 @@ def environment(
     state_file: Path,
     strategy_file: Path,
     vault_record_file: Path,
+    persistent_test_cache_path: str,
     ) -> dict:
     """Passed to init and start commands as environment variables"""
     # Set up the configuration for the live trader
@@ -161,6 +162,7 @@ def environment(
         "TERMS_OF_SERVICE_ADDRESS": "0xbe1418df0bAd87577de1A41385F19c6e77312780",  # Deployed earlier, but not used
         "OWNER_ADDRESS": "0x238B0435F69355e623d99363d58F7ba49C408491",  # ProtoDAO multisig
         "PATH": os.environ["PATH"],  # Needs forge
+        "CACHE_PATH": persistent_test_cache_path,
     }
     return environment
 

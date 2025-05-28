@@ -136,6 +136,7 @@ def environment(
     state_file: Path,
     strategy_file: Path,
     vault_record_file: Path,
+    persistent_test_cache_path: str,
 ) -> dict:
     """Passed to init and start commands as environment variables"""
     # Set up the configuration for the live trader
@@ -162,6 +163,7 @@ def environment(
         "PATH": os.environ["PATH"],  # Needs forge
         "ONE_DELTA": "true",
         "MAX_CYCLES": "6",  # Run decide_trades() 5 times
+        "CACHE_PATH": persistent_test_cache_path,
     }
     return environment
 
