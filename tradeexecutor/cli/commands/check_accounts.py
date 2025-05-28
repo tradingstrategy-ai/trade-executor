@@ -189,6 +189,7 @@ def check_accounts(
 
     if clean:
         logger.info("All accounts match:\n%s", output)
+        import ipdb ; ipdb.set_trace()
         if not raise_on_unclean:
             sys.exit(0)
         else:

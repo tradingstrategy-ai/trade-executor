@@ -83,6 +83,7 @@ def environment(
         "SKIP_SAVE": "false",  # Need to save between runs
         "SKIP_INTEREST": "true",  # This must be enabled so that correct-accounts do not crash in early intrest distribution phase
         "CACHE_PATH": str(persistent_test_client.transport.cache_path),  # Use unit test cache
+        "RAISE_ON_UNCLEAN": "true",  # This is needed to detect unclean state
     }
     return environment
 
