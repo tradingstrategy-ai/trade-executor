@@ -1,7 +1,8 @@
 """Route trades for ERC-4626 and similar vaults."""
 
 import logging
-from _decimal import Decimal
+from decimal import Decimal
+import datetime
 from typing import Dict, cast
 
 from eth_typing import HexAddress
@@ -10,6 +11,7 @@ from hexbytes import HexBytes
 from eth_defi.erc_4626.analysis import analyse_4626_flow_transaction
 from eth_defi.erc_4626.classification import create_vault_instance
 from eth_defi.erc_4626.flow import approve_and_deposit_4626, approve_and_redeem_4626
+from eth_defi.erc_4626.profit_and_loss import estimate_4626_recent_profitability
 from eth_defi.erc_4626.vault import ERC4626Vault
 from eth_defi.token import fetch_erc20_details
 from eth_defi.trade import TradeSuccess
@@ -59,11 +61,16 @@ class VaultRouting(RoutingModel):
     - Do trades for ERC-4626 and other vaults
     """
 
-    def __init__(self, reserve_token_address: JSONHexAddress):
+    def __init__(
+        self,
+        reserve_token_address: JSONHexAddress,
+        profitability_estimation_lookback_window=datetime.timedelta(days=7),
+    ):
         super().__init__(
             allowed_intermediary_pairs={},
             reserve_token_address=reserve_token_address,
         )
+        self.profitability_estimation_lookback_window = profitability_estimation_lookback_window
 
     def create_routing_state(
         self,
@@ -106,6 +113,20 @@ class VaultRouting(RoutingModel):
             token_in = reserve_asset
             token_out = trade.pair.base
             swap_amount = trade.get_planned_reserve()
+
+            try:
+                profitability_estimation = estimate_4626_recent_profitability(
+                    vault=target_vault,
+                    lookback_window=self.profitability_estimation_lookback_window,
+                )
+                profitability_estimation_error = None
+            except Exception as e:
+                # Ok to fail, data used only for diagnostics and UI
+                profitability_estimation = None
+                profitability_estimation_error = str(e)
+                logger.error(
+                    "Vault trade %s profitatability estimation failed: %s",
+                )
         else:
             token_in = trade.pair.base
             token_out = reserve_asset
