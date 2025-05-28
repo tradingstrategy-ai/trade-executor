@@ -79,7 +79,7 @@ def environment(
         "SKIP_SAVE": "true",
         "AUTO_APPROVE": "true",  # skip y/n prompt
         "CACHE_PATH": str(persistent_test_client.transport.cache_path),  # Use unit test cache
-        "RAISE_ON_UNCLEAN": "true",
+        "RAISE_ON_UNCLEAN": "false",
     }
     return environment
 

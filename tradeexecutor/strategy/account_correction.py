@@ -124,6 +124,8 @@ class AccountingBalanceCheck:
 
     timestamp: datetime.datetime | None
 
+    #: The difference between expected and actual, in USD terms
+    #:
     #: Keep track of monetary value of corrections.
     #:
     #: An estimated value at the time of the correction creation.
@@ -376,8 +378,10 @@ def calculate_account_corrections(
                 raise NotImplementedError(f"Could not figure out position: {position}")
 
             usd_value = position.calculate_quantity_usd_value(diff) if position else None
-            price = position.last_token_price
-            price_at = position.last_pricing_at
+
+            if isinstance(position, TradingPosition):
+                price = position.last_token_price
+                price_at = position.last_pricing_at
         else:
             # Loan based positions have multiple assets, both in base and quote.
             # We use some values from the first position (across multiple) to
@@ -1018,14 +1022,15 @@ def check_accounts(
         items.append({
             "Address": c.asset.address,
             "Position": position_label,
-            "Actual amt": f"{c.actual_amount:.6f}",
-            "Expected amt": f"{c.expected_amount:.6f}",
+            "Actual": f"{c.actual_amount:.6f}",
+            "Expected": f"{c.expected_amount:.6f}",
             "Diff": f"{c.quantity:.4f}",
             "Dusty": "Y" if dust else "N",
-            "Low val": "Y" if low_value else "N",
+            "Lowval": "Y" if low_value else "N",
             "Mismatch": mismatch_str if c.mismatch else "N",
             "Dust eps.": f"{c.dust_epsilon:.4f}",
-            "Rel epsilon": f"{c.relative_epsilon:.4f}",
+            "Rel eps": f"{c.relative_epsilon:.4f}",
+            "USD diff": f"{c.usd_value:,.2f} USD" if c.usd_value is not None else "-",
             "Blacklisted": blacklisted,
         })
 
