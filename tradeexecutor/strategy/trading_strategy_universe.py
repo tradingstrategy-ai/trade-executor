@@ -896,6 +896,15 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
             return None
         return translate_trading_pair(pair, cache=self.pair_cache)
 
+    def get_asset_by_address(self, address: str, chain_id: ChainId=None) -> Optional[AssetIdentifier]:
+        """Get a trading pair data by a smart contract address."""
+        if chain_id is None:
+            chain_id = self.data_universe.get_default_chain()
+        token = self.data_universe.pairs.get_token(address, chain_id=chain_id)
+        if not token:
+            return None
+        return translate_token(token)
+
     def get_single_pair(self) -> TradingPairIdentifier:
         """Get the single trading pair in this universe.
 
