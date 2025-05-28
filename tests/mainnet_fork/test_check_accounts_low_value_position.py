@@ -70,7 +70,7 @@ def environment(
         "ASSET_MANAGEMENT_MODE": "lagoon",
         "UNIT_TESTING": "true",
         "UNIT_TEST_FORCE_ANVIL": "true",  # check-wallet command legacy hack
-        "LOG_LEVEL": "info",
+        "LOG_LEVEL": "disabled",
         # "LOG_LEVEL": "info",
         # "CONFIRMATION_BLOCK_COUNT": "0",  # Needed for test backend, Anvil
         "TRADING_STRATEGY_API_KEY": os.environ["TRADING_STRATEGY_API_KEY"],
