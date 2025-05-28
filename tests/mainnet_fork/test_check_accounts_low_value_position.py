@@ -89,15 +89,13 @@ def test_check_account_low_value_position(
     environment: dict,
     mocker,
 ):
-    """Fix a creidt position that failed to open.
+    """Check for dust filter based on USD value of the position.
 
-    - Execution crashes in broadcasting phase
+    The test does not check anything, just runs some code paths.
     """
 
     mocker.patch.dict("os.environ", environment, clear=True)
-    app(["check-accounts"], standalone_mode=False)
 
-    # Check accounts now to verify if balance is good
-    # with pytest.raises(SystemExit) as sys_exit:
+    with pytest.raises(SystemExit):
+        app(["check-accounts"], standalone_mode=False)
 
-    # assert sys_exit.value.code == 0

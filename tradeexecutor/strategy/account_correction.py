@@ -1027,10 +1027,10 @@ def check_accounts(
             "Diff": f"{c.quantity:.4f}",
             "Dusty": "Y" if dust else "N",
             "Lowval": "Y" if low_value else "N",
-            "Mismatch": mismatch_str if c.mismatch else "N",
+            "Misma": mismatch_str if c.mismatch else "N",
             "Dust eps.": f"{c.dust_epsilon:.4f}",
             "Rel eps": f"{c.relative_epsilon:.4f}",
-            "USD diff": f"{c.usd_value:,.2f} USD" if c.usd_value is not None else "-",
+            "USD diff": f"{c.usd_value:,.2f}" if c.usd_value is not None else "-",
             "Blacklisted": blacklisted,
         })
 
