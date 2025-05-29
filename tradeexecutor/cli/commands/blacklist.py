@@ -157,7 +157,7 @@ def blacklist(
     if add_token:
         asset = strategy_universe.get_asset_by_address(add_token)
         logger.info("Blacklisting asset %s", asset)
-        state.blacklist_asset(asset)
+        state.blacklist_asset(asset, reason="Manually blacklisted by oracle admin")
 
     if remove_token:
         assert len(state.blacklisted_assets) > 0, "No blacklisted assets in the state"
