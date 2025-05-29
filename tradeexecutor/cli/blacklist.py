@@ -18,6 +18,7 @@ def display_blacklist(state: State, strategy_universe: TradingStrategyUniverse) 
         for trade in all_trades:
             if trade.pair.base == asset:
                 last_trade = trade
+                pair = trade.pair
                 break
 
         reason = state.blacklist_reason.get(asset.get_identifier())
@@ -29,6 +30,7 @@ def display_blacklist(state: State, strategy_universe: TradingStrategyUniverse) 
             "Last trade id": last_trade.trade_id if last_trade else "-",
             "Last trade at": last_trade.executed_at if last_trade else "-",
             "Reason": reason or "-",
+            "Risk score": pair.get_risk_score() if pair else "-",
         }
         rows.append(entry)
 
