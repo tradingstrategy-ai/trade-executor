@@ -51,7 +51,7 @@ def decide_trades(
         state: State,
         pricing_model: PricingModel,
         cycle_debug_data: Dict) -> List[TradeExecution]:
-    time.sleep(2)
+    time.sleep(2)   # We need to wait the pytest test case / web server to catch up with the output
     raise CrashTest("Boom")
 
 

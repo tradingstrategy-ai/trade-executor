@@ -2,6 +2,7 @@
 import os
 import secrets
 import subprocess
+import threading
 import time
 from pathlib import Path
 import logging
@@ -18,9 +19,6 @@ from tradeexecutor.cli.main import app
 
 
 logger = logging.getLogger(__name__)
-
-
-
 
 
 @pytest.fixture()
@@ -40,7 +38,7 @@ def hot_wallet_private_key() -> HexBytes:
 
 @pytest.mark.slow_test_group
 @pytest.mark.skipif(os.environ.get("BNB_CHAIN_JSON_RPC") is None, reason="Set BNB_CHAIN_JSON_RPC environment variable to Binance Smart Chain node to run this test")
-def test_main_loop_crash_with_catch(
+def test_main_loop_catch(
     strategy_path,
     hot_wallet_private_key
 ):
@@ -66,18 +64,19 @@ def test_main_loop_crash_with_catch(
         "MAX_DATA_DELAY_MINUTES": str(10*60*24*365),  # 10 years or "disabled""
         "LOG_LEVEL": "disabled",
         "UNIT_TESTING": "true",
+        "RUN_SINGLE_CYCLE": "true",  # Run only one cycle to crash immediately
+        "SKIP_CRASH_SLEEP": "true",  # Skip the sleep in the crash strategy
     }
 
     cli = get_command(app)
     with patch.dict(os.environ, env, clear=True):
         with pytest.raises(Exception) as e:
-            cli.main(args=["start"])
+            cli.main(args=["start"], standalone_mode=False)
         assert str(e.value) == "Boom", f"The received main loop exception was : {e}"
 
 
-@flaky.flaky(max_runs=5)
 @pytest.mark.skipif(os.environ.get("BNB_CHAIN_JSON_RPC") is None, reason="Set BNB_CHAIN_JSON_RPC environment variable to Binance Smart Chain node to run this test")
-def test_main_loop_crash(
+def test_main_loop_traceback_over_web(
     strategy_path,
     hot_wallet_private_key
 ):
@@ -129,6 +128,7 @@ def test_main_loop_crash(
         while time.time() < deadline:
             try:
                 resp = requests.get(f"{server}/status", timeout=0.1)
+                logger.info("Checking server: %s", resp.status_code)
             except Exception as e:
                 last_exception = e
                 time.sleep(0.5)

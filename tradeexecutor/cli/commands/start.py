@@ -7,6 +7,7 @@ import datetime
 import faulthandler
 import logging
 import os
+import sys
 import time
 from decimal import Decimal
 from pathlib import Path
@@ -147,6 +148,7 @@ def start(
     visualisation: bool = typer.Option(True, "--visualisation", envvar="VISUALISATION", help="Disable generation of charts using Kaleido library. Helps with issues with broken installations"),
 
     run_single_cycle: bool = typer.Option(False, "--run-single-cycle", envvar="RUN_SINGLE_CYCLE", help="Run a single strategy decision cycle and exist, regardless of the current pending state."),
+    skip_crash_sleep: bool = typer.Option(False, "--skip-crash-sleep", envvar="SKIP_CRASH_SLEEP", help="Don't leave waiting after a crash. Unit test optimisation."),
 
     simulate: bool = shared_options.simulate,
 
@@ -692,7 +694,9 @@ def start(
                     "Main loop terminated. Entering to the web server wait mode. Run-time version was:\n%s",
                     run_state.version,
                 )
-                time.sleep(3600*24*365)
+
+                if not skip_crash_sleep:
+                    time.sleep(3600*24*365)
     finally:
         if server:
             logger.info("Closing the web server")

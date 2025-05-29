@@ -69,7 +69,7 @@ jobs:
       # https://github.com/pytest-dev/pytest/issues/3216#issuecomment-2572882817
       - name: Run test scripts
         run: |
-            poetry run pytest --tb=native --dist loadscope -n 5 --durations=10 -m "not slow_test_group" --timeout=390
+            poetry run pytest --tb=native --dist loadscope -n 6 --durations=10 -m "not slow_test_group" --timeout=390
         env:
           TRADING_STRATEGY_API_KEY: ${{ secrets.TRADING_STRATEGY_API_KEY }}
           BNB_CHAIN_JSON_RPC: ${{ secrets.BNB_CHAIN_JSON_RPC }}

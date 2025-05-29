@@ -18,7 +18,7 @@ from dataclasses_json.core import _ExtendedEncoder
 
 from .other_data import OtherData
 from .sync import Sync
-from .identifier import AssetIdentifier, TradingPairIdentifier, TradingPairKind
+from .identifier import AssetIdentifier, TradingPairIdentifier, TradingPairKind, AssetFriendlyId
 from .portfolio import Portfolio
 from .position import TradingPosition
 from .reserve import ReservePosition
@@ -174,6 +174,9 @@ class State:
 
     #: Maintain set of blacklisted asset identifiers
     blacklisted_assets: Set[AssetIdentifier] = field(default_factory=set)
+
+    #: Why did we blacklist
+    blacklist_reason: dict[AssetFriendlyId, str] = field(default_factory=dict)
 
     #: Strategy visualisation and debug messages
     #: to show how the strategy is thinking.
@@ -956,6 +959,26 @@ class State:
         logger.info("Blacklisted: %s, reason: %s", asset, reason)
         self.asset_blacklist.add(asset.get_identifier())  # Legacy compatibility
         self.blacklisted_assets.add(asset)
+
+        if not reason:
+            reason = "-"
+
+        # Always have human timestamp at reason
+        reason = f"Blacklisted {datetime.datetime.utcnow()}:\n{reason}"
+
+        self.blacklist_reason[asset.get_identifier()] = reason
+
+    def unblacklist_asset(
+        self,
+        asset: AssetIdentifier,
+    ):
+        """Remove an asset to the blacklist.
+        """
+        assert isinstance(asset, AssetIdentifier), f"Expected AssetIdentifier, got {type(asset)}: {asset}"
+        logger.info("Unblacklisted: %s", asset)
+        assert asset.get_identifier() in self.asset_blacklist, f"Cannot unblacklist {asset}, not in the blacklist"
+        self.asset_blacklist.remove(asset.get_identifier())  # Legacy compatibility
+        self.blacklisted_assets.remove(asset)
 
     def perform_integrity_check(self):
         """Check that we are not reusing any trade or position ids and counters are correct.
