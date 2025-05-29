@@ -1,5 +1,11 @@
 """blacklist command.
 
+To run with Docker:
+
+.. code-block:: bash
+
+    docker compose run base-ath blacklist
+
 """
 import datetime
 from pathlib import Path

@@ -45,10 +45,20 @@ def freeze_position_on_failed_trade(ts: datetime.datetime, state: State, trades:
             if position.notes is None:
                 position.notes = ""
 
-            position.add_notes_message(f"Frozen at {datetime.datetime.utcnow()} due to trade {t.trade_id} failing")
+            freeze_message = f"Frozen at {datetime.datetime.utcnow()} due to trade {t.trade_id} failing: {t.get_revert_reason()}"
+            position.add_notes_message(freeze_message)
 
-            # Mark assets automatically blacklisted so no future trades
-            state.blacklist_asset(position.pair.base)
+            # Error level will send this all the way to Sentry
+            logger.error(
+                "Position %s frozen: trade %s failed with reason: %s",
+                position,
+                t,
+                t.get_revert_reason()
+            )
+
+            # Mark assets automatically blacklisted so no future trades.
+            # TODO: Needs smarted logic there only black list on particular failure reasons.
+            # state.blacklist_asset(position.pair.base)
 
             failed.append(t)
         else:
