@@ -162,6 +162,7 @@ def blacklist(
     if remove_token:
         assert len(state.blacklisted_assets) > 0, "No blacklisted assets in the state"
         asset = strategy_universe.get_asset_by_address(remove_token)
+        assert asset, f"Asset {remove_token} not found in the strategy universe"
         logger.info("Unblacklisting asset %s", asset)
         state.unblacklist_asset(asset)
 
