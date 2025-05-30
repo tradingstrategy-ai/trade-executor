@@ -463,9 +463,25 @@ def setup_sentry_logging(*, application_name: str, sentry_dsn: str):
         Sentry DSN
     """
     import sentry_sdk
+    from sentry_sdk.types import Breadcrumb, BreadcrumbHint
+
+    def before_breadcrumb(crumb: Breadcrumb, hint: BreadcrumbHint) -> Breadcrumb | None:
+        # Ignore httplib logs, since they are Discord requests
+        if crumb["category"] == "httplib":
+            return None
+
+        # Sentry doesn't support our custom log level, so we need to map it to INFO
+        custom_level_mapping = {
+            "trade": "info",
+            "trade_high": "warning",
+        }
+        crumb["level"] = custom_level_mapping.get(crumb["level"], crumb["level"])
+
+        return crumb
 
     sentry_sdk.init(
         dsn=sentry_dsn,
         environment=application_name,
         traces_sample_rate=0.1,
+        before_breadcrumb=before_breadcrumb,
     )
