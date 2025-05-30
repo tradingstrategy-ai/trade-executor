@@ -94,10 +94,20 @@ class EthereumPoolRevaluator(ValuationModel):
             # The position should be valued in `sync_interests`
             # so we just return the latest synced data here.
             loan = position.loan
-            new_price = loan.collateral.last_usd_price
-            valued_at = loan.collateral.last_pricing_at
-            new_value = loan.get_net_asset_value()
-            block_number = loan.collateral_interest.last_updated_block_number
+            if loan:
+                new_price = loan.collateral.last_usd_price
+                valued_at = loan.collateral.last_pricing_at
+                new_value = loan.get_net_asset_value()
+                block_number = loan.collateral_interest.last_updated_block_number
+            else:
+                # The Aave credit position failed to open.
+                # The position does not have any succeed trades.
+                # Thus loan, object has enver been created.
+                # The position must be repaired and correct-accounts ru.
+                new_price = 0
+                valued_at = ts
+                new_value = 0
+                block_number = 0
 
             evt = ValuationUpdate(
                 created_at=ts,
