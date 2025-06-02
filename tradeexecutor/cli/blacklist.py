@@ -14,7 +14,7 @@ def display_blacklist(state: State, strategy_universe: TradingStrategyUniverse) 
     all_trades.reverse()
     for asset in state.blacklisted_assets:
 
-        last_trade = None
+        last_trade = pair = None
         for trade in all_trades:
             if trade.pair.base == asset:
                 last_trade = trade

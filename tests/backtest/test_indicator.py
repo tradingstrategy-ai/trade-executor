@@ -1001,6 +1001,7 @@ def test_calculate_indicators_tvl(strategy_universe):
     # From calculated indicators, read one indicator (RSI for BTC)
     wbtc_usdc = strategy_universe.get_pair_by_human_description((ChainId.ethereum, "test-dex", "WBTC", "USDC"))
     tvl = indicators.get_indicator_series("tvl_ewm", pair=wbtc_usdc)
+
     assert len(tvl) == 5905  # We have series data for 214 days
     assert tvl.index[-1] == pd.Timestamp("2022-02-02")
 

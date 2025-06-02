@@ -12,7 +12,7 @@ from tradingstrategy.chain import ChainId
 from tradingstrategy.client import Client
 from tradingstrategy.pair import PandasPairUniverse
 from tradingstrategy.timebucket import TimeBucket
-
+from tradingstrategy.utils.forward_fill import forward_fill
 
 
 def test_forward_fill_spot_only_forward_filled(persistent_test_client: Client):
@@ -218,3 +218,77 @@ def test_forward_fill_too_old(persistent_test_client: Client):
             universe=strategy_universe.data_universe,
             best_before_duration=datetime.timedelta(days=30),
         )
+
+
+def test_forward_fill_tvl_freq(persistent_test_client: Client):
+    """Do TVL forward fill and increase granularity to 1h"""
+
+    client = persistent_test_client
+
+    pair_ids = [
+        (ChainId.polygon, "quickswap", "WBTC", "WETH", 0.0030),  # This data has a lot of gaps
+        (ChainId.polygon, "uniswap-v3", "WMATIC", "USDC", 0.0005),
+    ]
+
+    start_at = datetime.datetime(2024, 1, 1)
+    end_at = datetime.datetime(2024, 3, 15)
+
+    universe_options = UniverseOptions(
+        start_at=start_at,
+        end_at=end_at,
+    )
+
+    # Load all trading and lending data on Polygon
+    # for all lending markets on a relevant time period
+    dataset = load_partial_data(
+        client=client,
+        time_bucket=TimeBucket.h1,
+        liquidity_time_bucket=TimeBucket.d1,
+        pairs=pair_ids,
+        execution_context=unit_test_execution_context,
+        liquidity=True,
+        stop_loss_time_bucket=None,
+        universe_options=universe_options,
+    )
+
+    # Token debug
+    pairs = PandasPairUniverse(dataset.pairs, exchange_universe=dataset.exchanges)
+    for t in pairs.iterate_tokens():
+        assert t.chain_id == ChainId.polygon
+
+    strategy_universe = TradingStrategyUniverse.create_from_dataset(
+        dataset,
+        reserve_asset="0x2791bca1f2de4661ed88a30c99a7a9449aa84174",
+        forward_fill=False,
+    )
+
+    liquidity = strategy_universe.data_universe.liquidity
+    pair = strategy_universe.get_pair_by_human_description(pair_ids[0])
+    tvl= liquidity.get_samples_by_pair(pair.internal_id)
+
+    df = pd.DataFrame({
+        "close": tvl["close"]
+    })
+
+    # Resample 1d -> 1h
+    # forward fill the data until a specific date
+    end_timestamp = datetime.datetime(2024, 6, 1)
+    df_ff = forward_fill(
+        df,
+        "1h",
+        columns=("close",),
+        forward_fill_until=end_timestamp,
+    )
+    series = df_ff["close"]
+
+    # Check we forward-filled index
+    assert series.index[-1] == pd.Timestamp("2024-06-01 00:00:00")
+    assert series.index[-2] == pd.Timestamp("2024-05-31 23:00:00")
+    assert series.index[0] == pd.Timestamp("2024-01-01 00:00:00")
+    assert series.index[1] == pd.Timestamp("2024-01-01 01:00:00")
+
+    # See forward_filled flag is correctly set
+    assert df_ff.loc[pd.Timestamp("2024-06-01 00:00:00")]["forward_filled"] == True
+    assert df_ff.loc[pd.Timestamp("2024-05-31 23:00:00")]["forward_filled"] == True
+    assert df_ff.loc[pd.Timestamp("2024-01-01 00:00:00")]["forward_filled"] == False
+    assert df_ff.loc[pd.Timestamp("2024-01-01 01:00:00")]["forward_filled"] == True
