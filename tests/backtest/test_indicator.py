@@ -1004,6 +1004,3 @@ def test_calculate_indicators_tvl(strategy_universe):
 
     assert len(tvl) == 5905  # We have series data for 214 days
     assert tvl.index[-1] == pd.Timestamp("2022-02-02")
-
-
-
