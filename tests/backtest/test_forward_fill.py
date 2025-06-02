@@ -215,7 +215,7 @@ def test_forward_fill_too_old(persistent_test_client: Client):
     with pytest.raises(DataTooOld):
         TradingStrategyUniverseModel.check_data_age(
             ts=now_,
-            universe=strategy_universe.data_universe,
+            universe=strategy_universe,
             best_before_duration=datetime.timedelta(days=30),
         )
 

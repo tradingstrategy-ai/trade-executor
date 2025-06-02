@@ -26,6 +26,7 @@ from tradeexecutor.cli.main import app
 from tradeexecutor.monkeypatch.web3 import construct_sign_and_send_raw_middleware
 from tradeexecutor.state.state import State
 from tradingstrategy.chain import ChainId
+from tradingstrategy.client import Client
 
 pytestmark = pytest.mark.skipif(not os.environ.get("JSON_RPC_BASE") or not os.environ.get("TRADING_STRATEGY_API_KEY"), reason="Set JSON_RPC_BASE and TRADING_STRATEGY_API_KEY environment variables to run this test")
 
@@ -82,10 +83,10 @@ def usdc(web3) -> TokenDetails:
 
 @pytest.fixture
 def hot_wallet(
-        web3,
-        deployer,
-        usdc: TokenDetails,
-        usdc_whale,
+    web3,
+    deployer,
+    usdc: TokenDetails,
+    usdc_whale,
 ) -> HotWallet:
     """Create hot wallet for the signing tests.
 
@@ -135,15 +136,18 @@ def state_file(tmp_path) -> Path:
 
 @pytest.fixture()
 def environment(
-        anvil: AnvilLaunch,
-        hot_wallet: HotWallet,
-        state_file: Path,
-        strategy_file: Path,
-        vault_record_file: Path,
+    anvil: AnvilLaunch,
+    hot_wallet: HotWallet,
+    state_file: Path,
+    strategy_file: Path,
+    vault_record_file: Path,
+    persistent_test_client: Client,
 ) -> dict:
     """Passed to init and start commands as environment variables"""
     # Set up the configuration for the live trader
+    unit_test_cache_path = persistent_test_client.transport.cache_path
     environment = {
+        "CACHE_PATH": unit_test_cache_path,
         "EXECUTOR_ID": "test_lagoon_guard_perform_test_aave_v3",
         "STRATEGY_FILE": strategy_file.as_posix(),
         "PRIVATE_KEY": hot_wallet.account.key.hex(),
@@ -172,14 +176,13 @@ def environment(
     return environment
 
 
-@flaky.flaky
 def test_lagoon_guard_perform_test_trade_aave_uniswap_v2(
-        environment: dict,
-        web3: Web3,
-        state_file: Path,
-        usdc: TokenDetails,
-        hot_wallet: HotWallet,
-        vault_record_file: Path,
+    environment: dict,
+    web3: Web3,
+    state_file: Path,
+    usdc: TokenDetails,
+    hot_wallet: HotWallet,
+    vault_record_file: Path,
 ):
     """Perform a test trades vault via CLI with Uniswap v2 and sAave credit position.
 
@@ -222,6 +225,11 @@ def test_lagoon_guard_perform_test_trade_aave_uniswap_v2(
     # Check the resulting state and see we made some trade for trading fee losses
     with state_file.open("rt") as inp:
         state: State = State.from_json(inp.read())
-        assert len(list(state.portfolio.get_all_trades())) == 4  # buy ETH, sell ETH, supply aPolUSDC, unsupply aPolUSDC
+        assert len(list(state.portfolio.frozen_positions)) == 0  # all trades succeed
+        trades = list(state.portfolio.get_all_trades())
+        if len(trades) != 4:
+            for t in trades:
+                print(t)
+            assert len(trades) == 4  # buy ETH, sell ETH, supply aPolUSDC, unsupply aPolUSDC
         reserve_value = state.portfolio.get_default_reserve_position().get_value()
         assert reserve_value < 500
