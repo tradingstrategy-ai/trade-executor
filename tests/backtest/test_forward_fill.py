@@ -15,7 +15,6 @@ from tradingstrategy.timebucket import TimeBucket
 
 
 
-@pytest.mark.slow_test_group
 def test_forward_fill_spot_only_forward_filled(persistent_test_client: Client):
     """Forward-will spot market data.
 
@@ -170,7 +169,7 @@ def test_forward_fill_too_old(persistent_test_client: Client):
     """Data too old warning triggers on forward filled data.
 
     - Data is forward-filled until today, but should be still too old
-      as we should ignore the forward-filled part
+      as we would not have any data for the last 30 days.
     """
     client = persistent_test_client
 
@@ -216,6 +215,6 @@ def test_forward_fill_too_old(persistent_test_client: Client):
     with pytest.raises(DataTooOld):
         TradingStrategyUniverseModel.check_data_age(
             ts=now_,
-            universe=strategy_universe,
+            universe=strategy_universe.data_universe,
             best_before_duration=datetime.timedelta(days=30),
         )
