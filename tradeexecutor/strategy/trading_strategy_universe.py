@@ -1630,10 +1630,10 @@ class TradingStrategyUniverseModel(UniverseModel):
             )
 
     def check_data_age(
-            self,
-            ts: datetime.datetime,
-            universe: TradingStrategyUniverse,
-            best_before_duration: datetime.timedelta
+        self,
+        ts: datetime.datetime,
+        universe: TradingStrategyUniverse,
+        best_before_duration: datetime.timedelta
     ) -> datetime.datetime:
         """Check if our data is up-to-date and we do not have issues with feeds.
 

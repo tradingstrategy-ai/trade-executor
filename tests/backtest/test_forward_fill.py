@@ -14,7 +14,6 @@ from tradingstrategy.pair import PandasPairUniverse
 from tradingstrategy.timebucket import TimeBucket
 
 
-@flaky.flaky
 @pytest.mark.slow_test_group
 def test_forward_fill_spot_only_forward_filled(persistent_test_client: Client):
     """Forward-will spot market data.
@@ -29,7 +28,7 @@ def test_forward_fill_spot_only_forward_filled(persistent_test_client: Client):
         (ChainId.polygon, "uniswap-v3", "WMATIC", "USDC", 0.0005),
     ]
 
-    start_at = datetime.datetime(2022, 1, 1)
+    start_at = datetime.datetime(2024, 1, 1)
     end_at = datetime.datetime(2024, 3, 15)
 
     universe_options = UniverseOptions(
@@ -58,6 +57,7 @@ def test_forward_fill_spot_only_forward_filled(persistent_test_client: Client):
         dataset,
         reserve_asset="0x2791bca1f2de4661ed88a30c99a7a9449aa84174",
         forward_fill=True,
+        forward_fill_until=datetime.datetime(2024, 5, 1),
     )
 
     assert strategy_universe.data_universe.time_bucket == TimeBucket.h1
@@ -79,6 +79,19 @@ def test_forward_fill_spot_only_forward_filled(persistent_test_client: Client):
     # https://stackoverflow.com/a/42555628/315168
     mask = btc_close_index_flattened.to_series().diff() > pd.Timedelta('01:00:00')
     assert any(mask) is False
+
+    # Check our DataTooOld alert ignores forward filcal
+    assert "forward_filled" in strategy_universe.data_universe.candles.df.columns
+    assert strategy_universe.data_universe.candles.is_forward_filled() == True
+
+    # We should be able to get time range for forward filled data
+    time_range = strategy_universe.data_universe.candles.get_timestamp_range(exclude_forward_fill=False)
+    assert time_range == (pd.Timestamp('2024-01-01 12:00:00'), pd.Timestamp('2024-05-01 00:00:00'))
+
+    # For alerts, we should be able to get time range that excludes any synthetic forward-filled values
+    time_range = strategy_universe.data_universe.candles.get_timestamp_range(exclude_forward_fill=True)
+    assert time_range == (pd.Timestamp('2024-01-01 12:00:00'), pd.Timestamp('2024-03-15 00:00:00'))
+
 
 
 def test_forward_fill_spot_only_gapped(persistent_test_client: Client):
@@ -142,4 +155,11 @@ def test_forward_fill_spot_only_gapped(persistent_test_client: Client):
     # Check there are some 1h gaps in the data
     # https://stackoverflow.com/a/42555628/315168
     mask = btc_close_index_flattened.to_series().diff() > pd.Timedelta('01:00:00')
+
     assert any(mask) is True
+
+    # Check our DataTooOld alert ignores forward filcal
+    assert strategy_universe.data_universe.candles.is_forward_filled() == False
+    time_range = strategy_universe.data_universe.candles.get_timestamp_range(exclude_forward_fill=True)
+    assert time_range == (pd.Timestamp('2022-01-01 00:00:00'), pd.Timestamp('2024-03-15 00:00:00'))
+
