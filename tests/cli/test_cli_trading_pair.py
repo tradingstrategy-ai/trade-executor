@@ -20,7 +20,6 @@ def unit_test_cache_path(persistent_test_cache_path):
 def test_cli_trading_pair(
     unit_test_cache_path: str,
     mocker,
-    tmp_path,
 ):
     """trading-pair command works"""
 
@@ -29,7 +28,7 @@ def test_cli_trading_pair(
     environment = {
         "TRADING_STRATEGY_API_KEY": os.environ["TRADING_STRATEGY_API_KEY"],
         "STRATEGY_FILE": strategy_path.as_posix(),
-        "CACHE_PATH": tmp_path.as_posix(),
+        "CACHE_PATH": unit_test_cache_path,
         "LOG_LEVEL": "disabled",
         "UNIT_TESTING": "true",
         "MAX_DATA_DELAY_MINUTES": "99999",

@@ -1629,8 +1629,8 @@ class TradingStrategyUniverseModel(UniverseModel):
                 backtest_stop_loss_candles=backtest_stop_loss_candles,
             )
 
+    @staticmethod
     def check_data_age(
-        self,
         ts: datetime.datetime,
         universe: TradingStrategyUniverse,
         best_before_duration: datetime.timedelta
@@ -1639,19 +1639,30 @@ class TradingStrategyUniverseModel(UniverseModel):
 
         Ensure we do not try to execute live trades with stale data.
 
+        :param ts:
+            Current time
+
+        :param best_before_duration:
+            Data must be not older than this duration.
+
         :raise DataTooOld:
             in the case data is too old to execute.
 
         :return:
             The data timestamp
         """
+
+        assert isinstance(universe, TradingStrategyUniverse), f"Expected TradingStrategyUniverse, got {universe.__class__}"
+
         max_age = ts - best_before_duration
         universe = universe.data_universe
         candle_end = None
 
         if universe.candles is not None:
             # Convert pandas.Timestamp to executor internal datetime format
-            candle_start, candle_end = universe.candles.get_timestamp_range()
+            candle_start, candle_end = universe.candles.get_timestamp_range(
+                exclude_forward_fill=True,
+            )
             candle_start = candle_start.to_pydatetime().replace(tzinfo=None)
             candle_end = candle_end.to_pydatetime().replace(tzinfo=None)
 
@@ -1660,7 +1671,9 @@ class TradingStrategyUniverseModel(UniverseModel):
                 raise DataTooOld(f"Candle data {candle_start} - {candle_end} is too old to work with, we require threshold {max_age}, diff is {diff}, asked best before duration is {best_before_duration}")
 
         if universe.liquidity is not None:
-            liquidity_start, liquidity_end = universe.liquidity.get_timestamp_range()
+            liquidity_start, liquidity_end = universe.liquidity.get_timestamp_range(
+                exclude_forward_fill=True,
+            )
             liquidity_start = liquidity_start.to_pydatetime().replace(tzinfo=None)
             liquidity_end = liquidity_end.to_pydatetime().replace(tzinfo=None)
 

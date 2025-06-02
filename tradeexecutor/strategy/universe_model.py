@@ -196,14 +196,6 @@ class UniverseModel(abc.ABC):
             speeding up the backtesting.
         """
 
-    def check_data_age(self, ts: datetime.datetime, universe: StrategyExecutionUniverse, best_before_duration: datetime.timedelta):
-        """Check if our data is up-to-date and we do not have issues with feeds.
-
-        Ensure we do not try to execute live trades with stale data.
-
-        :raise DataTooOld: in the case data is too old to execute.
-        """
-
 
 class StaticUniverseModel(UniverseModel):
     """Universe that never changes and all assets are in in-process memory.

@@ -614,6 +614,10 @@ class StrategyInputIndicators:
     ) -> pd.DataFrame:
         """Get the whole raw indicator data for DataFrame-like indicator with multiple columns.
 
+        .. warning::
+
+            Legacy. Use :py:meth:`get_indicator_data_pairs_combined` instead.
+
         See also :py:meth:`get_indicator_series`
 
         :return:
