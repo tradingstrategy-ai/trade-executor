@@ -14,6 +14,7 @@ from tradingstrategy.pair import PandasPairUniverse
 from tradingstrategy.timebucket import TimeBucket
 
 
+
 @pytest.mark.slow_test_group
 def test_forward_fill_spot_only_forward_filled(persistent_test_client: Client):
     """Forward-will spot market data.
