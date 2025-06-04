@@ -406,7 +406,8 @@ def console(
         name = pair.get_ticker().lower().replace("-", "_")
         bindings[name] = pair
 
-    if eval:
+    if code:
+        print(f"Executing Python code:\n{code}")
         eval(code, bindings)
         print("All olk")
     elif not unit_testing:
