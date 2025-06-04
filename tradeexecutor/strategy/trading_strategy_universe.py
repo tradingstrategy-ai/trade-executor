@@ -1677,7 +1677,12 @@ class TradingStrategyUniverseModel(UniverseModel):
             if candle_end < max_age:
                 diff = max_age - candle_end
 
-                universe_dump_df = display_strategy_universe(universe)
+                universe_dump_df = display_strategy_universe(
+                    universe,
+                    show_volume=False,
+                    show_tax=False,
+                    show_tvl=False,
+                )
                 universe_output_msg = tabulate(
                     universe_dump_df,
                     headers="keys",
