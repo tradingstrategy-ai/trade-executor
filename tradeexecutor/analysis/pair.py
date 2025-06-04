@@ -234,6 +234,8 @@ def display_strategy_universe(
 
     if compact:
         # Remove columns to fit into terminal window
-        df = df.drop(columns=["first_price_at", "type", "tvl_at"])
+        for col in ["first_price_at", "type", "tvl_at"]:
+            if col in df.columns:
+                df = df.drop(columns=[col])
 
     return df
