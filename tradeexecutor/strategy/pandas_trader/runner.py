@@ -155,18 +155,18 @@ class PandasTraderRunner(StrategyRunner):
         """Check the data looks more or less sane."""
 
         assert isinstance(universe, TradingStrategyUniverse)
-        universe = universe.data_universe
+        data_universe = universe.data_universe
 
         now_ = ts
 
-        if len(universe.exchanges) == 0:
+        if len(data_universe.exchanges) == 0:
             raise PreflightCheckFailed("Exchange count zero")
 
-        if universe.pairs.get_count() == 0:
+        if data_universe.pairs.get_count() == 0:
             raise PreflightCheckFailed("Pair count zero")
 
         # Don't assume we have candle or liquidity data e.g. for the testing strategies
-        if universe.candles is not None:
+        if data_universe.candles is not None and self.max_data_age:
             TradingStrategyUniverseModel.check_data_age(ts, universe, self.max_data_age)
 
     def refresh_visualisations(self, state: State, universe: TradingStrategyUniverse):

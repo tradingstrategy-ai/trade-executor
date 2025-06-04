@@ -1673,10 +1673,11 @@ class TradingStrategyUniverseModel(UniverseModel):
             candle_start = candle_start.to_pydatetime().replace(tzinfo=None)
             candle_end = candle_end.to_pydatetime().replace(tzinfo=None)
 
-            no_ff_candle_start, no_ff_candle_end = data_universe.candles.get_timestamp_range(
-                exclude_forward_fill=True,
+            ff_candle_start, ff_candle_end = data_universe.candles.get_timestamp_range(
+                exclude_forward_fill=False,
             )
 
+            # Do a very throughful logging on what went wrong with our data
             if candle_end < max_age:
                 diff = max_age - candle_end
 
@@ -1700,7 +1701,7 @@ class TradingStrategyUniverseModel(UniverseModel):
                 raise DataTooOld(
                     f"Candle data {candle_start} - {candle_end} is too old to work with\n" \
                     f"we require threshold {max_age}, diff is {diff}, asked best before duration is {best_before_duration}\n"
-                    f"Forward-filled data is {no_ff_candle_start} - {no_ff_candle_end}\n"
+                    f"Forward-filled data is {ff_candle_start} - {ff_candle_end}\n"
                     f"More information in logs"
                 )
 
