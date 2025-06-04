@@ -18,6 +18,7 @@ from pathlib import Path
 from typing import List, Optional, Callable, Tuple, Set, Dict, Iterable, Collection, TypeAlias
 
 import pandas as pd
+from tabulate import tabulate
 
 from tradingstrategy.lending import LendingReserveUniverse, LendingReserveDescription, LendingCandleType, LendingCandleUniverse, UnknownLendingReserve, LendingProtocolType, LendingReserve
 from tradingstrategy.token import Token
@@ -1632,7 +1633,7 @@ class TradingStrategyUniverseModel(UniverseModel):
     @staticmethod
     def check_data_age(
         ts: datetime.datetime,
-        universe: TradingStrategyUniverse,
+        strategy_universe: TradingStrategyUniverse,
         best_before_duration: datetime.timedelta
     ) -> datetime.datetime:
         """Check if our data is up-to-date and we do not have issues with feeds.
@@ -1641,6 +1642,9 @@ class TradingStrategyUniverseModel(UniverseModel):
 
         :param ts:
             Current time
+
+        :param strategy_universe:
+            Strategy universe to examine.
 
         :param best_before_duration:
             Data must be not older than this duration.
@@ -1652,26 +1656,57 @@ class TradingStrategyUniverseModel(UniverseModel):
             The data timestamp
         """
 
-        assert isinstance(universe, TradingStrategyUniverse), f"Expected TradingStrategyUniverse, got {universe.__class__}"
+        # Avoid circular import
+        from tradeexecutor.analysis.pair import display_strategy_universe
+
+        assert isinstance(strategy_universe, TradingStrategyUniverse), f"Expected TradingStrategyUniverse, got {strategy_universe.__class__}"
 
         max_age = ts - best_before_duration
-        universe = universe.data_universe
+        data_universe = strategy_universe.data_universe
         candle_end = None
 
-        if universe.candles is not None:
+        if data_universe.candles is not None:
             # Convert pandas.Timestamp to executor internal datetime format
-            candle_start, candle_end = universe.candles.get_timestamp_range(
+            candle_start, candle_end = data_universe.candles.get_timestamp_range(
                 exclude_forward_fill=True,
             )
             candle_start = candle_start.to_pydatetime().replace(tzinfo=None)
             candle_end = candle_end.to_pydatetime().replace(tzinfo=None)
 
+            ff_candle_start, ff_candle_end = data_universe.candles.get_timestamp_range(
+                exclude_forward_fill=False,
+            )
+
+            # Do a very throughful logging on what went wrong with our data
             if candle_end < max_age:
                 diff = max_age - candle_end
-                raise DataTooOld(f"Candle data {candle_start} - {candle_end} is too old to work with, we require threshold {max_age}, diff is {diff}, asked best before duration is {best_before_duration}")
 
-        if universe.liquidity is not None:
-            liquidity_start, liquidity_end = universe.liquidity.get_timestamp_range(
+                universe_dump_df = display_strategy_universe(
+                    strategy_universe,
+                    show_volume=False,
+                    show_tax=False,
+                    show_tvl=False,
+                )
+                universe_output_msg = tabulate(
+                    universe_dump_df,
+                    headers="keys",
+                    tablefmt="fancy_grid",
+                )
+
+                logger.error(
+                    "Universe data too old. Non-forward-filled sata is:\n%s",
+                    universe_output_msg,
+                )
+
+                raise DataTooOld(
+                    f"Candle data {candle_start} - {candle_end} is too old to work with\n" \
+                    f"we require threshold {max_age}, diff is {diff}, asked best before duration is {best_before_duration}\n"
+                    f"Forward-filled data is {ff_candle_start} - {ff_candle_end}\n"
+                    f"More information in logs"
+                )
+
+        if data_universe.liquidity is not None:
+            liquidity_start, liquidity_end = data_universe.liquidity.get_timestamp_range(
                 exclude_forward_fill=True,
             )
             liquidity_start = liquidity_start.to_pydatetime().replace(tzinfo=None)

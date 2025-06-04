@@ -73,7 +73,7 @@ from tradeexecutor.strategy.factory import StrategyFactory
 from tradeexecutor.strategy.pricing_model import PricingModelFactory
 from tradeexecutor.strategy.runner import StrategyRunner
 from tradeexecutor.strategy.cycle import CycleDuration, snap_to_next_tick, snap_to_previous_tick, round_datetime_up
-from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
+from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse, TradingStrategyUniverseModel
 from tradeexecutor.strategy.universe_model import UniverseModel, StrategyExecutionUniverse, UniverseOptions
 from tradeexecutor.strategy.valuation import ValuationModelFactory
 from tradingstrategy.client import Client, BaseClient
@@ -747,6 +747,16 @@ class ExecutionLoop:
         assert self.execution_context.mode.is_live_trading()
         universe = self.universe_model.preload_universe(self.universe_options, self.execution_context)
         universe = cast(TradingStrategyUniverse, universe)
+
+        # Check that we have fresh enough data to start trading
+        if self.max_data_delay:
+            ts = datetime.datetime.utcnow()
+            TradingStrategyUniverseModel.check_data_age(
+                ts,
+                universe,
+                self.max_data_delay,
+            )
+
         logger.info("Warmed up universe %s", universe)
         return universe
 
@@ -990,6 +1000,7 @@ class ExecutionLoop:
                 existing_universe=universe,
                 indicators=self.backtest_strategy_indicators,
             )
+
 
             # Revalue our portfolio
             self.update_position_valuations(ts, state, universe)

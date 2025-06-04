@@ -26,6 +26,7 @@ def display_strategy_universe(
     sort_numeric=True,
     limit: int | None = None,
     compact=False,
+    ignore_forward_fill=True,
 ) -> pd.DataFrame:
     """Displays a constructed trading strategy universe in table format.
 
@@ -141,6 +142,7 @@ def display_strategy_universe(
                     pair=pair.internal_id,
                     when=candle_now,
                     tolerance=tolerance,
+                    ignore_forward_fill=ignore_forward_fill,
                 )
                 candles = strategy_universe.data_universe.candles.get_candles_by_pair(pair.internal_id)
                 data["first_price_at"] = candles.index[0]
