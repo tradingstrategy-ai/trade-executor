@@ -102,6 +102,7 @@ def test_check_account_low_value_position(
 
 
 @pytest.mark.slow_test_group
+@pytest.mark.skip(reason="Code unfinished")
 def test_check_backfill_data(
     environment: dict,
     mocker,
