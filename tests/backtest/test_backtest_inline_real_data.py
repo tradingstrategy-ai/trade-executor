@@ -202,6 +202,7 @@ def test_backtest_data_preload(
 
 
 @pytest.mark.slow_test_group
+@pytest.mark.skip(reason="Test downloads too much data")
 def test_run_inline_real_backtest(
     persistent_test_client: Client,
 ):

@@ -263,3 +263,7 @@ class BalanceUpdate:
             return None
         gain = self.quantity / self.old_balance
         return float(gain) / (period / year)
+
+    def get_share_count(self) -> Decimal | None:
+        """Share count recorded for a vault during the treasury sync."""
+        return self.other_data.get("share_count")

@@ -26,7 +26,9 @@ import typer
 from IPython import embed
 import pandas as pd
 from eth.vm.logic.block import timestamp
+from typer import Option
 
+from eth_defi.gas import GasPriceMethod
 from eth_defi.hotwallet import HotWallet
 from tradingstrategy.chain import ChainId
 from tradingstrategy.client import Client
@@ -35,7 +37,7 @@ from . import shared_options
 
 from .app import app
 from ..bootstrap import prepare_executor_id, prepare_cache, create_web3_config, create_execution_and_sync_model, \
-    create_state_store, create_client
+    create_state_store, create_client, configure_default_chain
 from ..log import setup_logging
 from ..version_info import VersionInfo
 from ...analysis.pair import display_strategy_universe
@@ -63,6 +65,9 @@ def launch_console(bindings: dict):
     """Start IPython session.
 
     Assume line length of 130.
+
+    :param eval:
+        Run this Python snippet and exit.
     """
 
     print('')
@@ -92,9 +97,6 @@ def console(
     trading_strategy_api_key: str = shared_options.trading_strategy_api_key,
     cache_path: Optional[Path] = shared_options.cache_path,
 
-    # Get minimum gas balance from the env
-    minimum_gas_balance: Optional[float] = typer.Option(0.1, envvar="MINUMUM_GAS_BALANCE", help="What is the minimum balance of gas token you need to have in your wallet. If the balance falls below this, abort by crashing and do not attempt to create transactions. Expressed in the native token e.g. ETH."),
-
     # Web3 connection options
     json_rpc_binance: Optional[str] = shared_options.json_rpc_binance,
     json_rpc_polygon: Optional[str] = shared_options.json_rpc_polygon,
@@ -114,6 +116,12 @@ def console(
 
     unit_testing: bool = shared_options.unit_testing,
     max_workers: Optional[int] = shared_options.max_workers,
+
+    gas_price_method: Optional[GasPriceMethod] = shared_options.gas_price_method,
+    simulate: bool = shared_options.simulate,
+
+    code: Optional[str] = Option(None, envvar="EVAL", help="Run this Python snipped and exit"),
+
 ):
     """Open interactive IPython console to explore state.
 
@@ -149,7 +157,7 @@ def console(
     cache_path = prepare_cache(id, cache_path)
 
     execution_context = ExecutionContext(
-        mode=ExecutionMode.real_trading,
+        mode=ExecutionMode.one_off,
         timed_task_context_manager=timed_task,
         engine_version=mod.trading_strategy_engine_version,
     )
@@ -158,9 +166,13 @@ def console(
         json_rpc_binance=json_rpc_binance,
         json_rpc_polygon=json_rpc_polygon,
         json_rpc_avalanche=json_rpc_avalanche,
-        json_rpc_ethereum=json_rpc_ethereum, json_rpc_base=json_rpc_base, 
+        json_rpc_ethereum=json_rpc_ethereum,
+        json_rpc_base=json_rpc_base,
         json_rpc_anvil=json_rpc_anvil,
         json_rpc_arbitrum=json_rpc_arbitrum,
+        gas_price_method=gas_price_method,
+        unit_testing=unit_testing,
+        simulate=simulate,
     )
 
     assert web3config, "No RPC endpoints given. A working JSON-RPC connection is needed for check-wallet"
@@ -168,8 +180,10 @@ def console(
     hot_wallet = HotWallet.from_private_key(private_key)
 
     # Check that we are connected to the chain strategy assumes
-    web3config.set_default_chain(mod.get_default_chain_id())
-    web3config.check_default_chain_id()
+    configure_default_chain(
+        web3config,
+        mod,
+    )
 
     if hot_wallet:
         # Add to Python console singing
@@ -351,8 +365,10 @@ def console(
     else:
         indicator_storage = indicator_set = indicator_result_map = indicators = None
 
-    # Set up the default objects
-    # availalbe in the interactive session
+    vault = getattr(execution_model, "vault", None)
+
+    # Set up the default objects in Python eval context
+    # and available in the interactive session
     bindings = {
         "cycle_timestamp": cycle_timestamp,
         "web3": web3,
@@ -382,6 +398,7 @@ def console(
         "indicator_set": indicator_set,
         "indicator_result_map": indicator_result_map,
         "indicators": indicators,
+        "vault": vault,
     }
 
     # Expose pairs to console as well
@@ -389,5 +406,9 @@ def console(
         name = pair.get_ticker().lower().replace("-", "_")
         bindings[name] = pair
 
-    if not unit_testing:
+    if code:
+        print(f"Executing Python code:\n{code}")
+        eval(code, bindings)
+        print("All olk")
+    elif not unit_testing:
         launch_console(bindings)

@@ -9,6 +9,7 @@ purely there for profit and loss calculations.
 import datetime
 from collections import defaultdict
 from dataclasses import field, dataclass
+from decimal import Decimal
 from math import isnan
 from typing import Dict, List, Optional, Tuple, Iterable
 
@@ -18,7 +19,7 @@ from dataclasses_json import dataclass_json
 
 from tradeexecutor.state.identifier import TradingPairIdentifier, AssetIdentifier
 from tradingstrategy.types import USDollarAmount
-from tradeexecutor.state.types import Percent, UnixTimestamp
+from tradeexecutor.state.types import Percent, UnixTimestamp, USDollarPrice
 from tradeexecutor.analysis.trade_analyser import TradeSummary
 
 
@@ -100,8 +101,6 @@ class PortfolioStatistics:
     If livetrading, then all attributes should be specified so that for displaying updated metrics after each trade
 
     See :py:attr:`Statistics.portfolio` for reading.
-
-
     """
 
     #: Real-time clock when these stats were calculated
@@ -120,6 +119,16 @@ class PortfolioStatistics:
     #: Set to 0 if cannot be calculated yet.
     #:
     unrealised_profitability: Optional[Percent] = None
+
+    #: Number of issued shares
+    share_count: Optional[Decimal] = None
+
+    #: Share price
+    #:
+    #: Derived from net asset value / share count
+    #:
+    share_price_usd: Optional[USDollarPrice] = None
+
     
     free_cash: Optional[USDollarAmount] = None
     open_position_count: Optional[int] = None
@@ -151,9 +160,6 @@ class PortfolioStatistics:
         if self.unrealised_profitability is not None:
             assert not pd.isna(self.unrealised_profitability)
             assert type(self.unrealised_profitability) in (float, int), f"Got: {type(self.unrealised_profitability)}: {self.unrealised_profitability}"
-
-
-
 
 
 @dataclass_json

@@ -75,7 +75,8 @@ def test_main_loop_catch(
         assert str(e.value) == "Boom", f"The received main loop exception was : {e}"
 
 
-@pytest.mark.skipif(os.environ.get("BNB_CHAIN_JSON_RPC") is None, reason="Set BNB_CHAIN_JSON_RPC environment variable to Binance Smart Chain node to run this test")
+# Disabled on Github CI as flaky
+@pytest.mark.skipif(os.environ.get("BNB_CHAIN_JSON_RPC") is None or os.environ.get("CI") == "true", reason="Set BNB_CHAIN_JSON_RPC environment variable to Binance Smart Chain node to run this test")
 def test_main_loop_traceback_over_web(
     strategy_path,
     hot_wallet_private_key

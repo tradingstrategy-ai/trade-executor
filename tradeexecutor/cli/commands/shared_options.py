@@ -10,7 +10,7 @@ import typer
 from typer import Option
 from typer.models import OptionInfo
 
-
+from eth_defi.gas import GasPriceMethod
 
 
 class PositionType(enum.Enum):
@@ -123,8 +123,9 @@ max_workers = Option(None, envvar="MAX_WORKERS", help="Maximum number of worker 
 position_type = Option("open_and_frozen", envvar="POSITION_TYPE", help="Which position types to display")
 
 
-max_data_delay_minutes = typer.Option(24*60, envvar="MAX_DATA_DELAY_MINUTES", help="How fresh the OHCLV data for our strategy must be before failing")
+max_data_delay_minutes = Option(24*60, envvar="MAX_DATA_DELAY_MINUTES", help="How fresh the OHCLV data for our strategy must be before failing")
 
+gas_price_method = Option(None, envvar="GAS_PRICE_METHOD", help="How to set the gas price for Ethereum transactions. After the Berlin hardfork Ethereum mainnet introduced base + tip cost gas model. Leave out to autodetect.")
 
 def parse_comma_separated_list(ctx: typer.Context, value: str) -> list[str] | Any:
     """Support comma separated, whitespaced, list as a command line argument with Typer.

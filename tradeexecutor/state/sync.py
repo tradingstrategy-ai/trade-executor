@@ -10,6 +10,7 @@
 """
 import datetime
 from dataclasses import dataclass, field
+from decimal import Decimal
 from typing import Optional, List, Iterable, Dict
 
 from dataclasses_json import dataclass_json
@@ -163,6 +164,12 @@ class Treasury:
     #: For Lagoon based vaults, we need to sell assets to satisfy redemptions on the next cycle.
     #:
     pending_redemptions: Optional[USDollarAmount] = None
+
+    #: Number of issued shares.
+    #:
+    #: For Lagoon based vaults, needed to calcualte share price.
+    #:
+    share_count: Optional[Decimal] = None
 
     def __repr__(self):
         return f"<Treasury updated:{self.last_updated_at} cycle:{self.last_cycle_at} block scanned:{self.last_block_scanned or 0:,} refs:{len(self.balance_update_refs)}>"
