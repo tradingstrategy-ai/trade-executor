@@ -24,7 +24,7 @@ from tradingstrategy.timebucket import TimeBucket
 from . import shared_options
 from .app import app
 from ..bootstrap import prepare_executor_id, prepare_cache, create_web3_config, create_state_store, \
-    create_execution_and_sync_model, create_metadata, create_approval_model, create_client
+    create_execution_and_sync_model, create_metadata, create_approval_model, create_client, configure_default_chain
 from ..log import setup_logging, setup_discord_logging, setup_logstash_logging, setup_file_logging, setup_telegram_logging, setup_sentry_logging
 from ..loop import ExecutionLoop
 from ..result import display_backtesting_results
@@ -96,7 +96,7 @@ def start(
     json_rpc_arbitrum: Optional[str] = shared_options.json_rpc_arbitrum,
     json_rpc_anvil: Optional[str] = shared_options.json_rpc_anvil,
 
-    gas_price_method: Optional[GasPriceMethod] = typer.Option(None, envvar="GAS_PRICE_METHOD", help="How to set the gas price for Ethereum transactions. After the Berlin hardfork Ethereum mainnet introduced base + tip cost gas model. Leave out to autodetect."),
+    gas_price_method: Optional[GasPriceMethod] = shared_options.gas_price_method,
     confirmation_block_count: int = shared_options.confirmation_block_count,
     confirmation_timeout: int = shared_options.confirmation_timeout,
     private_key: Optional[str] = shared_options.private_key,
@@ -285,23 +285,10 @@ def start(
         if mod.icon:
             icon_url = mod.icon
 
-        if web3config is not None:
-
-            if isinstance(mod, StrategyModuleInformation):
-                # This path is not enabled for legacy strategy modules
-                if mod.get_default_chain_id():
-                    # Strategy tells what chain to use
-                    web3config.set_default_chain(mod.get_default_chain_id())
-                    web3config.check_default_chain_id()
-                else:
-                    # User has configured only one chain, use it
-                    web3config.choose_single_chain()
-
-            else:
-                # Legacy unit testing path.
-                # All chain_ids are 56 (BNB Chain)
-                logger.warning("Legacy strategy module: makes assumption of BNB Chain")
-                web3config.set_default_chain(ChainId.bsc)
+        configure_default_chain(
+            web3config,
+            mod,
+        )
 
         if min_gas_balance:
             min_gas_balance = Decimal(min_gas_balance)

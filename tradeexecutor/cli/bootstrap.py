@@ -615,3 +615,26 @@ def backup_state(state_file: Path | str, backup_suffix="backup", unit_testing=Fa
     state = store.load()
     return store, state
 
+
+def configure_default_chain(
+    web3config: Web3Config,
+    mod: StrategyModuleInformation,
+):
+    if web3config is not None:
+
+        if isinstance(mod, StrategyModuleInformation):
+            # This path is not enabled for legacy strategy modules
+            if mod.get_default_chain_id():
+                # Strategy tells what chain to use
+                web3config.set_default_chain(mod.get_default_chain_id())
+                web3config.check_default_chain_id()
+            else:
+                # User has configured only one chain, use it
+                web3config.choose_single_chain()
+
+        else:
+            # Legacy unit testing path.
+            # All chain_ids are 56 (BNB Chain)
+            logger.warning("Legacy strategy module: makes assumption of BNB Chain")
+            web3config.set_default_chain(ChainId.bsc)
+

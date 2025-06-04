@@ -294,3 +294,5 @@ class Web3Config:
         for web3 in self.connections.values():
             web3.middleware_onion.add(construct_sign_and_send_raw_middleware(hot_wallet.account))
             hot_wallet.sync_nonce(web3)
+
+

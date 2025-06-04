@@ -1,4 +1,4 @@
-"""Test repair frozen credit position on Polygon fork.
+"""Check that we correctly filter low-value positions in correct-accounts.
 """
 import shutil
 import os.path
@@ -98,4 +98,23 @@ def test_check_account_low_value_position(
 
     with pytest.raises(SystemExit):
         app(["check-accounts"], standalone_mode=False)
+
+
+
+@pytest.mark.slow_test_group
+def test_check_backfill_data(
+    environment: dict,
+    mocker,
+):
+    """Check backfill of missing share price data."""
+
+    environment = environment.copy()
+    environment["JSON_RPC_BASE"] = os.environ["JSON_RPC_BASE"]
+    environment["CODE"] = """
+    from tradeeexeutor.ethereum.lagoon import retrofit_share_price ; retrofit_share_price(state, vault)  
+    """
+
+    mocker.patch.dict("os.environ", environment, clear=True)
+    app(["console"], standalone_mode=False)
+
 

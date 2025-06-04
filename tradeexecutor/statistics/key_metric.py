@@ -265,7 +265,7 @@ def calculate_key_metrics(
             periods = pd.Timedelta(days=365) / freq_base
 
         if source == KeyMetricSource.live_trading:
-            assert cycle_duration is not None, "Cycle duration is required for live trading"
+            assert cycle_duration is not None, f"Cycle duration is required for live trading, our source is {source}"
 
         sharpe = calculate_sharpe(daily_returns, periods=periods)
         yield KeyMetric.create_metric(KeyMetricKind.sharpe, source, sharpe, calculation_window_start_at, calculation_window_end_at, KeyMetricCalculationMethod.historical_data)
