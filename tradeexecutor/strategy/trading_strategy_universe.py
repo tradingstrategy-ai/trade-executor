@@ -20,7 +20,6 @@ from typing import List, Optional, Callable, Tuple, Set, Dict, Iterable, Collect
 import pandas as pd
 from tabulate import tabulate
 
-from tradeexecutor.analysis.pair import display_strategy_universe
 from tradingstrategy.lending import LendingReserveUniverse, LendingReserveDescription, LendingCandleType, LendingCandleUniverse, UnknownLendingReserve, LendingProtocolType, LendingReserve
 from tradingstrategy.token import Token
 from tradingstrategy.candle import GroupedCandleUniverse
@@ -1653,6 +1652,9 @@ class TradingStrategyUniverseModel(UniverseModel):
         :return:
             The data timestamp
         """
+
+        # Avoid circular import
+        from tradeexecutor.analysis.pair import display_strategy_universe
 
         assert isinstance(universe, TradingStrategyUniverse), f"Expected TradingStrategyUniverse, got {universe.__class__}"
 
