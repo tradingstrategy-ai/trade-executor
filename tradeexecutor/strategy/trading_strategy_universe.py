@@ -1684,7 +1684,7 @@ class TradingStrategyUniverseModel(UniverseModel):
 
                 logger.error(
                     "Universe data too old. Non-forward-filled sata is:\n%s",
-
+                    universe_output_msg,
                 )
 
                 raise DataTooOld(
