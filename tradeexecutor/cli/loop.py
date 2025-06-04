@@ -748,8 +748,14 @@ class ExecutionLoop:
         universe = self.universe_model.preload_universe(self.universe_options, self.execution_context)
         universe = cast(TradingStrategyUniverse, universe)
 
+        # Check that we have fresh enough data to start trading
         if self.max_data_delay:
-            TradingStrategyUniverseModel.check_data_age(universe, self.max_data_delay)
+            ts = datetime.datetime.utcnow()
+            TradingStrategyUniverseModel.check_data_age(
+                ts,
+                universe,
+                self.max_data_delay,
+            )
 
         logger.info("Warmed up universe %s", universe)
         return universe
