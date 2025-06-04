@@ -1686,16 +1686,18 @@ class TradingStrategyUniverseModel(UniverseModel):
                     show_volume=False,
                     show_tax=False,
                     show_tvl=False,
+                    compact=True,
                 )
+
                 universe_output_msg = tabulate(
                     universe_dump_df,
                     headers="keys",
                     tablefmt="fancy_grid",
                 )
 
+                # universe_output_msg too long for sentry?
                 logger.error(
-                    "Universe data too old. Non-forward-filled sata is:\n%s",
-                    universe_output_msg,
+                    f"Universe data too old. Non-forward-filled data is:\n{universe_output_msg}",
                 )
 
                 raise DataTooOld(
