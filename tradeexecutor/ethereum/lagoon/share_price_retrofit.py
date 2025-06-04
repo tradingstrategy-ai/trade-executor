@@ -24,6 +24,9 @@ def retrofit_share_price(
     chain_id = web3.eth.chain_id
     statistics = state.stats
     updates = 0
+
+    logger.info("Retrofitting share price data for vault %", vault)
+
     for portfolio_stats in statistics.portfolio:
 
         if portfolio_stats.share_count:
@@ -35,7 +38,6 @@ def retrofit_share_price(
             chain_id,
             timestamp,
         )
-
 
         share_count = vault.fetch_total_supply(block_number)
         share_price = vault.fetch_share_price(block_number)

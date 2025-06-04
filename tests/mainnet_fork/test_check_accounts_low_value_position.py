@@ -12,7 +12,7 @@ from _pytest.fixtures import FixtureRequest
 from eth_defi.provider.anvil import AnvilLaunch, launch_anvil
 
 from tradeexecutor.cli.commands.app import app
-
+from tradeexecutor.state.state import State
 
 pytestmark = pytest.mark.skipif(not os.environ.get("JSON_RPC_BASE") or not os.environ.get("TRADING_STRATEGY_API_KEY"), reason="Set JSON_RPC_POLYGON and TRADING_STRATEGY_API_KEY environment variables to run this test")
 
@@ -70,8 +70,8 @@ def environment(
         "ASSET_MANAGEMENT_MODE": "lagoon",
         "UNIT_TESTING": "true",
         "UNIT_TEST_FORCE_ANVIL": "true",  # check-wallet command legacy hack
-        "LOG_LEVEL": "disabled",
-        # "LOG_LEVEL": "info",
+        # "LOG_LEVEL": "disabled",
+        "LOG_LEVEL": "info",
         # "CONFIRMATION_BLOCK_COUNT": "0",  # Needed for test backend, Anvil
         "TRADING_STRATEGY_API_KEY": os.environ["TRADING_STRATEGY_API_KEY"],
         "VAULT_ADDRESS": "0x7d8Fab3E65e6C81ea2a940c050A7c70195d1504f",
@@ -102,10 +102,11 @@ def test_check_account_low_value_position(
 
 
 @pytest.mark.slow_test_group
-@pytest.mark.skip(reason="Code unfinished")
+# @pytest.mark.skip(reason="Code unfinished")
 def test_check_backfill_data(
     environment: dict,
     mocker,
+    state_file: Path,
 ):
     """Check backfill of missing share price data."""
 
@@ -117,5 +118,13 @@ def test_check_backfill_data(
 
     mocker.patch.dict("os.environ", environment, clear=True)
     app(["console"], standalone_mode=False)
+
+    state = State.read_json_file(state_file)
+
+    # Check all position values contain backfilled share prices
+    for portfolio_stats in state.stats.portfolio:
+        assert portfolio_stats.share_count is not None, "Share count should have been backfilled"
+        assert portfolio_stats.share_price_usd is not None, "Share price should be backfilled"
+
 
 

@@ -313,6 +313,7 @@ def console(
     else:
         backtested_state = None
 
+    cycle_duration = run_description.cycle_duration
     refresh_run_state(
         run_state,
         state,
@@ -321,6 +322,7 @@ def console(
         universe=universe,
         sync_model=sync_model,
         backtested_state=backtested_state,
+        cycle_duration=cycle_duration,
     )
 
     if mod.create_indicators:
@@ -407,8 +409,10 @@ def console(
         bindings[name] = pair
 
     if code:
-        print(f"Executing Python code:\n{code}")
+        logger.info(f"Executing Python code:\n{code}")
+        import ipdb ; ipdb.set_trace()
         eval(code, bindings)
         print("All olk")
     elif not unit_testing:
+        logger.info("Launching interactive console session. Type `exit` to exit the console.")
         launch_console(bindings)
