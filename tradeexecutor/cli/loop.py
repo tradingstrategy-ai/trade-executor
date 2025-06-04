@@ -991,6 +991,7 @@ class ExecutionLoop:
                 indicators=self.backtest_strategy_indicators,
             )
 
+
             # Revalue our portfolio
             self.update_position_valuations(ts, state, universe)
 

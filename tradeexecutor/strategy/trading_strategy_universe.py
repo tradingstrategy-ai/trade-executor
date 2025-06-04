@@ -18,7 +18,9 @@ from pathlib import Path
 from typing import List, Optional, Callable, Tuple, Set, Dict, Iterable, Collection, TypeAlias
 
 import pandas as pd
+from tabulate import tabulate
 
+from tradeexecutor.analysis.pair import display_strategy_universe
 from tradingstrategy.lending import LendingReserveUniverse, LendingReserveDescription, LendingCandleType, LendingCandleUniverse, UnknownLendingReserve, LendingProtocolType, LendingReserve
 from tradingstrategy.token import Token
 from tradingstrategy.candle import GroupedCandleUniverse
@@ -1666,9 +1668,30 @@ class TradingStrategyUniverseModel(UniverseModel):
             candle_start = candle_start.to_pydatetime().replace(tzinfo=None)
             candle_end = candle_end.to_pydatetime().replace(tzinfo=None)
 
+            no_ff_candle_start, no_ff_candle_end = universe.candles.get_timestamp_range(
+                exclude_forward_fill=True,
+            )
+
             if candle_end < max_age:
                 diff = max_age - candle_end
-                raise DataTooOld(f"Candle data {candle_start} - {candle_end} is too old to work with, we require threshold {max_age}, diff is {diff}, asked best before duration is {best_before_duration}")
+
+                universe_dump_df = display_strategy_universe(universe)
+                universe_output_msg = tabulate(
+                    universe_dump_df,
+                    headers="keys",
+                    tablefmt="fancy_grid",
+                )
+
+                logger.error(
+                    "Universe data too old. Non-forward-filled sata is:\n%s",
+
+                )
+
+                raise DataTooOld(
+                    f"Candle data {candle_start} - {candle_end} is too old to work with\n" \
+                    f"we require threshold {max_age}, diff is {diff}, asked best before duration is {best_before_duration}\n"
+                    f"Forward-filled data is {no_ff_candle_start} - {no_ff_candle_end}\n"
+                )
 
         if universe.liquidity is not None:
             liquidity_start, liquidity_end = universe.liquidity.get_timestamp_range(

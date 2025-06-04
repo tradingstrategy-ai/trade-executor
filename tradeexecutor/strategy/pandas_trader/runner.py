@@ -18,7 +18,7 @@ from tradeexecutor.strategy.pricing_model import PricingModel
 from tradeexecutor.strategy.routing import RoutingState, RoutingModel
 from tradeexecutor.strategy.strategy_module import DecideTradesProtocol, DecideTradesProtocol2, DecideTradesProtocol3, DecideTradesProtocol4
 from tradeexecutor.strategy.sync_model import SyncModel
-from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse, translate_trading_pair
+from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse, translate_trading_pair, TradingStrategyUniverseModel
 
 from tradeexecutor.state.state import State
 from tradeexecutor.state.trade import TradeExecution
@@ -167,12 +167,7 @@ class PandasTraderRunner(StrategyRunner):
 
         # Don't assume we have candle or liquidity data e.g. for the testing strategies
         if universe.candles is not None:
-            if universe.candles.get_candle_count() > 0:
-                start, end = universe.candles.get_timestamp_range()
-
-                if self.max_data_age is not None:
-                    if now_ - end > self.max_data_age:
-                        raise PreflightCheckFailed(f"We do not have up-to-date data for candles. Last candles are at {end}")
+            TradingStrategyUniverseModel.check_data_age(ts, universe, self.max_data_age)
 
     def refresh_visualisations(self, state: State, universe: TradingStrategyUniverse):
         """Updates the visualisation images for the strategy.
