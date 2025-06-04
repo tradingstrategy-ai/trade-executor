@@ -1698,6 +1698,7 @@ class TradingStrategyUniverseModel(UniverseModel):
                     f"Candle data {candle_start} - {candle_end} is too old to work with\n" \
                     f"we require threshold {max_age}, diff is {diff}, asked best before duration is {best_before_duration}\n"
                     f"Forward-filled data is {no_ff_candle_start} - {no_ff_candle_end}\n"
+                    f"More information in logs"
                 )
 
         if universe.liquidity is not None:
