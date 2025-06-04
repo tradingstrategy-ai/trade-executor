@@ -1633,7 +1633,7 @@ class TradingStrategyUniverseModel(UniverseModel):
     @staticmethod
     def check_data_age(
         ts: datetime.datetime,
-        universe: TradingStrategyUniverse,
+        strategy_universe: TradingStrategyUniverse,
         best_before_duration: datetime.timedelta
     ) -> datetime.datetime:
         """Check if our data is up-to-date and we do not have issues with feeds.
@@ -1642,6 +1642,9 @@ class TradingStrategyUniverseModel(UniverseModel):
 
         :param ts:
             Current time
+
+        :param strategy_universe:
+            Strategy universe to examine.
 
         :param best_before_duration:
             Data must be not older than this duration.
@@ -1656,21 +1659,21 @@ class TradingStrategyUniverseModel(UniverseModel):
         # Avoid circular import
         from tradeexecutor.analysis.pair import display_strategy_universe
 
-        assert isinstance(universe, TradingStrategyUniverse), f"Expected TradingStrategyUniverse, got {universe.__class__}"
+        assert isinstance(strategy_universe, TradingStrategyUniverse), f"Expected TradingStrategyUniverse, got {strategy_universe.__class__}"
 
         max_age = ts - best_before_duration
-        universe = universe.data_universe
+        data_universe = strategy_universe.data_universe
         candle_end = None
 
-        if universe.candles is not None:
+        if data_universe.candles is not None:
             # Convert pandas.Timestamp to executor internal datetime format
-            candle_start, candle_end = universe.candles.get_timestamp_range(
+            candle_start, candle_end = data_universe.candles.get_timestamp_range(
                 exclude_forward_fill=True,
             )
             candle_start = candle_start.to_pydatetime().replace(tzinfo=None)
             candle_end = candle_end.to_pydatetime().replace(tzinfo=None)
 
-            no_ff_candle_start, no_ff_candle_end = universe.candles.get_timestamp_range(
+            no_ff_candle_start, no_ff_candle_end = data_universe.candles.get_timestamp_range(
                 exclude_forward_fill=True,
             )
 
@@ -1678,7 +1681,7 @@ class TradingStrategyUniverseModel(UniverseModel):
                 diff = max_age - candle_end
 
                 universe_dump_df = display_strategy_universe(
-                    universe,
+                    strategy_universe,
                     show_volume=False,
                     show_tax=False,
                     show_tvl=False,
@@ -1701,8 +1704,8 @@ class TradingStrategyUniverseModel(UniverseModel):
                     f"More information in logs"
                 )
 
-        if universe.liquidity is not None:
-            liquidity_start, liquidity_end = universe.liquidity.get_timestamp_range(
+        if data_universe.liquidity is not None:
+            liquidity_start, liquidity_end = data_universe.liquidity.get_timestamp_range(
                 exclude_forward_fill=True,
             )
             liquidity_start = liquidity_start.to_pydatetime().replace(tzinfo=None)
