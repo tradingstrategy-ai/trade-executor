@@ -28,6 +28,8 @@ class TimestampedStatistics:
     - And of the strategy cycle
 
     - During the position revaluation
+
+    - Not a persistent data structure, only used to pass around the calculation results
     """
 
     #: Statistics for the whole portfolio
@@ -46,14 +48,6 @@ class TimestampedStatistics:
     #:
     strategy_cycle_at: datetime.datetime | None = None
 
-    #: Number of issued shares
-    share_count: Optional[Decimal] = None
-
-    #: Share price
-    #:
-    #: Derived from net asset value / share count
-    #:
-    share_price_usd: Optional[USDollarPrice] = None
 
 
 def calculate_position_statistics(clock: datetime.datetime, position: TradingPosition) -> PositionStatistics:
@@ -178,6 +172,8 @@ def calculate_statistics(
             first_trade_at=first_trade and first_trade.executed_at or None,
             last_trade_at=last_trade and last_trade.executed_at or None,
             summary=trade_analysis.calculate_summary_statistics(),
+            share_count=share_count,
+            share_price_usd=share_price_usd,
         )
 
     else:
@@ -186,13 +182,13 @@ def calculate_statistics(
             total_equity=total_equity,
             net_asset_value=portfolio.get_net_asset_value(),
             free_cash=float(portfolio.get_cash()),
+            share_count=share_count,
+            share_price_usd=share_price_usd,
         )
 
     stats = TimestampedStatistics(
         portfolio=pf_stats,
         strategy_cycle_at=strategy_cycle_at,
-        share_count=share_count,
-        share_price_usd=share_price_usd,
     )
 
     for position in portfolio.open_positions.values():

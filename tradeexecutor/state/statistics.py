@@ -19,7 +19,7 @@ from dataclasses_json import dataclass_json
 
 from tradeexecutor.state.identifier import TradingPairIdentifier, AssetIdentifier
 from tradingstrategy.types import USDollarAmount
-from tradeexecutor.state.types import Percent, UnixTimestamp
+from tradeexecutor.state.types import Percent, UnixTimestamp, USDollarPrice
 from tradeexecutor.analysis.trade_analyser import TradeSummary
 
 
@@ -119,6 +119,16 @@ class PortfolioStatistics:
     #: Set to 0 if cannot be calculated yet.
     #:
     unrealised_profitability: Optional[Percent] = None
+
+    #: Number of issued shares
+    share_count: Optional[Decimal] = None
+
+    #: Share price
+    #:
+    #: Derived from net asset value / share count
+    #:
+    share_price_usd: Optional[USDollarPrice] = None
+
     
     free_cash: Optional[USDollarAmount] = None
     open_position_count: Optional[int] = None

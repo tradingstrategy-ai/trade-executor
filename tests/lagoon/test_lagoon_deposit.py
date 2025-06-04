@@ -151,8 +151,8 @@ def test_lagoon_sync_deposit(
         execution_mode=ExecutionMode.unit_testing,
         treasury=treasury,
     )
-    assert statistics.share_price_usd == pytest.approx(1.0)
-    assert statistics.share_count == Decimal(9)
+    assert statistics.portfolio.share_price_usd == pytest.approx(1.0)
+    assert statistics.portfolio.share_count == Decimal(9)
 
 
 
