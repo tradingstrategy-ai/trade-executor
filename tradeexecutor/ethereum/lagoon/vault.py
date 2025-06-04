@@ -358,6 +358,9 @@ class LagoonVaultSyncModel(AddressSyncModel):
         valuation_with_deposits = valuation + float(delta)
         other_data["valuation_with_deposits"] = valuation_with_deposits
 
+        share_count = vault.fetch_total_supply(analysis.block_number)
+        other_data["share_count"] = share_count
+
         evt = BalanceUpdate(
             balance_update_id=event_id,
             position_type=BalanceUpdatePositionType.reserve,
@@ -392,12 +395,14 @@ class LagoonVaultSyncModel(AddressSyncModel):
         treasury_sync.last_updated_at = datetime.datetime.utcnow()
         treasury_sync.last_cycle_at = strategy_cycle_ts
         treasury_sync.pending_redemptions = float(analysis.pending_redemptions_underlying)
+        treasury_sync.share_count = share_count
 
         logger.info(
             f"Lagoon settlements done, the last block is now {treasury_sync.last_block_scanned:,}\n"
             f"Safe address: {vault.safe_address}, vault address: {vault.vault_address}, silo address: {vault.silo_address}\n"
             f"Settled {analysis.get_underlying_diff()} USD\n"
             f"Non-deposit valuation is {valuation:,.2f} USD, with-deposit valuation is {valuation_with_deposits:,.2f} USD\n"
-            f"Pending redemptions {analysis.pending_redemptions_underlying} USD"
+            f"Pending redemptions {analysis.pending_redemptions_underlying} USD\n"
+            f"Share count {share_count} {vault.share_token.symbol}"
         )
         return [evt]

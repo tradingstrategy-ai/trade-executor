@@ -95,6 +95,9 @@ def setup_charting_and_output(
         # https://stackoverflow.com/a/74609837/315168
         pio.kaleido.scope.default_format = image_format
 
+        # Kaleido 1.0
+        
+
         # https://plotly.com/python/renderers/#overriding-the-default-renderer
         pio.renderers.default = image_format
         

@@ -9,6 +9,7 @@ from tradeexecutor.analysis.trade_analyser import build_trade_analysis
 from tradeexecutor.state.portfolio import Portfolio
 from tradeexecutor.state.position import TradingPosition
 from tradeexecutor.state.statistics import Statistics, PortfolioStatistics, PositionStatistics, FinalPositionStatistics
+from tradeexecutor.state.sync import Treasury
 from tradeexecutor.state.types import LegacyDataException
 from tradeexecutor.strategy.execution_context import ExecutionMode
 from tradeexecutor.statistics.statistics_table import StatisticsTable
@@ -113,14 +114,25 @@ def calculate_closed_position_statistics(
 
 
 def calculate_statistics(
-        clock: datetime.datetime,
-        portfolio: Portfolio,
-        execution_mode: ExecutionMode,
-        strategy_cycle_at: datetime.datetime | None = None,
+    clock: datetime.datetime,
+    portfolio: Portfolio,
+    execution_mode: ExecutionMode,
+    strategy_cycle_at: datetime.datetime | None = None,
+    treasury: Treasury = None,
 ) -> TimestampedStatistics:
-    """Calculate statistics for a portfolio."""
+    """Calculate statistics for a portfolio.
+
+    :param trasury:
+        Needed to track share price.
+    """
 
     first_trade, last_trade = portfolio.get_first_and_last_executed_trade()
+
+    # May not available for non-live execution and non-vault strategies
+    if treasury:
+        share_count = treasury.share_count
+    else:
+        share_count = None
 
     # comprehensenhive statistics after each trade are not needed for backtesting
     if (execution_mode != ExecutionMode.backtesting):
@@ -149,6 +161,7 @@ def calculate_statistics(
             first_trade_at=first_trade and first_trade.executed_at or None,
             last_trade_at=last_trade and last_trade.executed_at or None,
             summary=trade_analysis.calculate_summary_statistics(),
+            share_count=share_count,
         )
 
     else:
@@ -157,6 +170,7 @@ def calculate_statistics(
             total_equity=portfolio.calculate_total_equity(),
             net_asset_value=portfolio.get_net_asset_value(),
             free_cash=float(portfolio.get_cash()),
+            share_count=share_count,
         )
 
     stats = TimestampedStatistics(
@@ -180,6 +194,7 @@ def update_statistics(
     execution_mode: ExecutionMode,
     strategy_cycle_or_wall_clock: datetime.datetime | None = None,
     long_short_metrics_latest: StatisticsTable | None = None,
+    treasury: Treasury | None = None,
 ):
     """Update statistics in a portfolio.
 
@@ -225,7 +240,12 @@ def update_statistics(
     
     stats.long_short_metrics_latest = long_short_metrics_latest
     
-    new_stats = calculate_statistics(clock, portfolio, execution_mode)
+    new_stats = calculate_statistics(
+        clock,
+        portfolio,
+        execution_mode,
+        treasury=treasury,
+    )
     stats.portfolio.append(new_stats.portfolio)
     for position_id, position_stats in new_stats.positions.items():
         stats.add_positions_stats(position_id, position_stats)

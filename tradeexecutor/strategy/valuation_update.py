@@ -113,5 +113,6 @@ def update_position_valuations(
             state.portfolio,
             execution_context.mode,
             long_short_metrics_latest=long_short_metrics_latest,
+            treasury=state.sync.treasury,
         )
 

@@ -560,6 +560,7 @@ class ExecutionLoop:
                 ExecutionMode.real_trading,
                 strategy_cycle_or_wall_clock=strategy_cycle_timestamp,
                 long_short_metrics_latest=long_short_metrics_latest,
+                treasury=state.sync.treasury,
             )
 
         state.uptime.record_cycle_complete(cycle)
@@ -721,6 +722,7 @@ class ExecutionLoop:
                 ExecutionMode.real_trading,
                 strategy_cycle_or_wall_clock=ts,
                 long_short_metrics_latest=long_short_metrics_latest,
+                treasury=state.sync.treasury,
             )
         return trades
 
@@ -845,6 +847,7 @@ class ExecutionLoop:
                     self.execution_context.mode,
                     strategy_cycle_or_wall_clock=ts,
                     long_short_metrics_latest=long_short_metrics_latest,
+                    treasury=state.sync.treasury,
                 )
 
             for t in trades:

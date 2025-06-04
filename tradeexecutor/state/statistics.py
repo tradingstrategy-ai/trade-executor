@@ -9,6 +9,7 @@ purely there for profit and loss calculations.
 import datetime
 from collections import defaultdict
 from dataclasses import field, dataclass
+from decimal import Decimal
 from math import isnan
 from typing import Dict, List, Optional, Tuple, Iterable
 
@@ -100,8 +101,6 @@ class PortfolioStatistics:
     If livetrading, then all attributes should be specified so that for displaying updated metrics after each trade
 
     See :py:attr:`Statistics.portfolio` for reading.
-
-
     """
 
     #: Real-time clock when these stats were calculated
@@ -112,6 +111,15 @@ class PortfolioStatistics:
 
     #: How much was TVL equivalent
     net_asset_value: Optional[USDollarAmount] = None
+
+    #: Number of issued shares
+    share_count: Optional[Decimal] = None
+
+    #: Share price
+    #:
+    #: Derived from net asset value / share count
+    #:
+    share_price_usd: Optional[Decimal] = None
 
     #: The unrealised all-time profitability of this strategy at this point of time
     #:
@@ -151,9 +159,6 @@ class PortfolioStatistics:
         if self.unrealised_profitability is not None:
             assert not pd.isna(self.unrealised_profitability)
             assert type(self.unrealised_profitability) in (float, int), f"Got: {type(self.unrealised_profitability)}: {self.unrealised_profitability}"
-
-
-
 
 
 @dataclass_json

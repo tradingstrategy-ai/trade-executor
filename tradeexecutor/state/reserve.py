@@ -170,3 +170,4 @@ class ReservePosition(GenericPosition):
             exchange_address=self.asset.address,
             internal_id=0,
         )
+
