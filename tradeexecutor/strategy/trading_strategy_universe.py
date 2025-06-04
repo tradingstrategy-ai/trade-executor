@@ -1696,7 +1696,12 @@ class TradingStrategyUniverseModel(UniverseModel):
                 )
 
                 # universe_output_msg too long for sentry?
-                logger.error(
+                # base-ath  | OSError: [Errno 90] Message too long
+                # logger.error(
+                #    f"Universe data too old. Non-forward-filled data is:\n{universe_output_msg}",
+                #)
+
+                print(
                     f"Universe data too old. Non-forward-filled data is:\n{universe_output_msg}",
                 )
 
