@@ -3,14 +3,15 @@
 import logging
 import datetime
 from dataclasses import dataclass, field
-from typing import Dict, List
+from decimal import Decimal
+from typing import Dict, List, Optional
 from tradeexecutor.analysis.trade_analyser import build_trade_analysis
 
 from tradeexecutor.state.portfolio import Portfolio
 from tradeexecutor.state.position import TradingPosition
 from tradeexecutor.state.statistics import Statistics, PortfolioStatistics, PositionStatistics, FinalPositionStatistics
 from tradeexecutor.state.sync import Treasury
-from tradeexecutor.state.types import LegacyDataException
+from tradeexecutor.state.types import LegacyDataException, USDollarPrice
 from tradeexecutor.strategy.execution_context import ExecutionMode
 from tradeexecutor.statistics.statistics_table import StatisticsTable
 from tradeexecutor.visual.equity_curve import calculate_compounding_unrealised_trading_profitability
@@ -44,6 +45,15 @@ class TimestampedStatistics:
     #: out of rebalance
     #:
     strategy_cycle_at: datetime.datetime | None = None
+
+    #: Number of issued shares
+    share_count: Optional[Decimal] = None
+
+    #: Share price
+    #:
+    #: Derived from net asset value / share count
+    #:
+    share_price_usd: Optional[USDollarPrice] = None
 
 
 def calculate_position_statistics(clock: datetime.datetime, position: TradingPosition) -> PositionStatistics:
@@ -134,7 +144,7 @@ def calculate_statistics(
     if treasury:
         share_count = treasury.share_count
         if share_count:
-            share_price_usd = total_equity / share_count
+            share_price_usd = total_equity / float(share_count)
         else:
             share_price_usd = None
     else:
@@ -168,7 +178,6 @@ def calculate_statistics(
             first_trade_at=first_trade and first_trade.executed_at or None,
             last_trade_at=last_trade and last_trade.executed_at or None,
             summary=trade_analysis.calculate_summary_statistics(),
-            share_count=share_count,
         )
 
     else:
@@ -177,12 +186,13 @@ def calculate_statistics(
             total_equity=total_equity,
             net_asset_value=portfolio.get_net_asset_value(),
             free_cash=float(portfolio.get_cash()),
-            share_count=share_count,
         )
 
     stats = TimestampedStatistics(
         portfolio=pf_stats,
         strategy_cycle_at=strategy_cycle_at,
+        share_count=share_count,
+        share_price_usd=share_price_usd,
     )
 
     for position in portfolio.open_positions.values():

@@ -290,7 +290,7 @@ class StrategyRunner(abc.ABC):
                     state.portfolio,
                     self.execution_context.mode,
                     strategy_cycle_or_wall_clock=timestamp,
-                    long_short_metrics_latest=long_short_metrics_latest
+                    long_short_metrics_latest=long_short_metrics_latest,
                     treasury = state.sync.treasury,
                 )
 

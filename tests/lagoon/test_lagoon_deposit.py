@@ -15,6 +15,8 @@ from eth_defi.trace import assert_transaction_success_with_explanation
 from tradeexecutor.ethereum.lagoon.vault import LagoonVaultSyncModel
 from tradeexecutor.state.portfolio import ReserveMissing
 from tradeexecutor.state.state import State
+from tradeexecutor.statistics.core import calculate_statistics
+from tradeexecutor.strategy.execution_context import ExecutionMode
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
 
 
@@ -123,6 +125,11 @@ def test_lagoon_sync_deposit(
     assert deposit_event.other_data is not None
     assert deposit_event.quantity == Decimal(9)
     assert deposit_event.old_balance == Decimal(0)
+    assert deposit_event.get_share_count() == Decimal(9)
+
+    # Check we have share price recorded
+    treasury = state.sync.treasury
+    assert treasury.share_count == 9
 
     # We scan again, no changes
     events = sync_model.sync_treasury(cycle, state)
@@ -136,6 +143,16 @@ def test_lagoon_sync_deposit(
     assert portfolio.get_net_asset_value(include_interest=True) == pytest.approx(9)
     assert reserve_position.last_sync_at is not None
     assert reserve_position.last_pricing_at is not None
+
+    # Check we calculate share price for statistics
+    statistics = calculate_statistics(
+        clock=cycle,
+        portfolio=portfolio,
+        execution_mode=ExecutionMode.unit_testing,
+        treasury=treasury,
+    )
+    assert statistics.share_price_usd == pytest.approx(1.0)
+    assert statistics.share_count == Decimal(9)
 
 
 

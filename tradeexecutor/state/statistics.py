@@ -112,15 +112,6 @@ class PortfolioStatistics:
     #: How much was TVL equivalent
     net_asset_value: Optional[USDollarAmount] = None
 
-    #: Number of issued shares
-    share_count: Optional[Decimal] = None
-
-    #: Share price
-    #:
-    #: Derived from net asset value / share count
-    #:
-    share_price_usd: Optional[Decimal] = None
-
     #: The unrealised all-time profitability of this strategy at this point of time
     #:
     #: See :py:func:`tradeexecutor.visualisation.equity_curve.calculate_compounding_unrealised_trading_profitability`
