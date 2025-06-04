@@ -128,11 +128,18 @@ def calculate_statistics(
 
     first_trade, last_trade = portfolio.get_first_and_last_executed_trade()
 
+    total_equity = portfolio.calculate_total_equity()
+
     # May not available for non-live execution and non-vault strategies
     if treasury:
         share_count = treasury.share_count
+        if share_count:
+            share_price_usd = total_equity / share_count
+        else:
+            share_price_usd = None
     else:
         share_count = None
+        share_price_usd = None
 
     # comprehensenhive statistics after each trade are not needed for backtesting
     if (execution_mode != ExecutionMode.backtesting):
@@ -147,7 +154,7 @@ def calculate_statistics(
         
         pf_stats = PortfolioStatistics(
             calculated_at=clock,
-            total_equity=portfolio.calculate_total_equity(),
+            total_equity=total_equity,
             net_asset_value=portfolio.get_net_asset_value(),
             unrealised_profitability=float(profitability_series.iloc[-1] if len(profitability_series) > 0 else 0),
             free_cash=float(portfolio.get_cash()),
@@ -167,7 +174,7 @@ def calculate_statistics(
     else:
         pf_stats = PortfolioStatistics(
             calculated_at=clock,
-            total_equity=portfolio.calculate_total_equity(),
+            total_equity=total_equity,
             net_asset_value=portfolio.get_net_asset_value(),
             free_cash=float(portfolio.get_cash()),
             share_count=share_count,
