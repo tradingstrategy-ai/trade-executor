@@ -1,5 +1,6 @@
 """Check that we correctly filter low-value positions in correct-accounts.
 """
+import datetime
 import shutil
 import os.path
 import secrets
@@ -12,7 +13,8 @@ from _pytest.fixtures import FixtureRequest
 from eth_defi.provider.anvil import AnvilLaunch, launch_anvil
 
 from tradeexecutor.cli.commands.app import app
-
+from tradeexecutor.state.state import State
+from tradeexecutor.utils.dedent import dedent_any
 
 pytestmark = pytest.mark.skipif(not os.environ.get("JSON_RPC_BASE") or not os.environ.get("TRADING_STRATEGY_API_KEY"), reason="Set JSON_RPC_POLYGON and TRADING_STRATEGY_API_KEY environment variables to run this test")
 
@@ -70,8 +72,8 @@ def environment(
         "ASSET_MANAGEMENT_MODE": "lagoon",
         "UNIT_TESTING": "true",
         "UNIT_TEST_FORCE_ANVIL": "true",  # check-wallet command legacy hack
-        "LOG_LEVEL": "disabled",
-        # "LOG_LEVEL": "info",
+        # "LOG_LEVEL": "disabled",
+        "LOG_LEVEL": "info",
         # "CONFIRMATION_BLOCK_COUNT": "0",  # Needed for test backend, Anvil
         "TRADING_STRATEGY_API_KEY": os.environ["TRADING_STRATEGY_API_KEY"],
         "VAULT_ADDRESS": "0x7d8Fab3E65e6C81ea2a940c050A7c70195d1504f",
@@ -100,22 +102,31 @@ def test_check_account_low_value_position(
         app(["check-accounts"], standalone_mode=False)
 
 
-
 @pytest.mark.slow_test_group
-@pytest.mark.skip(reason="Code unfinished")
+@pytest.mark.skipif("quiknode" not in os.environ.get("JSON_RPC_BASE", ""), reason="Requires QuikNode RPC")
 def test_check_backfill_data(
     environment: dict,
     mocker,
+    state_file: Path,
 ):
     """Check backfill of missing share price data."""
 
     environment = environment.copy()
     environment["JSON_RPC_BASE"] = os.environ["JSON_RPC_BASE"]
-    environment["CODE"] = """
-    from tradeeexeutor.ethereum.lagoon import retrofit_share_price ; retrofit_share_price(state, vault)  
-    """
-
+    environment["CODE"] = dedent_any("""
+    import datetime
+    from tradeexecutor.ethereum.lagoon.share_price_retrofit import retrofit_share_price 
+    retrofit_share_price(state, vault, max_time=datetime.datetime(2025, 2, 20)) 
+    store.sync(state, validate=False)
+    """)
     mocker.patch.dict("os.environ", environment, clear=True)
     app(["console"], standalone_mode=False)
 
+    state = State.read_json_file(state_file)
 
+    # Check all position values contain backfilled share prices
+    for portfolio_stats in state.stats.portfolio:
+
+        if portfolio_stats.calculated_at < datetime.datetime(2025, 2, 20):
+            assert portfolio_stats.share_count is not None, "Share count should have been backfilled"
+            assert portfolio_stats.share_price_usd is not None, "Share price should be backfilled"

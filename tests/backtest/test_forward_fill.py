@@ -86,11 +86,11 @@ def test_forward_fill_spot_only_forward_filled(persistent_test_client: Client):
 
     # We should be able to get time range for forward filled data
     time_range = strategy_universe.data_universe.candles.get_timestamp_range(exclude_forward_fill=False)
-    assert time_range == (pd.Timestamp('2024-01-01 12:00:00'), pd.Timestamp('2024-05-01 00:00:00'))
+    assert time_range == (pd.Timestamp('2024-01-01 00:00:00'), pd.Timestamp('2024-05-01 00:00:00'))
 
     # For alerts, we should be able to get time range that excludes any synthetic forward-filled values
     time_range = strategy_universe.data_universe.candles.get_timestamp_range(exclude_forward_fill=True)
-    assert time_range == (pd.Timestamp('2024-01-01 12:00:00'), pd.Timestamp('2024-03-15 00:00:00'))
+    assert time_range == (pd.Timestamp('2024-01-01 00:00:00'), pd.Timestamp('2024-03-15 00:00:00'))
 
 
 

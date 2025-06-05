@@ -90,8 +90,13 @@ class JSONFileStore(StateStore):
         logger.info("Loaded state from %s", self.path)
         return State.read_json_file(self.path)
 
-    def sync(self, state: State):
-        """Write new JSON state dump using Linux atomic filereplacement."""
+    def sync(self, state: State, validate=True):
+        """Write new JSON state dump using Linux atomic filereplacement.
+
+        :param validate:
+            Perform slow pre-seralisation validation before writing.
+
+        """
         dirname, basename = os.path.split(self.path)
         # Prepare for an atomic replacement
         temp = tempfile.NamedTemporaryFile(mode='wt', delete=False, dir=dirname)
@@ -102,7 +107,10 @@ class JSONFileStore(StateStore):
             # Insert special validation logic here to have
             # friendly error messages for the JSON serialisation errors
             data = state.to_dict(encode_json=False)
-            validate_nested_state_dict(data)
+            if validate:
+                # Validate the state dict before serialisation
+                # This will raise an exception if the state is invalid
+                validate_nested_state_dict(data)
 
             try:
                 txt = json.dumps(data, cls=_ExtendedEncoder)

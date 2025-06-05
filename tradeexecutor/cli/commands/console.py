@@ -120,7 +120,7 @@ def console(
     gas_price_method: Optional[GasPriceMethod] = shared_options.gas_price_method,
     simulate: bool = shared_options.simulate,
 
-    code: Optional[str] = Option(None, envvar="EVAL", help="Run this Python snipped and exit"),
+    code: Optional[str] = Option(None, envvar="CODE", help="Run this Python snipped and exit"),
 
 ):
     """Open interactive IPython console to explore state.
@@ -313,6 +313,7 @@ def console(
     else:
         backtested_state = None
 
+    cycle_duration = run_description.cycle_duration
     refresh_run_state(
         run_state,
         state,
@@ -321,6 +322,7 @@ def console(
         universe=universe,
         sync_model=sync_model,
         backtested_state=backtested_state,
+        cycle_duration=cycle_duration,
     )
 
     if mod.create_indicators:
@@ -365,7 +367,8 @@ def console(
     else:
         indicator_storage = indicator_set = indicator_result_map = indicators = None
 
-    vault = getattr(execution_model, "vault", None)
+    # Expose Vault smart contract proxy class
+    vault = getattr(sync_model, "vault", None)
 
     # Set up the default objects in Python eval context
     # and available in the interactive session
@@ -407,8 +410,9 @@ def console(
         bindings[name] = pair
 
     if code:
-        print(f"Executing Python code:\n{code}")
-        eval(code, bindings)
+        logger.info(f"Executing Python code:\n{code}")
+        exec(code, bindings)
         print("All olk")
     elif not unit_testing:
+        logger.info("Launching interactive console session. Type `exit` to exit the console.")
         launch_console(bindings)
