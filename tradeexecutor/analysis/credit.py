@@ -133,11 +133,11 @@ def display_vault_position_table(
     rows = []
     for p in positions:
 
-        fist_trade = p.get_first_trade()
+        first_trade = p.get_first_trade()
         last_trade = p.get_last_trade()
 
-        if fist_trade:
-            share_price_on_open = fist_trade.executed_price
+        if first_trade:
+            share_price_on_open = first_trade.executed_price
             share_price_on_close = last_trade.executed_price
             try:
                 price_diff = (share_price_on_close - share_price_on_open) / share_price_on_open
@@ -183,4 +183,5 @@ def display_vault_position_table(
 
     df = pd.DataFrame(rows)
     df = df.sort_values("Opened")
+    df = df.set_index("Vault")
     return df
