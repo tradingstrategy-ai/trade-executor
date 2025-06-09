@@ -22,7 +22,6 @@ from tradeexecutor.strategy.pandas_trader.indicator_decorator import IndicatorRe
 from tradeexecutor.strategy.pandas_trader.strategy_input import StrategyInput
 from tradeexecutor.strategy.pandas_trader.yield_manager import YieldManager, YieldDecisionInput, YieldWeightingRule, YieldRuleset
 from tradeexecutor.strategy.parameters import StrategyParameters
-from tradeexecutor.strategy.tag import StrategyTag
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
 from tradeexecutor.strategy.trading_strategy_universe import (
     load_partial_data)
@@ -33,10 +32,8 @@ from tradingstrategy.chain import ChainId
 from tradingstrategy.client import Client
 from tradingstrategy.pair import PandasPairUniverse
 from tradingstrategy.timebucket import TimeBucket
-from tradingstrategy.transport.cache import OHLCVCandleType
 from tradingstrategy.utils.forward_fill import forward_fill
 from tradingstrategy.utils.groupeduniverse import resample_candles
-from tradingstrategy.utils.liquidity_filter import prefilter_pairs_with_tvl
 
 from tradingstrategy.utils.token_filter import add_base_quote_address_columns
 from tradingstrategy.utils.token_filter import filter_for_exchange_slugs
@@ -124,8 +121,9 @@ class Parameters:
     # Backtesting only
     # Limiting factor: Aave v3 on Base starts at the end of DEC 2023
     #
-    backtest_start = datetime.datetime(2025, 3, 1)
-    backtest_end = datetime.datetime(2025, 5, 19)
+    # backtest_start = datetime.datetime(2025, 3, 1)
+    backtest_start = datetime.datetime(2025, 1, 1)
+    backtest_end = datetime.datetime(2025, 6, 9)
     initial_cash = 100_000
 
     #
@@ -344,7 +342,7 @@ def create_trading_universe(
 
 
 def decide_trades(
-        input: StrategyInput
+    input: StrategyInput
 ) -> list[TradeExecution]:
     """For each strategy tick, generate the list of trades."""
     parameters = input.parameters

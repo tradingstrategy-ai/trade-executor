@@ -6,6 +6,7 @@ from functools import cached_property
 import dataclasses
 from pprint import pformat
 
+from dataclasses_json import dataclass_json
 from tabulate import tabulate
 
 from tradeexecutor.state.generic_position import GenericPosition
@@ -21,6 +22,7 @@ from tradeexecutor.strategy.tvl_size_risk import BaseTVLSizeRiskModel
 logger = logging.getLogger(__name__)
 
 
+@dataclass_json
 @dataclasses.dataclass(slots=True, frozen=True)
 class YieldWeightingRule:
     """Describe a rule how to optimise yield for spare cash."""
@@ -147,6 +149,7 @@ class YieldDecisionInput:
     size_risk_model: BaseTVLSizeRiskModel | None = None
 
 
+@dataclass_json
 @dataclasses.dataclass(slots=True, frozen=True)
 class YieldDecision:
 
@@ -164,6 +167,9 @@ class YieldDecision:
 
     #: Pool participation size risk calculated
     size_risk: SizeRisk | None = None
+
+    def __repr__(self):
+        return f"<YieldDecision w:{self.weight:.2%}: amount:{self.existing_amount_usd if self.existing_amount_usd else 0:,.2f} -> {self.amount_usd:,.2f} USD, asked: {self.size_risk.asked_size if self.size_risk else 0:.2f}, accepted: {self.size_risk.accepted_size if self.size_risk else 0:.2f}>"
 
     @property
     def pair(self) -> TradingPairIdentifier:
@@ -259,6 +265,7 @@ class YieldManager:
     def generate_rebalance_trades(
         self,
         cycle: int,
+        timestamp: datetime.datetime,
         current_yield_positions: dict[TradingPairIdentifier, GenericPosition | None],
         desired_yield_positions: dict[TradingPairIdentifier, YieldDecision],
     ) -> list[TradeExecution]:
@@ -311,6 +318,7 @@ class YieldManager:
                             quantity_delta=quantity_delta,
                             notes=notes,
                             weight=desired_result.weight,
+                            other_data={"yield_decision": desired_result},
                         )
                     case TradingPairKind.credit_supply:
                         # Aave positions are currently always fully closed and then reopenened due to internal limitaiton
@@ -330,7 +338,6 @@ class YieldManager:
                     dollar_delta,
                     self.rules.cash_change_tolerance_usd,
                 )
-                trades = []
 
             trade_output_table.append({
                 "pair": pair.base.token_symbol,
@@ -347,8 +354,9 @@ class YieldManager:
             tablefmt="fancy_grid",
         )
         logger.info(
-            "Generated yield rebalancing trades at cycle #%d:\n%s",
+            "Generated yield rebalancing trades at cycle #%d %s:\n%s",
             cycle,
+            timestamp,
             trade_output_table_msg,
         )
         return trades
@@ -595,6 +603,7 @@ class YieldManager:
         # 5. Calculate rebalance trades for yield positions
         trades = self.generate_rebalance_trades(
             input.cycle,
+            input.timestamp,
             current_positions,
             desired_yield_positions,
         )

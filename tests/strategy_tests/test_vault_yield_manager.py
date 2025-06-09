@@ -4,9 +4,10 @@
 import os
 from pathlib import Path
 
+import pandas as pd
 import pytest
 
-from tradeexecutor.analysis.credit import calculate_yield_metrics, YieldType
+from tradeexecutor.analysis.credit import calculate_yield_metrics, YieldType, display_vault_position_table
 from tradeexecutor.backtest.backtest_module import run_backtest_for_module
 from tradeexecutor.cli.log import setup_pytest_logging
 from tradeexecutor.strategy.execution_context import unit_test_execution_context
@@ -50,5 +51,8 @@ def test_backtest_vault_yield_manager(
         state,
         yield_type=YieldType.vault
     )
+
+    df = display_vault_position_table(state)
+    assert isinstance(df, pd.DataFrame)
 
 

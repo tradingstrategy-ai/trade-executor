@@ -26,7 +26,7 @@ from tradingstrategy.universe import Universe
 
 from tradeexecutor.backtest.backtest_runner import run_backtest_inline
 from tradeexecutor.state.identifier import TradingPairIdentifier
-from tradeexecutor.state.trade import TradeExecution
+from tradeexecutor.state.trade import TradeExecution, TradeStatus
 from tradeexecutor.strategy.alpha_model import AlphaModel
 from tradeexecutor.strategy.cycle import CycleDuration
 from tradeexecutor.strategy.execution_context import unit_test_execution_context, ExecutionContext, ExecutionMode
@@ -172,6 +172,16 @@ def test_vault_rebalance_strategy(
 
     state = result.state
     assert len(state.portfolio.closed_positions) >= 1
+
+    trades = list(state.portfolio.get_all_trades())
+    assert len(trades) == 506
+    for t in trades:
+        assert t.get_status() == TradeStatus.success
+        assert t.is_success(), f"Trade {t.id} is not successful: {t}"
+        assert t.executed_at, f"Trade executed at is not set: {t}"
+        assert t.executed_price
+        assert t.planned_price
+        assert t.planned_reserve
 
 
 def create_trading_universe(

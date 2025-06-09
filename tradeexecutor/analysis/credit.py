@@ -106,3 +106,81 @@ def calculate_yield_metrics(
 
 #: BBB
 calculate_credit_metrics = calculate_yield_metrics
+
+
+def display_vault_position_table(
+    state: State,
+    execution_mode=ExecutionMode.backtesting,
+) -> pd.DataFrame:
+    """Analysis each vault position individually.
+
+    - Figure out how where the yield comes from
+    - Only consider vaults, lending protocols like Aave excluded
+
+    :return:
+        DataFrame with row per vault position.
+
+        Human readable.
+    """
+
+    if execution_mode.is_backtesting():
+        assert state.backtest_data
+        end_at = state.backtest_data.end_at
+        assert end_at
+
+    positions = [p for p in state.portfolio.get_all_positions() if p.is_vault()]
+
+    rows = []
+    for p in positions:
+
+        fist_trade = p.get_first_trade()
+        last_trade = p.get_last_trade()
+
+        if fist_trade:
+            share_price_on_open = fist_trade.executed_price
+            share_price_on_close = last_trade.executed_price
+            try:
+                price_diff = (share_price_on_close - share_price_on_open) / share_price_on_open
+            except TypeError:
+                # TypeError: unsupported operand type(s) for -: 'float' and 'NoneType'
+                all_trades = ""
+                for t in p.trades.values():
+                    yield_decision = t.get_yield_decision()
+                    all_trades += f"Trade {t} @ {t.opened_at} for price {t.executed_price}, status: {t.get_status().value}\nYield decision: {yield_decision}\n"
+                raise RuntimeError(f"Cannot calculate price diff for position {p} ({p.pair.get_vault_name()})\n{all_trades}")
+            duration = p.get_duration(
+                partial=True,
+                execution_mode=execution_mode,
+                end_at=end_at,
+            )
+            price_diff_annualised = price_diff * duration / datetime.timedelta(days=365)
+
+        else:
+            share_price_on_open = None
+            share_price_on_close = None
+            price_diff = None
+            price_diff_annualised = None
+            duration = None
+
+        deposit_count = len([t for t in p.trades.values() if t.is_buy()])
+        redeem_count = len([t for t in p.trades.values() if t.is_sell()])
+
+        entry = {
+            "Vault": p.pair.get_vault_name(),
+            "Opened": p.opened_at,
+            "Closed": p.closed_at or "-",
+            "Profit %": f"{p.get_total_profit_percent() * 100:.2f}",
+            "Profit USD": f"{p.get_total_profit_usd():.2f}",
+            "Price on open": f"{share_price_on_open:.2f}" if share_price_on_open else "-",
+            "Price on close": f"{share_price_on_close:.2f}" if share_price_on_close else "-",
+            "Price diff %": f"{price_diff * 100:.2f}" if price_diff else "-",
+            "Price diff % ann.": f"{price_diff_annualised * 100:.2f}" if price_diff_annualised else "-",
+            "Deposits": deposit_count,
+            "Redeems": redeem_count,
+        }
+
+        rows.append(entry)
+
+    df = pd.DataFrame(rows)
+    df = df.sort_values("Opened")
+    return df

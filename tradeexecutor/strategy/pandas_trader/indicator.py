@@ -1645,12 +1645,20 @@ class IndicatorDependencyResolver:
             filtered_by_pair = filtered_by_name
 
         if parameters is not None:
+            # Make extensive diagnotics message availble
+            # as tracing parameter typing errors is cumbersome
             filtered_by_parameters = [i for i in filtered_by_pair if i.definition.parameters == parameters]
 
             filtered_by_pair_parameters = [i.definition.parameters for i in filtered_by_pair]
 
             if len(filtered_by_parameters) == 0:
-                raise IndicatorDependencyResolutionError(f"No indicator named {name},\nPair {pair},\nParameters {parameters}.\nOther parameter combinations:{filtered_by_pair} with parameters: {filtered_by_pair_parameters}\n{all_text}")
+                filtered_by_pair_parameters_msg = ""
+                for idx, avail_params in enumerate(filtered_by_pair_parameters):
+                    sorted_dict = dict(sorted(avail_params.items()))
+                    filtered_by_pair_parameters_msg += f"Parameter combination #{idx+1}: {pformat(sorted_dict)}"
+
+                asked_params = dict(sorted(parameters.items()))
+                raise IndicatorDependencyResolutionError(f"No indicator named {name},\nfor pair {pair},\nAsked parameters {pformat(asked_params)}.\nOther parameter combinations:{filtered_by_pair}\nDefined parameter combinations:\n{filtered_by_pair_parameters_msg}\n{all_text}")
         else:
             filtered_by_parameters = filtered_by_pair
 

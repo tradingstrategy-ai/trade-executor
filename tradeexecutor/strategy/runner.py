@@ -801,6 +801,8 @@ class StrategyRunner(abc.ABC):
                         assert t not in trade_set, f"decide_trades() returned a duplicate trade: {t}"
                         trade_set.add(t)
 
+                    # logger.info("decide_trades() returned %d trades", len(rebalance_trades))
+
                 new_position_ids = set(state.portfolio.open_positions.keys())
                 if old_position_ids != new_position_ids and len(trade_set) == 0:
                     # Handle user error within decide_trades() that they forget to return trades list.
@@ -821,6 +823,7 @@ class StrategyRunner(abc.ABC):
                     max_price_impact=self.max_price_impact,
                 )
 
+                # If we have no trades, then we are done
                 # Log what our strategy decided
                 if self.is_progress_report_needed():
                     self.report_strategy_thinking(
