@@ -47,7 +47,10 @@ def calculate_position_curve(
     pair = position.pair
 
     candles = strategy_universe.data_universe.candles.get_samples_by_pair(pair.internal_id)
-    candles = candles.loc[start:end]
+    # TODO: index type may vary here,because get_samples_by_pair() gives (pair_id, timestamp) as index
+    # use slow filtering method
+
+    candles = candles.loc[(candles["timestamp"] >= start) & (candles["timestamp"] <= end)]
 
     assert len(candles) > 0, f"No candles found for {pair.internal_id} between {start} and {end} when plotting position {position}"
 
@@ -56,26 +59,35 @@ def calculate_position_curve(
     cumulative_value = cumulative_quantity = pnl = 0
 
     for trade in position.trades.values():
-
         cumulative_quantity += trade.executed_quantity
-        cumulative_value += trade.get_value() * math.copysign(trade.executed_quantity)
-
+        cumulative_value +=  math.copysign(trade.get_value(), trade.executed_quantity)
         entry = {
             "timestamp": trade.opened_at,
             "value": cumulative_value,
             "quantity": cumulative_quantity,
         }
+        entries.append(entry)
 
+    if not position.closed_at:
+        # Mark the unrealised position at the end of the backtest
+        entry = {
+            "timestamp": end_at,
+            "value": cumulative_value,
+            "quantity": cumulative_quantity,
+        }
         entries.append(entry)
 
     df = pd.DataFrame(entries)
     df = df.set_index("timestamp")
-    df["price"] = candles["close"]
 
-    df = df.resample(time_bucket.to_pandas_timedelta()).agg({
-        "value": "last",
-        "quantity": "last",
-        "price": "last",
+    # Get price data for the position
+    price_df = pd.DataFrame({
+        "price": candles["close"],
+        "timestamp": candles["timestamp"],
     })
+    price_df = price_df.set_index("timestamp")
 
-    return df
+    joined_df = pd.merge(df, price_df, left_index=True, right_index=True, how='left')
+
+    joined_df = joined_df.resample(time_bucket.to_pandas_timedelta()).ffill()
+    return joined_df
