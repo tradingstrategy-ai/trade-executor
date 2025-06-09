@@ -123,7 +123,7 @@ class Parameters:
     #
     # backtest_start = datetime.datetime(2025, 3, 1)
     backtest_start = datetime.datetime(2025, 1, 1)
-    backtest_end = datetime.datetime(2025, 6, 9)
+    backtest_end = datetime.datetime(2025, 5, 19)
     initial_cash = 100_000
 
     #
