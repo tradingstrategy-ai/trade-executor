@@ -11,6 +11,7 @@ from tradeexecutor.analysis.credit import calculate_yield_metrics, YieldType, di
 from tradeexecutor.backtest.backtest_module import run_backtest_for_module
 from tradeexecutor.cli.log import setup_pytest_logging
 from tradeexecutor.strategy.execution_context import unit_test_execution_context
+from tradeexecutor.visual.position import calculate_position_curve
 
 
 @pytest.fixture(scope="module")
@@ -54,5 +55,17 @@ def test_backtest_vault_yield_manager(
 
     df = display_vault_position_table(state)
     assert isinstance(df, pd.DataFrame)
+
+    autopilot_usdc = state.portfolio.open_positions[445]
+    assert autopilot_usdc.pair.get_vault_name() == "Autopilot USDC Base"
+
+    df = calculate_position_curve(
+        strategy_universe=result.strategy_universe,
+        position=autopilot_usdc,
+        time_bucket=result.strategy_universe.data_universe.time_bucket,
+        end_at=result.state.backtest_data.end_at,
+    )
+    assert isinstance(df, pd.DataFrame)
+
 
 

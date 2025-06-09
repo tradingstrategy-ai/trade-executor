@@ -2,7 +2,7 @@
 
 import logging
 import math
-from datetime import datetime
+import datetime
 
 import pandas as pd
 from plotly.graph_objs import Figure
