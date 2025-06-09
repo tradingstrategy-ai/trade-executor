@@ -65,6 +65,7 @@ def calculate_position_curve(
             "timestamp": trade.opened_at,
             "value": cumulative_value,
             "quantity": cumulative_quantity,
+            "delta": trade.executed_quantity,
         }
         entries.append(entry)
 
@@ -74,6 +75,7 @@ def calculate_position_curve(
             "timestamp": end_at,
             "value": cumulative_value,
             "quantity": cumulative_quantity,
+            "delta": 0,
         }
         entries.append(entry)
 
@@ -88,6 +90,12 @@ def calculate_position_curve(
     price_df = price_df.set_index("timestamp")
 
     joined_df = pd.merge(df, price_df, left_index=True, right_index=True, how='left')
+    joined_df["delta"] = joined_df["delta"].fillna(0)
 
     joined_df = joined_df.resample(time_bucket.to_pandas_timedelta()).ffill()
+
+    joined_df["pnl"] = joined_df["delta"].shift(1) * joined_df["price"]
+
+    import ipdb ; ipdb.set_trace()
+
     return joined_df
