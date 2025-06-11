@@ -6,12 +6,13 @@ from pathlib import Path
 
 import pandas as pd
 import pytest
+from plotly.graph_objs import Figure
 
 from tradeexecutor.analysis.credit import calculate_yield_metrics, YieldType, display_vault_position_table
 from tradeexecutor.backtest.backtest_module import run_backtest_for_module
 from tradeexecutor.cli.log import setup_pytest_logging
 from tradeexecutor.strategy.execution_context import unit_test_execution_context
-from tradeexecutor.visual.position import calculate_position_curve
+from tradeexecutor.visual.position import calculate_position_curve, visualise_position
 
 
 @pytest.fixture(scope="module")
@@ -59,6 +60,7 @@ def test_backtest_vault_yield_manager(
     autopilot_usdc = state.portfolio.open_positions[445]
     assert autopilot_usdc.pair.get_vault_name() == "Autopilot USDC Base"
 
+    # Test position tracking for a single position
     df = calculate_position_curve(
         strategy_universe=result.strategy_universe,
         position=autopilot_usdc,
@@ -66,4 +68,5 @@ def test_backtest_vault_yield_manager(
         end_at=result.state.backtest_data.end_at,
     )
     assert isinstance(df, pd.DataFrame)
-    import ipdb ; ipdb.set_trace()
+    fig = visualise_position(autopilot_usdc, df)
+    assert isinstance(fig, Figure)

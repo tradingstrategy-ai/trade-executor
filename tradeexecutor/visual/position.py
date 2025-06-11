@@ -1,45 +1,17 @@
 """Single position visualisation."""
 
 import logging
-import math
 import datetime
 
 import numpy as np
 import pandas as pd
-from pyasn1_modules.rfc6031 import id_pskc_valueMAC
+from plotly.graph_objs import Figure
 
 from tradeexecutor.state.position import TradingPosition
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
 from tradingstrategy.timebucket import TimeBucket
 
 logger = logging.getLogger(__name__)
-
-
-def _realised(row):
-    if row["delta"] < 0:
-        avg_entry_price = row["value"] / row["quantity"] if row["quantity"] != 0 else 0
-        return (row["executed_price"] - avg_entry_price) * abs(row["delta"]) - row["fee"]
-    return 0
-
-def calculate_pnl(df: pd.DataFrame) -> pd.DataFrame:
-    """Calculate PnL for a position DataFrame.
-
-    - Add PnL columns to the the DataFrame
-
-    :param df:
-        DataFrame with columns: timestamp, value, quantity, delta, price
-
-    :return:
-        DataFrame with additional columns: pnl, cumulative_pnl
-    """
-    # Track cost basis of the position
-    # df['trade_cost'] = df['delta'] * df['executed_price']
-    # Cumulative cost of the position
-    df["unrealised_pnl"] = (df["mark_price"] - df["avg_price"]) * df["quantity"]
-    df["realised_pnl"] = (df["mark_price"] - df["avg_price"]) * df["delta"]
-    return df
-
-
 
 
 def calculate_position_curve(
@@ -58,15 +30,20 @@ def calculate_position_curve(
 
     Example data:
 
-    .. code-block:: plain-text
+    .. code-block:: text
 
-
+                                 quantity      delta  executed_price  fee  cumulative_cost  avg_price  mark_price         value  realised_delta  realised_pnl  unrealised_pnl        pnl
+        timestamp
+        2025-03-22 00:00:00     51.894608  51.894608        1.002456  0.0        52.022051   0.000000    1.002456     52.022051             0.0      0.000000         0.00000   0.000000
+        2025-03-22 01:00:00     51.894608   0.000000        1.002456  0.0        52.022051   0.000000    1.002456     52.022051             0.0      0.000000         0.00000   0.000000
+        2025-03-22 02:00:00     51.894608   0.000000        1.002456  0.0        52.022051   0.000000    1.002456     52.022051             0.0      0.000000         0.00000   0.000000
+        2025-03-22 03:00:00     51.894608   0.000000        1.002456  0.0        52.022051   0.000000    1.002456     52.022051             0.0      0.000000         0.00000   0.000000
 
     :param end_at:
         End at timestamp for positions that are still open/were open at the end of the backtest.
 
     :return:
-        DataFrame with columns:
+        DataFrame with columns as above,
     """
 
     assert isinstance(strategy_universe, TradingStrategyUniverse), f"Expected TradingStrategyUniverse, got {type(strategy_universe)}"
@@ -170,3 +147,62 @@ def calculate_position_curve(
     joined_df["pnl"] = joined_df["unrealised_pnl"] + joined_df["realised_pnl"]
 
     return joined_df
+
+
+def visualise_position(
+    position: TradingPosition,
+    df: pd.DataFrame,
+) -> Figure:
+    """Visualise position as a Plotly figure.
+
+    - Draw PnL chart on the top of the price
+    - Mark trades
+    """
+
+    assert isinstance(df, pd.DataFrame), f"Expected DataFrame, got {type(df)}"
+
+    if df.empty:
+        raise ValueError("DataFrame is empty, cannot visualise position")
+
+    fig = Figure()
+
+    # Price chart
+    fig.add_trace({
+        "x": df.index,
+        "y": df["mark_price"],
+        "type": "scatter",
+        "mode": "lines",
+        "name": "Price",
+        "line": {"width": 1},
+    })
+
+    # PnL chart
+    fig.add_trace({
+        "x": df.index,
+        "y": df["pnl"],
+        "type": "scatter",
+        "mode": "lines",
+        "name": "PnL",
+        "line": {"width": 1, "color": "#FF5733"},
+    })
+
+    # Trades
+    for _, trade in df.iterrows():
+        if trade["delta"] != 0:
+            fig.add_trace({
+                "x": [trade.name],
+                "y": [trade["mark_price"]],
+                "type": "scatter",
+                "mode": "markers+text",
+                "name": f"Trade: {trade['delta']}",
+                "marker": {"size": 10, "color": "#00FF00" if trade['delta'] > 0 else "#FF0000"},
+                "textposition": 'top center',
+            })
+
+    fig.update_layout(
+        title=f"Position #{position.position_id} {position.pair.base.token_symbol} timeline",
+        xaxis_title="Time",
+        yaxis_title="Price / PnL"
+    )
+
+    return fig
