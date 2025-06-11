@@ -143,11 +143,16 @@ def calculate_position_timeline(
             return (row["mark_price"] - row["avg_price"]) * abs(row["delta"])
         return 0
 
+    # Calculate realised and unrealised PnL,
+    # then how much PnL would be annually so we get APY
     joined_df["realised_delta"] = joined_df.apply(_realised_pnl, axis=1)
     joined_df["realised_pnl"] = joined_df["realised_delta"].cumsum()
     joined_df["unrealised_pnl"] = joined_df["value"] - joined_df["cumulative_cost"]
     joined_df["pnl"] = joined_df["unrealised_pnl"] + joined_df["realised_pnl"]
     joined_df["pnl_pct"] = joined_df["pnl"] / joined_df["cumulative_cost"]
+    joined_df["duration"] = joined_df.index - joined_df.index[0]
+    joined_df["annual_periods"] = pd.Timedelta(days=365) / joined_df["duration"]
+    joined_df["pnl_annualised"] = (1 + joined_df["pnl_pct"]) ** (joined_df["annual_periods"]) - 1
     return joined_df
 
 
@@ -206,10 +211,10 @@ def visualise_position(
     # PnL percentage chart (bottom subplot)
     fig.add_trace({
         "x": index,
-        "y": df["pnl_pct"] * 100,
+        "y": df["pnl_annualised"] * 100,
         "type": "scatter",
         "mode": "lines",
-        "name": "PnL %",
+        "name": "PnL annualised %",
         "line": {"width": 2, "color": "#FF5733"},
         "showlegend": True
     }, row=3, col=1)
@@ -300,7 +305,7 @@ def visualise_position(
     # Update y-axis labels
     fig.update_yaxes(title_text="Price", row=1, col=1)
     fig.update_yaxes(title_text="Value (USD)", row=2, col=1)
-    fig.update_yaxes(title_text="PnL (%)", row=3, col=1)
+    fig.update_yaxes(title_text="PnL annualised (%)", row=3, col=1)
     fig.update_yaxes(title_text="PnL (USD)", row=4, col=1)
 
     return fig
