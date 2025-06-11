@@ -148,101 +148,13 @@ def calculate_position_timeline(
     joined_df["unrealised_pnl"] = joined_df["value"] - joined_df["cumulative_cost"]
     joined_df["pnl"] = joined_df["unrealised_pnl"] + joined_df["realised_pnl"]
     joined_df["pnl_pct"] = joined_df["pnl"] / joined_df["cumulative_cost"]
-
     return joined_df
-
-
-def xxx_visualise_position(
-    position: TradingPosition,
-    df: pd.DataFrame,
-) -> Figure:
-    """Visualise position as a Plotly figure.
-
-    - Draw PnL chart on the top of the price
-    - Mark trades
-    """
-    assert isinstance(df, pd.DataFrame), f"Expected DataFrame, got {type(df)}"
-
-    if df.empty:
-        raise ValueError("DataFrame is empty, cannot visualise position")
-
-    fig = make_subplots(
-        rows=4, cols=1,
-        shared_xaxes=True,
-        vertical_spacing=0.08,
-        subplot_titles=('Price and trades', 'Position value', 'PnL %', "PnL USD"),
-        row_heights=[0.6, 0.1, 0.1, 0.1]
-    )
-
-    # Price chart
-    fig.add_trace({
-        "x": df.index,
-        "y": df["mark_price"],
-        "type": "scatter",
-        "mode": "lines",
-        "name": "Price",
-        "line": {"width": 1},
-    })
-
-    # Size chart
-    fig.add_trace({
-        "x": df.index,
-        "y": df["value"],
-        "type": "scatter",
-        "mode": "lines",
-        "name": "Position value USD",
-        "line": {"width": 1, "color": "blue"},
-    })
-
-    # PnL chart
-    fig.add_trace({
-        "x": df.index,
-        "y": df["pnl_pct"],
-        "type": "scatter",
-        "mode": "lines",
-        "name": "PnL %",
-        "line": {"width": 1, "color": "#FF5733"},
-    })
-
-    fig.add_trace({
-        "x": df.index,
-        "y": df["pnl"],
-        "type": "scatter",
-        "mode": "lines",
-        "name": "PnL USD",
-        "line": {"width": 1, "color": "#FF5733"},
-    })
-
-    # Trades
-    for _, trade in df.iterrows():
-        if trade["delta"] != 0:
-            fig.add_trace({
-                "x": [trade.name],
-                "y": [trade["mark_price"]],
-                "type": "scatter",
-                "mode": "markers+text",
-                "name": f"Trade: {trade['delta']}",
-                "marker": {"size": 10, "color": "#00FF00" if trade['delta'] > 0 else "#FF0000"},
-                "textposition": 'top center',
-            })
-
-    if position.pair.is_vault():
-        tag = position.pair.get_vault_name()
-    else:
-        tag = position.pair.base.token_symbol
-
-    fig.update_layout(
-        title=f"Position #{position.position_id} {tag} timeline",
-        xaxis_title="Time",
-        yaxis_title="Price / PnL"
-    )
-
-    return fig
 
 
 def visualise_position(
         position: TradingPosition,
         df: pd.DataFrame,
+        height=800,
 ) -> Figure:
     """Visualise position as a Plotly figure with subplots.
 
@@ -257,16 +169,21 @@ def visualise_position(
 
     # Create subplots with 3 rows
     fig = make_subplots(
-        rows=3, cols=1,
+        rows=4, cols=1,
         shared_xaxes=True,
         vertical_spacing=0.08,
-        subplot_titles=('Price & Trades', 'Position Value', 'PnL'),
-        row_heights=[0.4, 0.3, 0.3]
+        subplot_titles=('Price and trades', 'Position Value', 'PnL %', 'PnL USD'),
+        row_heights=[0.4, 0.2, 0.2, 0.2],
+        x_title="Time",
     )
+
+    # Convert DateTimeIndex to list of datetime objects.
+    # Plotly 6 bug that you need to explicitly convert?
+    index = df.index.to_pydatetime().tolist()
 
     # Price chart (top subplot)
     fig.add_trace({
-        "x": df.index,
+        "x": index,
         "y": df["mark_price"],
         "type": "scatter",
         "mode": "lines",
@@ -277,7 +194,7 @@ def visualise_position(
 
     # Position value chart (middle subplot)
     fig.add_trace({
-        "x": df.index,
+        "x": index,
         "y": df["value"],
         "type": "scatter",
         "mode": "lines",
@@ -288,8 +205,8 @@ def visualise_position(
 
     # PnL percentage chart (bottom subplot)
     fig.add_trace({
-        "x": df.index,
-        "y": df["pnl_pct"],
+        "x": index,
+        "y": df["pnl_pct"] * 100,
         "type": "scatter",
         "mode": "lines",
         "name": "PnL %",
@@ -299,36 +216,64 @@ def visualise_position(
 
     # PnL USD chart (bottom subplot, secondary y-axis)
     fig.add_trace({
-        "x": df.index,
+        "x": index,
         "y": df["pnl"],
         "type": "scatter",
         "mode": "lines",
         "name": "PnL USD",
-        "line": {"width": 2, "color": "#FF8C00", "dash": "dash"},
+        "line": {"width": 2, "color": "#FF8C00"},
         "yaxis": "y4",
         "showlegend": True
-    }, row=3, col=1)
+    }, row=4, col=1)
 
     # Add trades as markers on the price chart
-    for _, trade in df.iterrows():
-        if trade["delta"] != 0:
-            fig.add_trace({
-                "x": [trade.name],
-                "y": [trade["mark_price"]],
-                "type": "scatter",
-                "mode": "markers+text",
-                "name": f"Trade: {trade['delta']}",
-                "marker": {
-                    "size": 12,
-                    "color": "#00FF00" if trade['delta'] > 0 else "#FF0000",
-                    "symbol": "triangle-up" if trade['delta'] > 0 else "triangle-down"
-                },
-                "text": f"{trade['delta']:+.2f}",
-                "textposition": 'top center' if trade['delta'] > 0 else 'bottom center',
-                "showlegend": False
-            }, row=1, col=1)
+    trade_count = 0
+    for timestamp, trade in df.iterrows():
 
-    # Get position tag
+        if trade["delta"] == 0:
+            # Mark to market row, no trade executed
+            continue
+
+        trade_count += 1
+        color = "#00FF00" if trade['delta'] > 0 else "#FF0000"
+        symbol = "triangle-up" if trade['delta'] > 0 else "triangle-down"
+        y_adjust = -10 if trade['delta'] > 0 else 10
+
+        # Create annotation with pixel-based offset
+        fig.add_annotation(
+            x=timestamp,
+            y=trade["mark_price"],
+            text="▲" if trade['delta'] > 0 else "▼",
+            showarrow=False,
+            font=dict(
+                family="Arial",
+                size=18,
+                color=color
+            ),
+            yshift=y_adjust,
+            hovertext=f"Trade {trade_count}: {trade['delta']:+.2f}",
+        )
+
+    #     fig.add_trace({
+    #         "x": [timestamp],
+    #         "y": [trade["mark_price"]],
+    #         "type": "scatter",
+    #         "mode": "markers+text",
+    #         "name": f"Trade {trade_count+1}: {trade['delta']:+.2f}",
+    #         "marker": {
+    #             "size": 15,
+    #             "color": color,
+    #             "symbol": symbol,
+    #             "line": {"width": 2, "color": "black"}
+    #         },
+    #         # "text": f"{trade['delta']:+.2f}",
+    #         # "textposition": 'top center' if trade['delta'] > 0 else 'bottom center',
+    #         # "textfont": {"size": 10, "color": color},
+    #         "showlegend": False,
+    #         "legendgroup": "trades"
+    #     }, row=1, col=1)
+
+    # # Get position tag
     if position.pair.is_vault():
         tag = position.pair.get_vault_name()
     else:
@@ -341,7 +286,7 @@ def visualise_position(
             'x': 0.5,
             'xanchor': 'center'
         },
-        height=800,
+        height=height,
         hovermode='x unified',
         legend=dict(
             orientation="h",
@@ -356,18 +301,6 @@ def visualise_position(
     fig.update_yaxes(title_text="Price", row=1, col=1)
     fig.update_yaxes(title_text="Value (USD)", row=2, col=1)
     fig.update_yaxes(title_text="PnL (%)", row=3, col=1)
-
-    # Add secondary y-axis for PnL USD on the bottom subplot
-    fig.update_layout(
-        yaxis4=dict(
-            title="PnL (USD)",
-            overlaying="y3",
-            side="right",
-            showgrid=False
-        )
-    )
-
-    # Update x-axis label only on bottom subplot
-    fig.update_xaxes(title_text="Time", row=3, col=1)
+    fig.update_yaxes(title_text="PnL (USD)", row=4, col=1)
 
     return fig
