@@ -6,6 +6,7 @@ import datetime
 import numpy as np
 import pandas as pd
 from plotly.graph_objs import Figure
+from plotly.subplots import make_subplots
 
 from tradeexecutor.state.position import TradingPosition
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
@@ -14,10 +15,9 @@ from tradingstrategy.timebucket import TimeBucket
 logger = logging.getLogger(__name__)
 
 
-def calculate_position_curve(
+def calculate_position_timeline(
     strategy_universe: TradingStrategyUniverse,
     position: TradingPosition,
-    time_bucket: TimeBucket,
     end_at: datetime.datetime | None = None,
 ) -> pd.DataFrame:
     """Calculatea visualisation dato for a single position.
@@ -54,7 +54,9 @@ def calculate_position_curve(
 
     start = position.opened_at
     end = position.closed_at or end_at
+    time_bucket = strategy_universe.data_universe.time_bucket
 
+    assert time_bucket, "Universe missing the candle time bucket"
     assert end is not None, f"Position must have an end date or be closed at the end of the backtest: {position}"
 
     start = time_bucket.floor(pd.Timestamp(start))
@@ -145,11 +147,12 @@ def calculate_position_curve(
     joined_df["realised_pnl"] = joined_df["realised_delta"].cumsum()
     joined_df["unrealised_pnl"] = joined_df["value"] - joined_df["cumulative_cost"]
     joined_df["pnl"] = joined_df["unrealised_pnl"] + joined_df["realised_pnl"]
+    joined_df["pnl_pct"] = joined_df["pnl"] / joined_df["cumulative_cost"]
 
     return joined_df
 
 
-def visualise_position(
+def xxx_visualise_position(
     position: TradingPosition,
     df: pd.DataFrame,
 ) -> Figure:
@@ -158,13 +161,18 @@ def visualise_position(
     - Draw PnL chart on the top of the price
     - Mark trades
     """
-
     assert isinstance(df, pd.DataFrame), f"Expected DataFrame, got {type(df)}"
 
     if df.empty:
         raise ValueError("DataFrame is empty, cannot visualise position")
 
-    fig = Figure()
+    fig = make_subplots(
+        rows=4, cols=1,
+        shared_xaxes=True,
+        vertical_spacing=0.08,
+        subplot_titles=('Price and trades', 'Position value', 'PnL %', "PnL USD"),
+        row_heights=[0.6, 0.1, 0.1, 0.1]
+    )
 
     # Price chart
     fig.add_trace({
@@ -176,13 +184,32 @@ def visualise_position(
         "line": {"width": 1},
     })
 
+    # Size chart
+    fig.add_trace({
+        "x": df.index,
+        "y": df["value"],
+        "type": "scatter",
+        "mode": "lines",
+        "name": "Position value USD",
+        "line": {"width": 1, "color": "blue"},
+    })
+
     # PnL chart
+    fig.add_trace({
+        "x": df.index,
+        "y": df["pnl_pct"],
+        "type": "scatter",
+        "mode": "lines",
+        "name": "PnL %",
+        "line": {"width": 1, "color": "#FF5733"},
+    })
+
     fig.add_trace({
         "x": df.index,
         "y": df["pnl"],
         "type": "scatter",
         "mode": "lines",
-        "name": "PnL",
+        "name": "PnL USD",
         "line": {"width": 1, "color": "#FF5733"},
     })
 
@@ -199,10 +226,148 @@ def visualise_position(
                 "textposition": 'top center',
             })
 
+    if position.pair.is_vault():
+        tag = position.pair.get_vault_name()
+    else:
+        tag = position.pair.base.token_symbol
+
     fig.update_layout(
-        title=f"Position #{position.position_id} {position.pair.base.token_symbol} timeline",
+        title=f"Position #{position.position_id} {tag} timeline",
         xaxis_title="Time",
         yaxis_title="Price / PnL"
     )
+
+    return fig
+
+
+def visualise_position(
+        position: TradingPosition,
+        df: pd.DataFrame,
+) -> Figure:
+    """Visualise position as a Plotly figure with subplots.
+
+    - Price chart with trade markers on top subplot
+    - Position value in middle subplot
+    - PnL charts on bottom subplot
+    """
+    assert isinstance(df, pd.DataFrame), f"Expected DataFrame, got {type(df)}"
+
+    if df.empty:
+        raise ValueError("DataFrame is empty, cannot visualise position")
+
+    # Create subplots with 3 rows
+    fig = make_subplots(
+        rows=3, cols=1,
+        shared_xaxes=True,
+        vertical_spacing=0.08,
+        subplot_titles=('Price & Trades', 'Position Value', 'PnL'),
+        row_heights=[0.4, 0.3, 0.3]
+    )
+
+    # Price chart (top subplot)
+    fig.add_trace({
+        "x": df.index,
+        "y": df["mark_price"],
+        "type": "scatter",
+        "mode": "lines",
+        "name": "Price",
+        "line": {"width": 2},
+        "showlegend": True
+    }, row=1, col=1)
+
+    # Position value chart (middle subplot)
+    fig.add_trace({
+        "x": df.index,
+        "y": df["value"],
+        "type": "scatter",
+        "mode": "lines",
+        "name": "Position value USD",
+        "line": {"width": 2, "color": "blue"},
+        "showlegend": True
+    }, row=2, col=1)
+
+    # PnL percentage chart (bottom subplot)
+    fig.add_trace({
+        "x": df.index,
+        "y": df["pnl_pct"],
+        "type": "scatter",
+        "mode": "lines",
+        "name": "PnL %",
+        "line": {"width": 2, "color": "#FF5733"},
+        "showlegend": True
+    }, row=3, col=1)
+
+    # PnL USD chart (bottom subplot, secondary y-axis)
+    fig.add_trace({
+        "x": df.index,
+        "y": df["pnl"],
+        "type": "scatter",
+        "mode": "lines",
+        "name": "PnL USD",
+        "line": {"width": 2, "color": "#FF8C00", "dash": "dash"},
+        "yaxis": "y4",
+        "showlegend": True
+    }, row=3, col=1)
+
+    # Add trades as markers on the price chart
+    for _, trade in df.iterrows():
+        if trade["delta"] != 0:
+            fig.add_trace({
+                "x": [trade.name],
+                "y": [trade["mark_price"]],
+                "type": "scatter",
+                "mode": "markers+text",
+                "name": f"Trade: {trade['delta']}",
+                "marker": {
+                    "size": 12,
+                    "color": "#00FF00" if trade['delta'] > 0 else "#FF0000",
+                    "symbol": "triangle-up" if trade['delta'] > 0 else "triangle-down"
+                },
+                "text": f"{trade['delta']:+.2f}",
+                "textposition": 'top center' if trade['delta'] > 0 else 'bottom center',
+                "showlegend": False
+            }, row=1, col=1)
+
+    # Get position tag
+    if position.pair.is_vault():
+        tag = position.pair.get_vault_name()
+    else:
+        tag = position.pair.base.token_symbol
+
+    # Update layout
+    fig.update_layout(
+        title={
+            'text': f"Position #{position.position_id} {tag} Timeline",
+            'x': 0.5,
+            'xanchor': 'center'
+        },
+        height=800,
+        hovermode='x unified',
+        legend=dict(
+            orientation="h",
+            yanchor="bottom",
+            y=1.02,
+            xanchor="right",
+            x=1
+        )
+    )
+
+    # Update y-axis labels
+    fig.update_yaxes(title_text="Price", row=1, col=1)
+    fig.update_yaxes(title_text="Value (USD)", row=2, col=1)
+    fig.update_yaxes(title_text="PnL (%)", row=3, col=1)
+
+    # Add secondary y-axis for PnL USD on the bottom subplot
+    fig.update_layout(
+        yaxis4=dict(
+            title="PnL (USD)",
+            overlaying="y3",
+            side="right",
+            showgrid=False
+        )
+    )
+
+    # Update x-axis label only on bottom subplot
+    fig.update_xaxes(title_text="Time", row=3, col=1)
 
     return fig

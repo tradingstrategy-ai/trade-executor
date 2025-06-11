@@ -167,6 +167,7 @@ def display_vault_position_table(
 
         entry = {
             "Vault": p.pair.get_vault_name(),
+            "Id": p.position_id,
             "Opened": p.opened_at,
             "Closed": p.closed_at or "-",
             "Profit %": f"{p.get_total_profit_percent() * 100:.2f}",
@@ -183,5 +184,5 @@ def display_vault_position_table(
 
     df = pd.DataFrame(rows)
     df = df.sort_values("Opened")
-    df = df.set_index("Vault")
+    df = df.set_index("Id")
     return df
