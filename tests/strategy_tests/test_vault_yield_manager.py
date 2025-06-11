@@ -67,6 +67,3 @@ def test_backtest_vault_yield_manager(
     )
     assert isinstance(df, pd.DataFrame)
     import ipdb ; ipdb.set_trace()
-
-
-
