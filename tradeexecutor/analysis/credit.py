@@ -7,6 +7,7 @@ import pandas as pd
 
 from tradeexecutor.state.state import State
 from tradeexecutor.strategy.execution_context import ExecutionMode
+from tradeexecutor.strategy.pnl import calculate_pnl
 
 
 class YieldType(enum.Enum):
@@ -148,6 +149,7 @@ def display_vault_position_table(
                     yield_decision = t.get_yield_decision()
                     all_trades += f"Trade {t} @ {t.opened_at} for price {t.executed_price}, status: {t.get_status().value}\nYield decision: {yield_decision}\n"
                 raise RuntimeError(f"Cannot calculate price diff for position {p} ({p.pair.get_vault_name()})\n{all_trades}")
+
             duration = p.get_duration(
                 partial=True,
                 execution_mode=execution_mode,
@@ -165,13 +167,23 @@ def display_vault_position_table(
         deposit_count = len([t for t in p.trades.values() if t.is_buy()])
         redeem_count = len([t for t in p.trades.values() if t.is_sell()])
 
+        if p.is_closed():
+            position_end_at = p.closed_at
+        else:
+            position_end_at = end_at
+
+        profit_data = calculate_pnl(
+            p,
+            end_at=position_end_at,
+        )
+
         entry = {
             "Vault": p.pair.get_vault_name(),
             "Id": p.position_id,
             "Opened": p.opened_at,
             "Closed": p.closed_at or "-",
-            "Profit %": f"{p.get_total_profit_percent() * 100:.2f}",
-            "Profit USD": f"{p.get_total_profit_usd():.2f}",
+            "Profit % annualised": f"{profit_data.profit_pct_annualised * 100:.2f}",
+            "Profit USD": f"{profit_data.profit_usd:.2f}",
             "Price on open": f"{share_price_on_open:.2f}" if share_price_on_open else "-",
             "Price on close": f"{share_price_on_close:.2f}" if share_price_on_close else "-",
             "Price diff %": f"{price_diff * 100:.2f}" if price_diff else "-",

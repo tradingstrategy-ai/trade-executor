@@ -12,6 +12,7 @@ from tradeexecutor.analysis.credit import calculate_yield_metrics, YieldType, di
 from tradeexecutor.backtest.backtest_module import run_backtest_for_module
 from tradeexecutor.cli.log import setup_pytest_logging
 from tradeexecutor.strategy.execution_context import unit_test_execution_context
+from tradeexecutor.strategy.pnl import calculate_pnl
 from tradeexecutor.visual.position import calculate_position_timeline, visualise_position
 
 
@@ -69,3 +70,30 @@ def test_backtest_vault_yield_manager(
     assert isinstance(df, pd.DataFrame)
     fig = visualise_position(autopilot_usdc, df)
     assert isinstance(fig, Figure)
+
+    #
+    # Compare methods calcuating the profit
+    #
+
+    end_at = state.backtest_data.end_at
+    profit_usd = autopilot_usdc.get_total_profit_usd()
+    profit_pct = autopilot_usdc.get_total_profit_percent(calculation_method="cumulative", end_at=end_at)
+    profit_pct_annualised = autopilot_usdc.calculate_total_profit_percent_annualised(end_at=end_at)
+
+    position_timeline_final_row = df.iloc[-1]
+    method_2_profit_usd = position_timeline_final_row["pnl"]
+    method_2_profit_pct = position_timeline_final_row["pnl_pct"]
+    method_2_profit_annualised_pct = position_timeline_final_row["pnl_annualised"]
+
+    profit_data = calculate_pnl(
+        autopilot_usdc,
+        end_at=end_at,
+    )
+
+    assert profit_usd == pytest.approx(method_2_profit_usd)
+    assert profit_pct == pytest.approx(method_2_profit_pct)
+    assert profit_pct_annualised == pytest.approx(method_2_profit_annualised_pct)
+
+    assert profit_usd == pytest.approx(profit_data.profit_usd)
+    assert profit_pct == pytest.approx(profit_data.profit_pct)
+    assert profit_pct_annualised == pytest.approx(profit_data.profit_pct_annualised)
