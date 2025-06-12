@@ -739,20 +739,28 @@ class ExecutionLoop:
 
         Display progress bars for data downloads.
         """
-        logger.info(
-            "Warming up live trading universe, universe options are %s, mode is %s",
-            self.universe_options,
-            self.execution_context,
-        )
+
         assert self.execution_context.mode.is_live_trading()
         universe = self.universe_model.preload_universe(self.universe_options, self.execution_context)
         universe = cast(TradingStrategyUniverse, universe)
 
+        ts = datetime.datetime.utcnow()
+        rounded_ts = universe.data_universe.time_bucket.floor(ts)
+
+        logger.info(
+            "Warming up live trading universe, max data delay is %s, timestamp is %s, rounded timestamp is %s\nUniverse options are %s, mode is %s",
+            ts,
+            rounded_ts,
+            self.max_data_delay,
+            self.universe_options,
+            self.execution_context,
+        )
+
         # Check that we have fresh enough data to start trading
         if self.max_data_delay:
-            ts = datetime.datetime.utcnow()
+
             TradingStrategyUniverseModel.check_data_age(
-                ts,
+                rounded_ts,
                 universe,
                 self.max_data_delay,
             )
