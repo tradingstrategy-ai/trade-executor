@@ -658,6 +658,12 @@ class TradeExecution:
     #:
     sort_index: Optional[int] = None
 
+    #: Any other data that we want to store with this trade.
+    #:
+    #: E.g. alpha model and yield model data used to make the trade decision.
+    #:
+    other_data: dict = field(default_factory=dict)
+
     def __repr__(self) -> str:
         """Python debug string representation.
 
@@ -1378,7 +1384,6 @@ class TradeExecution:
         assert isinstance(executed_quantity, Decimal)
         assert type(executed_price) == float, f"Received executed price: {executed_price} {type(executed_price)}"
         assert executed_at.tzinfo is None
-
         self.executed_at = executed_at
         self.executed_quantity = executed_quantity
         self.executed_reserve = executed_reserve
@@ -1537,3 +1542,13 @@ class TradeExecution:
         assert self.executed_price is not None, f"This trade is not executed yet: {self}"
         return (self.executed_price - self.planned_price) / (self.planned_price)
 
+    def get_yield_decision(self) -> "tradeexecutor.strategy.pandas_trades.yield_manager.YieldDecision | None":
+        """Get the yield decision for this trade.
+
+        - Used to store diagnostics from yield manager
+        - See :py:mod:`tradeexecutor.strategy.pandas_trades.yield_manager`
+
+        :return:
+            Yield decision object
+        """
+        return self.other_data.get("yield_decision", None)

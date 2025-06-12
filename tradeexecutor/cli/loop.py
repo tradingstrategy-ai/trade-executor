@@ -745,7 +745,12 @@ class ExecutionLoop:
         universe = cast(TradingStrategyUniverse, universe)
 
         ts = datetime.datetime.utcnow()
-        rounded_ts = universe.data_universe.time_bucket.floor(pd.Timestamp(ts)).to_pydatetime()
+        time_bucket = universe.data_universe.time_bucket
+        if time_bucket != TimeBucket.not_applicable:
+            rounded_ts = time_bucket.floor(pd.Timestamp(ts)).to_pydatetime()
+        else:
+            # Unit test path
+            rounded_ts = ts
 
         logger.info(
             "Warming up live trading universe, max data delay is %s, timestamp is %s, rounded timestamp is %s\nUniverse options are %s, mode is %s",

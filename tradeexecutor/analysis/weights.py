@@ -234,7 +234,8 @@ def visualise_weights(
                 # Increase font size (default is usually 12)
                 tickfont=dict(
                     size=22  # Adjust this value to make font bigger/smaller
-                )
+                ),
+                type='date',
             ),
             yaxis=dict(
                 title=None,

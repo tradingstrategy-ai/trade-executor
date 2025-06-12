@@ -574,6 +574,7 @@ def run_backtest(
     allow_missing_fees=False,
     execution_test_hook: Optional[ExecutionTestHook] = None,
     execution_context: ExecutionContext | None = None,
+    max_cycles: int | None = None,
 ) -> BacktestResult:
     """Run a strategy backtest.
 
@@ -690,6 +691,7 @@ def run_backtest(
         minimum_data_lookback_range=setup.minimum_data_lookback_range,
         universe_options=setup.universe_options,
         backtest_strategy_indicators=backtest_strategy_indicators,
+        max_cycles=max_cycles,
     )
 
     diagnostics_data = main_loop.run_and_setup_backtest()

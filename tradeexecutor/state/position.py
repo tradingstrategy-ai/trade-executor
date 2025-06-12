@@ -29,6 +29,7 @@ from tradeexecutor.state.valuation import ValuationUpdate
 from tradeexecutor.strategy.dust import get_dust_epsilon_for_pair, get_close_epsilon_for_pair
 from tradeexecutor.strategy.execution_context import ExecutionMode
 from tradeexecutor.strategy.lending_protocol_leverage import create_short_loan, update_short_loan, create_credit_supply_loan, update_credit_supply_loan
+from tradeexecutor.strategy.pnl import calculate_pnl
 from tradeexecutor.strategy.trade_pricing import TradePricing
 from tradeexecutor.utils.accuracy import sum_decimal, QUANTITY_EPSILON
 from tradingstrategy.lending import LendingProtocolType
@@ -1443,27 +1444,74 @@ class TradingPosition(GenericPosition):
         total_profit = realised_profit + unrealised_profit
         return total_profit
 
-    def get_total_profit_percent(self) -> Percent:
+    def get_total_profit_percent(
+        self,
+        calculation_method: Literal["cumulative", "legacy"] = "legacy",
+        end_at: datetime.datetime | None = None,
+    ) -> Percent:
         """How much % we have made profit so far.
 
         TODO: Legacy method. Use :py:meth:`get_unrealised_and_realised_profit_percent` instead.
 
+        :param calculation_method:
+            Use cumulative.
+
+            Legacy is for backwards compatibility.
+
         :return:
             0 if profit calculation cannot be made yet
         """
-        if self.is_long():
-            profit = self.get_total_profit_usd()
-            bought = self.get_total_bought_usd()
-            if bought == 0:
-                return 0
-            return profit / bought
-        else:
-            # TODO: this is not correct yet since it doesn't factor in interest
-            profit = self.get_total_profit_usd()
-            sold = self.get_total_sold_usd()
-            if sold == 0:
-                return 0
-            return profit / sold
+
+        match calculation_method:
+            case "legacy":
+
+                if self.is_long():
+                    profit = self.get_total_profit_usd()
+                    bought = self.get_total_bought_usd()
+                    if bought == 0:
+                        return 0
+                    return profit / bought
+                else:
+                    # TODO: this is not correct yet since it doesn't factor in interest
+                    profit = self.get_total_profit_usd()
+                    sold = self.get_total_sold_usd()
+                    if sold == 0:
+                        return 0
+                    return profit / sold
+
+            case "cumulative":
+                profit_data = calculate_pnl(self, end_at=end_at)
+                return profit_data.profit_pct
+
+    def calculate_total_profit_percent_annualised(
+        self,
+        end_at: datetime.datetime | None = None,
+        calculation_method: Literal["cumulative", "legacy"] = "legacy",
+    ) -> Percent:
+        """Calculate the annualised profit percentage for this position.
+
+        :param end_at:
+            The end date for the annualisation calculation if the position is open..
+
+        :return:
+            Annualised profit percentage
+        """
+
+        if self.is_closed():
+            assert end_at, "Position is still open, but no end date given"
+
+        duration = (end_at - self.opened_at)
+        annual_periods = datetime.timedelta(days=365) / duration
+        profit = self.get_total_profit_percent(calculation_method=calculation_method, end_at=end_at)
+
+        # Calculate the return factor (1 + profit rate)
+
+        return_factor = 1 + profit
+
+        annualized_factor = return_factor ** annual_periods
+        # Convert back to percentage
+        annualized_profit_percent = (annualized_factor - 1)
+        return annualized_profit_percent
 
     def get_total_profit_at_timestamp(self, timestamp: datetime.datetime) -> USDollarAmount:
         """Get the profit of the position what it was at a certain point of time.

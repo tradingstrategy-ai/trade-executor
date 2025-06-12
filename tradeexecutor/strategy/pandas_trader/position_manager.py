@@ -843,6 +843,7 @@ class PositionManager:
         pending=False,
         position: TradingPosition | None = None,
         trigger_price: USDollarPrice | None = None,
+        other_data: None | dict = None,
     ) -> List[TradeExecution]:
         """Adjust holdings for a certain position.
 
@@ -955,6 +956,9 @@ class PositionManager:
 
         :param position:
             The existing position to be used with pending
+
+        :param other_data:
+            Added diagnostics payload.
 
         :return:
             List of trades to be executed to get to the desired
@@ -1098,6 +1102,9 @@ class PositionManager:
         if take_profit:
             assert take_profit > 1, f"Got take profit {take_profit}"
             position.take_profit = price_structure.mid_price * take_profit
+
+        if other_data:
+            trade.other_data.update(other_data)
 
         return [trade]
 

@@ -29,6 +29,7 @@ def run_backtest_for_module(
     execution_context=standalone_backtest_execution_context,
     max_workers: int | None = None,
     verbose=True,
+    max_cycles: int | None = None,
 ) -> BacktestResult:
     """Run a backtest described in the strategy module.
 
@@ -141,6 +142,7 @@ def run_backtest_for_module(
     result = run_backtest(
         backtest_setup,
         client=client,
+        max_cycles=max_cycles,
     )
 
     return result

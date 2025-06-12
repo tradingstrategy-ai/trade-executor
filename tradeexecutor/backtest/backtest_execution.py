@@ -457,8 +457,45 @@ class BacktestExecution(ExecutionModel):
         # Set the check point interest balacnes for new positions
         set_interest_checkpoint(state, ts, None)
 
-        # Print out balances for diagnostics
+        # Print out trades and balances for diagnostics.
+        # Extensive output. Very slow to create. Don't calculate/display if not absolutely necessary.
         if logger.getEffectiveLevel() >= logging.INFO:
+
+            #
+            # Output balances
+            #
+
+            trades = [
+                {
+                    "Trade": t.trade_id,
+                    "Asset": t.pair.base.token_symbol,
+                    "Type": t.trade_type.value,
+                    "Executed price": t.executed_price,
+                    "Executed value": t.get_value(),
+                    "Executed qty": t.executed_quantity,
+                }
+                for t in trades
+            ]
+
+            if not trades:
+                trades = [{"Trade": "None", "Asset": "No trades executed"}]
+
+            table_msg = tabulate(
+                trades,
+                headers="keys",
+                tablefmt="fancy_grid",
+            )
+
+            logger.info(
+                "Trades at %s:\n%s",
+                ts,
+                table_msg,
+            )
+
+            #
+            # Output assets
+            #
+
             balances = [
                 {"Asset": str(asset), "Balance": balance}
                 for asset, balance in all_assets.items()
