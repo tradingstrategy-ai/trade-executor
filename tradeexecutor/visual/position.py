@@ -286,7 +286,6 @@ def visualise_position(
             "x": index,
             "y": df["realised_delta"],
             "name": "Realised delta USD",
-            "line": {"width": 2, "color": "#FF8C00"},
             "showlegend": True,
             "type": "bar",
         }, row=8, col=1)
