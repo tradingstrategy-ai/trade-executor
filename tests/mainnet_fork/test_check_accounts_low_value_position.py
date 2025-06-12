@@ -17,6 +17,9 @@ from tradeexecutor.cli.commands.app import app
 from tradeexecutor.state.state import State
 from tradeexecutor.utils.dedent import dedent_any
 
+
+CI = os.environ.get("CI") == "true"
+
 pytestmark = pytest.mark.skipif(not os.environ.get("JSON_RPC_BASE") or not os.environ.get("TRADING_STRATEGY_API_KEY"), reason="Set JSON_RPC_POLYGON and TRADING_STRATEGY_API_KEY environment variables to run this test")
 
 
@@ -87,8 +90,7 @@ def environment(
     return environment
 
 
-@flaky.flaky
-@pytest.mark.slow_test_group
+@pytest.mark.skipif(CI, reason="Github gets too flaky on this one")
 def test_check_account_low_value_position(
     environment: dict,
     mocker,
