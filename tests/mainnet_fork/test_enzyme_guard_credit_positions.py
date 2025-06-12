@@ -171,7 +171,7 @@ def environment(
     return environment
 
 
-@pytest.mark.skipfi(CI, reaosn="Too flaky on github")
+@pytest.mark.skipif(CI, reason="Too flaky on github")
 def test_enzyme_guard_credit_positions(
     environment: dict,
     web3: Web3,

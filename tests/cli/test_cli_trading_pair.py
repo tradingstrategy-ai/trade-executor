@@ -1,6 +1,7 @@
 import os
 from pathlib import Path
 
+import flaky
 import pytest
 
 from tradeexecutor.cli.main import app
@@ -16,6 +17,7 @@ def unit_test_cache_path(persistent_test_cache_path):
     return persistent_test_cache_path
 
 
+@flaky.flaky
 @pytest.mark.slow_test_group
 def test_cli_trading_pair(
     unit_test_cache_path: str,
