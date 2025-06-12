@@ -28,6 +28,7 @@ def strategy_file() -> Path:
     return Path(os.path.join(os.path.dirname(__file__), "../..", "strategies", "test_only", "base-ath-ipor.py"))
 
 
+@pytest.mark.slow_test_group
 def test_backtest_vault_yield_manager(
     persistent_test_client,
     strategy_file,

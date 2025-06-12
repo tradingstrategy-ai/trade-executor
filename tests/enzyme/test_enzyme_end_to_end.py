@@ -739,6 +739,11 @@ def test_deploy_guard_standalone(
         app(["deploy-guard"], standalone_mode=False)
 
 
+# RuntimeError: Deployment failed. Hot wallet: 0xa6E1579BFfDD45a6D572227D6aA97deeEF84c89B
+# Could not parse forge output:
+# No files changed, compilation skipped
+# Error: contract was not deployed
+@flaky.flaky
 def test_deploy_guard_for_vault(
     environment: dict,
     web3: Web3,

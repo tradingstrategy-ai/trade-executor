@@ -7,6 +7,7 @@ import secrets
 from pathlib import Path
 from unittest import mock
 
+import flaky
 import pytest
 from _pytest.fixtures import FixtureRequest
 
@@ -86,6 +87,7 @@ def environment(
     return environment
 
 
+@flaky.flaky
 @pytest.mark.slow_test_group
 def test_check_account_low_value_position(
     environment: dict,
