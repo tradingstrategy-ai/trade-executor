@@ -2,6 +2,7 @@
 import dataclasses
 import datetime
 
+from tradeexecutor.state.identifier import TradingPairKind
 from tradeexecutor.state.types import USDollarPrice, USDollarAmount, Percent
 
 
@@ -11,15 +12,22 @@ class ProfitData:
     profit_usd: USDollarAmount
     profit_pct: Percent
     profit_pct_annualised: Percent
-    realised_usd: USDollarAmount
-    unrealised_usd: USDollarAmount
+    realised_usd: USDollarAmount | None
+    unrealised_usd: USDollarAmount | None
     duration: datetime.timedelta
+
+    def is_win(self) -> bool:
+        return self.profit_usd > 0
+
+    def is_loss(self) -> bool:
+        return not self.is_win()
 
 
 def calculate_pnl(
     position: "tradeexecutor.state.position.TradingPosition",
     end_at: datetime.datetime=None,
     mark_price: USDollarPrice=None,
+    epsilon: float=1e-6,
 ) -> ProfitData:
     """Calculate the Profit and Loss (PnL) for a given trading position.
 
@@ -45,6 +53,7 @@ def calculate_pnl(
 
     cumulative_quantity = cumulative_cost = avg_price = 0
     realised_pnl_total = 0
+    cumulative_value = 0
 
     for trade in position.trades.values():
         delta = float(trade.executed_quantity)
@@ -52,6 +61,7 @@ def calculate_pnl(
         if delta > 0:
             # Buy: increase cost basis
             cumulative_cost += trade.get_value()
+            cumulative_value += trade.get_value()
             cumulative_quantity += delta
         elif delta < 0:
             # Sell: reduce cost basis proportionally
@@ -67,6 +77,10 @@ def calculate_pnl(
         else:
             raise NotImplementedError(f"Got a trade withe executed quantity zero: {trade}")
 
+    if abs(cumulative_cost) < epsilon:
+        # Clean up 18 decimal madness
+        cumulative_cost = 0.0
+
     if position.is_closed():
         end_at = position.closed_at
     else:
@@ -79,9 +93,11 @@ def calculate_pnl(
     unrealised_pnl = (mark_price * float(position.get_quantity())) - cumulative_cost
 
     duration = (end_at - position.opened_at)
+    assert duration > datetime.timedelta(0), f"Position {position} has a negative duration: {duration}, opened at {position.opened_at}, closed at {end_at}"
     annualised_periods = datetime.timedelta(days=365) / duration
     profit_usd = realised_pnl_total + unrealised_pnl
-    profit_pct = (profit_usd / cumulative_cost)
+    profit_pct = (profit_usd / cumulative_value)
+
     profit_pct_annualised = (1 + profit_pct) ** annualised_periods - 1
 
     return ProfitData(
@@ -92,3 +108,36 @@ def calculate_pnl(
         unrealised_usd=unrealised_pnl,
         duration=duration,
     )
+
+
+
+def calculate_pnl_generic(
+    position: "tradeexecutor.state.position.TradingPosition",
+    end_at: datetime.datetime=None,
+    mark_price: USDollarPrice=None,
+    epsilon: float=1e-6,
+) -> ProfitData:
+    """Handle different position types generically."""
+
+    match position.pair.kind:
+        case TradingPairKind.spot_market_hold | TradingPairKind.vault:
+            return calculate_pnl(
+                position=position,
+                end_at=end_at,
+                mark_price=mark_price,
+                epsilon=epsilon,
+            )
+        case _:
+            # Legacy path for other position types
+            pnl_usd = position.get_total_profit_usd()
+            pnl_pct = position.get_total_profit_percent(end_at=end_at)
+            duration = position.get_duration(end_at=end_at)
+            pnl_pct_annualised = position.calculate_total_profit_percent_annualised(end_at=end_at, calculation_method="legacy")
+            return ProfitData(
+                profit_usd=pnl_usd,
+                profit_pct=pnl_pct,
+                profit_pct_annualised=pnl_pct_annualised,
+                realised_usd=None,  # Not applicable for non-spot/vault positions
+                unrealised_usd=None,  # Not applicable for non-spot/vault positions
+                duration=duration,
+            )

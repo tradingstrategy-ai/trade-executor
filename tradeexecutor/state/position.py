@@ -1486,6 +1486,7 @@ class TradingPosition(GenericPosition):
     def calculate_total_profit_percent_annualised(
         self,
         end_at: datetime.datetime | None = None,
+        calculation_method: Literal["cumulative", "legacy"] = "legacy",
     ) -> Percent:
         """Calculate the annualised profit percentage for this position.
 
@@ -1501,7 +1502,7 @@ class TradingPosition(GenericPosition):
 
         duration = (end_at - self.opened_at)
         annual_periods = datetime.timedelta(days=365) / duration
-        profit = self.get_total_profit_percent(calculation_method="cumulative", end_at=end_at)
+        profit = self.get_total_profit_percent(calculation_method=calculation_method, end_at=end_at)
 
         # Calculate the return factor (1 + profit rate)
 

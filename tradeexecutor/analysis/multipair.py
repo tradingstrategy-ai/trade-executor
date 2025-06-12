@@ -2,6 +2,8 @@
 
 Designed for strategies trading > 5 assets.
 """
+import datetime
+
 import numpy as np
 import pandas as pd
 from IPython.display import HTML
@@ -9,6 +11,7 @@ from IPython.display import HTML
 from tradeexecutor.state.identifier import TradingPairIdentifier
 from tradeexecutor.state.portfolio import Portfolio
 from tradeexecutor.state.state import State
+from tradeexecutor.strategy.pnl import calculate_pnl, calculate_pnl_generic
 from tradingstrategy.utils.format import format_percent_2_decimals
 from tradingstrategy.utils.jupyter import make_clickable
 
@@ -18,29 +21,33 @@ def _format_value(v: float) -> str:
     return f"{v:,.2f}"
 
 
-def analyse_pair_trades(pair: TradingPairIdentifier, portfolio: Portfolio) -> dict:
+def analyse_pair_trades(
+    pair: TradingPairIdentifier,
+    portfolio: Portfolio,
+    end_at: datetime.datetime = None
+) -> dict:
     """Write a single analysis row for a specific pair.
 
     :return:
         Dict with raw value
 
     """
-
     positions = [p for p in portfolio.get_all_positions() if p.pair == pair]
     trades = [t for t in portfolio.get_all_trades() if t.pair == pair]
-
-    profits = [p.get_total_profit_percent() for p in positions]
+    
+    profit_data = [calculate_pnl_generic(p, end_at=end_at) for p in positions]
+    total_usd_profit = sum(pd.profit_usd for pd in profit_data)
+    profits = [pd.profit_pct for pd in profit_data]
     best = max(profits)
     worst = min(profits)
     mean = float(np.mean(profits))
     median = float(np.median(profits))
-    volume = sum([t.get_value() for t in trades])
-    total_usd_profit = sum([p.get_total_profit_usd() for p in positions])
-    wins = sum([1 for p in positions if p.get_total_profit_usd() >= 0])
-    losses = sum([1 for p in positions if p.get_total_profit_usd() < 0])
-    take_profits = sum([1 for p in positions if p.is_take_profit()])
-    stop_losses = sum([1 for p in positions if p.is_stop_loss()])
-    trailing_stop_losses = sum([1 for p in positions if p.is_trailing_stop_loss()])
+    volume = sum([t.get_value() for t in trades])    
+    wins = sum(1 for pd in profit_data if pd.is_win())
+    losses = sum(1 for pd in profit_data if pd.is_loss())
+    take_profits = sum(1 for p in positions if p.is_take_profit())
+    stop_losses = sum(1 for p in positions if p.is_stop_loss())
+    trailing_stop_losses = sum(1 for p in positions if p.is_trailing_stop_loss())
     total_return = sum(profits)
     volatility = np.std(profits)
 
@@ -78,7 +85,8 @@ def analyse_multipair(state: State) -> pd.DataFrame:
     """
 
     pairs = state.portfolio.get_all_traded_pairs()
-    rows = [analyse_pair_trades(p, state.portfolio) for p in pairs]
+    start_at, end_at = state.get_strategy_time_range()
+    rows = [analyse_pair_trades(p, state.portfolio, end_at=end_at) for p in pairs]
     df = pd.DataFrame(rows)
     return df
 

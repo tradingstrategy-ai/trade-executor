@@ -73,19 +73,21 @@ def calculate_position_timeline(
 
     entries = []
 
-    cumulative_quantity = cumulative_cost = avg_price = 0
+    cumulative_quantity = cumulative_cost = cumulative_value = avg_price = 0
 
     for trade in position.trades.values():
         delta = float(trade.executed_quantity)
 
         if delta > 0:
             # Buy: increase cost basis
-            cumulative_cost += trade.get_value()
+            value = trade.get_value()
+            cumulative_cost += value
+            cumulative_value += value
             cumulative_quantity += delta
         elif delta < 0:
             # Sell: reduce cost basis proportionally
             if cumulative_quantity > 0:
-                avg_price = cumulative_cost / float(cumulative_quantity)
+                avg_price = cumulative_value / float(cumulative_quantity)
                 cost_reduction = avg_price * abs(delta)
                 cumulative_cost -= cost_reduction
                 cumulative_quantity += delta  # delta is negative here
@@ -99,6 +101,7 @@ def calculate_position_timeline(
             "executed_price": trade.executed_price,  # Price we got, fees included
             "fee": trade.lp_fees_paid,  # How much fees we paid
             "cumulative_cost": cumulative_cost,  # The cost of maintaining this position
+            "cumulative_value": cumulative_value,  # How much this position is worth now
             "avg_price": avg_price,  # Volume-weighted average price of the position
         }
         entries.append(entry)
@@ -149,7 +152,7 @@ def calculate_position_timeline(
     joined_df["realised_pnl"] = joined_df["realised_delta"].cumsum()
     joined_df["unrealised_pnl"] = joined_df["value"] - joined_df["cumulative_cost"]
     joined_df["pnl"] = joined_df["unrealised_pnl"] + joined_df["realised_pnl"]
-    joined_df["pnl_pct"] = joined_df["pnl"] / joined_df["cumulative_cost"]
+    joined_df["pnl_pct"] = joined_df["pnl"] / joined_df["cumulative_value"]
     joined_df["duration"] = joined_df.index - joined_df.index[0]
     joined_df["annual_periods"] = pd.Timedelta(days=365) / joined_df["duration"]
     joined_df["pnl_annualised"] = (1 + joined_df["pnl_pct"]) ** (joined_df["annual_periods"]) - 1
@@ -157,28 +160,35 @@ def calculate_position_timeline(
 
 
 def visualise_position(
-        position: TradingPosition,
-        df: pd.DataFrame,
-        height=800,
+    position: TradingPosition,
+    df: pd.DataFrame,
+    height=800,
+    extended=False,
 ) -> Figure:
     """Visualise position as a Plotly figure with subplots.
 
     - Price chart with trade markers on top subplot
     - Position value in middle subplot
     - PnL charts on bottom subplot
+
+    :param extended:
+        Plots a tons of stuff.
     """
     assert isinstance(df, pd.DataFrame), f"Expected DataFrame, got {type(df)}"
 
     if df.empty:
         raise ValueError("DataFrame is empty, cannot visualise position")
 
+    rows = 8 if extended else 4
+    layout = [0.1] * 8 if extended else [0.4, 0.2, 0.2, 0.2]
+
     # Create subplots with 3 rows
     fig = make_subplots(
-        rows=4, cols=1,
+        rows=rows, cols=1,
         shared_xaxes=True,
         vertical_spacing=0.08,
         subplot_titles=('Price and trades', 'Position Value', 'PnL %', 'PnL USD'),
-        row_heights=[0.4, 0.2, 0.2, 0.2],
+        row_heights=layout,
         x_title="Time",
     )
 
@@ -230,6 +240,56 @@ def visualise_position(
         "yaxis": "y4",
         "showlegend": True
     }, row=4, col=1)
+
+    if extended:
+        fig.add_trace({
+            "x": index,
+            "y": df["cumulative_cost"],
+            "type": "scatter",
+            "mode": "lines",
+            "name": "Cumulative cost USD",
+            "line": {"width": 2, "color": "#FF8C00"},
+            "showlegend": True
+        }, row=5, col=1)
+
+        fig.add_trace({
+            "x": index,
+            "y": df["cumulative_value"],
+            "type": "scatter",
+            "mode": "lines",
+            "name": "Cumulative cost USD",
+            "line": {"width": 2, "color": "#FF8C00"},
+            "showlegend": True
+        }, row=6, col=1)
+
+        fig.add_trace({
+            "x": index,
+            "y": df["avg_price"],
+            "type": "scatter",
+            "mode": "lines",
+            "name": "Avg price USD",
+            "line": {"width": 2, "color": "#FF8C00"},
+            "showlegend": True
+        }, row=6, col=1)
+
+        fig.add_trace({
+            "x": index,
+            "y": df["avg_price"],
+            "type": "scatter",
+            "mode": "lines",
+            "name": "Avg price USD",
+            "line": {"width": 2, "color": "#FF8C00"},
+            "showlegend": True
+        }, row=7, col=1)
+
+        fig.add_trace({
+            "x": index,
+            "y": df["realised_delta"],
+            "name": "Realised delta USD",
+            "line": {"width": 2, "color": "#FF8C00"},
+            "showlegend": True,
+            "type": "bar",
+        }, row=8, col=1)
 
     # Add trades as markers on the price chart
     trade_count = 0
@@ -307,5 +367,11 @@ def visualise_position(
     fig.update_yaxes(title_text="Value (USD)", row=2, col=1)
     fig.update_yaxes(title_text="PnL annualised (%)", row=3, col=1)
     fig.update_yaxes(title_text="PnL (USD)", row=4, col=1)
+
+    if extended:
+        fig.update_yaxes(title_text="Cum. cost (USD)", row=5, col=1)
+        fig.update_yaxes(title_text="Cum. value (USD)", row=6, col=1)
+        fig.update_yaxes(title_text="Avg. price (USD)", row=7, col=1)
+        fig.update_yaxes(title_text="Realised delta (USD)", row=8, col=1)
 
     return fig

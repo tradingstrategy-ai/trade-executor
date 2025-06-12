@@ -9,6 +9,7 @@ import pytest
 from plotly.graph_objs import Figure
 
 from tradeexecutor.analysis.credit import calculate_yield_metrics, YieldType, display_vault_position_table
+from tradeexecutor.analysis.multipair import analyse_multipair
 from tradeexecutor.backtest.backtest_module import run_backtest_for_module
 from tradeexecutor.cli.log import setup_pytest_logging
 from tradeexecutor.strategy.execution_context import unit_test_execution_context
@@ -58,7 +59,13 @@ def test_backtest_vault_yield_manager(
     df = display_vault_position_table(state)
     assert isinstance(df, pd.DataFrame)
 
-    autopilot_usdc = state.portfolio.open_positions[445]
+    for p in state.portfolio.get_all_positions():
+        if p.pair.get_vault_name() == "Autopilot USDC Base":
+            autopilot_usdc = p
+            break
+    else:
+        raise ValueError("No Autopilot USDC Base position found in the portfolio.")
+
     assert autopilot_usdc.pair.get_vault_name() == "Autopilot USDC Base"
 
     # Test position tracking for a single position
@@ -68,7 +75,7 @@ def test_backtest_vault_yield_manager(
         end_at=result.state.backtest_data.end_at,
     )
     assert isinstance(df, pd.DataFrame)
-    fig = visualise_position(autopilot_usdc, df)
+    fig = visualise_position(autopilot_usdc, df, extended=True)
     assert isinstance(fig, Figure)
 
     #
@@ -97,3 +104,7 @@ def test_backtest_vault_yield_manager(
     assert profit_usd == pytest.approx(profit_data.profit_usd)
     assert profit_pct == pytest.approx(profit_data.profit_pct)
     assert profit_pct_annualised == pytest.approx(profit_data.profit_pct_annualised)
+
+    # Check multipair results
+    df = analyse_multipair(state)
+    assert isinstance(df, pd.DataFrame)
