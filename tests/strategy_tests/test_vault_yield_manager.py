@@ -29,8 +29,7 @@ def strategy_file() -> Path:
 
 
 
-#@pytest.mark.slow_test_group
-@pytest.mark.skip(reason="Unfinished")
+@pytest.mark.slow_test_group
 def test_backtest_vault_yield_manager(
     persistent_test_client,
     strategy_file,
