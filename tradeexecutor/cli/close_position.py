@@ -139,7 +139,7 @@ def close_single_or_all_positions(
     # that helps open and close positions
     position_manager = PositionManager(
         ts,
-        universe.data_universe,
+        universe,
         state,
         pricing_model,
         default_slippage_tolerance=slippage_tolerance,
