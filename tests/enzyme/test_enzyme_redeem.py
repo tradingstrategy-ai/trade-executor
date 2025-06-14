@@ -1,5 +1,6 @@
 """Execute trades using Enzyme vault."""
 import datetime
+import os
 import secrets
 import flaky
 from decimal import Decimal
