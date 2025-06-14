@@ -1,4 +1,4 @@
-"""Eznyme end-to-end test."""
+"""Enzyme end-to-end test."""
 import json
 import os
 import secrets
