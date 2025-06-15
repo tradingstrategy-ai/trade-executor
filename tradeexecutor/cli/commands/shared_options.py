@@ -105,6 +105,7 @@ unit_testing = Option(False, "--unit-testing", envvar="UNIT_TESTING", help="The 
 pair: Optional[str] = Option(None, "--pair", envvar="PAIR", help="A trading pair to be tested. Must be in format (chain_id, exchange_slug, base_token, quote_token, fee). Example: (base, uniswap-v3, KEYCAT, WETH, 0.0030).")
 
 all_pairs: Optional[str] = Option(None, "--all-pairs", envvar="ALL_PAIRS", help="Whether to perform a test trade for each pair in the universe. If not given, then the pair option must be specified.")
+all_vaults: Optional[str] = Option(None, "--all-vaults", envvar="ALL_VAULTS", help="Perform a test deposit and withdrawal to all vaults in the universe.")
 
 
 comptroller_lib = Option(None, envvar="COMPTROLLER_LIB", help="Enzyme's ComptrollerLib address for custom deployments.")

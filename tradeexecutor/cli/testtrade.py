@@ -5,6 +5,7 @@ from decimal import Decimal
 
 from web3 import Web3
 
+from tradeexecutor.state.identifier import TradingPairIdentifier
 from tradingstrategy.universe import Universe
 from tradingstrategy.pair import HumanReadableTradingPairDescription
 from tradingstrategy.exchange import ExchangeUniverse
@@ -38,7 +39,7 @@ def make_test_trade(
     routing_state: RoutingState,
     max_slippage: Percent,
     amount=Decimal("1.0"),
-    pair: HumanReadableTradingPairDescription | None = None,
+    pair: TradingPairIdentifier | HumanReadableTradingPairDescription | None = None,
     buy_only: bool = False,
     test_short: bool = True,
     test_credit_supply: bool = True,
@@ -72,22 +73,25 @@ def make_test_trade(
             "Use the --pair flag to perform a test trade on a specific pair.\n"
             "Use check-universe command to get list of pair ids.\n"
             "Alternatively, use the --all-pairs flag to perform the test trade on all pairs.")
-    
-    if pair:
-        if data_universe.exchanges:
-            exchange_universe = ExchangeUniverse.from_collection(data_universe.exchanges)
-        elif data_universe.exchange_universe:
-            exchange_universe = data_universe.exchange_universe
+
+    if not isinstance(pair, TradingPairIdentifier):
+        if pair:
+            # Resolve human description of the pair
+            if data_universe.exchanges:
+                exchange_universe = ExchangeUniverse.from_collection(data_universe.exchanges)
+            elif data_universe.exchange_universe:
+                exchange_universe = data_universe.exchange_universe
+            else:
+                raise RuntimeError("You need to provide the exchange_universe when creating the universe")
+
+            raw_pair = data_universe.pairs.get_pair(*pair, exchange_universe=exchange_universe)
         else:
-            raise RuntimeError("You need to provide the exchange_universe when creating the universe")
+            # Single pair sstrategy
+            raw_pair = data_universe.pairs.get_single()
 
-        raw_pair = data_universe.pairs.get_pair(*pair, exchange_universe=exchange_universe)
-    else:
-        raw_pair = data_universe.pairs.get_single()
+        pair = translate_trading_pair(raw_pair)
 
-    logger.info("Getting price for pair %s using %s", raw_pair, pricing_model)
-    pair = translate_trading_pair(raw_pair)
-
+    logger.info("Getting price for pair %s using %s", pair, pricing_model)
     # Get estimated price for the asset we are going to buy
     assumed_price_structure = pricing_model.get_buy_price(
         ts,

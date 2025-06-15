@@ -159,7 +159,11 @@ VAULTS = [
 
     # maxAPY USDC base
     # https://app.maxapy.io/vaults/super/usdc
-    (ChainId.base, "0x7a63e8fc1d0a5e9be52f05817e8c49d9e2d6efae".lower())
+    (ChainId.base, "0x7a63e8fc1d0a5e9be52f05817e8c49d9e2d6efae".lower()),
+
+    # Spark USDC Base
+    # https://app.maxapy.io/vaults/super/usdc
+    (ChainId.base, "0x7bfa7c4f149e7415b73bdedfe609237e29cbf34a".lower()),
 ]
 
 
