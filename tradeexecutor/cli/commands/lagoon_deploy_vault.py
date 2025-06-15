@@ -37,11 +37,14 @@ import json
 import os.path
 import sys
 from pathlib import Path
-from typing import Optional
+from typing import Optional, cast
 
 from typer import Option
+from web3 import Web3
 
 from eth_defi.aave_v3.constants import AAVE_V3_DEPLOYMENTS
+from eth_defi.erc_4626.classification import create_vault_instance
+from eth_defi.erc_4626.vault import ERC4626Vault
 from eth_defi.hotwallet import HotWallet
 from eth_defi.lagoon.deployment import LagoonDeploymentParameters, deploy_automated_lagoon_vault, DEFAULT_PERFORMANCE_RATE, DEFAULT_MANAGEMENT_RATE
 from eth_defi.token import fetch_erc20_details
@@ -50,6 +53,7 @@ from eth_defi.uniswap_v2.deployment import fetch_deployment
 from eth_defi.uniswap_v3.constants import UNISWAP_V3_DEPLOYMENTS
 from eth_defi.uniswap_v3.deployment import fetch_deployment as fetch_deployment_uni_v3
 from eth_defi.aave_v3.deployment import fetch_deployment as fetch_aave_deployment
+from tests.guard.test_guard_simple_vault_erc_4626 import erc4626_vault
 
 from tradeexecutor.cli.commands.shared_options import parse_comma_separated_list
 from tradeexecutor.monkeypatch.web3 import construct_sign_and_send_raw_middleware
@@ -91,9 +95,12 @@ def lagoon_deploy_vault(
     aave: bool = Option(False, envvar="AAVE", help="Whitelist Aave aUSDC deposits"),
     uniswap_v2: bool = Option(False, envvar="UNISWAP_V2", help="Whitelist Uniswap v2"),
     uniswap_v3: bool = Option(False, envvar="UNISWAP_V3", help="Whitelist Uniswap v3"),
+    erc_4626_vaults: bool = Option(None, envvar="ERC_4626_VAULTS", help="Whitelist ERC-4626 vaults"),
     verbose: bool = Option(False, envvar="VERBOSE", help="Extra verbosity with deploy commands"),
     performance_fee: int = Option(DEFAULT_PERFORMANCE_RATE, envvar="PERFORMANCE_FEE", help="Performance fee in BPS"),
     management_fee: int = Option(DEFAULT_MANAGEMENT_RATE, envvar="MANAGEMENT_FEE", help="Management fee in BPS"),
+    guard_only: bool = Option(False, envvar="GUARD_ONLY", help="Deploys a new TradingStrategyModuleV0 guard with new settings. Lagoon multisig owners must then perform the transaction to enable this guard."),
+    existing_vault_address: str = Option(None, envvar="EXISTING_VAULT_ADDRESS", help="When deploying a guard only, get the existing vault addrewss."),
 ):
     """Deploy a new Lagoon vault.
 
@@ -200,6 +207,7 @@ def lagoon_deploy_vault(
         symbol=fund_symbol,
         performanceRate=performance_fee,
         managementRate=management_fee,
+
     )
 
     chain_slug = chain_id.get_slug()
@@ -243,6 +251,16 @@ def lagoon_deploy_vault(
     else:
         aave_v3_deployment = None
 
+    if erc_4626_vaults:
+        erc_4626_vault_addresses = [Web3.toChecksumAddress(a.strip()) for a in erc_4626_vaults.split(",")]
+        erc_4626_vaults = []
+        for addr in erc_4626_vault_addresses:
+            logger.info("Resolving ERC-4626 vault at %s", addr)
+            vault = cast(ERC4626Vault, create_vault_instance(web3, addr))
+            assert vault.is_valid(), f"Invalid ERC-4626 vault at {addr}"
+            logger.info("Preparing vault %s for whitelisting", vault.name)
+            erc_4626_vaults.append(vault)
+
     deploy_info = deploy_automated_lagoon_vault(
         web3=web3,
         deployer=hot_wallet,
@@ -256,6 +274,9 @@ def lagoon_deploy_vault(
         any_asset=True,
         use_forge=True,
         etherscan_api_key=etherscan_api_key,
+        guard_only=guard_only,
+        existing_vault_address=existing_vault_address,
+        erc_4626_vaults=erc_4626_vaults,
     )
 
     if vault_record_file and (not simulate):

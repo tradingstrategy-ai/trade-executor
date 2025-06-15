@@ -242,3 +242,30 @@ def test_cli_lagoon_correct_accounts(
     mocker.patch.dict("os.environ", deployed_vault_environment, clear=True)
     cli.main(args=["init"], standalone_mode=False)
     cli.main(args=["correct-accounts"], standalone_mode=False)
+
+
+
+@pytest.mark.slow_test_group
+def test_cli_lagoon_redeploy_guard(
+    deployed_vault_environment: dict,
+    mocker,
+    state_file,
+    web3,
+):
+    """Deploy a new guard smart contract for Lagoon vault."""
+    cli = get_command(app)
+    mocker.patch.dict("os.environ", deployed_vault_environment, clear=True)
+    cli.main(args=["init"], standalone_mode=False)
+    cli.main(args=["correct-accounts"], standalone_mode=False)
+
+    # Enable Spark vaulton the strategy
+    environment = deployed_vault_environment.copy()
+    environment["VAULTS"] = "0x7bfa7c4f149e7415b73bdedfe609237e29cbf34a"
+    environment["GUARD_ONLY"] = "true"
+    environment["EXISTING_VAULT_ADDRESS"] = deployed_vault_environment["VAULT_ADDRESS"]
+    cli.main(args=["deploy-lagoon-vault"], standalone_mode=False)
+
+    # Then do a perform-test-trade for a Spark vault
+
+
+
