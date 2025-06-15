@@ -69,6 +69,7 @@ def perform_test_trade(
     # for multipair strategies
     pair: Optional[str] = shared_options.pair,
     all_pairs: bool = shared_options.all_pairs,
+    all_vaults: bool = shared_options.all_vaults,
 
     buy_only: bool = Option(False, "--buy-only/--no-buy-only", help="Only perform the buy side of the test trade - leave position open."),
     test_short: bool = Option(True, "--test-short/--no-test-short", help="Perform test short trades as well."),
@@ -202,8 +203,36 @@ def perform_test_trade(
         assert isinstance(runner.routing_model, VelvetEnsoRouting), f"Got: {runner.routing_model}"
         assert routing_model is None, f"Got: {routing_model}"
 
+    assert not (all_vaults and all_pairs), "Cannot specify both --all-vaults and --all-pairs"
+
     try:
-        if all_pairs:
+        if all_vaults:
+            logger.info("Testing all vaults")
+
+            vault_pairs = [p for p in universe.iterate_pairs() if p.is_vault()]
+            logger.info("Testing total of %d vaults", len(vault_pairs))
+
+            for pair in vault_pairs:
+
+                logger.info("Making test trade for vault %s (%s)", pair.get_vault_name(), pair.base.token_symbol)
+
+                make_test_trade(
+                    web3config.get_default(),
+                    execution_model,
+                    pricing_model,
+                    sync_model,
+                    state,
+                    universe,
+                    runner.routing_model,
+                    routing_state,
+                    max_slippage=max_slippage,
+                    pair=pair,
+                    buy_only=buy_only,
+                    test_short=test_short,
+                    test_credit_supply=test_credit_supply,
+                    amount=Decimal(amount),
+                )
+        elif all_pairs:
             logger.info("Testing all pairs, we have %d pairs", universe.get_pair_count())
 
             if not simulate:
