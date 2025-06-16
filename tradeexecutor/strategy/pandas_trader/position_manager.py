@@ -1503,6 +1503,8 @@ class PositionManager:
 
         if lending_reserve_identifier is None:
             lending_reserve_identifier = self.strategy_universe.get_credit_supply_pair()
+        else:
+            assert isinstance(lending_reserve_identifier, TradingPairIdentifier), f"Got {lending_reserve_identifier.__class__} instead of TradingPairIdentifier"
 
         assert lending_reserve_identifier.is_credit_supply()
 

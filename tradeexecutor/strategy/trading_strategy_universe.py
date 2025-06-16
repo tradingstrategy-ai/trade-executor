@@ -611,6 +611,27 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
             raise RuntimeError(f"Failed to look up: {desc}") from e
         return translate_trading_pair(pair, cache=self.pair_cache)
 
+    def get_lending_reserve_by_human_description(self, reserve_description: LendingReserveDescription) -> TradingPairIdentifier:
+        """Get a trading pair that represents supplying credit to Aave pool.
+
+        :param reserve_description:
+            E.g. ("ethereum", "aave", "USDC")
+
+        :return:
+            The trading pair on the exchange that represents lending reserve.
+
+            Like ("ethereum", "aave", "aUSDC", "USDC")
+        """
+
+        assert len(reserve_description) == 3
+
+        assert self.data_universe.lending_reserves, "You must set universe.lending_reserves to be able to use this method"
+        lending_reserve = self.data_universe.lending_reserves.resolve_lending_reserve(reserve_description)
+        return translate_credit_reserve(
+            lending_reserve,
+            strategy_reserve=self.get_reserve_asset()
+        )
+
     def get_pair_by_smart_contract(self, address: JSONHexAddress) -> TradingPairIdentifier:
         """Get pair by its smart contract address.
 

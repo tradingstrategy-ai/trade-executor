@@ -68,12 +68,13 @@ def perform_test_trade(
 
     # for multipair strategies
     pair: Optional[str] = shared_options.pair,
+    lending_reserve: Optional[str] = Option(None, "--lending-reserve", envvar="LENDING_RESERVE", help="A lending reserve description to test Aave deposits"),
     all_pairs: bool = shared_options.all_pairs,
     all_vaults: bool = shared_options.all_vaults,
 
     buy_only: bool = Option(False, "--buy-only/--no-buy-only", help="Only perform the buy side of the test trade - leave position open."),
     test_short: bool = Option(True, "--test-short/--no-test-short", help="Perform test short trades as well."),
-    test_credit_supply: bool = Option(True, "--test-credit-supply/--no-test-credit-supply", help="Perform test credit supply trades as well."),
+    test_credit_supply: bool = Option(False,"--test-credit-supply/--no-test-credit-supply", help="Deprecated argument. Do not use anymore. Inistead, specify --pair (...lending pair description...)"),
     amount: float = Option(1.0, envvar="AMOUNT", help="The USD value of the test trade"),
     simulate: bool = shared_options.simulate,
 ):
@@ -88,6 +89,13 @@ def perform_test_trade(
     if pair:
         assert not all_pairs, "Cannot specify both --pair and --all-pairs"
         pair = parse_pair_data(pair)
+
+    if lending_reserve:
+        # (base, aave-v3, USDC)
+        lending_reserve = [p.strip() for p in lending_reserve.strip("()").split(",")]
+
+    if test_credit_supply:
+        raise NotImplementedError("--test-credit-supply is deprecated and no longer supported. Use --lending-reserve=(base, aave-v3, USDC) instead.")
 
     id = prepare_executor_id(id, strategy_file)
 
@@ -229,7 +237,7 @@ def perform_test_trade(
                     pair=pair,
                     buy_only=buy_only,
                     test_short=test_short,
-                    test_credit_supply=test_credit_supply,
+                    test_credit_supply=False,
                     amount=Decimal(amount),
                 )
         elif all_pairs:
@@ -258,10 +266,12 @@ def perform_test_trade(
                     pair=p,
                     buy_only=buy_only,
                     test_short=test_short,
-                    test_credit_supply=test_credit_supply,
+                    test_credit_supply=False,
                     amount=Decimal(amount),
                 )
         else:
+
+            assert pair or lending_reserve, "You must specify either --pair or --lending-reserve to perform a single pair test trade"
 
             logger.info("Single pair test trade for %s", pair)
             make_test_trade(
@@ -275,9 +285,10 @@ def perform_test_trade(
                 routing_state,
                 max_slippage=max_slippage,
                 pair=pair,
+                lending_reserve=lending_reserve,
                 buy_only=buy_only,
                 test_short=test_short,
-                test_credit_supply=test_credit_supply,
+                test_credit_supply=False,
                 amount=Decimal(amount),
             )
     except OutOfBalance as e:

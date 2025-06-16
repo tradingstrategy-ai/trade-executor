@@ -25,6 +25,7 @@ from tradeexecutor.strategy.weighting import weight_equal
 from tradingstrategy.alternative_data.coingecko import CoingeckoUniverse, categorise_pairs
 from tradingstrategy.chain import ChainId
 from tradingstrategy.client import Client
+from tradingstrategy.lending import LendingProtocolType
 from tradingstrategy.pair import PandasPairUniverse
 from tradingstrategy.timebucket import TimeBucket
 from tradingstrategy.transport.cache import OHLCVCandleType
@@ -114,6 +115,12 @@ SUPPORTING_PAIRS = [
 
 # Will be converted to cbBTC/ETH->USDC
 VOL_PAIR = (ChainId.base, "uniswap-v2", "WETH", "USDC", 0.0030)
+
+
+LENDING_RESERVES = [
+    (Parameters.chain_id, LendingProtocolType.aave_v3, "USDC"),
+]
+
 
 
 VAULTS = [
@@ -215,6 +222,7 @@ def create_trading_universe(
         liquidity_time_bucket=TimeBucket.d1,
         liquidity_query_type=OHLCVCandleType.tvl_v2,
         vaults=VAULTS,
+        lending_reserves=LENDING_RESERVES,
     )
 
     strategy_universe = TradingStrategyUniverse.create_from_dataset(

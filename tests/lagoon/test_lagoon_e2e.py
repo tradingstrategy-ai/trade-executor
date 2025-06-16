@@ -321,9 +321,13 @@ def test_cli_lagoon_redeploy_guard(
     environment = deployed_vault_environment.copy()
     environment["ERC_4626_VAULTS"] = "0x7bfa7c4f149e7415b73bdedfe609237e29cbf34a, 0x0d877Dc7C8Fa3aD980DfDb18B48eC9F8768359C4, 0x7a63e8fc1d0a5e9be52f05817e8c49d9e2d6efae"
     environment["GUARD_ONLY"] = "true"
+    environment["UNISWAP_V2"] = "true"
+    environment["UNISWAP_V3"] = "true"
+    environment["AAVE"] = "true"
     environment["ANY_ASSET"] = "true"  # TODO: Temporarily needed, remove later
     environment["EXISTING_VAULT_ADDRESS"] = deployed_vault_environment["VAULT_ADDRESS"]
     environment["EXISTING_SAFE_ADDRESS"] = safe_address
+
     environment["VAULT_RECORD_FILE"] = vault_record_file.as_posix()
     mocker.patch.dict("os.environ", environment, clear=True)
     cli.main(args=["lagoon-deploy-vault"], standalone_mode=False)
@@ -391,6 +395,8 @@ def test_cli_lagoon_redeploy_guard(
     # 5. Perform a test trade using the new guard
     #
 
+    # Check there is no change in Aave trade whitelisting
+    cli.main(args=["perform-test-trade", "--lending-reserve", "(base, aave-v3, USDC)"], standalone_mode=False)
     # Check all vault deposit/redeem
     cli.main(args=["perform-test-trade", "--all-vaults"], standalone_mode=False)
     # Check there is no change in Uniswap v2 trade whitelisting
