@@ -5,12 +5,14 @@ from pathlib import Path
 
 import pytest
 from typer.main import get_command
+from web3 import Web3
 
 from eth_defi.abi import get_deployed_contract
 from eth_defi.safe.deployment import fetch_safe_deployment, disable_safe_module
 from eth_defi.safe.simulate import simulate_safe_execution_anvil
 from eth_defi.trace import assert_transaction_success_with_explanation
 from tradeexecutor.cli.commands.app import app
+from tradeexecutor.cli.log import setup_pytest_logging
 from tradeexecutor.state.state import State
 
 JSON_RPC_BASE = os.environ.get("JSON_RPC_BASE")
@@ -21,6 +23,12 @@ pytestmark = pytest.mark.skipif(
      (not JSON_RPC_BASE or not TRADING_STRATEGY_API_KEY),
       reason="Set JSON_RPC_BASE and TRADING_STRATEGY_API_KEY needed to run this test"
 )
+
+
+@pytest.fixture(scope="module")
+def logger(request):
+    """Setup test logger."""
+    return setup_pytest_logging(request, mute_requests=False)
 
 
 @pytest.fixture()
@@ -75,7 +83,7 @@ def deployed_vault_environment(
         "RAISE_ON_UNCLEAN": "true",  # For correct-accounts
         "PRIVATE_KEY": asset_manager.private_key.hex(),
         "GENERATE_REPORT": "false",
-        "CACHE_PATH": cache_path.as_posix(),
+        "CACHE_PATH": cache_path,
     }
     return environment
 
@@ -110,7 +118,7 @@ def pre_deployment_vault_environment(
         "RAISE_ON_UNCLEAN": "true",  # For correct-accounts
         "PRIVATE_KEY": asset_manager.private_key.hex(),
         "ANY_ASSET": "true",
-        "CACHE_PATH": cache_path.as_posix(),
+        "CACHE_PATH": cache_path,
     }
     return environment
 
@@ -153,7 +161,7 @@ def test_cli_lagoon_deploy_vault(
         "ANY_ASSET": "true",
         "UNISWAP_V2": "true",
         "UNISWAP_V3": "true",
-        "CACHE_PATH": cache_path.as_posix(),
+        "CACHE_PATH": cache_path,
         "GENERATE_REPORT": "false",  # Creating backtest report takes too long > 300s
     }
 
@@ -273,6 +281,7 @@ def test_cli_lagoon_redeploy_guard(
     web3,
     tmp_path,
     vaulted_strategy_file,
+    logger,
 ):
     """Deploy a new guard smart contract for Lagoon vault.
 
@@ -282,8 +291,10 @@ def test_cli_lagoon_redeploy_guard(
     4. Perform Gnosis tx to enable old guard
     5. Perform a test trade using the new guard
     """
-    
+
+    #
     # 1. Deploy a Lagoon vault
+    #
     cli = get_command(app)
     mocker.patch.dict("os.environ", deployed_vault_environment, clear=True)
     cli.main(args=["init"], standalone_mode=False)
@@ -303,13 +314,16 @@ def test_cli_lagoon_redeploy_guard(
     owners = safe.retrieve_owners()
     assert len(owners) == 4
 
+    #
     # 2. Deploy a new guard smart contract with different parameters (one vault trading enabled)
+    #
     vault_record_file = tmp_path / "vault-record.json"
     environment = deployed_vault_environment.copy()
-    environment["VAULTS"] = "0x7bfa7c4f149e7415b73bdedfe609237e29cbf34a"
+    environment["ERC_4626_VAULTS"] = "0x7bfa7c4f149e7415b73bdedfe609237e29cbf34a, 0x0d877Dc7C8Fa3aD980DfDb18B48eC9F8768359C4, 0x7a63e8fc1d0a5e9be52f05817e8c49d9e2d6efae"
     environment["GUARD_ONLY"] = "true"
     environment["ANY_ASSET"] = "true"  # TODO: Temporarily needed, remove later
     environment["EXISTING_VAULT_ADDRESS"] = deployed_vault_environment["VAULT_ADDRESS"]
+    environment["EXISTING_SAFE_ADDRESS"] = safe_address
     environment["VAULT_RECORD_FILE"] = vault_record_file.as_posix()
     mocker.patch.dict("os.environ", environment, clear=True)
     cli.main(args=["lagoon-deploy-vault"], standalone_mode=False)
@@ -317,7 +331,23 @@ def test_cli_lagoon_redeploy_guard(
     vault_info = json.load(open(vault_record_file))
     new_guard_address = vault_info["Trading strategy module"]
 
+    # Check new guard points to the right Safe, the exisitng safe
+    # and the new guard has all vaults whitelisted
+    new_guard_contract = get_deployed_contract(
+        web3,
+        "safe-integration/TradingStrategyModuleV0.json",
+        new_guard_address,
+    )
+    assert vault_info["Safe"].lower() == safe_address.lower(), "Vault data corrupted, Safe address mismatch"
+    # https://github.com/tradingstrategy-ai/web3-ethereum-defi/blob/master/contracts/guard/src/GuardV0Base.sol
+    assert new_guard_contract.functions.getGovernanceAddress().call() == safe_address
+    assert new_guard_contract.functions.isAllowedApprovalDestination(Web3.to_checksum_address("0x7bfa7c4f149e7415b73bdedfe609237e29cbf34a")).call() == True  # Spark
+    assert new_guard_contract.functions.isAllowedApprovalDestination(Web3.to_checksum_address("0x0d877Dc7C8Fa3aD980DfDb18B48eC9F8768359C4")).call() == True  # Harvest
+    assert new_guard_contract.functions.isAllowedApprovalDestination(Web3.to_checksum_address("0x7a63e8fc1d0a5e9be52f05817e8c49d9e2d6efae")).call() == True  # maxAPY
+
+    #
     # 4. Perform Gnosis tx to enable new guard
+    #
     func = safe.contract.functions.enableModule(new_guard_address)
     tx_hash = simulate_safe_execution_anvil(
         web3,
@@ -326,8 +356,9 @@ def test_cli_lagoon_redeploy_guard(
     )
     assert_transaction_success_with_explanation(web3, tx_hash)
 
-    # Do the Gnosis Safe calls to remove the old guard and add the new one
+    #
     # 3. Perform Gnosis tx to disable old guard
+    #
     # disableModule() exposes Safe internal linked list
     func = disable_safe_module(
         web3,
@@ -341,8 +372,11 @@ def test_cli_lagoon_redeploy_guard(
     )
     assert_transaction_success_with_explanation(web3, tx_hash)
 
+    # Check module is enabled (twice)
     modules = safe.retrieve_modules()
     assert modules == [new_guard_address], f"Guard not updated, old guard still present: {modules}"
+    safe = fetch_safe_deployment(web3, vault_info["Safe"])
+    assert safe.contract.functions.isModuleEnabled(new_guard_address).call() == True
 
     # Fix us to use the strategy module where vaults are part of the universe loading
     environment["STRATEGY_FILE"] = vaulted_strategy_file.as_posix()
@@ -351,6 +385,12 @@ def test_cli_lagoon_redeploy_guard(
     environment["VAULT_ADAPTER_ADDRESS"] = new_guard_address
     mocker.patch.dict("os.environ", environment, clear=True)
 
+    #
     # 5. Perform a test trade using the new guard
+    #
+
+    # Check all vault deposit/redeem
     cli.main(args=["perform-test-trade", "--all-vaults"], standalone_mode=False)
+    # Check there is no change in Uniswap v2 trade whitelisting
+    cli.main(args=["perform-test-trade", "--pair", "(base, uniswap-v2, KEYCAT, WETH, 0.0030)"], standalone_mode=False)
 

@@ -95,15 +95,16 @@ def lagoon_deploy_vault(
     aave: bool = Option(False, envvar="AAVE", help="Whitelist Aave aUSDC deposits"),
     uniswap_v2: bool = Option(False, envvar="UNISWAP_V2", help="Whitelist Uniswap v2"),
     uniswap_v3: bool = Option(False, envvar="UNISWAP_V3", help="Whitelist Uniswap v3"),
-    erc_4626_vaults: bool = Option(None, envvar="ERC_4626_VAULTS", help="Whitelist ERC-4626 vaults, a command separated list of addresses"),
+    erc_4626_vaults: str = Option(None, envvar="ERC_4626_VAULTS", help="Whitelist ERC-4626 vaults, a command separated list of addresses"),
     verbose: bool = Option(False, envvar="VERBOSE", help="Extra verbosity with deploy commands"),
     performance_fee: int = Option(DEFAULT_PERFORMANCE_RATE, envvar="PERFORMANCE_FEE", help="Performance fee in BPS"),
     management_fee: int = Option(DEFAULT_MANAGEMENT_RATE, envvar="MANAGEMENT_FEE", help="Management fee in BPS"),
     guard_only: bool = Option(False, envvar="GUARD_ONLY", help="Deploys a new TradingStrategyModuleV0 guard with new settings. Lagoon multisig owners must then perform the transaction to enable this guard."),
-    existing_vault_address: str = Option(None, envvar="EXISTING_VAULT_ADDRESS", help="When deploying a guard only, get the existing vault addrewss."),
+    existing_vault_address: str = Option(None, envvar="EXISTING_VAULT_ADDRESS", help="When deploying a guard only, get the existing vault address."),
+    existing_safe_address: str = Option(None, envvar="EXISTING_SAFE_ADDRESS", help="When deploying a guard only, get the existing safe address."),
     vault_adapter_address: str = shared_options.vault_adapter_address,
 ):
-    """Deploy a new Lagoon vault.
+    """Deploy a Lagoon vault or modify the vault deployment.
 
     Deploys a new Lagoon vault, Safe and TradingStrategyModuleV0 guard for automated trading.
 
@@ -181,6 +182,7 @@ def lagoon_deploy_vault(
     logger.info("Whitelisting Uniswap v3: %s", uniswap_v3)
     logger.info("Whitelisting 1delta: %s", one_delta)
     logger.info("Whitelisting Aave: %s", aave)
+    logger.info("Whitelisting vaults: %s", erc_4626_vaults)
     logger.info("Multisig owners: %s", multisig_owners)
     logger.info("Performance fee: %f %%", performance_fee / 100)
     logger.info("Management fee: %f %%", management_fee / 100)
@@ -262,7 +264,7 @@ def lagoon_deploy_vault(
         aave_v3_deployment = None
 
     if erc_4626_vaults:
-        erc_4626_vault_addresses = [Web3.toChecksumAddress(a.strip()) for a in erc_4626_vaults.split(",")]
+        erc_4626_vault_addresses = [Web3.to_checksum_address(a.strip()) for a in erc_4626_vaults.split(",")]
         erc_4626_vaults = []
         for addr in erc_4626_vault_addresses:
             logger.info("Resolving ERC-4626 vault at %s", addr)
@@ -286,6 +288,7 @@ def lagoon_deploy_vault(
         etherscan_api_key=etherscan_api_key,
         guard_only=guard_only,
         existing_vault_address=existing_vault_address,
+        existing_safe_address=existing_safe_address,
         erc_4626_vaults=erc_4626_vaults,
     )
 
@@ -294,7 +297,6 @@ def lagoon_deploy_vault(
         with open(vault_record_file, "wt") as out:
             out.write(deploy_info.pformat())
 
-        #
         with open(vault_record_file.with_suffix(".json"), "wt") as out:
             out.write(json.dumps(deploy_info.get_deployment_data()))
 
@@ -305,12 +307,11 @@ def lagoon_deploy_vault(
     if not guard_only:
         logger.info("Lagoon deployed:\n%s", deploy_info.pformat())
     else:
-        logger.info("New guard deployed:\n%s", deploy_info.pformat())
+        logger.info("New guard deployed: %s", deploy_info.trading_strategy_module.address)
         logger.info("Old guard address: %s", vault_adapter_address)
-        logger.info("New guard address: %s", vault_adapter_address)
+        logger.info("Safe address: %s", deploy_info.safe.address)
         logger.info("Safe transactions needed")
-        logger.info("1. disableGuard()")
-        logger.info("2. enabledGuard()")
+        logger.info("1. enabledGuard()")
+        logger.info("2. disableGuard()")
 
     web3config.close()
-

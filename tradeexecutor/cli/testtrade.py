@@ -220,7 +220,7 @@ def make_test_trade(
             logger.error("Position dump:\n%s", position.get_debug_dump())
 
         if not trade.is_success():
-            raise AssertionError("Test buy failed.")
+            raise AssertionError(f"Test buy failed: {trade}, {trade.get_revert_reason()}")
 
         if not position.is_open():
             raise AssertionError("Test buy succeed, but the position was not opened\n"

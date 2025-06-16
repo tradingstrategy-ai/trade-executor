@@ -36,6 +36,17 @@ class LagoonExecution(EthereumExecution):
         assert isinstance(ts, datetime.datetime)
         assert isinstance(routing_state, RoutingState)
 
+    def check_valid(self):
+        """Check that the execution model is valid.
+
+        - All smart contracts are properly configured
+
+        :raise ASsertionError:
+            Smart contracts not properly configured or not enabled.
+        """
+        # Check that the Safe module is enabled
+        assert self.vault.is_trading_strategy_module_enabled(), f"Trading strategy module {self.vault.trading_strategy_module_address} is not enabled on the Lagoon vault {self.vault}"
+
     def get_routing_state_details(self) -> RoutingStateDetails:
         details = super().get_routing_state_details()
         details["vault"] = self.vault
@@ -49,6 +60,10 @@ class LagoonExecution(EthereumExecution):
             self.web3,
             strategy_universe,
         )
+
+        # TODO: Create a proper place fot his
+        self.check_valid()
+
         return GenericRouting(pair_configurator)
 
     def execute_trades(

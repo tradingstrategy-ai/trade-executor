@@ -84,7 +84,7 @@ class LagoonTransactionBuilder(TransactionBuilder):
                     gas_limit,
                     asset_deltas)
 
-        assert contract.address == args_bound_func.address
+        assert contract.address == args_bound_func.address, f"Contract address {contract.address} does not match bound function address {args_bound_func.address}"
 
         gas_price_suggestion = gas_price_suggestion or self.fetch_gas_price_suggestion()
 
