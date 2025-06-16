@@ -460,7 +460,7 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
         :return:
             True if we can open a short position.
         """
-        assert isinstance(pair, TradingPairIdentifier), f"Expected TradingPairIdentifier, got: {pair.__class}: {pair}"
+        assert isinstance(pair, TradingPairIdentifier), f"Expected TradingPairIdentifier, got: {pair.__class__}: {pair}"
         return self.has_lending_market_available(timestamp, pair.base, liquidity_threshold) \
             and self.has_lending_market_available(timestamp, pair.quote, liquidity_threshold)
     

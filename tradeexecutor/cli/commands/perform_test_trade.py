@@ -84,6 +84,19 @@ def perform_test_trade(
     the routing configuration from the strategy.
 
     The trade will be recorded on the state as a position.
+
+    Test single pair:
+
+        trade-executor perform-test-trade --pair "(base, uniswap-v3, KEYCAT, WETH, 0.0030)"
+
+    Test all vaults:
+
+        trade-executor perform-test-trade --all-vaults
+
+    Test supply credit:
+
+        trade-executor perform-test-trade --lending-reserve "(base, aave-v3, USDC)"
+
     """
 
     if pair:
@@ -92,7 +105,7 @@ def perform_test_trade(
 
     if lending_reserve:
         # (base, aave-v3, USDC)
-        lending_reserve = [p.strip() for p in lending_reserve.strip("()").split(",")]
+        lending_reserve = [p.strip() for p in lending_reserve.strip().strip("()").split(",")]
 
     if test_credit_supply:
         raise NotImplementedError("--test-credit-supply is deprecated and no longer supported. Use --lending-reserve=(base, aave-v3, USDC) instead.")
@@ -237,7 +250,6 @@ def perform_test_trade(
                     pair=pair,
                     buy_only=buy_only,
                     test_short=test_short,
-                    test_credit_supply=False,
                     amount=Decimal(amount),
                 )
         elif all_pairs:
@@ -285,10 +297,9 @@ def perform_test_trade(
                 routing_state,
                 max_slippage=max_slippage,
                 pair=pair,
-                lending_reserve=lending_reserve,
+                lending_reserve_description=lending_reserve,
                 buy_only=buy_only,
                 test_short=test_short,
-                test_credit_supply=False,
                 amount=Decimal(amount),
             )
     except OutOfBalance as e:

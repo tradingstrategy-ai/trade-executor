@@ -68,9 +68,10 @@ def make_test_trade(
 
     reserve_asset = universe.get_reserve_asset()
 
-    if not isinstance(pair, TradingPairIdentifier):
-        if pair:
-            assert not lending_reserve_description
+    if pair:
+        assert not lending_reserve_description
+
+        if not isinstance(pair, TradingPairIdentifier):
             # Resolve human description of the pair
             if data_universe.exchanges:
                 exchange_universe = ExchangeUniverse.from_collection(data_universe.exchanges)
@@ -79,16 +80,9 @@ def make_test_trade(
             else:
                 raise RuntimeError("You need to provide the exchange_universe when creating the universe")
 
-            if "aave" in pair[1]:
-                # TODO: Hack, Make univeral human description resolver.
-                raw_pair = data_universe.lending_reserves.resolve_lending_reserve()
-            else:
-                raw_pair = data_universe.pairs.get_pair(*pair, exchange_universe=exchange_universe)
-        else:
-            # Single pair sstrategy
-            raise NotImplementedError(f"Automatic pair lookup for single paiar universe no longer supported. ")
+            raw_pair = data_universe.pairs.get_pair(*pair, exchange_universe=exchange_universe)
 
-        pair = translate_trading_pair(raw_pair)
+            pair = translate_trading_pair(raw_pair)
 
         logger.info("Getting price for pair %s using %s", pair, pricing_model)
         # Get estimated price for the asset we are going to buy
@@ -109,9 +103,9 @@ def make_test_trade(
         )
 
     elif lending_reserve_description:
-        assert type(lending_reserve_description) == tuple
-        lending_reserve = universe.get_lending_reserve_by_human_description(lending_reserve_description)
-        assumed_price_structure = None
+        # Convert description to TradingPairIdentifier used in PositionManager
+        assert type(lending_reserve_description) in (tuple, list), f"lending_reserve_description must be a tuple, got {type(lending_reserve_description)}"
+        credit_pair = pair = lending_reserve = universe.get_lending_reserve_by_human_description(lending_reserve_description)
 
     logger.info("Sync model is %s", sync_model)
     logger.info("Trading university reserve asset is %s", universe.get_reserve_asset())
@@ -192,6 +186,8 @@ def make_test_trade(
                 notes=notes,
                 flags={TradeFlag.test_trade},
             )
+
+            open_credit_supply_trade = trades[0]
         else:
             trades = position_manager.open_spot(
                 pair,
@@ -263,12 +259,13 @@ def make_test_trade(
             default_slippage_tolerance=max_slippage,
         )
 
-        if lending_reserve:
+        if lending_reserve_description:
             trades = position_manager.close_credit_supply_position(
                 position,
                 notes=notes,
                 flags={TradeFlag.test_trade},
             )
+            close_credit_supply_trade = trades[0]
         else:
             trades = position_manager.close_position(
                 position,
@@ -302,7 +299,7 @@ def make_test_trade(
     else:
         sell_trade = None
 
-    if universe.has_any_lending_data() and universe.can_open_short(datetime.datetime.utcnow(), pair) and test_short:
+    if pair and universe.has_any_lending_data() and universe.can_open_short(datetime.datetime.utcnow(), pair) and test_short:
         short_pair = universe.get_shorting_pair(pair)
         position = state.portfolio.get_position_by_trading_pair(short_pair)
 
@@ -446,6 +443,7 @@ def make_test_trade(
     logger.info("  Trades done currently: %d", len(list(state.portfolio.get_all_trades())))
     logger.info("  Reserves currently: %s %s", reserve_currency_at_end, reserve_currency)
     logger.info("  Reserve currency spent: %s %s", reserve_currency_at_start - reserve_currency_at_end, reserve_currency)
+
     if buy_trade:
         logger.info("  Buy trade price, expected: %s, actual: %s (%s)", buy_trade.planned_price, buy_trade.executed_price, pair.get_ticker())
     if sell_trade:
