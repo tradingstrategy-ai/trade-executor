@@ -620,6 +620,19 @@ class TradingPairIdentifier:
         """
         return f"{self.base.token_symbol}-{self.quote.token_symbol}"
 
+    def get_human_description_for_code(self) -> str:
+        """Get reverse of get_pair_byhuman_description() function.
+
+        - Handle mainnet fork issues
+
+        :return:
+            E.g "(ChainId.polygon, "quickswap", "WETH", "USDC", 0.0030)
+
+        """
+        chain_id = ChainId(self.chain_id)
+        assert chain_id != ChainId.anvil, f"Cannot use with anvil: {self}"
+        return f"(ChainId.{chain_id.name}, {self.base.token_symbol}, {self.quote.token_symbol}, {self.fee})"
+
     def get_chart_label(self) -> str:
         """Get the short name used in charting for this pair.
 

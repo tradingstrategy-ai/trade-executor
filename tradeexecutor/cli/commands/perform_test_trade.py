@@ -21,7 +21,7 @@ from ...strategy.approval import UncheckedApprovalModel
 from ...strategy.bootstrap import make_factory_from_strategy_mod
 from ...strategy.description import StrategyExecutionDescription
 from ...strategy.execution_context import ExecutionContext, ExecutionMode
-from ...strategy.execution_model import AssetManagementMode
+from ...strategy.execution_model import AssetManagementMode, ExecutionModel
 from ...strategy.generic.generic_pricing_model import GenericPricing
 from ...strategy.run_state import RunState
 from ...strategy.strategy_module import read_strategy_module, StrategyModuleInformation
@@ -73,6 +73,7 @@ def perform_test_trade(
     all_vaults: bool = shared_options.all_vaults,
 
     buy_only: bool = Option(False, "--buy-only/--no-buy-only", help="Only perform the buy side of the test trade - leave position open."),
+    single_pair: bool = Option(False, help="Test single pair in the trading universe."),
     test_short: bool = Option(True, "--test-short/--no-test-short", help="Perform test short trades as well."),
     test_credit_supply: bool = Option(False,"--test-credit-supply/--no-test-credit-supply", help="Deprecated argument. Do not use anymore. Inistead, specify --pair (...lending pair description...)"),
     amount: float = Option(1.0, envvar="AMOUNT", help="The USD value of the test trade"),
@@ -101,7 +102,10 @@ def perform_test_trade(
 
     if pair:
         assert not all_pairs, "Cannot specify both --pair and --all-pairs"
-        pair = parse_pair_data(pair)
+        try:
+            pair = parse_pair_data(pair)
+        except Exception as e:
+            raise ValueError(f"Failed to parse pair data: {pair}") from e
 
     if lending_reserve:
         # (base, aave-v3, USDC)
@@ -206,6 +210,10 @@ def perform_test_trade(
         ExecutionMode.preflight_check,
         universe_options
     )
+
+    if single_pair:
+        pair = universe.get_single_pair()
+        logger.info("Using single pair from the universe: %s", pair)
 
     runner = run_description.runner
     routing_state, pricing_model, valuation_method = runner.setup_routing(universe)
