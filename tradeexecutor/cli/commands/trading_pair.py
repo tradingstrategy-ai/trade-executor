@@ -75,6 +75,7 @@ def trading_pair(
         max_data_delay_minutes=max_data_delay_minutes,
         strategy_factory=strategy_factory,
         execution_context=execution_context,
+        unit_testing=unit_testing,
     )
 
     # Deconstruct strategy input
