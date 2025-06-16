@@ -177,6 +177,10 @@ def set_notebook_logging(log_level: int | str=logging.INFO):
         log_level = getattr(logging, log_level.upper())
 
     format = '[%(asctime)s] %(levelname)s %(module)s: %(message)s'
-    logging.basicConfig(level=log_level,
-                        format=format,
-                        datefmt='%H:%M:%S')
+    logging.basicConfig(
+        level=log_level,
+        format=format,
+        datefmt='%H:%M:%S',
+        stream=sys.stdout,
+        force=True,  # Force to override any previous logging configuration
+    )
