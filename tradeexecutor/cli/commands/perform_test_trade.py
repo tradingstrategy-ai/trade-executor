@@ -114,6 +114,8 @@ def perform_test_trade(
     if test_credit_supply:
         raise NotImplementedError("--test-credit-supply is deprecated and no longer supported. Use --lending-reserve=(base, aave-v3, USDC) instead.")
 
+    assert pair or lending_reserve or single_pair or all_vaults or all_pairs, "You must specify either --pai, --lending-reserve, --single-pair, --all-vaults or --all-pairs to perform a test trade"
+
     id = prepare_executor_id(id, strategy_file)
 
     logger = setup_logging(log_level=log_level)
@@ -286,7 +288,6 @@ def perform_test_trade(
                     pair=p,
                     buy_only=buy_only,
                     test_short=test_short,
-                    test_credit_supply=False,
                     amount=Decimal(amount),
                 )
         else:

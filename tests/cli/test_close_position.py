@@ -97,7 +97,7 @@ def test_close_all(
     cli = get_command(app)
     with patch.dict(os.environ, environment, clear=True):
         with pytest.raises(SystemExit) as e:
-            cli.main(args=["perform-test-trade", "--buy-only"])
+            cli.main(args=["perform-test-trade", "--buy-only", "--single-pair"])
         assert e.value.code == 0
 
     state = State.read_json_file(state_file)
