@@ -343,7 +343,9 @@ def test_cli_lagoon_redeploy_guard(
     assert new_guard_contract.functions.getGovernanceAddress().call() == safe_address
     assert new_guard_contract.functions.isAllowedApprovalDestination(Web3.to_checksum_address("0x7bfa7c4f149e7415b73bdedfe609237e29cbf34a")).call() == True  # Spark
     assert new_guard_contract.functions.isAllowedApprovalDestination(Web3.to_checksum_address("0x0d877Dc7C8Fa3aD980DfDb18B48eC9F8768359C4")).call() == True  # Harvest
-    assert new_guard_contract.functions.isAllowedApprovalDestination(Web3.to_checksum_address("0x7a63e8fc1d0a5e9be52f05817e8c49d9e2d6efae")).call() == True  # maxAPY
+
+    # ERC-7545: not supported yet
+    # assert new_guard_contract.functions.isAllowedApprovalDestination(Web3.to_checksum_address("0x7a63e8fc1d0a5e9be52f05817e8c49d9e2d6efae")).call() == True  # maxAPY
 
     #
     # 4. Perform Gnosis tx to enable new guard

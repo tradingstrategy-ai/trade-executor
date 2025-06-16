@@ -121,9 +121,10 @@ VAULTS = [
     # https://app.ipor.io/fusion/base/0x0d877dc7c8fa3ad980dfdb18b48ec9f8768359c4
     (ChainId.base, "0x0d877Dc7C8Fa3aD980DfDb18B48eC9F8768359C4".lower()),
 
+    # ERC-7545 not supported yet
     # maxAPY USDC base
     # https://app.maxapy.io/vaults/super/usdc
-    (ChainId.base, "0x7a63e8fc1d0a5e9be52f05817e8c49d9e2d6efae".lower()),
+    # (ChainId.base, "0x7a63e8fc1d0a5e9be52f05817e8c49d9e2d6efae".lower()),
 
     # Spark USDC Base
     # https://app.maxapy.io/vaults/super/usdc
