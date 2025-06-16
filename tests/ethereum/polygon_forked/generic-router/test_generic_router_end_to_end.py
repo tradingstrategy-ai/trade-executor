@@ -262,7 +262,7 @@ def test_generic_routing_test_trade_spot_only(
 
     with patch.dict(os.environ, environment, clear=True):
         with pytest.raises(SystemExit) as e:
-            cli.main(args=["perform-test-trade", "--all-pairs", "--no-test-short", "--no-test-credit-supply"])
+            cli.main(args=["perform-test-trade", "--all-pairs", "--no-test-short"])
         assert e.value.code == 0
 
     # Check the resulting state and see we made some trade for trading fee losses

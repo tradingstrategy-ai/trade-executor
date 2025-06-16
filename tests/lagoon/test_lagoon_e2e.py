@@ -95,6 +95,7 @@ def pre_deployment_vault_environment(
     anvil_base_fork,
     state_file,
     asset_manager,
+    persistent_test_client,
 ):
     """Lagoon CLI environment with vault not yet deployed."""
 

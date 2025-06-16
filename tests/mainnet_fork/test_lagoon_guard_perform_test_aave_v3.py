@@ -222,6 +222,10 @@ def test_lagoon_guard_perform_test_trade_aave_uniswap_v2(
     with mock.patch.dict('os.environ', environment, clear=True):
         app(["perform-test-trade", "--pair", "(base, uniswap-v2, WETH, USDC, 0.003)"], standalone_mode=False)
 
+    # Test trade aave
+    with mock.patch.dict('os.environ', environment, clear=True):
+        app(["perform-test-trade", "--lending-reserve", "(base, aave-v3, USDC)"], standalone_mode=False)
+
     # Check the resulting state and see we made some trade for trading fee losses
     with state_file.open("rt") as inp:
         state: State = State.from_json(inp.read())
