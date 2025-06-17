@@ -131,6 +131,9 @@ def display_vault_position_table(
 
     positions = [p for p in state.portfolio.get_all_positions() if p.is_vault()]
 
+    if len(positions) == 0:
+        return pd.DataFrame([])
+
     rows = []
     for p in positions:
 
