@@ -1655,7 +1655,8 @@ class TradingStrategyUniverseModel(UniverseModel):
     def check_data_age(
         ts: datetime.datetime,
         strategy_universe: TradingStrategyUniverse,
-        best_before_duration: datetime.timedelta
+        best_before_duration: datetime.timedelta,
+        best_before_duration_liquidity: datetime.timedelta = datetime.timedelta(days=2),
     ) -> datetime.datetime:
         """Check if our data is up-to-date and we do not have issues with feeds.
 
@@ -1670,6 +1671,9 @@ class TradingStrategyUniverseModel(UniverseModel):
         :param best_before_duration:
             Data must be not older than this duration.
 
+        :param best_before_duration_liquidity:
+            Because liquidity data is not as critical as candle data, and uses 1d granulariy, it has its own tolerance.
+
         :raise DataTooOld:
             in the case data is too old to execute.
 
@@ -1682,11 +1686,14 @@ class TradingStrategyUniverseModel(UniverseModel):
 
         assert isinstance(strategy_universe, TradingStrategyUniverse), f"Expected TradingStrategyUniverse, got {strategy_universe.__class__}"
 
-        max_age = ts - best_before_duration
+
         data_universe = strategy_universe.data_universe
         candle_end = None
 
         if data_universe.candles is not None:
+
+            max_age = ts - best_before_duration
+
             # Convert pandas.Timestamp to executor internal datetime format
             candle_start, candle_end = data_universe.candles.get_timestamp_range(
                 exclude_forward_fill=True,
@@ -1734,6 +1741,7 @@ class TradingStrategyUniverseModel(UniverseModel):
                 )
 
         if data_universe.liquidity is not None:
+            max_age = ts - best_before_duration_liquidity
             liquidity_start, liquidity_end = data_universe.liquidity.get_timestamp_range(
                 exclude_forward_fill=True,
             )

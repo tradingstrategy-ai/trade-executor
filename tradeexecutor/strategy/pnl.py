@@ -1,6 +1,7 @@
 """Profit and Loss (PnL) calculation helperes for trading positions."""
 import dataclasses
 import datetime
+import math
 
 from tradeexecutor.state.identifier import TradingPairKind
 from tradeexecutor.state.types import USDollarPrice, USDollarAmount, Percent
@@ -28,6 +29,7 @@ def calculate_pnl(
     end_at: datetime.datetime=None,
     mark_price: USDollarPrice=None,
     epsilon: float=1e-6,
+    max_annualised_profit: Percent = 100,  # 1000% annualised profit, or 100x
 ) -> ProfitData:
     """Calculate the Profit and Loss (PnL) for a given trading position.
 
@@ -100,6 +102,10 @@ def calculate_pnl(
 
     try:
         profit_pct_annualised = (1 + profit_pct) ** annualised_periods - 1
+    except OverflowError as e:
+        # If we make a very short position (few hours) and make gains like 4%,
+        # Python floating point will overflow when calculating annualised profit.
+        profit_pct_annualised = math.copysign(max_annualised_profit, profit_pct)
     except Exception as e:
         raise RuntimeError(f"Failed to annualise profit_pct {profit_pct} for position {position} with duration {duration}, periods {annualised_periods}") from e
 
