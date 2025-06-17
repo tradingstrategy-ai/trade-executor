@@ -98,7 +98,10 @@ def calculate_pnl(
     profit_usd = realised_pnl_total + unrealised_pnl
     profit_pct = (profit_usd / cumulative_value)
 
-    profit_pct_annualised = (1 + profit_pct) ** annualised_periods - 1
+    try:
+        profit_pct_annualised = (1 + profit_pct) ** annualised_periods - 1
+    except Exception as e:
+        raise RuntimeError(f"Failed to annualise profit_pct {profit_pct} for position {position} with duration {duration}, periods {annualised_periods}") from e
 
     return ProfitData(
         profit_pct=profit_pct,
