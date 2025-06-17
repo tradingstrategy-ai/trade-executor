@@ -19,12 +19,14 @@ from eth_defi.enzyme.vault import Vault
 from eth_defi.hotwallet import HotWallet
 from eth_defi.token import TokenDetails, fetch_erc20_details
 from eth_defi.trace import assert_transaction_success_with_explanation
-from eth_defi.event_reader.reorganisation_monitor import create_reorganisation_monitor
+
 
 from tradeexecutor.cli.main import app
 from tradeexecutor.monkeypatch.web3 import construct_sign_and_send_raw_middleware
 from tradeexecutor.state.state import State
-from tradeexecutor.ethereum.enzyme.vault import EnzymeVaultSyncModel
+
+
+CI = os.environ.get("CI")  == "true"
 
 
 pytestmark = [
@@ -289,7 +291,7 @@ def test_enzyme_credit_positions_with_big_size(
 
 
 # ERROR tests/mainnet_fork/test_enzyme_credit_position.py::test_enzyme_credit_position_redemption - requests.exceptions.ReadTimeout: HTTPConnectionPool(host='localhost', port=20415): Read timed out. (read timeout=10)
-@flaky.flaky
+@pytest.mark.skipif(CI, reason="Too flaky on Github")
 def test_enzyme_credit_position_redemption(
     web3: Web3,
     vault: Vault,

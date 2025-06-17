@@ -9,6 +9,7 @@ import pandas as pd
 
 
 from .app import app
+from .shared_options import unit_testing
 from ..bootstrap import prepare_executor_id, prepare_cache
 from ..log import setup_logging
 from ..universe import setup_universe
@@ -60,6 +61,7 @@ def check_universe(
         max_data_delay_minutes=max_data_delay_minutes,
         strategy_factory=strategy_factory,
         execution_context=execution_context,
+        unit_testing=unit_testing,
     )
 
     # Deconstruct strategy input

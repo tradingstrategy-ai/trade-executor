@@ -336,7 +336,7 @@ def test_enzyme_uniswap_v3_test_trade(
 
     with patch.dict(os.environ, env, clear=True):
         with pytest.raises(SystemExit) as e:
-            cli.main(args=["perform-test-trade"])
+            cli.main(args=["perform-test-trade", "--single-pair"])
         assert e.value.code == 0
 
     assert usdc.contract.functions.balanceOf(vault.address).call() < deposit_amount, "No deposits where spent; trades likely did not happen"

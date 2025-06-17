@@ -424,7 +424,7 @@ def test_enzyme_perform_test_trade(
 
     with patch.dict(os.environ, env, clear=True):
         with pytest.raises(SystemExit) as e:
-            cli.main(args=["perform-test-trade"])
+            cli.main(args=["perform-test-trade", f"--single-pair"])
         assert e.value.code == 0
 
     assert usdc.functions.balanceOf(vault.address).call() < deposit_amount, "No deposits where spent; trades likely did not happen"
@@ -683,7 +683,7 @@ def test_enzyme_correct_accounts_for_closed_position_transfer_away(
     # Open and close position
     with patch.dict(os.environ, environment, clear=True):
         with pytest.raises(SystemExit) as e:
-            cli.main(args=["perform-test-trade"])
+            cli.main(args=["perform-test-trade", "--single-pair"])
         assert e.value.code == 0
 
     # TODO: Not sure what test fixture drops WETH on deployer

@@ -34,6 +34,7 @@ def setup_universe(
     max_data_delay_minutes: int,
     strategy_factory: Callable,
     execution_context: ExecutionContext,
+    unit_testing=False,
 ) -> UniverseInitData:
     """Setup universe loading for a trading strategy.
 
@@ -48,7 +49,9 @@ def setup_universe(
         cache_path=cache_path,
         settings_path=None,
     )
-    client.clear_caches()
+
+    if not unit_testing:
+        client.clear_caches()
 
     max_data_delay = datetime.timedelta(minutes=max_data_delay_minutes)
 

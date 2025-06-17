@@ -77,6 +77,9 @@ def setup_charting_and_output(
     import plotly.io as pio
     from plotly.offline import init_notebook_mode
 
+    # Apply Plotly bug fixes
+    import tradeexecutor.monkeypatch.plotly
+
     # Get rid of findfont: Font family 'Arial' not found.
     # when running a remote notebook on Jupyter Server on Ubuntu Linux server
     # https://stackoverflow.com/questions/42097053/matplotlib-cannot-find-basic-fonts/76136516#76136516
@@ -126,7 +129,7 @@ def set_large_plotly_chart_font(
     line_width = 3,
     base_template="plotly",
 ):
-    """Increae the default Plotly chart font sizes so that charts are readable on other mediums like mobile and PowerPoint.
+    """Increase the default Plotly chart font sizes so that charts are readable on other mediums like mobile and PowerPoint.
 
     Usage:
 
@@ -177,6 +180,10 @@ def set_notebook_logging(log_level: int | str=logging.INFO):
         log_level = getattr(logging, log_level.upper())
 
     format = '[%(asctime)s] %(levelname)s %(module)s: %(message)s'
-    logging.basicConfig(level=log_level,
-                        format=format,
-                        datefmt='%H:%M:%S')
+    logging.basicConfig(
+        level=log_level,
+        format=format,
+        datefmt='%H:%M:%S',
+        stream=sys.stdout,
+        force=True,  # Force to override any previous logging configuration
+    )

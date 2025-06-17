@@ -215,6 +215,9 @@ def test_enzyme_guard_perform_test_trade_aave(
         app(["check-wallet"], standalone_mode=False)
 
     with mock.patch.dict('os.environ', environment, clear=True):
+        app(["perform-test-trade", "--lending-reserve=(polygon,aave-v3,USDC.e)"], standalone_mode=False)
+
+    with mock.patch.dict('os.environ', environment, clear=True):
         app(["perform-test-trade", "--all-pairs"], standalone_mode=False)
 
     # Check the resulting state and see we made some trade for trading fee losses

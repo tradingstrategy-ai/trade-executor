@@ -5,6 +5,8 @@ from decimal import Decimal
 
 from web3 import Web3
 
+from tradeexecutor.state.identifier import TradingPairIdentifier
+from tradingstrategy.lending import LendingReserveDescription
 from tradingstrategy.universe import Universe
 from tradingstrategy.pair import HumanReadableTradingPairDescription
 from tradingstrategy.exchange import ExchangeUniverse
@@ -38,10 +40,10 @@ def make_test_trade(
     routing_state: RoutingState,
     max_slippage: Percent,
     amount=Decimal("1.0"),
-    pair: HumanReadableTradingPairDescription | None = None,
+    pair: TradingPairIdentifier | HumanReadableTradingPairDescription | None = None,
+    lending_reserve_description: LendingReserveDescription | None = None,
     buy_only: bool = False,
     test_short: bool = True,
-    test_credit_supply: bool = True,
 ):
     """Perform a test trade.
 
@@ -66,44 +68,44 @@ def make_test_trade(
 
     reserve_asset = universe.get_reserve_asset()
 
-    if data_universe.pairs.get_count() > 1 and not pair:
-        raise RuntimeError(
-            "You are using a multipair universe.\n"
-            "Use the --pair flag to perform a test trade on a specific pair.\n"
-            "Use check-universe command to get list of pair ids.\n"
-            "Alternatively, use the --all-pairs flag to perform the test trade on all pairs.")
-    
     if pair:
-        if data_universe.exchanges:
-            exchange_universe = ExchangeUniverse.from_collection(data_universe.exchanges)
-        elif data_universe.exchange_universe:
-            exchange_universe = data_universe.exchange_universe
-        else:
-            raise RuntimeError("You need to provide the exchange_universe when creating the universe")
+        assert not lending_reserve_description
 
-        raw_pair = data_universe.pairs.get_pair(*pair, exchange_universe=exchange_universe)
-    else:
-        raw_pair = data_universe.pairs.get_single()
+        if not isinstance(pair, TradingPairIdentifier):
+            # Resolve human description of the pair
+            if data_universe.exchanges:
+                exchange_universe = ExchangeUniverse.from_collection(data_universe.exchanges)
+            elif data_universe.exchange_universe:
+                exchange_universe = data_universe.exchange_universe
+            else:
+                raise RuntimeError("You need to provide the exchange_universe when creating the universe")
 
-    logger.info("Getting price for pair %s using %s", raw_pair, pricing_model)
-    pair = translate_trading_pair(raw_pair)
+            raw_pair = data_universe.pairs.get_pair(*pair, exchange_universe=exchange_universe)
 
-    # Get estimated price for the asset we are going to buy
-    assumed_price_structure = pricing_model.get_buy_price(
-        ts,
-        pair,
-        amount,
-    )
+            pair = translate_trading_pair(raw_pair)
 
-    logger.info(
-        "Making a test trade on pair: %s, for %f %s price is %f %s/%s",
-        pair,
-        amount,
-        reserve_asset.token_symbol,
-        assumed_price_structure.mid_price,
-        pair.base.token_symbol,
-        reserve_asset.token_symbol,
-    )
+        logger.info("Getting price for pair %s using %s", pair, pricing_model)
+        # Get estimated price for the asset we are going to buy
+        assumed_price_structure = pricing_model.get_buy_price(
+            ts,
+            pair,
+            amount,
+        )
+
+        logger.info(
+            "Making a test trade on pair: %s, for %f %s price is %f %s/%s",
+            pair,
+            amount,
+            reserve_asset.token_symbol,
+            assumed_price_structure.mid_price,
+            pair.base.token_symbol,
+            reserve_asset.token_symbol,
+        )
+
+    elif lending_reserve_description:
+        # Convert description to TradingPairIdentifier used in PositionManager
+        assert type(lending_reserve_description) in (tuple, list), f"lending_reserve_description must be a tuple, got {type(lending_reserve_description)}"
+        credit_pair = pair = lending_reserve = universe.get_lending_reserve_by_human_description(lending_reserve_description)
 
     logger.info("Sync model is %s", sync_model)
     logger.info("Trading university reserve asset is %s", universe.get_reserve_asset())
@@ -175,12 +177,24 @@ def make_test_trade(
 
     if position is None:
         # Create trades to open the position
-        trades = position_manager.open_spot(
-            pair,
-            float(amount),
-            notes=notes,
-            flags={TradeFlag.test_trade},
-        )
+
+        if lending_reserve_description:
+            assert lending_reserve
+            trades = position_manager.open_credit_supply_position_for_reserves(
+                lending_reserve_identifier=lending_reserve,
+                amount=float(amount),
+                notes=notes,
+                flags={TradeFlag.test_trade},
+            )
+
+            open_credit_supply_trade = trades[0]
+        else:
+            trades = position_manager.open_spot(
+                pair,
+                float(amount),
+                notes=notes,
+                flags={TradeFlag.test_trade},
+            )
 
         trade = trades[0]
         buy_trade = trade
@@ -216,7 +230,7 @@ def make_test_trade(
             logger.error("Position dump:\n%s", position.get_debug_dump())
 
         if not trade.is_success():
-            raise AssertionError("Test buy failed.")
+            raise AssertionError(f"Test buy failed: {trade}, {trade.get_revert_reason()}")
 
         if not position.is_open():
             raise AssertionError("Test buy succeed, but the position was not opened\n"
@@ -245,11 +259,19 @@ def make_test_trade(
             default_slippage_tolerance=max_slippage,
         )
 
-        trades = position_manager.close_position(
-            position,
-            notes=notes,
-            flags={TradeFlag.test_trade},
-        )
+        if lending_reserve_description:
+            trades = position_manager.close_credit_supply_position(
+                position,
+                notes=notes,
+                flags={TradeFlag.test_trade},
+            )
+            close_credit_supply_trade = trades[0]
+        else:
+            trades = position_manager.close_position(
+                position,
+                notes=notes,
+                flags={TradeFlag.test_trade},
+            )
         assert len(trades) == 1
         sell_trade = trades[0]
 
@@ -277,7 +299,7 @@ def make_test_trade(
     else:
         sell_trade = None
 
-    if universe.has_any_lending_data() and universe.can_open_short(datetime.datetime.utcnow(), pair) and test_short:
+    if pair and universe.has_any_lending_data() and universe.can_open_short(datetime.datetime.utcnow(), pair) and test_short:
         short_pair = universe.get_shorting_pair(pair)
         position = state.portfolio.get_position_by_trading_pair(short_pair)
 
@@ -413,135 +435,6 @@ def make_test_trade(
         
         update_statistics(datetime.datetime.utcnow(), state.stats, state.portfolio, ExecutionMode.real_trading, long_short_metrics_latest=long_short_metrics_latest)
 
-    # Credit supply test trade:
-    # TODO: Clean up - this is written incorrectly
-    if universe.has_any_lending_data() and universe.can_open_credit_supply(datetime.datetime.utcnow(), pair) and test_credit_supply:
-        credit_pair = universe.get_credit_supply_pair()
-        position = state.portfolio.get_position_by_trading_pair(credit_pair)
-
-        if position is None:
-
-            # Recreate the position manager for the new timestamp,
-            # as time has passed
-            ts = datetime.datetime.utcnow()
-            position_manager = PositionManager(
-                ts,
-                universe,
-                state,
-                pricing_model,
-                default_slippage_tolerance=max_slippage,
-            )
-
-            # Create trades to open the position
-            trades = position_manager.open_credit_supply_position_for_reserves(float(amount), flags={TradeFlag.test_trade})
-
-            trade = trades[0]
-            open_credit_supply_trade = trade
-
-            # Compose the trades as approve() + swapTokenExact(),
-            # broadcast them to the blockchain network and
-            # wait for the confirmation
-            execution_model.execute_trades(
-                ts,
-                state,
-                trades,
-                routing_model,
-                routing_state,
-            )
-
-            position_id = trade.position_id
-            position = state.portfolio.get_position_by_id(position_id)
-
-            assert position.is_test()
-            assert open_credit_supply_trade.is_test()
-
-            if not trade.is_success() or not position.is_open():
-                # Alot of diagnostics to debug Arbitrum / WBTC issues
-                trades = sum_decimal([t.get_position_quantity() for t in position.trades.values() if t.is_success()])
-                direct_balance_updates = position.get_base_token_balance_update_quantity()
-
-                logger.error("Trade quantity: %s, direct balance updates: %s", trades, direct_balance_updates)
-
-                logger.error("Test open credit supply failed: %s", trade)
-                logger.error("Tx hash: %s", trade.blockchain_transactions[-1].tx_hash)
-                logger.error("Revert reason: %s", trade.blockchain_transactions[-1].revert_reason)
-                logger.error("Trade dump:\n%s", trade.get_debug_dump())
-                logger.error("Position dump:\n%s", position.get_debug_dump())
-
-            if not trade.is_success():
-                raise AssertionError("Test open credit supply failed.")
-
-            if not position.is_open():
-                raise AssertionError("Test buy succeed, but the position was not opened\n"
-                                     "Check for dust corrections.")
-
-            long_short_metrics_latest = serialise_long_short_stats_as_json_table(
-                state, None
-            )
-
-            update_statistics(datetime.datetime.utcnow(), state.stats, state.portfolio, ExecutionMode.real_trading, long_short_metrics_latest=long_short_metrics_latest)
-
-        # Close credit supply
-
-        # Recreate the position manager for the new timestamp,
-        # as time has passed
-        ts = datetime.datetime.utcnow()
-        position_manager = PositionManager(
-            ts,
-            universe,
-            state,
-            pricing_model,
-            default_slippage_tolerance=max_slippage,
-        )
-
-        # Create trades to open the position
-        trades = position_manager.close_credit_supply_position(position, flags={TradeFlag.test_trade})
-
-        trade = trades[0]
-        close_credit_supply_trade = trade
-
-        assert close_credit_supply_trade.is_test()
-
-        # Compose the trades as approve() + swapTokenExact(),
-        # broadcast them to the blockchain network and
-        # wait for the confirmation
-        execution_model.execute_trades(
-            ts,
-            state,
-            trades,
-            routing_model,
-            routing_state,
-        )
-
-        position_id = trade.position_id
-        position = state.portfolio.get_position_by_id(position_id)
-
-        if not trade.is_success() or position.is_open():
-            # Alot of diagnostics to debug Arbitrum / WBTC issues
-            trades = sum_decimal([t.get_position_quantity() for t in position.trades.values() if t.is_success()])
-            direct_balance_updates = position.get_base_token_balance_update_quantity()
-
-            logger.error("Trade quantity: %s, direct balance updates: %s", trades, direct_balance_updates)
-
-            logger.error("Close credit supply failed: %s", trade)
-            logger.error("Tx hash: %s", trade.blockchain_transactions[-1].tx_hash)
-            logger.error("Revert reason: %s", trade.blockchain_transactions[-1].revert_reason)
-            logger.error("Trade dump:\n%s", trade.get_debug_dump())
-            logger.error("Position dump:\n%s", position.get_debug_dump())
-
-        if not trade.is_success():
-            raise AssertionError(f"Test close credit supply failed, trade not marked as success: {trade.get_revert_reason()}")
-
-        if not position.is_closed():
-            raise AssertionError("Short close succeed, but the position was not closed\n"
-                                 "Check for dust corrections.")
-
-        long_short_metrics_latest = serialise_long_short_stats_as_json_table(
-            state, None
-        )
-        
-        update_statistics(datetime.datetime.utcnow(), state.stats, state.portfolio, ExecutionMode.real_trading, long_short_metrics_latest=long_short_metrics_latest)
-
     gas_at_end = hot_wallet.get_native_currency_balance(web3)
     reserve_currency_at_end = state.portfolio.get_default_reserve_position().get_value()
 
@@ -550,6 +443,7 @@ def make_test_trade(
     logger.info("  Trades done currently: %d", len(list(state.portfolio.get_all_trades())))
     logger.info("  Reserves currently: %s %s", reserve_currency_at_end, reserve_currency)
     logger.info("  Reserve currency spent: %s %s", reserve_currency_at_start - reserve_currency_at_end, reserve_currency)
+
     if buy_trade:
         logger.info("  Buy trade price, expected: %s, actual: %s (%s)", buy_trade.planned_price, buy_trade.executed_price, pair.get_ticker())
     if sell_trade:

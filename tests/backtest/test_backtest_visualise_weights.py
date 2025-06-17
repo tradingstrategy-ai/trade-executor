@@ -208,8 +208,12 @@ def test_visualise_weights(strategy_universe, tmp_path):
     assets = weights_series.index.get_level_values(1).unique()
     assert set(assets) == {"USDC", "WBTC", "WETH"}
 
+    import tradeexecutor.monkeypatch.plotly
+
     fig = visualise_weights(weights_series)
     assert isinstance(fig, Figure)
+
+    fig.show()
 
     weight_stats = calculate_weights_statistics(weights_series)
     assert isinstance(weight_stats, pd.DataFrame)

@@ -65,12 +65,14 @@ class VaultRouting(RoutingModel):
         self,
         reserve_token_address: JSONHexAddress,
         profitability_estimation_lookback_window=datetime.timedelta(days=7),
+        epsilon=Decimal(1e-6),
     ):
         super().__init__(
             allowed_intermediary_pairs={},
             reserve_token_address=reserve_token_address,
         )
         self.profitability_estimation_lookback_window = profitability_estimation_lookback_window
+        self.epsilon = epsilon
 
     def create_routing_state(
         self,
@@ -161,7 +163,7 @@ class VaultRouting(RoutingModel):
         swap_gas_limit = 2_500_000
 
         tx_1 = tx_builder.sign_transaction(
-            contract=target_vault.vault_contract,
+            contract=target_vault.denomination_token.contract,
             args_bound_func=approve_call,
             gas_limit=approve_gas_limit,
             asset_deltas=[],
@@ -228,12 +230,17 @@ class VaultRouting(RoutingModel):
             raise KeyError(f"Could not find hash: {swap_tx.tx_hash} in {receipts}") from e
 
         direction = "deposit" if trade.is_buy() else "redeem"
-        result = analyse_4626_flow_transaction(
-            vault=vault,
-            tx_hash=swap_tx.tx_hash,
-            tx_receipt=receipt,
-            direction=direction,
-        )
+
+        try:
+            result = analyse_4626_flow_transaction(
+                vault=vault,
+                tx_hash=swap_tx.tx_hash,
+                tx_receipt=receipt,
+                direction=direction,
+                hot_wallet=False,
+            )
+        except Exception as e:
+            raise RuntimeError(f"Failed to analyse vault tx: {swap_tx.wrapped_function_selector}: {swap_tx.tx_hash} direction: {direction}, receipt: {receipt}, vault: {vault}") from e
 
         ts = get_block_timestamp(web3, receipt["blockNumber"])
 

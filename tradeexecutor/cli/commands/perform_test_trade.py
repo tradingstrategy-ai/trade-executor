@@ -21,7 +21,7 @@ from ...strategy.approval import UncheckedApprovalModel
 from ...strategy.bootstrap import make_factory_from_strategy_mod
 from ...strategy.description import StrategyExecutionDescription
 from ...strategy.execution_context import ExecutionContext, ExecutionMode
-from ...strategy.execution_model import AssetManagementMode
+from ...strategy.execution_model import AssetManagementMode, ExecutionModel
 from ...strategy.generic.generic_pricing_model import GenericPricing
 from ...strategy.run_state import RunState
 from ...strategy.strategy_module import read_strategy_module, StrategyModuleInformation
@@ -68,11 +68,14 @@ def perform_test_trade(
 
     # for multipair strategies
     pair: Optional[str] = shared_options.pair,
+    lending_reserve: Optional[str] = Option(None, "--lending-reserve", envvar="LENDING_RESERVE", help="A lending reserve description to test Aave deposits"),
     all_pairs: bool = shared_options.all_pairs,
+    all_vaults: bool = shared_options.all_vaults,
 
     buy_only: bool = Option(False, "--buy-only/--no-buy-only", help="Only perform the buy side of the test trade - leave position open."),
+    single_pair: bool = Option(False, help="Test single pair in the trading universe."),
     test_short: bool = Option(True, "--test-short/--no-test-short", help="Perform test short trades as well."),
-    test_credit_supply: bool = Option(True, "--test-credit-supply/--no-test-credit-supply", help="Perform test credit supply trades as well."),
+    test_credit_supply: bool = Option(False,"--test-credit-supply/--no-test-credit-supply", help="Deprecated argument. Do not use anymore. Inistead, specify --pair (...lending pair description...)"),
     amount: float = Option(1.0, envvar="AMOUNT", help="The USD value of the test trade"),
     simulate: bool = shared_options.simulate,
 ):
@@ -82,11 +85,36 @@ def perform_test_trade(
     the routing configuration from the strategy.
 
     The trade will be recorded on the state as a position.
+
+    Test single pair:
+
+        trade-executor perform-test-trade --pair "(base, uniswap-v3, KEYCAT, WETH, 0.0030)"
+
+    Test all vaults:
+
+        trade-executor perform-test-trade --all-vaults
+
+    Test supply credit:
+
+        trade-executor perform-test-trade --lending-reserve "(base, aave-v3, USDC)"
+
     """
 
     if pair:
         assert not all_pairs, "Cannot specify both --pair and --all-pairs"
-        pair = parse_pair_data(pair)
+        try:
+            pair = parse_pair_data(pair)
+        except Exception as e:
+            raise ValueError(f"Failed to parse pair data: {pair}") from e
+
+    if lending_reserve:
+        # (base, aave-v3, USDC)
+        lending_reserve = [p.strip() for p in lending_reserve.strip().strip("()").split(",")]
+
+    if test_credit_supply:
+        raise NotImplementedError("--test-credit-supply is deprecated and no longer supported. Use --lending-reserve=(base, aave-v3, USDC) instead.")
+
+    assert pair or lending_reserve or single_pair or all_vaults or all_pairs, "You must specify either --pair, --lending-reserve, --single-pair, --all-vaults or --all-pairs to perform a test trade"
 
     id = prepare_executor_id(id, strategy_file)
 
@@ -185,6 +213,10 @@ def perform_test_trade(
         universe_options
     )
 
+    if single_pair:
+        pair = universe.get_single_pair()
+        logger.info("Using single pair from the universe: %s", pair)
+
     runner = run_description.runner
     routing_state, pricing_model, valuation_method = runner.setup_routing(universe)
 
@@ -202,8 +234,35 @@ def perform_test_trade(
         assert isinstance(runner.routing_model, VelvetEnsoRouting), f"Got: {runner.routing_model}"
         assert routing_model is None, f"Got: {routing_model}"
 
+    assert not (all_vaults and all_pairs), "Cannot specify both --all-vaults and --all-pairs"
+
     try:
-        if all_pairs:
+        if all_vaults:
+            logger.info("Testing all vaults")
+
+            vault_pairs = [p for p in universe.iterate_pairs() if p.is_vault()]
+            logger.info("Testing total of %d vaults", len(vault_pairs))
+
+            for pair in vault_pairs:
+
+                logger.info("Making test trade for vault %s (%s)", pair.get_vault_name(), pair.base.token_symbol)
+
+                make_test_trade(
+                    web3config.get_default(),
+                    execution_model,
+                    pricing_model,
+                    sync_model,
+                    state,
+                    universe,
+                    runner.routing_model,
+                    routing_state,
+                    max_slippage=max_slippage,
+                    pair=pair,
+                    buy_only=buy_only,
+                    test_short=test_short,
+                    amount=Decimal(amount),
+                )
+        elif all_pairs:
             logger.info("Testing all pairs, we have %d pairs", universe.get_pair_count())
 
             if not simulate:
@@ -229,10 +288,11 @@ def perform_test_trade(
                     pair=p,
                     buy_only=buy_only,
                     test_short=test_short,
-                    test_credit_supply=test_credit_supply,
                     amount=Decimal(amount),
                 )
         else:
+
+            assert pair or lending_reserve, "You must specify either --pair or --lending-reserve to perform a single pair test trade"
 
             logger.info("Single pair test trade for %s", pair)
             make_test_trade(
@@ -246,9 +306,9 @@ def perform_test_trade(
                 routing_state,
                 max_slippage=max_slippage,
                 pair=pair,
+                lending_reserve_description=lending_reserve,
                 buy_only=buy_only,
                 test_short=test_short,
-                test_credit_supply=test_credit_supply,
                 amount=Decimal(amount),
             )
     except OutOfBalance as e:
