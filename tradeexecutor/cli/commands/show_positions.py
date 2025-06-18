@@ -69,7 +69,7 @@ def show_positions(
     # https://pypi.org/project/tabulate/
     # https://stackoverflow.com/a/31885295/315168
     if len(df) > 0:
-        print(tabulate(df, headers='keys', tablefmt='rounded_outline'))
+        print(tabulate(df, headers='keys', tablefmt='fancy_grid'))
     else:
         print("No open positions")
     print()
@@ -78,7 +78,7 @@ def show_positions(
         print("Frozen positions")
         df = display_positions(state.portfolio.frozen_positions.values())
         if len(df) > 0:
-            print(tabulate(df, headers='keys', tablefmt='rounded_outline'))
+            print(tabulate(df, headers='keys', tablefmt='fancy_grid'))
         else:
             print("No frozen positions")
         print()
@@ -86,7 +86,7 @@ def show_positions(
     if position_type == PositionType.all:
         print("Closed positions")
         df = display_positions(state.portfolio.closed_positions.values())
-        print(tabulate(df, headers='keys', tablefmt='rounded_outline'))
+        print(tabulate(df, headers='keys', tablefmt='fancy_grid'))
 
     match tx_type:
         case TransactionType.failed:

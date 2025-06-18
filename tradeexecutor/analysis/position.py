@@ -1,9 +1,11 @@
 """Display trading positions as Pandas notebook items."""
 import datetime
+import textwrap
 from typing import Iterable
 
 import pandas as pd
 
+from example_scripts.create_decrease_order_with_known_positions import order
 from tradeexecutor.ethereum.revert import clean_revert_reason_message
 from tradeexecutor.state.blockhain_transaction import BlockchainTransaction
 from tradeexecutor.state.position import TradingPosition
@@ -49,6 +51,9 @@ def display_positions(positions: Iterable[TradingPosition]) -> pd.DataFrame:
         if p.is_stop_loss():
             flags.append("SL")
 
+        notes = p.pair.base.address + "\n"
+        notes = "\n".join(textwrap.wrap(p.notes or "", width=20)
+
         items.append({
             "Flags": ", ".join(flags),
             "Ticker": p.pair.get_ticker(),
@@ -57,7 +62,7 @@ def display_positions(positions: Iterable[TradingPosition]) -> pd.DataFrame:
             "Opened": _ftime(p.opened_at),
             "Closed": _ftime(p.closed_at),
             "Qty": f"{p.get_quantity():,.4f}",
-            "Notes": (p.notes or "")[0:20],
+            "Notes": notes,
         })
 
         for t in p.trades.values():

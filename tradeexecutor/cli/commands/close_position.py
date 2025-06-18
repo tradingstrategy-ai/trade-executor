@@ -1,4 +1,11 @@
-"""close-position command"""
+"""close-position command.
+
+Manually force close position with high slippage:
+
+.. code-block:: shell
+
+    pass
+"""
 
 import datetime
 from pathlib import Path
