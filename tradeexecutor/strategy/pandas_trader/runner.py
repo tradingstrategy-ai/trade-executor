@@ -329,7 +329,6 @@ class PandasTraderRunner(StrategyRunner):
                     logger.warning("Chart visualisation missing")
             else:
                 logger.warning(f"Discord small_image not bytes: %s", type(small_image))
-
         else:
             
              # Log state
