@@ -9,13 +9,20 @@ To export / update all exported data:
 
 .. code-block:: shell
 
-    python tradeexecutor/backtest/preprocessed_backtest_exporter.py ~/exported
+    export TRADING_STRATEGY_API_KEY=...
+    python tradeexecutor/backtest/preprocessed_backtest_exporter.py ~/.tradingstrategy/exported
 
-Run using Docker. Created files will be placed in ``~/exported`` in the host FS:
+To run more quickly, skip backtest
 
 .. code-block:: shell
 
-    mkdir ~/exported
+    BACKTEST=false python tradeexecutor/backtest/preprocessed_backtest_exporter.py ~/.tradingstrategy/exported
+
+Run using Docker. Created files will be placed in ``~/.tradingstrategy/exported`` in the host file system:
+
+.. code-block:: shell
+
+    mkdir -p ~/.tradingstrategy/exported
     # Get from https://github.com/tradingstrategy-ai/trade-executor/actions
     export TRADE_EXECUTOR_VERSION=latest
     docker run \
@@ -33,9 +40,8 @@ import logging
 import os
 import pickle
 import tempfile
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 import datetime
-from heapq import merge
 from pathlib import Path
 
 import pandas as pd
@@ -192,6 +198,7 @@ def run_and_write_report(
     custom_js=DEFAULT_CUSTOM_JS,
     show_code=False,
     timeout=1800,
+    backtest=True,
 ):
     with tempfile.TemporaryDirectory() as tmp_dir:
         tmp_dir = Path(tmp_dir)
@@ -223,44 +230,48 @@ def run_and_write_report(
         }} """
 
         # Run the notebook
-        universe_size = os.path.getsize(universe_path)
-        dataset_size = os.path.getsize(dataset_path)
-        logger.info(f"Starting backtest {dataset.set.slug}, dataset notebook execution, dataset size is {dataset_size:,}b, universe size is {universe_size:,}b")
-        ep = ExecutePreprocessor(timeout=timeout, kernel_name='python3')
+        if backtest:
+            universe_size = os.path.getsize(universe_path)
+            dataset_size = os.path.getsize(dataset_path)
+            logger.info(f"Starting backtest {dataset.set.slug}, dataset notebook execution, dataset size is {dataset_size:,}b, universe size is {universe_size:,}b")
+            ep = ExecutePreprocessor(timeout=timeout, kernel_name='python3')
 
-        try:
-            ep.preprocess(nb, {'metadata': {'path': '.'}})
-        except CellExecutionError as e:
-            raise BacktestReportRunFailed(f"Could not run backtest reporter for {dataset_path}: {e}") from e
+            try:
+                ep.preprocess(nb, {'metadata': {'path': '.'}})
+            except CellExecutionError as e:
+                raise BacktestReportRunFailed(f"Could not run backtest reporter for {dataset_path}: {e}") from e
 
-        logger.info("Notebook executed")
+            logger.info("Notebook executed")
 
-        # Write ipynb file that contains output cells created in place
-        if output_notebook is not None:
-            with open(output_notebook, 'w', encoding='utf-8') as f:
-                nbformat.write(nb, f)
+            # Write ipynb file that contains output cells created in place
+            if output_notebook is not None:
+                with open(output_notebook, 'w', encoding='utf-8') as f:
+                    nbformat.write(nb, f)
 
-        # Write a static HTML file based on the notebook
-        if output_html is not None:
+            # Write a static HTML file based on the notebook
+            if output_html is not None:
 
-            html_exporter = HTMLExporter(
-                template_name='classic',
-                embed_images=True,
-                exclude_input=show_code is False,
-                exclude_input_prompt=True,
-                exclude_output_prompt=True,
-            )
-            # Image are inlined in the output
-            html_content, resources = html_exporter.from_notebook_node(nb)
+                html_exporter = HTMLExporter(
+                    template_name='classic',
+                    embed_images=True,
+                    exclude_input=show_code is False,
+                    exclude_input_prompt=True,
+                    exclude_output_prompt=True,
+                )
+                # Image are inlined in the output
+                html_content, resources = html_exporter.from_notebook_node(nb)
 
-            # Inject our custom css
-            if custom_css is not None:
-                html_content = _inject_custom_css_and_js(html_content, custom_css, custom_js)
+                # Inject our custom css
+                if custom_css is not None:
+                    html_content = _inject_custom_css_and_js(html_content, custom_css, custom_js)
 
-            with open(output_html, 'w', encoding='utf-8') as f:
-                f.write(html_content)
+                with open(output_html, 'w', encoding='utf-8') as f:
+                    f.write(html_content)
 
-            logger.info("Wrote HTML report to %s, total %d bytes", output_html, len(html_content))
+                logger.info("Wrote HTML report to %s, total %d bytes", output_html, len(html_content))
+
+        else:
+            logger.info("Backtest execution skipped for %s", dataset.set.slug)
 
         return nb
 

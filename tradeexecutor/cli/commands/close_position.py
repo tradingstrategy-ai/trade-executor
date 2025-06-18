@@ -64,6 +64,7 @@ def close_position(
     position_id: Optional[int] = Option(None, envvar="POSITION_ID", help="Position id to close."),
     close_by_sell: Optional[bool] = Option(True, envvar="CLOSE_BY_SELL", help="Attempt to close position by selling the underlying. If set to false, mark the position down to zero value."),
     blacklist_marked_down: Optional[bool] = Option(True, envvar="BLACKLIST_MARKED_DOWN", help="Marked down trading pairs are automatically blacklisted for the future trades."),
+    slippage: Optional[float] = Option(None, envvar="SLIPPAGE", help="Override the defaukt slippage tolerance E.g. 0.05 for 5% slippage/sell tax."),
 ):
     """Close a single positions.
 
@@ -174,10 +175,13 @@ def close_position(
     routing_state, pricing_model, valuation_model = runner.setup_routing(universe)
 
     # Set slippge tolerance from the strategy file
-    slippage_tolerance = 0.01
-    if mod:
-        if mod.parameters:
-            slippage_tolerance = mod.parameters.get("slippage_tolerance", 0.01)
+    if slippage:
+        slippage_tolerance = slippage
+    else:
+        slippage_tolerance = 0.01
+        if mod:
+            if mod.parameters:
+                slippage_tolerance = mod.parameters.get("slippage_tolerance", 0.01)
 
     assert position_id
 

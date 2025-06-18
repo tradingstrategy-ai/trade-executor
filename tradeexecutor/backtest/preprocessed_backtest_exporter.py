@@ -24,6 +24,8 @@ def export_all_main():
 
     setup_logging()
 
+    BACKTEST = os.environ.get("BACKTEST", "true").lower() == "true"
+
     client = Client.create_live_client(api_key=os.environ["TRADING_STRATEGY_API_KEY"])
     output_path = Path(sys.argv[1])
 
@@ -39,6 +41,7 @@ def export_all_main():
 
     # Export newly added sets first
     PREPACKAGED_SETS.reverse()
+
 
     for ds in PREPACKAGED_SETS:
 
