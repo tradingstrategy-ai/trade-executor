@@ -5,9 +5,7 @@ from typing import Iterable
 
 import pandas as pd
 
-from example_scripts.create_decrease_order_with_known_positions import order
 from tradeexecutor.ethereum.revert import clean_revert_reason_message
-from tradeexecutor.state.blockhain_transaction import BlockchainTransaction
 from tradeexecutor.state.position import TradingPosition
 from tradeexecutor.state.reserve import ReservePosition
 from tradeexecutor.state.trade import TradeExecution
