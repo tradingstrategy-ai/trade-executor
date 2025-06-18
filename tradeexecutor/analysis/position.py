@@ -50,7 +50,8 @@ def display_positions(positions: Iterable[TradingPosition]) -> pd.DataFrame:
             flags.append("SL")
 
         notes = p.pair.base.address + "\n"
-        notes += "\n".join(textwrap.wrap(p.notes or "", width=20))
+        long_notes = (p.notes or "")[0:100]  # Limit to 100 characters
+        notes += "\n".join(textwrap.wrap(long_notes, width=20))
 
         items.append({
             "Flags": ", ".join(flags),
