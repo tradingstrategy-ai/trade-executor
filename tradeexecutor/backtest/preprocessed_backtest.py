@@ -437,6 +437,7 @@ def prepare_dataset(
     price_df["fee"] = price_df["pair_id"].apply(lambda pair_id: pair_metadata[pair_id]["fee"])
     price_df["buy_tax"] = price_df["pair_id"].apply(lambda pair_id: pair_metadata[pair_id]["buy_tax"])
     price_df["sell_tax"] = price_df["pair_id"].apply(lambda pair_id: pair_metadata[pair_id]["sell_tax"])
+    price_df["exchange_slug"] = price_df["pair_id"].apply(lambda pair_id: pair_metadata[pair_id]["exchange_slug"])
 
     # Merge price and TVL data.x
     # For this we need to resample TVL to whatever timeframe the price happens to be in.
@@ -731,6 +732,26 @@ PREPACKAGED_SETS = [
 
     BacktestDatasetDefinion(
         chain=ChainId.base,
+        slug="base-4h",
+        name="Base, Uniswap, 2024-2025/Q2, 4h, small pairs",
+        description=dedent_any("""
+        - Base Uniswap v2 and v3 trading pairs with a minimum TVL threshold
+        """),
+        start=datetime.datetime(2024, 1, 1),
+        end=datetime.datetime(2025, 6, 1),
+        time_bucket=TimeBucket.h4,
+        min_tvl=200_000,
+        min_weekly_volume=200_000,
+        exchanges={"uniswap-v2", "uniswap-v3"},
+        always_included_pairs=[
+            (ChainId.base, "uniswap-v2", "WETH", "USDC", 0.0030),
+            (ChainId.base, "uniswap-v3", "cbBTC", "WETH", 0.0030),  # Only trading since October
+        ],
+        reserve_token_address=BASE_QUOTE_TOKEN,
+    ),
+
+    BacktestDatasetDefinion(
+        chain=ChainId.base,
         slug="base-1h-top",
         name="Base, hourly, top pairs",
         description=dedent_any("""
@@ -810,6 +831,29 @@ PREPACKAGED_SETS = [
         end=datetime.datetime(2025, 3, 1),
         time_bucket=TimeBucket.h1,
         min_tvl=3_000_000,
+        min_weekly_volume=200_000,
+        exchanges={"uniswap-v2", "uniswap-v3", "sushi"},
+        always_included_pairs=[
+            (ChainId.ethereum, "uniswap-v2", "WETH", "USDC", 0.0030),
+            (ChainId.ethereum, "uniswap-v3", "WBTC", "USDC", 0.0030),  # Only trading since October
+        ],
+        reserve_token_address=ETHEREUM_QUOTE_TOKEN,
+    ),
+
+    BacktestDatasetDefinion(
+        chain=ChainId.ethereum,
+        slug="ethereum-4h",
+        name="Ethereum mainnet, Uniswap and Sushiswap, 2020-2025/Q2, hourly",
+        description=dedent_any("""
+    Ethereum Uniswap and Sushiswap DEX trades.
+
+    - Longest DEX history we have
+    - Contains bull and bear market data with mixed set of tokens
+    """),
+        start=datetime.datetime(2020, 1, 1),
+        end=datetime.datetime(2025, 6, 1),
+        time_bucket=TimeBucket.h4,
+        min_tvl=2_000_000,
         min_weekly_volume=200_000,
         exchanges={"uniswap-v2", "uniswap-v3", "sushi"},
         always_included_pairs=[

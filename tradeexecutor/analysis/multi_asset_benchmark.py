@@ -150,7 +150,11 @@ def get_benchmark_data(
     price_data = pd.DataFrame()
     for name, pair in benchmark_assets.items():
 
-        price_series = candle_source.get_candles_by_pair(pair.internal_id)["close"]
+        pair_data = candle_source.get_candles_by_pair(pair.internal_id)
+        if pair_data is not None:
+            price_series = pair_data["close"]
+        else:
+            continue
 
         if start_at:
             price_series = price_series.loc[start_at:]

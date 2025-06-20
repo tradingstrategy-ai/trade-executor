@@ -37,7 +37,9 @@ def post_logging_discord_image(image: bytes):
     If no Discord logger is active do nothing.
     """
 
-    assert isinstance(image, bytes), f"Expected bytes, got {type(image)}"
+    if not isinstance(image, bytes):
+        logger.warning(f"Discord image posting skipped. Expected bytes, got {type(image)}")
+        return
 
     handler = get_discord_logging_handler()
     if not handler:

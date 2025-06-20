@@ -10,6 +10,7 @@ from os import PathLike
 from pathlib import Path
 from typing import Optional, List
 
+from tradeexecutor.cli.version_info import VersionInfo
 from tradeexecutor.utils.ring_buffer_logging_handler import RingBufferHandler
 
 try:
@@ -465,6 +466,8 @@ def setup_sentry_logging(*, application_name: str, sentry_dsn: str):
     import sentry_sdk
     from sentry_sdk.types import Breadcrumb, BreadcrumbHint
 
+    docker_version_info = VersionInfo.read_docker_version()
+
     def before_breadcrumb(crumb: Breadcrumb, hint: BreadcrumbHint) -> Breadcrumb | None:
         # Ignore httplib logs, since they are Discord requests
         if crumb["category"] == "httplib":
@@ -479,9 +482,19 @@ def setup_sentry_logging(*, application_name: str, sentry_dsn: str):
 
         return crumb
 
+    # Add our Docker build tag in th Sentry event data,
+    # so we know which trade-executor version caused error in Sentry
+    def before_send(event, hint):
+        event["extra"] = event.get("extra", {})
+        event["extra"]["docker_image_version"] = docker_version_info.tag
+        event["extra"]["docker_image_commit_message"] = docker_version_info.commit_message
+        event["extra"]["docker_image_commit_hash"] = docker_version_info.commit_hash
+        return event
+
     sentry_sdk.init(
         dsn=sentry_dsn,
         environment=application_name,
         traces_sample_rate=0.1,
         before_breadcrumb=before_breadcrumb,
+        before_send=before_send,
     )

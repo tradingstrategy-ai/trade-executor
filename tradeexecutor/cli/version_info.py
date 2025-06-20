@@ -15,6 +15,8 @@ class VersionInfo:
     """Reflect the version information embedded in the Docker image during CI build.
 
     See `Dockerimage` and `.githyb/workflows/tests.yml` for details.
+
+
     """
 
     #: v50
