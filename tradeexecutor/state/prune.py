@@ -5,8 +5,8 @@ to keep state files manageable in size.
 """
 
 import json
-from typing import TypedDict
-from dataclasses_json.core import _ExtendedEncoder
+from typing import TypedDict, Any
+from dataclasses_json.core import _ExtendedEncoder # type: ignore
 
 from tradeexecutor.state.balance_update import BalanceUpdate
 from tradeexecutor.state.position import TradingPosition
@@ -64,8 +64,8 @@ def prune_closed_positions(state: State) -> PruningResult:
     # This matches how the data is actually stored in the state file
     if all_removed_balance_updates:
         # Convert to a serializable format without relying on to_dict method
-        serialized_data = {
-            str(k): v.to_dict() for k, v in all_removed_balance_updates.items()
+        serialized_data: dict[str, Any] = {
+            str(k): v.to_dict() for k, v in all_removed_balance_updates.items() # type: ignore
         }
         bytes_saved = len(json.dumps(serialized_data, cls=_ExtendedEncoder))
     else:
