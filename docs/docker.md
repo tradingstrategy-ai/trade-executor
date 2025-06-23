@@ -39,7 +39,7 @@ You can start a shell within the container as:
 docker run -ti --entrypoint /bin/bash ghcr.io/tradingstrategy-ai/trade-executor:$TRADE_EXECUTOR_VERSION 
 ```
 
-# Building
+# Building locally
 
 Build the Docker image from the local source code and tags it as `latest` for your local usage:
 

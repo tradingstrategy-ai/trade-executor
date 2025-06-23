@@ -50,8 +50,10 @@ RUN foundryup --install v0.3.0
 EXPOSE 3456
 
 # Speed up Python process startup
-RUN python -m compileall .
-RUN python -m compileall /usr/local/lib/python3.11
+RUN rm -rf ./tests
+RUN python -m compileall -f -q .
+RUN echo `which python`
+RUN python -m compileall -f -q /usr/local/lib/python3.11
 
 # Use --quiet to supress Skipping virtualenv creation, as specified in config file.
 # use --directory so we can use -w and -v switches with Docker run
