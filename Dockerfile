@@ -31,15 +31,6 @@ RUN echo $GIT_VERSION_HASH > GIT_VERSION_HASH.txt
 # package source code
 COPY . .
 
-# 2022 workaround for JSONDecodedErrors when doing poetry install
-# JSONDecodedErrors still present but not sure if helps,
-# testing out now
-# https://stackoverflow.com/a/73080089/315168
-# https://github.com/python-poetry/poetry/issues/4210#issuecomment-1178776203
-# Example failed job
-# https://github.com/tradingstrategy-ai/trade-executor/actions/runs/6261581929/job/17001957376
-# RUN poetry config experimental.new-installer false
-
 RUN poetry config virtualenvs.create false
 RUN poetry install --no-dev --no-interaction --no-ansi --all-extras
 
@@ -52,6 +43,9 @@ RUN foundryup --install v0.3.0
 # trade-executor /api
 # Pyramid HTTP server for webhooks at port 3456
 EXPOSE 3456
+
+RUN python -m compileall .
+RUN python -m compileall /usr/local/lib/python3.11
 
 # Use --quiet to supress Skipping virtualenv creation, as specified in config file.
 # use --directory so we can use -w and -v switches with Docker run
