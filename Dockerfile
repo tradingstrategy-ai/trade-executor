@@ -51,9 +51,8 @@ EXPOSE 3456
 
 # Speed up Python process startup
 RUN rm -rf ./tests
-RUN python -m compileall -f -q .
-RUN echo `which python`
-RUN python -m compileall -f -q /usr/local/lib/python3.11
+RUN python -m compileall -q .
+RUN python -m compileall -q /usr/local/lib/python3.11
 
 # Use --quiet to supress Skipping virtualenv creation, as specified in config file.
 # use --directory so we can use -w and -v switches with Docker run
