@@ -36,6 +36,9 @@ COPY . .
 RUN poetry config virtualenvs.create false
 RUN poetry install --no-dev --no-interaction --no-ansi --all-extras
 
+# Clean Poetry cache to reduce image size
+RUN poetry cache clear pypi --all --no-interaction
+
 # Anvil is needed for the transaction simulation e.g. by trade-executor enzyme-deploy-vault command
 # For the latest pindowns check Github test workflow
 ENV PATH="${PATH}:/root/.foundry/bin"
