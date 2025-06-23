@@ -19,11 +19,13 @@ ENV PYTHONDONTWRITEBYTECODE 1 \
 # https://stackoverflow.com/questions/40075271/gmpy2-not-installing-mpir-h-not-found
 RUN apt-get update && apt-get install -y curl jq ca-certificates gnupg libmpfr-dev libmpc-dev
 RUN curl -sSL https://install.python-poetry.org | python - --version 1.8.3
+RUN rm -rf /var/lib/apt/lists/*
 
 ENV PATH="/root/.local/bin:$PATH"
 
 WORKDIR /usr/src/trade-executor
 
+# Read by VersionInfo class in trade-executor
 RUN echo $GIT_VERSION_TAG > GIT_VERSION_TAG.txt
 RUN echo $GIT_COMMIT_MESSAGE > GIT_COMMIT_MESSAGE.txt
 RUN echo $GIT_VERSION_HASH > GIT_VERSION_HASH.txt
@@ -44,6 +46,7 @@ RUN foundryup --install v0.3.0
 # Pyramid HTTP server for webhooks at port 3456
 EXPOSE 3456
 
+# Speed up Python process startup
 RUN python -m compileall .
 RUN python -m compileall /usr/local/lib/python3.11
 
