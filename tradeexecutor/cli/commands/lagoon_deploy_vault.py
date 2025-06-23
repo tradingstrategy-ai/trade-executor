@@ -317,8 +317,8 @@ def lagoon_deploy_vault(
         logger.info("Currently enabled Safe modules: %s", mods)
         assert len(mods) == 1, f"Expected only one module enabled, got: {mods}"
         logger.info("Safe transactions needed:")
-        logger.info("1. %s.disableGuard(%s, %s)", deploy_info.safe.address, ONE_ADDRESS_STR, deploy_info.old_trading_strategy_module.address)
-        logger.info("2. %s.enabledGuard(%s)", deploy_info.safe.address, deploy_info.trading_strategy_module.address)
+        logger.info("1. %s.disableModule(%s, %s)", deploy_info.safe.address, ONE_ADDRESS_STR, deploy_info.old_trading_strategy_module.address)
+        logger.info("2. %s.enableModule(%s)", deploy_info.safe.address, deploy_info.trading_strategy_module.address)
 
 
     web3config.close()
