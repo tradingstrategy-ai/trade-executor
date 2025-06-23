@@ -4,30 +4,27 @@ This module provides utilities to remove unnecessary data from closed positions
 to keep state files manageable in size.
 """
 
-import json
-from typing import TypedDict, Any
-from dataclasses_json.core import _ExtendedEncoder # type: ignore
+from collections import Counter
+from typing import TypedDict
 
-from tradeexecutor.state.balance_update import BalanceUpdate
 from tradeexecutor.state.position import TradingPosition
 from tradeexecutor.state.state import State
 
 
-class PruningResult(TypedDict):
-    """Result of pruning operations."""
-    positions_processed: int
+class PruningStats(TypedDict):
+    """Statistics from pruning operations."""
     balance_updates_removed: int
-    bytes_saved: int
+    positions_processed: int
 
 
-def prune_closed_position(position: TradingPosition) -> dict[int, BalanceUpdate]:
+def prune_closed_position(position: TradingPosition) -> PruningStats:
     """Remove balance updates from a closed position.
 
     :param position:
         Trading position to prune
 
     :return:
-        Number of balance updates removed
+        PruningStats with statistics about what was pruned
 
     :raise ValueError:
         If position is not closed
@@ -35,44 +32,31 @@ def prune_closed_position(position: TradingPosition) -> dict[int, BalanceUpdate]
     if not position.is_closed():
         raise ValueError(f"Cannot prune open position {position.position_id}")
 
-    removed_items = position.balance_updates.copy()
+    balance_updates_removed = len(position.balance_updates)
     position.balance_updates.clear()
 
-    return removed_items
+    return PruningStats(
+      balance_updates_removed=balance_updates_removed,
+      positions_processed=1
+    )
 
 
-def prune_closed_positions(state: State) -> PruningResult:
+def prune_closed_positions(state: State) -> PruningStats:
     """Remove balance updates from all closed positions in state.
 
     :param state:
         Trading state to prune
 
     :return:
-        PruningResult with pruning statistics:
+        AggregatePruningStats with pruning statistics:
         - positions_processed: Number of closed positions processed
         - balance_updates_removed: Total balance updates removed
     """
-    all_removed_balance_updates: dict[int, BalanceUpdate] = {}
-    positions_processed = 0
+    # Initialize Counter with all PruningStats fields set to 0
+    total_stats = Counter({field: 0 for field in PruningStats.__annotations__})
 
     for position in state.portfolio.closed_positions.values():
-        removed_items = prune_closed_position(position)
-        all_removed_balance_updates.update(removed_items)
-        positions_processed += 1
+        position_stats = prune_closed_position(position)
+        total_stats.update(position_stats)
 
-    # Calculate actual bytes using JSON serialization
-    # This matches how the data is actually stored in the state file
-    if all_removed_balance_updates:
-        # Convert to a serializable format without relying on to_dict method
-        serialized_data: dict[str, Any] = {
-            str(k): v.to_dict() for k, v in all_removed_balance_updates.items() # type: ignore
-        }
-        bytes_saved = len(json.dumps(serialized_data, cls=_ExtendedEncoder))
-    else:
-        bytes_saved = 0
-
-    return {
-        "positions_processed": positions_processed,
-        "balance_updates_removed": len(all_removed_balance_updates),
-        "bytes_saved": bytes_saved
-    }
+    return PruningStats(**total_stats)

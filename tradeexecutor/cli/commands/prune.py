@@ -21,7 +21,6 @@ def prune_state(
     id: str = shared_options.id,
     strategy_file: Path = shared_options.strategy_file,
     state_file: Optional[Path] = shared_options.state_file,
-    log_level: str = shared_options.log_level,
     unit_testing: bool = shared_options.unit_testing,
 ):
     """Prune unnecessary data from state to reduce state file size.
@@ -71,6 +70,9 @@ def prune_state(
         print("No balance updates found in closed positions - nothing to prune")
         return
 
+    # Get original file size
+    original_size = state_file.stat().st_size if state_file.exists() else 0
+
     # Perform pruning
     print("Pruning balance updates from closed positions...")
     result = prune_closed_positions(state)
@@ -79,15 +81,18 @@ def prune_state(
     print("Saving pruned state...")
     store.sync(state)
 
+    # Calculate bytes saved by comparing file sizes
+    final_size = state_file.stat().st_size if state_file.exists() else 0
+    bytes_saved = original_size - final_size
+
     # Report results
     print("Pruning completed successfully!")
     print(f"Positions processed: {result['positions_processed']}")
     print(f"Balance updates removed: {result['balance_updates_removed']}")
 
-    estimated_bytes_saved = result["bytes_saved"]
-    if estimated_bytes_saved > 1024 * 1024:
-        print(f"Estimated space saved: ~{estimated_bytes_saved / (1024 * 1024):.1f} MB")
-    elif estimated_bytes_saved > 1024:
-        print(f"Estimated space saved: ~{estimated_bytes_saved / 1024:.1f} KB")
+    if bytes_saved > 1024 * 1024:
+        print(f"Estimated space saved: ~{bytes_saved / (1024 * 1024):.1f} MB")
+    elif bytes_saved > 1024:
+        print(f"Estimated space saved: ~{bytes_saved / 1024:.1f} KB")
     else:
-        print(f"Estimated space saved: ~{estimated_bytes_saved} bytes")
+        print(f"Estimated space saved: ~{bytes_saved} bytes")

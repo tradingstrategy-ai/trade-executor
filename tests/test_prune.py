@@ -1,17 +1,16 @@
 """Test state pruning functionality."""
 import datetime
-import json
 from decimal import Decimal
 
 import pytest
 
+from tradeexecutor.state.balance_update import BalanceUpdate, BalanceUpdateCause, BalanceUpdatePositionType
 from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier
 from tradeexecutor.state.portfolio import Portfolio
 from tradeexecutor.state.position import TradingPosition
-from tradeexecutor.state.prune import prune_closed_position, prune_closed_positions
 from tradeexecutor.state.state import State
+from tradeexecutor.state.prune import prune_closed_position, prune_closed_positions
 
-from tradeexecutor.state.balance_update import BalanceUpdate, BalanceUpdateCause, BalanceUpdatePositionType
 from tradingstrategy.chain import ChainId
 
 
@@ -102,15 +101,11 @@ def test_prune_closed_position_success(closed_position_with_balance_updates):
     assert position.is_closed()
 
     # Prune the position
-    removed_updates = prune_closed_position(position)
+    stats = prune_closed_position(position)
 
     # Verify pruning results
-    assert len(removed_updates) == 5
+    assert stats['balance_updates_removed'] == 5
     assert len(position.balance_updates) == 0
-
-    # Verify we got the actual balance update objects back
-    assert all(isinstance(update, BalanceUpdate) for update in removed_updates.values())
-    assert all(update.position_id == 1 for update in removed_updates.values())
 
 
 def test_prune_open_position_fails(open_position_with_balance_updates):
@@ -143,9 +138,9 @@ def test_prune_closed_position_no_balance_updates(mock_trading_pair):
     position.closed_at = datetime.datetime(2023, 1, 2)
 
     # Prune position with no balance updates
-    removed_updates = prune_closed_position(position)
+    stats = prune_closed_position(position)
 
-    assert len(removed_updates) == 0
+    assert stats['balance_updates_removed'] == 0
     assert len(position.balance_updates) == 0
 
 
@@ -194,10 +189,8 @@ def test_prune_closed_positions_bulk(mock_assets):
     result = prune_closed_positions(state)
 
     # Verify results
-    assert result["positions_processed"] == 3
-    assert result["balance_updates_removed"] == 9
-    assert "bytes_saved" in result
-    assert result["bytes_saved"] > 0  # Should have calculated some bytes saved
+    assert result['positions_processed'] == 3
+    assert result['balance_updates_removed'] == 9
 
     # Verify all closed positions have no balance updates
     for position in state.portfolio.closed_positions.values():
@@ -216,13 +209,12 @@ def test_prune_closed_positions_no_closed_positions():
     # Prune when no closed positions exist
     result = prune_closed_positions(state)
 
-    assert result["positions_processed"] == 0
-    assert result["balance_updates_removed"] == 0
-    assert result["bytes_saved"] == 0
+    assert result['positions_processed'] == 0
+    assert result['balance_updates_removed'] == 0
 
 
-def test_prune_closed_positions_bytes_calculation(mock_assets):
-    """Test that bytes calculation is reasonable and consistent."""
+def test_prune_closed_positions_stats_aggregation(mock_assets):
+    """Test that stats are properly aggregated across multiple positions."""
     usdc, weth = mock_assets
 
     # Create state with one closed position with balance updates
@@ -236,14 +228,8 @@ def test_prune_closed_positions_bytes_calculation(mock_assets):
     position = create_position_with_balance_updates(pair, 1, 3, is_closed=True)
     state.portfolio.closed_positions[1] = position
 
-    # Prune and check bytes calculation
+    # Prune and check stats
     result = prune_closed_positions(state)
 
-    assert result["positions_processed"] == 1
-    assert result["balance_updates_removed"] == 3
-    assert result["bytes_saved"] > 0
-
-    # Bytes saved should be reasonable (each balance update is substantial JSON)
-    # Rough check: should be at least 100 bytes per update, but not crazy large
-    assert result["bytes_saved"] > 300  # At least 100 bytes per update
-    assert result["bytes_saved"] < 10000  # But not unreasonably large
+    assert result['positions_processed'] == 1
+    assert result['balance_updates_removed'] == 3
