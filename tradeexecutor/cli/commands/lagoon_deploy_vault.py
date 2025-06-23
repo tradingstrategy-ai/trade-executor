@@ -43,11 +43,13 @@ from typer import Option
 from web3 import Web3
 
 from eth_defi.aave_v3.constants import AAVE_V3_DEPLOYMENTS
+from eth_defi.abi import ONE_ADDRESS_STR
 from eth_defi.erc_4626.classification import create_vault_instance
 from eth_defi.erc_4626.core import ERC4626Feature
 from eth_defi.erc_4626.vault import ERC4626Vault
 from eth_defi.hotwallet import HotWallet
 from eth_defi.lagoon.deployment import LagoonDeploymentParameters, deploy_automated_lagoon_vault, DEFAULT_PERFORMANCE_RATE, DEFAULT_MANAGEMENT_RATE
+from eth_defi.safe.deployment import disable_safe_module
 from eth_defi.token import fetch_erc20_details
 from eth_defi.uniswap_v2.constants import UNISWAP_V2_DEPLOYMENTS
 from eth_defi.uniswap_v2.deployment import fetch_deployment
@@ -310,8 +312,13 @@ def lagoon_deploy_vault(
         logger.info("New guard deployed: %s", deploy_info.trading_strategy_module.address)
         logger.info("Old guard address: %s", vault_adapter_address)
         logger.info("Safe address: %s", deploy_info.safe.address)
-        logger.info("Safe transactions needed")
-        logger.info("1. enabledGuard()")
-        logger.info("2. disableGuard()")
+        logger.info("Vault address: %s", deploy_info.vault.address)
+        mods = deploy_info.safe.retrieve_modules()
+        logger.info("Currently enabled Safe modules: %s", mods)
+        assert len(mods) == 1, f"Expected only one module enabled, got: {mods}"
+        logger.info("Safe transactions needed:")
+        logger.info("1. %s.disableGuard(%s, %s)", deploy_info.safe.address, ONE_ADDRESS_STR, deploy_info.old_trading_strategy_module.address)
+        logger.info("2. %s.enabledGuard(%s)", deploy_info.safe.address, deploy_info.trading_strategy_module.address)
+
 
     web3config.close()

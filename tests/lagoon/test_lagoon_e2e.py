@@ -353,17 +353,6 @@ def test_cli_lagoon_redeploy_guard(
     # assert new_guard_contract.functions.isAllowedApprovalDestination(Web3.to_checksum_address("0x7a63e8fc1d0a5e9be52f05817e8c49d9e2d6efae")).call() == True  # maxAPY
 
     #
-    # 4. Perform Gnosis tx to enable new guard
-    #
-    func = safe.contract.functions.enableModule(new_guard_address)
-    tx_hash = simulate_safe_execution_anvil(
-        web3,
-        safe_address,
-        func,
-    )
-    assert_transaction_success_with_explanation(web3, tx_hash)
-
-    #
     # 3. Perform Gnosis tx to disable old guard
     #
     # disableModule() exposes Safe internal linked list
@@ -378,12 +367,26 @@ def test_cli_lagoon_redeploy_guard(
         func,
     )
     assert_transaction_success_with_explanation(web3, tx_hash)
+    modules = safe.retrieve_modules()
+    assert modules == [], f"Old guard still present: {modules}"
+
+    #
+    # 4. Perform Gnosis tx to enable new guard
+    #
+    func = safe.contract.functions.enableModule(new_guard_address)
+    tx_hash = simulate_safe_execution_anvil(
+        web3,
+        safe_address,
+        func,
+    )
+    assert_transaction_success_with_explanation(web3, tx_hash)
 
     # Check module is enabled (twice)
     modules = safe.retrieve_modules()
     assert modules == [new_guard_address], f"Guard not updated, old guard still present: {modules}"
     safe = fetch_safe_deployment(web3, vault_info["Safe"])
     assert safe.contract.functions.isModuleEnabled(new_guard_address).call() == True
+    assert safe.contract.functions.isModuleEnabled(guard_contract.address).call() == False
 
     # Fix us to use the strategy module where vaults are part of the universe loading
     environment["STRATEGY_FILE"] = vaulted_strategy_file.as_posix()
