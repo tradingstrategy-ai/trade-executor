@@ -290,7 +290,7 @@ def test_cli_lagoon_redeploy_guard(
     2. Deploy a new guard smart contract with different parameters (one vault trading enabled)
     3. Perform Gnosis tx to disable old guard
     4. Perform Gnosis tx to enable old guard
-    5. Perform a test trade using the new guard
+    5. Perform a test deposit/redeem on ERC-4626 vaults using the new guard
     """
 
     #
@@ -390,6 +390,7 @@ def test_cli_lagoon_redeploy_guard(
 
     # Fix us to use the strategy module where vaults are part of the universe loading
     environment["STRATEGY_FILE"] = vaulted_strategy_file.as_posix()
+    environment["LOG_LEVEL"] = "info"
 
     # Update the trade-executor to use the new enabled guard contract
     environment["VAULT_ADAPTER_ADDRESS"] = new_guard_address
@@ -399,11 +400,33 @@ def test_cli_lagoon_redeploy_guard(
     # 5. Perform a test trade using the new guard
     #
 
-    # Check there is no change in Aave trade whitelisting
-    cli.main(args=["perform-test-trade", "--lending-reserve", "(base, aave-v3, USDC)"], standalone_mode=False)
     # Check all vault deposit/redeem
     cli.main(args=["perform-test-trade", "--all-vaults"], standalone_mode=False)
+
+    state = State.read_json_file(state_file)
+    trades = list(state.portfolio.get_all_trades())
+    assert len(trades) == 4, f"Got trades: {trades}"
+    for t in trades:
+        assert t.pair.is_vault()
+        assert t.is_success(), f"Trade {t} failed: {t.get_revert_reason()}"
+
+    # Check there is no change in Aave trade whitelisting
+    cli.main(args=["perform-test-trade", "--lending-reserve", "(base, aave-v3, USDC)"], standalone_mode=False)
     # Check there is no change in Uniswap v2 trade whitelisting
     cli.main(args=["perform-test-trade", "--pair", "(base, uniswap-v2, KEYCAT, WETH, 0.0030)"], standalone_mode=False)
+
+    state = State.read_json_file(state_file)
+    trades_before = len(list(state.portfolio.get_all_trades()))
+
+    environment["LOG_LEVEL"] = "info"
+    mocker.patch.dict("os.environ", environment, clear=True)
+
     # Check the test trade using a single vault by its human description
     cli.main(args=["perform-test-trade", "--pair", "(base, morpho, sparkUSDC, USDC)"], standalone_mode=False)
+
+    state = State.read_json_file(state_file)
+    trades = list(state.portfolio.get_all_trades())
+    assert len(trades) == trades_before + 2, f"Expected 1 new trade, got {len(trades)}: {trades}"
+    for t in trades:
+        assert t.is_success(), f"Trade {t} failed: {t.get_revert_reason()}"
+
