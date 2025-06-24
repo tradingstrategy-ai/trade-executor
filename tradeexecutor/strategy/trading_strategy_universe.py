@@ -1507,7 +1507,7 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
         self,
         asset: AssetIdentifier | None = None,
         timestamp: datetime.datetime | None = None,
-        tolerance: datetime.timedelta = datetime.timedelta(days=1),
+        tolerance: datetime.timedelta = datetime.timedelta(days=2),
     ) -> float:
         """Get the latest supply APR for the lending asset.
 
@@ -1535,7 +1535,7 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
         if isinstance(tolerance, (datetime.timedelta, pd.Timedelta)):
             tolerance = pd.Timedelta(tolerance)
         else:
-            tolerance = pd.Timedelta(days=1)
+            tolerance = pd.Timedelta(days=2)
 
         # Will raise exception if not available
         lending_reserve = self.data_universe.lending_reserves.get_by_chain_and_address(
