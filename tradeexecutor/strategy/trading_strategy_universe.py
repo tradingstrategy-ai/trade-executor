@@ -1990,6 +1990,7 @@ def translate_trading_pair(dex_pair: DEXPair, cache: dict | None = None) -> Trad
             fee = None
 
     if dex_pair.dex_type == ExchangeType.erc_4626_vault:
+        # For vaults, exchange_name is set as the vault protocol name e.g. "morpho" or "ipor"
         kind = TradingPairKind.vault
     else:
         kind = TradingPairKind.spot_market_hold
@@ -2054,6 +2055,9 @@ def translate_trading_pair(dex_pair: DEXPair, cache: dict | None = None) -> Trad
                     "score": token_sniffer_data.get("score"),
                 }
             })
+
+    # if dex_pair.dex_type == ExchangeType.erc_4626_vault:
+    #    import ipdb ; ipdb.set_trace()
 
     if cache is not None:
         cache[pair.internal_id] = pair

@@ -117,13 +117,13 @@ def display_strategy_universe(
             name = pair.get_vault_name()
             performance_fee = pair.get_performance_fee()
             management_fee = pair.get_management_fee()
-            exchange_label = "vault"
-            pair_fee = None
+            exchange_label = "exchange"
+            name = pair.exchange_name  # "morpho"
+            pair_fee = pair.fee
         else:
             name = pair.exchange_name
             exchange_label = "exchange"
             pair_fee = pair.fee
-
 
         data = {
             "id": pair.internal_id,

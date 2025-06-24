@@ -34,7 +34,8 @@ def check_universe(
 ):
     """Checks that the trading universe is healthy.
 
-    Check that create_trading_universe() and create_indicators() functions in the strategy module work.
+    Check that create_trading_universe() and create_indicators() functions in the strategy module work,
+    and will display all available trading pairs.
     """
 
     global logger

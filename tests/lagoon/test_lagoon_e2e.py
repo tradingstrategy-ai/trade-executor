@@ -405,4 +405,5 @@ def test_cli_lagoon_redeploy_guard(
     cli.main(args=["perform-test-trade", "--all-vaults"], standalone_mode=False)
     # Check there is no change in Uniswap v2 trade whitelisting
     cli.main(args=["perform-test-trade", "--pair", "(base, uniswap-v2, KEYCAT, WETH, 0.0030)"], standalone_mode=False)
-
+    # Check the test trade using a single vault by its human description
+    cli.main(args=["perform-test-trade", "--pair", "(base, morpho, sparkUSDC, USDC)"], standalone_mode=False)
