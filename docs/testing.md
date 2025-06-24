@@ -16,25 +16,20 @@ export TRADING_STRATEGY_API_KEY=""
 
 # We use BNB chain mainnet forking for some tests
 export BNB_CHAIN_JSON_RPC="https://bsc-dataseed.binance.org/"
+
+# ... and tons of other JSON RPCs for other chains
 ```
 
-Set up Ganache:
+Set up Anvil:
 
 ```shell
-npm install -g ganache
+# TODO foundryup
 ```
 
 Make sure you install with the optional QSTrader dependency:
 
 ```shell
-poetry install -E qstrader -E web-server -E execution
-```
-
-Testing "no dependencies" installation for Pyodide:
-
-```shell
-pip install tox tox-poetry
-tox
+poetry install --a
 ```
 
 ## Running
@@ -44,6 +39,16 @@ To run the tests:
 ```shell
 pytest 
 ```
+
+## Running (parallel)
+
+You need to use `loadscope` to parallerise the tests only on module level. 
+Some fixtures cannot be parallerised between tests in the same module.
+
+```shell
+pytest --tb=native --dist loadscope -n 6
+```
+
 
 ## Interactive tests
 
