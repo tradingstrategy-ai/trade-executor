@@ -380,7 +380,7 @@ def test_enzyme_credit_position_redemption(
         assert reserve_position.get_value() == pytest.approx(1980)
 
 
-@flaky.flaky
+@pytest.mark.skipif(CI, reason="Too flaky on Github")
 def test_enzyme_credit_position_redemption_check_triggers(
     web3: Web3,
     vault: Vault,

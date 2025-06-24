@@ -337,6 +337,12 @@ def create_trading_universe(
 
     debug_printer(f"Total {strategy_universe.get_pair_count()}")
 
+    # Run a test we can do a symbolic lookup for a vault
+    vault = strategy_universe.get_pair_by_human_description(
+        (ChainId.base, "morpho", "sparkUSDC", "USDC",)
+    )
+    assert vault is not None
+
     return strategy_universe
 
 

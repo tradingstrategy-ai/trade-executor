@@ -1214,11 +1214,25 @@ class TradingPosition(GenericPosition):
             # Already closed
             return False
 
-        epsilon = get_close_epsilon_for_pair(self.pair)
+        if self.is_vault():
+            # Morpho Spark USDC workaround.
+            # The vault maxRedeem() returns an amount of shares that has a rounding error.
+            # Thus we are left we one share token that cannot be redeemed.
+            # See estimate_4626_deposit() for details.
+            epsilon = get_close_epsilon_for_pair(self.pair)
+        else:
+            # Try to get sane default epsilon
+            epsilon = get_close_epsilon_for_pair(self.pair)
+
         quantity = self.get_quantity()
 
-        if self.is_credit_supply():
-            logger.info("can_be_closed(): credit supply debug. Quantity: %s, epsilon: %s", quantity, epsilon)
+        if self.is_credit_supply() or self.is_vault():
+            logger.info(
+                "can_be_closed(): epsilon debug. Pair: %s, quantity: %s, epsilon: %s",
+                self.pair,
+                quantity,
+                epsilon,
+            )
 
         # VELVET HACK: Quantity can go to below zero, because te last trade
         # got in last minute deposit and executed more than we thought we have

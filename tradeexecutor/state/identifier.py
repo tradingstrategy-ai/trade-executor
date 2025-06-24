@@ -571,7 +571,7 @@ class TradingPairIdentifier:
         exchange_name = self.exchange_name if self.exchange_name else f"{self.exchange_address}"
 
         if self.is_vault():
-            return f"<Pair for vault {self.get_vault_name()} on {self.get_vault_protocol()}, id #{self.internal_id}>"
+            return f"<Pair for vault {self.get_vault_name()} on {self.get_vault_protocol()},  {self.base.token_symbol}-{self.quote.token_symbol} {exchange_name}, id #{self.internal_id}>"
         elif self.chain_id not in (ChainId.unknown, ChainId.centralised_exchange):
             # DEX pair
             return f"<Pair {self.base.token_symbol}-{self.quote.token_symbol} {type_name} at {self.pool_address} ({fee * 100:.4f}% fee) on exchange {exchange_name}>"

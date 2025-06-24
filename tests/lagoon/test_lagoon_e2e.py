@@ -290,7 +290,7 @@ def test_cli_lagoon_redeploy_guard(
     2. Deploy a new guard smart contract with different parameters (one vault trading enabled)
     3. Perform Gnosis tx to disable old guard
     4. Perform Gnosis tx to enable old guard
-    5. Perform a test trade using the new guard
+    5. Perform a test deposit/redeem on ERC-4626 vaults using the new guard
     """
 
     #
@@ -390,6 +390,7 @@ def test_cli_lagoon_redeploy_guard(
 
     # Fix us to use the strategy module where vaults are part of the universe loading
     environment["STRATEGY_FILE"] = vaulted_strategy_file.as_posix()
+    environment["LOG_LEVEL"] = "info"
 
     # Update the trade-executor to use the new enabled guard contract
     environment["VAULT_ADAPTER_ADDRESS"] = new_guard_address
@@ -399,10 +400,31 @@ def test_cli_lagoon_redeploy_guard(
     # 5. Perform a test trade using the new guard
     #
 
-    # Check there is no change in Aave trade whitelisting
-    cli.main(args=["perform-test-trade", "--lending-reserve", "(base, aave-v3, USDC)"], standalone_mode=False)
+    def _check_clean_state():
+        _state = State.read_json_file(state_file)
+        _trades = list(_state.portfolio.get_all_trades())
+        for t in _trades:
+            assert t.is_success(), f"Trade {t} failed: {t.get_revert_reason()}"
+
+        for p in _state.portfolio.get_all_positions():
+            assert not p.is_open(), f"Position {p} is still open after test trades: {list(p.trades.values())}"
+
+        return _state, _trades
+
+    # Check the test trade using a single vault by its human description
+    cli.main(args=["perform-test-trade", "--pair", "(base, morpho, sparkUSDC, USDC)"], standalone_mode=False)
+    state, trades = _check_clean_state()
+    assert len(trades) == 2, f"Got trades: {trades}"
+
     # Check all vault deposit/redeem
     cli.main(args=["perform-test-trade", "--all-vaults"], standalone_mode=False)
+    state, trades = _check_clean_state()
+    assert len(trades) == 6, f"Got trades: {trades}"
+
+    # Check there is no change in Aave trade whitelisting
+    cli.main(args=["perform-test-trade", "--lending-reserve", "(base, aave-v3, USDC)"], standalone_mode=False)
+    _check_clean_state()
     # Check there is no change in Uniswap v2 trade whitelisting
     cli.main(args=["perform-test-trade", "--pair", "(base, uniswap-v2, KEYCAT, WETH, 0.0030)"], standalone_mode=False)
+    _check_clean_state()
 

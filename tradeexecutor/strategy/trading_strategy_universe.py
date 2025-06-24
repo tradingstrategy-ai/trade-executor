@@ -126,8 +126,9 @@ class Dataset:
         if lending_candles is not None:
             assert isinstance(lending_candles, LendingCandleUniverse), f"Expected LendingCandleUniverse, got {lending_candles.__class__}"
 
-        if self.history_period:
-            assert self.start_at is None and self.end_at is None, f"You can only give history_period or backtesting range. We got {self.start_at}, {self.end_at}, {self.history_period}"
+        # For live trading start_at and end_at contains the timebucket rounded data load period
+        # if self.history_period:
+        #    assert self.start_at is None and self.end_at is None, f"You can only give history_period or backtesting range. We got {self.start_at}, {self.end_at}, {self.history_period}"
 
 
 @dataclass(slots=True)
@@ -1506,7 +1507,7 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
         self,
         asset: AssetIdentifier | None = None,
         timestamp: datetime.datetime | None = None,
-        tolerance: datetime.timedelta = datetime.timedelta(days=1),
+        tolerance: datetime.timedelta = datetime.timedelta(days=2),
     ) -> float:
         """Get the latest supply APR for the lending asset.
 
@@ -1534,7 +1535,7 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
         if isinstance(tolerance, (datetime.timedelta, pd.Timedelta)):
             tolerance = pd.Timedelta(tolerance)
         else:
-            tolerance = pd.Timedelta(days=1)
+            tolerance = pd.Timedelta(days=2)
 
         # Will raise exception if not available
         lending_reserve = self.data_universe.lending_reserves.get_by_chain_and_address(
@@ -1990,6 +1991,7 @@ def translate_trading_pair(dex_pair: DEXPair, cache: dict | None = None) -> Trad
             fee = None
 
     if dex_pair.dex_type == ExchangeType.erc_4626_vault:
+        # For vaults, exchange_name is set as the vault protocol name e.g. "morpho" or "ipor"
         kind = TradingPairKind.vault
     else:
         kind = TradingPairKind.spot_market_hold
@@ -2054,6 +2056,9 @@ def translate_trading_pair(dex_pair: DEXPair, cache: dict | None = None) -> Trad
                     "score": token_sniffer_data.get("score"),
                 }
             })
+
+    # if dex_pair.dex_type == ExchangeType.erc_4626_vault:
+    #    import ipdb ; ipdb.set_trace()
 
     if cache is not None:
         cache[pair.internal_id] = pair
@@ -2271,6 +2276,7 @@ def load_partial_data(
     pair_extra_metadata=False,
     vaults: list[tuple[ChainId, JSONHexAddress]] | None = None,
     vault_bundled_price_data=False,
+    round_start_end: bool = True,
 ) -> Dataset:
     """Load pair data for given trading pairs.
 
@@ -2417,6 +2423,15 @@ def load_partial_data(
 
         Not applicable for live trading.
 
+    :param round_start_end:
+        Round start and end times to the nearest time bucket.
+
+        Avoid polluting cache space with second difference in timestamps.
+
+        Only applicable for live trading. This is especially helpful for making unit testing/integration testing faster.
+
+        If not given live trading tries to load the data from the server until the last second.
+
     :return:
         Datataset containing the requested data
 
@@ -2456,12 +2471,21 @@ def load_partial_data(
         if not required_history_period:
             required_history_period = universe_options.history_period
         assert required_history_period, f"Doing live trading {execution_context.mode}, but universe_options.history_period missing: {universe_options}"
+
+
     else:
         raise NotImplementedError(f"Cannot determine trading mode: {execution_context.mode}")
 
     # Where the data loading start can come from the hard backtesting range (start - end)
     # or how many days of historical data we ask for
     data_load_start_at = start_at or (datetime.datetime.utcnow() - required_history_period)
+
+    # Generate a rounded range of the latest data
+    if round_start_end and execution_context.mode.is_live_trading():
+        start_at = data_load_start_at = time_bucket.floor_datetime(data_load_start_at)
+        if not end_at:
+            end_at = datetime.datetime.utcnow()
+            end_at = time_bucket.floor_datetime(end_at)
 
     logger.info(
         "load_partial_data(): data_load_start_at: %s, start_at: %s, end_at: %s, required_history_period: %s",

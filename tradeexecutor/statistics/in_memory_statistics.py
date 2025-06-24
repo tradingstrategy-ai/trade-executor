@@ -189,7 +189,10 @@ def refresh_live_strategy_images(
     # https://github.com/tradingstrategy-ai/trade-executor/issues/699
     import plotly.io as pio
     scope = pio.kaleido.scope
-    scope._shutdown_kaleido()
+    _shutdown_kaleido = getattr(scope, "_shutdown_kaleido", None)
+    if _shutdown_kaleido is not None:
+        # Removed in Kaleido 1.x?
+        _shutdown_kaleido()
 
 
 def get_small_images(small_figure):
