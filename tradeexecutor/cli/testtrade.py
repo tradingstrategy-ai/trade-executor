@@ -177,7 +177,6 @@ def make_test_trade(
 
     if position is None:
         # Create trades to open the position
-
         if lending_reserve_description:
             assert lending_reserve
             trades = position_manager.open_credit_supply_position_for_reserves(
@@ -241,6 +240,8 @@ def make_test_trade(
         )
         
         update_statistics(datetime.datetime.utcnow(), state.stats, state.portfolio, ExecutionMode.real_trading, long_short_metrics_latest=long_short_metrics_latest)
+    else:
+        logger.info("Position %s is already open. No need to open it again.", position)
 
     logger.info("Position %s is open. Now closing the position.", position)
 

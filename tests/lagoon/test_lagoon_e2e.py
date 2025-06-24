@@ -410,6 +410,9 @@ def test_cli_lagoon_redeploy_guard(
         assert t.pair.is_vault()
         assert t.is_success(), f"Trade {t} failed: {t.get_revert_reason()}"
 
+    for p in state.portfolio.get_all_positions():
+        assert not p.is_open(), f"Position {p} is still open after test trades: {list(p.trades.values())}"
+
     # Check there is no change in Aave trade whitelisting
     cli.main(args=["perform-test-trade", "--lending-reserve", "(base, aave-v3, USDC)"], standalone_mode=False)
     # Check there is no change in Uniswap v2 trade whitelisting
@@ -429,4 +432,8 @@ def test_cli_lagoon_redeploy_guard(
     assert len(trades) == trades_before + 2, f"Expected 1 new trade, got {len(trades)}: {trades}"
     for t in trades:
         assert t.is_success(), f"Trade {t} failed: {t.get_revert_reason()}"
+
+    for p in state.portfolio.get_all_positions():
+        assert not p.is_open(), f"Position {p} is still open after test trades: {list(p.trades.values())}"
+
 
