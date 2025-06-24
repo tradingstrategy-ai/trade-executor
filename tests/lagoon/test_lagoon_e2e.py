@@ -400,40 +400,31 @@ def test_cli_lagoon_redeploy_guard(
     # 5. Perform a test trade using the new guard
     #
 
-    # Check all vault deposit/redeem
-    cli.main(args=["perform-test-trade", "--all-vaults"], standalone_mode=False)
+    def _check_clean_state():
+        _state = State.read_json_file(state_file)
+        _trades = list(_state.portfolio.get_all_trades())
+        for t in _trades:
+            assert t.is_success(), f"Trade {t} failed: {t.get_revert_reason()}"
 
-    state = State.read_json_file(state_file)
-    trades = list(state.portfolio.get_all_trades())
-    assert len(trades) == 4, f"Got trades: {trades}"
-    for t in trades:
-        assert t.pair.is_vault()
-        assert t.is_success(), f"Trade {t} failed: {t.get_revert_reason()}"
+        for p in _state.portfolio.get_all_positions():
+            assert not p.is_open(), f"Position {p} is still open after test trades: {list(p.trades.values())}"
 
-    for p in state.portfolio.get_all_positions():
-        assert not p.is_open(), f"Position {p} is still open after test trades: {list(p.trades.values())}"
-
-    # Check there is no change in Aave trade whitelisting
-    cli.main(args=["perform-test-trade", "--lending-reserve", "(base, aave-v3, USDC)"], standalone_mode=False)
-    # Check there is no change in Uniswap v2 trade whitelisting
-    cli.main(args=["perform-test-trade", "--pair", "(base, uniswap-v2, KEYCAT, WETH, 0.0030)"], standalone_mode=False)
-
-    state = State.read_json_file(state_file)
-    trades_before = len(list(state.portfolio.get_all_trades()))
-
-    environment["LOG_LEVEL"] = "info"
-    mocker.patch.dict("os.environ", environment, clear=True)
+        return _state, _trades
 
     # Check the test trade using a single vault by its human description
     cli.main(args=["perform-test-trade", "--pair", "(base, morpho, sparkUSDC, USDC)"], standalone_mode=False)
+    state, trades = _check_clean_state()
+    assert len(trades) == 2, f"Got trades: {trades}"
 
-    state = State.read_json_file(state_file)
-    trades = list(state.portfolio.get_all_trades())
-    assert len(trades) == trades_before + 2, f"Expected 1 new trade, got {len(trades)}: {trades}"
-    for t in trades:
-        assert t.is_success(), f"Trade {t} failed: {t.get_revert_reason()}"
+    # Check all vault deposit/redeem
+    cli.main(args=["perform-test-trade", "--all-vaults"], standalone_mode=False)
+    state, trades = _check_clean_state()
+    assert len(trades) == 6, f"Got trades: {trades}"
 
-    for p in state.portfolio.get_all_positions():
-        assert not p.is_open(), f"Position {p} is still open after test trades: {list(p.trades.values())}"
-
+    # Check there is no change in Aave trade whitelisting
+    cli.main(args=["perform-test-trade", "--lending-reserve", "(base, aave-v3, USDC)"], standalone_mode=False)
+    _check_clean_state()
+    # Check there is no change in Uniswap v2 trade whitelisting
+    cli.main(args=["perform-test-trade", "--pair", "(base, uniswap-v2, KEYCAT, WETH, 0.0030)"], standalone_mode=False)
+    _check_clean_state()
 

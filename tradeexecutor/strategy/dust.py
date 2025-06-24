@@ -36,6 +36,10 @@ ONE_DELTA_CLOSE_EPSILON = 1 * 10**-4
 #: If position value is less than 10c consider it to be zero
 DEFAULT_USD_LOW_VALUE_THRESHOLD = 0.10
 
+#: Set by maxRedeem() issue on Spark USDC on Morpho
+DEFAULT_VAULT_EPSILON = Decimal(10 ** -6)
+
+
 
 def get_dust_epsilon_for_pair(pair: TradingPairIdentifier) -> Decimal:
     """Get the dust threshold for a trading pair.
@@ -79,6 +83,8 @@ def get_close_epsilon_for_pair(pair: TradingPairIdentifier) -> Decimal:
     # Frozen positions
     if pair.is_credit_supply():
         return COLLATERAL_EPSILON
+    elif pair.is_vault():
+        return DEFAULT_VAULT_EPSILON
 
     return get_dust_epsilon_for_asset(pair.base)
 
