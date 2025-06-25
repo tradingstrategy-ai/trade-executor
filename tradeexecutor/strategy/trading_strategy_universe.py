@@ -2432,6 +2432,8 @@ def load_partial_data(
 
         If not given live trading tries to load the data from the server until the last second.
 
+        Max 1d rounding. For weekly time bucket you still get daily boundaries.
+
     :return:
         Datataset containing the requested data
 
@@ -2482,10 +2484,29 @@ def load_partial_data(
 
     # Generate a rounded range of the latest data
     if round_start_end and execution_context.mode.is_live_trading():
-        start_at = data_load_start_at = time_bucket.floor_datetime(data_load_start_at)
+
+        # TODO: Special workaround for some legacy tests/weekly data
+        flooring_time_bucket = time_bucket if time_bucket < TimeBucket.d7 else TimeBucket.d1
+
+        floored_start = flooring_time_bucket.floor_datetime(data_load_start_at)
+        logger.info(
+            "Floored start timestamp %s -> %s for bucket %s",
+            data_load_start_at,
+            floored_start,
+            time_bucket.value,
+        )
+
+        start_at = data_load_start_at = floored_start
         if not end_at:
             end_at = datetime.datetime.utcnow()
-            end_at = time_bucket.floor_datetime(end_at)
+            floored_end = flooring_time_bucket.floor_datetime(end_at)
+            logger.info(
+                "Floored end timestamp %s -> %s for bucket %s",
+                end_at,
+                floored_end,
+                time_bucket.value,
+            )
+            end_at = floored_end
 
     logger.info(
         "load_partial_data(): data_load_start_at: %s, start_at: %s, end_at: %s, required_history_period: %s",
@@ -2615,7 +2636,7 @@ def load_partial_data(
                 lending_reserve_universe = lending_reserve_universe.limit(lending_reserves)
 
             if not lending_candle_progress_bar_desc:
-                lending_candle_progress_bar_desc = f"Downloading lending rate data for {lending_reserve_universe.get_count()} assets"
+                lending_candle_progress_bar_desc = f"Downloading lending rate data for {lending_reserve_universe.get_count()} assets, until {end_at.strftime('%Y-%m-%d')}"
 
             lending_candles_map = client.fetch_lending_candles_for_universe(
                 lending_reserve_universe,
