@@ -185,6 +185,7 @@ def refresh_live_strategy_images(
         large_image_png,
     )
 
+    # TODO: This path is no longer taken
     # Workaround: Kaleido backend is crashing
     # https://github.com/tradingstrategy-ai/trade-executor/issues/699
     import plotly.io as pio
@@ -202,6 +203,7 @@ def get_small_images(small_figure):
 def get_large_images(large_figure):
     """Gets the png image of the figure and the dark theme png image. Images are 1024 x 1024."""
     return get_image_and_dark_image(large_figure, width=1024, height=1024)
+
 
 def get_image_and_dark_image(figure, width, height, format="svg"):
     """Renders the figure as a PNG image and a dark theme PNG image."""
