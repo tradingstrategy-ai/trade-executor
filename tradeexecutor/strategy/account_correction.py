@@ -182,6 +182,10 @@ class AccountingBalanceCheck:
         """We have extra"""
         return self.quantity > 0
 
+    def is_vault_dust(self) -> bool:
+        """Morpho Spark USDC workaround."""
+
+
     def is_dusty(self) -> bool:
         """If there is a mismatch, is the mismatch within the dust tolerance."""
 
@@ -775,7 +779,7 @@ def open_missing_spot_position_direct(
     else:
         pair = matching_pairs[0]
 
-    assert pair.is_spot(), f"Not spot: {pair}"
+    assert pair.is_spot() or pair.is_vault(), f"Not spot: {pair}"
 
     quantity = quantity
     assert quantity > 0

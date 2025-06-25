@@ -53,6 +53,10 @@ def get_dust_epsilon_for_pair(pair: TradingPairIdentifier) -> Decimal:
         Maximum amount of units we consider "zero".
 
     """
+
+    if pair.is_vault():
+        return DEFAULT_VAULT_EPSILON
+
     return get_dust_epsilon_for_asset(pair.base)
 
 

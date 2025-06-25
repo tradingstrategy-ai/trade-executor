@@ -176,7 +176,7 @@ def close_position_with_empty_trade(portfolio: Portfolio, p: TradingPosition) ->
 
     """
 
-    assert p.pair.is_spot() or p.pair.is_credit_supply(), f"Only spot / credit position supported for now"
+    assert p.pair.is_spot() or p.pair.is_credit_supply() or p.pair.is_vault(), f"Only spot / vault / credit position supported for now"
 
     # TODO: Cannot honour this in some cases?
     # assert len(p.trades) == 1, f"Can only fix one failed trade, got: {p}:\n{p.trades}"

@@ -390,7 +390,6 @@ def test_cli_lagoon_redeploy_guard(
 
     # Fix us to use the strategy module where vaults are part of the universe loading
     environment["STRATEGY_FILE"] = vaulted_strategy_file.as_posix()
-    environment["LOG_LEVEL"] = "info"
 
     # Update the trade-executor to use the new enabled guard contract
     environment["VAULT_ADAPTER_ADDRESS"] = new_guard_address
