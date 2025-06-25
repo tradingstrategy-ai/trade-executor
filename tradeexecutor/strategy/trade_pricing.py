@@ -116,7 +116,7 @@ class TradePricing:
     def __repr__(self):
         fee_list = [fee or 0 for fee in self.pair_fee]
         if self.block_number:
-            block_text = "block:{self.block_number:,}"
+            block_text = f"block:{self.block_number:,}"
         else:
             block_text = ""
         return f"<TradePricing:{self.price} mid:{self.mid_price} fee:{format_fees_percentage(fee_list)} {block_text}>"

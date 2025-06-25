@@ -155,7 +155,6 @@ class PricingModel(abc.ABC):
         :return:
             TVL in US dollar
         """
-        raise NotImplementedError(f"get_usd_tvl() missing: {self.__class__}")
 
     def get_quote_token_tvl(
         self,

@@ -216,10 +216,18 @@ def pricing_model(
 
 
 @pytest.fixture()
+def ipor_usdc(vault: IPORVault) -> TradingPairIdentifier:
+    ipor_usdc = translate_vault_to_trading_pair(vault)
+    assert ipor_usdc.is_vault()
+    return ipor_usdc
+
+
+@pytest.fixture()
 def vault_pair_universe(
     vault: IPORVault,
     base_usdc,
     base_weth,
+    ipor_usdc,
 ) -> PandasPairUniverse:
     """Define pair universe with some DEX pairs and and a vault."""
 
@@ -264,9 +272,6 @@ def vault_pair_universe(
         exchange_address="0x33128a8fC17869897dcE68Ed026d694621f6FDfD",
         fee=0.0005,
     )
-
-    ipor_usdc = translate_vault_to_trading_pair(vault)
-    assert ipor_usdc.is_vault()
 
     universe = create_universe_from_trading_pair_identifiers(
         [

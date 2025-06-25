@@ -60,7 +60,7 @@ class VaultPricing(PricingModel):
             block_identifier=block_number,
         )
 
-        price = float(quantity / estimated_usd)
+        price = float(estimated_usd / quantity)
         mid_price = price
 
         return TradePricing(
@@ -96,7 +96,7 @@ class VaultPricing(PricingModel):
             block_identifier=block_number,
         )
 
-        price = float(estimated_shares / reserve)
+        price = float(reserve / estimated_shares)
         mid_price = price
 
         return TradePricing(
@@ -125,3 +125,24 @@ class VaultPricing(PricingModel):
         pair: TradingPairIdentifier,
     ) -> Optional[float]:
         return 0.0
+
+    def get_usd_tvl(
+        self,
+        timestamp: datetime.datetime | None,
+        pair: TradingPairIdentifier
+    ) -> USDollarAmount:
+        """Get the TVL of a vault pair."""
+        assert pair.quote.is_stablecoin(), f"Only stablecoin vaults are supported for TVL, got: {pair}"
+        block_number = self.web3.eth.block_number
+        vault = self.get_vault(pair)
+        tvl_tokens = vault.fetch_total_assets(block_identifier=block_number)
+        assert tvl_tokens is not None, f"Failed to fetch TVL for vault {pair} at block {block_number}"
+        return float(tvl_tokens)
+
+    def get_quote_token_tvl(
+        self,
+        timestamp: datetime.datetime | None,
+        pair: TradingPairIdentifier
+    ) -> USDollarAmount:
+        return self.get_usd_tvl(timestamp, pair)
+
