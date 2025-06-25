@@ -1,4 +1,11 @@
-"""CLI command to prune balance updates from closed positions."""
+"""CLI command to prune balance updates from closed positions.
+
+Example:
+
+.. code-block:: shell
+
+
+"""
 
 from pathlib import Path
 from typing import Optional

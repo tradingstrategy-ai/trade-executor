@@ -3,14 +3,15 @@
 Assume we can redeem all shares without slippage.
 """
 import datetime
-from typing import Tuple
+import logging
 
 from tradeexecutor.ethereum.vault.vault_live_pricing import VaultPricing
 from tradeexecutor.state.position import TradingPosition
-from tradeexecutor.state.types import USDollarAmount
 from tradeexecutor.state.valuation import ValuationUpdate
 from tradeexecutor.strategy.valuation import ValuationModel
 
+
+logger = logging.getLogger(__name__)
 
 class VaultValuator(ValuationModel):
     """Re-value assets based on what vault tells us."""
@@ -26,6 +27,24 @@ class VaultValuator(ValuationModel):
     ) -> ValuationUpdate:
         assert position.is_vault()
         shares_amount = position.get_quantity()
+
+        if shares_amount == 0:
+            # Frozen position, deposit has failed
+            logger.warning(f"Shares amount must be greater than 0, got {shares_amount} for position {position}")
+            evt = ValuationUpdate(
+                created_at=ts,
+                position_id=position.position_id,
+                valued_at=ts,
+                old_value=0,
+                new_value=0,
+                old_price=0,
+                new_price=0,
+                quantity=shares_amount,
+            )
+            return 0
+
+        assert position.pair.quote.is_stablecoin(), f"Vault position {position} must be a stablecoin pair, got {position.pair}"
+
         price_structure = self.pricing_model.get_sell_price(ts, position.pair, shares_amount)
         old_price = position.last_token_price
         old_value = position.get_value()
