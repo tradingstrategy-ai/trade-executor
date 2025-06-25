@@ -61,7 +61,8 @@ def render_plotly_figure_as_image_file(
 
     stream = BytesIO()
 
-    _kaleido = get_kaleido()
+    kaleido_instance = get_kaleido()
+
     opts = dict(
         format=format,
         width=width,
@@ -69,7 +70,7 @@ def render_plotly_figure_as_image_file(
     )
 
     asyncio.run(
-        _kaleido.write_fig(
+        kaleido_instance.write_fig(
             figure,
             stream,
             opts=opts,
