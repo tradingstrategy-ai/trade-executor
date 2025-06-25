@@ -147,6 +147,7 @@ def test_generic_routing_live_trading_init(
 
 
 # Flaky due to Anvil randomly reverting tx and causing a frozen position
+@pytest.mark.slow_test_group
 @flaky.flaky
 def test_generic_routing_live_trading_start_spot_and_short(
     environment: dict,
@@ -209,6 +210,7 @@ def test_generic_routing_test_trade_spot_and_short(
         assert reserve_value == pytest.approx(499.990849)
 
 
+@pytest.mark.slow_test_group
 def test_generic_routing_live_trading_start_spot_only(
     environment: dict,
     state_file: Path,
