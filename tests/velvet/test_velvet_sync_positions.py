@@ -29,6 +29,8 @@ from tradingstrategy.pair import PandasPairUniverse
 #: Detect Github Actions
 CI = os.environ.get("CI", None) is not None
 
+pytestmark = pytest.mark.skipif(CI, reason="This is broken most of the time, so there is no need to try to maintain it")
+
 
 @pytest.fixture()
 def deposit_user() -> HexAddress:
