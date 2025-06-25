@@ -53,29 +53,18 @@ def render_plotly_figure_as_image_file(
 
     stream = BytesIO()
 
-    with warnings.catch_warnings():
-        #   /Users/moo/Library/Caches/pypoetry/virtualenvs/trade-executor-kk5ZLC7w-py3.11/lib/python3.11/site-packages/kaleido/scopes/base.py:188: DeprecationWarning:
-        #
-        #   setDaemon() is deprecated, set the daemon attribute instead
-        _kaleido = get_kaleido()
-        opts = dict(
-            format=format,
-            width=width,
-            height=height,
-        )
-        _kaleido.write_fig(
-            figure,
-            stream,
-            opts=opts,
-        )
+    _kaleido = get_kaleido()
+    opts = dict(
+        format=format,
+        width=width,
+        height=height,
+    )
+    _kaleido.write_fig(
+        figure,
+        stream,
+        opts=opts,
+    )
 
-        # figure.write_image(
-        #     stream,
-        #     format=format,
-        #     engine="kaleido",
-        #     width=width,
-        #     height=height,
-        # )
     data = stream.getvalue()
     assert len(data) > 0, "Rendered image data is empty"
     stream.close()
