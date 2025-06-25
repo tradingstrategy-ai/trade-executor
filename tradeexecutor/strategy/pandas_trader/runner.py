@@ -169,7 +169,11 @@ class PandasTraderRunner(StrategyRunner):
         if data_universe.candles is not None and self.max_data_age:
             TradingStrategyUniverseModel.check_data_age(ts, universe, self.max_data_age)
 
-    def refresh_visualisations(self, state: State, universe: TradingStrategyUniverse):
+    def refresh_visualisations(
+        self,
+        state: State,
+        universe: TradingStrategyUniverse,
+    ):
         """Updates the visualisation images for the strategy.
 
         - Used in Discord (small)
@@ -237,6 +241,7 @@ class PandasTraderRunner(StrategyRunner):
 
             else:
                 logger.warning("Charts not yet available for this strategy type. Pair count: %d", pair_count)
+
 
         except Exception as e:
             # Don't take trade executor down if visualisations fail

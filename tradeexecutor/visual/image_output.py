@@ -5,12 +5,32 @@
 - Used on a frontend for the performance charts, in Discord posts
 
 """
-import warnings
+import webbrowser
+import threading
 from io import BytesIO
+import asyncio
+from pathlib import Path
 
 import plotly.graph_objects as go
-import webbrowser
-from pathlib import Path
+from kaleido import Kaleido
+
+_kaleido = None
+_lock = threading.Lock()
+
+
+def get_kaleido() -> Kaleido:
+    """Create Kaleido rendering backend.
+
+    - Creates a Chrome browser on background
+
+    - `See usage examples <https://github.com/plotly/Kaleido>`__
+    """
+    global _kaleido
+    with _lock:
+        if _kaleido is None:
+            _kaleido = Kaleido()
+
+    return _kaleido
 
 
 def render_plotly_figure_as_image_file(
@@ -21,34 +41,43 @@ def render_plotly_figure_as_image_file(
 ) -> bytes:
     """"Render Plotly figure as a static PNG image.
 
-    See
-
-    - https://plotly.com/python/static-image-export/
-
-    - https://plotly.github.io/plotly.py-docs/generated/plotly.io.write_image.html
+    - Uses Kaleido to render the Plotly figure as a PNG or SVG image, or PDF..
+    - Creates Kaleido backend (Chrome browser) on the first call.
 
     :param format:
-        "png" or "svg"
+        See ``kaleido._fig_tools` module for supported formats.
+
+    :param width:
+        Width in pixels
+
+    :param height:
+        Height in pixels
+
+    :return:
+        Image data encoded as byttes blob.
     """
 
     assert format in ["png", "svg"], "Format must be png or svg"
 
     stream = BytesIO()
 
-    with warnings.catch_warnings():
-        #   /Users/moo/Library/Caches/pypoetry/virtualenvs/trade-executor-kk5ZLC7w-py3.11/lib/python3.11/site-packages/kaleido/scopes/base.py:188: DeprecationWarning:
-        #
-        #   setDaemon() is deprecated, set the daemon attribute instead
+    kaleido_instance = get_kaleido()
 
-        warnings.simplefilter("ignore")
-        figure.write_image(
+    opts = dict(
+        format=format,
+        width=width,
+        height=height,
+    )
+
+    asyncio.run(
+        kaleido_instance.write_fig(
+            figure,
             stream,
-            format=format,
-            engine="kaleido",
-            width=width,
-            height=height,
+            opts=opts,
         )
+    )
     data = stream.getvalue()
+    assert len(data) > 0, "Rendered image data is empty"
     stream.close()
     return data
 

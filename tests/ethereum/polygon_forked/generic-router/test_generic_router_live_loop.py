@@ -69,6 +69,7 @@ def decide_trades(
     return trades
 
 
+@pytest.mark.slow_test_group
 @flaky.flaky
 def test_generic_router_spot_and_short_strategy(
     logger: Logger,
