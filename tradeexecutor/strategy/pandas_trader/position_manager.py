@@ -2706,7 +2706,7 @@ class PositionManager:
     ):
         """Check that we have enough cash to cover buys.
 
-        - This is a trip wire for a strategy logic to not to generate
+        - This is a trip wire for a strategy logic not to generate
           and rebalances
 
         - This is to check that strategy internal logic is coherent

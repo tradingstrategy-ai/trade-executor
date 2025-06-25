@@ -150,7 +150,8 @@ class VaultRouting(RoutingModel):
             approve_call, swap_call = approve_and_deposit_4626(
                 vault=target_vault,
                 from_=address,
-                amount=swap_amount
+                amount=swap_amount,
+                check_enough_token=False,
             )
         else:
             approve_call, swap_call = approve_and_redeem_4626(
