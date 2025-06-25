@@ -5,14 +5,13 @@
 - Used on a frontend for the performance charts, in Discord posts
 
 """
-import threading
-import warnings
-from io import BytesIO
-
-import plotly.graph_objects as go
 import webbrowser
+import threading
+from io import BytesIO
+import asyncio
 from pathlib import Path
 
+import plotly.graph_objects as go
 from kaleido import Kaleido
 
 _kaleido = None
@@ -24,7 +23,7 @@ def get_kaleido() -> Kaleido:
 
     - Creates a Chrome browser on background
 
-    - `See usage <https://github.com/plotly/Kaleido/blob/master/src/py/README.md#usage-examples>`__
+    - `See usage examples <https://github.com/plotly/Kaleido>`__
     """
     global _kaleido
     with _lock:
@@ -47,6 +46,15 @@ def render_plotly_figure_as_image_file(
 
     :param format:
         "png" or "svg"
+
+    :param width:
+        Width in pixels
+
+    :param height:
+        Height in pixels
+
+    :return:
+        Image data encoded as byttes blob.
     """
 
     assert format in ["png", "svg"], "Format must be png or svg"
@@ -59,12 +67,14 @@ def render_plotly_figure_as_image_file(
         width=width,
         height=height,
     )
-    _kaleido.write_fig(
-        figure,
-        stream,
-        opts=opts,
-    )
 
+    asyncio.run(
+        _kaleido.write_fig(
+            figure,
+            stream,
+            opts=opts,
+        )
+    )
     data = stream.getvalue()
     assert len(data) > 0, "Rendered image data is empty"
     stream.close()
