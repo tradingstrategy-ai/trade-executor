@@ -117,7 +117,8 @@ class VaultPricing(PricingModel):
         ts: datetime.datetime,
         pair: TradingPairIdentifier
     ) -> USDollarAmount:
-        return self.get_buy_price(ts, pair, Decimal(1))
+        estimate = self.get_buy_price(ts, pair, Decimal(1))
+        return estimate.mid_price
 
     def get_pair_fee(
         self,

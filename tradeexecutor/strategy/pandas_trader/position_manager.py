@@ -737,7 +737,7 @@ class PositionManager:
             price_structure = self.pricing_model.get_buy_price(self.timestamp, executor_pair, value)
         except Exception as e:
             # TODO: Add nice exceptions
-            raise RuntimeError(f"pricing_model failed to get buy price at {self.timestamp} for {executor_pair}") from e
+            raise RuntimeError(f"pricing_model failed to get buy price at {self.timestamp} for {executor_pair}: {e}") from e
 
         assert type(price_structure.mid_price) == float
 

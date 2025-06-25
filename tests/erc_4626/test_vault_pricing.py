@@ -51,6 +51,19 @@ def test_vault_estimate_sell(
     assert estimate.mid_price == pytest.approx(1.0335669634763602)  # We use forked by block mainnet
 
 
+def test_vault_mid_price(
+    vault_pricing,
+    ipor_usdc: TradingPairIdentifier
+):
+    """Because there is no trading fees, vaults mid price is same as share price."""
+
+    mid_price = vault_pricing.get_mid_price(
+        ts=None,
+        pair=ipor_usdc,
+    )
+    assert mid_price == pytest.approx(1.0335669634763602)  # We use forked by block mainnet
+
+
 def test_vault_tvl(
     vault_pricing,
     ipor_usdc: TradingPairIdentifier

@@ -315,7 +315,7 @@ def create_trading_universe(
         preloaded_tvl_df=tvl_df,
         lending_reserves=LENDING_RESERVES,
         vaults=VAULTS,
-        vault_bundled_price_data=True,
+        vault_bundled_price_data=True if (VAULTS and not execution_context.live_trading) else False,
     )
 
     reserve_asset = PREFERRED_STABLECOIN
