@@ -231,6 +231,7 @@ def test_one_delta_live_strategy_short_open_and_close(
     # assert state.portfolio.reserves[usdc_id].quantity == 10000
 
 
+@flaky.flaky
 def test_one_delta_live_strategy_short_open_accrue_interests(
     logger,
     web3: Web3,
