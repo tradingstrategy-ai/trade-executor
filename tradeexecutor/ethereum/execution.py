@@ -370,7 +370,11 @@ class EthereumExecution(ExecutionModel):
                         total_sell_trades = len([t for t in completed_trades if t.is_sell()])
                         total_sell_trades_failed = len([t for t in completed_trades if t.is_sell() and t.is_failed()])
                         total_buy_trades = len([t for t in completed_trades if t.is_buy()])
-                        diff = (total_sales - expected_sales) / expected_sales
+                        if expected_sales != 0:
+                            diff = (total_sales - expected_sales) / expected_sales
+                        else:
+                            diff = 0
+
                         for t in completed_trades:
                             logger.error(
                                 "Completed trade: %s, expected reserve: %s, executed reserve: %s, price: %s\nPrice structure: %s",

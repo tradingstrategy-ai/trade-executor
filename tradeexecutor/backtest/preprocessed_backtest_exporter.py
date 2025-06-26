@@ -34,14 +34,19 @@ def export_all_main():
     else:
         slug = None
 
+    reverse = False  # TODO: Hack
+    if slug == "--reverse":
+        reverse = True
+        slug = None
+
     assert output_path.exists(), f"{output_path} does not exist"
     assert output_path.is_dir(), f"{output_path} is not a directory"
 
     started = datetime.datetime.utcnow()
 
     # Export newly added sets first
-    PREPACKAGED_SETS.reverse()
-
+    if reverse:
+        PREPACKAGED_SETS.reverse()
 
     for ds in PREPACKAGED_SETS:
 
