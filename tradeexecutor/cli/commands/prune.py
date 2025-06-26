@@ -26,14 +26,12 @@ def prune_state(
     """Prune unnecessary data from state to reduce state file size.
 
     This command removes accumulated data from the state file that is no longer
-    needed for trading operations. Currently removes balance update events from
-    all closed positions, which can accumulate over time (especially for
-    interest-bearing positions) and make state files large.
+    needed for trading operations.
 
     The command will:
     1. Create a backup of the current state file
     2. Load the state
-    3. Remove balance updates from all closed positions
+    3. Remove unnecessary data properties from all closed positions
     4. Save the pruned state
     5. Report pruning statistics
 
@@ -52,23 +50,6 @@ def prune_state(
     # Create backup and load state
     print("Creating backup of state file...")
     store, state = backup_state(str(state_file), backup_suffix="prune-backup", unit_testing=unit_testing)
-
-    # Count initial statistics
-    initial_closed_positions = len(state.portfolio.closed_positions)
-    initial_balance_updates = sum(
-        len(pos.balance_updates)
-        for pos in state.portfolio.closed_positions.values()
-    )
-
-    print(f"Found {initial_closed_positions} closed positions with {initial_balance_updates} total balance updates")
-
-    if initial_closed_positions == 0:
-        print("No closed positions found - nothing to prune")
-        return
-
-    if initial_balance_updates == 0:
-        print("No balance updates found in closed positions - nothing to prune")
-        return
 
     # Get original file size
     original_size = state_file.stat().st_size if state_file.exists() else 0
@@ -89,6 +70,8 @@ def prune_state(
     print("Pruning completed successfully!")
     print(f"Positions processed: {result['positions_processed']}")
     print(f"Balance updates removed: {result['balance_updates_removed']}")
+    print(f"Trades processed: {result['trades_processed']}")
+    print(f"Blockchain transactions processed: {result['blockchain_transactions_processed']}")
 
     if bytes_saved > 1024 * 1024:
         print(f"Estimated space saved: ~{bytes_saved / (1024 * 1024):.1f} MB")
