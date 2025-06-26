@@ -86,6 +86,7 @@ def test_valuation(
     vault_pricing,
     ipor_usdc
 ):
+    """Check valuation function works."""
     valuation_model = VaultValuator(vault_pricing)
 
     position = TradingPosition(
@@ -119,4 +120,5 @@ def test_valuation(
         position=position
     )
     assert isinstance(valuation, ValuationUpdate)
-
+    assert valuation.new_price == pytest.approx(1.0335669634763602)  # We use forked by block mainnet
+    assert valuation.new_value == pytest.approx(103.35669634763602)  # 100 shares * price
