@@ -75,10 +75,9 @@ def setup_charting_and_output(
     """
 
     import plotly.io as pio
-    from plotly.offline import init_notebook_mode
-
     # Apply Plotly bug fixes
     import tradeexecutor.monkeypatch.plotly
+    from plotly.offline import init_notebook_mode
 
     # Get rid of findfont: Font family 'Arial' not found.
     # when running a remote notebook on Jupyter Server on Ubuntu Linux server
@@ -127,6 +126,7 @@ def set_large_plotly_chart_font(
     font_size = 24,
     legend_font_size = 24,
     line_width = 3,
+    axis_title_font_size = 24,
     base_template="plotly",
 ):
     """Increase the default Plotly chart font sizes so that charts are readable on other mediums like mobile and PowerPoint.
@@ -151,8 +151,8 @@ def set_large_plotly_chart_font(
     pio.templates["custom"]["layout"]["xaxis"]["tickfont"]["size"] = font_size  # Set the x-axis tick font size
     pio.templates["custom"]["layout"]["yaxis"]["tickfont"]["size"] = font_size  # Set the y-axis tick font size
 
-    pio.templates["custom"]["layout"]["xaxis"]["title"]["font"]["size"] = title_font_size  # Set the x-axis title font size
-    pio.templates["custom"]["layout"]["yaxis"]["title"]["font"]["size"] = title_font_size  # Set the y-axis title font size
+    pio.templates["custom"]["layout"]["xaxis"]["title"]["font"]["size"] = axis_title_font_size  # Set the x-axis title font size
+    pio.templates["custom"]["layout"]["yaxis"]["title"]["font"]["size"] = axis_title_font_size  # Set the y-axis title font size
 
     # Set the default title font size
     pio.templates["custom"]["layout"]["title"] = {

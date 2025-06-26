@@ -12,7 +12,7 @@ from tabulate import tabulate
 from tradeexecutor.state.generic_position import GenericPosition
 from tradeexecutor.state.identifier import TradingPairIdentifier, TradingPairKind
 from tradeexecutor.state.portfolio import Portfolio
-from tradeexecutor.state.size_risk import SizeRisk
+from tradeexecutor.state.size_risk import SizeRisk, SizingType
 from tradeexecutor.state.trade import TradeExecution
 from tradeexecutor.state.types import USDollarAmount, Percent
 from tradeexecutor.strategy.execution_context import ExecutionMode
@@ -359,6 +359,7 @@ class YieldManager:
             timestamp,
             trade_output_table_msg,
         )
+        import ipdb; ipdb.set_trace()
         return trades
 
     def calculate_yield_positions(
@@ -387,7 +388,7 @@ class YieldManager:
         )
 
         for rule in self.rules.weights:
-            size_risk = None
+
             if rule.max_concentration < 1:
                 amount = cash_available_for_yield * rule.max_concentration
 
@@ -421,6 +422,19 @@ class YieldManager:
             else:
                 # Last position (Aave) gets what ever is left
                 amount = left
+
+                # Generate a size risk entry where there is no size risk at all
+                # because we need to dump the remaining money on this position
+                size_risk = SizeRisk(
+                    timestamp=datetime.datetime.utcnow(),
+                    pair=rule.pair,
+                    sizing_type=SizingType.hold,
+                    path=[rule.pair],
+                    capped=False,
+                    asked_size=amount,
+                    accepted_size=amount,
+                    tvl=999_999_999_999,
+                )
 
             if amount > 0:
                 weight = amount / cash_available_for_yield

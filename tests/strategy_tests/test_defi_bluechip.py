@@ -9,7 +9,6 @@ from typing import Tuple
 import pandas as pd
 import pytest
 import plotly.graph_objects as go
-from IPython.core.display_functions import display
 
 from tradeexecutor.analysis.alpha_model_analyser import create_alpha_model_timeline_all_assets, render_alpha_model_plotly_table, analyse_alpha_model_weights, \
     create_pair_weight_analysis_summary_table
