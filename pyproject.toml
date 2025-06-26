@@ -73,12 +73,13 @@ trading-strategy-qstrader = {version="^0.5",  optional = true}
 #
 quantstats = {version="^0.0.62"}
 
+# https://github.com/polakowo/vectorbt/issues/779
 # File ~/Library/Caches/pypoetry/virtualenvs/trade-executor-kk5ZLC7w-py3.11/lib/python3.11/site-packages/quantstats/utils.py:300, in _in_notebook(matplotlib_inline)
 #    297 if shell == "ZMQInteractiveShell":
 #    298     # Jupyter notebook or qtconsole
 #    299     if matplotlib_inline:
 #--> 300         get_ipython().magic("matplotlib inline")
-ipython = "<9"
+ipython = "<8"
 lxml = "^5.3"
 
 # Needed for Plotly Express scatter(trendline="ols)

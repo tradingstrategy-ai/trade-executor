@@ -28,7 +28,9 @@ from typing import List, Dict, Iterable, Optional, Tuple, Callable, Set
 import numpy
 import numpy as np
 import pandas as pd
-from IPython.core.display_functions import display
+
+# from IPython.core.display_functions import display
+from IPython.core.display import display
 from IPython.display import HTML
 from dataclasses_json import dataclass_json, config
 from statistics import median
