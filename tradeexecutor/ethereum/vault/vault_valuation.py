@@ -41,7 +41,7 @@ class VaultValuator(ValuationModel):
                 new_price=0,
                 quantity=shares_amount,
             )
-            return 0
+            return evt
 
         assert position.pair.quote.is_stablecoin(), f"Vault position {position} must be a stablecoin pair, got {position.pair}"
 
