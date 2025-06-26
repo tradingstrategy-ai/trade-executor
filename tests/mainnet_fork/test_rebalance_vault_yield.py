@@ -48,7 +48,7 @@ def state_file(tmp_path) -> Path:
 @pytest.fixture()
 def strategy_file() -> Path:
     """The strategy module where the broken accounting happened."""
-    p = Path(__file__).resolve().parent / ".." / ".." / "strategies" /  "test_only" / "base-ath-ipor.py"
+    p = Path(__file__).resolve().parent / ".." / ".." / "strategies" /  "test_only" / "base-ath-ipor-aave-bug.py"
     assert p.exists(), f"{p.resolve()} missing"
     return p
 
@@ -81,6 +81,7 @@ def environment(
         "RAISE_ON_UNCLEAN": "true",
         "RUN_SINGLE_CYCLE": "true",  # Run only one cycle"
         "MIN_GAS_BALANCE": "0.0",   # Disable gas balance check
+        "DISABLE_BROADCAST": "true",  # Disable wait_and_broadcast_multiple_nodes() broadcast as we do not have real private key
     }
     return environment
 

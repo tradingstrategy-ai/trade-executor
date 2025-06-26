@@ -1,12 +1,14 @@
 """Cash yield management."""
 import datetime
 import logging
+from decimal import Decimal
 from functools import cached_property
 
 import dataclasses
 from pprint import pformat
 
 from dataclasses_json import dataclass_json
+from fontTools.misc.bezierTools import epsilon
 from tabulate import tabulate
 
 from tradeexecutor.state.generic_position import GenericPosition
@@ -15,6 +17,7 @@ from tradeexecutor.state.portfolio import Portfolio
 from tradeexecutor.state.size_risk import SizeRisk, SizingType
 from tradeexecutor.state.trade import TradeExecution
 from tradeexecutor.state.types import USDollarAmount, Percent
+from tradeexecutor.strategy.dust import DEFAULT_VAULT_EPSILON
 from tradeexecutor.strategy.execution_context import ExecutionMode
 from tradeexecutor.strategy.pandas_trader.position_manager import PositionManager
 from tradeexecutor.strategy.tvl_size_risk import BaseTVLSizeRiskModel
@@ -268,6 +271,7 @@ class YieldManager:
         timestamp: datetime.datetime,
         current_yield_positions: dict[TradingPairIdentifier, GenericPosition | None],
         desired_yield_positions: dict[TradingPairIdentifier, YieldDecision],
+        dollar_epsilon=1.00,
     ) -> list[TradeExecution]:
         """Create trades to adjust yield positions.
 
@@ -287,6 +291,13 @@ class YieldManager:
 
         for pair, desired_result in desired_yield_positions.items():
             desired_amount = desired_result.amount_usd
+
+            # Avoid rounding/epsilon issues
+            if abs(desired_amount) < dollar_epsilon:
+                desired_amount = 0.0
+
+            assert desired_amount >= 0, f"Desired amount for {pair} cannot be negative: {desired_amount}"
+
             existing_position = current_yield_positions.get(pair)
             if existing_position:
                 existing_amount = existing_position.get_value()
@@ -298,12 +309,21 @@ class YieldManager:
             dollar_delta = desired_amount - existing_amount
             if existing_position:
                 quantity_delta = dollar_delta * existing_position.get_current_price()
+                quantity_delta = Decimal(quantity_delta)
             else:
                 quantity_delta = None
 
             if quantity_delta is not None and quantity_delta < 0:
-                # Double check for fumbled calculations
-                assert existing_position.get_quantity() >= abs(quantity_delta), f"Trying to reduce yield position more than we have. Dollar delta: {dollar_delta}, quantity delta: {quantity_delta}, {existing_position}"
+                # Double check for fumbled calculations and epsilon issues
+                existing_quantity = existing_position.get_quantity()
+                assert existing_quantity >= 0
+                diff = abs(existing_quantity + quantity_delta)
+                if diff != 0:
+                    if diff < DEFAULT_VAULT_EPSILON:
+                        logger.info("Applying epsilon fix, desired quantity %s, existing quantity %s, diff %s, epsilon %s", quantity_delta, existing_quantity, diff, epsilon)
+                        quantity_delta = -existing_quantity
+                    else:
+                        raise AssertionError(f"Trying to reduce yield position more than we have. Dollar delta: {dollar_delta}, quantity delta: {quantity_delta}, {existing_position}")
 
             if abs(dollar_delta) > self.rules.cash_change_tolerance_usd:
                 notes = f"Adjusting yield management position to: {desired_amount} USD, previously {existing_amount} USD"
@@ -324,11 +344,13 @@ class YieldManager:
                         # Aave positions are currently always fully closed and then reopenened due to internal limitaiton
                         if existing_position:
                             trades += self.position_manager.close_position(existing_position, notes=notes)
-                        trades += self.position_manager.open_credit_supply_position_for_reserves(
-                            lending_reserve_identifier=pair,
-                            amount=desired_amount,
-                            notes=notes,
-                        )
+
+                        if desired_amount > 0:
+                            trades += self.position_manager.open_credit_supply_position_for_reserves(
+                                lending_reserve_identifier=pair,
+                                amount=desired_amount,
+                                notes=notes,
+                            )
                     case _:
                         raise NotImplementedError(f"Unsupported yield manager trading pair: {pair}")
             else:
@@ -359,7 +381,7 @@ class YieldManager:
             timestamp,
             trade_output_table_msg,
         )
-        import ipdb; ipdb.set_trace()
+
         return trades
 
     def calculate_yield_positions(
@@ -382,12 +404,14 @@ class YieldManager:
         left = cash_available_for_yield
 
         logger.info(
-            "Distributing total %f USD to yield positions using %d weighting rules",
+            "Rebalancing total %f USD to yield positions using %d weighting rules",
             left,
             len(self.rules.weights),
         )
 
         for rule in self.rules.weights:
+
+            size_risk = None
 
             if rule.max_concentration < 1:
                 amount = cash_available_for_yield * rule.max_concentration
@@ -436,20 +460,22 @@ class YieldManager:
                     tvl=999_999_999_999,
                 )
 
-            if amount > 0:
-                weight = amount / cash_available_for_yield
+            # We always generate a yield position
+            # because the target position size might be zero
+            # and we might want to go from existing position to sell to zero.
+            weight = amount / cash_available_for_yield
 
-                existing_position = current_positions.get(rule.pair)
-                existing_usd = existing_position.get_value() if existing_position else None
+            existing_position = current_positions.get(rule.pair)
+            existing_usd = existing_position.get_value() if existing_position else None
 
-                result = YieldDecision(
-                    rule=rule,
-                    weight=weight,
-                    amount_usd=amount,
-                    existing_amount_usd=existing_usd,
-                    size_risk=size_risk,
-                )
-                desired_yield_positions[rule.pair] = result
+            result = YieldDecision(
+                rule=rule,
+                weight=weight,
+                amount_usd=amount,
+                existing_amount_usd=existing_usd,
+                size_risk=size_risk,
+            )
+            desired_yield_positions[rule.pair] = result
 
         table = []
         for pair, result in desired_yield_positions.items():
