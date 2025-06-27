@@ -1,5 +1,6 @@
 """Test Velvet vault deposits are correctly read."""
 import datetime
+import os
 
 import pytest
 from eth_typing import HexAddress
@@ -16,6 +17,11 @@ from tradeexecutor.state.state import State
 from tradeexecutor.strategy.pricing_model import PricingModel
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
 from tradingstrategy.chain import ChainId
+
+
+CI = os.environ.get("CI") == "true"
+
+pytestmark = pytest.mark.skipif(CI, reason="Velvet is too broken, too many false CI alerts")
 
 
 def test_velvet_treasury_initialise(
