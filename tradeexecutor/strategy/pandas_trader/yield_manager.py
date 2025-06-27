@@ -313,17 +313,18 @@ class YieldManager:
             else:
                 quantity_delta = None
 
+            if quantity_delta is not None:
+                if abs(quantity_delta) < dollar_epsilon:
+                    quantity_delta = 0.0
+
             if quantity_delta is not None and quantity_delta < 0:
                 # Double check for fumbled calculations and epsilon issues
+                # so we do not reduce the position more than we have
                 existing_quantity = existing_position.get_quantity()
                 assert existing_quantity >= 0
-                diff = abs(existing_quantity + quantity_delta)
-                if diff != 0:
-                    if diff < DEFAULT_VAULT_EPSILON:
-                        logger.info("Applying epsilon fix, desired quantity %s, existing quantity %s, diff %s, epsilon %s", quantity_delta, existing_quantity, diff, epsilon)
-                        quantity_delta = -existing_quantity
-                    else:
-                        raise AssertionError(f"Trying to reduce yield position more than we have. Dollar delta: {dollar_delta}, quantity delta: {quantity_delta}, {existing_position}")
+                diff = existing_quantity + quantity_delta
+                if existing_quantity > -quantity_delta:
+                    logger.info("Applying epsilon fix, desired quantity %s, existing quantity %s, diff %s, epsilon %s", quantity_delta, existing_quantity, diff, epsilon)
 
             if abs(dollar_delta) > self.rules.cash_change_tolerance_usd:
                 notes = f"Adjusting yield management position to: {desired_amount} USD, previously {existing_amount} USD"
