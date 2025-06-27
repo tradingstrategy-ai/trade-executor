@@ -753,6 +753,8 @@ def sync_interests(
         block_number=block_identifier,
     )
 
+    onchain_balances = list(onchain_balances)
+
     logger.info("Got %d onchain balances for %d interest-bearing assets", len(onchain_balances), len(interest_distribution.assets))
 
     balances = {
