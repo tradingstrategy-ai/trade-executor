@@ -1,12 +1,15 @@
 """Value model based on their selling price on generic routing"""
 import datetime
+import logging
 
 from tradeexecutor.state.position import TradingPosition
 from tradeexecutor.state.valuation import ValuationUpdate
 from tradeexecutor.strategy.generic.generic_pricing_model import GenericPricing
 from tradeexecutor.strategy.generic.pair_configurator import PairConfigurator
-from tradeexecutor.strategy.pricing_model import PricingModel
 from tradeexecutor.strategy.valuation import ValuationModel, ValuationModelFactory
+
+
+logger = logging.getLogger(__name__)
 
 
 class GenericValuation(ValuationModel):
@@ -32,6 +35,7 @@ class GenericValuation(ValuationModel):
             position: TradingPosition,
     ) -> ValuationUpdate:
         valuation_model = self.pair_configurator.get_valuation(position.pair)
+        logger.info("GenericValuation, chose model %s for pair %s", valuation_model, position.pair)
         return valuation_model(ts, position)
 
 

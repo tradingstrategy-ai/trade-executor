@@ -209,7 +209,10 @@ class LagoonVaultSyncModel(AddressSyncModel):
                 # Frozen positions may have quantity of 0 (failed open trades) and cannot have value
                 valued_at = p.get_last_valued_at()
                 updated_ago = now - valued_at
-                assert updated_ago < self.valuation_data_freshness, f"Position {p} pricing was too old for Lagoon valuation update. Now: {now}, updated at: {valued_at}, diff: {updated_ago}, threshold: {self.valuation_data_freshness}"
+                last_event = p.valuation_updates[-1] if p.valuation_updates else None
+
+                # Try to dump as much as possible information for diagnostics
+                assert updated_ago < self.valuation_data_freshness, f"Position {p} pricing was too old for Lagoon valuation update. Now: {now}, updated at: {valued_at}, diff: {updated_ago}, threshold: {self.valuation_data_freshness}, last valuation event: {last_event}"
 
         # TODO: Replace with pure onchain valuation mechanism?
         return state.portfolio.get_net_asset_value(include_interest=True)

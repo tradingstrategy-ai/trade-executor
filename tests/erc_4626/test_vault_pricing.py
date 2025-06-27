@@ -82,7 +82,7 @@ def test_vault_tvl(
     assert tvl == pytest.approx(1437072.77357)  # We use forked by block mainnet
 
 
-def test_valuation(
+def test_vault_position_valuation(
     vault_pricing,
     ipor_usdc
 ):
@@ -115,10 +115,13 @@ def test_valuation(
         }
     )
 
+    timestamp = datetime.datetime(2029, 1, 1)
+
     valuation = valuation_model(
-        ts=datetime.datetime.utcnow(),
+        ts=timestamp,
         position=position
     )
     assert isinstance(valuation, ValuationUpdate)
     assert valuation.new_price == pytest.approx(1.0335669634763602)  # We use forked by block mainnet
     assert valuation.new_value == pytest.approx(103.35669634763602)  # 100 shares * price
+    assert position.get_last_valued_at() == timestamp
