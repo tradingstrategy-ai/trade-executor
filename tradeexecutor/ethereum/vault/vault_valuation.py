@@ -29,8 +29,8 @@ class VaultValuator(ValuationModel):
         shares_amount = position.get_quantity()
 
         if shares_amount == 0:
-            # Frozen position, deposit has failed
-            logger.warning(f"Shares amount must be greater than 0, got {shares_amount} for position {position}")
+            # Frozen position, deposit has failed?
+            logger.warning(f"Creating null valuation update: Shares amount must be greater than 0, got {shares_amount} for position {position}")
             evt = ValuationUpdate(
                 created_at=ts,
                 position_id=position.position_id,

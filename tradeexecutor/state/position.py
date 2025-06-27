@@ -1596,8 +1596,13 @@ class TradingPosition(GenericPosition):
                 # Credit position does not have borrowed part of the loan
                 timestamps.append(self.loan.borrowed_interest.last_updated_at)
             return min(timestamps)
+        elif self.valuation_updates:
+            # We have generated valuation update event for this position.
+            # Use data from it/
+            return self.valuation_updates[-1].valued_at
         else:
             # Spot tokens
+            # TODO: Legacy. Fix everything to use the same path.
             return self.last_pricing_at
 
     def revalue_base_asset(self, last_pricing_at: datetime.datetime, last_token_price: USDollarPrice):

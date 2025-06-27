@@ -54,6 +54,8 @@ class EthereumPoolRevaluator(ValuationModel):
         assert isinstance(ts, datetime.datetime)
         pair = position.pair
 
+        logger.info("Valuation model %s running on pair %s", self.__class__.__name__, pair)
+
         if position.is_long():
 
             quantity = position.get_quantity()
