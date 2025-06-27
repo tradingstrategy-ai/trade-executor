@@ -770,5 +770,14 @@ def sync_interests(
     events = list(events_iter)
 
     logger.info(f"sync_interests() complete, last block is now {state.sync.interest.last_sync_block}, we got {len(events)} events")
+    for p in state.portfolio.get_current_credit_positions():
+        logger.info(
+            "Position %s, interest %s, collateral interest %s, borrowed interest %s, updated at %s",
+            p,
+            p.get_accrued_interest(),
+            p.loan.get_collateral_interest(),
+            p.loan.get_borrow_interest(),
+            p.get_last_valued_at(),
+        )
 
     return events

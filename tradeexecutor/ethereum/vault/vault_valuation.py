@@ -28,6 +28,8 @@ class VaultValuator(ValuationModel):
         assert position.is_vault()
         shares_amount = position.get_quantity()
 
+        position.last_pricing_at = ts
+
         if shares_amount == 0:
             # Frozen position, deposit has failed?
             logger.warning(f"Creating null valuation update: Shares amount must be greater than 0, got {shares_amount} for position {position}")
@@ -41,6 +43,7 @@ class VaultValuator(ValuationModel):
                 new_price=0,
                 quantity=shares_amount,
             )
+            position.last_token_price = 0
             return evt
 
         assert position.pair.quote.is_stablecoin(), f"Vault position {position} must be a stablecoin pair, got {position.pair}"
@@ -60,6 +63,7 @@ class VaultValuator(ValuationModel):
             new_price=new_price,
             quantity=shares_amount,
         )
+        position.last_token_price = new_price
         return evt
 
 

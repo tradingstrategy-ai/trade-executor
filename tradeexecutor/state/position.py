@@ -1595,7 +1595,9 @@ class TradingPosition(GenericPosition):
             if self.loan.borrowed and self.loan.borrowed_interest.last_updated_at:
                 # Credit position does not have borrowed part of the loan
                 timestamps.append(self.loan.borrowed_interest.last_updated_at)
-            return min(timestamps)
+            # TODO: Need to be smarter here?
+            logger.info("Credit position timestamps: %s", timestamps)
+            return max(timestamps)
         elif self.valuation_updates:
             # We have generated valuation update event for this position.
             # Use data from it/
