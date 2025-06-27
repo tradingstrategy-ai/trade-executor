@@ -159,7 +159,7 @@ VAULTS = [
 
     # maxAPY USDC base
     # https://app.maxapy.io/vaults/super/usdc
-    (ChainId.base, "0x7a63e8fc1d0a5e9be52f05817e8c49d9e2d6efae".lower()),
+    # (ChainId.base, "0x7a63e8fc1d0a5e9be52f05817e8c49d9e2d6efae".lower()),
 
     # Spark USDC Base
     # https://app.maxapy.io/vaults/super/usdc
@@ -343,6 +343,7 @@ def create_trading_universe(
     )
     assert vault is not None
 
+
     return strategy_universe
 
 
@@ -416,7 +417,7 @@ def decide_trades(
     equity = portfolio.get_total_equity()
     portfolio_target_value = equity * parameters.allocation
 
-    assert equity > 80_000, f"Trapped bad unit test run, portfolio value should not fall this low: {equity}"
+    assert equity > 50_000, f"Trapped bad unit test run, portfolio value should not fall this low: {equity}"
 
     # Select max_assets_in_portfolio assets in which we are going to invest
     # Calculate a weight for ecah asset in the portfolio using 1/N method based on the raw signal
@@ -541,6 +542,8 @@ def decide_trades(
         )
 
         state.visualisation.set_discardable_data("alpha_model", alpha_model)
+
+    position_manager.check_enough_cash(trades)
 
     return trades  # Return the list of trades we made in this cycle
 

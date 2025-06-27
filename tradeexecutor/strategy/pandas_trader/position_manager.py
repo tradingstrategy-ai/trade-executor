@@ -1512,12 +1512,17 @@ class PositionManager:
             flags = set()
         flags = {TradeFlag.open} | flags
 
+        reserve_currency = self.strategy_universe.get_reserve_asset()
+        assert reserve_currency
+
+        assert amount > 0, f"Cannot open credit supply position with zero or negative amount: {amount}"
+
         position, trade, _ = self.state.supply_credit(
             self.timestamp,
             lending_reserve_identifier,
             collateral_quantity=Decimal(amount),
             trade_type=TradeType.rebalance,
-            reserve_currency=self.strategy_universe.get_reserve_asset(),
+            reserve_currency=reserve_currency,
             collateral_asset_price=1.0,
             flags=flags,
         )

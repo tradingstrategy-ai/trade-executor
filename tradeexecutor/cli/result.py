@@ -2,7 +2,7 @@
 import traceback
 
 import pandas as pd
-from IPython.core.display_functions import display
+from IPython.display import display
 
 from tradeexecutor.analysis.trade_analyser import build_trade_analysis
 from tradeexecutor.state.state import State

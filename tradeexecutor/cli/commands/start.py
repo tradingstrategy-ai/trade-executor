@@ -148,6 +148,7 @@ def start(
     visualisation: bool = typer.Option(True, "--visualisation", envvar="VISUALISATION", help="Disable generation of charts using Kaleido library. Helps with issues with broken installations"),
 
     run_single_cycle: bool = typer.Option(False, "--run-single-cycle", envvar="RUN_SINGLE_CYCLE", help="Run a single strategy decision cycle and exist, regardless of the current pending state."),
+    disable_broadcast: bool = typer.Option(False, "--disable-broadcast", envvar="DISABLE_BROADCAST", help="Unit testing option used with Anvil."),
     skip_crash_sleep: bool = typer.Option(False, "--skip-crash-sleep", envvar="SKIP_CRASH_SLEEP", help="Don't leave waiting after a crash. Unit test optimisation."),
 
     simulate: bool = shared_options.simulate,
@@ -325,6 +326,9 @@ def start(
             vault_payment_forwarder_address=vault_payment_forwarder_address,
             routing_hint=mod.trade_routing,
         )
+
+        # TODO: Unit test hack
+        execution_model.disable_broadcast = disable_broadcast
 
         approval_model = create_approval_model(approval_type)
 

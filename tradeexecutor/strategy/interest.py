@@ -717,7 +717,8 @@ def sync_interests(
         return []
 
     duration = timestamp - previous_update_at
-    if duration <= ZERO_TIMEDELTA:
+    epsilon = datetime.timedelta(seconds=5)
+    if duration + epsilon <= ZERO_TIMEDELTA:
         logger.error(f"Interest rate sync error. Sync time span must be positive: {previous_update_at} - {timestamp}")
         raise RuntimeError(f"Interest rate sync error. Sync time span must be positive: {previous_update_at} - {timestamp}")
         return []
