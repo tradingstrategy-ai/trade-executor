@@ -73,7 +73,7 @@ class VaultRouting(RoutingModel):
         )
         self.profitability_estimation_lookback_window = profitability_estimation_lookback_window
         self.epsilon = epsilon
-        self.vault_interaction_gas_limit = 6_000_000  # 3M gas was not enough to withdraw from IPOR
+        self.vault_interaction_gas_limit = 20_000_000  # 3M gas was not enough to withdraw from IPOR
 
     def create_routing_state(
         self,
