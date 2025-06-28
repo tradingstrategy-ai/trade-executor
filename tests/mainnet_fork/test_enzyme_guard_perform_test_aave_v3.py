@@ -25,6 +25,9 @@ from tradeexecutor.monkeypatch.web3 import construct_sign_and_send_raw_middlewar
 from tradeexecutor.state.state import State
 
 
+CI = os.environ.get("CI") == "true"
+
+
 pytestmark = pytest.mark.skipif(not os.environ.get("JSON_RPC_POLYGON") or not os.environ.get("TRADING_STRATEGY_API_KEY"), reason="Set POLYGON_JSON_RPC and TRADING_STRATEGY_API_KEY environment variables to run this test")
 
 
@@ -166,7 +169,7 @@ def environment(
     return environment
 
 
-@flaky.flaky
+@pytest.mark.skipif(CI, reason="Too flaky to run on CI")
 def test_enzyme_guard_perform_test_trade_aave(
     environment: dict,
     web3: Web3,

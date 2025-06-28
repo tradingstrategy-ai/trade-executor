@@ -877,6 +877,7 @@ class StrategyRunner(abc.ABC):
                     self.sync_model.resync_nonce()
 
                     # Bail out if we generated double position
+                    logger.info("Double open position tripwire check before executing trades")
                     check_double_position(
                         state,
                         printer=logger.error,
