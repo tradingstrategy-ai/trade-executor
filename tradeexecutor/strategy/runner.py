@@ -16,6 +16,7 @@ from typing import List, Optional, Tuple, cast, Callable
 
 from eth_defi.provider.anvil import is_anvil, mine
 from tradeexecutor.backtest.backtest_execution import BacktestExecutionFailed
+from tradeexecutor.cli.double_position import check_double_position
 from tradeexecutor.ethereum.ethereum_protocol_adapters import EthereumPairConfigurator
 from tradeexecutor.ethereum.tx import TransactionBuilder
 from tradeexecutor.state.store import StateStore
@@ -874,6 +875,13 @@ class StrategyRunner(abc.ABC):
 
                     # Make sure our hot wallet nonce is up to date
                     self.sync_model.resync_nonce()
+
+                    # Bail out if we generated double position
+                    check_double_position(
+                        state,
+                        printer=logger.error,
+                        crash=True,
+                    )
 
                     # Sync state before broadcasting,
                     # so we have generated tx hashes on the disk

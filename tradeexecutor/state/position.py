@@ -1204,10 +1204,22 @@ class TradingPosition(GenericPosition):
                 return True
         return False
 
+    def is_about_to_close(self) -> bool:
+        """This position will close during this trade execution cycle.
+
+        - It has planned trades taking the position to zero
+        """
+        epsilon = get_close_epsilon_for_pair(self.pair)
+        return self.get_quantity(planned=True) < epsilon
+
     def can_be_closed(self) -> bool:
         """There are no tied tokens in this position.
 
         Perform additional check for token amount dust caused by rounding errors.
+
+        See also
+
+        - :py:meth:`is_closed`
         """
 
         if self.closed_at:
