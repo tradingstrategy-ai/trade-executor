@@ -50,6 +50,7 @@ class VaultRoutingState(RoutingState):
     ):
         self.tx_builder = tx_builder
         self.strategy_universe = strategy_universe
+        self.vault_interaction_gas_limit = 6_000_000  # 3M gas was not enough to withdraw from IPOR
 
     def get_reserve_asset(self) -> AssetIdentifier:
         return self.strategy_universe.get_reserve_asset()
@@ -161,7 +162,7 @@ class VaultRouting(RoutingModel):
             )
 
         approve_gas_limit = 500_000
-        swap_gas_limit = 2_500_000
+        swap_gas_limit = self.vault_interaction_gas_limit
 
         tx_1 = tx_builder.sign_transaction(
             contract=target_vault.denomination_token.contract,
