@@ -239,6 +239,7 @@ def test_mark_down_position(
     position = next(iter(state.portfolio.open_positions.values()))
     environment["POSITION_ID"] = str(position.position_id)
     environment["CLOSE_BY_SELL"] = "false"  # Do mark down
+    environment["BLACKLIST"] = "true"  # Update blacklist
     assert position.is_open()
 
     # Run the command

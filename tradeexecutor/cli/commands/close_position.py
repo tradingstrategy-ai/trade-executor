@@ -70,7 +70,7 @@ def close_position(
 
     position_id: Optional[int] = Option(None, envvar="POSITION_ID", help="Position id to close."),
     close_by_sell: Optional[bool] = Option(True, envvar="CLOSE_BY_SELL", help="Attempt to close position by selling the underlying. If set to false, mark the position down to zero value."),
-    blacklist_marked_down: Optional[bool] = Option(True, envvar="BLACKLIST_MARKED_DOWN", help="Marked down trading pairs are automatically blacklisted for the future trades."),
+    blacklist: Optional[bool] = Option(False, envvar="BLACKLIST", help="Blacklist the position to block future trades."),
     slippage: Optional[float] = Option(None, envvar="SLIPPAGE", help="Override the defaukt slippage tolerance E.g. 0.05 for 5% slippage/sell tax."),
 ):
     """Close a single positions.
@@ -218,7 +218,7 @@ def close_position(
         execution_context=execution_context,
         position_id=position_id,
         close_by_sell=close_by_sell,
-        blacklist_marked_down=blacklist_marked_down,
+        blacklist_marked_down=blacklist,
     )
 
     # Store the test trade data in the strategy history
