@@ -411,6 +411,9 @@ def test_buy_and_sell_blacklisted_asset(
     assert len(portfolio.closed_positions) == 0
 
     failed_position: TradingPosition = next(iter(portfolio.frozen_positions.values()))
+
+    assert portfolio.get_frozen_position(failed_position.pair) is not None
+
     assert failed_position.position_id == 2
     assert failed_position.frozen_at is not None
     assert failed_position.is_frozen()

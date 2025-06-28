@@ -1214,3 +1214,14 @@ class Portfolio:
     def get_total_repaid_interest(self) -> USDollarAmount:
         """Get the total interest repaid from the positions."""
         return sum(p.get_repaid_interest() for p in self.get_all_positions())
+
+    def get_frozen_position(self, pair) -> TradingPosition | None:
+        """Get a frozen position by trading pair.
+
+        :param pair:
+            Trading pair identifier
+
+        :return:
+            Frozen position or None if not found
+        """
+        return next((p for p in self.frozen_positions.values() if p.pair == pair), None)
