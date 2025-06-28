@@ -292,8 +292,9 @@ class YieldManager:
         for pair, desired_result in desired_yield_positions.items():
             desired_amount = desired_result.amount_usd
 
+            # Safety check that we do not have frozen positions for this yield pair
             frozen_position = self.portfolio.get_frozen_position(pair)
-            assert frozen_position is not None, f"Yield position frozen, aborting execution, as we cannot generate cash releasing trades: {frozen_position}"
+            assert frozen_position is None, f"Yield position frozen, aborting execution, as we cannot generate cash releasing trades: {frozen_position}, {pair}"
 
             # Avoid rounding/epsilon issues
             if abs(desired_amount) < dollar_epsilon:
