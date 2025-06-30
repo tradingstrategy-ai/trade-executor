@@ -399,6 +399,10 @@ class StrategySummaryStatistics:
     #: Based on :ref:`compounding realised positions profit`.
     performance_chart_90_days: Optional[List[Tuple[UnixTimestamp, Percent]]] = None
 
+    #: Display the strategy returns as the function of the share price
+    #:
+    share_returns_90_days: Optional[List[Tuple[UnixTimestamp, Percent]]] = None
+
     #: Strategy performance metrics to be displayed on the summary card
     #:
     #: We use :py:class:`KeyMetricKind` value as the key.
