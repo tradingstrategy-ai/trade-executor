@@ -169,6 +169,7 @@ def calculate_summary_statistics(
                 profitability_90_days = None
                 performance_chart_90_days = None
 
+    share_price_returns_90_days = None
     if share_price:
         logger.info("Using share calculations for summary statistics")
         share_price_returns = calculate_share_price(state, as_return=True)
@@ -178,15 +179,16 @@ def calculate_summary_statistics(
                 age=age,
                 start_at=start_at,
             )
-            profitability_90_days = performance_chart_90_days[-1][1]
-            assert type(profitability_90_days) == float, f"We got {profitability_90_days}"
-            share_price_returns_90_days = performance_chart_90_days
+            if len(performance_chart_90_days) > 0:
+                profitability_90_days = performance_chart_90_days[-1][1]
+                assert type(profitability_90_days) == float, f"We got {profitability_90_days}"
+                share_price_returns_90_days = performance_chart_90_days
 
     else:
         logger.info("Using legacy profitability calculations for summary statistics")
         if age and returns_all_time:
             returns_annualised = calculate_annualised_return(returns_all_time, age)
-        share_price_returns_90_days = None
+
 
     key_metrics = {m.kind.value: m for m in calculate_key_metrics(state, backtested_state, required_history=key_metrics_backtest_cut_off, cycle_duration=cycle_duration)}
 
