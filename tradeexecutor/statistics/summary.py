@@ -178,7 +178,8 @@ def calculate_summary_statistics(
                 age=age,
                 start_at=start_at,
             )
-            profitability_90_days = performance_chart_90_days.iloc[-1]
+            profitability_90_days = performance_chart_90_days[-1][1]
+            assert type(profitability_90_days) == float, f"We got {profitability_90_days}"
             share_price_returns_90_days = performance_chart_90_days
 
     else:
