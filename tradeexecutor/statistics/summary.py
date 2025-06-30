@@ -34,8 +34,11 @@ def prepare_share_price_summary_statistics(
     assert isinstance(start_at, pd.Timestamp), "start_at must be a pandas Timestamp"
     assert isinstance(age, datetime.timedelta), "age must be a datetime.timedelta"
 
-    returns_all_time = share_price_returns.iloc[-1] - 1.0
-    returns_annualised = calculate_annualised_return(returns_all_time, age)
+    if len(share_price_returns) > 0:
+        returns_all_time = share_price_returns.iloc[-1] - 1.0
+        returns_annualised = calculate_annualised_return(returns_all_time, age)
+    else:
+        returns_all_time = returns_annualised = 0
     logger.info("Returns %d, annualised %s", returns_all_time, returns_annualised)
 
     profitability_daily = share_price_returns.resample("1d").last()
@@ -169,7 +172,11 @@ def calculate_summary_statistics(
         logger.info("Using share calculations for summary statistics")
         share_price_returns = calculate_share_price(state, as_return=True)
         if share_price_returns is not None:
-            returns_annualised, profitability_90_days = prepare_share_price_summary_statistics(share_price_returns)
+            returns_annualised, profitability_90_days = prepare_share_price_summary_statistics(
+                share_price_returns,
+                age=age,
+                start_at=start_at,
+            )
             performance_chart_90_days = profitability_90_days
 
     else:
