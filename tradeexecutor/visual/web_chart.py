@@ -9,7 +9,7 @@ from eth_defi.utils import to_unix_timestamp
 
 from tradeexecutor.state.state import State
 from tradeexecutor.visual.equity_curve import calculate_compounding_realised_trading_profitability, calculate_equity_curve, calculate_investment_flow, \
-    calculate_compounding_unrealised_trading_profitability, extract_compounding_unrealised_trading_profitability_portfolio_statistics
+    calculate_compounding_unrealised_trading_profitability, extract_compounding_unrealised_trading_profitability_portfolio_statistics, calculate_share_price
 
 
 class WebChartType(enum.Enum):
@@ -38,6 +38,12 @@ class WebChartType(enum.Enum):
 
     #: Total equity curve
     total_equity = "total_equity"
+
+    #: Share price of strategy
+    share_price = "share_price"
+
+    #: Return if you would have been holding shares
+    share_price_based_return = "share_price_based_return"
 
 
 class WebChartSource(enum.Enum):
@@ -102,6 +108,14 @@ def render_web_chart(
             df = calculate_investment_flow(state)
             description = "Netflow"
             help_link = "https://tradingstrategy.ai/glossary/netflow"
+        case WebChartType.share_price:
+            df = calculate_share_price(state)
+            description = "Share price"
+            help_link = "https://tradingstrategy.ai/glossary/share-price"
+        case WebChartType.share_price_based_return:
+            df = calculate_share_price(state, as_return=True)
+            description = "Return"
+            help_link = "https://tradingstrategy.ai/glossary/share-price"
         case _:
             raise NotImplementedError(f"{type}")
 
