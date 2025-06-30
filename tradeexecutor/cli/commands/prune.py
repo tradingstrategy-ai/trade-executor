@@ -21,20 +21,17 @@ def prune_state(
     id: str = shared_options.id,
     strategy_file: Path = shared_options.strategy_file,
     state_file: Optional[Path] = shared_options.state_file,
-    log_level: str = shared_options.log_level,
     unit_testing: bool = shared_options.unit_testing,
 ):
     """Prune unnecessary data from state to reduce state file size.
 
     This command removes accumulated data from the state file that is no longer
-    needed for trading operations. Currently removes balance update events from
-    all closed positions, which can accumulate over time (especially for
-    interest-bearing positions) and make state files large.
+    needed for trading operations.
 
     The command will:
     1. Create a backup of the current state file
     2. Load the state
-    3. Remove balance updates from all closed positions
+    3. Remove unnecessary data properties from all closed positions
     4. Save the pruned state
     5. Report pruning statistics
 
@@ -54,22 +51,8 @@ def prune_state(
     print("Creating backup of state file...")
     store, state = backup_state(str(state_file), backup_suffix="prune-backup", unit_testing=unit_testing)
 
-    # Count initial statistics
-    initial_closed_positions = len(state.portfolio.closed_positions)
-    initial_balance_updates = sum(
-        len(pos.balance_updates)
-        for pos in state.portfolio.closed_positions.values()
-    )
-
-    print(f"Found {initial_closed_positions} closed positions with {initial_balance_updates} total balance updates")
-
-    if initial_closed_positions == 0:
-        print("No closed positions found - nothing to prune")
-        return
-
-    if initial_balance_updates == 0:
-        print("No balance updates found in closed positions - nothing to prune")
-        return
+    # Get original file size
+    original_size = state_file.stat().st_size if state_file.exists() else 0
 
     # Perform pruning
     print("Pruning balance updates from closed positions...")
@@ -79,15 +62,20 @@ def prune_state(
     print("Saving pruned state...")
     store.sync(state)
 
+    # Calculate bytes saved by comparing file sizes
+    final_size = state_file.stat().st_size if state_file.exists() else 0
+    bytes_saved = original_size - final_size
+
     # Report results
     print("Pruning completed successfully!")
     print(f"Positions processed: {result['positions_processed']}")
     print(f"Balance updates removed: {result['balance_updates_removed']}")
+    print(f"Trades processed: {result['trades_processed']}")
+    print(f"Blockchain transactions processed: {result['blockchain_transactions_processed']}")
 
-    estimated_bytes_saved = result["bytes_saved"]
-    if estimated_bytes_saved > 1024 * 1024:
-        print(f"Estimated space saved: ~{estimated_bytes_saved / (1024 * 1024):.1f} MB")
-    elif estimated_bytes_saved > 1024:
-        print(f"Estimated space saved: ~{estimated_bytes_saved / 1024:.1f} KB")
+    if bytes_saved > 1024 * 1024:
+        print(f"Estimated space saved: ~{bytes_saved / (1024 * 1024):.1f} MB")
+    elif bytes_saved > 1024:
+        print(f"Estimated space saved: ~{bytes_saved / 1024:.1f} KB")
     else:
-        print(f"Estimated space saved: ~{estimated_bytes_saved} bytes")
+        print(f"Estimated space saved: ~{bytes_saved} bytes")
