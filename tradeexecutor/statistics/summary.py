@@ -13,10 +13,50 @@ from tradeexecutor.strategy.cycle import CycleDuration
 from tradeexecutor.strategy.execution_context import ExecutionMode
 from tradeexecutor.strategy.summary import StrategySummaryStatistics
 from tradeexecutor.visual.equity_curve import calculate_compounding_realised_trading_profitability, calculate_cumulative_daily_returns, \
-    calculate_compounding_unrealised_trading_profitability, extract_compounding_unrealised_trading_profitability_portfolio_statistics
+    calculate_compounding_unrealised_trading_profitability, extract_compounding_unrealised_trading_profitability_portfolio_statistics, calculate_share_price
 from tradeexecutor.visual.web_chart import export_time_series
 
 logger = logging.getLogger(__name__)
+
+
+
+def prepare_share_price_summary_statistics(
+    share_price_returns: pd.Series,
+    start_at: pd.Timestamp,
+    age: datetime.timedelta,
+):
+    """Profitability statistics for the share price-based returns.
+
+    - Used for Lagoon vaults
+    """
+
+    assert isinstance(share_price_returns, pd.Series), "share_price_returns must be a pandas Series"
+    assert isinstance(start_at, pd.Timestamp), "start_at must be a pandas Timestamp"
+    assert isinstance(age, datetime.timedelta), "age must be a datetime.timedelta"
+
+    if len(share_price_returns) > 0:
+        returns_all_time = share_price_returns.iloc[-1] - 1.0
+        returns_annualised = calculate_annualised_return(returns_all_time, age)
+    else:
+        returns_all_time = returns_annualised = 0
+    logger.info("Returns %d, annualised %s", returns_all_time, returns_annualised)
+
+    profitability_daily = share_price_returns.resample("1d").last()
+
+    profitability_time_windowed = profitability_daily[start_at:]
+
+    profitability_time_windowed = profitability_time_windowed.dropna()
+
+    if len(profitability_time_windowed) > 0:
+        profitability_time_windowed = profitability_time_windowed / profitability_time_windowed.iloc[0]
+    else:
+        profitability_time_windowed = pd.Series(dtype=float)
+
+    profitability_time_windowed = export_time_series(profitability_time_windowed)
+
+    logger.info("Profitability time windowed: %d entries", len(profitability_time_windowed))
+
+    return returns_annualised, profitability_time_windowed
 
 
 def calculate_summary_statistics(
@@ -28,6 +68,7 @@ def calculate_summary_statistics(
     backtested_state: State | None = None,
     key_metrics_backtest_cut_off = datetime.timedelta(days=90),
     cycle_duration: Optional[CycleDuration] = None,
+    share_price=False,
 ) -> StrategySummaryStatistics:
     """Preprocess the strategy statistics for the summary card in the web frontend.
 
@@ -70,6 +111,9 @@ def calculate_summary_statistics(
 
     :param cycle_duration:
         The duration of each trade decision cycle.
+
+    :param share_price:
+        Use share price-based profit calculations instead of equity curve.
 
     :return:
         Summary calculations for the summary tile,
@@ -124,8 +168,21 @@ def calculate_summary_statistics(
                 profitability_90_days = None
                 performance_chart_90_days = None
 
-    if age and returns_all_time:
-        returns_annualised = calculate_annualised_return(returns_all_time, age)
+    if share_price:
+        logger.info("Using share calculations for summary statistics")
+        share_price_returns = calculate_share_price(state, as_return=True)
+        if share_price_returns is not None:
+            returns_annualised, profitability_90_days = prepare_share_price_summary_statistics(
+                share_price_returns,
+                age=age,
+                start_at=start_at,
+            )
+            performance_chart_90_days = profitability_90_days
+
+    else:
+        logger.info("Using legacy profitability calculations for summary statistics")
+        if age and returns_all_time:
+            returns_annualised = calculate_annualised_return(returns_all_time, age)
 
     key_metrics = {m.kind.value: m for m in calculate_key_metrics(state, backtested_state, required_history=key_metrics_backtest_cut_off, cycle_duration=cycle_duration)}
 

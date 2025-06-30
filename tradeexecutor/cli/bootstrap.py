@@ -7,6 +7,7 @@ from decimal import Decimal
 from pathlib import Path
 from typing import Optional, Tuple, Set, cast
 
+import pandas as pd
 from eth_typing import HexAddress
 
 from eth_defi.enzyme.vault import Vault
@@ -350,6 +351,7 @@ def create_metadata(
     """Create metadata object from the configuration variables.
 
     - This metadata is exposed to frontend to be displayed on the website
+
     """
 
     on_chain_data = OnChainData(

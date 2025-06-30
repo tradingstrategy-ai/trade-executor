@@ -8,6 +8,7 @@
 import datetime
 import logging
 
+from tradeexecutor.ethereum.lagoon.vault import LagoonVaultSyncModel
 from tradeexecutor.ethereum.wallet import perform_gas_level_checks
 from tradeexecutor.state.state import State
 from tradeexecutor.statistics.summary import calculate_summary_statistics
@@ -53,7 +54,10 @@ def refresh_run_state(
     # Even if the strategy has no action yet (deposits, trades)
     # we need to calculate these statistics, as this will
     # calculate the backtested metrics using in strategy summary tiles
-    logger.info("refresh_run_state() - calculating summary statistics, visualisations are %s", visualisation)
+
+    lagoon = isinstance(sync_model, LagoonVaultSyncModel)
+
+    logger.info("refresh_run_state() - calculating summary statistics, lagoon is %s, visualisations are %s", lagoon, visualisation)
     stats = calculate_summary_statistics(
         state,
         execution_context.mode,
@@ -61,6 +65,7 @@ def refresh_run_state(
         # key_metrics_backtest_cut_off=self.metadata.key_metrics_backtest_cut_off,
         key_metrics_backtest_cut_off=backtest_cut_off,
         cycle_duration=cycle_duration,
+        share_price=lagoon,
     )
     run_state.summary_statistics = stats
 
