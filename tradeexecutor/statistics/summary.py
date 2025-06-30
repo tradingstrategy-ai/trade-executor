@@ -166,14 +166,14 @@ def calculate_summary_statistics(
                 performance_chart_90_days = None
 
     if share_price:
-        logger.info("Using share calculations for summmary statistics")
+        logger.info("Using share calculations for summary statistics")
         share_price_returns = calculate_share_price(state, as_return=True)
-        if share_price_returns:
+        if share_price_returns is not None:
             returns_annualised, profitability_90_days = prepare_share_price_summary_statistics(share_price_returns)
             performance_chart_90_days = profitability_90_days
 
     else:
-        logger.info("Using legacy profitability calculations for summmary statistics")
+        logger.info("Using legacy profitability calculations for summary statistics")
         if age and returns_all_time:
             returns_annualised = calculate_annualised_return(returns_all_time, age)
 
