@@ -399,6 +399,9 @@ class StrategySummaryStatistics:
     #: Based on :ref:`compounding realised positions profit`.
     performance_chart_90_days: Optional[List[Tuple[UnixTimestamp, Percent]]] = None
 
+    #: TODO: doc
+    share_price_returns_90_days: Optional[List[Tuple[UnixTimestamp, Percent]]] = None
+
     #: Display the strategy returns as the function of the share price
     #:
     share_returns_90_days: Optional[List[Tuple[UnixTimestamp, Percent]]] = None

@@ -119,10 +119,10 @@ def test_share_price_chart(
 
     # Lagoon patched calculations
     share_price_returns = calculate_share_price(state, as_return=True)
-    returns_annualised, profitability_90_days = prepare_share_price_summary_statistics(
+    returns_annualised, performance_90_days = prepare_share_price_summary_statistics(
         share_price_returns,
         start_at=pd.Timestamp("2025-05-01"),
         age=datetime.timedelta(days=30),
     )
-
     assert returns_annualised == pytest.approx(-10.229681969539822)
+    assert len(performance_90_days) == 26

@@ -39,24 +39,25 @@ def prepare_share_price_summary_statistics(
         returns_annualised = calculate_annualised_return(returns_all_time, age)
     else:
         returns_all_time = returns_annualised = 0
+
     logger.info("Returns %d, annualised %s", returns_all_time, returns_annualised)
 
     profitability_daily = share_price_returns.resample("1d").last()
 
-    profitability_time_windowed = profitability_daily[start_at:]
+    performance_90_days = profitability_daily[start_at:]
 
-    profitability_time_windowed = profitability_time_windowed.dropna()
+    performance_90_days = performance_90_days.dropna()
 
-    if len(profitability_time_windowed) > 0:
-        profitability_time_windowed = profitability_time_windowed / profitability_time_windowed.iloc[0]
+    if len(performance_90_days) > 0:
+        performance_90_days = performance_90_days / performance_90_days.iloc[0]
     else:
-        profitability_time_windowed = pd.Series(dtype=float)
+        performance_90_days = pd.Series(dtype=float)
 
-    profitability_time_windowed = export_time_series(profitability_time_windowed)
+    performance_90_days = export_time_series(performance_90_days)
 
-    logger.info("Profitability time windowed: %d entries", len(profitability_time_windowed))
+    logger.info("Profitability time windowed: %d entries", len(performance_90_days))
 
-    return returns_annualised, profitability_time_windowed
+    return returns_annualised, performance_90_days
 
 
 def calculate_summary_statistics(
@@ -172,17 +173,19 @@ def calculate_summary_statistics(
         logger.info("Using share calculations for summary statistics")
         share_price_returns = calculate_share_price(state, as_return=True)
         if share_price_returns is not None:
-            returns_annualised, profitability_90_days = prepare_share_price_summary_statistics(
+            returns_annualised, performance_chart_90_days = prepare_share_price_summary_statistics(
                 share_price_returns,
                 age=age,
                 start_at=start_at,
             )
-            performance_chart_90_days = profitability_90_days
+            profitability_90_days = performance_chart_90_days.iloc[-1]
+            share_price_returns_90_days = performance_chart_90_days
 
     else:
         logger.info("Using legacy profitability calculations for summary statistics")
         if age and returns_all_time:
             returns_annualised = calculate_annualised_return(returns_all_time, age)
+        share_price_returns_90_days = None
 
     key_metrics = {m.kind.value: m for m in calculate_key_metrics(state, backtested_state, required_history=key_metrics_backtest_cut_off, cycle_duration=cycle_duration)}
 
@@ -201,4 +204,5 @@ def calculate_summary_statistics(
         backtest_metrics_cut_off_period=key_metrics_backtest_cut_off,
         return_all_time=returns_all_time,
         return_annualised=returns_annualised,
+        share_price_returns_90_days=share_price_returns_90_days,
     )
