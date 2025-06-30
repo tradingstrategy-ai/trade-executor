@@ -82,8 +82,8 @@ def retrofit_share_price(
             f"{block_number:,}"
         )
 
-        portfolio_stats.share_price_usd = share_price
-        portfolio_stats.share_count = share_count
+        portfolio_stats.share_price_usd = float(share_price)
+        portfolio_stats.share_count = float(share_count)
 
         updates += 1
 
