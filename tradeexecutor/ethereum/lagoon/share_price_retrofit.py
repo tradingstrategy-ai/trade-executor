@@ -6,7 +6,7 @@ from eth_defi.erc_4626.vault import ERC4626Vault
 from eth_defi.provider.named import get_provider_name
 from eth_defi.provider.quicknode import estimate_block_number_for_timestamp_by_quicknode
 from tradeexecutor.state.state import State
-
+from tradeexecutor.state.store import JSONFileStore
 
 logger = logging.getLogger(__name__)
 
@@ -15,10 +15,11 @@ def retrofit_share_price(
     state: State,
     vault: ERC4626Vault,
     max_time: datetime.datetime | None = None,
+    store: JSONFileStore | None = None,
 ) -> int:
     """Backfill missing share price data in state from Lagoon onchain data.
 
-    = Quicknode RPC required (for now)
+    = Quicknode RPC required (for now) to get timestamps
 
     :param max_time:
         Unit test loop limiter
@@ -70,6 +71,9 @@ def retrofit_share_price(
         portfolio_stats.share_count = share_count
 
         updates += 1
+
+        if updates % 100 == 0 and store:
+            store.sync(state)
 
     logger.info("Share price updated for %d portfolio entries", updates)
 

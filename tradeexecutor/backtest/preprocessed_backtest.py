@@ -828,7 +828,7 @@ PREPACKAGED_SETS = [
         - Contains bull and bear market data with mixed set of tokens
         """),
         start=datetime.datetime(2020, 1, 1),
-        end=datetime.datetime(2025, 3, 1),
+        end=datetime.datetime(2025, 6, 15),
         time_bucket=TimeBucket.h1,
         min_tvl=3_000_000,
         min_weekly_volume=200_000,
