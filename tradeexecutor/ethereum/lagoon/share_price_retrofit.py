@@ -21,6 +21,21 @@ def retrofit_share_price(
 
     = Quicknode RPC required (for now) to get timestamps
 
+    Example:
+
+    .. code-block:: python
+        from eth_defi.provider.multi_provider import create_multi_provider_web3
+        from tradeexecutor.ethereum.lagoon.share_price_retrofit import retrofit_share_price
+
+        web3 = create_multi_provider_web3("... quicknode RPC here..")
+        retrofit_share_price(
+            state=state,
+            vault=vault,
+            max_time=datetime.datetime(2025, 6, 15),
+            store=store,
+        )
+
+
     :param max_time:
         Unit test loop limiter
 

@@ -14,8 +14,7 @@ from eth_defi.provider.multi_provider import create_multi_provider_web3
 from tradeexecutor.cli.commands.app import app
 from tradeexecutor.ethereum.lagoon.share_price_retrofit import retrofit_share_price
 from tradeexecutor.state.state import State
-
-pytestmark = pytest.mark.skipif(not os.environ.get("JSON_RPC_BASE") or not os.environ.get("TRADING_STRATEGY_API_KEY"), reason="Set JSON_RPC_POLYGON and TRADING_STRATEGY_API_KEY environment variables to run this test")
+from tradeexecutor.visual.web_chart import render_web_chart, WebChartType, WebChartSource, WebChart
 
 
 @pytest.fixture()
@@ -47,13 +46,20 @@ def fix_base_ath_share_price_issue(state):
 
     - This was caused by IPOR vault transactions not going through due to abnormally high transaction gas requirement
     - This caused net asset value calculation to fail because
+
+    Usage:
+
+    .. code-block:: python
+
+        fix_base_ath_share_price_issue(state)
     """
 
     cleaned_entries = []
     for s in state.stats.portfolio:
 
         # Invalid entries caused by bad net asset value calculation discarding broken trades
-        if s.calculated_at > datetime.datetime(2025, 6, 1) and s.share_price_usd < 1:
+        if s.calculated_at > datetime.datetime(2025, 6, 1) and s.share_price_usd < 1.10:
+            print(f"Removing bad entry: {s.calculated_at} with share price {s.share_price_usd}")
             continue
 
         cleaned_entries.append(s)
@@ -91,11 +97,20 @@ def test_clean_broken_profit_data(
 
     print(df)
 
-    import ipdb ; ipdb.set_trace()
 
+def test_share_price_chart(
+    web3,
+    state_file: Path,
+):
+    """Calculate the share price chart
+    """
 
+    state = State.read_json_file(state_file)
+    chart = render_web_chart(state, WebChartType.share_price, source=WebChartSource.live_trading)
+    assert isinstance(chart, WebChart)
 
-    # Check accounts now to verify if balance is good
-    # with pytest.raises(SystemExit) as sys_exit:
+    assert chart.data[-1][1]  == pytest.approx(1.1592042216816583)
 
-    # assert sys_exit.value.code == 0
+    chart = render_web_chart(state, WebChartType.share_price_based_return, source=WebChartSource.live_trading)
+    assert isinstance(chart, WebChart)
+    assert chart.data[-1][1] == pytest.approx(0.1592042216816583)
