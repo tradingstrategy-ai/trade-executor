@@ -54,7 +54,7 @@ def prepare_share_price_summary_statistics(
 
     profitability_time_windowed = export_time_series(profitability_time_windowed)
 
-    logger.info("Profitability time windowed: %d entries", profitability_time_windowed)
+    logger.info("Profitability time windowed: %d entries", len(profitability_time_windowed))
 
     return returns_annualised, profitability_time_windowed
 

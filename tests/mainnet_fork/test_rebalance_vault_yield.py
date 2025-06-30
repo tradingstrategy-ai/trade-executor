@@ -70,8 +70,8 @@ def environment(
         "ASSET_MANAGEMENT_MODE": "lagoon",
         "UNIT_TESTING": "true",
         "UNIT_TEST_FORCE_ANVIL": "true",  # check-wallet command legacy hack
-        # "LOG_LEVEL": "disabled",
-        "LOG_LEVEL": "info",
+        "LOG_LEVEL": "disabled",
+        # "LOG_LEVEL": "info",
         "TRADING_STRATEGY_API_KEY": os.environ["TRADING_STRATEGY_API_KEY"],
         "VAULT_ADDRESS": "0x7d8Fab3E65e6C81ea2a940c050A7c70195d1504f",
         "VAULT_ADAPTER_ADDRESS": "0x6DCCA7f34EB8F1a519ae690E9A3101f705bB0393",
