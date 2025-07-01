@@ -28,6 +28,21 @@ def prepare_share_price_summary_statistics(
     """Profitability statistics for the share price-based returns.
 
     - Used for Lagoon vaults
+
+    To run from the console:
+
+    .. code-block:: python
+
+        from tradeexecutor.visual.equity_curve import calculate_share_price
+        from tradeexecutor.statistics.summary import prepare_share_price_summary_statistics
+
+        share_price_df = calculate_share_price(state)
+        returns_annualised, nav_90_days, performance_90_days = prepare_share_price_summary_statistics(
+            share_price_df,
+            start_at=pd.Timestamp("2025-05-01"),
+            age=datetime.timedelta(days=30),
+        )
+
     """
 
     assert isinstance(share_price_df, pd.DataFrame), "share_price_returns must be a pandas DataFrame"
@@ -55,7 +70,7 @@ def prepare_share_price_summary_statistics(
     nav_90_days = daily_resample.loc[start_at:]["nav"]
 
     if len(performance_90_days) > 0:
-        performance_90_days = performance_90_days / performance_90_days.iloc[0]
+        performance_90_days = performance_90_days
         first = performance_90_days.iloc[0]
         last = performance_90_days.iloc[-1]
     else:
