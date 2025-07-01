@@ -277,6 +277,8 @@ def test_cli_lagoon_correct_accounts(
     cli.main(args=["correct-accounts"], standalone_mode=False)
 
 
+# More flakiness  AssertionError: Could not read block number from Anvil after the launch anvil: at http://localhost:26220, stdout is 0 bytes, stderr is 312 bytes
+@flaky.flaky()
 @pytest.mark.slow_test_group
 def test_cli_lagoon_redeploy_guard(
     deployed_vault_environment: dict,
