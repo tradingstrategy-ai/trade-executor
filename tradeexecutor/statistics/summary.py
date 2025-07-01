@@ -63,8 +63,8 @@ def prepare_share_price_summary_statistics(
         first = None
         last = None
 
-    performance_90_days = export_time_series(performance_90_days)
-    nav_90_days = export_time_series(nav_90_days)
+    performance_90_days = export_time_series(performance_90_days.dropna())
+    nav_90_days = export_time_series(nav_90_days.dropna())
 
     logger.info("Profitability time windowed: %d entries, %s - %s", len(performance_90_days), first, last)
 

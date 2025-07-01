@@ -124,4 +124,4 @@ def test_share_price_chart(
     )
     assert returns_annualised == pytest.approx(-10.229681969539822)
     assert len(performance_90_days) == 26
-    assert len(nav_90_days) == 27
+    assert len(nav_90_days) == 26
