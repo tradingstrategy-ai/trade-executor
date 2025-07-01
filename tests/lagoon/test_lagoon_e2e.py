@@ -3,6 +3,7 @@ import json
 import os
 from pathlib import Path
 
+import flaky
 import pytest
 from typer.main import get_command
 from web3 import Web3
@@ -184,6 +185,8 @@ def test_cli_lagoon_check_wallet(
     cli.main(args=["check-wallet"], standalone_mode=False)
 
 
+# AssertionError: Could not read block number from Anvil after the launch anvil: at http://localhost:22353, stdout is 0 bytes, stderr is 312 bytes
+@flaky.flaky
 def test_cli_lagoon_check_universe(
     pre_deployment_vault_environment: dict,
     mocker,
