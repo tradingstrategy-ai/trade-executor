@@ -2,7 +2,6 @@
 """
 import shutil
 import os.path
-import secrets
 import datetime
 from pathlib import Path
 
@@ -11,7 +10,6 @@ import pytest
 
 from eth_defi.erc_4626.classification import create_vault_instance
 from eth_defi.provider.multi_provider import create_multi_provider_web3
-from tradeexecutor.cli.commands.app import app
 from tradeexecutor.ethereum.lagoon.share_price_retrofit import retrofit_share_price
 from tradeexecutor.state.state import State
 from tradeexecutor.statistics.summary import prepare_share_price_summary_statistics
@@ -118,11 +116,12 @@ def test_share_price_chart(
     assert chart.data[-1][1] == pytest.approx(0.1592042216816583)
 
     # Lagoon patched calculations
-    share_price_returns = calculate_share_price(state, as_return=True)
-    returns_annualised, performance_90_days = prepare_share_price_summary_statistics(
-        share_price_returns,
+    share_price_df = calculate_share_price(state)
+    returns_annualised, nav_90_days, performance_90_days = prepare_share_price_summary_statistics(
+        share_price_df,
         start_at=pd.Timestamp("2025-05-01"),
         age=datetime.timedelta(days=30),
     )
     assert returns_annualised == pytest.approx(-10.229681969539822)
     assert len(performance_90_days) == 26
+    assert len(nav_90_days) == 27

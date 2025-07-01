@@ -873,23 +873,27 @@ def calculate_rolling_sharpe(
     return rolling_sharpe.dropna()
 
 
-def calculate_share_price(state: State, as_return=False, initial_share_price=1.0) -> pd.Series:
+def calculate_share_price(state: State, initial_share_price=1.0) -> pd.DataFrame:
     """Calculate share price of the strategy.
 
     Share price is the value of a single share in the strategy.
+
+    :return:
+        DataFrame with returns, share price USD, NAV.
+
+        For the life time of the strategy.
     """
 
     profit = [
-        {"calculated_at": s.calculated_at, "share_price_usd": s.share_price_usd} for s in state.stats.portfolio
+        {"calculated_at": s.calculated_at, "share_price_usd": s.share_price_usd, "nav": s.net_asset_value} for s in state.stats.portfolio
     ]
     df = pd.DataFrame(profit)
-    df = df.set_index("calculated_at").sort_index()
+    df = df.set_index("calculated_at").sort_index()  # Make sure index comes through in the correct order
     df = df.dropna()
 
     if len(df) == 0:
-        return pd.Series([], index=pd.to_datetime([]), dtype='float64')
+        return pd.DataFrame([], index=pd.to_datetime([]))
 
-    if as_return:
-        return df["share_price_usd"] - initial_share_price
-    else:
-        return df["share_price_usd"]
+    df["returns"] = df["share_price_usd"] - initial_share_price
+
+    return df

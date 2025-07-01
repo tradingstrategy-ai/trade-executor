@@ -110,10 +110,12 @@ def render_web_chart(
             help_link = "https://tradingstrategy.ai/glossary/netflow"
         case WebChartType.share_price:
             df = calculate_share_price(state)
+            df = df["share_price_usd"]
             description = "Share price"
             help_link = "https://tradingstrategy.ai/glossary/share-price"
         case WebChartType.share_price_based_return:
-            df = calculate_share_price(state, as_return=True)
+            df = calculate_share_price(state)
+            df = df["returns"]
             description = "Return"
             help_link = "https://tradingstrategy.ai/glossary/share-price"
         case _:
