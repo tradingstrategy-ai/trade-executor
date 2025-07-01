@@ -38,7 +38,12 @@ def prepare_share_price_summary_statistics(
         returns_all_time = share_price_df["returns"].iloc[-1] - 1.0
         returns_annualised = calculate_annualised_return(returns_all_time, age)
     else:
-        returns_all_time = returns_annualised = 0
+        returns_annualised = 0
+        nav_90_days = export_time_series(pd.Series())
+        performance_90_days = export_time_series(pd.Series())
+        return returns_annualised, nav_90_days, performance_90_days
+
+    assert "returns" in share_price_df.columns, f"share_price_df must contain 'returns' column, got {share_price_df.columns}"
 
     logger.info("Returns %d, annualised %s", returns_all_time, returns_annualised)
 
@@ -59,6 +64,7 @@ def prepare_share_price_summary_statistics(
         last = None
 
     performance_90_days = export_time_series(performance_90_days)
+    nav_90_days = export_time_series(nav_90_days)
 
     logger.info("Profitability time windowed: %d entries, %s - %s", len(performance_90_days), first, last)
 
