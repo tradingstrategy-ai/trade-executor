@@ -21,7 +21,7 @@ logger = logging.getLogger(__name__)
 
 
 def prepare_share_price_summary_statistics(
-    share_price_returns: pd.Series,
+    share_price_df: pd.DataFrame,
     start_at: pd.Timestamp,
     age: datetime.timedelta,
 ):
@@ -30,34 +30,45 @@ def prepare_share_price_summary_statistics(
     - Used for Lagoon vaults
     """
 
-    assert isinstance(share_price_returns, pd.Series), "share_price_returns must be a pandas Series"
+    assert isinstance(share_price_df, pd.DataFrame), "share_price_returns must be a pandas DataFrame"
     assert isinstance(start_at, pd.Timestamp), "start_at must be a pandas Timestamp"
     assert isinstance(age, datetime.timedelta), "age must be a datetime.timedelta"
 
-    if len(share_price_returns) > 0:
-        returns_all_time = share_price_returns.iloc[-1] - 1.0
+    if len(share_price_df) > 0:
+        returns_all_time = share_price_df["returns"].iloc[-1] - 1.0
         returns_annualised = calculate_annualised_return(returns_all_time, age)
     else:
-        returns_all_time = returns_annualised = 0
+        returns_annualised = 0
+        nav_90_days = export_time_series(pd.Series())
+        performance_90_days = export_time_series(pd.Series())
+        return returns_annualised, nav_90_days, performance_90_days
+
+    assert "returns" in share_price_df.columns, f"share_price_df must contain 'returns' column, got {share_price_df.columns}"
 
     logger.info("Returns %d, annualised %s", returns_all_time, returns_annualised)
 
-    profitability_daily = share_price_returns.resample("1d").last()
+    daily_resample = share_price_df.resample("1d").last()
 
-    performance_90_days = profitability_daily[start_at:]
-
+    performance_90_days = daily_resample.loc[start_at:]["returns"]
     performance_90_days = performance_90_days.dropna()
+
+    nav_90_days = daily_resample.loc[start_at:]["nav"]
 
     if len(performance_90_days) > 0:
         performance_90_days = performance_90_days / performance_90_days.iloc[0]
+        first = performance_90_days.iloc[0]
+        last = performance_90_days.iloc[-1]
     else:
         performance_90_days = pd.Series(dtype=float)
+        first = None
+        last = None
 
-    performance_90_days = export_time_series(performance_90_days)
+    performance_90_days = export_time_series(performance_90_days.dropna())
+    nav_90_days = export_time_series(nav_90_days.dropna())
 
-    logger.info("Profitability time windowed: %d entries", len(performance_90_days))
+    logger.info("Profitability time windowed: %d entries, %s - %s", len(performance_90_days), first, last)
 
-    return returns_annualised, performance_90_days
+    return returns_annualised, nav_90_days, performance_90_days
 
 
 def calculate_summary_statistics(
@@ -169,13 +180,15 @@ def calculate_summary_statistics(
                 profitability_90_days = None
                 performance_chart_90_days = None
 
-    share_price_returns_90_days = None
+    share_price_returns_90_days = nav_90_days =None
     if share_price:
-        logger.info("Using share calculations for summary statistics")
-        share_price_returns = calculate_share_price(state, as_return=True)
-        if share_price_returns is not None:
-            returns_annualised, performance_chart_90_days = prepare_share_price_summary_statistics(
-                share_price_returns,
+        logger.info("Using share calculations for summary statistics, age %s, start_at %s", age, start_at)
+
+        share_price_df = calculate_share_price(state)
+
+        if share_price_df is not None:
+            returns_annualised, nav_90_days, performance_chart_90_days = prepare_share_price_summary_statistics(
+                share_price_df,
                 age=age,
                 start_at=start_at,
             )
@@ -208,4 +221,5 @@ def calculate_summary_statistics(
         return_all_time=returns_all_time,
         return_annualised=returns_annualised,
         share_price_returns_90_days=share_price_returns_90_days,
+        nav_90_days=nav_90_days,
     )

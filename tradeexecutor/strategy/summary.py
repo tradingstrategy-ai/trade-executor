@@ -322,7 +322,7 @@ class KeyMetric:
         )
 
 @dataclass_json
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class StrategySummaryStatistics:
     """Performance statistics displayed on the tile cards."""
 
@@ -399,12 +399,13 @@ class StrategySummaryStatistics:
     #: Based on :ref:`compounding realised positions profit`.
     performance_chart_90_days: Optional[List[Tuple[UnixTimestamp, Percent]]] = None
 
-    #: TODO: doc
-    share_price_returns_90_days: Optional[List[Tuple[UnixTimestamp, Percent]]] = None
-
     #: Display the strategy returns as the function of the share price
     #:
-    share_returns_90_days: Optional[List[Tuple[UnixTimestamp, Percent]]] = None
+    share_price_returns_90_days: Optional[List[Tuple[UnixTimestamp, Percent]]] = None
+
+    #: Display total value locked (NAV) for the last 90 days
+    #:
+    nav_90_days: Optional[List[Tuple[UnixTimestamp, Percent]]] = None
 
     #: Strategy performance metrics to be displayed on the summary card
     #:
@@ -426,6 +427,8 @@ class StrategySummaryStatistics:
 @dataclass(frozen=True)
 class StrategySummary:
     """Strategy summary.
+
+    - Combines fixed metadata with run-time statistics (performance)
 
     - Helper class to render strategy tiles data
 
