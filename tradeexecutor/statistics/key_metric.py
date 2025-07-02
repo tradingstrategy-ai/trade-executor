@@ -228,9 +228,11 @@ def calculate_key_metrics(
         from pprint import pprint
         from tradeexecutor.statistics.key_metric import calculate_key_metrics
         from tradeexecutor.strategy.cycle import CycleDuration
-
+        from tradeexecutor.visual.equity_curve import calculate_share_price
 
         # Example for Lagoon for console
+        share_price_df = calculate_share_price(state)
+        print(share_price_df)
 
         metrics_iter = calculate_key_metrics(
             live_state=state,
@@ -241,8 +243,6 @@ def calculate_key_metrics(
         metrics = {m.kind.name: m.value for m in metrics_iter}
 
         pprint(metrics)
-
-        share_price_df = calculate_share_price(state)
 
 
     # These metric are broken so let's not care about values
@@ -337,7 +337,7 @@ def calculate_key_metrics(
         yield KeyMetric.create_metric(
             KeyMetricKind.all_time_returns,
             source,
-            cum_returns.iloc[-1],
+            cum_returns,
             calculation_window_start_at,
             calculation_window_end_at,
             KeyMetricCalculationMethod.historical_data,
