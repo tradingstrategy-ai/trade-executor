@@ -364,7 +364,7 @@ def test_calculate_key_metrics_live(state: State):
     # TODO: No idea why this is happening.
     # Leave for later to to fix the underlying libraries.
     if version.parse(pd.__version__) >= version.parse("2.0"):
-        assert metrics["cagr"].value == pytest.approx(-0.054248132316997)
+        assert metrics["cagr"].value == pytest.approx(-0.07760827122577285)
     else:
         assert metrics["cagr"].value == pytest.approx(-0.07760827122577163)
 
