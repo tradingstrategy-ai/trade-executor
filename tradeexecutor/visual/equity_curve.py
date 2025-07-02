@@ -882,6 +882,9 @@ def calculate_share_price(state: State, initial_share_price=1.0) -> pd.DataFrame
         DataFrame with returns, share price USD, NAV.
 
         For the life time of the strategy.
+
+        - share_price_usd: price of a single share in USD
+        - returns: cumulative returns
     """
 
     profit = [

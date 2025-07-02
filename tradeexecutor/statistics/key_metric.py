@@ -4,7 +4,8 @@ Calculate key metrics used in the web frontend summary cards.
 """
 import datetime
 import warnings
-from typing import List, Iterable, Literal
+from typing import Iterable, Literal
+import logging
 
 import pandas as pd
 import numpy as np
@@ -15,8 +16,11 @@ from tradeexecutor.state.types import Percent
 from tradeexecutor.strategy.cycle import CycleDuration
 from tradeexecutor.strategy.summary import KeyMetric, KeyMetricKind, KeyMetricSource, KeyMetricCalculationMethod
 from tradeexecutor.visual.equity_curve import calculate_size_relative_realised_trading_returns, calculate_non_cumulative_daily_returns, calculate_equity_curve, \
-    calculate_returns, calculate_daily_returns
+    calculate_returns, calculate_daily_returns, calculate_share_price
 from tradeexecutor.visual.qs_wrapper import import_quantstats_wrapped
+
+
+logger = logging.getLogger(__name__)
 
 
 def calculate_sharpe(returns: pd.Series, periods=365) -> float:
@@ -208,6 +212,7 @@ def calculate_key_metrics(
     required_history = datetime.timedelta(days=90),
     freq_base: pd.DateOffset = pd.offsets.Day(),
     cycle_duration: CycleDuration = None,
+    share_price_based: bool = False,
 ) -> Iterable[KeyMetric]:
     """Calculate summary metrics to be displayed on the web frontend.
 
@@ -232,6 +237,11 @@ def calculate_key_metrics(
     :param cycle_duration:
         The duration of each trade cycle
 
+    :param calculate_key_metrics:
+        Use share-price based profit calcualtions.
+
+        Available only for live trading on Lagoon vaultss.
+
     :return:
         Key metrics.
 
@@ -240,7 +250,19 @@ def calculate_key_metrics(
 
     assert isinstance(live_state, State)
 
-    source_state, source, calculation_window_start_at, calculation_window_end_at = get_data_source_and_calculation_window(live_state, backtested_state, required_history)
+    source_state, source, calculation_window_start_at, calculation_window_end_at = get_data_source_and_calculation_window(
+        live_state,
+        backtested_state,
+        required_history,
+    )
+
+    logger.info(
+        "Calcualting key metrics for source %s, calculation window %s - %s, share price based %s",
+        source,
+        calculation_window_start_at,
+        calculation_window_end_at,
+        share_price_based
+    )
 
     if source_state:
 
@@ -253,19 +275,46 @@ def calculate_key_metrics(
             daily_returns = calculate_daily_returns(source_state, "D")
             periods = 365
         else:
-            # TODO: Here we need fix these stats -
-            # calculate_non_cumulative_daily_returns() yields different
-            # results than the method above for the same state
-            returns = calculate_size_relative_realised_trading_returns(source_state)
-            daily_returns = calculate_non_cumulative_daily_returns(source_state)
-            # alternate method
-            # log_returns = np.log(returns.add(1))
-            # daily_log_sum_returns = log_returns.resample('D').sum().fillna(0)
-            # daily_returns = np.exp(daily_log_sum_returns) - 1
-            periods = pd.Timedelta(days=365) / freq_base
+
+            if share_price_based:
+                assert source == KeyMetricSource.live_trading, f"Share-priced based metrics calculations are only available on Lagoon live execution, source if {source}"
+                share_price_df = calculate_share_price(source_state)
+
+                yield KeyMetric.create_metric(
+                    KeyMetricKind.share_price_entries,
+                    source,
+                    len(share_price_df),
+                    calculation_window_start_at,
+                    calculation_window_end_at,
+                    KeyMetricCalculationMethod.historical_data,
+                )
+                returns = share_price_df['share_price_usd'].pct_change()
+                daily_returns = returns.resample("1d").last().dropna()
+                periods = 365
+            else:
+                # TODO: Here we need fix these stats -
+                # calculate_non_cumulative_daily_returns() yields different
+                # results than the method above for the same state
+                returns = calculate_size_relative_realised_trading_returns(source_state)
+                daily_returns = calculate_non_cumulative_daily_returns(source_state)
+                # alternate method
+                # log_returns = np.log(returns.add(1))
+                # daily_log_sum_returns = log_returns.resample('D').sum().fillna(0)
+                # daily_returns = np.exp(daily_log_sum_returns) - 1
+                periods = pd.Timedelta(days=365) / freq_base
 
         if source == KeyMetricSource.live_trading:
             assert cycle_duration is not None, f"Cycle duration is required for live trading, our source is {source}"
+
+        cum_returns = (daily_returns + 1).cumsum() - 1
+        yield KeyMetric.create_metric(
+            KeyMetricKind.all_time_returns,
+            source,
+            cum_returns.iloc[-1],
+            calculation_window_start_at,
+            calculation_window_end_at,
+            KeyMetricCalculationMethod.historical_data,
+        )
 
         sharpe = calculate_sharpe(daily_returns, periods=periods)
         yield KeyMetric.create_metric(KeyMetricKind.sharpe, source, sharpe, calculation_window_start_at, calculation_window_end_at, KeyMetricCalculationMethod.historical_data)

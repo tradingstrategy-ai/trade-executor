@@ -352,7 +352,7 @@ def test_calculate_key_metrics_live(state: State):
     # returns = calculate_compounding_realised_profitability(state)
 
     metrics = {m.kind.value: m for m in calculate_key_metrics(state, cycle_duration=CYCLE_DURATION)}
-    assert len(metrics) == 11
+
     assert metrics["sharpe"].value == pytest.approx(-2.1464509890620724)
     assert metrics["sortino"].value == pytest.approx(-2.720957242817309)
     assert metrics["profitability"].value == pytest.approx(-0.045838046723895576)

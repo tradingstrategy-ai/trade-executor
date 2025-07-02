@@ -36,6 +36,9 @@ class KeyMetricKind(enum.Enum):
     #: See :term:`CAGR`
     cagr = "cagr"
 
+    #: Return % of all time
+    all_time_returns = "all_time_returns"
+
     #: All-time profitability
     profitability = "profitability"
 
@@ -203,6 +206,9 @@ class KeyMetricKind(enum.Enum):
     time_in_market = "time_in_market"
 
     decision_cycle_duration = "decision_cycle_duration"
+
+    #: Number of share price entries used to calculate the share price-based returns.
+    share_price_entries = "share_price_entries"
 
     def get_help_link(self) -> Optional[str]:
         return _KEY_METRIC_HELP[self]
