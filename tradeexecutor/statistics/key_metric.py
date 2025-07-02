@@ -172,7 +172,7 @@ def calculate_cagr(returns: pd.Series) -> Percent:
         return 0
 
     try:
-        return cagr(returns)
+        return cagr(returns, periods=365)
     except ZeroDivisionError:
         return 0
 
