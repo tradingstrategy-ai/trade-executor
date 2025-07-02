@@ -221,6 +221,33 @@ def calculate_key_metrics(
 
     - Live execution state is used if it has enough history
 
+    To test from the console:
+
+    .. code-block:: python
+
+        from pprint import pprint
+        from tradeexecutor.statistics.key_metric import calculate_key_metrics
+        from tradeexecutor.strategy.cycle import CycleDuration
+
+
+        # Example for Lagoon for console
+
+        metrics_iter = calculate_key_metrics(
+            live_state=state,
+            cycle_duration=CycleDuration.cycle_2h,
+            share_price_based=True,
+        )
+
+        metrics = {m.kind.name: m.value for m in metrics_iter}
+
+        pprint(metrics)
+
+        share_price_df = calculate_share_price(state)
+
+
+    # These metric are broken so let's not care about values
+    metrics = {m.kind.name: m.value for m in metrics_iter}
+
     :param live_state:
         The current live execution state
 
@@ -288,8 +315,8 @@ def calculate_key_metrics(
                     calculation_window_end_at,
                     KeyMetricCalculationMethod.historical_data,
                 )
-                returns = share_price_df['share_price_usd'].pct_change()
-                daily_returns = returns.resample("1d").last().dropna()
+                daily_share_price_df = share_price_df.resample("1d").last()
+                daily_returns = returns = daily_share_price_df['share_price_usd'].pct_change()
                 periods = 365
             else:
                 # TODO: Here we need fix these stats -
@@ -306,7 +333,7 @@ def calculate_key_metrics(
         if source == KeyMetricSource.live_trading:
             assert cycle_duration is not None, f"Cycle duration is required for live trading, our source is {source}"
 
-        cum_returns = (daily_returns + 1).cumsum() - 1
+        cum_returns = (daily_returns + 1).prod() - 1
         yield KeyMetric.create_metric(
             KeyMetricKind.all_time_returns,
             source,

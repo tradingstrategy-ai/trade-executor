@@ -878,6 +878,14 @@ def calculate_share_price(state: State, initial_share_price=1.0) -> pd.DataFrame
 
     Share price is the value of a single share in the strategy.
 
+    Example:
+
+        from tradeexecutor.visual.equity_curve import calculate_share_price
+
+        share_price_df = calculate_share_price(state)
+        print(share_price_df)
+
+
     :return:
         DataFrame with returns, share price USD, NAV.
 
