@@ -12,7 +12,9 @@ from eth_defi.erc_4626.classification import create_vault_instance
 from eth_defi.provider.multi_provider import create_multi_provider_web3
 from tradeexecutor.ethereum.lagoon.share_price_retrofit import retrofit_share_price
 from tradeexecutor.state.state import State
+from tradeexecutor.statistics.key_metric import calculate_key_metrics
 from tradeexecutor.statistics.summary import prepare_share_price_summary_statistics
+from tradeexecutor.strategy.cycle import CycleDuration
 from tradeexecutor.visual.equity_curve import calculate_share_price
 from tradeexecutor.visual.web_chart import render_web_chart, WebChartType, WebChartSource, WebChart
 
@@ -125,3 +127,16 @@ def test_share_price_chart(
     assert returns_annualised == pytest.approx(-10.229681969539822)
     assert len(performance_90_days) == 26
     assert len(nav_90_days) == 26
+
+    metrics_iter = calculate_key_metrics(
+        live_state=state,
+        cycle_duration=CycleDuration.cycle_2h,
+        share_price_based=True,
+    )
+
+    # These metric are broken so let's not care about values
+    metrics = {m.kind.name: m.value for m in metrics_iter}
+    assert metrics["all_time_returns"] == pytest.approx(25.10452405620772)
+    assert metrics["share_price_entries"] == 464
+
+
