@@ -65,3 +65,6 @@ scripts/lagoon/*.env
 
 # No idea what's this
 sample_dataset
+
+# Modified by a broken tests
+redeem-dust.json

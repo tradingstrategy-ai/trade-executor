@@ -217,8 +217,15 @@ def calculate_summary_statistics(
         if age and returns_all_time:
             returns_annualised = calculate_annualised_return(returns_all_time, age)
 
+    metrics_iter = calculate_key_metrics(
+        state,
+        backtested_state,
+        required_history=key_metrics_backtest_cut_off,
+        cycle_duration=cycle_duration,
+        share_price_based=share_price,
+    )
 
-    key_metrics = {m.kind.value: m for m in calculate_key_metrics(state, backtested_state, required_history=key_metrics_backtest_cut_off, cycle_duration=cycle_duration)}
+    key_metrics = {m.kind.value: m for m in metrics_iter}
 
     logger.info("calculate_summary_statistics() finished, took %s seconds", perf_counter() - func_started_at)
 
