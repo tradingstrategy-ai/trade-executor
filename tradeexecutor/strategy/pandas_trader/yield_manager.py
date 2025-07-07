@@ -442,6 +442,11 @@ class YieldManager:
                         size_risk.accepted_size,
                     )
 
+                # Put the remaining cash on this position,
+                # do not evaluate further positions
+                if amount > left:
+                    amount = left
+
                 left -= amount
             else:
                 # Last position (Aave) gets what ever is left
