@@ -2280,15 +2280,20 @@ def load_partial_data(
 ) -> Dataset:
     """Load pair data for given trading pairs.
 
-    A loading function designed to load data for 2-20 pairs.
-    Instead of loading all pair data over Parquet datasets,
-    load only specific pair data from their corresponding JSONL endpoints.
+    A loading function designed to load OHLCV data up to 1000 pairs.
+    Instead of loading all pair data over Parquet datasets, load only specific pair data from their corresponding JSONL endpoints,
+    streaming the data and caching them as local files.
 
-    This function works in low memory environments unlike :py:func:`tradeexecutor.strategy.trading_strategy_universe.load_all_data`.
+    Because or partial data processing,
+    this function has less chance to run out of memory than unlike :py:func:`tradeexecutor.strategy.trading_strategy_universe.load_all_data`.
 
     Example of loading spot-only data:
 
     ... code-block:: python
+
+        from tradeexecutor.strategy.trading_strategy_universe import load_partial_data
+        from tradingstrategy.transport.cache import OHLCVCandleType
+
 
         def create_trading_universe(
                 ts: datetime.datetime,
@@ -2320,7 +2325,9 @@ def load_partial_data(
 
     .. code-block:: python
 
-
+        from tradeexecutor.strategy.trading_strategy_universe import load_partial_data
+        # TODO
+        pass
 
     :param client:
         Trading Strategy client instance
