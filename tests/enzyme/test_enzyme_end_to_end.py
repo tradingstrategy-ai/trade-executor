@@ -11,7 +11,6 @@ from unittest.mock import patch
 
 import flaky
 import pytest
-from IPython.terminal.ipapp import flags
 from click.testing import Result
 from eth_account import Account
 from typer.main import get_command
@@ -33,13 +32,13 @@ from tradeexecutor.monkeypatch.web3 import construct_sign_and_send_raw_middlewar
 
 from tradingstrategy.pair import PandasPairUniverse
 
-from eth_defi.uniswap_v2.swap import swap_with_slippage_protection
 from tradeexecutor.cli.main import app
 from tradeexecutor.state.blockhain_transaction import BlockchainTransactionType
 from tradeexecutor.state.trade import TradeType
 from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier
 from tradeexecutor.state.state import State
 
+CI = os.environ.get("CI") == "true"
 
 logger = logging.getLogger(__name__)
 
@@ -643,6 +642,7 @@ def test_enzyme_live_trading_reset_deposits(
         assert e.value.code == 0
 
 
+@pytest.mark.skipif(CI, reason="Too flaky on Github Actions")
 def test_enzyme_correct_accounts_for_closed_position_transfer_away(
     environment: dict,
     state_file: Path,

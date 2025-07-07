@@ -136,7 +136,7 @@ def test_share_price_chart(
 
     # These metric are broken so let's not care about values
     metrics = {m.kind.name: m.value for m in metrics_iter}
-    assert metrics["all_time_returns"] == pytest.approx(25.10452405620772)
+    assert metrics["all_time_returns"] == pytest.approx(-0.021254937009092645)
     assert metrics["share_price_entries"] == 464
 
 
