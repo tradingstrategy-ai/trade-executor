@@ -421,11 +421,6 @@ class YieldManager:
             if rule.max_concentration < 1:
                 amount = cash_available_for_yield * rule.max_concentration
 
-                # Put the remaining cash on this position,
-                # do not evaluate further positions
-                if amount > left:
-                    amount = left
-
                 if size_risk_model:
                     # Limit by pool participation
                     size_risk = size_risk_model.get_acceptable_size_for_position(
@@ -496,7 +491,8 @@ class YieldManager:
         table_msg = tabulate(
             table,
             headers="keys",
-            tablefmt="rounded_outline"
+            tablefmt="rounded_outline",
+            floatfmt=".2f",
         )
 
         logger.info(
