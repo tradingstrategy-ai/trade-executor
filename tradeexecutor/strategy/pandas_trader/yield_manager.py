@@ -418,6 +418,12 @@ class YieldManager:
 
             size_risk = None
 
+            assert left >= 0
+
+            if left == 0:
+                logger.info("Rule %s, nothing left to distribute, skipping", rule)
+                continue
+
             if rule.max_concentration < 1:
                 amount = cash_available_for_yield * rule.max_concentration
 
@@ -449,7 +455,8 @@ class YieldManager:
                     amount = left
                 else:
                     logger.info("Reducing amount for %s, from %s with %s", rule.pair, amount, left)
-                    left -= amount
+
+                left -= amount
             else:
                 # Last position (Aave) gets what ever is left
                 logger.info("Final yield waterfall position %s: %s", rule.pair, left)
