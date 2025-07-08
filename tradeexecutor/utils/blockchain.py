@@ -50,3 +50,4 @@ def get_block_timestamp(web3: Web3, block_identifier: BlockIdentifier) -> dateti
 
     return datetime.datetime.utcfromtimestamp(ts)
 
+

@@ -445,11 +445,14 @@ class YieldManager:
                 # Put the remaining cash on this position,
                 # do not evaluate further positions
                 if amount > left:
+                    logger.info("Capping amount for %s, from %s to %s", rule.pair, amount, left)
                     amount = left
-
-                left -= amount
+                else:
+                    logger.info("Reducing amount for %s, from %s with %s", rule.pair, amount, left)
+                    left -= amount
             else:
                 # Last position (Aave) gets what ever is left
+                logger.info("Final yield waterfall position %s: %s", rule.pair, left)
                 amount = left
 
                 # Generate a size risk entry where there is no size risk at all
@@ -469,6 +472,15 @@ class YieldManager:
             # because the target position size might be zero
             # and we might want to go from existing position to sell to zero.
             weight = amount / cash_available_for_yield
+
+            logger.info(
+                "Rule: %s, left: %s, amount: %s, cash available for yield: %s, weight: %s",
+                rule,
+                left,
+                amount,
+                cash_available_for_yield,
+                weight,
+            )
 
             existing_position = current_positions.get(rule.pair)
             existing_usd = existing_position.get_value() if existing_position else None
