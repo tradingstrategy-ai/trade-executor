@@ -2761,8 +2761,9 @@ xz
         cash_in_hand = self.get_current_cash()
         cash_available = cash_in_hand + cash_released + credit_released
         cash_needed_total = cash_needed_for_buy + credit_supplied
+        diff = cash_needed_for_buy - cash_available
 
-        msg = f"check_enough_cash(): cash needed: {cash_needed_total} cash will be available: {cash_available}\n" \
+        msg = f"check_enough_cash(): cash needed: {cash_needed_total} cash will be available: {cash_available}, diff: {diff}\n" \
               f"trades: cash needed: {cash_needed_for_buy}, cash released: {cash_released}\n" \
               f"credit: cash needed: {credit_supplied}, cash released: {credit_released}\n" \
               f"cash in hand: {cash_in_hand}\n" \
@@ -2770,11 +2771,10 @@ xz
               f"total equity: {total_equity}\n" \
               f"at: {self.timestamp}"
 
-        logger.info(msg)
-
         if cash_needed_for_buy > cash_available:
             for t in trades:
-                logger.info("Trade %s, value %s, planned reserve: %s", t, t.get_value(), t.planned_reserve)
+                logger.error("Trade %s, value %s, planned reserve: %s", t, t.get_value(), t.planned_reserve)
+            logger.error(msg)
             raise NotEnoughCasForBuys(f"Release cash will not cover for buys. Likely a problem with strategy logic.\n{msg}")
 
     def check_enter_position(
