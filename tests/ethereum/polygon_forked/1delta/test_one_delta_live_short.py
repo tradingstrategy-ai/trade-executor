@@ -82,7 +82,7 @@ APPROX_REL_DECIMAL = Decimal("0.001")
 #    collateral consumption: -2000.800439012997474114586382 aPolUSDC, collateral allocation: -997.980466987002525885413618 aPolUSDC
 #    reserve: 0
 #    >
-@flaky.flaky()
+@pytest.mark.skipif(CI, reason="Too flaky on Github")
 def test_one_delta_live_strategy_short_open_and_close(
     logger,
     web3: Web3,

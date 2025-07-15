@@ -14,6 +14,7 @@ from tabulate import tabulate
 from tradeexecutor.state.generic_position import GenericPosition
 from tradeexecutor.state.identifier import TradingPairIdentifier, TradingPairKind
 from tradeexecutor.state.portfolio import Portfolio
+from tradeexecutor.state.position import TradingPosition
 from tradeexecutor.state.size_risk import SizeRisk, SizingType
 from tradeexecutor.state.trade import TradeExecution
 from tradeexecutor.state.types import USDollarAmount, Percent
@@ -167,6 +168,9 @@ class YieldDecision:
 
     #: How much we had in this position prior the calculation
     existing_amount_usd: USDollarAmount | None
+
+    #: What is the current position id if we have one
+    existing_position_id: int | None = None
 
     #: Pool participation size risk calculated
     size_risk: SizeRisk | None = None
@@ -421,8 +425,7 @@ class YieldManager:
             assert left >= 0
 
             if left == 0:
-                logger.info("Rule %s, nothing left to distribute, skipping", rule)
-                continue
+                logger.info("Rule %s, nothing left to distribute, still generating rebalance targets for yield release/sell trades", rule)
 
             if rule.max_concentration < 1:
                 amount = cash_available_for_yield * rule.max_concentration
@@ -497,6 +500,7 @@ class YieldManager:
                 weight=weight,
                 amount_usd=amount,
                 existing_amount_usd=existing_usd,
+                existing_position_id=existing_position.position_id if existing_position else None,
                 size_risk=size_risk,
             )
             desired_yield_positions[rule.pair] = result
@@ -505,7 +509,8 @@ class YieldManager:
         for pair, result in desired_yield_positions.items():
             table.append({
                 "Pair": pair.base.token_symbol,
-                "Existing amount USD": result.amount_usd,
+                "Existing position": result.existing_position_id if result.existing_position_id else "-",
+                "Existing amount USD": result.existing_amount_usd,
                 "New amount USD": result.amount_usd,
                 "Weight %": result.weight * 100,
                 "Accepted size risk": result.size_risk.accepted_size if result.size_risk else "-",
@@ -647,7 +652,7 @@ class YieldManager:
         available_for_yield = all_cash_like - trade_cash_diff - always_in_cash - input.pending_redemptions
 
         logger.info(
-            "Cash requirements calculated. Needed to cover trades/released from trades: %f USD, needed always cash in hand: %f USD, left for yield: %f USD",
+            "Cash requirements calculated.\nNeeded to cover trades/released from trades: %f USD\nNeeded always cash in hand: %f USD\nLeft for yield: %f USD",
             trade_cash_diff,
             always_in_cash,
             available_for_yield,
@@ -672,6 +677,18 @@ class YieldManager:
             current_positions,
             desired_yield_positions,
         )
+
+        yield_cash = sum(
+            trade.get_planned_value() for trade in trades
+        )
+        logger.info(
+            "Yield management generated %d trades, which will consume %f USD cash",
+                    len(trades),
+            yield_cash,
+        )
+
+        if len(trades) != 0:
+            assert yield_cash != 0, f"Yield management trades should have quantifiable value: {trades}"
 
         return YieldResult(
             trade_cash_diff=trade_cash_diff,

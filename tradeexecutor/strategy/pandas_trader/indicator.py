@@ -1207,7 +1207,7 @@ class MemoryIndicatorStorage(IndicatorStorage):
 
     def get_indicator_path(self, key: IndicatorKey) -> Path:
         # TODO: Return fake path now - abstract memory indicator storage paths away
-        return Path("/dev/memory" + key.get_cache_key())
+        return Path("/dev/memory/" + key.get_cache_key())
 
 
 def _serialise_parameters_for_cache_key(parameters: dict) -> str:
@@ -1413,7 +1413,7 @@ def load_indicators(
         if storage.is_available(key):
             task_args.append((storage, key))
         else:
-            logger.info(
+            logger.debug(
                 "Indicator not available: %s: %s",
                 storage.get_indicator_path(key),
                 list(key.definition.parameters.items()),
