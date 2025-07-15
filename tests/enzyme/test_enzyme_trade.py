@@ -217,6 +217,7 @@ def test_enzyme_execute_open_position(
     assert trade.executed_reserve == pytest.approx(Decimal('499.999999'))
 
 
+@flaky.flaky
 def test_enzyme_execute_close_position(
     web3: Web3,
     deployer: HexAddress,

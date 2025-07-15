@@ -170,7 +170,7 @@ class YieldDecision:
     existing_amount_usd: USDollarAmount | None
 
     #: What is the current position id if we have one
-    existing_position: TradingPosition | None = None
+    existing_position_id: int | None = None
 
     #: Pool participation size risk calculated
     size_risk: SizeRisk | None = None
@@ -500,7 +500,7 @@ class YieldManager:
                 weight=weight,
                 amount_usd=amount,
                 existing_amount_usd=existing_usd,
-                existing_position=existing_position,
+                existing_position_id=existing_position.position_id if existing_position else None,
                 size_risk=size_risk,
             )
             desired_yield_positions[rule.pair] = result
@@ -509,7 +509,7 @@ class YieldManager:
         for pair, result in desired_yield_positions.items():
             table.append({
                 "Pair": pair.base.token_symbol,
-                "Existing position": result.existing_position.position_id if result.existing_position else "-",
+                "Existing position": result.existing_position_id if result.existing_position_id else "-",
                 "Existing amount USD": result.existing_amount_usd,
                 "New amount USD": result.amount_usd,
                 "Weight %": result.weight * 100,
