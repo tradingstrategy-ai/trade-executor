@@ -427,6 +427,9 @@ def prepare_dataset(
     )
     price_df = price_dfgb.obj
 
+    price_df_end = price_df.reset_index(drop=True).groupby('pair_id').last()['timestamp'].unique()
+    assert len(price_df_end) == 1, f"Different pairs have different end timestamp for training data. Should not happen with forward fill: {price_df_end}"
+
     # Add additional columns
     pairs_df = pairs_df.set_index("pair_id")
     pair_metadata = {pair_id: row for pair_id, row in pairs_df.iterrows()}
@@ -444,8 +447,27 @@ def prepare_dataset(
     liquidity_df = tvl_df
     liquidity_df = liquidity_df.rename(columns={'bucket': 'timestamp'})
     liquidity_df = liquidity_df.groupby('pair_id').apply(lambda x: x.set_index("timestamp").resample(time_bucket.to_frequency()).ffill(), include_groups=False)
-    liquidity_df["tvl"] = liquidity_df["close"]
 
+    liquidity_dfgb = liquidity_df.reset_index().groupby("pair_id")
+    # For each pair, forward fill liquidity data to the price data timestamp
+    liquidity_dfgb_ff = fix_dex_price_data(
+        df=liquidity_dfgb,
+        fix_wick_threshold=None,
+        fix_inbetween_threshold=None,
+        forward_fill=True,
+        forward_fill_until=dataset.end,
+        remove_candles_with_zero_volume=False,
+        bad_open_close_threshold=None,
+        min_max_price=None,
+        freq=time_bucket.to_frequency(),
+    )
+
+    liquidity_df = liquidity_dfgb_ff.obj
+
+    # If there is mismatch of data forward-fill, inner join
+    # may cause nasty errors in the future with data gaps.
+    # We try to assert() and detect this here.
+    liquidity_df["tvl"] = liquidity_df["close"]
     merged_df = price_df.join(liquidity_df["tvl"].to_frame(), how='inner')
 
     unique_pair_ids = merged_df.index.get_level_values('pair_id').unique()
@@ -474,6 +496,9 @@ def prepare_dataset(
         "sell_tax",
     )
     merged_df = merged_df.reindex(columns=column_order)  # Sort columns in a specific order
+
+    merge_df_end = merged_df.reset_index(drop=True).groupby('pair_id').last()['timestamp'].unique()
+    assert len(merge_df_end) == 1, f"merge_df: Different pairs have different end timestamp for training data. Should not happen with forward fill. {merge_df_end}"
 
     if write_csv:
         csv_file = output_folder / f"{dataset.slug}.csv"
@@ -740,7 +765,7 @@ PREPACKAGED_SETS = [
         start=datetime.datetime(2024, 1, 1),
         end=datetime.datetime(2025, 6, 1),
         time_bucket=TimeBucket.h4,
-        min_tvl=200_000,
+        min_tvl=500_000,
         min_weekly_volume=200_000,
         exchanges={"uniswap-v2", "uniswap-v3"},
         always_included_pairs=[
@@ -783,7 +808,7 @@ PREPACKAGED_SETS = [
         start=datetime.datetime(2020, 6, 1),
         end=datetime.datetime(2025, 6, 30),
         time_bucket=TimeBucket.d1,
-        min_tvl=1_500_000,
+        min_tvl=1_300_000,
         min_weekly_volume=200_000,
         exchanges={"uniswap-v2", "uniswap-v3", "sushi"},
         always_included_pairs=[
@@ -819,17 +844,17 @@ PREPACKAGED_SETS = [
 
     BacktestDatasetDefinion(
         chain=ChainId.ethereum,
-        slug="ethereum-1h",
+        slug="ethereum-4h",
         name="Ethereum mainnet, Uniswap and Sushiswap, 2020-2025/Q2, hourly",
         description=dedent_any("""
-        Ethereum Uniswap and Sushiswap DEX traeds.
-        
-        - Longest DEX history we have
-        - Contains bull and bear market data with mixed set of tokens
-        """),
+    Ethereum Uniswap and Sushiswap DEX trades.
+
+    - Longest DEX history we have
+    - Contains bull and bear market data with mixed set of tokens
+    """),
         start=datetime.datetime(2020, 1, 1),
         end=datetime.datetime(2025, 6, 30),
-        time_bucket=TimeBucket.h1,
+        time_bucket=TimeBucket.h4,
         min_tvl=2_000_000,
         min_weekly_volume=200_000,
         exchanges={"uniswap-v2", "uniswap-v3", "sushi"},
@@ -842,17 +867,17 @@ PREPACKAGED_SETS = [
 
     BacktestDatasetDefinion(
         chain=ChainId.ethereum,
-        slug="ethereum-4h",
+        slug="ethereum-1h",
         name="Ethereum mainnet, Uniswap and Sushiswap, 2020-2025/Q2, hourly",
         description=dedent_any("""
-    Ethereum Uniswap and Sushiswap DEX trades.
+    Ethereum Uniswap and Sushiswap DEX traeds.
 
     - Longest DEX history we have
     - Contains bull and bear market data with mixed set of tokens
     """),
         start=datetime.datetime(2020, 1, 1),
         end=datetime.datetime(2025, 6, 30),
-        time_bucket=TimeBucket.h4,
+        time_bucket=TimeBucket.h1,
         min_tvl=2_000_000,
         min_weekly_volume=200_000,
         exchanges={"uniswap-v2", "uniswap-v3", "sushi"},

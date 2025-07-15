@@ -62,6 +62,7 @@ def export_all_main():
             write_csv=False,
             write_parquet=ExportFormat.parquet in ds.formats,
             write_csv_pair_columns=ExportFormat.csv_pair_columns in ds.formats,
+            write_report=BACKTEST,
         )
 
     logger.info("All done in %s", datetime.datetime.utcnow() - started)
