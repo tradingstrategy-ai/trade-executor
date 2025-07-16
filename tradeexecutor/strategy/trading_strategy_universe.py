@@ -2158,13 +2158,13 @@ def create_pair_universe_from_code(chain_id: ChainId, pairs: List[TradingPairIde
 
 
 def load_all_data(
-        client: BaseClient,
-        time_frame: TimeBucket,
-        execution_context: ExecutionContext,
-        universe_options: UniverseOptions,
-        with_liquidity=True,
-        liquidity_time_frame: Optional[TimeBucket] = None,
-        stop_loss_time_frame: Optional[TimeBucket] = None,
+    client: BaseClient,
+    time_frame: TimeBucket,
+    execution_context: ExecutionContext,
+    universe_options: UniverseOptions,
+    with_liquidity=True,
+    liquidity_time_frame: Optional[TimeBucket] = None,
+    stop_loss_time_frame: Optional[TimeBucket] = None,
 ) -> Dataset:
     """Load all pair, candle and liquidity data for a given time bucket.
 
@@ -2592,7 +2592,7 @@ def load_partial_data(
         asked_pairs = set(our_pair_ids)
 
         if len(candles_pairs) != len(asked_pairs):
-            logger.warning(
+            logger.info(
                 "Data missing warning: We asked OHLCV data for %d trading pairs, but only got for %d pairs. This is usually because time period %s - %s does not have OHLCV data for all asked pairs.",
                 len(asked_pairs),
                 len(candles_pairs),

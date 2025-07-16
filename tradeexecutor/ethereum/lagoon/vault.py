@@ -319,7 +319,8 @@ class LagoonVaultSyncModel(AddressSyncModel):
         old_balance = reserve_token.fetch_balance_of(self.get_token_storage_address())
 
         logger.info("Posting new Lagoon valuation: %f USD", valuation)
-        bound_func = vault.post_new_valuation(Decimal(valuation))
+        valuation_decimal = Decimal(valuation)
+        bound_func = vault.post_new_valuation(valuation_decimal)
         signed_tx_1 = self.hot_wallet.sign_bound_call_with_new_nonce(
             bound_func,
             tx_params={"gas": DEFAULT_LAGOON_POST_VALUATION_GAS},
@@ -328,7 +329,7 @@ class LagoonVaultSyncModel(AddressSyncModel):
         )
 
         logger.info("Preparing to settle Lagoon")
-        bound_func = vault.settle_via_trading_strategy_module()
+        bound_func = vault.settle_via_trading_strategy_module(valuation_decimal)
         signed_tx_2 = self.hot_wallet.sign_bound_call_with_new_nonce(
             bound_func,
             tx_params={"gas": DEFAULT_LAGOON_SETTLE_GAS},

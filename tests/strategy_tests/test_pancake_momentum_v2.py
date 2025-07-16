@@ -35,7 +35,8 @@ def strategy_path() -> Path:
 
 
 @pytest.mark.slow_test_group
-@pytest.mark.skipif(os.environ.get("SKIP_SLOW_TEST") or CI, reason="Slow tests skipping enabled, also skipped on CI")
+#@pytest.mark.skipif(os.environ.get("SKIP_SLOW_TEST") or CI, reason="Slow tests skipping enabled, also skipped on CI")
+@pytest.mark.skip(reason="Loads all data, takes too much RAM")
 def test_pancake_momentum_v2(
     strategy_path,
     logger: logging.Logger,
