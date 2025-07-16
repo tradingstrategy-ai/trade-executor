@@ -327,11 +327,11 @@ class PandasTraderRunner(StrategyRunner):
 
             small_image = self.run_state.visualisation.small_image_png
 
-            if isinstance(small_image, bytes):
-                if small_image is not None:
+            if small_image is not None:
+                if isinstance(small_image, bytes):
                     post_logging_discord_image(small_image)
                 else:
-                    logger.warning("Chart visualisation missing")
+                    logger.info("Chart visualisation missing")
             else:
                 logger.warning(f"Discord small_image not bytes: %s", type(small_image))
         else:
