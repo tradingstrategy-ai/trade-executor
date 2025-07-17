@@ -4,6 +4,7 @@ Example:
 
 .. code-block:: shell
 
+    docker compose run base-ath prune-state
 
 """
 
