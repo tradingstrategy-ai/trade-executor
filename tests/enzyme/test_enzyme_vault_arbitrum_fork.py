@@ -196,7 +196,7 @@ def test_enzyme_vault_arbitrum(
 
     # Perform a test trade
     with patch.dict(os.environ, env, clear=True):
-        cli.main(args=["perform-test-trade"], standalone_mode=False)
+        cli.main(args=["perform-test-trade", "--all-pairs"], standalone_mode=False)
 
     # Perform a single cycle of the strategy
     with patch.dict(os.environ, env, clear=True):
