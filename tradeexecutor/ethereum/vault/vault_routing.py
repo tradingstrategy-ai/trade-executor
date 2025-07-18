@@ -149,11 +149,20 @@ class VaultRouting(RoutingModel):
             share_token = target_vault.share_token
             onchain_balance = share_token.fetch_balance_of(address)
 
+            portfolio: Portfolio = state.portfolio
+            position = portfolio.get_position_by_id(trade.position_id)
+            share_token = trade.pair.base
+
+            logger.info(
+                "Vault redeem. Position quantity %s, trade quantity %s, onchain balance %s, position planned quantity %s",
+                position.get_quantity(),
+                trade.planned_quantity,
+                onchain_balance,
+                position.get_quantity(planned=True),
+            )
+
             rel_diff = abs((onchain_balance - swap_amount) / swap_amount)
             if rel_diff != 0:
-                portfolio: Portfolio = state.portfolio
-                position = portfolio.get_position_by_id(trade.position_id)
-                share_token = trade.pair.base
                 if rel_diff > self.redeem_epsilon:
                     # Accounting broken
 
