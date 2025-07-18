@@ -109,6 +109,7 @@ class VaultRouting(RoutingModel):
 
         tx_builder = state.tx_builder
         web3 = tx_builder.web3
+        address = HexAddress(tx_builder.get_token_delivery_address())
 
         target_vault = get_vault_for_pair(web3, trade.pair)
 
@@ -135,6 +136,35 @@ class VaultRouting(RoutingModel):
             token_out = reserve_asset
             swap_amount = -trade.planned_quantity
 
+            share_token = target_vault.share_token
+            onchain_balance = share_token.fetch_balance_of(address)
+
+            rel_diff = abs((onchain_balance - swap_amount) / swap_amount)
+            if rel_diff:
+                if rel_diff > self.epsilon:
+                    # Accounting broken
+                    logger.error(
+                        "Vault trade %s has a large relative difference in onchain balance: %f, planned quantity: %s, onchain balance: %s",
+                        trade.trade_id,
+                        rel_diff,
+                        trade.planned_quantity,
+                        onchain_balance,
+                    )
+                    raise AssertionError("Vault share token has a large relative difference in onchain balance when trying to redeem the share token")
+                else:
+                    # Epsilon rounding
+                    logger.warning(
+                        "Vault trade %s has a small relative difference in onchain balance: %f, planned quantity: %s, onchain balance: %s, automatically rounding",
+                        trade.trade_id,
+                        rel_diff,
+                        trade.planned_quantity,
+                        onchain_balance,
+                    )
+                    swap_amount = onchain_balance
+            else:
+                # Exact match
+                pass
+
         logger.info(
             "Preparing vault flow %s -> %s, amount %s (%s), slippage tolerance %f",
             token_in.token_symbol,
@@ -145,7 +175,6 @@ class VaultRouting(RoutingModel):
         )
 
         asset_deltas = trade.calculate_asset_deltas()
-        address = HexAddress(tx_builder.get_token_delivery_address())
 
         if trade.is_buy():
             approve_call, swap_call = approve_and_deposit_4626(
