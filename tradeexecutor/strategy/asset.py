@@ -149,14 +149,14 @@ def map_onchain_asset_to_position(
 
 def get_asset_amounts(p: TradingPosition) -> List[Tuple[AssetIdentifier, Decimal]]:
     """What tokens this position should hold in a wallet."""
-    if p.is_spot():
+    if p.is_spot() or p.is_vault():
         return [(p.pair.base, p.get_quantity())]
     elif p.is_short():
         return [
             (p.pair.base, p.loan.get_borrowed_quantity()),
             (p.pair.quote, p.loan.get_collateral_quantity()),
         ]
-    if p.is_credit_supply():
+    elif p.is_credit_supply():
         # Some frozen positions might not have loan
         if not p.loan:
             return []
