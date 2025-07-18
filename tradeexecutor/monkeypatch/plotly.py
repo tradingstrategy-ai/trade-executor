@@ -23,6 +23,8 @@ if (pkg_version is not None) and Version(pkg_version) <= Version("6.1.2"):
 
     def fix_trace_x_axis_dates(self: Figure):
         for trace in self.data:
+            if not hasattr(trace, "x"):
+                continue
             item = trace.x[0]
             # Detect datetime64 and convert it to native Python datetime that show() can handle
             if isinstance(trace.x, numpy.ndarray):
