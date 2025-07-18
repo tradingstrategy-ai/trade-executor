@@ -88,6 +88,7 @@ class VaultRouting(RoutingModel):
         return VaultRoutingState(
             tx_builder=execution_details["tx_builder"],
             strategy_universe=cast(TradingStrategyUniverse, universe),
+            state=execution_details["state"],
         )
 
     def perform_preflight_checks_and_logging(self,
@@ -101,18 +102,22 @@ class VaultRouting(RoutingModel):
 
     def deposit_or_redeem(
         self,
-        state: VaultRoutingState,
+        state: State,
+        routing_state: VaultRoutingState,
         trade: TradeExecution,
     ) -> list[BlockchainTransaction]:
         """Prepare vault flow transactions."""
+
+        assert isinstance(state, State)
+        assert isinstance(routing_state, VaultRoutingState)
 
         assert trade.is_vault(), "Vault only supports vault trades"
         assert trade.slippage_tolerance, "TradeExecution.slippage_tolerance must be set"
         assert trade.pair.quote.address in self.allowed_intermediary_pairs or trade.pair.quote.address == self.reserve_token_address, f"Unsupported quote token: {trade.pair}"
 
-        reserve_asset = state.strategy_universe.get_reserve_asset()
+        reserve_asset = routing_state.strategy_universe.get_reserve_asset()
 
-        tx_builder = state.tx_builder
+        tx_builder = routing_state.tx_builder
         web3 = tx_builder.web3
         address = HexAddress(tx_builder.get_token_delivery_address())
 
@@ -250,7 +255,7 @@ class VaultRouting(RoutingModel):
 
         for trade in trades:
             assert trade.is_vault(), f"Not a vault trade: {trade}"
-            trade.blockchain_transactions = self.deposit_or_redeem(routing_state, trade)
+            trade.blockchain_transactions = self.deposit_or_redeem(state, routing_state, trade)
 
     def settle_trade(
         self,
