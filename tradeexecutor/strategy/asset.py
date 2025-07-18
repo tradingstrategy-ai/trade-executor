@@ -149,7 +149,7 @@ def map_onchain_asset_to_position(
 
 def get_asset_amounts(p: TradingPosition) -> List[Tuple[AssetIdentifier, Decimal]]:
     """What tokens this position should hold in a wallet."""
-    if p.is_spot():
+    if p.is_spot() or p.is_vault():
         return [(p.pair.base, p.get_quantity())]
     elif p.is_short():
         return [

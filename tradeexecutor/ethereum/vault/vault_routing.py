@@ -19,6 +19,7 @@ from eth_defi.trade import TradeSuccess
 
 from tradeexecutor.ethereum.swap import get_swap_transactions, report_failure
 from tradeexecutor.state.blockhain_transaction import BlockchainTransaction
+from tradeexecutor.state.portfolio import Portfolio
 from tradeexecutor.state.state import State
 from tradeexecutor.state.trade import TradeExecution
 from tradeexecutor.state.types import JSONHexAddress
@@ -145,11 +146,17 @@ class VaultRouting(RoutingModel):
 
             rel_diff = abs((onchain_balance - swap_amount) / swap_amount)
             if rel_diff != 0:
+                portfolio: Portfolio = state.portfolio
+                position = portfolio.get_position_by_id(trade.position_id)
+                share_token = trade.pair.base
                 if rel_diff > self.redeem_epsilon:
                     # Accounting broken
+
                     logger.error(
-                        "Vault trade %s has a large relative difference in onchain balance: %f, planned quantity: %s, onchain balance: %s, epsilon is %f",
+                        "Vault trade %s, position %s, share token %s, has a large relative difference in onchain balance: %f, planned quantity: %s, onchain balance: %s, epsilon is %f",
                         trade.trade_id,
+                        position,
+                        share_token
                         rel_diff,
                         trade.planned_quantity,
                         onchain_balance,
@@ -159,8 +166,10 @@ class VaultRouting(RoutingModel):
                 else:
                     # Epsilon rounding
                     logger.warning(
-                        "Vault trade %s has a small relative difference in onchain balance: %f, planned quantity: %s, onchain balance: %s, automatically rounding, epsilon is %f",
+                        "Vault trade %s, position %s, share token %s, has a small relative difference in onchain balance: %f, planned quantity: %s, onchain balance: %s, automatically rounding, epsilon is %f",
                         trade.trade_id,
+                        position,
+                        share_token,
                         rel_diff,
                         trade.planned_quantity,
                         onchain_balance,
