@@ -14,6 +14,8 @@ from eth_typing import HexAddress
 from typer.main import get_command
 from web3 import Web3
 
+from flaky import flaky
+
 from eth_defi.enzyme.deployment import EnzymeDeployment, ARBITRUM_DEPLOYMENT
 from eth_defi.hotwallet import HotWallet
 from eth_defi.provider.anvil import AnvilLaunch, launch_anvil
@@ -132,6 +134,7 @@ def environment(
 
 
 @pytest.mark.slow_test_group
+@flaky
 def test_enzyme_vault_arbitrum(
     environment: dict,
     web3: Web3,
