@@ -687,6 +687,12 @@ class YieldManager:
             yield_cash,
         )
 
+        # Check we did not attempt to sell more we have
+        for t in trades:
+            if t.is_sell():
+                position = self.state.portfolio.get_position_by_id(t.position_id)
+                assert t.get_raw_planned_quantity() <= position.get_quantity(), f"Trade {t}, position {position} attempt to sell too much. We have {position.get_quantity()} but trade wants to sell {t.getplanned_quantity()}"
+
         if len(trades) != 0:
             assert yield_cash != 0, f"Yield management trades should have quantifiable value: {trades}"
 
