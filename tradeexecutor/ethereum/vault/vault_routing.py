@@ -66,6 +66,7 @@ class VaultRouting(RoutingModel):
         reserve_token_address: JSONHexAddress,
         profitability_estimation_lookback_window=datetime.timedelta(days=7),
         epsilon=Decimal(1e-6),
+        redeem_epsilon=0.025,
     ):
         super().__init__(
             allowed_intermediary_pairs={},
@@ -74,6 +75,9 @@ class VaultRouting(RoutingModel):
         self.profitability_estimation_lookback_window = profitability_estimation_lookback_window
         self.epsilon = epsilon
         self.vault_interaction_gas_limit = 20_000_000  # 3M gas was not enough to withdraw from IPOR
+        # 2.5% is the maximum relative difference for redeeming vault shares,
+        # when checking onchain balance vs our internal accounting
+        self.redeem_epsilon = redeem_epsilon
 
     def create_routing_state(
         self,
@@ -140,30 +144,32 @@ class VaultRouting(RoutingModel):
             onchain_balance = share_token.fetch_balance_of(address)
 
             rel_diff = abs((onchain_balance - swap_amount) / swap_amount)
-            if rel_diff:
-                if rel_diff > self.epsilon:
+            if rel_diff != 0:
+                if rel_diff > self.redeem_epsilon:
                     # Accounting broken
                     logger.error(
-                        "Vault trade %s has a large relative difference in onchain balance: %f, planned quantity: %s, onchain balance: %s",
+                        "Vault trade %s has a large relative difference in onchain balance: %f, planned quantity: %s, onchain balance: %s, epsilon is %f",
                         trade.trade_id,
                         rel_diff,
                         trade.planned_quantity,
                         onchain_balance,
+                        self.redeem_epsilon,
                     )
                     raise AssertionError("Vault share token has a large relative difference in onchain balance when trying to redeem the share token")
                 else:
                     # Epsilon rounding
                     logger.warning(
-                        "Vault trade %s has a small relative difference in onchain balance: %f, planned quantity: %s, onchain balance: %s, automatically rounding",
+                        "Vault trade %s has a small relative difference in onchain balance: %f, planned quantity: %s, onchain balance: %s, automatically rounding, epsilon is %f",
                         trade.trade_id,
                         rel_diff,
                         trade.planned_quantity,
                         onchain_balance,
+                        self.redeem_epsilon,
                     )
                     swap_amount = onchain_balance
             else:
                 # Exact match
-                pass
+                logger.info("Onchain balance and accounting has exact match for shares to redeem: %s", swap_amount)
 
         logger.info(
             "Preparing vault flow %s -> %s, amount %s (%s), slippage tolerance %f",
