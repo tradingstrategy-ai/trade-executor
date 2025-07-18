@@ -316,11 +316,12 @@ class YieldManager:
 
             dollar_delta = desired_amount - existing_amount
             if existing_position:
-                quantity_delta = dollar_delta * existing_position.get_current_price()
+                quantity_delta = dollar_delta / existing_position.get_current_price()
                 quantity_delta = Decimal(quantity_delta)
             else:
                 quantity_delta = None
 
+            # Check for almost zero (positive or negative)
             if quantity_delta is not None:
                 if abs(quantity_delta) < dollar_epsilon:
                     quantity_delta = 0.0

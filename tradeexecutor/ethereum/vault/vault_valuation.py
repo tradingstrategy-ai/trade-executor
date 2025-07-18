@@ -63,6 +63,7 @@ class VaultValuator(ValuationModel):
             new_price=new_price,
             quantity=shares_amount,
         )
+        logger.info("Vault position %s, valuation updated: %s", position, evt)
         position.last_token_price = new_price
         return evt
 

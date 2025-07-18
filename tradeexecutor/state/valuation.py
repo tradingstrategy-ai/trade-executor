@@ -27,7 +27,6 @@ class ValuationUpdate:
     #:
     created_at: datetime.datetime
 
-
     #: The block timestamp this valuation is based on.
     #:
     #: If not available then wall clock time of the valuation.
@@ -39,6 +38,7 @@ class ValuationUpdate:
     #:
     valued_at: datetime.datetime
 
+    #: The value after the price update
     new_value: USDollarAmount
 
     #: The new price of the base asset of the position.
@@ -72,4 +72,7 @@ class ValuationUpdate:
 
     #: What was the quantity of the position at the time of valuation
     quantity: Decimal | None = None
+
+    def __repr__(self) -> str:
+        return f"<ValuationUpdate position_id={self.position_id} new_value={self.new_value} new_price={self.new_price} old_price={self.old_price} block_number={self.block_number}>"
 
