@@ -88,7 +88,6 @@ class VaultRouting(RoutingModel):
         return VaultRoutingState(
             tx_builder=execution_details["tx_builder"],
             strategy_universe=cast(TradingStrategyUniverse, universe),
-            state=execution_details["state"],
         )
 
     def perform_preflight_checks_and_logging(self,
