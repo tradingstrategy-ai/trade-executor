@@ -2781,7 +2781,10 @@ xz
         self,
         trading_pair: TradingPairIdentifier,
     ) -> PositionAvailabilityResponse:
-        """Check if we can open a position fop a pair.
+        """Check if we can open a position for a pair.
+
+        - It will check if the underlying router (swap aggregator, intent service, etc).
+          currently supports a pair we see on chain
 
         - For documentation see :py:meth:`~tradeexecutor.strategy.routing.RoutingModel.check_enter_position`
 
