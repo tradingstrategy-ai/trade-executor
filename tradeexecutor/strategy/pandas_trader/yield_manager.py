@@ -377,6 +377,7 @@ class YieldManager:
                 "existing_pos": existing_id,
                 "desired": desired_amount,
                 "delta": dollar_delta,
+                "qdelta": quantity_delta,
                 "trades": "\n".join(str(t) for t in trades),
             })
 
