@@ -156,7 +156,7 @@ class VaultRouting(RoutingModel):
                         "Vault trade %s, position %s, share token %s, has a large relative difference in onchain balance: %f, planned quantity: %s, onchain balance: %s, epsilon is %f",
                         trade.trade_id,
                         position,
-                        share_token
+                        share_token,
                         rel_diff,
                         trade.planned_quantity,
                         onchain_balance,
