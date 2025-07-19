@@ -143,6 +143,7 @@ class VaultRouting(RoutingModel):
         else:
             token_in = trade.pair.base
             token_out = reserve_asset
+            # Swap amount is negative
             swap_amount = -trade.planned_quantity
 
             share_token = target_vault.share_token
@@ -159,9 +160,8 @@ class VaultRouting(RoutingModel):
                 onchain_balance,
                 position.get_quantity(planned=True),
             )
-
             rel_diff = abs((onchain_balance - swap_amount) / swap_amount)
-            if rel_diff != 0:
+            if rel_diff != 0 and onchain_balance + swap_amount < 0:
                 if rel_diff > self.redeem_epsilon:
                     # Accounting broken
 
