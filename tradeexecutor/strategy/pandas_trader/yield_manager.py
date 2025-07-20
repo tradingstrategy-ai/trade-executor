@@ -420,14 +420,29 @@ class YieldManager:
             len(self.rules.weights),
         )
 
-        for rule in self.rules.weights:
+        applied_pairs = set()
+
+        for idx, rule in enumerate(self.rules.weights, start=1):
 
             size_risk = None
 
             assert left >= 0
 
+            logger.info(
+                "Rule #%d %s, distributing %s USD left",
+                idx,
+                rule,
+                left,
+            )
+
             if left == 0:
-                logger.info("Rule %s, nothing left to distribute, still generating rebalance targets for yield release/sell trades", rule)
+                logger.info(
+                    "Rule #%d %s, nothing left to distribute, still generating rebalance targets for yield release/sell trades",
+                    idx,
+                    rule)
+
+            assert rule.pair not in applied_pairs, f"Pair twice in yield rules: {rule.pair}"
+            applied_pairs.add(rule.pair)
 
             if rule.max_concentration < 1:
                 amount = cash_available_for_yield * rule.max_concentration
