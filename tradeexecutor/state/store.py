@@ -6,6 +6,7 @@ import json
 import os
 import shutil
 import tempfile
+import brotli
 from pathlib import Path
 import logging
 from pprint import pprint
@@ -100,7 +101,7 @@ class JSONFileStore(StateStore):
         dirname, basename = os.path.split(self.path)
         # Prepare for an atomic replacement
         temp = tempfile.NamedTemporaryFile(mode='wt', delete=False, dir=dirname)
-        with open(temp.name, "wt") as out:
+        with temp as out:
 
             state.last_updated_at = datetime.datetime.utcnow()
 
@@ -124,10 +125,20 @@ class JSONFileStore(StateStore):
 
             out.write(txt)
             written = len(txt)
-            logger.info(f"Saved state to %s, total {written:,} chars", self.path)
-        temp.close()
+            logger.info(f"Saved state to {self.path}, total {written:,} chars")
         shutil.move(temp.name, self.path)
 
+        # Compress and atomically write .br version (see Caddyfile)
+        temp = tempfile.NamedTemporaryFile(mode='wb', delete=False, dir=dirname)
+        with temp as out:
+            compressed_path = f"{self.path}.br"
+            compressed_data = brotli.compress(txt.encode('utf-8'), quality=4)
+            out.write(compressed_data)
+            written = len(compressed_data)
+            logger.info(f"Saved compressed state to {compressed_path}, total {written:,} bytes")
+        shutil.move(temp.name, compressed_path)
+
+        # Call on_save callback if provided
         if self.on_save:
             self.on_save(state)
 
@@ -177,4 +188,3 @@ class NoneStore(StateStore):
     def create(self) -> State:
         raise NotImplementedError("This should not be called for NoneStore.\n"
                                   "Backtest have explicit state set for them at the start that should not be cleared.")
-
