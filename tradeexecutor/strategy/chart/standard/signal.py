@@ -39,7 +39,7 @@ def signal_comparison(
     }
 
     # TODO: Plotly refuses correctly to plot the third y-axis
-    for pair in input.pair:
+    for pair in input.pairs:
         signal = indicator_data.get_indicator_series("signal", pair=pair)
         signal = signal.clip(upper=upper_displayed)
         data[pair.base.symbol] = signal
@@ -64,7 +64,7 @@ def price_vs_signal(
 
     # TODO: Plotly refuses correctly to plot the third y-axis
     for pair in input.pairs:
-        symbol = pair.base.symbol
+        symbol = pair.base.token_symbol
         price = strategy_universe.data_universe.candles.get_candles_by_pair(pair.internal_id)["close"]
         signal = indicator_data.get_indicator_series(indicator_name, pair=pair)
         # volatility = indicator_data.get_indicator_series("volatility", pair=pair)

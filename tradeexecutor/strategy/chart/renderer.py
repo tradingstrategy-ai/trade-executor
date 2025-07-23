@@ -74,8 +74,8 @@ class ChartBacktestRenderingSetup:
         for pair in self.pairs:
             assert isinstance(pair, TradingPairIdentifier), f"pairs must contain TradingPairIdentifier instances, got {type(pair)}: {pair}"
 
-        if self.end_at:
-            assert isinstance(self.end_at, datetime.datetime), f"end_at must be a datetime, got {type(self.end_at)}: {self.end_at}"
+        if self.backtest_end_at:
+            assert isinstance(self.backtest_end_at, datetime.datetime), f"end_at must be a datetime, got {type(self.end_at)}: {self.end_at}"
 
     def render(self, func: Callable, **kwargs) -> ChartOutput:
         """Render the chart using the provided function.

@@ -28,7 +28,7 @@ def volatility_benchmark(
 
     # TODO: Plotly refuses correctly to plot the third y-axis
     for pair in input.pairs:
-        symbol = pair.base.symbol
+        symbol = pair.base.token_symbol
         volatility = indicator_data.get_indicator_series("volatility", pair=pair)
         volatility = volatility.clip(upper=max_displayed_vol)
         volatilities[symbol] = volatility
