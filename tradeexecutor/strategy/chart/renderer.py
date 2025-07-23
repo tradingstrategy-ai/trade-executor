@@ -46,18 +46,13 @@ def render_chart(
         return ChartRenderingResult.error_out(f"Error rendering chart '{chart_name}': {str(e)}\n{tb_str}")
 
 
-@dataclass(slots=True, frozen=True)
+@dataclass(slots=True, frozen=False)
 class ChartBacktestRenderingSetup:
     """Define a setup that tells which pairs we are about to render"""
 
     registry: ChartRegistry
 
     strategy_input_indicators: StrategyInputIndicators
-
-    #: Selected pairs.
-    #:
-    #: Examine these assets in backtesting rendering functions.
-    pairs: Collection[TradingPairIdentifier] | None
 
     # :Where do we run the renderer
     execution_context = notebook_execution_context
@@ -69,8 +64,22 @@ class ChartBacktestRenderingSetup:
     #: Backtest end time hint, if backtest is not run yet.
     backtest_end_at: datetime.datetime | None = None
 
+    #: Selected pairs.
+    #:
+    #: Examine these assets in backtesting rendering functions.
+    #: If not given pick ``ChartRegistry.default_pairs``.
+    pairs: Collection[TradingPairIdentifier] | None = None
+
+
     def __post_init__(self):
         assert self.strategy_input_indicators is not None, "strategy_input_indicators must be provided."
+
+        if self.pairs is None:
+            strategy_universe = self.strategy_input_indicators.strategy_universe
+            self.pairs = [strategy_universe.get_pair_by_human_description(desc) for desc in self.registry.default_benchmark_pairs]
+
+        assert self.pairs, "pairs must not be empty."
+
         for pair in self.pairs:
             assert isinstance(pair, TradingPairIdentifier), f"pairs must contain TradingPairIdentifier instances, got {type(pair)}: {pair}"
 
@@ -94,6 +103,7 @@ class ChartBacktestRenderingSetup:
             pairs=self.pairs,
             execution_context=self.execution_context,
             backtest_end_at= self.backtest_end_at,
+            state=self.state,
         )
         result = func(input, **kwargs)
         assert result is not None, f"Chart rendering function {func} returned None."

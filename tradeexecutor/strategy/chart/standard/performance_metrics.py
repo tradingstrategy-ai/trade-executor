@@ -31,6 +31,8 @@ def performance_metrics(
     state = input.state
     strategy_universe = input.strategy_universe
 
+    assert state is not None, "State must be provided to render performance metrics."
+
     if benchmark_token_symbols is None:
         benchmark_token_symbols = DEFAULT_BENCHMARK_ASSETS
 

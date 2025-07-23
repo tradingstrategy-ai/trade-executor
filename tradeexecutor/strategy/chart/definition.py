@@ -16,6 +16,7 @@ from tradeexecutor.state.state import State
 from tradeexecutor.strategy.execution_context import ExecutionContext
 from tradeexecutor.strategy.pandas_trader.strategy_input import StrategyInputIndicators
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
+from tradingstrategy.pair import HumanReadableTradingPairDescription
 
 
 class ChartKind(enum.Enum):
@@ -156,7 +157,12 @@ class ChartRegistry:
     - Makes charts discoverable by name in the frontend
     """
 
-    def __init__(self):
+    def __init__(self, default_benchmark_pairs: typing.Collection[HumanReadableTradingPairDescription] | None = None):
+        """Initialize the chart registry.
+
+        :param default_benchmark_pairs:
+            For single and multi-pair charts, define the default pairs to use.
+        """
 
         #: Name -> registered functions mappings
         self.registry: dict[str, ChartCallback] = {}
@@ -164,6 +170,8 @@ class ChartRegistry:
         #: Function -> registered functions mappings.
         #: Only useful for backtesting notebooks.
         self.by_function: dict[ChartFunction, ChartCallback] = {}
+
+        self.default_benchmark_pairs = default_benchmark_pairs
 
     def get_chart_function(self, name: str) -> ChartCallback | None:
         """Get a chart function by name."""

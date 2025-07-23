@@ -1,13 +1,14 @@
-"""Test strategy cycle with ERC-4626 deposits to IPOR.
+"""Modified test for ultra short backtesting period and TVL limitd universe.
 
 """
 import datetime
 import logging
+from pathlib import Path
 
 import pandas as pd
 import pandas_ta
 
-from eth_defi.token import USDC_NATIVE_TOKEN
+from eth_defi.token import USDC_NATIVE_TOKEN, USDT_NATIVE_TOKEN
 from eth_defi.token import WRAPPED_NATIVE_TOKEN
 
 from tradeexecutor.state.trade import TradeExecution
@@ -15,11 +16,12 @@ from tradeexecutor.state.types import USDollarAmount
 from tradeexecutor.strategy.alpha_model import AlphaModel
 from tradeexecutor.strategy.cycle import CycleDuration
 from tradeexecutor.strategy.default_routing_options import TradeRouting
-from tradeexecutor.strategy.execution_context import ExecutionContext
+from tradeexecutor.strategy.execution_context import ExecutionContext, ExecutionMode
 from tradeexecutor.strategy.pandas_trader.indicator import IndicatorDependencyResolver
 from tradeexecutor.strategy.pandas_trader.indicator import IndicatorSource
 from tradeexecutor.strategy.pandas_trader.indicator_decorator import IndicatorRegistry
 from tradeexecutor.strategy.pandas_trader.strategy_input import StrategyInput
+from tradeexecutor.strategy.pandas_trader.yield_manager import YieldRuleset, YieldWeightingRule, YieldManager, YieldDecisionInput
 from tradeexecutor.strategy.parameters import StrategyParameters
 from tradeexecutor.strategy.tag import StrategyTag
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
@@ -60,100 +62,130 @@ logger = logging.getLogger(__name__)
 
 trading_strategy_engine_version = "0.5"
 
+CHAIN_ID = ChainId.binance
+
+EXCHANGES = ("pancakeswap-v2", "uniswap-v3")
+
+SUPPORTING_PAIRS = [
+    (ChainId.binance, "pancakeswap-v2", "WBNB", "USDT", 0.0025),
+]
+
+EXAMINED_PAIRS = [
+    (ChainId.binance, "pancakeswap-v2", "WBNB", "USDT", 0.0025),
+    (ChainId.binance, "pancakeswap-v2", "FTC", "WBNB", 0.0025),
+    (ChainId.binance, "pancakeswap-v2", "TRUNK", "WBNB", 0.0025),
+    (ChainId.binance, "pancakeswap-v2", "CUMMIES", "WBNB", 0.0025),
+]
+
+VOL_PAIR = (CHAIN_ID, "pancakeswap-v2", "WBNB", "USDT", 0.0025)
+
+LENDING_RESERVES = None
+
+PREFERRED_STABLECOIN = USDT_NATIVE_TOKEN[CHAIN_ID].lower()
+
+MIN_TVL = 1_000_000
+MIN_VOLUME = 25_000
+
+VAULTS = [
+    # Re7 USDT Vault
+    # https://app.euler.finance/vault/0x69A93DbAB609266af96f05658b2e22d020de2E19?network=bnbsmartchain
+    (ChainId.binance, "0x69a93dbab609266af96f05658b2e22d020de2e19"),
+]
 
 class Parameters:
-    id = "base-ath-ipor"
+    id = "04-bnb-local-high-vault-enabled"
 
     # We trade 1h candle
     candle_time_bucket = TimeBucket.h1
-    cycle_duration = CycleDuration.cycle_1s
+    cycle_duration = CycleDuration.cycle_2h
 
-    # Coingecko categories to include
-    # s
-    # See list here: TODO
-    #
-    chain_id = ChainId.base
-    exchanges = {"uniswap-v2", "uniswap-v3"}
+    chain_id = CHAIN_ID
+    exchanges = EXCHANGES
 
     #
-    # Basket construction and rebalance parameters
+    # Basket size, risk and balancing parametrs.
     #
-    min_asset_universe = 1  # How many assets we need in the asset universe to start running the index
+    min_asset_universe = 5  # How many assets we need in the asset universe to start running the index
     max_assets_in_portfolio = 10  # How many assets our basket can hold once
     allocation = 0.95  # Allocate all cash to volatile pairs
     # min_rebalance_trade_threshold_pct = 0.05  # % of portfolio composition must change before triggering rebalacne
-    individual_rebalance_min_threshold_usd = 5.0  # Don't make buys less than this amount
-    per_position_cap_of_pool = 0.01  # Never own more than % of the lit liquidity of the trading pool
-    max_concentration = 0.20  # How large % can one asset be in a portfolio once
+    individual_rebalance_min_threshold_usd = 500.0  # Don't make buys less than this amount
+    sell_rebalance_min_threshold = 100.0
+    sell_threshold = 0.05  # Sell if asset is more than 5% of the portfolio
+    per_position_cap_of_pool = 0.0050  # Never own more than % of the lit liquidity of the trading pool
+    max_concentration = 0.15  # How large % can one asset be in a portfolio once
     min_portfolio_weight = 0.0050  # Close position / do not open if weight is less than 50 BPS
 
-    # ATH indicator parameters
-    ath_delay_bars = 144
-    ath_window_bars = 360
-    ath_threshold = 1.10
-    ath_span = 72
+    #
+    # ATH indicator parameters.
+    #
+    # How we determine local ATH.
+    #
+    local_high_delay_bars = 12
+    local_high_window_bars = 30
+    local_high_threshold = 1.00
+    local_high_span = 30
 
-    # RSI filter parameters
-    daily_rsi_bars = 90
-    daily_rsi_threshold = 25
+    #
+    # Full ATH history filter parameters.
+    #
+    # Filter out bad tokens.
+    #
+    # If we are below 80% of all-time historical peak, never touch the token.
+    #
+    min_from_full_history_ath = 0.0
 
+    #
+    # Volatility binning filter
+    # vol_bin_filter = None disabled
+    #
+    vol_bin_filter = None
+    vol_bin_filter_lookback = 180
+    daily_atr_length = 20
+    vol_bin_level_1_threshold = 0.25
+
+    #
+    # Basket inclusion criteria.
+    #
     # For the length of trailing sharpe used in inclusion criteria
     rolling_volume_bars = pd.Timedelta("7d") // candle_time_bucket.to_timedelta()
     rolling_volatility_bars = pd.Timedelta("7d") // candle_time_bucket.to_timedelta()
     tvl_ewm_span = 7 * 24  # Smooth TVL inclusin criteria
-    min_volume = 25_000  # USD
-    min_tvl_prefilter = 1_250_000  # USD - to reduce number of trading pairs for backtest-purposes only
-    min_tvl = 1_250_000  # USD - set to same as above if you want to avoid any survivorship bias
-    min_token_sniffer_score = 20  # 20 = AAVE
+    min_volume = MIN_VOLUME  # USD
+    min_tvl_prefilter = MIN_TVL  # USD - to reduce number of trading pairs for backtest-purposes only
+    min_tvl = MIN_TVL  # USD - set to same as above if you want to avoid any survivorship bias
+    min_token_sniffer_score = 50
 
     #
     # Yield on cash
     #
-    use_aave = False
-    credit_flow_dust_threshold = 5.0  # Min deposit USD to Aave
+    use_managed_yield = True
+    yield_flow_dust_threshold = 5.0  # Min deposit USD to Aave
+    directional_trade_yield_buffer_pct = 0.01  # For credit flow, assume we might get this less cash released from sells
 
     #
     #
     # Backtesting only
     # Limiting factor: Aave v3 on Base starts at the end of DEC 2023
     #
-    backtest_start = datetime.datetime(2024, 1, 1)
-    backtest_end = datetime.datetime(2024, 1, 12)
+    backtest_start = datetime.datetime(2025, 6, 1)
+    backtest_end = datetime.datetime(2025, 7, 1)
     initial_cash = 100_000
 
     #
     # Live only
     #
     routing = TradeRouting.default
-    required_history_period = datetime.timedelta(days=14)
+    required_history_period = datetime.timedelta(days=365 * 3)
     slippage_tolerance = 0.0060  # 0.6%
     assummed_liquidity_when_data_missings = 10_000
 
 
-#: Assets used in routing and buy-and-hold benchmark values for our strategy, but not traded by this strategy.
-SUPPORTING_PAIRS = [
-    (ChainId.base, "uniswap-v2", "WETH", "USDC", 0.0030),
-    (ChainId.base, "uniswap-v3", "WETH", "USDC", 0.0005),
-    (ChainId.base, "uniswap-v2", "EAI", "WETH", 0.0030),  # Crappy token tax pair
-    (ChainId.base, "uniswap-v3", "cbBTC", "WETH", 0.0030),    # Only trading since October
-]
-
-#: Needed for USDC credit
-LENDING_RESERVES = [
-    (Parameters.chain_id, LendingProtocolType.aave_v3, "USDC"),
-]
-
-PREFERRED_STABLECOIN = USDC_NATIVE_TOKEN[Parameters.chain_id.value].lower()
-
-VOL_PAIR = (ChainId.base, "uniswap-v3", "WETH", "USDC", 0.0005)
-
-
-
 def create_trading_universe(
-    timestamp: datetime.datetime,
-    client: Client,
-    execution_context: ExecutionContext,
-    universe_options: UniverseOptions,
+        timestamp: datetime.datetime,
+        client: Client,
+        execution_context: ExecutionContext,
+        universe_options: UniverseOptions,
 ) -> TradingStrategyUniverse:
     """Create the trading universe.
 
@@ -168,9 +200,17 @@ def create_trading_universe(
     - Load also BTC and ETH price data to be used as a benchmark
     """
 
+    if execution_context.live_trading:
+        # Live trading, send strategy universe formation details
+        # to logs
+        debug_printer = logger.info
+    else:
+        # Notebook node
+        debug_printer = print
+
     chain_id = Parameters.chain_id
 
-    logger.info(f"Preparing trading universe on chain {chain_id.get_name()}")
+    debug_printer(f"Preparing trading universe on chain {chain_id.get_name()}")
 
     exchange_universe = client.fetch_exchange_universe()
     targeted_exchanges = [exchange_universe.get_by_chain_and_slug(chain_id, slug) for slug in Parameters.exchanges]
@@ -180,13 +220,13 @@ def create_trading_universe(
     # TODO: PandasPairUniverse(buidl_index=True) - speed this up by skipping index building
     all_pairs_df = client.fetch_pair_universe().to_pandas()
     all_pairs_df = filter_for_exchange_slugs(all_pairs_df, Parameters.exchanges)
-    logger.info("Creating universe for benchmark pair extraction")
+    debug_printer("Creating universe for benchmark pair extraction")
     pair_universe = PandasPairUniverse(
         all_pairs_df,
         exchange_universe=exchange_universe,
         build_index=False,
     )
-    logger.info(f"Exchanges {Parameters.exchanges} have total {len(all_pairs_df):,} pairs on chain {Parameters.chain_id.get_name()}")
+    debug_printer(f"Exchanges {Parameters.exchanges} have total {len(all_pairs_df):,} pairs on chain {Parameters.chain_id.get_name()}")
 
     # Get TVL data for prefilteirng
     if execution_context.live_trading:
@@ -205,7 +245,7 @@ def create_trading_universe(
     # logging.getLogger().setLevel(logging.INFO)
     liquidity_time_bucket = TimeBucket.d1
     tvl_df = client.fetch_tvl(
-        mode="min_tvl",
+        mode="min_tvl_low",
         bucket=liquidity_time_bucket,
         start_time=start,
         end_time=end,
@@ -213,13 +253,13 @@ def create_trading_universe(
         min_tvl=min_tvl,
     )
     # logging.getLogger().setLevel(logging.WARNING)
-    logger.info(f"Fetch TVL, we got {len(tvl_df['pair_id'].unique())} pairs with TVL data for min TVL criteria {min_tvl}")
+    debug_printer(f"Fetch TVL, we got {len(tvl_df['pair_id'].unique())} pairs with TVL data for min TVL criteria {min_tvl}")
 
     tvl_filtered_pair_ids = tvl_df["pair_id"].unique()
     benchmark_pair_ids = [pair_universe.get_pair_by_human_description(desc).pair_id for desc in SUPPORTING_PAIRS]
     needed_pair_ids = set(benchmark_pair_ids) | set(tvl_filtered_pair_ids)
     pairs_df = all_pairs_df[all_pairs_df["pair_id"].isin(needed_pair_ids)]
-    logger.info(f"After TVL prefilter to {Parameters.min_tvl_prefilter:,} in {Parameters.backtest_start} - {Parameters.backtest_end}, we have {len(pairs_df)} trading pairs")
+    debug_printer(f"After TVL prefilter to {Parameters.min_tvl_prefilter:,} in {Parameters.backtest_start} - {Parameters.backtest_end}, we have {len(pairs_df)} trading pairs")
     pairs_df = add_base_quote_address_columns(pairs_df)
 
     # Never deduplicate supporting pars
@@ -240,21 +280,24 @@ def create_trading_universe(
 
     # Get our reference pairs back to the dataset
     pairs_df = pd.concat([deduplicated_df, supporting_pairs_df]).drop_duplicates(subset='pair_id', keep='first')
-    logger.info(f"After deduplication we have {len(pairs_df)} pairs")
+    debug_printer(f"After deduplication we have {len(pairs_df)} pairs")
 
     # Add benchmark pairs back to the dataset
     pairs_df = pd.concat([pairs_df, supporting_pairs_df]).drop_duplicates(subset='pair_id', keep='first')
 
     # Load metadata
-    logger.info("Loading metadata")
+    debug_printer("Loading metadata")
     # logging.getLogger().setLevel(logging.INFO)
-    pairs_df = load_token_metadata(pairs_df, client)
+    pairs_df = load_token_metadata(pairs_df, client, printer=debug_printer)
     # logging.getLogger().setLevel(logging.WARNING)
 
     # Scam filter using TokenSniffer
     risk_filtered_pairs_df = filter_by_token_sniffer_score(
         pairs_df,
         risk_score=Parameters.min_token_sniffer_score,
+        printer=debug_printer,
+        max_buy_tax=0.02,
+        max_sell_tax=0.02,
     )
 
     # Check if we accidentally get rid of benchmark pairs we need for the strategy
@@ -265,12 +308,19 @@ def create_trading_universe(
         assert len(first_dropped_data) == 1, f"Got {len(first_dropped_data)} entries: {first_dropped_data}"
         raise AssertionError(f"Benchmark trading pair dropped in filter_by_token_sniffer_score() check: {first_dropped_data.iloc[0]}")
     pairs_df = risk_filtered_pairs_df.sort_values("volume", ascending=False)
-    logger.info(f"After TokenSniffer risk filter we have {len(pairs_df)} pairs")
+    debug_printer(f"After TokenSniffer risk filter we have {len(pairs_df)} pairs")
+
+    # Remove extra pairs from the TVL data,
+    # so we do not drag extra data and memory usage to the trading universe and liquidity candles
+    tvl_pair_count_no_filtering = tvl_df["pair_id"].nunique()
+    tvl_df = tvl_df[tvl_df["pair_id"].isin(pairs_df["pair_id"])]
+    tvl_filtering_count = tvl_df["pair_id"].nunique()
+    debug_printer(f"TVL data before risk filtering had {tvl_pair_count_no_filtering} pairs, after filtering we have {tvl_filtering_count} pairs")
 
     uni_v2 = pairs_df.loc[pairs_df["exchange_slug"] == "uniswap-v2"]
     uni_v3 = pairs_df.loc[pairs_df["exchange_slug"] == "uniswap-v3"]
     other_dex = pairs_df.loc[~((pairs_df["exchange_slug"] != "uniswap-v3") | (pairs_df["exchange_slug"] != "uniswap-v2"))]
-    logger.info(f"Pairs on Uniswap v2: {len(uni_v2)}, Uniswap v3: {len(uni_v3)}, other DEX: {len(other_dex)}")
+    debug_printer(f"Pairs on Uniswap v2: {len(uni_v2)}, Uniswap v3: {len(uni_v3)}, other DEX: {len(other_dex)}")
     dataset = load_partial_data(
         client=client,
         time_bucket=Parameters.candle_time_bucket,
@@ -279,12 +329,14 @@ def create_trading_universe(
         universe_options=universe_options,
         liquidity_time_bucket=liquidity_time_bucket,
         preloaded_tvl_df=tvl_df,
-        vaults=[(ChainId.base, "0x45aa96f0b3188d47a1dafdbefce1db6b37f58216")],
+        lending_reserves=LENDING_RESERVES,
+        vaults=VAULTS,
+        vault_bundled_price_data=Path.home() / ".tradingstrategy" / "vaults" / "cleaned-vault-prices-1h.parquet",
     )
 
     reserve_asset = PREFERRED_STABLECOIN
 
-    logger.info("Creating trading universe")
+    debug_printer("Creating trading universe")
     strategy_universe = TradingStrategyUniverse.create_from_dataset(
         dataset,
         reserve_asset=reserve_asset,
@@ -299,10 +351,7 @@ def create_trading_universe(
         pair = strategy_universe.get_pair_by_id(pair_id)
         pair.other_data["benchmark"] = False
 
-    logger.info(f"Total {strategy_universe.get_pair_count()}")
-
-    ipor_vault = strategy_universe.get_pair_by_smart_contract("0x45aa96f0b3188d47a1dafdbefce1db6b37f58216")
-    assert ipor_vault is not None
+    debug_printer(f"Total {strategy_universe.get_pair_count()}")
 
     return strategy_universe
 
@@ -312,26 +361,247 @@ def create_trading_universe(
 #
 
 
+_cached_start_times: dict[int, pd.Timestamp] = {}
+
+
+def create_yield_rules(
+        timestamp: pd.Timestamp,
+        parameters: StrategyParameters,
+        strategy_universe: TradingStrategyUniverse,
+) -> YieldRuleset:
+    """Create yield rules for the strategy."""
+    weights = []
+    for vault_spec in VAULTS:
+        vault_pair = strategy_universe.get_pair_by_smart_contract(vault_spec[1])
+        if vault_pair not in _cached_start_times:
+            price_df = strategy_universe.data_universe.candles.get_samples_by_pair(vault_pair.internal_id)
+            assert price_df is not None
+            index_entry = price_df.index[0]
+            assert isinstance(index_entry, tuple)
+            _cached_start_times[vault_pair] = index_entry[1]
+
+        availability = _cached_start_times[vault_pair]
+        if timestamp > availability:
+            weights.append(
+                YieldWeightingRule(
+                    pair=vault_pair,
+                    max_concentration=1.00,
+                    max_pool_participation=0.05,
+                ),
+            )
+
+    if len(weights) == 0:
+        return None
+
+    return YieldRuleset(
+        position_allocation=parameters.allocation,
+        buffer_pct=parameters.directional_trade_yield_buffer_pct,
+        cash_change_tolerance_usd=parameters.yield_flow_dust_threshold,
+        weights=weights
+    )
+
+
 def decide_trades(
-    input: StrategyInput
+        input: StrategyInput
 ) -> list[TradeExecution]:
     """For each strategy tick, generate the list of trades."""
+    parameters = input.parameters
     position_manager = input.get_position_manager()
+    state = input.state
+    timestamp = input.timestamp
+    indicators = input.indicators
     strategy_universe = input.strategy_universe
-    cycle = input.cycle
 
-    ipor_vault = strategy_universe.get_pair_by_smart_contract("0x45aa96f0b3188d47a1dafdbefce1db6b37f58216")
+    portfolio = position_manager.get_current_portfolio()
+    equity = portfolio.get_total_equity()
 
-    logger.info("Executing strategy cycle %d", cycle)
+    # All gone, stop doing decisions
+    if input.execution_context.mode == ExecutionMode.backtesting:
+        if equity < parameters.initial_cash * 0.10:
+            return []
 
-    trades = []
-    if cycle == 1:
-        cash = position_manager.get_current_cash()
-        trades += position_manager.open_spot(ipor_vault, cash)
-    elif cycle == 2:
-        trades += position_manager.close_all()
-    else:
-        raise NotImplementedError("Test has only 2 cycles")
+    # Build signals for each pair
+    alpha_model = AlphaModel(
+        timestamp,
+        close_position_weight_epsilon=parameters.min_portfolio_weight,  # 10 BPS is our min portfolio weight
+    )
+
+    vol_pair = strategy_universe.get_pair_by_human_description(VOL_PAIR)
+    volume_included_pair_count = indicators.get_indicator_value(
+        "volume_included_pair_count",
+    )
+    tvl_included_pair_count = indicators.get_indicator_value(
+        "tvl_included_pair_count",
+    )
+
+    # Get pairs included in this rebalance cycle.
+    # This includes pair that have been pre-cleared in inclusion_criteria()
+    # with volume, volatility and TVL filters
+    included_pairs = indicators.get_indicator_value(
+        "inclusion_criteria",
+        na_conversion=False,
+    )
+    if included_pairs is None:
+        included_pairs = []
+
+    # Set signal for each pair
+    signal_count = 0
+    for pair_id in included_pairs:
+        pair = strategy_universe.get_pair_by_id(pair_id)
+
+        assert pair.is_spot() and not pair.is_vault(), "Signal-based weighting should be only used for directional positions"
+
+        pair_signal = indicators.get_indicator_value("signal", pair=pair)
+        if pair_signal is None:
+            continue
+
+        weight = pair_signal
+
+        if weight < 0:
+            continue
+
+        alpha_model.set_signal(
+            pair,
+            weight,
+        )
+
+        # Diagnostics reporting
+        signal_count += 1
+
+    # Calculate how much dollar value we want each individual position to be on this strategy cycle,
+    # based on our total available equity
+    portfolio = position_manager.get_current_portfolio()
+    equity = portfolio.get_total_equity()
+    portfolio_target_value = equity * parameters.allocation
+
+    # Select max_assets_in_portfolio assets in which we are going to invest
+    # Calculate a weight for ecah asset in the portfolio using 1/N method based on the raw signal
+    alpha_model.select_top_signals(count=parameters.max_assets_in_portfolio)
+    alpha_model.assign_weights(method=weight_passthrouh)
+    # alpha_model.assign_weights(method=weight_by_1_slash_n)
+
+    #
+    # Normalise weights and cap the positions
+    #
+    size_risk_model = USDTVLSizeRiskModel(
+        pricing_model=input.pricing_model,
+        per_position_cap=parameters.per_position_cap_of_pool,  # This is how much % by all pool TVL we can allocate for a position
+        missing_tvl_placeholder_usd=0.0,  # Placeholder for missing TVL data until we get the data off the chain
+    )
+
+    alpha_model.normalise_weights(
+        investable_equity=portfolio_target_value,
+        size_risk_model=size_risk_model,
+        max_weight=parameters.max_concentration,
+    )
+
+    # Load in old weight for each trading pair signal,
+    # so we can calculate the adjustment trade size
+    alpha_model.update_old_weights(
+        state.portfolio,
+        ignore_credit=True,
+    )
+    alpha_model.calculate_target_positions(position_manager)
+
+    # Shift portfolio from current positions to target positions
+    # determined by the alpha signals (momentum)
+
+    # rebalance_threshold_usd = portfolio_target_value * parameters.min_rebalance_trade_threshold_pct
+    rebalance_threshold_usd = parameters.individual_rebalance_min_threshold_usd
+
+    assert rebalance_threshold_usd > 0.1, "Safety check tripped - something like wrong with strat code"
+    trades = alpha_model.generate_rebalance_trades_and_triggers(
+        position_manager,
+        min_trade_threshold=rebalance_threshold_usd,  # Don't bother with trades under XXXX USD
+        invidiual_rebalance_min_threshold=parameters.individual_rebalance_min_threshold_usd,
+        sell_rebalance_min_threshold=parameters.sell_rebalance_min_threshold,
+        execution_context=input.execution_context,
+    )
+
+    # Move cash in and out yield managed to cover spot positions
+    yield_result = None
+    if parameters.use_managed_yield:
+
+        rules = create_yield_rules(
+            timestamp,
+            parameters,
+            strategy_universe,
+        )
+
+        if rules is not None:
+            yield_manager = YieldManager(
+                position_manager=position_manager,
+                rules=rules,
+            )
+
+            yield_input = YieldDecisionInput(
+                execution_mode=input.execution_context.mode,
+                cycle=input.cycle,
+                timestamp=timestamp,
+                total_equity=state.portfolio.get_total_equity(),
+                directional_trades=trades,
+                size_risk_model=size_risk_model,
+                pending_redemptions=position_manager.get_pending_redemptions(),
+            )
+
+            yield_result = yield_manager.calculate_yield_management(yield_input)
+            trades += yield_result.trades
+
+    # Add verbal report about decision made/not made,
+    # so it is much easier to diagnose live trade execution.
+    # This will be readable in Discord/Telegram logging.
+    if input.is_visualisation_enabled():
+        try:
+            top_signal = next(iter(alpha_model.get_signals_sorted_by_weight()))
+            if top_signal.normalised_weight == 0:
+                top_signal = None
+        except StopIteration:
+            top_signal = None
+
+        rebalance_volume = sum(t.get_value() for t in trades)
+
+        report = dedent_any(f"""
+        Cycle: #{input.cycle}
+        Rebalanced: {'👍' if alpha_model.is_rebalance_triggered() else '👎'}
+        Open/about to open positions: {len(state.portfolio.open_positions)} 
+        Max position value change: {alpha_model.max_position_adjust_usd:,.2f} USD
+        Rebalance threshold: {alpha_model.position_adjust_threshold_usd:,.2f} USD
+        Trades decided: {len(trades)}
+        Pairs total: {strategy_universe.data_universe.pairs.get_count()}
+        Pairs meeting inclusion criteria: {len(included_pairs)}
+        Pairs meeting volume inclusion criteria: {volume_included_pair_count}
+        Pairs meeting TVL inclusion criteria: {tvl_included_pair_count}        
+        Signals created: {signal_count}
+        Total equity: {portfolio.get_total_equity():,.2f} USD
+        Cash: {position_manager.get_current_cash():,.2f} USD
+        Investable equity: {alpha_model.investable_equity:,.2f} USD
+        Accepted investable equity: {alpha_model.accepted_investable_equity:,.2f} USD
+        Allocated to signals: {alpha_model.get_allocated_value():,.2f} USD
+        Discarted allocation because of lack of lit liquidity: {alpha_model.size_risk_discarded_value:,.2f} USD
+        Yield flow: {yield_result and yield_result.trade_cash_diff or 0:,.2f} USD
+        Yield trades: {yield_result and yield_result.trades or '-'}
+        Rebalance volume: {rebalance_volume:,.2f} USD
+        """)
+
+        # Most volatility pair signal weight (normalised): {max_vol_signal.normalised_weight * 100 if max_vol_signal else '-'} % (got {max_vol_signal.position_size_risk.get_relative_capped_amount() * 100 if max_vol_signal else '-'} % of asked size)
+        if top_signal:
+            assert top_signal.position_size_risk
+            report += dedent_any(f"""
+            Top signal pair: {top_signal.pair.get_ticker()}
+            Top signal value: {top_signal.signal}
+            Top signal weight: {top_signal.raw_weight}
+            Top signal weight (normalised): {top_signal.normalised_weight * 100:.2f} % (got {top_signal.position_size_risk.get_relative_capped_amount() * 100:.2f} % of asked size)
+            """)
+
+        for flag, count in alpha_model.get_flag_diagnostics_data().items():
+            report += f"Signals with flag {flag.name}: {count}\n"
+
+        state.visualisation.add_message(
+            timestamp,
+            report,
+        )
+
+        state.visualisation.set_discardable_data("alpha_model", alpha_model)
 
     return trades  # Return the list of trades we made in this cycle
 
@@ -341,25 +611,25 @@ def decide_trades(
 #
 
 
-indicators = IndicatorRegistry()
-
 empty_series = pd.Series([], index=pd.DatetimeIndex([]))
+
+indicators = IndicatorRegistry()
 
 
 @indicators.define()
-def ath(
+def local_high(
         close: pd.Series,
-        ath_delay_bars: int,
-        ath_window_bars: int,
+        local_high_delay_bars: int,
+        local_high_window_bars: int,
 ) -> pd.Series:
-    """All time high indicator.
+    """Local high indicator.
 
     - Calculate % we are above all time high
 
-    :param ath_window_bars:
+    :param local_high_window_bars:
         We look history for this many bars to find ATH
 
-    :param ath_delay_bars:
+    :param local_high_delay_bars:
         We skip the this most recent entries for ATH.
 
         E.g. ATH in a previous bar is ignored.
@@ -369,10 +639,39 @@ def ath(
 
         Value 1.1 means we are 10% above of the previous ATH.
     """
-    shifted = close.shift(ath_delay_bars)
+    shifted = close.shift(local_high_delay_bars)
     windowed = shifted.rolling(
-        window=ath_window_bars,
-        min_periods=ath_window_bars,
+        window=local_high_window_bars,
+        min_periods=1,
+    ).max()
+    series = (close / windowed)
+    return series
+
+
+@indicators.define()
+def full_history_ath(
+        close: pd.Series,
+) -> pd.Series:
+    """How much we are below / above full history ATH/
+
+    - Full history length
+
+    :param local_high_window_bars:
+        We look history for this many bars to find ATH
+
+    :param local_high_delay_bars:
+        We skip the this most recent entries for ATH.
+
+        E.g. ATH in a previous bar is ignored.
+
+    :return:
+        %  we are above lagged all time high.
+
+        Value 1.1 means we are 10% above of the previous ATH.
+    """
+    windowed = close.rolling(
+        window=len(close),
+        min_periods=1,
     ).max()
     series = (close / windowed)
     return series
@@ -441,9 +740,9 @@ def volume_inclusion_criteria(
 
 @indicators.define(source=IndicatorSource.tvl)
 def tvl(
-    close: pd.Series,
-    execution_context: ExecutionContext,
-    timestamp: pd.Timestamp,
+        close: pd.Series,
+        execution_context: ExecutionContext,
+        timestamp: pd.Timestamp,
 ) -> pd.Series:
     """Get TVL series for a pair.
 
@@ -456,8 +755,15 @@ def tvl(
         # We need to forward fill until the current hour.
         # Use our special ff function.
         assert isinstance(timestamp, pd.Timestamp), f"Live trading needs forward-fill end time, we got {timestamp}"
+        from tradingstrategy.utils.forward_fill import forward_fill
         df = pd.DataFrame({"close": close})
-        series = df["close"]
+        df_ff = forward_fill(
+            df,
+            Parameters.candle_time_bucket.to_frequency(),
+            columns=("close",),
+            forward_fill_until=timestamp,
+        )
+        series = df_ff["close"]
         return series
     else:
         return close.resample("1h").ffill()
@@ -521,7 +827,7 @@ def trading_availability_criteria(
       of trading pair listing
 
     :return:
-        Series with index (timestamp) and values (list of pair ids trading at that hour)
+        Series with with index (timestamp) and values (list of pair ids trading at that hour)
     """
     # Trading pair availability is defined if there is a open candle in the index for it.
     # Because candle data is forward filled, we should not have any gaps in the index.
@@ -743,40 +1049,46 @@ def daily_price(open, high, low, close, execution_context) -> pd.DataFrame:
         "close": close,
     })
     daily_df = resample_candles(original_df, pd.Timedelta(days=1))
+
+    if execution_context.live_trading:
+        # TVL is daily data.
+        # We need to forward fill until the current hour.
+        # Use our special ff function.
+        assert isinstance(timestamp, pd.Timestamp), f"Live trading needs forward-fill end time, we got {timestamp}"
+        df = pd.DataFrame({"close": close})
+        df_ff = forward_fill(
+            df,
+            Parameters.candle_time_bucket.to_frequency(),
+            columns=("close",),
+            forward_fill_until=timestamp,
+        )
+        series = df_ff["close"]
+        return series
+
     return daily_df
 
 
-@indicators.define(source=IndicatorSource.dependencies_only_per_pair, dependencies=[daily_price])
-def daily_rsi(
-        daily_rsi_bars,
-        pair: TradingPairIdentifier,
-        dependency_resolver: IndicatorDependencyResolver,
-):
-    daily_close = dependency_resolver.get_indicator_data(
-        "daily_price",
-        pair=pair,
-        column="close",
-    )
-    rsi_series = pandas_ta.rsi(
-        daily_close,
-        length=daily_rsi_bars,
-    )
-
-    if rsi_series is None:
-        return empty_series
-
-    return rsi_series
-
-
-@indicators.define(dependencies=[ath, ath, daily_rsi])
+@indicators.define(
+    source=IndicatorSource.dependencies_only_per_pair,
+    dependencies=[
+        local_high,
+        full_history_ath,
+    ]
+)
 def signal(
-        close: pd.Series,
-        ath_delay_bars: int,
-        ath_window_bars: int,
-        ath_threshold: float,
-        ath_span: int,
-        daily_rsi_bars: int,
-        daily_rsi_threshold: float,
+        local_high_delay_bars: int,
+        local_high_window_bars: int,
+        local_high_threshold: float,
+        local_high_span: int,
+
+        min_from_full_history_ath: float,
+
+        # vol_bin_filter: set,
+        # vol_bin_filter_lookback: int,
+        # daily_atr_length: int,
+        # vol_bin_level_1_threshold: float,
+        candle_time_bucket: TimeBucket,
+
         pair: TradingPairIdentifier,
         dependency_resolver: IndicatorDependencyResolver
 ) -> pd.Series:
@@ -785,55 +1097,58 @@ def signal(
     - We use daily RSI filter to get rid of crap pairs like FTC
     """
 
-    rsi = dependency_resolver.get_indicator_data(
-        "daily_rsi",
-        parameters={"daily_rsi_bars": daily_rsi_bars},
-        pair=pair,
-    )
-
-    # Set default RSI value so we include pairs
-    # without enough history
-    rsi = rsi.fillna(50).infer_objects(copy=False)
-
     ath = dependency_resolver.get_indicator_data(
-        "ath",
+        "local_high",
         parameters={
-            "ath_delay_bars": ath_delay_bars,
-            "ath_window_bars": ath_window_bars,
+            "local_high_delay_bars": local_high_delay_bars,
+            "local_high_window_bars": local_high_window_bars,
         },
         pair=pair,
     )
-    ath_core = ath.ewm(span=ath_span).mean() - ath_threshold
 
-    # Use daily RSI as a thrash filter
-    # See FTC: https://tradingstrategy.ai/trading-view/binance/pancakeswap-v2/ftc-usdt
+    local_high_core = ath.ewm(span=local_high_span).mean() - local_high_threshold
+    signal_core = local_high_core
+
+    mask = pd.Series(True, signal_core.index)
+
     df = pd.DataFrame({
-        "rsi": rsi,
-        "ath_core": ath_core,
+        "signal_core": signal_core,
+        "mask": mask,
     })
-    # forward-fill from daily to hourly
-    # SHOULD handle forward fill until the live timestamp
-    df["rsi"] = df["rsi"].infer_objects(copy=False).ffill()
-    mask = df["rsi"] >= daily_rsi_threshold
 
-    df['ath_thresholded'] = 0.0  # Initialize with zeros
-    df.loc[mask, 'ath_thresholded'] = df.loc[mask, 'ath_core']  # Copy ATH indicator values from non-masked timestamps
-    return df["ath_thresholded"]
+    # if roc_length != 0:
+    #      mask = mask & (df["roc"] >= roc_threshold)
+
+    # if ema_length != 0:
+    #      mask = mask & (df["close"] >= df["ema"])
+
+    if min_from_full_history_ath != 0:
+        full_history_ath = dependency_resolver.get_indicator_data(
+            "full_history_ath",
+            parameters={},
+            pair=pair,
+        )
+        mask = mask & (full_history_ath >= min_from_full_history_ath)
+
+    df['signal'] = 0.0  # Initialize the resulting signal with zeros
+    df.loc[mask, 'signal'] = df.loc[mask, 'signal_core']  # Only allow signal to pass if it clears all of our masks
+    return df["signal"]
 
 
 @indicators.define(dependencies=(signal,), source=IndicatorSource.dependencies_only_universe)
 def avg_signal(
-        ath_delay_bars: int,
-        ath_window_bars: int,
-        ath_threshold: float,
-        ath_span: int,
-        daily_rsi_bars: int,
-        daily_rsi_threshold: int,
+        local_high_delay_bars: int,
+        local_high_window_bars: int,
+        local_high_threshold: float,
+        local_high_span: int,
+        min_from_full_history_ath: float,
+        candle_time_bucket: TimeBucket,
         dependency_resolver: IndicatorDependencyResolver
 ) -> pd.Series:
-    """Calculate our "signal" across all pairs.
+    """Calculate avg signal across all pairs
 
-    - Use median - mean is skewed by outliers
+    - Useful to see the signal across all pairs and how the market moves overall
+    - Use median with filtering
 
     :return:
         Series with pair count for each timestamp
@@ -842,12 +1157,12 @@ def avg_signal(
     signal = dependency_resolver.get_indicator_data_pairs_combined(
         "signal",
         parameters={
-            "ath_window_bars": ath_window_bars,
-            "ath_delay_bars": ath_delay_bars,
-            "ath_threshold": ath_threshold,
-            "ath_span": ath_span,
-            "daily_rsi_bars": daily_rsi_bars,
-            "daily_rsi_threshold": daily_rsi_threshold,
+            "local_high_window_bars": local_high_window_bars,
+            "local_high_delay_bars": local_high_delay_bars,
+            "local_high_threshold": local_high_threshold,
+            "local_high_span": local_high_span,
+            "min_from_full_history_ath": min_from_full_history_ath,
+            "candle_time_bucket": candle_time_bucket,
         },
     )
 
@@ -880,3 +1195,86 @@ def create_indicators(
         strategy_universe=strategy_universe,
         execution_context=execution_context,
     )
+
+
+#
+# Charts
+#
+
+from plotly.graph_objects import Figure
+from tradeexecutor.strategy.chart.definition import ChartRegistry, ChartKind, ChartInput
+
+from tradeexecutor.strategy.chart.standard.trading_universe import available_trading_pairs
+from tradeexecutor.strategy.chart.standard.trading_universe import inclusion_criteria_check
+from tradeexecutor.strategy.chart.standard.volatility import volatility_benchmark
+from tradeexecutor.strategy.chart.standard.signal import signal_comparison
+from tradeexecutor.strategy.chart.standard.signal import price_vs_signal
+from tradeexecutor.strategy.chart.standard.vault import all_vaults_share_price_and_tvl
+from tradeexecutor.strategy.chart.standard.vault import vault_position_timeline
+from tradeexecutor.strategy.chart.standard.vault import all_vault_positions
+from tradeexecutor.strategy.chart.standard.equity_curve import equity_curve
+from tradeexecutor.strategy.chart.standard.equity_curve import equity_curve_with_drawdown
+from tradeexecutor.strategy.chart.standard.performance_metrics import performance_metrics
+from tradeexecutor.strategy.chart.standard.weight import volatile_weights_by_percent
+from tradeexecutor.strategy.chart.standard.weight import volatile_and_non_volatile_percent
+from tradeexecutor.strategy.chart.standard.weight import equity_curve_by_asset
+from tradeexecutor.strategy.chart.standard.weight import weight_allocation_statistics
+from tradeexecutor.strategy.chart.standard.position import positions_at_end
+from tradeexecutor.strategy.chart.standard.thinking import last_messages
+from tradeexecutor.strategy.chart.standard.alpha_model import alpha_model_diagnostics
+from tradeexecutor.strategy.chart.standard.profit_breakdown import trading_pair_breakdown
+from tradeexecutor.strategy.chart.standard.trading_metrics import trading_metrics
+from tradeexecutor.strategy.chart.standard.interest import lending_pool_interest_accrued
+from tradeexecutor.strategy.chart.standard.interest import vault_statistics
+from tradeexecutor.strategy.chart.standard.single_pair import trading_pair_positions
+from tradeexecutor.strategy.chart.standard.single_pair import trading_pair_price_and_trades
+
+
+# Some custom indicators for this notebook
+def local_high(input: ChartInput) -> list[Figure]:
+    """Local high indicator vs. price"""
+    return price_vs_signal(input, indicator_name="local_high")
+
+
+def equity_curve_with_benchmark(input: ChartInput) -> list[Figure]:
+    """Equity curve with benchmark comparison"""
+    return equity_curve(
+        input,
+        benchmark_token_symbols=["Cake", "WBNB"],
+    )
+
+# Define charts we use in backtesting and live trading
+def create_charts(
+    timestamp: datetime.datetime | None,
+    parameters: StrategyParameters,
+    strategy_universe: TradingStrategyUniverse,
+    execution_context: ExecutionContext,
+) -> ChartRegistry:
+    charts = ChartRegistry(default_benchmark_pairs=EXAMINED_PAIRS)
+    charts.register(available_trading_pairs, ChartKind.indicator_all_pairs)
+    charts.register(inclusion_criteria_check, ChartKind.indicator_all_pairs)
+    charts.register(volatility_benchmark, ChartKind.indicator_multi_pair)
+    charts.register(signal_comparison, ChartKind.indicator_multi_pair)
+    charts.register(price_vs_signal, ChartKind.indicator_multi_pair)
+    charts.register(local_high, ChartKind.indicator_multi_pair)
+    charts.register(all_vaults_share_price_and_tvl, ChartKind.indicator_all_pairs)
+    charts.register(equity_curve_with_benchmark, ChartKind.state_all_pairs)
+    charts.register(equity_curve_with_drawdown, ChartKind.state_all_pairs)
+    charts.register(performance_metrics, ChartKind.state_all_pairs)
+    charts.register(volatile_weights_by_percent, ChartKind.state_all_pairs)
+    charts.register(volatile_and_non_volatile_percent, ChartKind.state_all_pairs)
+    charts.register(equity_curve_by_asset, ChartKind.state_all_pairs)
+    charts.register(weight_allocation_statistics, ChartKind.state_all_pairs)
+    charts.register(positions_at_end, ChartKind.state_all_pairs)
+    charts.register(last_messages, ChartKind.state_all_pairs)
+    charts.register(alpha_model_diagnostics, ChartKind.state_all_pairs)
+    charts.register(trading_pair_breakdown, ChartKind.state_all_pairs)
+    charts.register(trading_metrics, ChartKind.state_all_pairs)
+    charts.register(lending_pool_interest_accrued, ChartKind.state_all_pairs)
+    charts.register(vault_statistics, ChartKind.state_all_pairs)
+    charts.register(vault_position_timeline, ChartKind.state_single_vault_pair)
+    charts.register(vault_position_timeline, ChartKind.state_single_vault_pair)
+    charts.register(trading_pair_positions, ChartKind.state_single_vault_pair)
+    charts.register(trading_pair_price_and_trades, ChartKind.state_single_vault_pair)
+    return charts
+

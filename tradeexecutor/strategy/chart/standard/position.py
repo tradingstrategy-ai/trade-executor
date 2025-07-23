@@ -13,7 +13,7 @@ def positions_at_end(
     data = []
     for p in list(state.portfolio.open_positions.values())[0:10]:
         data.append({
-            "position_id": p.id,
+            "position_id": p.position_id,
             "token": p.pair.base.token_symbol,
             "value": p.get_value(),
         })

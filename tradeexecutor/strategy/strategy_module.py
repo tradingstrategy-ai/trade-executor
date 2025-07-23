@@ -17,6 +17,7 @@ import pandas as pd
 from web3.datastructures import AttributeDict, ReadableAttributeDict
 
 from tradeexecutor.state.types import Percent
+from tradeexecutor.strategy.chart.definition import ChartRegistry
 from tradeexecutor.strategy.engine_version import SUPPORTED_TRADING_STRATEGY_ENGINE_VERSIONS, TradingStrategyEngineVersion
 from tradeexecutor.strategy.pandas_trader.indicator import CreateIndicatorsProtocolV1, CreateIndicatorsProtocol
 from tradeexecutor.strategy.pandas_trader.strategy_input import StrategyInput
@@ -321,6 +322,18 @@ class CreateTradingUniverseProtocol(Protocol):
 
 
 
+class CreateChartsProtocol(Protocol):
+    """A callback to create ChartsRegistry for the strategy."""
+
+    def __call__(
+        self,
+        timestamp: datetime.datetime | None,
+        parameters: StrategyParameters,
+        strategy_universe: TradingStrategyUniverse,
+        execution_context: ExecutionContext,
+    ) -> ChartRegistry:
+        pass
+
 
 @dataclass
 class StrategyModuleInformation:
@@ -372,6 +385,12 @@ class StrategyModuleInformation:
     #: create_indicators() was added in engiver version 0.5
     #:
     create_indicators: CreateIndicatorsProtocol
+
+    #: A function to prepare strategy charts
+    #:
+    #: create_charts() was added in engiver version 0.6
+    #:
+    create_charts: CreateChartsProtocol
 
     #: Routing hinting.
     #:
@@ -565,6 +584,10 @@ class StrategyModuleInformation:
             assert self.create_indicators is not None, "create_indicators() function missing"
             assert callable(self.create_indicators), "create_indicators() is not a function"
 
+        if self.is_version_greater_or_equal_than(0, 6, 0):
+            assert self.create_charts is not None, "create_charts() function missing"
+            assert callable(self.create_charts), "create_charts() is not a function"
+
     def validate_backtest(self):
         """Validate that the module is backtest runnable."""
         self.validate()
@@ -659,6 +682,7 @@ def parse_strategy_module(
         tags=python_module_exports.get("tags"),
         sort_priority=python_module_exports.get("sort_priority"),
         create_indicators=python_module_exports.get("create_indicators"),
+        create_charts=python_module_exports.get("create_charts"),
         parameters=python_module_exports.get("parameters"),
         management_fee=python_module_exports.get("management_fee"),
         trading_strategy_protocol_fee=python_module_exports.get("trading_strategy_protocol_fee"),
