@@ -15,7 +15,7 @@ except PackageNotFoundError:
     pkg_version = None
 
 
-if (pkg_version is not None) and Version(pkg_version) <= Version("6.1.2"):
+if (pkg_version is not None) and Version(pkg_version) <= Version("7.0.0"):
 
     import numpy
     import pandas

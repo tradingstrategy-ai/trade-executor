@@ -316,6 +316,30 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
         """
         return self.data_universe.liquidity is not None
 
+    def check_has_vault(self, vault_spec: tuple):
+        """Check if we have price data loaded for a vault.
+
+        :raise AssertionError:
+            A helpful error if the data is missing
+        """
+        assert isinstance(vault_spec, tuple), f"Expected vault_spec to be a tuple, got {vault_spec.__class__}: {vault_spec}"
+        chain_id = vault_spec[0]
+        assert isinstance(chain_id, ChainId), f"Expected ChainId, got {chain_id.__class__}: {chain_id}"
+        address = vault_spec[1]
+        assert address.startswith("0x"), f"Expected address, got {address}"
+
+        # Raises if not found
+        vault_pair = self.data_universe.pairs.get_pair_by_smart_contract(
+            address,
+        )
+        assert vault_pair, f"Vault not in pair universe: {vault_spec}"
+
+        candles = self.data_universe.candles.get_candles_by_pair(
+            vault_pair,
+        )
+
+        assert candles is not None, f"No price data found for vault: {vault_pair}"
+
     def get_pair_by_id(self, internal_id: int) -> Optional[TradingPairIdentifier]:
         """Get a trading pair data by its internal id (pair_id)."""
         pair = self.data_universe.pairs.get_pair_by_id(internal_id)
@@ -2275,7 +2299,7 @@ def load_partial_data(
     lending_candle_progress_bar_desc: str | None = None,
     pair_extra_metadata=False,
     vaults: list[tuple[ChainId, JSONHexAddress]] | None = None,
-    vault_bundled_price_data=False,
+    vault_bundled_price_data: bool | Path=False,
     round_start_end: bool = True,
 ) -> Dataset:
     """Load pair data for given trading pairs.
@@ -2673,7 +2697,17 @@ def load_partial_data(
         if vault_bundled_price_data:
             assert vaults, "Vaults must be given to load bundled price data"
             assert not execution_context.mode.is_live_trading(), "Cannot load bundled price data in live trading"
-            vault_prices_df = load_vault_price_data(vault_pairs_df)
+
+            assert isinstance(vault_bundled_price_data, (bool, Path)), "vault_bundled_price_data must be bool or Path"
+            if isinstance(vault_bundled_price_data, Path):
+                vault_prices_bundle_path = vault_bundled_price_data
+            else:
+                vault_prices_bundle_path = DEFAULT_VAULT_PRICE_BUNDLE
+
+            vault_prices_df = load_vault_price_data(
+                vault_pairs_df,
+                prices_path=vault_prices_bundle_path,    
+            )
             offset = time_bucket.to_frequency()
             freq_string = f"{offset.n}{offset.name.lower()}"
             vault_candle_df, vault_liquidity_df = convert_vault_prices_to_candles(vault_prices_df, freq_string)

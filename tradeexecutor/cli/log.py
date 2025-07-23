@@ -353,7 +353,7 @@ def setup_telegram_logging(
     Set up a Python logging handler based on `telegram_bot_logger <https://github.com/arynyklas/telegram_bot_logger>`__
     to send trade output to a Telegram group chat.
 
-    .. note::s
+    .. note::
 
         This handler spawns a background thread. You need to call `handler.close` or your application won't exit.
 

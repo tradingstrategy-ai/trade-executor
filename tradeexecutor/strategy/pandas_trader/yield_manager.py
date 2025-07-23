@@ -14,11 +14,9 @@ from tabulate import tabulate
 from tradeexecutor.state.generic_position import GenericPosition
 from tradeexecutor.state.identifier import TradingPairIdentifier, TradingPairKind
 from tradeexecutor.state.portfolio import Portfolio
-from tradeexecutor.state.position import TradingPosition
 from tradeexecutor.state.size_risk import SizeRisk, SizingType
 from tradeexecutor.state.trade import TradeExecution
 from tradeexecutor.state.types import USDollarAmount, Percent
-from tradeexecutor.strategy.dust import DEFAULT_VAULT_EPSILON
 from tradeexecutor.strategy.execution_context import ExecutionMode
 from tradeexecutor.strategy.pandas_trader.position_manager import PositionManager
 from tradeexecutor.strategy.tvl_size_risk import BaseTVLSizeRiskModel
