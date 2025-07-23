@@ -314,7 +314,7 @@ class TradingPosition(GenericPosition):
 
     def __eq__(self, other):
         """Note that we do not support comparison across different portfolios ATM."""
-        assert isinstance(other, TradingPosition)
+        assert isinstance(other, TradingPosition), f"Expected TradingPosition, got {type(other)}: {other}"
         return self.position_id == other.position_id
 
     def __post_init__(self):

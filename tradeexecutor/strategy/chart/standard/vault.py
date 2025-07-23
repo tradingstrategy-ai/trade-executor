@@ -27,6 +27,8 @@ def all_vaults_share_price_and_tvl(
 def vault_position_timeline(
     input: ChartInput,
     cut_off_date: pd.Timestamp = None,
+    height=2000,
+    width=1200,
 ) -> tuple[Figure, pd.DataFrame]:
     """How a single vault position evolved over time.
 
@@ -42,11 +44,11 @@ def vault_position_timeline(
     assert input.pairs and len(input.pairs) == 1, "This chart only supports a single vault pair."
     pair = input.pairs[0]
 
-    all_positions = state.portfolio.get_all_positions()
+    all_positions = list(state.portfolio.get_all_positions())
     position_id = None
     for p in reversed(all_positions):
         if p.pair == pair:
-            position_id = p
+            position_id = p.position_id
             break
 
     assert position_id is not None, f"Position for pair {pair} not found in portfolio."
@@ -56,6 +58,7 @@ def vault_position_timeline(
         strategy_universe,
         position,
         end_at=state.backtest_data.end_at,
+
     )
 
     if cut_off_date:
@@ -65,9 +68,9 @@ def vault_position_timeline(
         position,
         position_df,
         extended=True,
-        height=2000,
-        width=1200,
         autosize=False,
+        height=height,
+        width=width,
     )
 
     with pd.option_context('display.min_rows', 500):  # Show up to 50 rows
@@ -79,12 +82,12 @@ def vault_position_timeline(
         return fig, df
 
 
-
 def all_vault_positions(
     chart_input: ChartInput,
 ) -> pd.DataFrame:
     """Display all vault positions in a table.
 
     """
+    state = chart_input.state
     vault_df = display_vault_position_table(state)
     return vault_df

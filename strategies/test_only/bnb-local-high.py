@@ -71,10 +71,7 @@ SUPPORTING_PAIRS = [
 ]
 
 EXAMINED_PAIRS = [
-    (ChainId.binance, "pancakeswap-v2", "WBNB", "USDT", 0.0025),
-    (ChainId.binance, "pancakeswap-v2", "FTC", "WBNB", 0.0025),
-    (ChainId.binance, "pancakeswap-v2", "TRUNK", "WBNB", 0.0025),
-    (ChainId.binance, "pancakeswap-v2", "CUMMIES", "WBNB", 0.0025),
+    (ChainId.binance, "pancakeswap-v2", "FIST", "USDT", 0.0025),
 ]
 
 VOL_PAIR = (CHAIN_ID, "pancakeswap-v2", "WBNB", "USDT", 0.0025)

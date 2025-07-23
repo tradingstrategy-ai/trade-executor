@@ -4,18 +4,12 @@
 import os
 from pathlib import Path
 
-import pandas as pd
 import pytest
-from plotly.graph_objs import Figure
 
-from tradeexecutor.analysis.credit import calculate_yield_metrics, YieldType, display_vault_position_table
-from tradeexecutor.analysis.multipair import analyse_multipair
 from tradeexecutor.backtest.backtest_module import run_backtest_for_module
 from tradeexecutor.cli.log import setup_pytest_logging
 from tradeexecutor.strategy.chart.renderer import ChartBacktestRenderingSetup
 from tradeexecutor.strategy.execution_context import unit_test_execution_context
-from tradeexecutor.strategy.pnl import calculate_pnl
-from tradeexecutor.visual.position import calculate_position_timeline, visualise_position
 
 
 @pytest.fixture(scope="module")
@@ -52,7 +46,7 @@ def test_backtest_charts(
     charts = mod.create_charts(
         timestamp=None,
         parameters=mod.parameters,
-        strategy_universe=result.universe,
+        strategy_universe=result.strategy_universe,
         execution_context=unit_test_execution_context,
     )
 
@@ -62,6 +56,7 @@ def test_backtest_charts(
         registry=charts,
         strategy_input_indicators=result.indicators,
         backtest_end_at=mod.parameters.backtest_end,
+        state=result.state,
     )
 
     for func in charts.by_function.keys():
