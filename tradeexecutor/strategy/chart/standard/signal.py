@@ -42,7 +42,7 @@ def signal_comparison(
     for pair in input.pairs:
         signal = indicator_data.get_indicator_series("signal", pair=pair)
         signal = signal.clip(upper=upper_displayed)
-        data[pair.base.symbol] = signal
+        data[pair.base.token_symbol] = signal
 
     df = pd.DataFrame(data)
     fig = px.line(df)
@@ -99,7 +99,7 @@ def price_vs_signal(
         #    yaxis_type="log"
         #)
 
-        figs.add[fig]
+        figs.append(fig)
 
     return figs
 
