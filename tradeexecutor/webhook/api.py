@@ -15,7 +15,7 @@ from pyramid.view import view_config
 from tradeexecutor.cli.log import get_ring_buffer_handler
 from tradeexecutor.state.metadata import Metadata
 from tradeexecutor.state.store import JSONFileStore
-from tradeexecutor.state.validator import validate_state_serialisation, validate_nested_state_dict
+from tradeexecutor.state.validator import validate_nested_state_dict
 from tradeexecutor.strategy.summary import StrategySummary
 from tradeexecutor.strategy.run_state import RunState
 from tradeexecutor.visual.web_chart import WebChartType, render_web_chart, WebChartSource
@@ -99,24 +99,41 @@ def web_notify(request: Request):
 def web_state(request: Request):
     """/state endpoint.
 
-    Serve the latest full state of the bog.
+    Serve the latest full state of the strategy.
+
+    Returns compressed (brotli) version if client supports it and it's available.
 
     :return 404:
         If the state has not been yet created
     """
 
-    # Does "zero copy" WSGI file serving
     store: JSONFileStore = request.registry["store"]
-    fname = store.path
 
-    if not os.path.exists(fname):
-        logger.warning("Someone is eager to access the serverPlain. IP:%s, user agent:%s", request.client_addr, request.user_agent)
+    if not store.path.exists():
+        logger.warning(f"Someone is eager to access the server. IP:{request.client_addr}, user agent:{request.user_agent}")
         return exception_response(404, detail="Status file not yet created")
 
-    assert 'wsgi.file_wrapper' in request.environ, "We need wsgi.file_wrapper or we will be too slow"
-    r = FileResponse(content_type="application/json", request=request, path=fname)
-    return r
+    # Ensure "zero copy" WSGI file serving
+    assert "wsgi.file_wrapper" in request.environ, "We need wsgi.file_wrapper or we will be too slow"
 
+    # Check if we can serve Brotli compressed version
+    accepts_br = "br" in request.headers.get("Accept-Encoding", "")
+    br_path = Path(f"{store.path}.br")
+
+    if (accepts_br and
+        br_path.exists() and
+        br_path.stat().st_mtime >= store.path.stat().st_mtime):
+        # Serve compressed version if client supports it and it's available
+        r = FileResponse(content_type="application/json", request=request, path=br_path)
+        r.headers["Content-Encoding"] = "br"
+    else:
+        # Fallback to uncompressed
+        r = FileResponse(content_type="application/json", request=request, path=store.path)
+
+    # Ensure caches store separate entries for different Accept-Encoding values
+    r.headers["Vary"] = "Accept-Encoding"
+
+    return r
 
 @view_config(route_name='web_status', renderer='json', permission='view')
 def web_status(request: Request):
@@ -237,7 +254,7 @@ def web_file(request: Request):
     return r
 
 
-@view_config(route_name='web_chart', permission='view', renderer="json")
+@view_config(route_name='web_chart', permission='view', renderer='json')
 def web_chart(request: Request):
     """/chart endpoint.
 

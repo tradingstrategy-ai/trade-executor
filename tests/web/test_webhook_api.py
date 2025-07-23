@@ -1,6 +1,5 @@
 """Check API endpoints."""
 import datetime
-import os
 import tempfile
 from pathlib import Path
 from queue import Queue
@@ -118,11 +117,14 @@ def test_cors(logger, server_url):
 
 
 def test_state(logger, server_url):
-    """Download an empty state."""
-
-    # Create a state.
+    """Download state (with automatic compression)."""
     resp = requests.get(f"{server_url}/state")
     assert resp.status_code == 200
+
+    # Should get compressed response by default
+    assert resp.headers.get("Content-Encoding") == "br"
+    assert resp.headers.get("Vary") == "Accept-Encoding"
+    assert resp.headers.get("Content-Type") == "application/json"
 
     # Test deserialisation
     state_dict = resp.json()
