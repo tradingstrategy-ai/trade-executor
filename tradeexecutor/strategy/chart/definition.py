@@ -1,4 +1,5 @@
 """Chart definition for the trade executor strategy."""
+import datetime
 import enum
 import typing
 from dataclasses import dataclass
@@ -8,8 +9,11 @@ from typing import Literal
 import pandas as pd
 import plotly.graph_objects as go
 
+from tradeexecutor.state.identifier import TradingPairIdentifier
 from tradeexecutor.state.state import State
+from tradeexecutor.strategy.execution_context import ExecutionContext
 from tradeexecutor.strategy.pandas_trader.strategy_input import StrategyInputIndicators
+from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
 
 
 class ChartKind(enum.Enum):
@@ -28,14 +32,22 @@ class ChartKind(enum.Enum):
 
 @dataclass(slots=True, frozen=False)
 class ChartInput:
-    """Input state needed to render a chart.
+    """Input state and choises needed to render a chart.
 
     - Any of the input fields may be filled
     - What parameters the chart function needs to
     """
+
+    #: Are we running live or backtest
+    execution_context: ExecutionContext
     state: State | None = None
     strategy_input_indicators: StrategyInputIndicators = None
-    pair_id: int | None = None
+    pairs: typing.Collection[TradingPairIdentifier] | None = None
+
+    #: Passed when setting up `ChartBacktestRenderingSetup`.
+    #:
+    #: Use :py:meth:`end_at` for access.
+    backtest_end_at: datetime.datetime | None = None
 
     def __post_init__(self):
         if self.state is not None:
@@ -49,8 +61,28 @@ class ChartInput:
             assert isinstance(self.pair_id, int), "pair_id must be an integer."
 
     @property
-    def strategy_universe(self):
+    def strategy_universe(self) -> TradingStrategyUniverse:
         return self.strategy_input_indicators.strategy_universe
+
+    @property
+    def live(self) -> bool:
+        return self.execution_context.live_trading
+
+    @property
+    def backtest(self) -> bool:
+        return not self.execution_context.live_trading
+
+    @property
+    def end_at(self) -> datetime.datetime:
+        """The end timestamp of the charting.
+
+        - Backtesting: backtest end timestamp
+        - Live trading: The latest completed cycle timestamp
+        """
+        if self.execution_context.live_trading:
+            raise NotImplementedError()
+        else:
+            return self.backtest_end_at
 
 
 @dataclass(slots=True, frozen=False)
@@ -77,7 +109,12 @@ class ChartRenderingResult:
         )
 
 
-ChartOutput = go.Figure | pd.DataFrame
+#: Chart functions can return
+#: - Plotly Figure
+#: - DataFrame for rendering a table
+#: - Both
+#: - List of figures (for each pair, vault, etc.)
+ChartOutput = go.Figure | pd.DataFrame | tuple[go.Figure, pd.DataFrame] | list[go.Figure]
 
 
 class ChartFunction(typing.Protocol):
@@ -99,6 +136,7 @@ class ChartCallback:
     name: str
     func: ChartFunction
     kind: ChartKind
+    description: str
 
 
 
@@ -109,8 +147,13 @@ class ChartRegistry:
     """
 
     def __init__(self):
+
         #: Name -> registered functions mappings
         self.registry: dict[str, ChartCallback] = {}
+
+        #: Function -> registered functions mappings.
+        #: Only useful for backtesting notebooks.
+        self.by_function: dict[ChartFunction, ChartCallback] = {}
 
     def get_chart_function(self, name: str) -> ChartCallback | None:
         """Get a chart function by name."""
@@ -137,22 +180,29 @@ class ChartRegistry:
 
     def register(
         self,
-        func: ChartCallback,
+        func: ChartFunction,
         kind: ChartKind,
         name: str | None = None,
     ):
         """Manually register a chart function."""
-
-
         name = name or func.__name__
 
-        assert not " " in name, f"Chart name '{name}' cannot contain spaces."
+        docstring = func.__doc__
+        assert docstring, f"Chart function '{func}' must have a docstring as a description."
 
-        self.registry[name] = ChartCallback(
+        description = docstring.strip().split("\n")[0]
+
+        assert not " " in name, f"Chart name '{name}' cannot contain spaces."
+        callback = ChartCallback(
             name=name,
             func=func,
             kind=kind,
+            description=description
         )
+        self.registry[name] = callback
+        self.by_function[func] = callback
+
+
 
 
 

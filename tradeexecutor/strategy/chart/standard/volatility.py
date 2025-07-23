@@ -4,7 +4,7 @@ from typing import Collection
 from plotly.graph_objects import Figure
 
 from tradeexecutor.state.identifier import TradingPairIdentifier
-from tradeexecutor.strategy.chart.chart_definition import ChartInput
+from tradeexecutor.strategy.chart.definition import ChartInput
 
 
 def volatility_benchmark(

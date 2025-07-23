@@ -3,7 +3,8 @@ from dataclasses import dataclass
 from typing import Collection, Callable
 
 from tradeexecutor.state.identifier import TradingPairIdentifier
-from tradeexecutor.strategy.chart.chart_definition import ChartRegistry, ChartParameters, ChartRenderingResult, ChartInput, ChartOutput
+from tradeexecutor.strategy.chart.definition import ChartRegistry, ChartParameters, ChartRenderingResult, ChartInput, ChartOutput
+from tradeexecutor.strategy.execution_context import notebook_execution_context
 from tradeexecutor.strategy.pandas_trader.strategy_input import StrategyInputIndicators
 
 
@@ -14,6 +15,9 @@ def render_chart(
     input: ChartInput,
 ) -> ChartRenderingResult:
     """Render a chart using the provided registry and parameters.
+
+    - Call from the web API endpoint
+    - In backtesting use :py:class:`ChartBackt  estRenderingSetup`
 
     :param registry: The chart registry containing available charts.
     :param chart_name: The name of the chart to render.
@@ -44,22 +48,33 @@ def render_chart(
 class ChartBacktestRenderingSetup:
     """Define a setup that tells which pairs we are about to render"""
 
+    registry: ChartRegistry
+
     strategy_input_indicators: StrategyInputIndicators
 
-    #: Examine these assets
-    selected_pairs: Collection[TradingPairIdentifier] | None
+    #: Selected pairs.
+    #:
+    #: Examine these assets in backtesting rendering functions.
+    pairs: Collection[TradingPairIdentifier] | None
+
+    # :Where do we run the renderer
+    execution_context = notebook_execution_context
 
     def __post_init__(self):
         assert self.strategy_input_indicators is not None, "strategy_input_indicators must be provided."
-        for pair in self.selected_pairs:
-            assert isinstance(pair, TradingPairIdentifier), "selected_pairs must contain TradingPairIdentifier instances."
+        for pair in self.pairs:
+            assert isinstance(pair, TradingPairIdentifier), f"pairs must contain TradingPairIdentifier instances, got {type(pair)}: {pair}"
 
-    def render(self, func: Callable) -> ChartOutput:
+    def render(self, func: Callable, **kwargs) -> ChartOutput:
         """Render the chart using the provided function."""
+
+        assert func in self.registry.by_function, f"Function {func} is not registered in the chart registry."
+
         input = ChartInput(
             strategy_input_indicators=self.strategy_input_indicators,
+            pairs=self.pairs,
         )
-        return func(input)
+        return func(input, **kwargs)
 
 
 
