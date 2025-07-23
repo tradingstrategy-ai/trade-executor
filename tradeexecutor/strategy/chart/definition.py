@@ -8,6 +8,8 @@ from typing import Literal
 
 import pandas as pd
 import plotly.graph_objects as go
+from matplotlib.figure import Figure as MatplotlibFigure
+
 
 from tradeexecutor.state.identifier import TradingPairIdentifier
 from tradeexecutor.state.state import State
@@ -114,7 +116,7 @@ class ChartRenderingResult:
 #: - DataFrame for rendering a table
 #: - Both
 #: - List of figures (for each pair, vault, etc.)
-ChartOutput = go.Figure | pd.DataFrame | tuple[go.Figure, pd.DataFrame] | list[go.Figure]
+ChartOutput = go.Figure | pd.DataFrame | tuple[go.Figure, pd.DataFrame] | list[go.Figure] | MatplotlibFigure
 
 
 class ChartFunction(typing.Protocol):

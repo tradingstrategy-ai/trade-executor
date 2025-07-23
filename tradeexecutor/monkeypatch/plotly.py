@@ -29,7 +29,9 @@ if (pkg_version is not None) and Version(pkg_version) <= Version("7.0.0"):
             # Detect datetime64 and convert it to native Python datetime that show() can handle
             if isinstance(trace.x, numpy.ndarray):
                 if isinstance(item, numpy.datetime64):
-                    trace.x = pandas.Series(trace.x).dt.to_pydatetime().tolist()
+                    with warnings.catch_warnings():
+                        warnings.simplefilter("ignore", FutureWarning)
+                        trace.x = pandas.Series(trace.x).dt.to_pydatetime().tolist()
 
 
     # Run in the monkey patch,
