@@ -1,3 +1,4 @@
+import datetime
 import traceback
 from dataclasses import dataclass
 from typing import Collection, Callable
@@ -64,10 +65,17 @@ class ChartBacktestRenderingSetup:
     #: Backtesting or live trading state
     state: State | None = None
 
+    #: Backtest end time hint, if backtest is not run yet.
+    #: Backtest end time hint, if backtest is not run yet.
+    backtest_end_at: datetime.datetime | None = None
+
     def __post_init__(self):
         assert self.strategy_input_indicators is not None, "strategy_input_indicators must be provided."
         for pair in self.pairs:
             assert isinstance(pair, TradingPairIdentifier), f"pairs must contain TradingPairIdentifier instances, got {type(pair)}: {pair}"
+
+        if self.end_at:
+            assert isinstance(self.end_at, datetime.datetime), f"end_at must be a datetime, got {type(self.end_at)}: {self.end_at}"
 
     def render(self, func: Callable, **kwargs) -> ChartOutput:
         """Render the chart using the provided function.
@@ -85,6 +93,7 @@ class ChartBacktestRenderingSetup:
             strategy_input_indicators=self.strategy_input_indicators,
             pairs=self.pairs,
             execution_context=self.execution_context,
+            backtest_end_at= self.backtest_end_at,
         )
         result = func(input, **kwargs)
         assert result is not None, f"Chart rendering function {func} returned None."

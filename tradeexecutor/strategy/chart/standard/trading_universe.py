@@ -1,3 +1,5 @@
+"""Analysis of trading universe."""
+
 import pandas as pd
 from plotly.graph_objects import Figure
 import plotly.express as px
@@ -59,6 +61,9 @@ def inclusion_criteria_check(
 
     indicator_data = input.strategy_input_indicators
     strategy_universe = input.strategy_universe
+    timestamp = input.end_at
+
+    assert timestamp is not None, "End timestamp must be provided inclusion_criteria_check(). Set in ChartBacktestRenderingSetup()."
 
     series = indicator_data.get_indicator_series(inclusion_criteria)
 
@@ -75,13 +80,11 @@ def inclusion_criteria_check(
         except Exception:
             return "<pair metadata missing>"
 
-
     def _get_dex(pair_id):
         try:
             return strategy_universe.get_pair_by_id(pair_id).exchange_name
         except Exception:
             return "<DEX metadata missing>"
-
 
     df["Ticker"] = first_appearance_series.index.map(_get_ticker)
     df["DEX"] = first_appearance_series.index.map(_get_dex)
@@ -103,7 +106,6 @@ def inclusion_criteria_check(
 
     def _map_tvl_end(row):
         pair_id = row.name  # Indxe
-        timestamp = input.end_at
         try:
             tvl, delay = strategy_universe.data_universe.liquidity.get_liquidity_with_tolerance(
                 pair_id,

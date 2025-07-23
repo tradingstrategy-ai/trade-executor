@@ -30,6 +30,8 @@ class ChartKind(enum.Enum):
     state_all_pairs= "universe_state"
     #: A Chart for a single pair based on indicator data
     state_single_pair = "state_single_pair"
+    #: Takes state as an input and renders a chart for a single vault
+    state_single_vault_pair = "state_single_vault_pair"
 
 
 @dataclass(slots=True, frozen=False)
