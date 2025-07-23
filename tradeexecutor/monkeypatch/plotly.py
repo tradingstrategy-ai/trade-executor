@@ -2,7 +2,7 @@
 
 - Workaround bug https://github.com/plotly/plotly.py/issues/5210
 """
-
+import warnings
 from importlib.metadata import version, PackageNotFoundError
 import datetime
 

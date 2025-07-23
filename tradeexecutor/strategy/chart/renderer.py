@@ -84,6 +84,7 @@ class ChartBacktestRenderingSetup:
         input = ChartInput(
             strategy_input_indicators=self.strategy_input_indicators,
             pairs=self.pairs,
+            execution_context=self.execution_context,
         )
         result = func(input, **kwargs)
         assert result is not None, f"Chart rendering function {func} returned None."

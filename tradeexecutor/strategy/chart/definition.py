@@ -9,7 +9,7 @@ from typing import Literal
 import pandas as pd
 import plotly.graph_objects as go
 from matplotlib.figure import Figure as MatplotlibFigure
-
+from pandas.io.formats.style import Styler
 
 from tradeexecutor.state.identifier import TradingPairIdentifier
 from tradeexecutor.state.state import State
@@ -51,6 +51,9 @@ class ChartInput:
     #: Use :py:meth:`end_at` for access.
     backtest_end_at: datetime.datetime | None = None
 
+    #: Cached calculations in backtesting notebook
+    cache = {}
+
     def __post_init__(self):
         if self.state is not None:
             assert isinstance(self.state, State), "State must be an instance of State."
@@ -59,8 +62,10 @@ class ChartInput:
             assert isinstance(self.strategy_input_indicators, StrategyInputIndicators), \
                 "strategy_input_indicators must be an instance of StrategyInputIndicators."
 
-        if self.pair_id is not None:
-            assert isinstance(self.pair_id, int), "pair_id must be an integer."
+        if self.pairs is not None:
+            assert isinstance(self.pairs, (list, set, tuple)), f"pairs must be a collection, got {type(self.pairs)}."
+            for p in self.pairs:
+                assert isinstance(p, TradingPairIdentifier), f"Each pair must be a TradingPairIdentifier, got {type(p)}."
 
     @property
     def strategy_universe(self) -> TradingStrategyUniverse:
@@ -116,8 +121,9 @@ class ChartRenderingResult:
 #: - DataFrame for rendering a table
 #: - Both
 #: - List of figures (for each pair, vault, etc.)
-ChartOutput = go.Figure | pd.DataFrame | tuple[go.Figure, pd.DataFrame] | list[go.Figure] | MatplotlibFigure
-
+#: - Matplotlib Figure
+#: - Pandas Styler styled dataframe for rendering a HTML table
+ChartOutput = go.Figure | pd.DataFrame | tuple[go.Figure, pd.DataFrame] | list[go.Figure] | MatplotlibFigure | Styler
 
 class ChartFunction(typing.Protocol):
     """Chart rendering protocol definition.
