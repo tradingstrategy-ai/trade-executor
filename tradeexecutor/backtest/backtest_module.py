@@ -145,4 +145,6 @@ def run_backtest_for_module(
         max_cycles=max_cycles,
     )
 
+    result.strategy_module = mod
+
     return result

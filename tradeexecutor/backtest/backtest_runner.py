@@ -55,7 +55,7 @@ from tradingstrategy.timebucket import TimeBucket
 logger = logging.getLogger(__name__)
 
 
-@dataclass(slots=True, frozen=True)
+@dataclass(slots=True, frozen=False)
 class BacktestResult:
     """What we have after backtest"""
 
@@ -70,6 +70,11 @@ class BacktestResult:
 
     #: Indicators we calculated for the backtest
     indicators: StrategyInputIndicators
+
+    #: Loaded strategy module.
+    #:
+    #: Not available if we run an inline test.
+    strategy_module: StrategyModuleInformation | None = None
 
     def __iter__(self):
         #: Legacy compatibility
@@ -711,7 +716,7 @@ def run_backtest(
         state=setup.state,
         strategy_universe=backtest_universe,
         diagnostics_data=diagnostics_data,
-        indicators=backtest_strategy_indicators
+        indicators=backtest_strategy_indicators,
     )
 
     return result
