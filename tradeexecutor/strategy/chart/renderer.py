@@ -3,11 +3,15 @@ import traceback
 from dataclasses import dataclass
 from typing import Collection, Callable
 
+import pandas as pd
+from plotly.graph_objects import Figure
+
 from tradeexecutor.state.identifier import TradingPairIdentifier
 from tradeexecutor.state.state import State
 from tradeexecutor.strategy.chart.definition import ChartRegistry, ChartParameters, ChartRenderingResult, ChartInput, ChartOutput
 from tradeexecutor.strategy.execution_context import notebook_execution_context
 from tradeexecutor.strategy.pandas_trader.strategy_input import StrategyInputIndicators
+from tradeexecutor.visual.image_output import render_plotly_figure_as_image_file
 
 
 def render_chart(
@@ -38,8 +42,33 @@ def render_chart(
             return ChartRenderingResult.error_out(f"Chart '{chart_id}' not found in registry.")
 
         # Call the chart function with the provided parameters and input
-        data = chart_function(input, parameters)
-        return data
+        func_result = chart_function(input, parameters)
+
+        # We do not support multi-content output yet
+        if type(func_result) == tuple:
+            func_result = func_result[0]
+
+        if isinstance(func_result, Figure):
+            # Render Plotly Figure as PNG image file
+            data = render_plotly_figure_as_image_file(
+                func_result,
+                format=parameters.format,
+                width=parameters.width,
+                height=parameters.height
+            )
+            return ChartRenderingResult(
+                data=data,
+                content_type="image/png",
+            )
+        elif isinstance(func_result, pd.DataFrame):
+            # Render DataFrame as HTML table
+            html_table = func_result.to_html(classes='table table-striped', index=False)
+            return ChartRenderingResult(
+                data=html_table.encode("utf-8"),
+                content_type="text/html",
+            )
+        else:
+            raise NotImplementedError(f"Unsupported chart output type: {type(func_result)}. Expected Figure or ChartOutput.")
 
     except Exception as e:
         tb_str = traceback.format_exc()
