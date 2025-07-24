@@ -9,13 +9,11 @@ import logging
 import tempfile
 import webbrowser
 import threading
-from io import BytesIO
 import asyncio
 from pathlib import Path
 
 import plotly.graph_objects as go
-from gmpy2.gmpy2 import context
-from kaleido import Kaleido
+import kaleido
 
 
 logger = logging.getLogger(__name__)
@@ -24,19 +22,37 @@ _kaleido = None
 _lock = threading.Lock()
 
 
-def get_kaleido() -> Kaleido:
-    """Create Kaleido rendering backend.
-
-    - Creates a Chrome browser on background
-
-    - `See usage examples <https://github.com/plotly/Kaleido>`__
-    """
-    global _kaleido
-    with _lock:
-        if _kaleido is None:
-            _kaleido = Kaleido()
-
-    return _kaleido
+# def get_kaleido() -> kaleido.Kaleido:
+#     """Create Kaleido rendering backend.
+#
+#     - Creates a Chrome browser on background
+#
+#     - `See usage examples <https://github.com/plotly/Kaleido>`__
+#     """
+#     global _kaleido
+#     with _lock:
+#         if _kaleido is None:
+#             _kaleido = kaleido.Kaleido()
+#
+#     return _kaleido
+#
+#
+# async def _args(
+#     kaleido_instance: kaleido.Kaleido,
+#     figure: go.Figure,
+#     filename: str,
+#     opts: dict,
+# ):
+#     logger.info("Entering Kaleido async rendering loop")
+#     kaleido_instance = kaleido.Kaleido()
+#     await kaleido_instance.open()
+#     await kaleido_instance.write_fig(
+#         figure,
+#         filename,
+#         opts=opts,
+#     )
+#     await kaleido_instance.close()
+#     logger.info("Exiting Kaleido async rendering loop")
 
 
 def render_plotly_figure_as_image_file(
@@ -75,7 +91,6 @@ def render_plotly_figure_as_image_file(
 
     with tempfile.NamedTemporaryFile(delete=True, suffix=".png") as tmp:
         filename = tmp.name
-        kaleido_instance = get_kaleido()
 
         opts = dict(
             format=format,
@@ -83,19 +98,10 @@ def render_plotly_figure_as_image_file(
             height=height,
         )
 
-        import ipdb ; ipdb.set_trace()
-
-        # kaleido_instance.write_fig(
-        #    figure,
-        #    filename,
-        #    opts=opts,
-        # )
-
         asyncio.run(
-            kaleido_instance.write_fig(
+            kaleido.write_fig(
                 figure,
-                filename,
-                opts=opts,
+                path=filename,
             ),
             debug=True,
         )

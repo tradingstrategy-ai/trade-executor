@@ -103,7 +103,7 @@ def server_url(store, chart_registry):
     server.shutdown()
 
 
-def test_web_render_chart(logger, server_url):
+def test_web_render_figure(logger, server_url):
     """Render PNG and HTML output on the server-side for strategy charts"""
 
     # Check image output
@@ -113,4 +113,17 @@ def test_web_render_chart(logger, server_url):
     )
     assert resp.status_code == 200
     assert resp.headers.get("content-type") == "image/png", f"Got: {resp.text}"
+    assert int(resp.headers["content-length"]) > 100
+
+
+def test_web_render_table(logger, server_url):
+    """Render PNG and HTML output on the server-side for strategy charts"""
+
+    # Check image output
+    resp = requests.get(
+        f"{server_url}/chart-registry/render",
+        params={"chart_id": "table_func"},
+    )
+    assert resp.status_code == 200
+    assert resp.headers.get("content-type") == "text/html; charset=UTF-8", f"Got: {resp.text}"
     assert int(resp.headers["content-length"]) > 100
