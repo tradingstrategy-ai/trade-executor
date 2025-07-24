@@ -30,7 +30,7 @@ from tradeexecutor.strategy.trading_strategy_universe import (
 from tradeexecutor.strategy.tvl_size_risk import USDTVLSizeRiskModel
 from tradeexecutor.strategy.universe_model import UniverseOptions
 from tradeexecutor.strategy.weighting import weight_equal, weight_passthrouh
-from tradingstrategy.alternative_data.vault import load_single_vault
+from tradingstrategy.alternative_data.vault import load_single_vault, DEFAULT_VAULT_PRICE_BUNDLE
 from tradingstrategy.chain import ChainId
 from tradingstrategy.client import Client
 from tradingstrategy.pair import PandasPairUniverse
@@ -328,7 +328,7 @@ def create_trading_universe(
         preloaded_tvl_df=tvl_df,
         lending_reserves=LENDING_RESERVES,
         vaults=VAULTS,
-        vault_bundled_price_data=Path.home() / ".tradingstrategy" / "vaults" / "cleaned-vault-prices-1h.parquet",
+        vault_bundled_price_data=DEFAULT_VAULT_PRICE_BUNDLE,
     )
 
     reserve_asset = PREFERRED_STABLECOIN
