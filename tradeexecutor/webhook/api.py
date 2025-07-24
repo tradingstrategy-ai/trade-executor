@@ -3,7 +3,7 @@
 import os
 import logging
 import time
-from importlib.metadata import version
+
 from pathlib import Path
 from typing import cast
 from urllib.parse import urljoin
@@ -18,7 +18,7 @@ from tradeexecutor.state.store import JSONFileStore
 from tradeexecutor.state.validator import validate_nested_state_dict
 from tradeexecutor.strategy.chart.definition import ChartParameters, ChartInput
 from tradeexecutor.strategy.chart.renderer import render_chart
-from tradeexecutor.strategy.execution_context import notebook_execution_context, web_server_execution_context
+from tradeexecutor.strategy.execution_context import web_server_execution_context
 from tradeexecutor.strategy.summary import StrategySummary
 from tradeexecutor.strategy.run_state import RunState
 from tradeexecutor.visual.web_chart import WebChartType, render_web_chart, WebChartSource
@@ -329,13 +329,21 @@ def web_chart_render(request: Request):
     pair_ids = request.params.get("pair_ids")
     format = request.params.get("format", "png").lower()
 
-    parsed_pair_ids = []
+    pairs = []
+
+    strategy_input_indicators = run_state.latest_indicators
+    if strategy_input_indicators is not None:
+        strategy_universe = strategy_input_indicators.strategy_universe
+    else:
+        # We don't necessarily care about this in test paths
+        strategy_universe = None
 
     if pair_ids:
+        assert strategy_universe is not None, "pair_ids provided but strategy_universe is None, cannot parse pair ids"
         split = pair_ids.split(",")
         for pair_id in split:
             try:
-                parsed_pair_ids.append(int(pair_id))
+                pairs.append(strategy_universe.get_pair_by_id(int(pair_id)))
             except ValueError:
                 return exception_response(501, detail=f"Bad pair id: {pair_id}")
 
@@ -343,7 +351,7 @@ def web_chart_render(request: Request):
         registry=chart_registry,
         chart_id=chart_id,
         parameters=ChartParameters(
-            format="png",
+            format=format,
             width=1200,
             height=800,
         ),
@@ -351,7 +359,7 @@ def web_chart_render(request: Request):
             execution_context=web_server_execution_context,
             strategy_input_indicators=run_state.latest_indicators,
             state=run_state.read_only_state_copy,
-            pair_ids=parsed_pair_ids,
+            pairs=pairs,
         ),
     )
 

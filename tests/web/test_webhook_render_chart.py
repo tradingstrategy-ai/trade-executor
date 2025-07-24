@@ -15,7 +15,7 @@ from tradeexecutor.state.metadata import Metadata
 from tradeexecutor.state.state import State
 from tradeexecutor.state.portfolio import Portfolio
 from tradeexecutor.state.store import JSONFileStore
-from tradeexecutor.strategy.chart.definition import ChartRegistry, ChartKind
+from tradeexecutor.strategy.chart.definition import ChartRegistry, ChartKind, ChartInput
 from tradeexecutor.strategy.run_state import RunState
 from tradeexecutor.strategy.tag import StrategyTag
 from tradeexecutor.webhook.server import create_webhook_server
@@ -32,7 +32,33 @@ def store() -> JSONFileStore:
 
 
 @pytest.fixture()
-def server_url(store):
+def chart_registry() -> ChartRegistry:
+    """Test functiosn exposed for rendering."""
+    def chart_func(chart_input: ChartInput):
+        """Render sine wave as a Plotly figure."""
+        x = np.linspace(0, 2 * np.pi, 100)
+        y = np.sin(x)
+        fig = go.Figure(data=go.Scatter(x=x, y=y, mode='lines', name='Sine Wave'))
+        fig.update_layout(title='Sine Wave', xaxis_title='x', yaxis_title='sin(x)')
+        return fig
+
+    def table_func(chart_input: ChartInput):
+        """Render sine wave as DataFrame table."""
+        x = np.linspace(0, 2 * np.pi, 100)
+        y = np.sin(x)
+        return pd.DataFrame({
+            "x": x,
+            "y": y,
+        })
+
+    chart_registry = ChartRegistry()
+    chart_registry.register(chart_func, ChartKind.indicator_all_pairs)
+    chart_registry.register(table_func, ChartKind.indicator_all_pairs)
+    return chart_registry
+
+
+@pytest.fixture()
+def server_url(store, chart_registry):
     execution_state = RunState()
     execution_state.source_code = "Foobar"
     execution_state.visualisation.small_image = b"1"
@@ -42,6 +68,7 @@ def server_url(store):
     execution_state.version.tag = "v1"
     execution_state.version.commit_message = "Foobar"
     execution_state.read_only_state_copy = store.load()
+    execution_state.chart_registry = chart_registry
 
     queue = Queue()
 
@@ -79,32 +106,11 @@ def server_url(store):
 def test_web_render_chart(logger, server_url):
     """Render PNG and HTML output on the server-side for strategy charts"""
 
-    def chart_func():
-        """Render sine wave as a Plotly figure."""
-        x = np.linspace(0, 2 * np.pi, 100)
-        y = np.sin(x)
-        fig = go.Figure(data=go.Scatter(x=x, y=y, mode='lines', name='Sine Wave'))
-        fig.update_layout(title='Sine Wave', xaxis_title='x', yaxis_title='sin(x)')
-        return fig
-
-    def table_func():
-        """Render sine wave as DataFrame table."""
-        x = np.linspace(0, 2 * np.pi, 100)
-        y = np.sin(x)
-        return pd.DataFrame({
-            "x": x,
-            "y": y,
-        })
-
-    chart_registry = ChartRegistry()
-    chart_registry.register(chart_func, ChartKind.indicator_all_pairs)
-    chart_registry.register(table_func, ChartKind.indicator_all_pairs)
-
     # Check image output
     resp = requests.get(
         f"{server_url}/chart-registry/render",
         params={"chart_id": "chart_func"},
     )
     assert resp.status_code == 200
-    assert resp.headers.get("content-type") == "image/png"
+    assert resp.headers.get("content-type") == "image/png", f"Got: {resp.text}"
     assert int(resp.headers["content-length"]) > 100
