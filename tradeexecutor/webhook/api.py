@@ -18,6 +18,7 @@ from tradeexecutor.state.store import JSONFileStore
 from tradeexecutor.state.validator import validate_nested_state_dict
 from tradeexecutor.strategy.chart.definition import ChartParameters, ChartInput
 from tradeexecutor.strategy.chart.renderer import render_chart
+from tradeexecutor.strategy.execution_context import notebook_execution_context, web_server_execution_context
 from tradeexecutor.strategy.summary import StrategySummary
 from tradeexecutor.strategy.run_state import RunState
 from tradeexecutor.visual.web_chart import WebChartType, render_web_chart, WebChartSource
@@ -310,9 +311,9 @@ def web_icon(request: Request):
     return r
 
 
-@view_config(route_name='web_renderer_chart', permission='view')
-def web_rendered_chart(request: Request):
-    """/rendered-chart endpoint.
+@view_config(route_name='web_chart_render', permission='view')
+def web_chart_render(request: Request):
+    """/chart-registry/render endpoint.
 
     - Return chart data for the frontend rendering.
     - Can generate text/html, text/plain, image/png or image/svg response
@@ -326,7 +327,7 @@ def web_rendered_chart(request: Request):
     chart_registry = run_state.chart_registry
     chart_id = request.params.get("chart_id")
     pair_ids = request.params.get("pair_ids")
-    format = pair_ids = request.params.get("format", "png").lower()
+    format = request.params.get("format", "png").lower()
 
     parsed_pair_ids = []
 
@@ -341,10 +342,14 @@ def web_rendered_chart(request: Request):
     chart_response = render_chart(
         registry=chart_registry,
         chart_id=chart_id,
-        parameters=ChartParameters(format=format),
+        parameters=ChartParameters(
+            format="png",
+            width=1200,
+            height=800,
+        ),
         input=ChartInput(
-            execution_context=run_state.execution_context,
-            strategy_input_indicators=run_state.strategy_input_indicators,
+            execution_context=web_server_execution_context,
+            strategy_input_indicators=run_state.latest_indicators,
             state=run_state.read_only_state_copy,
             pair_ids=parsed_pair_ids,
         ),

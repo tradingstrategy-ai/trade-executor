@@ -97,8 +97,8 @@ class ChartInput:
 
 @dataclass(slots=True, frozen=False)
 class ChartParameters:
-    width = 1200
-    height = 800
+    width: int = 1200
+    height: int = 800
     format: Literal["png", "svg"] = "png"
 
 
@@ -222,7 +222,7 @@ class ChartRegistry:
 
         description = docstring.strip().split("\n")[0]
 
-        assert not " " in name, f"Chart name '{name}' cannot contain spaces."
+        assert not " " in id, f"Chart id '{id}' cannot contain spaces."
         callback = ChartCallback(
             id=id,
             name=name,
