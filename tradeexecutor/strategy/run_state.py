@@ -13,6 +13,7 @@ from tblib import Traceback
 from tradeexecutor.cli.version_info import VersionInfo
 from tradeexecutor.state.state import State
 from tradeexecutor.state.types import JSONHexAddress
+from tradeexecutor.strategy.chart.definition import ChartRegistry
 from tradeexecutor.strategy.summary import StrategySummaryStatistics
 
 
@@ -208,6 +209,9 @@ class RunState:
     #:   cannot read it.
     #:
     read_only_state_copy: State | None = None
+
+    #: Chart registry of charts the strategy can render for itself.
+    chart_registry: ChartRegistry | None = None
 
     def __repr__(self):
         return f"<RunState for {self.executor_id}>"

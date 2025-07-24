@@ -16,6 +16,8 @@ from tradeexecutor.cli.log import get_ring_buffer_handler
 from tradeexecutor.state.metadata import Metadata
 from tradeexecutor.state.store import JSONFileStore
 from tradeexecutor.state.validator import validate_nested_state_dict
+from tradeexecutor.strategy.chart.definition import ChartParameters, ChartInput
+from tradeexecutor.strategy.chart.renderer import render_chart
 from tradeexecutor.strategy.summary import StrategySummary
 from tradeexecutor.strategy.run_state import RunState
 from tradeexecutor.visual.web_chart import WebChartType, render_web_chart, WebChartSource
@@ -258,7 +260,11 @@ def web_file(request: Request):
 def web_chart(request: Request):
     """/chart endpoint.
 
-    Return chart data.
+    Return chart data for the frontend rendering.
+
+    .. note ::
+
+        Legacy. Does not do `ChartRegistry` charts.
 
     Unlike other endpoints, this endpoint does processing, albeit light.
     Under wrong circumstances
@@ -301,4 +307,55 @@ def web_icon(request: Request):
     path = Path(os.path.join(os.path.dirname(__file__), "default_logo.png"))
     assert path.exists(), f"Does not exist {path}"
     r = FileResponse(path.as_posix(), content_type="image/png")
+    return r
+
+
+@view_config(route_name='web_renderer_chart', permission='view')
+def web_rendered_chart(request: Request):
+    """/rendered-chart endpoint.
+
+    - Return chart data for the frontend rendering.
+    - Can generate text/html, text/plain, image/png or image/svg response
+    - Sets `X-Error` header if there was an error rendering the chart,
+      then having traceback as the payload
+
+    :return:
+        HTML or PNG or SVG image data for the chart.
+    """
+    run_state: RunState = request.registry["run_state"]
+    chart_registry = run_state.chart_registry
+    chart_id = request.params.get("chart_id")
+    pair_ids = request.params.get("pair_ids")
+    format = pair_ids = request.params.get("format", "png").lower()
+
+    parsed_pair_ids = []
+
+    if pair_ids:
+        split = pair_ids.split(",")
+        for pair_id in split:
+            try:
+                parsed_pair_ids.append(int(pair_id))
+            except ValueError:
+                return exception_response(501, detail=f"Bad pair id: {pair_id}")
+
+    chart_response = render_chart(
+        registry=chart_registry,
+        chart_id=chart_id,
+        parameters=ChartParameters(format=format),
+        input=ChartInput(
+            execution_context=run_state.execution_context,
+            strategy_input_indicators=run_state.strategy_input_indicators,
+            state=run_state.read_only_state_copy,
+            pair_ids=parsed_pair_ids,
+        ),
+    )
+
+    # We got an exception rendering the chart
+    if chart_response.error:
+        r = Response(content_type="text/plain")
+        r.headers["X-Error"] = "true"
+        r.body = chart_response.error.encode("utf-8")
+    else:
+        r = Response(content_type=chart_response.content_type)
+        r.body = chart_response.data
     return r
