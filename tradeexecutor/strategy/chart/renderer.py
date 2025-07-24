@@ -32,19 +32,24 @@ def render_chart(
     :return: ChartOutput containing the rendered chart data or an error message.
     """
     try:
-        assert isinstance(registry, ChartRegistry), "Invalid chart registry provided."
+        assert isinstance(registry, ChartRegistry), f"Invalid chart registry provided: {type(registry)}"
         assert isinstance(chart_id, str), "Chart name must be a string."
         assert isinstance(parameters, ChartParameters), "Parameters must be of type ChartParameters."
         assert isinstance(input, ChartInput), "Input must be of type ChartInput."
 
-        chart_function = registry.get_chart_function(chart_id)
-        if not chart_function:
+        chart_entry = registry.get_chart_function(chart_id)
+        if not chart_entry:
             return ChartRenderingResult.error_out(f"Chart '{chart_id}' not found in registry.")
 
-        # Call the chart function with the provided parameters and input
-        func_result = chart_function(input, parameters)
+        chart_function = chart_entry.func
 
-        # We do not support multi-content output yet
+        assert callable(chart_function), f"Chart function must be callable: {type(chart_function)}"
+
+        # Call the chart function with the provided parameters and input
+        func_result = chart_function(input)
+
+        # We do not support multi-content output yet,
+        # so discard other parts of the result
         if type(func_result) == tuple:
             func_result = func_result[0]
 
