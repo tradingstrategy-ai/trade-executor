@@ -144,9 +144,20 @@ class ChartFunction(typing.Protocol):
 class ChartCallback:
     """One function serving chats.
     """
+
+    #: Web slug
+    id: str
+
+    #: Fuman readable name
     name: str
+
+    #: Underlying Python function
     func: ChartFunction
+
+    #: Kind of input the Python function expects
     kind: ChartKind
+
+    #: One sentence description of the chart function.
     description: str
 
 
@@ -164,7 +175,7 @@ class ChartRegistry:
             For single and multi-pair charts, define the default pairs to use.
         """
 
-        #: Name -> registered functions mappings
+        #: id -> registered functions mappings
         self.registry: dict[str, ChartCallback] = {}
 
         #: Function -> registered functions mappings.
@@ -203,7 +214,8 @@ class ChartRegistry:
         name: str | None = None,
     ):
         """Manually register a chart function."""
-        name = name or func.__name__
+        name = name or func.__name__.replace("_", " ").capitalize()
+        id = func.__name__
 
         docstring = func.__doc__
         assert docstring, f"Chart function '{func}' must have a docstring as a description."
@@ -212,12 +224,13 @@ class ChartRegistry:
 
         assert not " " in name, f"Chart name '{name}' cannot contain spaces."
         callback = ChartCallback(
+            id=id,
             name=name,
             func=func,
             kind=kind,
             description=description
         )
-        self.registry[name] = callback
+        self.registry[id] = callback
         self.by_function[func] = callback
 
 
