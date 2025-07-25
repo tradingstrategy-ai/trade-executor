@@ -372,3 +372,19 @@ def web_chart_render(request: Request):
         r = Response(content_type=chart_response.content_type)
         r.body = chart_response.data
     return r
+
+
+@view_config(route_name='web_chart_registry', permission='view', renderer="json")
+def web_chart_registry(request: Request):
+    """/chart-registry
+
+    - List of charts provided by the strategy
+
+    :return:
+        JSON payload
+    """
+
+    run_state: RunState = request.registry["run_state"]
+    chart_registry = run_state.chart_registry
+    return [c.export() for c in chart_registry.registry.values()]
+

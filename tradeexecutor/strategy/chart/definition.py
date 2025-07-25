@@ -160,6 +160,15 @@ class ChartCallback:
     #: One sentence description of the chart function.
     description: str
 
+    def export(self) -> dict:
+        """Export the chart callback as a dictionary."""
+        return {
+            "id": self.id,
+            "name": self.name,
+            "kind": self.kind.value,
+            "description": self.description,
+        }
+
 
 
 class ChartRegistry:
