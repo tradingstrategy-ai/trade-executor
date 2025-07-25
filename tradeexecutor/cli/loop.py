@@ -39,6 +39,7 @@ from tradeexecutor.strategy.parameters import StrategyParameters
 from tradeexecutor.strategy.routing import RoutingModel
 from tradeexecutor.strategy.run_state import RunState
 from tradeexecutor.strategy.strategy_cycle_trigger import StrategyCycleTrigger
+from tradeexecutor.strategy.strategy_module import CreateChartsProtocol
 from tradeexecutor.strategy.valuation_update import update_position_valuations
 from tradingstrategy.candle import GroupedCandleUniverse
 
@@ -158,6 +159,7 @@ class ExecutionLoop:
             universe_options: Optional[UniverseOptions] = None,
             sync_treasury_on_startup: bool = False,
             create_indicators: CreateIndicatorsProtocol = None,
+            create_charts: CreateChartsProtocol = None,
             parameters: StrategyParameters = None,
             visualisation: bool = True,
             max_price_impact: Percent | None = None,
@@ -189,6 +191,7 @@ class ExecutionLoop:
         self.store = store
         self.name = name
         self.trade_immediately = trade_immediately
+        self.create_charts = create_charts
 
         self.backtest_start = backtest_start
         self.backtest_end = backtest_end
@@ -1122,6 +1125,15 @@ class ExecutionLoop:
         assert execution_context, "ExecutionContext missing"
 
         universe = self.warm_up_live_trading()
+
+        # Set up web server chart exports
+        if self.create_charts:
+            run_state.chart_registry = self.create_charts(
+                timestamp=datetime.datetime.utcnow(),
+                parameters=self.parameters,
+                strategy_universe=universe,
+                execution_context=self.execution_context,
+            )
 
         # Display our current trading universe at the startup
         universe_diagnose_df = display_strategy_universe(universe)
