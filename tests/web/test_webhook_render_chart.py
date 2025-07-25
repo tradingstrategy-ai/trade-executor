@@ -1,4 +1,5 @@
 """Rendering server-side charts."""
+
 import datetime
 import tempfile
 from pathlib import Path
