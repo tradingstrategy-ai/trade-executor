@@ -446,4 +446,7 @@ class PandasTraderRunner(StrategyRunner):
             available_indicators=indicators,
         )
 
+        # Pass indicator data to the web chart rendering end point
+        self.run_state.latest_indicators = strategy_input_indicators
+
         return strategy_input_indicators

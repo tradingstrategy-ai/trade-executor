@@ -386,5 +386,6 @@ def web_chart_registry(request: Request):
 
     run_state: RunState = request.registry["run_state"]
     chart_registry = run_state.chart_registry
+    assert chart_registry is not None, "ChartRegistry not yet available. It becomes available after the trade executor completes loading the trading universe."
     return [c.export() for c in chart_registry.registry.values()]
 
