@@ -3,10 +3,8 @@
 """
 import datetime
 import logging
-from pathlib import Path
 
 import pandas as pd
-import pandas_ta
 
 from eth_defi.token import USDC_NATIVE_TOKEN, USDT_NATIVE_TOKEN
 from eth_defi.token import WRAPPED_NATIVE_TOKEN

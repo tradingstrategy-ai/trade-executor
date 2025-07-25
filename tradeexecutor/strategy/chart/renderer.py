@@ -3,16 +3,20 @@ import traceback
 from dataclasses import dataclass
 from typing import Collection, Callable
 
+import pandas as pd
+from plotly.graph_objects import Figure
+
 from tradeexecutor.state.identifier import TradingPairIdentifier
 from tradeexecutor.state.state import State
 from tradeexecutor.strategy.chart.definition import ChartRegistry, ChartParameters, ChartRenderingResult, ChartInput, ChartOutput
 from tradeexecutor.strategy.execution_context import notebook_execution_context
 from tradeexecutor.strategy.pandas_trader.strategy_input import StrategyInputIndicators
+from tradeexecutor.visual.image_output import render_plotly_figure_as_image_file
 
 
 def render_chart(
     registry: ChartRegistry,
-    chart_name: str,
+    chart_id: str,
     parameters: ChartParameters,
     input: ChartInput,
 ) -> ChartRenderingResult:
@@ -22,28 +26,58 @@ def render_chart(
     - In backtesting use :py:class:`ChartBackt  estRenderingSetup`
 
     :param registry: The chart registry containing available charts.
-    :param chart_name: The name of the chart to render.
+    :param chart_id: The name of the chart to render.
     :param parameters: Parameters for rendering the chart.
     :param input: Input data required for rendering the chart.
     :return: ChartOutput containing the rendered chart data or an error message.
     """
     try:
-        assert isinstance(registry, ChartRegistry), "Invalid chart registry provided."
-        assert isinstance(chart_name, str), "Chart name must be a string."
+        assert isinstance(registry, ChartRegistry), f"Invalid chart registry provided: {type(registry)}"
+        assert isinstance(chart_id, str), "Chart name must be a string."
         assert isinstance(parameters, ChartParameters), "Parameters must be of type ChartParameters."
         assert isinstance(input, ChartInput), "Input must be of type ChartInput."
 
-        chart_function = registry.get_chart_function(chart_name)
-        if not chart_function:
-            return ChartRenderingResult.error_out(f"Chart '{chart_name}' not found in registry.")
+        chart_entry = registry.get_chart_function(chart_id)
+        if not chart_entry:
+            return ChartRenderingResult.error_out(f"Chart '{chart_id}' not found in registry.")
+
+        chart_function = chart_entry.func
+
+        assert callable(chart_function), f"Chart function must be callable: {type(chart_function)}"
 
         # Call the chart function with the provided parameters and input
-        data = chart_function(input, parameters)
-        return data
+        func_result = chart_function(input)
+
+        # We do not support multi-content output yet,
+        # so discard other parts of the result
+        if type(func_result) == tuple:
+            func_result = func_result[0]
+
+        if isinstance(func_result, Figure):
+            # Render Plotly Figure as PNG image file
+            data = render_plotly_figure_as_image_file(
+                func_result,
+                format=parameters.format,
+                width=parameters.width,
+                height=parameters.height
+            )
+            return ChartRenderingResult(
+                data=data,
+                content_type="image/png",
+            )
+        elif isinstance(func_result, pd.DataFrame):
+            # Render DataFrame as HTML table
+            html_table = func_result.to_html(classes='table table-striped', index=False)
+            return ChartRenderingResult(
+                data=html_table.encode("utf-8"),
+                content_type="text/html",
+            )
+        else:
+            raise NotImplementedError(f"Unsupported chart output type: {type(func_result)}. Expected Figure or ChartOutput.")
 
     except Exception as e:
         tb_str = traceback.format_exc()
-        return ChartRenderingResult.error_out(f"Error rendering chart '{chart_name}': {str(e)}\n{tb_str}")
+        return ChartRenderingResult.error_out(f"Error rendering chart '{chart_id}': {str(e)}\n{tb_str}")
 
 
 @dataclass(slots=True, frozen=False)

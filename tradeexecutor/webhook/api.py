@@ -3,7 +3,7 @@
 import os
 import logging
 import time
-from importlib.metadata import version
+
 from pathlib import Path
 from typing import cast
 from urllib.parse import urljoin
@@ -16,6 +16,9 @@ from tradeexecutor.cli.log import get_ring_buffer_handler
 from tradeexecutor.state.metadata import Metadata
 from tradeexecutor.state.store import JSONFileStore
 from tradeexecutor.state.validator import validate_nested_state_dict
+from tradeexecutor.strategy.chart.definition import ChartParameters, ChartInput
+from tradeexecutor.strategy.chart.renderer import render_chart
+from tradeexecutor.strategy.execution_context import web_server_execution_context
 from tradeexecutor.strategy.summary import StrategySummary
 from tradeexecutor.strategy.run_state import RunState
 from tradeexecutor.visual.web_chart import WebChartType, render_web_chart, WebChartSource
@@ -258,7 +261,11 @@ def web_file(request: Request):
 def web_chart(request: Request):
     """/chart endpoint.
 
-    Return chart data.
+    Return chart data for the frontend rendering.
+
+    .. note ::
+
+        Legacy. Does not do `ChartRegistry` charts.
 
     Unlike other endpoints, this endpoint does processing, albeit light.
     Under wrong circumstances
@@ -302,3 +309,83 @@ def web_icon(request: Request):
     assert path.exists(), f"Does not exist {path}"
     r = FileResponse(path.as_posix(), content_type="image/png")
     return r
+
+
+@view_config(route_name='web_chart_render', permission='view')
+def web_chart_render(request: Request):
+    """/chart-registry/render endpoint.
+
+    - Return chart data for the frontend rendering.
+    - Can generate text/html, text/plain, image/png or image/svg response
+    - Sets `X-Error` header if there was an error rendering the chart,
+      then having traceback as the payload
+
+    :return:
+        HTML or PNG or SVG image data for the chart.
+    """
+    run_state: RunState = request.registry["run_state"]
+    chart_registry = run_state.chart_registry
+    chart_id = request.params.get("chart_id")
+    pair_ids = request.params.get("pair_ids")
+    format = request.params.get("format", "png").lower()
+
+    pairs = []
+
+    strategy_input_indicators = run_state.latest_indicators
+    if strategy_input_indicators is not None:
+        strategy_universe = strategy_input_indicators.strategy_universe
+    else:
+        # We don't necessarily care about this in test paths
+        strategy_universe = None
+
+    if pair_ids:
+        assert strategy_universe is not None, "pair_ids provided but strategy_universe is None, cannot parse pair ids"
+        split = pair_ids.split(",")
+        for pair_id in split:
+            try:
+                pairs.append(strategy_universe.get_pair_by_id(int(pair_id)))
+            except ValueError:
+                return exception_response(501, detail=f"Bad pair id: {pair_id}")
+
+    chart_response = render_chart(
+        registry=chart_registry,
+        chart_id=chart_id,
+        parameters=ChartParameters(
+            format=format,
+            width=1200,
+            height=800,
+        ),
+        input=ChartInput(
+            execution_context=web_server_execution_context,
+            strategy_input_indicators=run_state.latest_indicators,
+            state=run_state.read_only_state_copy,
+            pairs=pairs,
+        ),
+    )
+
+    # We got an exception rendering the chart
+    if chart_response.error:
+        r = Response(content_type="text/plain")
+        r.headers["X-Error"] = "true"
+        r.body = chart_response.error.encode("utf-8")
+    else:
+        r = Response(content_type=chart_response.content_type)
+        r.body = chart_response.data
+    return r
+
+
+@view_config(route_name='web_chart_registry', permission='view', renderer="json")
+def web_chart_registry(request: Request):
+    """/chart-registry
+
+    - List of charts provided by the strategy
+
+    :return:
+        JSON payload
+    """
+
+    run_state: RunState = request.registry["run_state"]
+    chart_registry = run_state.chart_registry
+    assert chart_registry is not None, "ChartRegistry not yet available. It becomes available after the trade executor completes loading the trading universe."
+    return [c.export() for c in chart_registry.registry.values()]
+

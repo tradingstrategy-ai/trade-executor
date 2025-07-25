@@ -13,7 +13,10 @@ from tblib import Traceback
 from tradeexecutor.cli.version_info import VersionInfo
 from tradeexecutor.state.state import State
 from tradeexecutor.state.types import JSONHexAddress
+from tradeexecutor.strategy.chart.definition import ChartRegistry
+from tradeexecutor.strategy.pandas_trader.strategy_input import StrategyInputIndicators
 from tradeexecutor.strategy.summary import StrategySummaryStatistics
+from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
 
 
 class ExceptionData(TypedDict):
@@ -173,6 +176,8 @@ class RunState:
 
     #: The strategy visualisation images
     #:
+    #: Legacy. Use :py:attr:`chart_registry` instead.
+    #:
     visualisation: Optional[LatestStateVisualisation] = field(default_factory=LatestStateVisualisation)
 
     #: Store calculated summary statistics here
@@ -208,6 +213,14 @@ class RunState:
     #:   cannot read it.
     #:
     read_only_state_copy: State | None = None
+
+    #: Chart registry of charts the strategy can render for itself.
+    chart_registry: ChartRegistry | None = None
+
+    #: The latest calculated indicators for the strategy.
+    #:
+    #: Contains reference to the strategy_universe.
+    latest_indicators: StrategyInputIndicators | None = None
 
     def __repr__(self):
         return f"<RunState for {self.executor_id}>"
