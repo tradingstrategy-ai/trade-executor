@@ -128,3 +128,14 @@ def test_web_render_table(logger, server_url):
     assert resp.status_code == 200
     assert resp.headers.get("content-type") == "text/html; charset=UTF-8", f"Got: {resp.text}"
     assert int(resp.headers["content-length"]) > 100
+
+
+def test_web_chart_registry(logger, server_url):
+    """Render PNG and HTML output on the server-side for strategy charts"""
+
+    # Check image output
+    resp = requests.get(
+        f"{server_url}/chart-registry",
+    )
+    assert resp.status_code == 200
+    assert resp.headers.get("content-type") == "application/json", f"Got: {resp.text}"
