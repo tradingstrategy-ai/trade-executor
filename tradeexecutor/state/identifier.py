@@ -893,7 +893,8 @@ class TradingPairIdentifier:
         assert self.kind.is_leverage()
         # Liquidation threshold comes from the collateral token
         threshold = self.quote.liquidation_threshold
-        assert 0 < threshold < 1, f"Liquidation theshold must be 0..1, got {threshold}"
+        assert type(threshold) == int, f"Liquidation theshold must be 0..1, got {threshold}, pair: {self}"
+        assert 0 < threshold < 1, f"Liquidation theshold must be 0..1, got {threshold}, pair: {self}"
         return threshold
 
     def get_collateral_factor(self) -> Percent:
