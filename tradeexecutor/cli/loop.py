@@ -79,7 +79,6 @@ from tradeexecutor.strategy.valuation import ValuationModelFactory
 from tradingstrategy.client import Client, BaseClient
 from tradingstrategy.timebucket import TimeBucket
 
-
 logger = logging.getLogger(__name__)
 
 
@@ -147,9 +146,9 @@ class ExecutionLoop:
             backtest_stop_loss_time_frame_override: Optional[TimeBucket] = None,
             backtest_strategy_indicators: Optional[StrategyInputIndicators] = None,
             stop_loss_check_frequency: Optional[TimeBucket] = None,
-            tick_offset: datetime.timedelta=datetime.timedelta(minutes=0),
+            tick_offset: datetime.timedelta = datetime.timedelta(minutes=0),
             trade_immediately=False,
-            run_state: Optional[RunState]=None,
+            run_state: Optional[RunState] = None,
             strategy_cycle_trigger: StrategyCycleTrigger = StrategyCycleTrigger.cycle_offset,
             routing_model: Optional[RoutingModel] = None,
             execution_test_hook: Optional[ExecutionTestHook] = None,
@@ -293,7 +292,7 @@ class ExecutionLoop:
             self,
             universe_model: UniverseModel,
             runner: StrategyRunner,
-        ):
+    ):
         """Set up running on a simulated blockchain.
 
         Used with :py:mod:`tradeexecutor.testing.simulated_execution_loop`
@@ -317,11 +316,11 @@ class ExecutionLoop:
             self.run_state.source_code = run_description.source_code
 
     def refresh_live_run_state(
-        self,
-        state: State,
-        visualisation=False,
-        universe: TradingStrategyUniverse=None,
-        cycle_duration: CycleDuration=None,
+            self,
+            state: State,
+            visualisation=False,
+            universe: TradingStrategyUniverse = None,
+            cycle_duration: CycleDuration = None,
     ):
         """Update the in-process strategy context which we serve over the webhook.
 
@@ -356,17 +355,17 @@ class ExecutionLoop:
         run_state.bumb_refreshed()
 
     def tick(
-        self,
-        unrounded_timestamp: datetime.datetime,
-        cycle_duration: CycleDuration,
-        state: State,
-        cycle: int,
-        live: bool,
-        existing_universe: Optional[StrategyExecutionUniverse]=None,
-        strategy_cycle_timestamp: Optional[datetime.datetime] = None,
-        extra_debug_data: Optional[dict] = None,
-        indicators: StrategyInputIndicators | None = None,
-        ) -> StrategyExecutionUniverse:
+            self,
+            unrounded_timestamp: datetime.datetime,
+            cycle_duration: CycleDuration,
+            state: State,
+            cycle: int,
+            live: bool,
+            existing_universe: Optional[StrategyExecutionUniverse] = None,
+            strategy_cycle_timestamp: Optional[datetime.datetime] = None,
+            extra_debug_data: Optional[dict] = None,
+            indicators: StrategyInputIndicators | None = None,
+    ) -> StrategyExecutionUniverse:
         """Run one trade execution tick.
 
         :param unrounded_timestamp:
@@ -424,12 +423,12 @@ class ExecutionLoop:
 
         logger.trade(
             "Performing strategy tick #%d for timestamp %s, cycle length is %s, trigger time was %s, live trading is %s, trading univese is %s, version %s, max cycles %s",
-             cycle,
-             ts,
-             cycle_duration.value,
-             unrounded_timestamp,
-             live,
-             existing_universe,
+            cycle,
+            ts,
+            cycle_duration.value,
+            unrounded_timestamp,
+            live,
+            existing_universe,
             self.execution_context.engine_version,
             self.max_cycles,
         )
@@ -587,12 +586,12 @@ class ExecutionLoop:
         return universe
 
     def update_position_valuations(
-        self,
-        clock: datetime.datetime,
-        state: State,
-        universe: StrategyExecutionUniverse,
-        execution_mode: ExecutionMode = None,
-        interest=True,
+            self,
+            clock: datetime.datetime,
+            state: State,
+            universe: StrategyExecutionUniverse,
+            execution_mode: ExecutionMode = None,
+            interest=True,
     ):
         """Revalue positions and update statistics.
 
@@ -654,21 +653,21 @@ class ExecutionLoop:
         :return: StatisticsTable of the latest long short metrics
         """
         long_short_metrics_latest = None
-        
+
         if self.execution_context.mode.is_live_trading():
             backtested_state = self.metadata.backtested_state if self.metadata else None
             backtest_cutoff = self.metadata.key_metrics_backtest_cut_off if self.metadata else datetime.timedelta(days=90)
             long_short_metrics_latest = serialise_long_short_stats_as_json_table(
                 state, backtested_state
             )
-            
+
         return long_short_metrics_latest
 
     def check_position_triggers(
-        self,
-        ts: datetime.datetime,
-        state: State,
-        universe: TradingStrategyUniverse
+            self,
+            ts: datetime.datetime,
+            state: State,
+            universe: TradingStrategyUniverse
     ) -> List[TradeExecution]:
         """Run stop loss/take profit/market limit price checks.
 
@@ -692,7 +691,7 @@ class ExecutionLoop:
             return []
 
         routing_state, pricing_model, valuation_method = self.runner.setup_routing(universe)
-        
+
         long_short_metrics_latest = (
             self.extract_long_short_stats_from_state(state)
         )
@@ -763,7 +762,6 @@ class ExecutionLoop:
 
         # Check that we have fresh enough data to start trading
         if self.max_data_delay:
-
             TradingStrategyUniverseModel.check_data_age(
                 rounded_ts,
                 universe,
@@ -774,11 +772,11 @@ class ExecutionLoop:
         return universe
 
     def run_backtest_trigger_checks(
-        self,
-        start_ts: datetime.datetime,
-        end_ts: datetime.datetime,
-        state: State,
-        universe: TradingStrategyUniverse
+            self,
+            start_ts: datetime.datetime,
+            end_ts: datetime.datetime,
+            state: State,
+            universe: TradingStrategyUniverse
     ) -> Tuple[int, int]:
         """Generate stop loss price checks.
 
@@ -841,11 +839,11 @@ class ExecutionLoop:
         # Do stop loss checks for every time point between now and next strategy cycle
         tp = 0
         sl = 0
-        
+
         long_short_metrics_latest = (
             self.extract_long_short_stats_from_state(state)
         )
-        
+
         assert long_short_metrics_latest == None, "long_short_metrics_latest must be None during backtesting"
 
         while ts < end_ts:
@@ -946,7 +944,7 @@ class ExecutionLoop:
             decision_cycle_duration=backtest_step,
         )
 
-        execution_test_hook =  self.execution_test_hook or ExecutionTestHook()
+        execution_test_hook = self.execution_test_hook or ExecutionTestHook()
 
         # Throttle TQDM updates to 1 per second because
         # otherwise we crash PyCharm
@@ -966,7 +964,7 @@ class ExecutionLoop:
                 "cycles": cycle,
                 "TPs": take_profits,
                 "SLs": stop_losses,
-                "PnL": f"{rolling_profit*100:.2f}%",
+                "PnL": f"{rolling_profit * 100:.2f}%",
             })
 
         if not self.execution_context.grid_search and self.execution_context.progress_bars:
@@ -1014,7 +1012,6 @@ class ExecutionLoop:
                 indicators=self.backtest_strategy_indicators,
             )
 
-
             # Revalue our portfolio
             self.update_position_valuations(ts, state, universe)
 
@@ -1039,7 +1036,7 @@ class ExecutionLoop:
                 )
                 take_profits += res[0]
                 stop_losses += res[1]
-            
+
             if next_tick >= self.backtest_end:
                 # Backteting has ended
                 logger.info("Terminating backtesting. Backtest end %s, current timestamp %s", self.backtest_end, next_tick)
@@ -1089,7 +1086,7 @@ class ExecutionLoop:
         # Create a watchdog thread that checks that the live trading cycle
         # has completed for every candle + some tolerance minutes.
         # This will terminate the live trading process if it has hung for a reason or another.
-        #T TODO: Added duration * 2 instead of duration * 1 to debug some issues.
+        # T TODO: Added duration * 2 instead of duration * 1 to debug some issues.
         live_cycle_max_delay = (self.cycle_duration.to_timedelta() * 2 + datetime.timedelta(minutes=15)).total_seconds()
         register_worker(
             watchdog_registry,
@@ -1373,7 +1370,7 @@ class ExecutionLoop:
                 hour=0,
                 minute=0,
                 second=0,
-                misfire_grace_time = None,  # Will always run the job no matter how late it is
+                misfire_grace_time=None,  # Will always run the job no matter how late it is
             )
         else:
             # Core live trade execution loop
@@ -1389,7 +1386,7 @@ class ExecutionLoop:
                 'interval',
                 seconds=seconds,
                 start_date=start_time + tick_offset,
-                misfire_grace_time = None,  # Will always run the job no matter how late it is
+                misfire_grace_time=None,  # Will always run the job no matter how late it is
             )
 
         if self.stats_refresh_frequency not in (datetime.timedelta(0), None):
@@ -1517,7 +1514,7 @@ class ExecutionLoop:
             )
 
             if u.universe.candles is not None:
-                s,e  = u.universe.candles.get_timestamp_range()
+                s, e = u.universe.candles.get_timestamp_range()
                 self.backtest_start = s.to_pydatetime().replace(tzinfo=None)
                 self.backtest_end = e.to_pydatetime().replace(tzinfo=None)
 
@@ -1554,4 +1551,3 @@ class ExecutionLoop:
     def run_and_setup_backtest(self):
         state = self.setup()
         return self.run_backtest(state)
-
