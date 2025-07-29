@@ -37,7 +37,7 @@ def hot_wallet_private_key() -> HexBytes:
 
 
 @pytest.mark.slow_test_group
-@pytest.mark.skipif(os.environ.get("BNB_CHAIN_JSON_RPC") is None, reason="Set BNB_CHAIN_JSON_RPC environment variable to Binance Smart Chain node to run this test")
+@pytest.mark.skipif(os.environ.get("JSON_RPC_BINANCE") is None, reason="Set BNB_CHAIN_JSON_RPC environment variable to Binance Smart Chain node to run this test")
 def test_main_loop_catch(
     strategy_path,
     hot_wallet_private_key
@@ -58,7 +58,7 @@ def test_main_loop_catch(
         "HTTP_ENABLED": "false",
         "MIN_GAS_BALANCE": "0",
         "TRADE_IMMEDIATELY": "true",
-        "JSON_RPC_BINANCE": os.environ["BNB_CHAIN_JSON_RPC"],
+        "JSON_RPC_BINANCE": os.environ["JSON_RPC_BINANCE"],
         "PATH": os.environ["PATH"],
         "HTTP_WAIT_GOOD_STARTUP_SECONDS": "0",
         "MAX_DATA_DELAY_MINUTES": str(10*60*24*365),  # 10 years or "disabled""
@@ -76,7 +76,7 @@ def test_main_loop_catch(
 
 
 # Disabled on Github CI as flaky
-@pytest.mark.skipif(os.environ.get("BNB_CHAIN_JSON_RPC") is None or os.environ.get("CI") == "true", reason="Set BNB_CHAIN_JSON_RPC environment variable to Binance Smart Chain node to run this test")
+@pytest.mark.skipif(os.environ.get("JSON_RPC_BINANCE") is None or os.environ.get("CI") == "true", reason="Set BNB_CHAIN_JSON_RPC environment variable to Binance Smart Chain node to run this test")
 def test_main_loop_traceback_over_web(
     strategy_path,
     hot_wallet_private_key
@@ -103,7 +103,7 @@ def test_main_loop_traceback_over_web(
         "HTTP_ENABLED": "true",
         "MIN_GAS_BALANCE": "0",
         "TRADE_IMMEDIATELY": "true",
-        "JSON_RPC_BINANCE": os.environ["BNB_CHAIN_JSON_RPC"],
+        "JSON_RPC_BINANCE": os.environ["JSON_RPC_BINANCE"],
         "PATH": os.environ["PATH"],
         "HTTP_WAIT_GOOD_STARTUP_SECONDS": "0",
         "MAX_DATA_DELAY_MINUTES": str(10*60*24*365),  # 10 years or "disabled"

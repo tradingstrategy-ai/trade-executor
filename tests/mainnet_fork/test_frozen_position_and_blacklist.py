@@ -64,7 +64,7 @@ from tradeexecutor.strategy.valuation import revalue_state
 from tradeexecutor.utils.timer import timed_task
 
 
-pytestmark = pytest.mark.skipif(os.environ.get("BNB_CHAIN_JSON_RPC") is None or not HAS_QSTRADER, reason="Set BNB_CHAIN_JSON_RPC environment variable to Binance Smart Chain node to run this test")
+pytestmark = pytest.mark.skipif(os.environ.get("JSON_RPC_BINANCE") is None or not HAS_QSTRADER, reason="Set BNB_CHAIN_JSON_RPC environment variable to Binance Smart Chain node to run this test")
 
 
 @pytest.fixture(scope="module")
@@ -92,7 +92,7 @@ def anvil_bnb_chain_fork(large_busd_holder) -> str:
     :return: JSON-RPC URL for Web3
     """
 
-    mainnet_rpc = os.environ["BNB_CHAIN_JSON_RPC"]
+    mainnet_rpc = os.environ["JSON_RPC_BINANCE"]
 
     # Start Ganache
     launch = fork_network_anvil(
