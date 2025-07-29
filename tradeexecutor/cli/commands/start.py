@@ -585,6 +585,7 @@ def start(
         visualisation=visualisation,
         max_price_impact=mod.get_max_price_impact(),
         universe_options=universe_options,
+        create_charts=mod.create_charts,
     )
 
     # Crash gracefully at the start up if our main loop cannot set itself up
