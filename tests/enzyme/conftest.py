@@ -60,6 +60,7 @@ def anvil(request: FixtureRequest) -> AnvilLaunch:
     anvil = launch_anvil(
         hardfork="cancun",
         gas_limit=15_000_000,  # Max 5M gas per block, or per transaction in test automining
+        code_size_limit=99_999,  # Bump for unit testing
     )
     try:
         # Make the initial snapshot ("zero state") to which we revert between tests
