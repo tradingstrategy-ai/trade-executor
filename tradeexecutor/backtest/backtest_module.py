@@ -30,6 +30,7 @@ def run_backtest_for_module(
     max_workers: int | None = None,
     verbose=True,
     max_cycles: int | None = None,
+    mod_overrides: dict | None = None,
 ) -> BacktestResult:
     """Run a backtest described in the strategy module.
 
@@ -58,6 +59,9 @@ def run_backtest_for_module(
     assert strategy_file.exists(), f"Does not exist: {strategy_file.resolve()}"
 
     mod = read_strategy_module(strategy_file)
+
+    if mod_overrides is not None:
+        mod.__dict__.update(mod_overrides)
 
     assert mod.is_version_greater_or_equal_than(0, 2, 0), f"trading_strategy_engine_version must be 0.2.0 or newer for {strategy_file}"
     name = mod.name
