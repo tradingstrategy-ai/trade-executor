@@ -6,6 +6,7 @@ from tradeexecutor.state.position import TradingPosition
 from tradeexecutor.state.types import USDollarAmount
 from tradeexecutor.state.identifier import TradingPairKind
 from tradeexecutor.state.valuation import ValuationUpdate
+from tradeexecutor.strategy.cycle import CycleDuration
 from tradeexecutor.strategy.valuation import ValuationModel
 
 
@@ -15,17 +16,22 @@ class BacktestValuationModel(ValuationModel):
     Each asset is valued at its market sell price estimation.
     """
 
-    def __init__(self, pricing_model: BacktestPricing):
+    def __init__(
+        self,
+        pricing_model: BacktestPricing,
+    ):
         assert pricing_model, "pricing_model missing"
         self.pricing_model = pricing_model
 
     def __call__(
-            self,
-            ts: datetime.datetime,
-            position: TradingPosition
+        self,
+        ts: datetime.datetime,
+        position: TradingPosition
     ) -> ValuationUpdate:
 
         assert isinstance(ts, datetime.datetime)
+
+        # Special case for 1s cycle duration used in unit tests
         assert ts.second == 0, f"Timestamp sanity check failed, does not have even seconds: {ts}"
 
         pair = position.pair
@@ -59,7 +65,6 @@ class BacktestValuationModel(ValuationModel):
             old_value=old_value,
             old_price=old_price,
         )
-
 
 
 

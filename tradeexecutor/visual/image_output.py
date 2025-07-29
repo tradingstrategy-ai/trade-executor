@@ -5,32 +5,54 @@
 - Used on a frontend for the performance charts, in Discord posts
 
 """
+import logging
+import tempfile
 import webbrowser
 import threading
-from io import BytesIO
 import asyncio
 from pathlib import Path
 
 import plotly.graph_objects as go
-from kaleido import Kaleido
+import kaleido
+
+
+logger = logging.getLogger(__name__)
 
 _kaleido = None
 _lock = threading.Lock()
 
 
-def get_kaleido() -> Kaleido:
-    """Create Kaleido rendering backend.
-
-    - Creates a Chrome browser on background
-
-    - `See usage examples <https://github.com/plotly/Kaleido>`__
-    """
-    global _kaleido
-    with _lock:
-        if _kaleido is None:
-            _kaleido = Kaleido()
-
-    return _kaleido
+# def get_kaleido() -> kaleido.Kaleido:
+#     """Create Kaleido rendering backend.
+#
+#     - Creates a Chrome browser on background
+#
+#     - `See usage examples <https://github.com/plotly/Kaleido>`__
+#     """
+#     global _kaleido
+#     with _lock:
+#         if _kaleido is None:
+#             _kaleido = kaleido.Kaleido()
+#
+#     return _kaleido
+#
+#
+# async def _args(
+#     kaleido_instance: kaleido.Kaleido,
+#     figure: go.Figure,
+#     filename: str,
+#     opts: dict,
+# ):
+#     logger.info("Entering Kaleido async rendering loop")
+#     kaleido_instance = kaleido.Kaleido()
+#     await kaleido_instance.open()
+#     await kaleido_instance.write_fig(
+#         figure,
+#         filename,
+#         opts=opts,
+#     )
+#     await kaleido_instance.close()
+#     logger.info("Exiting Kaleido async rendering loop")
 
 
 def render_plotly_figure_as_image_file(
@@ -58,27 +80,36 @@ def render_plotly_figure_as_image_file(
     """
 
     assert format in ["png", "svg"], "Format must be png or svg"
+    assert isinstance(figure, go.Figure), "Figure must be an instance of plotly.graph_objects.Figure"
 
-    stream = BytesIO()
-
-    kaleido_instance = get_kaleido()
-
-    opts = dict(
-        format=format,
-        width=width,
-        height=height,
+    logger.info(
+        "render_plotly_figure_as_image_file(): %s %s %s",
+        type(figure),
+        width,
+        height,
     )
 
-    asyncio.run(
-        kaleido_instance.write_fig(
-            figure,
-            stream,
-            opts=opts,
+    with tempfile.NamedTemporaryFile(delete=True, suffix=".png") as tmp:
+        filename = tmp.name
+
+        opts = dict(
+            format=format,
+            width=width,
+            height=height,
         )
-    )
-    data = stream.getvalue()
+
+        asyncio.run(
+            kaleido.write_fig(
+                figure,
+                path=filename,
+            ),
+            debug=True,
+        )
+
+        logger.info("Kaleido rendering done")
+        data = open(filename, "rb").read()
+
     assert len(data) > 0, "Rendered image data is empty"
-    stream.close()
     return data
 
 

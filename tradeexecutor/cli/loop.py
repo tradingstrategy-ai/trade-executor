@@ -11,6 +11,7 @@ import logging
 import datetime
 import pickle
 import random
+from lib2to3.fixer_util import is_probably_builtin
 from pathlib import Path
 from queue import Queue
 from typing import Optional, Callable, List, cast, Tuple
@@ -18,18 +19,18 @@ from typing import Optional, Callable, List, cast, Tuple
 import pandas as pd
 from apscheduler.events import EVENT_JOB_ERROR
 
+from tradingstrategy.candle import GroupedCandleUniverse
+from tradingstrategy.client import Client, BaseClient
+from tradingstrategy.timebucket import TimeBucket
+
 from tradeexecutor.analysis.pair import display_strategy_universe
-from tradeexecutor.backtest.backtest_sync import BacktestSyncModel
 from tradeexecutor.cli.watchdog import create_watchdog_registry, register_worker, mark_alive, start_background_watchdog, \
     WatchdogMode
-from tradeexecutor.ethereum.enzyme.vault import EnzymeVaultSyncModel
-from tradeexecutor.ethereum.tx import TransactionBuilder
-from tradeexecutor.ethereum.wallet import perform_gas_level_checks
 from tradeexecutor.state.metadata import Metadata
 from tradeexecutor.state.types import Percent
 from tradeexecutor.statistics.in_memory_statistics import refresh_run_state
 from tradeexecutor.statistics.statistics_table import serialise_long_short_stats_as_json_table
-from tradeexecutor.strategy.account_correction import check_accounts, UnexpectedAccountingCorrectionIssue
+from tradeexecutor.strategy.account_correction import UnexpectedAccountingCorrectionIssue
 from tradeexecutor.strategy.dummy import DummyExecutionModel
 from tradeexecutor.strategy.generic.generic_pricing_model import GenericPricing
 from tradeexecutor.strategy.pandas_trader.decision_trigger import wait_for_universe_data_availability_jsonl
@@ -39,24 +40,8 @@ from tradeexecutor.strategy.parameters import StrategyParameters
 from tradeexecutor.strategy.routing import RoutingModel
 from tradeexecutor.strategy.run_state import RunState
 from tradeexecutor.strategy.strategy_cycle_trigger import StrategyCycleTrigger
+from tradeexecutor.strategy.strategy_module import CreateChartsProtocol
 from tradeexecutor.strategy.valuation_update import update_position_valuations
-from tradingstrategy.candle import GroupedCandleUniverse
-
-try:
-    from apscheduler.executors.pool import ThreadPoolExecutor
-    from apscheduler.schedulers.blocking import BlockingScheduler
-except ImportError:
-    # apscheduler is only required in live trading,
-    # not in backtesting
-    pass
-
-try:
-    from tqdm_loggable.auto import tqdm
-except ImportError:
-    # tqdm_loggable is only available at the live execution,
-    # but fallback to normal TQDM auto mode
-    from tqdm.auto import tqdm
-
 from tradeexecutor.backtest.backtest_pricing import BacktestPricing
 from tradeexecutor.state.state import State, BacktestData
 from tradeexecutor.state.store import StateStore
@@ -76,8 +61,21 @@ from tradeexecutor.strategy.cycle import CycleDuration, snap_to_next_tick, snap_
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse, TradingStrategyUniverseModel
 from tradeexecutor.strategy.universe_model import UniverseModel, StrategyExecutionUniverse, UniverseOptions
 from tradeexecutor.strategy.valuation import ValuationModelFactory
-from tradingstrategy.client import Client, BaseClient
-from tradingstrategy.timebucket import TimeBucket
+
+try:
+    from apscheduler.executors.pool import ThreadPoolExecutor
+    from apscheduler.schedulers.blocking import BlockingScheduler
+except ImportError:
+    # apscheduler is only required in live trading,
+    # not in backtesting
+    pass
+
+try:
+    from tqdm_loggable.auto import tqdm
+except ImportError:
+    # tqdm_loggable is only available at the live execution,
+    # but fallback to normal TQDM auto mode
+    from tqdm.auto import tqdm
 
 logger = logging.getLogger(__name__)
 
@@ -158,6 +156,7 @@ class ExecutionLoop:
             universe_options: Optional[UniverseOptions] = None,
             sync_treasury_on_startup: bool = False,
             create_indicators: CreateIndicatorsProtocol = None,
+            create_charts: CreateChartsProtocol = None,
             parameters: StrategyParameters = None,
             visualisation: bool = True,
             max_price_impact: Percent | None = None,
@@ -189,6 +188,7 @@ class ExecutionLoop:
         self.store = store
         self.name = name
         self.trade_immediately = trade_immediately
+        self.create_charts = create_charts
 
         self.backtest_start = backtest_start
         self.backtest_end = backtest_end
@@ -1122,6 +1122,25 @@ class ExecutionLoop:
         assert execution_context, "ExecutionContext missing"
 
         universe = self.warm_up_live_trading()
+
+        # Set up web server chart exports
+        if self.create_charts:
+            run_state.chart_registry = self.create_charts(
+                timestamp=datetime.datetime.utcnow(),
+                parameters=self.parameters,
+                strategy_universe=universe,
+                execution_context=self.execution_context,
+            )
+            # Expose to the unit testing
+            chart_count = run_state.chart_registry.get_chart_count()
+            state.other_data.save(cycle, "loaded_chart_count", chart_count)
+            logger.info(
+                "Creating the chart registry for live trading, using hook %s, created %d charts",
+                self.create_charts,
+                chart_count,
+            )
+        else:
+            logger.info("The strategy does not provide any charts")
 
         # Display our current trading universe at the startup
         universe_diagnose_df = display_strategy_universe(universe)

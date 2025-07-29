@@ -42,7 +42,7 @@ from tradeexecutor.testing.pairuniversetrader import PairUniverseTestTrader
 from tradingstrategy.chain import ChainId
 from tradingstrategy.pair import PandasPairUniverse
 
-pytestmark = pytest.mark.skipif(os.environ.get("BNB_CHAIN_JSON_RPC") is None,
+pytestmark = pytest.mark.skipif(os.environ.get("JSON_RPC_BINANCE") is None,
                                 reason="Set BNB_CHAIN_JSON_RPC environment variable to Binance Smart Chain node to run this test")
 
 
@@ -64,6 +64,7 @@ def large_usdt_holder() -> HexAddress:
     return HexAddress(HexStr("0x8894E0a0c962CB723c1976a4421c95949bE2D4E3"))
 
 
+
 @pytest.fixture()
 def anvil_bnb_chain_fork(logger, large_usdt_holder) -> str:
     """Create a testable fork of live BNB chain.
@@ -71,11 +72,13 @@ def anvil_bnb_chain_fork(logger, large_usdt_holder) -> str:
     :return: JSON-RPC URL for Web3
     """
 
-    mainnet_rpc = os.environ["BNB_CHAIN_JSON_RPC"]
+    mainnet_rpc = os.environ["JSON_RPC_BINANCE"]
 
     launch = fork_network_anvil(
         mainnet_rpc,
-        unlocked_addresses=[large_usdt_holder])
+        unlocked_addresses=[large_usdt_holder],
+
+    )
     try:
         yield launch.json_rpc_url
     finally:

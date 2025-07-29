@@ -97,8 +97,8 @@ class ChartInput:
 
 @dataclass(slots=True, frozen=False)
 class ChartParameters:
-    width = 1200
-    height = 800
+    width: int = 1200
+    height: int = 800
     format: Literal["png", "svg"] = "png"
 
 
@@ -144,10 +144,30 @@ class ChartFunction(typing.Protocol):
 class ChartCallback:
     """One function serving chats.
     """
+
+    #: Web slug
+    id: str
+
+    #: Fuman readable name
     name: str
+
+    #: Underlying Python function
     func: ChartFunction
+
+    #: Kind of input the Python function expects
     kind: ChartKind
+
+    #: One sentence description of the chart function.
     description: str
+
+    def export(self) -> dict:
+        """Export the chart callback as a dictionary."""
+        return {
+            "id": self.id,
+            "name": self.name,
+            "kind": self.kind.value,
+            "description": self.description,
+        }
 
 
 
@@ -164,7 +184,7 @@ class ChartRegistry:
             For single and multi-pair charts, define the default pairs to use.
         """
 
-        #: Name -> registered functions mappings
+        #: id -> registered functions mappings
         self.registry: dict[str, ChartCallback] = {}
 
         #: Function -> registered functions mappings.
@@ -176,6 +196,10 @@ class ChartRegistry:
     def get_chart_function(self, name: str) -> ChartCallback | None:
         """Get a chart function by name."""
         return self.registry.get(name)
+
+    def get_chart_count(self) -> int:
+        """Get the number of registered chart functions."""
+        return len(self.registry)
 
     def define(
         self,
@@ -203,21 +227,23 @@ class ChartRegistry:
         name: str | None = None,
     ):
         """Manually register a chart function."""
-        name = name or func.__name__
+        name = name or func.__name__.replace("_", " ").capitalize()
+        id = func.__name__
 
         docstring = func.__doc__
         assert docstring, f"Chart function '{func}' must have a docstring as a description."
 
         description = docstring.strip().split("\n")[0]
 
-        assert not " " in name, f"Chart name '{name}' cannot contain spaces."
+        assert not " " in id, f"Chart id '{id}' cannot contain spaces."
         callback = ChartCallback(
+            id=id,
             name=name,
             func=func,
             kind=kind,
             description=description
         )
-        self.registry[name] = callback
+        self.registry[id] = callback
         self.by_function[func] = callback
 
 

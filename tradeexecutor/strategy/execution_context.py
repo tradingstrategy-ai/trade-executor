@@ -92,6 +92,12 @@ class ExecutionMode(enum.Enum):
     #: and debugging scripts.
     one_off = "one_off"
 
+    #: One off diagnostic and scripts
+    #:
+    #: Used in the interactive :ref:`console.
+    #: and debugging scripts.
+    web = "web"
+
     def is_live_trading(self) -> bool:
         """Are we trading real time?
 
@@ -259,6 +265,9 @@ python_script_execution_context = ExecutionContext(ExecutionMode.backtesting)
 
 #: Standalone backtest (not within a notebook)
 standalone_backtest_execution_context = ExecutionContext(ExecutionMode.backtesting)
+
+#: Special context that we run the code within a web server HTTP API handler
+web_server_execution_context = ExecutionContext(ExecutionMode.web)
 
 #: Shorthand when running a indicator parameter optimizer using scikit-optimizer.
 #:

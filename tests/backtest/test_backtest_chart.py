@@ -9,6 +9,7 @@ import pytest
 from tradeexecutor.backtest.backtest_module import run_backtest_for_module
 from tradeexecutor.cli.log import setup_pytest_logging
 from tradeexecutor.strategy.chart.renderer import ChartBacktestRenderingSetup
+from tradeexecutor.strategy.cycle import CycleDuration
 from tradeexecutor.strategy.execution_context import unit_test_execution_context
 
 
@@ -38,6 +39,10 @@ def test_backtest_charts(
         strategy_file=strategy_file,
         cache_path=client.transport.cache_path,
         execution_context=unit_test_execution_context,
+        mod_overrides={
+            # Set in 1s to live trading test, but breaks backtest valuation
+            "trading_strategy_cycle": CycleDuration.cycle_1h,
+        }
     )
 
     mod = result.strategy_module
