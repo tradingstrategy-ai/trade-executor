@@ -197,6 +197,10 @@ class ChartRegistry:
         """Get a chart function by name."""
         return self.registry.get(name)
 
+    def get_chart_count(self) -> int:
+        """Get the number of registered chart functions."""
+        return len(self.registry)
+
     def define(
         self,
         kind: ChartKind,

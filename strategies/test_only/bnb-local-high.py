@@ -35,7 +35,7 @@ from tradingstrategy.pair import PandasPairUniverse
 from tradingstrategy.timebucket import TimeBucket
 from tradingstrategy.transport.cache import OHLCVCandleType
 from tradingstrategy.utils.forward_fill import forward_fill
-from tradingstrategy.utils.groupeduniverse import resample_candles
+from tradingstrategy.utils.groupeduniverse import resample_candles, PairCandlesMissing
 from tradingstrategy.utils.liquidity_filter import prefilter_pairs_with_tvl
 
 from tradingstrategy.utils.token_filter import add_base_quote_address_columns
@@ -58,7 +58,7 @@ logger = logging.getLogger(__name__)
 #
 
 
-trading_strategy_engine_version = "0.5"
+trading_strategy_engine_version = "0.6"
 
 CHAIN_ID = ChainId.binance
 
@@ -78,7 +78,7 @@ LENDING_RESERVES = None
 
 PREFERRED_STABLECOIN = USDT_NATIVE_TOKEN[CHAIN_ID].lower()
 
-MIN_TVL = 1_000_000
+MIN_TVL = 2_000_000
 MIN_VOLUME = 25_000
 
 VAULTS = [
@@ -92,7 +92,7 @@ class Parameters:
 
     # We trade 1h candle
     candle_time_bucket = TimeBucket.h1
-    cycle_duration = CycleDuration.cycle_2h
+    cycle_duration = CycleDuration.cycle_1s
 
     chain_id = CHAIN_ID
     exchanges = EXCHANGES
@@ -316,6 +316,12 @@ def create_trading_universe(
     uni_v3 = pairs_df.loc[pairs_df["exchange_slug"] == "uniswap-v3"]
     other_dex = pairs_df.loc[~((pairs_df["exchange_slug"] != "uniswap-v3") | (pairs_df["exchange_slug"] != "uniswap-v2"))]
     debug_printer(f"Pairs on Uniswap v2: {len(uni_v2)}, Uniswap v3: {len(uni_v3)}, other DEX: {len(other_dex)}")
+    if execution_context.live_trading:
+        # Bundled vault price data is only used for backtesting
+        vault_bundled_price_data = None
+    else:
+        vault_bundled_price_data = DEFAULT_VAULT_PRICE_BUNDLE
+
     dataset = load_partial_data(
         client=client,
         time_bucket=Parameters.candle_time_bucket,
@@ -326,7 +332,7 @@ def create_trading_universe(
         preloaded_tvl_df=tvl_df,
         lending_reserves=LENDING_RESERVES,
         vaults=VAULTS,
-        vault_bundled_price_data=DEFAULT_VAULT_PRICE_BUNDLE,
+        vault_bundled_price_data=vault_bundled_price_data,
     )
 
     reserve_asset = PREFERRED_STABLECOIN
@@ -369,7 +375,11 @@ def create_yield_rules(
     for vault_spec in VAULTS:
         vault_pair = strategy_universe.get_pair_by_smart_contract(vault_spec[1])
         if vault_pair not in _cached_start_times:
-            price_df = strategy_universe.data_universe.candles.get_samples_by_pair(vault_pair.internal_id)
+            try:
+                price_df = strategy_universe.data_universe.candles.get_samples_by_pair(vault_pair.internal_id)
+            except PairCandlesMissing as e:
+                # Unit testing
+                continue
             assert price_df is not None
             index_entry = price_df.index[0]
             assert isinstance(index_entry, tuple)
@@ -1035,7 +1045,7 @@ def avg_volatility(
 
 
 @indicators.define(source=IndicatorSource.ohlcv)
-def daily_price(open, high, low, close, execution_context) -> pd.DataFrame:
+def daily_price(open, high, low, close, execution_context, timestamp) -> pd.DataFrame:
     """Resample finer granularity price feed to daily for ADX filtering."""
     original_df = pd.DataFrame({
         "open": open,

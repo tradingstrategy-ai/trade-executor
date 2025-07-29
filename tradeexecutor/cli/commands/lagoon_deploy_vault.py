@@ -48,6 +48,7 @@ from eth_defi.erc_4626.classification import create_vault_instance
 from eth_defi.erc_4626.core import ERC4626Feature
 from eth_defi.erc_4626.vault import ERC4626Vault
 from eth_defi.hotwallet import HotWallet
+from eth_defi.lagoon.config import get_lagoon_chain_config
 from eth_defi.lagoon.deployment import LagoonDeploymentParameters, deploy_automated_lagoon_vault, DEFAULT_PERFORMANCE_RATE, DEFAULT_MANAGEMENT_RATE
 from eth_defi.safe.deployment import disable_safe_module
 from eth_defi.token import fetch_erc20_details
@@ -154,6 +155,8 @@ def lagoon_deploy_vault(
     # TODO: Asset manager is now always the deployer
     asset_manager = hot_wallet.address
 
+    lagoon_chain_config = get_lagoon_chain_config(chain_id)
+
     if existing_vault_address:
         existing_vault = create_vault_instance(
             web3,
@@ -188,6 +191,8 @@ def lagoon_deploy_vault(
     logger.info("Multisig owners: %s", multisig_owners)
     logger.info("Performance fee: %f %%", performance_fee / 100)
     logger.info("Management fee: %f %%", management_fee / 100)
+    logger.info("From the scratch Lagoon deployment: %s", lagoon_chain_config.from_the_scratch)
+    logger.info("Use Lagoon BeaconProxyFactory: %s", lagoon_chain_config.factory_contract)
 
     if etherscan_api_key:
         logger.info("Etherscan API key: %s", etherscan_api_key)
@@ -292,6 +297,8 @@ def lagoon_deploy_vault(
         existing_vault_address=existing_vault_address,
         existing_safe_address=existing_safe_address,
         erc_4626_vaults=erc_4626_vaults,
+        factory_contract=lagoon_chain_config.factory_contract,
+        from_the_scratch=lagoon_chain_config.from_the_scratch,
     )
 
     if vault_record_file and (not simulate):

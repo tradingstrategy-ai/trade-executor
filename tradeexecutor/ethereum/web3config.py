@@ -220,7 +220,7 @@ class Web3Config:
         web3 = self.get_default()
 
         if self.default_chain_id not in TEST_CHAIN_IDS:
-            assert web3.eth.chain_id == self.default_chain_id.value, f"Expected chain id {self.default_chain_id}, got {web3.eth.chain_id}"
+            assert web3.eth.chain_id == self.default_chain_id.value, f"Strategy expected chain id {self.default_chain_id}, RPC says we got got {web3.eth.chain_id}"
 
     @classmethod
     def setup_from_environment(
