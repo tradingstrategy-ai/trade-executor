@@ -2,6 +2,7 @@
 import json
 import os
 from pathlib import Path
+from pprint import pformat
 
 import pytest
 from typer.main import get_command
@@ -13,10 +14,8 @@ from eth_defi.provider.anvil import fork_network_anvil, AnvilLaunch
 from eth_defi.provider.multi_provider import create_multi_provider_web3
 from eth_defi.token import USDT_NATIVE_TOKEN, fetch_erc20_details, TokenDetails
 
-
 from tradeexecutor.cli.commands.app import app
 from tradeexecutor.cli.log import setup_pytest_logging
-from tradeexecutor.monkeypatch.web3 import construct_sign_and_send_raw_middleware
 from tradeexecutor.state.state import State
 
 from eth_typing import HexAddress
@@ -208,5 +207,6 @@ def test_cli_lagoon_deploy_binance_vault(
     # 4.c) Check our chart registry was registered with run state shared with the web API
     other_data = state.other_data
     assert other_data.get_latest_stored_cycle() == 1, f"Expected cycle 1, got {other_data.get_latest_stored_cycle()}"
-    chart_count = other_data.load_latest("chart_count")
-    assert chart_count == 1, f"Expected 1 chart, got {chart_count}"
+    assert len(other_data.data) > 0, "Expected some data in other_data, but none found"
+    chart_count = other_data.load_latest("loaded_chart_count")
+    assert chart_count == 1, f"Expected 1 chart, got {chart_count}: {pformat(other_data.data)}"

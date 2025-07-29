@@ -88,6 +88,11 @@ class OtherData:
         """Save the value on this cycle."""
         assert type(cycle) == int, f"Got {cycle}"
         assert type(name) == str, f"Got {name}"
+
+        # No data saved yet for this cycle
+        if not cycle in self.data:
+            self.data[cycle] = {}
+
         self.data[cycle][name] = value
 
     def load_latest(self, name: str, default=None) -> JsonSerialisableObject | None:

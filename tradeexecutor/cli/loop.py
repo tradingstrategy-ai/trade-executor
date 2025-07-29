@@ -11,6 +11,7 @@ import logging
 import datetime
 import pickle
 import random
+from lib2to3.fixer_util import is_probably_builtin
 from pathlib import Path
 from queue import Queue
 from typing import Optional, Callable, List, cast, Tuple
@@ -1131,7 +1132,15 @@ class ExecutionLoop:
                 execution_context=self.execution_context,
             )
             # Expose to the unit testing
-            state.other_data.save(cycle, "loaded_chart_count", run_state.chart_registry.get_chart_count())
+            chart_count = run_state.chart_registry.get_chart_count()
+            state.other_data.save(cycle, "loaded_chart_count", chart_count)
+            logger.info(
+                "Creating the chart registry for live trading, using hook %s, created %d charts",
+                self.create_charts,
+                chart_count,
+            )
+        else:
+            logger.info("The strategy does not provide any charts")
 
         # Display our current trading universe at the startup
         universe_diagnose_df = display_strategy_universe(universe)
