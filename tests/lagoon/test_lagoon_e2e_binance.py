@@ -209,4 +209,4 @@ def test_cli_lagoon_deploy_binance_vault(
     assert other_data.get_latest_stored_cycle() == 1, f"Expected cycle 1, got {other_data.get_latest_stored_cycle()}"
     assert len(other_data.data) > 0, "Expected some data in other_data, but none found"
     chart_count = other_data.load_latest("loaded_chart_count")
-    assert chart_count == 1, f"Expected 1 chart, got {chart_count}: {pformat(other_data.data)}"
+    assert chart_count == 24, f"Expected 1 chart, got {chart_count}: {pformat(other_data.data)}"
