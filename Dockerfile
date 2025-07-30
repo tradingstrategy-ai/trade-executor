@@ -3,6 +3,9 @@
 #
 # See https://stackoverflow.com/a/71786211/315168 for the recipe
 #
+# To test building the image: docker build .
+#
+#
 FROM python:3.11.10
 
 # Passed from Github Actions
@@ -43,16 +46,21 @@ RUN poetry cache clear pypi --all --no-interaction
 # For the latest pindowns check Github test workflow
 ENV PATH="${PATH}:/root/.foundry/bin"
 RUN curl -L https://foundry.paradigm.xyz | bash
-RUN foundryup --install v0.3.0
+RUN foundryup --install v1.2.1
 
-# trade-executor /api
-# Pyramid HTTP server for webhooks at port 3456
-EXPOSE 3456
+# We need to install Lagoon dependencies if we want to deploy Vault.sol contract.
+# Otherwise trade-executor lagoon-deploy-vault command will fail.
+# Needed only for installing the dependencies, not during run time
+RUN (cd deps/web3-ethereum-defi/contracts/lagoon-v0 && forge soldeer install)
 
 # Speed up Python process startup
 RUN rm -rf ./tests
 RUN python -m compileall -q .
 RUN python -m compileall -q /usr/local/lib/python3.11
+
+# trade-executor /api
+# Pyramid HTTP server for webhooks at port 3456
+EXPOSE 3456
 
 # Use --quiet to supress Skipping virtualenv creation, as specified in config file.
 # use --directory so we can use -w and -v switches with Docker run
