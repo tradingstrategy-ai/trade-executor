@@ -384,6 +384,7 @@ def console(
         "pricing_model": pricing_model,
         "valuation_model": valuation_model,
         "routing_model": routing_model,
+        "execution_model": execution_model,
         "runner": runner,
         "sync_model": sync_model,
         "pd": pd,
