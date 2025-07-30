@@ -266,6 +266,7 @@ class RunState:
         self_copy.source_code = None
         self_copy.visualisation = None
         self_copy.read_only_state_copy = None
+        self_copy.chart_registry = None  # Available through special endpoints
 
         return self_copy
 

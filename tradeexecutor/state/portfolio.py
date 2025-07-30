@@ -1085,7 +1085,7 @@ class Portfolio:
                 already_iterated_pairs.add(p.pair)
                 yield p.pair
 
-    def initialise_reserves(self, asset: AssetIdentifier, reserve_token_price=None) -> ReservePosition:
+    def initialise_reserves(self, asset: AssetIdentifier, reserve_token_price: float=None) -> ReservePosition:
         """Create the initial reserve currency list.
 
         Currently we assume there can be only one reserve currency.
