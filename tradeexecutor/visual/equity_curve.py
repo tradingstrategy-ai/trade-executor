@@ -899,12 +899,10 @@ def calculate_share_price(state: State, initial_share_price=1.0) -> pd.DataFrame
         {"calculated_at": s.calculated_at, "share_price_usd": s.share_price_usd, "nav": s.net_asset_value} for s in state.stats.portfolio
     ]
     df = pd.DataFrame(profit)
-    df = df.set_index("calculated_at").sort_index()  # Make sure index comes through in the correct order
-    df = df.dropna()
-
     if len(df) == 0:
         return pd.DataFrame([], index=pd.to_datetime([]))
 
+    df = df.set_index("calculated_at").sort_index()  # Make sure index comes through in the correct order
+    df = df.dropna()
     df["returns"] = df["share_price_usd"] - initial_share_price
-
     return df
