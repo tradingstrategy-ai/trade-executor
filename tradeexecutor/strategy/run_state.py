@@ -261,12 +261,13 @@ class RunState:
 
         Special fields like source code and images are not exported.
         """
-        self_copy = copy.deepcopy(self)
+        self_copy = copy.copy(self)
 
         self_copy.source_code = None
         self_copy.visualisation = None
         self_copy.read_only_state_copy = None
         self_copy.chart_registry = None  # Available through special endpoints
+        self_copy.latest_indicators = None
 
         return self_copy
 
