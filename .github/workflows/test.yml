@@ -18,26 +18,27 @@ jobs:
         with:
           submodules: 'recursive'
 
-      - name: Set up Python 3.11
-        uses: actions/setup-python@v4
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
+          python-version: '3.12'
+          cache: 'poetry'
 
-      - name: Install Poetry
-        uses: snok/install-poetry@v1
-        with:
-          virtualenvs-create: true
-          virtualenvs-in-project: true
-          installer-parallel: true
+#      - name: Install Poetry
+#        uses: snok/install-poetry@v1
+#        with:
+#          virtualenvs-create: true
+#          virtualenvs-in-project: true
+#          installer-parallel: true
 
       # Do not let Poetry to install again if we do not detect a lock file change
-      - name: Load cached venv
-        uses: actions/cache@v4
-        with:
-          path: .venv
-          key: venv-${{ runner.os }}-${{ steps.setup-python.outputs.python-version }}-${{ hashFiles('**/poetry.lock') }}
-
-      # Speed up testing by not downloading integration test data from the production server
+#      - name: Load cached venv
+#        uses: actions/cache@v4
+#        with:
+#          path: .venv
+#          key: venv-${{ runner.os }}-${{ steps.setup-python.outputs.python-version }}-${{ hashFiles('**/poetry.lock') }}
+#
+#      # Speed up testing by not downloading integration test data from the production server
       # https://github.com/actions/cache
       # See conftest.persistent_test_client
       - name: Cache datasetes
@@ -51,9 +52,10 @@ jobs:
       - name: Install Foundry
         uses: foundry-rs/foundry-toolchain@v1
         with:
-          # Anvil 0.3.0d
-          # https://github.com/foundry-rs/foundry/releases/tag/v0.3.0
-          version: 'v0.3.0'
+          # pick a nightly release from: https://github.com/foundry-rs/foundry/releases
+          # version: 'nightly-de33b6af53005037b463318d2628b5cfcaf39916'
+          #version: "nightly-fdd321bac95f0935529164a88faf99d4d5cfa321"
+          version: "v1.2.3"
 
       - name: Install dependencies
         if: steps.cached-poetry-dependencies.outputs.cache-hit != 'true'
