@@ -3,6 +3,7 @@
 import os
 import logging
 import time
+from dataclasses import dataclass
 
 from pathlib import Path
 from typing import cast
@@ -12,7 +13,10 @@ from pyramid.request import Request
 from pyramid.response import Response, FileResponse
 from pyramid.view import view_config
 
+from dataclasses_json import dataclass_json
 from tradeexecutor.cli.log import get_ring_buffer_handler
+from tradeexecutor.monkeypatch import dataclasses_json
+from tradeexecutor.state.identifier import TradingPairIdentifier
 from tradeexecutor.state.metadata import Metadata
 from tradeexecutor.state.store import JSONFileStore
 from tradeexecutor.state.validator import validate_nested_state_dict
@@ -388,4 +392,44 @@ def web_chart_registry(request: Request):
     chart_registry = run_state.chart_registry
     assert chart_registry is not None, "ChartRegistry not yet available. It becomes available after the trade executor completes loading the trading universe."
     return [c.export() for c in chart_registry.registry.values()]
+
+
+
+@dataclass_json
+@dataclass(slots=True)
+class CharPairsReply:
+    """Reply for the /chart-registry/pairs endpoint."""
+    default_pairs: list[TradingPairIdentifier]
+    all_pairs: list[TradingPairIdentifier]
+
+
+@view_config(route_name='web_chart_pairs', permission='view')
+def web_chart_pairs(request: Request):
+    """/chart-registry/pairs
+
+    - List of active trading pairs to be used as input plus default pairs
+
+    :return:
+        JSON payload
+    """
+
+    run_state: RunState = request.registry["run_state"]
+    chart_registry = run_state.chart_registry
+    strategy_universe = run_state.latest_indicators.strategy_universe
+
+    if chart_registry.default_benchmark_pairs:
+        default_pairs = [
+            strategy_universe.get_pair_by_human_description(pair) for pair in chart_registry.default_benchmark_pairs
+        ]
+    else:
+        default_pairs = []
+
+    reply = CharPairsReply(
+        default_pairs=default_pairs,
+        all_pairs=[pair for pair in strategy_universe.iterate_pairs()],
+    )
+
+    r = Response(content_type="application/json")
+    r.text = reply.to_json(allow_nan=False)
+    return r
 

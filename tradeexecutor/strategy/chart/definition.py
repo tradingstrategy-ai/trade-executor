@@ -177,7 +177,10 @@ class ChartRegistry:
     - Makes charts discoverable by name in the frontend
     """
 
-    def __init__(self, default_benchmark_pairs: typing.Collection[HumanReadableTradingPairDescription] | None = None):
+    def __init__(
+        self,
+        default_benchmark_pairs: typing.Collection[HumanReadableTradingPairDescription] | None = None,
+    ):
         """Initialize the chart registry.
 
         :param default_benchmark_pairs:
