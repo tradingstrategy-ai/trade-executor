@@ -418,7 +418,6 @@ def _reduce_other_data(val):
     return val
 
 
-
 @dataclass_json
 @dataclass(slots=True)
 class TradingPairIdentifier:
