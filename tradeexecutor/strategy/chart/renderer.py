@@ -1,3 +1,4 @@
+import base64
 import datetime
 import io
 import traceback
@@ -5,9 +6,11 @@ from dataclasses import dataclass
 from typing import Collection, Callable, Any
 
 import pandas as pd
+from pandas.io.formats.style import Styler
 from plotly.graph_objects import Figure
+import IPython.core.display
 
-import matplotlib
+import matplotlib.figure
 
 from tradeexecutor.state.identifier import TradingPairIdentifier
 from tradeexecutor.state.state import State
@@ -17,19 +20,51 @@ from tradeexecutor.strategy.pandas_trader.strategy_input import StrategyInputInd
 from tradeexecutor.visual.image_output import render_plotly_figure_as_image_file
 
 
+@dataclass(slots=True, frozen=False)
+class MultiImage:
+    """Helper to render multi-image HTTP responses"""
+    png: bytes
+    title: str | None = None
+
+
 def render_matplotlib_figure_as_image_file(
-    figure: matplotlib.Figure,
+    figure: matplotlib.figure.Figure,
     format: str = "png",
     width: int = 512,
     height: int = 512,
     dpi = 300,
 ) -> bytes:
     """Some legacy charts use Matplotlib"""
-    assert isinstance(figure, matplotlib.Figure), f"Expected a Matplotlib Figure, got {type(figure)}"
+    assert isinstance(figure, matplotlib.figure.Figure), f"Expected a Matplotlib Figure, got {type(figure)}"
     figure.set_size_inches(width / dpi, height / dpi)
     buf = io.BytesIO()
     figure.savefig(buf, format=format, dpi=dpi, bbox_inches='tight')
     buf.seek(0)
+    return buf.getvalue()
+
+
+def render_multi_image_result(
+    images: list[MultiImage],
+) -> bytes:
+    """Convert multiple images to a format suitable for the frontend.
+
+    - This is our internal format, there is no web standard
+    """
+    assert isinstance(images, list), f"Expected a list of PNG images, got {type(pngs)}"
+    assert len(images) > 0, "No images to render"
+
+    buf = io.BytesIO()
+    buf.write(b'<div class="analysis-charts">')
+
+    for img in images:
+        assert isinstance(img, MultiImage), f"Expected MultiImage, got {type(img)}"
+        buf.write(b'<img alt="')
+        buf.write(img.title.encode("utf-8") if img.title else b"")
+        buf.write(b'" class="analysis-chart-image" src="data:image/png;base64,"')
+        buf.write(base64.b64encode(img.png))
+        buf.write(b'/">')
+    buf.write(b'</div>')
+
     return buf.getvalue()
 
 
@@ -55,7 +90,7 @@ def render_for_web(
             data=data,
             content_type="image/png",
         )
-    elif isinstance(func_result, matplotlib.Figure):
+    elif isinstance(func_result, matplotlib.figure.Figure):
         # Render Matplotlib Figure as PNG image file
         data = render_matplotlib_figure_as_image_file(
             func_result,
@@ -74,21 +109,43 @@ def render_for_web(
             data=html_table.encode("utf-8"),
             content_type="text/html",
         )
+    elif isinstance(func_result, Styler):
+        # Render DataFrame as HTML table
+        html_table = func_result.to_html(classes='table table-striped', index=False)
+        return ChartRenderingResult(
+            data=str(html_table).encode("utf-8"),
+            content_type="text/html",
+        )
     elif isinstance(func_result, list):
         # List of images.
         # For now, only render the first one.
 
         assert isinstance(func_result[0], Figure), f"Expected list of Plotly Figures, got {type(func_result[0])}."
 
-        data = render_plotly_figure_as_image_file(
-            func_result[0],
-            format=parameters.format,
-            width=parameters.width,
-            height=parameters.height
-        )
+        images = []
+        for result in func_result:
+            images.append(
+                MultiImage(
+                    png=render_plotly_figure_as_image_file(
+                        result,
+                        format=parameters.format,
+                        width=parameters.width,
+                        height=parameters.height
+                    ),
+                    title=result.layout.title.text if result.layout.title else None
+                )
+            )
+
+        data = render_multi_image_result(images)
         return ChartRenderingResult(
             data=data,
-            content_type="image/png",
+            content_type="text/html",
+        )
+    elif isinstance(func_result, IPython.core.display.HTML):
+        data = str(func_result).encode("utf-8")
+        return ChartRenderingResult(
+            data=data,
+            content_type="text/html",
         )
     else:
         raise NotImplementedError(f"Chart function {func}: Unsupported chart output type: {type(func_result)}. Expected Figure or ChartOutput.")
