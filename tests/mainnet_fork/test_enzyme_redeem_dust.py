@@ -3,8 +3,9 @@ import os
 import secrets
 from pathlib import Path
 
+import flaky
+
 import pytest
-from _pytest.fixtures import FixtureRequest
 
 from eth_defi.provider.anvil import AnvilLaunch, launch_anvil
 
@@ -23,7 +24,7 @@ def end_block() -> int:
 
 
 @pytest.fixture()
-def anvil(request: FixtureRequest, end_block) -> AnvilLaunch:
+def anvil(end_block) -> AnvilLaunch:
     mainnet_rpc = os.environ["JSON_RPC_POLYGON"]
     anvil = launch_anvil(
         mainnet_rpc,
@@ -84,6 +85,7 @@ def environment(
     return environment
 
 
+@flaky.flaky
 @pytest.mark.slow_test_group
 def test_enzyme_redeem_dust(
     environment: dict,
