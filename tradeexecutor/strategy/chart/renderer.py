@@ -60,9 +60,9 @@ def render_multi_image_result(
         assert isinstance(img, MultiImage), f"Expected MultiImage, got {type(img)}"
         buf.write(b'<img alt="')
         buf.write(img.title.encode("utf-8") if img.title else b"")
-        buf.write(b'" class="analysis-chart-image" src="data:image/png;base64,"')
+        buf.write(b'" class="analysis-chart-image" src="data:image/png;base64,')
         buf.write(base64.b64encode(img.png))
-        buf.write(b'/">')
+        buf.write(b'"/>')
     buf.write(b'</div>')
 
     return buf.getvalue()

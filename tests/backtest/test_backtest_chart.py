@@ -6,6 +6,8 @@ from pathlib import Path
 
 import pytest
 
+from lxml import etree, html
+
 from tradeexecutor.backtest.backtest_module import run_backtest_for_module
 from tradeexecutor.cli.log import setup_pytest_logging
 from tradeexecutor.strategy.chart.definition import ChartParameters
@@ -68,8 +70,17 @@ def test_backtest_charts(
     # Speed up rendering
     parameters = ChartParameters(width=256, height=256)
 
+    # Render tons of charts provided by the test strategy module
     for func in charts.by_function.keys():
         result = chart_renderer.render(func)
         assert result is not None
         rendered = render_for_web(parameters, result, func)
         assert not rendered.error, f"Error rendering chart {func}: {rendered.error}"
+
+        # Check we do not output broken HTML
+        if rendered.content_type == "text/html":
+            # HTML is not supported in tests, skip it
+            html_snippet = rendered.data
+            doc = html.fromstring(html_snippet)
+            assert isinstance(doc, html.HtmlElement), "Rendered HTML is not a valid HTML document"
+
