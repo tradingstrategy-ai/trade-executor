@@ -54,7 +54,7 @@ pytestmark = pytest.mark.skipif(not JSON_RPC_BASE, reason="No JSON_RPC_BASE envi
 @pytest.fixture()
 def usdc_holder() -> HexAddress:
     # https://basescan.org/token/0x833589fcd6edb6e08f4c7c32d4f71b54bda02913#balances
-    return "0x3304E22DDaa22bCdC5fCa2269b418046aE7b566A"
+    return "0x40EbC1Ac8d4Fedd2E144b75fe9C0420BE82750c6"
 
 
 @pytest.fixture()
@@ -482,7 +482,10 @@ def depositor(web3, base_usdc_token, usdc_holder) -> HexAddress:
 
     - Start with 500 USDC
     """
+    from_account = usdc_holder
     new_depositor = web3.eth.accounts[5]
+    available = base_usdc_token.fetch_balance_of(from_account)
+    assert available >= Decimal(500), f"Not enough USDC in {from_account} (fork account) to transfer to {new_depositor}"
     tx_hash = base_usdc_token.transfer(new_depositor, Decimal(500)).transact({"from": usdc_holder, "gas": 100_000})
     assert_transaction_success_with_explanation(web3, tx_hash)
     return new_depositor
