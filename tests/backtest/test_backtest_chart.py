@@ -8,7 +8,8 @@ import pytest
 
 from tradeexecutor.backtest.backtest_module import run_backtest_for_module
 from tradeexecutor.cli.log import setup_pytest_logging
-from tradeexecutor.strategy.chart.renderer import ChartBacktestRenderingSetup
+from tradeexecutor.strategy.chart.definition import ChartParameters
+from tradeexecutor.strategy.chart.renderer import ChartBacktestRenderingSetup, render_for_web
 from tradeexecutor.strategy.cycle import CycleDuration
 from tradeexecutor.strategy.execution_context import unit_test_execution_context
 
@@ -64,6 +65,11 @@ def test_backtest_charts(
         state=result.state,
     )
 
+    # Speed up rendering
+    parameters = ChartParameters(width=256, height=256)
+
     for func in charts.by_function.keys():
         result = chart_renderer.render(func)
         assert result is not None
+        rendered = render_for_web(parameters, result, func)
+        assert not rendered.error, f"Error rendering chart {func}: {rendered.error}"
