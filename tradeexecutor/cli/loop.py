@@ -11,7 +11,7 @@ import logging
 import datetime
 import pickle
 import random
-from lib2to3.fixer_util import is_probably_builtin
+
 from pathlib import Path
 from queue import Queue
 from typing import Optional, Callable, List, cast, Tuple
@@ -20,7 +20,7 @@ import pandas as pd
 from apscheduler.events import EVENT_JOB_ERROR
 
 from tradingstrategy.candle import GroupedCandleUniverse
-from tradingstrategy.client import Client, BaseClient
+from tradingstrategy.client import BaseClient
 from tradingstrategy.timebucket import TimeBucket
 
 from tradeexecutor.analysis.pair import display_strategy_universe
@@ -45,7 +45,7 @@ from tradeexecutor.strategy.valuation_update import update_position_valuations
 from tradeexecutor.backtest.backtest_pricing import BacktestPricing
 from tradeexecutor.state.state import State, BacktestData
 from tradeexecutor.state.store import StateStore
-from tradeexecutor.strategy.sync_model import SyncMethodV0, SyncModel
+from tradeexecutor.strategy.sync_model import SyncModel
 from tradeexecutor.state.trade import TradeExecution
 from tradeexecutor.state.validator import validate_state_serialisation
 from tradeexecutor.statistics.core import update_statistics
