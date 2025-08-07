@@ -687,6 +687,8 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
     def remove_pair(self, pair: TradingPairIdentifier):
         """Remove a trading pair from the universe.
 
+        Instead of removing consider using :py:meth:`TradingPairIdentifier.set_tradeable`  to disable trading.
+
         :param pair:
             The trading pair to remove.
         """

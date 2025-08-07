@@ -1009,11 +1009,17 @@ class TradingPairIdentifier:
           that are not available in the backtesting data.
 
         - By default pairs are tradeable
+
+        - Indicator data will be generared for non-tradeabl pairs by default (TODO: how to di
         """
         assert isinstance(value, bool), f"Tradeable value must be boolean, got {value}"
         self.other_data["tradeable"] = value
 
     def is_tradeable(self) -> bool:
+        """Check the tradeable flag.
+
+        Use :py:meth:`tradeexecutor.strategy.state.State.is_good_pair()` to access.
+        """
         return self.other_data.get("tradeable", True)
 
 
