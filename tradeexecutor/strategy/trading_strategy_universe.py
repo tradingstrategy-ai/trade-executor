@@ -684,6 +684,20 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
         for p in self.data_universe.pairs.iterate_pairs():
             yield translate_trading_pair(p, cache=self.pair_cache)
 
+    def remove_pair(self, pair: TradingPairIdentifier):
+        """Remove a trading pair from the universe.
+
+        Instead of removing consider using :py:meth:`TradingPairIdentifier.set_tradeable`  to disable trading.
+
+        :param pair:
+            The trading pair to remove.
+        """
+        assert isinstance(pair, TradingPairIdentifier), f"Expected TradingPairIdentifier, got {pair.__class__}: {pair}"
+
+        # PandasPairUniverse.pair_map is usually the source of truth what pairs we consider,
+        # but this can of course vary
+        del self.data_universe.pairs.pair_map[pair.internal_id]
+
     def iterate_credit_for_reserve(self) -> Iterable[TradingPairIdentifier]:
         """Iterate over all available credit supply pairs.
 
@@ -2698,7 +2712,7 @@ def load_partial_data(
             assert vaults, "Vaults must be given to load bundled price data"
             assert not execution_context.mode.is_live_trading(), "Cannot load bundled price data in live trading"
 
-            assert isinstance(vault_bundled_price_data, (bool, Path)), "vault_bundled_price_data must be bool or Path"
+            assert isinstance(vault_bundled_price_data, (bool, Path)), f"vault_bundled_price_data must be bool or Path, got {type(vault_bundled_price_data)}: {vault_bundled_price_data}"
             if isinstance(vault_bundled_price_data, Path):
                 vault_prices_bundle_path = vault_bundled_price_data
             else:

@@ -381,12 +381,19 @@ class EthereumExecution(ExecutionModel):
                             diff = 0
 
                         for t in completed_trades:
+                            failed_tx = t.get_failed_transaction()
+                            if failed_tx:
+                                tx_hash = failed_tx.tx_hash
+                            else:
+                                tx_hash = None
+
                             logger.error(
-                                "Completed trade: %s, expected reserve: %s, executed reserve: %s, price: %s\nPrice structure: %s",
+                                "Completed trade: %s, expected reserve: %s, executed reserve: %s, price: %s, hash %s\nPrice structure: %s",
                                 t,
                                 t.planned_reserve,
                                 t.executed_reserve,
                                 t.executed_price,
+                                tx_hash,
                                 t.price_structure,
                             )
                         # This is a special type of exception that will cause store.sync() to save state in start.py main loop exit

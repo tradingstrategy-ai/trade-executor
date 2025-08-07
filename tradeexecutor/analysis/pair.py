@@ -27,6 +27,9 @@ def display_strategy_universe(
     limit: int | None = None,
     compact=False,
     ignore_forward_fill=True,
+    show_token_risk=False,
+    show_tokensniffer=False,
+    new_line="<br>",
 ) -> pd.DataFrame:
     """Displays a constructed trading strategy universe in table format.
 
@@ -70,6 +73,9 @@ def display_strategy_universe(
 
     :param compact:
         Remove columns to fit into terminal window
+
+    :param show_token_risk:
+        Display Token Risk API data
 
     :return:
         Human-readable DataFrame for ``display()``.
@@ -192,6 +198,13 @@ def display_strategy_universe(
             buy_tax_fmt = f"{buy_tax:.1%}" if buy_tax is not None else "-"
             sell_tax_fmt = f"{sell_tax:.1%}" if sell_tax is not None else "-"
             data["tax"] = f"{buy_tax_fmt} / {sell_tax_fmt}"
+
+        if show_tokensniffer:
+            data["tokensniffer_risk_score"] = pair.get_risk_score()
+
+        if show_token_risk:
+            data["token_risk_score"] = pair.get_token_risk_score()
+            data["token_risk_flags"] = new_line.join(pair.get_token_risk_flags())
 
         pairs.append(data)
 

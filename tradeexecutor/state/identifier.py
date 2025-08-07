@@ -406,7 +406,12 @@ class TradingPairKind(enum.Enum):
         return self == TradingPairKind.cash
 
 
-_TRANSIENT_OTHER_DATA_KEYS = {"token_metadata"}
+_TRANSIENT_OTHER_DATA_KEYS = {
+    # Coingecko + TokenSniffer data combined
+    "token_metadata",
+    # Externally loaded Token Risk data
+    "token_risk_data",
+}
 
 def _reduce_other_data(val):
     """See translate_trading_pair() on how TradingPairIdentifier.other_data is populated"""
@@ -747,6 +752,13 @@ class TradingPairIdentifier:
             return data
         return None
 
+    def get_token_risk_data(self) -> dict | None:
+        """From Token Risk API by Hexen"""
+        data = self.other_data.get("token_risk_data")
+        if data:
+            return data
+        return None
+
     def get_tokensniffer_data(self) -> dict | None:
         meta = self.get_token_metadata()
         if meta:
@@ -760,10 +772,29 @@ class TradingPairIdentifier:
         return None
 
     def get_risk_score(self) -> int | None:
+        """Refers to TokenSniffe risk score."""
         tokensniffer_data = self.get_minimal_tokesniffer_data()
         if tokensniffer_data:
             return tokensniffer_data["score"]
         return None
+
+    def get_token_risk_score(self) -> int | None:
+        """Refers to Token Risk API score."""
+        data = self.get_token_risk_data()
+        if data:
+            return data["score"]
+        return None
+
+    def get_token_risk_flags(self) -> set[str] | None:
+        """Get all flags set by Token Risk API."""
+        data = self.get_token_risk_data()
+        if not data:
+            return None
+        flags = set()
+        for flag in data["results"]:
+            if flag["value"] in ("true", True):
+                flags.add(flag["key"])
+        return flags
 
     def get_vault_features(self) -> set[ERC4626Feature] | None:
         """Get list of vault feature flags if the pair is a vault.
@@ -970,6 +1001,26 @@ class TradingPairIdentifier:
             return 0
 
         return self.base.get_sell_tax()
+
+    def set_tradeable(self, value: bool):
+        """Set the tradeable flag for this trading pair.
+
+        - Used in backtesting to disable trading on some pairs
+          that are not available in the backtesting data.
+
+        - By default pairs are tradeable
+
+        - Indicator data will be generared for non-tradeabl pairs by default (TODO: how to di
+        """
+        assert isinstance(value, bool), f"Tradeable value must be boolean, got {value}"
+        self.other_data["tradeable"] = value
+
+    def is_tradeable(self) -> bool:
+        """Check the tradeable flag.
+
+        Use :py:meth:`tradeexecutor.strategy.state.State.is_good_pair()` to access.
+        """
+        return self.other_data.get("tradeable", True)
 
 
 @dataclass_json
