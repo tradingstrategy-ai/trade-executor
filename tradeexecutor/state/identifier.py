@@ -747,6 +747,13 @@ class TradingPairIdentifier:
             return data
         return None
 
+    def get_token_risk_data(self) -> dict | None:
+        """From Token Risk API by Hexen"""
+        data = self.other_data.get("token_risk_data")
+        if data:
+            return data
+        return None
+
     def get_tokensniffer_data(self) -> dict | None:
         meta = self.get_token_metadata()
         if meta:
@@ -760,10 +767,29 @@ class TradingPairIdentifier:
         return None
 
     def get_risk_score(self) -> int | None:
+        """Refers to TokenSniffe risk score."""
         tokensniffer_data = self.get_minimal_tokesniffer_data()
         if tokensniffer_data:
             return tokensniffer_data["score"]
         return None
+
+    def get_token_risk_score(self) -> int | None:
+        """Refers to Token Risk API score."""
+        data = self.get_token_risk_data()
+        if data:
+            return data["score"]
+        return None
+
+    def get_token_risk_flags(self) -> set[str] | None:
+        """Get all flags set by Token Risk API."""
+        data = self.get_token_risk_data()
+        if not data:
+            return None
+        flags = set()
+        for flag in data["results"]:
+            if flag["value"] in ("true", True):
+                flags.add(flag["key"])
+        return flags
 
     def get_vault_features(self) -> set[ERC4626Feature] | None:
         """Get list of vault feature flags if the pair is a vault.
