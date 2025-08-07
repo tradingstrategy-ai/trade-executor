@@ -406,7 +406,12 @@ class TradingPairKind(enum.Enum):
         return self == TradingPairKind.cash
 
 
-_TRANSIENT_OTHER_DATA_KEYS = {"token_metadata"}
+_TRANSIENT_OTHER_DATA_KEYS = {
+    # Coingecko + TokenSniffer data combined
+    "token_metadata",
+    # Externally loaded Token Risk data
+    "token_risk_data",
+}
 
 def _reduce_other_data(val):
     """See translate_trading_pair() on how TradingPairIdentifier.other_data is populated"""
@@ -996,6 +1001,20 @@ class TradingPairIdentifier:
             return 0
 
         return self.base.get_sell_tax()
+
+    def set_tradeable(self, value: bool):
+        """Set the tradeable flag for this trading pair.
+
+        - Used in backtesting to disable trading on some pairs
+          that are not available in the backtesting data.
+
+        - By default pairs are tradeable
+        """
+        assert isinstance(value, bool), f"Tradeable value must be boolean, got {value}"
+        self.other_data["tradeable"] = value
+
+    def is_tradeable(self) -> bool:
+        return self.other_data.get("tradeable", True)
 
 
 @dataclass_json

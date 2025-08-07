@@ -210,6 +210,10 @@ class State:
         """Check if the trading pair is blacklisted."""
         assert isinstance(pair, TradingPairIdentifier), f"Expected TradingPairIdentifier, got {type(pair)}: {pair}"
 
+        # Tradeable flag unset in create_trading_universe()
+        if not pair.is_tradeable():
+            return False
+
         if pair.base.address in self.asset_blacklist:
             # Legacy state compatiblity.
             # Remove in the future.
