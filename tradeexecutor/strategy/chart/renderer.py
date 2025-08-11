@@ -73,6 +73,11 @@ def render_for_web(
     func_result: Any,
     func: Callable,
 ) -> ChartRenderingResult:
+
+    # Fix Time Axis
+    # https://github.com/plotly/plotly.py/issues/5210
+    from tradeexecutor.monkeypatch import plotly
+
     # We do not support multi-content output yet,
     # so discard other parts of the result
     if type(func_result) == tuple:
