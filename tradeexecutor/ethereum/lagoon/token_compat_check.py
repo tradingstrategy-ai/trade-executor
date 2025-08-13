@@ -58,8 +58,8 @@ def check_tokens_for_lagoon(
         Limit token checks in unit tests for speed
     """
 
-    assert isinstance(strategy_universe, TradingStrategyUniverse), "Expected TradingStrategyUniverse instance"
-    assert isinstance(lagoon_execution, LagoonExecution), "Expected LagoonExecution instance"
+    assert isinstance(strategy_universe, TradingStrategyUniverse), f"Expected TradingStrategyUniverse instance. got {type(strategy_universe)}"
+    assert isinstance(lagoon_execution, LagoonExecution), f"Expected LagoonExecution instance, got {type(lagoon_execution)}"
 
     path_map = generate_lagoon_check_paths(strategy_universe)
     pair_map = {k.base.address: k for k in path_map.keys()}

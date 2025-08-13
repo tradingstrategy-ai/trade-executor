@@ -2,12 +2,11 @@
 
 import logging
 
-import pandas as pd
 
 from tradeexecutor.strategy.execution_model import ExecutionModel
-from tradeexecutor.strategy.pandas_trader.trading_universe_input import CreateTradingUniverseInput
+from tradeexecutor.strategy.pandas_trader.create_universe_wrapper import call_create_trading_universe
 from tradeexecutor.strategy.parameters import StrategyParameters
-from tradeexecutor.strategy.strategy_module import CreateTradingUniverseProtocol, get_create_trading_universe_version
+from tradeexecutor.strategy.strategy_module import CreateTradingUniverseProtocol
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
 from tradingstrategy.client import Client, BaseClient
 from tradingstrategy.environment.default_environment import download_with_tqdm_progress_bar
@@ -56,24 +55,11 @@ def preload_data(
             engine_version=engine_version,
         )
 
-    version = get_create_trading_universe_version(create_trading_universe)
-
-    match version:
-        case 1:
-            return create_trading_universe(
-                pd.Timestamp.now(),
-                client,
-                execution_context,
-                universe_options=universe_options,
-            )
-        case 2:
-            input = CreateTradingUniverseInput(
-                client=client,
-                timestamp=pd.Timestamp.now(),
-                parameters=strategy_parameters,
-                execution_context=execution_context,
-                execution_model=execution_model,
-                universe_options=universe_options,
-            )
-            return create_trading_universe(input)
-
+    return call_create_trading_universe(
+        create_trading_universe,
+        client,
+        universe_options=universe_options,
+        execution_context=execution_context,
+        execution_model=execution_model,
+        strategy_parameters=strategy_parameters,
+    )

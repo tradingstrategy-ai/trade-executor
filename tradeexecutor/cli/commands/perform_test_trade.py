@@ -210,7 +210,9 @@ def perform_test_trade(
     universe = universe_model.construct_universe(
         ts,
         ExecutionMode.preflight_check,
-        universe_options
+        universe_options,
+        strategy_parameters=mod.parameters,
+        execution_model=execution_model,
     )
 
     if single_pair:

@@ -93,7 +93,7 @@ def render_for_web(
         )
         return ChartRenderingResult(
             data=data,
-            content_type="image/png",1
+            content_type="image/png",
         )
     elif isinstance(func_result, matplotlib.figure.Figure):
         # Render Matplotlib Figure as PNG image file

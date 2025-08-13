@@ -9,7 +9,8 @@ from packaging import version
 
 from tradeexecutor.strategy.description import StrategyExecutionDescription
 from tradeexecutor.strategy.execution_context import ExecutionContext
-from tradeexecutor.strategy.parameters import dump_parameters
+from tradeexecutor.strategy.execution_model import ExecutionModel
+from tradeexecutor.strategy.parameters import dump_parameters, StrategyParameters
 from tradeexecutor.strategy.run_state import RunState
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverseModel
 from tradeexecutor.strategy.universe_model import UniverseOptions
@@ -26,6 +27,8 @@ class UniverseInitData:
     universe_options: UniverseOptions
     max_data_delay: datetime.timedelta
     run_description: StrategyExecutionDescription
+    execution_model: ExecutionModel
+    strategy_parameters: StrategyParameters
 
 
 def setup_universe(
@@ -97,4 +100,6 @@ def setup_universe(
         universe_options=universe_options,
         max_data_delay=max_data_delay,
         run_description=run_description,
+        strategy_parameters=parameters,
+        execution_model=run_description.execution_model,
     )

@@ -2,7 +2,7 @@
 import abc
 import datetime
 from dataclasses import dataclass
-from typing import List, Optional, Collection, Type
+from typing import Optional, Collection, Type
 
 from tradeexecutor.strategy.parameters import StrategyParameters
 from tradingstrategy.timebucket import TimeBucket
@@ -178,10 +178,14 @@ class UniverseModel(abc.ABC):
         """
 
     @abc.abstractmethod
-    def construct_universe(self,
-                           ts: datetime.datetime,
-                           mode: ExecutionMode,
-                           universe_options: UniverseOptions) -> StrategyExecutionUniverse:
+    def construct_universe(
+        self,
+        ts: datetime.datetime,
+        mode: ExecutionMode,
+        options: UniverseOptions,
+        strategy_parameters: "tradeexecutor.strategy.parameters.StrategyParameters | None",
+        execution_model: "tradeexecutor.strategy.execution_model.ExecutionModel | None",
+    ) -> StrategyExecutionUniverse:
         """On each strategy tick, refresh/recreate the trading universe for the strategy.
 
         This is called in mainloop before the strategy tick. It needs to download
