@@ -443,9 +443,11 @@ class ExecutionLoop:
             if self.strategy_cycle_trigger == StrategyCycleTrigger.cycle_offset or self.trade_immediately:
                 logger.info("Creating new universe from the scratch using create_trading_universe()")
                 universe = self.universe_model.construct_universe(
-                    ts,
-                    self.execution_context.mode,
-                    self.universe_options,
+                    ts=ts,
+                    mode=self.execution_context.mode,
+                    options=self.universe_options,
+                    execution_model=self.execution_model,
+                    strategy_parameters=self.parameters,
                 )
 
                 # Check if our data is stagnated and we cannot execute the strategy
@@ -740,7 +742,12 @@ class ExecutionLoop:
         """
 
         assert self.execution_context.mode.is_live_trading()
-        universe = self.universe_model.preload_universe(self.universe_options, self.execution_context)
+        universe = self.universe_model.preload_universe(
+            self.universe_options,
+            self.execution_context,
+            execution_model=self.execution_model,
+            strategy_parameters=self.parameters,
+        )
         universe = cast(TradingStrategyUniverse, universe)
 
         ts = datetime.datetime.utcnow()
@@ -1527,9 +1534,11 @@ class ExecutionLoop:
         # set automatically if not given
         if self.backtest_start is None:
             u = self.universe_model.construct_universe(
-                self.backtest_start,
-                self.execution_context.mode,
-                self.universe_options,
+                ts=self.backtest_start,
+                mode=self.execution_context.mode,
+                options=self.universe_options,
+                execution_model=self.execution_model,
+                strategy_parameters=self.parameters,
             )
 
             if u.universe.candles is not None:

@@ -95,6 +95,11 @@ def strategy_file() -> Path:
 
 
 @pytest.fixture()
+def strategy_file_with_anvil_checks() -> Path:
+    return Path(os.path.dirname(__file__)) / ".." / ".." / "strategies" / "test_only" / "bnb-local-high-v2.py"
+
+
+@pytest.fixture()
 def state_file(tmp_path) -> Path:
     path = tmp_path / "bnb-local-high.json"
     return path
@@ -210,3 +215,88 @@ def test_cli_lagoon_deploy_binance_vault(
     assert len(other_data.data) > 0, "Expected some data in other_data, but none found"
     chart_count = other_data.load_latest("loaded_chart_count")
     assert chart_count == 24, f"Expected 1 chart, got {chart_count}: {pformat(other_data.data)}"
+
+
+
+@pytest.mark.slow_test_group
+def test_cli_lagoon_anvil_checks(
+    web3,
+    anvil_bnb_fork,
+    strategy_file_with_anvil_checks,
+    mocker,
+    state_file,
+    hot_wallet,
+    tmp_path: Path,
+    persistent_test_client,
+    usdt_holder: HexAddress,
+):
+    """Check our Anvil check works.
+    """
+
+    cache_path  =persistent_test_client.transport.cache_path
+
+    multisig_owners = f"{web3.eth.accounts[2]}, {web3.eth.accounts[3]}, {web3.eth.accounts[4]}"
+
+    usdt_address = USDT_NATIVE_TOKEN[56]
+
+    vault_record_file = tmp_path / "vault-record.json"
+    environment = {
+        "PATH": os.environ["PATH"],  # Need forge
+        "EXECUTOR_ID": "test_cli_lagoon_deploy_binance_vault",
+        "NAME": "test_cli_lagoon_deploy_binance_vault",
+        "STRATEGY_FILE": strategy_file_with_anvil_checks.as_posix(),
+        "JSON_RPC_BINANCE": anvil_bnb_fork.json_rpc_url,
+        "STATE_FILE": state_file.as_posix(),
+        "ASSET_MANAGEMENT_MODE": "lagoon",
+        "UNIT_TESTING": "true",
+        # "LOG_LEVEL": "info",  # Set to info to get debug data for the test run
+        "LOG_LEVEL": "disabled",
+        "TRADING_STRATEGY_API_KEY": TRADING_STRATEGY_API_KEY,
+        "PRIVATE_KEY": hot_wallet.private_key.hex(),
+        "VAULT_RECORD_FILE": str(vault_record_file),
+        "FUND_NAME": "Example",
+        "FUND_SYMBOL": "EXAM",
+        "MULTISIG_OWNERS": multisig_owners,
+        "DENOMINATION_ASSET": usdt_address,
+        "ANY_ASSET": "true",
+        "UNISWAP_V2": "true",
+        "UNISWAP_V3": "true",
+        "CACHE_PATH": cache_path,
+        "GENERATE_REPORT": "false",  # Creating backtest report takes too long > 300s
+        "RUN_SINGLE_CYCLE": "true",
+    }
+
+    cli = get_command(app)
+    mocker.patch.dict("os.environ", environment, clear=True)
+
+    # 1. Deploy vault
+    cli.main(args=["lagoon-deploy-vault"], standalone_mode=False)
+
+    # 1.b update our envinoment with the deployed vault address
+    deploy_info = json.load(vault_record_file.open("rt"))
+    environment.update({
+        "VAULT_ADDRESS": deploy_info["Vault"],
+        "VAULT_ADAPTER_ADDRESS": deploy_info["Trading strategy module"],
+    })
+    mocker.patch.dict("os.environ", environment, clear=True)
+
+    # 2. Init state file
+    cli.main(args=["init"], standalone_mode=False)
+
+    # 3.a) Fund vault with some USDT
+    fund_lagoon_vault(
+        web3,
+        deploy_info["Vault"],
+        test_account_with_balance=usdt_holder,
+        asset_manager=hot_wallet.address,
+        trading_strategy_module_address=deploy_info["Trading strategy module"],
+    )
+
+    # 4. Start executor and run 1s cycle
+    cli.main(args=["start"], standalone_mode=False)
+
+    state = State.read_json_file(state_file)
+    lagoon_compat_check = state.other_data.load_latest("lagoon_compat_check")
+    assert lagoon_compat_check["count"] > 0
+    assert lagoon_compat_check["not_compatible"] > 0
+    assert lagoon_compat_check["sell_success"] > 0

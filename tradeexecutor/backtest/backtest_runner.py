@@ -38,7 +38,7 @@ from tradeexecutor.strategy.pandas_trader.runner import PandasTraderRunner
 from tradeexecutor.strategy.pandas_trader.strategy_input import StrategyInputIndicators
 from tradeexecutor.strategy.strategy_module import parse_strategy_module, \
     DecideTradesProtocol, CreateTradingUniverseProtocol, CURRENT_ENGINE_VERSION, StrategyModuleInformation, DecideTradesProtocol2, read_strategy_module, \
-    StrategyParameters, DecideTradesProtocol3, DecideTradesProtocol4
+    StrategyParameters, DecideTradesProtocol3, DecideTradesProtocol4, CreateTradingUniverseProtocolV2
 from tradeexecutor.strategy.engine_version import TradingStrategyEngineVersion
 from tradeexecutor.strategy.reserve_currency import ReserveCurrency
 from tradeexecutor.strategy.default_routing_options import TradeRouting
@@ -729,7 +729,7 @@ def run_backtest_inline(
     minimum_data_lookback_range: Optional[datetime.timedelta] = None,
     client: Optional[Client],
     decide_trades: DecideTradesProtocol | DecideTradesProtocol2 | DecideTradesProtocol3 | DecideTradesProtocol4,
-    create_trading_universe: CreateTradingUniverseProtocol = None,
+    create_trading_universe: CreateTradingUniverseProtocol | CreateTradingUniverseProtocolV2 = None,
     create_indicators: CreateIndicatorsProtocol = None,
     indicator_combinations: set[IndicatorKey] | None = None,
     indicator_storage: DiskIndicatorStorage | None = None,

@@ -264,6 +264,8 @@ def console(
         cycle_timestamp,
         ExecutionMode.preflight_check,
         universe_options,
+        execution_model=execution_model,
+        strategy_parameters=mod.parameters,
     )
 
     with pd.option_context('display.max_rows', None, 'display.max_columns', None, 'display.width', 140):

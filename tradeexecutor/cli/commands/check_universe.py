@@ -73,7 +73,13 @@ def check_universe(
 
     ts = datetime.datetime.utcnow()
     logger.info("Performing universe data check for timestamp %s", ts)
-    universe = universe_model.construct_universe(ts, execution_context.mode, universe_options)
+    universe = universe_model.construct_universe(
+        ts,
+        execution_context.mode,
+        universe_options,
+        execution_model=None,
+        strategy_parameters=None,
+    )
 
     latest_candle_at = universe_model.check_data_age(ts, universe, max_data_delay)
     ago = datetime.datetime.utcnow() - latest_candle_at

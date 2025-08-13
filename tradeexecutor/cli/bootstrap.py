@@ -19,6 +19,7 @@ from web3 import Web3
 from eth_defi.lagoon.vault import LagoonVault
 from eth_defi.vault.base import VaultSpec
 from eth_defi.velvet import VelvetVault
+from tradeexecutor.ethereum.lagoon.execution import LagoonExecution
 from tradeexecutor.ethereum.lagoon.vault import LagoonVaultSyncModel
 from tradeexecutor.ethereum.velvet.velvet_enso_routing import VelvetEnsoRouting
 
@@ -157,6 +158,21 @@ def create_execution_model(
             max_slippage = max_slippage,
             min_balance_threshold = min_gas_balance,
             mainnet_fork = mainnet_fork,
+        )
+        valuation_model_factory = GenericValuationModelFactory()
+        pricing_model_factory = EthereumGenericPricingFactory(sync_model.web3)
+    elif asset_management_mode == AssetManagementMode.lagoon:
+        # Velvet vaults are hardcoded to use Enzo
+        assert isinstance(sync_model, LagoonVaultSyncModel)
+        logger.info("Lagoon execution model for vault: %s", sync_model.vault)
+        execution_model = LagoonExecution(
+            vault=sync_model.vault,
+            tx_builder=tx_builder,
+            confirmation_timeout=confirmation_timeout,
+            confirmation_block_count=confirmation_block_count,
+            max_slippage=max_slippage,
+            min_balance_threshold=min_gas_balance,
+            mainnet_fork=mainnet_fork,
         )
         valuation_model_factory = GenericValuationModelFactory()
         pricing_model_factory = EthereumGenericPricingFactory(sync_model.web3)

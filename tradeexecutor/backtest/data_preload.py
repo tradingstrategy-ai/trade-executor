@@ -2,8 +2,10 @@
 
 import logging
 
-import pandas as pd
 
+from tradeexecutor.strategy.execution_model import ExecutionModel
+from tradeexecutor.strategy.pandas_trader.create_universe_wrapper import call_create_trading_universe
+from tradeexecutor.strategy.parameters import StrategyParameters
 from tradeexecutor.strategy.strategy_module import CreateTradingUniverseProtocol
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
 from tradingstrategy.client import Client, BaseClient
@@ -22,6 +24,8 @@ def preload_data(
     create_trading_universe: CreateTradingUniverseProtocol,
     universe_options: UniverseOptions,
     execution_context: ExecutionContext | None = None,
+    execution_model: ExecutionModel | None = None,
+    strategy_parameters: StrategyParameters | None = None,
 ) -> TradingStrategyUniverse:
     """Show nice progress bar for setting up data fees for backtesting trading universe.
 
@@ -51,10 +55,11 @@ def preload_data(
             engine_version=engine_version,
         )
 
-    return create_trading_universe(
-        pd.Timestamp.now(),
+    return call_create_trading_universe(
+        create_trading_universe,
         client,
-        execution_context,
         universe_options=universe_options,
+        execution_context=execution_context,
+        execution_model=execution_model,
+        strategy_parameters=strategy_parameters,
     )
-

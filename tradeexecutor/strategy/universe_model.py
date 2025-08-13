@@ -2,7 +2,7 @@
 import abc
 import datetime
 from dataclasses import dataclass
-from typing import List, Optional, Collection, Type
+from typing import Optional, Collection, Type
 
 from tradeexecutor.strategy.parameters import StrategyParameters
 from tradingstrategy.timebucket import TimeBucket
@@ -162,9 +162,12 @@ class UniverseModel(abc.ABC):
     """
 
     def preload_universe(
-            self,
-            universe_options: UniverseOptions,
-            execution_context: ExecutionContext | None=None) -> StrategyExecutionUniverse:
+        self,
+        universe_options: UniverseOptions,
+        execution_context: ExecutionContext | None = None,
+        strategy_parameters: StrategyParameters | None = None,
+        execution_model: "tradeexecutor.strategy.execution_model.ExecutionModel | None" = None,
+    ):
         """Triggered before backtesting execution.
 
         - Load all datasets with progress bar display
@@ -178,10 +181,14 @@ class UniverseModel(abc.ABC):
         """
 
     @abc.abstractmethod
-    def construct_universe(self,
-                           ts: datetime.datetime,
-                           mode: ExecutionMode,
-                           universe_options: UniverseOptions) -> StrategyExecutionUniverse:
+    def construct_universe(
+        self,
+        ts: datetime.datetime,
+        mode: ExecutionMode,
+        options: UniverseOptions,
+        strategy_parameters: "tradeexecutor.strategy.parameters.StrategyParameters | None" = None,
+        execution_model: "tradeexecutor.strategy.execution_model.ExecutionModel | None"= None,
+    ) -> StrategyExecutionUniverse:
         """On each strategy tick, refresh/recreate the trading universe for the strategy.
 
         This is called in mainloop before the strategy tick. It needs to download
@@ -209,7 +216,14 @@ class StaticUniverseModel(UniverseModel):
         assert isinstance(universe, StrategyExecutionUniverse)
         self.universe = universe
 
-    def construct_universe(self, ts: datetime.datetime, live: bool, universe_options: UniverseOptions) -> StrategyExecutionUniverse:
+    def construct_universe(
+        self,
+        ts: datetime.datetime,
+        mode: ExecutionMode,
+        options: UniverseOptions,
+        strategy_parameters: "tradeexecutor.strategy.parameters.StrategyParameters | None" = None,
+        execution_model: "tradeexecutor.strategy.execution_model.ExecutionModel | None" = None,
+    ) -> StrategyExecutionUniverse:
         """Always return the same universe copy - there is no refresh."""
         return self.universe
 

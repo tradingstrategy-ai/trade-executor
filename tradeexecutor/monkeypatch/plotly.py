@@ -25,6 +25,10 @@ if (pkg_version is not None) and Version(pkg_version) <= Version("7.0.0"):
         for trace in self.data:
             if not hasattr(trace, "x"):
                 continue
+
+            if len(trace.x) == 0:
+                continue
+
             item = trace.x[0]
             # Detect datetime64 and convert it to native Python datetime that show() can handle
             if isinstance(trace.x, numpy.ndarray):

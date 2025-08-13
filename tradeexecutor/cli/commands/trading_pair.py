@@ -84,7 +84,13 @@ def trading_pair(
 
     ts = datetime.datetime.utcnow()
     logger.info("Performing universe data check for timestamp %s", ts)
-    strategy_universe = universe_model.construct_universe(ts, execution_context.mode, universe_options)
+    strategy_universe = universe_model.construct_universe(
+        ts,
+        execution_context.mode,
+        universe_options,
+        execution_model=universe_init.execution_model,
+        strategy_parameters=universe_init.strategy_parameters,
+    )
 
     assert isinstance(strategy_universe, TradingStrategyUniverse)
 
