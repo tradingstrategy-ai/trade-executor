@@ -4,7 +4,10 @@ import logging
 
 import pandas as pd
 
-from tradeexecutor.strategy.strategy_module import CreateTradingUniverseProtocol
+from tradeexecutor.strategy.execution_model import ExecutionModel
+from tradeexecutor.strategy.pandas_trader.trading_universe_input import CreateTradingUniverseInput
+from tradeexecutor.strategy.parameters import StrategyParameters
+from tradeexecutor.strategy.strategy_module import CreateTradingUniverseProtocol, get_create_trading_universe_version
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
 from tradingstrategy.client import Client, BaseClient
 from tradingstrategy.environment.default_environment import download_with_tqdm_progress_bar
@@ -22,6 +25,8 @@ def preload_data(
     create_trading_universe: CreateTradingUniverseProtocol,
     universe_options: UniverseOptions,
     execution_context: ExecutionContext | None = None,
+    execution_model: ExecutionModel | None = None,
+    strategy_parameters: StrategyParameters | None = None,
 ) -> TradingStrategyUniverse:
     """Show nice progress bar for setting up data fees for backtesting trading universe.
 
@@ -51,10 +56,24 @@ def preload_data(
             engine_version=engine_version,
         )
 
-    return create_trading_universe(
-        pd.Timestamp.now(),
-        client,
-        execution_context,
-        universe_options=universe_options,
-    )
+    version = get_create_trading_universe_version(create_trading_universe)
+
+    match version:
+        case 1:
+            return create_trading_universe(
+                pd.Timestamp.now(),
+                client,
+                execution_context,
+                universe_options=universe_options,
+            )
+        case 2:
+            input = CreateTradingUniverseInput(
+                client=client,
+                timestamp=pd.Timestamp.now(),
+                parameters=strategy_parameters,
+                execution_context=execution_context,
+                execution_model=execution_model,
+                universe_options=universe_options,
+            )
+            return create_trading_universe(input)
 

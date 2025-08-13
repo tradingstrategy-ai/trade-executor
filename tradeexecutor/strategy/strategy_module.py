@@ -21,6 +21,7 @@ from tradeexecutor.strategy.chart.definition import ChartRegistry
 from tradeexecutor.strategy.engine_version import SUPPORTED_TRADING_STRATEGY_ENGINE_VERSIONS, TradingStrategyEngineVersion
 from tradeexecutor.strategy.pandas_trader.indicator import CreateIndicatorsProtocolV1, CreateIndicatorsProtocol
 from tradeexecutor.strategy.pandas_trader.strategy_input import StrategyInput
+from tradeexecutor.strategy.pandas_trader.trading_universe_input import CreateTradingUniverseInput
 from tradeexecutor.strategy.parameters import StrategyParameters
 from tradeexecutor.strategy.tag import StrategyTag
 from tradingstrategy.chain import ChainId
@@ -322,17 +323,37 @@ class CreateTradingUniverseProtocol(Protocol):
 
 
 
-class CreateChartsProtocol(Protocol):
-    """A callback to create ChartsRegistry for the strategy."""
+class CreateTradingUniverseProtocol(Protocol):
+
+    def __call__(self,
+            timestamp: datetime.datetime,
+            client: Optional[Client],
+            execution_context: ExecutionContext,
+            universe_options: UniverseOptions) -> TradingStrategyUniverse:
+
+
+class CreateTradingUniverseProtocolV2(Protocol):
+    """A callback to create the trading universe for the strategy."""
 
     def __call__(
         self,
-        timestamp: datetime.datetime | None,
-        parameters: StrategyParameters,
-        strategy_universe: TradingStrategyUniverse,
-        execution_context: ExecutionContext,
-    ) -> ChartRegistry:
+        input: CreateTradingUniverseInput,
+    ) -> TradingStrategyUniverse:
         pass
+
+
+def get_create_trading_universe_version(
+    func: Callable,
+) -> int:
+    """Get the version number of create_trading_universe() function"""
+    arg_names = [param.name for param in inspect.signature(func).parameters.values()]
+
+    if arg_names == ["input"]:
+        return 2
+    elif arg_names == ["timestamp", "client", "execution_context", "universe_options"]:
+        return 1
+    else:
+        raise RuntimeError(f"Unknown create_trading_universe() args: {arg_names}")
 
 
 @dataclass
@@ -378,7 +399,7 @@ class StrategyModuleInformation:
     #: every execution cycle. If we are backtesting, then this function is
     #: called only once at the start of backtesting and the `decide_trades`
     #: need to deal with new and deprecated trading pairs.
-    create_trading_universe: CreateTradingUniverseProtocol
+    create_trading_universe: CreateTradingUniverseProtocol | CreateTradingUniverseProtocolV2
 
     #: A function to prepare strategy indicators
     #:
