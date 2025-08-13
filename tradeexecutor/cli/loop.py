@@ -742,7 +742,12 @@ class ExecutionLoop:
         """
 
         assert self.execution_context.mode.is_live_trading()
-        universe = self.universe_model.preload_universe(self.universe_options, self.execution_context)
+        universe = self.universe_model.preload_universe(
+            self.universe_options,
+            self.execution_context,
+            execution_model=self.execution_model,
+            strategy_parameters=self.parameters,
+        )
         universe = cast(TradingStrategyUniverse, universe)
 
         ts = datetime.datetime.utcnow()

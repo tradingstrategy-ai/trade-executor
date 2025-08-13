@@ -435,9 +435,12 @@ def decide_trades(
     timestamp = input.timestamp
     indicators = input.indicators
     strategy_universe = input.strategy_universe
+    cycle = input.cycle
 
     portfolio = position_manager.get_current_portfolio()
     equity = portfolio.get_total_equity()
+
+    state.other_data.save(cycle, "lagoon_compat_check", strategy_universe.other_data["lagoon_compat_check"])
 
     # All gone, stop doing decisions
     if input.execution_context.mode == ExecutionMode.backtesting:

@@ -204,6 +204,9 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
     #:
     pair_cache: dict = field(default_factory=dict)
 
+    #: Misc. bag of data, used in testing and so on
+    other_data: dict = field(default_factory=dict)
+
     def __repr__(self):
         pair_count = self.data_universe.pairs.get_count()
         if pair_count <= 3:
@@ -1883,9 +1886,11 @@ class DefaultTradingStrategyUniverseModel(TradingStrategyUniverseModel):
         self.create_trading_universe = create_trading_universe
 
     def preload_universe(
-            self,
-            universe_options: UniverseOptions,
-            execution_context: ExecutionContext | None = None
+        self,
+        universe_options: UniverseOptions,
+        execution_context: ExecutionContext | None = None,
+        strategy_parameters: StrategyParameters | None = None,
+        execution_model: "tradeexecutor.strategy.execution_model.ExecutionModel | None" = None,
     ):
         """Triggered before backtesting execution.
 
@@ -1901,6 +1906,8 @@ class DefaultTradingStrategyUniverseModel(TradingStrategyUniverseModel):
                 self.create_trading_universe,
                 universe_options=universe_options,
                 execution_context=execution_context,
+                strategy_parameters=strategy_parameters,
+                execution_model=execution_model,
             )
 
     def construct_universe(

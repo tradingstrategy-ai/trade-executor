@@ -292,10 +292,11 @@ def test_cli_lagoon_anvil_checks(
         trading_strategy_module_address=deploy_info["Trading strategy module"],
     )
 
-    # 3. Perform a test trade
-    cli.main(args=["perform-test-trade", "--pair", "(binance, pancakeswap-v2, WBNB, USDT, 0.0025)"], standalone_mode=False)
+    # 4. Start executor and run 1s cycle
+    cli.main(args=["start"], standalone_mode=False)
 
     state = State.read_json_file(state_file)
-    import ipdb ; ipdb.set_trace()
-
-
+    lagoon_compat_check = state.other_data.load_latest("lagoon_compat_check")
+    assert lagoon_compat_check["count"] > 0
+    assert lagoon_compat_check["not_compatible"] > 0
+    assert lagoon_compat_check["sell_success"] > 0

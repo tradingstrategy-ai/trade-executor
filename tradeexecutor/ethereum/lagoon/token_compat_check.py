@@ -95,4 +95,6 @@ def check_tokens_for_lagoon(
         if not entry.is_compatible():
             pair.set_tradeable(False, f"Lagoon check failed: {entry.revert_reason}")
 
+    strategy_universe.other_data["lagoon_compat_check"] = compat_db.calculate_stats()
+
     return compat_db

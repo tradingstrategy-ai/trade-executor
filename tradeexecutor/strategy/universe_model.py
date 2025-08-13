@@ -162,9 +162,12 @@ class UniverseModel(abc.ABC):
     """
 
     def preload_universe(
-            self,
-            universe_options: UniverseOptions,
-            execution_context: ExecutionContext | None=None) -> StrategyExecutionUniverse:
+        self,
+        universe_options: UniverseOptions,
+        execution_context: ExecutionContext | None = None,
+        strategy_parameters: StrategyParameters | None = None,
+        execution_model: "tradeexecutor.strategy.execution_model.ExecutionModel | None" = None,
+    ):
         """Triggered before backtesting execution.
 
         - Load all datasets with progress bar display
