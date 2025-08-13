@@ -414,6 +414,7 @@ def test_velvet_intent_based_open_position_many(
     assert all(t for t in trades if t.is_success())
 
 
+@pytest.mark.skip(reason="Let's not support Velvet any longer")
 def test_velvet_intent_based_open_many_close_one(
     state_with_starting_positions: State,
     velvet_test_vault_strategy_universe: TradingStrategyUniverse,
