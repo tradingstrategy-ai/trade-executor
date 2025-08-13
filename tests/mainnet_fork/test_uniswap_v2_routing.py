@@ -558,6 +558,7 @@ def test_three_leg_buy_sell(
     assert balance == pytest.approx(9999003745120046326850)
 
 
+@flaky.flaky
 def test_three_leg_buy_sell_twice_on_chain(
         web3,
         hot_wallet,

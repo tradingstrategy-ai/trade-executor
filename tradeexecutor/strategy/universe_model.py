@@ -186,8 +186,8 @@ class UniverseModel(abc.ABC):
         ts: datetime.datetime,
         mode: ExecutionMode,
         options: UniverseOptions,
-        strategy_parameters: "tradeexecutor.strategy.parameters.StrategyParameters | None",
-        execution_model: "tradeexecutor.strategy.execution_model.ExecutionModel | None",
+        strategy_parameters: "tradeexecutor.strategy.parameters.StrategyParameters | None" = None,
+        execution_model: "tradeexecutor.strategy.execution_model.ExecutionModel | None"= None,
     ) -> StrategyExecutionUniverse:
         """On each strategy tick, refresh/recreate the trading universe for the strategy.
 
@@ -216,7 +216,14 @@ class StaticUniverseModel(UniverseModel):
         assert isinstance(universe, StrategyExecutionUniverse)
         self.universe = universe
 
-    def construct_universe(self, ts: datetime.datetime, live: bool, universe_options: UniverseOptions) -> StrategyExecutionUniverse:
+    def construct_universe(
+        self,
+        ts: datetime.datetime,
+        mode: ExecutionMode,
+        options: UniverseOptions,
+        strategy_parameters: "tradeexecutor.strategy.parameters.StrategyParameters | None" = None,
+        execution_model: "tradeexecutor.strategy.execution_model.ExecutionModel | None" = None,
+    ) -> StrategyExecutionUniverse:
         """Always return the same universe copy - there is no refresh."""
         return self.universe
 
