@@ -172,6 +172,8 @@ def get_create_trading_universe_version(
 
     if arg_names == ["input"]:
         return 2
+    elif arg_names == ["ts", "client", "execution_context", "universe_options"]:
+        return 1
     elif arg_names == ["timestamp", "client", "execution_context", "universe_options"]:
         return 1
     else:

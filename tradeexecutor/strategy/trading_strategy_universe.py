@@ -1915,8 +1915,8 @@ class DefaultTradingStrategyUniverseModel(TradingStrategyUniverseModel):
         ts: datetime.datetime,
         mode: ExecutionMode,
         options: UniverseOptions,
-        strategy_parameters: StrategyParameters | None,
-        execution_model: "tradeexecutor.strategy.execution_model.ExecutionModel | None",
+        strategy_parameters: "tradeexecutor.strategy.parameters.StrategyParameters | None" = None,
+        execution_model: "tradeexecutor.strategy.execution_model.ExecutionModel | None" = None,
     ) -> TradingStrategyUniverse:
         with self.execution_context.timed_task_context_manager(task_name="create_trading_universe"):
             universe = call_create_trading_universe(

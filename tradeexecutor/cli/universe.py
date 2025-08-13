@@ -101,5 +101,5 @@ def setup_universe(
         max_data_delay=max_data_delay,
         run_description=run_description,
         strategy_parameters=parameters,
-        execution_model=run_description.execution_model,
+        execution_model=run_description.runner.execution_model,
     )
