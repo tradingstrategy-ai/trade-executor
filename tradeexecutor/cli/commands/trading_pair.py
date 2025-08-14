@@ -88,7 +88,7 @@ def trading_pair(
         ts,
         execution_context.mode,
         universe_options,
-        execution_model=universe_init.execution_model,
+        execution_model=None,
         strategy_parameters=universe_init.strategy_parameters,
     )
 

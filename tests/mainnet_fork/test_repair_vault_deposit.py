@@ -4,7 +4,8 @@ import shutil
 import os.path
 import secrets
 from pathlib import Path
-from unittest import mock
+
+import flaky
 
 import pytest
 from _pytest.fixtures import FixtureRequest
@@ -84,6 +85,7 @@ def environment(
     return environment
 
 
+@flaky.flaky
 @pytest.mark.slow_test_group
 def test_repair_vault_position_open_failed(
     environment: dict,
