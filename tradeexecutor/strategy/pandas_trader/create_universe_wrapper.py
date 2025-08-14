@@ -35,6 +35,7 @@ def call_create_trading_universe(
 
     match version:
         case 1:
+            # Legacy path
             return create_trading_universe(
                 timestamp or pd.Timestamp.now(),
                 client,
@@ -42,6 +43,7 @@ def call_create_trading_universe(
                 universe_options=universe_options,
             )
         case 2:
+            # New path using extensible dataclass as args
             input = CreateTradingUniverseInput(
                 client=client,
                 timestamp=timestamp or pd.Timestamp.now(),
