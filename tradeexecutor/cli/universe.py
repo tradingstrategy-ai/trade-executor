@@ -7,6 +7,7 @@ import logging
 
 from packaging import version
 
+from tradeexecutor.cli.bootstrap import create_execution_and_sync_model
 from tradeexecutor.strategy.description import StrategyExecutionDescription
 from tradeexecutor.strategy.execution_context import ExecutionContext
 from tradeexecutor.strategy.execution_model import ExecutionModel
@@ -27,7 +28,6 @@ class UniverseInitData:
     universe_options: UniverseOptions
     max_data_delay: datetime.timedelta
     run_description: StrategyExecutionDescription
-    execution_model: ExecutionModel
     strategy_parameters: StrategyParameters
 
 
@@ -81,6 +81,7 @@ def setup_universe(
             execution_context,
         )
     else:
+        logger.info("No strategy parameters available in setup_universe()")
         universe_options = UniverseOptions()
 
     # Check that Parameters gives us period how much history we need
@@ -101,5 +102,4 @@ def setup_universe(
         max_data_delay=max_data_delay,
         run_description=run_description,
         strategy_parameters=parameters,
-        execution_model=run_description.runner.execution_model,
     )

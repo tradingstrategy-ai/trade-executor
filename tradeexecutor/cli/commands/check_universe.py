@@ -10,16 +10,24 @@ import pandas as pd
 
 from .app import app
 from .shared_options import unit_testing
-from ..bootstrap import prepare_executor_id, prepare_cache
+from ..bootstrap import prepare_executor_id, prepare_cache, create_web3_config, create_client, create_execution_and_sync_model
 from ..log import setup_logging
+from ..slippage import configure_max_slippage_tolerance
 from ..universe import setup_universe
 from ...analysis.pair import display_strategy_universe
-from ...strategy.bootstrap import import_strategy_file
+from ...strategy.approval import UncheckedApprovalModel
+from ...strategy.bootstrap import import_strategy_file, make_factory_from_strategy_mod
 from ...strategy.cycle import CycleDuration, snap_to_previous_tick
-from ...strategy.execution_context import  console_command_execution_context
+from ...strategy.description import StrategyExecutionDescription
+from ...strategy.execution_context import console_command_execution_context, ExecutionContext, ExecutionMode
+from ...strategy.execution_model import AssetManagementMode
 from ...strategy.pandas_trader.indicator import calculate_and_load_indicators_inline, MemoryIndicatorStorage
+from ...strategy.run_state import RunState
+from ...strategy.strategy_module import StrategyModuleInformation, read_strategy_module
+from ...strategy.trading_strategy_universe import TradingStrategyUniverseModel
 from ...utils.cpu import get_safe_max_workers_count
 from . import shared_options
+from ...utils.timer import timed_task
 
 
 @app.command()
@@ -31,6 +39,23 @@ def check_universe(
     max_data_delay_minutes: int = shared_options.max_data_delay_minutes,
     log_level: str = shared_options.log_level,
     max_workers: int | None = shared_options.max_workers,
+
+    json_rpc_binance: Optional[str] = shared_options.json_rpc_binance,
+    json_rpc_polygon: Optional[str] = shared_options.json_rpc_polygon,
+    json_rpc_avalanche: Optional[str] = shared_options.json_rpc_avalanche,
+    json_rpc_ethereum: Optional[str] = shared_options.json_rpc_ethereum,
+    json_rpc_base: Optional[str] = shared_options.json_rpc_base,
+    json_rpc_arbitrum: Optional[str] = shared_options.json_rpc_arbitrum,
+    json_rpc_anvil: Optional[str] = shared_options.json_rpc_anvil,
+    private_key: str = shared_options.private_key,
+
+    asset_management_mode: AssetManagementMode = shared_options.asset_management_mode,
+    vault_address: Optional[str] = shared_options.vault_address,
+    vault_adapter_address: Optional[str] = shared_options.vault_adapter_address,
+    vault_payment_forwarder_address: Optional[str] = shared_options.vault_payment_forwarder,
+    min_gas_balance: Optional[float] = shared_options.min_gas_balance,
+    max_slippage: float = shared_options.max_slippage,
+
 ):
     """Checks that the trading universe is healthy.
 
@@ -48,38 +73,95 @@ def check_universe(
 
     logger.info("Loading strategy file %s", strategy_file)
 
-    strategy_factory = import_strategy_file(strategy_file)
+    mod: StrategyModuleInformation = read_strategy_module(strategy_file)
 
     cache_path = prepare_cache(id, cache_path)
 
-    assert trading_strategy_api_key, "TRADING_STRATEGY_API_KEY missing"
+    execution_context = ExecutionContext(
+        mode=ExecutionMode.preflight_check,
+        timed_task_context_manager=timed_task,
+        engine_version=mod.trading_strategy_engine_version,
+    )
 
-    execution_context = console_command_execution_context
-
-    universe_init = setup_universe(
-        trading_strategy_api_key=trading_strategy_api_key,
-        cache_path=cache_path,
-        max_data_delay_minutes=max_data_delay_minutes,
-        strategy_factory=strategy_factory,
-        execution_context=execution_context,
+    web3config = create_web3_config(
+        json_rpc_binance=json_rpc_binance,
+        json_rpc_polygon=json_rpc_polygon,
+        json_rpc_avalanche=json_rpc_avalanche,
+        json_rpc_ethereum=json_rpc_ethereum, json_rpc_base=json_rpc_base,
+        json_rpc_anvil=json_rpc_anvil,
+        json_rpc_arbitrum=json_rpc_arbitrum,
         unit_testing=unit_testing,
     )
 
-    # Deconstruct strategy input
-    universe_model = universe_init.universe_model
-    universe_options = universe_init.universe_options
-    max_data_delay = universe_init.max_data_delay
-    run_description = universe_init.run_description
+    if not web3config.has_any_connection():
+        raise RuntimeError("perform-test-trade requires that you pass JSON-RPC connection to one of the networks")
 
+    web3config.choose_single_chain()
+
+    max_slippage = configure_max_slippage_tolerance(max_slippage, mod)
+
+    execution_model, sync_model, valuation_model_factory, pricing_model_factory = create_execution_and_sync_model(
+        asset_management_mode=asset_management_mode,
+        private_key=private_key,
+        web3config=web3config,
+        min_gas_balance=min_gas_balance,
+        max_slippage=max_slippage,
+        vault_address=vault_address,
+        vault_adapter_address=vault_adapter_address,
+        vault_payment_forwarder_address=vault_payment_forwarder_address,
+        routing_hint=mod.trade_routing,
+        confirmation_block_count=0,  # Not used
+        confirmation_timeout=datetime.timedelta(seconds=60),  # Not used
+    )
+
+    client, routing_model = create_client(
+        mod=mod,
+        web3config=web3config,
+        trading_strategy_api_key=trading_strategy_api_key,
+        cache_path=cache_path,
+        clear_caches=False,
+        asset_management_mode=asset_management_mode,
+        test_evm_uniswap_v2_factory=None,  # Not used
+        test_evm_uniswap_v2_router=None, # Not used
+        test_evm_uniswap_v2_init_code_hash=None,  # Not used
+    )
+    assert client is not None, "You need to give details for TradingStrategy.ai client"
+
+    # Set up the strategy engine
+    factory = make_factory_from_strategy_mod(mod)
+
+    run_description: StrategyExecutionDescription = factory(
+        execution_model=execution_model,
+        execution_context=execution_context,
+        timed_task_context_manager=execution_context.timed_task_context_manager,
+        sync_model=sync_model,
+        valuation_model_factory=valuation_model_factory,
+        pricing_model_factory=pricing_model_factory,
+        approval_model=UncheckedApprovalModel(),
+        client=client,
+        routing_model=routing_model,  # None unless test EVM
+        run_state=RunState(),
+    )
+
+    universe_options = mod.get_universe_options()
+
+    # We construct the trading universe to know what's our reserve asset
+    universe_model: TradingStrategyUniverseModel = run_description.universe_model
     ts = datetime.datetime.utcnow()
-    logger.info("Performing universe data check for timestamp %s, execution model is %s", ts, universe_init.execution_model)
     universe = universe_model.construct_universe(
         ts,
-        execution_context.mode,
+        ExecutionMode.preflight_check,
         universe_options,
-        execution_model=universe_init.execution_model,
-        strategy_parameters=universe_init.strategy_parameters,
+        strategy_parameters=mod.parameters,
+        execution_model=execution_model,
     )
+
+    if max_data_delay_minutes:
+        max_data_delay = datetime.timedelta(minutes=max_data_delay_minutes)
+        logger.info(f"Maximum price feed delay is {max_data_delay}")
+    else:
+        logger.info(f"Maximum price feed delay is not set")
+        max_data_delay = None
 
     latest_candle_at = universe_model.check_data_age(ts, universe, max_data_delay)
     ago = datetime.datetime.utcnow() - latest_candle_at
