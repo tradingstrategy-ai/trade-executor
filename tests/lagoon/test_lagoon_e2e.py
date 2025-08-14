@@ -226,7 +226,7 @@ def test_cli_lagoon_backtest(
     mocker,
     state_file,
     web3,
-    deployed_vault_environment,
+    pre_deployment_vault_environment,
 ):
     """Run backtest using a the vault strat."""
 
