@@ -25,8 +25,7 @@ from tradeexecutor.strategy.pandas_trader.position_manager import PositionManage
 from tradeexecutor.strategy.pricing_model import PricingModel
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
 from tradeexecutor.strategy.execution_context import ExecutionMode
-from tradeexecutor.strategy.run_state import RunState
-from tradeexecutor.testing.simulated_execution_loop import set_up_simulated_execution_loop_one_delta, set_up_simulated_ethereum_generic_execution
+from tradeexecutor.testing.simulated_execution_loop import set_up_simulated_ethereum_generic_execution
 from tradeexecutor.utils.blockchain import get_latest_block_timestamp
 from tradingstrategy.chain import ChainId
 from tradingstrategy.utils.time import to_int_unix_timestamp
@@ -35,6 +34,9 @@ pytestmark = pytest.mark.skipif(
     (os.environ.get("JSON_RPC_POLYGON") is None) or (shutil.which("anvil") is None),
     reason="Set JSON_RPC_POLYGON env install anvil command to run these tests",
 )
+
+
+CI = os.environ.get("CI") == "true"
 
 
 def decide_trades(
@@ -130,7 +132,7 @@ def test_generic_router_spot_and_short_strategy(
 
 
 @pytest.mark.slow_test_group
-@flaky.flaky
+@pytest.mark.skipif(CI, reason="Too unstable on Github")
 def test_generic_router_spot_and_short_strategy_manual_tick(
     logger: Logger,
     web3: Web3,

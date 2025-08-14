@@ -5,7 +5,6 @@ import secrets
 from pathlib import Path
 from unittest import mock
 
-import flaky
 import pytest
 
 from eth_account import Account
@@ -256,7 +255,7 @@ def vault(
     return vault
 
 
-@flaky.flaky
+@pytest.mark.skipif(CI, reason="Too flaky on Github")
 def test_enzyme_credit_positions_with_big_size(
     vault: Vault,
     environment: dict,

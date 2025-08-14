@@ -85,7 +85,7 @@ def sync_reserves(
     # Get raw ERC-20 holdings of the address
     balances = update_wallet_balances(
         web3,
-        wallet_address,
+        web3.to_checksum_address(wallet_address),
         [web3.to_checksum_address(a.address) for a in supported_reserve_currencies],
         block_identifier=block_identifier,
     )
