@@ -478,7 +478,8 @@ def setup_sentry_logging(*, application_name: str, sentry_dsn: str):
             "trade": "info",
             "trade_high": "warning",
         }
-        crumb["level"] = custom_level_mapping.get(crumb["level"], crumb["level"])
+        current_level = crumb.get("level")
+        crumb["level"] = custom_level_mapping.get(current_level, current_level)
 
         return crumb
 
