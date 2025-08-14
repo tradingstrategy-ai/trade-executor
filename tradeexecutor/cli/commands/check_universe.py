@@ -77,8 +77,8 @@ def check_universe(
         ts,
         execution_context.mode,
         universe_options,
-        execution_model=None,
-        strategy_parameters=None,
+        execution_model=universe_init.execution_model,
+        strategy_parameters=universe_init.strategy_parameters,
     )
 
     latest_candle_at = universe_model.check_data_age(ts, universe, max_data_delay)
