@@ -188,7 +188,7 @@ def test_cli_lagoon_check_wallet(
 # AssertionError: Could not read block number from Anvil after the launch anvil: at http://localhost:22353, stdout is 0 bytes, stderr is 312 bytes
 @flaky.flaky
 def test_cli_lagoon_check_universe(
-    pre_deployment_vault_environment: dict,
+    deployed_vault_environment: dict,
     mocker,
     state_file,
     web3,
@@ -196,7 +196,7 @@ def test_cli_lagoon_check_universe(
     """Run check-universe command."""
 
     cli = get_command(app)
-    mocker.patch.dict("os.environ", pre_deployment_vault_environment, clear=True)
+    mocker.patch.dict("os.environ", deployed_vault_environment, clear=True)
     cli.main(args=["check-universe"], standalone_mode=False)
 
 
@@ -226,7 +226,7 @@ def test_cli_lagoon_backtest(
     mocker,
     state_file,
     web3,
-    pre_deployment_vault_environment,
+    deployed_vault_environment,
 ):
     """Run backtest using a the vault strat."""
 

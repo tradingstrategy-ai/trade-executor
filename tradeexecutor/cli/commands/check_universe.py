@@ -2,12 +2,14 @@
 
 import datetime
 import logging
+import secrets
 from pathlib import Path
 from typing import Optional
 
 import pandas as pd
 
-
+from eth_defi.hotwallet import HotWallet
+from tradingstrategy.chain import ChainId
 from .app import app
 from .shared_options import unit_testing
 from ..bootstrap import prepare_executor_id, prepare_cache, create_web3_config, create_client, create_execution_and_sync_model
@@ -53,9 +55,6 @@ def check_universe(
     vault_address: Optional[str] = shared_options.vault_address,
     vault_adapter_address: Optional[str] = shared_options.vault_adapter_address,
     vault_payment_forwarder_address: Optional[str] = shared_options.vault_payment_forwarder,
-    min_gas_balance: Optional[float] = shared_options.min_gas_balance,
-    max_slippage: float = shared_options.max_slippage,
-
 ):
     """Checks that the trading universe is healthy.
 
@@ -94,25 +93,35 @@ def check_universe(
     )
 
     if not web3config.has_any_connection():
-        raise RuntimeError("perform-test-trade requires that you pass JSON-RPC connection to one of the networks")
+        # Only revelvant if create_trading_universe() uses web3 connection
+        web3config.default_chain_id = mod.chain_id or ChainId.ethereum
+    else:
+        web3config.choose_single_chain()
 
-    web3config.choose_single_chain()
+    # create_trading_universe() which needs to access Lagoon
+    if asset_management_mode is None:
+        asset_management_mode = AssetManagementMode.hot_wallet
 
-    max_slippage = configure_max_slippage_tolerance(max_slippage, mod)
+    # create_trading_universe() which needs to access Lagoon
+    if private_key is None:
+        private_key = "0x" + secrets.token_hex(32)
 
-    execution_model, sync_model, valuation_model_factory, pricing_model_factory = create_execution_and_sync_model(
-        asset_management_mode=asset_management_mode,
-        private_key=private_key,
-        web3config=web3config,
-        min_gas_balance=min_gas_balance,
-        max_slippage=max_slippage,
-        vault_address=vault_address,
-        vault_adapter_address=vault_adapter_address,
-        vault_payment_forwarder_address=vault_payment_forwarder_address,
-        routing_hint=mod.trade_routing,
-        confirmation_block_count=0,  # Not used
-        confirmation_timeout=datetime.timedelta(seconds=60),  # Not used
-    )
+    if web3config.has_any_connection():
+        execution_model, sync_model, valuation_model_factory, pricing_model_factory = create_execution_and_sync_model(
+            asset_management_mode=asset_management_mode,
+            private_key=private_key,
+            web3config=web3config,
+            min_gas_balance=0,
+            max_slippage=99,
+            vault_address=vault_address,
+            vault_adapter_address=vault_adapter_address,
+            vault_payment_forwarder_address=vault_payment_forwarder_address,
+            routing_hint=mod.trade_routing,
+            confirmation_block_count=0,  # Not used
+            confirmation_timeout=datetime.timedelta(seconds=60),  # Not used
+        )
+    else:
+        execution_model = sync_model = valuation_model_factory = pricing_model_factory = None
 
     client, routing_model = create_client(
         mod=mod,
