@@ -72,7 +72,7 @@ def check_universe(
     run_description = universe_init.run_description
 
     ts = datetime.datetime.utcnow()
-    logger.info("Performing universe data check for timestamp %s", ts)
+    logger.info("Performing universe data check for timestamp %s, execution model is %s", ts, universe_init.execution_model)
     universe = universe_model.construct_universe(
         ts,
         execution_context.mode,

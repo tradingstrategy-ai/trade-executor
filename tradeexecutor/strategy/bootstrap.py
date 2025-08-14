@@ -169,11 +169,12 @@ def make_factory_from_strategy_mod(mod: StrategyModuleInformation) -> StrategyFa
         )
 
         logger.info(
-            "Starting strategy runner in execution mode %s:\n%s\nVisualisations are: %s\nmax_price_impact is: %s",
+            "Starting strategy runner in execution mode %s:\n%s\nVisualisations are: %s\nmax_price_impact is: %s\nExecution model is: %s",
             execution_context.mode.name,
             runner.__class__.__name__,
             visualisation,
             max_price_impact,
+            execution_model,
         )
 
         return StrategyExecutionDescription(

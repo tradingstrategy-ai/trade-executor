@@ -1,3 +1,5 @@
+import logging
+
 import pandas as pd
 
 from tradeexecutor.strategy.execution_context import ExecutionContext
@@ -5,6 +7,9 @@ from tradeexecutor.strategy.pandas_trader.trading_universe_input import CreateTr
 from tradeexecutor.strategy.parameters import StrategyParameters
 from tradeexecutor.strategy.pandas_trader.trading_universe_input import get_create_trading_universe_version, CreateTradingUniverseProtocol, CreateTradingUniverseProtocolV2
 from tradeexecutor.strategy.universe_model import UniverseOptions
+
+
+logger = logging.getLogger(__name__)
 
 
 def call_create_trading_universe(
@@ -19,6 +24,14 @@ def call_create_trading_universe(
     """Call the create_trading_universe function to preload data."""
 
     version = get_create_trading_universe_version(create_trading_universe)
+
+    logger.info(
+        "call_create_trading_universe(), version %s, execution model %s, timestamp %s, mode %s",
+        version,
+        execution_model,
+        timestamp,
+        execution_context.mode.name,
+    )
 
     match version:
         case 1:
