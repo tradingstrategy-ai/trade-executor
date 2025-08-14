@@ -177,7 +177,9 @@ def repair(
     universe = universe_model.construct_universe(
         ts,
         ExecutionMode.preflight_check,
-        universe_options
+        universe_options,
+        execution_model=run_description.runner.execution_model,
+        strategy_parameters=mod.parameters,
     )
 
     runner = run_description.runner

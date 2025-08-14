@@ -217,6 +217,8 @@ def correct_accounts(
         datetime.datetime.utcnow(),
         execution_context.mode,
         UniverseOptions(history_period=mod.get_live_trading_history_period()),
+        execution_model=run_description.runner.execution_model,
+        strategy_parameters=mod.parameters,
     )
 
     runner = run_description.runner
