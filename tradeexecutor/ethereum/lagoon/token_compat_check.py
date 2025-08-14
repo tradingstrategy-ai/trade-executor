@@ -1,4 +1,5 @@
 """Token compatibility check for Lagoon."""
+from pathlib import Path
 
 from tradeexecutor.ethereum.lagoon.execution import LagoonExecution
 from tradeexecutor.state.identifier import TradingPairIdentifier
@@ -45,6 +46,7 @@ def check_tokens_for_lagoon(
     strategy_universe: TradingStrategyUniverse,
     lagoon_execution: LagoonExecution,
     max_tokens: int | None = None,
+    database_file: Path = Path.home() / ".tradingstrategy" / "token-checks" / "lagoon_token_check.pickle",
 ) -> LagoonTokenCheckDatabase:
     """Check tokens for Lagoon compatibility.
 
@@ -77,6 +79,7 @@ def check_tokens_for_lagoon(
         vault_address=vault.vault_address,
         trading_strategy_module_address=vault.trading_strategy_module_address,
         asset_manager_address=asset_manager_address,
+        database_file=database_file,
     )
 
     entries = list(compat_db.report_by_token.values())
