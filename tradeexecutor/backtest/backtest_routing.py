@@ -160,8 +160,9 @@ class BacktestRoutingIgnoredModel(BacktestRoutingModel):
     - Use trading fee assuming we would trade any pair without hops
 =    """
 
-    def __init__(self, reserve_token_address: str):
+    def __init__(self, reserve_token_address: str, three_leg_resolution=True):
         RoutingModel.__init__(self, dict(), reserve_token_address)
+        self.three_leg_resolution = three_leg_resolution
 
     @property
     def trading_fee(self):
