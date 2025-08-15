@@ -1276,7 +1276,7 @@ class TradeAnalysis:
         all_stats.loc['Annualised return %', 'Short'] = format_value_for_summary_table(as_percent(calculate_annualised_return(profit_short_pct, duration)))
 
         if urls:
-            all_stats['help_links'] = [TradeSummary.help_links()[key] for key in all_stats.index]
+            all_stats['help_links'] = [TradeSummary.help_links().get(key, "") for key in all_stats.index]
 
         return all_stats
 

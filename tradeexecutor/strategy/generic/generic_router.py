@@ -8,6 +8,7 @@ import logging
 
 from web3 import Web3
 
+from tradeexecutor.state.identifier import TradingPairIdentifier
 from tradeexecutor.state.state import State
 from tradeexecutor.state.trade import TradeExecution
 from tradeexecutor.strategy.generic.pair_configurator import PairConfigurator
@@ -92,6 +93,12 @@ class GenericRouting(RoutingModel):
 
         return GenericRoutingState(universe, substates)
 
+    def get_router(self, pair: TradingPairIdentifier) -> RoutingModel:
+        routing_id = self.pair_configurator.match_router(pair)
+        protocol_config = self.pair_configurator.get_config(routing_id)
+        router = protocol_config.routing_model
+        return router, protocol_config
+
     def setup_trades(
         self,
         state: State,
@@ -113,9 +120,7 @@ class GenericRouting(RoutingModel):
         assert isinstance(routing_state, GenericRoutingState)
 
         for t in trades:
-            routing_id = self.pair_configurator.match_router(t.pair)
-            protocol_config = self.pair_configurator.get_config(routing_id)
-            router = protocol_config.routing_model
+            router, protocol_config = self.get_router(t.pair)
             # Set the router, so we know
             # in the post-trade analysis which route this trade took
             t.route = protocol_config.routing_id.router_name

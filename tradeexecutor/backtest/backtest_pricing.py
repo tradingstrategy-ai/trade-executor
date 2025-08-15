@@ -15,6 +15,7 @@ from tradeexecutor.state.identifier import TradingPairIdentifier
 from tradeexecutor.strategy.execution_model import ExecutionModel
 
 from tradeexecutor.state.types import USDollarPrice, Percent, USDollarAmount, AnyTimestamp
+from tradeexecutor.strategy.generic.generic_router import GenericRouting
 from tradeexecutor.strategy.pricing_model import PricingModel
 from tradeexecutor.strategy.trade_pricing import TradePricing
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse, translate_trading_pair
@@ -334,8 +335,13 @@ class BacktestPricing(PricingModel):
         if self.trading_fee_override is not None:
             return self.trading_fee_override
 
+        # Multi routing hack
+        routing_model = self.routing_model
+        if isinstance(routing_model, GenericRouting):
+            routing_model, protocol_config = routing_model.get_router(pair)
+
         # Three legged, count in the fee in the middle leg
-        if self.three_leg_resolution and (pair.quote.address != self.routing_model.reserve_token_address):
+        if self.three_leg_resolution and (pair.quote.address != routing_model.reserve_token_address):
             intermediate_pairs = self.routing_model.allowed_intermediary_pairs
             assert self.pairs is not None, "To do three-legged fee resolutoin, we neeed to get access to pairs in constructor"
             reserve_token = self.pairs.get_token(self.routing_model.reserve_token_address)
