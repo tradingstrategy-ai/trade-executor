@@ -427,6 +427,7 @@ def test_backtest_open_short_failure_too_high_leverage(persistent_test_client: C
             reserve_currency=ReserveCurrency.usdc,
             trade_routing=TradeRouting.uniswap_v3_usdc_poly,
             engine_version="0.3",
+            three_leg_resolution=False,
         )
 
     assert str(e.value) == "Max short leverage for USDC is 5.666666666666666, got 10"
@@ -469,6 +470,7 @@ def test_backtest_open_short_failure_too_far_stoploss(persistent_test_client: Cl
             reserve_currency=ReserveCurrency.usdc,
             trade_routing=TradeRouting.uniswap_v3_usdc_poly,
             engine_version="0.3",
+            three_leg_resolution=False,
         )
 
     assert str(e.value) == "stop_loss_pct must be bigger than liquidation distance 0.9375, got 0.6"

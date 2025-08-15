@@ -824,21 +824,26 @@ class ExecutionLoop:
 
         routing_state, pricing_model, valuation_model = self.runner.setup_routing(universe)
         assert pricing_model, "Routing did not provide pricing_model"
+        routing_model = self.runner.routing_model
 
         if isinstance(pricing_model, BacktestPricing):
             stop_loss_pricing_model = BacktestPricing(
                 universe.backtest_stop_loss_candles,
-                self.runner.routing_model,
+                routing_model,
                 time_bucket=universe.backtest_stop_loss_time_bucket,
-                allow_missing_fees=pricing_model.allow_missing_fees
+                allow_missing_fees=pricing_model.allow_missing_fees,
+                pairs=universe.data_universe.pairs,
+                three_leg_resolution=routing_model.three_leg_resolution,
             )
         elif isinstance(pricing_model, GenericPricing):
             # TODO: This needs have a test coverage / figured out if correct
             stop_loss_pricing_model = BacktestPricing(
                 universe.backtest_stop_loss_candles,
-                self.runner.routing_model,
+                routing_model,
                 time_bucket=universe.backtest_stop_loss_time_bucket,
-                allow_missing_fees=False
+                allow_missing_fees=False,
+                pairs=universe.data_universe.pairs,
+                three_leg_resolution=routing_model.three_leg_resolution,
             )
         else:
             raise AssertionError(f"Don't know how to deal with {pricing_model}")

@@ -11,6 +11,7 @@ from tradeexecutor.strategy.pricing_model import PricingModel
 from tradeexecutor.strategy.routing import RoutingModel
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
 from tradeexecutor.strategy.valuation import ValuationModel
+from tradingstrategy.pair import PandasPairUniverse
 
 
 @dataclass
@@ -106,7 +107,7 @@ class PairConfigurator(ABC):
         self.data_delay_tolerance = data_delay_tolerance  # See BacktestPricingModel
 
     @abstractmethod
-    def create_config(self, routing_id: ProtocolRoutingId) -> ProtocolRoutingConfig:
+    def create_config(self, routing_id: ProtocolRoutingId, three_leg_resolution=True, pairs=None) -> ProtocolRoutingConfig:
         """Create a protocol configuraiton
 
         - Initialise pricing, valuation and router models
@@ -182,7 +183,12 @@ class PairConfigurator(ABC):
         router = self.match_router(pair)
         return self.get_config(router).pricing_model
 
-    def get_config(self, router: ProtocolRoutingId) -> ProtocolRoutingConfig:
+    def get_config(
+        self,
+        router: ProtocolRoutingId,
+        pairs: PandasPairUniverse | None = None,
+        three_leg_resolution=True,
+    ) -> ProtocolRoutingConfig:
         """Get cached config for a specific protocol.
 
         Lazily create the config if not yet available.
@@ -193,7 +199,7 @@ class PairConfigurator(ABC):
 
         config = self.configs.get(router)
         if config is None:
-            config = self.configs[router] = self.create_config(router)
+            config = self.configs[router] = self.create_config(router, three_leg_resolution=three_leg_resolution, pairs=pairs)
 
         return config
 

@@ -10,6 +10,7 @@ from tradeexecutor.strategy.default_routing_options import TradeRouting
 from tradeexecutor.strategy.generic.pair_configurator import PairConfigurator, ProtocolRoutingId, ProtocolRoutingConfig
 from tradeexecutor.strategy.generic.default_protocols import default_match_router, default_supported_routers
 from tradingstrategy.chain import ChainId
+from tradingstrategy.pair import PandasPairUniverse
 
 
 class EthereumBacktestPairConfigurator(PairConfigurator):
@@ -33,7 +34,7 @@ class EthereumBacktestPairConfigurator(PairConfigurator):
     def get_supported_routers(self) -> Set[ProtocolRoutingId]:
         return default_supported_routers(self.strategy_universe)
 
-    def create_config(self, routing_id: ProtocolRoutingId):
+    def create_config(self, routing_id: ProtocolRoutingId, three_leg_resolution=True, pairs: PandasPairUniverse=None) -> ProtocolRoutingConfig:
 
         strategy_universe = self.strategy_universe
 
@@ -100,6 +101,7 @@ class EthereumBacktestPairConfigurator(PairConfigurator):
             data_delay_tolerance=self.data_delay_tolerance,
             liquidity_universe=strategy_universe.data_universe.liquidity,
             pairs=strategy_universe.data_universe.pairs,
+            three_leg_resolution=three_leg_resolution,
         )
 
         valuation_model = BacktestValuationModel(pricing_model)

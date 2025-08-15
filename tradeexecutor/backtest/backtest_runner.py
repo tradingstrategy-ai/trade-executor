@@ -439,6 +439,7 @@ def setup_backtest(
     minimum_data_lookback_range: Optional[datetime.timedelta] = None,
     universe_options: Optional[UniverseOptions] = None,
     client: Optional[Client] = None,
+    three_leg_resolution: bool = True,
 ) -> BacktestSetup:
     """High-level entry point for setting up a backtest from a strategy module.
 
@@ -539,7 +540,7 @@ def setup_backtest(
 
     if universe is not None and strategy_module.trade_routing == TradeRouting.default:
         pair_configurator = EthereumBacktestPairConfigurator(universe)
-        routing_model = GenericRouting(pair_configurator)
+        routing_model = GenericRouting(pair_configurator, three_leg_resolution=three_leg_resolution)
         pricing_model = GenericPricing(pair_configurator)
     else:
         routing_model = None
@@ -956,7 +957,7 @@ def run_backtest_inline(
         pair_configurator = EthereumBacktestPairConfigurator(universe, data_delay_tolerance=data_delay_tolerance)
 
         if trade_routing == TradeRouting.default:
-            routing_model = GenericRouting(pair_configurator)
+            routing_model = GenericRouting(pair_configurator, three_leg_resolution=three_leg_resolution)
 
         elif not routing_model:
             assert trade_routing, "You just give either routing_mode or trade_routing"

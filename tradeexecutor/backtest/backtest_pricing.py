@@ -340,8 +340,8 @@ class BacktestPricing(PricingModel):
             routing_model, protocol_config = routing_model.get_router(pair)
 
         # Three legged, count in the fee in the middle leg
-        if self.three_leg_resolution and (pair.quote.address != routing_model.reserve_token_address):
-            intermediate_pairs = self.routing_model.allowed_intermediary_pairs
+        if self.three_leg_resolution and (pair.quote.address != routing_model.reserve_token_address.lower()):
+            intermediate_pairs = routing_model.allowed_intermediary_pairs
             assert self.pairs is not None, "To do three-legged fee resolution, we need to get access to pairs in constructor"
 
             pair_address = intermediate_pairs.get(pair.quote.address)

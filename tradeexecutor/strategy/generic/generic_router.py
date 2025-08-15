@@ -61,9 +61,13 @@ class GenericRouting(RoutingModel):
     def __init__(
         self,
         pair_configurator: PairConfigurator | None,
+        three_leg_resolution=True,
     ):
         self.pair_configurator = pair_configurator
         logger.info("Initialised %s", self)
+
+        # Legacy support for old unit tests
+        self.three_leg_resolution = three_leg_resolution
 
     def is_initialised(self) -> bool:
         return self.pair_configurator is not None
@@ -88,7 +92,7 @@ class GenericRouting(RoutingModel):
         assert isinstance(universe, TradingStrategyUniverse)
         substates = {}
         for routing_id in self.pair_configurator.get_supported_routers():
-            router = self.pair_configurator.get_config(routing_id).routing_model
+            router = self.pair_configurator.get_config(routing_id, three_leg_resolution=self.three_leg_resolution).routing_model
             substates[routing_id.router_name] = router.create_routing_state(universe, execution_details)
 
         return GenericRoutingState(universe, substates)
