@@ -169,6 +169,7 @@ def test_token_tax(
         parameters=parameters,
         mode=ExecutionMode.unit_testing,
         indicator_storage=indicator_storage,
+        three_leg_resolution=False,
     )
 
     state = result.state

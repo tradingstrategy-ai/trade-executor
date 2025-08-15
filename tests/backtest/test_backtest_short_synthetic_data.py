@@ -292,6 +292,7 @@ def test_backtest_open_and_close_short_synthetic_data(
         reserve_currency=ReserveCurrency.usdc,
         trade_routing=TradeRouting.uniswap_v3_usdc_poly,
         engine_version="0.3",
+        three_leg_resolution=False,
     )
 
     portfolio = state.portfolio
@@ -371,6 +372,7 @@ def test_backtest_short_underlying_price_feed(
     pricing_model = BacktestPricing(
         strategy_universe.data_universe.candles,
         routing_model,
+        three_leg_resolution=False,
     )
 
     spot_pair = strategy_universe.get_single_pair()
@@ -513,6 +515,7 @@ def test_backtest_short_stop_loss_triggered(persistent_test_client: Client, stra
         reserve_currency=ReserveCurrency.usdc,
         trade_routing=TradeRouting.uniswap_v3_usdc_poly,
         engine_version="0.3",
+        three_leg_resolution=False,
     )
 
     portfolio = state.portfolio
@@ -615,6 +618,7 @@ def test_backtest_short_take_profit_triggered(persistent_test_client: Client, st
         reserve_currency=ReserveCurrency.usdc,
         trade_routing=TradeRouting.uniswap_v3_usdc_poly,
         engine_version="0.3",
+        three_leg_resolution=False,
     )
 
     portfolio = state.portfolio
