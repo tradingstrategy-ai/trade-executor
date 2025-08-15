@@ -344,18 +344,13 @@ class BacktestPricing(PricingModel):
             intermediate_pairs = self.routing_model.allowed_intermediary_pairs
             assert self.pairs is not None, "To do three-legged fee resolution, we need to get access to pairs in constructor"
 
-            if len(intermediate_pairs) != 1:
-                # Backtest routing model lacks the intermediary pair information,
-                # just guess it that we double the current pair fee
-                logger.warning(f"Needs to do three legged trade. Expected exactly one intermediate pair for three-legged trades, got {intermediate_pairs}. Pair is {pair}")
-                extra_fee = pair.fee
-            else:
-                pair_address = next(iter(intermediate_pairs.values()))
-                try:
-                    extra_leg = self.pairs.get_pair_by_smart_contract(pair_address)
-                except PairNotFoundError as e:
-                    raise RuntimeError(f"Trading Pair universe does not have pair {pair_address} for three-legged trade resolution. Allowed intermediary pairs: {intermediate_pairs}") from e
-                extra_fee = extra_leg.fee_tier
+            pair_address = intermediate_pairs.get(pair.quote.address)
+            assert pair_address, f"No intermediate pair configured for {pair.quote} in {intermediate_pairs}"
+            try:
+                extra_leg = self.pairs.get_pair_by_smart_contract(pair_address)
+            except PairNotFoundError as e:
+                raise RuntimeError(f"Trading Pair universe does not have pair {pair_address} for three-legged trade resolution. Allowed intermediary pairs: {intermediate_pairs}") from e
+            extra_fee = extra_leg.fee_tier
         else:
             extra_fee = 0
 

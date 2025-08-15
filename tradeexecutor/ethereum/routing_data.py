@@ -28,6 +28,7 @@ that gives the users the choices for the trade routing options in their strategy
 import logging
 from typing import TypedDict, List
 
+from eth_defi.token import USDC_NATIVE_TOKEN, WRAPPED_NATIVE_TOKEN
 from eth_defi.uniswap_v2.constants import UNISWAP_V2_DEPLOYMENTS
 from eth_defi.uniswap_v3.constants import UNISWAP_V3_DEPLOYMENTS
 from tradeexecutor.backtest.backtest_routing import BacktestRoutingModel, BacktestRoutingIgnoredModel
@@ -622,6 +623,35 @@ def get_uniswap_v3_binance_default_routing_parameters(
     }
 
 
+
+
+def get_uniswap_v3_base_default_routing_parameters(
+    reserve_currency: ReserveCurrency,
+) -> RoutingData:
+    """Generate routing using Uniswap V3 router for Arbitrum"""
+
+    if reserve_currency == ReserveCurrency.usdc:
+        reserve_token_address = USDC_NATIVE_TOKEN[ChainId.base.value].lower()
+        allowed_intermediary_pairs = {
+            # https://www.geckoterminal.com/base/pools/0xd0b53d9277642d899df5c87a3966a349a798f224
+            WRAPPED_NATIVE_TOKEN[ChainId.base.value]: "0xd0b53d9277642d899df5c87a3966a349a798f224".lower(),
+        }
+    else:
+        raise NotImplementedError(f"Not supported: {reserve_currency}")
+
+    return {
+        "chain_id": ChainId.binance,
+        "address_map": uniswap_v3_address_map,
+        "allowed_intermediary_pairs": allowed_intermediary_pairs,
+        "reserve_token_address": reserve_token_address,
+        "quote_token_addresses": {
+            USDC_NATIVE_TOKEN[ChainId.base.value].lower(),
+            WRAPPED_NATIVE_TOKEN[ChainId.base.value].lower(),
+        },
+    }
+
+
+
 def get_uniswap_v3_compatible_routing_types_eth():
     # TODO find a way to get without hardcoding
     return {
@@ -655,9 +685,14 @@ def get_uniswap_v3_compatible_routing_types_binance():
     }
 
 
+def get_uniswap_v3_compatible_routing_types_base():
+    return {
+        TradeRouting.uniswap_v3_usdc_base,
+    }
+
 
 def get_all_uniswap_v3_compatible_routing_types():
-    return get_uniswap_v3_compatible_routing_types_arbitrum() | get_uniswap_v3_compatible_routing_types_eth() | get_uniswap_v3_compatible_routing_types_poly() | get_uniswap_v3_compatible_routing_types_binance()
+    return get_uniswap_v3_compatible_routing_types_arbitrum() | get_uniswap_v3_compatible_routing_types_eth() | get_uniswap_v3_compatible_routing_types_poly() | get_uniswap_v3_compatible_routing_types_binance() | get_uniswap_v3_compatible_routing_types_base()
 
 
 def get_uniswap_v2_compatible_routing_types():
@@ -701,6 +736,7 @@ def validate_reserve_currency(
         TradeRouting.uniswap_v3_usdc,
         TradeRouting.uniswap_v3_usdc_poly,
         TradeRouting.uniswap_v3_usdc_arbitrum_native,
+        TradeRouting.uniswap_v3_usdc_base,
     }:
         if reserve_currency != ReserveCurrency.usdc:
             raise MismatchReserveCurrency(f"Got {routing_type} with {reserve_currency}")
@@ -831,6 +867,7 @@ def create_uniswap_v2_compatible_routing(
     }:
         # uniswap v2 on eth
         params = get_uniswap_v2_default_routing_parameters(reserve_currency, chain_id)
+
     else:
         raise NotImplementedError()
 
@@ -870,6 +907,8 @@ def create_uniswap_v3_compatible_routing(
         params = get_uniswap_v3_arbitrum_default_routing_parameters(reserve_currency)
     elif routing_type in get_uniswap_v3_compatible_routing_types_binance():
         params = get_uniswap_v3_binance_default_routing_parameters(reserve_currency)
+    elif routing_type in get_uniswap_v3_compatible_routing_types_base():
+        params = get_uniswap_v3_base_default_routing_parameters(reserve_currency)
     else:
         raise NotImplementedError()
 
@@ -908,7 +947,7 @@ def create_compatible_routing(
     validate_reserve_currency(routing_type, reserve_currency)
 
     if routing_type in get_uniswap_v2_compatible_routing_types():
-        routing = create_uniswap_v2_compatible_routing(routing_type, reserve_currency)
+        routing = create_uniswap_v2_compatible_routing(routing_type, reserve_currency, chain_id)
         logger.info("create_uniswap_v2_compatible_routing(): chain is %s", routing.chain_id)
     elif routing_type in get_all_uniswap_v3_compatible_routing_types():
         routing = create_uniswap_v3_compatible_routing(routing_type, reserve_currency)

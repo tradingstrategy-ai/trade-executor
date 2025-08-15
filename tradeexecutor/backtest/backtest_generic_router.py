@@ -46,7 +46,7 @@ class EthereumBacktestPairConfigurator(PairConfigurator):
 
         chain_id = next(iter(self.strategy_universe.data_universe.chains))
 
-        if routing_id.router_name == "vault":
+        if routing_id.router_name in ("vault", "aave-v3", "1delta"):
             routing_model = BacktestRoutingIgnoredModel(
                 reserve.address,
             )
@@ -78,7 +78,10 @@ class EthereumBacktestPairConfigurator(PairConfigurator):
                         else:
                             routing_type = TradeRouting.uniswap_v3_usdt
                     else:
-                        routing_type = TradeRouting.uniswap_v3_usdc
+                        if chain_id == ChainId.base:
+                            routing_type = TradeRouting.uniswap_v3_usdc_base
+                        else:
+                            routing_type = TradeRouting.uniswap_v3_usdc
 
                     real_routing_model = create_compatible_routing(routing_type, reserve_currency)
 
