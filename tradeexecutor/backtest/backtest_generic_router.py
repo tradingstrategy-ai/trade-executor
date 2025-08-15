@@ -52,10 +52,11 @@ class EthereumBacktestPairConfigurator(PairConfigurator):
                 reserve.address,
             )
         else:
-            match routing_id.exchange_slug:
-                case "uniswap-v2" | "pancakeswap-v2" | "my-dex" | "test-dex" | "quickswap":
 
-                    if routing_id.exchange_slug in ("uniswap-v2", "my-dex", "test-dex"):
+            match routing_id.exchange_slug:
+                case "uniswap-v2" | "pancakeswap-v2" | "my-dex" | "test-dex" | "quickswap" | '<exchange slug not filled>':
+
+                    if routing_id.exchange_slug in ("uniswap-v2", "my-dex", "test-dex", '<exchange slug not filled>'):
                         if reserve.token_symbol == "USDT":
                             routing_type = TradeRouting.uniswap_v2_usdt
                         else:

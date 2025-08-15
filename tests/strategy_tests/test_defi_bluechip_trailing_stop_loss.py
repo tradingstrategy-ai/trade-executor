@@ -62,7 +62,7 @@ def backtest_result(
         initial_deposit=10_000,
     )
 
-    state, universe, debug_dump = run_backtest(setup, client)
+    state, universe, debug_dump = run_backtest(setup, client, three_leg_resolution=False)
 
     return state, universe, debug_dump
 

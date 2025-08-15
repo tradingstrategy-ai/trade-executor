@@ -54,6 +54,7 @@ def anvil(usdc_whale) -> AnvilLaunch:
         fork_url=rpc_url,
         unlocked_addresses=[usdc_whale],
         fork_block_number=58_000_000,
+        code_size_limit=99_999,
     )
     try:
         yield anvil
