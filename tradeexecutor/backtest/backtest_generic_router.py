@@ -9,7 +9,7 @@ from tradeexecutor.state.identifier import TradingPairIdentifier
 from tradeexecutor.strategy.default_routing_options import TradeRouting
 from tradeexecutor.strategy.generic.pair_configurator import PairConfigurator, ProtocolRoutingId, ProtocolRoutingConfig
 from tradeexecutor.strategy.generic.default_protocols import default_match_router, default_supported_routers
-
+from tradingstrategy.chain import ChainId
 
 
 class EthereumBacktestPairConfigurator(PairConfigurator):
@@ -44,6 +44,8 @@ class EthereumBacktestPairConfigurator(PairConfigurator):
         # Get in parameters for our supported intermediate pairs
         reserve_currency = get_reserve_currency_by_asset(reserve)
 
+        chain_id = next(iter(self.strategy_universe.data_universe.chains))
+
         if routing_id.router_name == "vault":
             routing_model = BacktestRoutingIgnoredModel(
                 reserve.address,
@@ -62,7 +64,7 @@ class EthereumBacktestPairConfigurator(PairConfigurator):
                     else:
                         raise NotImplementedError(f"Unsupported Uniswap v2 routing {routing_id.router_name}")
 
-                    real_routing_model = create_compatible_routing(routing_type, reserve_currency)
+                    real_routing_model = create_compatible_routing(routing_type, reserve_currency, chain_id=chain_id)
                     routing_model = BacktestRoutingModel(
                         real_routing_model.factory_router_map,
                         real_routing_model.allowed_intermediary_pairs,
@@ -71,7 +73,10 @@ class EthereumBacktestPairConfigurator(PairConfigurator):
 
                 case "uniswap-v3":
                     if reserve.token_symbol == "USDT":
-                        routing_type = TradeRouting.uniswap_v3_usdt
+                        if chain_id == ChainId.binance:
+                            routing_type = TradeRouting.uniswap_v3_usdt_binance
+                        else:
+                            routing_type = TradeRouting.uniswap_v3_usdt
                     else:
                         routing_type = TradeRouting.uniswap_v3_usdc
 

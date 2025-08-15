@@ -342,13 +342,12 @@ class BacktestPricing(PricingModel):
         # Three legged, count in the fee in the middle leg
         if self.three_leg_resolution and (pair.quote.address != routing_model.reserve_token_address):
             intermediate_pairs = self.routing_model.allowed_intermediary_pairs
-            assert self.pairs is not None, "To do three-legged fee resolution, we neeed to get access to pairs in constructor"
+            assert self.pairs is not None, "To do three-legged fee resolution, we need to get access to pairs in constructor"
 
             if len(intermediate_pairs) != 1:
                 # Backtest routing model lacks the intermediary pair information,
                 # just guess it that we double the current pair fee
                 logger.warning(f"Needs to do three legged trade. Expected exactly one intermediate pair for three-legged trades, got {intermediate_pairs}. Pair is {pair}")
-                import ipdb ; ipdb.set_trace()
                 extra_fee = pair.fee
             else:
                 pair_address = next(iter(intermediate_pairs.values()))

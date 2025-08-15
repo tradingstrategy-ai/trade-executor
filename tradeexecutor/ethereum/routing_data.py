@@ -595,6 +595,33 @@ def get_uniswap_v3_arbitrum_default_routing_parameters(
     }
 
 
+
+def get_uniswap_v3_binance_default_routing_parameters(
+    reserve_currency: ReserveCurrency,
+) -> RoutingData:
+    """Generate routing using Uniswap V3 router for Arbitrum"""
+
+    if reserve_currency == ReserveCurrency.usdt:
+        reserve_token_address = "0xfd086bc7cd5c481dcc9c85ebe478a1c0b69fcbb9"
+        allowed_intermediary_pairs = {
+            # https://app.uniswap.org/explore/pools/bnb/0x47a90A2d92A8367A91EfA1906bFc8c1E05bf10c4
+            "0xbb4cdb9cbd36b01bd1cbaebf2de08d9173bc095c": "0x47a90A2d92A8367A91EfA1906bFc8c1E05bf10c4".lower(),
+        }
+    else:
+        raise NotImplementedError(f"Not supported: {reserve_currency}")
+
+    return {
+        "chain_id": ChainId.binance,
+        "address_map": uniswap_v3_address_map,
+        "allowed_intermediary_pairs": allowed_intermediary_pairs,
+        "reserve_token_address": reserve_token_address,
+        "quote_token_addresses": {
+            "0x47a90A2d92A8367A91EfA1906bFc8c1E05bf10c4",
+            "0xbb4cdb9cbd36b01bd1cbaebf2de08d9173bc095c",
+        },
+    }
+
+
 def get_uniswap_v3_compatible_routing_types_eth():
     # TODO find a way to get without hardcoding
     return {
@@ -621,8 +648,16 @@ def get_uniswap_v3_compatible_routing_types_arbitrum():
     }
 
 
+def get_uniswap_v3_compatible_routing_types_binance():
+    # TODO find a way to get without hardcoding
+    return {
+        TradeRouting.uniswap_v3_usdt_binance,
+    }
+
+
+
 def get_all_uniswap_v3_compatible_routing_types():
-    return get_uniswap_v3_compatible_routing_types_arbitrum() | get_uniswap_v3_compatible_routing_types_eth() | get_uniswap_v3_compatible_routing_types_poly()
+    return get_uniswap_v3_compatible_routing_types_arbitrum() | get_uniswap_v3_compatible_routing_types_eth() | get_uniswap_v3_compatible_routing_types_poly() | get_uniswap_v3_compatible_routing_types_binance()
 
 
 def get_uniswap_v2_compatible_routing_types():
@@ -684,6 +719,7 @@ def validate_reserve_currency(
         TradeRouting.uniswap_v3_usdt,
         TradeRouting.uniswap_v3_usdt_poly,
         TradeRouting.uniswap_v3_usdt_arbitrum,
+        TradeRouting.uniswap_v3_usdt_binance,
     }:
         if reserve_currency != ReserveCurrency.usdt:
             raise MismatchReserveCurrency(f"Got {routing_type} with {reserve_currency}")
@@ -832,6 +868,8 @@ def create_uniswap_v3_compatible_routing(
         params = get_uniswap_v3_polygon_default_routing_parameters(reserve_currency)
     elif routing_type in get_uniswap_v3_compatible_routing_types_arbitrum():
         params = get_uniswap_v3_arbitrum_default_routing_parameters(reserve_currency)
+    elif routing_type in get_uniswap_v3_compatible_routing_types_binance():
+        params = get_uniswap_v3_binance_default_routing_parameters(reserve_currency)
     else:
         raise NotImplementedError()
 
@@ -854,7 +892,8 @@ def get_reserve_currency_by_asset(asset: AssetIdentifier) -> ReserveCurrency:
 
 def create_compatible_routing(
     routing_type: TradeRouting,
-    reserve_currency: ReserveCurrency
+    reserve_currency: ReserveCurrency,
+    chain_id: ChainId=None,
 ):
     """Create compatible routing.
 
@@ -873,6 +912,7 @@ def create_compatible_routing(
         logger.info("create_uniswap_v2_compatible_routing(): chain is %s", routing.chain_id)
     elif routing_type in get_all_uniswap_v3_compatible_routing_types():
         routing = create_uniswap_v3_compatible_routing(routing_type, reserve_currency)
+        logger.info("create_uniswap_v3_compatible_routing(): chain is %s", routing.chain_id)
     else:
         logger.info(f"create_compatible_routing(): Cannot handle {routing_type} {reserve_currency}, returns no routing")
         return None

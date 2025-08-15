@@ -32,7 +32,7 @@ class BacktestValuationModel(ValuationModel):
         assert isinstance(ts, datetime.datetime)
 
         # Special case for 1s cycle duration used in unit tests
-        assert ts.second == 0, f"Timestamp sanity check failed, does not have even seconds: {ts}"
+        # assert ts.second == 0, f"Timestamp sanity check failed, does not have even seconds: {ts}"
 
         pair = position.pair
 

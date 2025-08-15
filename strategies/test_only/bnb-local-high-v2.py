@@ -3,6 +3,7 @@
 """
 import datetime
 import logging
+import os
 from pprint import pformat
 from typing import cast
 
@@ -97,7 +98,11 @@ class Parameters:
 
     # We trade 1h candle
     candle_time_bucket = TimeBucket.h1
-    cycle_duration = CycleDuration.cycle_1s
+
+    if os.environ.get("BACKTEST_DECISION_CYCLE_OVERRIDE"):
+        cycle_duration = CycleDuration.cycle_1d
+    else:
+        cycle_duration = CycleDuration.cycle_1s
 
     chain_id = CHAIN_ID
     exchanges = EXCHANGES
@@ -440,7 +445,7 @@ def decide_trades(
     portfolio = position_manager.get_current_portfolio()
     equity = portfolio.get_total_equity()
 
-    state.other_data.save(cycle, "lagoon_compat_check", strategy_universe.other_data["lagoon_compat_check"])
+    state.other_data.save(cycle, "lagoon_compat_check", strategy_universe.other_data.get("lagoon_compat_check"))
 
     # All gone, stop doing decisions
     if input.execution_context.mode == ExecutionMode.backtesting:

@@ -12,6 +12,7 @@ from tradeexecutor.analysis.pair import display_strategy_universe
 from tradeexecutor.backtest.backtest_runner import run_backtest, setup_backtest_for_universe, BacktestResult
 from tradeexecutor.state.state import State
 from tradeexecutor.strategy.execution_context import standalone_backtest_execution_context
+from tradeexecutor.strategy.pandas_trader.create_universe_wrapper import call_create_trading_universe
 from tradeexecutor.strategy.pandas_trader.indicator import DiskIndicatorStorage
 from tradeexecutor.strategy.strategy_module import read_strategy_module
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
@@ -30,7 +31,6 @@ def run_backtest_for_module(
     max_workers: int | None = None,
     verbose=True,
     max_cycles: int | None = None,
-    mod_overrides: dict | None = None,
 ) -> BacktestResult:
     """Run a backtest described in the strategy module.
 
@@ -60,9 +60,6 @@ def run_backtest_for_module(
 
     mod = read_strategy_module(strategy_file)
 
-    if mod_overrides is not None:
-        mod.__dict__.update(mod_overrides)
-
     assert mod.is_version_greater_or_equal_than(0, 2, 0), f"trading_strategy_engine_version must be 0.2.0 or newer for {strategy_file}"
     name = mod.name
     if name is None:
@@ -89,11 +86,14 @@ def run_backtest_for_module(
     logger.info("Using cache path %s", client.transport.cache_path)
     logger.info("Loading backtesting universe data for %s", universe_options)
 
-    universe = mod.create_trading_universe(
-        datetime.datetime.utcnow(),
-        client,
-        execution_context,
-        universe_options,
+    universe = call_create_trading_universe(
+        mod.create_trading_universe,
+        client=client,
+        timestamp=datetime.datetime.utcnow(),
+        strategy_parameters=mod.parameters,
+        execution_context=execution_context,
+        universe_options=universe_options,
+        execution_model=None,
     )
 
     with pd.option_context('display.max_rows', None, 'display.max_columns', None, 'display.width', 140):
