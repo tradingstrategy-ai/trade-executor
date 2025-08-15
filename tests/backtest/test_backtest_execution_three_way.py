@@ -189,7 +189,7 @@ def routing_model() -> BacktestRoutingModel:
 
 @pytest.fixture(scope="module")
 def pricing_model(routing_model, strategy_universe) -> BacktestPricing:
-    return BacktestPricing(strategy_universe, routing_model)
+    return BacktestPricing(strategy_universe, routing_model, three_leg_resolution=True)
 
 
 @pytest.fixture(scope="module")
@@ -253,15 +253,15 @@ def test_create_and_execute_backtest_three_way_trade(
 
     assert trade.is_buy()
     assert trade.get_status() == TradeStatus.success
-    assert trade.executed_price == pytest.approx(18.057216310197482)
+    assert trade.executed_price == pytest.approx(18.1022467748114)
     assert trade.planned_mid_price == pytest.approx(18.012185845583524)
 
     # We bought around 3 BNB
-    assert position.get_quantity() == pytest.approx(Decimal('55.37952156198451856881142523'))
+    assert position.get_quantity() == pytest.approx(Decimal('55.24176155809898575162655429'))
 
     # Check our wallet was credited
     assert wallet.get_balance(busd.address) == 9_000
-    assert wallet.get_balance(cake.address) == pytest.approx(Decimal('55.37952156198451856881142523'))
+    assert wallet.get_balance(cake.address) == pytest.approx(Decimal('55.24176155809898575162655429'))
 
 
 def test_buy_sell_three_way_backtest(

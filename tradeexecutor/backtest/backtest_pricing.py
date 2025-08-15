@@ -56,6 +56,7 @@ class BacktestPricing(PricingModel):
             liquidity_universe: GroupedLiquidityUniverse | None = None,
             fixed_prices: dict[TradingPairIdentifier, float] | None = None,
             pairs: Optional[PandasPairUniverse] = None,
+            three_leg_resolution=True,
         ):
         """
 
@@ -109,6 +110,11 @@ class BacktestPricing(PricingModel):
             Use then we do not candle price data available for a pair.
             Mainly to work around vault unit testing data issues.
 
+        :param three_leg_resolution:
+            Do we attempt to resolve three-legged trades fee structure.
+
+            Disable to run legacy unit tests.
+
         """
 
         # TODO: Remove later - now to support some old code111
@@ -128,6 +134,7 @@ class BacktestPricing(PricingModel):
         self.allow_missing_fees = allow_missing_fees
         self.trading_fee_override = trading_fee_override
         self.liquidity_universe = liquidity_universe
+        self.three_leg_resolution = three_leg_resolution
 
         if fixed_prices:
             for k, v in fixed_prices.items():
@@ -326,7 +333,7 @@ class BacktestPricing(PricingModel):
             return self.trading_fee_override
 
         # Three legged, count in the fee in the middle leg
-        if pair.quote.address != self.routing_model.reserve_token_address:
+        if self.three_leg_resolution and (pair.quote.address != self.routing_model.reserve_token_address):
             intermediate_pairs = self.routing_model.allowed_intermediary_pairs
             assert self.pairs is not None, "To do three-legged fee resolutoin, we neeed to get access to pairs in constructor"
             reserve_token = self.pairs.get_token(self.routing_model.reserve_token_address)
@@ -338,7 +345,7 @@ class BacktestPricing(PricingModel):
             else:
                 pair_address = next(iter(intermediate_pairs.values()))
                 extra_leg = self.pairs.get_pair_by_smart_contract(pair_address)
-                extra_fee = extra_leg.fee
+                extra_fee = extra_leg.fee_tier
         else:
             extra_fee = 0
 
