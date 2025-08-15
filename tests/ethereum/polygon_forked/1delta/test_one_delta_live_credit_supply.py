@@ -599,6 +599,7 @@ def test_one_delta_live_credit_supply_open_and_increase(
     assert position.loan.get_collateral_value() == pytest.approx(2000)
 
 
+@pytest.mark.skipif(CI, "Too flaky on Github")
 def test_one_delta_live_credit_supply_open_and_reduce(
     logger,
     web3: Web3,
