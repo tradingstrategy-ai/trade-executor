@@ -7,6 +7,7 @@ from typing import Optional
 
 import pandas as pd
 
+from strategies.pancake_8h_momentum import reserve_token_address
 from tradeexecutor.backtest.backtest_execution import BacktestExecution
 from tradeexecutor.backtest.backtest_routing import BacktestRoutingModel
 from tradeexecutor.ethereum.uniswap_v2.uniswap_v2_routing import UniswapV2Routing
@@ -16,11 +17,12 @@ from tradeexecutor.strategy.execution_model import ExecutionModel
 from tradeexecutor.state.types import USDollarPrice, Percent, USDollarAmount, AnyTimestamp
 from tradeexecutor.strategy.pricing_model import PricingModel
 from tradeexecutor.strategy.trade_pricing import TradePricing
-from tradeexecutor.strategy.routing import RoutingModel
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse, translate_trading_pair
 from tradingstrategy.candle import GroupedCandleUniverse
 from tradingstrategy.liquidity import GroupedLiquidityUniverse, LiquidityDataUnavailable
+from tradingstrategy.pair import PandasPairUniverse
 from tradingstrategy.timebucket import TimeBucket
+
 
 logger = logging.getLogger(__name__)
 
@@ -44,7 +46,7 @@ class BacktestPricing(PricingModel):
     def __init__(
             self,
             candle_universe: GroupedCandleUniverse,
-            routing_model: RoutingModel,
+            routing_model: BacktestRoutingModel,
             data_delay_tolerance=pd.Timedelta("2d"),
             candle_timepoint_kind="open",
             very_small_amount=Decimal("0.10"),
@@ -53,6 +55,7 @@ class BacktestPricing(PricingModel):
             trading_fee_override: float | None=None,
             liquidity_universe: GroupedLiquidityUniverse | None = None,
             fixed_prices: dict[TradingPairIdentifier, float] | None = None,
+            pairs: Optional[PandasPairUniverse] = None,
         ):
         """
 
@@ -113,6 +116,7 @@ class BacktestPricing(PricingModel):
             candle_universe = candle_universe.data_universe.candles
 
         assert isinstance(candle_universe, GroupedCandleUniverse), f"Got candles in wrong format: {candle_universe.__class__}"
+        assert isinstance(routing_model, BacktestRoutingModel), f"Routing model must be BacktestRoutingModel got {routing_model.__class__}"
 
         self.candle_universe = candle_universe
         self.very_small_amount = very_small_amount
@@ -129,6 +133,9 @@ class BacktestPricing(PricingModel):
                 assert isinstance(k, TradingPairIdentifier)
                 assert isinstance(v, float), f"Fixed price must be a float, got {v} for {k}"
         self.fixed_prices = fixed_prices or {}
+
+        # This was late additio,
+        self.pairs = pairs
 
     def __repr__(self):
         return f"<BacktestSimplePricingModel bucket: {self.time_bucket}, candles: {self.candle_universe}>"
@@ -230,6 +237,7 @@ class BacktestPricing(PricingModel):
         # TODO: Include price impact
         pair_id = pair.internal_id
 
+        # Unit test path to override the price for testing
         fixed_price = self.fixed_prices.get(pair)
         if fixed_price:
             return TradePricing(
@@ -307,15 +315,30 @@ class BacktestPricing(PricingModel):
         ts: datetime.datetime,
         pair: TradingPairIdentifier,
     ) -> Optional[float]:
-        """Figure out the fee from a pair or a routing."""
+        """Figure out the fee from a pair or a routing.
+
+        - What is the total cost of trading with this pair
+        - With three-legged trades we need to account both legs
+        """
 
         if self.trading_fee_override is not None:
             return self.trading_fee_override
 
-        if pair.fee is not None:
-            return pair.fee
+        # Three legged, count in the fee in the middle leg
+        if pair.quote.address != self.routing_model.reserve_token_address:
+            intermediate_pairs = self.routing_model.allowed_intermediary_pairs
+            reserve_token = self.pairs.get_token(self.routing_model.reserve_token_address)
+            assert len(intermediate_pairs) == 1, f"Needs to do three legged trade. Expected exactly one intermediate pair for three-legged trades, got {intermediate_pairs}. Pair is {pair}, reserve token is {reserve_token}"
+            pair_address = next(iter(intermediate_pairs.values()))
+            extra_leg = self.pairs.get_pair_by_smart_contract(pair_address)
+            extra_fee = extra_leg.fee
+        else:
+            extra_fee = 0
 
-        return self.routing_model.get_default_trading_fee()
+        if pair.fee is not None:
+            return pair.fee + extra_fee
+
+        return self.routing_model.get_default_trading_fee() + extra_fee
 
     def set_trading_fee_override(
             self,
@@ -361,5 +384,7 @@ def backtest_pricing_factory(
 
     return BacktestPricing(
         universe.data_universe.candles,
-        routing_model)
+        routing_model,
+        strategy_universe=universe,
+    )
 

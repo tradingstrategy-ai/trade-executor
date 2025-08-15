@@ -37,7 +37,6 @@ from statistics import median
 
 from tradeexecutor.state.position import TradingPosition
 from tradeexecutor.state.portfolio import Portfolio
-from tradeexecutor.state.trade import TradeExecution, TradeType
 from tradeexecutor.state.types import USDollarPrice, Percent
 from tradeexecutor.utils.format import calculate_percentage
 from tradeexecutor.utils.timestamp import json_encode_timedelta, json_decode_timedelta
@@ -154,9 +153,12 @@ class TradeSummary:
     take_profits: int = field(default=0)
 
     trade_volume: USDollarAmount = field(default=0.0)
+    trade_volume_wo_vault: USDollarAmount = field(default=0.0)
 
     lp_fees_paid: Optional[USDollarPrice] = 0
-    lp_fees_average_pc: Optional[USDollarPrice] = 0
+    lp_fees_paid_wo_vault: Optional[USDollarPrice] = 0
+    lp_fees_average_pc: Optional[Percent] = 0
+    lp_fees_average_pc_wo_vault: Optional[Percent] = 0
 
     #: advanced users can use this property instead of the
     #: provided quantstats helper methods
@@ -286,6 +288,7 @@ class TradeSummary:
             "Time in market": as_percent(self.time_in_market),
             "Time in market volatile": as_percent(self.time_in_market_volatile),
             "Trade volume": as_dollar(self.trade_volume),
+            "Trade volume, no vault": as_dollar(self.trade_volume_wo_vault),
             "Position win percent": as_percent(self.win_percent),
             "Total positions": as_integer(self.total_positions),
             "Won positions": as_integer(self.won),
@@ -329,6 +332,8 @@ class TradeSummary:
             "Total interest paid": as_dollar(self.total_interest_paid_usd),
             "LP fees paid": as_dollar(self.lp_fees_paid),
             "LP fees paid % of volume": as_percent(self.lp_fees_average_pc),
+            "LP fees paid, no vault": as_dollar(self.lp_fees_paid_wo_vault),
+            "LP fees paid % of volume, no vault": as_percent(self.lp_fees_average_pc_wo_vault),
         })
 
         def add_prop(value, key: str, formatter: Callable):
@@ -845,6 +850,8 @@ class TradeAnalysis:
         unrealised_profit_usd: USDollarAmount = 0
         trade_volume = 0
         lp_fees_paid = 0
+        lp_fees_paid_wo_vault = 0
+        trade_volume_wo_vault = 0
 
         max_pos_cons = 0
         max_neg_cons = 0
@@ -877,11 +884,14 @@ class TradeAnalysis:
                 loss_risk_at_open_pc.append(capital_tied_at_open_pct)
 
             lp_fees_paid += position.get_total_lp_fees_paid() or 0
+            lp_fees_paid_wo_vault += (position.get_total_lp_fees_paid() or 0) if not position.pair.is_vault() else 0
             interest_paid_usd.append(position.get_repaid_interest())
 
             for t in position.trades.values():
                 if t.pair.is_volume_generating():
                     trade_volume += t.get_value()
+                if not t.pair.is_vault():
+                    trade_volume_wo_vault += t.get_value()
             
             if position.is_credit_supply():
                 delta_neutral_cons += 1
@@ -1033,6 +1043,7 @@ class TradeAnalysis:
             average_duration_of_all_trades = get_avg_trade_duration(all_durations)
 
         lp_fees_average_pc = lp_fees_paid / trade_volume if trade_volume else 0
+        lp_fees_average_pc_wo_vault = lp_fees_paid_wo_vault / trade_volume_wo_vault if trade_volume_wo_vault else 0
 
         total_interest_paid_usd = sum(interest_paid_usd) if interest_paid_usd else 0
 
@@ -1083,6 +1094,10 @@ class TradeAnalysis:
             trade_volume=trade_volume,
             lp_fees_paid=lp_fees_paid,
             lp_fees_average_pc=lp_fees_average_pc,
+            lp_fees_paid_wo_vault=lp_fees_paid_wo_vault,
+            lp_fees_average_pc_wo_vault=lp_fees_average_pc_wo_vault,
+            trade_volume_wo_vault=trade_volume_wo_vault,
+
             #daily_returns=daily_returns,
             winning_stop_losses=winning_stop_losses,
             losing_stop_losses=losing_stop_losses,

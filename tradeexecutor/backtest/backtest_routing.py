@@ -84,6 +84,8 @@ class BacktestRoutingModel(RoutingModel):
         self.factory_router_map = self.convert_address_dict_to_lower(factory_router_map)
 
         self.trading_fee = trading_fee
+        self.allowed_intermediary_pairs = allowed_intermediary_pairs
+        self.reserve_token_address = reserve_token_address
 
     def get_default_trading_fee(self) -> Optional[float]:
         return self.trading_fee
