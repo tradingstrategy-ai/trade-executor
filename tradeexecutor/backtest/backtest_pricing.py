@@ -147,6 +147,8 @@ class BacktestPricing(PricingModel):
         # This was late additio,
         self.pairs = pairs
 
+        # assert not three_leg_resolution
+
     def __repr__(self):
         return f"<BacktestSimplePricingModel bucket: {self.time_bucket}, candles: {self.candle_universe}>"
 

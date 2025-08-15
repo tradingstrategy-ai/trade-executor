@@ -154,6 +154,7 @@ def state(
         initial_deposit=10_000,
         universe=synthetic_universe,
         routing_model=routing_model,
+        three_leg_resolution=False,
     )
 
     state, universe, debug_dump = run_backtest(setup)

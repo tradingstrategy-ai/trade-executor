@@ -326,6 +326,7 @@ def setup_backtest_for_universe(
     parameters: StrategyParameters | None = None,
     indicator_storage: DiskIndicatorStorage | None = None,
     max_workers: int | None = None,
+    three_leg_resolution=True,
 ):
     """High-level entry point for setting up a single backtest for a predefined universe.
 
@@ -384,7 +385,7 @@ def setup_backtest_for_universe(
     # Check version to avoid issues with legacy code
     if trade_routing == TradeRouting.default and strategy_module.is_version_greater_or_equal_than(0, 3, 0):
         pair_configurator = EthereumBacktestPairConfigurator(universe)
-        routing_model = GenericRouting(pair_configurator)
+        routing_model = GenericRouting(pair_configurator, three_leg_resolution=three_leg_resolution)
         pricing_model = GenericPricing(pair_configurator)
     else:
         # Set up execution and pricing
@@ -394,6 +395,7 @@ def setup_backtest_for_universe(
             allow_missing_fees=allow_missing_fees,
             liquidity_universe=universe.data_universe.liquidity,
             pairs=universe.data_universe.pairs,
+            three_leg_resolution=three_leg_resolution,
         )
 
     execution_model = BacktestExecution(wallet, max_slippage, stop_loss_data_available=stop_loss_data_available)
@@ -962,6 +964,7 @@ def run_backtest_inline(
         elif not routing_model:
             assert trade_routing, "You just give either routing_mode or trade_routing"
             routing_model = get_backtest_routing_model(trade_routing, reserve_currency)
+            routing_model.three_leg_resolution = three_leg_resolution  # Legacy support hack
 
         if trade_routing == TradeRouting.default:
             pricing_model = GenericPricing(

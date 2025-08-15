@@ -50,6 +50,7 @@ class BacktestRoutingModel(RoutingModel):
                  allowed_intermediary_pairs: Dict[str, str],
                  reserve_token_address: str,
                  trading_fee: Optional[float] = None,
+                 three_legged_resolution=True,
                  ):
         """
         :param factory_router_map:
@@ -86,6 +87,7 @@ class BacktestRoutingModel(RoutingModel):
         self.trading_fee = trading_fee
         self.allowed_intermediary_pairs = allowed_intermediary_pairs
         self.reserve_token_address = reserve_token_address
+        self.three_leg_resolution = three_legged_resolution
 
     def get_default_trading_fee(self) -> Optional[float]:
         return self.trading_fee

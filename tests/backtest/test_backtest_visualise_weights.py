@@ -199,6 +199,7 @@ def test_visualise_weights(strategy_universe, tmp_path):
         engine_version="0.5",
         parameters=StrategyParameters.from_class(Parameters),
         mode=ExecutionMode.unit_testing,
+        three_leg_resolution=False,
     )
 
     state = result.state
@@ -213,7 +214,7 @@ def test_visualise_weights(strategy_universe, tmp_path):
     fig = visualise_weights(weights_series)
     assert isinstance(fig, Figure)
 
-    fig.show()
+    # fig.show()
 
     weight_stats = calculate_weights_statistics(weights_series)
     assert isinstance(weight_stats, pd.DataFrame)

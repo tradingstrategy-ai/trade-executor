@@ -142,6 +142,7 @@ def run_backtest_for_module(
         parameters=mod.parameters,
         indicator_storage=indicator_storage,
         max_workers=max_workers or get_safe_max_workers_count(),
+        three_leg_resolution=False,
     )
 
     assert backtest_setup.trading_strategy_engine_version

@@ -731,6 +731,7 @@ def test_backtest_short_trailing_stop_loss_triggered(persistent_test_client: Cli
         reserve_currency=ReserveCurrency.usdc,
         trade_routing=TradeRouting.uniswap_v3_usdc_poly,
         engine_version="0.3",
+        three_leg_resolution=False,
     )
 
     portfolio = state.portfolio

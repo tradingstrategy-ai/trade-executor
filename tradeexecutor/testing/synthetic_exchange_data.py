@@ -67,6 +67,7 @@ def generate_simple_routing_model(
         allowed_intermediary_pairs,
         reserve_token_address=reserve_asset.address,
         trading_fee=trading_fee,
+        three_legged_resolution=False,
     )
 
 

@@ -53,9 +53,9 @@ class EthereumBacktestPairConfigurator(PairConfigurator):
             )
         else:
             match routing_id.exchange_slug:
-                case "uniswap-v2" | "pancakeswap-v2" | "my-dex":
+                case "uniswap-v2" | "pancakeswap-v2" | "my-dex" | "test-dex":
 
-                    if routing_id.exchange_slug in ("uniswap-v2", "my-dex"):
+                    if routing_id.exchange_slug in ("uniswap-v2", "my-dex", "test-dex"):
                         if reserve.token_symbol == "USDT":
                             routing_type = TradeRouting.uniswap_v2_usdt
                         else:
@@ -63,7 +63,7 @@ class EthereumBacktestPairConfigurator(PairConfigurator):
                     elif routing_id.exchange_slug == "pancakeswap-v2":
                         routing_type = TradeRouting.pancakeswap_usdt
                     else:
-                        raise NotImplementedError(f"Unsupported Uniswap v2 routing {routing_id.router_name}")
+                        raise NotImplementedError(f"Unsupported Uniswap v2 routing {routing_id}, reserve {reserve}")
 
                     real_routing_model = create_compatible_routing(routing_type, reserve_currency, chain_id=chain_id)
                     routing_model = BacktestRoutingModel(
