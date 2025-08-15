@@ -347,7 +347,7 @@ class BacktestPricing(PricingModel):
             assert self.pairs is not None, "To do three-legged fee resolution, we need to get access to pairs in constructor"
 
             pair_address = intermediate_pairs.get(pair.quote.address)
-            assert pair_address, f"No intermediate pair configured for {pair.quote} in {intermediate_pairs}"
+            assert pair_address, f"No intermediate pair configured for {pair.quote} in {intermediate_pairs}, routing model is {routing_model}"
             try:
                 extra_leg = self.pairs.get_pair_by_smart_contract(pair_address)
             except PairNotFoundError as e:

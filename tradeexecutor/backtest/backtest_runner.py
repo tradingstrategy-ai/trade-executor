@@ -584,6 +584,7 @@ def run_backtest(
     execution_test_hook: Optional[ExecutionTestHook] = None,
     execution_context: ExecutionContext | None = None,
     max_cycles: int | None = None,
+    three_leg_resolution: bool = True,
 ) -> BacktestResult:
     """Run a strategy backtest.
 
@@ -617,6 +618,7 @@ def run_backtest(
             data_delay_tolerance=guess_data_delay_tolerance(universe),
             allow_missing_fees=allow_missing_fees,
             pairs=universe.data_universe.pairs,
+            three_leg_resolution=three_leg_resolution,
         )
 
     def valuation_model_factory(pricing_model):
