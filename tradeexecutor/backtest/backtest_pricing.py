@@ -328,10 +328,15 @@ class BacktestPricing(PricingModel):
         if pair.quote.address != self.routing_model.reserve_token_address:
             intermediate_pairs = self.routing_model.allowed_intermediary_pairs
             reserve_token = self.pairs.get_token(self.routing_model.reserve_token_address)
-            assert len(intermediate_pairs) == 1, f"Needs to do three legged trade. Expected exactly one intermediate pair for three-legged trades, got {intermediate_pairs}. Pair is {pair}, reserve token is {reserve_token}"
-            pair_address = next(iter(intermediate_pairs.values()))
-            extra_leg = self.pairs.get_pair_by_smart_contract(pair_address)
-            extra_fee = extra_leg.fee
+            if len(intermediate_pairs) != 1:
+                # Backtest routing model lacks the intermediary pair information,
+                # just guess it that we double the current pair fee
+                logger.warning(f"Needs to do three legged trade. Expected exactly one intermediate pair for three-legged trades, got {intermediate_pairs}. Pair is {pair}, reserve token is {reserve_token}")
+                extra_fee = pair.fee
+            else:
+                pair_address = next(iter(intermediate_pairs.values()))
+                extra_leg = self.pairs.get_pair_by_smart_contract(pair_address)
+                extra_fee = extra_leg.fee
         else:
             extra_fee = 0
 
@@ -385,6 +390,6 @@ def backtest_pricing_factory(
     return BacktestPricing(
         universe.data_universe.candles,
         routing_model,
-        strategy_universe=universe,
+        pairs=universe.data_universe.pairs,
     )
 

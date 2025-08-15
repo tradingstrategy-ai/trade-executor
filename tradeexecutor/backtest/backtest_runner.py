@@ -393,6 +393,7 @@ def setup_backtest_for_universe(
             routing_model,
             allow_missing_fees=allow_missing_fees,
             liquidity_universe=universe.data_universe.liquidity,
+            pairs=universe.data_universe.pairs,
         )
 
     execution_model = BacktestExecution(wallet, max_slippage, stop_loss_data_available=stop_loss_data_available)
@@ -612,6 +613,7 @@ def run_backtest(
             routing_model,
             data_delay_tolerance=guess_data_delay_tolerance(universe),
             allow_missing_fees=allow_missing_fees,
+            pairs=universe.data_universe.pairs,
         )
 
     def valuation_model_factory(pricing_model):
