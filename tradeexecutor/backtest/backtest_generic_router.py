@@ -41,31 +41,50 @@ class EthereumBacktestPairConfigurator(PairConfigurator):
         reserve = strategy_universe.get_reserve_asset()
         assert reserve.token_symbol in ("USDC", "USDT"), f"Expected USDT/USDC reserve, got {reserve.token_symbol}.\nTODO: Development assert. Please fix."
 
-        match routing_id.exchange_slug:
-            case "pancakeswap-v2":
-                routing_type = TradeRouting.pancakeswap_usdt
-            case "uniswap-v2":
-                if reserve.token_symbol == "USDT":
-                    routing_type = TradeRouting.uniswap_v2_usdt
-                else:
-                    routing_type = TradeRouting.uniswap_v2_usdc
-            case "uniswap-v3":
-                if reserve.token_symbol == "USDT":
-                    routing_type = TradeRouting.uniswap_v3_usdt
-                else:
-                    routing_type = TradeRouting.uniswap_v3_usdc
-            case _:
-                raise NotImplementedError(f"Unsupported exchange {routing_id}")
-
         # Get in parameters for our supported intermediate pairs
         reserve_currency = get_reserve_currency_by_asset(reserve)
-        real_routing_model = create_compatible_routing(routing_type, reserve_currency)
 
-        routing_model = BacktestRoutingModel(
-            real_routing_model.factory_router_map,
-            real_routing_model.allowed_intermediary_pairs,
-            real_routing_model.reserve_token_address,
-        )
+        if routing_id.router_name == "vault":
+            routing_model = BacktestRoutingIgnoredModel(
+                reserve.address,
+            )
+        else:
+            match routing_id.exchange_slug:
+                case "uniswap-v2" | "pancakeswap-v2":
+
+                    if routing_id.exchange_slug == "uniswap-v2":
+                        if reserve.token_symbol == "USDT":
+                            routing_type = TradeRouting.uniswap_v2_usdt
+                        else:
+                            routing_type = TradeRouting.uniswap_v2_usdc
+                    elif routing_id.exchange_slug == "pancakeswap-v2":
+                        routing_type = TradeRouting.pancakeswap_usdt
+                    else:
+                        raise NotImplementedError(f"Unsupported Uniswap v2 routing {routing_id.router_name}")
+
+                    real_routing_model = create_compatible_routing(routing_type, reserve_currency)
+                    routing_model = BacktestRoutingModel(
+                        real_routing_model.factory_router_map,
+                        real_routing_model.allowed_intermediary_pairs,
+                        real_routing_model.reserve_token_address,
+                    )
+
+                case "uniswap-v3":
+                    if reserve.token_symbol == "USDT":
+                        routing_type = TradeRouting.uniswap_v3_usdt
+                    else:
+                        routing_type = TradeRouting.uniswap_v3_usdc
+
+                    real_routing_model = create_compatible_routing(routing_type, reserve_currency)
+
+                    routing_model = BacktestRoutingModel(
+                        factory_router_map={},
+                        reserve_token_address=reserve.address,
+                        allowed_intermediary_pairs=real_routing_model.allowed_intermediary_pairs,
+                    )
+
+                case _:
+                    raise NotImplementedError(f"Unsupported exchange {routing_id}")
 
         pricing_model = BacktestPricing(
             strategy_universe.data_universe.candles,

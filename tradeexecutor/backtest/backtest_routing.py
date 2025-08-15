@@ -108,7 +108,8 @@ class BacktestRoutingModel(RoutingModel):
         state: State,
         routing_state: BacktestRoutingState,
         trades: List[TradeExecution],
-        check_balances=False
+        check_balances=False,
+        rebroadcast=False,
     ):
         """Strategy and live execution connection.
 

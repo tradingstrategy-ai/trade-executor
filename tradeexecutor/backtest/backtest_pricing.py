@@ -20,7 +20,7 @@ from tradeexecutor.strategy.trade_pricing import TradePricing
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse, translate_trading_pair
 from tradingstrategy.candle import GroupedCandleUniverse
 from tradingstrategy.liquidity import GroupedLiquidityUniverse, LiquidityDataUnavailable
-from tradingstrategy.pair import PandasPairUniverse
+from tradingstrategy.pair import PandasPairUniverse, PairNotFoundError
 from tradingstrategy.timebucket import TimeBucket
 
 
@@ -339,21 +339,22 @@ class BacktestPricing(PricingModel):
         if isinstance(routing_model, GenericRouting):
             routing_model, protocol_config = routing_model.get_router(pair)
 
-        import ipdb ; ipdb.set_trace()
-
         # Three legged, count in the fee in the middle leg
         if self.three_leg_resolution and (pair.quote.address != routing_model.reserve_token_address):
             intermediate_pairs = self.routing_model.allowed_intermediary_pairs
-            assert self.pairs is not None, "To do three-legged fee resolutoin, we neeed to get access to pairs in constructor"
-            reserve_token = self.pairs.get_token(self.routing_model.reserve_token_address)
+            assert self.pairs is not None, "To do three-legged fee resolution, we neeed to get access to pairs in constructor"
+
             if len(intermediate_pairs) != 1:
                 # Backtest routing model lacks the intermediary pair information,
                 # just guess it that we double the current pair fee
-                logger.warning(f"Needs to do three legged trade. Expected exactly one intermediate pair for three-legged trades, got {intermediate_pairs}. Pair is {pair}, reserve token is {reserve_token}")
+                logger.warning(f"Needs to do three legged trade. Expected exactly one intermediate pair for three-legged trades, got {intermediate_pairs}. Pair is {pair}")
                 extra_fee = pair.fee
             else:
                 pair_address = next(iter(intermediate_pairs.values()))
-                extra_leg = self.pairs.get_pair_by_smart_contract(pair_address)
+                try:
+                    extra_leg = self.pairs.get_pair_by_smart_contract(pair_address)
+                except PairNotFoundError as e:
+                    raise RuntimeError(f"Trading Pair universe does not have pair {pair_address} for three-legged trade resolution. Allowed intermediary pairs: {intermediate_pairs}") from e
                 extra_fee = extra_leg.fee_tier
         else:
             extra_fee = 0
