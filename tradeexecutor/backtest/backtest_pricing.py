@@ -113,6 +113,7 @@ class BacktestPricing(PricingModel):
 
         # TODO: Remove later - now to support some old code111
         if isinstance(candle_universe, TradingStrategyUniverse):
+            pairs = candle_universe.data_universe.pairs
             candle_universe = candle_universe.data_universe.candles
 
         assert isinstance(candle_universe, GroupedCandleUniverse), f"Got candles in wrong format: {candle_universe.__class__}"
@@ -327,6 +328,7 @@ class BacktestPricing(PricingModel):
         # Three legged, count in the fee in the middle leg
         if pair.quote.address != self.routing_model.reserve_token_address:
             intermediate_pairs = self.routing_model.allowed_intermediary_pairs
+            assert self.pairs is not None, "To do three-legged fee resolutoin, we neeed to get access to pairs in constructor"
             reserve_token = self.pairs.get_token(self.routing_model.reserve_token_address)
             if len(intermediate_pairs) != 1:
                 # Backtest routing model lacks the intermediary pair information,

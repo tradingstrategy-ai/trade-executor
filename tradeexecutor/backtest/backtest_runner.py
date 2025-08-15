@@ -972,6 +972,7 @@ def run_backtest_inline(
                 data_delay_tolerance=data_delay_tolerance,
                 allow_missing_fees=allow_missing_fees,
                 liquidity_universe=universe.data_universe.liquidity,
+                pairs=universe.data_universe.pairs,
             )
     else:
         assert create_trading_universe, "Must give create_trading_universe if no universe given"
