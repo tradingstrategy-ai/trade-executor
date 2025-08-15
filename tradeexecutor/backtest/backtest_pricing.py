@@ -7,7 +7,6 @@ from typing import Optional
 
 import pandas as pd
 
-from strategies.pancake_8h_momentum import reserve_token_address
 from tradeexecutor.backtest.backtest_execution import BacktestExecution
 from tradeexecutor.backtest.backtest_routing import BacktestRoutingModel
 from tradeexecutor.ethereum.uniswap_v2.uniswap_v2_routing import UniswapV2Routing
