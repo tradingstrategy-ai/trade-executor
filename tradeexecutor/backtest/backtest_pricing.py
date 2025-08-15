@@ -123,7 +123,9 @@ class BacktestPricing(PricingModel):
             candle_universe = candle_universe.data_universe.candles
 
         assert isinstance(candle_universe, GroupedCandleUniverse), f"Got candles in wrong format: {candle_universe.__class__}"
-        assert isinstance(routing_model, BacktestRoutingModel), f"Routing model must be BacktestRoutingModel got {routing_model.__class__}"
+
+        # BacktestRoutingModel or GenericRouting
+        # assert isinstance(routing_model, BacktestRoutingModel), f"Routing model must be BacktestRoutingModel got {routing_model.__class__}"
 
         self.candle_universe = candle_universe
         self.very_small_amount = very_small_amount
@@ -349,10 +351,17 @@ class BacktestPricing(PricingModel):
         else:
             extra_fee = 0
 
+        # Pair has fee information
         if pair.fee is not None:
             return pair.fee + extra_fee
 
-        return self.routing_model.get_default_trading_fee() + extra_fee
+        # Pair does not have fee information, assume a default fee
+        default_fee = self.routing_model.get_default_trading_fee()
+        if default_fee:
+            return default_fee + extra_fee
+
+        # None of pricing data available for this pair
+        return None
 
     def set_trading_fee_override(
             self,

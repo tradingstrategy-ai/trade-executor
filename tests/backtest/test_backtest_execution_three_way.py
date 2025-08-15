@@ -41,7 +41,6 @@ def logger(request):
     return setup_pytest_logging(request, mute_requests=False)
 
 
-
 @pytest.fixture(scope="module")
 def execution_context(request) -> ExecutionContext:
     """Setup backtest execution context."""
@@ -301,7 +300,7 @@ def test_buy_sell_three_way_backtest(
     assert sell_price < buy_price
 
     # Check our wallet was credited
-    assert wallet.get_balance(busd.address) == pytest.approx(Decimal('9995.012468827930204002132236'))
+    assert wallet.get_balance(busd.address) == pytest.approx(Decimal('9990.04975124378115311188913'))
     assert wallet.get_balance(cake.address) == 0
 
 

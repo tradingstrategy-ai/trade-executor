@@ -756,6 +756,7 @@ def run_backtest_inline(
     grid_search=False,
     execution_context=standalone_backtest_execution_context,
     execution_test_hook: ExecutionTestHook | None = None,
+    three_leg_resolution=True,
 ) -> BacktestResult:
     """Run backtests for given decide_trades and create_trading_universe functions.
 
@@ -973,7 +974,9 @@ def run_backtest_inline(
                 allow_missing_fees=allow_missing_fees,
                 liquidity_universe=universe.data_universe.liquidity,
                 pairs=universe.data_universe.pairs,
+                three_leg_resolution=three_leg_resolution,
             )
+
     else:
         assert create_trading_universe, "Must give create_trading_universe if no universe given"
         pricing_model = None
