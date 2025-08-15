@@ -280,6 +280,7 @@ def test_partial_take_profit(strategy_universe):
         engine_version="0.5",
         parameters=StrategyParameters.from_class(Parameters),
         mode=ExecutionMode.unit_testing,
+        three_leg_resolution=False,
     )
 
     state = result.state
@@ -324,6 +325,7 @@ def test_partial_tp_and_trailing_sl(strategy_universe):
         engine_version="0.5",
         parameters=StrategyParameters.from_class(Parameters),
         mode=ExecutionMode.unit_testing,
+        three_leg_resolution=False,
     )
 
     state = result.state

@@ -348,6 +348,7 @@ class BacktestPricing(PricingModel):
                 # Backtest routing model lacks the intermediary pair information,
                 # just guess it that we double the current pair fee
                 logger.warning(f"Needs to do three legged trade. Expected exactly one intermediate pair for three-legged trades, got {intermediate_pairs}. Pair is {pair}")
+                import ipdb ; ipdb.set_trace()
                 extra_fee = pair.fee
             else:
                 pair_address = next(iter(intermediate_pairs.values()))

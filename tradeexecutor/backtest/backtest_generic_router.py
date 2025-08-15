@@ -50,9 +50,9 @@ class EthereumBacktestPairConfigurator(PairConfigurator):
             )
         else:
             match routing_id.exchange_slug:
-                case "uniswap-v2" | "pancakeswap-v2":
+                case "uniswap-v2" | "pancakeswap-v2" | "my-dex":
 
-                    if routing_id.exchange_slug == "uniswap-v2":
+                    if routing_id.exchange_slug in ("uniswap-v2", "my-dex"):
                         if reserve.token_symbol == "USDT":
                             routing_type = TradeRouting.uniswap_v2_usdt
                         else:
