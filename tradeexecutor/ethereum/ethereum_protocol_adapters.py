@@ -24,7 +24,7 @@ from tradeexecutor.strategy.generic.pair_configurator import PairConfigurator, P
 from tradeexecutor.strategy.generic.default_protocols import default_match_router, default_supported_routers
 from tradeexecutor.strategy.reserve_currency import ReserveCurrency
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
-
+from tradingstrategy.pair import PandasPairUniverse
 
 logger = logging.getLogger(__name__)
 
@@ -376,7 +376,7 @@ class EthereumPairConfigurator(PairConfigurator):
     def get_supported_routers(self) -> Set[ProtocolRoutingId]:
         return default_supported_routers(self.strategy_universe)
 
-    def create_config(self, routing_id: ProtocolRoutingId) -> ProtocolRoutingConfig:
+    def create_config(self, routing_id: ProtocolRoutingId, three_leg_resolution=True, pairs: PandasPairUniverse=None) -> ProtocolRoutingConfig:
         if routing_id.router_name == "1delta":
             return create_1delta_adapter(self.web3, self.strategy_universe, routing_id)
         elif routing_id.router_name == "uniswap-v2":
