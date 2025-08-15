@@ -63,6 +63,7 @@ def backtest(
     max_workers: Optional[int] = Option(None, envvar="MAX_WORKERS", help="Number of workers to use for parallel processing"),
 
     extra_output: Optional[bool] = Option(False, envvar="EXTRA_OUTPUT", help="By default, info level is so verbose that running the backtest takes a long time. Give --extra-output to make sure you want to run info log level for a backtest."),
+
 ):
     """Backtest a given strategy module.
 
@@ -127,6 +128,7 @@ def backtest(
     def loop():
         nonlocal trading_strategy_api_key
         nonlocal cache_path
+
         result = run_backtest_for_module(
             strategy_file=strategy_file,
             trading_strategy_api_key=trading_strategy_api_key,

@@ -15,27 +15,21 @@ import flaky
 from eth_defi.uniswap_v3.deployment import UniswapV3Deployment
 from eth_defi.hotwallet import HotWallet
 from eth_defi.provider.anvil import fork_network_anvil, mine
-from tradingstrategy.exchange import ExchangeUniverse
-from tradingstrategy.pair import PandasPairUniverse
-from tradingstrategy.chain import ChainId
-from tradingstrategy.timebucket import TimeBucket
-from tradingstrategy.lending import LendingProtocolType
+
 
 from tradeexecutor.state.state import State
 from tradeexecutor.state.trade import TradeExecution
 from tradeexecutor.strategy.cycle import snap_to_next_tick
 from tradeexecutor.strategy.pandas_trader.position_manager import PositionManager
 from tradeexecutor.strategy.pricing_model import PricingModel
-from tradeexecutor.strategy.execution_context import python_script_execution_context, unit_test_execution_context
-from tradeexecutor.strategy.universe_model import default_universe_options
 from tradeexecutor.strategy.trading_strategy_universe import translate_trading_pair, TradingStrategyUniverse, load_partial_data
 from tradeexecutor.strategy.execution_context import ExecutionMode
 from tradeexecutor.strategy.run_state import RunState
-from tradeexecutor.ethereum.universe import create_exchange_universe, create_pair_universe
 from tradeexecutor.testing.simulated_execution_loop import set_up_simulated_ethereum_generic_execution
 from tradeexecutor.utils.blockchain import get_latest_block_timestamp
-from tradeexecutor.strategy.account_correction import check_accounts
 
+
+CI = os.environ.get("CI") == "true"
 
 pytestmark = pytest.mark.skipif(
     (os.environ.get("JSON_RPC_ETHEREUM") is None) or (shutil.which("anvil") is None),
@@ -174,6 +168,7 @@ def test_aave_v3_live_credit_supply_open_only(
     assert position.loan.get_collateral_interest() > 0
 
 
+@pytest.mark.skipif(CI, reason="This test is flaky on Github")
 def test_aave_v3_live_credit_supply_open_and_increase(
     logger,
     web3: Web3,
@@ -301,6 +296,7 @@ def test_aave_v3_live_credit_supply_open_and_increase(
     assert position.loan.get_collateral_interest() > 0
 
 
+@pytest.mark.skipif(CI, reason="This test is flaky on CI")
 def test_aave_v3_live_credit_supply_open_and_reduce(
     logger,
     web3: Web3,

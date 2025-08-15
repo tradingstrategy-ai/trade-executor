@@ -191,6 +191,7 @@ def test_tvl_trade_size_limit(strategy_universe, tmp_path):
         engine_version="0.5",
         parameters=StrategyParameters.from_class(Parameters),
         mode=ExecutionMode.unit_testing,
+        three_leg_resolution=False,
     )
 
     state = result.state

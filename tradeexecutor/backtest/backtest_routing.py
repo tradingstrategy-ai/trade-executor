@@ -50,6 +50,7 @@ class BacktestRoutingModel(RoutingModel):
                  allowed_intermediary_pairs: Dict[str, str],
                  reserve_token_address: str,
                  trading_fee: Optional[float] = None,
+                 three_legged_resolution=True,
                  ):
         """
         :param factory_router_map:
@@ -84,6 +85,9 @@ class BacktestRoutingModel(RoutingModel):
         self.factory_router_map = self.convert_address_dict_to_lower(factory_router_map)
 
         self.trading_fee = trading_fee
+        self.allowed_intermediary_pairs = allowed_intermediary_pairs
+        self.reserve_token_address = reserve_token_address
+        self.three_leg_resolution = three_legged_resolution
 
     def get_default_trading_fee(self) -> Optional[float]:
         return self.trading_fee
@@ -106,7 +110,8 @@ class BacktestRoutingModel(RoutingModel):
         state: State,
         routing_state: BacktestRoutingState,
         trades: List[TradeExecution],
-        check_balances=False
+        check_balances=False,
+        rebroadcast=False,
     ):
         """Strategy and live execution connection.
 
@@ -155,8 +160,9 @@ class BacktestRoutingIgnoredModel(BacktestRoutingModel):
     - Use trading fee assuming we would trade any pair without hops
 =    """
 
-    def __init__(self, reserve_token_address: str):
+    def __init__(self, reserve_token_address: str, three_leg_resolution=False):
         RoutingModel.__init__(self, dict(), reserve_token_address)
+        self.three_leg_resolution = three_leg_resolution
 
     @property
     def trading_fee(self):

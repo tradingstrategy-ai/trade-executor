@@ -409,6 +409,7 @@ def test_synthetic_data_backtest_stop_loss(
         routing_model=routing_model,
         log_level=logging.WARNING,
         allow_missing_fees=True,
+        three_leg_resolution=False,
     )
 
     # Expect backtesting for 213 days
@@ -441,6 +442,7 @@ def test_synthetic_data_backtest_stop_loss(
         routing_model=routing_model,
         log_level=logging.WARNING,
         allow_missing_fees=True,
+        three_leg_resolution=False,
     )
 
     assert universe.backtest_stop_loss_candles
@@ -510,6 +512,7 @@ def test_synthetic_data_backtest_take_profit(
         routing_model=routing_model,
         log_level=logging.WARNING,
         allow_missing_fees=True,
+        three_leg_resolution=False,
     )
 
     # Expect backtesting for 213 days
@@ -637,6 +640,7 @@ def test_synthetic_data_backtest_trailing_stop_loss(
         trade_routing=TradeRouting.user_supplied_routing_model,
         routing_model=routing_model,
         allow_missing_fees=True,
+        three_leg_resolution=False,
     )
 
     # Expect backtesting for 213 days
@@ -706,6 +710,7 @@ def test_synthetic_data_backtest_stop_loss_usd(
         routing_model=routing_model,
         log_level=logging.WARNING,
         allow_missing_fees=True,
+        three_leg_resolution=False,
     )
 
     # Expect backtesting for 213 days
@@ -739,6 +744,7 @@ def test_synthetic_data_backtest_stop_loss_usd(
         routing_model=routing_model,
         log_level=logging.WARNING,
         allow_missing_fees=True,
+        three_leg_resolution=False,
     )
 
     assert universe.backtest_stop_loss_candles
@@ -801,6 +807,7 @@ def test_synthetic_data_backtest_stop_loss_data_export(
         trade_routing=TradeRouting.user_supplied_routing_model,
         routing_model=routing_model,
         allow_missing_fees=True,
+        three_leg_resolution=False,
     )
 
     df = analyse_stop_losses(state)

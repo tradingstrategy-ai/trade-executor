@@ -170,6 +170,7 @@ def test_increase_credit(
         mode=ExecutionMode.unit_testing,
         indicator_storage=indicator_storage,
         execution_test_hook=deposit_simulator,
+        three_leg_resolution=False,
     )
 
     state = result.state

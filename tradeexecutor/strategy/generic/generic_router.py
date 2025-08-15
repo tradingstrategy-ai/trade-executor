@@ -8,6 +8,7 @@ import logging
 
 from web3 import Web3
 
+from tradeexecutor.state.identifier import TradingPairIdentifier
 from tradeexecutor.state.state import State
 from tradeexecutor.state.trade import TradeExecution
 from tradeexecutor.strategy.generic.pair_configurator import PairConfigurator
@@ -60,9 +61,13 @@ class GenericRouting(RoutingModel):
     def __init__(
         self,
         pair_configurator: PairConfigurator | None,
+        three_leg_resolution=True,
     ):
         self.pair_configurator = pair_configurator
         logger.info("Initialised %s", self)
+
+        # Legacy support for old unit tests
+        self.three_leg_resolution = three_leg_resolution
 
     def is_initialised(self) -> bool:
         return self.pair_configurator is not None
@@ -87,10 +92,16 @@ class GenericRouting(RoutingModel):
         assert isinstance(universe, TradingStrategyUniverse)
         substates = {}
         for routing_id in self.pair_configurator.get_supported_routers():
-            router = self.pair_configurator.get_config(routing_id).routing_model
+            router = self.pair_configurator.get_config(routing_id, three_leg_resolution=self.three_leg_resolution).routing_model
             substates[routing_id.router_name] = router.create_routing_state(universe, execution_details)
 
         return GenericRoutingState(universe, substates)
+
+    def get_router(self, pair: TradingPairIdentifier) -> RoutingModel:
+        routing_id = self.pair_configurator.match_router(pair)
+        protocol_config = self.pair_configurator.get_config(routing_id)
+        router = protocol_config.routing_model
+        return router, protocol_config
 
     def setup_trades(
         self,
@@ -113,9 +124,7 @@ class GenericRouting(RoutingModel):
         assert isinstance(routing_state, GenericRoutingState)
 
         for t in trades:
-            routing_id = self.pair_configurator.match_router(t.pair)
-            protocol_config = self.pair_configurator.get_config(routing_id)
-            router = protocol_config.routing_model
+            router, protocol_config = self.get_router(t.pair)
             # Set the router, so we know
             # in the post-trade analysis which route this trade took
             t.route = protocol_config.routing_id.router_name

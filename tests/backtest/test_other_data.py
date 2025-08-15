@@ -113,6 +113,7 @@ def pricing_model(synthetic_universe, routing_model) -> BacktestPricing:
         synthetic_universe.data_universe.candles,
         routing_model,
         allow_missing_fees=True,
+        three_leg_resolution=False,
     )
     return pricing_model
 

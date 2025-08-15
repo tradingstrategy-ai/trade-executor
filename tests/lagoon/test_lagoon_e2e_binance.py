@@ -379,3 +379,61 @@ def test_cli_lagoon_check_universe_with_anvil_checks(
 
     # 4. See check-universe command runs with web3-connection and Lagoon checks using Anvil
     cli.main(args=["check-universe"], standalone_mode=False)
+
+
+
+
+@pytest.mark.slow_test_group
+def test_cli_lagoon_bnb_local_high_2_backtest(
+    web3,
+    anvil_bnb_fork,
+    strategy_file_with_anvil_checks,
+    mocker,
+    state_file,
+    hot_wallet,
+    tmp_path: Path,
+    persistent_test_client,
+    usdt_holder: HexAddress,
+):
+    """Check we can run backtest on our strat.
+    """
+
+    cache_path  =persistent_test_client.transport.cache_path
+
+    multisig_owners = f"{web3.eth.accounts[2]}, {web3.eth.accounts[3]}, {web3.eth.accounts[4]}"
+
+    usdt_address = USDT_NATIVE_TOKEN[56]
+
+    vault_record_file = tmp_path / "vault-record.json"
+    environment = {
+        "PATH": os.environ["PATH"],  # Need forge
+        "EXECUTOR_ID": "test_cli_lagoon_deploy_binance_vault",
+        "NAME": "test_cli_lagoon_deploy_binance_vault",
+        "STRATEGY_FILE": strategy_file_with_anvil_checks.as_posix(),
+        "JSON_RPC_BINANCE": anvil_bnb_fork.json_rpc_url,
+        "STATE_FILE": state_file.as_posix(),
+        "ASSET_MANAGEMENT_MODE": "lagoon",
+        "UNIT_TESTING": "true",
+        # "LOG_LEVEL": "info",  # Set to info to get debug data for the test run
+        "LOG_LEVEL": "disabled",
+        "TRADING_STRATEGY_API_KEY": TRADING_STRATEGY_API_KEY,
+        "PRIVATE_KEY": hot_wallet.private_key.hex(),
+        "VAULT_RECORD_FILE": str(vault_record_file),
+        "FUND_NAME": "Example",
+        "FUND_SYMBOL": "EXAM",
+        "MULTISIG_OWNERS": multisig_owners,
+        "DENOMINATION_ASSET": usdt_address,
+        "ANY_ASSET": "true",
+        "UNISWAP_V2": "true",
+        "UNISWAP_V3": "true",
+        "CACHE_PATH": cache_path,
+        "GENERATE_REPORT": "false",  # Creating backtest report takes too long > 300s
+        "RUN_SINGLE_CYCLE": "true",
+        "BACKTEST_DECISION_CYCLE_OVERRIDE": "true"
+    }
+
+    cli = get_command(app)
+    mocker.patch.dict("os.environ", environment, clear=True)
+
+    # 1. Deploy vault
+    cli.main(args=["backtest"], standalone_mode=False)

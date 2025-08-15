@@ -12,6 +12,7 @@ from tradeexecutor.analysis.pair import display_strategy_universe
 from tradeexecutor.backtest.backtest_runner import run_backtest, setup_backtest_for_universe, BacktestResult
 from tradeexecutor.state.state import State
 from tradeexecutor.strategy.execution_context import standalone_backtest_execution_context
+from tradeexecutor.strategy.pandas_trader.create_universe_wrapper import call_create_trading_universe
 from tradeexecutor.strategy.pandas_trader.indicator import DiskIndicatorStorage
 from tradeexecutor.strategy.strategy_module import read_strategy_module
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
@@ -89,11 +90,14 @@ def run_backtest_for_module(
     logger.info("Using cache path %s", client.transport.cache_path)
     logger.info("Loading backtesting universe data for %s", universe_options)
 
-    universe = mod.create_trading_universe(
-        datetime.datetime.utcnow(),
-        client,
-        execution_context,
-        universe_options,
+    universe = call_create_trading_universe(
+        mod.create_trading_universe,
+        client=client,
+        timestamp=datetime.datetime.utcnow(),
+        strategy_parameters=mod.parameters,
+        execution_context=execution_context,
+        universe_options=universe_options,
+        execution_model=None,
     )
 
     with pd.option_context('display.max_rows', None, 'display.max_columns', None, 'display.width', 140):
@@ -138,6 +142,7 @@ def run_backtest_for_module(
         parameters=mod.parameters,
         indicator_storage=indicator_storage,
         max_workers=max_workers or get_safe_max_workers_count(),
+        three_leg_resolution=False,
     )
 
     assert backtest_setup.trading_strategy_engine_version

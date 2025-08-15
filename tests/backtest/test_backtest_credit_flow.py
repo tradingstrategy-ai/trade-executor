@@ -190,7 +190,8 @@ def test_backtest_credit_flow(
         trade_routing=TradeRouting.uniswap_v3_usdc_poly,
         engine_version="0.5",
         indicator_combinations=set(),
-        parameters=StrategyParameters.from_class(Parameters)
+        parameters=StrategyParameters.from_class(Parameters),
+        three_leg_resolution=False,
     )
 
     portfolio = state.portfolio

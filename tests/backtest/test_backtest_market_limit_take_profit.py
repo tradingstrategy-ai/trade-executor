@@ -277,6 +277,7 @@ def test_market_limit_take_profit_strategy_price_level(strategy_universe, tmp_pa
         engine_version="0.5",
         parameters=StrategyParameters.from_class(Parameters),
         mode=ExecutionMode.unit_testing,
+        three_leg_resolution=False,
     )
 
     state = result.state
@@ -315,6 +316,7 @@ def test_market_limit_take_profit_strategy_since_open(strategy_universe, tmp_pat
         engine_version="0.5",
         parameters=StrategyParameters.from_class(Parameters),
         mode=ExecutionMode.unit_testing,
+        three_leg_resolution=False,
     )
 
     state = result.state

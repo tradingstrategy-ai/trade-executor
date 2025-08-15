@@ -362,6 +362,7 @@ def test_missing_lending_data(persistent_test_client):
         reserve_currency=RESERVE_CURRENCY,
         trade_routing=TRADE_ROUTING,
         engine_version="0.3",
+        three_leg_resolution=False,
     )
 
     trade_count = len(list(state.portfolio.get_all_trades()))

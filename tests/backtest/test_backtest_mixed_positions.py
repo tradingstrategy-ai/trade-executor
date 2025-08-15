@@ -162,6 +162,7 @@ def test_backtest_open_both_long_short(
         reserve_currency=ReserveCurrency.usdc,
         trade_routing=TradeRouting.uniswap_v3_usdc_poly,
         engine_version="0.3",
+        three_leg_resolution=False,
     )
 
     portfolio = state.portfolio
@@ -221,6 +222,7 @@ def test_backtest_long_short_stats(
         reserve_currency=ReserveCurrency.usdc,
         trade_routing=TradeRouting.uniswap_v3_usdc_poly,
         engine_version="0.3",
+        three_leg_resolution=False,
     )
 
     portfolio = state.portfolio

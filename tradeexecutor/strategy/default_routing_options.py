@@ -195,6 +195,15 @@ class TradeRouting(enum.Enum):
     #: - Open positions with WETH quote token.
     uniswap_v3_usdt_arbitrum = "uniswap_v3_usdt_arbitrum"
 
+    #: Two or three legged trades on Uniswap v3 on Arbitrum mainnet
+    #:
+    #: - Open positions with USDT quote token.
+    #:
+    #: - Open positions with WBNB quote token.
+    uniswap_v3_usdt_binance = "uniswap_v3_usdt_binance"
+
+    uniswap_v3_usdc_base = "uniswap_v3_usdc_base"
+
     #: Two legged trades on 1delta on Polygon mainnet
     #:
     #: - Open positions with USDC quote token.
@@ -245,6 +254,8 @@ class TradeRouting(enum.Enum):
             TradeRouting.uniswap_v3_usdc_arbitrum_bridged,
             TradeRouting.uniswap_v3_usdc_arbitrum_native,
             TradeRouting.uniswap_v3_usdt_arbitrum,
+            TradeRouting.uniswap_v3_usdt_binance,
+            TradeRouting.uniswap_v3_usdc_base,
         }
 
     def is_one_delta(self) -> bool:

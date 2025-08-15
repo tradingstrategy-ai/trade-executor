@@ -44,7 +44,7 @@ def test_long_short_momentum(
     )
 
     try:
-        state, universe, debug_dump = run_backtest(setup, client)
+        state, universe, debug_dump = run_backtest(setup, client, three_leg_resolution=False)
     except Exception as e:
         logger.error("Backtest failed:\n%s", e)
         logger.exception(e)

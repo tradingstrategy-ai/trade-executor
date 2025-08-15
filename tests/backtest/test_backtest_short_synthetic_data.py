@@ -166,6 +166,7 @@ def test_backtest_open_only_short_synthetic_data(
         reserve_currency=ReserveCurrency.usdc,
         trade_routing=TradeRouting.uniswap_v3_usdc_poly,
         engine_version="0.3",
+        three_leg_resolution=False,
     )
 
     portfolio = state.portfolio
@@ -291,6 +292,7 @@ def test_backtest_open_and_close_short_synthetic_data(
         reserve_currency=ReserveCurrency.usdc,
         trade_routing=TradeRouting.uniswap_v3_usdc_poly,
         engine_version="0.3",
+        three_leg_resolution=False,
     )
 
     portfolio = state.portfolio
@@ -370,6 +372,7 @@ def test_backtest_short_underlying_price_feed(
     pricing_model = BacktestPricing(
         strategy_universe.data_universe.candles,
         routing_model,
+        three_leg_resolution=False,
     )
 
     spot_pair = strategy_universe.get_single_pair()
@@ -424,6 +427,7 @@ def test_backtest_open_short_failure_too_high_leverage(persistent_test_client: C
             reserve_currency=ReserveCurrency.usdc,
             trade_routing=TradeRouting.uniswap_v3_usdc_poly,
             engine_version="0.3",
+            three_leg_resolution=False,
         )
 
     assert str(e.value) == "Max short leverage for USDC is 5.666666666666666, got 10"
@@ -466,6 +470,7 @@ def test_backtest_open_short_failure_too_far_stoploss(persistent_test_client: Cl
             reserve_currency=ReserveCurrency.usdc,
             trade_routing=TradeRouting.uniswap_v3_usdc_poly,
             engine_version="0.3",
+            three_leg_resolution=False,
         )
 
     assert str(e.value) == "stop_loss_pct must be bigger than liquidation distance 0.9375, got 0.6"
@@ -512,6 +517,7 @@ def test_backtest_short_stop_loss_triggered(persistent_test_client: Client, stra
         reserve_currency=ReserveCurrency.usdc,
         trade_routing=TradeRouting.uniswap_v3_usdc_poly,
         engine_version="0.3",
+        three_leg_resolution=False,
     )
 
     portfolio = state.portfolio
@@ -614,6 +620,7 @@ def test_backtest_short_take_profit_triggered(persistent_test_client: Client, st
         reserve_currency=ReserveCurrency.usdc,
         trade_routing=TradeRouting.uniswap_v3_usdc_poly,
         engine_version="0.3",
+        three_leg_resolution=False,
     )
 
     portfolio = state.portfolio
@@ -724,6 +731,7 @@ def test_backtest_short_trailing_stop_loss_triggered(persistent_test_client: Cli
         reserve_currency=ReserveCurrency.usdc,
         trade_routing=TradeRouting.uniswap_v3_usdc_poly,
         engine_version="0.3",
+        three_leg_resolution=False,
     )
 
     portfolio = state.portfolio
