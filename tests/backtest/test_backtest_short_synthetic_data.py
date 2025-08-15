@@ -166,6 +166,7 @@ def test_backtest_open_only_short_synthetic_data(
         reserve_currency=ReserveCurrency.usdc,
         trade_routing=TradeRouting.uniswap_v3_usdc_poly,
         engine_version="0.3",
+        three_leg_resolution=False,
     )
 
     portfolio = state.portfolio
