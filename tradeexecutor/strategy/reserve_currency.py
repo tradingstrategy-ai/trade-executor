@@ -33,3 +33,4 @@ class ReserveCurrency(enum.Enum):
 
     #: Strategy holds its reserves as DAI (multi-chain)
     dai = "dai"
+

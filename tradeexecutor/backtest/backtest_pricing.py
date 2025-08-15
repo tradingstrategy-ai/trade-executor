@@ -339,6 +339,8 @@ class BacktestPricing(PricingModel):
         if isinstance(routing_model, GenericRouting):
             routing_model, protocol_config = routing_model.get_router(pair)
 
+        import ipdb ; ipdb.set_trace()
+
         # Three legged, count in the fee in the middle leg
         if self.three_leg_resolution and (pair.quote.address != routing_model.reserve_token_address):
             intermediate_pairs = self.routing_model.allowed_intermediary_pairs

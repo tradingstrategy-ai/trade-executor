@@ -33,6 +33,7 @@ from eth_defi.uniswap_v3.constants import UNISWAP_V3_DEPLOYMENTS
 from tradeexecutor.backtest.backtest_routing import BacktestRoutingModel, BacktestRoutingIgnoredModel
 from tradeexecutor.ethereum.uniswap_v2.uniswap_v2_routing import UniswapV2Routing
 from tradeexecutor.ethereum.uniswap_v3.uniswap_v3_routing import UniswapV3Routing
+from tradeexecutor.state.identifier import AssetIdentifier
 from tradeexecutor.strategy.default_routing_options import TradeRouting
 from tradeexecutor.strategy.execution_context import ExecutionContext, ExecutionMode
 from tradeexecutor.strategy.reserve_currency import ReserveCurrency
@@ -721,6 +722,7 @@ def get_backtest_routing_model(
     elif routing_type == TradeRouting.default:
         raise AssertionError(f"Shoudl not be reached. If you use routing_type == TradeRouting.default GenericRouting should have been configured earlier in the stack.")
 
+
     real_routing_model = create_compatible_routing(routing_type, reserve_currency)
     
     if isinstance(real_routing_model, UniswapV2Routing):
@@ -842,6 +844,12 @@ def create_uniswap_v3_compatible_routing(
     )
 
     return routing_model
+
+
+def get_reserve_currency_by_asset(asset: AssetIdentifier) -> ReserveCurrency:
+    """Get our internal reserve currency mapping by asset identifier.
+    """
+    return ReserveCurrency(asset.token_symbol.lower())
 
 
 def create_compatible_routing(
