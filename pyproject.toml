@@ -125,6 +125,7 @@ telegram-bot-logger = {git = "https://github.com/tradingstrategy-ai/telegram_bot
 openapi-core = "0.19.1"
 sentry-sdk = {version = "^2.29.1", optional = true}
 brotli = "^1.1.0"
+ipynbname = "^2024.1.0.0"
 
 
 [tool.poetry.extras]

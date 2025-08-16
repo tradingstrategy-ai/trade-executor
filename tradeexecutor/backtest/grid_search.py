@@ -38,7 +38,6 @@ import pandas as pd
 import futureproof
 
 from tradeexecutor.utils.cpu import get_safe_max_workers_count
-from tradeexecutor.utils.jupyter_notebook_name import get_notebook_name
 
 try:
     from tqdm_loggable.auto import tqdm
