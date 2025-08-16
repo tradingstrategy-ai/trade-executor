@@ -27,12 +27,15 @@ def match_predictions(
     original_accuracy_score = accuracy_score(original_true_values, pred_binary)
 
     metrics = {
+        "Original accuracy": original_accuracy_score,
         "Our prices start at": close.index[0],
         "Our prices end at": close.index[-1],
         "Predictions start at": predictions.index[0],
         "Predictions end at": predictions.index[-1],
-        "Original accuracy": original_accuracy_score
     }
+
+    # Must convert everything to str, or serialisation for cached indicators fails
+    metrics = {k: str(v) for k, v in metrics.items()}
 
     series = pd.Series(metrics)
     return series
@@ -40,7 +43,7 @@ def match_predictions(
 
 def prediction_metrics_table(
     input: ChartInput,
-    predictions_metrics_indicator="predictions_metrics_indicator",
+    predictions_metrics_indicator="predictions_metrics",
 ) -> pd.Series:
     """Table of machine learning predictions.
 
