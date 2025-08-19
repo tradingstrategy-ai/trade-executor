@@ -794,7 +794,6 @@ def get_backtest_routing_model(
     elif routing_type == TradeRouting.default:
         raise AssertionError(f"Shoudl not be reached. If you use routing_type == TradeRouting.default GenericRouting should have been configured earlier in the stack.")
 
-
     real_routing_model = create_compatible_routing(routing_type, reserve_currency)
     
     if isinstance(real_routing_model, UniswapV2Routing):

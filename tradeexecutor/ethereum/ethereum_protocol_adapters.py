@@ -8,6 +8,7 @@ from typing import Set
 
 from web3 import Web3
 from eth_defi.aave_v3.deployment import fetch_deployment as fetch_aave_deployment
+from eth_defi.uniswap_v3.constants import UNISWAP_V3_DEPLOYMENTS
 from eth_defi.uniswap_v3.deployment import fetch_deployment as fetch_uniswap_v3_deployment
 from eth_defi.one_delta.deployment import fetch_deployment as fetch_1delta_deployment
 from eth_defi.aave_v3.constants import AAVE_V3_DEPLOYMENTS
@@ -129,9 +130,13 @@ def create_uniswap_v3_adapter(
 
     if chain_id == ChainId.base:
         # Special case for Base chain
-        address_map = base_uniswap_v3_address_map
-    else:
+        address_map = UNISWAP_V3_DEPLOYMENTS["base"]
+    elif chain_id == ChainId.binance:
+        address_map = UNISWAP_V3_DEPLOYMENTS["binance"]
+    elif chain_id == ChainId.ethereum:
         address_map = uniswap_v3_address_map
+    else:
+        raise NotImplementedError(f"Chain {chain_id} not supported for Uniswap v3 - check address maps")
 
     # TODO: Add intermediate tokens
     routing_model = UniswapV3Routing(

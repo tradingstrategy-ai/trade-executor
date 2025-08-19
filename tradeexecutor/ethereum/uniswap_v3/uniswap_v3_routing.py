@@ -234,7 +234,7 @@ class UniswapV3Routing(EthereumRoutingModel):
         """
 
         super().__init__(allowed_intermediary_pairs, reserve_token_address, chain_id)
-        
+
         assert type(address_map) == dict
         self.address_map = self.convert_address_dict_to_lower(address_map)
         logger.info(
@@ -425,9 +425,12 @@ def get_uniswap_for_pair(web3: Web3, address_map: dict, target_pair: TradingPair
     assert target_pair.exchange_address, f"Exchange address missing for {target_pair}"
 
     factory_address = Web3.to_checksum_address(target_pair.exchange_address)
-    assert factory_address == Web3.to_checksum_address(address_map["factory"]), \
-        "address_map[\"factory\"] and target_pair.exchange_address should be equal\n" \
-        f"Got {factory_address} and {address_map['factory']} on pair {target_pair}"
+    try:
+        assert factory_address == Web3.to_checksum_address(address_map["factory"]), \
+            "address_map[\"factory\"] and target_pair.exchange_address should be equal\n" \
+            f"Got {factory_address} and {address_map['factory']} on pair {target_pair}"
+    except AssertionError as e:
+        raise e
 
     cache_key = (factory_address, id(web3))
     cached = _uniswap_v3_cache.get(cache_key)

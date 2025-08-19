@@ -15,7 +15,6 @@ from pyramid.view import view_config
 
 from dataclasses_json import dataclass_json
 from tradeexecutor.cli.log import get_ring_buffer_handler
-from tradeexecutor.monkeypatch import dataclasses_json
 from tradeexecutor.state.identifier import TradingPairIdentifier
 from tradeexecutor.state.metadata import Metadata
 from tradeexecutor.state.store import JSONFileStore

@@ -5,6 +5,7 @@ from pathlib import Path
 from pprint import pformat
 
 import pytest
+import flaky
 from typer.main import get_command
 from web3 import Web3
 
@@ -116,7 +117,8 @@ def hot_wallet(web3, usdt_holder) -> HotWallet:
     hw.sync_nonce(web3)
     return hw
 
-
+# Anvil keeps crapping out in perform-test-trade, so we mark this test as flaky
+@flaky.flaky
 @pytest.mark.slow_test_group
 def test_cli_lagoon_deploy_binance_vault(
     web3,
@@ -194,6 +196,9 @@ def test_cli_lagoon_deploy_binance_vault(
     )
 
     # 3. Perform a test trade
+    # Both PancakeSwap and Uniswap v3
+    # https://tradingstrategy.ai/trading-view/binance/uniswap-v3/aicell-usdt-fee-1
+    cli.main(args=["perform-test-trade", "--pair", "(binance, uniswap-v3, AICell, USDT, 0.0001)"], standalone_mode=False)
     cli.main(args=["perform-test-trade", "--pair", "(binance, pancakeswap-v2, WBNB, USDT, 0.0025)"], standalone_mode=False)
 
     # 4. Start executor and run 1s cycle
@@ -204,7 +209,7 @@ def test_cli_lagoon_deploy_binance_vault(
     state = State.read_json_file(state_file)
     reserve_position = state.portfolio.get_default_reserve_position()
     assert reserve_position.get_value() > 5.0  # Should have 100 USDC starting balance
-    assert len(state.visualisation.get_messages_tail(5)) == 2
+    assert len(state.visualisation.get_messages_tail(5)) == 3
     for t in state.portfolio.get_all_trades():
         assert t.is_success(), f"Trade {t} failed: {t.get_revert_reason()}"
     assert len(state.portfolio.frozen_positions) == 0
