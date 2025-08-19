@@ -1097,6 +1097,7 @@ class TradeAnalysis:
             lp_fees_paid_wo_vault=lp_fees_paid_wo_vault,
             lp_fees_average_pc_wo_vault=lp_fees_average_pc_wo_vault,
             trade_volume_wo_vault=trade_volume_wo_vault,
+            # trade_volume_taxed=trade_volume_taxed,
 
             #daily_returns=daily_returns,
             winning_stop_losses=winning_stop_losses,
