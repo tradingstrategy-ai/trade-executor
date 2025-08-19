@@ -10,7 +10,6 @@ from web3 import Web3
 
 from tradeexecutor.analysis.position import display_positions
 from tradeexecutor.ethereum.enzyme.vault import EnzymeVaultSyncModel
-from tradeexecutor.ethereum.onchain_balance import fetch_address_balances
 from tradeexecutor.strategy.execution_context import ExecutionContext
 from tradeexecutor.strategy.sync_model import SyncModel
 from tradeexecutor.strategy.valuation import ValuationModel

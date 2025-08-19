@@ -380,10 +380,12 @@ class EthereumExecution(ExecutionModel):
                         else:
                             diff = 0
 
+                        failed_trade = None
                         for t in completed_trades:
                             failed_tx = t.get_failed_transaction()
                             if failed_tx:
                                 tx_hash = failed_tx.tx_hash
+                                failed_trade = t
                             else:
                                 tx_hash = None
 
@@ -401,8 +403,8 @@ class EthereumExecution(ExecutionModel):
                             f"Not enough treasury to buy token  in the middle of rebalance run, should not happen.\n" \
                             f"Trades done: {trades_done}, total trades: {len(trades)}, total sell trades: {total_sell_trades}, total sell trades failed: {total_sell_trades_failed}, total buy trades: {total_buy_trades}\n" \
                             f"Balance: {onchain_treasury_balance:.2f}, USD needed: {needed_usd:.2f}\n" \
-                            f"Total sales: {total_sales:.2f} USD, expected sales: {expected_sales:.2f} USD, diff {diff:.2%}" \
-                            f"Trade: {t}"
+                            f"Total sales: {total_sales:.2f} USD, expected sales: {expected_sales:.2f} USD, diff {diff:.2%}\n" \
+                            f"Failed trade: {failed_trade}, with failed tx {failed_tx}"
                         )
 
             for tx in t.blockchain_transactions:

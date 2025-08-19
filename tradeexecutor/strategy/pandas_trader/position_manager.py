@@ -4,7 +4,7 @@ import datetime
 import warnings
 from decimal import Decimal
 from io import StringIO
-from typing import List, Optional, Union, Set
+from typing import List, Optional, Union, Set, Literal
 import logging
 
 import cachetools
@@ -590,9 +590,11 @@ class PositionManager:
 
         return cached
 
-    def get_pair_fee(self,
-                     pair: Optional[TradingPairIdentifier] = None,
-                     ) -> Optional[float]:
+    def get_pair_fee(
+        self,
+        pair: Optional[TradingPairIdentifier] = None,
+        direction: Literal["buy", "sell"] = "buy",
+    ) -> Optional[float]:
         """Estimate the trading/LP fees for a trading pair.
 
         This information can come either from the exchange itself (Uni v2 compatibles),
@@ -607,13 +609,16 @@ class PositionManager:
             Can be left empty if the underlying exchange is always
             offering the same fee.
 
+        :param direction:
+            Needed for spot and token tax.
+
         :return:
             The estimated trading fee, expressed as %.
 
             Returns None if the fee information is not available.
             This can be different from zero fees.
         """
-        return self.pricing_model.get_pair_fee(self.timestamp, pair)
+        return self.pricing_model.get_pair_fee(self.timestamp, pair, direction)
 
     def open_1x_long(
         self,

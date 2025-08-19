@@ -2,7 +2,7 @@
 
 - Test only works with archive node
 """
-import logging
+
 import os.path
 import secrets
 import shutil
@@ -17,6 +17,9 @@ from eth_defi.provider.anvil import AnvilLaunch, launch_anvil
 
 from tradeexecutor.cli.commands.app import app
 from tradeexecutor.state.state import State
+
+
+CI = os.environ.get("CI") == "true"
 
 pytestmark = pytest.mark.skipif(not os.environ.get("JSON_RPC_POLYGON") or not os.environ.get("TRADING_STRATEGY_API_KEY"), reason="Set JSON_RPC_POLYGON and TRADING_STRATEGY_API_KEY environment variables to run this test")
 
@@ -88,6 +91,7 @@ def environment(
     return environment
 
 
+@pytest.mark.skipif(CI, reason="Github CI/Anvil crap")
 def test_correct_accounts_redemption_on_ausdc(
     environment: dict,
     state_file: Path,

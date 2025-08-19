@@ -154,6 +154,8 @@ class TradeSummary:
 
     trade_volume: USDollarAmount = field(default=0.0)
     trade_volume_wo_vault: USDollarAmount = field(default=0.0)
+    trade_volume_taxed: USDollarAmount = field(default=0.0)
+    token_tax_paid: USDollarAmount = field(default=0.0)
 
     lp_fees_paid: Optional[USDollarPrice] = 0
     lp_fees_paid_wo_vault: Optional[USDollarPrice] = 0
@@ -289,6 +291,8 @@ class TradeSummary:
             "Time in market volatile": as_percent(self.time_in_market_volatile),
             "Trade volume": as_dollar(self.trade_volume),
             "Trade volume, no vault": as_dollar(self.trade_volume_wo_vault),
+            "Trade volume, taxed tokens": as_dollar(self.trade_volume_taxed),
+            "Token tax paid": as_dollar(self.token_tax_paid),
             "Position win percent": as_percent(self.win_percent),
             "Total positions": as_integer(self.total_positions),
             "Won positions": as_integer(self.won),
@@ -852,6 +856,8 @@ class TradeAnalysis:
         lp_fees_paid = 0
         lp_fees_paid_wo_vault = 0
         trade_volume_wo_vault = 0
+        trade_volume_taxed = 0
+        token_tax_paid = 0
 
         max_pos_cons = 0
         max_neg_cons = 0
@@ -888,10 +894,14 @@ class TradeAnalysis:
             interest_paid_usd.append(position.get_repaid_interest())
 
             for t in position.trades.values():
+                value = t.get_value()
                 if t.pair.is_volume_generating():
-                    trade_volume += t.get_value()
+                    trade_volume += value
                 if not t.pair.is_vault():
-                    trade_volume_wo_vault += t.get_value()
+                    trade_volume_wo_vault += value
+                if t.pair.get_buy_tax() or t.pair.get_sell_tax():
+                    trade_volume_taxed += value
+                token_tax_paid += t.get_token_tax_paid()
             
             if position.is_credit_supply():
                 delta_neutral_cons += 1
@@ -1097,6 +1107,8 @@ class TradeAnalysis:
             lp_fees_paid_wo_vault=lp_fees_paid_wo_vault,
             lp_fees_average_pc_wo_vault=lp_fees_average_pc_wo_vault,
             trade_volume_wo_vault=trade_volume_wo_vault,
+            trade_volume_taxed=trade_volume_taxed,
+            token_tax_paid=token_tax_paid,
 
             #daily_returns=daily_returns,
             winning_stop_losses=winning_stop_losses,
