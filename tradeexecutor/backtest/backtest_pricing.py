@@ -3,7 +3,7 @@ import datetime
 import math
 import warnings
 from decimal import Decimal, ROUND_DOWN
-from typing import Optional
+from typing import Optional, Literal
 
 import pandas as pd
 
@@ -203,7 +203,7 @@ class BacktestPricing(PricingModel):
             pair_name_hint=pair.get_ticker(),
         )
 
-        pair_fee = self.get_pair_fee(ts, pair)
+        pair_fee = self.get_pair_fee(ts, pair, "sell")
 
         if pair_fee is not None:
             reserve = float(quantity) * mid_price
@@ -271,7 +271,7 @@ class BacktestPricing(PricingModel):
 
         assert mid_price not in (0, math.nan), f"Got bad mid price: {mid_price}"
 
-        pair_fee = self.get_pair_fee(ts, pair)
+        pair_fee = self.get_pair_fee(ts, pair, "buy")
 
         if pair_fee is not None:
             lp_fee = float(reserve) * pair_fee
@@ -326,6 +326,7 @@ class BacktestPricing(PricingModel):
         self,
         ts: datetime.datetime,
         pair: TradingPairIdentifier,
+        direction: Literal["buy", "sell"],
     ) -> Optional[float]:
         """Figure out the fee from a pair or a routing.
 
@@ -356,14 +357,22 @@ class BacktestPricing(PricingModel):
         else:
             extra_fee = 0
 
+        if direction == "buy":
+            # Get token tax
+            tax = pair.base.get_buy_tax() or 0
+        elif direction == "sell":
+            tax = pair.base.get_sell_tax() or 0
+        else:
+            raise NotImplementedError(f"Unsupported direction {direction} for pair {pair}")
+
         # Pair has fee information
         if pair.fee is not None:
-            return pair.fee + extra_fee
+            return pair.fee + extra_fee + tax
 
         # Pair does not have fee information, assume a default fee
         default_fee = self.routing_model.get_default_trading_fee()
         if default_fee:
-            return default_fee + extra_fee
+            return default_fee + extra_fee + tax
 
         # None of pricing data available for this pair
         return None
