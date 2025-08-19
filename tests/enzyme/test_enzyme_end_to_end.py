@@ -306,8 +306,10 @@ def test_enzyme_live_trading_run_single_cycle(
     assert result.exit_code == 0
 
     # Deposit some money in the vault
-    usdc.functions.approve(vault.comptroller.address, 500 * 10**6).transact({"from": deployer})
-    vault.comptroller.functions.buyShares(500 * 10**6, 1).transact({"from": deployer})
+    tx_hash = usdc.functions.approve(vault.comptroller.address, 500 * 10**6).transact({"from": deployer})
+    assert_transaction_success_with_explanation(vault.web3, tx_hash)
+    tx_hash =vault.comptroller.functions.buyShares(500 * 10**6, 1).transact({"from": deployer})
+    assert_transaction_success_with_explanation(vault.web3, tx_hash)
 
     # Run strategy for a single cycle
     env = environment.copy()

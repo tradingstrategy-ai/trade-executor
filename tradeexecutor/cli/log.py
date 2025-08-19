@@ -476,7 +476,7 @@ def setup_sentry_logging(*, application_name: str, sentry_dsn: str):
         # Sentry doesn't support our custom log level, so we need to map it to INFO
         custom_level_mapping = {
             "trade": "info",
-            "trade_high": "warning",
+            "trade_high": "info",
         }
         current_level = crumb.get("level")
         crumb["level"] = custom_level_mapping.get(current_level, current_level)

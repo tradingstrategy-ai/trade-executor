@@ -12,6 +12,7 @@
 import os
 import json
 import os
+import sys
 import urllib.error
 import urllib.request
 from itertools import chain
@@ -97,14 +98,44 @@ def _find_nb_path() -> Union[Tuple[dict, PurePath], Tuple[None, None]]:
     return None, None
 
 
-def get_notebook_name() -> str:
-    """ Returns the short name of the notebook w/o the .ipynb extension,
-        or raises a FileNotFoundError exception if it cannot be determined.
+def get_notebook_file_from_within_notebook(_globals) -> Path:
+    """Return the notebook file.
+
+    - Must be called from within the notebook
+    - Compatibility limits
+        - Visual Studio Code
+        - ipython
+        - Jupyter-based systems through ipynbname
+
+    Example:
+
+    .. code-block:: python
+
+        # Get notebook filename stem
+        RUN_ID = get_notebook_file_from_within_notebook(globals())
+
+
+    :return:
+        Full path to the currently executed notebook
     """
-    _, path = _find_nb_path()
-    if path:
-        return path.stem
-    raise FileNotFoundError(FILE_ERROR.format('name'))
+
+    assert type(_globals) is dict, "Must pass globals() to get_notebook_file_from_within_notebook()"
+
+    if "__vsc_ipynb_file__" in _globals:
+        # Visual Studio Code
+        return Path(_globals['__vsc_ipynb_file__'])
+    elif sys.argv[0].endswith("ipynb"):
+        # Ipython
+        return Path(sys.argv[0])
+    else:
+        # Jupyter-based systems
+        import ipynbname
+        return ipynbname.path()
+
+
+def get_notebook_id(_globals) -> str:
+    """Return the base name of notebook"""
+    return get_notebook_file_from_within_notebook(_globals).stem
 
 
 def path() -> Path:
