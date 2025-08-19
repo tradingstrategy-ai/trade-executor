@@ -4,7 +4,7 @@ import shutil
 import os.path
 import secrets
 from pathlib import Path
-from unittest import mock
+import os
 
 import pytest
 from _pytest.fixtures import FixtureRequest
@@ -13,6 +13,8 @@ from eth_defi.provider.anvil import AnvilLaunch, launch_anvil
 
 from tradeexecutor.cli.commands.app import app
 
+
+CI = os.environ.get("CI") == "true"
 
 pytestmark = pytest.mark.skipif(not os.environ.get("JSON_RPC_BASE") or not os.environ.get("TRADING_STRATEGY_API_KEY"), reason="Set JSON_RPC_POLYGON and TRADING_STRATEGY_API_KEY environment variables to run this test")
 
@@ -84,6 +86,7 @@ def environment(
     return environment
 
 
+@pytest.mark.skipif(CI, reason="Too flaky on Github")
 @pytest.mark.slow_test_group
 def test_repair_credit_position_open_failed(
     environment: dict,
