@@ -329,7 +329,8 @@ def web_chart_render(request: Request):
     """
     run_state: RunState = request.registry["run_state"]
 
-    assert run_state.exception is None, "Trade executor is crashed, cannot render charts"
+    if run_state.exception is not None:
+        return exception_response(500, detail="Trade executor is crashed, cannot render charts")
 
     chart_registry = run_state.chart_registry
     chart_id = request.params.get("chart_id")
@@ -392,7 +393,9 @@ def web_chart_registry(request: Request):
     """
 
     run_state: RunState = request.registry["run_state"]
-    assert run_state.exception is None, "Trade executor is crashed, cannot render charts"
+    if run_state.exception is not None:
+        return exception_response(500, detail="Trade executor is crashed, cannot render charts")
+
     chart_registry = run_state.chart_registry
     assert chart_registry is not None, "ChartRegistry not yet available. It becomes available after the trade executor completes loading the trading universe."
     return [c.export() for c in chart_registry.registry.values()]
@@ -418,7 +421,9 @@ def web_chart_pairs(request: Request):
     """
 
     run_state: RunState = request.registry["run_state"]
-    assert run_state.exception is None, "Trade executor is crashed, cannot render charts"
+    if run_state.exception is not None:
+        return exception_response(500, detail="Trade executor is crashed, cannot render charts")
+
     chart_registry = run_state.chart_registry
     strategy_universe = run_state.latest_indicators.strategy_universe
 
