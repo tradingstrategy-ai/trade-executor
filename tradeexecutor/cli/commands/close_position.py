@@ -172,10 +172,13 @@ def close_position(
     # We construct the trading universe to know what's our reserve asset
     universe_model: TradingStrategyUniverseModel = run_description.universe_model
     ts = datetime.datetime.utcnow()
+
     universe = universe_model.construct_universe(
         ts,
-        execution_context.mode,
-        universe_options
+        ExecutionMode.preflight_check,
+        universe_options,
+        strategy_parameters=mod.parameters,
+        execution_model=execution_model,
     )
 
     runner = run_description.runner

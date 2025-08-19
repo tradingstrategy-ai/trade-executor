@@ -8,14 +8,11 @@ from typing import Optional
 
 import pandas as pd
 
-from eth_defi.hotwallet import HotWallet
 from tradingstrategy.chain import ChainId
 from .app import app
 from .shared_options import unit_testing
 from ..bootstrap import prepare_executor_id, prepare_cache, create_web3_config, create_client, create_execution_and_sync_model
 from ..log import setup_logging
-from ..slippage import configure_max_slippage_tolerance
-from ..universe import setup_universe
 from ...analysis.pair import display_strategy_universe
 from ...strategy.approval import UncheckedApprovalModel
 from ...strategy.bootstrap import import_strategy_file, make_factory_from_strategy_mod
