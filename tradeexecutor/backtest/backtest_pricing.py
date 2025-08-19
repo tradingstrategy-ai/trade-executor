@@ -203,11 +203,12 @@ class BacktestPricing(PricingModel):
             pair_name_hint=pair.get_ticker(),
         )
 
-        pair_fee = self.get_pair_fee(ts, pair, "sell")
+        pair_fee, tax_percent = self.get_pair_fee(ts, pair, "sell", separate_tax=True)
 
         if pair_fee is not None:
             reserve = float(quantity) * mid_price
             lp_fee = float(reserve) * pair_fee
+            tax = float(reserve) * tax_percent
 
             # Move price below mid price
             price = mid_price * (1 - pair_fee)
@@ -231,7 +232,9 @@ class BacktestPricing(PricingModel):
             pair_fee=pair_fee,
             market_feed_delay=delay.to_pytimedelta(),
             side=False,
-            path=[pair]
+            path=[pair],
+            token_tax=tax,
+            token_tax_percent=tax_percent,
         )
 
     def get_buy_price(self,
@@ -271,10 +274,11 @@ class BacktestPricing(PricingModel):
 
         assert mid_price not in (0, math.nan), f"Got bad mid price: {mid_price}"
 
-        pair_fee = self.get_pair_fee(ts, pair, "buy")
+        pair_fee, tax_percent = self.get_pair_fee(ts, pair, "buy", separate_tax=True)
 
         if pair_fee is not None:
             lp_fee = float(reserve) * pair_fee
+            tax = float(reserve) * tax_percent
 
             # Move price above mid price
             price = mid_price * (1 + pair_fee)
@@ -289,6 +293,7 @@ class BacktestPricing(PricingModel):
                 raise AssertionError(f"Pair lacks fee information: {pair}")
             lp_fee = None
             price = mid_price
+            tax = None
 
         assert price not in (0, math.nan) and price > 0, f"Got bad price: {price}"
 
@@ -299,7 +304,9 @@ class BacktestPricing(PricingModel):
             pair_fee=pair_fee,
             market_feed_delay=delay.to_pytimedelta(),
             side=True,
-            path=[pair]
+            path=[pair],
+            token_tax_percent=tax_percent,
+            token_tax=tax,
         )
 
     def get_mid_price(self,
@@ -327,6 +334,7 @@ class BacktestPricing(PricingModel):
         ts: datetime.datetime,
         pair: TradingPairIdentifier,
         direction: Literal["buy", "sell"],
+        separate_tax=False,
     ) -> Optional[float]:
         """Figure out the fee from a pair or a routing.
 
@@ -366,15 +374,24 @@ class BacktestPricing(PricingModel):
             raise NotImplementedError(f"Unsupported direction {direction} for pair {pair}")
 
         # Pair has fee information
+        result = None
         if pair.fee is not None:
-            return pair.fee + extra_fee + tax
+            result = pair.fee + extra_fee + tax
+        else:
 
-        # Pair does not have fee information, assume a default fee
-        default_fee = self.routing_model.get_default_trading_fee()
-        if default_fee:
-            return default_fee + extra_fee + tax
+            # Pair does not have fee information, assume a default fee
+            default_fee = self.routing_model.get_default_trading_fee()
+            if default_fee:
+                result = default_fee + extra_fee + tax
 
-        # None of pricing data available for this pair
+        if result is not None:
+            if separate_tax:
+                return result, tax
+            else:
+                return tax
+
+        # None of pricing data available for this pair.
+        # Legacy. Should not happen.
         return None
 
     def set_trading_fee_override(

@@ -1226,6 +1226,17 @@ class TradeExecution:
         else:
             raise AssertionError(f"Unsupported trade state to query fees: {self.get_status()}")
 
+    def get_token_tax_paid(self) -> USDollarAmount:
+        """Get the amount of token tax paid.
+
+        TODO: Currently backtesting only.
+        """
+
+        if not self.is_spot():
+            return 0
+
+        return self.price_structure.token_tax or 0
+
     def get_execution_sort_position(self) -> int:
         """When this trade should be executed.
 

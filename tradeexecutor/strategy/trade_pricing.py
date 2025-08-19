@@ -75,6 +75,13 @@ class TradePricing:
     #:
     lp_fee: Optional[list[USDollarAmount]] = None
 
+    #: How much token tax was paid
+    #:
+    #: lp_fee is inclusive of token_tax.
+    token_tax: Optional[USDollarAmount] = None
+
+    token_tax_percent: Optional[Percent] = None
+
     #: What was the LP fee % used as the base of the calculations.
     #:
     pair_fee: Optional[list[BPS]] = None
