@@ -7,6 +7,7 @@ from typing import List, Optional, Iterable
 
 from web3.types import BlockIdentifier
 
+from eth_defi.compat import native_datetime_utc_now
 from eth_defi.provider.broken_provider import get_almost_latest_block_number
 from tradeexecutor.ethereum.onchain_balance import fetch_address_balances
 from tradeexecutor.state.balance_update import BalanceUpdate
@@ -62,14 +63,14 @@ class AddressSyncModel(SyncModel):
         deployment.address = self.get_main_address()
         deployment.block_number = web3.eth.block_number
         deployment.tx_hash = None
-        deployment.block_mined_at = datetime.datetime.utcnow()
+        deployment.block_mined_at = native_datetime_utc_now()
         deployment.vault_token_name = None
         deployment.vault_token_symbol = None
-        deployment.initialised_at = datetime.datetime.utcnow()
+        deployment.initialised_at = native_datetime_utc_now()
 
         if reserve_asset:
             position = state.portfolio.initialise_reserves(reserve_asset)
-            position.last_pricing_at = datetime.datetime.utcnow()
+            position.last_pricing_at = native_datetime_utc_now()
             position.reserve_token_price = reserve_token_price
 
         logger.info(
