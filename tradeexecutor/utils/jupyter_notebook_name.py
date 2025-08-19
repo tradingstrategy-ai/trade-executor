@@ -138,6 +138,7 @@ def get_notebook_id(_globals) -> str:
     return get_notebook_file_from_within_notebook(_globals).stem
 
 
+
 def path() -> Path:
     """ Returns the absolute path of the notebook,
         or raises a FileNotFoundError exception if it cannot be determined.

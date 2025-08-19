@@ -10,6 +10,7 @@ import secrets
 from pathlib import Path
 from unittest import mock
 
+import flaky
 import pytest
 from _pytest.fixtures import FixtureRequest
 
@@ -90,6 +91,8 @@ def environment(
     return environment
 
 
+# Anvil is fucked up eth_defi.provider.fallback:fallback.py:317 Encountered JSON-RPC retryable error HTTPConnectionPool(host='localhost', port=29391): Max retries exceeded with url: / (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x7f69bc270810>: Failed to establish a new connection: [Errno 111] Connection refused'))
+@flaky.flaky
 def test_correct_interest_not_accrued(
     environment: dict,
 ):

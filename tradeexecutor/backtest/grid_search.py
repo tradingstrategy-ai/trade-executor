@@ -38,7 +38,6 @@ import pandas as pd
 import futureproof
 
 from tradeexecutor.utils.cpu import get_safe_max_workers_count
-from tradeexecutor.utils.jupyter_notebook_name import get_notebook_name
 
 try:
     from tqdm_loggable.auto import tqdm
@@ -52,7 +51,7 @@ import zstandard as zstd
 
 from tradeexecutor.strategy.engine_version import TradingStrategyEngineVersion
 from tradeexecutor.strategy.execution_context import ExecutionContext, grid_search_execution_context, standalone_backtest_execution_context
-from tradeexecutor.strategy.pandas_trader.indicator import IndicatorSet, CreateIndicatorsProtocolV1, DiskIndicatorStorage, warm_up_indicator_cache, \
+from tradeexecutor.strategy.pandas_trader.indicator import CreateIndicatorsProtocolV1, DiskIndicatorStorage, warm_up_indicator_cache, \
     IndicatorKey, DEFAULT_INDICATOR_STORAGE_PATH, CreateIndicatorsProtocol, call_create_indicators, IndicatorStorage
 from tradeexecutor.strategy.universe_model import UniverseOptions
 
@@ -1642,7 +1641,6 @@ def _handle_sigterm(*args):
 
 
 def get_grid_search_result_path(
-    #notebook_name: str | Callable = get_notebook_name,
     notebook_name: str | Callable | None = None,
 ) -> Path:
     """Get a path where to stget_grid_search_result_pathore the grid seach results.
