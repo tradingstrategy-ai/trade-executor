@@ -6,6 +6,7 @@ import datetime
 import enum
 from dataclasses import dataclass, field
 from decimal import Decimal
+from pprint import pformat
 from typing import Optional, Literal, TypeAlias
 
 import numpy as np
@@ -797,10 +798,14 @@ class TradingPairIdentifier:
 
     def get_token_risk_flags(self) -> set[str] | None:
         """Get all flags set by Token Risk API."""
+
         data = self.get_token_risk_data()
         if not data:
             return None
         flags = set()
+
+        assert "results" in data, f"Token Risk API data missing 'results' key:\n{pformat(data)}"
+
         for flag in data["results"]:
             if flag["value"] in ("true", True):
                 flags.add(flag["key"])
