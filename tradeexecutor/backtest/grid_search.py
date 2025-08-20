@@ -4,6 +4,7 @@ import gc
 import tempfile
 import traceback
 from _decimal import Decimal
+from distutils.version import Version
 
 import joblib
 import numpy
@@ -1357,6 +1358,11 @@ def run_grid_search_backtest(
         execution_context = dataclasses.replace(grid_search_execution_context)
         execution_context.engine_version = trading_strategy_engine_version
 
+    if execution_context.engine_version and (Version(execution_context.engine_version) >= Version("0.5.0")):
+        trade_routing = TradeRouting.default
+    else:
+        trade_routing = TradeRouting.user_supplied_routing_model
+
     # Run the test
     try:
         state = None
@@ -1374,7 +1380,7 @@ def run_grid_search_backtest(
                 universe=universe,
                 initial_deposit=initial_deposit,
                 reserve_currency=None,
-                trade_routing=TradeRouting.default,
+                trade_routing=trade_routing,
                 routing_model=routing_model,
                 allow_missing_fees=True,
                 data_delay_tolerance=data_delay_tolerance,

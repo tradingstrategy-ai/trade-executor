@@ -195,7 +195,7 @@ def test_enzyme_execute_open_position(
     assert swap_tx.transaction_args[0] == vault.deployment.contracts.integration_manager.address
     assert swap_tx.transaction_args[1] == IntegrationManagerActionId.CallOnIntegration.value
     assert swap_tx.details["contract"] == uniswap_v2.router.address
-    assert swap_tx.details["function"] == "swapExactTokensForTokens"
+    assert swap_tx.details["function"] == "swapExactTokensForTokensSupportingFeeOnTransferTokens"
 
     # Spend USDC, receive WETH
     assert len(swap_tx.asset_deltas) == 2

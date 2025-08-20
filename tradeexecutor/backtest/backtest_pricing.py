@@ -352,7 +352,10 @@ class BacktestPricing(PricingModel):
         """
 
         if self.trading_fee_override is not None:
-            return self.trading_fee_override
+            if separate_tax:
+                return self.trading_fee_override, 0
+            else:
+                return self.trading_fee_override
 
         # Multi routing hack
         routing_model = self.routing_model
