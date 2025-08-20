@@ -17,6 +17,7 @@ def is_swap_function(name: str):
     return name in {
         # Uniswap v2
         "swapExactTokensForTokens",
+        "swapExactTokensForTokensSupportingFeeOnTransferTokens",
         # Uniswap v3
         "exactInput",
         # 1delta

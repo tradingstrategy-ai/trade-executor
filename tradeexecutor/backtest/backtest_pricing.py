@@ -203,7 +203,11 @@ class BacktestPricing(PricingModel):
             pair_name_hint=pair.get_ticker(),
         )
 
-        pair_fee, tax_percent = self.get_pair_fee(ts, pair, "sell", separate_tax=True)
+        fee_result = self.get_pair_fee(ts, pair, "sell", separate_tax=True)
+        if fee_result is None:
+            pair_fee = tax_percent = None
+        else:
+            pair_fee, tax_percent = fee_result
 
         if pair_fee is not None:
             reserve = float(quantity) * mid_price
@@ -224,6 +228,7 @@ class BacktestPricing(PricingModel):
 
             price = mid_price
             lp_fee = None
+            tax = None
 
         return TradePricing(
             price=float(price),
@@ -274,7 +279,11 @@ class BacktestPricing(PricingModel):
 
         assert mid_price not in (0, math.nan), f"Got bad mid price: {mid_price}"
 
-        pair_fee, tax_percent = self.get_pair_fee(ts, pair, "buy", separate_tax=True)
+        fee_result = self.get_pair_fee(ts, pair, "buy", separate_tax=True)
+        if fee_result is None:
+            pair_fee = tax_percent = None
+        else:
+            pair_fee, tax_percent = fee_result
 
         if pair_fee is not None:
             lp_fee = float(reserve) * pair_fee
@@ -335,7 +344,7 @@ class BacktestPricing(PricingModel):
         pair: TradingPairIdentifier,
         direction: Literal["buy", "sell"],
         separate_tax=False,
-    ) -> Optional[float]:
+    ) -> Optional[Percent] | Optional[tuple[Percent, Percent]]:
         """Figure out the fee from a pair or a routing.
 
         - What is the total cost of trading with this pair
@@ -343,7 +352,10 @@ class BacktestPricing(PricingModel):
         """
 
         if self.trading_fee_override is not None:
-            return self.trading_fee_override
+            if separate_tax:
+                return self.trading_fee_override, 0
+            else:
+                return self.trading_fee_override
 
         # Multi routing hack
         routing_model = self.routing_model
@@ -382,13 +394,14 @@ class BacktestPricing(PricingModel):
             # Pair does not have fee information, assume a default fee
             default_fee = self.routing_model.get_default_trading_fee()
             if default_fee:
+                tax = 0
                 result = default_fee + extra_fee + tax
 
         if result is not None:
             if separate_tax:
                 return result, tax
             else:
-                return tax
+                return result
 
         # None of pricing data available for this pair.
         # Legacy. Should not happen.
