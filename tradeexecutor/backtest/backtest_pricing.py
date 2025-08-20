@@ -203,7 +203,11 @@ class BacktestPricing(PricingModel):
             pair_name_hint=pair.get_ticker(),
         )
 
-        pair_fee, tax_percent = self.get_pair_fee(ts, pair, "sell", separate_tax=True)
+        fee_result = self.get_pair_fee(ts, pair, "sell", separate_tax=True)
+        if fee_result is None:
+            pair_fee = tax_percent = None
+        else:
+            pair_fee, tax_percent = fee_result
 
         if pair_fee is not None:
             reserve = float(quantity) * mid_price
@@ -274,7 +278,11 @@ class BacktestPricing(PricingModel):
 
         assert mid_price not in (0, math.nan), f"Got bad mid price: {mid_price}"
 
-        pair_fee, tax_percent = self.get_pair_fee(ts, pair, "buy", separate_tax=True)
+        fee_result = self.get_pair_fee(ts, pair, "buy", separate_tax=True)
+        if fee_result is None:
+            pair_fee = tax_percent = None
+        else:
+            pair_fee, tax_percent = fee_result
 
         if pair_fee is not None:
             lp_fee = float(reserve) * pair_fee
