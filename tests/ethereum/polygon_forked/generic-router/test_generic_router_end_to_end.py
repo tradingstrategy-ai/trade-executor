@@ -29,7 +29,7 @@ from tradeexecutor.cli.main import app
 from tradeexecutor.state.state import State
 
 
-os = os.environ.get("CI") == "true"
+CI = os.environ.get("CI") == "true"
 
 logger = logging.getLogger(__name__)
 
