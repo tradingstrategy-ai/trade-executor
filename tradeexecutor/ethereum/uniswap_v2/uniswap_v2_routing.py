@@ -91,7 +91,8 @@ class UniswapV2RoutingState(EthereumRoutingState):
                 quote_token=quote_token,
                 amount_in=reserve_amount,
                 max_slippage=get_slippage_in_bps(max_slippage),
-                fee=bps_fee
+                fee=bps_fee,
+                support_token_tax=True,
             )
         else:
             logger.warning("Pair supplied without fee, using default fee")
@@ -103,6 +104,7 @@ class UniswapV2RoutingState(EthereumRoutingState):
                 quote_token=quote_token,
                 amount_in=reserve_amount,
                 max_slippage=get_slippage_in_bps(max_slippage),
+                support_token_tax=True,
             )
         
         return self.create_signed_transaction(
@@ -169,6 +171,7 @@ class UniswapV2RoutingState(EthereumRoutingState):
                 amount_in=reserve_amount,
                 max_slippage=get_slippage_in_bps(max_slippage),
                 intermediate_token=intermediary_token,
+                support_token_tax=True,
             )
 
         tx = self.tx_builder.sign_transaction(
