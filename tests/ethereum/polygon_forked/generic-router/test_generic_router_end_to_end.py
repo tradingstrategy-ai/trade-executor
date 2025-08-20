@@ -29,6 +29,8 @@ from tradeexecutor.cli.main import app
 from tradeexecutor.state.state import State
 
 
+os = os.environ.get("CI") == "true"
+
 logger = logging.getLogger(__name__)
 
 
@@ -147,7 +149,7 @@ def test_generic_routing_live_trading_init(
 
 
 # Flaky due to Anvil randomly reverting tx and causing a frozen position
-@pytest.mark.slow_test_group
+@pytest.mark.skipif(CI, "Anvil too unstable on Github CI")
 @flaky.flaky
 def test_generic_routing_live_trading_start_spot_and_short(
     environment: dict,
