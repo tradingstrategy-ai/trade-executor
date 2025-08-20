@@ -228,6 +228,7 @@ class BacktestPricing(PricingModel):
 
             price = mid_price
             lp_fee = None
+            tax = None
 
         return TradePricing(
             price=float(price),
