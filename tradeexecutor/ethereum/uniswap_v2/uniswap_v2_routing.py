@@ -17,12 +17,11 @@ from tradeexecutor.utils.blockchain import get_block_timestamp
 from tradingstrategy.chain import ChainId
 from web3 import Web3
 from web3.exceptions import ContractLogicError
-from web3.exceptions import ContractLogicError
 
 from eth_defi.uniswap_v2.deployment import UniswapV2Deployment, fetch_deployment, mock_partial_deployment_for_analysis
 from eth_defi.uniswap_v2.swap import swap_with_slippage_protection
 
-from tradeexecutor.ethereum.tx import HotWalletTransactionBuilder, TransactionBuilder
+from tradeexecutor.ethereum.tx import TransactionBuilder
 from tradeexecutor.state.identifier import TradingPairIdentifier, AssetIdentifier
 from tradeexecutor.state.blockhain_transaction import BlockchainTransaction
 from tradingstrategy.pair import PandasPairUniverse
@@ -158,7 +157,8 @@ class UniswapV2RoutingState(EthereumRoutingState):
                 amount_in=reserve_amount,
                 max_slippage=get_slippage_in_bps(max_slippage),
                 intermediate_token=intermediary_token,
-                fee = bps_fee
+                fee = bps_fee,
+                support_token_tax=True,
             )
         else:
             logger.warning("Pair supplied without fee, using default fee")
