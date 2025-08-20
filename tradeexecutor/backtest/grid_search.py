@@ -6,7 +6,7 @@ import traceback
 from _decimal import Decimal
 from distutils.version import Version
 
-from packaging.version import Versionn
+from packaging.version import Version
 import numpy
 from pandas._libs.missing import NAType
 
