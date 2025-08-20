@@ -149,7 +149,7 @@ def test_generic_routing_live_trading_init(
 
 
 # Flaky due to Anvil randomly reverting tx and causing a frozen position
-@pytest.mark.skipif(CI, "Anvil too unstable on Github CI")
+@pytest.mark.skipif(CI, reason="Anvil too unstable on Github CI")
 @flaky.flaky
 def test_generic_routing_live_trading_start_spot_and_short(
     environment: dict,
