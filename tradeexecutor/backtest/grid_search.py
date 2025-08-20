@@ -1374,7 +1374,7 @@ def run_grid_search_backtest(
                 universe=universe,
                 initial_deposit=initial_deposit,
                 reserve_currency=None,
-                trade_routing=TradeRouting.user_supplied_routing_model,
+                trade_routing=TradeRouting.default,
                 routing_model=routing_model,
                 allow_missing_fees=True,
                 data_delay_tolerance=data_delay_tolerance,
