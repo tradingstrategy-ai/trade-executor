@@ -344,7 +344,7 @@ class BacktestPricing(PricingModel):
         pair: TradingPairIdentifier,
         direction: Literal["buy", "sell"],
         separate_tax=False,
-    ) -> Optional[float]:
+    ) -> Optional[Percent] | Optional[tuple[Percent, Percent]]:
         """Figure out the fee from a pair or a routing.
 
         - What is the total cost of trading with this pair
@@ -391,13 +391,14 @@ class BacktestPricing(PricingModel):
             # Pair does not have fee information, assume a default fee
             default_fee = self.routing_model.get_default_trading_fee()
             if default_fee:
+                tax = 0
                 result = default_fee + extra_fee + tax
 
         if result is not None:
             if separate_tax:
                 return result, tax
             else:
-                return tax
+                return result
 
         # None of pricing data available for this pair.
         # Legacy. Should not happen.
