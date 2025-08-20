@@ -1235,7 +1235,7 @@ class TradeExecution:
         if not self.is_spot():
             return 0
 
-        return self.price_structure.token_tax or 0
+        return (self.price_structure and self.price_structure.token_tax) or 0
 
     def get_execution_sort_position(self) -> int:
         """When this trade should be executed.
