@@ -11,7 +11,7 @@ from matplotlib.figure import Figure as MatplotlibFigure
 def equity_curve(
     input: ChartInput,
     max_benchmark_count=4,
-    benchmark_token_symbols: list[str]=None,
+    benchmark_token_symbols: list[str] | None = None,
 ) -> Figure:
     """Render equity curve for the strategy.
 

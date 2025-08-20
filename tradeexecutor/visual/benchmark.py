@@ -311,7 +311,7 @@ def visualise_equity_curve_benchmark(
         if name is None:
             name = state.name
 
-        if all_cash is None:
+        if all_cash is None and state.backtest_data:
             all_cash = state.portfolio.get_initial_cash()
 
     else:
@@ -550,13 +550,13 @@ def visualise_long_short_benchmark(
 
     .. note ::
         This chart is inaccurate for strategies that can have multiple positions open at the same time.
-    
+
     :param state: state of the strategy
     :param name: name of the plot
     :param height: height of the plot
     :return: plotly figure
     """
-    
+
     long_compounding_returns = calculate_long_compounding_realised_trading_profitability(state)
     short_compounding_returns = calculate_short_compounding_realised_trading_profitability(state)
     overall_compounding_returns = calculate_compounding_realised_trading_profitability(state)
@@ -577,10 +577,10 @@ def visualise_long_short_benchmark(
         fig.update_layout(title=f"{name}")
     else:
         fig.update_layout(title="Equity curve for longs and shorts")
-        
+
     if height:
         fig.update_layout(height=height)
-        
+
     fig.update_layout(
         legend=dict(
             orientation="h",
@@ -596,7 +596,7 @@ def visualise_long_short_benchmark(
 
 def get_plot_from_series(name, colour, series) -> go.Scatter:
     """Draw portfolio performance.
-    
+
     :param name: name of the plot
     :param colour: colour of the plot
     :param series: series of daily returns
@@ -619,7 +619,7 @@ def get_plot_from_series(name, colour, series) -> go.Scatter:
         name=name,
         line=dict(color=colour),
     )
-    
+
     return scatter
 
 
@@ -646,7 +646,7 @@ def visualise_vs_returns(
         Assume starts with `initial_cash` like $10,000 and then moves with the price action.
 
         Each `Series.attrs` can have keys `name` and `colour`.
-    
+
     :param name:
         Figure title.
 
@@ -858,8 +858,8 @@ def visualise_portfolio_interest_curve(
         if p.is_closed() and p.is_credit_supply():
             plot.append(
                 {
-                    "opened_at": p.opened_at, 
-                    "closed_at": p.closed_at, 
+                    "opened_at": p.opened_at,
+                    "closed_at": p.closed_at,
                     "realised_profit_usd": p.get_realised_profit_usd(),
                 }
             )
