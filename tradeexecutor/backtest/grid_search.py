@@ -9,6 +9,7 @@ from distutils.version import Version
 from packaging.version import Version
 import numpy
 from pandas._libs.missing import NAType
+import joblib
 
 from tradeexecutor.backtest.backtest_execution import BacktestExecutionFailed
 from tradeexecutor.backtest.simulated_wallet import OutOfSimulatedBalance
