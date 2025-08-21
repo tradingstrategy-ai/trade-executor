@@ -21,8 +21,11 @@ def all_vaults_share_price_and_tvl(
         List of figures
     """
     figures = visualise_vaults(input.strategy_universe, printer=printer)
-    return figures
 
+    if not figures:
+        raise ValueError("No chart data available for vault pairs - missing candle or liquidity data")
+
+    return figures
 
 def vault_position_timeline(
     input: ChartInput,

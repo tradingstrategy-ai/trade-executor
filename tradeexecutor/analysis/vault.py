@@ -130,6 +130,8 @@ def visualise_vaults(
     """
 
     vault_pairs = [p for p in strategy_universe.iterate_pairs() if p.is_vault()]
+    if not vault_pairs:
+        raise ValueError("No vault pairs found in strategy universe")
 
     figures = []
 

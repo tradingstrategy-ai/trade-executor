@@ -90,7 +90,11 @@ class ChartInput:
         - Live trading: The latest completed cycle timestamp
         """
         if self.execution_context.live_trading:
-            raise NotImplementedError()
+            if self.state:
+                _, end_at = self.state.get_strategy_start_and_end()
+                return end_at.to_pydatetime() if end_at else None
+            else:
+                return None
         else:
             return self.backtest_end_at
 
@@ -248,10 +252,3 @@ class ChartRegistry:
         )
         self.registry[id] = callback
         self.by_function[func] = callback
-
-
-
-
-
-
-
