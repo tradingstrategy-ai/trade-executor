@@ -3,8 +3,10 @@ import pickle
 from dataclasses import dataclass, field
 import datetime
 from pathlib import Path
-from typing import TypedDict, Protocol
+from typing import TypedDict, Protocol, Callable
 
+import cloudpickle
+from numpy.typing import NDArray
 import pandas as pd
 
 # We use CloudPickle to store functions needed to calculate inputs
@@ -26,28 +28,45 @@ class ModelInputCalculationFunction(Protocol):
         pass
 
 
+class Sequencer(Protocol):
+    """Calculate inputs for the model based on price and other data.
+
+    - The output DataFrame may contain excessive inputs which are not chosen to be used,
+      and will be discareded, see :py:attr:`WalkForwardModel.feature_columns`
+    """
+
+    def __call__(
+        self,
+        X_df: pd.DataFrame,
+        y_series: pd.Series,
+    ) -> pd.DataFrame:
+        pass
+
+
 class TrainingMetrics(TypedDict):
     accuracy: float
+    precision: float
+    recall: float
     f1_score: float
-
-
-class ModelInputIndicators:
-
-    def create_model_dataframe(
-        self,
-        price_df: pd.DataFrame) -> pd.DataFrame:
-        pass
 
 
 
 class TrainingFold:
     """One training fold"""
     fold_id: int
+    x_scaler: "sklearn.preprocessing.StandardScaler"
     training_start_at: datetime.datetime
     training_end_at: datetime.datetime
     test_start: datetime.datetime
     test_end: datetime.datetime
     training_metrics: TrainingMetrics
+
+    #: True labels for test period
+    original_true_labels: NDArray
+
+    #: Predicted labels for test period
+    predicted_labels: NDArray
+
 
     @property
     def model_filename(self) -> str:
@@ -62,8 +81,17 @@ class WalkForwardModel:
     - Walk-forward trained model with several variants, identified by walk-forward fold
     """
 
+    #: How many rows of dataframe we need to feed into :py:class:`ModelInputCalculationFunction` to ensure all technical indicators can be calculated
+    minimum_input_rows: int
+
     #: Function that prepares the DataFrame
     model_input_calculation: ModelInputCalculationFunction
+
+    #: How long LSTM sequences we make
+    lstm_sequence_length: int
+
+    #: create_sequence() function for LSMT
+    sequencer: Callable
 
     #: Name of feature columns used.
     #:
@@ -76,6 +104,11 @@ class WalkForwardModel:
     #: fold_id -> data
     folds: dict[int, TrainingFold] = field(default_factory=dict)
 
+    def __post_init__(self):
+        assert callable(self.model_input_calculation), f"Not callable: {self.model_input_calculation}"
+        assert type(self.feature_columns) == list, "feature_columns must be a list of strings"
+        assert len(self.feature_columns) > 0
+
     def get_active_fold_for_timestamp(self, timestamp: datetime.datetime) -> TrainingFold | None:
         """Get the active training fold for a given timestamp."""
         for fold in reversed(self.folds):
@@ -83,7 +116,7 @@ class WalkForwardModel:
                 return fold
         return None
 
-    def add_fold(
+    def save_fold(
         self,
         model_storage_path: Path,
         model: "tensorflow.keras.models.Model",
@@ -99,7 +132,18 @@ class WalkForwardModel:
         self.folds[fold.fold_id] = fold
         metadata_path = model_storage_path / f"walk_forward_metadata.pickle"
 
-        pickle.dump(self, metadata_path.open("wb"))
+        # Use Cloudpicle so we can save class instances and functions
+        # created in notebook cells
+        cloudpickle.dump(self, metadata_path.open("wb"))
+
+    def prepare_input(self, price_df: pd.DataFrame) -> pd.DataFrame:
+        """Prepare the price DataFrame for the model.
+
+        - Calculates all indicators
+        """
+        assert len(price_df) >= self.minimum_input_rows, f"Not enough rows in price_df: {len(price_df)} < {self.minimum_input_rows}"
+        return self.model_input_calculation(price_df)
+
 
 
 class CachedModelLoader:
@@ -145,6 +189,70 @@ class CachedModelLoader:
 
         model = tensorflow.keras.models.keras.models.load_model(str(model_path))
         return model
+
+    def predict(
+        self,
+        timestamp: datetime.datetime,
+        price_df: pd.DataFrame,
+    ) -> float:
+        """Predict the next price.
+
+        - Create
+        """
+
+        assert len(self.price_df) >= self.minimum_input_rows, f"Not enough rows in price_df: {len(price_df)} < {self.minimum_input_rows}"
+        fold = self.get_cached_model_by_time(timestamp)
+        model = fold.model
+        features_df = self.model.prepare_input(price_df)
+
+
+
+@dataclass(slots=True)
+    features_df: pd.DataFrame
+    sequences: NDArray
+
+
+class CachedPredictor:
+    """Make a predictions based on the price input data.
+
+    - Cache the generation of features and sequencing them for LSTM
+    """
+
+    def __init__(self, loader: CachedModelLoader):
+        self.loader = loader
+
+        #:
+        self.features_cache = {features_df}
+
+    def predict(
+        self,
+        price_df: pd.DataFrame,
+        timestamp: datetime.datetime | pd.Timestamp,
+    ):
+        """Predict the future value using the model.
+
+        :param timestamp:
+            The timestamp of the last price data row we have.
+
+            Predict the next row.
+
+            E.g. the timestamp of yesterday's close.
+        """
+
+        model = self.loader.get_cached_model_by_time(timestamp)
+
+        x_df = price_df.loc[]
+
+        ##############################
+        # Step 1: Standardize Training Data Only
+        ##############################
+        scaler = model.x_scaler
+        scaler.fit(X)  # Fit only on training data
+
+        X_seq_train, y_seq_train = create_sequences(X_train_scaled, y_train, seq_length=LSTM_SEQUENCE_LENGTH)
+
+        X_train_scaled = scaler.transform(X_train_selected)
+        X_test_scaled = scaler.transform(X_test_selected)  # Use same scaler on test set
 
 
 
