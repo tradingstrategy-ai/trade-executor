@@ -38,8 +38,8 @@ class Sequencer(Protocol):
     def __call__(
         self,
         X_df: pd.DataFrame,
-        y_series: pd.Series,
-    ) -> pd.DataFrame:
+        y_series: pd.Series | None,
+    ) -> tuple[NDArray, NDArray | None]:
         pass
 
 
@@ -142,7 +142,8 @@ class WalkForwardModel:
         - Calculates all indicators
         """
         assert len(price_df) >= self.minimum_input_rows, f"Not enough rows in price_df: {len(price_df)} < {self.minimum_input_rows}"
-        return self.model_input_calculation(price_df)
+        all_feature_df = self.model_input_calculation(price_df)
+        return all_feature_df[self.feature_columns]
 
 
 
@@ -167,6 +168,10 @@ class CachedModelLoader:
     def get_cached_model_by_time(self, timestamp: datetime.datetime) -> "tensorflow.keras.models.Model":
         """Get live or backtesting model by a timestamp."""
         fold = self.model.get_active_fold_for_timestamp(timestamp)
+        return self.get_cached_model_by_fold(fold)
+
+    def get_cached_model_by_fold(self, fold: TrainingFold) -> "tensorflow.keras.models.Model":
+        """Get live or backtesting model by a timestamp."""
         cached = self.cached_models.get(fold.fold_id)
         if not cached:
             cached = self.cached_models[fold.fold_id] = self.load_model_by_fold(fold.fold_id)
@@ -208,8 +213,22 @@ class CachedModelLoader:
 
 
 @dataclass(slots=True)
+class CachedPredictorInput:
     features_df: pd.DataFrame
+    scaled_features_df: pd.DataFrame
     sequences: NDArray
+
+    def __post_init__(self):
+        assert isinstance(self.features_df, pd.DataFrame), "features_df must be a DataFrame"
+        assert isinstance(self.scaled_features_df, pd.DataFrame), "scaled_featres_df must be a DataFrame"
+        assert isinstance(self.features_df.index, pd.DatetimeIndex), f"features_df must have a DatetimeIndex, got {type(self.features_df.index)}"
+
+
+@dataclass(slots=True)
+class CachedPredictorOutput:
+    shift: int
+    raw_predictions: NDArray
+    predictions: pd.Series
 
 
 class CachedPredictor:
@@ -222,7 +241,84 @@ class CachedPredictor:
         self.loader = loader
 
         #:
-        self.features_cache = {features_df}
+        self.cached_model_input = {int, CachedPredictorInput}
+        self.cached_model_output = {int, CachedPredictorInput}
+
+    def prepare_input(
+        self,
+        model: WalkForwardModel,
+        fold: TrainingFold,
+        price_df: pd.DataFrame,
+    ) -> CachedPredictorInput:
+        """Calculate the features for the model, caching the result."""
+        if price_df.empty:
+            raise ValueError("price_df is empty")
+
+        # Use the model input calculation function to get the features
+        features_df = self.loader.model.prepare_input(price_df)
+
+        scaled_df = fold.x_scaler.transform(features_df)
+
+        x_sequenced = model.sequence(
+            features_df,
+            None,
+            self.loader.model.lstm_sequence_length,
+        )
+
+        # Cache the features DataFrame
+        return CachedPredictorInput(
+            features_df=features_df,
+            scaled_featres_df=scaled_df,
+            sequences=x_sequenced,
+        )
+
+    def prepare_input_cached(
+        self,
+        model: "tensorflow.keras.models.Model",
+        fold: TrainingFold,
+        price_df: pd.DataFrame,
+    ) -> CachedPredictorInput:
+        """Prepare the input for the model, caching the result."""
+        key = tuple(id(price_df), fold)
+
+        if key in self.cached_model_input:
+            return self.cached_model_input[key]
+
+        # If not cached, calculate the input
+        input = self.prepare_input(
+            model,
+            fold,
+            price_df
+        )
+        self.cached_model_input[key] = input
+        return input
+
+    def prepare_output_cached(
+        self,
+        model: "tensorflow.keras.models.Model",
+        model_input: CachedPredictorInput,
+    ) -> CachedPredictorOutput:
+        cache_key = id(model_input)
+
+        if cache_key in self.cached_model_output:
+            return self.cached_model_output[cache_key]
+
+        raw_predictions = model.predict(model_input.sequences).flatten()
+
+        input_index = model_input.features_df.index
+        shift = self.loader.model.lstm_sequence_length
+        start_at = input_index[0] + shift
+        end_at = input_index[-1] + shift
+        predictions_series = pd.Series(
+            raw_predictions,
+            index=pd.date_range(start=start_at, end=end_at, freq=input_index.freq),
+        )
+        output = CachedPredictorOutput(
+            shift=shift,
+            raw_predictions=raw_predictions,
+            predictions=predictions_series,
+        )
+        return output
 
     def predict(
         self,
@@ -239,20 +335,22 @@ class CachedPredictor:
             E.g. the timestamp of yesterday's close.
         """
 
-        model = self.loader.get_cached_model_by_time(timestamp)
+        walk_forward_model = self.loader.model
+        fold = walk_forward_model.get_active_fold_for_timestamp(timestamp)
 
-        x_df = price_df.loc[]
+        assert len(price_df) >= walk_forward_model.minimum_input_rows, f"Not enough rows in price_df: {len(price_df)} < {walk_forward_model.minimum_input_rows}"
 
-        ##############################
-        # Step 1: Standardize Training Data Only
-        ##############################
-        scaler = model.x_scaler
-        scaler.fit(X)  # Fit only on training data
+        model = self.loader.get_cached_model_by_fold(fold)
 
-        X_seq_train, y_seq_train = create_sequences(X_train_scaled, y_train, seq_length=LSTM_SEQUENCE_LENGTH)
+        model_input = self.prepare_input_cached(
+            model,
+            fold,
+            price_df,
+        )
 
-        X_train_scaled = scaler.transform(X_train_selected)
-        X_test_scaled = scaler.transform(X_test_selected)  # Use same scaler on test set
+        model_output = self.prepare_output_cached(
+            model,
+            model_input,
+        )
 
-
-
+        return model_output.predictions[timestamp]
