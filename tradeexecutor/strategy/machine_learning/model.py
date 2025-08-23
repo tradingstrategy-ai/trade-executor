@@ -71,7 +71,6 @@ class TrainingFold:
     #: Predicted labels for test period
     predicted_labels: NDArray
 
-
     @property
     def model_filename(self) -> str:
         """Get the model filename for this fold."""
@@ -187,7 +186,8 @@ class WalkForwardModel:
 class CachedModelLoader:
     """A model loader.
 
-    - Can load multipe variations of the same model identified by walk-forward fold
+    - A walk forward model is metadata file + associated Keras model per each fold
+    - Can load multiple variations of the same model identified by walk-forward fold
     """
 
     def __init__(
@@ -224,12 +224,12 @@ class CachedModelLoader:
 
     def load_model_by_fold(self, fold_id: int) -> "tensorflow.keras.models.Model":
         import tensorflow.keras.models
-        fold = self.folds[fold_id]
+        fold = self.model.folds[fold_id]
         model_path = self.model_storage_path / fold.model_filename
         if not model_path.exists():
             raise FileNotFoundError(f"Model file {model_path.resolve()} does not exist.")
 
-        model = tensorflow.keras.models.keras.models.load_model(str(model_path))
+        model = tensorflow.keras.models.load_model(model_path, safe_mode=False)
         return model
 
     def predict(
@@ -248,8 +248,9 @@ class CachedModelLoader:
         features_df = self.model.prepare_input(price_df)
 
     @staticmethod
-    def load_folder(self, path: Path) -> "CachedModelLoader":
+    def load_folder(path: Path) -> "CachedModelLoader":
         """Open a folder with fold files."""
+        assert isinstance(path, Path), f"Not a Path: {path}"
         assert path.is_dir(), f"Not a directory: {path}"
         metadata_path = path / "walk_forward_metadata.pickle"
         assert metadata_path.exists(), f"Metadata file does not exist: {metadata_path}"
