@@ -2,6 +2,7 @@
 import pickle
 from dataclasses import dataclass, field
 import datetime
+from importlib.metadata import metadata
 from pathlib import Path
 from typing import TypedDict, Protocol, Callable
 
@@ -51,14 +52,17 @@ class TrainingMetrics(TypedDict):
 
 
 
+@dataclass(slots=True)
 class TrainingFold:
     """One training fold"""
     fold_id: int
     x_scaler: "sklearn.preprocessing.StandardScaler"
     training_start_at: datetime.datetime
     training_end_at: datetime.datetime
-    test_start: datetime.datetime
-    test_end: datetime.datetime
+    training_rows: int
+    test_start_at: datetime.datetime
+    test_end_at: datetime.datetime
+    test_rows: int
     training_metrics: TrainingMetrics
 
     #: True labels for test period
@@ -106,7 +110,7 @@ class WalkForwardModel:
 
     def __post_init__(self):
         assert callable(self.model_input_calculation), f"Not callable: {self.model_input_calculation}"
-        assert type(self.feature_columns) == list, "feature_columns must be a list of strings"
+        assert type(self.feature_columns) == list, f"feature_columns must be a list of strings, got {type(self.feature_columns)}: {self.feature_columns}"
         assert len(self.feature_columns) > 0
 
     def get_active_fold_for_timestamp(self, timestamp: datetime.datetime) -> TrainingFold | None:
@@ -121,6 +125,7 @@ class WalkForwardModel:
         model_storage_path: Path,
         model: "tensorflow.keras.models.Model",
         fold: TrainingFold,
+        verbose=True,
     ) -> None:
         """Save the training fold to the model storage path."""
         if not model_storage_path.exists():
@@ -136,6 +141,11 @@ class WalkForwardModel:
         # created in notebook cells
         cloudpickle.dump(self, metadata_path.open("wb"))
 
+        if verbose:
+            model_size = fold_path.stat().st_size / (1024 * 1024)
+            metadata_size = metadata_path.stat().st_size / (1024 * 1024)
+            print(f"Saved fold {fold.fold_id} to {fold_path.resolve()}, {model_size:.2f} MB, metadata to {metadata_path.resolve()}, {metadata_size:.2f} MB")
+
     def prepare_input(self, price_df: pd.DataFrame) -> pd.DataFrame:
         """Prepare the price DataFrame for the model.
 
@@ -145,6 +155,33 @@ class WalkForwardModel:
         all_feature_df = self.model_input_calculation(price_df)
         return all_feature_df[self.feature_columns]
 
+    def get_fold_metrics_table(self) -> pd.DataFrame:
+        """Get the training progress and prediction metrics for all folds in human-readable table."""
+        rows = []
+        for fold_id, fold in self.folds.items():
+            row = {
+                "Fold ID": fold_id,
+                "Training start": fold.training_start_at,
+                "Training end": fold.training_end_at,
+                "Training rows": fold.training_rows,
+                "Test start": fold.test_start_at,
+                "Test end": fold.test_end_at,
+                "Test rows": fold.test_rows,
+                "Accuracy": fold.training_metrics["accuracy"],
+                "Precision": fold.training_metrics["precision"],
+                "Recall": fold.training_metrics["recall"],
+                "F1 score": fold.training_metrics["f1_score"],
+            }
+            rows.append(row)
+        df = pd.DataFrame(rows)
+        df = df.set_index("Fold ID")
+        return df
+
+    def get_mean_fold_metrics(self) -> pd.Series:
+        """Get means across all folds."""
+        table_df = self.get_fold_metrics_table()
+        mean_series = table_df[["Accuracy", "Precision", "Recall", "F1 score"]].mean()
+        return mean_series
 
 
 class CachedModelLoader:
@@ -210,6 +247,17 @@ class CachedModelLoader:
         model = fold.model
         features_df = self.model.prepare_input(price_df)
 
+    @staticmethod
+    def load_folder(self, path: Path) -> "CachedModelLoader":
+        """Open a folder with fold files."""
+        assert path.is_dir(), f"Not a directory: {path}"
+        metadata_path = path / "walk_forward_metadata.pickle"
+        assert metadata_path.exists(), f"Metadata file does not exist: {metadata_path}"
+        model = cloudpickle.load(metadata_path.open("rb"))
+        return CachedModelLoader(
+            model=model,
+            model_storage_path=path,
+        )
 
 
 @dataclass(slots=True)
