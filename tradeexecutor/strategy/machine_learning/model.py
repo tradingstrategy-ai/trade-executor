@@ -15,6 +15,11 @@ from tradeexecutor.monkeypatch import cloudpickle_patch
 
 
 
+class ModellingTooEarly(Exception):
+    """We tried to ask for a model for a data before first training finished"""
+
+
+
 class ModelInputCalculationFunction(Protocol):
     """Calculate inputs for the model based on price and other data.
 
@@ -112,12 +117,17 @@ class WalkForwardModel:
         assert type(self.feature_columns) == list, f"feature_columns must be a list of strings, got {type(self.feature_columns)}: {self.feature_columns}"
         assert len(self.feature_columns) > 0
 
-    def get_active_fold_for_timestamp(self, timestamp: datetime.datetime) -> TrainingFold | None:
-        """Get the active training fold for a given timestamp."""
-        for fold in reversed(self.folds):
-            if fold.training_end_at >= timestamp:
+    def get_active_fold_for_timestamp(self, timestamp: datetime.datetime) -> TrainingFold:
+        """Get the active training fold for a given timestamp.
+
+        :raise ModellingTooEarly:
+            We we ask for an too early
+        """
+        for fold in reversed(self.folds.values()):
+            if fold.training_end_at <= timestamp:
                 return fold
-        return None
+
+        raise ModellingTooEarly(f"No fold found for timestamp {timestamp}, first fold training ends {self.folds[0].training_end_at}")
 
     def save_fold(
         self,

@@ -7,7 +7,7 @@ import pytest
 
 from tensorflow.keras.models import Model
 
-from tradeexecutor.strategy.machine_learning.model import WalkForwardModel, CachedModelLoader
+from tradeexecutor.strategy.machine_learning.model import WalkForwardModel, CachedModelLoader, ModellingTooEarly
 
 
 @pytest.fixture()
@@ -37,9 +37,24 @@ def test_walk_forward_read_fold(walk_forward_model_loader: CachedModelLoader):
     assert "price_open_end" in fold_0.training_metrics
 
 
-def test_walk_forward_load_model(walk_forward_model_loader: CachedModelLoader):
-    """Load the model for a fold."""
+def test_walk_forward_load_keras(walk_forward_model_loader: CachedModelLoader):
+    """Load the Keras model for a fold."""
     walk_forward_model = walk_forward_model_loader.model
     fold_0 = walk_forward_model.folds[0]
     model = walk_forward_model_loader.get_cached_model_by_fold(fold_0)
     assert isinstance(model, Model)
+
+
+def test_walk_forward_load_keras_by_timestamp(walk_forward_model_loader: CachedModelLoader):
+    """Load the Keras model for a specific timestamp."""
+    walk_forward_model = walk_forward_model_loader.model
+    fold = walk_forward_model.get_active_fold_for_timestamp(pd.Timestamp('2020-06-04'))
+    model = walk_forward_model_loader.get_cached_model_by_fold(fold)
+    assert isinstance(model, Model)
+
+
+def test_walk_forward_load_keras_by_timestamp_too_early(walk_forward_model_loader: CachedModelLoader):
+    """Load the Keras model for a specific timestamp, but we do not have one yet."""
+    walk_forward_model = walk_forward_model_loader.model
+    with pytest.raises(ModellingTooEarly):
+        walk_forward_model.get_active_fold_for_timestamp(pd.Timestamp('2000-01-01'))
