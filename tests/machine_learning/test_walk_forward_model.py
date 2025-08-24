@@ -58,3 +58,21 @@ def test_walk_forward_load_keras_by_timestamp_too_early(walk_forward_model_loade
     walk_forward_model = walk_forward_model_loader.model
     with pytest.raises(ModellingTooEarly):
         walk_forward_model.get_active_fold_for_timestamp(pd.Timestamp('2000-01-01'))
+
+
+def test_walk_forward_load_keras_by_timestamp_too_early(walk_forward_model_loader: CachedModelLoader):
+    """Load the Keras model for a specific timestamp, but we do not have one yet."""
+    walk_forward_model = walk_forward_model_loader.model
+    with pytest.raises(ModellingTooEarly):
+        walk_forward_model.get_active_fold_for_timestamp(pd.Timestamp('2000-01-01'))
+
+
+def test_walk_forward_original_predictions(walk_forward_model_loader: CachedModelLoader):
+    walk_forward_model = walk_forward_model_loader.model
+    predictions = walk_forward_model.make_prediction_series_from_training()
+    assert isinstance(predictions, pd.Series)
+    assert isinstance(predictions.index, pd.DatetimeIndex)
+    s = predictions
+    continuous = s.index.is_monotonic_increasing and (s.index.diff().dropna() == pd.Timedelta(s.index.freq)).all()
+    assert continuous
+

@@ -4,19 +4,29 @@ from dataclasses import dataclass, field
 import datetime
 from importlib.metadata import metadata
 from pathlib import Path
-from typing import TypedDict, Protocol, Callable
+from typing import TypedDict, Protocol, Callable, TypeAlias
 
 import cloudpickle
 from numpy.typing import NDArray
 import pandas as pd
 
-# We use CloudPickle to store functions needed to calculate inputs
-from tradeexecutor.monkeypatch import cloudpickle_patch
 
+FoldId: TypeAlias = int
 
 
 class ModellingTooEarly(Exception):
     """We tried to ask for a model for a data before first training finished"""
+
+
+
+class PredictionSeriesMethod:
+    """When we construct a series of predictions, which method we use."""
+
+    #: Use the predictions we recorded during the training
+    test_validation_during_training = "test_validation_during_training"
+
+    #: Create
+    test_validation_during_training = "test_validation_during_training"
 
 
 
@@ -70,16 +80,25 @@ class TrainingFold:
     test_rows: int
     training_metrics: TrainingMetrics
 
-    #: True labels for test period
+    #: True labels for test period, as used during the training.
     original_true_labels: NDArray
 
-    #: Predicted labels for test period
+    #: Predicted labels for test period during the training.
+    #:
+    #: Original predictions made with the code during the training.
+    #: These are stored for the internal assertion purposes.
+    #: The model should always give the same predictions for the same input data.
     predicted_labels: NDArray
 
     @property
     def model_filename(self) -> str:
         """Get the model filename for this fold."""
         return f"fold_{self.fold_id}_model.keras"
+
+    def get_prediction_series(self) -> pd.Series:
+        test_period_timestamps = pd.date_range(start=self.test_start_at, end=self.test_end_at, freq='D')
+        assert len(test_period_timestamps) == len(self.predicted_labels), f"Length mismatch, timestamps: {len(test_period_timestamps)} != predicted labels: {len(self.predicted_labels)}"
+        return pd.Series(self.predicted_labels, index=test_period_timestamps)
 
 
 @dataclass
@@ -192,6 +211,17 @@ class WalkForwardModel:
         mean_series = table_df[["Accuracy", "Precision", "Recall", "F1 score"]].mean()
         return mean_series
 
+    def make_prediction_series_from_training(self) -> pd.Series:
+        """Compile the training-time predictions to easily accessible series.
+
+        - Cross-validate original predictions with new predictions made by this Python code
+        - Fast predictions for backtest access
+
+        :return:
+            DataFrame with DatetTimeIndex: prediction
+        """
+        return pd.concat([fold.get_prediction_series() for fold in self.folds.values()])
+
 
 class CachedModelLoader:
     """A model loader.
@@ -299,9 +329,8 @@ class CachedPredictor:
     def __init__(self, loader: CachedModelLoader):
         self.loader = loader
 
-        #:
-        self.cached_model_input = {int, CachedPredictorInput}
-        self.cached_model_output = {int, CachedPredictorInput}
+        self.cached_model_input = {FoldId, CachedPredictorInput}
+        self.cached_model_output = {FoldId, CachedPredictorInput}
 
     def prepare_input(
         self,
