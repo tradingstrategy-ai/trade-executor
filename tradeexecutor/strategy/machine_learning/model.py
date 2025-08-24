@@ -1,15 +1,45 @@
-"""Machine learning model lifecycle management."""
+"""Machine learning model lifecycle management.
+
+- Load walk-forward models with multiple folds and one trained model per each fold
+
+Example LSTM sequencer function:
+
+.. code-block:: python
+
+    def create_sequences(X_df: pd.DataFrame, y_series: pd.Series | None, seq_length=7) -> tuple[NDArray, NDArray]:
+        X_values = X_df.values
+
+        if y_series is not None:
+            y_values = y_series.values
+        else:
+            y_values = None
+
+        # For each valid starting index i, create a sequence: [i : i + seq_length]
+        X_seq = np.array([
+            X_values[i : i + seq_length]
+            for i in range(len(X_values) - seq_length)
+        ])
+        # The label for that sequence is y at index i + seq_length
+        if y_series is not None:
+            y_seq = y_values[seq_length:]
+        else:
+            y_seq = None
+
+        return X_seq, y_seq
+
+"""
 import pickle
 from dataclasses import dataclass, field
 import datetime
 from importlib.metadata import metadata
 from pathlib import Path
-from typing import TypedDict, Protocol, Callable, TypeAlias
+from pyexpat import features
+from typing import TypedDict, Protocol, Callable, TypeAlias, Iterable, Any
 
 import cloudpickle
 from numpy.typing import NDArray
 import pandas as pd
-
+from pandas.tseries.frequencies import to_offset
 
 FoldId: TypeAlias = int
 
@@ -89,6 +119,18 @@ class TrainingFold:
     #: These are stored for the internal assertion purposes.
     #: The model should always give the same predictions for the same input data.
     predicted_labels: NDArray
+
+    #: The shape of X array used to train this fold originally
+    x_shape: NDArray
+
+    def __repr__(self):
+        return f"<TrainingFold #{self.fold_id}, test range {self.test_start_at} - {self.test_end_at}>"
+
+    def __hash__(self):
+        return self.fold_id
+
+    def __eq__(self, other):
+        return self.fold_id == other.fold_id
 
     @property
     def model_filename(self) -> str:
@@ -177,7 +219,10 @@ class WalkForwardModel:
     def prepare_input(self, price_df: pd.DataFrame) -> pd.DataFrame:
         """Prepare the price DataFrame for the model.
 
+        - Uses the pickled `calculate_all()` feature extraction function from the original notebook
+          that prepared the LSTM model
         - Calculates all indicators
+        - Get columns we have marked as the model input features
         """
         assert len(price_df) >= self.minimum_input_rows, f"Not enough rows in price_df: {len(price_df)} < {self.minimum_input_rows}"
         all_feature_df = self.model_input_calculation(price_df)
@@ -301,15 +346,32 @@ class CachedModelLoader:
         )
 
 
-@dataclass(slots=True)
+@dataclass(slots=True, frozen=True)
 class CachedPredictorInput:
+    """Cache input for a single fold."""
+
+    #: Which walk-forward fold model this input is for
+    fold_id: int
+
+    #: Slice of features DataFrame used as an input
+    #:
+    #: This reference is copied across folds
     features_df: pd.DataFrame
-    scaled_features_df: pd.DataFrame
+
+    #: Sequenced LSTM features based on :py:attr:`scaled_features_df
     sequences: NDArray
+
+    #: Scaled features, using the fold specific scaler.
+    #:
+    #: Reshaped to a suitable output for the model.
+    x_scaled: NDArray
+
+    def __repr__(self):
+        return f"<CachedPredictorInput for fold {self.fold_id}, {self.features_df.index[0]} - {self.features_df.index[-1]}, {len(self.features_df)} rows>"
 
     def __post_init__(self):
         assert isinstance(self.features_df, pd.DataFrame), "features_df must be a DataFrame"
-        assert isinstance(self.scaled_features_df, pd.DataFrame), "scaled_featres_df must be a DataFrame"
+        # assert isinstance(self.scaled_features_df, pd.DataFrame), "scaled_featres_df must be a DataFrame"
         assert isinstance(self.features_df.index, pd.DatetimeIndex), f"features_df must have a DatetimeIndex, got {type(self.features_df.index)}"
 
 
@@ -328,84 +390,142 @@ class CachedPredictor:
 
     def __init__(self, loader: CachedModelLoader):
         self.loader = loader
+        self.cached_model_input: dict[Any, CachedPredictorInput] = {}
+        self.cached_model_output: dict[Any, CachedPredictorOutput] = {}
 
-        self.cached_model_input = {FoldId, CachedPredictorInput}
-        self.cached_model_output = {FoldId, CachedPredictorInput}
-
-    def prepare_input(
+    def calculate_features(
         self,
-        model: WalkForwardModel,
-        fold: TrainingFold,
         price_df: pd.DataFrame,
-    ) -> CachedPredictorInput:
-        """Calculate the features for the model, caching the result."""
-        if price_df.empty:
-            raise ValueError("price_df is empty")
+    ) -> pd.DataFrame:
+        """Calculate the features for the model."""
+        assert not price_df.empty, f"price_df is empty: {price_df}"
 
         # Use the model input calculation function to get the features
         features_df = self.loader.model.prepare_input(price_df)
+        return features_df
 
-        scaled_df = fold.x_scaler.transform(features_df)
+    def prepare_input(
+        self,
+        fold: TrainingFold,
+        features_df: pd.DataFrame,
+    ) -> CachedPredictorInput:
+        """Calculate the features for the model, caching the result.
 
-        x_sequenced = model.sequence(
+        - Each fold has its own scaler, so we need to prepocess data by a fold
+        - We *do not* check whether features_df is within the proper range of the fold
+        """
+
+        model = self.loader.model
+
+        assert isinstance(model, WalkForwardModel), f"Not a WalkForwardModel: {type(model)}"
+        assert isinstance(fold, TrainingFold), f"Not a TrainingFold: {type(fold)}"
+        assert isinstance(features_df, pd.DataFrame), f"Not a DataFrame: {type(features_df)}"
+
+        assert not features_df.empty, f"features_df is empty: {features_df}"
+
+        our_features = list(features_df.columns)
+        assert our_features == model.feature_columns, f"Feature columns do not match, expected: {model.feature_columns}, got: {our_features}"
+
+        n_features = len(our_features)
+
+        # 1. Sequence first
+        x_sequenced, _ = model.sequencer(
             features_df,
             None,
             self.loader.model.lstm_sequence_length,
         )
 
+        # TODO: Confirm if we should first scale, then sequence?
+        # 2. Scale the outputted sequence
+        scaler = fold.x_scaler
+        reshaped = scaler.transform(x_sequenced.reshape(-1, n_features)).reshape(x_sequenced.shape)
+
         # Cache the features DataFrame
         return CachedPredictorInput(
+            fold_id=fold.fold_id,
             features_df=features_df,
-            scaled_featres_df=scaled_df,
+            x_scaled=reshaped,
             sequences=x_sequenced,
         )
 
     def prepare_input_cached(
         self,
-        model: "tensorflow.keras.models.Model",
         fold: TrainingFold,
-        price_df: pd.DataFrame,
+        features_df: pd.DataFrame,
     ) -> CachedPredictorInput:
-        """Prepare the input for the model, caching the result."""
-        key = tuple(id(price_df), fold)
+        """Prepare the input for the model, caching the result.
+
+        - Each fold has its own scaler, so we need to prepocess data by a fold
+        """
+        key = (id(features_df), fold)
 
         if key in self.cached_model_input:
             return self.cached_model_input[key]
 
         # If not cached, calculate the input
         input = self.prepare_input(
-            model,
-            fold,
-            price_df
+            fold=fold,
+            features_df=features_df
         )
         self.cached_model_input[key] = input
         return input
 
-    def prepare_output_cached(
+    def prepare_output(
         self,
-        model: "tensorflow.keras.models.Model",
+        fold: TrainingFold,
         model_input: CachedPredictorInput,
     ) -> CachedPredictorOutput:
-        cache_key = id(model_input)
+        """Make predictions for one input sequence.
 
-        if cache_key in self.cached_model_output:
-            return self.cached_model_output[cache_key]
+        - Calculate LSTM output sequence for every input sequence
+        """
+
+        model = self.loader.get_cached_model_by_fold(fold)
 
         raw_predictions = model.predict(model_input.sequences).flatten()
 
         input_index = model_input.features_df.index
+
+        # Remap the timestamp of predictions with LSTM window shift
         shift = self.loader.model.lstm_sequence_length
-        start_at = input_index[0] + shift
-        end_at = input_index[-1] + shift
+        freq_str = pd.infer_freq(input_index)
+        timedelta = to_offset(freq_str).base.delta
+        start_at = input_index[0] + timedelta * shift
+        end_at = input_index[-1]
+
+        index = pd.date_range(start=start_at, end=end_at, freq=freq_str)
+
+        assert len(index) == len(raw_predictions), f"Length mismatch, index: {len(index)} != raw predictions: {len(raw_predictions)}\n" \
+            f"index is {index[0]} -{index[-1]}, input index is {input_index[0]} - {input_index[-1]}, shift {shift}, freq {freq_str}, timedelta {timedelta}"
+
         predictions_series = pd.Series(
             raw_predictions,
-            index=pd.date_range(start=start_at, end=end_at, freq=input_index.freq),
+            index=index,
         )
+        import ipdb ; ipdb.set_trace()
         output = CachedPredictorOutput(
             shift=shift,
             raw_predictions=raw_predictions,
             predictions=predictions_series,
         )
+        return output
+
+    def prepare_output_cached(
+        self,
+        fold: TrainingFold,
+        model_input: CachedPredictorInput,
+    ):
+        key = fold, id(model_input)
+
+        if key in self.cached_model_output:
+            return self.cached_model_input[key]
+
+        # If not cached, calculate the input
+        output = self.prepare_output(
+            fold=fold,
+            model_input=model_input
+        )
+        self.cached_model_output[key] = output
         return output
 
     def predict(
@@ -414,6 +534,9 @@ class CachedPredictor:
         timestamp: datetime.datetime | pd.Timestamp,
     ):
         """Predict the future value using the model.
+
+        - Make a prediction for a single value
+        - Desigend to be used in live trading
 
         :param timestamp:
             The timestamp of the last price data row we have.
@@ -442,3 +565,69 @@ class CachedPredictor:
         )
 
         return model_output.predictions[timestamp]
+
+    def split_to_folds(
+        self,
+        price_df: pd.DataFrame,
+    ) -> Iterable[tuple[TrainingFold, pd.DataFrame]]:
+        """Take input data and split it to the corresponding fold we need to use to do predictions.
+
+        - Take a slice of price data and match it to the fold that is able
+          to make predictions at this time horizon
+
+        :return:
+            Tuple of corresponding fold and the slice of input price data we can use to make predictions within this fold.
+        """
+        assert isinstance(price_df.index, pd.DatetimeIndex)
+        for current_fold, next_fold in _current_next(self.loader.model.folds.values()):
+
+            if next_fold:
+                slice = price_df.loc[current_fold.training_end_at:next_fold.training_end_at]
+            else:
+                # Final fold needs to predict any remaining data to
+                # the heat death of the universe
+                slice = price_df.loc[current_fold.training_end_at:]
+
+            yield current_fold, slice
+
+    def make_predictions(
+        self,
+        price_df: pd.DataFrame,
+    ) -> pd.Series:
+        """Make predictions for the whole price DataFrame.
+
+        - Designed to be used in backtesting
+        """
+
+        prediction_series: pd.Series = []
+
+        if price_df.empty:
+            raise ValueError("price_df is empty")
+
+        for fold, slice in self.split_to_folds(price_df):
+            model = self.loader.get_cached_model_by_fold(fold)
+            model_input = self.prepare_input_cached(
+                model,
+                fold,
+                slice,
+            )
+            model_output = self.prepare_output_cached(
+                model,
+                model_input,
+            )
+
+            prediction_series.append(model_output.predictions)
+
+        return pd.concat(prediction_series)
+
+
+def _current_next(iterable: Iterable):
+    """Allow us to iterate current and next values simultaneously."""
+    it = iter(iterable)
+    cur = next(it, None)
+    if cur is None:
+        return
+    for nxt in it:
+        yield cur, nxt
+        cur = nxt
+    yield cur, None  # last item has no next

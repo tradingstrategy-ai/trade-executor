@@ -2,12 +2,13 @@
 import os
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 import pytest
 
 from tensorflow.keras.models import Model
 
-from tradeexecutor.strategy.machine_learning.model import WalkForwardModel, CachedModelLoader, ModellingTooEarly
+from tradeexecutor.strategy.machine_learning.model import WalkForwardModel, CachedModelLoader, ModellingTooEarly, CachedPredictor, CachedPredictorOutput
 
 
 @pytest.fixture()
@@ -15,6 +16,17 @@ def walk_forward_model_loader() -> CachedModelLoader:
     """Fixture for WalkForwardModel."""
     path = Path(os.path.dirname(__file__))
     return CachedModelLoader.load_folder(path)
+
+
+@pytest.fixture()
+def test_data() -> pd.DataFrame:
+    """Load the Binance daily ETH/USDT data used in testing."""
+    path = Path(os.path.dirname(__file__))
+    df = pd.read_parquet(path / "binance-ethusdt-1d.parquet")
+    # Because the model only works with a single pair,
+    # don't confuse it with pair_id column
+    del df["pair_id"]
+    return df
 
 
 def test_walk_forward_metadata(walk_forward_model_loader: CachedModelLoader):
@@ -68,6 +80,7 @@ def test_walk_forward_load_keras_by_timestamp_too_early(walk_forward_model_loade
 
 
 def test_walk_forward_original_predictions(walk_forward_model_loader: CachedModelLoader):
+    """Check we get datetime indexed predictions out from our training."""
     walk_forward_model = walk_forward_model_loader.model
     predictions = walk_forward_model.make_prediction_series_from_training()
     assert isinstance(predictions, pd.Series)
@@ -76,3 +89,84 @@ def test_walk_forward_original_predictions(walk_forward_model_loader: CachedMode
     continuous = s.index.is_monotonic_increasing and (s.index.diff().dropna() == pd.Timedelta(s.index.freq)).all()
     assert continuous
 
+
+def test_extract_features_one_fold(
+    walk_forward_model_loader: CachedModelLoader,
+    test_data: pd.Series,
+):
+    """Extract features for a single fold.
+
+    - Each fold has its own scaler, so we need to prepocess data by a fold
+    """
+    walk_forward_model = walk_forward_model_loader.model
+
+    cached_predictor = CachedPredictor(walk_forward_model_loader)
+
+    # Choose a range within fold 3
+    range = pd.Timestamp('2023-06-06'), pd.Timestamp('2023-07-01')
+    fold = walk_forward_model.get_active_fold_for_timestamp(range[0])
+
+    features_df = walk_forward_model.prepare_input(test_data)
+
+    assert "RSI_14" in features_df.columns
+    assert "volume" in features_df.columns
+    assert "volatility_10" in features_df.columns
+    features_df_slice = features_df[range[0]:range[1]]
+
+    model_input = cached_predictor.prepare_input_cached(
+        fold=fold,
+        features_df=features_df_slice,
+    )
+
+    assert model_input.fold_id == 3
+    assert len(model_input.features_df) == len(features_df_slice)
+    assert isinstance(model_input.sequences, np.ndarray)
+    # nsamples_train, timesteps, n_features
+    assert model_input.sequences.shape == (19, 7, 12)
+    assert isinstance(model_input.x_scaled, np.ndarray)
+
+
+def test_walk_forward_original_make_predictions_one_fold(
+    walk_forward_model_loader: CachedModelLoader,
+    test_data: pd.Series,
+):
+    """Create our own predictions based on historical data and compare them to the predictions made during training.
+
+    - Do predictions within a single fold
+    """
+
+    walk_forward_model = walk_forward_model_loader.model
+    original_predictions = walk_forward_model.make_prediction_series_from_training()
+
+    cached_predictor = CachedPredictor(
+        loader=walk_forward_model_loader,
+    )
+
+    # Choose a range that is within fold 3
+    range = (pd.Timestamp('2023-06-10'), pd.Timestamp('2023-07-01'))
+
+    features_df = walk_forward_model.prepare_input(test_data)
+    features_df_slice = features_df[range[0]:range[1]]
+
+    fold = walk_forward_model.get_active_fold_for_timestamp(range[0])
+
+    model_input = cached_predictor.prepare_input_cached(
+        fold=fold,
+        features_df=features_df_slice,
+    )
+
+    model_output = cached_predictor.prepare_output_cached(
+        fold,
+        model_input,
+    )
+    assert isinstance(model_output, CachedPredictorOutput)
+
+    # Check a single prediction first.
+    # The first day in the range is not available
+    # because you need to account for the LSTM buffer length.
+    date = features_df_slice.index[8]
+    original_prediction_in_range = original_predictions[date]
+    our_prediction_in_range = model_output.predictions[date]
+
+    assert original_prediction_in_range == our_prediction_in_range
+    import ipdb ; ipdb.set_trace()
