@@ -384,7 +384,7 @@ def visualise_equity_curve_benchmark(
                 line=dict(color=buy_and_hold_price_series.attrs.get("colour")),
             )
             fig.add_trace(scatter)
-        else:
+        elif all_cash:
             # Legacy path without get_benchmark_data()
             scatter = visualise_equity_curve_comparison(
                 benchmark_name,
