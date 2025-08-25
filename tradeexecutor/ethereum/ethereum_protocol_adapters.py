@@ -133,7 +133,7 @@ def create_uniswap_v3_adapter(
         address_map = UNISWAP_V3_DEPLOYMENTS["base"]
     elif chain_id == ChainId.binance:
         address_map = UNISWAP_V3_DEPLOYMENTS["binance"]
-    elif chain_id in (ChainId.ethereum, ChainId.polygon):
+    elif chain_id in (ChainId.ethereum, ChainId.polygon, ChainId.arbitrum):
         address_map = uniswap_v3_address_map
     else:
         raise NotImplementedError(f"Chain {chain_id} not supported for Uniswap v3 - check address maps")
