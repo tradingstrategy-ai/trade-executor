@@ -38,8 +38,8 @@ class ExecutionMode(enum.Enum):
     paper_trading = "paper_trading"
 
     #: We are backtesting
-    #: When backtesting mode is selected, we can skip most of the statistical calculations that would otherwise be calculated during live-trade. 
-    #: This offers great performance benefits for backtesting. 
+    #: When backtesting mode is selected, we can skip most of the statistical calculations that would otherwise be calculated during live-trade.
+    #: This offers great performance benefits for backtesting.
     backtesting = "backtesting"
 
     #: We are doing data research.
@@ -92,10 +92,10 @@ class ExecutionMode(enum.Enum):
     #: and debugging scripts.
     one_off = "one_off"
 
-    #: One off diagnostic and scripts
+    #: Web server execution context
     #:
-    #: Used in the interactive :ref:`console.
-    #: and debugging scripts.
+    #: Used when rendering charts and serving data
+    #: via the web API endpoints in live trading.
     web = "web"
 
     def is_live_trading(self) -> bool:
@@ -107,7 +107,7 @@ class ExecutionMode(enum.Enum):
         - Preflight check is considered live trading, because strategy modules
           are not in backtesting when doing preflight checks
         """
-        return self in (self.real_trading, self.paper_trading, self.unit_testing_trading, self.simulated_trading, self.preflight_check, self.one_off)
+        return self in (self.real_trading, self.paper_trading, self.unit_testing_trading, self.simulated_trading, self.preflight_check, self.one_off, self.web)
 
     def is_backtesting(self) -> bool:
         """The strategy is running for backtesting.
