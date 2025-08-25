@@ -142,6 +142,7 @@ class TrainingFold:
         return f"fold_{self.fold_id}_model.keras"
 
     def get_prediction_series(self) -> pd.Series:
+        """Get the prediction series for testing we calculated during the model training."""
         test_period_timestamps = pd.date_range(start=self.test_start_at, end=self.test_end_at, freq='D')
         assert len(test_period_timestamps) == len(self.predicted_labels), f"Length mismatch, timestamps: {len(test_period_timestamps)} != predicted labels: {len(self.predicted_labels)}"
         return pd.Series(self.predicted_labels, index=test_period_timestamps)
@@ -447,9 +448,23 @@ class CachedFoldInput:
 
 @dataclass(slots=True)
 class CachedFoldOutput:
+
+    #: What was the LSTM shift used
     shift: int
+
+    #: Raw predictions
     raw_predictions: NDArray
+
+    #: Predictions keyed by the timestamp
     predictions: pd.Series
+
+
+@dataclass(slots=True)
+class NextPrediction:
+    """Next prediction result."""
+    timestamp: pd.Timestamp
+    predicted_value: float
+    fold: TrainingFold
 
 
 class CachedPredictor:
@@ -478,12 +493,19 @@ class CachedPredictor:
         self,
         fold: TrainingFold,
         model_input: PreparedModelInput,
+        clip_to_fold: bool = True,
     ) -> CachedFoldInput:
         """Calculate the features for the model, caching the result.
 
         - Clip features to the fold range
         - Each fold has its own scaler, so we need to prepocess data by a fold
         - We *do not* check whether features_df is within the proper range of the fold
+
+        :param clip_to_fold:
+            Assume the input data is full backtest range, and we want to clip it to the fold range.
+
+            If False, assume the input data is already clipped to some range that is not the fold,
+            e.g. to be used in live prediction.
         """
 
         assert isinstance(model_input, PreparedModelInput), f"Not a PreparedModelInput: {type(model_input)}"
@@ -499,7 +521,11 @@ class CachedPredictor:
         fold_start_at = fold.test_start_at
         fold_end_at = fold.test_end_at
 
-        features_df, x_sequenced = model_input.clip(fold_start_at, fold_end_at)
+        if clip_to_fold:
+            features_df, x_sequenced = model_input.clip(fold_start_at, fold_end_at)
+        else:
+            features_df = model_input.features_df
+            x_sequenced = model_input.sequences
 
         our_features = list(features_df.columns)
         n_features = len(our_features)
@@ -533,6 +559,7 @@ class CachedPredictor:
         self,
         fold: TrainingFold,
         model_input: PreparedModelInput,
+        clip_to_fold: bool = True,
     ) -> CachedFoldInput:
         """Prepare the input for the model, caching the result.
 
@@ -546,7 +573,8 @@ class CachedPredictor:
         # If not cached, calculate the input
         input = self.prepare_fold_input(
             fold=fold,
-            model_input=model_input
+            model_input=model_input,
+            clip_to_fold=clip_to_fold,
         )
         self.cached_model_input[key] = input
         return input
@@ -555,12 +583,20 @@ class CachedPredictor:
         self,
         fold: TrainingFold,
         model_input: CachedFoldInput,
+        check_for_full_range: bool = True,
     ) -> CachedFoldOutput:
         """Make predictions for one input sequence.
 
         - Calculate LSTM output sequence for every input sequence
+
+        :param check_for_full_range:
+            Assume predictions and input data are for the full fold range.
+
+            This is when the input data can be fully clipped to the fold range.
+            We cannot do this during the live predictions.
         """
 
+        walk_forward_model = self.loader.model
         model = self.loader.get_cached_model_by_fold(fold)
 
         raw_predictions = model.predict(model_input.x_scaled).flatten()
@@ -576,13 +612,25 @@ class CachedPredictor:
 
         index = pd.date_range(start=start_at, end=end_at, freq=freq_str)
 
-        assert len(index) == len(raw_predictions), f"Length mismatch, index: {len(index)} != raw predictions: {len(raw_predictions)}\n" \
-            f"index is {index[0]} -{index[-1]}, input index is {input_index[0]} - {input_index[-1]}, shift {shift}, freq {freq_str}, timedelta {timedelta}"
+        if check_for_full_range:
+            assert len(index) == len(raw_predictions), f"Length mismatch, index: {len(index)} != raw predictions: {len(raw_predictions)}\n" \
+                f"index is {index[0]} -{index[-1]}, input index is {input_index[0]} - {input_index[-1]}, shift {shift}, freq {freq_str}, timedelta {timedelta}"
 
-        predictions_series = pd.Series(
-            raw_predictions,
-            index=index,
-        )
+            predictions_series = pd.Series(
+                raw_predictions,
+                index=index,
+            )
+        else:
+
+            # LSTM buffer ate some of our early rows
+            assert len(model_input.x_scaled) == len(model_input.features_df) - walk_forward_model.lstm_sequence_length, f"Length mismatch, x_scaled: {len(model_input.x_scaled)} != features_df: {len(model_input.features_df)}"
+
+            assert len(model_input.x_scaled)  == len(raw_predictions), f"Length mismatch, x_scaled: {len(model_input.x_scaled)} != raw predictions: {len(raw_predictions)}"
+            shifted_index = index[shift:]
+            predictions_series = pd.Series(
+                raw_predictions,
+                index=shifted_index,
+            )
 
         output = CachedFoldOutput(
             shift=shift,
@@ -595,16 +643,18 @@ class CachedPredictor:
         self,
         fold: TrainingFold,
         model_input: CachedFoldInput,
+        check_for_full_range=True,
     ):
         key = fold, id(model_input)
 
         if key in self.cached_model_output:
-            return self.cached_model_input[key]
+            return self.cached_model_output[key]
 
         # If not cached, calculate the input
         output = self.prepare_output(
             fold=fold,
-            model_input=model_input
+            model_input=model_input,
+            check_for_full_range=check_for_full_range,
         )
         self.cached_model_output[key] = output
         return output
@@ -700,6 +750,55 @@ class CachedPredictor:
             prediction_series.append(model_output.predictions)
 
         return pd.concat(prediction_series)
+
+    def predict_next(self, price_df: pd.DataFrame) -> NextPrediction:
+        """Predict the next value based on the given price DataFrame.
+
+        - Designed to be used in live trading
+        - Does a single prediction
+        - Inefficient for doing multiple predictions
+
+        :param price_df:
+            Price DataFrame with DatetimeIndex, must contain at least minimum_input_rows rows
+
+        :return:
+            Predicted next value
+        """
+        if price_df.empty:
+            raise ValueError("price_df is empty")
+
+        assert isinstance(price_df.index, pd.DatetimeIndex), f"price_df must have a DatetimeIndex, got {type(price_df.index)}"
+        index = price_df.index
+
+        walk_forward_model = self.loader.model
+        model_input = walk_forward_model.prepare_input(price_df)
+
+        last_timestamp = index[-1]
+        fold = walk_forward_model.get_active_fold_for_timestamp(last_timestamp)
+
+        next_timestamp = pd.date_range(start=index[-1], periods=2, freq=index.freq)[-1]
+
+        # Do sequencing
+        fold_input = self.prepare_fold_input(
+            fold=fold,
+            model_input=model_input,
+            clip_to_fold=False,
+        )
+
+        # Make predictions
+        fold_output = self.prepare_output(
+            fold,
+            fold_input,
+            check_for_full_range=False,
+        )
+        assert isinstance(fold_output, CachedFoldOutput)
+
+        value = fold_output.predictions[last_timestamp]
+        return NextPrediction(
+            timestamp=last_timestamp,
+            predicted_value=value,
+            fold=fold,
+        )
 
 
 def _current_next(iterable: Iterable):

@@ -126,7 +126,7 @@ def test_extract_features_one_fold(
     assert isinstance(model_input.x_scaled, np.ndarray)
 
 
-def test_walk_forward_original_make_predictions_one_fold(
+def test_walk_forward_make_predictions_one_fold(
     walk_forward_model_loader: CachedModelLoader,
     test_data: pd.Series,
 ):
@@ -185,3 +185,56 @@ def test_walk_forward_original_make_predictions_one_fold(
     # The prediction that was made on this specific date in the training notebook,
     # is the same which we get now when we run the prediction using a loaded model
     assert pytest.approx(original_prediction_in_range) == pytest.approx(our_prediction_in_range)
+
+
+def test_walk_forward_original_predict_next(
+    walk_forward_model_loader: CachedModelLoader,
+    test_data: pd.Series,
+):
+    """Predict the next value."""
+    walk_forward_model = walk_forward_model_loader.model
+
+    # Do 3 predictions, so we have little bit more data to work with in this test
+    predictions_wanted = [
+        pd.Timestamp('2023-09-01'),
+        pd.Timestamp('2023-09-02'),
+        pd.Timestamp('2023-09-03'),
+    ]
+
+    cached_predictor = CachedPredictor(
+        loader=walk_forward_model_loader,
+    )
+
+    predictions_made = {}
+
+    for prediction_date in predictions_wanted:
+        # Choose a date that is within fold 3
+        # (Inclusive)
+        end_at = prediction_date
+
+        # Clip test data, so we cannot have forward-looking bias
+        clipped_df = test_data[:end_at]
+
+        # Discard extra data we are not going to use for the prediction
+        start_at = end_at - pd.Timedelta(days=1) * walk_forward_model.minimum_input_rows
+        clipped_df = clipped_df[start_at:]
+
+        # Predict based on our input buffer
+        next_prediction = cached_predictor.predict_next(clipped_df)
+        predictions_made[prediction_date] = next_prediction
+
+    for ts, pred in predictions_made.items():
+        print(f"Prediction for {ts}: {pred.predicted_value:.4f} (model fold {pred.fold.fold_id})")
+
+    # Compare to the predicted value we calculated during the model training
+    fold = walk_forward_model.get_active_fold_for_timestamp(next_prediction.timestamp)
+    train_time_predictions = fold.get_prediction_series()
+
+    train_time_predictions = train_time_predictions[predictions_wanted]
+
+    import ipdb ; ipdb.set_trace()
+
+    next_value_from_training = train_time_predictions[next_prediction.timestamp]
+    assert next_value_from_training == pytest.approx(next_prediction.predicted_value)
+
+
