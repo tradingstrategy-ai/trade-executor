@@ -8,7 +8,7 @@ import pytest
 
 from tensorflow.keras.models import Model
 
-from tradeexecutor.strategy.machine_learning.model import WalkForwardModel, CachedModelLoader, ModellingTooEarly, CachedPredictor, CachedPredictorOutput
+from tradeexecutor.strategy.machine_learning.model import WalkForwardModel, CachedModelLoader, ModellingTooEarly, CachedPredictor, CachedFoldOutput
 
 
 @pytest.fixture()
@@ -138,35 +138,50 @@ def test_walk_forward_original_make_predictions_one_fold(
     walk_forward_model = walk_forward_model_loader.model
     original_predictions = walk_forward_model.make_prediction_series_from_training()
 
+    model_input = walk_forward_model.prepare_input(test_data)
+
     cached_predictor = CachedPredictor(
         loader=walk_forward_model_loader,
     )
 
     # Choose a range that is within fold 3
-    range = (pd.Timestamp('2023-06-10'), pd.Timestamp('2023-07-01'))
+    range = (pd.Timestamp('2023-05-27'), pd.Timestamp('2024-06-01'))
 
-    features_df = walk_forward_model.prepare_input(test_data)
-    features_df_slice = features_df[range[0]:range[1]]
+    features_df_slice = model_input.features_df[range[0]:range[1]]
 
     fold = walk_forward_model.get_active_fold_for_timestamp(range[0])
 
-    model_input = cached_predictor.prepare_input_cached(
+    # Check sequences at a specific date
+    # loc = model_input.features_df.index.get_loc(pd.Timestamp('2023-06-03'))
+    # assert loc == 1969
+    # sequences = model_input.sequences[loc]
+    # assert sequences[0][0] == pytest.approx(51.46211064621103)
+    # assert features_df_slice.iloc[0]["RSI_14"] == pytest.approx(51.46211064621103)
+
+    # Check model looks sane
+    model = walk_forward_model_loader.get_cached_model_by_fold(fold)
+    assert model.name == "LSTM_Attention_Model"
+
+    # Do sequencing
+    fold_input = cached_predictor.prepare_input_cached(
         fold=fold,
-        features_df=features_df_slice,
+        model_input=model_input,
     )
 
-    model_output = cached_predictor.prepare_output_cached(
+    # Make predictions
+    fold_output = cached_predictor.prepare_output_cached(
         fold,
-        model_input,
+        fold_input,
     )
-    assert isinstance(model_output, CachedPredictorOutput)
+    assert isinstance(fold_output, CachedFoldOutput)
 
     # Check a single prediction first.
     # The first day in the range is not available
     # because you need to account for the LSTM buffer length.
     date = features_df_slice.index[8]
     original_prediction_in_range = original_predictions[date]
-    our_prediction_in_range = model_output.predictions[date]
+    our_prediction_in_range = fold_output.predictions[date]
 
-    assert original_prediction_in_range == our_prediction_in_range
-    import ipdb ; ipdb.set_trace()
+    # The prediction that was made on this specific date in the training notebook,
+    # is the same which we get now when we run the prediction using a loaded model
+    assert pytest.approx(original_prediction_in_range) == pytest.approx(our_prediction_in_range)

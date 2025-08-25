@@ -28,18 +28,22 @@ Example LSTM sequencer function:
         return X_seq, y_seq
 
 """
-import pickle
+import logging
+import os
 from dataclasses import dataclass, field
 import datetime
-from importlib.metadata import metadata
 from pathlib import Path
-from pyexpat import features
 from typing import TypedDict, Protocol, Callable, TypeAlias, Iterable, Any
 
 import cloudpickle
+import numpy as np
 from numpy.typing import NDArray
 import pandas as pd
 from pandas.tseries.frequencies import to_offset
+
+
+logger = logging.getLogger(__name__)
+
 
 FoldId: TypeAlias = int
 
@@ -143,11 +147,52 @@ class TrainingFold:
         return pd.Series(self.predicted_labels, index=test_period_timestamps)
 
 
-@dataclass
+@dataclass(slots=True)
+class PreparedModelInput:
+    """Features and sequences calculated for the whole input data.
+
+    - Because sequencer loses N items by LSTM buffer size
+      at the start of the each fold, we need to calculate sequences for overall data before giving it to the folds
+    """
+
+    features_df: pd.DataFrame
+    sequences: NDArray
+
+    def __post_init__(self):
+        assert isinstance(self.features_df, pd.DataFrame), "features_df must be a DataFrame"
+        assert isinstance(self.features_df.index, pd.DatetimeIndex), f"features_df must have a DatetimeIndex, got {type(self.features_df.index)}"
+        assert isinstance(self.sequences, np.ndarray), f"sequences must be a NDArray, got {type(self.sequences)}"
+
+    def clip(self, start_at: pd.Timestamp, end_at: pd.Timestamp) -> tuple[pd.DataFrame, NDArray]:
+        """Clip the features DataFrame to the given range.
+
+        - For the fold frange
+
+        :param start_at:
+            Inclusive start timestamp
+
+        :param end_at:
+            Exclusive end timestamp
+        """
+        index = self.features_df.index
+        mask = (index >= start_at) & (index < end_at)
+        clipped_df = self.features_df[mask]
+        start_idx = index.get_loc(start_at)
+        end_idx = index.get_loc(end_at)
+        clipped_sequences = self.sequences[start_idx:end_idx]
+        assert len(clipped_df) == len(clipped_sequences), f"Length mismatch, clipped_df: {len(clipped_df)} != clipped_sequences: {len(clipped_sequences)}"
+        return clipped_df, clipped_sequences
+
+
+@dataclass()
 class WalkForwardModel:
     """Manage the machine learning model history.
 
     - Walk-forward trained model with several variants, identified by walk-forward fold
+
+    .. note::
+
+        Cannot use dataclass(slots) on this because it is imcompatible with cloudpickle
     """
 
     #: How many rows of dataframe we need to feed into :py:class:`ModelInputCalculationFunction` to ensure all technical indicators can be calculated
@@ -216,7 +261,7 @@ class WalkForwardModel:
             metadata_size = metadata_path.stat().st_size / (1024 * 1024)
             print(f"Saved fold {fold.fold_id} to {fold_path.resolve()}, {model_size:.2f} MB, metadata to {metadata_path.resolve()}, {metadata_size:.2f} MB")
 
-    def prepare_input(self, price_df: pd.DataFrame) -> pd.DataFrame:
+    def prepare_input(self, price_df: pd.DataFrame) -> PreparedModelInput:
         """Prepare the price DataFrame for the model.
 
         - Uses the pickled `calculate_all()` feature extraction function from the original notebook
@@ -226,10 +271,26 @@ class WalkForwardModel:
         """
         assert len(price_df) >= self.minimum_input_rows, f"Not enough rows in price_df: {len(price_df)} < {self.minimum_input_rows}"
         all_feature_df = self.model_input_calculation(price_df)
-        return all_feature_df[self.feature_columns]
+        selected_features = all_feature_df[self.feature_columns]
+
+        # We do not need to sequence y values,
+        # because we are not training for a target
+        sequences, _ = self.sequencer(
+            selected_features,
+            None,
+            self.lstm_sequence_length,
+        )
+
+        return PreparedModelInput(
+            features_df=selected_features,
+            sequences=sequences,
+        )
 
     def get_fold_metrics_table(self) -> pd.DataFrame:
-        """Get the training progress and prediction metrics for all folds in human-readable table."""
+        """Get the training progress and prediction metrics for all folds in human-readable table.
+
+        - Used to diagnose the model trains and fits correctly
+        """
         rows = []
         for fold_id, fold in self.folds.items():
             row = {
@@ -240,10 +301,14 @@ class WalkForwardModel:
                 "Test start": fold.test_start_at,
                 "Test end": fold.test_end_at,
                 "Test rows": fold.test_rows,
+                "Test index start": fold.training_metrics["test_index_start"],
                 "Accuracy": fold.training_metrics["accuracy"],
                 "Precision": fold.training_metrics["precision"],
                 "Recall": fold.training_metrics["recall"],
                 "F1 score": fold.training_metrics["f1_score"],
+                "Test seq start": ", ".join(f"{p:.3}" for p in fold.training_metrics["test_x_seq_start"]),
+                "First predictions": ", ".join(f"{p:.3}" for p in fold.predicted_labels[0:3]),
+                "Scaler means": ", ".join(f"{p:.3}" for p in fold.training_metrics["x_scaler_means"][0:3]),
             }
             rows.append(row)
         df = pd.DataFrame(rows)
@@ -335,6 +400,11 @@ class CachedModelLoader:
     @staticmethod
     def load_folder(path: Path) -> "CachedModelLoader":
         """Open a folder with fold files."""
+
+        # Do whatever hardware hacks etc. we need to do
+        # before loading any model
+        _setup_keras()
+
         assert isinstance(path, Path), f"Not a Path: {path}"
         assert path.is_dir(), f"Not a directory: {path}"
         metadata_path = path / "walk_forward_metadata.pickle"
@@ -347,7 +417,7 @@ class CachedModelLoader:
 
 
 @dataclass(slots=True, frozen=True)
-class CachedPredictorInput:
+class CachedFoldInput:
     """Cache input for a single fold."""
 
     #: Which walk-forward fold model this input is for
@@ -376,7 +446,7 @@ class CachedPredictorInput:
 
 
 @dataclass(slots=True)
-class CachedPredictorOutput:
+class CachedFoldOutput:
     shift: int
     raw_predictions: NDArray
     predictions: pd.Series
@@ -390,32 +460,35 @@ class CachedPredictor:
 
     def __init__(self, loader: CachedModelLoader):
         self.loader = loader
-        self.cached_model_input: dict[Any, CachedPredictorInput] = {}
-        self.cached_model_output: dict[Any, CachedPredictorOutput] = {}
+        self.cached_model_input: dict[Any, CachedFoldInput] = {}
+        self.cached_model_output: dict[Any, CachedFoldOutput] = {}
 
     def calculate_features(
         self,
         price_df: pd.DataFrame,
-    ) -> pd.DataFrame:
+    ) -> PreparedModelInput:
         """Calculate the features for the model."""
         assert not price_df.empty, f"price_df is empty: {price_df}"
 
         # Use the model input calculation function to get the features
-        features_df = self.loader.model.prepare_input(price_df)
-        return features_df
+        model_input = self.loader.model.prepare_input(price_df)
+        return model_input
 
-    def prepare_input(
+    def prepare_fold_input(
         self,
         fold: TrainingFold,
-        features_df: pd.DataFrame,
-    ) -> CachedPredictorInput:
+        model_input: PreparedModelInput,
+    ) -> CachedFoldInput:
         """Calculate the features for the model, caching the result.
 
+        - Clip features to the fold range
         - Each fold has its own scaler, so we need to prepocess data by a fold
         - We *do not* check whether features_df is within the proper range of the fold
         """
 
+        assert isinstance(model_input, PreparedModelInput), f"Not a PreparedModelInput: {type(model_input)}"
         model = self.loader.model
+        features_df = model_input.features_df
 
         assert isinstance(model, WalkForwardModel), f"Not a WalkForwardModel: {type(model)}"
         assert isinstance(fold, TrainingFold), f"Not a TrainingFold: {type(fold)}"
@@ -423,49 +496,57 @@ class CachedPredictor:
 
         assert not features_df.empty, f"features_df is empty: {features_df}"
 
+        fold_start_at = fold.test_start_at
+        fold_end_at = fold.test_end_at
+
+        features_df, x_sequenced = model_input.clip(fold_start_at, fold_end_at)
+
         our_features = list(features_df.columns)
+        n_features = len(our_features)
         assert our_features == model.feature_columns, f"Feature columns do not match, expected: {model.feature_columns}, got: {our_features}"
 
-        n_features = len(our_features)
+        # Scale the output using the scaler from the training period
+        scaler = fold.x_scaler
+        x_reshaped = x_sequenced.reshape(-1, n_features)
+        x_transformed = scaler.transform(x_reshaped)
+        x_scaled = x_transformed.reshape(x_sequenced.shape)
 
-        # 1. Sequence first
-        x_sequenced, _ = model.sequencer(
-            features_df,
-            None,
-            self.loader.model.lstm_sequence_length,
+        logger.info(
+            "Prepared input sequence, features_df %s - %s, %d rows, x_scaled %s, x_sequenced %s, scaler means %s",
+            features_df.index[0],
+            features_df.index[-1],
+            len(features_df),
+            x_scaled.shape,
+            x_sequenced.shape,
+            scaler.mean_.tolist(),
         )
 
-        # TODO: Confirm if we should first scale, then sequence?
-        # 2. Scale the outputted sequence
-        scaler = fold.x_scaler
-        reshaped = scaler.transform(x_sequenced.reshape(-1, n_features)).reshape(x_sequenced.shape)
-
         # Cache the features DataFrame
-        return CachedPredictorInput(
+        return CachedFoldInput(
             fold_id=fold.fold_id,
             features_df=features_df,
-            x_scaled=reshaped,
+            x_scaled=x_scaled,
             sequences=x_sequenced,
         )
 
     def prepare_input_cached(
         self,
         fold: TrainingFold,
-        features_df: pd.DataFrame,
-    ) -> CachedPredictorInput:
+        model_input: PreparedModelInput,
+    ) -> CachedFoldInput:
         """Prepare the input for the model, caching the result.
 
         - Each fold has its own scaler, so we need to prepocess data by a fold
         """
-        key = (id(features_df), fold)
+        key = (id(model_input), fold)
 
         if key in self.cached_model_input:
             return self.cached_model_input[key]
 
         # If not cached, calculate the input
-        input = self.prepare_input(
+        input = self.prepare_fold_input(
             fold=fold,
-            features_df=features_df
+            model_input=model_input
         )
         self.cached_model_input[key] = input
         return input
@@ -473,8 +554,8 @@ class CachedPredictor:
     def prepare_output(
         self,
         fold: TrainingFold,
-        model_input: CachedPredictorInput,
-    ) -> CachedPredictorOutput:
+        model_input: CachedFoldInput,
+    ) -> CachedFoldOutput:
         """Make predictions for one input sequence.
 
         - Calculate LSTM output sequence for every input sequence
@@ -482,7 +563,7 @@ class CachedPredictor:
 
         model = self.loader.get_cached_model_by_fold(fold)
 
-        raw_predictions = model.predict(model_input.sequences).flatten()
+        raw_predictions = model.predict(model_input.x_scaled).flatten()
 
         input_index = model_input.features_df.index
 
@@ -490,7 +571,7 @@ class CachedPredictor:
         shift = self.loader.model.lstm_sequence_length
         freq_str = pd.infer_freq(input_index)
         timedelta = to_offset(freq_str).base.delta
-        start_at = input_index[0] + timedelta * shift
+        start_at = input_index[0]
         end_at = input_index[-1]
 
         index = pd.date_range(start=start_at, end=end_at, freq=freq_str)
@@ -502,8 +583,8 @@ class CachedPredictor:
             raw_predictions,
             index=index,
         )
-        import ipdb ; ipdb.set_trace()
-        output = CachedPredictorOutput(
+
+        output = CachedFoldOutput(
             shift=shift,
             raw_predictions=raw_predictions,
             predictions=predictions_series,
@@ -513,7 +594,7 @@ class CachedPredictor:
     def prepare_output_cached(
         self,
         fold: TrainingFold,
-        model_input: CachedPredictorInput,
+        model_input: CachedFoldInput,
     ):
         key = fold, id(model_input)
 
@@ -631,3 +712,15 @@ def _current_next(iterable: Iterable):
         yield cur, nxt
         cur = nxt
     yield cur, None  # last item has no next
+
+
+_keras_setup_done = False
+
+def _setup_keras():
+    global _keras_setup_done
+    if not _keras_setup_done:
+        # TODO: Document what these do
+        os.environ['TF_CPP_MIN_LOG_LEVEL'] = '1'
+        os.environ['METAL_DEVICE_WRAPPER_SUPPRESS'] = '1'
+        _keras_setup_done = True
+
