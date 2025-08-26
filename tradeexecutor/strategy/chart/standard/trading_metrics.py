@@ -18,5 +18,5 @@ def trading_metrics(
 
     analysis = build_trade_analysis(state.portfolio)
     summary = analysis.calculate_summary_statistics()
-    df = summary.to_dataframe()
+    df = summary.to_dataframe(format_headings=False)
     return df
