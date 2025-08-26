@@ -41,7 +41,7 @@ def calculate_pnl(
 
     :param end_at:
         For non-closed positions you need to provide the `end_at` timestamp until we calculate the PnL.
-        
+
     :param mark_price:
         For non-closed positions you need to provide the `mark_price` to calculate the unrealised PnL.
 
@@ -76,8 +76,9 @@ def calculate_pnl(
                 realised_pnl = (trade.executed_price - avg_price) * abs(delta)
                 realised_pnl_total += realised_pnl
 
-        else:
-            raise NotImplementedError(f"Got a trade withe executed quantity zero: {trade}")
+        elif not any(trade.is_failed, trade.is_repaired, trade.is_repair_trade):
+            # only raise error for 0 value if not a failed/repaired/repair trade
+            raise NotImplementedError(f"Got a trade with executed quantity zero: {trade}")
 
     if abs(cumulative_cost) < epsilon:
         # Clean up 18 decimal madness
