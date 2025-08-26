@@ -90,6 +90,94 @@ def test_walk_forward_original_predictions(walk_forward_model_loader: CachedMode
     assert continuous
 
 
+def test_walk_forward_calculate_indicators(
+    walk_forward_model_loader: CachedModelLoader,
+    test_data: pd.Series,
+):
+    """Calculate indicators on test data.
+
+    - Uses cloudpickled functions from notebook to calculate indicators
+    """
+    walk_forward_model = walk_forward_model_loader.model
+
+    # Manually call the exposed function in ModelCalculation() class
+    df = test_data
+    df["adjusted_close"] = df["close"]
+    df["RSI_calc_manual"] = walk_forward_model.model_input_calculation.compute_rsi(test_data)
+    assert df.loc[pd.Timestamp('2023-09-01')]["RSI_calc_manual"] == pytest.approx(45.284224591163905)
+
+    # Calculate all indicators
+    model_input = walk_forward_model.prepare_input(df)
+    features_df = model_input.features_df
+    assert "RSI_14" in features_df.columns
+    # Manually picked test entry
+    assert features_df.loc[pd.Timestamp('2023-09-01')]["RSI_14"] == pytest.approx(45.284224591163905)
+
+
+    # Momentum Indicators: RSI & MACD
+    def _compute_rsi(df, column="adjusted_close", period=14):
+        delta = df[column].diff()
+        gain = np.where(delta > 0, delta, 0)
+        loss = np.where(delta < 0, -delta, 0)
+        avg_gain = np.convolve(gain, np.ones(period)/period, mode='same')
+        avg_loss = np.convolve(loss, np.ones(period)/period, mode='same')
+        rs = avg_gain / avg_loss
+        return 100 - (100 / (1 + rs))
+
+    def _compute_rsi(df, column="adjusted_close", period=14):
+        delta = df[column].diff()
+        gain = np.where(delta > 0, delta, 0)
+        loss = np.where(delta < 0, -delta, 0)
+        avg_gain = pd.Series(gain).rolling(window=period, min_periods=period).mean()
+        avg_loss = pd.Series(loss).rolling(window=period, min_periods=period).mean()
+        rs = avg_gain / avg_loss
+        return 100 - (100 / (1 + rs))
+
+    def _compute_rsi_debug(df, column="adjusted_close", period=14):
+        print("Input column:", df[column].head())
+        delta = df[column].diff()
+        print("Delta:", delta.head())
+        gain = np.where(delta > 0, delta, 0)
+        loss = np.where(delta < 0, -delta, 0)
+        print("Gain:", gain[:5])
+        print("Loss:", loss[:5])
+        avg_gain = pd.Series(gain).rolling(window=period, min_periods=1).mean()
+        avg_loss = pd.Series(loss).rolling(window=period, min_periods=1).mean()
+        print("Avg Gain:", avg_gain.head())
+        print("Avg Loss:", avg_loss.head())
+        rs = avg_gain / avg_loss
+        print("RS:", rs.head())
+        rsi = 100 - (100 / (1 + rs))
+        print("RSI:", rsi.head())
+        return rsi
+
+    def calculate_rsi_simple(df, column="adjusted_close", window=14):
+        """RSI calculation using simple moving average."""
+        prices = df[column]
+        delta = prices.diff()
+        gains = delta.where(delta > 0, 0)
+        losses = -delta.where(delta < 0, 0)
+
+        # Use simple moving average for the first calculation
+        avg_gains = gains.rolling(window=window).mean()
+        avg_losses = losses.rolling(window=window).mean()
+
+        rs = avg_gains / avg_losses
+        rsi = 100 - (100 / (1 + rs))
+
+        return rsi
+
+    # Now do this with "simulated live data" which
+    # only contains N rows that the model tells us we need
+    # for the prediction
+    end_at = pd.Timestamp('2023-09-01')
+    start_at = end_at - pd.Timedelta(days=1) * walk_forward_model.minimum_input_rows
+    new_df = test_data[start_at:end_at]
+    # new_df["RSI_clipped"] = walk_forward_model.model_input_calculation.compute_rsi(new_df)
+    new_df["RSI_clipped"] = calculate_rsi_simple(new_df)
+    assert new_df.loc[pd.Timestamp('2023-09-01')]["RSI_clipped"] == pytest.approx(45.284224591163905)
+
+
 def test_extract_features_one_fold(
     walk_forward_model_loader: CachedModelLoader,
     test_data: pd.Series,
@@ -194,18 +282,20 @@ def test_walk_forward_original_predict_next(
     """Predict the next value."""
     walk_forward_model = walk_forward_model_loader.model
 
-    # Do 3 predictions, so we have little bit more data to work with in this test
-    predictions_wanted = [
-        pd.Timestamp('2023-09-01'),
-        pd.Timestamp('2023-09-02'),
-        pd.Timestamp('2023-09-03'),
-    ]
+    # Do 3 predictions, so we have little bit more data to work with in this test.
+    # Having 7+ days data allows us to spot any aligment issues
+    predictions_wanted = pd.date_range(pd.Timestamp('2023-09-01'), pd.Timestamp('2023-09-14'))
 
     cached_predictor = CachedPredictor(
         loader=walk_forward_model_loader,
     )
 
-    predictions_made = {}
+    # Check what the inputs should be for the prediction,
+    # from the model training time and then we can compare
+    # them with the inputs we feed to the model during our test.
+    fold = walk_forward_model.get_active_fold_for_timestamp(predictions_wanted[0])
+
+    predictions_made = []
 
     for prediction_date in predictions_wanted:
         # Choose a date that is within fold 3
@@ -221,10 +311,15 @@ def test_walk_forward_original_predict_next(
 
         # Predict based on our input buffer
         next_prediction = cached_predictor.predict_next(clipped_df)
-        predictions_made[prediction_date] = next_prediction
 
-    for ts, pred in predictions_made.items():
-        print(f"Prediction for {ts}: {pred.predicted_value:.4f} (model fold {pred.fold.fold_id})")
+        # Check some of the inputs we calculated correctly,
+        # values picked from manual validation
+        model_input = next_prediction.model_input
+        comp_df = model_input.features_df
+        assert comp_df.loc[pd.Timestamp("2023-09-01")]["RSI_14"] == pytest.approx(42.272069)
+
+        predictions_made.append(next_prediction)
+
 
     # Compare to the predicted value we calculated during the model training
     fold = walk_forward_model.get_active_fold_for_timestamp(next_prediction.timestamp)
@@ -232,9 +327,10 @@ def test_walk_forward_original_predict_next(
 
     train_time_predictions = train_time_predictions[predictions_wanted]
 
+    df = pd.DataFrame({
+        "train_time": train_time_predictions,
+        "ours": pd.Series([p.predicted_value for p in predictions_made], index=predictions_wanted),
+    })
+    print(df)
     import ipdb ; ipdb.set_trace()
-
-    next_value_from_training = train_time_predictions[next_prediction.timestamp]
-    assert next_value_from_training == pytest.approx(next_prediction.predicted_value)
-
 

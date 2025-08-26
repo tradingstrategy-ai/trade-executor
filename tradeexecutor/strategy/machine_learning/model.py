@@ -184,6 +184,28 @@ class PreparedModelInput:
         assert len(clipped_df) == len(clipped_sequences), f"Length mismatch, clipped_df: {len(clipped_df)} != clipped_sequences: {len(clipped_sequences)}"
         return clipped_df, clipped_sequences
 
+    def get_indexed_sequences(self, x=0, y=0) -> pd.DataFrame:
+        """A diagnostics helper function to get sequences as a DataFrame with DatetimeIndex.
+
+        - Match sequences to dates, not just raw indexes
+         - Raw sequence data is in format nsamples_train (dates), timesteps (LSTM buffer size), n_features (feature columns)
+        - Used for debugging
+
+        :param x:
+            Timestep to inspect
+
+        :param y:
+            Feature to inspect
+        """
+        data = []
+        for seq in self.sequences:
+            row = seq[x][y]
+            data.append(row)
+
+        # Because of LSTM sequencing, we are lacking N first values
+        index = self.features_df.index[-self.sequences.shape[0]:]
+        return pd.DataFrame(data, index=index)
+
 
 @dataclass()
 class WalkForwardModel:
@@ -271,6 +293,7 @@ class WalkForwardModel:
         - Get columns we have marked as the model input features
         """
         assert len(price_df) >= self.minimum_input_rows, f"Not enough rows in price_df: {len(price_df)} < {self.minimum_input_rows}"
+
         all_feature_df = self.model_input_calculation(price_df)
         selected_features = all_feature_df[self.feature_columns]
 
@@ -465,6 +488,7 @@ class NextPrediction:
     timestamp: pd.Timestamp
     predicted_value: float
     fold: TrainingFold
+    model_input: PreparedModelInput
 
 
 class CachedPredictor:
@@ -526,6 +550,11 @@ class CachedPredictor:
         else:
             features_df = model_input.features_df
             x_sequenced = model_input.sequences
+
+            # 10 = price
+            # seq_dump = model_input.get_indexed_sequences(y=10)
+            # print(seq_dump)
+            # import ipdb ; ipdb.set_trace()
 
         our_features = list(features_df.columns)
         n_features = len(our_features)
@@ -626,6 +655,7 @@ class CachedPredictor:
             assert len(model_input.x_scaled) == len(model_input.features_df) - walk_forward_model.lstm_sequence_length, f"Length mismatch, x_scaled: {len(model_input.x_scaled)} != features_df: {len(model_input.features_df)}"
 
             assert len(model_input.x_scaled)  == len(raw_predictions), f"Length mismatch, x_scaled: {len(model_input.x_scaled)} != raw predictions: {len(raw_predictions)}"
+
             shifted_index = index[shift:]
             predictions_series = pd.Series(
                 raw_predictions,
@@ -798,6 +828,7 @@ class CachedPredictor:
             timestamp=last_timestamp,
             predicted_value=value,
             fold=fold,
+            model_input=model_input
         )
 
 
