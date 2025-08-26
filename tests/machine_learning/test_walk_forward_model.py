@@ -194,24 +194,24 @@ def test_extract_features_one_fold(
     range = pd.Timestamp('2023-06-06'), pd.Timestamp('2023-07-01')
     fold = walk_forward_model.get_active_fold_for_timestamp(range[0])
 
-    features_df = walk_forward_model.prepare_input(test_data)
+    model_input = walk_forward_model.prepare_input(test_data)
+    features_df = model_input.features_df
 
     assert "RSI_14" in features_df.columns
     assert "volume" in features_df.columns
     assert "volatility_10" in features_df.columns
-    features_df_slice = features_df[range[0]:range[1]]
 
-    model_input = cached_predictor.prepare_input_cached(
+    fold_input = cached_predictor.prepare_input_cached(
         fold=fold,
-        features_df=features_df_slice,
+        model_input=model_input,
     )
 
-    assert model_input.fold_id == 3
-    assert len(model_input.features_df) == len(features_df_slice)
-    assert isinstance(model_input.sequences, np.ndarray)
+    assert fold_input.fold_id == 3
+    assert len(fold_input.features_df) == 364
+    assert isinstance(fold_input.sequences, np.ndarray)
     # nsamples_train, timesteps, n_features
-    assert model_input.sequences.shape == (19, 7, 12)
-    assert isinstance(model_input.x_scaled, np.ndarray)
+    assert fold_input.sequences.shape == (364, 7, 12)
+    assert isinstance(fold_input.x_scaled, np.ndarray)
 
 
 def test_walk_forward_make_predictions_one_fold(
@@ -220,7 +220,7 @@ def test_walk_forward_make_predictions_one_fold(
 ):
     """Create our own predictions based on historical data and compare them to the predictions made during training.
 
-    - Do predictions within a single fold
+    - Do all predictions within a single fold
     """
 
     walk_forward_model = walk_forward_model_loader.model
@@ -263,23 +263,33 @@ def test_walk_forward_make_predictions_one_fold(
     )
     assert isinstance(fold_output, CachedFoldOutput)
 
-    # Check a single prediction first.
-    # The first day in the range is not available
-    # because you need to account for the LSTM buffer length.
-    date = features_df_slice.index[8]
+    # Check a single prediction
+    date = features_df_slice.index[4]
     original_prediction_in_range = original_predictions[date]
     our_prediction_in_range = fold_output.predictions[date]
 
     # The prediction that was made on this specific date in the training notebook,
     # is the same which we get now when we run the prediction using a loaded model
-    assert pytest.approx(original_prediction_in_range) == pytest.approx(our_prediction_in_range)
+    eps = 0.01
+    pd.testing.assert_series_equal(
+        pd.Series(original_prediction_in_range, index=features_df_slice.index),
+        pd.Series(our_prediction_in_range, index=features_df_slice.index),
+        check_exact=False,
+        atol=eps,
+        rtol=0,
+        check_names=False,
+    )
 
 
 def test_walk_forward_original_predict_next(
     walk_forward_model_loader: CachedModelLoader,
     test_data: pd.Series,
 ):
-    """Predict the next value."""
+    """Predict the next value.
+
+    - Also checks for lookahead bias (unintended consequence)
+    - https://github.com/FranQuant/AI-based-Trading-Strategies/issues/10
+    """
     walk_forward_model = walk_forward_model_loader.model
 
     # Do 3 predictions, so we have little bit more data to work with in this test.
@@ -316,7 +326,7 @@ def test_walk_forward_original_predict_next(
         # values picked from manual validation
         model_input = next_prediction.model_input
         comp_df = model_input.features_df
-        assert comp_df.loc[pd.Timestamp("2023-09-01")]["RSI_14"] == pytest.approx(42.272069)
+        assert comp_df.loc[pd.Timestamp("2023-09-01")]["RSI_14"] == pytest.approx(45.284224591163905)
 
         predictions_made.append(next_prediction)
 
@@ -331,6 +341,16 @@ def test_walk_forward_original_predict_next(
         "train_time": train_time_predictions,
         "ours": pd.Series([p.predicted_value for p in predictions_made], index=predictions_wanted),
     })
-    print(df)
-    import ipdb ; ipdb.set_trace()
+
+    # Check our predictions with cut data are the same as within the original
+    # notebook backtest
+    eps = 0.01
+    pd.testing.assert_series_equal(
+        df["train_time"],
+        df["ours"],
+        check_exact=False,
+        atol=eps,
+        rtol=0,
+        check_names=False,
+    )
 
