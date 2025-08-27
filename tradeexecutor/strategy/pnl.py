@@ -58,7 +58,7 @@ def calculate_pnl(
     cumulative_value = 0
 
     for trade in position.trades.values():
-        delta = float(trade.executed_quantity)
+        delta = float(trade.executed_quantity or 0)
 
         if delta > 0:
             # Buy: increase cost basis
