@@ -10,6 +10,7 @@ import pandas as pd
 import plotly.graph_objects as go
 from matplotlib.figure import Figure as MatplotlibFigure
 from pandas.io.formats.style import Styler
+from IPython.display import HTML
 
 from tradeexecutor.state.identifier import TradingPairIdentifier
 from tradeexecutor.state.state import State
@@ -130,7 +131,7 @@ class ChartRenderingResult:
 #: - List of figures (for each pair, vault, etc.)
 #: - Matplotlib Figure
 #: - Pandas Styler styled dataframe for rendering a HTML table
-ChartOutput = go.Figure | pd.DataFrame | tuple[go.Figure, pd.DataFrame] | list[go.Figure] | MatplotlibFigure | Styler
+ChartOutput = go.Figure | pd.DataFrame | tuple[go.Figure, pd.DataFrame] | list[go.Figure] | MatplotlibFigure | Styler | HTML
 
 class ChartFunction(typing.Protocol):
     """Chart rendering protocol definition.
