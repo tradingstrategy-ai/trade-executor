@@ -109,8 +109,14 @@ class TrainingFold:
     training_start_at: datetime.datetime
     training_end_at: datetime.datetime
     training_rows: int
+
+    #: Training period validation started at (inclusive)
     test_start_at: datetime.datetime
+
+    #: Training period validation ended at (inclusive)
     test_end_at: datetime.datetime
+
+    #: Number of rows in the validation period
     test_rows: int
     training_metrics: TrainingMetrics
 
@@ -156,7 +162,10 @@ class PreparedModelInput:
       at the start of the each fold, we need to calculate sequences for overall data before giving it to the folds
     """
 
+    #: DateTimeIndexes input features
     features_df: pd.DataFrame
+
+    #: DateTimeIndexes input sequences
     sequences: NDArray
 
     def __post_init__(self):
@@ -173,14 +182,14 @@ class PreparedModelInput:
             Inclusive start timestamp
 
         :param end_at:
-            Exclusive end timestamp
+            Inclusive end timestamp
         """
         index = self.features_df.index
-        mask = (index >= start_at) & (index < end_at)
+        mask = (index >= start_at) & (index <= end_at)
         clipped_df = self.features_df[mask]
         start_idx = index.get_loc(start_at)
         end_idx = index.get_loc(end_at)
-        clipped_sequences = self.sequences[start_idx:end_idx]
+        clipped_sequences = self.sequences[start_idx:end_idx+1]
         assert len(clipped_df) == len(clipped_sequences), f"Length mismatch, clipped_df: {len(clipped_df)} != clipped_sequences: {len(clipped_sequences)}"
         return clipped_df, clipped_sequences
 
@@ -295,18 +304,20 @@ class WalkForwardModel:
         assert len(price_df) >= self.minimum_input_rows, f"Not enough rows in price_df: {len(price_df)} < {self.minimum_input_rows}"
 
         all_feature_df = self.model_input_calculation(price_df)
-        selected_features = all_feature_df[self.feature_columns]
+        selected_features_df = all_feature_df[self.feature_columns]
 
         # We do not need to sequence y values,
         # because we are not training for a target
         sequences, _ = self.sequencer(
-            selected_features,
+            selected_features_df,
             None,
             self.lstm_sequence_length,
         )
 
+        assert len(sequences) == len(selected_features_df) - self.lstm_sequence_length, f"Length mismatch, sequences: {len(sequences)} != selected_features - lstm_sequence_length: {len(selected_features_df)} - {self.lstm_sequence_length}"
+
         return PreparedModelInput(
-            features_df=selected_features,
+            features_df=selected_features_df,
             sequences=sequences,
         )
 
@@ -345,7 +356,7 @@ class WalkForwardModel:
         mean_series = table_df[["Accuracy", "Precision", "Recall", "F1 score"]].mean()
         return mean_series
 
-    def make_prediction_series_from_training(self) -> pd.Series:
+    def get_all_train_time_predictions(self) -> pd.Series:
         """Compile the training-time predictions to easily accessible series.
 
         - Cross-validate original predictions with new predictions made by this Python code
@@ -383,6 +394,7 @@ class CachedModelLoader:
 
     def get_cached_model_by_fold(self, fold: TrainingFold) -> "tensorflow.keras.models.Model":
         """Get live or backtesting model by a timestamp."""
+        assert isinstance(fold, TrainingFold)
         cached = self.cached_models.get(fold.fold_id)
         if not cached:
             cached = self.cached_models[fold.fold_id] = self.load_model_by_fold(fold.fold_id)
@@ -497,10 +509,15 @@ class CachedPredictor:
     - Cache the generation of features and sequencing them for LSTM
     """
 
-    def __init__(self, loader: CachedModelLoader):
+    def __init__(self, loader: CachedModelLoader, verbose=False):
+        """
+        :param verbose:
+            Show interactive output during model.predict()
+        """
         self.loader = loader
         self.cached_model_input: dict[Any, CachedFoldInput] = {}
         self.cached_model_output: dict[Any, CachedFoldOutput] = {}
+        self.verbose = verbose
 
     def calculate_features(
         self,
@@ -611,7 +628,7 @@ class CachedPredictor:
     def prepare_output(
         self,
         fold: TrainingFold,
-        model_input: CachedFoldInput,
+        fold_input: CachedFoldInput,
         check_for_full_range: bool = True,
     ) -> CachedFoldOutput:
         """Make predictions for one input sequence.
@@ -625,12 +642,18 @@ class CachedPredictor:
             We cannot do this during the live predictions.
         """
 
+        assert isinstance(fold, TrainingFold)
+        assert isinstance(fold_input, CachedFoldInput)
+
         walk_forward_model = self.loader.model
         model = self.loader.get_cached_model_by_fold(fold)
 
-        raw_predictions = model.predict(model_input.x_scaled).flatten()
+        raw_predictions = model.predict(
+            fold_input.x_scaled,
+            verbose=self.verbose,
+        ).flatten()
 
-        input_index = model_input.features_df.index
+        input_index = fold_input.features_df.index
 
         # Remap the timestamp of predictions with LSTM window shift
         shift = self.loader.model.lstm_sequence_length
@@ -639,7 +662,7 @@ class CachedPredictor:
         start_at = input_index[0]
         end_at = input_index[-1]
 
-        index = pd.date_range(start=start_at, end=end_at, freq=freq_str)
+        index = input_index
 
         if check_for_full_range:
             assert len(index) == len(raw_predictions), f"Length mismatch, index: {len(index)} != raw predictions: {len(raw_predictions)}\n" \
@@ -652,9 +675,9 @@ class CachedPredictor:
         else:
 
             # LSTM buffer ate some of our early rows
-            assert len(model_input.x_scaled) == len(model_input.features_df) - walk_forward_model.lstm_sequence_length, f"Length mismatch, x_scaled: {len(model_input.x_scaled)} != features_df: {len(model_input.features_df)}"
+            assert len(fold_input.x_scaled) == len(fold_input.features_df) - walk_forward_model.lstm_sequence_length, f"Length mismatch, x_scaled: {len(fold_input.x_scaled)} != features_df: {len(fold_input.features_df)}"
 
-            assert len(model_input.x_scaled)  == len(raw_predictions), f"Length mismatch, x_scaled: {len(model_input.x_scaled)} != raw predictions: {len(raw_predictions)}"
+            assert len(fold_input.x_scaled) == len(raw_predictions), f"Length mismatch, x_scaled: {len(fold_input.x_scaled)} != raw predictions: {len(raw_predictions)}"
 
             shifted_index = index[shift:]
             predictions_series = pd.Series(
@@ -672,10 +695,10 @@ class CachedPredictor:
     def prepare_output_cached(
         self,
         fold: TrainingFold,
-        model_input: CachedFoldInput,
+        fold_input: CachedFoldInput,
         check_for_full_range=True,
     ):
-        key = fold, id(model_input)
+        key = fold, id(fold_input)
 
         if key in self.cached_model_output:
             return self.cached_model_output[key]
@@ -683,7 +706,7 @@ class CachedPredictor:
         # If not cached, calculate the input
         output = self.prepare_output(
             fold=fold,
-            model_input=model_input,
+            fold_input=fold_input,
             check_for_full_range=check_for_full_range,
         )
         self.cached_model_output[key] = output
@@ -695,6 +718,10 @@ class CachedPredictor:
         timestamp: datetime.datetime | pd.Timestamp,
     ):
         """Predict the future value using the model.
+
+        .. warning::
+
+            TODO, remove?
 
         - Make a prediction for a single value
         - Desigend to be used in live trading
@@ -740,14 +767,15 @@ class CachedPredictor:
             Tuple of corresponding fold and the slice of input price data we can use to make predictions within this fold.
         """
         assert isinstance(price_df.index, pd.DatetimeIndex)
+        freq = pd.infer_freq(price_df.index)
+        delta = pd.Timedelta("1" + freq)
         for current_fold, next_fold in _current_next(self.loader.model.folds.values()):
-
             if next_fold:
-                slice = price_df.loc[current_fold.training_end_at:next_fold.training_end_at]
+                slice = price_df.loc[current_fold.training_end_at + delta:next_fold.training_end_at]
             else:
                 # Final fold needs to predict any remaining data to
                 # the heat death of the universe
-                slice = price_df.loc[current_fold.training_end_at:]
+                slice = price_df.loc[current_fold.training_end_at + delta:]
 
             yield current_fold, slice
 
@@ -758,26 +786,35 @@ class CachedPredictor:
         """Make predictions for the whole price DataFrame.
 
         - Designed to be used in backtesting
+        - Does prediction across all folds
+        - Generates a full series of prdictions based on the active fold at a time
         """
+
+        assert isinstance(price_df, pd.DataFrame), f"price_df must be a DataFrame, got {type(price_df)}"
+        assert isinstance(price_df.index, pd.DatetimeIndex), f"price_df must have a DatetimeIndex, got {type(price_df.index)}"
+
+        walk_forward_model = self.loader.model
 
         prediction_series: pd.Series = []
 
         if price_df.empty:
             raise ValueError("price_df is empty")
 
+        model_input = walk_forward_model.prepare_input(price_df)
+
         for fold, slice in self.split_to_folds(price_df):
-            model = self.loader.get_cached_model_by_fold(fold)
-            model_input = self.prepare_input_cached(
-                model,
+
+            fold_input = self.prepare_input_cached(
                 fold,
-                slice,
-            )
-            model_output = self.prepare_output_cached(
-                model,
-                model_input,
+                model_input=model_input,
             )
 
-            prediction_series.append(model_output.predictions)
+            fold_output = self.prepare_output_cached(
+                fold,
+                fold_input,
+            )
+
+            prediction_series.append(fold_output.predictions)
 
         return pd.concat(prediction_series)
 

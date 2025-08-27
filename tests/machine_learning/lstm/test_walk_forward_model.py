@@ -5,6 +5,8 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 import pytest
+from cytoolz.itertoolz import first
+from gmpy2.gmpy2 import next_above
 
 from tensorflow.keras.models import Model
 
@@ -82,7 +84,7 @@ def test_walk_forward_load_keras_by_timestamp_too_early(walk_forward_model_loade
 def test_walk_forward_original_predictions(walk_forward_model_loader: CachedModelLoader):
     """Check we get datetime indexed predictions out from our training."""
     walk_forward_model = walk_forward_model_loader.model
-    predictions = walk_forward_model.make_prediction_series_from_training()
+    predictions = walk_forward_model.get_all_train_time_predictions()
     assert isinstance(predictions, pd.Series)
     assert isinstance(predictions.index, pd.DatetimeIndex)
     s = predictions
@@ -224,7 +226,7 @@ def test_walk_forward_make_predictions_one_fold(
     """
 
     walk_forward_model = walk_forward_model_loader.model
-    original_predictions = walk_forward_model.make_prediction_series_from_training()
+    original_predictions = walk_forward_model.get_all_train_time_predictions()
 
     model_input = walk_forward_model.prepare_input(test_data)
 
@@ -281,7 +283,7 @@ def test_walk_forward_make_predictions_one_fold(
     )
 
 
-def test_walk_forward_original_predict_next(
+def test_walk_forward_predict_next(
     walk_forward_model_loader: CachedModelLoader,
     test_data: pd.Series,
 ):
@@ -342,6 +344,10 @@ def test_walk_forward_original_predict_next(
         "ours": pd.Series([p.predicted_value for p in predictions_made], index=predictions_wanted),
     })
 
+    check_date = pd.Timestamp("2023-09-01")
+    assert df.loc[check_date]["train_time"] == pytest.approx(0.5078742508888245)
+    assert df.loc[check_date]["ours"] == pytest.approx(0.5078742508888245)
+
     # Check our predictions with cut data are the same as within the original
     # notebook backtest
     eps = 0.01
@@ -354,3 +360,137 @@ def test_walk_forward_original_predict_next(
         check_names=False,
     )
 
+
+def test_walk_forward_predict_full_backtest(
+    walk_forward_model_loader: CachedModelLoader,
+    test_data: pd.Series,
+):
+    """Predict all values for the backtest duration
+
+    - Cross fold prediction time series generation\
+    """
+    walk_forward_model = walk_forward_model_loader.model
+
+    price_df = test_data
+
+    cached_predictor = CachedPredictor(
+        loader=walk_forward_model_loader,
+    )
+
+    train_time_predictions = walk_forward_model.get_all_train_time_predictions()
+
+    # Do debug checks we have not accidentally missed a timestamp
+    gaps = _find_datetime_index_gaps(train_time_predictions)
+    assert len(gaps) == 0
+    monotonic_index_issues = _find_monotonic_increase_violations(train_time_predictions.index)
+    assert len(monotonic_index_issues) == 0
+    assert train_time_predictions.index.is_monotonic_increasing
+
+    # Check that we can assign on our input prices to fold timestamps correctly
+    data = {f:s for f, s in cached_predictor.split_to_folds(price_df)}
+    assert len(data) == 4
+    fold_iter = iter(data.keys())
+    first_fold = next(fold_iter)
+    second_fold = next(fold_iter)
+    assert first_fold.test_rows == 365
+    assert first_fold.test_start_at == pd.Timestamp('2020-06-03 00:00:00')
+    assert first_fold.test_end_at == pd.Timestamp('2021-06-02 00:00:00')
+    assert first_fold.training_start_at == pd.Timestamp('2018-01-23 00:00:00')
+    assert first_fold.training_end_at == pd.Timestamp('2020-06-02 00:00:00')
+    assert second_fold.test_start_at == pd.Timestamp('2021-06-03 00:00:00')
+    assert second_fold.test_end_at == pd.Timestamp('2022-06-02 00:00:00')
+
+    # Check that we allocate the correct slide from model input data for this fold
+    series_iter = iter(data.values())
+    first_input_series = next(series_iter)
+    assert first_input_series.index[0] == first_fold.test_start_at
+    assert first_input_series.index[-1] == first_fold.test_end_at
+    assert len(first_input_series) == first_fold.test_rows
+    second_input_series = next(series_iter)
+    assert second_input_series.index[0] == second_fold.test_start_at
+    assert second_input_series.index[-1] == second_fold.test_end_at
+    assert len(second_input_series) == 365
+
+    # Predict for all folds
+    predicted_labels_ours_series = cached_predictor.make_predictions(price_df)
+
+    assert len(predicted_labels_ours_series) == len(train_time_predictions)
+
+    df = pd.DataFrame({
+        "train_time": train_time_predictions,
+        "ours": predicted_labels_ours_series,
+    })
+
+    import ipdb ; ipdb.set_trace()
+
+    # Check our predictions with cut data are the same as within the original
+    # notebook backtest
+    eps = 0.01
+    pd.testing.assert_series_equal(
+        df["train_time"],
+        df["ours"],
+        check_exact=False,
+        atol=eps,
+        rtol=0,
+        check_names=False,
+    )
+
+
+def _find_datetime_index_gaps(s: pd.Series | pd.DataFrame, freq: str | None = None) -> pd.DataFrame:
+    idx = pd.DatetimeIndex(s.index)
+    if len(idx) < 2:
+        return pd.DataFrame(columns=["pos", "timestamp", "prev_timestamp", "delta", "issue"])
+
+    d = pd.Series(idx).diff()  # Timedelta between consecutive stamps
+    issues = []
+
+    # Duplicates
+    dup_locs = np.flatnonzero(idx.duplicated())
+    for i in dup_locs:
+        issues.append((i, idx[i], idx[i - 1], d.iloc[i], "duplicate"))
+
+    # Non‑increasing (<= 0 delta)
+    non_inc_locs = np.flatnonzero(d <= pd.Timedelta(0))
+    for i in non_inc_locs:
+        if i == 0:
+            continue
+        issues.append((i, idx[i], idx[i - 1], d.iloc[i], "non-increasing"))
+
+    # Determine expected step
+    expected = None
+    if freq is not None:
+        expected = (pd.date_range("2000-01-01", periods=2, freq=freq)[1] - pd.Timestamp("2000-01-01"))
+    else:
+        inferred = idx.freq or idx.inferred_freq
+        if inferred is not None:
+            expected = (pd.date_range("2000-01-01", periods=2, freq=inferred)[1] - pd.Timestamp("2000-01-01"))
+        else:
+            pos = d[d > pd.Timedelta(0)]
+            if not pos.empty:
+                expected = pos.mode().iloc[0]
+
+    # Gaps larger than expected step
+    if expected is not None:
+        gap_locs = np.flatnonzero(d > expected)
+        for i in gap_locs:
+            issues.append((i, idx[i], idx[i - 1], d.iloc[i], f"gap>(expected {expected})"))
+
+    out = pd.DataFrame(issues, columns=["pos", "timestamp", "prev_timestamp", "delta", "issue"])
+    return out.sort_values("pos").reset_index(drop=True)
+
+
+
+def _find_monotonic_increase_violations(idx: pd.DatetimeIndex) -> pd.DataFrame:
+    idx = pd.DatetimeIndex(idx)
+    if len(idx) < 2:
+        return pd.DataFrame(columns=["pos", "timestamp", "prev_timestamp", "delta"])
+
+    deltas = pd.Series(idx).diff()
+    bad = np.flatnonzero(deltas < pd.Timedelta(0))  # use <= for strictly increasing
+
+    return pd.DataFrame({
+        "pos": bad,
+        "timestamp": idx[bad],
+        "prev_timestamp": idx[bad - 1],
+        "delta": deltas.iloc[bad].values,
+    }).reset_index(drop=True)
