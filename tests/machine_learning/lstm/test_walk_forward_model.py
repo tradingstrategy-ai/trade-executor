@@ -6,6 +6,7 @@ import numpy as np
 import pandas as pd
 import pytest
 from cytoolz.itertoolz import first
+from fontTools.misc.bezierTools import epsilon
 from gmpy2.gmpy2 import next_above
 
 from tensorflow.keras.models import Model
@@ -115,7 +116,6 @@ def test_walk_forward_calculate_indicators(
     # Manually picked test entry
     assert features_df.loc[pd.Timestamp('2023-09-01')]["RSI_14"] == pytest.approx(45.284224591163905)
 
-
     # Momentum Indicators: RSI & MACD
     def _compute_rsi(df, column="adjusted_close", period=14):
         delta = df[column].diff()
@@ -209,14 +209,14 @@ def test_extract_features_one_fold(
     )
 
     assert fold_input.fold_id == 3
-    assert len(fold_input.features_df) == 364
+    assert len(fold_input.features_df) == 365
     assert isinstance(fold_input.sequences, np.ndarray)
     # nsamples_train, timesteps, n_features
-    assert fold_input.sequences.shape == (364, 7, 12)
+    assert fold_input.sequences.shape == (365, 7, 12)
     assert isinstance(fold_input.x_scaled, np.ndarray)
 
 
-def test_walk_forward_make_predictions_one_fold(
+def test_walk_forward_make_predictions_within_fold(
     walk_forward_model_loader: CachedModelLoader,
     test_data: pd.Series,
 ):
@@ -235,11 +235,13 @@ def test_walk_forward_make_predictions_one_fold(
     )
 
     # Choose a range that is within fold 3
-    range = (pd.Timestamp('2023-05-27'), pd.Timestamp('2024-06-01'))
+    range = (pd.Timestamp('2023-06-10'), pd.Timestamp('2023-10-01'))
 
     features_df_slice = model_input.features_df[range[0]:range[1]]
 
     fold = walk_forward_model.get_active_fold_for_timestamp(range[0])
+    assert fold.test_start_at <= range[0]
+    assert fold.test_end_at >= range[1]
 
     # Check sequences at a specific date
     # loc = model_input.features_df.index.get_loc(pd.Timestamp('2023-06-03'))
@@ -258,6 +260,25 @@ def test_walk_forward_make_predictions_one_fold(
         model_input=model_input,
     )
 
+    # Manually verify somem data points match the notebook
+    check_date = pd.Timestamp("2023-09-01")
+    input_row = fold_input.features_df.loc[check_date]
+    assert input_row["open"] == pytest.approx(1645.77)
+    assert input_row["RSI_14"] == pytest.approx(45.284225)
+
+    # Check input sequences on model level,
+    # manually compare value from a notebook
+    seqs = model_input.get_indexed_sequences()
+    comp_seq = seqs.loc[check_date]
+    assert float(comp_seq) == pytest.approx(-0.004440, rel=0.01)
+
+    # Check input sequences on fold level:
+    # # we mapped model global input to fold input correctly
+    # manually compare value from a notebook
+    seqs = fold_input.get_indexed_sequences()
+    comp_seq = seqs.loc[check_date]
+    assert float(comp_seq) == pytest.approx(-0.004440, rel=0.01)
+
     # Make predictions
     fold_output = cached_predictor.prepare_output_cached(
         fold,
@@ -265,19 +286,21 @@ def test_walk_forward_make_predictions_one_fold(
     )
     assert isinstance(fold_output, CachedFoldOutput)
 
-    # Check a single prediction
-    date = features_df_slice.index[4]
-    original_prediction_in_range = original_predictions[date]
-    our_prediction_in_range = fold_output.predictions[date]
+    # Check multipe predictions for a given range
+    check_range = pd.date_range(pd.Timestamp("2023-08-21"), pd.Timestamp("2023-09-08"))
+    df = pd.DataFrame({
+        "original_predictions": original_predictions[check_range],
+        "ours": fold_output.predictions[check_range],
+    })
 
     # The prediction that was made on this specific date in the training notebook,
     # is the same which we get now when we run the prediction using a loaded model
-    eps = 0.01
+    epsilon = 0.01
     pd.testing.assert_series_equal(
-        pd.Series(original_prediction_in_range, index=features_df_slice.index),
-        pd.Series(our_prediction_in_range, index=features_df_slice.index),
+        df["original_predictions"],
+        df["ours"],
         check_exact=False,
-        atol=eps,
+        atol=epsilon,
         rtol=0,
         check_names=False,
     )
@@ -331,7 +354,6 @@ def test_walk_forward_predict_next(
         assert comp_df.loc[pd.Timestamp("2023-09-01")]["RSI_14"] == pytest.approx(45.284224591163905)
 
         predictions_made.append(next_prediction)
-
 
     # Compare to the predicted value we calculated during the model training
     fold = walk_forward_model.get_active_fold_for_timestamp(next_prediction.timestamp)

@@ -165,13 +165,17 @@ class PreparedModelInput:
     #: DateTimeIndexes input features
     features_df: pd.DataFrame
 
-    #: DateTimeIndexes input sequences
+    #: Sequences with the same index as above.
+    #:
+    #: The early sequences for which we do not get data must be truncated from :py:attr:`features_df`
     sequences: NDArray
 
     def __post_init__(self):
         assert isinstance(self.features_df, pd.DataFrame), "features_df must be a DataFrame"
         assert isinstance(self.features_df.index, pd.DatetimeIndex), f"features_df must have a DatetimeIndex, got {type(self.features_df.index)}"
         assert isinstance(self.sequences, np.ndarray), f"sequences must be a NDArray, got {type(self.sequences)}"
+
+        assert len(self.features_df) == len(self.sequences), f"Length mismatch, features_df: {len(self.features_df)} != sequences: {len(self.sequences)}"
 
     def clip(self, start_at: pd.Timestamp, end_at: pd.Timestamp) -> tuple[pd.DataFrame, NDArray]:
         """Clip the features DataFrame to the given range.
@@ -206,11 +210,7 @@ class PreparedModelInput:
         :param y:
             Feature to inspect
         """
-        data = []
-        for seq in self.sequences:
-            row = seq[x][y]
-            data.append(row)
-
+        data = [seq[x][y] for seq in self.sequences]
         # Because of LSTM sequencing, we are lacking N first values
         index = self.features_df.index[-self.sequences.shape[0]:]
         return pd.DataFrame(data, index=index)
@@ -315,6 +315,10 @@ class WalkForwardModel:
         )
 
         assert len(sequences) == len(selected_features_df) - self.lstm_sequence_length, f"Length mismatch, sequences: {len(sequences)} != selected_features - lstm_sequence_length: {len(selected_features_df)} - {self.lstm_sequence_length}"
+
+        # We lose the early model data for LSTM buffering,
+        # but want to keep DateTimeIndex aligned
+        selected_features_df = selected_features_df.iloc[self.lstm_sequence_length:]
 
         return PreparedModelInput(
             features_df=selected_features_df,
@@ -470,6 +474,7 @@ class CachedFoldInput:
     #: Scaled features, using the fold specific scaler.
     #:
     #: Reshaped to a suitable output for the model.
+    #: (nsamples days, timesteps, n_features)
     x_scaled: NDArray
 
     def __repr__(self):
@@ -479,6 +484,33 @@ class CachedFoldInput:
         assert isinstance(self.features_df, pd.DataFrame), "features_df must be a DataFrame"
         # assert isinstance(self.scaled_features_df, pd.DataFrame), "scaled_featres_df must be a DataFrame"
         assert isinstance(self.features_df.index, pd.DatetimeIndex), f"features_df must have a DatetimeIndex, got {type(self.features_df.index)}"
+
+        assert len(self.features_df) == len(self.sequences), f"Length mismatch, features_df: {len(self.features_df)} != sequences: {len(self.sequences)}"
+        assert len(self.features_df) == len(self.x_scaled), f"Length mismatch, features_df: {len(self.features_df)} != x_scaled: {len(self.x_scaled)}"
+
+        # Should be (nsamples, timesteps, n_features)
+        assert self.x_scaled.ndim == 3, f"x_scaled must be 3-dimensional, got {self.x_scaled.shape}"
+
+    def get_indexed_sequences(self, x=0, y=0) -> pd.DataFrame:
+        """A diagnostics helper function to get sequences as a DataFrame with DatetimeIndex.
+
+        - Match sequences to dates, not just raw indexes
+         - Raw sequence data is in format nsamples_train (dates), timesteps (LSTM buffer size), n_features (feature columns)
+        - Used for debugging
+
+        :param x:
+            Timestep to inspect
+
+        :param y:
+            Feature to inspect
+        """
+        data = []
+        for seq in self.sequences:
+            row = seq[x][y]
+            data.append(row)
+
+        index = self.features_df.index
+        return pd.DataFrame(data, index=index)
 
 
 @dataclass(slots=True)
@@ -659,8 +691,6 @@ class CachedPredictor:
         shift = self.loader.model.lstm_sequence_length
         freq_str = pd.infer_freq(input_index)
         timedelta = to_offset(freq_str).base.delta
-        start_at = input_index[0]
-        end_at = input_index[-1]
 
         index = input_index
 
@@ -673,16 +703,12 @@ class CachedPredictor:
                 index=index,
             )
         else:
-
             # LSTM buffer ate some of our early rows
-            assert len(fold_input.x_scaled) == len(fold_input.features_df) - walk_forward_model.lstm_sequence_length, f"Length mismatch, x_scaled: {len(fold_input.x_scaled)} != features_df: {len(fold_input.features_df)}"
-
+            assert len(fold_input.x_scaled) == len(fold_input.features_df), f"Length mismatch, x_scaled: {len(fold_input.x_scaled)} != features_df: {len(fold_input.features_df)}"
             assert len(fold_input.x_scaled) == len(raw_predictions), f"Length mismatch, x_scaled: {len(fold_input.x_scaled)} != raw predictions: {len(raw_predictions)}"
-
-            shifted_index = index[shift:]
             predictions_series = pd.Series(
                 raw_predictions,
-                index=shifted_index,
+                index=index,
             )
 
         output = CachedFoldOutput(
