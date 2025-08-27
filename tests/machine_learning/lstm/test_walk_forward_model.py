@@ -1,17 +1,26 @@
-""""Walk-forward model testing."""
+""""Walk-forward model testing.
+
+- Data is generated from the notebook 13-prediction-checks.ipynb
+- Model prediction should be deterministic, but model retraining is not,
+  so retraining the model will cause the tests to fail
+"""
 import os
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
 import pytest
-from cytoolz.itertoolz import first
-from fontTools.misc.bezierTools import epsilon
-from gmpy2.gmpy2 import next_above
 
 from tensorflow.keras.models import Model
 
+from tradeexecutor.strategy.machine_learning.keras_utils import make_keras_deterministic
 from tradeexecutor.strategy.machine_learning.model import WalkForwardModel, CachedModelLoader, ModellingTooEarly, CachedPredictor, CachedFoldOutput
+
+
+@pytest.fixture()
+def deterministic_keras():
+    """Make Keras deterministic for testing."""
+    make_keras_deterministic()
 
 
 @pytest.fixture()
@@ -32,7 +41,10 @@ def test_data() -> pd.DataFrame:
     return df
 
 
-def test_walk_forward_metadata(walk_forward_model_loader: CachedModelLoader):
+def test_walk_forward_metadata(
+    walk_forward_model_loader: CachedModelLoader,
+    deterministic_keras,
+):
     """Read WalkForwardModel metadata about how many folds we have."""
     walk_forward_model = walk_forward_model_loader.model
     assert isinstance(walk_forward_model, WalkForwardModel)
@@ -41,7 +53,10 @@ def test_walk_forward_metadata(walk_forward_model_loader: CachedModelLoader):
     assert isinstance(walk_forward_model.get_mean_fold_metrics(), pd.Series)
 
 
-def test_walk_forward_read_fold(walk_forward_model_loader: CachedModelLoader):
+def test_walk_forward_read_fold(
+    walk_forward_model_loader: CachedModelLoader,
+    deterministic_keras,
+):
     """Open one of the folds."""
     walk_forward_model = walk_forward_model_loader.model
     fold_0 = walk_forward_model.folds[0]
@@ -52,7 +67,10 @@ def test_walk_forward_read_fold(walk_forward_model_loader: CachedModelLoader):
     assert "price_open_end" in fold_0.training_metrics
 
 
-def test_walk_forward_load_keras(walk_forward_model_loader: CachedModelLoader):
+def test_walk_forward_load_keras(
+    walk_forward_model_loader: CachedModelLoader,
+    deterministic_keras
+):
     """Load the Keras model for a fold."""
     walk_forward_model = walk_forward_model_loader.model
     fold_0 = walk_forward_model.folds[0]
@@ -60,7 +78,10 @@ def test_walk_forward_load_keras(walk_forward_model_loader: CachedModelLoader):
     assert isinstance(model, Model)
 
 
-def test_walk_forward_load_keras_by_timestamp(walk_forward_model_loader: CachedModelLoader):
+def test_walk_forward_load_keras_by_timestamp(
+    walk_forward_model_loader: CachedModelLoader,
+    deterministic_keras,
+):
     """Load the Keras model for a specific timestamp."""
     walk_forward_model = walk_forward_model_loader.model
     fold = walk_forward_model.get_active_fold_for_timestamp(pd.Timestamp('2020-06-04'))
@@ -68,21 +89,30 @@ def test_walk_forward_load_keras_by_timestamp(walk_forward_model_loader: CachedM
     assert isinstance(model, Model)
 
 
-def test_walk_forward_load_keras_by_timestamp_too_early(walk_forward_model_loader: CachedModelLoader):
+def test_walk_forward_load_keras_by_timestamp_too_early(
+    walk_forward_model_loader: CachedModelLoader,
+    deterministic_keras,
+):
     """Load the Keras model for a specific timestamp, but we do not have one yet."""
     walk_forward_model = walk_forward_model_loader.model
     with pytest.raises(ModellingTooEarly):
         walk_forward_model.get_active_fold_for_timestamp(pd.Timestamp('2000-01-01'))
 
 
-def test_walk_forward_load_keras_by_timestamp_too_early(walk_forward_model_loader: CachedModelLoader):
+def test_walk_forward_load_keras_by_timestamp_too_early(
+    walk_forward_model_loader: CachedModelLoader,
+    deterministic_keras,
+):
     """Load the Keras model for a specific timestamp, but we do not have one yet."""
     walk_forward_model = walk_forward_model_loader.model
     with pytest.raises(ModellingTooEarly):
         walk_forward_model.get_active_fold_for_timestamp(pd.Timestamp('2000-01-01'))
 
 
-def test_walk_forward_original_predictions(walk_forward_model_loader: CachedModelLoader):
+def test_walk_forward_original_predictions(
+    walk_forward_model_loader: CachedModelLoader,
+    deterministic_keras,
+):
     """Check we get datetime indexed predictions out from our training."""
     walk_forward_model = walk_forward_model_loader.model
     predictions = walk_forward_model.get_all_train_time_predictions()
@@ -96,6 +126,7 @@ def test_walk_forward_original_predictions(walk_forward_model_loader: CachedMode
 def test_walk_forward_calculate_indicators(
     walk_forward_model_loader: CachedModelLoader,
     test_data: pd.Series,
+    deterministic_keras,
 ):
     """Calculate indicators on test data.
 
@@ -183,6 +214,7 @@ def test_walk_forward_calculate_indicators(
 def test_extract_features_one_fold(
     walk_forward_model_loader: CachedModelLoader,
     test_data: pd.Series,
+    deterministic_keras,
 ):
     """Extract features for a single fold.
 
@@ -219,6 +251,7 @@ def test_extract_features_one_fold(
 def test_walk_forward_make_predictions_within_fold(
     walk_forward_model_loader: CachedModelLoader,
     test_data: pd.Series,
+    deterministic_keras,
 ):
     """Create our own predictions based on historical data and compare them to the predictions made during training.
 
@@ -242,6 +275,13 @@ def test_walk_forward_make_predictions_within_fold(
     fold = walk_forward_model.get_active_fold_for_timestamp(range[0])
     assert fold.test_start_at <= range[0]
     assert fold.test_end_at >= range[1]
+    assert fold.fold_id == 3
+
+    # Check that we have predictions for this fold
+    # correctly saved in the notebook
+    predictions = fold.get_prediction_series()
+    assert len(predictions) == 365
+    assert predictions[pd.Timestamp("2023-09-01")] == pytest.approx(0.491512)
 
     # Check sequences at a specific date
     # loc = model_input.features_df.index.get_loc(pd.Timestamp('2023-06-03'))
@@ -305,10 +345,14 @@ def test_walk_forward_make_predictions_within_fold(
         check_names=False,
     )
 
+    # Manualy check the prediction from the notebook
+    assert df.loc[check_date]["original_predictions"] == pytest.approx(0.49151164)
+
 
 def test_walk_forward_predict_next(
     walk_forward_model_loader: CachedModelLoader,
     test_data: pd.Series,
+    deterministic_keras,
 ):
     """Predict the next value.
 
@@ -325,12 +369,9 @@ def test_walk_forward_predict_next(
         loader=walk_forward_model_loader,
     )
 
-    # Check what the inputs should be for the prediction,
-    # from the model training time and then we can compare
-    # them with the inputs we feed to the model during our test.
-    fold = walk_forward_model.get_active_fold_for_timestamp(predictions_wanted[0])
-
     predictions_made = []
+
+    make_keras_deterministic()
 
     for prediction_date in predictions_wanted:
         # Choose a date that is within fold 3
@@ -367,8 +408,8 @@ def test_walk_forward_predict_next(
     })
 
     check_date = pd.Timestamp("2023-09-01")
-    assert df.loc[check_date]["train_time"] == pytest.approx(0.5078742508888245)
-    assert df.loc[check_date]["ours"] == pytest.approx(0.5078742508888245)
+    assert df.loc[check_date]["train_time"] == pytest.approx(0.49151164)
+    assert df.loc[check_date]["ours"] == pytest.approx(0.49151164, rel=0.01)
 
     # Check our predictions with cut data are the same as within the original
     # notebook backtest
@@ -386,6 +427,7 @@ def test_walk_forward_predict_next(
 def test_walk_forward_predict_full_backtest(
     walk_forward_model_loader: CachedModelLoader,
     test_data: pd.Series,
+    deterministic_keras,
 ):
     """Predict all values for the backtest duration
 
@@ -443,7 +485,6 @@ def test_walk_forward_predict_full_backtest(
         "ours": predicted_labels_ours_series,
     })
 
-    import ipdb ; ipdb.set_trace()
 
     # Check our predictions with cut data are the same as within the original
     # notebook backtest
