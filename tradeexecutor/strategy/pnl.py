@@ -76,7 +76,7 @@ def calculate_pnl(
                 realised_pnl = (trade.executed_price - avg_price) * abs(delta)
                 realised_pnl_total += realised_pnl
 
-        elif not any(trade.is_failed, trade.is_repaired, trade.is_repair_trade):
+        elif not (trade.is_failed or trade.is_repaired or trade.is_repair_trade):
             # only raise error for 0 value if not a failed/repaired/repair trade
             raise NotImplementedError(f"Got a trade with executed quantity zero: {trade}")
 
