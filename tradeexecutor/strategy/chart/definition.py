@@ -48,7 +48,7 @@ class ChartInput:
     execution_context: ExecutionContext
     state: State | None = None
     strategy_input_indicators: StrategyInputIndicators = None
-    pairs: typing.Collection[TradingPairIdentifier] | None = None
+    pairs: typing.List[TradingPairIdentifier] | None = None
 
     #: Passed when setting up `ChartBacktestRenderingSetup`.
     #:
