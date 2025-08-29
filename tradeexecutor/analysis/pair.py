@@ -204,7 +204,11 @@ def display_strategy_universe(
 
         if show_token_risk:
             data["token_risk_score"] = pair.get_token_risk_score()
-            data["token_risk_flags"] = new_line.join(pair.get_token_risk_flags())
+            flags = pair.get_token_risk_flags()
+            if flags:
+                data["token_risk_flags"] = new_line.join(flags)
+            else:
+                data["token_risk_flags"] = "-"
 
         pairs.append(data)
 

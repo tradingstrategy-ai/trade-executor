@@ -95,7 +95,8 @@ def format_multipair_summary(
     df: pd.DataFrame,
     sort_column="Total return %",
     ascending=False,
-    format_columns=True
+    format_columns=True,
+    limit=None,
 ) -> pd.DataFrame:
     """Format the multipair summary table.
 
@@ -164,7 +165,9 @@ def format_multipair_summary(
 
         df.columns = [make_clickable(h, url) if url else h for h, url in headings]
 
-        return HTML(df.to_html(escape=False))
+        if limit:
+            df = df.head(limit)
 
+        return HTML(df.to_html(escape=False))
 
     return df
