@@ -1,4 +1,5 @@
 """Token compatibility check for Lagoon."""
+import logging
 from pathlib import Path
 
 from tradeexecutor.ethereum.lagoon.execution import LagoonExecution
@@ -8,6 +9,9 @@ from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniv
 from eth_defi.lagoon.lagoon_compatibility import check_lagoon_compatibility_with_database, LagoonTokenCheckDatabase
 
 UniswapV2Path = list[str]
+
+
+logger = logging.getLogger(__name__)
 
 
 def generate_lagoon_check_paths(
@@ -90,7 +94,19 @@ def check_tokens_for_lagoon(
     # Populate TradingPairIdentifier.other_data with LagoonCompatibilityCheckData in strategy universe
     for entry in entries:
         base_address = entry.path[-1]
-        pair = pair_map[base_address]
+        pair = pair_map.get(base_address)
+
+        # No idea why this happens.
+        # Was pair removed from the universe.
+        if pair is None:
+            logger.warning(
+                "No trading pair found for token address %s in lagoon check results, entry is %s, we have %d entries",
+                base_address,
+                entry.pformat(),
+                len(entries)
+            )
+            continue
+
         pair.other_data["lagoon_compat_check_data"] = entry
         pair.other_data["lagoon_compat_tradeable"] = entry.is_compatible()
         pair.other_data["lagoon_compat_revert_reason"] = entry.revert_reason
