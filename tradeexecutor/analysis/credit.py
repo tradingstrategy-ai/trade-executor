@@ -51,7 +51,10 @@ def calculate_yield_metrics(
     if execution_mode.is_backtesting():
         assert state.backtest_data
         end_at = state.backtest_data.end_at
-        assert end_at
+    else:
+        start_at, end_at = state.get_strategy_start_and_end()
+
+    assert end_at
 
     match yield_type:
         case YieldType.credit:
@@ -73,7 +76,7 @@ def calculate_yield_metrics(
         data = {
             "Credit position count": 0,
         }
-        return pd.DataFrame(list(data.items()), columns=['Name', 'Value']).set_index('Name')
+        return pd.DataFrame(list(data.items()), columns=['Metric', 'Value'])
 
     durations = [d for d in durations if d is not None]
 
@@ -102,7 +105,7 @@ def calculate_yield_metrics(
         "Max deposit": f"{max_deposit:,.2f} USD",
     }
 
-    return pd.DataFrame(list(data.items()), columns=['Name', 'Value']).set_index('Name')
+    return pd.DataFrame(list(data.items()), columns=['Metric', 'Value'])
 
 
 #: BBB

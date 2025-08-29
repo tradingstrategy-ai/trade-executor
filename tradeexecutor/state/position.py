@@ -293,7 +293,7 @@ class TradingPosition(GenericPosition):
     #: - short/long positions using lending protocols
     #:
     #: TODO: When this is set and when this is updated.
-    #: 
+    #:
     liquidation_price: USDollarAmount | None = None
 
     #: Misc bag of data, not often needed
@@ -673,8 +673,8 @@ class TradingPosition(GenericPosition):
             # this will be checked when stoploss is triggered
             # so we need to exclude pending trades (e.g. partial tp trades)
             planned = sum([
-                t.get_position_quantity() 
-                for t in self.trades.values() 
+                t.get_position_quantity()
+                for t in self.trades.values()
                 if t.is_planned() and not t.is_partial_take_profit()
             ])
 
@@ -1404,7 +1404,7 @@ class TradingPosition(GenericPosition):
                     # We do not have successful sells (trades failed) so the
                     # realised profit is zero
                     trade_profit = 0
-            
+
             elif self.is_credit_supply():
 
                 # NOTE: assume that credit position is using stablecoins
@@ -1416,7 +1416,7 @@ class TradingPosition(GenericPosition):
                 sells = self.get_average_sell()
                 buys = self.get_average_buy()
                 buy_quantity = self.get_buy_quantity()
-                
+
                 trade_profit = (sells - buys) * float(buy_quantity)
         else:
             # No closes yet, only unrealised PnL
@@ -1646,7 +1646,7 @@ class TradingPosition(GenericPosition):
         """
         assert len(self.trades) > 0, "No trades available"
         return self.get_first_trade().get_executed_value()
-    
+
     def get_value_at_close(self) -> USDollarAmount:
         """How much the position had value tied after its close.
 
@@ -2040,10 +2040,10 @@ class TradingPosition(GenericPosition):
             return end_at - self.opened_at
 
         return None
-    
+
     def get_total_lp_fees_paid(self) -> USDollarAmount:
         """Get the total amount of swap fees paid in the position. Includes all trades."""
-        
+
         lp_fees_paid = 0
 
         for trade in self.trades.values():
@@ -2053,28 +2053,28 @@ class TradingPosition(GenericPosition):
                 lp_fees_paid += trade.lp_fees_paid or 0
 
         return lp_fees_paid
-    
+
     def get_buy_value(self) -> USDollarAmount:
         """Get the total value of the position when it was bought."""
-        
+
         return sum(t.get_executed_value() for t in self.trades.values() if t.is_buy())
-    
+
     def get_sell_value(self) -> USDollarAmount:
         """Get the total value of the position when it was sold."""
         return sum(t.get_executed_value() for t in self.trades.values() if t.is_sell())
-    
+
     def has_bad_data_issues(self) -> bool:
         """Do we have legacy / incompatible data issues."""
-        
+
         for t in self.trades.values():
             if t.planned_mid_price in {0, None}:  # Old data
                 return True
-            
+
         return False
-    
+
     def get_max_size(self) -> USDollarAmount:
         """Get the largest size of this position over time
-        
+
         NOTE: This metric doesn't work for positions with more than 2 trades
         i.e: positions which have been increased and reduced in size
         """
@@ -2284,10 +2284,15 @@ class TradingPosition(GenericPosition):
             Return 0 if the position does not have a duration, or its still open.
         """
         assert self.is_credit_supply(), f"Only works with credit positions, got {self}"
+
         duration = self.get_duration()
-        if duration is None:
+        value_at_open = self.get_value_at_open()
+        claimed_interest = self.get_claimed_interest()
+
+        if duration is None or value_at_open == 0:
             return 0.0
-        return (self.get_claimed_interest() / self.get_value_at_open()) * datetime.timedelta(days=365) / duration
+
+        return (claimed_interest / value_at_open) * datetime.timedelta(days=365) / duration
 
     def calculate_annualised_profit(self, duration: datetime.timedelta) -> Percent:
         """Get the annualised profit for any position position.

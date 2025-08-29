@@ -15,7 +15,8 @@ def lending_pool_interest_accrued(
     state = input.state
     interest_df = calculate_yield_metrics(
         state,
-        yield_type=YieldType.credit
+        yield_type=YieldType.credit,
+        execution_mode=input.execution_context.mode
     )
     return interest_df
 
@@ -30,6 +31,7 @@ def vault_statistics(
     state = input.state
     interest_df = calculate_yield_metrics(
         state,
-        yield_type=YieldType.vault
+        yield_type=YieldType.vault,
+        execution_mode=input.execution_context.mode
     )
     return interest_df

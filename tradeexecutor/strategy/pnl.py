@@ -51,14 +51,14 @@ def calculate_pnl(
         Profit in dollar and percentage, annualised percentage.
     """
 
-    assert position.is_spot() or position.is_vault(), f"Test/fixc alculations for other position types: {position} - only spotty supported for now"
+    assert position.is_spot() or position.is_vault(), f"Test/fix calculations for other position types: {position} - only spotty supported for now"
 
     cumulative_quantity = cumulative_cost = avg_price = 0
     realised_pnl_total = 0
     cumulative_value = 0
 
     for trade in position.trades.values():
-        delta = float(trade.executed_quantity)
+        delta = float(trade.executed_quantity or 0)
 
         if delta > 0:
             # Buy: increase cost basis
@@ -76,7 +76,7 @@ def calculate_pnl(
                 realised_pnl = (trade.executed_price - avg_price) * abs(delta)
                 realised_pnl_total += realised_pnl
 
-        elif not any(trade.is_failed, trade.is_repaired, trade.is_repair_trade):
+        elif not (trade.is_failed or trade.is_repaired or trade.is_repair_trade):
             # only raise error for 0 value if not a failed/repaired/repair trade
             raise NotImplementedError(f"Got a trade with executed quantity zero: {trade}")
 
@@ -99,7 +99,7 @@ def calculate_pnl(
     assert duration > datetime.timedelta(0), f"Position {position} has a negative duration: {duration}, opened at {position.opened_at}, closed at {end_at}"
     annualised_periods = datetime.timedelta(days=365) / duration
     profit_usd = realised_pnl_total + unrealised_pnl
-    profit_pct = (profit_usd / cumulative_value)
+    profit_pct = (profit_usd / cumulative_value) if cumulative_value else 0
 
     try:
         profit_pct_annualised = (1 + profit_pct) ** annualised_periods - 1
