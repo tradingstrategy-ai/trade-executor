@@ -100,10 +100,12 @@ def check_tokens_for_lagoon(
         # Was pair removed from the universe.
         if pair is None:
             logger.warning(
-                "No trading pair found for token address %s in lagoon check results, entry is %s, we have %d entries",
+                "No trading pair found for token address %s, path %s, in lagoon check results, entry is %s, we have %d entries, %d pairs",
                 base_address,
+                entry.path,
                 entry.pformat(),
-                len(entries)
+                len(entries),
+                strategy_universe.get_pair_count(),
             )
             continue
 
