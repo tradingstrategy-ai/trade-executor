@@ -156,7 +156,9 @@ class BacktestReporter:
 
 def export_backtest_report(
     state: State,
-    universe: TradingStrategyUniverse,
+    *,
+    state_path: Path,
+    universe_path: Path,
     report_template: Path | None = None,
     output_notebook: Path | None = None,
     output_html: Path | None = None,
@@ -205,82 +207,72 @@ def export_backtest_report(
 
     assert report_template.exists(), f"Does not exist: {report_template}"
 
-    # Pass over the state to the notebook as JSON file dump
-    with NamedTemporaryFile(suffix='.json', prefix=os.path.basename(__file__)) as state_temp, \
-        NamedTemporaryFile(suffix='.pickle', prefix=os.path.basename(__file__)) as universe_temp:
+    # https://nbconvert.readthedocs.io/en/latest/execute_api.html
+    with open(report_template) as f:
+        nb = nbformat.read(f, as_version=4)
 
-        state_path = Path(state_temp.name).absolute()
-        state.write_json_file(state_path)
+    # Replace the first cell that allows us to pass parameters
+    # See
+    # - https://github.com/nteract/papermill/blob/main/papermill/parameterize.py
+    # - https://github.com/takluyver/nbparameterise/blob/master/nbparameterise/code.py
+    # for inspiration
+    cell = nb.cells[0]
+    assert cell.cell_type == "code", f"Assumed first cell is parameter cell, got {cell}"
+    assert "parameters =" in cell.source, f"Did not see parameters = definition in the cell source: {cell.source}"
+    cell.source = f"""parameters = {{
+        "state_file": "{state_path.absolute()}",
+        "universe_file": "{universe_path.absolute()}", 
+    }} """
 
-        universe_path = Path(universe_temp.name).absolute()
-        universe.write_pickle(universe_path)
+    # Run the notebook
+    state_size = os.path.getsize(state_path)
+    universe_size = os.path.getsize(universe_path)
+    logger.info(f"Starting backtest tearsheet notebook execution, state size is {state_size:,}b, universe size is {universe_size:,}b")
+    ep = ExecutePreprocessor(timeout=600, kernel_name='python3')
 
-        # https://nbconvert.readthedocs.io/en/latest/execute_api.html
-        with open(report_template) as f:
-            nb = nbformat.read(f, as_version=4)
+    try:
+        ep.preprocess(nb, {'metadata': {'path': '.'}})
+    except CellExecutionError as e:
+        print(e)
+        raise BacktestReportRunFailed(f"Could not run backtest reporter for {name}") from e
 
-        # Replace the first cell that allows us to pass parameters
-        # See
-        # - https://github.com/nteract/papermill/blob/main/papermill/parameterize.py
-        # - https://github.com/takluyver/nbparameterise/blob/master/nbparameterise/code.py
-        # for inspiration
-        cell = nb.cells[0]
-        assert cell.cell_type == "code", f"Assumed first cell is parameter cell, got {cell}"
-        assert "parameters =" in cell.source, f"Did not see parameters = definition in the cell source: {cell.source}"
-        cell.source = f"""parameters = {{
-            "state_file": "{state_path}",
-            "universe_file": "{universe_path}", 
-        }} """
+    logger.info("Notebook executed")
 
-        # Run the notebook
-        state_size = os.path.getsize(state_path)
-        universe_size = os.path.getsize(universe_path)
-        logger.info(f"Starting backtest tearsheet notebook execution, state size is {state_size:,}b, universe size is {universe_size:,}b")
-        ep = ExecutePreprocessor(timeout=600, kernel_name='python3')
+    # Write ipynb file that contains output cells created in place
+    if output_notebook is not None:
+        with open(output_notebook, 'w', encoding='utf-8') as f:
+            nbformat.write(nb, f)
 
-        try:
-            ep.preprocess(nb, {'metadata': {'path': '.'}})
-        except CellExecutionError as e:
-            print(e)
-            raise BacktestReportRunFailed(f"Could not run backtest reporter for {name}") from e
+    if output_csv_daily_returns is not None:
+        returns_series = calculate_daily_returns(state)
+        returns_series.index.name = 'timestamp'
+        returns_series = returns_series.fillna(0)
+        returns_df = pd.DataFrame({"daily_returns": returns_series})
+        returns_df.to_csv(output_csv_daily_returns, index=True, float_format='%.8f')
 
-        logger.info("Notebook executed")
+    # Write a static HTML file based on the notebook
+    if output_html is not None:
 
-        # Write ipynb file that contains output cells created in place
-        if output_notebook is not None:
-            with open(output_notebook, 'w', encoding='utf-8') as f:
-                nbformat.write(nb, f)
+        html_exporter = HTMLExporter(
+            template_name='classic',
+            embed_images=True,
+            exclude_input=show_code is False,
+            exclude_input_prompt=True,
+            exclude_output_prompt=True,
+        )
+        # Image are inlined in the output
+        html_content, resources = html_exporter.from_notebook_node(nb)
 
-        if output_csv_daily_returns is not None:
-            returns_series = calculate_daily_returns(state)
-            returns_series.index.name = 'timestamp'
-            returns_series = returns_series.fillna(0)
-            returns_df = pd.DataFrame({"daily_returns": returns_series})
-            returns_df.to_csv(output_csv_daily_returns, index=True, float_format='%.8f')
+        # Inject our custom css
+        if custom_css is not None:
+            html_content = _inject_custom_css_and_js(html_content, custom_css, custom_js)
 
-        # Write a static HTML file based on the notebook
-        if output_html is not None:
+        with open(output_html, 'w', encoding='utf-8') as f:
+            f.write(html_content)
 
-            html_exporter = HTMLExporter(
-                template_name='classic',
-                embed_images=True,
-                exclude_input=show_code is False,
-                exclude_input_prompt=True,
-                exclude_output_prompt=True,
-            )
-            # Image are inlined in the output
-            html_content, resources = html_exporter.from_notebook_node(nb)
+        logger.info("Wrote HTML report to %s, total %d bytes", output_html, len(html_content))
 
-            # Inject our custom css
-            if custom_css is not None:
-                html_content = _inject_custom_css_and_js(html_content, custom_css, custom_js)
-
-            with open(output_html, 'w', encoding='utf-8') as f:
-                f.write(html_content)
-
-            logger.info("Wrote HTML report to %s, total %d bytes", output_html, len(html_content))
-
-        return nb
+    return nb
 
 
 def _inject_custom_css_and_js(html: str, css_code: str, js_code: str) -> str:

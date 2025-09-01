@@ -121,6 +121,10 @@ def backtest(
     if not csv_daily_returns_report:
         csv_daily_returns_report = Path(f"state/{id}-daily-returns.csv")
 
+    universe_path = Path(f"state/{id}-universe.pickle")
+    if not unit_testing and universe_path.exists():
+        os.remove(universe_path)
+
     assert trading_strategy_api_key, "Cannot start the backtest without trading_strategy_api_key - please give command line option or give TRADING_STRATEGY_API_KEY env var"
 
     print(f"Starting backtesting for {strategy_file}")
@@ -158,6 +162,9 @@ def backtest(
     print(f"Writing backtest data the state file: {backtest_result.resolve()}")
     state.write_json_file(backtest_result)
 
+    print(f"Writing backtest data the universe file: {universe_path.resolve()}")
+    universe.write_pickle(universe_path)
+
     if generate_report:
 
         display_backtesting_results(state, strategy_universe=universe)
@@ -172,7 +179,8 @@ def backtest(
         print(f"CSV: {csv_daily_returns_report.resolve()}")
         export_backtest_report(
             state,
-            universe,
+            state_path=backtest_result,
+            universe_path=universe_path,
             output_notebook=notebook_report,
             output_html=html_report,
             output_csv_daily_returns=csv_daily_returns_report,
