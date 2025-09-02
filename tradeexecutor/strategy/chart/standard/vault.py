@@ -40,6 +40,7 @@ def vault_position_timeline(
     :return:
         Figure visualising the position timeline and a DataFrame with individual trades
     """
+    assert input.state
 
     state = input.state
     strategy_universe = input.strategy_universe
@@ -56,12 +57,17 @@ def vault_position_timeline(
 
     assert position_id is not None, f"Position for pair {pair} not found in portfolio."
 
+    if input.execution_context.mode.is_backtesting():
+        assert state.backtest_data
+        end_at = state.backtest_data.end_at
+    else:
+        start_at, end_at = state.get_strategy_start_and_end()
+
     position = state.portfolio.get_position_by_id(position_id)
     position_df = calculate_position_timeline(
         strategy_universe,
         position,
-        end_at=state.backtest_data.end_at,
-
+        end_at,
     )
 
     if cut_off_date:

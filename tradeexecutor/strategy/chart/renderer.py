@@ -8,7 +8,7 @@ from typing import Collection, Callable, Any
 import pandas as pd
 from pandas.io.formats.style import Styler
 from plotly.graph_objects import Figure
-import IPython.core.display
+import IPython.display
 
 import matplotlib.figure
 
@@ -146,8 +146,8 @@ def render_for_web(
             data=data,
             content_type="text/html",
         )
-    elif isinstance(func_result, IPython.core.display.HTML):
-        data = str(func_result).encode("utf-8")
+    elif isinstance(func_result, IPython.display.HTML):
+        data = func_result.data.encode("utf-8")
         return ChartRenderingResult(
             data=data,
             content_type="text/html",
