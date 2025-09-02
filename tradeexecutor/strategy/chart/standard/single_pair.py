@@ -20,7 +20,7 @@ def trading_pair_price_and_trades(
     state = input.state
     strategy_universe = input.strategy_universe
 
-    assert input.pairs and len(input.pairs) >= 1, "This chart only supports a single trading pair."
+    assert input.pairs and len(input.pairs) == 1, "This chart only supports a single trading pair."
     pair = input.pairs[0]
 
     all_trades = [t for t in state.portfolio.get_all_trades() if t.pair == pair]
@@ -54,7 +54,7 @@ def trading_pair_positions(
     state = input.state
     strategy_universe = input.strategy_universe
 
-    assert input.pairs and len(input.pairs) >= 1, "This chart only supports a single trading pair."
+    assert input.pairs and len(input.pairs) == 1, "This chart only supports a single trading pair."
     pair = input.pairs[0]
 
     df = display_positions_table(state, pair, sort_by="PnL USD", ascending=True)
