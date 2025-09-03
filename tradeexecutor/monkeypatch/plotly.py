@@ -34,7 +34,7 @@ if (pkg_version is not None) and Version(pkg_version) <= Version("7.0.0"):
                     trace.x = pandas.Series(trace.x).dt.to_pydatetime().tolist()
 
 
-    # Apply the monkey patch to_dict() method to fix traces during serialization
+    # Apply the monkey patch to to_dict() method to fix traces during serialization
     # This ensures the fix works for both show() (notebooks) and to_image() (web renderer)
     _old_to_dict = Figure.to_dict
     def _new_to_dict(self: Figure, *args, **kwargs):

@@ -6,68 +6,29 @@
 
 """
 import logging
-import tempfile
 import webbrowser
-import threading
-import asyncio
 from pathlib import Path
 
-import plotly.graph_objects as go
-import kaleido
+from plotly.graph_objects import Figure
 
 
 logger = logging.getLogger(__name__)
 
-_kaleido = None
-_lock = threading.Lock()
-
-
-# def get_kaleido() -> kaleido.Kaleido:
-#     """Create Kaleido rendering backend.
-#
-#     - Creates a Chrome browser on background
-#
-#     - `See usage examples <https://github.com/plotly/Kaleido>`__
-#     """
-#     global _kaleido
-#     with _lock:
-#         if _kaleido is None:
-#             _kaleido = kaleido.Kaleido()
-#
-#     return _kaleido
-#
-#
-# async def _args(
-#     kaleido_instance: kaleido.Kaleido,
-#     figure: go.Figure,
-#     filename: str,
-#     opts: dict,
-# ):
-#     logger.info("Entering Kaleido async rendering loop")
-#     kaleido_instance = kaleido.Kaleido()
-#     await kaleido_instance.open()
-#     await kaleido_instance.write_fig(
-#         figure,
-#         filename,
-#         opts=opts,
-#     )
-#     await kaleido_instance.close()
-#     logger.info("Exiting Kaleido async rendering loop")
-
 
 def render_plotly_figure_as_image_file(
-    figure: go.Figure,
+    figure: Figure,
     format: str = "png",
     width: int = 512,
     height: int = 512,
 ) -> bytes:
     """"Render Plotly figure as a static PNG image.
 
-    - Uses Kaleido to render the Plotly figure as a PNG or SVG image, or PDF..
-    - Creates Kaleido backend (Chrome browser) on the first call.
+    - Uses Kaleido to render the Plotly figure as a PNG or SVG image
+    - Plotly's Figure.to_image uses Kaleido when it's installed/available
 
     :param format:
         See ``kaleido._fig_tools` module for supported formats.
+        Supporting only png and svg for now.
 
     :param width:
         Width in pixels
@@ -80,44 +41,23 @@ def render_plotly_figure_as_image_file(
     """
 
     assert format in ["png", "svg"], "Format must be png or svg"
-    assert isinstance(figure, go.Figure), "Figure must be an instance of plotly.graph_objects.Figure"
+    assert isinstance(figure, Figure), "Figure must be an instance of plotly.graph_objects.Figure"
 
-    logger.info(
-        "render_plotly_figure_as_image_file(): %s %s %s",
-        type(figure),
-        width,
-        height,
-    )
+    logger.info(f"render_plotly_figure_as_image_file(): {type(figure)} {width}x{height}")
 
-    with tempfile.NamedTemporaryFile(delete=True, suffix=".png") as tmp:
-        filename = tmp.name
-
-        opts = dict(
-            format=format,
-            width=width,
-            height=height,
-        )
-
-        asyncio.run(
-            kaleido.write_fig(
-                figure,
-                path=filename,
-            ),
-            debug=True,
-        )
-
-        logger.info("Kaleido rendering done")
-        data = open(filename, "rb").read()
-
+    data = figure.to_image(format, width, height)
     assert len(data) > 0, "Rendered image data is empty"
+
+    logger.info("Plotly/Kaleido rendering done")
+
     return data
 
 
-def open_plotly_figure_in_browser(figure: go.Figure, height:int = 512, width: int = 512) -> None:
+def open_plotly_figure_in_browser(figure: Figure, height:int = 512, width: int = 512) -> None:
     """Open Plotly figure in a browser. Useful for debugging.
 
     See https://stackoverflow.com/a/74619515/315168
-    
+
     :param figure:
         Plotly figure
     """
@@ -141,4 +81,3 @@ def open_bytes_in_browser(data: bytes, format="png") -> None:
         out.write(data)
 
     webbrowser.open(f"file://{path.as_posix()}")
-
