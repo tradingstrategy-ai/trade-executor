@@ -4,7 +4,6 @@
 """
 import warnings
 from importlib.metadata import version, PackageNotFoundError
-import datetime
 
 from packaging.version import Version
 
@@ -23,25 +22,22 @@ if (pkg_version is not None) and Version(pkg_version) <= Version("7.0.0"):
 
     def fix_trace_x_axis_dates(self: Figure):
         for trace in self.data:
-            if not hasattr(trace, "x"):
+            if not (hasattr(trace, "x") and
+                    len(trace.x) > 0 and
+                    isinstance(trace.x, numpy.ndarray)):
                 continue
 
-            if len(trace.x) == 0:
-                continue
-
-            item = trace.x[0]
-            # Detect datetime64 and convert it to native Python datetime that show() can handle
-            if isinstance(trace.x, numpy.ndarray):
-                if isinstance(item, numpy.datetime64):
-                    with warnings.catch_warnings():
-                        warnings.simplefilter("ignore", FutureWarning)
-                        trace.x = pandas.Series(trace.x).dt.to_pydatetime().tolist()
+            # Detect datetime64 and convert to native Python datetime so it's formatted correctly
+            if isinstance(trace.x[0], numpy.datetime64):
+                with warnings.catch_warnings():
+                    warnings.simplefilter("ignore", FutureWarning)
+                    trace.x = pandas.Series(trace.x).dt.to_pydatetime().tolist()
 
 
-    # Run in the monkey patch,
-    # so that traces are fixed when fig.show() is called
-    _old_show = Figure.show
-    def _new_show(self: Figure, *args, **kwargs):
+    # Apply the monkey patch to to_dict() method to fix traces during serialization
+    # This ensures the fix works for both show() (notebooks) and to_image() (web renderer)
+    _old_to_dict = Figure.to_dict
+    def _new_to_dict(self: Figure, *args, **kwargs):
         fix_trace_x_axis_dates(self)
-        _old_show(self, *args, **kwargs)
-    Figure.show = _new_show
+        return _old_to_dict(self, *args, **kwargs)
+    Figure.to_dict = _new_to_dict
