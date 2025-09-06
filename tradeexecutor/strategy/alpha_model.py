@@ -944,25 +944,28 @@ class AlphaModel:
 
         :param ignore_credit:
             Automatically ignore credit/vault yield positions.
-        """
-        total = portfolio.get_position_equity_and_loan_nav()
+        """        
+        # open positions we consider part of the alpha model: 
+        # - exclude non-vault positions
+        # - include only portfolio_pairs if given
+        alpha_model_positions = []
+        for position in portfolio.open_positions.values():
+            if ignore_credit and (position.is_credit_supply() or position.is_vault()):
+                continue
 
-        if portfolio.open_positions:
+            if portfolio_pairs and position.pair not in portfolio_pairs:
+                continue
+
+            alpha_model_positions.append(position)
+
+        total = sum(position.get_value() for position in alpha_model_positions)
+
+        if alpha_model_positions:
             assert total > 0, f"Portfolio equity is zero, cannot calculate weights: {total}. At {self.timestamp}, positions: {portfolio.open_positions.values()}"
 
-        for position in portfolio.open_positions.values():
-
-            if ignore_credit:
-                if position.is_credit_supply() or position.is_vault():
-                    continue
-
-            # Pair is excluded
-            if portfolio_pairs:
-                if position.pair not in portfolio_pairs:
-                    continue
-
+        for position in alpha_model_positions:
             value = position.get_value()
-            weight = value / total
+            weight = value / total if total > 0 else 0
             self.set_old_weight(
                 position.pair.get_pricing_pair(),
                 weight,
