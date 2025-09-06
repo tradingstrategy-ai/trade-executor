@@ -24,7 +24,8 @@ from tradeexecutor.state.position import TradingPosition
 from tradeexecutor.state.trade import TradeExecution
 from tradeexecutor.state.blockhain_transaction import BlockchainTransaction
 from tradeexecutor.state.reserve import ReservePosition
-from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier
+from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier, TradingPairKind
+from tradeexecutor.state.types import USDollarPrice, USDollarAmount
 from tradeexecutor.strategy import size_risk_model
 from tradeexecutor.strategy.alpha_model import AlphaModel
 from tradeexecutor.strategy.fixed_size_risk import FixedSizeRiskModel
@@ -1412,3 +1413,140 @@ def test_alpha_model_normalise_weight_size_risk_partial(
     assert t.planned_price == pytest.approx(100.29999999999998)
     assert t.get_planned_value() == pytest.approx(50)
     assert isinstance(t.position_size_risk, SizeRisk)
+
+
+def test_alpha_model_vault_weights(universe):
+    """Test that old weights are calculated correctly when vault positions are present.
+    
+    This tests the bug where old weights were calculated using total equity including vaults,
+    while new weights were calculated using only spot positions, causing incorrect rebalancing.
+    """
+    ts = datetime.datetime(2021, 6, 1)
+    state = State()
+    usdc = AssetIdentifier(1, "0xA0b86a33E6441fae3B40b40bfab71fEe3", "USDC", 6)
+    
+    # Set up reserves
+    state.portfolio.reserves = {
+        usdc: ReservePosition(
+            asset=usdc,
+            quantity=Decimal(10000),
+            last_sync_at=ts,
+            reserve_token_price=USDollarAmount(1.0),
+            last_pricing_at=ts,
+            initial_deposit=Decimal(10000)
+        )
+    }
+    
+    # Create vault pair (yield-bearing stablecoin) 
+    vault_pair = TradingPairIdentifier(
+        base=AssetIdentifier(1, "0x1234567890123456789012345678901234567890", "aUSDC", 6),
+        quote=usdc,
+        pool_address="0x1234567890123456789012345678901234567891",
+        exchange_address="0x1234567890123456789012345678901234567892", 
+        internal_id=100,
+        kind=TradingPairKind.vault,
+        fee=0,
+    )
+    
+    # Create spot pair (WETH/USDC)
+    weth = AssetIdentifier(1, "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2", "WETH", 18)
+    weth_usdc = TradingPairIdentifier(
+        base=weth,
+        quote=usdc,
+        pool_address="0x1234567890123456789012345678901234567893",
+        exchange_address="0x1234567890123456789012345678901234567894",
+        internal_id=1,
+        kind=TradingPairKind.spot_market_hold,
+        fee=0,
+    )
+    
+    # Create vault position worth $5000
+    vault_position = TradingPosition(
+        position_id=1,
+        opened_at=ts,
+        pair=vault_pair,
+        last_pricing_at=ts,
+        last_token_price=USDollarPrice(1.0),
+        last_reserve_price=USDollarPrice(1.0),
+        reserve_currency=usdc,
+    )
+    vault_trade = TradeExecution(
+        trade_id=1,
+        position_id=1,
+        trade_type=TradeType.rebalance,
+        pair=vault_pair,
+        opened_at=ts,
+        planned_quantity=Decimal(5000),
+        executed_quantity=Decimal(5000),
+        planned_price=USDollarPrice(1.0),
+        executed_price=USDollarPrice(1.0),
+        lp_fees_estimated=USDollarAmount(0),
+        planned_reserve=USDollarAmount(5000),
+        executed_reserve=USDollarAmount(5000),
+        executed_at=ts,
+        reserve_currency=usdc,
+    )
+    vault_position.trades[1] = vault_trade
+    
+    # Create spot position worth $3000  
+    spot_position = TradingPosition(
+        position_id=2,
+        opened_at=ts,
+        pair=weth_usdc,
+        last_pricing_at=ts,
+        last_token_price=USDollarPrice(1500.0),
+        last_reserve_price=USDollarPrice(1.0),
+        reserve_currency=usdc,
+    )
+    spot_trade = TradeExecution(
+        trade_id=2,
+        position_id=2,
+        trade_type=TradeType.rebalance,
+        pair=weth_usdc,
+        opened_at=ts,
+        planned_quantity=Decimal(2),  # 2 WETH
+        executed_quantity=Decimal(2),
+        planned_price=USDollarPrice(1500.0),
+        executed_price=USDollarPrice(1500.0),
+        lp_fees_estimated=USDollarAmount(0),
+        planned_reserve=USDollarAmount(3000),
+        executed_reserve=USDollarAmount(3000),
+        executed_at=ts,
+        reserve_currency=usdc,
+    )
+    spot_position.trades[2] = spot_trade
+    
+    # Add positions to portfolio
+    state.portfolio.open_positions = {1: vault_position, 2: spot_position}
+    state.portfolio.next_position_id = 3
+    
+    # Verify total portfolio equity is correct: $5000 vault + $3000 spot = $8000
+    total_equity = state.portfolio.get_position_equity_and_loan_nav()
+    assert total_equity == pytest.approx(8000, rel=0.01)
+    
+    # Verify spot-only equity is correct: $3000 (WETH only, excluding vault)
+    spot_equity = sum(
+        position.get_value()
+        for position in state.portfolio.open_positions.values()
+        if not (position.is_credit_supply() or position.is_vault())
+    )
+    assert spot_equity == pytest.approx(3000, rel=0.01)
+    
+    # Test alpha model update_old_weights
+    alpha_model = AlphaModel(timestamp=ts)
+    
+    # First set a signal for the weth position so the alpha model knows about it
+    alpha_model.set_signal(weth_usdc, 1.0)  # Set a trading signal
+    
+    # Update old weights - this should exclude vault positions from denominator  
+    alpha_model.update_old_weights(
+        state.portfolio,
+        portfolio_pairs=[weth_usdc],  # Only spot pairs
+        ignore_credit=True  # Exclude vault positions
+    )
+    
+    # Verify old weights calculated correctly
+    signal = alpha_model.get_signal_by_pair(weth_usdc)
+    assert signal is not None
+    assert signal.old_weight == pytest.approx(1.0, rel=0.01)  # $3000 / $3000 spot = 100%
+    assert signal.old_value == pytest.approx(3000, rel=0.01)
