@@ -133,7 +133,6 @@ class AssetIdentifier:
 
             return []
 
-
     """
 
     #: See https://chainlist.org/
@@ -364,7 +363,7 @@ class TradingPairKind(enum.Enum):
     #:
     lending_protocol_short = "lending_protocol_short"
 
-    #: ERC-4626 vault or similar
+    #: ERC-4626 / ERC-7540 / Gains vault or similar
     vault = "vault"
 
     #: Cash.
@@ -927,6 +926,13 @@ class TradingPairIdentifier:
     def is_volume_generating(self) -> bool:
         """Should this pair to be included in total volume calculations"""
         return not self.is_credit_supply()
+
+    def is_multi_stage_deposit(self) -> bool:
+        """Are we ERC-7540, Gains or similar vault with multiple steps for redemption and deposit."""
+        vault_features = self.get_vault_features()
+        if not vault_features:
+            return False
+        return ERC4626Feature.erc_7540_like in vault_features or ERC4626Feature.gains_like in vault_features
 
     def get_liquidation_threshold(self) -> Percent:
         """What's the liqudation threshold for this leveraged pair"""

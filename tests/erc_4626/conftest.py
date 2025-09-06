@@ -67,7 +67,9 @@ def test_block_number() -> int:
 def vault(web3) -> IPORVault:
     # https://app.ipor.io/fusion/base/0x45aa96f0b3188d47a1dafdbefce1db6b37f58216
     spec = VaultSpec(8545, "0x45aa96f0b3188d47a1dafdbefce1db6b37f58216")
-    return IPORVault(web3, spec, features={ERC4626Feature.ipor_like})
+    vault = IPORVault(web3, spec, features={ERC4626Feature.ipor_like})
+    assert vault.feature
+    return vault
 
 
 @pytest.fixture()

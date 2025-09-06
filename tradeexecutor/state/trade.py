@@ -157,6 +157,12 @@ class TradeFlag(enum.Enum):
     #:
     ignore_open = "ignore_open"
 
+class MultiStageTrade(enum.Enum):
+    deposit_start = "deposit_start"
+    deposit_finish = "deposit_finish"
+    redeem_start = "redeem_start"
+    redeem_finish = "redeem_finish"
+
 
 @dataclass_json
 @dataclass()
@@ -1008,6 +1014,17 @@ class TradeExecution:
             return self.planned_quantity < 0
         else:
             raise NotImplementedError(f"Not leveraged trade: {self}")
+
+    def get_multi_stage(self) -> MultiStageTrade | None:
+        """Get the multi-stage identifier.
+
+        - Set by MultiStageDepositRedeemManager
+        - We know this trade is part of multi-stage operation if this is not None
+        """
+        return self.other_data.get("multi_stage")
+
+    def is_multi_stage(self) -> bool:
+        return self.get_multi_stage() is not None
 
     def get_input_asset(self) -> AssetIdentifier:
         """How we fund this trade."""
