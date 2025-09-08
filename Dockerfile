@@ -25,7 +25,7 @@ RUN apt-get update && apt-get install -y curl jq chromium ca-certificates gnupg 
   && rm -rf /var/lib/apt/lists/*
 
 # Install Python Poetry - pinned version
-RUN curl -sSL https://install.python-poetry.org | python - --version 1.8.3
+RUN curl -sSL https://install.python-poetry.org | python - --version 2.1.1
 
 ENV PATH="/root/.local/bin:$PATH"
 

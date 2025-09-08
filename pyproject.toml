@@ -22,7 +22,7 @@ requests = "^2.27.1"
 matplotlib = ">=3.5"
 jupyterlab = "^4.0.7"
 pandas = "<3"
-pandas-ta = "^0.3.14b"  # Unmaintained, still stick to old Pandas
+ft-pandas-ta = "^0.3.15"
 tqdm-loggable = "^0.2"
 numpy = "<2"  # https://stackoverflow.com/a/78638258/315168
 
