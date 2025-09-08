@@ -12,8 +12,8 @@ import numpy
 import pytest
 
 import pandas as pd
-from pandas_ta import bbands
-from pandas_ta.momentum import rsi
+from pandas_ta_classic import bbands
+from pandas_ta_classic.momentum import rsi
 
 from tradingstrategy.universe import Universe
 from tradingstrategy.chain import ChainId

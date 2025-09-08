@@ -4,8 +4,8 @@
 from typing import List, Dict
 
 import pandas as pd
-from pandas_ta import bbands
-from pandas_ta.momentum import rsi
+from pandas_ta_classic import bbands
+from pandas_ta_classic.momentum import rsi
 
 from tradeexecutor.state.visualisation import PlotKind
 from tradeexecutor.strategy.execution_context import ExecutionContext

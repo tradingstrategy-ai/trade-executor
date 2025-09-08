@@ -1,9 +1,9 @@
 """Correctly handle gaps in lending data (no Aave activity, no lending candle)."""
 import warnings
 from typing import List, Dict
-from pandas_ta.overlap import ema
-from pandas_ta.momentum import rsi, stoch
-from pandas_ta.volume import mfi
+from pandas_ta_classic.overlap import ema
+from pandas_ta_classic.momentum import rsi, stoch
+from pandas_ta_classic.volume import mfi
 import pandas as pd
 import datetime
 import numpy as np

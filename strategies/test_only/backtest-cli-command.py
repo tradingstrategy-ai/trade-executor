@@ -3,7 +3,7 @@
 import logging
 import datetime
 import pandas as pd
-from pandas_ta import ema
+from pandas_ta_classic import ema
 
 from tradingstrategy.chain import ChainId
 from tradingstrategy.timebucket import TimeBucket

@@ -10,7 +10,7 @@ import pytest
 
 import pandas as pd
 from packaging import version
-from pandas_ta.overlap import ema
+from pandas_ta_classic.overlap import ema
 
 from tradeexecutor.analysis.multi_asset_benchmark import compare_strategy_backtest_to_multiple_assets, get_benchmark_data
 from tradeexecutor.analysis.trade_analyser import build_trade_analysis, expand_timeline, expand_timeline_raw, TimelineRowStylingMode, TradeAnalysis, TradeSummary

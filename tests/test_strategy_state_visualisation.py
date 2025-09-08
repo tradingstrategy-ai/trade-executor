@@ -11,7 +11,7 @@ from typing import List, Dict
 import pytest
 
 import pandas as pd
-from pandas_ta.overlap import ema
+from pandas_ta_classic.overlap import ema
 
 
 from tradeexecutor.backtest.backtest_runner import run_backtest_inline
