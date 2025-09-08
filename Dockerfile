@@ -13,8 +13,8 @@ ARG GIT_VERSION_TAG=unspecified
 ARG GIT_COMMIT_MESSAGE=unspecified
 ARG GIT_VERSION_HASH=unspecified
 
-ENV PYTHONDONTWRITEBYTECODE 1 \
-    PYTHONUNBUFFERED 1
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1
 
 # curl and jq needed for the health checks
 # chromium needed for Kaleido/Plotly to render chart images
@@ -40,7 +40,7 @@ RUN echo $GIT_VERSION_HASH > GIT_VERSION_HASH.txt
 COPY . .
 
 RUN poetry config virtualenvs.create false
-RUN poetry install --no-dev --no-interaction --no-ansi --all-extras
+RUN poetry install --all-extras --no-interaction --no-ansi --without=dev
 
 # Clean Poetry cache to reduce image size
 RUN poetry cache clear pypi --all --no-interaction
@@ -54,7 +54,7 @@ RUN foundryup --install v1.2.1
 # We need to install Lagoon dependencies if we want to deploy Vault.sol contract.
 # Otherwise trade-executor lagoon-deploy-vault command will fail.
 # Needed only for installing the dependencies, not during run time
-RUN (cd deps/web3-ethereum-defi/contracts/lagoon-v0 && forge soldeer install)
+RUN (cd deps/web3-ethereum-defi/contracts/lagoon-v0 && forge soldeer install --config-location foundry)
 
 # Speed up Python process startup
 RUN rm -rf ./tests
