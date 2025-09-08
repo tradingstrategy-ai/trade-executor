@@ -5,7 +5,7 @@ import datetime
 import logging
 
 import pandas as pd
-import pandas_ta
+import pandas_ta_classic as pandas_ta
 
 from eth_defi.token import USDC_NATIVE_TOKEN
 from eth_defi.token import WRAPPED_NATIVE_TOKEN

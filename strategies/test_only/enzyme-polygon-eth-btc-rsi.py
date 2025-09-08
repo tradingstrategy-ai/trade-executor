@@ -19,7 +19,7 @@ import logging
 import os
 
 import pandas as pd
-import pandas_ta
+import pandas_ta_classic as pandas_ta
 from tradeexecutor.state.trade import TradeExecution
 from tradeexecutor.state.visualisation import PlotKind, PlotLabel, PlotShape
 from tradeexecutor.strategy.alpha_model import AlphaModel

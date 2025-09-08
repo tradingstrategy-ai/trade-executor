@@ -2,7 +2,7 @@
 import datetime
 import os
 
-import pandas_ta
+import pandas_ta_classic as pandas_ta
 import pandas as pd
 
 from tradeexecutor.state.trade import TradeExecution

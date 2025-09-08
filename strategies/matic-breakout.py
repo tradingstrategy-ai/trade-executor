@@ -15,7 +15,7 @@ To see the backtest for longer history, refer to the notebook doing backtest wit
 """
 import datetime
 
-import pandas_ta
+import pandas_ta_classic as pandas_ta
 import pandas as pd
 
 from tradeexecutor.state.trade import TradeExecution

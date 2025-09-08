@@ -3,7 +3,7 @@
 import datetime
 
 import pandas as pd
-import pandas_ta
+import pandas_ta_classic as pandas_ta
 
 from tradingstrategy.lending import LendingProtocolType, LendingReserveDescription
 from tradingstrategy.pair import HumanReadableTradingPairDescription

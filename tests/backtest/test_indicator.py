@@ -5,7 +5,7 @@ import random
 from pathlib import Path
 
 import pandas as pd
-import pandas_ta
+import pandas_ta_classic as pandas_ta
 import pytest
 
 from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier

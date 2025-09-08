@@ -4929,18 +4929,19 @@ test = ["hypothesis (>=6.46.1)", "pytest (>=7.3.2)", "pytest-xdist (>=2.2.0)"]
 xml = ["lxml (>=4.9.2)"]
 
 [[package]]
-name = "pandas-ta"
-version = "0.3.14b"
-description = "An easy to use Python 3 Pandas Extension with 130+ Technical Analysis Indicators. Can be called from a Pandas DataFrame or standalone like TA-Lib. Correlation tested with TA-Lib."
+name = "pandas-ta-classic"
+version = "0.3.14b1"
+description = "An easy to use Python 3 Pandas Extension with 130+ Technical Analysis Indicators. Can be called from a Pandas DataFrame or standalone like TA-Lib. Correlation tested with TA-Lib. This is the classic/community maintained version."
 optional = false
 python-versions = "*"
 groups = ["main"]
 files = [
-    {file = "pandas_ta-0.3.14b.tar.gz", hash = "sha256:0fa35aec831d2815ea30b871688a8d20a76b288a7be2d26cc00c35cd8c09a993"},
+    {file = "pandas_ta_classic-0.3.14b1-py3-none-any.whl", hash = "sha256:69637ffb903a32fbb51afceef0e6f4b7d17ade31b2a07e9d9f405ce689f02f60"},
 ]
 
 [package.dependencies]
-pandas = "*"
+numpy = ">=1.21.0"
+pandas = ">=1.3.0"
 
 [package.extras]
 dev = ["alphaVantage-api", "matplotlib", "mplfinance", "scipy", "sklearn", "statsmodels", "stochastic", "talib", "tqdm", "vectorbt", "yfinance"]
@@ -8752,4 +8753,4 @@ web-server = ["WebTest", "openapi-core", "pyramid", "pyramid-openapi3", "waitres
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.11,<3.13"
-content-hash = "38214f2ff705673a3e79a6a94cd76645f8d3d89ae83dc24627e072871f5362a0"
+content-hash = "4b1dfd0c86c7ced148a1702af7c5280ce5c92b33e20d2248af00b8866dbeb09f"

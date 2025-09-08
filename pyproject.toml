@@ -22,8 +22,8 @@ requests = "^2.27.1"
 matplotlib = ">=3.5"
 jupyterlab = "^4.0.7"
 pandas = "<3"
-pandas-ta = "^0.3.14b"  # Unmaintained, still stick to old Pandas
 tqdm-loggable = "^0.2"
+pandas-ta-classic = "^0.3.14b1"  # community maintained pandas-ta fork
 numpy = "<2"  # https://stackoverflow.com/a/78638258/315168
 
 web3-ethereum-defi = {path = "deps/web3-ethereum-defi", develop = true, extras=["data", "test", "web3v6"]}

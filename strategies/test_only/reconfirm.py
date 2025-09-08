@@ -8,8 +8,6 @@ We are only interested in the trading universe.
 import pandas as pd
 import datetime
 
-import pandas_ta as ta
-
 from tradeexecutor.state.visualisation import PlotKind
 from tradeexecutor.strategy.cycle import CycleDuration
 from tradeexecutor.strategy.default_routing_options import TradeRouting

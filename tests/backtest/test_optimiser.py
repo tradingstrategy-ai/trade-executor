@@ -4,7 +4,7 @@ from pathlib import Path
 from typing import List
 
 import pandas as pd
-import pandas_ta
+import pandas_ta_classic as pandas_ta
 import pytest
 from plotly.graph_objs import Figure
 from skopt import space

@@ -19,7 +19,7 @@ import datetime
 import os
 
 import pandas as pd
-import pandas_ta
+import pandas_ta_classic as pandas_ta
 
 from tradingstrategy.utils.groupeduniverse import resample_candles
 from tradingstrategy.chain import ChainId

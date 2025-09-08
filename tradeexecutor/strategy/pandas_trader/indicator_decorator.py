@@ -119,7 +119,7 @@ class IndicatorRegistry:
 
     .. code-block:: python
 
-        import pandas_ta
+        import pandas_ta_classic as ta
         from tradeexecutor.strategy.pandas_trader.indicator_decorator import IndicatorRegistry
 
         class Parameters:
@@ -129,7 +129,7 @@ class IndicatorRegistry:
 
         @indicators.define()
         def rsi(close, rsi_length):
-            return pandas_ta.rsi(close, rsi_length)
+            return ta.rsi(close, rsi_length)
 
         # Calculate indicators - will spawn multiple worker processed,
         # or load cached results from the disk
@@ -144,7 +144,7 @@ class IndicatorRegistry:
 
     .. code-block:: python
 
-        import pandas_ta
+        import pandas_ta_classic as ta
         from tradeexecutor.strategy.pandas_trader.indicator_decorator import IndicatorRegistry
 
 
@@ -156,11 +156,11 @@ class IndicatorRegistry:
 
         @indicators.define()
         def slow_sma(close, slow_ma_length):
-            return pandas_ta.sma(close, slow_ma_length)
+            return ta.sma(close, slow_ma_length)
 
         @indicators.define()
         def fast_sma(close, fast_ma_length):
-            return pandas_ta.sma(close, fast_ma_length)
+            return ta.sma(close, fast_ma_length)
 
         @indicators.define(dependencies=(slow_sma, fast_sma))
         def ma_crossover(
@@ -199,7 +199,7 @@ class IndicatorRegistry:
 
             @indicators.define()
             def slow_sma(close, slow_ma_length):
-                return pandas_ta.sma(close, slow_ma_length)
+                return ta.sma(close, slow_ma_length)
 
         :param source:
             What kind of trading data this indicator needs as input.
@@ -287,7 +287,7 @@ class IndicatorRegistry:
 
             @indicators.define()
             def rsi(close, rsi_length):
-                return pandas_ta.rsi(close, rsi_length)
+                return ta.rsi(close, rsi_length)
 
             # Calculate indicators - will spawn multiple worker processed,
             # or load cached results from the disk

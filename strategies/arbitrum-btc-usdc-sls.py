@@ -21,7 +21,7 @@ import pandas as pd
 import numpy as np
 import datetime
 
-import pandas_ta as ta
+import pandas_ta_classic as ta
 
 from tradeexecutor.strategy.execution_context import ExecutionMode
 from tradeexecutor.visual.equity_curve import calculate_equity_curve, calculate_returns

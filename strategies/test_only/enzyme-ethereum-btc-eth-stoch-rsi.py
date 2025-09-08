@@ -15,7 +15,7 @@ To backtest this strategy module locally:
 """
 
 import datetime
-import pandas_ta
+import pandas_ta_classic as pandas_ta
 
 
 from tradingstrategy.chain import ChainId

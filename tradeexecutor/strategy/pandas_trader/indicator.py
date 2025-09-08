@@ -820,7 +820,7 @@ class CreateIndicatorsProtocolV2(Protocol):
     - To read indicator values in `decide_trades()` function,
       see :py:class:`~tradeexecutor.strategy.strategy_input.StrategyInputIndicators`.
 
-    - For most :py:mod:`pandas_ta` functions. like `pandas_ta.ma`, `pandas_ta.rsi`, `pandas_ta.mfi`, you can pass them directly to
+    - For most :py:mod:`pandas_ta` functions. like `ta.ma`, `ta.rsi`, `ta.mfi`, you can pass them directly to
       `indicators.add()` - as those functions have standard argument names like `close`, `high`, `low` that
       are data series provided.
 
@@ -856,8 +856,8 @@ class CreateIndicatorsProtocolV2(Protocol):
             execution_context: ExecutionContext
         ):
             indicators = IndicatorSet()
-            indicators.add("slow_ema", pandas_ta.ema, {"length": parameters.slow_ema_candle_count})
-            indicators.add("fast_ema", pandas_ta.ema, {"length": parameters.fast_ema_candle_count})
+            indicators.add("slow_ema", ta.ema, {"length": parameters.slow_ema_candle_count})
+            indicators.add("fast_ema", ta.ema, {"length": parameters.fast_ema_candle_count})
             return indicators
 
     Some indicators may use multiple OHLCV datapoints. In this case, you need to tell the indicator to be :py:attr:`IndicatorSource.ohlcv` type.
@@ -865,7 +865,7 @@ class CreateIndicatorsProtocolV2(Protocol):
 
     .. code-block:: python
 
-        import pandas_ta
+        import pandas_ta_classic as ta
 
         from tradeexecutor.strategy.parameters import StrategyParameters
         from tradeexecutor.strategy.pandas_trader.indicator import IndicatorSet, IndicatorSource
@@ -882,7 +882,7 @@ class CreateIndicatorsProtocolV2(Protocol):
             indicators = IndicatorSet()
             indicators.add(
                 "mfi",
-                pandas_ta.mfi,
+                ta.mfi,
                 parameters={"length": parameters.my_mfi_length},
                 source=IndicatorSource.ohlcv,
             )
@@ -906,7 +906,7 @@ class CreateIndicatorsProtocolV2(Protocol):
             btc_price = strategy_universe.data_universe.candles.get_candles_by_pair(wbtc_usdc.internal_id)
             eth_price = strategy_universe.data_universe.candles.get_candles_by_pair(weth_usdc.internal_id)
             eth_btc = eth_price["close"] / btc_price["close"]
-            return pandas_ta.rsi(eth_btc, length=length)
+            return ta.rsi(eth_btc, length=length)
 
         def create_indicators(parameters: StrategyParameters, strategy_universe: TradingStrategyUniverse, execution_context: ExecutionContext) -> IndicatorSet:
             indicators = IndicatorSet()
@@ -1507,14 +1507,14 @@ class IndicatorDependencyResolver:
         # Slow moving average
         indicators.add(
             "fast_sma",
-            pandas_ta.sma,
+            ta.sma,
             parameters={"length": 7},
             order=1,
         )
         # Fast moving average
         indicators.add(
             "slow_sma",
-            pandas_ta.sma,
+            ta.sma,
             parameters={"length": 21},
             order=1,
         )
@@ -1558,8 +1558,8 @@ class IndicatorDependencyResolver:
             return fast_ema * slow_ema * close # Calculate something based on two indicators and price
 
         def create_indicators(parameters: StrategyParameters, indicators: IndicatorSet, strategy_universe: TradingStrategyUniverse, execution_context: ExecutionContext):
-            indicators.add("slow_ema", pandas_ta.ema, {"length": parameters.slow_ema_candle_count})
-            indicators.add("fast_ema", pandas_ta.ema, {"length": parameters.fast_ema_candle_count})
+            indicators.add("slow_ema", ta.ema, {"length": parameters.slow_ema_candle_count})
+            indicators.add("fast_ema", ta.ema, {"length": parameters.fast_ema_candle_count})
             indicators.add(
                 "combined_indicator",
                 combined_indicator,
@@ -2147,9 +2147,9 @@ def calculate_and_load_indicators_inline(
             execution_context,
         ) -> IndicatorSet:
             indicator_set = IndicatorSet()
-            indicator_set.add("rsi", pandas_ta.rsi, {"length": parameters.rsi_length})
-            indicator_set.add("sma_long", pandas_ta.sma, {"length": parameters.sma_long})
-            indicator_set.add("sma_short", pandas_ta.sma, {"length": parameters.sma_short})
+            indicator_set.add("rsi", ta.rsi, {"length": parameters.rsi_length})
+            indicator_set.add("sma_long", ta.sma, {"length": parameters.sma_long})
+            indicator_set.add("sma_short", ta.sma, {"length": parameters.sma_short})
             return indicator_set
 
         # Calculate indicators - will spawn multiple worker processed,

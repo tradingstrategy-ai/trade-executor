@@ -3,7 +3,7 @@ import datetime
 import os
 
 import pandas as pd
-import pandas_ta
+import pandas_ta_classic as pandas_ta
 import pytest
 
 from tradeexecutor.analysis.regime import Regime

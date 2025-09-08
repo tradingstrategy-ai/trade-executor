@@ -4,7 +4,7 @@ import datetime
 import random
 
 import pandas as pd
-import pandas_ta
+import pandas_ta_classic as pandas_ta
 import pytest
 from pandas._libs.tslibs.offsets import MonthBegin
 from pyasn1_modules.rfc8018 import id_PBMAC1

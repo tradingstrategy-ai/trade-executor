@@ -7,7 +7,7 @@ import datetime
 from _decimal import Decimal
 from typing import List, Dict
 
-import pandas_ta
+import pandas_ta_classic as pandas_ta
 import pytest
 import pandas as pd
 
