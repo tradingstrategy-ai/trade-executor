@@ -18,6 +18,7 @@ from eth_defi.trade import TradeSuccess
 
 
 from tradeexecutor.ethereum.swap import get_swap_transactions, report_failure
+from tradeexecutor.ethereum.vault.staged_deposit_redeem import mark_multi_stage_deposit_in_progress
 from tradeexecutor.state.blockhain_transaction import BlockchainTransaction
 from tradeexecutor.state.portfolio import Portfolio
 from tradeexecutor.state.state import State
@@ -204,19 +205,39 @@ class VaultRouting(RoutingModel):
 
         asset_deltas = trade.calculate_asset_deltas()
 
-        if trade.is_buy():
-            approve_call, swap_call = approve_and_deposit_4626(
-                vault=target_vault,
-                from_=address,
-                amount=swap_amount,
-                check_enough_token=False,
-            )
+        if trade.pair.is_erc_7540():
+            deposit_manager = target_vault.deposit_manager
+            if trade.is_buy():
+                assert deposit_manager.can_create_deposit_request(address), f"Cannot deposit? {vault}"
+                approve_call = target_vault.denomination_token.approve(target_vault.address, swap_amount)
+                deposit_ticket = deposit_manager.create_deposit_request(
+                    owner=address,
+                    to=address,
+                    amount=swap_amount
+                )
+
+                mark_multi_stage_deposit_in_progress(
+                    trade,
+                    deposit_ticket,
+                )
+
+        elif trade.pair.is_erc_4262():
+            if trade.is_buy():
+                approve_call, swap_call = approve_and_deposit_4626(
+                    vault=target_vault,
+                    from_=address,
+                    amount=swap_amount,
+                    check_enough_token=False,
+                )
+            else:
+                approve_call, swap_call = approve_and_redeem_4626(
+                    vault=target_vault,
+                    from_=address,
+                    amount=swap_amount
+                )
+
         else:
-            approve_call, swap_call = approve_and_redeem_4626(
-                vault=target_vault,
-                from_=address,
-                amount=swap_amount
-            )
+            raise RuntimeError(f"Unknown vault pair: {target_vault}, {trade.pair.get_vault_features()}")
 
         approve_gas_limit = 500_000
         swap_gas_limit = self.vault_interaction_gas_limit
@@ -275,7 +296,8 @@ class VaultRouting(RoutingModel):
     ):
 
         vault = get_vault_for_pair(web3, trade.pair)
-        logger.info(f"Settling vault trade: #{trade.trade_id} for {vault}")
+        features = vault.features
+        logger.info(f"Settling vault trade: #{trade.trade_id} for {vault}, vault features: {features}")
 
         base_token_details = fetch_erc20_details(web3, trade.pair.base.checksum_address)
         # quote_token_details = fetch_erc20_details(web3, trade.pair.quote.checksum_address)

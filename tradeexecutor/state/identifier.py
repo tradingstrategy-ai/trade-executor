@@ -934,6 +934,19 @@ class TradingPairIdentifier:
             return False
         return ERC4626Feature.erc_7540_like in vault_features or ERC4626Feature.gains_like in vault_features
 
+    def is_erc_7540(self) -> bool:
+        """ERC-7540 is not consireed as 4626"""
+        vault_features = self.get_vault_features()
+        if not vault_features:
+            return False
+        return ERC4626Feature.erc_7540_like in vault_features
+
+    def is_erc_4626(self) -> bool:
+        vault_features = self.get_vault_features()
+        if not vault_features:
+            return False
+        return not (ERC4626Feature.erc_7540_like in vault_features)
+
     def get_liquidation_threshold(self) -> Percent:
         """What's the liqudation threshold for this leveraged pair"""
         assert self.kind.is_leverage()

@@ -1021,7 +1021,7 @@ class TradeExecution:
         - Set by MultiStageDepositRedeemManager
         - We know this trade is part of multi-stage operation if this is not None
         """
-        return self.other_data.get("multi_stage")
+        return self.other_data.get("stage")
 
     def is_multi_stage(self) -> bool:
         return self.get_multi_stage() is not None

@@ -67,6 +67,7 @@ def test_erc_7540_deposit(
 
     state = State()
     pair = strategy_universe.get_pair_by_smart_contract(vault.address)
+    assert pair.is_erc_7540()
 
     sync_model.sync_initial(
         state,
@@ -96,6 +97,7 @@ def test_erc_7540_deposit(
     )
 
     trades = [t]
+    assert t.is_planned()
     assert t.is_multi_stage()
 
     routing_state_details = execution_model.get_routing_state_details()
@@ -113,8 +115,8 @@ def test_erc_7540_deposit(
     )
 
     # Part 1 of the deposit done
-
-    assert t.is_success(), f"Trade failed: {t.blockchain_transactions[0].revert_reason}"
+    assert t.is_executed(), f"Trade did not execute: {t}: {t.get_revert_reason()}"
+    assert t.is_success(), f"Trade failed: {t.get_revert_reason()}"
     assert t.is_buy()
     assert t.executed_price == pytest.approx(1.0335669715951414)
     assert t.executed_quantity == pytest.approx(Decimal(9.67523177))

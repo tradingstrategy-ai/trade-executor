@@ -52,11 +52,11 @@ class VaultPricing(PricingModel):
 
         block_number = self.web3.eth.block_number
         vault = self.get_vault(pair)
+        deposit_manager = vault.deposit_manager
 
-        estimated_usd = estimate_4626_redeem(
-            vault=vault,
+        estimated_usd = deposit_manager.estimate_redeem(
             owner=None,
-            share_amount=quantity,
+            shares=quantity,
             block_identifier=block_number,
         )
 
@@ -90,9 +90,11 @@ class VaultPricing(PricingModel):
         block_number = self.web3.eth.block_number
         vault = self.get_vault(pair)
 
-        estimated_shares = estimate_4626_deposit(
-            vault=vault,
-            denomination_token_amount=reserve,
+        deposit_manager = vault.deposit_manager
+
+        estimated_shares = deposit_manager.estimate_deposit(
+            owner=None,
+            amount=reserve,
             block_identifier=block_number,
         )
 

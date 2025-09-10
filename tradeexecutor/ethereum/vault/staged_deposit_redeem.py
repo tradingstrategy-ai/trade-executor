@@ -4,7 +4,6 @@
 
 """
 import datetime
-import enum
 from functools import cached_property
 
 from dataclasses_json import dataclass_json, config
@@ -20,7 +19,7 @@ from eth_defi.vault.deposit_redeem import DepositTicket, RedemptionTicket, Vault
 from tradeexecutor.state.identifier import TradingPairIdentifier
 from tradeexecutor.state.pickle_over_json import encode_pickle_over_json, decode_pickle_over_json
 from tradeexecutor.state.position import TradingPosition
-from tradeexecutor.state.trade import TradeExecution
+from tradeexecutor.state.trade import TradeExecution, MultiStageTrade
 from tradeexecutor.state.types import JSONHexAddress, BlockNumber
 from tradeexecutor.strategy.pandas_trader.position_manager import PositionManager
 from tradingstrategy.types import USDollarAmount
@@ -29,20 +28,26 @@ from tradingstrategy.types import USDollarAmount
 @dataclass_json
 @dataclass(slots=True)
 class TicketState:
-    """Capture data of multi transaction ongoing deposit/redeem process"""
+    """Capture data of multi transaction ongoing deposit/redeem process.
 
-    #: When the first transaction was submitted
-    opened_at: datetime.datetime = field(default_factory=datetime.datetime.utcnow)
-    opened_block: BlockNumber | None = None
-    opened_tx_hash: str | None = None
+    Stored as `TradeExecution.other_data["multi_stage_state"]`
+    """
 
-    #: When the second transaction was submitted
-    closed_at: datetime.datetime | None = None
-    closed_block: BlockNumber | None = None
-    closed_tx_hash: str | None = None
+    deposit_ticket: DepositTicket = field(
+        metadata=config(
+            encoder=encode_pickle_over_json,
+            decoder=decode_pickle_over_json,
+        ),
+        default=None,
+    )
 
-    def is_in_progress(self) -> bool:
-        return self.closed_at is None
+    redemption_ticket: RedemptionTicket = field(
+        metadata=config(
+            encoder=encode_pickle_over_json,
+            decoder=decode_pickle_over_json,
+        ),
+        default=None,
+    )
 
 
 @dataclass_json
@@ -119,6 +124,13 @@ class MultiStageState:
     deposits: TicketQueue = field(default_factory=DepositTicketQueue)
     redeems: TicketQueue = field(default_factory=RedemptionTicketQueue)
 
+
+@dataclass_json
+@dataclass(slots=True)
+class MultiStageTradeState:
+    """Manage state of our various multi-stage deposits and redeems."""
+    deposit_ticket:
+    redeems: TicketQueue = field(default_factory=RedemptionTicketQueue)
 
 
 class MultiStageDepositRedeemManager:
@@ -204,6 +216,8 @@ class MultiStageDepositRedeemManager:
         trade = trades[0]
         trade.other_data["stage"] = MultiStageTrade.deposit_start.value
 
+        position = position_manager.state.portfolio.open_positions[trade.position_id]
+
         wrapper = MultiStagePositionWrapper(self, position)
         return wrapper, trade
 
@@ -215,13 +229,14 @@ class MultiStageDepositRedeemManager:
         pass
 
 
-class MultiStagePositionWrapper(Exception):
+class MultiStagePositionWrapper:
     """Helper class to manager state for a position"""
 
     def __init__(self, manager: MultiStageDepositRedeemManager, position: TradingPosition):
+        assert isinstance(manager, MultiStageDepositRedeemManager)
+        assert isinstance(position, TradingPosition)
         self.manager = manager
         self.position = position
-        super().__init__(f"Position {position.identifier} requires multi-stage deposit/redeem manager")
 
     def get_state(self) -> MultiStageState | None:
         return self.position.other_data.get("multi_stage_deposit_redeem", MultiStageState())
@@ -242,7 +257,6 @@ class MultiStagePositionWrapper(Exception):
     ):
         last_ticket = self.state.deposits.queue[-1]
         assert not last_ticket.is_in_progress(), f"No open deposit in progress: {last_ticket}"
-
         ticket = DepositTicketState(ticket=deposit_ticket)
         ticket.opened_at = datetime.datetime.utcnow()
         ticket.opened_block = ticket.block_number
@@ -268,4 +282,14 @@ class MultiStagePositionWrapper(Exception):
         return self.deposit_manager.create_redemption_request(self.trading_address)
 
 
+def get_multi_stage_state(trade: TradeExecution) -> MultiStageTradeState:
+    state = trade.other_data.get("multi_stage_state", MultiStageTradeState())
+    return state
 
+
+def mark_multi_stage_deposit_in_progress(
+    trade: TradeExecution,
+    deposit_ticket: DepositTicket,
+):
+    state = get_multi_stage_state(trade)
+    state.deposit_ticket = deposit_ticket
