@@ -319,7 +319,8 @@ class BlockchainTransaction:
 
     def __repr__(self):
 
-        notes = "\n" + textwrap.indent(self.notes, prefix="      ")
+        notes = self.notes or ""
+        notes = "\n" + textwrap.indent(notes, prefix="      ")
 
         if self.status is True:
             return f"<Tx success \n" \

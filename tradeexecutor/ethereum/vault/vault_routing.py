@@ -215,11 +215,15 @@ class VaultRouting(RoutingModel):
                     owner=address,
                     amount=swap_amount
                 )
+                assert len(deposit_request.funcs) == 1
+                swap_call = deposit_request.funcs[0]
 
                 mark_trade_multi_stage_deposit_requested(
                     trade,
                     deposit_request,
                 )
+            else:
+                raise NotImplementedError()
 
         elif trade.pair.is_erc_4262():
             if trade.is_buy():
@@ -420,8 +424,15 @@ class VaultRouting(RoutingModel):
         tx_hashes = [tx.tx_hash for tx in trade.blockchain_transactions]
 
         # Any tx failed -> trade failed
-        for tx_hash in trade.blockchain_transactions:
-            receipt = receipts[tx_hash]
+        for tx in trade.blockchain_transactions:
+            receipt = receipts.get(HexBytes(tx.tx_hash))
+            assert receipt, f"No receipt for {tx.tx_hash} in {list(receipts.keys())}"
+            logger.error(
+                "Vault tx %s reverted %s for trade %s",
+                tx,
+                tx.revert_reason,
+                trade,
+            )
             if receipt["status"] != 1:
                 report_failure(
                     datetime.datetime.utcnow(),

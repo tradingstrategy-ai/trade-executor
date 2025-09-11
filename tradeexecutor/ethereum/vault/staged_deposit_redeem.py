@@ -297,11 +297,13 @@ class MultiStagePositionWrapper:
 
 
 def get_or_initialise_multi_stage_state(trade: TradeExecution) -> TicketState:
-    state = trade.other_data.get("multi_stage_state", MultiStageTradeState())
-    return state
+    if "multi_stage_state" not in trade.other_data:
+        trade.other_data["multi_stage_state"] = TicketState()
+    return trade.other_data["multi_stage_state"]
 
 
 def get_multi_stage_state(trade: TradeExecution) -> TicketState:
+    assert "multi_stage_state" in trade.other_data, f"Trade {trade} did not have multi stage structure initialised"
     state = trade.other_data["multi_stage_state"]
     return state
 

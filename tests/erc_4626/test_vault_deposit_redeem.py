@@ -9,10 +9,11 @@ import pytest
 from eth_defi.erc_4626.classification import create_vault_instance
 from eth_defi.erc_4626.core import ERC4626Feature
 from eth_defi.ipor.vault import IPORVault
+from eth_defi.lagoon.deposit_redeem import ERC7540DepositTicket
 from eth_defi.lagoon.vault import LagoonVault
 from eth_defi.vault.base import VaultSpec
 from tradeexecutor.ethereum.hot_wallet_sync_model import HotWalletSyncModel
-from tradeexecutor.ethereum.vault.staged_deposit_redeem import MultiStageDepositRedeemManager
+from tradeexecutor.ethereum.vault.staged_deposit_redeem import MultiStageDepositRedeemManager, get_multi_stage_state
 
 from tradeexecutor.ethereum.vault.vault_routing import VaultRouting
 from tradeexecutor.state.identifier import AssetIdentifier
@@ -93,7 +94,7 @@ def test_erc_7540_deposit(
     )
 
     stage_manager, t = deposit_manager.start_deposit(
-        amount=10_000
+        amount=500
     )
 
     trades = [t]
@@ -118,13 +119,15 @@ def test_erc_7540_deposit(
     assert t.is_executed(), f"Trade did not execute: {t}: {t.get_revert_reason()}"
     assert t.is_success(), f"Trade failed: {t.get_revert_reason()}"
     assert t.is_buy()
-    assert t.executed_price == pytest.approx(1.0335669715951414)
-    assert t.executed_quantity == pytest.approx(Decimal(9.67523177))
-    assert t.executed_reserve == 10
+    assert t.executed_price == pytest.approx(1.0)
+    assert t.executed_quantity == pytest.approx(Decimal(500))
+    assert t.executed_reserve == 500
+    multi_stage_state = get_multi_stage_state(t)
+    assert isinstance(multi_stage_state.deposit_ticket, ERC7540DepositTicket)
 
     # The position is considered open even when we do not have shares yet
     position = position_manager.get_current_position_for_pair(pair)
-    assert position.get_quantity() == pytest.approx(Decimal(9.67523177))
+    assert position.get_quantity() == pytest.approx(Decimal(500))
 
     # Then redeem shares back
     trades = position_manager.close_all()
