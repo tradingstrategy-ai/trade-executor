@@ -15,10 +15,10 @@ from eth_defi.erc_4626.profit_and_loss import estimate_4626_recent_profitability
 from eth_defi.erc_4626.vault import ERC4626Vault
 from eth_defi.token import fetch_erc20_details
 from eth_defi.trade import TradeSuccess
-
+from eth_defi.vault.deposit_redeem import VaultTransactionFailed
 
 from tradeexecutor.ethereum.swap import get_swap_transactions, report_failure
-from tradeexecutor.ethereum.vault.staged_deposit_redeem import mark_multi_stage_deposit_in_progress
+from tradeexecutor.ethereum.vault.staged_deposit_redeem import mark_trade_multi_stage_deposit_requested, get_multi_stage_state
 from tradeexecutor.state.blockhain_transaction import BlockchainTransaction
 from tradeexecutor.state.portfolio import Portfolio
 from tradeexecutor.state.state import State
@@ -209,16 +209,16 @@ class VaultRouting(RoutingModel):
             deposit_manager = target_vault.deposit_manager
             if trade.is_buy():
                 assert deposit_manager.can_create_deposit_request(address), f"Cannot deposit? {vault}"
+
                 approve_call = target_vault.denomination_token.approve(target_vault.address, swap_amount)
-                deposit_ticket = deposit_manager.create_deposit_request(
+                deposit_request = deposit_manager.create_deposit_request(
                     owner=address,
-                    to=address,
                     amount=swap_amount
                 )
 
-                mark_multi_stage_deposit_in_progress(
+                mark_trade_multi_stage_deposit_requested(
                     trade,
-                    deposit_ticket,
+                    deposit_request,
                 )
 
         elif trade.pair.is_erc_4262():
@@ -287,6 +287,34 @@ class VaultRouting(RoutingModel):
             trade.blockchain_transactions = self.deposit_or_redeem(state, routing_state, trade)
 
     def settle_trade(
+        self,
+        web3: Web3,
+        state: State,
+        trade: TradeExecution,
+        receipts: Dict[str, dict],
+        stop_on_execution_failure=False,
+    ):
+
+        if trade.is_multi_stage():
+            self.settle_multi_stage(
+                web3,
+                state,
+                trade,
+                receipts,
+                stop_on_execution_failure,
+            )
+        elif trade.pair.is_erc_4626():
+            self.settle_trade_erc_4262(
+                web3,
+                state,
+                trade,
+                receipts,
+                stop_on_execution_failure,
+            )
+        else:
+            raise RuntimeError(f"{self} does not know how to settle {trade}")
+
+    def settle_trade_erc_4262(
         self,
         web3: Web3,
         state: State,
@@ -369,6 +397,63 @@ class VaultRouting(RoutingModel):
         else:
             # Trade failed
             report_failure(ts, state, trade, stop_on_execution_failure)
+
+    def settle_multi_stage(
+        self,
+        web3: Web3,
+        state: State,
+        trade: TradeExecution,
+        receipts: Dict[str, dict],
+        stop_on_execution_failure=False,
+    ):
+
+        assert trade.is_multi_stage()
+
+        vault = get_vault_for_pair(web3, trade.pair)
+        features = vault.features
+        logger.info(f"Settling vault multi stage deposit/redeem: #{trade.trade_id} for {vault}, vault features: {features}")
+
+        ticket_state = get_multi_stage_state(trade)
+        deposit_request = ticket_state.deposit_request
+        assert deposit_request, f"Lost deposit_request between tx broadcast and mine"
+
+        tx_hashes = [tx.tx_hash for tx in trade.blockchain_transactions]
+
+        # Any tx failed -> trade failed
+        for tx_hash in trade.blockchain_transactions:
+            receipt = receipts[tx_hash]
+            if receipt["status"] != 1:
+                report_failure(
+                    datetime.datetime.utcnow(),
+                    state,
+                    trade,
+                    stop_on_execution_failure,
+                )
+                return
+
+        try:
+            deposit_ticket = deposit_request.parse_deposit_transaction(tx_hashes)
+            ticket_state.deposit_ticket = deposit_ticket
+
+            # Mark as success.
+            # Because we do not know the final quantity until the deposit is settled,
+            # we pass estimated quantity around.
+            state.mark_trade_success(
+                deposit_ticket.block_timestamp,
+                trade,
+                executed_price=trade.planned_price,
+                executed_amount=trade.planned_quantity,
+                executed_reserve=trade.planned_reserve,
+                lp_fees=0,
+                native_token_price=0,
+                cost_of_gas=float(deposit_ticket.gas_used),
+            )
+
+            logger.info(f"Deposit initiated: {trade.pair.base.token_symbol}")
+
+        except VaultTransactionFailed as e:
+            # Any reverted transaction should have been handled earlier
+            raise RuntimeError(f"Should not happen {e}")
 
 
 def get_vault_for_pair(

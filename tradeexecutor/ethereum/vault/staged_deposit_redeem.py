@@ -14,7 +14,7 @@ from web3 import Web3
 from eth_defi.erc_4626.classification import create_vault_instance
 from eth_defi.erc_4626.core import ERC4626Feature
 from eth_defi.vault.base import VaultBase
-from eth_defi.vault.deposit_redeem import DepositTicket, RedemptionTicket, VaultDepositManager
+from eth_defi.vault.deposit_redeem import DepositTicket, RedemptionTicket, VaultDepositManager, DepositRequest, RedemptionRequest
 
 from tradeexecutor.state.identifier import TradingPairIdentifier
 from tradeexecutor.state.pickle_over_json import encode_pickle_over_json, decode_pickle_over_json
@@ -23,6 +23,7 @@ from tradeexecutor.state.trade import TradeExecution, MultiStageTrade
 from tradeexecutor.state.types import JSONHexAddress, BlockNumber
 from tradeexecutor.strategy.pandas_trader.position_manager import PositionManager
 from tradingstrategy.types import USDollarAmount
+from marshmallow import fields
 
 
 @dataclass_json
@@ -33,6 +34,14 @@ class TicketState:
     Stored as `TradeExecution.other_data["multi_stage_state"]`
     """
 
+    #: Not serialised, only passed until the tx is complete
+    deposit_request: DepositRequest = fields.Raw(
+        dump_only=False,  # Allow decoding
+        load_only=True,   # Exclude from encoding
+        load_default=None,  # Always decode to None
+        default=None,
+    )
+
     deposit_ticket: DepositTicket = field(
         metadata=config(
             encoder=encode_pickle_over_json,
@@ -41,6 +50,13 @@ class TicketState:
         default=None,
     )
 
+    #: Not serialised, only passed until the tx is complete
+    redemption_request: RedemptionRequest = fields.Raw(
+        dump_only=False,  # Allow decoding
+        load_only=True,   # Exclude from encoding
+        load_default=None,  # Always decode to None
+        default=None,
+    )
     redemption_ticket: RedemptionTicket = field(
         metadata=config(
             encoder=encode_pickle_over_json,
@@ -129,8 +145,6 @@ class MultiStageState:
 @dataclass(slots=True)
 class MultiStageTradeState:
     """Manage state of our various multi-stage deposits and redeems."""
-    deposit_ticket:
-    redeems: TicketQueue = field(default_factory=RedemptionTicketQueue)
 
 
 class MultiStageDepositRedeemManager:
@@ -282,14 +296,28 @@ class MultiStagePositionWrapper:
         return self.deposit_manager.create_redemption_request(self.trading_address)
 
 
-def get_multi_stage_state(trade: TradeExecution) -> MultiStageTradeState:
+def get_or_initialise_multi_stage_state(trade: TradeExecution) -> TicketState:
     state = trade.other_data.get("multi_stage_state", MultiStageTradeState())
     return state
 
 
-def mark_multi_stage_deposit_in_progress(
+def get_multi_stage_state(trade: TradeExecution) -> TicketState:
+    state = trade.other_data["multi_stage_state"]
+    return state
+
+
+def mark_trade_multi_stage_deposit_requested(
+    trade: TradeExecution,
+    deposit_request: DepositRequest,
+):
+    state = get_or_initialise_multi_stage_state(trade)
+    state.deposit_request = deposit_request
+
+
+def mark_trade_multi_stage_deposit_started(
     trade: TradeExecution,
     deposit_ticket: DepositTicket,
 ):
+    assert isinstance(deposit_ticket, DepositTicket)
     state = get_multi_stage_state(trade)
     state.deposit_ticket = deposit_ticket
