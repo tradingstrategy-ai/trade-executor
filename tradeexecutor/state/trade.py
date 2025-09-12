@@ -1015,15 +1015,19 @@ class TradeExecution:
         else:
             raise NotImplementedError(f"Not leveraged trade: {self}")
 
-    def get_multi_stage(self) -> MultiStageTrade | None:
+    def get_multi_stage(self) -> "tradeexecutor.ethereum.vault.staged_deposit_redeem.TicketState":
         """Get the multi-stage identifier.
 
-        - Set by MultiStageDepositRedeemManager
-        - We know this trade is part of multi-stage operation if this is not None
+        - See `get_or_initialise_multi_stage_state()`
         """
-        return self.other_data.get("stage")
+        return self.other_data.get("multi_stage_state")
 
     def is_multi_stage(self) -> bool:
+        """This trade is part of multi stage deposit/redeem process"""
+        return self.get_multi_stage() is not None
+
+    def is_multi_stage_unfinished(self) -> bool:
+        """Is this trade the first leg of the multi stage process and second trade needs to be made in order to finish it"""
         return self.get_multi_stage() is not None
 
     def get_input_asset(self) -> AssetIdentifier:

@@ -1,6 +1,5 @@
 """Trading position state info."""
 import datetime
-import enum
 import logging
 import pprint
 import statistics
@@ -9,33 +8,31 @@ from dataclasses import dataclass, field, asdict
 from decimal import Decimal
 from itertools import chain
 
-from typing import Dict, Optional, List, Iterable, Tuple, Set, Literal
+from typing import Dict, Optional, List, Iterable, Tuple, Set, Literal, TypedDict
 
 import numpy as np
 import pandas as pd
 from dataclasses_json import dataclass_json
-from jedi.inference.gradual.typing import TypedDict
+
+from tradingstrategy.utils.time import ZERO_TIMEDELTA
 
 from tradeexecutor.state.balance_update import BalanceUpdate, BalanceUpdateCause, DEFAULT_YEAR
 from tradeexecutor.state.generic_position import GenericPosition, BalanceUpdateEventAlreadyAdded
 from tradeexecutor.state.identifier import TradingPairIdentifier, AssetIdentifier, TradingPairKind
-from tradeexecutor.state.interest import Interest
 from tradeexecutor.state.loan import Loan
 from tradeexecutor.state.trade import TradeType, TradeFlag
 from tradeexecutor.state.trade import TradeExecution
-from tradeexecutor.state.trigger import Trigger
 from tradeexecutor.state.types import USDollarAmount, BPS, USDollarPrice, Percent, LeverageMultiplier, LegacyDataException
 from tradeexecutor.state.valuation import ValuationUpdate
-from tradeexecutor.strategy.dust import get_dust_epsilon_for_pair, get_close_epsilon_for_pair
+from tradeexecutor.strategy.dust import get_close_epsilon_for_pair
 from tradeexecutor.strategy.execution_context import ExecutionMode
 from tradeexecutor.strategy.lending_protocol_leverage import create_short_loan, update_short_loan, create_credit_supply_loan, update_credit_supply_loan
 from tradeexecutor.strategy.pnl import calculate_pnl
 from tradeexecutor.strategy.trade_pricing import TradePricing
 from tradeexecutor.utils.accuracy import sum_decimal, QUANTITY_EPSILON
 from tradingstrategy.lending import LendingProtocolType
-
 from tradeexecutor.utils.leverage_calculations import LeverageEstimate
-from tradingstrategy.utils.time import ZERO_TIMEDELTA
+
 
 logger = logging.getLogger(__name__)
 
@@ -443,6 +440,25 @@ class TradingPosition(GenericPosition):
     def is_vault(self) -> bool:
         """Is this a vault shares position."""
         return self.pair.is_vault()
+
+    def is_multi_stage(self) -> bool:
+        return self.other_data.get("multi_stage") is not None
+
+    def is_multi_stage_in_process(self) -> bool:
+        """Do we have pending vault deposits or redeems in progress which prevents us to start other operations"""
+        last_trade = self.get_last_trade()
+        ticket_state = last_trade.get_multi_stage()
+        return ticket_state.is_in_progress()
+
+    def get_multi_stage_phase(self) -> Literal["deposit", "redeem"]:
+        assert self.is_vault()
+        last_trade = self.get_last_trade()
+        ticket_state = last_trade.get_multi_stage()
+        assert ticket_state.is_in_progress()
+        if self.is_buy():
+            return "deposit"
+        else:
+            return "redeem"
 
     def is_long(self) -> bool:
         """Is this position long on the underlying base asset.

@@ -6,14 +6,17 @@ from decimal import Decimal
 
 import pytest
 
+from eth_typing import HexAddress
+
 from eth_defi.erc_4626.classification import create_vault_instance
 from eth_defi.erc_4626.core import ERC4626Feature
 from eth_defi.ipor.vault import IPORVault
 from eth_defi.lagoon.deposit_redeem import ERC7540DepositTicket
+from eth_defi.lagoon.testing import force_lagoon_settle
 from eth_defi.lagoon.vault import LagoonVault
 from eth_defi.vault.base import VaultSpec
 from tradeexecutor.ethereum.hot_wallet_sync_model import HotWalletSyncModel
-from tradeexecutor.ethereum.vault.staged_deposit_redeem import MultiStageDepositRedeemManager, get_multi_stage_state
+from tradeexecutor.ethereum.vault.staged_deposit_redeem import MultiStageDepositRedeemManager, get_multi_stage_state, start_multi_stage_deposit, can_complete_multi_stage
 
 from tradeexecutor.ethereum.vault.vault_routing import VaultRouting
 from tradeexecutor.state.identifier import AssetIdentifier
@@ -63,6 +66,7 @@ def test_erc_7540_deposit(
     pricing_model,
     sync_model: HotWalletSyncModel,
     base_usdc: AssetIdentifier,
+    vault_manager: HexAddress,
 ):
     """Do a deposit to Lagoon vault and perform Uniswap v2 token buy (three legs)."""
 
@@ -86,19 +90,15 @@ def test_erc_7540_deposit(
 
     assert pair.is_multi_stage_deposit()
 
-    deposit_manager = MultiStageDepositRedeemManager(
-        web3=vault.web3,
-        pair=pair,
-        trading_address=sync_model.get_token_storage_address(),
-        position_manager=position_manager,
-    )
-
-    stage_manager, t = deposit_manager.start_deposit(
+    t = start_multi_stage_deposit(
+        position_manager,
+        pair,
         amount=500
     )
 
     trades = [t]
     assert t.is_planned()
+    assert "multi_stage_state" in t.other_data
     assert t.is_multi_stage()
 
     routing_state_details = execution_model.get_routing_state_details()
@@ -119,6 +119,7 @@ def test_erc_7540_deposit(
     assert t.is_executed(), f"Trade did not execute: {t}: {t.get_revert_reason()}"
     assert t.is_success(), f"Trade failed: {t.get_revert_reason()}"
     assert t.is_buy()
+    assert t.is_multi_stage()
     assert t.executed_price == pytest.approx(1.0)
     assert t.executed_quantity == pytest.approx(Decimal(500))
     assert t.executed_reserve == 500
@@ -128,6 +129,21 @@ def test_erc_7540_deposit(
     # The position is considered open even when we do not have shares yet
     position = position_manager.get_current_position_for_pair(pair)
     assert position.get_quantity() == pytest.approx(Decimal(500))
+
+    assert position.is_multi_stage()
+    assert position.is_multi_stage_in_process()
+
+    #
+    # Complete the second half of deposit
+    #
+
+    # Need to be settled by Lagoon vault manager
+    assert not can_complete_multi_stage(web3, position)
+
+    force_lagoon_settle(
+        vault,
+        vault_manager,
+    )
 
     # Then redeem shares back
     trades = position_manager.close_all()
