@@ -7,20 +7,20 @@ from decimal import Decimal
 import pytest
 
 from eth_typing import HexAddress
+from web3 import Web3
 
 from eth_defi.erc_4626.classification import create_vault_instance
 from eth_defi.erc_4626.core import ERC4626Feature
-from eth_defi.ipor.vault import IPORVault
 from eth_defi.lagoon.deposit_redeem import ERC7540DepositTicket
 from eth_defi.lagoon.testing import force_lagoon_settle
 from eth_defi.lagoon.vault import LagoonVault
-from eth_defi.vault.base import VaultSpec
 from tradeexecutor.ethereum.hot_wallet_sync_model import HotWalletSyncModel
-from tradeexecutor.ethereum.vault.staged_deposit_redeem import MultiStageDepositRedeemManager, get_multi_stage_state, start_multi_stage_deposit, can_complete_multi_stage
+from tradeexecutor.ethereum.vault.staged_deposit_redeem import MultiStageDepositRedeemManager, get_multi_stage_state, start_multi_stage_deposit, can_complete_multi_stage, finish_multi_stage_trade
 
 from tradeexecutor.ethereum.vault.vault_routing import VaultRouting
 from tradeexecutor.state.identifier import AssetIdentifier
 from tradeexecutor.state.state import State
+from tradeexecutor.state.trade import MultiStageTradeKind
 from tradeexecutor.strategy.generic.generic_router import GenericRouting
 from tradeexecutor.strategy.pandas_trader.position_manager import PositionManager
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
@@ -59,6 +59,7 @@ def test_vault_routing(
 
 
 def test_erc_7540_deposit(
+    web3: Web3,
     vault: LagoonVault,
     strategy_universe,
     execution_model,
@@ -66,9 +67,12 @@ def test_erc_7540_deposit(
     pricing_model,
     sync_model: HotWalletSyncModel,
     base_usdc: AssetIdentifier,
-    vault_manager: HexAddress,
+    lagoon_722_capital_manager: HexAddress,
 ):
     """Do a deposit to Lagoon vault and perform Uniswap v2 token buy (three legs)."""
+
+    # Forked vault
+    assert vault.name == "722Capital-USDC"
 
     state = State()
     pair = strategy_universe.get_pair_by_smart_contract(vault.address)
@@ -87,6 +91,10 @@ def test_erc_7540_deposit(
         pricing_model=pricing_model,
         default_slippage_tolerance=0.20,
     )
+
+    #
+    # 1. Create the first half of the deposit
+    #
 
     assert pair.is_multi_stage_deposit()
 
@@ -123,6 +131,7 @@ def test_erc_7540_deposit(
     assert t.executed_price == pytest.approx(1.0)
     assert t.executed_quantity == pytest.approx(Decimal(500))
     assert t.executed_reserve == 500
+    assert t.get_multi_stage_kind() == MultiStageTradeKind.deposit_start
     multi_stage_state = get_multi_stage_state(t)
     assert isinstance(multi_stage_state.deposit_ticket, ERC7540DepositTicket)
 
@@ -134,16 +143,47 @@ def test_erc_7540_deposit(
     assert position.is_multi_stage_in_process()
 
     #
-    # Complete the second half of deposit
+    # 2. Complete the second half of deposit
     #
 
     # Need to be settled by Lagoon vault manager
     assert not can_complete_multi_stage(web3, position)
-
     force_lagoon_settle(
         vault,
-        vault_manager,
+        lagoon_722_capital_manager,
     )
+    assert can_complete_multi_stage(web3, position)
+
+    t = finish_multi_stage_trade(
+        position_manager,
+        position,
+    )
+
+    assert t.is_planned()
+    assert "multi_stage_state" in t.other_data
+    assert t.is_multi_stage()
+    assert t.get_multi_stage_kind() == MultiStageTradeKind.deposit_finish
+
+    execution_model.execute_trades(
+        datetime.datetime.utcnow(),
+        state,
+        [t],
+        routing_model,
+        routing_state,
+        check_balances=True,
+    )
+
+    # Part 1 of the deposit done
+    assert t.is_executed(), f"Trade did not execute: {t}: {t.get_revert_reason()}"
+    assert t.is_success(), f"Trade failed: {t.get_revert_reason()}"
+    assert t.is_buy()
+    assert t.is_multi_stage()
+    assert t.executed_price == pytest.approx(1.0)
+    assert t.executed_quantity == pytest.approx(Decimal(500))
+    assert t.executed_reserve == 500
+    assert t.get_multi_stage_kind() == MultiStageTradeKind.deposit_start
+    multi_stage_state = get_multi_stage_state(t)
+    assert isinstance(multi_stage_state.deposit_ticket, ERC7540DepositTicket)
 
     # Then redeem shares back
     trades = position_manager.close_all()

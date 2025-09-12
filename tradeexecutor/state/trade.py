@@ -57,6 +57,9 @@ class TradeType(enum.Enum):
     #: Partial take profit, etc.
     flexible_trigger = "flexible_trigger"
 
+    #: The trade is finishing transaction of multi tx vault deposit/redeem
+    multi_stage_second_leg = "multi_stage_second_leg"
+
 
 class TradeStatus(enum.Enum):
 
@@ -157,7 +160,8 @@ class TradeFlag(enum.Enum):
     #:
     ignore_open = "ignore_open"
 
-class MultiStageTrade(enum.Enum):
+
+class MultiStageTradeKind(enum.Enum):
     deposit_start = "deposit_start"
     deposit_finish = "deposit_finish"
     redeem_start = "redeem_start"
@@ -725,7 +729,7 @@ class TradeExecution:
 
         assert self.trade_id > 0
 
-        if self.trade_type != TradeType.repair and not self.is_credit_based():
+        if self.trade_type not in (TradeType.repair, TradeType.multi_stage_second_leg) and not self.is_credit_based():
             # Leveraged trade can have quantity in zero,
             # if they just adjust the collateral amount
             assert self.planned_quantity != 0
@@ -1026,9 +1030,10 @@ class TradeExecution:
         """This trade is part of multi stage deposit/redeem process"""
         return self.get_multi_stage() is not None
 
-    def is_multi_stage_unfinished(self) -> bool:
-        """Is this trade the first leg of the multi stage process and second trade needs to be made in order to finish it"""
-        return self.get_multi_stage() is not None
+    def get_multi_stage_kind(self) -> MultiStageTradeKind:
+        assert self.is_multi_stage()
+        state = self.get_multi_stage()
+        return state.kind
 
     def get_input_asset(self) -> AssetIdentifier:
         """How we fund this trade."""

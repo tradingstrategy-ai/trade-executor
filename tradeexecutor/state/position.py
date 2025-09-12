@@ -455,7 +455,7 @@ class TradingPosition(GenericPosition):
         last_trade = self.get_last_trade()
         ticket_state = last_trade.get_multi_stage()
         assert ticket_state.is_in_progress()
-        if self.is_buy():
+        if last_trade.is_buy():
             return "deposit"
         else:
             return "redeem"

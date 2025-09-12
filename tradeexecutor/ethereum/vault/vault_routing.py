@@ -161,38 +161,40 @@ class VaultRouting(RoutingModel):
                 onchain_balance,
                 position.get_quantity(planned=True),
             )
-            rel_diff = abs((onchain_balance - swap_amount) / swap_amount)
-            if rel_diff != 0 and onchain_balance + swap_amount < 0:
-                if rel_diff > self.redeem_epsilon:
-                    # Accounting broken
 
-                    logger.error(
-                        "Vault trade %s, position %s, share token %s, has a large relative difference in onchain balance: %f, planned quantity: %s, onchain balance: %s, epsilon is %f",
-                        trade.trade_id,
-                        position,
-                        share_token,
-                        rel_diff,
-                        trade.planned_quantity,
-                        onchain_balance,
-                        self.redeem_epsilon,
-                    )
-                    raise AssertionError("Vault share token has a large relative difference in onchain balance when trying to redeem the share token")
+            if not trade.is_multi_stage():
+                rel_diff = abs((onchain_balance - swap_amount) / swap_amount)
+                if rel_diff != 0 and onchain_balance + swap_amount < 0:
+                    if rel_diff > self.redeem_epsilon:
+                        # Accounting broken
+
+                        logger.error(
+                            "Vault trade %s, position %s, share token %s, has a large relative difference in onchain balance: %f, planned quantity: %s, onchain balance: %s, epsilon is %f",
+                            trade.trade_id,
+                            position,
+                            share_token,
+                            rel_diff,
+                            trade.planned_quantity,
+                            onchain_balance,
+                            self.redeem_epsilon,
+                        )
+                        raise AssertionError("Vault share token has a large relative difference in onchain balance when trying to redeem the share token")
+                    else:
+                        # Epsilon rounding
+                        logger.warning(
+                            "Vault trade %s, position %s, share token %s, has a small relative difference in onchain balance: %f, planned quantity: %s, onchain balance: %s, automatically rounding, epsilon is %f",
+                            trade.trade_id,
+                            position,
+                            share_token,
+                            rel_diff,
+                            trade.planned_quantity,
+                            onchain_balance,
+                            self.redeem_epsilon,
+                        )
+                        swap_amount = onchain_balance
                 else:
-                    # Epsilon rounding
-                    logger.warning(
-                        "Vault trade %s, position %s, share token %s, has a small relative difference in onchain balance: %f, planned quantity: %s, onchain balance: %s, automatically rounding, epsilon is %f",
-                        trade.trade_id,
-                        position,
-                        share_token,
-                        rel_diff,
-                        trade.planned_quantity,
-                        onchain_balance,
-                        self.redeem_epsilon,
-                    )
-                    swap_amount = onchain_balance
-            else:
-                # Exact match
-                logger.info("Onchain balance and accounting has exact match for shares to redeem: %s", swap_amount)
+                    # Exact match
+                    logger.info("Onchain balance and accounting has exact match for shares to redeem: %s", swap_amount)
 
         logger.info(
             "Preparing vault flow %s -> %s, amount %s (%s), slippage tolerance %f",
@@ -202,8 +204,6 @@ class VaultRouting(RoutingModel):
             token_in.convert_to_decimal(swap_amount),
             trade.slippage_tolerance,
         )
-
-        asset_deltas = trade.calculate_asset_deltas()
 
         if trade.pair.is_erc_7540():
             deposit_manager = target_vault.deposit_manager

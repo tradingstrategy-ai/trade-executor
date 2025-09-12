@@ -4,6 +4,7 @@
 
 """
 import datetime
+from decimal import Decimal
 from functools import cached_property
 
 from dataclasses_json import dataclass_json, config
@@ -15,13 +16,12 @@ from eth_defi.erc_4626.classification import create_vault_instance
 from eth_defi.erc_4626.core import ERC4626Feature
 from eth_defi.vault.base import VaultBase
 from eth_defi.vault.deposit_redeem import DepositTicket, RedemptionTicket, VaultDepositManager, DepositRequest, RedemptionRequest
-from tradeexecutor.ethereum.vault.vault_routing import get_vault_for_pair
 
 from tradeexecutor.state.identifier import TradingPairIdentifier
 from tradeexecutor.state.pickle_over_json import encode_pickle_over_json, decode_pickle_over_json
 from tradeexecutor.state.position import TradingPosition
-from tradeexecutor.state.trade import TradeExecution, MultiStageTrade
-from tradeexecutor.state.types import JSONHexAddress, BlockNumber
+from tradeexecutor.state.trade import TradeExecution, MultiStageTradeKind, TradeType
+from tradeexecutor.state.types import JSONHexAddress
 from tradeexecutor.strategy.pandas_trader.position_manager import PositionManager
 from tradingstrategy.types import USDollarAmount
 from marshmallow import fields
@@ -34,6 +34,8 @@ class TicketState:
 
     Stored as `TradeExecution.other_data["multi_stage_state"]`
     """
+
+    kind: MultiStageTradeKind
 
     #: If this is a multi-stage trade, what was the first trade that started the operation.
     #:
@@ -271,9 +273,9 @@ class MultiStagePositionWrapper:
         return self.deposit_manager.create_redemption_request(self.trading_address)
 
 
-def get_or_initialise_multi_stage_state(trade: TradeExecution) -> TicketState:
+def init_multi_stage_state(trade: TradeExecution, kind: MultiStageTradeKind) -> TicketState:
     if "multi_stage_state" not in trade.other_data:
-        trade.other_data["multi_stage_state"] = TicketState()
+        trade.other_data["multi_stage_state"] = TicketState(kind=kind)
     return trade.other_data["multi_stage_state"]
 
 
@@ -293,7 +295,7 @@ def mark_trade_multi_stage_deposit_requested(
     trade: TradeExecution,
     deposit_request: DepositRequest,
 ):
-    state = get_or_initialise_multi_stage_state(trade)
+    state = get_multi_stage_state(trade)
     state.deposit_request = deposit_request
 
 
@@ -337,13 +339,70 @@ def start_multi_stage_deposit(
     assert len(trades) == 1
     trade = trades[0]
 
-    ticket_state = get_or_initialise_multi_stage_state(trade)
+    ticket_state = init_multi_stage_state(trade, kind=MultiStageTradeKind.deposit_start)
     assert ticket_state is not None
 
     position = position_manager.state.portfolio.open_positions[trade.position_id]
     mark_position_multi_stage(position)
 
     return trade
+
+
+def finish_multi_stage_trade(
+    position_manager: PositionManager,
+    position: TradingPosition,
+    notes: str | None = None,
+):
+    """Create the second half of the multi-stage deposit/redeem."""
+
+    assert isinstance(position_manager, PositionManager)
+
+    assert position.is_multi_stage()
+    assert position.is_multi_stage_in_process()
+
+    first_leg = position.get_last_trade()
+    assert first_leg.is_multi_stage()
+
+    kind = first_leg.get_multi_stage_kind()
+
+    match kind:
+        case MultiStageTradeKind.deposit_start:
+            new_kind = MultiStageTradeKind.deposit_finish
+        case MultiStageTradeKind.redeem_start:
+            new_kind = MultiStageTradeKind.redeem_finish
+        case _:
+            raise RuntimeError(f"Bad multi-stage state: {kind}")
+
+    pair = first_leg.pair
+
+    reserve_asset, reserve_price = position_manager.state.portfolio.get_default_reserve_asset()
+
+    # Because we have position already "open" half way
+    # with the first leg, we generate zero sized trade
+    position, trade, created = position_manager.state.create_trade(
+        position_manager.timestamp,
+        pair=pair,
+        quantity=None,
+        reserve=Decimal(0),
+        assumed_price=first_leg.executed_price,
+        trade_type=TradeType.multi_stage_second_leg,
+        reserve_currency=position_manager.reserve_currency,
+        reserve_currency_price=reserve_price,
+        planned_mid_price=None,
+        lp_fees_estimated=None,
+        pair_fee=0,
+        slippage_tolerance=0.01,  # Set to a dummy value
+        notes=notes,
+        position=position,
+        price_structure=None,
+    )
+    assert not created
+    ticket_state = init_multi_stage_state(trade, kind=new_kind)
+    assert ticket_state is not None
+
+    ticket_state.first_part_trade_id = first_leg.trade_id
+    return trade
+
 
 
 def can_complete_multi_stage(
@@ -354,6 +413,9 @@ def can_complete_multi_stage(
 
     - Checks onchain if Lagoon vault has settled, Gains timeout passed, etc.
     """
+
+    # Circular imports
+    from tradeexecutor.ethereum.vault.vault_routing import get_vault_for_pair
 
     assert position.is_multi_stage_in_process(), f"Position does not have multi-stage in progress: {position}"
 
@@ -370,7 +432,7 @@ def can_complete_multi_stage(
         case "deposit":
             ticket = state.deposit_ticket
             assert ticket, f"No deposit_ticket: {state}"
-            return deposit_manager.can_finish_deposit(state)
+            return deposit_manager.can_finish_deposit(ticket)
         case "redeem":
             ticket = state.redemption_ticket
             assert ticket, f"No redemption_ticket: {state}"

@@ -22,6 +22,7 @@ from eth_defi.trace import assert_transaction_success_with_explanation
 from eth_defi.uniswap_v2.constants import UNISWAP_V2_DEPLOYMENTS
 from eth_defi.uniswap_v2.deployment import fetch_deployment, UniswapV2Deployment
 from eth_defi.uniswap_v3.constants import UNISWAP_V3_DEPLOYMENTS
+from eth_defi.utils import addr
 from eth_defi.vault.base import VaultSpec
 from eth_defi.uniswap_v3.deployment import fetch_deployment as fetch_deployment_uni_v3, UniswapV3Deployment
 
@@ -72,8 +73,16 @@ def vault(web3) -> IPORVault:
     return vault
 
 
+
 @pytest.fixture()
-def anvil_base_fork(request, usdc_holder, test_block_number) -> AnvilLaunch:
+def lagoon_722_capital_manager() -> HexAddress:
+    """Account to unlock for tests."""
+    # https://app.lagoon.finance/vault/8453/0xb09f761cb13baca8ec087ac476647361b6314f98
+    return addr("0x3B95C7cD4075B72ecbC4559AF99211C2B6591b2E")
+
+
+@pytest.fixture()
+def anvil_base_fork(request, usdc_holder, test_block_number, lagoon_722_capital_manager) -> AnvilLaunch:
     """Create a testable fork of live BNB chain.
 
     :return: JSON-RPC URL for Web3
@@ -81,7 +90,7 @@ def anvil_base_fork(request, usdc_holder, test_block_number) -> AnvilLaunch:
     assert JSON_RPC_BASE, "JSON_RPC_BASE not set"
     launch = fork_network_anvil(
         JSON_RPC_BASE,
-        unlocked_addresses=[usdc_holder],
+        unlocked_addresses=[usdc_holder, lagoon_722_capital_manager],
         fork_block_number=test_block_number,
     )
     try:
