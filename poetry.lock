@@ -2309,6 +2309,26 @@ test-full = ["adlfs", "aiohttp (!=4.0.0a0,!=4.0.0a1)", "cloudpickle", "dask", "d
 tqdm = ["tqdm"]
 
 [[package]]
+name = "ft-pandas-ta"
+version = "0.3.15"
+description = "An easy to use Python 3 Pandas Extension with 130+ Technical Analysis Indicators. Can be called from a Pandas DataFrame or standalone like TA-Lib. Correlation tested with TA-Lib."
+optional = false
+python-versions = "*"
+groups = ["main"]
+files = [
+    {file = "ft_pandas_ta-0.3.15-py3-none-any.whl", hash = "sha256:2c714dcc16087adf0f0d954c0fd2ca6aaec83cd484f61164f020e4fd3dd9b8ba"},
+    {file = "ft_pandas_ta-0.3.15.tar.gz", hash = "sha256:086d17aee3df325dbaf74bc156c96464ff947afcce900480124d7704689d9f9a"},
+]
+
+[package.dependencies]
+numpy = "<3.0.0"
+pandas = "*"
+
+[package.extras]
+dev = ["alphaVantage-api", "matplotlib", "mplfinance", "scipy", "sklearn", "statsmodels", "stochastic", "talib", "tqdm", "vectorbt", "yfinance"]
+test = ["ta-lib"]
+
+[[package]]
 name = "futureproof"
 version = "0.3.1"
 description = "Bulletproof concurrent.futures"
@@ -4927,24 +4947,6 @@ spss = ["pyreadstat (>=1.2.0)"]
 sql-other = ["SQLAlchemy (>=2.0.0)", "adbc-driver-postgresql (>=0.8.0)", "adbc-driver-sqlite (>=0.8.0)"]
 test = ["hypothesis (>=6.46.1)", "pytest (>=7.3.2)", "pytest-xdist (>=2.2.0)"]
 xml = ["lxml (>=4.9.2)"]
-
-[[package]]
-name = "pandas-ta"
-version = "0.3.14b"
-description = "An easy to use Python 3 Pandas Extension with 130+ Technical Analysis Indicators. Can be called from a Pandas DataFrame or standalone like TA-Lib. Correlation tested with TA-Lib."
-optional = false
-python-versions = "*"
-groups = ["main"]
-files = [
-    {file = "pandas_ta-0.3.14b.tar.gz", hash = "sha256:0fa35aec831d2815ea30b871688a8d20a76b288a7be2d26cc00c35cd8c09a993"},
-]
-
-[package.dependencies]
-pandas = "*"
-
-[package.extras]
-dev = ["alphaVantage-api", "matplotlib", "mplfinance", "scipy", "sklearn", "statsmodels", "stochastic", "talib", "tqdm", "vectorbt", "yfinance"]
-test = ["ta-lib"]
 
 [[package]]
 name = "pandocfilters"
@@ -8752,4 +8754,4 @@ web-server = ["WebTest", "openapi-core", "pyramid", "pyramid-openapi3", "waitres
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.11,<3.13"
-content-hash = "38214f2ff705673a3e79a6a94cd76645f8d3d89ae83dc24627e072871f5362a0"
+content-hash = "b35af70a65b68d95e50edc7fc8ac387ca4501aa22eb1f23339d605ad50a167db"

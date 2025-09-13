@@ -75,7 +75,10 @@ class VaultRouting(RoutingModel):
         )
         self.profitability_estimation_lookback_window = profitability_estimation_lookback_window
         self.epsilon = epsilon
-        self.vault_interaction_gas_limit = 20_000_000  # 3M gas was not enough to withdraw from IPOR
+
+        # 3M gas was not enough to withdraw from IPOR, but Base has a per-tx gas cap 16,777,216
+        self.vault_interaction_gas_limit = 10_000_000
+
         # 2.5% is the maximum relative difference for redeeming vault shares,
         # when checking onchain balance vs our internal accounting
         self.redeem_epsilon = redeem_epsilon
