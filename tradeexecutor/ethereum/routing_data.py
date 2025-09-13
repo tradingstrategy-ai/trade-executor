@@ -35,6 +35,7 @@ from tradeexecutor.backtest.backtest_routing import BacktestRoutingModel, Backte
 from tradeexecutor.ethereum.uniswap_v2.uniswap_v2_routing import UniswapV2Routing
 from tradeexecutor.ethereum.uniswap_v3.uniswap_v3_routing import UniswapV3Routing
 from tradeexecutor.state.identifier import AssetIdentifier
+from tradeexecutor.state.types import JSONHexAddress
 from tradeexecutor.strategy.default_routing_options import TradeRouting
 from tradeexecutor.strategy.execution_context import ExecutionContext, ExecutionMode
 from tradeexecutor.strategy.reserve_currency import ReserveCurrency
@@ -781,7 +782,8 @@ def validate_reserve_currency(
 
 def get_backtest_routing_model(
     routing_type: TradeRouting,
-    reserve_currency: ReserveCurrency
+    reserve_currency: ReserveCurrency,
+    reserve_token_address: JSONHexAddress | None,
 ) -> BacktestRoutingModel | BacktestRoutingIgnoredModel:
     """Get routing options for backtests.
 
@@ -789,8 +791,12 @@ def get_backtest_routing_model(
     """
 
     if routing_type == TradeRouting.ignore:
-        params = get_uniswap_v2_default_routing_parameters(reserve_currency)
-        return BacktestRoutingIgnoredModel(params["reserve_token_address"])
+        # Centralised exchange (Binance) backtesting path
+        # USDT on BSC
+        if not reserve_token_address:
+            reserve_token_address = "0xdac17f958d2ee523a2206206994597c13d831ec7".lower()
+        # params = get_uniswap_v2_default_routing_parameters(reserve_currency)
+        return BacktestRoutingIgnoredModel(reserve_token_address)
     elif routing_type == TradeRouting.default:
         raise AssertionError(f"Shoudl not be reached. If you use routing_type == TradeRouting.default GenericRouting should have been configured earlier in the stack.")
 

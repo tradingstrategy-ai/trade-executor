@@ -26,7 +26,8 @@ class ProtocolRoutingId:
     #:
     #: The major protocol used for trades.
     #:
-    #: "uniswap-v2", "uniswap-v3" or "1delta" or "vault"
+    #: "uniswap-v2", "uniswap-v3" or "1delta" or "vault".
+    #: Special id "cex" used in backtesting.
     router_name: str
 
     #: "quickswap" or "uniswap-v3" or "trader-joe"

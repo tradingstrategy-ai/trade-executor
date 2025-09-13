@@ -1,13 +1,12 @@
 import dataclasses
 import datetime
-import logging
 import runpy
 from contextlib import AbstractContextManager
 from dataclasses import dataclass
 from decimal import Decimal
 from pathlib import Path
 from queue import Queue
-from typing import Optional, Callable, Tuple, Type
+from typing import Optional, Callable, Type
 import logging
 
 import pandas as pd
@@ -48,6 +47,7 @@ from tradeexecutor.strategy.universe_model import StaticUniverseModel, UniverseO
 from tradeexecutor.utils.accuracy import setup_decimal_accuracy
 from tradeexecutor.utils.cpu import get_safe_max_workers_count
 from tradeexecutor.utils.timer import timed_task
+from tradingstrategy.chain import ChainId
 from tradingstrategy.client import Client
 from tradingstrategy.timebucket import TimeBucket
 
@@ -960,12 +960,21 @@ def run_backtest_inline(
 
         pair_configurator = EthereumBacktestPairConfigurator(universe, data_delay_tolerance=data_delay_tolerance)
 
+        if universe.data_universe.chains == {ChainId.centralised_exchange}:
+            # Shortcut legacy Binance data backesting,
+            # see bitcoin-ma.ipynb
+            trade_routing = TradeRouting.ignore
+
         if trade_routing == TradeRouting.default:
             routing_model = GenericRouting(pair_configurator, three_leg_resolution=three_leg_resolution)
 
         elif not routing_model:
             assert trade_routing, "You just give either routing_mode or trade_routing"
-            routing_model = get_backtest_routing_model(trade_routing, reserve_currency)
+            routing_model = get_backtest_routing_model(
+                trade_routing,
+                reserve_currency,
+                reserve_token_address=universe.get_reserve_asset().address,
+            )
             routing_model.three_leg_resolution = three_leg_resolution  # Legacy support hack
 
         if trade_routing == TradeRouting.default:
