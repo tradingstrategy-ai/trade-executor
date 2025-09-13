@@ -1025,7 +1025,8 @@ def broadcast(
             # Only SignedTransaction.rawTransaction attribute is intresting in this point
             signed_tx = tx.get_tx_object()
             broadcast_batch.append(signed_tx)
-            logger.info("Broadcasting transaction for trade %s:\n %s", t, tx)
+            gas_limit = tx.get_gas_limit()
+            logger.info("Broadcasting transaction %s for trade %s, gas limit is %s", t, tx, gas_limit)
         t.mark_broadcasted(datetime.datetime.utcnow())
 
     try:
