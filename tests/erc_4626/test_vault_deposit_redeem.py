@@ -14,6 +14,7 @@ from eth_defi.erc_4626.core import ERC4626Feature
 from eth_defi.lagoon.deposit_redeem import ERC7540DepositTicket, ERC7540RedemptionTicket
 from eth_defi.lagoon.testing import force_lagoon_settle
 from eth_defi.lagoon.vault import LagoonVault
+from eth_defi.token import USDC_WHALE
 from tradeexecutor.ethereum.hot_wallet_sync_model import HotWalletSyncModel
 from tradeexecutor.ethereum.vault.staged_deposit_redeem import MultiStageDepositRedeemManager, get_multi_stage_state, start_multi_stage_deposit, can_complete_multi_stage, finish_multi_stage_trade
 
@@ -31,11 +32,22 @@ pytestmark = pytest.mark.skipif(not JSON_RPC_BASE, reason="No JSON_RPC_BASE envi
 
 
 @pytest.fixture()
+def test_block_number() -> int:
+    """When we fork"""
+    return 35_094_246
+
+
+@pytest.fixture()
 def vault(web3) -> LagoonVault:
     # https://app.lagoon.finance/vault/8453/0xb09f761cb13baca8ec087ac476647361b6314f98
     vault = create_vault_instance(web3, "0xb09f761cb13baca8ec087ac476647361b6314f98", features={ERC4626Feature.lagoon_like, ERC4626Feature.erc_7540_like})
     assert vault.features
     return vault
+
+
+@pytest.fixture()
+def usdc_holder() -> HexAddress:
+    return USDC_WHALE[8453]
 
 
 def test_vault_routing(
@@ -97,6 +109,9 @@ def test_erc_7540_deposit(
     #
 
     assert pair.is_multi_stage_deposit()
+    assert pair.pool_address == vault.vault_address
+    assert vault.fetch_total_supply("latest") > 0
+    assert vault.fetch_share_price("latest") == pytest.approx(Decimal('1.040966906424652518384698963'))
 
     t = start_multi_stage_deposit(
         position_manager,
@@ -128,8 +143,8 @@ def test_erc_7540_deposit(
     assert t.is_success(), f"Trade failed: {t.get_revert_reason()}"
     assert t.is_buy()
     assert t.is_multi_stage()
-    assert t.executed_price == pytest.approx(1.0)
-    assert t.executed_quantity == pytest.approx(Decimal(500))
+    assert t.executed_price == pytest.approx(1.0409669064246259)
+    assert t.executed_quantity == pytest.approx(Decimal(480.3226662770032142915136970))
     assert t.executed_reserve == 500
     assert t.get_multi_stage_kind() == MultiStageTradeKind.deposit_start
     multi_stage_state = get_multi_stage_state(t)
@@ -137,7 +152,7 @@ def test_erc_7540_deposit(
 
     # The position is considered open even when we do not have shares yet
     position = position_manager.get_current_position_for_pair(pair)
-    assert position.get_quantity() == pytest.approx(Decimal(500))
+    assert position.get_quantity() == pytest.approx(Decimal(480.3226662770032142915136970))
 
     assert position.is_multi_stage()
     assert position.is_multi_stage_in_process()
@@ -151,6 +166,9 @@ def test_erc_7540_deposit(
     force_lagoon_settle(
         vault,
         lagoon_722_capital_manager,
+        # Settle 10% higher NAV so that we get a difference in the share amount between
+        # the estimate and the actual claim
+        raw_nav=int(vault.denomination_token.convert_to_raw(vault.fetch_nav("latest")) * 1.1)
     )
     assert can_complete_multi_stage(web3, position)
 
@@ -178,12 +196,16 @@ def test_erc_7540_deposit(
     assert t.is_success(), f"Trade failed: {t.get_revert_reason()}"
     assert t.is_buy()
     assert t.is_multi_stage()
-    assert t.executed_price == 0
-    assert t.executed_quantity == pytest.approx(Decimal(500))
+    assert t.executed_price == float(1.124243997066522000659563553)  # Price is different than in the first tx
+    assert t.executed_quantity == pytest.approx(Decimal(444.743313110538926037))
     assert t.executed_reserve == 500
     assert t.get_multi_stage_kind() == MultiStageTradeKind.deposit_finish
+
     multi_stage_state = get_multi_stage_state(t)
-    assert multi_stage_state.deposit_ticket in None
+    assert multi_stage_state.deposit_ticket is None
+
+    # Position has now the real executed quantity after claim
+    assert position.get_quantity() == pytest.approx(Decimal(444.743313110538926037))
 
     # Then redeem shares back
     trades = position_manager.close_all()

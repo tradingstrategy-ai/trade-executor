@@ -174,7 +174,6 @@ def hot_wallet(web3, usdc_holder) -> HotWallet:
             "value": 1 * 10**18,
         }
     )
-
     usdc = fetch_erc20_details(web3, "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913")
 
     # Top up with 999 USDC

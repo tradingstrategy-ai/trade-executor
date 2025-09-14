@@ -537,6 +537,11 @@ class VaultRouting(RoutingModel):
 
                 assert isinstance(analysis, DepositRedeemEventAnalysis), f"Got: {type(analysis): {analysis}}"
 
+                # We zero amounts amount the executd amounts from the first leg,
+                # to have the position amounts correct
+                first_leg.executed_quantity = 0
+                first_leg.executed_reserve = 0
+
                 state.mark_trade_success(
                     deposit_ticket.block_timestamp,
                     trade,

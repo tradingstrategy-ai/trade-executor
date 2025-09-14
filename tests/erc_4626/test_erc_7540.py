@@ -2,25 +2,21 @@
 
 
 import datetime
-import os
 from decimal import Decimal
 
 import pytest
 
-from eth_defi.erc_4626.core import ERC4626Feature
 from eth_defi.ipor.vault import IPORVault
 from tradeexecutor.ethereum.hot_wallet_sync_model import HotWalletSyncModel
 
-from tradeexecutor.ethereum.vault.vault_routing import VaultRouting
 from tradeexecutor.state.identifier import AssetIdentifier
 from tradeexecutor.state.state import State
 from tradeexecutor.strategy.generic.generic_router import GenericRouting
 from tradeexecutor.strategy.pandas_trader.position_manager import PositionManager
-from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
 
 
 
-def test_erc_7450_trading_deposit_redeem(
+def test_trade_as_lagoon(
     vault: IPORVault,
     strategy_universe,
     execution_model,
