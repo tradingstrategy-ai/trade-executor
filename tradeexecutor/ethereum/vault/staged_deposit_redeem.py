@@ -20,6 +20,7 @@ from eth_defi.vault.deposit_redeem import DepositTicket, RedemptionTicket, Vault
 from tradeexecutor.state.identifier import TradingPairIdentifier
 from tradeexecutor.state.pickle_over_json import encode_pickle_over_json, decode_pickle_over_json
 from tradeexecutor.state.position import TradingPosition
+from tradeexecutor.state.state import State
 from tradeexecutor.state.trade import TradeExecution, MultiStageTradeKind, TradeType
 from tradeexecutor.state.types import JSONHexAddress
 from tradeexecutor.strategy.pandas_trader.position_manager import PositionManager
@@ -382,8 +383,8 @@ def finish_multi_stage_trade(
     position, trade, created = position_manager.state.create_trade(
         position_manager.timestamp,
         pair=pair,
-        quantity=None,
-        reserve=Decimal(0),
+        quantity=first_leg.planned_quantity,
+        reserve=None,
         assumed_price=first_leg.executed_price,
         trade_type=TradeType.multi_stage_second_leg,
         reserve_currency=position_manager.reserve_currency,
@@ -437,3 +438,12 @@ def can_complete_multi_stage(
             ticket = state.redemption_ticket
             assert ticket, f"No redemption_ticket: {state}"
             return deposit_manager.can_finish_redeem(ticket)
+
+
+def get_multi_stage_first_leg(state: State, trade: TradeExecution) -> TradeExecution:
+    """Get the first leg of the multi-stage trade."""
+    second_leg_ticket_state = trade.get_multi_stage()
+    assert second_leg_ticket_state.kind in (MultiStageTradeKind.deposit_finish, MultiStageTradeKind.redeem_finish)
+    first_leg_trade_id = second_leg_ticket_state.first_part_trade_id
+    first_leg_trade = state.portfolio.get_trade_by_id(first_leg_trade_id)
+    return first_leg_trade

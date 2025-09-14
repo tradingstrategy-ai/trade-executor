@@ -11,7 +11,7 @@ from web3 import Web3
 
 from eth_defi.erc_4626.classification import create_vault_instance
 from eth_defi.erc_4626.core import ERC4626Feature
-from eth_defi.lagoon.deposit_redeem import ERC7540DepositTicket
+from eth_defi.lagoon.deposit_redeem import ERC7540DepositTicket, ERC7540RedemptionTicket
 from eth_defi.lagoon.testing import force_lagoon_settle
 from eth_defi.lagoon.vault import LagoonVault
 from tradeexecutor.ethereum.hot_wallet_sync_model import HotWalletSyncModel
@@ -173,17 +173,17 @@ def test_erc_7540_deposit(
         check_balances=True,
     )
 
-    # Part 1 of the deposit done
+    # Part 2 of the deposit done
     assert t.is_executed(), f"Trade did not execute: {t}: {t.get_revert_reason()}"
     assert t.is_success(), f"Trade failed: {t.get_revert_reason()}"
     assert t.is_buy()
     assert t.is_multi_stage()
-    assert t.executed_price == pytest.approx(1.0)
+    assert t.executed_price == 0
     assert t.executed_quantity == pytest.approx(Decimal(500))
     assert t.executed_reserve == 500
-    assert t.get_multi_stage_kind() == MultiStageTradeKind.deposit_start
+    assert t.get_multi_stage_kind() == MultiStageTradeKind.deposit_finish
     multi_stage_state = get_multi_stage_state(t)
-    assert isinstance(multi_stage_state.deposit_ticket, ERC7540DepositTicket)
+    assert multi_stage_state.deposit_ticket in None
 
     # Then redeem shares back
     trades = position_manager.close_all()

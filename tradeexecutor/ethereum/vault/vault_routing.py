@@ -15,14 +15,14 @@ from eth_defi.erc_4626.profit_and_loss import estimate_4626_recent_profitability
 from eth_defi.erc_4626.vault import ERC4626Vault
 from eth_defi.token import fetch_erc20_details
 from eth_defi.trade import TradeSuccess
-from eth_defi.vault.deposit_redeem import VaultTransactionFailed
+from eth_defi.vault.deposit_redeem import DepositRedeemEventAnalysis
 
 from tradeexecutor.ethereum.swap import get_swap_transactions, report_failure
-from tradeexecutor.ethereum.vault.staged_deposit_redeem import mark_trade_multi_stage_deposit_requested, get_multi_stage_state
+from tradeexecutor.ethereum.vault.staged_deposit_redeem import mark_trade_multi_stage_deposit_requested, get_multi_stage_state, get_multi_stage_first_leg, get_multi_stage_first_leg
 from tradeexecutor.state.blockhain_transaction import BlockchainTransaction
 from tradeexecutor.state.portfolio import Portfolio
 from tradeexecutor.state.state import State
-from tradeexecutor.state.trade import TradeExecution
+from tradeexecutor.state.trade import TradeExecution, MultiStageTradeKind
 from tradeexecutor.state.types import JSONHexAddress
 from tradeexecutor.strategy.routing import RoutingState, RoutingModel
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
@@ -99,6 +99,48 @@ class VaultRouting(RoutingModel):
         """
         logger.info("Routing details")
         self.reserve_asset_logging(pair_universe)
+
+    def finish_multi_stage(
+        self,
+        state: State,
+        routing_state: VaultRoutingState,
+        trade: TradeExecution,
+    ) -> list[BlockchainTransaction]:
+
+        assert trade.is_multi_stage()
+        assert trade.pair.is_erc_7540()
+
+        tx_builder = routing_state.tx_builder
+        web3 = tx_builder.web3
+        address = HexAddress(tx_builder.get_token_delivery_address())
+        target_vault = get_vault_for_pair(web3, trade.pair)
+        deposit_manager = target_vault.deposit_manager
+        kind = trade.get_multi_stage_kind()
+
+        # Because we have two trades, the original deposit reguest
+        # is stored in the state of the first trade multi stage state structure
+        first_leg = get_multi_stage_first_leg(state, trade)
+        first_leg_ticket_state = first_leg.get_multi_stage()
+
+        match kind:
+            case MultiStageTradeKind.deposit_finish:
+                call = deposit_manager.finish_deposit(first_leg_ticket_state.deposit_ticket)
+            case MultiStageTradeKind.redeem_finish:
+                call = deposit_manager.finish_deposit(first_leg_ticket_state.redeem_ticket)
+            case _:
+                raise NotImplementedError(f"Does not know how to handle: {kind}: {trade}")
+
+        claim_gas_limit = 500_000
+
+        tx_1 = tx_builder.sign_transaction(
+            contract=target_vault.denomination_token.contract,
+            args_bound_func=call,
+            gas_limit=claim_gas_limit,
+            asset_deltas=[],
+            notes=trade.notes,
+        )
+
+        return [tx_1]
 
     def deposit_or_redeem(
         self,
@@ -288,7 +330,16 @@ class VaultRouting(RoutingModel):
 
         for trade in trades:
             assert trade.is_vault(), f"Not a vault trade: {trade}"
-            trade.blockchain_transactions = self.deposit_or_redeem(state, routing_state, trade)
+            if trade.is_multi_stage():
+                if trade.get_multi_stage_kind() in (MultiStageTradeKind.deposit_finish, MultiStageTradeKind.redeem_finish):
+                    # Do the second leg of multi stage
+                    trade.blockchain_transactions = self.finish_multi_stage(state, routing_state, trade)
+                else:
+                    # Do the first leg, initiate the trade and set amounts
+                    trade.blockchain_transactions = self.deposit_or_redeem(state, routing_state, trade)
+            else:
+                # Do a single leg
+                trade.blockchain_transactions = self.deposit_or_redeem(state, routing_state, trade)
 
     def settle_trade(
         self,
@@ -442,29 +493,62 @@ class VaultRouting(RoutingModel):
                 )
                 return
 
-        try:
-            deposit_ticket = deposit_request.parse_deposit_transaction(tx_hashes)
-            ticket_state.deposit_ticket = deposit_ticket
+        kind = ticket_state.kind
+        deposit_manager = vault.deposit_manager
+        tx_hash = tx_hashes[-1]
 
-            # Mark as success.
-            # Because we do not know the final quantity until the deposit is settled,
-            # we pass estimated quantity around.
-            state.mark_trade_success(
-                deposit_ticket.block_timestamp,
-                trade,
-                executed_price=trade.planned_price,
-                executed_amount=trade.planned_quantity,
-                executed_reserve=trade.planned_reserve,
-                lp_fees=0,
-                native_token_price=0,
-                cost_of_gas=float(deposit_ticket.gas_used),
-            )
+        if kind in (MultiStageTradeKind.deposit_finish, MultiStageTradeKind.redeem_finish):
+            first_leg = get_multi_stage_first_leg(state, trade)
+        else:
+            first_leg = None
 
-            logger.info(f"Deposit initiated: {trade.pair.base.token_symbol}")
+        match kind:
+            case MultiStageTradeKind.deposit_start:
 
-        except VaultTransactionFailed as e:
-            # Any reverted transaction should have been handled earlier
-            raise RuntimeError(f"Should not happen {e}")
+                deposit_ticket = deposit_request.parse_deposit_transaction(tx_hashes)
+                ticket_state.deposit_ticket = deposit_ticket
+
+                # Mark as success.
+                # Because we do not know the final quantity until the deposit is settled,
+                # we pass estimated quantity around.
+                state.mark_trade_success(
+                    deposit_ticket.block_timestamp,
+                    trade,
+                    executed_price=trade.planned_price,
+                    executed_amount=trade.planned_quantity,
+                    executed_reserve=trade.planned_reserve,
+                    lp_fees=0,
+                    native_token_price=0,
+                    cost_of_gas=float(deposit_ticket.gas_used),
+                )
+
+                logger.info(f"{kind} initiated: {trade.pair.base.token_symbol}, {tx.tx_hash}")
+
+            case MultiStageTradeKind.deposit_finish:
+
+                assert trade.is_buy(), F"deposit_finish should be buy: {trade}"
+
+                deposit_ticket = first_leg.get_multi_stage().deposit_ticket
+
+                analysis = deposit_manager.analyse_deposit(
+                    tx_hash,
+                    deposit_ticket=deposit_ticket,
+                )
+
+                assert isinstance(analysis, DepositRedeemEventAnalysis), f"Got: {type(analysis): {analysis}}"
+
+                state.mark_trade_success(
+                    deposit_ticket.block_timestamp,
+                    trade,
+                    executed_price=float(analysis.get_share_price()),
+                    executed_amount=analysis.share_count,
+                    executed_reserve=analysis.denomination_amount,
+                    lp_fees=0,
+                    native_token_price=0,
+                    cost_of_gas=0,  # TODO
+                )
+            case _:
+                raise NotImplementedError(f"Got {kind}")
 
 
 def get_vault_for_pair(
