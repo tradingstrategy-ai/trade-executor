@@ -53,7 +53,7 @@ UNISWAP_V2_FEE = 0.0030
 # Allowed exchanges as factory -> router pairs,
 # by their smart contract addresses
 # init_code_hash not applicable to v3 0xe34f199b19b2b4f47f68442619d555527d244f78a3297ea89325f843f87b8b54
-# not really a map, change name? 
+# not really a map, change name?
 # V2 contracts (for router and quoter), not supported yet
 # Same address_map for ethereum, polygon and arbitrum
 # TODO create address_map class
@@ -519,7 +519,7 @@ def get_uniswap_v3_ethereum_default_routing_parameters(
             "0xdac17f958d2ee523a2206206994597c13d831ec7",
         },
     }
-    
+
 
 def get_uniswap_v3_polygon_default_routing_parameters(
     reserve_currency: ReserveCurrency,
@@ -548,7 +548,7 @@ def get_uniswap_v3_polygon_default_routing_parameters(
             "0x0d500b1d8e8ef31e21c99d1db9a6444d3adf1270": "0x9b08288c3be4f62bbf8d1c20ac9c5e6f9467d8b7",
         }
 
-    
+
     return {
         "chain_id": ChainId.polygon,
         "address_map": uniswap_v3_address_map,
@@ -783,7 +783,7 @@ def validate_reserve_currency(
 def get_backtest_routing_model(
     routing_type: TradeRouting,
     reserve_currency: ReserveCurrency,
-    reserve_token_address: JSONHexAddress | None,
+    reserve_token_address: JSONHexAddress | None = None,
 ) -> BacktestRoutingModel | BacktestRoutingIgnoredModel:
     """Get routing options for backtests.
 
@@ -801,7 +801,7 @@ def get_backtest_routing_model(
         raise AssertionError(f"Shoudl not be reached. If you use routing_type == TradeRouting.default GenericRouting should have been configured earlier in the stack.")
 
     real_routing_model = create_compatible_routing(routing_type, reserve_currency)
-    
+
     if isinstance(real_routing_model, UniswapV2Routing):
         return BacktestRoutingModel(
             real_routing_model.factory_router_map,
