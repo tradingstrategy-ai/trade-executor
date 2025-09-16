@@ -50,3 +50,16 @@ jobs:
             GIT_VERSION_TAG=${{ env.RELEASE_VERSION }}
             GIT_COMMIT_MESSAGE=${{ github.event.head_commit.message }}
             GIT_VERSION_HASH=${{ github.sha }}
+      - name: Trigger getting-started tests
+        # If build was successful and this is a release tag, dispatch a trade-executor-released
+        # event, which is used as a workflow trigger in getting-started text.yml workflow.
+        if: success() && github.event_name == 'push' && contains(github.ref, 'refs/tags/v')
+        uses: peter-evans/repository-dispatch@v3
+        with:
+          # NOTE: The GETTING_STARTED_DISPATCH PAT will expire on 2026-09-16.
+          # Generate a new fine-grained PAT with the following permissions on getting-started repo:
+          #     contents: read & write; metadata: read only
+          token: ${{ secrets.GETTING_STARTED_DISPATCH }}
+          repository: tradingstrategy-ai/getting-started
+          event-type: trade-executor-released
+          client-payload: '{"image_tag": "${{ env.RELEASE_VERSION }}", "git_sha": "${{ github.sha }}"}'
