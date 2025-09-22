@@ -80,6 +80,9 @@ class BlockchainTransactionType(enum.Enum):
 
     #: By LagoonTransactionBuilder
     lagoon_vault = "lagoon_vault"
+    
+    #: By OrderlyTransactionBuilder
+    orderly_vault = "orderly_vault"
 
     #: Simulated transaction
     #:
