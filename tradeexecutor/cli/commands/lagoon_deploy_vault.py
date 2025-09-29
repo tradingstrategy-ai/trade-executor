@@ -249,8 +249,8 @@ def lagoon_deploy_vault(
             router_address=deployment_data["router"],
             position_manager_address=deployment_data["position_manager"],
             quoter_address=deployment_data["quoter"],
-            quoter_v2=deployment_data["quoter_v2"],
-            router_v2=deployment_data["router_v2"],
+            quoter_v2=deployment_data.get("quoter_v2", False),
+            router_v2=deployment_data.get("router_v2", False),
         )
     else:
         uniswap_v3_deployment = None
