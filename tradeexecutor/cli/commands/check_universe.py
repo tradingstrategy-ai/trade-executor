@@ -90,10 +90,11 @@ def check_universe(
     )
 
     if not web3config.has_any_connection():
-        # Only revelvant if create_trading_universe() uses web3 connection
+        # Only revelvant if create_trading_universe() uses web3 connection.
+        # Default to Ethereum mainnet for legacy tests.
         web3config.default_chain_id = mod.chain_id or ChainId.ethereum
     else:
-        web3config.choose_single_chain()
+        web3config.choose_single_chain(mod.chain_id)
 
     # create_trading_universe() which needs to access Lagoon
     if asset_management_mode is None:

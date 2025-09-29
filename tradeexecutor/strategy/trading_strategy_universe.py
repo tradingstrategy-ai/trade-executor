@@ -2100,6 +2100,7 @@ def load_partial_data(
     vaults: list[tuple[ChainId, JSONHexAddress]] | None = None,
     vault_bundled_price_data: bool | Path=False,
     round_start_end: bool = True,
+    check_all_vaults_found: bool = True,
 ) -> Dataset:
     """Load pair data for given trading pairs.
 
@@ -2489,7 +2490,7 @@ def load_partial_data(
         # Include vault data for designed vaults if asked
         if vaults:
             logger.info("Including vaults: %s", vaults)
-            vault_exchanges, vault_pairs_df = load_multiple_vaults(vaults)
+            vault_exchanges, vault_pairs_df = load_multiple_vaults(vaults, check_all_vaults_found=check_all_vaults_found)
             our_exchange_universe.add(vault_exchanges)
             filtered_pairs_df = pd.concat([filtered_pairs_df, vault_pairs_df])
 

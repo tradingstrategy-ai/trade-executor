@@ -174,15 +174,23 @@ class Web3Config:
         """Do we have one or more chains configured."""
         return len(self.connections) > 0
 
-    def choose_single_chain(self):
+    def choose_single_chain(self, default_chain_id: Optional[ChainId] = None):
         """Set the default chain we are connected to.
 
         Ensure we have exactly 1 JSON-RPC endpoint configured.
+
+        :param default_chain_id:
+            Hint from the strategy module
         """
-        assert len(self.connections) == 1, f"Expected a single web3 connection, got JSON-RPC for chains {list(self.connections.keys())}"
-        default_chain_id = next(iter(self.connections.keys()))
-        self.set_default_chain(default_chain_id)
-        self.check_default_chain_id()
+        if default_chain_id is not None:
+            assert isinstance(default_chain_id, ChainId)
+            self.set_default_chain(default_chain_id)
+            self.check_default_chain_id()
+        else:
+            assert len(self.connections) == 1, f"Expected a single web3 connection, got JSON-RPC for chains {list(self.connections.keys())}"
+            default_chain_id = next(iter(self.connections.keys()))
+            self.set_default_chain(default_chain_id)
+            self.check_default_chain_id()
         logger.info("Chosen to use a single blockchain. Chain id: %d: Provider: %s", default_chain_id, self.connections[default_chain_id].provider)
 
     def set_default_chain(self, chain_id: ChainId):
