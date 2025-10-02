@@ -4,7 +4,7 @@ from tradingstrategy.chain import ChainId
 from tradingstrategy.pair import DEXPair
 
 
-def parse_pair_data(s: str) -> list[str]:
+def parse_pair_data(s: str) -> list[str] | tuple:
     """Extract pair data from string.
 
     :param s:
@@ -45,7 +45,7 @@ def parse_pair_data(s: str) -> list[str]:
     except:
         raise ValueError(f'Invalid pair data: {s}. Tuple must be in the format of: (chain_id, exchange_slug, base_token, quote_token, fee), where fee is optional')
 
-    return [chain_id, exchange_slug, base_token, quote_token, fee]
+    return (chain_id, exchange_slug, base_token, quote_token, fee)
 
 
 def construct_identifier_from_pair(pair: DEXPair) -> str:
