@@ -5,6 +5,7 @@ from decimal import Decimal
 
 from web3 import Web3
 
+from eth_defi.provider.anvil import is_anvil, mine
 from tradeexecutor.state.identifier import TradingPairIdentifier
 from tradingstrategy.lending import LendingReserveDescription
 from tradingstrategy.universe import Universe
@@ -44,6 +45,7 @@ def make_test_trade(
     lending_reserve_description: LendingReserveDescription | None = None,
     buy_only: bool = False,
     test_short: bool = True,
+    anvil_time_skip_seconds: int = 24*3600,
 ):
     """Perform a test trade.
 
@@ -80,7 +82,12 @@ def make_test_trade(
             else:
                 raise RuntimeError("You need to provide the exchange_universe when creating the universe")
 
-            raw_pair = data_universe.pairs.get_pair(*pair, exchange_universe=exchange_universe)
+            if len(pair) == 2:
+                # By chain id + address
+                raw_pair = data_universe.pairs.get_pair_by_smart_contract(pair[1])
+            else:
+                # By chain id + exchange + base + quote + optional fee
+                raw_pair = data_universe.pairs.get_pair(*pair, exchange_universe=exchange_universe)
 
             pair = translate_trading_pair(raw_pair)
 
@@ -248,6 +255,12 @@ def make_test_trade(
     if not buy_only:
 
         logger.info("Position %s is open. Now closing the position.", position)
+
+        if is_anvil(web3):
+            # Skip time forward to bypass any potential
+            # minimum holding period requirements like with IPOR vaults
+            logger.info("Skipping time forward by %d seconds to bypass any minimum holding period requirements", anvil_time_skip_seconds)
+            mine(web3, increase_timestamp=anvil_time_skip_seconds)
 
         # Recreate the position manager for the new timestamp,
         # as time has passed

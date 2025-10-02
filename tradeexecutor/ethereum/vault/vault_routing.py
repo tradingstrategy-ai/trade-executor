@@ -9,7 +9,7 @@ from eth_typing import HexAddress
 from hexbytes import HexBytes
 
 from eth_defi.erc_4626.analysis import analyse_4626_flow_transaction
-from eth_defi.erc_4626.classification import create_vault_instance
+from eth_defi.erc_4626.classification import create_vault_instance, create_vault_instance_autodetect
 from eth_defi.erc_4626.flow import approve_and_deposit_4626, approve_and_redeem_4626
 from eth_defi.erc_4626.profit_and_loss import estimate_4626_recent_profitability
 from eth_defi.erc_4626.vault import ERC4626Vault
@@ -366,16 +366,20 @@ def get_vault_for_pair(
     vault_address = target_pair.pool_address
     features = target_pair.get_vault_features()
 
-    assert features, f"Vault features missing: {target_pair}"
-
     cache_key = (vault_address, id(web3))
     cached = _vault_cache.get(cache_key)
     if cached:
         return cached
 
-    cached = create_vault_instance(web3, vault_address, features)
+    if features:
+        cached = create_vault_instance(web3, vault_address, features)
+    else:
+        # Autodetect features, much slower
+        cached = create_vault_instance_autodetect(web3, vault_address)
+
     _vault_cache[cache_key] = cached
     return cached
 
 
+#: In-process cache of constructed vault objects
 _vault_cache = {}
