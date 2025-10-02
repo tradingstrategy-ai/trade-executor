@@ -4,7 +4,7 @@ from tradingstrategy.chain import ChainId
 from tradingstrategy.pair import DEXPair
 
 
-def parse_pair_data(s: str):
+def parse_pair_data(s: str) -> list[str] | tuple:
     """Extract pair data from string.
 
     :param s:
@@ -25,8 +25,15 @@ def parse_pair_data(s: str):
         # Split elements and remove leading/trailing whitespaces
         elements = [e.strip() for e in tuple_str.split(',')]
 
-        if len(elements) not in {4, 5}:
+        if len(elements) not in {2, 4, 5}:
             raise ValueError()
+
+        if len(elements) == 2:
+            # Short format: (chain_id, exchange_slug)
+            chain_id = getattr(ChainId, elements[0].split('.')[-1])
+            address = elements[1].strip('"')
+            assert address.startswith('0x'), f"Not an address: {address}"
+            return [chain_id, address]
 
         # Process elements
         chain_id = getattr(ChainId, elements[0].split('.')[-1])

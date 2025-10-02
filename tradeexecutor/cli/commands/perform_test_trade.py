@@ -1,4 +1,15 @@
-"""perform-test-trade command"""
+"""perform-test-trade command
+
+To test a spot trading pair:
+
+.. code-block:: python
+
+    cli.main(args=["perform-test-trade", "--pair", "(arbitrum, vault, gmUSDC, USDC)"], standalone_mode=False)
+
+To test a vault:
+
+
+"""
 
 import datetime
 from decimal import Decimal
@@ -90,7 +101,11 @@ def perform_test_trade(
 
         trade-executor perform-test-trade --pair "(base, uniswap-v3, KEYCAT, WETH, 0.0030)"
 
-    Test all vaults:
+    Test all vaults by its vault address:
+
+        trade-executor perform-test-trade --pair "0x959f3807f0aa7921e18c78b00b2819ba91e52fef"
+
+    Test single vault:
 
         trade-executor perform-test-trade --all-vaults
 
