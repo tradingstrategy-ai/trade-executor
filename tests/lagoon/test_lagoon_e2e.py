@@ -277,6 +277,7 @@ def test_cli_lagoon_correct_accounts(
     cli.main(args=["correct-accounts"], standalone_mode=False)
 
 
+@pytest.mark.slow_test_group
 def test_cli_lagoon_settle(
     deployed_vault_environment: dict,
     mocker,
