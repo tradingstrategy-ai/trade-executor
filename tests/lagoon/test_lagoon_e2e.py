@@ -277,6 +277,20 @@ def test_cli_lagoon_correct_accounts(
     cli.main(args=["correct-accounts"], standalone_mode=False)
 
 
+def test_cli_lagoon_settle(
+    deployed_vault_environment: dict,
+    mocker,
+    state_file,
+    web3,
+):
+    """Run lagoon-settle command"""
+    cli = get_command(app)
+    mocker.patch.dict("os.environ", deployed_vault_environment, clear=True)
+    cli.main(args=["init"], standalone_mode=False)
+    cli.main(args=["lagoon-settle"], standalone_mode=False)
+
+
+
 # More flakiness  AssertionError: Could not read block number from Anvil after the launch anvil: at http://localhost:26220, stdout is 0 bytes, stderr is 312 bytes
 @flaky.flaky()
 @pytest.mark.slow_test_group
