@@ -116,7 +116,7 @@ class VaultRouting(RoutingModel):
 
         assert trade.is_vault(), "Vault only supports vault trades"
         assert trade.slippage_tolerance, "TradeExecution.slippage_tolerance must be set"
-        assert trade.pair.quote.address in self.allowed_intermediary_pairs or trade.pair.quote.address == self.reserve_token_address, f"Unsupported quote token: {trade.pair}"
+        assert trade.pair.quote.address in self.allowed_intermediary_pairs or trade.pair.quote.address == self.reserve_token_address, f"Unsupported quote token: {trade.pair}: {trade.pair.quote.address}, our reserve is {self.reserve_token_address}"
 
         reserve_asset = routing_state.strategy_universe.get_reserve_asset()
 
