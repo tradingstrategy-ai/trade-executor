@@ -3,6 +3,7 @@
 from web3 import Web3
 
 from eth_defi.token import TokenDetails, fetch_erc20_details
+from tradeexecutor.ethereum.token_cache import get_default_token_cache
 from tradeexecutor.state.identifier import AssetIdentifier
 from tradeexecutor.state.portfolio import Portfolio
 from tradeexecutor.state.position import TradingPosition
@@ -23,7 +24,8 @@ def fetch_token_as_asset(web3: Web3, contract_address: str) -> AssetIdentifier:
     :return:
         Asset identifier that can be use with persistent storage.
     """
-    token = fetch_erc20_details(web3, contract_address)
+    cache = get_default_token_cache()
+    token = fetch_erc20_details(web3, contract_address, cache=cache)
     return translate_token_details(token)
 
 

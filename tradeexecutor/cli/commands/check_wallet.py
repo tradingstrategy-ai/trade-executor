@@ -20,6 +20,7 @@ from ..bootstrap import prepare_executor_id, prepare_cache, create_web3_config, 
 from ..log import setup_logging
 from ...ethereum.enzyme.vault import EnzymeVaultSyncModel
 from ...ethereum.lagoon.vault import LagoonVaultSyncModel
+from ...ethereum.token_cache import get_default_token_cache
 from ...ethereum.velvet.vault import VelvetVaultSyncModel
 from ...strategy.approval import UncheckedApprovalModel
 from ...strategy.bootstrap import make_factory_from_strategy_mod
@@ -192,7 +193,8 @@ def check_wallet(
     balances = fetch_erc20_balances_by_token_list(web3, reserve_address, tokens)
 
     for address, balance in balances.items():
-        details = fetch_erc20_details(web3, address)
+        token_cache = get_default_token_cache()
+        details = fetch_erc20_details(web3, address, cache=token_cache)
         logger.info("  Balance of %s (%s): %s %s", details.name, details.address, details.convert_to_decimals(balance), details.symbol)
 
     # Check that the routing looks sane
