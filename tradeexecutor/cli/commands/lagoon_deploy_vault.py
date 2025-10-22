@@ -50,18 +50,19 @@ from eth_defi.erc_4626.vault import ERC4626Vault
 from eth_defi.hotwallet import HotWallet
 from eth_defi.lagoon.config import get_lagoon_chain_config
 from eth_defi.lagoon.deployment import LagoonDeploymentParameters, deploy_automated_lagoon_vault, DEFAULT_PERFORMANCE_RATE, DEFAULT_MANAGEMENT_RATE
-from eth_defi.token import fetch_erc20_details
+from eth_defi.token import fetch_erc20_details, TokenDiskCache
 from eth_defi.uniswap_v2.constants import UNISWAP_V2_DEPLOYMENTS
 from eth_defi.uniswap_v2.deployment import fetch_deployment
 from eth_defi.uniswap_v3.constants import UNISWAP_V3_DEPLOYMENTS
 from eth_defi.uniswap_v3.deployment import fetch_deployment as fetch_deployment_uni_v3
 from eth_defi.aave_v3.deployment import fetch_deployment as fetch_aave_deployment
+from tradeexecutor.cli.cache import TRADE_EXECUTOR_TOKEN_CACHE
 
 from tradeexecutor.cli.commands.shared_options import parse_comma_separated_list
 from tradeexecutor.monkeypatch.web3 import construct_sign_and_send_raw_middleware
 from tradingstrategy.chain import ChainId
 
-from tradeexecutor.cli.bootstrap import create_web3_config
+from tradeexecutor.cli.bootstrap import create_web3_config, prepare_cache
 from tradeexecutor.cli.commands import shared_options
 from tradeexecutor.cli.commands.app import app
 from tradeexecutor.cli.log import setup_logging
@@ -105,6 +106,7 @@ def lagoon_deploy_vault(
     existing_vault_address: str = Option(None, envvar="EXISTING_VAULT_ADDRESS", help="When deploying a guard only, get the existing vault address."),
     existing_safe_address: str = Option(None, envvar="EXISTING_SAFE_ADDRESS", help="When deploying a guard only, get the existing safe address."),
     vault_adapter_address: str = shared_options.vault_adapter_address,
+    cache_path: Optional[Path] = shared_options.cache_path,
 ):
     """Deploy a Lagoon vault or modify the vault deployment.
 
@@ -115,6 +117,8 @@ def lagoon_deploy_vault(
 
     assert any_asset, "Currently only any_asset configurations supported"
     assert private_key, "PRIVATE_KEY not set"
+
+    cache_path = prepare_cache(id, cache_path, unit_testing)
 
     logger = setup_logging(log_level)
 
@@ -269,12 +273,18 @@ def lagoon_deploy_vault(
     else:
         aave_v3_deployment = None
 
+    # Scanning ERC-4626 vaults on a startup for token details takes a long time
+    if cache_path:
+        token_cache = TokenDiskCache(filename=cache_path / "eth-defi-tokens.sqlite")
+    else:
+        token_cache = None
+
     if erc_4626_vaults:
         erc_4626_vault_addresses = [Web3.to_checksum_address(a.strip()) for a in erc_4626_vaults.split(",")]
         erc_4626_vaults = []
         for addr in erc_4626_vault_addresses:
             logger.info("Resolving ERC-4626 vault at %s", addr)
-            vault = cast(ERC4626Vault, create_vault_instance(web3, addr))
+            vault = cast(ERC4626Vault, create_vault_instance(web3, addr, token_cache=token_cache))
             assert vault.is_valid(), f"Invalid ERC-4626 vault at {addr}"
             logger.info("Preparing vault %s for whitelisting", vault.name)
             erc_4626_vaults.append(vault)
