@@ -1,4 +1,4 @@
-from linecache import cache
+
 from pathlib import Path
 
 from eth_defi.token import TokenDiskCache
