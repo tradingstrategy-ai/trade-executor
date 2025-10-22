@@ -59,6 +59,7 @@ from eth_defi.aave_v3.deployment import fetch_deployment as fetch_aave_deploymen
 from tradeexecutor.cli.cache import TRADE_EXECUTOR_TOKEN_CACHE
 
 from tradeexecutor.cli.commands.shared_options import parse_comma_separated_list
+from tradeexecutor.ethereum.token_cache import get_default_token_cache
 from tradeexecutor.monkeypatch.web3 import construct_sign_and_send_raw_middleware
 from tradingstrategy.chain import ChainId
 
@@ -274,10 +275,7 @@ def lagoon_deploy_vault(
         aave_v3_deployment = None
 
     # Scanning ERC-4626 vaults on a startup for token details takes a long time
-    if cache_path:
-        token_cache = TokenDiskCache(filename=cache_path / "eth-defi-tokens.sqlite")
-    else:
-        token_cache = None
+    token_cache = get_default_token_cache()
 
     if erc_4626_vaults:
         erc_4626_vault_addresses = [Web3.to_checksum_address(a.strip()) for a in erc_4626_vaults.split(",")]
