@@ -333,8 +333,46 @@ def lagoon_deploy_vault(
         logger.info("Safe transactions needed:")
         logger.info("1. %s.disableModule(%s, %s)", deploy_info.safe.address, ONE_ADDRESS_STR, deploy_info.old_trading_strategy_module.address)
         logger.info("2. %s.enableModule(%s)", deploy_info.safe.address, deploy_info.trading_strategy_module.address)
+        logger.info("Safe ABI needed: %s", SAFE_ABI_STR)
 
 
     web3config.close()
 
     logger.info("All ok.")
+
+
+SAFE_ABI_STR = """
+[
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "module",
+          "type": "address"
+        }
+      ],
+      "name": "enableModule",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "prevModule",
+          "type": "address"
+        },
+        {
+          "internalType": "address",
+          "name": "module",
+          "type": "address"
+        }
+      ],
+      "name": "disableModule",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    }
+]
+"""
