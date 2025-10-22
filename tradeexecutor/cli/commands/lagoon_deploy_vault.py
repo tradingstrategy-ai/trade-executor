@@ -336,5 +336,5 @@ def lagoon_deploy_vault(
 
 
     web3config.close()
-=
+
     logger.info("All ok.")
