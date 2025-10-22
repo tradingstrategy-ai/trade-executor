@@ -118,8 +118,6 @@ def lagoon_deploy_vault(
     assert any_asset, "Currently only any_asset configurations supported"
     assert private_key, "PRIVATE_KEY not set"
 
-    cache_path = prepare_cache(id, cache_path, unit_testing)
-
     logger = setup_logging(log_level)
 
     web3config = create_web3_config(
