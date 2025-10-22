@@ -273,6 +273,7 @@ def lagoon_deploy_vault(
 
     # Scanning ERC-4626 vaults on a startup for token details takes a long time
     token_cache = get_default_token_cache()
+    logger.info("Using token cache at %s", token_cache.filename)
 
     if erc_4626_vaults:
         erc_4626_vault_addresses = [Web3.to_checksum_address(a.strip()) for a in erc_4626_vaults.split(",")]
@@ -317,6 +318,8 @@ def lagoon_deploy_vault(
     else:
         logger.info("Skipping record file because of simulation")
 
+    logger.info("Token cache %s contains %d entries", token_cache.filename, len(token_cache))
+
     if not guard_only:
         logger.info("Lagoon deployed:\n%s", deploy_info.pformat())
     else:
@@ -333,3 +336,5 @@ def lagoon_deploy_vault(
 
 
     web3config.close()
+=
+    logger.info("All ok.")
