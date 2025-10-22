@@ -13,11 +13,12 @@ from eth_defi.erc_4626.classification import create_vault_instance, create_vault
 from eth_defi.erc_4626.flow import approve_and_deposit_4626, approve_and_redeem_4626
 from eth_defi.erc_4626.profit_and_loss import estimate_4626_recent_profitability
 from eth_defi.erc_4626.vault import ERC4626Vault
-from eth_defi.token import fetch_erc20_details
+from eth_defi.token import fetch_erc20_details, TokenDiskCache
 from eth_defi.trade import TradeSuccess
 
 
 from tradeexecutor.ethereum.swap import get_swap_transactions, report_failure
+from tradeexecutor.ethereum.token_cache import get_default_token_cache
 from tradeexecutor.state.blockhain_transaction import BlockchainTransaction
 from tradeexecutor.state.portfolio import Portfolio
 from tradeexecutor.state.state import State
@@ -368,14 +369,26 @@ def get_vault_for_pair(
 
     cache_key = (vault_address, id(web3))
     cached = _vault_cache.get(cache_key)
+
+    token_cache = get_default_token_cache()
+
     if cached:
         return cached
 
     if features:
-        cached = create_vault_instance(web3, vault_address, features)
+        cached = create_vault_instance(
+            web3,
+            vault_address,
+            features,
+            token_cache=token_cache,
+        )
     else:
         # Autodetect features, much slower
-        cached = create_vault_instance_autodetect(web3, vault_address)
+        cached = create_vault_instance_autodetect(
+            web3,
+            vault_address,
+            token_cache=token_cache,
+        )
 
     _vault_cache[cache_key] = cached
     return cached
