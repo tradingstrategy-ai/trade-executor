@@ -23,7 +23,16 @@ from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniv
 def list_vaults(
     console_context: dict,
 ):
-    """List all vaults in the strategy universe, table formatted."""
+    """List all vaults in the strategy universe, table formatted.
+
+    Example:
+
+    .. code-block:: python
+
+        from tradeexecutor.cli.repl_utils import list_vaults
+        list_vaults(locals())
+
+    """
     web3 = console_context["web3"]
     strategy_universe: TradingStrategyUniverse = console_context["strategy_universe"]
     vault_pairs = [pair for pair in strategy_universe.iterate_pairs() if pair.is_vault()]
@@ -59,6 +68,8 @@ def list_vaults(
 
         if ERC4626Feature.broken in vault.features:
             broken_vaults.append(vault)
+
+    data = sorted(data, key=lambda x: x["Name"])
 
     # Display what we are about to whitelist
     table_fmt = tabulate(
