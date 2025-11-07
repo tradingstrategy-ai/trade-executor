@@ -93,6 +93,7 @@ def deposit_4626(
 
     .. code-block:: python
 
+        from tradeexecutor.cli.repl_utils import deposit_4626
         deposit_4626(
             locals(),
             # Plutus hedge token
@@ -105,6 +106,14 @@ def deposit_4626(
         deposit_4626(
             locals(),
             "0x4a3f7dd63077cde8d7eff3c958eb69a3dd7d31a9",
+            100.00,
+        )
+
+        # Umami
+        from tradeexecutor.cli.repl_utils import deposit_4626
+        deposit_4626(
+            locals(),
+            "0x959f3807f0aa7921e18c78b00b2819ba91e52fef",
             100.00,
         )
     """
