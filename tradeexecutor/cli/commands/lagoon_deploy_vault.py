@@ -98,6 +98,7 @@ def lagoon_deploy_vault(
     aave: bool = Option(False, envvar="AAVE", help="Whitelist Aave aUSDC deposits"),
     uniswap_v2: bool = Option(False, envvar="UNISWAP_V2", help="Whitelist Uniswap v2"),
     uniswap_v3: bool = Option(False, envvar="UNISWAP_V3", help="Whitelist Uniswap v3"),
+    cowswap: bool = Option(False, envvar="COWSWAP", help="Whitelist CoW Swap"),
     erc_4626_vaults: str = Option(None, envvar="ERC_4626_VAULTS", help="Whitelist ERC-4626 vaults, a command separated list of addresses"),
     verbose: bool = Option(False, envvar="VERBOSE", help="Extra verbosity with deploy commands"),
     performance_fee: int = Option(DEFAULT_PERFORMANCE_RATE, envvar="PERFORMANCE_FEE", help="Performance fee in BPS"),
@@ -304,6 +305,7 @@ def lagoon_deploy_vault(
         erc_4626_vaults=erc_4626_vaults,
         factory_contract=lagoon_chain_config.factory_contract,
         from_the_scratch=lagoon_chain_config.from_the_scratch,
+        cowswap=cowswap,
     )
 
     if vault_record_file and (not simulate):
