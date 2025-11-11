@@ -100,6 +100,10 @@ def settle_vault(
 
     logger.info("We received balance update events: %s", balance_updates)
 
+    if len(balance_updates) > 0:
+        # Any deposit/redeem change our valuation
+        valuation = state.portfolio.get_net_asset_value()
+
     # Velvet capital code path
     if sync_model.has_position_sync():
         sync_model.sync_positions(
@@ -121,6 +125,7 @@ def settle_vault(
 
     gas_at_end = hot_wallet.get_native_currency_balance(web3)
     reserve_currency_at_end = state.portfolio.get_default_reserve_position().get_value()
+
 
     logger.info("Sync report")
     logger.info("  Balance update events: %d", len(balance_updates))
