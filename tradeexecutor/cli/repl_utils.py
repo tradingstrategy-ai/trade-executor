@@ -163,7 +163,6 @@ def deposit_4626(
             100.00,
         )
 
-
         # Gains
         from tradeexecutor.cli.repl_utils import deposit_4626
         deposit_4626(
@@ -171,6 +170,16 @@ def deposit_4626(
             "0xd3443ee1e91af28e5fb858fbd0d72a63ba8046e0",
             100.00,
         )
+
+        # thBill
+        #
+        from tradeexecutor.cli.repl_utils import deposit_4626
+        deposit_4626(
+            locals(),
+            "0x64ca76e2525fc6ab2179300c15e343d73e42f958",
+            100.00,
+        )
+
     """
 
     strategy_universe: TradingStrategyUniverse = console_context["strategy_universe"]
