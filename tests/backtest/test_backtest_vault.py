@@ -1,10 +1,12 @@
 import datetime
 
+import pandas as pd
 import pytest
 
 
 from eth_defi.token import USDC_NATIVE_TOKEN
 from eth_defi.vault.vaultdb import DEFAULT_RAW_PRICE_DATABASE
+from tradeexecutor.analysis.vault import display_vaults
 
 from tradingstrategy.chain import ChainId
 from tradingstrategy.client import Client
@@ -12,7 +14,7 @@ from tradingstrategy.timebucket import TimeBucket
 from tradingstrategy.utils.token_filter import filter_for_selected_pairs
 
 from tradeexecutor.strategy.universe_model import UniverseOptions
-from tradeexecutor.strategy.execution_context import unit_test_execution_context
+from tradeexecutor.strategy.execution_context import unit_test_execution_context, ExecutionMode
 from tradeexecutor.strategy.pandas_trader.trading_universe_input import CreateTradingUniverseInput
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse, load_partial_data
 
@@ -169,6 +171,7 @@ def test_vault_data_has_price_and_tvl(
         pairs=pairs_df,
         execution_context=execution_context,
         universe_options=universe_options,
+        liquidity=True,
         liquidity_time_bucket=TimeBucket.d1,
         vaults=VAULTS,
         vault_bundled_price_data=DEFAULT_RAW_PRICE_DATABASE,
@@ -195,7 +198,21 @@ def test_vault_data_has_price_and_tvl(
     # Check price data looks good
     price_df = strategy_universe.data_universe.candles.get_candles_by_pair(vault_pair.internal_id)
     assert len(price_df) > 0, f"No price data for vault {vault_address}"
+    assert  price_df.index.is_monotonic_increasing, "Prices do not look like forward filled time series"
 
     # Check TVL data looks good
     tvl_df = strategy_universe.data_universe.liquidity.get_samples_by_pair(vault_pair.internal_id)
     assert len(tvl_df) > 0, f"No TVL data for vault {vault_address}"
+
+    assert isinstance(tvl_df.index, pd.MultiIndex)
+    assert tvl_df.loc[(vault_pair.internal_id, pd.Timestamp("2025-01-29"))]["open"] == 1
+    assert tvl_df.loc[(vault_pair.internal_id, pd.Timestamp("2025-11-26"))]["open"] == pytest.approx(223342.33501)
+    assert tvl_df.index.is_monotonic_increasing, "Prices do not look like forward filled time series"
+
+    # See we can display vault debug data
+    display_vaults(
+        VAULTS,
+        strategy_universe,
+        execution_mode=ExecutionMode.unit_testing,
+        printer=lambda x: x,
+    )
