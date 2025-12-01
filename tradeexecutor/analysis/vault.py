@@ -9,8 +9,11 @@ from plotly.subplots import make_subplots
 import plotly.graph_objects as go
 import plotly.io as pio
 
+from IPython.display import display
+
 
 from tradeexecutor.state.identifier import TradingPairIdentifier
+from tradeexecutor.strategy.execution_context import ExecutionMode
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
 
 
@@ -171,3 +174,37 @@ def visualise_vaults(
             )
         )
     return figures
+
+
+def display_vaults(
+    vaults: list[tuple[int, str]],
+    strategy_universe: TradingStrategyUniverse,
+    execution_mode: ExecutionMode,
+    printer: Callable,
+):
+    """Dump vault diagnostics for the strategy universe in create_trading_universe()"""
+    data = []
+
+    from eth_defi.chain import get_chain_name
+
+    for v in vaults:
+        vault_error = strategy_universe.get_vault_error(v)
+        vault_pair = strategy_universe.get_pair_by_smart_contract(
+            v[1]
+        )
+        data.append({
+            "Chain": get_chain_name(v[0]),
+            "Vault": v[1],
+            "Name": vault_pair.get_vault_name() if vault_pair else "-",
+            "Protocol": vault_pair.get_vault_protocol() if vault_pair else "-",
+            "Status": vault_error or "OK",
+        })
+
+    printer("Vault check list")
+    df = pd.DataFrame(data)
+    if execution_mode.is_live_trading():
+        # In live trading we can display dataframes directly
+        printer(df)
+    else:
+        # Backtesting uses HTML output
+        display(df)

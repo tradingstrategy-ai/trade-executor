@@ -109,6 +109,9 @@ class Dataset:
     #: How much back we looked from today
     history_period: Optional[datetime.timedelta] = None
 
+    #: List of vaults we loaded
+    vault_specs: Optional[List[Tuple[ChainId, JSONHexAddress]]] = None
+
     def __repr__(self):
         return f"<Dataset pairs:{len(self.pairs)} candles:{len(self.candles)} start:{self.start_at} end:{self.end_at} live history period:{self.history_period}>"
 
@@ -323,6 +326,15 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
         """
         return self.data_universe.liquidity is not None
 
+    def get_vault_error(self, vault_spec: tuple) -> Optional[str]:
+        """TODO: Rewrite with check_has_vault
+        """
+        try:
+            self.check_has_vault(vault_spec)
+            return None
+        except AssertionError as e:
+            return str(e)
+
     def check_has_vault(self, vault_spec: tuple):
         """Check if we have price data loaded for a vault.
 
@@ -402,6 +414,10 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
     def has_any_lending_data(self) -> bool:
         """Does this trading universe has any lending data loaded"""
         return self.data_universe.lending_reserves is not None
+
+    def has_any_vault_data(self) -> bool:
+        """Does this trading universe has any lending data loaded"""
+        return self.data_universe.vault_specs is not None
 
     def has_lending_market_available(
         self,
@@ -1308,6 +1324,7 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
             exchanges={e for e in dataset.exchanges.exchanges.values()},
             lending_candles=dataset.lending_candles,
             forward_filled=forward_fill,
+            vault_specs=dataset.vault_specs,
         )
 
         return TradingStrategyUniverse(
@@ -2551,6 +2568,7 @@ def load_partial_data(
             start_at=start_at,
             end_at=end_at,
             history_period=required_history_period,
+            vault_specs=vaults,
         )
 
 
