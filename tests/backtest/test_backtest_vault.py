@@ -207,7 +207,7 @@ def test_vault_data_has_price_and_tvl(
     assert isinstance(tvl_df.index, pd.MultiIndex)
     assert tvl_df.loc[(vault_pair.internal_id, pd.Timestamp("2025-01-29"))]["open"] == 1
     assert tvl_df.loc[(vault_pair.internal_id, pd.Timestamp("2025-11-26"))]["open"] == pytest.approx(223342.33501)
-    assert tvl_df.index.is_monotonic_increasing, "Prices do not look like forward filled time series"
+    assert tvl_df.index.is_monotonic_increasing, "TVLs do not look like forward filled time series"
 
     # See we can display vault debug data
     display_vaults(
