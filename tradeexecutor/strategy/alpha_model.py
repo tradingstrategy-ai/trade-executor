@@ -378,7 +378,7 @@ class TradingPairSignal:
             else:
                 return "no flip"
 
-        elif self.old_pair.is_spot():
+        elif self.old_pair.is_spot() or self.old_pair.is_vault():
             if self.signal < 0:
                 return "spot -> short"
             elif self.signal == 0:

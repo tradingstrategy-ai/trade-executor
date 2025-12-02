@@ -12,6 +12,7 @@ from tradeexecutor.visual.position import visualise_position, calculate_position
 def all_vaults_share_price_and_tvl(
     input: ChartInput,
     printer=print,
+    max_count=3,
 ) -> list[Figure]:
     """Render share price and TVL for all vaults.
 
@@ -20,7 +21,7 @@ def all_vaults_share_price_and_tvl(
     :return:
         List of figures
     """
-    figures = visualise_vaults(input.strategy_universe, printer=printer)
+    figures = visualise_vaults(input.strategy_universe, printer=printer, max_count=max_count)
 
     if not figures:
         raise ValueError("No chart data available for vault pairs - missing candle or liquidity data")

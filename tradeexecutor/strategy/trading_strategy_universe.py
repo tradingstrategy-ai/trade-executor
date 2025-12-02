@@ -38,7 +38,7 @@ from tradingstrategy.universe import Universe
 from tradingstrategy.utils.groupeduniverse import filter_for_pairs, NoDataAvailable
 from tradingstrategy.utils.token_extra_data import load_extra_metadata
 from tradingstrategy.utils.token_filter import add_base_quote_address_columns
-from tradingstrategy.vault import VaultMetadata
+from tradingstrategy.vault import VaultMetadata, VaultUniverse
 from tradingstrategy.alternative_data.vault import load_multiple_vaults, load_vault_price_data, convert_vault_prices_to_candles, DEFAULT_VAULT_PRICE_BUNDLE
 
 from tradeexecutor.strategy.execution_context import ExecutionMode, ExecutionContext
@@ -2114,7 +2114,7 @@ def load_partial_data(
     candle_progress_bar_desc: str | None = None,
     lending_candle_progress_bar_desc: str | None = None,
     pair_extra_metadata=False,
-    vaults: list[tuple[ChainId, JSONHexAddress]] | None = None,
+    vaults: list[tuple[ChainId, JSONHexAddress]] | VaultUniverse | None = None,
     vault_bundled_price_data: bool | Path=False,
     round_start_end: bool = True,
     check_all_vaults_found: bool = True,
@@ -2505,7 +2505,7 @@ def load_partial_data(
         )
 
         # Include vault data for designed vaults if asked
-        if vaults:
+        if vaults is not None:
             logger.info("Including vaults: %s", vaults)
             vault_exchanges, vault_pairs_df = load_multiple_vaults(vaults, check_all_vaults_found=check_all_vaults_found)
             our_exchange_universe.add(vault_exchanges)

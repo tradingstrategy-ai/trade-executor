@@ -43,6 +43,9 @@ class IndicatorWithVariations(Exception):
     """
 
 
+class NoIndicatorError(Exception):
+    """Name indicator does not exist or is wrong type"""
+
 
 @dataclass(slots=True)
 class StrategyInputIndicators:
@@ -710,14 +713,16 @@ class StrategyInputIndicators:
         if indicator_result is None:
             all_keys = set(self.indicator_results.keys())
             all_indicators = set(self.available_indicators.indicators.keys())
-            raise AssertionError(
+            raise NoIndicatorError(
                 f"Indicator results did not contain key {key} for indicator {name}.\n"
                 f"Available indicators: {all_indicators}\n"
                 f"Available data series: {all_keys}\n"
             )
 
         data = indicator_result.data
-        assert data is not None, f"Indicator pre-calculated values missing for {name} - lookup key {key}"
+
+        if data is None:
+            raise NoIndicatorError(f"Indicator pre-calculated values missing for {name} - lookup key {key}")
 
         if isinstance(data, pd.DataFrame):
 
