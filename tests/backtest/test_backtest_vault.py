@@ -18,7 +18,7 @@ from tradeexecutor.strategy.execution_context import unit_test_execution_context
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse, load_partial_data
 
 
-pytest.mark.skipif(not DEFAULT_RAW_PRICE_DATABASE.exists(), reason="This test requires full vault database bundle in ~/.tradingstrategy/vaults - rsync to get one")
+pytestmark = pytest.mark.skipif(not DEFAULT_RAW_PRICE_DATABASE.exists(), reason="This test requires full vault database bundle in ~/.tradingstrategy/vaults - rsync to get one")
 
 
 @pytest.fixture()
