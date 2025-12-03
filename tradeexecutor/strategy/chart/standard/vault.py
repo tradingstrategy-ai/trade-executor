@@ -1,4 +1,6 @@
 """Vault charts."""
+import warnings
+
 import pandas as pd
 
 from tradeexecutor.analysis.credit import display_vault_position_table
@@ -86,7 +88,9 @@ def vault_position_timeline(
     with pd.option_context('display.min_rows', 500):  # Show up to 50 rows
         # Assuming df is your DataFrame and condition is your boolean mask
         mask = position_df.delta != 0  # Your original condition
-        extended_mask = mask | mask.shift(1).fillna(False) | mask.shift(-1).fillna(False)
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", category=FutureWarning)
+            extended_mask = mask | mask.shift(1).fillna(False) | mask.shift(-1).fillna(False)
 
         df = position_df[extended_mask]
         return fig, df

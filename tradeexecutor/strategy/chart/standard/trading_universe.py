@@ -140,19 +140,16 @@ def inclusion_criteria_check(
 
         # Get the first entry and value of rolling cum volume of each pair
 
-    try:
+    if indicator_data.has_indicator(rolling_cumulative_volume):
         # Strategy does not define volume-inclusion criteria (e.g. vaults)
-        rolling_cumulative_volume = indicator_data.resolve_indicator_data(
-            rolling_cumulative_volume,
-            unlimited=True,
-        )
         volume_series = indicator_data.get_indicator_data_pairs_combined(rolling_cumulative_volume)
         first_volume_df = volume_series.reset_index().groupby("pair_id").first()
-    except IndicatorNotFound:
+    else:
         volume_series = None
         first_volume_df = None
 
     def _map_volume_timestamp(row):
+        nonlocal first_volume_df
         pair_id = row.name  # Index
         try:
             return first_volume_df.loc[pair_id]["timestamp"]
@@ -160,6 +157,7 @@ def inclusion_criteria_check(
             return None
 
     def _map_volume_value(row):
+        nonlocal first_volume_df
         pair_id = row.name  # Index
         try:
             return first_volume_df.loc[pair_id]["value"]

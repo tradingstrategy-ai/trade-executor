@@ -630,6 +630,11 @@ class StrategyInputIndicators:
         assert isinstance(df, pd.DataFrame), f"Not DataFrame indicator: {name}"
         return df
 
+    def has_indicator(self, name: str) -> bool:
+        """Check if an indicator with a certain name exists"""
+        assert type(name) == str, f"Expected string, got {type(name)}: {name}"
+        return self.available_indicators.has_indicator(name)
+
     def resolve_indicator_data(
         self,
         name: str,

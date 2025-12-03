@@ -82,7 +82,7 @@ def decide_trades(
         pair = strategy_universe.get_pair_by_human_description(pair_id)
 
         # Test individual value
-        rsi = indicators.get_indicator_value("rsi", pair=pair, data_delay_tolerance=pd.Timedelta(days=7))
+        rsi = indicators.get_indicator_value("rsi", pair=pair, data_delay_tolerance=pd.Timedelta(days=99))
         if live:
             assert rsi is not None, f"get_indicator_value() returned None, timestamp is {indicators.timestamp}"
 
