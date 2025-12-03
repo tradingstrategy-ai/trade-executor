@@ -366,6 +366,8 @@ class IndicatorRegistry:
             })
 
         df = pd.DataFrame(data)
+        if len(df) == 0:
+            return df
         df = df.sort_values(by=["Order", "Name"])
         df = df.set_index("Name")
         return df

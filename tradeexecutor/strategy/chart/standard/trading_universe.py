@@ -5,6 +5,7 @@ from plotly.graph_objects import Figure
 import plotly.express as px
 
 from tradeexecutor.strategy.chart.definition import ChartInput
+from tradeexecutor.strategy.pandas_trader.indicator import IndicatorNotFound
 from tradingstrategy.liquidity import LiquidityDataUnavailable
 
 
@@ -28,12 +29,32 @@ def available_trading_pairs(
 
     indicator_data = input.strategy_input_indicators
 
-    df = pd.DataFrame({
-        "Inclusion criteria met (all)": indicator_data.get_indicator_series(all_criteria_included_pair_count),
-        "Volume criteria met": indicator_data.get_indicator_series(volume_included_pair_count),
-        "TVL criteria met": indicator_data.get_indicator_series(tvl_included_pair_count),
-        "Visible pairs": indicator_data.get_indicator_series(trading_pair_count),
-    })
+    try:
+        # Strategy does not define volume-inclusion criteria (e.g. vaults)
+        volume_criteria = indicator_data.resolve_indicator_data(
+            volume_included_pair_count,
+            unlimited=True,
+        )
+    except IndicatorNotFound:
+        volume_criteria = None
+
+    data = {}
+
+    data["Inclusion criteria met (all)"] = indicator_data.get_indicator_series(all_criteria_included_pair_count)
+    if volume_criteria is not None:
+        data["Inclusion criteria met (volume)"] = indicator_data.get_indicator_series(volume_included_pair_count)
+
+    data["Inclusion criteria met (TVL)"] = indicator_data.get_indicator_series(tvl_included_pair_count)
+    data["Visible pairs"] = indicator_data.get_indicator_series(trading_pair_count)
+
+    # df = pd.DataFrame({
+    #    : indicator_data.get_indicator_series(all_criteria_included_pair_count),
+    #    "Volume criteria met": indicator_data.get_indicator_series(volume_included_pair_count) if volume_criteria is not None else None,
+    #    "TVL criteria met": indicator_data.get_indicator_series(tvl_included_pair_count),
+    #    "Visible pairs": indicator_data.get_indicator_series(trading_pair_count),
+    #})
+
+    df = pd.DataFrame(data)
 
     fig = px.line(df, title='Trading pairs available for strategy to trade')
     fig.update_yaxes(title="Number of assets")
@@ -119,10 +140,16 @@ def inclusion_criteria_check(
 
         # Get the first entry and value of rolling cum volume of each pair
 
-    volume_series = indicator_data.get_indicator_data_pairs_combined(rolling_cumulative_volume)
-    first_volume_df = volume_series.reset_index().groupby("pair_id").first()
+    if indicator_data.has_indicator(rolling_cumulative_volume):
+        # Strategy does not define volume-inclusion criteria (e.g. vaults)
+        volume_series = indicator_data.get_indicator_data_pairs_combined(rolling_cumulative_volume)
+        first_volume_df = volume_series.reset_index().groupby("pair_id").first()
+    else:
+        volume_series = None
+        first_volume_df = None
 
     def _map_volume_timestamp(row):
+        nonlocal first_volume_df
         pair_id = row.name  # Index
         try:
             return first_volume_df.loc[pair_id]["timestamp"]
@@ -130,6 +157,7 @@ def inclusion_criteria_check(
             return None
 
     def _map_volume_value(row):
+        nonlocal first_volume_df
         pair_id = row.name  # Index
         try:
             return first_volume_df.loc[pair_id]["value"]
@@ -138,6 +166,8 @@ def inclusion_criteria_check(
 
     df["TVL at inclusion"] = df.apply(_map_tvl, axis=1)
     df["TVL at end"] = df.apply(_map_tvl_end, axis=1)
-    df["Rolling volume first entry at"] = df.apply(_map_volume_timestamp, axis=1)
-    df["Rolling volume initial"] = df.apply(_map_volume_value, axis=1)
+
+    if volume_series is not None:
+        df["Rolling volume first entry at"] = df.apply(_map_volume_timestamp, axis=1)
+        df["Rolling volume initial"] = df.apply(_map_volume_value, axis=1)
     return df

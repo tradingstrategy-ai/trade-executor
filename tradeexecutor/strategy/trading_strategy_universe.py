@@ -38,7 +38,7 @@ from tradingstrategy.universe import Universe
 from tradingstrategy.utils.groupeduniverse import filter_for_pairs, NoDataAvailable
 from tradingstrategy.utils.token_extra_data import load_extra_metadata
 from tradingstrategy.utils.token_filter import add_base_quote_address_columns
-from tradingstrategy.vault import VaultMetadata
+from tradingstrategy.vault import VaultMetadata, VaultUniverse
 from tradingstrategy.alternative_data.vault import load_multiple_vaults, load_vault_price_data, convert_vault_prices_to_candles, DEFAULT_VAULT_PRICE_BUNDLE
 
 from tradeexecutor.strategy.execution_context import ExecutionMode, ExecutionContext
@@ -108,6 +108,9 @@ class Dataset:
 
     #: How much back we looked from today
     history_period: Optional[datetime.timedelta] = None
+
+    #: List of vaults we loaded
+    vault_specs: Optional[List[Tuple[ChainId, JSONHexAddress]]] = None
 
     def __repr__(self):
         return f"<Dataset pairs:{len(self.pairs)} candles:{len(self.candles)} start:{self.start_at} end:{self.end_at} live history period:{self.history_period}>"
@@ -323,6 +326,15 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
         """
         return self.data_universe.liquidity is not None
 
+    def get_vault_error(self, vault_spec: tuple) -> Optional[str]:
+        """TODO: Rewrite with check_has_vault
+        """
+        try:
+            self.check_has_vault(vault_spec)
+            return None
+        except AssertionError as e:
+            return str(e)
+
     def check_has_vault(self, vault_spec: tuple):
         """Check if we have price data loaded for a vault.
 
@@ -402,6 +414,10 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
     def has_any_lending_data(self) -> bool:
         """Does this trading universe has any lending data loaded"""
         return self.data_universe.lending_reserves is not None
+
+    def has_any_vault_data(self) -> bool:
+        """Does this trading universe has any lending data loaded"""
+        return self.data_universe.vault_specs is not None
 
     def has_lending_market_available(
         self,
@@ -1308,6 +1324,7 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
             exchanges={e for e in dataset.exchanges.exchanges.values()},
             lending_candles=dataset.lending_candles,
             forward_filled=forward_fill,
+            vault_specs=dataset.vault_specs,
         )
 
         return TradingStrategyUniverse(
@@ -2097,7 +2114,7 @@ def load_partial_data(
     candle_progress_bar_desc: str | None = None,
     lending_candle_progress_bar_desc: str | None = None,
     pair_extra_metadata=False,
-    vaults: list[tuple[ChainId, JSONHexAddress]] | None = None,
+    vaults: list[tuple[ChainId, JSONHexAddress]] | VaultUniverse | None = None,
     vault_bundled_price_data: bool | Path=False,
     round_start_end: bool = True,
     check_all_vaults_found: bool = True,
@@ -2488,7 +2505,7 @@ def load_partial_data(
         )
 
         # Include vault data for designed vaults if asked
-        if vaults:
+        if vaults is not None:
             logger.info("Including vaults: %s", vaults)
             vault_exchanges, vault_pairs_df = load_multiple_vaults(vaults, check_all_vaults_found=check_all_vaults_found)
             our_exchange_universe.add(vault_exchanges)
@@ -2551,6 +2568,7 @@ def load_partial_data(
             start_at=start_at,
             end_at=end_at,
             history_period=required_history_period,
+            vault_specs=vaults,
         )
 
 

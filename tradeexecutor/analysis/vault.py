@@ -1,6 +1,6 @@
 """Vault analysis."""
 import logging
-from typing import Callable, cast
+from typing import Callable, cast, Iterable
 
 import pandas as pd
 
@@ -9,10 +9,15 @@ from plotly.subplots import make_subplots
 import plotly.graph_objects as go
 import plotly.io as pio
 
+from IPython.display import display
+
 
 from tradeexecutor.state.identifier import TradingPairIdentifier
+from tradeexecutor.state.types import JSONHexAddress
+from tradeexecutor.strategy.execution_context import ExecutionMode
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
-
+from tradingstrategy.chain import ChainId
+from tradingstrategy.vault import VaultUniverse
 
 logger = logging.getLogger(__name__)
 
@@ -114,6 +119,7 @@ def plot_vault(
 def visualise_vaults(
     strategy_universe: TradingStrategyUniverse,
     printer: Callable=logger.warning,
+    max_count: int = 3,
 ) -> list[Figure]:
     """Visualise vaults used in the strategy universe.
 
@@ -134,6 +140,9 @@ def visualise_vaults(
         raise ValueError("No vault pairs found in strategy universe")
 
     figures = []
+
+    if max_count is not None:
+        vault_pairs = vault_pairs[:max_count]
 
     for pair in vault_pairs:
         candles = strategy_universe.data_universe.candles.get_candles_by_pair(pair.internal_id)
@@ -171,3 +180,41 @@ def visualise_vaults(
             )
         )
     return figures
+
+
+def display_vaults(
+    vaults: list[tuple[int, str]] | VaultUniverse,
+    strategy_universe: TradingStrategyUniverse,
+    execution_mode: ExecutionMode,
+    printer: Callable,
+):
+    """Dump vault diagnostics for the strategy universe in create_trading_universe()"""
+    data = []
+
+    from eth_defi.chain import get_chain_name
+
+    if isinstance(vaults, VaultUniverse):
+        vaults: Iterable[tuple[ChainId, JSONHexAddress]] = vaults.vaults.keys()
+
+    for v in vaults:
+        vault_error = strategy_universe.get_vault_error(v)
+        vault_pair = strategy_universe.get_pair_by_smart_contract(
+            v[1]
+        )
+        data.append({
+            "Chain": get_chain_name(v[0]),
+            "Vault": v[1],
+            "Name": vault_pair.get_vault_name() if vault_pair else "-",
+            "Protocol": vault_pair.get_vault_protocol() if vault_pair else "-",
+            "Denomination": vault_pair.quote.token_symbol if vault_pair else "-",
+            "Status": vault_error or "OK",
+        })
+
+    printer("Vault check list")
+    df = pd.DataFrame(data)
+    if execution_mode.is_live_trading():
+        # In live trading we can display dataframes directly
+        printer(df)
+    else:
+        # Backtesting uses HTML output
+        display(df)
