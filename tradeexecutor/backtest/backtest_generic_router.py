@@ -105,6 +105,7 @@ class EthereumBacktestPairConfigurator(PairConfigurator):
             liquidity_universe=strategy_universe.data_universe.liquidity,
             pairs=strategy_universe.data_universe.pairs,
             three_leg_resolution=three_leg_resolution,
+            ignore_routing=self.cross_chain,  # Disable price routing checks for cross-chain strategies for now
         )
 
         valuation_model = BacktestValuationModel(pricing_model)

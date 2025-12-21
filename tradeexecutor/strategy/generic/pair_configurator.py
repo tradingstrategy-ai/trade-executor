@@ -107,6 +107,15 @@ class PairConfigurator(ABC):
 
         self.data_delay_tolerance = data_delay_tolerance  # See BacktestPricingModel
 
+    @property
+    def cross_chain(self) -> bool:
+        """Are we trading cross-chain?
+
+        :return:
+            True if we are trading cross-chain
+        """
+        return self.strategy_universe.cross_chain
+
     @abstractmethod
     def create_config(self, routing_id: ProtocolRoutingId, three_leg_resolution=True, pairs=None) -> ProtocolRoutingConfig:
         """Create a protocol configuraiton

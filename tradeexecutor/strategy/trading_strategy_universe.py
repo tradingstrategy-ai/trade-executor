@@ -281,7 +281,16 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
             case False:
                 ff = f"{separator}nff"
 
-        key = f"{chain_str}{separator}{time_bucket_str}{separator}{pair_str}{separator}{time_str}{ff}"
+        # Add forward fill flag to the universe cache file name
+        match self.cross_chain:
+            case None:
+                cross_chain = ""
+            case True:
+                cross_chain = f"{separator}cross"
+            case False:
+                cross_chain = f"{separator}ncross"
+
+        key = f"{chain_str}{separator}{time_bucket_str}{separator}{pair_str}{separator}{time_str}{ff}{cross_chain}"
         assert len(key) < 256, f"Generated very long fname cache key, check the generation logic: {key}"
         return key
 
