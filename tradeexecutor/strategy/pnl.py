@@ -130,7 +130,7 @@ def calculate_pnl_generic(
     """Handle different position types generically."""
 
     match position.pair.kind:
-        case TradingPairKind.spot_market_hold | TradingPairKind.vault:
+        case TradingPairKind.spot_market_hold | TradingPairKind.vault | TradingPairKind.freqtrade:
             return calculate_pnl(
                 position=position,
                 end_at=end_at,

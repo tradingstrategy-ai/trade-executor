@@ -372,6 +372,11 @@ class TradingPairKind(enum.Enum):
     #: Not a real trading pair, but expresses cash place holder in weighting calculations.
     cash = "cash"
 
+    #: Freqtrade bot managed position.
+    #:
+    #: Capital allocated to an external Freqtrade bot instance.
+    freqtrade = "freqtrade"
+
     def is_interest_accruing(self) -> bool:
         """Do base or quote or both gain interest during when the position is open."""
         return self in (TradingPairKind.lending_protocol_short, TradingPairKind.lending_protocol_long, TradingPairKind.credit_supply)
@@ -404,6 +409,10 @@ class TradingPairKind(enum.Enum):
 
     def is_cash(self):
         return self == TradingPairKind.cash
+
+    def is_freqtrade(self):
+        """This is a Freqtrade managed position."""
+        return self == TradingPairKind.freqtrade
 
 
 _TRANSIENT_OTHER_DATA_KEYS = {
@@ -920,6 +929,9 @@ class TradingPairIdentifier:
 
     def is_vault(self) -> bool:
         return self.kind.is_vault()
+
+    def is_freqtrade(self) -> bool:
+        return self.kind.is_freqtrade()
 
     def is_credit_supply(self) -> bool:
         return self.kind.is_credit_supply()
