@@ -277,7 +277,7 @@ def compare_strategy_backtest_to_multiple_assets(
     asset_count=3,
     verbose=True,
     interesting_assets=DEFAULT_BENCHMARK_ASSETS,
-    clip_to_trades=True,
+    clip_to_trades=False,
 ) -> pd.DataFrame:
     """Backtest comparison of strategy against buy and hold assets.
 

@@ -19,10 +19,11 @@ import warnings
 
 import numpy as np
 import pandas as pd
-
 from tradeexecutor.state.identifier import TradingPairIdentifier
-from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse, translate_trading_pair
-from tradeexecutor.visual.equity_curve import calculate_returns, resample_returns
+from tradeexecutor.strategy.trading_strategy_universe import (
+    TradingStrategyUniverse, translate_trading_pair)
+from tradeexecutor.visual.equity_curve import (calculate_returns,
+                                               resample_returns)
 from tradeexecutor.visual.qs_wrapper import import_quantstats_wrapped
 from tradingstrategy.types import TokenSymbol
 
@@ -95,10 +96,17 @@ def calculate_advanced_metrics(
         You can directly display this in your notebook,
         or extract individual metrics.
     """
+
+    # Run-in the monkey patch
+
     #  DeprecationWarning: Importing display from IPython.core.display is deprecated since IPython 7.14, please import from IPython display
     with warnings.catch_warnings():
         warnings.simplefilter(action='ignore', category=FutureWarning)  # yfinance: The default dtype for empty Series will be 'object' instead of 'float64' in a future version. Specify a dtype explicitly to silence this warning.
         warnings.simplefilter(action='ignore', category=RuntimeWarning)   # Divided by Nan
+
+        # Run-in the monkey patch
+        import tradeexecutor.monkeypatch.quantstats
+
         qs = import_quantstats_wrapped()
         metrics = qs.reports.metrics
         stats = qs.stats
@@ -251,7 +259,8 @@ def visualise_advanced_metrics(
             periods_per_year=periods_per_year,
             mode=mode.value,
             internal=True,
-            display=False
+            display=False,
+
         )
 
         # Set the label
