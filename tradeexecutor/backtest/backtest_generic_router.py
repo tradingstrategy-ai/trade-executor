@@ -2,13 +2,17 @@
 from typing import Set
 
 from tradeexecutor.backtest.backtest_pricing import BacktestPricing
-from tradeexecutor.backtest.backtest_routing import BacktestRoutingIgnoredModel, BacktestRoutingModel
+from tradeexecutor.backtest.backtest_routing import (
+    BacktestRoutingIgnoredModel, BacktestRoutingModel)
 from tradeexecutor.backtest.backtest_valuation import BacktestValuationModel
-from tradeexecutor.ethereum.routing_data import create_compatible_routing, get_reserve_currency_by_asset
+from tradeexecutor.ethereum.routing_data import (create_compatible_routing,
+                                                 get_reserve_currency_by_asset)
 from tradeexecutor.state.identifier import TradingPairIdentifier
 from tradeexecutor.strategy.default_routing_options import TradeRouting
-from tradeexecutor.strategy.generic.pair_configurator import PairConfigurator, ProtocolRoutingId, ProtocolRoutingConfig
-from tradeexecutor.strategy.generic.default_protocols import default_match_router, default_supported_routers
+from tradeexecutor.strategy.generic.default_protocols import (
+    default_match_router, default_supported_routers)
+from tradeexecutor.strategy.generic.pair_configurator import (
+    PairConfigurator, ProtocolRoutingConfig, ProtocolRoutingId)
 from tradingstrategy.chain import ChainId
 from tradingstrategy.pair import PandasPairUniverse
 
@@ -105,7 +109,7 @@ class EthereumBacktestPairConfigurator(PairConfigurator):
             liquidity_universe=strategy_universe.data_universe.liquidity,
             pairs=strategy_universe.data_universe.pairs,
             three_leg_resolution=three_leg_resolution,
-            ignore_routing=self.cross_chain,  # Disable price routing checks for cross-chain strategies for now
+            ignore_routing=self.ignore_routing,  # Disable price routing checks for cross-chain strategies for now
         )
 
         valuation_model = BacktestValuationModel(pricing_model)

@@ -1,28 +1,29 @@
-import logging
 import datetime
+import logging
 import math
 import warnings
-from decimal import Decimal, ROUND_DOWN
-from typing import Optional, Literal
+from decimal import ROUND_DOWN, Decimal
+from typing import Literal, Optional
 
 import pandas as pd
-
 from tradeexecutor.backtest.backtest_execution import BacktestExecution
 from tradeexecutor.backtest.backtest_routing import BacktestRoutingModel
-from tradeexecutor.ethereum.uniswap_v2.uniswap_v2_routing import UniswapV2Routing
+from tradeexecutor.ethereum.uniswap_v2.uniswap_v2_routing import \
+    UniswapV2Routing
 from tradeexecutor.state.identifier import TradingPairIdentifier
+from tradeexecutor.state.types import (AnyTimestamp, Percent, USDollarAmount,
+                                       USDollarPrice)
 from tradeexecutor.strategy.execution_model import ExecutionModel
-
-from tradeexecutor.state.types import USDollarPrice, Percent, USDollarAmount, AnyTimestamp
 from tradeexecutor.strategy.generic.generic_router import GenericRouting
 from tradeexecutor.strategy.pricing_model import PricingModel
 from tradeexecutor.strategy.trade_pricing import TradePricing
-from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse, translate_trading_pair
+from tradeexecutor.strategy.trading_strategy_universe import (
+    TradingStrategyUniverse, translate_trading_pair)
 from tradingstrategy.candle import GroupedCandleUniverse
-from tradingstrategy.liquidity import GroupedLiquidityUniverse, LiquidityDataUnavailable
-from tradingstrategy.pair import PandasPairUniverse, PairNotFoundError
+from tradingstrategy.liquidity import (GroupedLiquidityUniverse,
+                                       LiquidityDataUnavailable)
+from tradingstrategy.pair import PairNotFoundError, PandasPairUniverse
 from tradingstrategy.timebucket import TimeBucket
-
 
 logger = logging.getLogger(__name__)
 
@@ -120,6 +121,7 @@ class BacktestPricing(PricingModel):
             Ignore three-leg routing and assume three-leg swap fee is zero.
 
             Currently needed for cross-chain backtesting.
+
         """
 
         # TODO: Remove later - now to support some old code111

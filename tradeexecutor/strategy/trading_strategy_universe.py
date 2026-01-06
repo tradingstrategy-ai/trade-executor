@@ -216,6 +216,9 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
     #: Define primary chain where the vault is created.
     primary_chain: ChainId = None
 
+    #: Allow backtest to skip routing checks to trade pairs for which we have not configured routes yet.
+    ignore_routing: bool = False
+
     def __repr__(self):
         pair_count = self.data_universe.pairs.get_count()
         if pair_count <= 3:

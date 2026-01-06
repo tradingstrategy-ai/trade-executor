@@ -19,5 +19,6 @@ def positions_at_end(
         })
 
     df = pd.DataFrame(data)
-    df = df.set_index("position_id", drop=True)
+    if len(df) > 0:
+        df = df.set_index("position_id", drop=True)
     return df

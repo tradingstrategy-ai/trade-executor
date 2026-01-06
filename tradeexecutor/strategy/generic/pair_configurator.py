@@ -116,6 +116,15 @@ class PairConfigurator(ABC):
         """
         return self.strategy_universe.cross_chain
 
+    @property
+    def ignore_routing(self) -> bool:
+        """Are we ignoring routing
+
+        :return:
+            True if ignore routing flag is set or we are cross-chain
+        """
+        return self.strategy_universe.ignore_routing or self.cross_chain
+
     @abstractmethod
     def create_config(self, routing_id: ProtocolRoutingId, three_leg_resolution=True, pairs=None) -> ProtocolRoutingConfig:
         """Create a protocol configuraiton
