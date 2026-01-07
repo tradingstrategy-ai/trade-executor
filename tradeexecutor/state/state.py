@@ -252,7 +252,9 @@ class State:
         - See also :py:meth:`get_trading_time_range`
         """
         if self.backtest_data and self.backtest_data.start_at:
-            return self.backtest_data.start_at, self.last_cycle_at
+            # Use the clean backtest end_at if available, otherwise fallback to last_cycle_at
+            end_at = self.backtest_data.end_at or self.last_cycle_at
+            return self.backtest_data.start_at, end_at
         else:
             return self.created_at, self.last_updated_at
 

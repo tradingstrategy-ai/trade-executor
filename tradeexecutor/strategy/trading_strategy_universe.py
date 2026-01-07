@@ -238,9 +238,17 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
             assert isinstance(self.backtest_stop_loss_time_bucket, TimeBucket)
 
     @property
-    def cross_chain(self) -> bool:
-        """Is this a cross-chain trading universe."""
-        return self.primary_chain is not None
+    def cross_chain(self) -> bool | None:
+        """Is this a cross-chain trading universe.
+
+        :return:
+            - None if `primary_chain` is not set (legacy/default behaviour)
+            - True if cross-chain is enabled
+            - False if explicitly set to not cross-chain (reserved for future use)
+        """
+        if self.primary_chain is None:
+            return None
+        return True
 
     def get_cache_key(self) -> UniverseCacheKey:
         """Get semi-human-readable filename id for this universe.

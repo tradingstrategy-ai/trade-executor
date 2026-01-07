@@ -267,12 +267,9 @@ def test_perform_grid_search_single_thread(
     # Obtained: 0.011546587485546267
     # Expected: 0.011682534679563261 ± 1.2e-08
 
-    # TODO: No idea why this is happening.
-    # Leave for later to to fix the underlying libraries.
-    if version.parse(pd.__version__) >= version.parse("2.0"):
-        assert row["CAGR"] == pytest.approx(0.046278164019362356)
-    else:
-        assert row["CAGR"] == pytest.approx(0.06771955893113946)
+    # CAGR value changed after applying quantstats monkeypatch that uses
+    # periods=365 (crypto calendar days) instead of periods=252 (trading days)
+    assert row["CAGR"] == pytest.approx(0.06771955893113946)
     assert row["Positions"] == 2
 
     styler = render_grid_search_result_table(table)
