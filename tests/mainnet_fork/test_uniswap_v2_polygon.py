@@ -129,8 +129,8 @@ def sand_matic_trading_pair(
 @pytest.fixture()
 def hot_wallet(
     web3: Web3,
-        usdc_token: Contract,
-        large_usdc_holder: HexAddress
+    usdc_token: Contract,
+    large_usdc_holder: HexAddress
 ) -> HotWallet:
     """Our trading Ethereum account.
 
@@ -139,11 +139,11 @@ def hot_wallet(
     account = Account.create()
     matic_amount = 15
     web3.eth.send_transaction(
-        {"from": large_usdc_holder, "to": account.address, "value": matic_amount * 10**18}
+        {"from": web3.eth.accounts[0], "to": account.address, "value": matic_amount * 10**18}
     )
 
     # Let's hope Binance hot wallet has 200k
-    tx_hash = usdc_token.functions.transfer(account.address, 200_000 * 10**6).transact(
+    tx_hash = usdc_token.functions.transfer(account.address, 50_000 * 10**6).transact(
         {"from": large_usdc_holder}
     )
     wait_transactions_to_complete(web3, [tx_hash])
@@ -314,7 +314,8 @@ def sync_model(web3, hot_wallet) -> SyncModel:
 
 
 # Flaky because of shitty nodes
-@flaky.flaky()
+# @flaky.flaky()
+@pytest.mark.skip(reason="No more balance on the forked USDC.e account and Polygon is troublesome")
 def test_simple_routing_three_leg_live(
     web3,
     strategy_universe: TradingStrategyUniverse,
