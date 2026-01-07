@@ -90,7 +90,9 @@ def matic_usdc_trading_pair_address() -> HexAddress:
 
 @pytest.fixture()
 def hot_wallet(
-    web3: Web3, usdc_token: Contract, large_usdc_holder: HexAddress
+    web3: Web3,
+    usdc_token: Contract,
+    large_usdc_holder: HexAddress,
 ) -> HotWallet:
     """Our trading Ethereum account.
 
