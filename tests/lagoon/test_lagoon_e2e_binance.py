@@ -10,7 +10,7 @@ from typer.main import get_command
 from web3 import Web3
 
 from eth_defi.hotwallet import HotWallet
-from eth_defi.lagoon.testing import fund_lagoon_vault
+from eth_defi.erc_4626.vault_protocol.lagoon.testing import fund_lagoon_vault
 from eth_defi.provider.anvil import fork_network_anvil, AnvilLaunch
 from eth_defi.provider.multi_provider import create_multi_provider_web3
 from eth_defi.token import USDT_NATIVE_TOKEN, fetch_erc20_details, TokenDetails

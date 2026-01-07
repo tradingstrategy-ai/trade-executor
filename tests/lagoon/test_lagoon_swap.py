@@ -8,8 +8,8 @@ import pytest
 from web3 import Web3
 
 from eth_defi.hotwallet import HotWallet
-from eth_defi.lagoon.deployment import LagoonAutomatedDeployment
-from eth_defi.lagoon.vault import LagoonVault
+from eth_defi.erc_4626.vault_protocol.lagoon.deployment import LagoonAutomatedDeployment
+from eth_defi.erc_4626.vault_protocol.lagoon.vault import LagoonVault
 from eth_defi.trace import assert_transaction_success_with_explanation
 
 from tradeexecutor.ethereum.lagoon.execution import LagoonExecution

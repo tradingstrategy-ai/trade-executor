@@ -10,7 +10,7 @@ from web3.contract.contract import Contract, ContractFunction
 from eth_defi.abi import present_solidity_args
 from eth_defi.gas import GasPriceSuggestion, apply_gas
 from eth_defi.hotwallet import HotWallet
-from eth_defi.lagoon.vault import LagoonVault
+from eth_defi.erc_4626.vault_protocol.lagoon.vault import LagoonVault
 
 from eth_defi.tx import AssetDelta
 from eth_defi.velvet import VelvetVault

@@ -11,8 +11,8 @@ from eth_typing import HexAddress, BlockIdentifier
 
 from eth_defi.confirmation import wait_and_broadcast_multiple_nodes_mev_blocker
 from eth_defi.hotwallet import HotWallet
-from eth_defi.lagoon.analysis import analyse_vault_flow_in_settlement
-from eth_defi.lagoon.vault import LagoonVault, DEFAULT_LAGOON_POST_VALUATION_GAS, DEFAULT_LAGOON_SETTLE_GAS
+from eth_defi.erc_4626.vault_protocol.lagoon.analysis import analyse_vault_flow_in_settlement
+from eth_defi.erc_4626.vault_protocol.lagoon.vault import LagoonVault, DEFAULT_LAGOON_POST_VALUATION_GAS, DEFAULT_LAGOON_SETTLE_GAS
 from eth_defi.provider.anvil import is_anvil
 from eth_defi.provider.broken_provider import get_almost_latest_block_number
 from eth_defi.provider.mev_blocker import MEVBlockerProvider
