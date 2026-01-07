@@ -6,27 +6,26 @@ from decimal import Decimal
 from pathlib import Path
 from unittest import mock
 
-import pytest
-
-from eth_account import Account
-from eth_typing import HexAddress
 import flaky
-from hexbytes import HexBytes
-from web3 import Web3, HTTPProvider
-
-from eth_defi.erc_4626.vault_protocol.lagoon.vault import LagoonVault
-from eth_defi.provider.anvil import AnvilLaunch, launch_anvil
+import pytest
+from eth_account import Account
 from eth_defi.chain import install_chain_middleware
+from eth_defi.erc_4626.vault_protocol.lagoon.vault import LagoonVault
 from eth_defi.hotwallet import HotWallet
-from eth_defi.token import TokenDetails, fetch_erc20_details
+from eth_defi.provider.anvil import AnvilLaunch, launch_anvil
+from eth_defi.token import USDC_WHALE, TokenDetails, fetch_erc20_details
 from eth_defi.trace import assert_transaction_success_with_explanation
 from eth_defi.vault.base import VaultSpec
-
-from tradeexecutor.cli.main import app
-from tradeexecutor.monkeypatch.web3 import construct_sign_and_send_raw_middleware
-from tradeexecutor.state.state import State
+from eth_typing import HexAddress
+from hexbytes import HexBytes
 from tradingstrategy.chain import ChainId
 from tradingstrategy.client import Client
+from web3 import HTTPProvider, Web3
+
+from tradeexecutor.cli.main import app
+from tradeexecutor.monkeypatch.web3 import \
+    construct_sign_and_send_raw_middleware
+from tradeexecutor.state.state import State
 
 pytestmark = pytest.mark.skipif(not os.environ.get("JSON_RPC_BASE") or not os.environ.get("TRADING_STRATEGY_API_KEY"), reason="Set JSON_RPC_BASE and TRADING_STRATEGY_API_KEY environment variables to run this test")
 
@@ -35,7 +34,7 @@ pytestmark = pytest.mark.skipif(not os.environ.get("JSON_RPC_BASE") or not os.en
 def usdc_whale() -> HexAddress:
     """A random account picked from Polygon that holds a lot of USDC."""
     # https://basescan.org/token/0x833589fcd6edb6e08f4c7c32d4f71b54bda02913#balances
-    return HexAddress("0x0B0A5886664376F59C351ba3f598C8A8B4D0A6f3")
+    return USDC_WHALE[8453]
 
 
 @pytest.fixture()
