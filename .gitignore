@@ -71,3 +71,6 @@ sample_dataset
 
 # Modified by a broken tests
 redeem-dust.json
+
+# Test environment alias for Claude
+.local-test.env
