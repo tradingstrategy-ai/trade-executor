@@ -26,6 +26,31 @@ When running a Python script use `poetry run python` command instead of plain `p
 poetry run python scripts/logos/post-process-logo.py
 ```
 
+## Running tests
+
+If we have not run tests before make sure the user has created a gitignored file `.local-test.env` in the repository root. This will use `source` shell command to include the actual test secrets which lie outside the repository structure. Note: this file does not contain actual environment variables, just a `source` command to get them from elsewhere. **Never edit this file** and always ask the user to prepare the file for Claude Code.
+
+To run tests you need to use the installed Poetry environment, with given environment secrets file.
+
+To run tests use the `pytest` wrapper command:
+
+```shell
+source .local-test.env && poetry pytest run {test case name or pattern here}
+```
+
+Always prefix pytest command with relevant source command,
+otherwise the test cannot find environment variables.
+
+- Avoid running the whole test suite as it takes several minutes
+- Only run specific test cases you need
+- If you need to run multiple tests, run them one by one to deal with timeout issues
+
+Timeouts
+
+- When running a single pytest or any test commands, always use an extended timeout
+  by specifying `timeout: 180000` (3 minutes) in the bash tool parameters.
+- When running multiple tests, specify `timeout: 360000` (6 minutes) in the bash tool parameters.
+
 ## Formatting code
 
 Don't format code.

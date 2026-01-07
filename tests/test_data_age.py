@@ -40,7 +40,7 @@ class DataAgeTestUniverseModel(TradingStrategyUniverseModel):
 
 
 # @pytest.mark.slow_test_group
-@pytest.mark.skipped(reason="Live integration - need to rewrite this test")
+@pytest.mark.skip(reason="Live integration - need to rewrite this test")
 def test_data_fresh(persistent_test_client):
     """Fresh data passes our data check."""
     # d1 data is used by other tests and cached
@@ -51,7 +51,7 @@ def test_data_fresh(persistent_test_client):
     universe_model.check_data_age(ts, universe, best_before_duration)
 
 
-@pytest.mark.skipped(reason="Live integration - need to rewrite this test")
+@pytest.mark.skip(reason="Live integration - need to rewrite this test")
 def test_data_aged(persistent_test_client):
     """Aged data raises an exception."""
     universe_model = DataAgeTestUniverseModel(persistent_test_client, timed_task)
