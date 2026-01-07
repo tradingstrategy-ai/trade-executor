@@ -6,15 +6,14 @@ import datetime
 import warnings
 from typing import List
 
-import pandas as pd
 import numpy as np
+import pandas as pd
 from matplotlib.figure import Figure
-
-from tradeexecutor.analysis.curve import CurveType, DEFAULT_BENCHMARK_COLOURS
+from tradeexecutor.analysis.curve import DEFAULT_BENCHMARK_COLOURS, CurveType
 from tradeexecutor.state.portfolio import Portfolio
-from tradeexecutor.state.state import State
-from tradeexecutor.state.statistics import Statistics, PortfolioStatistics
 from tradeexecutor.state.position import TradingPosition
+from tradeexecutor.state.state import State
+from tradeexecutor.state.statistics import PortfolioStatistics, Statistics
 from tradeexecutor.visual.qs_wrapper import import_quantstats_wrapped
 
 

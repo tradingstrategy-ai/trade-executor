@@ -12,7 +12,7 @@ from eth_defi.abi import get_deployed_contract
 from eth_defi.safe.deployment import fetch_safe_deployment, disable_safe_module
 from eth_defi.safe.simulate import simulate_safe_execution_anvil
 from eth_defi.trace import assert_transaction_success_with_explanation
-from tradeexecutor.cli.commands.app import app
+from tradeexecutor.cli.main import app
 from tradeexecutor.cli.log import setup_pytest_logging
 from tradeexecutor.state.state import State
 

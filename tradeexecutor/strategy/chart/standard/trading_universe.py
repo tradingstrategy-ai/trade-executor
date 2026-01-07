@@ -4,6 +4,8 @@ import pandas as pd
 from plotly.graph_objects import Figure
 import plotly.express as px
 
+from tradingstrategy.chain import ChainId
+
 from tradeexecutor.strategy.chart.definition import ChartInput
 from tradeexecutor.strategy.pandas_trader.indicator import IndicatorNotFound
 from tradingstrategy.liquidity import LiquidityDataUnavailable
@@ -70,6 +72,7 @@ def inclusion_criteria_check(
     input: ChartInput,
     inclusion_criteria="inclusion_criteria",
     rolling_cumulative_volume="rolling_cumulative_volume",
+    show_chain: bool = False,
 ) -> pd.DataFrame:
     """Create a table showing when certain pairs were included.
 
@@ -97,7 +100,10 @@ def inclusion_criteria_check(
 
     def _get_ticker(pair_id):
         try:
-            return strategy_universe.get_pair_by_id(pair_id).get_ticker()
+            pair = strategy_universe.get_pair_by_id(pair_id)
+            if pair.is_vault():
+                return pair.get_vault_name()
+            return pair.get_ticker()
         except Exception:
             return "<pair metadata missing>"
 
@@ -107,8 +113,20 @@ def inclusion_criteria_check(
         except Exception:
             return "<DEX metadata missing>"
 
+    def _get_chain(pair_id):
+        try:
+            chain_id = strategy_universe.get_pair_by_id(pair_id).chain_id
+            return ChainId(chain_id).name
+        except Exception as e:
+            return str(e)
+
+
     df["Ticker"] = first_appearance_series.index.map(_get_ticker)
-    df["DEX"] = first_appearance_series.index.map(_get_dex)
+
+    if show_chain:
+        df["Chain"] = first_appearance_series.index.map(_get_chain)
+
+    df["Venue"] = first_appearance_series.index.map(_get_dex)
     df = df.sort_values("Included at")
 
     def _map_tvl(row):

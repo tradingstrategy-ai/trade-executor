@@ -16,7 +16,7 @@ from eth_defi.gas import GasPriceMethod
 from eth_defi.hotwallet import HotWallet
 from web3 import Web3
 
-from eth_defi.lagoon.vault import LagoonVault
+from eth_defi.erc_4626.vault_protocol.lagoon.vault import LagoonVault
 from eth_defi.vault.base import VaultSpec
 from eth_defi.velvet import VelvetVault
 from tradeexecutor.ethereum.lagoon.execution import LagoonExecution

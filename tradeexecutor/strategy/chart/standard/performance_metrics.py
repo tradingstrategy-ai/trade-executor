@@ -1,9 +1,10 @@
 """Performance metrics tables."""
 
 from plotly.graph_objects import Figure
-
+from tradeexecutor.analysis.multi_asset_benchmark import (
+    DEFAULT_BENCHMARK_ASSETS, compare_strategy_backtest_to_multiple_assets,
+    get_benchmark_data)
 from tradeexecutor.strategy.chart.definition import ChartInput
-from tradeexecutor.analysis.multi_asset_benchmark import get_benchmark_data, DEFAULT_BENCHMARK_ASSETS, compare_strategy_backtest_to_multiple_assets
 from tradeexecutor.visual.benchmark import visualise_equity_curve_benchmark
 
 

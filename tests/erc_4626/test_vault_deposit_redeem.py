@@ -7,7 +7,7 @@ from decimal import Decimal
 import pytest
 
 from eth_defi.erc_4626.core import ERC4626Feature
-from eth_defi.ipor.vault import IPORVault
+from eth_defi.erc_4626.vault_protocol.ipor.vault import IPORVault
 from tradeexecutor.ethereum.hot_wallet_sync_model import HotWalletSyncModel
 
 from tradeexecutor.ethereum.vault.vault_routing import VaultRouting

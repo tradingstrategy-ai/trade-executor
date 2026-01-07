@@ -5,19 +5,19 @@ import warnings
 
 import numpy as np
 import pandas as pd
-
-from tradeexecutor.analysis.advanced_metrics import AdvancedMetricsMode, calculate_advanced_metrics
+from tradeexecutor.analysis.advanced_metrics import (
+    AdvancedMetricsMode, calculate_advanced_metrics)
+from tradeexecutor.analysis.curve import DEFAULT_BENCHMARK_COLOURS, CurveType
+from tradeexecutor.state.identifier import TradingPairIdentifier
 from tradeexecutor.state.state import State
 from tradeexecutor.state.types import USDollarAmount
-from tradeexecutor.analysis.curve import DEFAULT_BENCHMARK_COLOURS, CurveType
-from tradeexecutor.visual.equity_curve import calculate_equity_curve, calculate_returns, resample_returns
-
-from tradeexecutor.state.identifier import TradingPairIdentifier
-from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse, translate_trading_pair
+from tradeexecutor.strategy.trading_strategy_universe import (
+    TradingStrategyUniverse, translate_trading_pair)
+from tradeexecutor.visual.equity_curve import (calculate_equity_curve,
+                                               calculate_returns,
+                                               resample_returns)
 from tradingstrategy.timebucket import TimeBucket
-
 from tradingstrategy.types import TokenSymbol
-
 
 #: What is the priority of buy-and-hold assets to shown in the benchmarks
 DEFAULT_BENCHMARK_ASSETS = (
@@ -277,6 +277,7 @@ def compare_strategy_backtest_to_multiple_assets(
     asset_count=3,
     verbose=True,
     interesting_assets=DEFAULT_BENCHMARK_ASSETS,
+    clip_to_trades=False,
 ) -> pd.DataFrame:
     """Backtest comparison of strategy against buy and hold assets.
 
@@ -285,6 +286,9 @@ def compare_strategy_backtest_to_multiple_assets(
 
     :param state:
         Needed to extract the trust decidable backtesting range
+
+    :param clip_to_trades:
+        Remove any periods of backtesting at start and end when trades were not made
 
     :return:
         DataFrame with QuantStats results.
@@ -304,7 +308,15 @@ def compare_strategy_backtest_to_multiple_assets(
 
     daily_returns = resample_returns(returns, "D")
 
-    if state is not None:
+    if clip_to_trades:
+        all_trades = list(state.portfolio.get_all_trades())
+        if len(all_trades) >= 1:
+            first_trade = all_trades[0]
+            last_trade = all_trades[-1]
+            daily_returns = daily_returns.loc[first_trade.executed_at : last_trade.executed_at]
+            start_at = daily_returns.index[0]
+            end_at = daily_returns.index[-1]
+    elif state is not None:
         start_at, end_at = state.get_trading_time_range()
     else:
         start_at = end_at = None

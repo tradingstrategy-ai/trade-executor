@@ -4,40 +4,36 @@ The whole application date can be dumped and loaded as JSON.
 
 Any datetime must be naive, without timezone, and is assumed to be UTC.
 """
-import json
-from dataclasses import dataclass, field
 import datetime
+import json
 import logging
+from dataclasses import dataclass, field
 from decimal import Decimal
 from pathlib import Path
-from typing import List, Callable, Tuple, Set, Optional
+from typing import Callable, List, Optional, Set, Tuple
 
 import pandas as pd
 from dataclasses_json import dataclass_json
 from dataclasses_json.core import _ExtendedEncoder
+from tradeexecutor.strategy.lending_protocol_leverage import (
+    create_credit_supply_loan, create_short_loan, update_credit_supply_loan,
+    update_short_loan)
+from tradeexecutor.strategy.trade_pricing import TradePricing
+from tradeexecutor.utils.summarydataframe import as_duration, format_value
 
+from ..strategy.cycle import CycleDuration
+from .identifier import (AssetFriendlyId, AssetIdentifier,
+                         TradingPairIdentifier, TradingPairKind)
 from .other_data import OtherData
-from .sync import Sync
-from .identifier import AssetIdentifier, TradingPairIdentifier, TradingPairKind, AssetFriendlyId
 from .portfolio import Portfolio
 from .position import TradingPosition
 from .reserve import ReservePosition
 from .statistics import Statistics
-from .trade import TradeExecution, TradeStatus, TradeType, TradeFlag
+from .sync import Sync
+from .trade import TradeExecution, TradeFlag, TradeStatus, TradeType
 from .types import USDollarAmount, USDollarPrice
 from .uptime import Uptime
 from .visualisation import Visualisation
-
-from tradeexecutor.utils.summarydataframe import as_duration, format_value
-from tradeexecutor.strategy.trade_pricing import TradePricing
-from ..strategy.cycle import CycleDuration
-
-from tradeexecutor.strategy.lending_protocol_leverage import (
-    create_short_loan,
-    update_short_loan,
-    create_credit_supply_loan,
-    update_credit_supply_loan,
-)
 
 logger = logging.getLogger(__name__)
 
@@ -151,6 +147,12 @@ class State:
     #:
     cycle: int = 1
 
+    #: When the last strategy cycle was run.
+    last_cycle_at: Optional[datetime.datetime] = None
+
+    #: When the last strategy had open positions last time
+    last_open_positions_cycle_at: Optional[datetime.datetime] = None
+
     #: The name of this strategy.
     #: Can be unset.
     #: Set when the state is created.
@@ -250,7 +252,9 @@ class State:
         - See also :py:meth:`get_trading_time_range`
         """
         if self.backtest_data and self.backtest_data.start_at:
-            return self.backtest_data.start_at, self.backtest_data.end_at
+            # Use the clean backtest end_at if available, otherwise fallback to last_cycle_at
+            end_at = self.backtest_data.end_at or self.last_cycle_at
+            return self.backtest_data.start_at, end_at
         else:
             return self.created_at, self.last_updated_at
 
@@ -267,9 +271,15 @@ class State:
 
         # We can do this backtest period normalisation only if mark_ready() has been called
         if self.backtest_data and self.backtest_data.ready_at:
-            return self.backtest_data.ready_at, end_at
+            if self.last_open_positions_cycle_at:
+                return self.backtest_data.ready_at, self.last_open_positions_cycle_at
+            else:
+                return self.backtest_data.ready_at, self.last_cycle_at
 
-        return start_at, end_at
+        if self.last_open_positions_cycle_at:
+            return start_at, self.last_open_positions_cycle_at
+        else:
+            return start_at, end_at
 
     def get_strategy_duration(self) -> datetime.timedelta | None:
         """Get the age of the strategy execution. If backtest, return backtest range, if live, return created - last updated
@@ -1097,10 +1107,10 @@ class State:
         """
 
         # TODO: Avoid circular imports, refactor modules
-        from tradeexecutor.state.validator import validate_nested_state_dict
-
         # Fix timedelta handling
-        from tradeexecutor.monkeypatch.dataclasses_json import patch_dataclasses_json
+        from tradeexecutor.monkeypatch.dataclasses_json import \
+            patch_dataclasses_json
+        from tradeexecutor.state.validator import validate_nested_state_dict
 
         patch_dataclasses_json()
 
@@ -1175,7 +1185,8 @@ class State:
         assert isinstance(text, str)
 
         # Run in any monkey-patches we need for JSON decoding
-        from tradeexecutor.monkeypatch.dataclasses_json import patch_dataclasses_json
+        from tradeexecutor.monkeypatch.dataclasses_json import \
+            patch_dataclasses_json
 
         patch_dataclasses_json()
         return State.from_json(text)

@@ -1064,6 +1064,10 @@ class ExecutionLoop:
             ts = next_tick + datetime.timedelta(minutes=random.randint(0, 4))
 
             cycle += 1
+            state.cycle = cycle
+            state.last_cycle_at = ts
+            if len(state.portfolio.open_positions):
+                state.last_open_positions_cycle_at = ts
 
         if progress_bar is not None:
             progress_bar.close()
@@ -1313,6 +1317,9 @@ class ExecutionLoop:
                 # and advance to the next cycle
                 cycle += 1
                 state.cycle = cycle
+                state.last_cycle_at = strategy_cycle_timestamp
+                if len(state.portfolio.open_positions):
+                    state.last_open_positions_cycle_at = strategy_cycle_timestamp
 
             except Exception as e:
                 die(e)

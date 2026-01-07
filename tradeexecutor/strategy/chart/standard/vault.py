@@ -2,13 +2,12 @@
 import warnings
 
 import pandas as pd
-
+from plotly.graph_objects import Figure
 from tradeexecutor.analysis.credit import display_vault_position_table
 from tradeexecutor.analysis.vault import visualise_vaults
 from tradeexecutor.strategy.chart.definition import ChartInput
-from plotly.graph_objects import Figure
-
-from tradeexecutor.visual.position import visualise_position, calculate_position_timeline
+from tradeexecutor.visual.position import (calculate_position_timeline,
+                                           visualise_position)
 
 
 def all_vaults_share_price_and_tvl(
@@ -35,7 +34,7 @@ def vault_position_timeline(
     cut_off_date: pd.Timestamp = None,
     height=2000,
     width=1200,
-) -> tuple[Figure, pd.DataFrame]:
+) -> tuple[Figure | None, pd.DataFrame | None]:
     """How a single vault position evolved over time.
 
     - Takes vault pair as an input
@@ -57,6 +56,9 @@ def vault_position_timeline(
         if p.pair == pair:
             position_id = p.position_id
             break
+
+    if position_id is None:
+        return None, None
 
     assert position_id is not None, f"Position for pair {pair} not found in portfolio."
 

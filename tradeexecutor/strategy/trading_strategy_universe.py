@@ -210,6 +210,15 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
     #: Misc. bag of data, used in testing and so on
     other_data: dict = field(default_factory=dict)
 
+    #: Is this a cross-chain trading universe
+    #:
+    #: Needs to disable checks and shortcut soem trade routing.
+    #: Define primary chain where the vault is created.
+    primary_chain: ChainId = None
+
+    #: Allow backtest to skip routing checks to trade pairs for which we have not configured routes yet.
+    ignore_routing: bool = False
+
     def __repr__(self):
         pair_count = self.data_universe.pairs.get_count()
         if pair_count <= 3:
@@ -227,6 +236,19 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
         if self.backtest_stop_loss_candles is not None:
             assert isinstance(self.backtest_stop_loss_candles, GroupedCandleUniverse), f"Expected GroupedCandleUniverse, got {self.backtest_stop_loss_candles.__class__}"
             assert isinstance(self.backtest_stop_loss_time_bucket, TimeBucket)
+
+    @property
+    def cross_chain(self) -> bool | None:
+        """Is this a cross-chain trading universe.
+
+        :return:
+            - None if `primary_chain` is not set (legacy/default behaviour)
+            - True if cross-chain is enabled
+            - False if explicitly set to not cross-chain (reserved for future use)
+        """
+        if self.primary_chain is None:
+            return None
+        return True
 
     def get_cache_key(self) -> UniverseCacheKey:
         """Get semi-human-readable filename id for this universe.
@@ -270,7 +292,16 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
             case False:
                 ff = f"{separator}nff"
 
-        key = f"{chain_str}{separator}{time_bucket_str}{separator}{pair_str}{separator}{time_str}{ff}"
+        # Add forward fill flag to the universe cache file name
+        match self.cross_chain:
+            case None:
+                cross_chain = ""
+            case True:
+                cross_chain = f"{separator}cross"
+            case False:
+                cross_chain = f"{separator}ncross"
+
+        key = f"{chain_str}{separator}{time_bucket_str}{separator}{pair_str}{separator}{time_str}{ff}{cross_chain}"
         assert len(key) < 256, f"Generated very long fname cache key, check the generation logic: {key}"
         return key
 
@@ -1157,6 +1188,7 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
         reserve_asset: JSONHexAddress | TokenSymbol=None,
         forward_fill=False,
         forward_fill_until: datetime.datetime | None = None,
+        primary_chain: ChainId = None,
     ):
         """Create a universe from loaded dataset.
 
@@ -1232,6 +1264,9 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
             will automatically forward-fill any data we are loading from the dataset.
 
             See :term:`forward fill` for more information.
+
+        :param primary_chain:
+            Enable cross-chain trading universes by defining a primary chain.
         """
 
         logger.info(
@@ -1244,8 +1279,11 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
 
         chain_ids = dataset.pairs["chain_id"].unique()
 
-        assert len(chain_ids) == 1, f"Currently only single chain datasets supported, got chains {chain_ids}"
-        chain_id = ChainId(chain_ids[0])
+        if not primary_chain:
+            assert len(chain_ids) == 1, f"Currently only single chain datasets supported, got chains {chain_ids}"
+            chain_id = ChainId(chain_ids[0])
+        else:
+            chain_id = primary_chain
 
         pairs = PandasPairUniverse(dataset.pairs, exchange_universe=dataset.exchanges)
 
@@ -1332,6 +1370,7 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
             reserve_assets=[reserve_asset],
             backtest_stop_loss_time_bucket=dataset.backtest_stop_loss_time_bucket,
             backtest_stop_loss_candles=stop_loss_candle_universe,
+            primary_chain=primary_chain,
         )
 
     @staticmethod

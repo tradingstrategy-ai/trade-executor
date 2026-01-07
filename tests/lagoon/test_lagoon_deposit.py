@@ -8,7 +8,7 @@ from eth_typing import HexAddress
 from web3 import Web3
 
 from eth_defi.hotwallet import HotWallet
-from eth_defi.lagoon.deployment import LagoonAutomatedDeployment
+from eth_defi.erc_4626.vault_protocol.lagoon.deployment import LagoonAutomatedDeployment
 from eth_defi.token import TokenDetails
 from eth_defi.trace import assert_transaction_success_with_explanation
 

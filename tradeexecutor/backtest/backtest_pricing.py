@@ -1,28 +1,29 @@
-import logging
 import datetime
+import logging
 import math
 import warnings
-from decimal import Decimal, ROUND_DOWN
-from typing import Optional, Literal
+from decimal import ROUND_DOWN, Decimal
+from typing import Literal, Optional
 
 import pandas as pd
-
 from tradeexecutor.backtest.backtest_execution import BacktestExecution
 from tradeexecutor.backtest.backtest_routing import BacktestRoutingModel
-from tradeexecutor.ethereum.uniswap_v2.uniswap_v2_routing import UniswapV2Routing
+from tradeexecutor.ethereum.uniswap_v2.uniswap_v2_routing import \
+    UniswapV2Routing
 from tradeexecutor.state.identifier import TradingPairIdentifier
+from tradeexecutor.state.types import (AnyTimestamp, Percent, USDollarAmount,
+                                       USDollarPrice)
 from tradeexecutor.strategy.execution_model import ExecutionModel
-
-from tradeexecutor.state.types import USDollarPrice, Percent, USDollarAmount, AnyTimestamp
 from tradeexecutor.strategy.generic.generic_router import GenericRouting
 from tradeexecutor.strategy.pricing_model import PricingModel
 from tradeexecutor.strategy.trade_pricing import TradePricing
-from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse, translate_trading_pair
+from tradeexecutor.strategy.trading_strategy_universe import (
+    TradingStrategyUniverse, translate_trading_pair)
 from tradingstrategy.candle import GroupedCandleUniverse
-from tradingstrategy.liquidity import GroupedLiquidityUniverse, LiquidityDataUnavailable
-from tradingstrategy.pair import PandasPairUniverse, PairNotFoundError
+from tradingstrategy.liquidity import (GroupedLiquidityUniverse,
+                                       LiquidityDataUnavailable)
+from tradingstrategy.pair import PairNotFoundError, PandasPairUniverse
 from tradingstrategy.timebucket import TimeBucket
-
 
 logger = logging.getLogger(__name__)
 
@@ -44,20 +45,21 @@ class BacktestPricing(PricingModel):
     """
 
     def __init__(
-            self,
-            candle_universe: GroupedCandleUniverse,
-            routing_model: BacktestRoutingModel,
-            data_delay_tolerance=pd.Timedelta("2d"),
-            candle_timepoint_kind="open",
-            very_small_amount=Decimal("0.10"),
-            time_bucket: Optional[TimeBucket] = None,
-            allow_missing_fees=False,
-            trading_fee_override: float | None=None,
-            liquidity_universe: GroupedLiquidityUniverse | None = None,
-            fixed_prices: dict[TradingPairIdentifier, float] | None = None,
-            pairs: Optional[PandasPairUniverse] = None,
-            three_leg_resolution=True,
-        ):
+        self,
+        candle_universe: GroupedCandleUniverse,
+        routing_model: BacktestRoutingModel,
+        data_delay_tolerance=pd.Timedelta("2d"),
+        candle_timepoint_kind="open",
+        very_small_amount=Decimal("0.10"),
+        time_bucket: Optional[TimeBucket] = None,
+        allow_missing_fees=False,
+        trading_fee_override: float | None=None,
+        liquidity_universe: GroupedLiquidityUniverse | None = None,
+        fixed_prices: dict[TradingPairIdentifier, float] | None = None,
+        pairs: Optional[PandasPairUniverse] = None,
+        three_leg_resolution=True,
+        ignore_routing=False,
+    ):
         """
 
         :param candle_universe:
@@ -115,6 +117,11 @@ class BacktestPricing(PricingModel):
 
             Disable to run legacy unit tests.
 
+        :param ignore_routing:
+            Ignore three-leg routing and assume three-leg swap fee is zero.
+
+            Currently needed for cross-chain backtesting.
+
         """
 
         # TODO: Remove later - now to support some old code111
@@ -137,6 +144,7 @@ class BacktestPricing(PricingModel):
         self.trading_fee_override = trading_fee_override
         self.liquidity_universe = liquidity_universe
         self.three_leg_resolution = three_leg_resolution
+        self.ignore_routing = ignore_routing
 
         if fixed_prices:
             for k, v in fixed_prices.items():
@@ -363,7 +371,7 @@ class BacktestPricing(PricingModel):
             routing_model, protocol_config = routing_model.get_router(pair)
 
         # Three legged, count in the fee in the middle leg
-        if self.three_leg_resolution and (pair.quote.address != routing_model.reserve_token_address.lower()):
+        if self.three_leg_resolution and (pair.quote.address != routing_model.reserve_token_address.lower()) and not self.ignore_routing:
             intermediate_pairs = routing_model.allowed_intermediary_pairs
             assert self.pairs is not None, "To do three-legged fee resolution, we need to get access to pairs in constructor"
 

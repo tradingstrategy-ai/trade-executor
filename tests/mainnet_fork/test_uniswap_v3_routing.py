@@ -90,7 +90,9 @@ def matic_usdc_trading_pair_address() -> HexAddress:
 
 @pytest.fixture()
 def hot_wallet(
-    web3: Web3, usdc_token: Contract, large_usdc_holder: HexAddress
+    web3: Web3,
+    usdc_token: Contract,
+    large_usdc_holder: HexAddress,
 ) -> HotWallet:
     """Our trading Ethereum account.
 
@@ -99,7 +101,7 @@ def hot_wallet(
     account = Account.create()
     matic_amount = 15
     web3.eth.send_transaction(
-        {"from": large_usdc_holder, "to": account.address, "value": matic_amount * 10**18}
+        {"from": web3.eth.accounts[0], "to": account.address, "value": matic_amount * 10**18}
     )
     tx_hash = usdc_token.functions.transfer(account.address, 10_000 * 10**6).transact(
         {"from": large_usdc_holder}

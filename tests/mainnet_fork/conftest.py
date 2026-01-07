@@ -9,6 +9,7 @@ from eth_typing import HexAddress, HexStr
 from web3 import Web3, HTTPProvider
 from web3.contract import Contract
 
+from eth_defi.token import USDC_WHALE, USDCE_WHALE
 from tradeexecutor.state.identifier import AssetIdentifier
 from tradeexecutor.cli.log import setup_pytest_logging
 from tradeexecutor.testing.pytest_helpers import is_failed_test
@@ -28,8 +29,7 @@ def large_usdc_holder() -> HexAddress:
 
     `To find large holder accounts, use polygonscan <https://polygonscan.com/token/0x2791bca1f2de4661ed88a30c99a7a9449aa84174#balances>`_.
     """
-    # Binance Hot Wallet 2
-    return HexAddress(HexStr("0xe7804c37c13166fF0b37F5aE0BB07A3aEbb6e245"))
+    return USDCE_WHALE[137]
 
 
 @pytest.fixture()
