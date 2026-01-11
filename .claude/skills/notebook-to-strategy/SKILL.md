@@ -45,6 +45,16 @@ Unless the script prints "All ok" at the end of it, it is a failure.
 - Either fix errors yourself
 - Or if you do not understand the error, ask the user for help
 
+## Display results to the user
+
+After running the backtest, the CLI command outputs three generated files like:
+
+- Notebook: /Users/moo/code/trade-executor/state/master-vault-backtest.ipynb
+ HTML: /Users/moo/code/trade-executor/state/master-vault-backtest.html
+- CSV: /Users/moo/code/trade-executor/state/master-vault-daily-returns.csv
+
+From the HTML file, extract `Performance and risk metrics¶` table, format is so that you can display it inline in the chat, and print back test results of top 15 rows. 
+
 ## Notes
 
 - The skill will preserve any existing metadata in the strategy module
