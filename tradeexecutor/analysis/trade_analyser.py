@@ -1472,11 +1472,14 @@ def expand_timeline(
     def expander(row):
         position: TradingPosition = row["position"]
         # timestamp = row.name  # ???
+
         pair_id = position.pair.get_pricing_pair().internal_id
         pair_info = pair_universe.get_pair_by_id(pair_id)
         exchange = exchange_map.get(pair_info.exchange_id)
-        if not exchange:
-            raise RuntimeError(f"No exchange for id {pair_info.exchange_id}, pair {pair_info}")
+        if exchange:
+            exchange_name = exchange.name
+        else:
+            exchange_name = "<Unknown exchange>"
 
         if position.is_stop_loss():
             remarks = "SL"
@@ -1499,7 +1502,7 @@ def expand_timeline(
             "Type": "Long" if position.is_long() else "Short",
             "Opened at": position.opened_at.strftime(timestamp_format),
             "Duration": format_duration_days_hours_mins(duration) if duration else np.nan,
-            "Exchange": exchange.name,
+            "Exchange": exchange_name,
             "Base asset": pair_info.base_token_symbol,
             "Quote asset": pair_info.quote_token_symbol,
             "Position max value": format_value(position.get_max_size()),
