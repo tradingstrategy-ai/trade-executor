@@ -19,17 +19,16 @@ from typing import Optional
 
 from typer import Option
 
-from . import shared_options
-from .app import app
-from .shared_options import required_option
-from ..bootstrap import prepare_executor_id, prepare_cache
-from ..log import setup_logging
-from ..result import display_backtesting_results
 from ...backtest.backtest_module import run_backtest_for_module
 from ...backtest.tearsheet import export_backtest_report
 from ...state.state import State
 from ...strategy.execution_context import standalone_backtest_execution_context
-
+from ..bootstrap import prepare_cache, prepare_executor_id
+from ..log import setup_logging
+from ..result import display_backtesting_results
+from . import shared_options
+from .app import app
+from .shared_options import required_option
 
 logger = logging.getLogger(__name__)
 
@@ -179,3 +178,5 @@ def backtest(
         )
     else:
         print("Report generation skipped")
+
+    print("All ok")
