@@ -80,3 +80,10 @@ Don't format code.
 ## Python notebooks
 
 - Whenever possible, prefer table output instead of print(). Use Pandas DataFrame and notebook's built-in display() function to render tabular data.
+
+## Type Hints
+- Always prefer native Python types over importing from typing module
+- Use `dict`, `list`, `tuple`, `set` instead of `Dict`, `List`, `Tuple`, `Set`
+- Use `type | None` instead of `Optional[type]`
+- Use `str | int` instead of `Union[str, int]`
+- Only import from typing when necessary (e.g., `Any`, `Callable`, `TypeVar`)

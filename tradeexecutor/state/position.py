@@ -444,6 +444,10 @@ class TradingPosition(GenericPosition):
         """Is this a vault shares position."""
         return self.pair.is_vault()
 
+    def is_freqtrade(self) -> bool:
+        """Is this a Freqtrade managed position."""
+        return self.pair.is_freqtrade()
+
     def is_long(self) -> bool:
         """Is this position long on the underlying base asset.
 
@@ -813,7 +817,7 @@ class TradingPosition(GenericPosition):
             return value
 
         match self.pair.kind:
-            case TradingPairKind.spot_market_hold | TradingPairKind.vault:
+            case TradingPairKind.spot_market_hold | TradingPairKind.vault | TradingPairKind.freqtrade:
 
                 value += self.calculate_value_using_price(
                     self.last_token_price,
