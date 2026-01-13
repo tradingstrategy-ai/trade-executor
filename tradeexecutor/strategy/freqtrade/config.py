@@ -13,6 +13,9 @@ USDC_ARBITRUM_TESTNET = "0x..."  # Add testnet USDC if needed
 class FreqtradeDepositMethod(enum.StrEnum):
     """How capital is deposited to Freqtrade."""
 
+    #: Simple ERC20 transfer to a wallet address (for CEX or Lagoon vault integration)
+    on_chain_transfer = "on_chain_transfer"
+
     #: Aster vault deposit on BSC (approve + vault.deposit)
     aster_vault = "aster_vault"
 
@@ -28,6 +31,7 @@ class FreqtradeDepositConfig:
     """Base configuration for depositing to a Freqtrade instance.
 
     Use method-specific subclasses for actual deposits:
+    - OnChainTransferDepositConfig for simple ERC20 transfers
     - AsterDepositConfig for Aster vault
     - HyperliquidDepositConfig for Hyperliquid
     - OrderlyDepositConfig for Orderly
@@ -44,6 +48,24 @@ class FreqtradeDepositConfig:
 
     #: Seconds between Freqtrade balance checks
     poll_interval: int = 10
+
+
+@dataclass(slots=True)
+class OnChainTransferDepositConfig(FreqtradeDepositConfig):
+    """Simple ERC20 transfer deposit configuration.
+
+    Used for Lagoon vault integration where the vault cannot sign
+    transactions directly, requiring a wallet-in-the-middle to delegate to.
+
+    Flow:
+    1. ERC20.transfer(recipient_address, amount)
+    """
+
+    #: Deposit method
+    method: FreqtradeDepositMethod = FreqtradeDepositMethod.on_chain_transfer
+
+    #: Wallet address to receive the transfer (e.g., CEX deposit address or delegate wallet)
+    recipient_address: str | None = None
 
 
 @dataclass(slots=True)

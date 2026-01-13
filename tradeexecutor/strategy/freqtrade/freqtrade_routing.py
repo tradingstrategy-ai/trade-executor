@@ -21,6 +21,7 @@ from tradeexecutor.strategy.freqtrade.config import (
     FreqtradeConfig,
     FreqtradeDepositConfig,
     FreqtradeDepositMethod,
+    OnChainTransferDepositConfig,
     AsterDepositConfig,
     HyperliquidDepositConfig,
     OrderlyDepositConfig,
@@ -50,6 +51,7 @@ class FreqtradeRoutingModel(RoutingModel):
     """Route capital deposits/withdrawals to Freqtrade instances.
 
     Supports multiple deposit methods:
+    - On-chain transfer: Simple ERC20 transfer (for Lagoon vault integration)
     - Aster vault: ERC20 approve + AstherusVault.deposit() on BSC
     - Hyperliquid: Bridge transfer on Arbitrum + SDK vault deposit
     - Orderly vault: ERC20 approve + Vault.deposit() with hashed params
@@ -133,7 +135,12 @@ class FreqtradeRoutingModel(RoutingModel):
             assert deposit_config
             # amount = trade.planned_reserve if trade.planned_reserve else trade.planned_quantity
 
-            if deposit_config.method == FreqtradeDepositMethod.aster_vault:
+            if deposit_config.method == FreqtradeDepositMethod.on_chain_transfer:
+                assert isinstance(deposit_config, OnChainTransferDepositConfig)
+                txs = self._build_on_chain_transfer_tx(trade, config, deposit_config, routing_state)
+                trade.blockchain_transactions = txs
+
+            elif deposit_config.method == FreqtradeDepositMethod.aster_vault:
                 assert isinstance(deposit_config, AsterDepositConfig)
                 txs = self._build_aster_deposit_tx(trade, config, deposit_config, routing_state)
                 trade.blockchain_transactions = txs
@@ -152,6 +159,67 @@ class FreqtradeRoutingModel(RoutingModel):
                 raise NotImplementedError(
                     f"Deposit method {deposit_config.method} not yet implemented"
                 )
+
+    def _build_on_chain_transfer_tx(
+        self,
+        trade: TradeExecution,
+        config: FreqtradeConfig,
+        deposit_config: OnChainTransferDepositConfig,
+        routing_state: FreqtradeRoutingState,
+    ) -> list[BlockchainTransaction]:
+        """Build simple ERC20 transfer transaction.
+
+        Used for Lagoon vault integration where the vault cannot sign
+        transactions directly, requiring a wallet-in-the-middle.
+
+        Args:
+            trade: Trade to build transaction for
+            config: Freqtrade configuration
+            deposit_config: On-chain transfer configuration
+            routing_state: Routing state with tx_builder
+
+        Returns:
+            List containing single transfer transaction
+        """
+        if routing_state.tx_builder is None:
+            raise ValueError("tx_builder required for on_chain_transfer deposits")
+
+        if routing_state.web3 is None:
+            raise ValueError("web3 required for on_chain_transfer deposits")
+
+        if deposit_config.recipient_address is None:
+            raise ValueError(f"deposit.recipient_address required for {config.freqtrade_id}")
+
+        web3 = routing_state.web3
+
+        # Get Freqtrade balance before deposit
+        client = routing_state.freqtrade_clients[config.freqtrade_id]
+        balance_before = Decimal(str(client.get_balance().get("total", 0)))
+
+        # Store balance_before in trade for later verification
+        if trade.other_data is None:
+            trade.other_data = {}
+        trade.other_data["balance_before_deposit"] = str(balance_before)
+
+        # Get token details and build transfer
+        amount = trade.planned_reserve if trade.planned_reserve else trade.planned_quantity
+        token = fetch_erc20_details(web3, config.reserve_currency)
+        amount_raw = token.convert_to_raw(amount)
+
+        recipient = Web3.to_checksum_address(deposit_config.recipient_address)
+
+        transfer_call = token.contract.functions.transfer(recipient, amount_raw)
+        transfer_tx = routing_state.tx_builder.sign_transaction(
+            token.contract,
+            transfer_call,
+            gas_limit=100_000,
+            notes=f"On-chain transfer for {config.freqtrade_id}",
+        )
+
+        trade.notes = f"On-chain transfer: {amount} to {recipient}"
+        logger.info(f"Trade {trade.trade_id}: {trade.notes}")
+
+        return [transfer_tx]
 
     def _build_aster_deposit_tx(
         self,
@@ -433,7 +501,10 @@ class FreqtradeRoutingModel(RoutingModel):
         deposit_config = config.deposit
         assert deposit_config, f"deposit config required for {freqtrade_id}"
 
-        if deposit_config.method == FreqtradeDepositMethod.aster_vault:
+        if deposit_config.method == FreqtradeDepositMethod.on_chain_transfer:
+            self._confirm_deposit(trade, config, deposit_config)
+
+        elif deposit_config.method == FreqtradeDepositMethod.aster_vault:
             self._confirm_deposit(trade, config, deposit_config)
 
         elif deposit_config.method == FreqtradeDepositMethod.hyperliquid:
@@ -456,7 +527,7 @@ class FreqtradeRoutingModel(RoutingModel):
     ):
         """Poll Freqtrade balance until deposit is confirmed.
 
-        Works for Aster and Orderly vault deposits.
+        Works for on-chain transfer, Aster, and Orderly vault deposits.
 
         Args:
             trade: Trade containing balance_before_deposit

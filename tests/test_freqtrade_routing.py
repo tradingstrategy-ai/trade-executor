@@ -15,6 +15,7 @@ from tradeexecutor.state.trade import TradeExecution, TradeType
 from tradeexecutor.strategy.freqtrade.config import (
     FreqtradeConfig,
     FreqtradeDepositMethod,
+    OnChainTransferDepositConfig,
     AsterDepositConfig,
     HyperliquidDepositConfig,
     OrderlyDepositConfig,
@@ -24,6 +25,25 @@ from tradeexecutor.strategy.freqtrade.freqtrade_routing import (
     FreqtradeRoutingState,
 )
 from tradingstrategy.chain import ChainId
+
+
+@pytest.fixture
+def freqtrade_config_on_chain_transfer():
+    """Create an on-chain transfer deposit Freqtrade config."""
+    return FreqtradeConfig(
+        freqtrade_id="momentum-bot",
+        api_url="http://localhost:8080",
+        api_username="testuser",
+        api_password="testpass",
+        exchange="binance",
+        reserve_currency="0xdAC17F958D2ee523a2206206994597C13D831ec7",  # USDT address
+        deposit=OnChainTransferDepositConfig(
+            recipient_address="0xabcdef0123456789abcdef0123456789abcdef01",
+            fee_tolerance=Decimal("0.5"),
+            confirmation_timeout=300,
+            poll_interval=5,
+        ),
+    )
 
 
 @pytest.fixture
@@ -185,6 +205,138 @@ class TestFreqtradeRoutingModel:
 
         assert routing_state.tx_builder == mock_tx_builder
         assert routing_state.web3 == mock_web3
+
+
+class TestOnChainTransferDeposit:
+    """Tests for on-chain transfer deposit flow."""
+
+    def test_setup_trades_on_chain_transfer_missing_tx_builder(
+        self, freqtrade_config_on_chain_transfer, mock_trade
+    ):
+        """Test setup_trades raises error when tx_builder is missing."""
+        model = FreqtradeRoutingModel(
+            freqtrade_configs={"momentum-bot": freqtrade_config_on_chain_transfer}
+        )
+
+        routing_state = FreqtradeRoutingState(
+            tx_builder=None,
+            web3=None,
+            freqtrade_clients={"momentum-bot": MagicMock()},
+        )
+
+        with pytest.raises(ValueError, match="tx_builder required"):
+            model.setup_trades(
+                state=None,
+                routing_state=routing_state,
+                trades=[mock_trade],
+            )
+
+    def test_setup_trades_on_chain_transfer_missing_recipient(self, mock_trade):
+        """Test setup_trades raises error when recipient_address is missing."""
+        config = FreqtradeConfig(
+            freqtrade_id="momentum-bot",
+            api_url="http://localhost:8080",
+            api_username="testuser",
+            api_password="testpass",
+            exchange="binance",
+            reserve_currency="0xdAC17F958D2ee523a2206206994597C13D831ec7",
+            deposit=OnChainTransferDepositConfig(
+                recipient_address=None,  # Missing
+            ),
+        )
+
+        model = FreqtradeRoutingModel(freqtrade_configs={"momentum-bot": config})
+
+        mock_tx_builder = MagicMock()
+        mock_client = MagicMock()
+        mock_client.get_balance.return_value = {"total": 500}
+
+        routing_state = FreqtradeRoutingState(
+            tx_builder=mock_tx_builder,
+            web3=MagicMock(),
+            freqtrade_clients={"momentum-bot": mock_client},
+        )
+
+        with pytest.raises(ValueError, match="recipient_address required"):
+            model.setup_trades(
+                state=None,
+                routing_state=routing_state,
+                trades=[mock_trade],
+            )
+
+    def test_build_on_chain_transfer_tx(self, freqtrade_config_on_chain_transfer, mock_trade):
+        """Test building on-chain transfer transaction."""
+        model = FreqtradeRoutingModel(
+            freqtrade_configs={"momentum-bot": freqtrade_config_on_chain_transfer}
+        )
+
+        mock_web3 = MagicMock()
+        mock_tx_builder = MagicMock()
+        mock_tx_builder.web3 = mock_web3
+        mock_tx_builder.sign_transaction.return_value = MagicMock()
+
+        mock_client = MagicMock()
+        mock_client.get_balance.return_value = {"total": 500}
+
+        routing_state = FreqtradeRoutingState(
+            tx_builder=mock_tx_builder,
+            web3=mock_web3,
+            freqtrade_clients={"momentum-bot": mock_client},
+        )
+
+        mock_token = MagicMock()
+        mock_token.convert_to_raw.return_value = 1000_000_000
+        mock_token.contract.functions.transfer.return_value = MagicMock()
+
+        with patch(
+            "tradeexecutor.strategy.freqtrade.freqtrade_routing.fetch_erc20_details",
+            return_value=mock_token,
+        ):
+            model.setup_trades(
+                state=None,
+                routing_state=routing_state,
+                trades=[mock_trade],
+            )
+
+        # Verify balance was queried
+        mock_client.get_balance.assert_called_once()
+
+        # Verify balance before was stored
+        assert mock_trade.other_data is not None
+        assert mock_trade.other_data.get("balance_before_deposit") == "500"
+
+        # Verify transfer was built
+        mock_token.contract.functions.transfer.assert_called_once()
+
+        # Only one transaction (transfer)
+        assert mock_tx_builder.sign_transaction.call_count == 1
+        assert len(mock_trade.blockchain_transactions) == 1
+
+    def test_confirm_on_chain_transfer_deposit_success(
+        self, freqtrade_config_on_chain_transfer, mock_trade
+    ):
+        """Test on-chain transfer deposit confirmation when balance increases."""
+        model = FreqtradeRoutingModel(
+            freqtrade_configs={"momentum-bot": freqtrade_config_on_chain_transfer}
+        )
+
+        mock_trade.other_data = {"balance_before_deposit": "500"}
+
+        mock_client = MagicMock()
+        mock_client.get_balance.return_value = {"total": 1499.5}
+
+        with patch(
+            "tradeexecutor.strategy.freqtrade.freqtrade_routing.FreqtradeClient",
+            return_value=mock_client,
+        ):
+            model.settle_trade(
+                web3=MagicMock(),
+                state=None,
+                trade=mock_trade,
+                receipts={},
+            )
+
+        assert "Deposit confirmed" in mock_trade.notes
 
 
 class TestAsterDeposit:
@@ -539,6 +691,17 @@ class TestFreqtradeRoutingState:
 
 class TestDepositConfigs:
     """Tests for deposit configuration classes."""
+
+    def test_on_chain_transfer_config(self):
+        """Test on-chain transfer deposit config."""
+        config = OnChainTransferDepositConfig(
+            recipient_address="0xabcdef0123456789abcdef0123456789abcdef01",
+            fee_tolerance=Decimal("0.5"),
+        )
+
+        assert config.method == FreqtradeDepositMethod.on_chain_transfer
+        assert config.recipient_address == "0xabcdef0123456789abcdef0123456789abcdef01"
+        assert config.fee_tolerance == Decimal("0.5")
 
     def test_aster_config(self):
         """Test Aster deposit config."""
