@@ -45,6 +45,7 @@ Unless the script prints "All ok" at the end of it, it is a failure.
 - Either fix errors yourself
 - Or if you do not understand the error, ask the user for help
 
+
 ## Display results to the user
 
 After running the backtest, the CLI command outputs three generated files like:
@@ -54,6 +55,15 @@ After running the backtest, the CLI command outputs three generated files like:
 - CSV: /Users/moo/code/trade-executor/state/master-vault-daily-returns.csv
 
 From the HTML file, extract `Performance and risk metrics¶` table, format is so that you can display it inline in the chat, and print back test results of top 15 rows. 
+
+## Update strategy module with results
+
+Get the top 15 row results from the step above.
+
+In the doc string header comment of the strategy module, includethe 
+
+- The results displayed as a restructured text table for Python comment
+- Date the backtest was run
 
 ## Notes
 

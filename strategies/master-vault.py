@@ -1,8 +1,36 @@
 """Vault of vaults strategy.
 
-- Based on `04`
-- Tweak basket construction criteria to bump the yield a bit
+Based on `04-basket-construction.ipynb` notebook.
+Tweaked basket construction criteria to bump the yield a bit.
 
+This is a multi-vault allocation strategy that:
+- Selects from a universe of DeFi vaults on Arbitrum
+- Rebalances weekly based on rolling returns
+- Caps individual position sizes and concentration
+- Uses TVL-based filtering for vault inclusion
+
+Backtest results (2025-01-06 to 2025-12-29)
+=============================================
+
+================================  =========  ======
+Metric                            Strategy   ETH
+================================  =========  ======
+Start period                      2025-01-06 2025-01-06
+End period                        2025-12-29 2025-12-29
+Risk-free rate                    0.0%       0.0%
+Time in market                    15.0%      98.0%
+Cumulative return                 15.52%     -10.1%
+CAGR﹪                             15.89%     -10.32%
+Sharpe                            4.11       0.23
+Probabilistic Sharpe ratio        100.0%     58.86%
+Smart Sharpe                      3.92       0.22
+Sortino                           187.69     0.34
+Smart Sortino                     179.22     0.33
+Sortino/√2                        132.71     0.24
+Smart Sortino/√2                  126.73     0.23
+Omega                             186.88     186.88
+Max drawdown                      -0.08%     -57.61%
+================================  =========  ======
 """
 
 #
@@ -141,6 +169,7 @@ class Parameters:
     min_tvl = 50_000  # Minimum TVL in the vault before it can be considered investable
 
     #
+    #
     # Backtesting only
     # Limiting factor: Aave v3 on Base starts at the end of DEC 2023
     #
@@ -152,7 +181,7 @@ class Parameters:
     # Live only
     #
     routing = TradeRouting.default
-    required_history_period = datetime.timedelta(days=365 * 3)
+    required_history_period = datetime.timedelta(days=365*3)
     slippage_tolerance = 0.0060  # 0.6%
     assummed_liquidity_when_data_missings = 10_000
 
@@ -198,7 +227,6 @@ def create_trading_universe(
 
     # Pull out our benchmark pairs ids.
     # We need to construct pair universe object for the symbolic lookup.
-    # TODO: PandasPairUniverse(buidl_index=True) - speed this up by skipping index building
     all_pairs_df = client.fetch_pair_universe().to_pandas()
     pairs_df = filter_for_selected_pairs(
         all_pairs_df,
@@ -242,14 +270,6 @@ def create_trading_universe(
 
     # crvUSD etc. do not have backtesting paths yet
     strategy_universe.ignore_routing = True
-
-    # Dump our vault data and check for data errors
-    display_vaults(
-        vault_universe,
-        strategy_universe,
-        execution_mode=execution_context.mode,
-        printer=debug_printer,
-    )
 
     return strategy_universe
 
@@ -664,7 +684,7 @@ def trading_pair_count(
         if pair_id in benchmark_pair_ids:
             continue
         seen_pairs.add(pair_id)
-        seen_data[timestamp] = len(seen_pairs)
+        seen_data [timestamp] = len(seen_pairs)
 
     series = pd.Series(seen_data.values(), index=list(seen_data.keys()))
     return series
@@ -684,22 +704,23 @@ def signal(
 ) -> pd.Series:
     """Calculate weighting criteria ("signal") as the past returns of the rolling returns window."""
 
-    rolling_returns_data = dependency_resolver.get_indicator_data(
-        "rolling_returns",
+    rolling_returns = dependency_resolver.get_indicator_data(
+            "rolling_returns",
         parameters={
             "rolling_returns_bars": rolling_returns_bars,
         },
         pair=pair,
     )
-    return rolling_returns_data
+    return rolling_returns
 
 
 def create_indicators(
-    timestamp: datetime.datetime,
+    timestamp: datetime.datetime | None,
     parameters: StrategyParameters,
     strategy_universe: TradingStrategyUniverse,
-    execution_context: ExecutionContext
+    execution_context: ExecutionContext,
 ):
+    """Create indicators for the strategy."""
     return indicators.create_indicators(
         timestamp=timestamp,
         parameters=parameters,
@@ -730,12 +751,8 @@ def all_vaults_share_price_and_tvl(input: ChartInput) -> list[Figure]:
 
 
 def create_charts(
-    timestamp: datetime.datetime | None,
-    parameters: StrategyParameters,
-    strategy_universe: TradingStrategyUniverse,
-    execution_context: ExecutionContext,
 ) -> ChartRegistry:
-    # Define charts we use in backtesting and live trading
+    """Define charts we use in backtesting and live trading."""
     charts = ChartRegistry(default_benchmark_pairs=BENCHMARK_PAIRS)
     charts.register(available_trading_pairs, ChartKind.indicator_all_pairs)
     charts.register(inclusion_criteria_check, ChartKind.indicator_all_pairs)
@@ -771,15 +788,38 @@ def create_charts(
 
 tags = {StrategyTag.beta}
 
-name = "Master vault"
+name = "Master vault strategy"
 
-short_description = "Vault of vaults strategy which invests to other vaults"
+short_description = "Multi-vault allocation strategy on Arbitrum"
 
 icon = ""
 
 long_description = """
-A vault of vault strategy for ERC-4626.
+# Vault of vaults strategy
 
-- Based on `04`
-- Tweak basket construction criteria to bump the yield a bit
+A diversified yield strategy that allocates across multiple DeFi vaults on Arbitrum.
+
+## Strategy features
+
+- **Multi-vault allocation**: Invests in 4 best-performing vaults from a universe of 16+ vaults
+- **Weekly rebalancing**: Adjusts positions based on rolling 32-day returns
+- **Risk management**: Caps individual positions at 25% of portfolio and 33% of pool TVL
+- **TVL filtering**: Only considers vaults with at least $50,000 TVL
+- **Denomination flexibility**: Supports USDC, USDT, USDC.e, crvUSD, USDai, and USD₮0
+
+## Vault universe
+
+The strategy selects from vaults including:
+- Gains Network (gTrade)
+- GMX vaults
+- Morpho vaults
+- Euler vaults
+- And others
+
+## Risk parameters
+
+- Maximum 4 positions at any time
+- 95% allocation target
+- Minimum $500 per trade
+- 25% maximum concentration per asset
 """
