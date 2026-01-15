@@ -9,10 +9,11 @@ import pytest
 import requests
 from eth_defi.utils import find_free_port
 
-from tradeexecutor.cli.log import setup_in_memory_logging, get_ring_buffer_handler
+from tradeexecutor.cli.log import (get_ring_buffer_handler,
+                                   setup_in_memory_logging)
 from tradeexecutor.state.metadata import Metadata
-from tradeexecutor.state.state import State
 from tradeexecutor.state.portfolio import Portfolio
+from tradeexecutor.state.state import State
 from tradeexecutor.state.store import JSONFileStore
 from tradeexecutor.strategy.run_state import RunState
 from tradeexecutor.strategy.tag import StrategyTag
@@ -55,7 +56,7 @@ def server_url(store):
         fees=dict(
             management_fee=0.00,
             trading_strategy_protocol_fee=0.02,
-            strategy_developer_fee=0.05,
+            strategy_developer_fee=float('nan'),
         )
     )
 
@@ -92,10 +93,11 @@ def test_ping(logger,server_url):
 
 # OSError: [Errno 98] Address already in use
 @flaky.flaky
-def test_metadata(logger, server_url):
+def test_web_metadata(logger, server_url):
     """Get executor metadata"""
     resp = requests.get(f"{server_url}/metadata")
     assert resp.status_code == 200
+    assert "NaN" not in resp.text  # NaN should be converted to null
     data = resp.json()
     assert data["name"] == "Foobar"
     assert data["short_description"] == "Short desc"
@@ -106,7 +108,7 @@ def test_metadata(logger, server_url):
     assert data["fees"] == dict(
         management_fee=0.00,
         trading_strategy_protocol_fee=0.02,
-        strategy_developer_fee=0.05,
+        strategy_developer_fee=None,
     )
 
 

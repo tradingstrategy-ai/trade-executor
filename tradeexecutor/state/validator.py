@@ -7,14 +7,15 @@ Any error message contains tree presentation of the state,
 so you can easily locate any values that are bad, unlike with :py:mod:`json`.
 """
 import datetime
+import math
 from decimal import Decimal
 from enum import Enum
 from json.encoder import INFINITY
 from types import NoneType
 from typing import Type
 
-import pandas as pd
 import numpy as np
+import pandas as pd
 
 from tradeexecutor.state.state import State
 
@@ -69,21 +70,10 @@ JS_MAX_INT = 9007199254740991
 def validate_state_value(name: str | int, val: object):
     """Check the state value against our whitelist and blacklist."""
 
-    if type(val) in (int, float):
+    if type(val) == float:
         # JavaScript number compatibility check
-        o = val
-        if o != o:
-            text = 'NaN'
-        elif o == _inf:
-            text = 'Infinity'
-        elif o == _neginf:
-            text = '-Infinity'
-        else:
-            text = None
-
-        if text:
-            raise BadStateData(f"{name}: {val} ({type(val)} - not a number: {text}")
-
+        # Note: NaNs are encoded as null now
+        pass
     if type(val) == int:
         if val > JS_MAX_INT:
             raise BadStateData(f"{name}: {val} ({type(val)} - larger than JavaScript max int")

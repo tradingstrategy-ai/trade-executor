@@ -7,6 +7,7 @@
  """
 
 import json
+import math
 from datetime import datetime, timedelta
 from decimal import Decimal
 from enum import Enum
@@ -16,12 +17,14 @@ from uuid import UUID
 import pandas as pd
 from dataclasses_json import core
 
-from tradeexecutor.utils.timestamp import convert_and_validate_timestamp_as_float
+from tradeexecutor.utils.timestamp import \
+    convert_and_validate_timestamp_as_float
 
 
 # Mankeypatched _ExtendedEncoder.default()
 def _patched_default(self, o) -> core.Json:
     result: core.Json
+
     if core._isinstance_safe(o, Collection):
         if core._isinstance_safe(o, Mapping):
             result = dict(o)
@@ -30,7 +33,6 @@ def _patched_default(self, o) -> core.Json:
     elif core._isinstance_safe(o, datetime):
         #assert o.tzinfo == None, "Received a datetime with attached tz info: {o}"
         result = convert_and_validate_timestamp_as_float(o)
-
     elif core._isinstance_safe(o, pd.Timestamp):
         # Automatically convert pd.Timestamps to Python datetimes on write
         dt = o.to_pydatetime()
@@ -40,16 +42,19 @@ def _patched_default(self, o) -> core.Json:
     #
     elif core._isinstance_safe(o, timedelta):
         result = o.total_seconds()
-
     elif core._isinstance_safe(o, pd.Timedelta):
         result = o.total_seconds()
-
     elif core._isinstance_safe(o, UUID):
         result = str(o)
     elif core._isinstance_safe(o, Enum):
         result = o.value
     elif core._isinstance_safe(o, Decimal):
         result = str(o)
+    elif core._isinstance_safe(o, Decimal):
+        result = str(o)
+    elif isinstance(o, float):
+        if math.isnan(o) or math.isinf(o):
+            return None
     else:
         result = json.JSONEncoder.default(self, o)
     return result

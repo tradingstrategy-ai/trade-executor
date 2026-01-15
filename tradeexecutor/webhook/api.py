@@ -4,10 +4,15 @@ import logging
 import math
 import os
 import time
+from collections.abc import Collection
 from dataclasses import dataclass
+from datetime import datetime
+from decimal import Decimal
+from enum import Enum
 from pathlib import Path
-from typing import cast
+from typing import Mapping, cast
 from urllib.parse import urljoin
+from uuid import UUID
 
 from dataclasses_json import dataclass_json
 from dataclasses_json.core import Json, _ExtendedEncoder
@@ -55,14 +60,45 @@ def web_ping(request: Request):
 
 
 
-# NaN fixer for JSON encoder
-class CustomExtendedEncoder(_ExtendedEncoder):
-    def default(self, o):
-        if isinstance(o, float):
-            if math.isnan(o) or math.isinf(o):
-                return None
-        return super().default(o)
 
+from dataclasses_json.utils import _isinstance_safe
+
+
+class NaNToNullEncoder(json.JSONEncoder):
+    """NaN fixed dataclasses-json JSON encoder"""
+
+    def default(self, o) -> Json:
+        result: Json
+        if _isinstance_safe(o, Collection):
+            if _isinstance_safe(o, Mapping):
+                result = dict(o)
+            else:
+                result = list(o)
+        elif _isinstance_safe(o, datetime):
+            result = o.timestamp()
+        elif _isinstance_safe(o, UUID):
+            result = str(o)
+        elif _isinstance_safe(o, Enum):
+            result = o.value
+        elif _isinstance_safe(o, Decimal):
+            result = str(o)
+        else:
+            result = json.JSONEncoder.default(self, o)
+        return result   
+    
+    def encode(self, obj):
+        # Replace NaN/Inf before encoding
+        return super().encode(self._sanitize(obj))
+    
+    def _sanitize(self, obj):
+        if isinstance(obj, float):
+            if math.isnan(obj) or math.isinf(obj):
+                return None
+        elif isinstance(obj, dict):
+            return {k: self._sanitize(v) for k, v in obj.items()}
+        elif isinstance(obj, list):
+            return [self._sanitize(v) for v in obj]
+        return obj    
 
 @view_config(route_name='web_metadata', renderer='json', permission='view')
 def web_metadata(request: Request):
@@ -112,7 +148,8 @@ def web_metadata(request: Request):
             return [_sanitize_floats(v) for v in obj]
         return obj
 
-    payload = json.dumps(data, cls=CustomExtendedEncoder)
+    # payload = summary.to_json()
+    payload = json.dumps(data, cls=NaNToNullEncoder, allow_nan=False)
 
     r = Response(content_type="application/json")
     r.text = payload

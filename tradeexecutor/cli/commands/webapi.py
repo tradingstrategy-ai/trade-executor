@@ -10,32 +10,39 @@ import faulthandler
 import logging
 import os
 import time
-from decimal import Decimal 
+from decimal import Decimal
 from pathlib import Path
 from queue import Queue
 from typing import Optional
 
 import typer
+
 try:
     import waitress
+
     from ...webhook.server import create_pyramid_app
 except ImportError:
     waitress = None
 
-from . import shared_options
-from .app import app
-from ..bootstrap import prepare_executor_id, prepare_cache, create_metadata, create_state_store, create_web3_config, create_client
-from ..log import setup_logging, setup_file_logging
-from ..version_info import VersionInfo
-from ...strategy.execution_model import AssetManagementMode
-from ...strategy.run_state import RunState
-from ...strategy.strategy_module import read_strategy_module
 from ...statistics.in_memory_statistics import refresh_run_state
 from ...strategy.execution_context import ExecutionContext, ExecutionMode
-from ...strategy.trading_strategy_universe import DefaultTradingStrategyUniverseModel
-from ...strategy.pandas_trader.indicator import calculate_and_load_indicators, MemoryIndicatorStorage, call_create_indicators
+from ...strategy.execution_model import AssetManagementMode
+from ...strategy.pandas_trader.indicator import (MemoryIndicatorStorage,
+                                                 calculate_and_load_indicators,
+                                                 call_create_indicators)
 from ...strategy.pandas_trader.strategy_input import StrategyInputIndicators
+from ...strategy.run_state import RunState
+from ...strategy.strategy_module import read_strategy_module
+from ...strategy.trading_strategy_universe import \
+    DefaultTradingStrategyUniverseModel
 from ...utils.timer import timed_task
+from ..bootstrap import (create_client, create_metadata, create_state_store,
+                         create_web3_config, prepare_cache,
+                         prepare_executor_id)
+from ..log import setup_file_logging, setup_logging
+from ..version_info import VersionInfo
+from . import shared_options
+from .app import app
 
 logger = logging.getLogger(__name__)
 
