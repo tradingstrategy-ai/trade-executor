@@ -4,40 +4,43 @@ import inspect
 import logging
 import runpy
 from dataclasses import dataclass, field
-from dataclasses import dataclass, field
 from pathlib import Path
 from types import NoneType
-from typing import Callable, Dict, Protocol, List, Optional, Union, Set, Type
+from typing import Callable, Dict, List, Optional, Protocol, Set, Type, Union
 from urllib.parse import urlparse
-
-from packaging import version
 
 import pandas
 import pandas as pd
+from packaging import version
+from tradingstrategy.chain import ChainId
+from tradingstrategy.client import Client
+from tradingstrategy.universe import Universe
 from web3.datastructures import AttributeDict, ReadableAttributeDict
 
-from tradeexecutor.state.types import Percent
-from tradeexecutor.strategy.chart.definition import ChartRegistry
-from tradeexecutor.strategy.engine_version import SUPPORTED_TRADING_STRATEGY_ENGINE_VERSIONS, TradingStrategyEngineVersion
-from tradeexecutor.strategy.pandas_trader.indicator import CreateIndicatorsProtocolV1, CreateIndicatorsProtocol
-from tradeexecutor.strategy.pandas_trader.strategy_input import StrategyInput
-from tradeexecutor.strategy.pandas_trader.trading_universe_input import CreateTradingUniverseInput, CreateTradingUniverseProtocol, CreateTradingUniverseProtocolV2
-from tradeexecutor.strategy.parameters import StrategyParameters
-from tradeexecutor.strategy.tag import StrategyTag
-from tradingstrategy.chain import ChainId
 from tradeexecutor.state.state import State
 from tradeexecutor.state.trade import TradeExecution
+from tradeexecutor.state.types import Percent
+from tradeexecutor.strategy.chart.definition import ChartRegistry
 from tradeexecutor.strategy.cycle import CycleDuration
 from tradeexecutor.strategy.default_routing_options import TradeRouting
-from tradeexecutor.strategy.execution_context import ExecutionContext, ExecutionMode
+from tradeexecutor.strategy.engine_version import (
+    SUPPORTED_TRADING_STRATEGY_ENGINE_VERSIONS, TradingStrategyEngineVersion)
+from tradeexecutor.strategy.execution_context import (ExecutionContext,
+                                                      ExecutionMode)
 from tradeexecutor.strategy.factory import StrategyFactory
+from tradeexecutor.strategy.pandas_trader.indicator import (
+    CreateIndicatorsProtocol, CreateIndicatorsProtocolV1)
+from tradeexecutor.strategy.pandas_trader.strategy_input import StrategyInput
+from tradeexecutor.strategy.pandas_trader.trading_universe_input import (
+    CreateTradingUniverseInput, CreateTradingUniverseProtocol,
+    CreateTradingUniverseProtocolV2)
+from tradeexecutor.strategy.parameters import StrategyParameters
 from tradeexecutor.strategy.pricing_model import PricingModel
 from tradeexecutor.strategy.reserve_currency import ReserveCurrency
 from tradeexecutor.strategy.strategy_type import StrategyType
-from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
-from tradingstrategy.client import Client
-from tradingstrategy.universe import Universe
-
+from tradeexecutor.strategy.tag import StrategyTag
+from tradeexecutor.strategy.trading_strategy_universe import \
+    TradingStrategyUniverse
 from tradeexecutor.strategy.universe_model import UniverseOptions
 
 #: As set for StrategyModuleInformation.trading_strategy_engine_version
@@ -250,7 +253,13 @@ class CreateChartsProtocol(Protocol):
         strategy_universe: TradingStrategyUniverse,
         execution_context: ExecutionContext,
     ) -> ChartRegistry:
-        pass
+        """
+        Create chart registry for the strategy.
+
+        :param timestamp:
+            Current timestamp for the trading cycle.
+            Can be `None` during backtest initialisation.
+        """
 
 
 @dataclass

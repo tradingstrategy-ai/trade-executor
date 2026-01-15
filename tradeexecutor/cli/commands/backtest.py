@@ -63,6 +63,8 @@ def backtest(
 
     extra_output: Optional[bool] = Option(False, envvar="EXTRA_OUTPUT", help="By default, info level is so verbose that running the backtest takes a long time. Give --extra-output to make sure you want to run info log level for a backtest."),
 
+    render_charts: Optional[bool] = Option(False, envvar="RENDER_CHARTS", help="Test create_charts() to ensure it does not crash."),
+
 ):
     """Backtest a given strategy module.
 
@@ -154,6 +156,8 @@ def backtest(
     # We should not be able let unnamed backtests through
     assert state.name
 
+
+
     print(f"Writing backtest data the state file: {backtest_result.resolve()}")
     state.write_json_file(backtest_result)
 
@@ -178,5 +182,18 @@ def backtest(
         )
     else:
         print("Report generation skipped")
+
+    if render_charts:
+        mod = result.strategy_module
+        chart_registry = mod.create_charts(
+            timestamp=None,
+            parameters=mod.parameters,
+            strategy_universe=universe,
+            execution_context=standalone_backtest_execution_context,
+        )
+        assert chart_registry is not None
+        print("All charts rendered ")
+    else:
+        print("Chart rendering skipped")
 
     print("All ok")

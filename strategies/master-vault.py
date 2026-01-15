@@ -1,6 +1,6 @@
 """Vault of vaults strategy.
 
-Based on `04-basket-construction.ipynb` notebook.
+Based on `05-tweaked-basket-construction.ipynb` notebook.
 Tweaked basket construction criteria to bump the yield a bit.
 
 This is a multi-vault allocation strategy that:
@@ -12,6 +12,8 @@ This is a multi-vault allocation strategy that:
 Backtest results (2025-01-06 to 2025-12-29)
 =============================================
 
+Last backtest run: 2026-01-15
+
 ================================  =========  ======
 Metric                            Strategy   ETH
 ================================  =========  ======
@@ -19,17 +21,20 @@ Start period                      2025-01-06 2025-01-06
 End period                        2025-12-29 2025-12-29
 Risk-free rate                    0.0%       0.0%
 Time in market                    15.0%      98.0%
-Cumulative return                 15.52%     -10.1%
-CAGR﹪                             15.89%     -10.32%
-Sharpe                            4.11       0.23
+Cumulative return                 14.81%     -10.1%
+CAGR﹪                             15.17%     -10.32%
+Sharpe                            3.95       0.23
 Probabilistic Sharpe ratio        100.0%     58.86%
-Smart Sharpe                      3.92       0.22
-Sortino                           187.69     0.34
-Smart Sortino                     179.22     0.33
-Sortino/√2                        132.71     0.24
-Smart Sortino/√2                  126.73     0.23
-Omega                             186.88     186.88
+Smart Sharpe                      3.79       0.22
+Sortino                           179.75     0.34
+Smart Sortino                     172.22     0.33
+Sortino/√2                        127.1      0.24
+Smart Sortino/√2                  121.77     0.23
+Omega                             179.02     179.02
 Max drawdown                      -0.08%     -57.61%
+Longest DD days                   7          180
+Volatility (ann.)                 3.58%      75.07%
+Calmar                            194.58     -0.18
 ================================  =========  ======
 """
 
@@ -54,31 +59,52 @@ from tradeexecutor.state.identifier import TradingPairIdentifier
 from tradeexecutor.state.trade import TradeExecution
 from tradeexecutor.state.types import USDollarAmount
 from tradeexecutor.strategy.alpha_model import AlphaModel
-from tradeexecutor.strategy.chart.definition import ChartInput, ChartKind, ChartRegistry
-from tradeexecutor.strategy.chart.standard.alpha_model import alpha_model_diagnostics
-from tradeexecutor.strategy.chart.standard.equity_curve import equity_curve, equity_curve_with_drawdown
-from tradeexecutor.strategy.chart.standard.interest import lending_pool_interest_accrued, vault_statistics
-from tradeexecutor.strategy.chart.standard.performance_metrics import performance_metrics
+from tradeexecutor.strategy.chart.definition import (ChartInput, ChartKind,
+                                                     ChartRegistry)
+from tradeexecutor.strategy.chart.standard.alpha_model import \
+    alpha_model_diagnostics
+from tradeexecutor.strategy.chart.standard.equity_curve import (
+    equity_curve, equity_curve_with_drawdown)
+from tradeexecutor.strategy.chart.standard.interest import (
+    lending_pool_interest_accrued, vault_statistics)
+from tradeexecutor.strategy.chart.standard.performance_metrics import \
+    performance_metrics
 from tradeexecutor.strategy.chart.standard.position import positions_at_end
-from tradeexecutor.strategy.chart.standard.profit_breakdown import trading_pair_breakdown
-from tradeexecutor.strategy.chart.standard.signal import price_vs_signal, signal_comparison
-from tradeexecutor.strategy.chart.standard.single_pair import trading_pair_positions, trading_pair_price_and_trades
+from tradeexecutor.strategy.chart.standard.profit_breakdown import \
+    trading_pair_breakdown
+from tradeexecutor.strategy.chart.standard.signal import (price_vs_signal,
+                                                          signal_comparison)
+from tradeexecutor.strategy.chart.standard.single_pair import (
+    trading_pair_positions, trading_pair_price_and_trades)
 from tradeexecutor.strategy.chart.standard.thinking import last_messages
-from tradeexecutor.strategy.chart.standard.trading_metrics import trading_metrics
-from tradeexecutor.strategy.chart.standard.trading_universe import available_trading_pairs, inclusion_criteria_check
-from tradeexecutor.strategy.chart.standard.vault import all_vault_positions, all_vaults_share_price_and_tvl as _all_vaults_share_price_and_tvl, vault_position_timeline
-from tradeexecutor.strategy.chart.standard.volatility import volatility_benchmark
-from tradeexecutor.strategy.chart.standard.weight import equity_curve_by_asset, volatile_and_non_volatile_percent, volatile_weights_by_percent, weight_allocation_statistics
+from tradeexecutor.strategy.chart.standard.trading_metrics import \
+    trading_metrics
+from tradeexecutor.strategy.chart.standard.trading_universe import (
+    available_trading_pairs, inclusion_criteria_check)
+from tradeexecutor.strategy.chart.standard.vault import all_vault_positions
+from tradeexecutor.strategy.chart.standard.vault import \
+    all_vaults_share_price_and_tvl as _all_vaults_share_price_and_tvl
+from tradeexecutor.strategy.chart.standard.vault import vault_position_timeline
+from tradeexecutor.strategy.chart.standard.volatility import \
+    volatility_benchmark
+from tradeexecutor.strategy.chart.standard.weight import (
+    equity_curve_by_asset, volatile_and_non_volatile_percent,
+    volatile_weights_by_percent, weight_allocation_statistics)
 from tradeexecutor.strategy.cycle import CycleDuration
 from tradeexecutor.strategy.default_routing_options import TradeRouting
-from tradeexecutor.strategy.execution_context import ExecutionContext, ExecutionMode
-from tradeexecutor.strategy.pandas_trader.indicator import IndicatorDependencyResolver, IndicatorSource
-from tradeexecutor.strategy.pandas_trader.indicator_decorator import IndicatorRegistry
+from tradeexecutor.strategy.execution_context import (ExecutionContext,
+                                                      ExecutionMode)
+from tradeexecutor.strategy.pandas_trader.indicator import (
+    IndicatorDependencyResolver, IndicatorSource)
+from tradeexecutor.strategy.pandas_trader.indicator_decorator import \
+    IndicatorRegistry
 from tradeexecutor.strategy.pandas_trader.strategy_input import StrategyInput
-from tradeexecutor.strategy.pandas_trader.trading_universe_input import CreateTradingUniverseInput
+from tradeexecutor.strategy.pandas_trader.trading_universe_input import \
+    CreateTradingUniverseInput
 from tradeexecutor.strategy.parameters import StrategyParameters
 from tradeexecutor.strategy.tag import StrategyTag
-from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse, load_partial_data
+from tradeexecutor.strategy.trading_strategy_universe import (
+    TradingStrategyUniverse, load_partial_data)
 from tradeexecutor.strategy.tvl_size_risk import USDTVLSizeRiskModel
 from tradeexecutor.strategy.universe_model import UniverseOptions
 from tradeexecutor.strategy.weighting import weight_passthrouh
@@ -270,6 +296,14 @@ def create_trading_universe(
 
     # crvUSD etc. do not have backtesting paths yet
     strategy_universe.ignore_routing = True
+
+    # Dump our vault data and check for data errors
+    display_vaults(
+        vault_universe,
+        strategy_universe,
+        execution_mode=execution_context.mode,
+        printer=debug_printer,
+    )
 
     return strategy_universe
 
@@ -751,6 +785,10 @@ def all_vaults_share_price_and_tvl(input: ChartInput) -> list[Figure]:
 
 
 def create_charts(
+    timestamp: datetime.datetime | None,
+    parameters: StrategyParameters,
+    strategy_universe: TradingStrategyUniverse,
+    execution_context: ExecutionContext,
 ) -> ChartRegistry:
     """Define charts we use in backtesting and live trading."""
     charts = ChartRegistry(default_benchmark_pairs=BENCHMARK_PAIRS)

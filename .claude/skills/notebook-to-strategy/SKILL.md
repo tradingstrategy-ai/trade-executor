@@ -37,6 +37,7 @@ After updating the strategy module, run a backtest to verify it works:
 ```shell
 source .local-test.env && poetry run trade-executor \
     backtest \
+    --render=charts \
     --strategy-file <strategy_module_path> 
 ```
 
@@ -74,3 +75,34 @@ In the doc string header comment of the strategy module, includethe
 - Chart rendering setup code specific to notebooks is excluded
 - The `trading_strategy_engine_version` constant is preserved or set appropriately.
   Use the default "0.5"
+
+## Example functions and signatures for strategy module
+
+Some example functions how to implement functions in the trading strategy module.
+
+```python
+def create_indicators(
+    timestamp: datetime.datetime,
+    parameters: StrategyParameters,
+    strategy_universe: TradingStrategyUniverse,
+    execution_context: ExecutionContext
+):
+    return indicators.create_indicators(
+        timestamp=timestamp,
+        parameters=parameters,
+        strategy_universe=strategy_universe,
+        execution_context=execution_context,
+    )
+```
+
+```python
+# Define charts we use in backtesting and live trading
+def create_charts(
+    timestamp: datetime.datetime | None,
+    parameters: StrategyParameters,
+    strategy_universe: TradingStrategyUniverse,
+    execution_context: ExecutionContext,
+) -> ChartRegistry:
+    # Code from notebook goes here
+    pass
+```
