@@ -1,33 +1,34 @@
 """API function entrypoints."""
 import json
+import logging
 import math
 import os
-import logging
 import time
 from dataclasses import dataclass
-
 from pathlib import Path
 from typing import cast
 from urllib.parse import urljoin
 
+from dataclasses_json import dataclass_json
+from dataclasses_json.core import Json, _ExtendedEncoder
 from pyramid.request import Request
-from pyramid.response import Response, FileResponse
+from pyramid.response import FileResponse, Response
 from pyramid.view import view_config
 
-from dataclasses_json import dataclass_json
 from tradeexecutor.cli.log import get_ring_buffer_handler
 from tradeexecutor.state.identifier import TradingPairIdentifier
 from tradeexecutor.state.metadata import Metadata
 from tradeexecutor.state.store import JSONFileStore
 from tradeexecutor.state.validator import validate_nested_state_dict
-from tradeexecutor.strategy.chart.definition import ChartParameters, ChartInput
+from tradeexecutor.strategy.chart.definition import ChartInput, ChartParameters
 from tradeexecutor.strategy.chart.renderer import render_chart
-from tradeexecutor.strategy.execution_context import web_server_execution_context
-from tradeexecutor.strategy.summary import StrategySummary
+from tradeexecutor.strategy.execution_context import \
+    web_server_execution_context
 from tradeexecutor.strategy.run_state import RunState
-from tradeexecutor.visual.web_chart import WebChartType, render_web_chart, WebChartSource
+from tradeexecutor.strategy.summary import StrategySummary
+from tradeexecutor.visual.web_chart import (WebChartSource, WebChartType,
+                                            render_web_chart)
 from tradeexecutor.webhook.error import exception_response
-
 
 logger = logging.getLogger(__name__)
 
@@ -51,6 +52,16 @@ def web_ping(request: Request):
     Unauthenticated endpoint to check the serverPlain is up.
     """
     return {"ping": "pong"}
+
+
+
+# NaN fixer for JSON encoder
+class CustomExtendedEncoder(_ExtendedEncoder):
+    def default(self, o):
+        if isinstance(o, float):
+            if math.isnan(o) or math.isinf(o):
+                return None
+        return super().default(o)
 
 
 @view_config(route_name='web_metadata', renderer='json', permission='view')
@@ -87,7 +98,7 @@ def web_metadata(request: Request):
     )
 
     # Catch NaN's and other data JavaScript cannot eat
-    data = summary.to_dict(encode_json=True)
+    data = summary.to_dict(encode_json=False)
     validate_nested_state_dict(data)
 
     # Convert NaN and Inf to null so it is JSON readable
@@ -101,7 +112,7 @@ def web_metadata(request: Request):
             return [_sanitize_floats(v) for v in obj]
         return obj
 
-    payload = json.dumps(_sanitize_floats(data))
+    payload = json.dumps(data, cls=CustomExtendedEncoder)
 
     r = Response(content_type="application/json")
     r.text = payload
