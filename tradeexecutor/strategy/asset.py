@@ -168,7 +168,8 @@ def get_asset_amounts(p: TradingPosition) -> List[Tuple[AssetIdentifier, Decimal
 
 
 def get_onchain_assets(pair: TradingPairIdentifier) -> List[AssetIdentifier]:
-    if pair.is_spot():
+    """What tokens should be present on-chain for this pair."""
+    if pair.is_spot() or pair.is_vault():
         return [pair.base]
     elif pair.is_short():
         return [pair.base, pair.quote]
