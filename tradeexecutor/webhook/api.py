@@ -87,7 +87,7 @@ def web_metadata(request: Request):
     )
 
     # Catch NaN's and other data JavaScript cannot eat
-    data = summary.to_dict()
+    data = summary.to_dict(encode_json=True)
     validate_nested_state_dict(data)
 
     # Convert NaN and Inf to null so it is JSON readable
