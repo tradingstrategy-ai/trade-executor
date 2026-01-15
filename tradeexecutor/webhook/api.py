@@ -1,5 +1,6 @@
 """API function entrypoints."""
-
+import json
+import math
 import os
 import logging
 import time
@@ -89,8 +90,21 @@ def web_metadata(request: Request):
     data = summary.to_dict()
     validate_nested_state_dict(data)
 
+    # Convert NaN and Inf to null so it is JSON readable
+    def _sanitize_floats(obj):
+        if isinstance(obj, float):
+            if math.isnan(obj) or math.isinf(obj):
+                return None
+        elif isinstance(obj, dict):
+            return {k: _sanitize_floats(v) for k, v in obj.items()}
+        elif isinstance(obj, list):
+            return [_sanitize_floats(v) for v in obj]
+        return obj
+
+    payload = json.dumps(_sanitize_floats(data))
+
     r = Response(content_type="application/json")
-    r.text = summary.to_json(allow_nan=False)
+    r.text = payload
     return r
 
 
