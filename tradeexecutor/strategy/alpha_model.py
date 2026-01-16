@@ -879,7 +879,13 @@ class AlphaModel:
         equity_left = investable_equity
         total_accetable_investments = 0
         total_missed_investments = 0
+        positions_accepted = 0
         invested = 0
+        included_pair_ids = set()
+
+        # logging.getLogger().setLevel(logging.INFO)
+
+        logger.info("Total %d positions to consider for size risk adjustment", len(remaining_weights))
 
         while equity_left - epsilon_usd > 0 and len(remaining_weights) > 0:
             # First calculate raw normals
@@ -888,7 +894,6 @@ class AlphaModel:
             # We want to iterate from the largest signal to smallest,
             # as we redistribute equity we cannot allocate in larger positions
             normalised = Counter(normalised)
-
             # For each signal, check if it exceeds
             # US dollar based size risk bsaed on the current market conditions
             s: TradingPairSignal
@@ -902,7 +907,6 @@ class AlphaModel:
             assert s.old_weight is not None, f"TradingSignal.old_weight is not available: {s} - remember to call AlphaModel.update_old_weights()"
             assert s.raw_weight >= 0, "_normalise_weights_size_risk(): short or leverage not implemented"
 
-    
             asked_position_size = equity_left * weight
             max_concentrion_capped_size = max_weight * investable_equity
 
@@ -927,27 +931,37 @@ class AlphaModel:
 
             # Distribute the remaining equity to other positions
             # in the rebalance if we could not fully allocate this one
-            equity_left += (size_risk.asked_size - size_risk.accepted_size)
-
+            equity_left -= size_risk.accepted_size
             del remaining_weights[pair_id]
 
             logger.info(
                 "Position size risk, pair: %s, asked: %s, accepted: %s, diagnostics: %s, equity left: %f, invested: %f",
-                s.pair,
+                s.pair.base.token_symbol,
                 size_risk.asked_size,
                 size_risk.accepted_size,
                 size_risk.diagnostics_data,
                 equity_left,
                 total_accetable_investments
             )
+            positions_accepted += 1
+            included_pair_ids.add(pair_id)
+
         # Store our risk adjusted sizes
         self.investable_equity = investable_equity
         self.accepted_investable_equity = total_accetable_investments
         self.size_risk_discarded_value = total_missed_investments
 
+        logger.info(
+            "Positions accepted: %d out of %d requested, total accepted %f out of %f", 
+            positions_accepted, 
+            max_positions,
+            self.accepted_investable_equity,
+            self.investable_equity
+        )
+
         # Recalculate normals based on size-risk adjusted USD values
         clipped_weights = {}
-        for pair_id, normal_weight in normalised.items():
+        for pair_id in included_pair_ids:
             s = self.signals[pair_id]
             clipped_weights[pair_id] = s.position_target / total_accetable_investments
 
