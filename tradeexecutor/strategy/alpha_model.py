@@ -3,30 +3,30 @@ import datetime
 import enum
 import heapq
 import logging
-
 from collections import Counter
-
 from dataclasses import dataclass, field
 from io import StringIO
 from types import NoneType
-from typing import Optional, Dict, Iterable, List, Literal
+from typing import Dict, Iterable, List, Literal, Optional
 
-import pandas as pd
 import numpy as np
+import pandas as pd
 from dataclasses_json import dataclass_json
-
-from tradeexecutor.state.size_risk import SizeRisk
-from tradeexecutor.strategy.execution_context import ExecutionContext
-from tradeexecutor.strategy.size_risk_model import SizeRiskModel
-from tradingstrategy.types import PrimaryKey
-
 from tradeexecutor.state.identifier import TradingPairIdentifier
 from tradeexecutor.state.portfolio import Portfolio
+from tradeexecutor.state.size_risk import SizeRisk
 from tradeexecutor.state.trade import TradeExecution, TradeType
-from tradeexecutor.state.types import PairInternalId, USDollarAmount, Percent, LeverageMultiplier
-
-from tradeexecutor.strategy.pandas_trader.position_manager import PositionManager
-from tradeexecutor.strategy.weighting import weight_by_1_slash_n, check_normalised_weights, normalise_weights, Signal, clip_to_normalised
+from tradeexecutor.state.types import (LeverageMultiplier, PairInternalId,
+                                       Percent, USDollarAmount)
+from tradeexecutor.strategy.execution_context import ExecutionContext
+from tradeexecutor.strategy.pandas_trader.position_manager import \
+    PositionManager
+from tradeexecutor.strategy.size_risk_model import SizeRiskModel
+from tradeexecutor.strategy.weighting import (Signal, check_normalised_weights,
+                                              clip_to_normalised,
+                                              normalise_weights,
+                                              weight_by_1_slash_n)
+from tradingstrategy.types import PrimaryKey
 
 logger = logging.getLogger(__name__)
 
@@ -856,11 +856,121 @@ class AlphaModel:
             if s.position_target is None:
                 s.position_target = 0.0
 
+    def _normalise_weights_size_risk_positions(
+        self,
+        max_positions: int,
+        max_weight=1.0,
+        investable_equity: USDollarAmount | None = None,
+        size_risk_model: SizeRiskModel | None = None,
+        epsilon_usd=5.0,
+    ):
+        """Normalises position weights between 0 and 1.
+
+        - Calculate dollar based position sizes and limit them by liquidity if needed
+        """
+
+        assert type(max_weight) == float, f"Got {type(max_weight)} instead of float"
+        if investable_equity is not None:
+            assert type(investable_equity) == float, f"Got {type(investable_equity)} instead of float"
+
+        raw_weights = {s.pair.internal_id: s.raw_weight for s in self.signals.values()}
+
+        remaining_weights = raw_weights.copy()
+        equity_left = investable_equity
+        total_accetable_investments = 0
+        total_missed_investments = 0
+        invested = 0
+
+        while equity_left - epsilon_usd > 0 and len(remaining_weights) > 0:
+            # First calculate raw normals
+            normalised = normalise_weights(remaining_weights)
+
+            # We want to iterate from the largest signal to smallest,
+            # as we redistribute equity we cannot allocate in larger positions
+            normalised = Counter(normalised)
+
+            # For each signal, check if it exceeds
+            # US dollar based size risk bsaed on the current market conditions
+            s: TradingPairSignal
+            pair_id, weight = normalised.most_common()[0]
+
+            # NOTE: Here we might have a conflict between given normal weight
+            # and size risk, because size risk may overallocate to a position
+            # if all positions are size-risked down
+            s = self.signals[pair_id]
+
+            assert s.old_weight is not None, f"TradingSignal.old_weight is not available: {s} - remember to call AlphaModel.update_old_weights()"
+            assert s.raw_weight >= 0, "_normalise_weights_size_risk(): short or leverage not implemented"
+
+    
+            asked_position_size = equity_left * weight
+            max_concentrion_capped_size = max_weight * investable_equity
+
+            if asked_position_size > max_concentrion_capped_size:
+                asked_position_size = max_concentrion_capped_size
+                s.flags.add(TradingPairSignalFlags.capped_by_concentration)
+
+            size_risk = size_risk_model.get_acceptable_size_for_position(
+                self.timestamp,
+                s.pair,
+                asked_position_size
+            )
+
+            if size_risk.capped:
+                s.flags.add(TradingPairSignalFlags.capped_by_pool_size)
+        
+            total_missed_investments += (size_risk.asked_size - size_risk.accepted_size)
+
+            s.position_size_risk = size_risk
+            s.position_target = size_risk.accepted_size
+            total_accetable_investments += size_risk.accepted_size
+
+            # Distribute the remaining equity to other positions
+            # in the rebalance if we could not fully allocate this one
+            equity_left += (size_risk.asked_size - size_risk.accepted_size)
+
+            del remaining_weights[pair_id]
+
+            logger.info(
+                "Position size risk, pair: %s, asked: %s, accepted: %s, diagnostics: %s, equity left: %f, invested: %f",
+                s.pair,
+                size_risk.asked_size,
+                size_risk.accepted_size,
+                size_risk.diagnostics_data,
+                equity_left,
+                total_accetable_investments
+            )
+        # Store our risk adjusted sizes
+        self.investable_equity = investable_equity
+        self.accepted_investable_equity = total_accetable_investments
+        self.size_risk_discarded_value = total_missed_investments
+
+        # Recalculate normals based on size-risk adjusted USD values
+        clipped_weights = {}
+        for pair_id, normal_weight in normalised.items():
+            s = self.signals[pair_id]
+            clipped_weights[pair_id] = s.position_target / total_accetable_investments
+
+        # Make sure we sum to 1.0, not over,
+        # due to floating point issues
+        clipped_weights = clip_to_normalised(clipped_weights)
+
+        # Put clipped weights into the model
+        for pair_id, normal_weight in clipped_weights.items():
+            s = self.signals[pair_id]
+            s.normalised_weight = normal_weight
+
+        # Any remaining signal is set to zero
+        for s in self.signals.values():
+            if s.position_target is None:
+                s.position_target = 0.0                
+
     def normalise_weights(
         self,
         max_weight=1.0,
         investable_equity: USDollarAmount | None = None,
         size_risk_model: SizeRiskModel | None = None,
+        max_positions: int | None = None,
     ):
         """Normalise weights to 0...1 scale.
 
@@ -896,11 +1006,22 @@ class AlphaModel:
             self._normalise_weights_simple(max_weight)
         else:
             # Thinking harder
-            self._normalise_weights_size_risk(
-                max_weight=max_weight,
-                size_risk_model=size_risk_model,
-                investable_equity=investable_equity,
-            )
+
+            if max_positions is not None:
+                # Method 1: weights normalised after TVL-based adjustment
+                self._normalise_weights_size_risk_positions(
+                    max_positions=max_positions,
+                    max_weight=max_weight,
+                    investable_equity=investable_equity,
+                    size_risk_model=size_risk_model,
+                )
+            else:   
+                # Method 2: weights normalised before TVL-based adjustment
+                self._normalise_weights_size_risk(
+                    max_weight=max_weight,
+                    size_risk_model=size_risk_model,
+                    investable_equity=investable_equity,
+                )
 
         # Risk model zeroed out everything so something is likely wrong
         if self.has_any_signal() and not self.has_any_position():

@@ -1,13 +1,12 @@
 """Compare signal for portfolio construction across pairs"""
 
 import pandas as pd
-
 import plotly.express as px
 import plotly.graph_objects as go
-from plotly.subplots import make_subplots
 from plotly.graph_objects import Figure
-
+from plotly.subplots import make_subplots
 from tradeexecutor.strategy.chart.definition import ChartInput
+from tradeexecutor.strategy.pandas_trader.indicator import IndicatorNotFound
 
 
 def signal_comparison(
@@ -32,17 +31,22 @@ def signal_comparison(
     # max_displayed_vol = avg_signal.max() * 1.1
     upper_displayed = 0.1
 
-    avg_signal = indicator_data.get_indicator_series(avg_signal)
+    data = {}
 
-    data = {
-        "avg_signal": avg_signal.clip(upper=upper_displayed),
-    }
+    # Avg. signal is only available if the indicator was calculated
+    try:
+        avg_signal = indicator_data.get_indicator_series(avg_signal)
+        data["avg_signal"] = avg_signal.clip(upper=upper_displayed)
+    except IndicatorNotFound:
+        pass
 
-    # TODO: Plotly refuses correctly to plot the third y-axis
     for pair in input.pairs:
         signal = indicator_data.get_indicator_series("signal", pair=pair)
         signal = signal.clip(upper=upper_displayed)
-        data[pair.base.token_symbol] = signal
+        name = pair.get_vault_name() if pair.is_vault() else pair.base.token_symbol
+        data[name] = signal
+
+    print("data keys:", data.keys())
 
     df = pd.DataFrame(data)
     fig = px.line(df)
